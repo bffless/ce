@@ -1,5 +1,5 @@
 {
-  "name": "wsa-open-source",
+  "name": "@bffless/ce",
   "version": "0.0.1",
   "description": "Static Asset Hosting Platform - Self-contained platform for hosting images and static assets from CI/CD pipelines",
   "private": true,
