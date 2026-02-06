@@ -1,0 +1,51 @@
+# Redirect config: {{sourceDomain}} → {{targetDomain}}
+# Type: {{redirectType}}
+# Generated: {{createdAt}}
+
+{{#if sslEnabled}}
+# HTTPS server - handles SSL traffic and redirects to target
+server {
+    listen 443 ssl;
+    http2 on;
+    ssl_certificate {{sslCertPath}};
+    ssl_certificate_key {{sslKeyPath}};
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    server_name {{sourceDomain}};
+
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+
+    # Block vulnerability scanners (drop connection silently)
+    if ($block_scanner) {
+        return 444;
+    }
+
+    return {{redirectType}} {{protocol}}://{{targetDomain}}$request_uri;
+}
+
+# HTTP server - redirects directly to HTTPS target (single redirect)
+server {
+    listen 80;
+    server_name {{sourceDomain}};
+    return 301 https://{{targetDomain}}$request_uri;
+}
+{{else}}
+# HTTP only server - no SSL
+server {
+    listen 80;
+    server_name {{sourceDomain}};
+
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+
+    # Block vulnerability scanners (drop connection silently)
+    if ($block_scanner) {
+        return 444;
+    }
+
+    return {{redirectType}} {{protocol}}://{{targetDomain}}$request_uri;
+}
+{{/if}}

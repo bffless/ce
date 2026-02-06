@@ -1,0 +1,1 @@
+ALTER TABLE "proxy_rules" ADD COLUMN "auth_transform" jsonb;

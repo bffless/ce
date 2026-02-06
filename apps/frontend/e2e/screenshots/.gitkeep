@@ -1,0 +1,2 @@
+# This directory stores screenshots generated during E2E tests
+# Screenshots are gitignored but this file keeps the directory in git

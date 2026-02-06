@@ -1,0 +1,1 @@
+ALTER TABLE "proxy_rules" ADD COLUMN "forward_cookies" boolean DEFAULT false NOT NULL;

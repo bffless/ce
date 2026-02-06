@@ -1,0 +1,1 @@
+ALTER TABLE "primary_content" ADD COLUMN "is_spa" boolean DEFAULT false NOT NULL;

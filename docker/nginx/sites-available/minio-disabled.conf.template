@@ -1,0 +1,68 @@
+# MinIO Console subdomain - DISABLED
+# This file is included when ENABLE_MINIO=false
+# Shows a helpful message instead of 502 Bad Gateway
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name minio.${PRIMARY_DOMAIN};
+
+    # SSL certificates
+    ssl_certificate /etc/nginx/ssl/fullchain.pem;
+    ssl_certificate_key /etc/nginx/ssl/privkey.pem;
+
+    # SSL configuration
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+
+    # Block vulnerability scanners (drop connection silently)
+    if ($block_scanner) {
+        return 444;
+    }
+
+    location / {
+        default_type text/html;
+        return 503 '<!DOCTYPE html>
+<html>
+<head>
+    <title>MinIO Not Available</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .container {
+            text-align: center;
+            padding: 2rem;
+            background: rgba(255,255,255,0.1);
+            border-radius: 1rem;
+            backdrop-filter: blur(10px);
+        }
+        h1 { font-size: 2rem; margin: 0 0 1rem; }
+        p { margin: 0.5rem 0; opacity: 0.9; }
+        a {
+            color: white;
+            text-decoration: underline;
+        }
+        .icon { font-size: 3rem; margin-bottom: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">&#128230;</div>
+        <h1>MinIO Console Not Available</h1>
+        <p>This deployment is using external storage.</p>
+        <p>The MinIO container is not running.</p>
+        <p style="margin-top: 1.5rem;">
+            <a href="https://admin.${PRIMARY_DOMAIN}">Go to Admin Panel</a>
+        </p>
+    </div>
+</body>
+</html>';
+    }
+}

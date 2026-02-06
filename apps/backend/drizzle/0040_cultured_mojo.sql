@@ -1,0 +1,1 @@
+ALTER TABLE "retention_rules" ADD COLUMN "execution_started_at" timestamp;

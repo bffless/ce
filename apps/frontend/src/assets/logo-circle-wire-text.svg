@@ -1,0 +1,156 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400">
+  <!-- Circle background with black outline -->
+  <circle cx="200" cy="200" r="190" fill="#ede8dd" stroke="#3a3a3a" stroke-width="8"/>
+
+  <!-- Circuit wires from bottom of heart -->
+  <g stroke="#4a4a4a" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Left outer - angles outward -->
+    <path d="M130 165 L130 230 L100 230 L100 260"/>
+    <!-- Left inner - angles inward -->
+    <path d="M160 195 L160 245 L140 245 L140 275"/>
+    <!-- Right inner - angles inward -->
+    <path d="M240 195 L240 245 L260 245 L260 275"/>
+    <!-- Right outer - angles outward -->
+    <path d="M270 165 L270 230 L300 230 L300 260"/>
+  </g>
+
+  <!-- Left half of broken heart -->
+  <path d="M197 120
+           C193 100 182 88 162 88
+           C135 88 112 103 112 138
+           C112 190 168 213 197 243
+           L205 215
+           L190 192
+           L205 170
+           L190 148
+           L197 120
+           Z"
+        fill="#d96459"/>
+
+  <!-- Right half of broken heart -->
+  <path d="M203 120
+           C207 100 218 88 238 88
+           C265 88 288 103 288 138
+           C288 190 232 213 203 243
+           L211 215
+           L196 192
+           L211 170
+           L196 148
+           L203 120
+           Z"
+        fill="#d96459"/>
+
+  <!-- Circuit plugs -->
+  <g fill="#4a4a4a">
+    <circle cx="100" cy="265" r="5"/>
+    <circle cx="140" cy="280" r="5"/>
+    <circle cx="260" cy="280" r="5"/>
+    <circle cx="300" cy="265" r="5"/>
+  </g>
+
+  <!-- Plug holes -->
+  <g fill="#ede8dd">
+    <circle cx="100" cy="265" r="2"/>
+    <circle cx="140" cy="280" r="2"/>
+    <circle cx="260" cy="280" r="2"/>
+    <circle cx="300" cy="265" r="2"/>
+  </g>
+
+  <!-- Highlight reflection on left side -->
+  <path d="M132 140
+           C132 128 137 118 147 113"
+        stroke="rgba(255,255,255,0.35)"
+        stroke-width="10"
+        stroke-linecap="round"
+        fill="none"/>
+
+  <!-- BFF wire-style letters (red) -->
+  <g stroke="#d96459" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- B (x=111-131) -->
+    <path d="M111 327 L111 297"/>
+    <path d="M111 297 L127 297 L127 310 L111 310"/>
+    <path d="M111 314 L131 314 L131 327 L111 327"/>
+
+    <!-- F (x=139-157) -->
+    <path d="M139 327 L139 297 L157 297"/>
+    <path d="M139 312 L153 312"/>
+
+    <!-- F (x=165-183) -->
+    <path d="M165 327 L165 297 L183 297"/>
+    <path d="M165 312 L179 312"/>
+
+    <!-- Connecting wire B to F1 -->
+    <path d="M131 327 L139 327"/>
+  </g>
+
+  <!-- LESS wire-style letters (gray) -->
+  <g stroke="#4a4a4a" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- L (x=191-211) -->
+    <path d="M191 297 L191 327 L211 327"/>
+
+    <!-- E (x=219-239) -->
+    <path d="M219 327 L219 297"/>
+    <path d="M219 297 L239 297"/>
+    <path d="M219 312 L235 312"/>
+    <path d="M219 327 L239 327"/>
+
+    <!-- S (x=247-269) -->
+    <path d="M269 297 L247 297 L247 312 L269 312 L269 327 L247 327"/>
+
+    <!-- S (x=275-297) -->
+    <path d="M297 297 L275 297 L275 312 L297 312 L297 327 L275 327"/>
+
+    <!-- Connecting wires between close letters -->
+    <path d="M183 297 L191 297"/>
+    <path d="M239 327 L247 327"/>
+  </g>
+
+  <!-- Wire endpoints (plugs) for BFF (red) -->
+  <g fill="#d96459">
+    <!-- B endpoints -->
+    <circle cx="111" cy="327" r="3"/>
+    <circle cx="127" cy="310" r="3"/>
+    <!-- F1 endpoints -->
+    <circle cx="139" cy="327" r="3"/>
+    <circle cx="157" cy="297" r="3"/>
+    <circle cx="153" cy="312" r="3"/>
+    <!-- F2 endpoints -->
+    <circle cx="165" cy="327" r="3"/>
+    <circle cx="179" cy="312" r="3"/>
+  </g>
+
+  <!-- Wire endpoints (plugs) for LESS (gray) -->
+  <g fill="#4a4a4a">
+    <!-- L endpoints -->
+    <circle cx="191" cy="297" r="3"/>
+    <circle cx="211" cy="327" r="3"/>
+    <!-- E endpoints -->
+    <circle cx="239" cy="297" r="3"/>
+    <circle cx="235" cy="312" r="3"/>
+    <!-- S1 endpoints -->
+    <circle cx="269" cy="297" r="3"/>
+    <circle cx="247" cy="327" r="3"/>
+    <!-- S2 endpoints -->
+    <circle cx="297" cy="297" r="3"/>
+    <circle cx="275" cy="327" r="3"/>
+  </g>
+
+  <!-- Plug holes for letter endpoints -->
+  <g fill="#ede8dd">
+    <circle cx="111" cy="327" r="1"/>
+    <circle cx="127" cy="310" r="1"/>
+    <circle cx="139" cy="327" r="1"/>
+    <circle cx="157" cy="297" r="1"/>
+    <circle cx="153" cy="312" r="1"/>
+    <circle cx="165" cy="327" r="1"/>
+    <circle cx="179" cy="312" r="1"/>
+    <circle cx="191" cy="297" r="1"/>
+    <circle cx="211" cy="327" r="1"/>
+    <circle cx="239" cy="297" r="1"/>
+    <circle cx="235" cy="312" r="1"/>
+    <circle cx="269" cy="297" r="1"/>
+    <circle cx="247" cy="327" r="1"/>
+    <circle cx="297" cy="297" r="1"/>
+    <circle cx="275" cy="327" r="1"/>
+  </g>
+</svg>

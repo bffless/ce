@@ -1,0 +1,83 @@
+name: Manual Frontend Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: 'Commit SHA to build'
+        required: true
+        type: string
+      alias:
+        description: 'Deployment alias (e.g., production, staging)'
+        required: false
+        type: string
+        default: ''
+      tags:
+        description: 'Tags for the deployment (comma-separated)'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  build-frontend:
+    name: Build & Upload Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate SHA format
+        run: |
+          SHA="${{ github.event.inputs.commit_sha }}"
+          if [[ ! "$SHA" =~ ^[a-fA-F0-9]{7,40}$ ]]; then
+            echo "Error: Invalid SHA format. Expected 7-40 hex characters."
+            exit 1
+          fi
+          echo "Valid SHA: $SHA"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.commit_sha }}
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Get branch name for commit
+        id: branch-info
+        run: |
+          COMMIT_SHA="${{ github.event.inputs.commit_sha }}"
+          BRANCH=$(git branch -r --contains "$COMMIT_SHA" 2>/dev/null | head -1 | sed 's/.*origin\///' | tr -d ' ')
+          if [ -z "$BRANCH" ]; then
+            BRANCH="manual-build"
+          fi
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+          echo "Branch: $BRANCH"
+
+      - name: Build frontend
+        run: pnpm --filter frontend build
+
+      - name: Upload frontend build
+        uses: bffless/upload-artifact@v1
+        with:
+          path: apps/frontend/dist
+          api-url: ${{ vars.ASSET_HOST_URL }}
+          api-key: ${{ secrets.ASSET_HOST_KEY }}
+          commit-sha: ${{ github.event.inputs.commit_sha }}
+          branch: ${{ steps.branch-info.outputs.branch }}
+          alias: ${{ github.event.inputs.alias }}
+          tags: ${{ github.event.inputs.tags }}
+          description: 'Manual frontend build for ${{ github.event.inputs.commit_sha }}'
+          summary-title: Manual Frontend Build

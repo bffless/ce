@@ -1,0 +1,441 @@
+# Static Asset Hosting Platform - Docker Compose Configuration (Default)
+#
+# This is the default docker-compose file using pre-built images from GitHub Container Registry.
+# Images are built and pushed by GitHub Actions CI/CD pipeline.
+#
+# Usage:
+#   docker compose pull
+#   docker compose up -d
+#
+# For local development with image building, use docker-compose.build.yml:
+#   docker compose -f docker-compose.build.yml up -d
+#
+# For SSL/HTTPS setup:
+# 1. Get SSL certificate (see roadmap/deploy-digitalocean-simple.md Step 6)
+# 2. Copy certificates to ./ssl/ directory
+# 3. Switch nginx config: cp docker/nginx-ssl.conf docker/nginx.conf
+# 4. Update .env with HTTPS URLs and COOKIE_SECURE=true
+# 5. Restart: docker compose up -d
+#
+# =============================================================================
+# MEMORY CONFIGURATION GUIDE
+# =============================================================================
+# This config is optimized for 1GB RAM VMs. Adjust limits based on your VM size:
+#
+# | VM Size | PostgreSQL | Redis   | SuperTokens | MinIO  | Backend | Total  |
+# |---------|------------|---------|-------------|--------|---------|--------|
+# | 1GB     | 256M       | 96M     | 200M        | 128M   | 192M    | ~900M  |
+# | 2GB     | 512M       | 192M    | 300M        | 256M   | 256M    | ~1.5G  |
+# | 4GB     | 1G         | 512M    | 512M        | 512M   | 512M    | ~3G    |
+#
+# Key tuning parameters by service:
+# - PostgreSQL: shared_buffers (25% of allocated), max_connections, work_mem
+# - Redis: maxmemory (should match container limit minus overhead)
+# - SuperTokens: JAVA_OPTS -Xmx (70% of container limit)
+# - MinIO: GOGC (lower = more aggressive GC, less memory)
+# - Backend: NODE_OPTIONS --max-old-space-size (70% of container limit)
+#
+# =============================================================================
+# SWAP CONFIGURATION (Recommended for 1GB-2GB VMs)
+# =============================================================================
+# Swap provides emergency overflow when RAM fills up. Without it, the OOM killer
+# may terminate containers unexpectedly.
+#
+# Check if swap is active:
+#   swapon --show
+#   free -h
+#
+# Create and enable swap (run once):
+#   sudo fallocate -l 2G /swapfile
+#   sudo chmod 600 /swapfile
+#   sudo mkswap /swapfile
+#   sudo swapon /swapfile
+#
+# Make swap permanent (survives reboots):
+#   echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+#
+# Recommended swap sizes:
+#   1GB VM: 2G swap
+#   2GB VM: 2G swap
+#   4GB VM: 2G swap (or skip, usually not needed)
+#
+# Adjust swappiness (optional, lower = prefer RAM over swap):
+#   echo 'vm.swappiness=10' | sudo tee -a /etc/sysctl.conf
+#   sudo sysctl -p
+#
+# Remove swap (if upgrading to larger VM):
+#   sudo swapoff /swapfile
+#   sudo rm /swapfile
+#   sudo sed -i '/swapfile/d' /etc/fstab
+# =============================================================================
+
+services:
+  nginx:
+    build:
+      context: ./docker/nginx
+      dockerfile: Dockerfile
+    container_name: assethost-nginx
+    # -------------------------------------------------------------------------
+    # NGINX MEMORY: Minimal footprint, rarely needs adjustment
+    # 1GB VM: 64M | 2GB VM: 64M | 4GB VM: 128M
+    # -------------------------------------------------------------------------
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+        reservations:
+          memory: 32M
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./docker/nginx/sites-enabled:/etc/nginx/sites-enabled  # Dynamic domains
+      - ./ssl:/etc/nginx/ssl:ro                                 # SSL certificates
+      - frontend-dist:/usr/share/nginx/html:ro                  # Frontend static files
+      - acme-webroot:/var/www/certbot:ro                        # ACME challenges (read-only)
+    environment:
+      - PRIMARY_DOMAIN=${PRIMARY_DOMAIN:-yourdomain.com}
+      - ENABLE_MINIO=${ENABLE_MINIO:-true}    # For conditional nginx config
+      - PROXY_MODE=${PROXY_MODE:-none}         # none (default) or cloudflare
+    depends_on:
+      frontend:
+        condition: service_started
+      backend:
+        condition: service_started
+      minio:
+        condition: service_healthy
+        required: false                # Optional: only when minio profile is active
+    networks:
+      - assethost-network
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: assethost-postgres
+    profiles:
+      - postgres                         # Only starts with --profile postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: assethost
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/init-databases.sql:/docker-entrypoint-initdb.d/init.sql
+    # Port not exposed to host in production - only accessible via Docker network
+    # Uncomment the following lines if you need direct database access for management:
+    # ports:
+    #   - '5432:5432'
+    # -------------------------------------------------------------------------
+    # POSTGRESQL MEMORY: Most impactful settings for performance vs memory
+    # 1GB VM: 256M limit | 2GB VM: 512M limit | 4GB VM: 1G limit
+    #
+    # Tuning guide:
+    #   shared_buffers    = 25% of container limit (64MB/128MB/256MB)
+    #   effective_cache_size = 50% of container limit (128MB/256MB/512MB)
+    #   work_mem          = 4MB for 1GB, 8MB for 2GB, 16MB for 4GB
+    #   maintenance_work_mem = 32MB/64MB/128MB
+    #   max_connections   = 20 for 1GB, 50 for 2GB, 100 for 4GB
+    # -------------------------------------------------------------------------
+    command: >
+      postgres
+      -c shared_buffers=64MB
+      -c effective_cache_size=128MB
+      -c work_mem=4MB
+      -c maintenance_work_mem=32MB
+      -c max_connections=20
+      -c wal_buffers=4MB
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - assethost-network
+
+  minio:
+    image: minio/minio:latest
+    container_name: assethost-minio
+    profiles:
+      - minio                          # Only starts with --profile minio
+    command: server /data --console-address ":9001"
+    # -------------------------------------------------------------------------
+    # MINIO MEMORY: Object storage, scales with concurrent uploads
+    # 1GB VM: 128M | 2GB VM: 256M | 4GB VM: 512M
+    #
+    # Tuning guide:
+    #   GOGC = 50 (aggressive GC) for 1GB, 100 (default) for 2GB+
+    #   MINIO_CACHE = 'off' for 1GB, remove for 2GB+ to enable caching
+    # -------------------------------------------------------------------------
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_CACHE: 'off'       # Remove this line on 2GB+ VMs for better performance
+      GOGC: '50'               # Set to 100 on 2GB+ VMs
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+    # Ports not exposed to host - nginx proxies minio.${PRIMARY_DOMAIN} to internal network
+    # Uncomment for direct access during debugging:
+    # ports:
+    #   - '9000:9000' # MinIO API
+    #   - '9001:9001' # MinIO Console
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - assethost-network
+
+  supertokens:
+    image: registry.supertokens.io/supertokens/supertokens-postgresql
+    container_name: assethost-supertokens
+    profiles:
+      - supertokens                    # Only starts with --profile supertokens (CE local mode)
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false                # Optional: only when postgres profile is active
+    # -------------------------------------------------------------------------
+    # SUPERTOKENS MEMORY: Java-based auth service, JVM is the main consumer
+    # 1GB VM: 200M | 2GB VM: 300M | 4GB VM: 512M
+    #
+    # Tuning guide:
+    #   -Xmx = 70% of container limit (128m/200m/350m)
+    #   -Xms = 50% of -Xmx (start small, grow as needed)
+    #   -XX:+UseSerialGC = best for small heaps (<256MB), use G1GC for larger
+    #   POSTGRESQL_CONNECTION_POOL_SIZE = 5 for 1GB, 10 for 2GB+
+    # -------------------------------------------------------------------------
+    environment:
+      # SuperTokens database connection:
+      # - Default (local postgres): postgresql://postgres:password@postgres:5432/supertokens
+      # - External: Set SUPERTOKENS_DATABASE_URL in .env (must be quoted if contains & character)
+      POSTGRESQL_CONNECTION_URI: ${SUPERTOKENS_DATABASE_URL:-postgresql://postgres:${POSTGRES_PASSWORD:-changeme}@postgres:5432/supertokens}
+      # JVM memory: -Xmx=128m for 1GB VM, 200m for 2GB, 350m for 4GB
+      JAVA_OPTS: '-Xmx128m -Xms64m -XX:+UseSerialGC -XX:MaxMetaspaceSize=64m'
+      POSTGRESQL_CONNECTION_POOL_SIZE: '3'    # Increase to 5-10 on 2GB+ VMs with higher DB connection limits
+    deploy:
+      resources:
+        limits:
+          memory: 200M
+        reservations:
+          memory: 128M
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:3567/hello']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - assethost-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: assethost-redis
+    profiles:
+      - redis                          # Only starts with --profile redis
+    restart: unless-stopped
+    # -------------------------------------------------------------------------
+    # REDIS MEMORY: In-memory cache, maxmemory is the key setting
+    # 1GB VM: 96M limit, 64mb maxmemory | 2GB VM: 192M, 128mb | 4GB VM: 512M, 384mb
+    #
+    # Tuning guide:
+    #   maxmemory = container limit minus ~30MB overhead
+    #   maxmemory-policy = allkeys-lru (evict least recently used when full)
+    #   appendonly = yes for persistence, no for pure cache (saves memory)
+    # -------------------------------------------------------------------------
+    # maxmemory: 64mb for 1GB VM, 128mb for 2GB, 384mb for 4GB
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-} --maxmemory 64mb --maxmemory-policy allkeys-lru
+    deploy:
+      resources:
+        limits:
+          memory: 96M
+        reservations:
+          memory: 32M
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', '-a', '${REDIS_PASSWORD:-}', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - assethost-network
+
+  backend:
+    # Use pre-built image from GitHub Container Registry
+    image: ghcr.io/toshimoto821/wsa-open-source-backend:latest
+    container_name: assethost-backend
+    # -------------------------------------------------------------------------
+    # BACKEND MEMORY: Node.js NestJS server
+    # 1GB VM: 192M | 2GB VM: 256M | 4GB VM: 512M
+    #
+    # Tuning guide:
+    #   --max-old-space-size = 70% of container limit (128/180/350)
+    #   This controls V8 heap size; Node also uses memory for buffers, etc.
+    # -------------------------------------------------------------------------
+    deploy:
+      resources:
+        limits:
+          memory: 192M
+        reservations:
+          memory: 96M
+    environment:
+      # Node.js heap: 128 for 1GB VM, 180 for 2GB, 350 for 4GB
+      NODE_OPTIONS: '--max-old-space-size=128'
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:${POSTGRES_PASSWORD:-changeme}@postgres:5432/assethost}
+
+      # Storage configuration (will be set via setup wizard, these are defaults)
+      STORAGE_TYPE: ${STORAGE_TYPE:-minio}
+
+      # MinIO configuration
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_BUCKET: ${MINIO_BUCKET:-assets}
+      MINIO_USE_SSL: false
+
+      # Frontend URL
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
+
+      # Admin Domain (for CSP frame-ancestors to allow iframe previews)
+      # Must match where the admin panel is served (admin.{PRIMARY_DOMAIN})
+      ADMIN_DOMAIN: ${ADMIN_DOMAIN:-admin.${PRIMARY_DOMAIN:-localhost}}
+
+      # Security (REQUIRED - set these via environment variables or .env file)
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      API_KEY_SALT: ${API_KEY_SALT}
+
+      # SuperTokens Configuration
+      # - local mode (default): Uses local SuperTokens container (--profile supertokens)
+      # - platform mode: Uses shared SuperTokens instance (requires ORGANIZATION_ID or TENANT_ID)
+      SUPERTOKENS_MODE: ${SUPERTOKENS_MODE:-local}
+      SUPERTOKENS_CONNECTION_URI: ${SUPERTOKENS_CONNECTION_URI:-http://supertokens:3567}
+      SUPERTOKENS_API_KEY: ${SUPERTOKENS_API_KEY:-}
+
+      # Platform mode: Organization/Workspace configuration
+      # ORGANIZATION_ID = SuperTokens tenant (auth boundary) - users share login across workspaces
+      # WORKSPACE_ID = identifies this specific CE deployment (optional, for logging)
+      ORGANIZATION_ID: ${ORGANIZATION_ID:-}
+      WORKSPACE_ID: ${WORKSPACE_ID:-}
+      # Keep TENANT_ID for backward compatibility (aliased to ORGANIZATION_ID if not set)
+      TENANT_ID: ${TENANT_ID:-${ORGANIZATION_ID:-}}
+
+      # Email Configuration (Optional - if not set, emails will be logged to console)
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-Static Asset Hosting Platform}
+      EMAIL_FROM_ADDRESS: ${EMAIL_FROM_ADDRESS:-}
+
+      # API domain for SuperTokens cookie settings (should match how users access the app)
+      API_DOMAIN: ${API_DOMAIN:-http://localhost}
+      # Set to 'false' for local Docker testing over HTTP
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # Cookie domain for cross-subdomain authentication (e.g., .yourdomain.com)
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
+
+      # Nginx Configuration (for dynamic domain mapping)
+      PRIMARY_DOMAIN: ${PRIMARY_DOMAIN:-yourdomain.com}
+      BACKEND_HOST: backend
+      BACKEND_PORT: 3000
+      NGINX_SITES_PATH: /etc/nginx/sites-enabled
+      NGINX_RELOAD_WAIT_MS: ${NGINX_RELOAD_WAIT_MS:-3000}
+
+      # SSL Certificate Configuration (for Let's Encrypt)
+      SSL_CERT_PATH: /etc/nginx/ssl
+      CERTBOT_EMAIL: ${CERTBOT_EMAIL:-}
+      CERTBOT_WEBROOT: /var/www/certbot
+
+      # Cache Configuration
+      CACHE_TYPE: ${CACHE_TYPE:-memory}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_DB: 0
+
+      # Optional Services Configuration
+      ENABLE_MINIO: ${ENABLE_MINIO:-true}
+      ENABLE_REDIS: ${ENABLE_REDIS:-true}
+    ports:
+      - '3000:3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false                # Optional: only when postgres profile is active
+      minio:
+        condition: service_healthy
+        required: false                # Optional: only when minio profile is active
+      supertokens:
+        condition: service_healthy
+        required: false                # Optional: only when supertokens profile is active (CE local mode)
+      redis:
+        condition: service_healthy
+        required: false                # Optional: only when redis profile is active
+    volumes:
+      - backend-uploads:/app/apps/backend/uploads
+      - ./docker/nginx/sites-enabled:/etc/nginx/sites-enabled  # Write dynamic configs
+      - ./ssl:/etc/nginx/ssl                                    # SSL certificates (read/write)
+      - acme-webroot:/var/www/certbot                           # ACME challenges (read/write)
+    networks:
+      - assethost-network
+    restart: unless-stopped
+
+  frontend:
+    # Use pre-built image from GitHub Container Registry
+    image: ghcr.io/toshimoto821/wsa-open-source-frontend:latest
+    container_name: assethost-frontend
+    # -------------------------------------------------------------------------
+    # FRONTEND MEMORY: Static file container, minimal footprint
+    # 1GB VM: 64M | 2GB VM: 64M | 4GB VM: 128M
+    # This container just copies built files to the shared volume
+    # -------------------------------------------------------------------------
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+        reservations:
+          memory: 32M
+    volumes:
+      - frontend-dist:/app/dist  # Share built files with nginx
+    # No ports - nginx handles all traffic
+    depends_on:
+      - backend
+    networks:
+      - assethost-network
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+    driver: local
+  minio-data:
+    driver: local
+  redis-data:
+    driver: local
+  backend-uploads:
+    driver: local
+  frontend-dist:  # Shared volume for frontend static files
+    driver: local
+  acme-webroot:   # ACME challenges for Let's Encrypt HTTP-01
+    driver: local
+
+networks:
+  assethost-network:
+    driver: bridge

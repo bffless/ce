@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="450" viewBox="0 0 400 450">
+  <!-- Circuit wires from bottom of heart -->
+  <g stroke="#4a4a4a" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Left outer - angles outward -->
+    <path d="M115 215 L115 295 L55 295 L55 355"/>
+    <!-- Left inner - angles inward -->
+    <path d="M155 235 L155 320 L130 320 L130 370"/>
+    <!-- Right inner - angles inward -->
+    <path d="M245 235 L245 320 L270 320 L270 370"/>
+    <!-- Right outer - angles outward -->
+    <path d="M285 215 L285 295 L345 295 L345 355"/>
+  </g>
+
+  <!-- Circuit plugs -->
+  <g fill="#4a4a4a">
+    <circle cx="55" cy="360" r="8"/>
+    <circle cx="130" cy="375" r="8"/>
+    <circle cx="270" cy="375" r="8"/>
+    <circle cx="345" cy="360" r="8"/>
+  </g>
+
+  <!-- Plug holes -->
+  <g fill="white">
+    <circle cx="55" cy="360" r="3"/>
+    <circle cx="130" cy="375" r="3"/>
+    <circle cx="270" cy="375" r="3"/>
+    <circle cx="345" cy="360" r="3"/>
+  </g>
+
+  <!-- Left half of broken heart -->
+  <path d="M195 85
+           C190 55 170 35 140 35
+           C100 35 60 60 60 110
+           C60 200 150 230 195 280
+           L205 240
+           L185 200
+           L205 160
+           L185 120
+           L195 85
+           Z"
+        fill="#c95c54"/>
+
+  <!-- Right half of broken heart -->
+  <path d="M205 85
+           C210 55 230 35 260 35
+           C300 35 340 60 340 110
+           C340 200 250 230 205 280
+           L215 240
+           L195 200
+           L215 160
+           L195 120
+           L205 85
+           Z"
+        fill="#c95c54"/>
+
+  <!-- Highlight reflection on left side -->
+  <path d="M125 60
+           C100 72 95 100 110 120"
+        stroke="rgba(255,255,255,0.35)"
+        stroke-width="14"
+        stroke-linecap="round"
+        fill="none"
+        transform="rotate(20 110 90)"/>
+
+  <!-- Text block with background -->
+  <rect x="100" y="395" width="200" height="40" fill="#4a4a4a" rx="4"/>
+  <text x="200" y="423" text-anchor="middle" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="white">NOT FOUND</text>
+</svg>

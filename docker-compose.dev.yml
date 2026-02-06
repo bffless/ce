@@ -1,0 +1,103 @@
+# Development docker-compose file
+# Only runs PostgreSQL, MinIO, and SuperTokens
+# Backend and frontend run locally via pnpm
+#
+# Usage:
+#   pnpm dev:services              # Start with default profiles (postgres)
+#   pnpm dev:services --profile minio  # Include MinIO for S3 storage testing
+#
+# External PostgreSQL (advanced):
+#   Set ENABLE_POSTGRES=false in .env and DATABASE_URL to external host
+#   Then PostgreSQL container won't start, saving resources
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: assethost-postgres-dev
+    profiles:
+      - postgres                         # Only starts with --profile postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: devpassword
+      POSTGRES_DB: assethost
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres-dev-data:/var/lib/postgresql/data
+      - ./scripts/init-databases.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: assethost-minio-dev
+    profiles:
+      - minio                          # Only starts with --profile minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - minio-dev-data:/data
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  supertokens:
+    image: registry.supertokens.io/supertokens/supertokens-postgresql
+    container_name: assethost-supertokens-dev
+    profiles:
+      - supertokens                    # Only starts with --profile supertokens (CE local mode)
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false                # Optional: only when postgres profile is active
+    ports:
+      - '3567:3567'
+    environment:
+      # Separate database for SuperTokens (no table prefix needed)
+      POSTGRESQL_CONNECTION_URI: postgresql://postgres:devpassword@postgres:5432/supertokens
+      POSTGRESQL_CONNECTION_POOL_SIZE: '3'
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:3567/hello']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─────────────────────────────────────────────────────────────────
+  # Redis (Optional) - Uncomment to test Redis caching locally
+  # By default, local development uses in-memory caching (CACHE_TYPE=memory)
+  # Start with: docker compose -f docker-compose.dev.yml --profile redis up -d
+  # ─────────────────────────────────────────────────────────────────
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: assethost-redis-dev
+  #   profiles:
+  #     - redis                        # Only starts with --profile redis
+  #   restart: unless-stopped
+  #   command: redis-server --appendonly yes
+  #   ports:
+  #     - '6379:6379'
+  #   volumes:
+  #     - redis-dev-data:/data
+  #   healthcheck:
+  #     test: ['CMD', 'redis-cli', 'ping']
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 3
+
+volumes:
+  postgres-dev-data:
+    driver: local
+  minio-dev-data:
+    driver: local
+  # redis-dev-data:  # Uncomment when enabling Redis
+  #   driver: local

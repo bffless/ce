@@ -1,0 +1,230 @@
+# HTTP server - redirect to HTTPS
+server {
+    listen 80;
+    server_name _;
+
+    # Block scanners even on HTTP (before redirect)
+    if ($block_scanner) {
+        return 444;
+    }
+
+    # HTTP action (redirect to HTTPS or drop connection based on PROXY_MODE)
+    ${PORT80_ACTION}
+}
+
+# Wildcard subdomain routing for preview aliases
+# Routes all unmatched *.${PRIMARY_DOMAIN} subdomains to backend for alias resolution
+# This enables SPA preview via auto-generated subdomain aliases (e.g., ca996e-wsaopens-a7f3-7d2f.example.com)
+server {
+    listen 443 ssl default_server;
+    http2 on;
+    server_name *.${PRIMARY_DOMAIN};
+
+    # SSL certificates (use wildcard cert — path set by entrypoint based on PROXY_MODE)
+    ssl_certificate ${WILDCARD_CERT};
+    ssl_certificate_key ${WILDCARD_KEY};
+
+    # SSL configuration
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    # Security headers
+    # Use CSP frame-ancestors instead of X-Frame-Options to allow cross-subdomain iframing
+    # This enables admin.${PRIMARY_DOMAIN} to iframe preview subdomains like *.${PRIMARY_DOMAIN}
+    add_header Content-Security-Policy "frame-ancestors 'self' https://*.${PRIMARY_DOMAIN} https://${PRIMARY_DOMAIN}" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+
+    # Block vulnerability scanners (drop connection silently)
+    if ($block_scanner) {
+        return 444;
+    }
+
+    # Extract subdomain from host header
+    # e.g., ca996e-wsaopens-a7f3-7d2f.example.com -> ca996e-wsaopens-a7f3-7d2f
+    set $subdomain "";
+    if ($host ~ "^([^.]+)\.") {
+        set $subdomain $1;
+    }
+
+    # Route all requests to backend subdomain-alias endpoint
+    location / {
+        # Rewrite path to backend subdomain-alias endpoint
+        rewrite ^/(.*)$ /public/subdomain-alias/$subdomain/$1 break;
+
+        proxy_pass http://backend:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Original-URI $request_uri;
+
+        # SPA fallback: on 404, try serving index.html
+        proxy_intercept_errors on;
+        error_page 404 = @spa_fallback;
+    }
+
+    # SPA fallback location - serves index.html for client-side routing
+    location @spa_fallback {
+        rewrite ^/(.*)$ /public/subdomain-alias/$subdomain/index.html break;
+
+        proxy_pass http://backend:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Original-URI $request_uri;
+
+        # Don't intercept errors - let backend's styled 404 page pass through
+        # This ensures private/missing sites show our custom 404, not nginx's default
+        proxy_intercept_errors off;
+    }
+}
+
+# MinIO Console Configuration
+# ===========================================================================
+# NOTE: The minio.${PRIMARY_DOMAIN} server block is conditionally generated
+# by docker-entrypoint.sh based on the ENABLE_MINIO environment variable.
+# See: minio.conf.template (enabled) and minio-disabled.conf.template (disabled)
+# Generated file: /etc/nginx/sites-available/minio.conf
+# ===========================================================================
+
+# Admin Panel (admin.${PRIMARY_DOMAIN})
+# Serves the React admin application
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name admin.${PRIMARY_DOMAIN};
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # SSL certificates
+    ssl_certificate /etc/nginx/ssl/fullchain.pem;
+    ssl_certificate_key /etc/nginx/ssl/privkey.pem;
+
+    # SSL configuration
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
+
+    # Security headers
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+
+    # Allow large file uploads
+    client_max_body_size 100M;
+
+    # Block vulnerability scanners (drop connection silently)
+    if ($block_scanner) {
+        return 444;
+    }
+
+    # Proxy API requests to backend
+    location /api {
+        proxy_pass http://backend:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+
+        # Default timeouts for API requests
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+
+    # SSL certificate verification - needs longer timeout for ACME challenges
+    location /api/domains/ssl {
+        proxy_pass http://backend:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+
+        # Extended timeouts for ACME certificate verification (can take 2-3 minutes)
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+    }
+
+    # Proxy auth requests to backend
+    location /auth {
+        proxy_pass http://backend:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    # Proxy public asset requests to backend
+    location /public {
+        proxy_pass http://backend:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+
+        # Extended timeouts for large file downloads
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+
+        # Disable buffering for large file downloads to prevent HTTP/2 protocol errors
+        proxy_buffering off;
+        proxy_request_buffering off;
+
+        # Allow large file downloads (same as upload limit)
+        proxy_max_temp_file_size 0;
+    }
+
+    # React Router - serve index.html for all routes
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Cache static assets
+    location ~* ^/(?!api/|auth/|public/|repo/).*\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+}
+
+# Primary Domain Content Configuration
+# ===========================================================================
+# NOTE: The server blocks for www.${PRIMARY_DOMAIN} and ${PRIMARY_DOMAIN} are
+# dynamically generated by the backend based on primary content settings.
+# See: apps/backend/src/domains/nginx-config.service.ts
+#
+# The generated config is written to /etc/nginx/sites-enabled/primary-content.conf
+# which is included after this file.
+#
+# If primary-content.conf doesn't exist (backend not running or not configured),
+# requests to www/root will fall through to the default catch-all server above
+# which returns 404.
+# ===========================================================================

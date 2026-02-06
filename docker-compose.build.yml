@@ -1,0 +1,233 @@
+# Static Asset Hosting Platform - Docker Compose Configuration (Build Locally)
+#
+# This file builds images locally instead of pulling from GitHub Container Registry.
+# Use this for local development or when you need to test local code changes.
+#
+# Usage:
+#   docker compose -f docker-compose.build.yml build
+#   docker compose -f docker-compose.build.yml up -d
+#
+# For production deployment with pre-built images, use the default docker-compose.yml:
+#   docker compose up -d
+#
+# For SSL/HTTPS setup:
+# 1. Get SSL certificate (see roadmap/deploy-digitalocean-simple.md Step 6)
+# 2. Copy certificates to ./ssl/ directory
+# 3. Switch nginx config: cp docker/nginx-ssl.conf docker/nginx.conf
+# 4. Update .env with HTTPS URLs and COOKIE_SECURE=true
+# 5. Rebuild: docker compose -f docker-compose.build.yml build && docker compose -f docker-compose.build.yml up -d
+
+services:
+  nginx:
+    build:
+      context: ./docker/nginx
+      dockerfile: Dockerfile
+    container_name: assethost-nginx
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./docker/nginx/sites-enabled:/etc/nginx/sites-enabled  # Dynamic domains
+      - ./ssl:/etc/nginx/ssl:ro                                 # SSL certificates
+      - frontend-dist:/usr/share/nginx/html:ro                  # Frontend static files
+      - acme-webroot:/var/www/certbot:ro                        # ACME challenges (read-only)
+    environment:
+      - PRIMARY_DOMAIN=${PRIMARY_DOMAIN:-localhost}
+      - ENABLE_MINIO=${ENABLE_MINIO:-true}    # For conditional nginx config
+    depends_on:
+      frontend:
+        condition: service_started
+      backend:
+        condition: service_started
+      minio:
+        condition: service_healthy
+        required: false                # Optional: only when minio profile is active
+    networks:
+      - assethost-network
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: assethost-postgres
+    profiles:
+      - postgres                         # Only starts with --profile postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: assethost
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/init-databases.sql:/docker-entrypoint-initdb.d/init.sql
+    # Port not exposed to host in production - only accessible via Docker network
+    # Uncomment the following lines if you need direct database access for management:
+    ports:
+      - '5432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - assethost-network
+
+  minio:
+    image: minio/minio:latest
+    container_name: assethost-minio
+    profiles:
+      - minio                          # Only starts with --profile minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - '9000:9000' # MinIO API
+      - '9001:9001' # MinIO Console
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - assethost-network
+
+  supertokens:
+    image: registry.supertokens.io/supertokens/supertokens-postgresql
+    container_name: assethost-supertokens
+    profiles:
+      - supertokens                    # Only starts with --profile supertokens (CE local mode)
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false                # Optional: only when postgres profile is active
+    environment:
+      # Separate database for SuperTokens (no table prefix needed)
+      POSTGRESQL_CONNECTION_URI: postgresql://postgres:${POSTGRES_PASSWORD:-changeme}@postgres:5432/supertokens
+      POSTGRESQL_CONNECTION_POOL_SIZE: '3'
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:3567/hello']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - assethost-network
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    container_name: assethost-backend
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:${POSTGRES_PASSWORD:-changeme}@postgres:5432/assethost}
+
+      # Storage configuration (will be set via setup wizard, these are defaults)
+      STORAGE_TYPE: ${STORAGE_TYPE:-minio}
+
+      # MinIO configuration
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_BUCKET: ${MINIO_BUCKET:-assets}
+      MINIO_USE_SSL: false
+
+      # Frontend URL
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
+
+      # Security (REQUIRED - set these via environment variables or .env file)
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      API_KEY_SALT: ${API_KEY_SALT}
+
+      # SuperTokens Configuration
+      # - local mode (default): Uses local SuperTokens container (--profile supertokens)
+      # - platform mode: Uses shared SuperTokens instance (requires TENANT_ID)
+      SUPERTOKENS_MODE: ${SUPERTOKENS_MODE:-local}
+      SUPERTOKENS_CONNECTION_URI: ${SUPERTOKENS_CONNECTION_URI:-http://supertokens:3567}
+      SUPERTOKENS_API_KEY: ${SUPERTOKENS_API_KEY:-}
+      TENANT_ID: ${TENANT_ID:-}
+
+      # Email Configuration (Optional - if not set, emails will be logged to console)
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-Asset Host}
+      EMAIL_FROM_ADDRESS: ${EMAIL_FROM_ADDRESS:-}
+
+      # API domain for SuperTokens cookie settings (should match how users access the app)
+      API_DOMAIN: ${API_DOMAIN:-http://localhost}
+      # Set to 'false' for local Docker testing over HTTP
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # Cookie domain for cross-subdomain authentication (e.g., .yourdomain.com)
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
+
+      # Nginx Configuration (for dynamic domain mapping)
+      PRIMARY_DOMAIN: ${PRIMARY_DOMAIN:-localhost}
+      BACKEND_HOST: backend
+      BACKEND_PORT: 3000
+      NGINX_SITES_PATH: /etc/nginx/sites-enabled
+      NGINX_RELOAD_WAIT_MS: ${NGINX_RELOAD_WAIT_MS:-3000}
+
+      # SSL Certificate Configuration (for Let's Encrypt)
+      SSL_CERT_PATH: /etc/nginx/ssl
+      CERTBOT_EMAIL: ${CERTBOT_EMAIL:-}
+      CERTBOT_WEBROOT: /var/www/certbot
+
+      # Optional Services Configuration
+      ENABLE_MINIO: ${ENABLE_MINIO:-true}
+    ports:
+      - '3000:3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false                # Optional: only when postgres profile is active
+      minio:
+        condition: service_healthy
+        required: false                # Optional: only when minio profile is active
+      supertokens:
+        condition: service_healthy
+        required: false                # Optional: only when supertokens profile is active (CE local mode)
+    volumes:
+      - backend-uploads:/app/apps/backend/uploads
+      - ./docker/nginx/sites-enabled:/etc/nginx/sites-enabled  # Write dynamic configs
+      - ./ssl:/etc/nginx/ssl                                    # SSL certificates (read/write)
+      - acme-webroot:/var/www/certbot                           # ACME challenges (read/write)
+    networks:
+      - assethost-network
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+    container_name: assethost-frontend
+    volumes:
+      - frontend-dist:/app/dist  # Share built files with nginx
+    # No ports - nginx handles all traffic now
+    depends_on:
+      - backend
+    networks:
+      - assethost-network
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+    driver: local
+  minio-data:
+    driver: local
+  backend-uploads:
+    driver: local
+  frontend-dist:  # Shared volume for frontend static files
+    driver: local
+  acme-webroot:   # ACME challenges for Let's Encrypt HTTP-01
+    driver: local
+
+networks:
+  assethost-network:
+    driver: bridge

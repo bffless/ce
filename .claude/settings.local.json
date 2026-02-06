@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "mcp__ide__getDiagnostics",
+      "Bash(npm test:*)",
+      "mcp__chrome-devtools__evaluate_script",
+      "mcp__chrome-devtools__navigate_page",
+      "mcp__chrome-devtools__take_screenshot",
+      "mcp__chrome-devtools__fill",
+      "Bash(pnpm test:*)",
+      "Bash(pnpm exec tsc:*)",
+      "Bash(mkdir:*)",
+      "Bash(pnpm add:*)",
+      "Bash(grep:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

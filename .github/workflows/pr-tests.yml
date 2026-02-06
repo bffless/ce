@@ -1,0 +1,97 @@
+name: PR Tests
+
+on:
+  pull_request:
+    branches: ['*']
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test & Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: TypeScript type check
+        run: |
+          echo "Running TypeScript type check..."
+          pnpm --filter frontend exec tsc --noEmit &
+          pnpm --filter backend exec tsc --noEmit &
+          wait
+
+      - name: Build frontend for preview
+        if: github.base_ref == 'main'
+        env:
+          VITE_API_URL: ''
+        run: pnpm --filter frontend build
+
+      - name: Upload frontend build preview
+        id: upload-frontend-build
+        if: github.base_ref == 'main'
+        uses: bffless/upload-artifact@v1
+        with:
+          path: apps/frontend/dist
+          api-url: ${{ vars.ASSET_HOST_URL }}
+          api-key: ${{ secrets.ASSET_HOST_KEY }}
+          alias: preview
+          description: 'Frontend build preview for PR #${{ github.event.pull_request.number }}'
+          summary-title: Frontend Build Preview
+
+      - name: Run tests with coverage
+        run: pnpm test
+        continue-on-error: false
+
+      - name: Upload backend coverage
+        id: upload-backend-coverage
+        if: hashFiles('apps/backend/coverage') != ''
+        uses: bffless/upload-artifact@v1
+        with:
+          path: apps/backend/coverage
+          api-url: ${{ vars.ASSET_HOST_URL }}
+          api-key: ${{ secrets.ASSET_HOST_KEY }}
+          description: 'Backend test coverage for ${{ github.head_ref }}@${{ github.event.pull_request.head.sha }}'
+          summary-title: Backend Coverage
+
+      - name: Upload frontend coverage
+        id: upload-frontend-coverage
+        if: hashFiles('apps/frontend/coverage') != ''
+        uses: bffless/upload-artifact@v1
+        with:
+          path: apps/frontend/coverage
+          api-url: ${{ vars.ASSET_HOST_URL }}
+          api-key: ${{ secrets.ASSET_HOST_KEY }}
+          description: 'Frontend test coverage for ${{ github.head_ref }}@${{ github.event.pull_request.head.sha }}'
+          summary-title: Frontend Coverage
+
+      - name: Build Storybook
+        run: pnpm --filter frontend storybook:build
+
+      - name: Upload Storybook
+        id: upload-storybook
+        if: hashFiles('apps/frontend/storybook-static') != ''
+        uses: bffless/upload-artifact@v1
+        with:
+          path: apps/frontend/storybook-static
+          api-url: ${{ vars.ASSET_HOST_URL }}
+          api-key: ${{ secrets.ASSET_HOST_KEY }}
+          description: 'Storybook component library for ${{ github.head_ref }}@${{ github.event.pull_request.head.sha }}'
+          summary-title: Storybook

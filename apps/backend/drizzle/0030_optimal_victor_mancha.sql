@@ -1,0 +1,1 @@
+ALTER TABLE "primary_content" ADD COLUMN "www_enabled" boolean DEFAULT true NOT NULL;

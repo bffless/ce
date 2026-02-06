@@ -1,0 +1,53 @@
+{
+  "name": "wsa-open-source",
+  "version": "0.0.199",
+  "description": "Static Asset Hosting Platform - Self-contained platform for hosting images and static assets from CI/CD pipelines",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"pnpm --filter backend dev\" \"pnpm --filter frontend dev\"",
+    "dev:services": "docker-compose -f docker-compose.dev.yml --profile postgres --profile supertokens up -d",
+    "dev:services:stop": "docker-compose -f docker-compose.dev.yml --profile postgres --profile supertokens down",
+    "dev:services:logs": "docker-compose -f docker-compose.dev.yml --profile postgres --profile supertokens logs -f",
+    "dev:services:restart": "docker-compose -f docker-compose.dev.yml --profile postgres --profile supertokens restart",
+    "dev:services:reset": "docker-compose -f docker-compose.dev.yml --profile postgres --profile supertokens down -v && docker-compose -f docker-compose.dev.yml --profile postgres --profile supertokens up -d && sleep 5 && cd apps/backend && pnpm db:migrate",
+    "dev:full": "pnpm dev:services && pnpm dev",
+    "build": "pnpm --filter backend build && pnpm --filter frontend build",
+    "build:backend": "pnpm --filter backend build",
+    "build:frontend": "pnpm --filter frontend build",
+    "build:action": "pnpm --filter github-action build",
+    "test": "pnpm --recursive test",
+    "lint": "pnpm --recursive lint",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "clean": "pnpm --recursive clean && rm -rf node_modules",
+    "docker:build": "docker-compose build",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "docker:reset": "./apps/backend/scripts/reset-setup.sh",
+    "docker:reset:force": "./apps/backend/scripts/reset-setup.sh --force",
+    "docker:reset:soft": "docker-compose restart",
+    "docker:reset:volumes": "docker-compose down -v && docker-compose up -d && sleep 10 && cd apps/backend && pnpm db:migrate",
+    "docker:reset:full": "docker-compose down -v && docker-compose build && docker-compose up -d"
+  },
+  "keywords": [
+    "asset-hosting",
+    "static-assets",
+    "ci-cd",
+    "github-actions",
+    "nestjs",
+    "react"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "concurrently": "^8.2.2",
+    "prettier": "^3.1.0",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  }
+}

@@ -1,0 +1,2 @@
+# Ignore dynamic nginx domain configs (generated at runtime)
+*.conf

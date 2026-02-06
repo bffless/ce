@@ -1,0 +1,199 @@
+# Generated config for custom domain: {{domain}}
+# Project: {{project.owner}}/{{project.name}}
+# Mapping ID: {{id}}
+# Created: {{createdAt}}
+# SPA Mode: {{#if isSpa}}enabled{{else}}disabled{{/if}}
+
+{{#if sslEnabled}}
+# HTTPS server - main content
+server {
+    listen 443 ssl;
+    http2 on;
+
+    # SSL Configuration (per-domain certificate)
+    ssl_certificate /etc/nginx/ssl/{{domain}}/fullchain.pem;
+    ssl_certificate_key /etc/nginx/ssl/{{domain}}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    server_name {{domain}};
+
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    # Block vulnerability scanners (drop connection silently)
+    if ($block_scanner) {
+        return 444;
+    }
+
+    # Custom error pages
+    error_page 404 /404.html;
+    error_page 500 502 503 504 /50x.html;
+
+    # Main location
+    location / {
+        rewrite ^/(.*)$ /public/{{project.owner}}/{{project.name}}/alias/{{alias}}{{#if path}}{{path}}{{/if}}/$1 break;
+        proxy_pass http://{{backendHost}}:{{backendPort}};
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port $server_port;
+        # Original URI for proxy rules (before nginx rewrite)
+        proxy_set_header X-Original-URI $request_uri;
+
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+
+{{#if isSpa}}
+        # SPA mode: intercept 404s to fallback to index.html for client-side routing
+        proxy_intercept_errors on;
+        error_page 404 = @spa_fallback;
+{{else}}
+        # Non-SPA mode: let backend's styled 404 page pass through
+        proxy_intercept_errors off;
+{{/if}}
+    }
+
+{{#if isSpa}}
+    # SPA fallback - serve index.html for client-side routing
+    location @spa_fallback {
+        rewrite ^/(.*)$ /public/{{project.owner}}/{{project.name}}/alias/{{alias}}{{#if path}}{{path}}{{/if}}/index.html break;
+
+        proxy_pass http://{{backendHost}}:{{backendPort}};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port $server_port;
+        proxy_set_header X-Original-URI $request_uri;
+
+        # Let backend handle 404 responses (it returns HTML 404 page)
+        proxy_intercept_errors off;
+    }
+{{/if}}
+
+    # Static error pages (served from nginx for 50x errors)
+    location = /50x.html {
+        internal;
+        root /etc/nginx/error-pages;
+    }
+
+    # Health check endpoint
+    location /.well-known/health {
+        access_log off;
+        return 200 "OK";
+        add_header Content-Type text/plain;
+    }
+}
+
+# HTTP server - redirect to HTTPS (allows ACME challenges)
+server {
+    listen 80;
+    server_name {{domain}};
+
+    # ACME challenge for Let's Encrypt certificate renewal
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    # Redirect all other traffic to HTTPS
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+{{else}}
+# HTTP only server - no SSL
+server {
+    listen 80;
+    server_name {{domain}};
+
+    # ACME challenge for Let's Encrypt
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    # Block vulnerability scanners (drop connection silently)
+    if ($block_scanner) {
+        return 444;
+    }
+
+    # Custom error pages
+    error_page 404 /404.html;
+    error_page 500 502 503 504 /50x.html;
+
+    # Main location
+    location / {
+        rewrite ^/(.*)$ /public/{{project.owner}}/{{project.name}}/alias/{{alias}}{{#if path}}{{path}}{{/if}}/$1 break;
+        proxy_pass http://{{backendHost}}:{{backendPort}};
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port $server_port;
+        # Original URI for proxy rules (before nginx rewrite)
+        proxy_set_header X-Original-URI $request_uri;
+
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+
+{{#if isSpa}}
+        # SPA mode: intercept 404s to fallback to index.html for client-side routing
+        proxy_intercept_errors on;
+        error_page 404 = @spa_fallback;
+{{else}}
+        # Non-SPA mode: let backend's styled 404 page pass through
+        proxy_intercept_errors off;
+{{/if}}
+    }
+
+{{#if isSpa}}
+    # SPA fallback - serve index.html for client-side routing
+    location @spa_fallback {
+        rewrite ^/(.*)$ /public/{{project.owner}}/{{project.name}}/alias/{{alias}}{{#if path}}{{path}}{{/if}}/index.html break;
+
+        proxy_pass http://{{backendHost}}:{{backendPort}};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port $server_port;
+        proxy_set_header X-Original-URI $request_uri;
+
+        # Let backend handle 404 responses (it returns HTML 404 page)
+        proxy_intercept_errors off;
+    }
+{{/if}}
+
+    # Static error pages (served from nginx for 50x errors)
+    location = /50x.html {
+        internal;
+        root /etc/nginx/error-pages;
+    }
+
+    # Health check endpoint
+    location /.well-known/health {
+        access_log off;
+        return 200 "OK";
+        add_header Content-Type text/plain;
+    }
+}
+{{/if}}

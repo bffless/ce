@@ -1,0 +1,82 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+apps/frontend/test-results/
+apps/frontend/playwright-report/
+apps/frontend/e2e/screenshots/*
+!apps/frontend/e2e/screenshots/.gitkeep
+
+# Production builds
+dist/
+build/
+*.tsbuildinfo
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.test-upload
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Uploads directory (local development)
+uploads/
+apps/backend/uploads/
+
+# Database
+*.db
+*.sqlite
+
+# Docker volumes
+postgres-data/
+minio-data/
+
+# Local nginx dev configs
+nginx-dev/
+
+# SSL certificates (production only)
+ssl/
+*.pem
+
+# Production nginx config (copied from nginx-ssl.conf in production)
+docker/nginx-prod.conf
+
+# Temporary files
+*.tmp
+*.temp
+
+# OS
+Thumbs.db
+
+# Drizzle
+# Note: Migration files (*.sql) should be committed to git
+# Only exclude generated metadata if needed
+
+# GitHub Action build
+packages/github-action/dist/
+
+apps/frontend/storybook-static/
