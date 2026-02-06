@@ -1,6 +1,6 @@
 {
   "name": "wsa-open-source",
-  "version": "0.0.199",
+  "version": "0.0.1",
   "description": "Static Asset Hosting Platform - Self-contained platform for hosting images and static assets from CI/CD pipelines",
   "private": true,
   "scripts": {
