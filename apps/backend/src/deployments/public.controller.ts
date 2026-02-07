@@ -624,6 +624,8 @@ export class PublicController {
 
       // Add debug headers for cache rule matching
       res.setHeader('X-Cache-Path', filePath);
+      res.setHeader('X-Cache-Project', projectId);
+      res.setHeader('X-Cache-Source', cacheConfig.source);
       if (cacheConfig.source === 'rule' && cacheConfig.matchedRule) {
         res.setHeader('X-Cache-Rule', cacheConfig.matchedRule.pathPattern);
       }
