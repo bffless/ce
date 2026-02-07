@@ -1,4 +1,4 @@
-# Static Asset Hosting Platform - Docker Compose Configuration (Build Locally)
+# BFFless- Docker Compose Configuration (Build Locally)
 #
 # This file builds images locally instead of pulling from GitHub Container Registry.
 # Use this for local development or when you need to test local code changes.
@@ -27,13 +27,13 @@ services:
       - '80:80'
       - '443:443'
     volumes:
-      - ./docker/nginx/sites-enabled:/etc/nginx/sites-enabled  # Dynamic domains
-      - ./ssl:/etc/nginx/ssl:ro                                 # SSL certificates
-      - frontend-dist:/usr/share/nginx/html:ro                  # Frontend static files
-      - acme-webroot:/var/www/certbot:ro                        # ACME challenges (read-only)
+      - ./docker/nginx/sites-enabled:/etc/nginx/sites-enabled # Dynamic domains
+      - ./ssl:/etc/nginx/ssl:ro # SSL certificates
+      - frontend-dist:/usr/share/nginx/html:ro # Frontend static files
+      - acme-webroot:/var/www/certbot:ro # ACME challenges (read-only)
     environment:
       - PRIMARY_DOMAIN=${PRIMARY_DOMAIN:-localhost}
-      - ENABLE_MINIO=${ENABLE_MINIO:-true}    # For conditional nginx config
+      - ENABLE_MINIO=${ENABLE_MINIO:-true} # For conditional nginx config
     depends_on:
       frontend:
         condition: service_started
@@ -41,7 +41,7 @@ services:
         condition: service_started
       minio:
         condition: service_healthy
-        required: false                # Optional: only when minio profile is active
+        required: false # Optional: only when minio profile is active
     networks:
       - assethost-network
     restart: unless-stopped
@@ -50,7 +50,7 @@ services:
     image: postgres:17-alpine
     container_name: assethost-postgres
     profiles:
-      - postgres                         # Only starts with --profile postgres
+      - postgres # Only starts with --profile postgres
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
@@ -74,7 +74,7 @@ services:
     image: minio/minio:latest
     container_name: assethost-minio
     profiles:
-      - minio                          # Only starts with --profile minio
+      - minio # Only starts with --profile minio
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
@@ -96,11 +96,11 @@ services:
     image: registry.supertokens.io/supertokens/supertokens-postgresql
     container_name: assethost-supertokens
     profiles:
-      - supertokens                    # Only starts with --profile supertokens (CE local mode)
+      - supertokens # Only starts with --profile supertokens (CE local mode)
     depends_on:
       postgres:
         condition: service_healthy
-        required: false                # Optional: only when postgres profile is active
+        required: false # Optional: only when postgres profile is active
     environment:
       # Separate database for SuperTokens (no table prefix needed)
       POSTGRESQL_CONNECTION_URI: postgresql://postgres:${POSTGRES_PASSWORD:-changeme}@postgres:5432/supertokens
@@ -186,18 +186,18 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-        required: false                # Optional: only when postgres profile is active
+        required: false # Optional: only when postgres profile is active
       minio:
         condition: service_healthy
-        required: false                # Optional: only when minio profile is active
+        required: false # Optional: only when minio profile is active
       supertokens:
         condition: service_healthy
-        required: false                # Optional: only when supertokens profile is active (CE local mode)
+        required: false # Optional: only when supertokens profile is active (CE local mode)
     volumes:
       - backend-uploads:/app/apps/backend/uploads
-      - ./docker/nginx/sites-enabled:/etc/nginx/sites-enabled  # Write dynamic configs
-      - ./ssl:/etc/nginx/ssl                                    # SSL certificates (read/write)
-      - acme-webroot:/var/www/certbot                           # ACME challenges (read/write)
+      - ./docker/nginx/sites-enabled:/etc/nginx/sites-enabled # Write dynamic configs
+      - ./ssl:/etc/nginx/ssl # SSL certificates (read/write)
+      - acme-webroot:/var/www/certbot # ACME challenges (read/write)
     networks:
       - assethost-network
     restart: unless-stopped
@@ -208,7 +208,7 @@ services:
       dockerfile: docker/frontend.Dockerfile
     container_name: assethost-frontend
     volumes:
-      - frontend-dist:/app/dist  # Share built files with nginx
+      - frontend-dist:/app/dist # Share built files with nginx
     # No ports - nginx handles all traffic now
     depends_on:
       - backend
@@ -223,9 +223,9 @@ volumes:
     driver: local
   backend-uploads:
     driver: local
-  frontend-dist:  # Shared volume for frontend static files
+  frontend-dist: # Shared volume for frontend static files
     driver: local
-  acme-webroot:   # ACME challenges for Let's Encrypt HTTP-01
+  acme-webroot: # ACME challenges for Let's Encrypt HTTP-01
     driver: local
 
 networks:

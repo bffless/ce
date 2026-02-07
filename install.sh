@@ -4,7 +4,7 @@
 # This minimal script downloads the repository and runs the setup script.
 #
 # Usage:
-#   sh -c "$(curl -fsSL https://raw.githubusercontent.com/toshimoto821/wsa-open-source/main/install.sh)"
+#   sh -c "$(curl -fsSL https://raw.githubusercontent.com/bffless/ce/main/install.sh)"
 #
 # Or with custom installation directory:
 #   INSTALL_DIR=/opt/asset-host sh -c "$(curl -fsSL https://...)"
@@ -19,11 +19,11 @@ set -e
 # =============================================================================
 
 # Repository configuration
-REPO_URL="${REPO_URL:-https://github.com/toshimoto821/wsa-open-source.git}"
+REPO_URL="${REPO_URL:-https://github.com/bffless/ce.git}"
 BRANCH="${BRANCH:-main}"
 
 # Installation directory (default: current directory)
-INSTALL_DIR="${INSTALL_DIR:-./wsa-open-source}"
+INSTALL_DIR="${INSTALL_DIR:-./ce}"
 
 # Colors
 RED='\033[0;31m'

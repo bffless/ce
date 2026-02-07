@@ -3,7 +3,7 @@
  */
 
 export const mockRepoStats = {
-  repository: 'toshimoto821/wsa-open-source',
+  repository: 'bffless/ce',
   totalDeployments: 51,
   totalStorageBytes: 58314752,
   totalStorageMB: 55.6,
@@ -14,7 +14,7 @@ export const mockRepoStats = {
 };
 
 export const mockDeployments = {
-  repository: 'toshimoto821/wsa-open-source',
+  repository: 'bffless/ce',
   page: 1,
   limit: 20,
   total: 51,
@@ -388,14 +388,14 @@ export const mockSidebarRepositories = {
   repositories: [
     {
       id: 'repo-1',
-      owner: 'toshimoto821',
-      name: 'wsa-open-source',
+      owner: 'bffless',
+      name: 'ce',
       permissionType: 'owner' as const,
       role: 'owner',
     },
     {
       id: 'repo-2',
-      owner: 'toshimoto821',
+      owner: 'bffless',
       name: 'timechain-explorer',
       permissionType: 'owner' as const,
       role: 'owner',
@@ -431,8 +431,8 @@ export const mockRepositoryFeed = {
   repositories: [
     {
       id: 'repo-1',
-      owner: 'toshimoto821',
-      name: 'wsa-open-source',
+      owner: 'bffless',
+      name: 'ce',
       displayName: 'WSA Open Source',
       description: 'Self-hosted static asset hosting platform',
       isPublic: true,
@@ -449,7 +449,7 @@ export const mockRepositoryFeed = {
     },
     {
       id: 'repo-2',
-      owner: 'toshimoto821',
+      owner: 'bffless',
       name: 'timechain-explorer',
       displayName: 'Timechain Explorer',
       description: 'Bitcoin blockchain explorer',

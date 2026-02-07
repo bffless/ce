@@ -19,7 +19,7 @@ jobs:
       - name: Delete old backend versions (keep 20 most recent)
         uses: actions/delete-package-versions@v5
         with:
-          package-name: wsa-open-source-backend
+          package-name: ce-backend
           package-type: container
           min-versions-to-keep: 20
           delete-only-pre-release-versions: false
@@ -34,7 +34,7 @@ jobs:
       - name: Delete old frontend versions (keep 20 most recent)
         uses: actions/delete-package-versions@v5
         with:
-          package-name: wsa-open-source-frontend
+          package-name: ce-frontend
           package-type: container
           min-versions-to-keep: 20
           delete-only-pre-release-versions: false

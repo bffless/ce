@@ -17,8 +17,8 @@ export const projects = pgTable(
   'projects',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    owner: varchar('owner', { length: 255 }).notNull(), // e.g., "toshimoto821"
-    name: varchar('name', { length: 255 }).notNull(), // e.g., "wsa-open-source"
+    owner: varchar('owner', { length: 255 }).notNull(), // e.g., "bffless"
+    name: varchar('name', { length: 255 }).notNull(), // e.g., "ce"
     displayName: varchar('display_name', { length: 255 }), // Optional friendly name
     description: text('description'),
     isPublic: boolean('is_public').default(false).notNull(),

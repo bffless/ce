@@ -115,5 +115,5 @@ When upgrading between versions:
 ## Links
 
 - [Documentation](./docs/README.md)
-- [GitHub Repository](https://github.com/toshimoto821/wsa-open-source)
-- [Issue Tracker](https://github.com/toshimoto821/wsa-open-source/issues)
+- [GitHub Repository](https://github.com/bffless/ce)
+- [Issue Tracker](https://github.com/bffless/ce/issues)

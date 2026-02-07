@@ -14,20 +14,16 @@ A self-contained platform for hosting static assets and build artifacts from CI/
 # Install dependencies
 pnpm install
 
-# Set up environment files (REQUIRED before first run)
-cp apps/backend/.env.example apps/backend/.env
-cp apps/frontend/.env.example apps/frontend/.env
+# Set up environment file (REQUIRED before first run)
+cp .env.example .env
 
 # Generate ENCRYPTION_KEY (REQUIRED - encrypts storage credentials in DB)
 ENCRYPTION_KEY=$(openssl rand -base64 32)
-sed -i.bak "s/^ENCRYPTION_KEY=.*/ENCRYPTION_KEY=$ENCRYPTION_KEY/" apps/backend/.env
-rm apps/backend/.env.bak
+sed -i.bak "s/^ENCRYPTION_KEY=.*/ENCRYPTION_KEY=$ENCRYPTION_KEY/" .env
+rm .env.bak
 
-# Run database migrations
-cd apps/backend
-pnpm db:generate
-pnpm db:migrate
-cd ../..
+# Start development (runs migrations automatically)
+pnpm dev:full
 ```
 
 ### Running Locally
@@ -196,8 +192,8 @@ pnpm db:migrate
 
 **Redux slices** in `src/store/slices/` for global UI state.
 
-**Environment config:**
-- `VITE_API_URL` - API base URL (empty for relative URLs, uses Vite proxy in dev)
+**API config:**
+- Base URL uses `VITE_API_URL` env var, defaults to empty (Vite proxy handles routing in dev)
 - `credentials: 'include'` - Required for session cookies
 
 #### Public Content Request Routing (CRITICAL)
@@ -346,8 +342,8 @@ Releases are created automatically on successful deploy to main:
 
 ```bash
 # Pull specific version
-docker pull ghcr.io/toshimoto821/wsa-open-source-frontend:v0.1.5
-docker pull ghcr.io/toshimoto821/wsa-open-source-backend:v0.1.5
+docker pull ghcr.io/bffless/ce-frontend:v0.1.5
+docker pull ghcr.io/bffless/ce-backend:v0.1.5
 ```
 
 ### Docker
@@ -388,14 +384,15 @@ After reset, visit the app to complete the setup wizard again.
 
 ### Environment Variables
 
-**Backend critical vars:**
-- `ENCRYPTION_KEY` - AES-256 key for encrypting storage config (REQUIRED)
-- `DATABASE_URL` - PostgreSQL connection string
-- `JWT_SECRET` - SuperTokens JWT secret
-- `API_KEY_SALT` - Salt for API key hashing
+Configuration is in `.env` at the project root. The backend loads this file via `envFilePath: '../../.env'` in `app.module.ts`.
 
-**Frontend vars:**
-- `VITE_API_URL` - API base URL (empty = relative URLs)
+**Critical vars:**
+- `ENCRYPTION_KEY` - AES-256 key for encrypting storage credentials (REQUIRED, never change after setup)
+- `DATABASE_URL` - PostgreSQL connection string (has default for local dev)
+- `JWT_SECRET` - SuperTokens JWT secret (auto-generated if not set)
+- `API_KEY_SALT` - Salt for API key hashing (auto-generated if not set)
+
+**Frontend:** The Vite dev server proxies `/api` to the backend, so no frontend `.env` is needed for local development.
 
 ## Testing Strategy
 

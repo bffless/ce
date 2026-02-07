@@ -34,15 +34,11 @@ jobs:
         run: npm run build
 
       - name: Deploy to Asset Host
-        uses: toshimoto821/asset-host-action@v1
+        uses: bffless/upload-artifact@v1
         with:
-          api-url: \${{ secrets.ASSET_HOST_URL }}
-          api-key: \${{ secrets.ASSET_HOST_API_KEY }}
-          source-dir: dist
-          owner: \${{ github.repository_owner }}
-          repo: \${{ github.event.repository.name }}
-          commit-sha: \${{ github.sha }}
-          branch: \${{ github.ref_name }}
+          path: dist
+          api-url: \${{ vars.ASSET_HOST_URL }}
+          api-key: \${{ secrets.ASSET_HOST_KEY }}
 `;
 
 export function GitHubActionsStep({ apiKey, onComplete }: GitHubActionsStepProps) {

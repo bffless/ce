@@ -16,8 +16,8 @@ import { mockRepositoryOverviewAPI } from './helpers/mock-api';
 test.describe('Repository Overview Page', () => {
   // Test data
   const testRepo = {
-    owner: 'toshimoto821',
-    repo: 'wsa-open-source',
+    owner: 'bffless',
+    repo: 'ce',
   };
 
   test.beforeEach(async ({ page }) => {
@@ -331,8 +331,8 @@ test.describe('Repository Overview Page - Mobile', () => {
   test.use({ viewport: { width: 375, height: 667 } });
 
   const testRepo = {
-    owner: 'toshimoto821',
-    repo: 'wsa-open-source',
+    owner: 'bffless',
+    repo: 'ce',
   };
 
   test('should display stats cards stacked on mobile', async ({ page }) => {

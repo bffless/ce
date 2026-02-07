@@ -1,1 +1,0 @@
-ALTER TABLE "system_config" ADD COLUMN "allow_public_signups" boolean DEFAULT false NOT NULL;

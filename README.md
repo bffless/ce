@@ -46,15 +46,14 @@ Or see [Manual Setup](./docs/getting-started/manual-setup.md) for step-by-step i
 Upload artifacts from your CI/CD pipeline:
 
 ```yaml
-- name: Upload artifacts
-  uses: your-org/asset-host-action@v1
+- uses: bffless/upload-artifact@v1
   with:
-    api-url: ${{ secrets.ASSET_HOST_URL }}
-    api-key: ${{ secrets.ASSET_HOST_API_KEY }}
-    files: |
-      test-results/**/*.png
-      coverage/index.html
+    path: dist
+    api-url: ${{ vars.ASSET_HOST_URL }}
+    api-key: ${{ secrets.ASSET_HOST_KEY }}
 ```
+
+Only 3 required inputs - repository, commit SHA, and branch are auto-detected from GitHub context.
 
 ## Contributing
 

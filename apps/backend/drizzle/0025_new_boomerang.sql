@@ -1,1 +1,0 @@
-ALTER TABLE "assets" ADD COLUMN "parent_shas" jsonb DEFAULT '[]'::jsonb;

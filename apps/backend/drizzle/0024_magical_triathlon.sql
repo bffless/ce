@@ -1,1 +1,0 @@
-ALTER TABLE "domain_mappings" ADD COLUMN "is_spa" boolean DEFAULT false NOT NULL;

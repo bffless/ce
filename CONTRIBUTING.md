@@ -5,7 +5,7 @@ Thank you for your interest in contributing! This document provides guidelines a
 ## Getting Started
 
 1. Fork the repository
-2. Clone your fork: `git clone https://github.com/your-username/wsa-open-source.git`
+2. Clone your fork: `git clone https://github.com/your-username/ce.git`
 3. Create a feature branch: `git checkout -b feature/your-feature-name`
 4. Follow the setup instructions in the README.md
 
