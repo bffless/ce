@@ -374,6 +374,12 @@ services:
       # Optional Services Configuration
       ENABLE_MINIO: ${ENABLE_MINIO:-true}
       ENABLE_REDIS: ${ENABLE_REDIS:-true}
+
+      # Feature Flags (optional overrides - defaults defined in code)
+      # SSL Feature Flags (set to false when using Cloudflare proxy)
+      FEATURE_WILDCARD_SSL: ${FEATURE_WILDCARD_SSL:-}
+      FEATURE_WILDCARD_SSL_BANNER: ${FEATURE_WILDCARD_SSL_BANNER:-}
+      FEATURE_DOMAIN_SSL_TOGGLE: ${FEATURE_DOMAIN_SSL_TOGGLE:-}
     ports:
       - '3000:3000'
     depends_on:

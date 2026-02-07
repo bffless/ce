@@ -72,7 +72,7 @@ print_header() {
     echo ""
     printf "${BLUE}+===========================================================================+${NC}\n"
     printf "${BLUE}|                                                                           |${NC}\n"
-    printf "${BLUE}|${NC}           ${BOLD}Static Asset Hosting Platform - Setup Script${NC}                    ${BLUE}|${NC}\n"
+    printf "${BLUE}|${NC}                         ${BOLD}BFFless - Setup Script${NC}                            ${BLUE}|${NC}\n"
     printf "${BLUE}|                                                                           |${NC}\n"
     printf "${BLUE}+===========================================================================+${NC}\n"
     echo ""
@@ -788,6 +788,12 @@ create_env_file() {
     # ─────────────────────────────────────────────────────────────────────────
     if [ "$PROXY_MODE" = "cloudflare" ]; then
         uncomment_and_set "PROXY_MODE" "cloudflare"
+        # Cloudflare handles SSL at the edge (Universal SSL covers *.domain.com)
+        # so disable the Let's Encrypt wildcard SSL flow and related UI elements
+        echo "" >> .env
+        echo "# Cloudflare SSL - disabled because Cloudflare handles SSL at edge" >> .env
+        echo "FEATURE_WILDCARD_SSL=false" >> .env
+        echo "FEATURE_WILDCARD_SSL_BANNER=false" >> .env
     fi
 
     # ─────────────────────────────────────────────────────────────────────────
