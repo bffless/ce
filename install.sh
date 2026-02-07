@@ -130,12 +130,16 @@ main() {
     # Make setup script executable
     chmod +x setup.sh
 
+    # Get absolute path to pass to setup.sh
+    ABSOLUTE_INSTALL_DIR=$(pwd)
+
     # Run setup
     print_info "Running setup script..."
     echo ""
 
-    # Pass through any additional arguments
-    ./setup.sh "$@"
+    # Pass through any additional arguments, and export the install dir for setup.sh
+    # This lets setup.sh include "cd <dir>" in the Next Steps
+    BFFLESS_INSTALL_DIR="$ABSOLUTE_INSTALL_DIR" ./setup.sh "$@"
 }
 
 # Run main function

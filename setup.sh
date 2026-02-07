@@ -17,8 +17,8 @@
 #   POSTGRES_PASSWORD   - PostgreSQL password (auto-generated if not set)
 #   MINIO_ROOT_USER     - MinIO admin user (default: minioadmin)
 #   MINIO_ROOT_PASSWORD - MinIO admin password (auto-generated if not set)
-#   CERTBOT_EMAIL       - Email for SSL certificates (optional)
-#   PROXY_MODE          - CDN/proxy mode: 'none' (default) or 'cloudflare'
+#   CERTBOT_EMAIL       - Email for SSL certificates (required for Let's Encrypt)
+#   PROXY_MODE          - SSL method: 'cloudflare' (default) or 'none' (Let's Encrypt)
 #   REDIS_PASSWORD      - Redis password (auto-generated if not set)
 #   SMTP_HOST           - SMTP server hostname (optional)
 #   SMTP_PORT           - SMTP server port (default: 587)
@@ -62,7 +62,7 @@ PROJECT_DIR=""
 SSL_GENERATED=false
 SMTP_CONFIGURED=false
 CERTBOT_AVAILABLE=false
-PROXY_MODE="${PROXY_MODE:-none}"
+PROXY_MODE="${PROXY_MODE:-cloudflare}"
 
 # =============================================================================
 # Helper Functions
@@ -339,7 +339,7 @@ check_prerequisites() {
         print_warning "Git is not installed (optional)"
     fi
 
-    # Check certbot (required for production deployments)
+    # Check certbot (required for production deployments without Cloudflare)
     if command_exists certbot; then
         certbot_version=$(certbot --version 2>/dev/null | head -n1)
         print_success "Certbot: $certbot_version"
@@ -348,6 +348,7 @@ check_prerequisites() {
         # Will be checked again after we know the domain
         # For now, just note it's missing
         print_warning "Certbot is not installed (needed for SSL certificates)"
+        printf "         ${DIM}Not required if using Cloudflare for SSL${NC}\n"
         CERTBOT_AVAILABLE=false
     fi
 
@@ -401,20 +402,27 @@ check_prerequisites() {
 
                     # Certbot is optional, install if missing
                     if [ "$CERTBOT_AVAILABLE" = false ]; then
-                        printf "Install Certbot for SSL certificates? (Y/n): "
+                        echo ""
+                        printf "${YELLOW}Certbot (SSL Certificates)${NC}\n"
+                        echo "Certbot generates free SSL certificates from Let's Encrypt."
+                        echo ""
+                        printf "${DIM}Note: If you're using Cloudflare as your CDN/proxy, you don't need${NC}\n"
+                        printf "${DIM}Certbot. Cloudflare provides Origin Certificates instead.${NC}\n"
+                        echo ""
+                        printf "Install Certbot for SSL certificates? (y/N): "
                         if [ "$INTERACTIVE" = true ]; then
                             read -r certbot_response
                         else
-                            certbot_response="y"
-                            echo "y"
+                            certbot_response="n"
+                            echo "n"
                         fi
                         case "$certbot_response" in
-                            [nN][oO]|[nN])
-                                print_warning "Skipping Certbot installation"
-                                ;;
-                            *)
+                            [yY][eE][sS]|[yY])
                                 install_certbot
                                 CERTBOT_AVAILABLE=true
+                                ;;
+                            *)
+                                print_warning "Skipping Certbot installation"
                                 ;;
                         esac
                     fi
@@ -517,22 +525,24 @@ prompt_configuration() {
     # CDN/Proxy mode (only for non-localhost domains)
     if [ "$PRIMARY_DOMAIN" != "localhost" ]; then
         echo ""
-        printf "${YELLOW}CDN / Proxy Configuration${NC}\n"
-        echo "If you're using Cloudflare as a CDN/proxy, select option 2 to skip"
-        echo "Let's Encrypt and use Cloudflare Origin Certificates instead."
+        printf "${YELLOW}SSL Certificate Method${NC}\n"
         echo ""
-        echo "  1. No (default) - Use Let's Encrypt certificates"
-        echo "  2. Cloudflare   - Use Cloudflare Origin Certificates"
+        echo "  1. Cloudflare (Recommended) - Free SSL, DDoS protection, CDN"
+        echo "     Use Origin Certificates from Cloudflare. No certbot needed."
+        echo ""
+        echo "  2. Let's Encrypt - Free SSL certificates"
+        echo "     Requires certbot and port 80 open for verification."
         echo ""
         printf "Choice [1]: "
         if [ "$INTERACTIVE" = true ]; then
             read -r proxy_choice
             case "$proxy_choice" in
                 2)
-                    PROXY_MODE="cloudflare"
+                    PROXY_MODE="none"
                     ;;
                 *)
-                    PROXY_MODE="none"
+                    # Default to Cloudflare (option 1 or empty)
+                    PROXY_MODE="cloudflare"
                     ;;
             esac
         else
@@ -540,9 +550,11 @@ prompt_configuration() {
         fi
 
         if [ "$PROXY_MODE" = "cloudflare" ]; then
-            print_success "Cloudflare proxy mode selected"
+            print_success "Cloudflare selected (recommended)"
+            echo ""
+            printf "  ${DIM}Full setup guide: https://docs.bffless.com/deployment/ssl-certificates${NC}\n"
         else
-            print_info "Standard mode (Let's Encrypt)"
+            print_info "Let's Encrypt selected"
         fi
     fi
 
@@ -891,112 +903,129 @@ generate_ssl_certificates() {
 
         mkdir -p ssl
 
+        # Check if certificates already exist
+        if [ -f "ssl/fullchain.pem" ] && [ -f "ssl/privkey.pem" ]; then
+            print_success "Found existing certificate files in ssl/"
+            chmod 644 ssl/fullchain.pem
+            chmod 600 ssl/privkey.pem
+            SSL_GENERATED=true
+            return 0
+        fi
+
         if [ "$INTERACTIVE" = true ]; then
             echo ""
             echo "Cloudflare Origin Certificates encrypt traffic between Cloudflare"
-            echo "and your server. They are not valid for direct browser access."
+            echo "and your server."
             echo ""
-            printf "${YELLOW}To generate an Origin Certificate:${NC}\n"
+            printf "${YELLOW}Before continuing, you need to:${NC}\n"
             echo ""
-            echo "  1. Log in to the Cloudflare Dashboard"
-            echo "  2. Go to SSL/TLS > Origin Server"
-            echo "  3. Click 'Create Certificate'"
-            echo "  4. Include hostnames: ${PRIMARY_DOMAIN} and *.${PRIMARY_DOMAIN}"
-            echo "  5. Select validity period (15 years recommended)"
-            echo "  6. Click 'Create' and copy the certificate and private key"
+            echo "  1. Add your domain to Cloudflare (point nameservers)"
+            echo "  2. Create DNS A records for: @, www, admin, minio, *"
+            echo "  3. Generate an Origin Certificate in Cloudflare Dashboard"
+            echo ""
+            printf "${CYAN}Full guide: https://docs.bffless.com/deployment/ssl-certificates${NC}\n"
             echo ""
 
-            # Read Origin Certificate
-            printf "${BOLD}Paste your Origin Certificate PEM below.${NC}\n"
-            echo "When finished, enter a blank line:"
-            echo ""
-            CERT_CONTENT=""
-            while IFS= read -r line; do
-                if [ -z "$line" ] && echo "$CERT_CONTENT" | grep -q "END CERTIFICATE"; then
-                    break
-                fi
-                if [ -n "$CERT_CONTENT" ]; then
-                    CERT_CONTENT="${CERT_CONTENT}
+            printf "Do you have your Origin Certificate ready? (y/N): "
+            read -r cert_ready
+            case "$cert_ready" in
+                [yY][eE][sS]|[yY])
+                    echo ""
+                    # Read Origin Certificate
+                    printf "${BOLD}Paste your Origin Certificate PEM below.${NC}\n"
+                    echo "When finished, enter a blank line:"
+                    echo ""
+                    CERT_CONTENT=""
+                    while IFS= read -r line; do
+                        if [ -z "$line" ] && echo "$CERT_CONTENT" | grep -q "END CERTIFICATE"; then
+                            break
+                        fi
+                        if [ -n "$CERT_CONTENT" ]; then
+                            CERT_CONTENT="${CERT_CONTENT}
 ${line}"
-                else
-                    CERT_CONTENT="${line}"
-                fi
-            done
+                        else
+                            CERT_CONTENT="${line}"
+                        fi
+                    done
 
-            if [ -z "$CERT_CONTENT" ]; then
-                print_error "No certificate provided"
-                echo ""
-                echo "  You can add the certificate later by saving it to ssl/fullchain.pem"
-                SSL_GENERATED=false
-                return 0
-            fi
+                    if [ -z "$CERT_CONTENT" ]; then
+                        print_error "No certificate provided"
+                        echo ""
+                        echo "  You can add the certificate later by saving it to ssl/fullchain.pem"
+                        SSL_GENERATED=false
+                        return 0
+                    fi
 
-            printf '%s\n' "$CERT_CONTENT" > ssl/fullchain.pem
-            print_success "Origin Certificate saved to ssl/fullchain.pem"
-            echo ""
+                    printf '%s\n' "$CERT_CONTENT" > ssl/fullchain.pem
+                    print_success "Origin Certificate saved to ssl/fullchain.pem"
+                    echo ""
 
-            # Read Private Key
-            printf "${BOLD}Paste your Private Key PEM below.${NC}\n"
-            echo "When finished, enter a blank line:"
-            echo ""
-            KEY_CONTENT=""
-            while IFS= read -r line; do
-                if [ -z "$line" ] && echo "$KEY_CONTENT" | grep -q "END.*KEY"; then
-                    break
-                fi
-                if [ -n "$KEY_CONTENT" ]; then
-                    KEY_CONTENT="${KEY_CONTENT}
+                    # Read Private Key
+                    printf "${BOLD}Paste your Private Key PEM below.${NC}\n"
+                    echo "When finished, enter a blank line:"
+                    echo ""
+                    KEY_CONTENT=""
+                    while IFS= read -r line; do
+                        if [ -z "$line" ] && echo "$KEY_CONTENT" | grep -q "END.*KEY"; then
+                            break
+                        fi
+                        if [ -n "$KEY_CONTENT" ]; then
+                            KEY_CONTENT="${KEY_CONTENT}
 ${line}"
-                else
-                    KEY_CONTENT="${line}"
-                fi
-            done
+                        else
+                            KEY_CONTENT="${line}"
+                        fi
+                    done
 
-            if [ -z "$KEY_CONTENT" ]; then
-                print_error "No private key provided"
-                echo ""
-                echo "  You can add the private key later by saving it to ssl/privkey.pem"
-                SSL_GENERATED=false
-                return 0
-            fi
+                    if [ -z "$KEY_CONTENT" ]; then
+                        print_error "No private key provided"
+                        echo ""
+                        echo "  You can add the private key later by saving it to ssl/privkey.pem"
+                        SSL_GENERATED=false
+                        return 0
+                    fi
 
-            printf '%s\n' "$KEY_CONTENT" > ssl/privkey.pem
-            print_success "Private Key saved to ssl/privkey.pem"
-            echo ""
+                    printf '%s\n' "$KEY_CONTENT" > ssl/privkey.pem
+                    print_success "Private Key saved to ssl/privkey.pem"
+
+                    # Set file permissions
+                    chmod 644 ssl/fullchain.pem
+                    chmod 600 ssl/privkey.pem
+
+                    echo ""
+                    print_success "Cloudflare Origin Certificate ready in ssl/"
+                    SSL_GENERATED=true
+                    ;;
+                *)
+                    echo ""
+                    print_warning "Skipping SSL certificate setup"
+                    echo ""
+                    echo "  Complete these steps before starting the platform:"
+                    echo ""
+                    echo "  1. Follow the Cloudflare setup guide:"
+                    printf "     ${CYAN}https://docs.bffless.com/deployment/ssl-certificates${NC}\n"
+                    echo ""
+                    echo "  2. Save your Origin Certificate to:"
+                    echo "     ssl/fullchain.pem   - Origin Certificate"
+                    echo "     ssl/privkey.pem     - Private Key"
+                    echo ""
+                    SSL_GENERATED=false
+                    ;;
+            esac
         else
-            # Non-interactive mode: check for existing cert files
-            if [ -f "ssl/fullchain.pem" ] && [ -f "ssl/privkey.pem" ]; then
-                print_info "Using existing certificate files in ssl/"
-            else
-                print_warning "Cloudflare Origin Certificate files not found in ssl/"
-                echo ""
-                echo "  To complete SSL setup, save your Cloudflare Origin Certificate files:"
-                echo ""
-                echo "    ssl/fullchain.pem   - Origin Certificate PEM"
-                echo "    ssl/privkey.pem     - Private Key PEM"
-                echo ""
-                echo "  Generate them in the Cloudflare Dashboard:"
-                echo "    SSL/TLS > Origin Server > Create Certificate"
-                echo ""
-                SSL_GENERATED=false
-                return 0
-            fi
+            # Non-interactive mode: certificates must already exist
+            print_warning "Cloudflare Origin Certificate files not found in ssl/"
+            echo ""
+            echo "  To complete SSL setup, save your Cloudflare Origin Certificate files:"
+            echo ""
+            echo "    ssl/fullchain.pem   - Origin Certificate PEM"
+            echo "    ssl/privkey.pem     - Private Key PEM"
+            echo ""
+            echo "  Full guide: https://docs.bffless.com/deployment/ssl-certificates"
+            echo ""
+            SSL_GENERATED=false
         fi
 
-        # Set file permissions
-        chmod 644 ssl/fullchain.pem
-        chmod 600 ssl/privkey.pem
-
-        echo ""
-        print_success "Cloudflare Origin Certificate ready in ssl/"
-        echo ""
-        echo "  ssl/fullchain.pem   - Origin Certificate"
-        echo "  ssl/privkey.pem     - Private Key"
-        echo ""
-        printf "  ${DIM}Note: These certificates are only trusted by Cloudflare.${NC}\n"
-        printf "  ${DIM}Set Cloudflare SSL mode to Full (Strict) for end-to-end encryption.${NC}\n"
-        echo ""
-        SSL_GENERATED=true
         return 0
     fi
 
@@ -1382,6 +1411,15 @@ print_next_steps() {
         step=$((step + 1))
     fi
 
+    # Change directory (if installed via install.sh)
+    if [ -n "$BFFLESS_INSTALL_DIR" ]; then
+        printf "  ${CYAN}${step}.${NC} Change to the installation directory:\n"
+        echo ""
+        printf "     ${YELLOW}cd ${BFFLESS_INSTALL_DIR}${NC}\n"
+        echo ""
+        step=$((step + 1))
+    fi
+
     # Start platform
     printf "  ${CYAN}${step}.${NC} Start the platform:\n"
     echo ""
@@ -1473,8 +1511,8 @@ print_help() {
     echo "  POSTGRES_PASSWORD   PostgreSQL password (auto-generated if not set)"
     echo "  MINIO_ROOT_USER     MinIO admin user (default: minioadmin)"
     echo "  MINIO_ROOT_PASSWORD MinIO admin password (auto-generated if not set)"
-    echo "  CERTBOT_EMAIL       Email for SSL certificates (optional)"
-    echo "  PROXY_MODE          CDN/proxy mode: 'none' (default) or 'cloudflare'"
+    echo "  CERTBOT_EMAIL       Email for SSL certificates (required for Let's Encrypt)"
+    echo "  PROXY_MODE          SSL method: 'cloudflare' (default) or 'none' (Let's Encrypt)"
     echo "  SMTP_HOST           SMTP server hostname (optional)"
     echo "  SMTP_PORT           SMTP port (default: 587)"
     echo "  SMTP_USER           SMTP username (optional)"
