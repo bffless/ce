@@ -61,7 +61,7 @@ Contributions welcome! See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
 
 ## License
 
-MIT License - see [LICENSE](./LICENSE) for details.
+O'Saasy License - see [LICENSE](./LICENSE) for details.
 
 ---
 
