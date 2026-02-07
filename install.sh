@@ -42,7 +42,7 @@ print_header() {
     echo ""
     printf "${BLUE}╔═══════════════════════════════════════════════════════════════════════════╗${NC}\n"
     printf "${BLUE}║                                                                           ║${NC}\n"
-    printf "${BLUE}║${NC}                 ${BOLD}Static Asset Hosting Platform - Installer${NC}                ${BLUE}║${NC}\n"
+    printf "${BLUE}║${NC}                               ${BOLD}Bffless                     ${NC}                ${BLUE}║${NC}\n"
     printf "${BLUE}║                                                                           ║${NC}\n"
     printf "${BLUE}╚═══════════════════════════════════════════════════════════════════════════╝${NC}\n"
     echo ""
