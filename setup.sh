@@ -19,6 +19,7 @@
 #   MINIO_ROOT_PASSWORD - MinIO admin password (auto-generated if not set)
 #   CERTBOT_EMAIL       - Email for SSL certificates (required for Let's Encrypt)
 #   PROXY_MODE          - SSL method: 'cloudflare' (default) or 'none' (Let's Encrypt)
+#   PLATFORM_IP         - Server's public IP (auto-detected, used for Cloudflare DNS instructions)
 #   REDIS_PASSWORD      - Redis password (auto-generated if not set)
 #   SMTP_HOST           - SMTP server hostname (optional)
 #   SMTP_PORT           - SMTP server port (default: 587)
@@ -563,6 +564,43 @@ prompt_configuration() {
             print_success "Cloudflare selected (recommended)"
             echo ""
             printf "  ${DIM}Full setup guide: https://docs.bffless.com/getting-started/cloudflare-setup${NC}\n"
+            echo ""
+
+            # Detect server's public IP for PLATFORM_IP
+            # This is needed because Cloudflare proxies DNS, so lookups return Cloudflare IPs
+            DETECTED_IP=""
+            if command_exists curl; then
+                DETECTED_IP=$(curl -4 -s --max-time 5 ifconfig.me 2>/dev/null || curl -4 -s --max-time 5 icanhazip.com 2>/dev/null || echo "")
+            fi
+
+            printf "${YELLOW}Platform IP Address${NC}\n"
+            echo "When using Cloudflare, DNS lookups return Cloudflare's IPs, not your server."
+            echo "This IP is shown in DNS setup instructions for custom domains."
+            echo ""
+
+            if [ -n "$DETECTED_IP" ]; then
+                printf "Platform IP [${DETECTED_IP}]: "
+                if [ "$INTERACTIVE" = true ]; then
+                    read -r PLATFORM_IP
+                    PLATFORM_IP=${PLATFORM_IP:-$DETECTED_IP}
+                else
+                    PLATFORM_IP=${PLATFORM_IP:-$DETECTED_IP}
+                    echo "$PLATFORM_IP"
+                fi
+            else
+                printf "Platform IP: "
+                if [ "$INTERACTIVE" = true ]; then
+                    read -r PLATFORM_IP
+                else
+                    echo "${PLATFORM_IP:-}"
+                fi
+            fi
+
+            if [ -n "$PLATFORM_IP" ]; then
+                print_success "Platform IP: $PLATFORM_IP"
+            else
+                print_warning "No platform IP set - DNS instructions may show incorrect IP"
+            fi
         else
             print_info "Let's Encrypt selected"
             echo ""
@@ -818,6 +856,11 @@ create_env_file() {
         echo "# Cloudflare SSL - disabled because Cloudflare handles SSL at edge" >> .env
         echo "FEATURE_WILDCARD_SSL=false" >> .env
         echo "FEATURE_WILDCARD_SSL_BANNER=false" >> .env
+        echo "FEATURE_DOMAIN_SSL_TOGGLE=false" >> .env
+        # Set platform IP (Cloudflare proxies DNS, so we need the real server IP)
+        if [ -n "$PLATFORM_IP" ]; then
+            echo "PLATFORM_IP=$PLATFORM_IP" >> .env
+        fi
     fi
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -1525,6 +1568,7 @@ print_help() {
     echo "  MINIO_ROOT_PASSWORD MinIO admin password (auto-generated if not set)"
     echo "  CERTBOT_EMAIL       Email for SSL certificates (required for Let's Encrypt)"
     echo "  PROXY_MODE          SSL method: 'cloudflare' (default) or 'none' (Let's Encrypt)"
+    echo "  PLATFORM_IP         Server's public IP (auto-detected for Cloudflare)"
     echo "  SMTP_HOST           SMTP server hostname (optional)"
     echo "  SMTP_PORT           SMTP port (default: 587)"
     echo "  SMTP_USER           SMTP username (optional)"

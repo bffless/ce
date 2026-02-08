@@ -355,6 +355,7 @@ services:
 
       # Nginx Configuration (for dynamic domain mapping)
       PRIMARY_DOMAIN: ${PRIMARY_DOMAIN:-yourdomain.com}
+      PLATFORM_IP: ${PLATFORM_IP:-}
       BACKEND_HOST: backend
       BACKEND_PORT: 3000
       NGINX_SITES_PATH: /etc/nginx/sites-enabled
@@ -375,6 +376,9 @@ services:
       # Optional Services Configuration
       ENABLE_MINIO: ${ENABLE_MINIO:-true}
       ENABLE_REDIS: ${ENABLE_REDIS:-true}
+
+      # Proxy/CDN Mode (cloudflare or none)
+      PROXY_MODE: ${PROXY_MODE:-none}
 
       # Feature Flags (optional overrides - defaults defined in code)
       # SSL Feature Flags (set to false when using Cloudflare proxy)

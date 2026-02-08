@@ -102,6 +102,62 @@ export class DomainsService {
   }
 
   /**
+   * Check if running in Cloudflare proxy mode.
+   */
+  private isCloudflareMode(): boolean {
+    return this.configService.get<string>('PROXY_MODE') === 'cloudflare';
+  }
+
+  /**
+   * Cloudflare IPv4 CIDR ranges (from https://www.cloudflare.com/ips-v4).
+   * These are checked during DNS verification when PROXY_MODE=cloudflare.
+   */
+  private static readonly CLOUDFLARE_IPV4_CIDRS = [
+    '173.245.48.0/20',
+    '103.21.244.0/22',
+    '103.22.200.0/22',
+    '103.31.4.0/22',
+    '141.101.64.0/18',
+    '108.162.192.0/18',
+    '190.93.240.0/20',
+    '188.114.96.0/20',
+    '197.234.240.0/22',
+    '198.41.128.0/17',
+    '162.158.0.0/15',
+    '104.16.0.0/13',
+    '104.24.0.0/14',
+    '172.64.0.0/13',
+    '131.0.72.0/22',
+  ];
+
+  /**
+   * Check if an IP address is in a CIDR range.
+   */
+  private static ipInCidr(ip: string, cidr: string): boolean {
+    const [range, bitsStr] = cidr.split('/');
+    const bits = parseInt(bitsStr, 10);
+    const mask = ~(2 ** (32 - bits) - 1);
+
+    const ipNum = ip
+      .split('.')
+      .reduce((acc, octet) => (acc << 8) + parseInt(octet, 10), 0);
+    const rangeNum = range
+      .split('.')
+      .reduce((acc, octet) => (acc << 8) + parseInt(octet, 10), 0);
+
+    return (ipNum & mask) === (rangeNum & mask);
+  }
+
+  /**
+   * Check if an IP address belongs to Cloudflare's network.
+   */
+  private isCloudflareIp(ip: string): boolean {
+    return DomainsService.CLOUDFLARE_IPV4_CIDRS.some((cidr) =>
+      DomainsService.ipInCidr(ip, cidr),
+    );
+  }
+
+  /**
    * Get nginx proxy rules for a domain mapping.
    * Returns rules with authTransform set, which will be rendered as nginx location blocks.
    *
@@ -1592,6 +1648,47 @@ export class DomainsService {
         }
       }
 
+      // Self-hosted mode with Cloudflare: If all resolved IPs are Cloudflare IPs,
+      // we trust the DNS is configured correctly (user pointed domain to us in Cloudflare)
+      if (this.isCloudflareMode()) {
+        const allCloudflareIps = resolvedIps.every((ip) => this.isCloudflareIp(ip));
+
+        if (allCloudflareIps) {
+          // Domain is behind Cloudflare and pointing somewhere - accept as verified
+          // We can't verify the origin IP because Cloudflare proxies it
+          await db
+            .update(domainMappings)
+            .set({
+              dnsVerified: true,
+              dnsVerifiedAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .where(eq(domainMappings.id, id));
+
+          this.logger.log(
+            `DNS verified for custom domain (Cloudflare mode): ${domain.domain} -> Cloudflare IPs: ${resolvedIps.join(', ')}`,
+          );
+
+          // Also check alternate domain
+          const alternateStatus = alternateDomain
+            ? await this.checkAlternateDomainDns(alternateDomain)
+            : null;
+
+          return {
+            success: true,
+            verified: true,
+            domain: domain.domain,
+            resolvedIps,
+            alternateDomain,
+            alternateDomainVerified: alternateStatus?.verified ?? false,
+            alternateDomainIps: alternateStatus?.resolvedIps,
+            alternateDomainError: alternateStatus?.error,
+            alternateDomainDnsInstructions: alternateStatus?.dnsInstructions,
+          };
+        }
+        // If not all IPs are Cloudflare, fall through to HTTP check
+      }
+
       // Self-hosted mode: Try to reach the health check endpoint on the domain
       // This confirms nginx is serving traffic for this domain
       const healthCheckUrl = `http://${domain.domain}/.well-known/health`;
@@ -1764,6 +1861,17 @@ export class DomainsService {
           };
         }
         throw dnsError;
+      }
+
+      // Cloudflare mode: Accept Cloudflare IPs as verified
+      if (this.isCloudflareMode()) {
+        const allCloudflareIps = resolvedIps.every((ip) => this.isCloudflareIp(ip));
+        if (allCloudflareIps) {
+          this.logger.log(
+            `Alternate domain ${alternateDomain} verified (Cloudflare mode): ${resolvedIps.join(', ')}`,
+          );
+          return { verified: true, resolvedIps };
+        }
       }
 
       // Try health check
