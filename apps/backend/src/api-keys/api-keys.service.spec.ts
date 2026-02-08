@@ -206,10 +206,11 @@ describe('ApiKeysService', () => {
 
       const mockSelect = {
         from: jest.fn().mockReturnThis(),
+        leftJoin: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
         limit: jest.fn().mockReturnThis(),
-        offset: jest.fn().mockResolvedValue([mockApiKey]),
+        offset: jest.fn().mockResolvedValue([{ apiKey: mockApiKey, project: mockProject }]),
       };
 
       const mockCountSelect = {
@@ -236,6 +237,7 @@ describe('ApiKeysService', () => {
 
       const mockSelect = {
         from: jest.fn().mockReturnThis(),
+        leftJoin: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
         limit: jest.fn().mockReturnThis(),
@@ -265,10 +267,11 @@ describe('ApiKeysService', () => {
 
       const mockSelect = {
         from: jest.fn().mockReturnThis(),
+        leftJoin: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
         limit: jest.fn().mockReturnThis(),
-        offset: jest.fn().mockResolvedValue([mockApiKey]),
+        offset: jest.fn().mockResolvedValue([{ apiKey: mockApiKey, project: mockProject }]),
       };
 
       const mockCountSelect = {

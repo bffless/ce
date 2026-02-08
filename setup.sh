@@ -513,14 +513,24 @@ prompt_configuration() {
     echo "Press Enter to accept the default value shown in brackets."
     echo ""
 
-    # Primary domain
-    printf "Primary domain [${DEFAULT_DOMAIN}]: "
-    if [ "$INTERACTIVE" = true ]; then
-        read -r PRIMARY_DOMAIN
-    else
-        echo "$PRIMARY_DOMAIN"
-    fi
-    PRIMARY_DOMAIN=${PRIMARY_DOMAIN:-$DEFAULT_DOMAIN}
+    # Primary domain (required)
+    while true; do
+        printf "Primary domain (e.g., example.com): "
+        if [ "$INTERACTIVE" = true ]; then
+            read -r PRIMARY_DOMAIN
+        else
+            echo "$PRIMARY_DOMAIN"
+        fi
+
+        if [ -z "$PRIMARY_DOMAIN" ]; then
+            printf "${RED}Domain is required. Please enter your domain name.${NC}\n"
+        elif [ "$PRIMARY_DOMAIN" = "localhost" ]; then
+            printf "${RED}localhost is not supported for production. Please enter a real domain.${NC}\n"
+            printf "${YELLOW}For local development, see: https://docs.bffless.com/getting-started/local-development${NC}\n"
+        else
+            break
+        fi
+    done
 
     # CDN/Proxy mode (only for non-localhost domains)
     if [ "$PRIMARY_DOMAIN" != "localhost" ]; then
@@ -552,9 +562,11 @@ prompt_configuration() {
         if [ "$PROXY_MODE" = "cloudflare" ]; then
             print_success "Cloudflare selected (recommended)"
             echo ""
-            printf "  ${DIM}Full setup guide: https://docs.bffless.com/deployment/ssl-certificates${NC}\n"
+            printf "  ${DIM}Full setup guide: https://docs.bffless.com/getting-started/cloudflare-setup${NC}\n"
         else
             print_info "Let's Encrypt selected"
+            echo ""
+            printf "  ${DIM}Full setup guide: https://docs.bffless.com/getting-started/letsencrypt-setup${NC}\n"
         fi
     fi
 
@@ -923,7 +935,7 @@ generate_ssl_certificates() {
             echo "  2. Create DNS A records for: @, www, admin, minio, *"
             echo "  3. Generate an Origin Certificate in Cloudflare Dashboard"
             echo ""
-            printf "${CYAN}Full guide: https://docs.bffless.com/deployment/ssl-certificates${NC}\n"
+            printf "${CYAN}Full guide: https://docs.bffless.com/getting-started/cloudflare-setup${NC}\n"
             echo ""
 
             printf "Do you have your Origin Certificate ready? (y/N): "
@@ -1003,7 +1015,7 @@ ${line}"
                     echo "  Complete these steps before starting the platform:"
                     echo ""
                     echo "  1. Follow the Cloudflare setup guide:"
-                    printf "     ${CYAN}https://docs.bffless.com/deployment/ssl-certificates${NC}\n"
+                    printf "     ${CYAN}https://docs.bffless.com/getting-started/cloudflare-setup${NC}\n"
                     echo ""
                     echo "  2. Save your Origin Certificate to:"
                     echo "     ssl/fullchain.pem   - Origin Certificate"
@@ -1021,7 +1033,7 @@ ${line}"
             echo "    ssl/fullchain.pem   - Origin Certificate PEM"
             echo "    ssl/privkey.pem     - Private Key PEM"
             echo ""
-            echo "  Full guide: https://docs.bffless.com/deployment/ssl-certificates"
+            echo "  Full guide: https://docs.bffless.com/getting-started/cloudflare-setup"
             echo ""
             SSL_GENERATED=false
         fi

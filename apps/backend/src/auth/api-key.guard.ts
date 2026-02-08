@@ -69,7 +69,7 @@ export class ApiKeyGuard implements CanActivate {
       request.user = {
         id: matchedKey.userId,
         apiKeyId: matchedKey.id,
-        projectId: matchedKey.projectId,
+        apiKeyProjectId: matchedKey.projectId, // null for global keys
         role: 'user', // API key users default role
       };
 

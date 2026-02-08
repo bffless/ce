@@ -113,7 +113,7 @@ describe('ApiKeyGuard', () => {
       expect(mockRequest.user).toBeDefined();
       expect(mockRequest.user.id).toBe('user-123');
       expect(mockRequest.user.role).toBe('user'); // API keys default to 'user' role
-      expect(mockRequest.user.projectId).toBe('project-123');
+      expect(mockRequest.user.apiKeyProjectId).toBe('project-123');
     });
 
     it('should throw error for invalid API key', async () => {

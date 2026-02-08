@@ -71,19 +71,42 @@ export class AssetsService implements OnModuleInit {
   /**
    * Phase 3H.6: Helper to check if user has required role for project
    * Replaces allowedRepositories checks with proper permission system
+   *
+   * For API key authentication:
+   * - Project-scoped keys: API key's projectId must match target project
+   * - Global keys (null projectId): Check user's actual project permissions
+   *
+   * For session authentication:
+   * - Check user's project permissions
+   *
+   * @param projectId - The target project ID
+   * @param userId - The authenticated user's ID
+   * @param userRole - The user's system role (admin, user, etc.)
+   * @param requiredRole - The minimum project role required
+   * @param apiKeyProjectId - The API key's projectId (undefined = session auth, null = global key)
    */
   private async checkProjectAccess(
     projectId: string,
     userId: string,
     userRole: string | undefined,
     requiredRole: 'viewer' | 'contributor' | 'admin' | 'owner' = 'contributor',
+    apiKeyProjectId?: string | null,
   ): Promise<void> {
     // Admin users have access to all projects
     if (userRole === 'admin') {
       return;
     }
 
-    // Check project permissions
+    // API key with specific projectId - must match target project
+    if (apiKeyProjectId !== undefined && apiKeyProjectId !== null) {
+      if (apiKeyProjectId !== projectId) {
+        throw new ForbiddenException('API key is not authorized for this project');
+      }
+      // API key matches project - authorized
+      return;
+    }
+
+    // Global API key (projectId = null) or session auth - check user's project permissions
     const role = await this.permissionsService.getUserProjectRole(userId, projectId);
 
     if (!role) {
@@ -108,6 +131,7 @@ export class AssetsService implements OnModuleInit {
     dto: UploadAssetDto,
     userId: string,
     userRole?: string,
+    apiKeyProjectId?: string | null,
   ): Promise<AssetResponseDto> {
     // Validate file
     this.validateFile(file);
@@ -126,7 +150,7 @@ export class AssetsService implements OnModuleInit {
       projectId = project.id;
 
       // Phase 3H.6: Check project access (requires contributor role to upload)
-      await this.checkProjectAccess(projectId, userId, userRole, 'contributor');
+      await this.checkProjectAccess(projectId, userId, userRole, 'contributor', apiKeyProjectId);
     } else {
       throw new BadRequestException('repository field is required');
     }
@@ -204,6 +228,7 @@ export class AssetsService implements OnModuleInit {
     dto: UploadAssetDto,
     userId: string,
     userRole?: string,
+    apiKeyProjectId?: string | null,
   ): Promise<{ assets: AssetResponseDto[]; failed: { file: string; error: string }[] }> {
     // Check bulk quota before starting uploads
     const fileSizes = files.map((f) => f.size);
@@ -228,7 +253,7 @@ export class AssetsService implements OnModuleInit {
           publicPath: dto.publicPath || file.originalname,
         };
 
-        const asset = await this.upload(file, assetDto, userId, userRole);
+        const asset = await this.upload(file, assetDto, userId, userRole, apiKeyProjectId);
         uploadedAssets.push(asset);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -249,6 +274,7 @@ export class AssetsService implements OnModuleInit {
     query: ListAssetsQueryDto,
     userId: string,
     userRole: string,
+    apiKeyProjectId?: string | null,
   ): Promise<ListAssetsResponseDto> {
     const {
       page = 1,
@@ -282,7 +308,7 @@ export class AssetsService implements OnModuleInit {
           projectId = project.id;
 
           // Phase 3H.6: Check project access (requires viewer role to list)
-          await this.checkProjectAccess(projectId, userId, userRole, 'viewer');
+          await this.checkProjectAccess(projectId, userId, userRole, 'viewer', apiKeyProjectId);
         } catch (error) {
           // Project not found or access denied - return empty result
           return this.emptyPaginatedResponse(page, limit);
@@ -386,7 +412,12 @@ export class AssetsService implements OnModuleInit {
   /**
    * Find asset by ID
    */
-  async findById(id: string, userId: string, userRole: string): Promise<AssetResponseDto> {
+  async findById(
+    id: string,
+    userId: string,
+    userRole: string,
+    apiKeyProjectId?: string | null,
+  ): Promise<AssetResponseDto> {
     const [asset] = await db.select().from(assets).where(eq(assets.id, id)).limit(1);
 
     if (!asset) {
@@ -395,7 +426,7 @@ export class AssetsService implements OnModuleInit {
 
     // Phase 3H.6: Check project access (requires viewer role)
     if (asset.projectId) {
-      await this.checkProjectAccess(asset.projectId, userId, userRole, 'viewer');
+      await this.checkProjectAccess(asset.projectId, userId, userRole, 'viewer', apiKeyProjectId);
     } else if (userRole !== 'admin' && asset.uploadedBy !== userId) {
       // Fallback for assets without projectId - only owner or admin can access
       throw new ForbiddenException('Not authorized to access this asset');
@@ -411,9 +442,10 @@ export class AssetsService implements OnModuleInit {
     id: string,
     userId: string,
     userRole: string,
+    apiKeyProjectId?: string | null,
   ): Promise<{ buffer: Buffer; fileName: string; mimeType: string }> {
     // First get and authorize the asset
-    const asset = await this.findById(id, userId, userRole);
+    const asset = await this.findById(id, userId, userRole, apiKeyProjectId);
 
     // Download from storage
     const buffer = await this.storageAdapter.download(asset.storageKey);
@@ -433,9 +465,10 @@ export class AssetsService implements OnModuleInit {
     userId: string,
     userRole: string,
     expiresIn?: number,
+    apiKeyProjectId?: string | null,
   ): Promise<{ url: string; expiresAt?: string }> {
     // First get and authorize the asset
-    const asset = await this.findById(id, userId, userRole);
+    const asset = await this.findById(id, userId, userRole, apiKeyProjectId);
 
     // Get URL from storage adapter
     const url = await this.storageAdapter.getUrl(asset.storageKey, expiresIn);
@@ -459,6 +492,7 @@ export class AssetsService implements OnModuleInit {
     dto: UpdateAssetDto,
     userId: string,
     userRole: string,
+    apiKeyProjectId?: string | null,
   ): Promise<AssetResponseDto> {
     // Get existing asset
     const [existingAsset] = await db.select().from(assets).where(eq(assets.id, id)).limit(1);
@@ -467,8 +501,17 @@ export class AssetsService implements OnModuleInit {
       throw new NotFoundException(`Asset with ID ${id} not found`);
     }
 
-    // Authorization check: only owner or admin can update
-    if (userRole !== 'admin' && existingAsset.uploadedBy !== userId) {
+    // Check project access if asset has a project
+    if (existingAsset.projectId) {
+      await this.checkProjectAccess(
+        existingAsset.projectId,
+        userId,
+        userRole,
+        'contributor',
+        apiKeyProjectId,
+      );
+    } else if (userRole !== 'admin' && existingAsset.uploadedBy !== userId) {
+      // Fallback for assets without projectId - only owner or admin can update
       throw new ForbiddenException('Not authorized to update this asset');
     }
 
@@ -513,7 +556,12 @@ export class AssetsService implements OnModuleInit {
   /**
    * Delete asset
    */
-  async delete(id: string, userId: string, userRole: string): Promise<void> {
+  async delete(
+    id: string,
+    userId: string,
+    userRole: string,
+    apiKeyProjectId?: string | null,
+  ): Promise<void> {
     // Get existing asset
     const [existingAsset] = await db.select().from(assets).where(eq(assets.id, id)).limit(1);
 
@@ -521,8 +569,17 @@ export class AssetsService implements OnModuleInit {
       throw new NotFoundException(`Asset with ID ${id} not found`);
     }
 
-    // Authorization check: only owner or admin can delete
-    if (userRole !== 'admin' && existingAsset.uploadedBy !== userId) {
+    // Check project access if asset has a project
+    if (existingAsset.projectId) {
+      await this.checkProjectAccess(
+        existingAsset.projectId,
+        userId,
+        userRole,
+        'contributor',
+        apiKeyProjectId,
+      );
+    } else if (userRole !== 'admin' && existingAsset.uploadedBy !== userId) {
+      // Fallback for assets without projectId - only owner or admin can delete
       throw new ForbiddenException('Not authorized to delete this asset');
     }
 
@@ -546,12 +603,17 @@ export class AssetsService implements OnModuleInit {
   /**
    * Batch delete assets
    */
-  async batchDelete(ids: string[], userId: string, userRole: string): Promise<number> {
+  async batchDelete(
+    ids: string[],
+    userId: string,
+    userRole: string,
+    apiKeyProjectId?: string | null,
+  ): Promise<number> {
     let deletedCount = 0;
 
     for (const id of ids) {
       try {
-        await this.delete(id, userId, userRole);
+        await this.delete(id, userId, userRole, apiKeyProjectId);
         deletedCount++;
       } catch (error) {
         // Continue with other deletions
@@ -570,6 +632,7 @@ export class AssetsService implements OnModuleInit {
     userId: string,
     userRole: string,
     commitSha?: string,
+    apiKeyProjectId?: string | null,
   ): Promise<number> {
     // Phase 3H.6: Convert repository string to projectId
     const [owner, name] = repository.split('/');
@@ -579,7 +642,7 @@ export class AssetsService implements OnModuleInit {
     const project = await this.projectsService.getProjectByOwnerName(owner, name);
 
     // Phase 3H.6: Check project access (requires contributor role to delete)
-    await this.checkProjectAccess(project.id, userId, userRole, 'contributor');
+    await this.checkProjectAccess(project.id, userId, userRole, 'contributor', apiKeyProjectId);
 
     // Build query conditions
     const conditions: SQL<unknown>[] = [eq(assets.projectId, project.id)];

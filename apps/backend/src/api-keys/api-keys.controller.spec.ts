@@ -85,7 +85,7 @@ describe('ApiKeysController', () => {
       expect(result.message).toBe('API key created successfully');
       expect(result.data).toEqual(mockApiKeyResponse);
       expect(result.key).toBe(rawKey);
-      expect(service.create).toHaveBeenCalledWith(mockUser.id, createDto);
+      expect(service.create).toHaveBeenCalledWith(mockUser.id, createDto, mockUser.role);
     });
 
     it('should create API key without optional fields', async () => {

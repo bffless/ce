@@ -124,7 +124,13 @@ export class AssetsController {
       workflowName: dto.workflowName || headerWorkflow,
     };
 
-    const asset = await this.assetsService.upload(file, uploadDto, user.id, user.role);
+    const asset = await this.assetsService.upload(
+      file,
+      uploadDto,
+      user.id,
+      user.role,
+      user.apiKeyProjectId,
+    );
 
     return {
       message: 'Asset uploaded successfully',
@@ -185,7 +191,13 @@ export class AssetsController {
       commitSha: dto.commitSha || headerCommit,
     };
 
-    const result = await this.assetsService.batchUpload(files, uploadDto, user.id, user.role);
+    const result = await this.assetsService.batchUpload(
+      files,
+      uploadDto,
+      user.id,
+      user.role,
+      user.apiKeyProjectId,
+    );
 
     return {
       message: `${result.assets.length} assets uploaded successfully`,
@@ -206,7 +218,7 @@ export class AssetsController {
     @CurrentUser() user: CurrentUserData,
     @Query() query: ListAssetsQueryDto,
   ): Promise<ListAssetsResponseDto> {
-    return this.assetsService.findAll(query, user.id, user.role || 'user');
+    return this.assetsService.findAll(query, user.id, user.role || 'user', user.apiKeyProjectId);
   }
 
   /**
@@ -223,7 +235,12 @@ export class AssetsController {
     @CurrentUser() user: CurrentUserData,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<GetAssetResponseDto> {
-    const asset = await this.assetsService.findById(id, user.id, user.role || 'user');
+    const asset = await this.assetsService.findById(
+      id,
+      user.id,
+      user.role || 'user',
+      user.apiKeyProjectId,
+    );
 
     return { data: asset };
   }
@@ -247,6 +264,7 @@ export class AssetsController {
       id,
       user.id,
       user.role || 'user',
+      user.apiKeyProjectId,
     );
 
     res.set({
@@ -273,7 +291,13 @@ export class AssetsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Query('expiresIn') expiresIn?: number,
   ): Promise<GetAssetUrlResponseDto> {
-    const result = await this.assetsService.getUrl(id, user.id, user.role || 'user', expiresIn);
+    const result = await this.assetsService.getUrl(
+      id,
+      user.id,
+      user.role || 'user',
+      expiresIn,
+      user.apiKeyProjectId,
+    );
 
     return result;
   }
@@ -294,7 +318,13 @@ export class AssetsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateAssetDto,
   ): Promise<UpdateAssetResponseDto> {
-    const asset = await this.assetsService.update(id, dto, user.id, user.role || 'user');
+    const asset = await this.assetsService.update(
+      id,
+      dto,
+      user.id,
+      user.role || 'user',
+      user.apiKeyProjectId,
+    );
 
     return {
       message: 'Asset updated successfully',
@@ -317,7 +347,7 @@ export class AssetsController {
     @CurrentUser() user: CurrentUserData,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<DeleteAssetResponseDto> {
-    await this.assetsService.delete(id, user.id, user.role || 'user');
+    await this.assetsService.delete(id, user.id, user.role || 'user', user.apiKeyProjectId);
 
     return { message: 'Asset deleted successfully' };
   }
@@ -339,6 +369,7 @@ export class AssetsController {
       dto.ids,
       user.id,
       user.role || 'user',
+      user.apiKeyProjectId,
     );
 
     return {
@@ -372,6 +403,7 @@ export class AssetsController {
       user.id,
       user.role || 'user',
       commitSha,
+      user.apiKeyProjectId,
     );
 
     const scope = commitSha

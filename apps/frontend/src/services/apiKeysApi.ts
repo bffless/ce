@@ -20,7 +20,8 @@ export interface ApiKeyListItem {
     id: string;
     owner: string;
     name: string;
-  };
+  } | null;
+  isGlobal: boolean;
   expiresAt: string | null;
   lastUsedAt: string | null;
   createdAt: string;
@@ -29,8 +30,9 @@ export interface ApiKeyListItem {
 
 export interface CreateApiKeyDto {
   name: string;
-  repository: string; // "owner/repo" format
+  repository?: string; // "owner/repo" format - required unless isGlobal=true
   expiresAt?: string;
+  isGlobal?: boolean; // Create a global API key (admin only)
 }
 
 export interface CreateApiKeyResponse {

@@ -5,6 +5,7 @@ import {
   IsArray,
   IsDateString,
   IsInt,
+  IsBoolean,
   Min,
   Max,
   IsEnum,
@@ -73,6 +74,15 @@ export class CreateApiKeyDto {
   @IsOptional()
   @IsDateString()
   expiresAt?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Create a global API key that can access all projects the user has permissions on. Only admins can create global keys.',
+    example: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  isGlobal?: boolean;
 }
 
 export class UpdateApiKeyDto {
@@ -218,6 +228,19 @@ export class ApiKeyResponseDto {
     example: false,
   })
   isExpired: boolean;
+
+  @ApiProperty({
+    description: 'Whether this is a global key (not project-scoped)',
+    example: false,
+  })
+  isGlobal: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Project details if scoped to a project',
+    example: { id: '550e8400-e29b-41d4-a716-446655440002', owner: 'acme', name: 'website' },
+    nullable: true,
+  })
+  project?: { id: string; owner: string; name: string } | null;
 
   @ApiProperty({
     description: 'Creation date of the API key',
