@@ -17,15 +17,15 @@ A self-contained platform for hosting images and static assets generated from CI
 
 Full documentation is available at [docs.bffless.app](https://docs.bffless.app/).
 
-| Section                                                                   | Topics                                                                                                 |
-| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| [Getting Started](https://docs.bffless.app/docs/category/getting-started) | Quickstart, Cloudflare Setup, Let's Encrypt Setup, Setup Wizard, First Deployment, Viewing Deployments |
-| [Features](https://docs.bffless.app/docs/category/features)               | Traffic Splitting, Share Links, Proxy Rules, Authorization, Repository Overview                        |
-| [Deployment](https://docs.bffless.app/docs/category/deployment)           | Overview, DigitalOcean, SSL Certificates, GitHub Actions                                               |
-| [Configuration](https://docs.bffless.app/docs/category/configuration)     | Environment Variables, Storage Backends, Authentication                                                |
-| [Storage](https://docs.bffless.app/docs/category/storage)                 | AWS S3, Google Cloud Storage, Azure Blob Storage, MinIO, Caching, Migration Guide                      |
-| [Reference](https://docs.bffless.app/docs/category/reference)             | API, Architecture, Database Schema, Security                                                           |
-| [Troubleshooting](https://docs.bffless.app/docs/troubleshooting)          | Common issues and solutions                                                                            |
+| Section                                                               | Topics                                                                                                 |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| [Getting Started](https://docs.bffless.app/category/getting-started/) | Quickstart, Cloudflare Setup, Let's Encrypt Setup, Setup Wizard, First Deployment, Viewing Deployments |
+| [Features](https://docs.bffless.app/category/features/)               | Traffic Splitting, Share Links, Proxy Rules, Authorization, Repository Overview                        |
+| [Deployment](https://docs.bffless.app/category/deployment/)           | Overview, DigitalOcean, SSL Certificates, GitHub Actions                                               |
+| [Configuration](https://docs.bffless.app/category/configuration/)     | Environment Variables, Storage Backends, Authentication                                                |
+| [Storage](https://docs.bffless.app/category/storage/)                 | AWS S3, Google Cloud Storage, Azure Blob Storage, MinIO, Caching, Migration Guide                      |
+| [Reference](https://docs.bffless.app/category/reference/)             | API, Architecture, Database Schema, Security                                                           |
+| [Troubleshooting](https://docs.bffless.app/troubleshooting/)          | Common issues and solutions                                                                            |
 
 ## Technology Stack
 
