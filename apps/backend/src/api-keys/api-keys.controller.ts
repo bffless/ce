@@ -39,7 +39,7 @@ export class ApiKeysController {
   @ApiOperation({
     summary: 'Create a new API key',
     description:
-      'Creates a new API key for the authenticated user. The raw key is returned only once in the response - store it securely.',
+      'Creates a new API key for the authenticated user. The raw key is returned only once in the response - store it securely. Set isGlobal=true to create a global key (admin only).',
   })
   @ApiResponse({
     status: 201,
@@ -48,11 +48,16 @@ export class ApiKeysController {
   })
   @ApiResponse({ status: 400, description: 'Invalid input data' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden - global keys require admin role' })
   async create(
     @CurrentUser() user: CurrentUserData,
     @Body() createApiKeyDto: CreateApiKeyDto,
   ): Promise<CreateApiKeyResponseDto> {
-    const { apiKey, rawKey } = await this.apiKeysService.create(user.id, createApiKeyDto);
+    const { apiKey, rawKey } = await this.apiKeysService.create(
+      user.id,
+      createApiKeyDto,
+      user.role,
+    );
 
     return {
       message: 'API key created successfully',

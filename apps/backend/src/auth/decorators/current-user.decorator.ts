@@ -6,6 +6,7 @@ export interface CurrentUserData {
   role?: string;
   sessionHandle?: string;
   apiKeyId?: string;
+  apiKeyProjectId?: string | null; // Project ID from API key (null for global keys)
   // Phase 3H.6: Removed allowedRepositories - use project permissions instead
 }
 

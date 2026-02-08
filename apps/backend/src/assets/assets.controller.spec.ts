@@ -114,6 +114,7 @@ describe('AssetsController', () => {
         expect.any(Object),
         mockUser.id,
         mockUser.role,
+        undefined,
       );
     });
 
@@ -138,6 +139,7 @@ describe('AssetsController', () => {
         }),
         mockUser.id,
         mockUser.role,
+        undefined,
       );
     });
   });
@@ -180,7 +182,7 @@ describe('AssetsController', () => {
 
       expect(result.data).toHaveLength(1);
       expect(result.meta.page).toBe(1);
-      expect(service.findAll).toHaveBeenCalledWith(mockQuery, mockUser.id, mockUser.role);
+      expect(service.findAll).toHaveBeenCalledWith(mockQuery, mockUser.id, mockUser.role, undefined);
     });
   });
 
@@ -193,6 +195,7 @@ describe('AssetsController', () => {
         mockAssetResponse.id,
         mockUser.id,
         mockUser.role,
+        undefined,
       );
     });
   });
@@ -237,6 +240,7 @@ describe('AssetsController', () => {
         updateDto,
         mockUser.id,
         mockUser.role,
+        undefined,
       );
     });
   });
@@ -246,7 +250,12 @@ describe('AssetsController', () => {
       const result = await controller.remove(mockUser, mockAssetResponse.id);
 
       expect(result.message).toBe('Asset deleted successfully');
-      expect(service.delete).toHaveBeenCalledWith(mockAssetResponse.id, mockUser.id, mockUser.role);
+      expect(service.delete).toHaveBeenCalledWith(
+        mockAssetResponse.id,
+        mockUser.id,
+        mockUser.role,
+        undefined,
+      );
     });
   });
 
@@ -260,6 +269,7 @@ describe('AssetsController', () => {
         [mockAssetResponse.id],
         mockUser.id,
         mockUser.role,
+        undefined,
       );
     });
   });

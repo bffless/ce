@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertCircle, ArrowLeft, User as UserIcon } from 'lucide-react';
+import { GlobalApiKeysTab } from '@/components/settings/GlobalApiKeysTab';
 
 type TabValue = 'profile' | 'api-keys' | 'preferences';
 
@@ -120,24 +121,7 @@ export function UserSettingsPage() {
         {/* API Keys Tab - Hidden for member role */}
         {canAccessApiKeys && (
           <TabsContent value="api-keys" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>API Keys</CardTitle>
-                <CardDescription>
-                  View all your API keys across all projects. To manage API keys for a specific
-                  project, go to the project settings page.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Alert>
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>
-                    API keys are managed at the project level. Navigate to a project's settings page
-                    to create or manage API keys for that project.
-                  </AlertDescription>
-                </Alert>
-              </CardContent>
-            </Card>
+            <GlobalApiKeysTab />
           </TabsContent>
         )}
 

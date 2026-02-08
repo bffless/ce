@@ -275,7 +275,8 @@ services:
 
   backend:
     # Use pre-built image from GitHub Container Registry
-    image: ghcr.io/bffless/ce-backend:latest
+    # Override tag via BACKEND_TAG env var (e.g., BACKEND_TAG=global-api-keys)
+    image: ghcr.io/bffless/ce-backend:${BACKEND_TAG:-latest}
     container_name: assethost-backend
     # -------------------------------------------------------------------------
     # BACKEND MEMORY: Node.js NestJS server
@@ -406,7 +407,8 @@ services:
 
   frontend:
     # Use pre-built image from GitHub Container Registry
-    image: ghcr.io/bffless/ce-frontend:latest
+    # Override tag via FRONTEND_TAG env var (e.g., FRONTEND_TAG=global-api-keys)
+    image: ghcr.io/bffless/ce-frontend:${FRONTEND_TAG:-latest}
     container_name: assethost-frontend
     # -------------------------------------------------------------------------
     # FRONTEND MEMORY: Static file container, minimal footprint

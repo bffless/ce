@@ -3,6 +3,9 @@ import { Reflector } from '@nestjs/core';
 import { verifySession } from 'supertokens-node/recipe/session/framework/express';
 import { SessionContainer } from 'supertokens-node/recipe/session';
 import { Request, Response } from 'express';
+import { eq } from 'drizzle-orm';
+import { db } from '../db/client';
+import { users } from '../db/schema';
 
 export const IS_PUBLIC_KEY = 'isPublic';
 
@@ -48,10 +51,21 @@ export class SessionAuthGuard implements CanActivate {
         throw new UnauthorizedException('No active session');
       }
 
+      const userId = session.getUserId();
+
+      // Fetch user from database to get role
+      const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+
       // Attach user info to request for use in controllers
-      (request as Request & { user?: { id: string; sessionHandle: string } }).user = {
-        id: session.getUserId(),
+      (
+        request as Request & {
+          user?: { id: string; sessionHandle: string; email?: string; role?: string };
+        }
+      ).user = {
+        id: userId,
         sessionHandle: session.getHandle(),
+        email: user?.email,
+        role: user?.role,
       };
 
       return true;

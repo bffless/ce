@@ -8,7 +8,7 @@ import { eq, and, like, count, asc, desc } from 'drizzle-orm';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { db } from '../db/client';
-import { apiKeys, ApiKey } from '../db/schema';
+import { apiKeys, ApiKey, projects } from '../db/schema';
 import {
   CreateApiKeyDto,
   UpdateApiKeyDto,
@@ -19,6 +19,15 @@ import {
 } from './api-keys.dto';
 import { ProjectsService } from '../projects/projects.service';
 import { PermissionsService } from '../permissions/permissions.service';
+
+// Type for API key with joined project data
+interface ApiKeyWithProject extends ApiKey {
+  project?: {
+    id: string;
+    owner: string;
+    name: string;
+  } | null;
+}
 
 const BCRYPT_ROUNDS = 10;
 const API_KEY_PREFIX = 'wsa_';
@@ -35,33 +44,49 @@ export class ApiKeysService {
    * Create a new API key for a user
    * @param userId - The user creating the API key
    * @param dto - API key creation data
+   * @param userRole - The authenticated user's role (for global key creation check)
    * @returns The created API key details and the raw key (shown only once)
    */
   async create(
     userId: string,
     dto: CreateApiKeyDto,
+    userRole?: string,
   ): Promise<{ apiKey: ApiKeyResponseDto; rawKey: string }> {
-    // Parse repository string (new way) or fallback to allowedRepositories (legacy)
-    const repository = dto.repository || dto.allowedRepositories?.[0];
+    let projectId: string | null = null;
+    let projectData: { id: string; owner: string; name: string } | null = null;
 
-    if (!repository) {
-      throw new BadRequestException('Repository is required');
-    }
+    // Handle global API key creation
+    if (dto.isGlobal) {
+      // Only admin users can create global API keys
+      if (userRole !== 'admin') {
+        throw new ForbiddenException('Only admin users can create global API keys');
+      }
+      // projectId remains null for global keys
+    } else {
+      // Parse repository string (new way) or fallback to allowedRepositories (legacy)
+      const repository = dto.repository || dto.allowedRepositories?.[0];
 
-    const [owner, name] = repository.split('/');
-    if (!owner || !name) {
-      throw new BadRequestException('Invalid repository format. Expected "owner/repo"');
-    }
+      if (!repository) {
+        throw new BadRequestException('Repository is required for project-scoped API keys');
+      }
 
-    // Lookup project
-    const project = await this.projectsService.getProjectByOwnerName(owner, name);
+      const [owner, name] = repository.split('/');
+      if (!owner || !name) {
+        throw new BadRequestException('Invalid repository format. Expected "owner/repo"');
+      }
 
-    // Check user has contributor+ access to project
-    const userRole = await this.permissionsService.getUserProjectRole(userId, project.id);
-    if (!userRole || !['owner', 'admin', 'contributor'].includes(userRole)) {
-      throw new ForbiddenException(
-        'You do not have permission to create API keys for this project',
-      );
+      // Lookup project
+      const project = await this.projectsService.getProjectByOwnerName(owner, name);
+      projectId = project.id;
+      projectData = { id: project.id, owner: project.owner, name: project.name };
+
+      // Check user has contributor+ access to project
+      const projectRole = await this.permissionsService.getUserProjectRole(userId, project.id);
+      if (!projectRole || !['owner', 'admin', 'contributor'].includes(projectRole)) {
+        throw new ForbiddenException(
+          'You do not have permission to create API keys for this project',
+        );
+      }
     }
 
     // Generate a cryptographically secure random key
@@ -71,7 +96,6 @@ export class ApiKeysService {
     // Hash the key for storage
     const hashedKey = await bcrypt.hash(rawKey, BCRYPT_ROUNDS);
 
-    // Phase 3H.7: allowedRepositories field removed - now using projectId
     // Insert the new API key
     const [newApiKey] = await db
       .insert(apiKeys)
@@ -79,13 +103,13 @@ export class ApiKeysService {
         name: dto.name,
         key: hashedKey,
         userId,
-        projectId: project.id,
+        projectId,
         expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
       })
       .returning();
 
     return {
-      apiKey: this.toApiKeyResponse(newApiKey),
+      apiKey: this.toApiKeyResponse({ ...newApiKey, project: projectData }),
       rawKey,
     };
   }
@@ -122,10 +146,18 @@ export class ApiKeysService {
     const sortColumn = this.getSortColumn(sortBy);
     const orderBy = sortOrder === SortOrder.ASC ? asc(sortColumn) : desc(sortColumn);
 
-    // Get paginated results
+    // Get paginated results with project join for display
     const results = await db
-      .select()
+      .select({
+        apiKey: apiKeys,
+        project: {
+          id: projects.id,
+          owner: projects.owner,
+          name: projects.name,
+        },
+      })
       .from(apiKeys)
+      .leftJoin(projects, eq(apiKeys.projectId, projects.id))
       .where(whereClause)
       .orderBy(orderBy)
       .limit(limit)
@@ -134,7 +166,12 @@ export class ApiKeysService {
     const totalPages = Math.ceil(total / limit);
 
     return {
-      data: results.map((key) => this.toApiKeyResponse(key)),
+      data: results.map((row) =>
+        this.toApiKeyResponse({
+          ...row.apiKey,
+          project: row.project,
+        }),
+      ),
       meta: {
         page,
         limit,
@@ -244,7 +281,7 @@ export class ApiKeysService {
   /**
    * Convert an API key entity to a response DTO
    */
-  private toApiKeyResponse(apiKey: ApiKey): ApiKeyResponseDto {
+  private toApiKeyResponse(apiKey: ApiKeyWithProject): ApiKeyResponseDto {
     // Phase 3H.7: allowedRepositories field removed - now using projectId
     // Return null for backward compatibility
     const allowedRepositories: string[] | null = null;
@@ -252,15 +289,20 @@ export class ApiKeysService {
     // Check if expired
     const isExpired = apiKey.expiresAt ? new Date() > new Date(apiKey.expiresAt) : false;
 
+    // Global keys have null projectId
+    const isGlobal = apiKey.projectId === null;
+
     return {
       id: apiKey.id,
       name: apiKey.name,
       userId: apiKey.userId,
-      projectId: apiKey.projectId || null, // NEW
+      projectId: apiKey.projectId || null,
       allowedRepositories,
       expiresAt: apiKey.expiresAt ? apiKey.expiresAt.toISOString() : null,
       lastUsedAt: apiKey.lastUsedAt ? apiKey.lastUsedAt.toISOString() : null,
       isExpired,
+      isGlobal,
+      project: apiKey.project || null,
       createdAt: apiKey.createdAt.toISOString(),
     };
   }

@@ -362,6 +362,8 @@ describe('AssetsService', () => {
 
     it('should throw ForbiddenException for non-owner update', async () => {
       mockDb.limit.mockResolvedValue([mockAsset]);
+      // User has no permission on this project
+      mockPermissionsService.getUserProjectRole.mockResolvedValueOnce(null);
 
       await expect(
         service.update(mockAsset.id, { description: 'test' }, 'other-user', 'user'),
@@ -381,6 +383,8 @@ describe('AssetsService', () => {
 
     it('should throw ForbiddenException for non-owner delete', async () => {
       mockDb.limit.mockResolvedValue([mockAsset]);
+      // User has no permission on this project
+      mockPermissionsService.getUserProjectRole.mockResolvedValueOnce(null);
 
       await expect(service.delete(mockAsset.id, 'other-user', 'user')).rejects.toThrow(
         ForbiddenException,

@@ -3,12 +3,20 @@ import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { SessionAuthGuard } from './session-auth.guard';
 
+// Mock the database module
+jest.mock('../db/client', () => ({
+  db: {
+    select: jest.fn(),
+  },
+}));
+
 // Mock SuperTokens
 jest.mock('supertokens-node/recipe/session/framework/express', () => ({
   verifySession: jest.fn(),
 }));
 
 import { verifySession } from 'supertokens-node/recipe/session/framework/express';
+import { db } from '../db/client';
 
 describe('SessionAuthGuard', () => {
   let guard: SessionAuthGuard;
@@ -86,11 +94,20 @@ describe('SessionAuthGuard', () => {
         },
       );
 
+      // Mock database query to return user with role
+      const mockDbChain = {
+        from: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockResolvedValue([{ id: 'user-123', email: 'test@example.com', role: 'admin' }]),
+      };
+      (db.select as jest.Mock).mockReturnValue(mockDbChain);
+
       const result = await guard.canActivate(mockExecutionContext);
 
       expect(result).toBe(true);
       expect(mockRequest.user).toBeDefined();
       expect(mockRequest.user.id).toBe('user-123');
+      expect(mockRequest.user.role).toBe('admin');
     });
 
     it('should deny access without session (API request)', async () => {
