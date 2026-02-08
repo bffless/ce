@@ -13,25 +13,19 @@ A self-contained platform for hosting images and static assets generated from CI
 - **Flexible Storage** - Support for Local, MinIO, S3, GCS, and Azure Blob Storage
 - **Secure Access** - Authentication and authorization for asset management
 
-## Quick Start
-
-Deploy in under 5 minutes:
-
-```bash
-sh -c "$(curl -fsSL https://raw.githubusercontent.com/bffless/ce/main/install.sh)"
-```
-
-Or see [Manual Setup](./docs/getting-started/manual-setup.md) for step-by-step instructions.
-
 ## Documentation
 
-| Guide                                                            | Description                      |
-| ---------------------------------------------------------------- | -------------------------------- |
-| [Quick Start](./docs/getting-started/quickstart.md)              | 5-minute automated deployment    |
-| [Manual Setup](./docs/getting-started/manual-setup.md)           | Step-by-step manual installation |
-| [Local Development](./docs/getting-started/local-development.md) | Developer environment setup      |
-| [Deployment Options](./docs/deployment/overview.md)              | Compare deployment methods       |
-| [Configuration](./docs/configuration/environment-variables.md)   | All configuration options        |
+Full documentation is available at [docs.bffless.app](https://docs.bffless.app/).
+
+| Section                                                                   | Topics                                                                                                 |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| [Getting Started](https://docs.bffless.app/docs/category/getting-started) | Quickstart, Cloudflare Setup, Let's Encrypt Setup, Setup Wizard, First Deployment, Viewing Deployments |
+| [Features](https://docs.bffless.app/docs/category/features)               | Traffic Splitting, Share Links, Proxy Rules, Authorization, Repository Overview                        |
+| [Deployment](https://docs.bffless.app/docs/category/deployment)           | Overview, DigitalOcean, SSL Certificates, GitHub Actions                                               |
+| [Configuration](https://docs.bffless.app/docs/category/configuration)     | Environment Variables, Storage Backends, Authentication                                                |
+| [Storage](https://docs.bffless.app/docs/category/storage)                 | AWS S3, Google Cloud Storage, Azure Blob Storage, MinIO, Caching, Migration Guide                      |
+| [Reference](https://docs.bffless.app/docs/category/reference)             | API, Architecture, Database Schema, Security                                                           |
+| [Troubleshooting](https://docs.bffless.app/docs/troubleshooting)          | Common issues and solutions                                                                            |
 
 ## Technology Stack
 
@@ -59,10 +53,14 @@ Only 3 required inputs - repository, commit SHA, and branch are auto-detected fr
 
 Contributions welcome! See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
 
+## Author
+
+Built by [Toshimoto](https://www.j5s.dev)
+
 ## License
 
 O'Saasy License - see [LICENSE](./LICENSE) for details.
 
 ---
 
-[Documentation](./docs/README.md) | [Changelog](./CHANGELOG.md) | [Issues](https://github.com/bffless/ce/issues)
+[Documentation](https://docs.bffless.app) | [Changelog](./CHANGELOG.md) | [Issues](https://github.com/bffless/ce/issues)
