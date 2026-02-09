@@ -26,6 +26,7 @@ describe('ProxyService', () => {
     forwardCookies: false,
     headerConfig: null,
     authTransform: null,
+    internalRewrite: false,
     isEnabled: true,
     description: null,
     createdAt: new Date(),
@@ -76,9 +77,18 @@ describe('ProxyService', () => {
       expect(result).toBe('/');
     });
 
-    it('should not strip for non-wildcard patterns', () => {
+    it('should strip entire path for exact matches', () => {
+      // Exact matches should return empty string so targetUrl is used directly
+      // This fixes the bug where /env.json with targetUrl http://example.com/config.json
+      // was incorrectly resulting in http://example.com/config.json/env.json
       const result = (service as any).stripMatchedPrefix('/graphql', '/graphql');
-      expect(result).toBe('/graphql');
+      expect(result).toBe('');
+    });
+
+    it('should not strip for non-matching patterns', () => {
+      // When path doesn't match pattern, return path unchanged
+      const result = (service as any).stripMatchedPrefix('/graphql', '/other');
+      expect(result).toBe('/other');
     });
   });
 

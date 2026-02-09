@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Trash2, Plus, Edit2, AlertCircle, ArrowRight } from 'lucide-react';
+import { Trash2, Plus, Edit2, AlertCircle, ArrowRight, RotateCcw } from 'lucide-react';
 import type { ProxyRule, CreateProxyRuleDto, UpdateProxyRuleDto } from '@/services/proxyRulesApi';
 import { ProxyRuleForm } from './ProxyRuleForm';
 
@@ -173,8 +173,19 @@ export function ProxyRulesEditor({
                       <code className="font-mono bg-muted px-2 py-0.5 rounded truncate">
                         {rule.pathPattern}
                       </code>
-                      <ArrowRight className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                      {rule.internalRewrite ? (
+                        <span title="Internal rewrite">
+                          <RotateCcw className="h-3 w-3 text-blue-500 flex-shrink-0" />
+                        </span>
+                      ) : (
+                        <ArrowRight className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                      )}
                       <span className="text-muted-foreground truncate">{rule.targetUrl}</span>
+                      {rule.internalRewrite && (
+                        <span className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 px-1.5 py-0.5 rounded flex-shrink-0">
+                          rewrite
+                        </span>
+                      )}
                     </div>
                     {rule.description && (
                       <p className="text-xs text-muted-foreground mt-1 truncate">
@@ -182,8 +193,14 @@ export function ProxyRulesEditor({
                       </p>
                     )}
                     <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                      {rule.stripPrefix && <span>Strip prefix</span>}
-                      <span>Timeout: {rule.timeout}ms</span>
+                      {rule.internalRewrite ? (
+                        <span>Internal rewrite (no HTTP request)</span>
+                      ) : (
+                        <>
+                          {rule.stripPrefix && <span>Strip prefix</span>}
+                          <span>Timeout: {rule.timeout}ms</span>
+                        </>
+                      )}
                     </div>
                   </div>
                   <Switch

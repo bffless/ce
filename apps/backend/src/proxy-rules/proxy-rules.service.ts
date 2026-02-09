@@ -135,8 +135,10 @@ export class ProxyRulesService {
     // Check project access (need contributor or higher)
     await this.checkProjectAccess(ruleSet.projectId, userId, userRole, 'contributor');
 
-    // Validate target URL
-    this.validateTargetUrl(dto.targetUrl);
+    // Validate target URL (skip for internal rewrites - no external request made)
+    if (!dto.internalRewrite) {
+      this.validateTargetUrl(dto.targetUrl);
+    }
 
     // Check for duplicate path pattern within the rule set
     const existingRule = await this.findRuleByPattern(dto.ruleSetId, dto.pathPattern);
@@ -163,6 +165,7 @@ export class ProxyRulesService {
         forwardCookies: dto.forwardCookies ?? false,
         headerConfig,
         authTransform: dto.authTransform ?? null,
+        internalRewrite: dto.internalRewrite ?? false,
         isEnabled: dto.isEnabled ?? true,
         description: dto.description,
       })
@@ -212,8 +215,9 @@ export class ProxyRulesService {
     // Check project access
     await this.checkProjectAccess(ruleSet.projectId, userId, userRole, 'contributor');
 
-    // Validate target URL if changing
-    if (dto.targetUrl && dto.targetUrl !== existing.targetUrl) {
+    // Validate target URL if changing (skip for internal rewrites)
+    const willBeInternalRewrite = dto.internalRewrite ?? existing.internalRewrite;
+    if (dto.targetUrl && dto.targetUrl !== existing.targetUrl && !willBeInternalRewrite) {
       this.validateTargetUrl(dto.targetUrl);
     }
 
@@ -237,6 +241,7 @@ export class ProxyRulesService {
     if (dto.timeout !== undefined) updateData.timeout = dto.timeout;
     if (dto.preserveHost !== undefined) updateData.preserveHost = dto.preserveHost;
     if (dto.forwardCookies !== undefined) updateData.forwardCookies = dto.forwardCookies;
+    if (dto.internalRewrite !== undefined) updateData.internalRewrite = dto.internalRewrite;
     if (dto.description !== undefined) updateData.description = dto.description;
     if (dto.isEnabled !== undefined) updateData.isEnabled = dto.isEnabled;
 
@@ -273,6 +278,7 @@ export class ProxyRulesService {
           timeout: existing.timeout,
           preserveHost: existing.preserveHost,
           forwardCookies: existing.forwardCookies,
+          internalRewrite: existing.internalRewrite,
           description: existing.description,
           isEnabled: existing.isEnabled,
           headerConfig: existing.headerConfig,
@@ -331,6 +337,7 @@ export class ProxyRulesService {
         timeout: existing.timeout,
         preserveHost: existing.preserveHost,
         forwardCookies: existing.forwardCookies,
+        internalRewrite: existing.internalRewrite,
         description: existing.description,
         isEnabled: existing.isEnabled,
         headerConfig: existing.headerConfig,

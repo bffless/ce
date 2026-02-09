@@ -26,6 +26,7 @@ export interface ProxyRule {
   forwardCookies: boolean;
   headerConfig: HeaderConfig | null;
   authTransform: AuthTransformConfig | null;
+  internalRewrite: boolean;
   isEnabled: boolean;
   description: string | null;
   createdAt: string;
@@ -73,6 +74,7 @@ export interface CreateProxyRuleDto {
   forwardCookies?: boolean;
   headerConfig?: HeaderConfig;
   authTransform?: AuthTransformConfig;
+  internalRewrite?: boolean;
   description?: string;
   isEnabled?: boolean;
 }
@@ -88,6 +90,7 @@ export interface UpdateProxyRuleDto {
   forwardCookies?: boolean;
   headerConfig?: HeaderConfig;
   authTransform?: AuthTransformConfig | null;
+  internalRewrite?: boolean;
   description?: string;
   isEnabled?: boolean;
 }

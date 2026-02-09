@@ -97,6 +97,21 @@ export class ProxyMiddleware implements NestMiddleware {
         return next();
       }
 
+      // Handle internal rewrite (no HTTP proxy - just rewrite the URL and continue)
+      if (matchedRule.internalRewrite) {
+        const newSubpath = this.buildRewritePath(matchedRule, subpathForMatching);
+        // Rewrite the URL path for file serving
+        // Replace the subpath portion while keeping the /public/{owner}/{repo}/{ref}/ prefix
+        const oldPath = req.path;
+        const newPath = oldPath.replace(parsed.subpath, newSubpath);
+        req.url = req.url.replace(req.path, newPath);
+
+        this.logger.debug(
+          `Internal rewrite: ${subpathForMatching} → ${newSubpath} (rule: ${matchedRule.id})`,
+        );
+        return next();
+      }
+
       this.logger.debug(
         `Proxy match: ${subpathForMatching} → ${matchedRule.targetUrl} (rule: ${matchedRule.id})`,
       );
@@ -170,6 +185,20 @@ export class ProxyMiddleware implements NestMiddleware {
     // Find matching rule
     const matchedRule = this.findMatchingRule(rules, subpathForMatching);
     if (!matchedRule) {
+      return next();
+    }
+
+    // Handle internal rewrite (no HTTP proxy - just rewrite the URL and continue)
+    if (matchedRule.internalRewrite) {
+      const newSubpath = this.buildRewritePath(matchedRule, subpathForMatching);
+      // For subdomain-alias format, replace the subpath after /public/subdomain-alias/{aliasName}/
+      const oldPath = req.path;
+      const newPath = oldPath.replace(subpath, newSubpath);
+      req.url = req.url.replace(req.path, newPath);
+
+      this.logger.debug(
+        `Subdomain internal rewrite: ${subpathForMatching} → ${newSubpath} (alias: ${aliasName}, rule: ${matchedRule.id})`,
+      );
       return next();
     }
 
@@ -353,6 +382,48 @@ export class ProxyMiddleware implements NestMiddleware {
       }
     }
     return null;
+  }
+
+  /**
+   * Build the rewritten path for internal rewrite rules.
+   *
+   * For exact matches: return target path directly
+   * For wildcard patterns: apply substitution
+   */
+  private buildRewritePath(rule: ProxyRule, originalPath: string): string {
+    const targetPath = rule.targetUrl; // For internal rewrites, targetUrl is actually a path
+
+    // For exact matches: return target path directly
+    // /env.json matched by pattern /env.json → target /environments/production.json
+    if (!rule.pathPattern.includes('*')) {
+      return targetPath;
+    }
+
+    // For prefix wildcard patterns: /api/* with targetUrl /v2/api
+    // /api/users becomes /v2/api/users
+    if (rule.pathPattern.endsWith('/*')) {
+      const prefix = rule.pathPattern.slice(0, -2);
+      if (originalPath.startsWith(prefix + '/')) {
+        const remainder = originalPath.substring(prefix.length);
+        return targetPath.replace(/\/$/, '') + remainder;
+      }
+      if (originalPath === prefix) {
+        return targetPath;
+      }
+    }
+
+    // For suffix wildcard patterns: *.json with targetUrl /data/
+    // /config.json becomes /data/config.json
+    if (rule.pathPattern.startsWith('*')) {
+      const suffix = rule.pathPattern.slice(1);
+      if (originalPath.endsWith(suffix)) {
+        const filename = originalPath.substring(originalPath.lastIndexOf('/') + 1);
+        return targetPath.replace(/\/$/, '') + '/' + filename;
+      }
+    }
+
+    // Fallback: just return target path
+    return targetPath;
   }
 
   /**

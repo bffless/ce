@@ -60,6 +60,7 @@ describe('ProxyMiddleware', () => {
     forwardCookies: false,
     headerConfig: null,
     authTransform: null,
+    internalRewrite: false,
     isEnabled: true,
     description: null,
     createdAt: new Date(),

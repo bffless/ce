@@ -99,6 +99,11 @@ export class ProxyService {
    * Join two path segments, handling slashes correctly
    */
   private joinPaths(basePath: string, appendPath: string): string {
+    // If nothing to append (e.g., exact match stripped the entire path), return base path
+    if (appendPath === '') {
+      return basePath;
+    }
+
     // Normalize: remove trailing slash from base, ensure leading slash on append
     const normalizedBase = basePath.replace(/\/+$/, '');
     const normalizedAppend = appendPath.startsWith('/') ? appendPath : '/' + appendPath;
@@ -116,6 +121,7 @@ export class ProxyService {
    * Returns the remaining path (e.g., /organizations from /api/platform/organizations)
    */
   private stripMatchedPrefix(pattern: string, path: string): string {
+    // Handle wildcard patterns: /api/*
     if (pattern.endsWith('/*')) {
       const prefix = pattern.slice(0, -2);
       if (path.startsWith(prefix + '/')) {
@@ -125,6 +131,13 @@ export class ProxyService {
         return '/';
       }
     }
+
+    // Handle exact matches: /env.json matches /env.json exactly
+    // Strip the entire path so target URL is used directly
+    if (path === pattern) {
+      return '';
+    }
+
     return path;
   }
 

@@ -18,10 +18,62 @@ import {
 import { Type } from 'class-transformer';
 
 /**
- * Custom validator for target URLs.
- * - Allows HTTPS for any external URL
- * - Allows HTTP for internal K8s service URLs (*.svc, *.svc.cluster.local)
- * - Allows HTTP for localhost/127.0.0.1 (same-pod sidecar communication)
+ * Custom validator for target URLs or internal rewrite paths.
+ * - For external proxy (internalRewrite=false): Allows HTTPS for any external URL,
+ *   or HTTP for internal K8s service URLs (*.svc, *.svc.cluster.local) and localhost
+ * - For internal rewrite (internalRewrite=true): Allows paths starting with '/'
+ */
+@ValidatorConstraint({ name: 'isValidTargetUrlOrPath', async: false })
+export class IsValidTargetUrlOrPath implements ValidatorConstraintInterface {
+  validate(value: string, args: ValidationArguments): boolean {
+    const obj = args.object as { internalRewrite?: boolean };
+
+    // Internal rewrite: validate as path
+    if (obj.internalRewrite === true) {
+      // Must start with / and be a valid path (no protocol, no host)
+      return typeof value === 'string' && value.startsWith('/') && !value.includes('://');
+    }
+
+    // External proxy: validate as URL
+    try {
+      const parsed = new URL(value);
+
+      // Allow HTTPS for any URL
+      if (parsed.protocol === 'https:') {
+        return true;
+      }
+
+      // Allow HTTP only for internal/trusted URLs
+      if (parsed.protocol === 'http:') {
+        const hostname = parsed.hostname;
+        // Match *.svc or *.svc.cluster.local patterns (K8s internal services)
+        if (hostname.endsWith('.svc') || hostname.endsWith('.svc.cluster.local')) {
+          return true;
+        }
+        // Allow localhost/127.0.0.1 for same-pod sidecar communication
+        if (hostname === 'localhost' || hostname === '127.0.0.1') {
+          return true;
+        }
+      }
+
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  defaultMessage(args: ValidationArguments): string {
+    const obj = args.object as { internalRewrite?: boolean };
+    if (obj.internalRewrite === true) {
+      return `${args.property} must be a path starting with '/' when internalRewrite is true (e.g., /environments/production.json)`;
+    }
+    return `${args.property} must be HTTPS, or HTTP for internal services (*.svc, localhost)`;
+  }
+}
+
+/**
+ * Legacy validator for backward compatibility.
+ * @deprecated Use IsValidTargetUrlOrPath instead
  */
 @ValidatorConstraint({ name: 'isValidTargetUrl', async: false })
 export class IsValidTargetUrl implements ValidatorConstraintInterface {
@@ -129,11 +181,21 @@ export class CreateProxyRuleDto {
 
   @ApiProperty({
     description:
-      'Target URL to forward requests to. Must be HTTPS, or HTTP for internal K8s services.',
+      'Target URL to forward requests to. Must be HTTPS, or HTTP for internal K8s services. When internalRewrite is true, this must be a path starting with "/" (e.g., /environments/production.json).',
     example: 'https://api.example.com',
   })
-  @Validate(IsValidTargetUrl)
+  @Validate(IsValidTargetUrlOrPath)
   targetUrl: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Whether this is an internal rewrite rule. When true, targetUrl is interpreted as a path within the same deployment (e.g., /environments/production.json) and no external HTTP request is made.',
+    default: false,
+    example: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  internalRewrite?: boolean;
 
   @ApiPropertyOptional({
     description: 'Remove matched prefix from path before forwarding',
