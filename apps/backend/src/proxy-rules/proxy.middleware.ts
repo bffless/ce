@@ -106,6 +106,14 @@ export class ProxyMiddleware implements NestMiddleware {
         const newPath = oldPath.replace(parsed.subpath, newSubpath);
         req.url = req.url.replace(req.path, newPath);
 
+        // Also update the route params - the wildcard param '0' contains the file path
+        // This is needed because req.params is already populated by route matching
+        // and won't be updated by just modifying req.url
+        if (req.params && req.params['0']) {
+          // Remove leading slash from newSubpath to match how Express extracts the wildcard
+          req.params['0'] = newSubpath.startsWith('/') ? newSubpath.slice(1) : newSubpath;
+        }
+
         this.logger.debug(
           `Internal rewrite: ${subpathForMatching} → ${newSubpath} (rule: ${matchedRule.id})`,
         );
@@ -195,6 +203,11 @@ export class ProxyMiddleware implements NestMiddleware {
       const oldPath = req.path;
       const newPath = oldPath.replace(subpath, newSubpath);
       req.url = req.url.replace(req.path, newPath);
+
+      // Also update the route params - the wildcard param '0' contains the file path
+      if (req.params && req.params['0']) {
+        req.params['0'] = newSubpath.startsWith('/') ? newSubpath.slice(1) : newSubpath;
+      }
 
       this.logger.debug(
         `Subdomain internal rewrite: ${subpathForMatching} → ${newSubpath} (alias: ${aliasName}, rule: ${matchedRule.id})`,

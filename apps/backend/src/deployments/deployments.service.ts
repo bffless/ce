@@ -13,7 +13,7 @@ import { unzip } from 'fflate';
 import * as mimeTypes from 'mime-types';
 import * as crypto from 'crypto';
 import { db } from '../db/client';
-import { assets, deploymentAliases, projects, proxyRuleSets } from '../db/schema';
+import { assets, Asset, deploymentAliases, projects, proxyRuleSets } from '../db/schema';
 import { IStorageAdapter, STORAGE_ADAPTER } from '../storage/storage.interface';
 import { AssetType } from '../types/asset-type.enum';
 import { ProjectsService } from '../projects/projects.service';
@@ -237,28 +237,67 @@ export class DeploymentsService {
             contentType: mimeType,
           });
 
-          // Save to database
-          const [newAsset] = await db
-            .insert(assets)
-            .values({
-              fileName: filePath.split('/').pop() || filePath,
-              originalPath: filePath,
-              storageKey,
-              mimeType,
-              size: fileSize,
-              contentHash, // Pre-computed for ETag optimization
-              projectId: project.id,
-              branch: dto.branch,
-              commitSha: dto.commitSha,
-              uploadedBy: userId,
-              deploymentId,
-              publicPath,
-              assetType: AssetType.COMMITS,
-              description: dto.description,
-              committedAt, // Store actual git commit timestamp
-              tags, // Store tags as JSON string
-            })
-            .returning();
+          // Check if asset already exists (upsert logic for re-runs)
+          const [existingAsset] = await db
+            .select()
+            .from(assets)
+            .where(
+              and(
+                eq(assets.projectId, project.id),
+                eq(assets.commitSha, dto.commitSha),
+                eq(assets.publicPath, publicPath),
+              ),
+            )
+            .limit(1);
+
+          let newAsset: Asset;
+          if (existingAsset) {
+            // Update existing asset
+            const [updated] = await db
+              .update(assets)
+              .set({
+                fileName: filePath.split('/').pop() || filePath,
+                originalPath: filePath,
+                storageKey,
+                mimeType,
+                size: fileSize,
+                contentHash,
+                branch: dto.branch,
+                uploadedBy: userId,
+                deploymentId,
+                description: dto.description,
+                committedAt,
+                tags,
+                updatedAt: new Date(),
+              })
+              .where(eq(assets.id, existingAsset.id))
+              .returning();
+            newAsset = updated;
+          } else {
+            // Insert new asset
+            const [inserted] = await db
+              .insert(assets)
+              .values({
+                fileName: filePath.split('/').pop() || filePath,
+                originalPath: filePath,
+                storageKey,
+                mimeType,
+                size: fileSize,
+                contentHash,
+                projectId: project.id,
+                branch: dto.branch,
+                commitSha: dto.commitSha,
+                uploadedBy: userId,
+                deploymentId,
+                publicPath,
+                assetType: AssetType.COMMITS,
+                description: dto.description,
+                committedAt,
+                tags,
+              })
+              .returning();
+            newAsset = inserted;
+          }
 
           uploadedAssets.push(newAsset);
         } catch (error) {
@@ -432,28 +471,67 @@ export class DeploymentsService {
           contentType: file.mimetype,
         });
 
-        // Save to database
-        const [newAsset] = await db
-          .insert(assets)
-          .values({
-            fileName: filePath.split('/').pop() || filePath,
-            originalPath: filePath,
-            storageKey,
-            mimeType: file.mimetype,
-            size: file.size,
-            contentHash, // Pre-computed for ETag optimization
-            projectId: project.id,
-            branch: dto.branch,
-            commitSha: dto.commitSha,
-            uploadedBy: userId,
-            deploymentId,
-            publicPath,
-            assetType: AssetType.COMMITS,
-            description: dto.description,
-            committedAt, // Store actual git commit timestamp
-            tags, // Store tags as JSON string
-          })
-          .returning();
+        // Check if asset already exists (upsert logic for re-runs)
+        const [existingAsset] = await db
+          .select()
+          .from(assets)
+          .where(
+            and(
+              eq(assets.projectId, project.id),
+              eq(assets.commitSha, dto.commitSha),
+              eq(assets.publicPath, publicPath),
+            ),
+          )
+          .limit(1);
+
+        let newAsset: Asset;
+        if (existingAsset) {
+          // Update existing asset
+          const [updated] = await db
+            .update(assets)
+            .set({
+              fileName: filePath.split('/').pop() || filePath,
+              originalPath: filePath,
+              storageKey,
+              mimeType: file.mimetype,
+              size: file.size,
+              contentHash,
+              branch: dto.branch,
+              uploadedBy: userId,
+              deploymentId,
+              description: dto.description,
+              committedAt,
+              tags,
+              updatedAt: new Date(),
+            })
+            .where(eq(assets.id, existingAsset.id))
+            .returning();
+          newAsset = updated;
+        } else {
+          // Insert new asset
+          const [inserted] = await db
+            .insert(assets)
+            .values({
+              fileName: filePath.split('/').pop() || filePath,
+              originalPath: filePath,
+              storageKey,
+              mimeType: file.mimetype,
+              size: file.size,
+              contentHash,
+              projectId: project.id,
+              branch: dto.branch,
+              commitSha: dto.commitSha,
+              uploadedBy: userId,
+              deploymentId,
+              publicPath,
+              assetType: AssetType.COMMITS,
+              description: dto.description,
+              committedAt,
+              tags,
+            })
+            .returning();
+          newAsset = inserted;
+        }
 
         uploadedAssets.push(newAsset);
         totalSize += file.size;
