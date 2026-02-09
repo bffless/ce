@@ -1,6 +1,7 @@
 import { ProxyMiddleware } from './proxy.middleware';
 import { ProxyRulesService } from './proxy-rules.service';
 import { ProxyService } from './proxy.service';
+import { ConfigService } from '@nestjs/config';
 import { Request, Response, NextFunction } from 'express';
 
 // Mock the database client
@@ -17,6 +18,7 @@ describe('ProxyMiddleware', () => {
   let middleware: ProxyMiddleware;
   let mockProxyRulesService: jest.Mocked<ProxyRulesService>;
   let mockProxyService: jest.Mocked<ProxyService>;
+  let mockConfigService: jest.Mocked<ConfigService>;
   let mockNext: NextFunction;
 
   beforeEach(() => {
@@ -28,7 +30,11 @@ describe('ProxyMiddleware', () => {
       forward: jest.fn().mockResolvedValue(undefined),
     } as any;
 
-    middleware = new ProxyMiddleware(mockProxyRulesService, mockProxyService);
+    mockConfigService = {
+      get: jest.fn().mockReturnValue('localhost'),
+    } as any;
+
+    middleware = new ProxyMiddleware(mockProxyRulesService, mockProxyService, mockConfigService);
     mockNext = jest.fn();
   });
 
