@@ -500,7 +500,7 @@ prompt_configuration() {
             printf "${RED}Domain is required. Please enter your domain name.${NC}\n"
         elif [ "$PRIMARY_DOMAIN" = "localhost" ]; then
             printf "${RED}localhost is not supported for production. Please enter a real domain.${NC}\n"
-            printf "${YELLOW}For local development, see: https://docs.bffless.com/getting-started/local-development${NC}\n"
+            printf "${YELLOW}For local development, see: https://docs.bffless.app/getting-started/local-development/${NC}\n"
         else
             break
         fi
@@ -536,7 +536,7 @@ prompt_configuration() {
         if [ "$PROXY_MODE" = "cloudflare" ]; then
             print_success "Cloudflare selected (recommended)"
             echo ""
-            printf "  ${DIM}Full setup guide: https://docs.bffless.com/getting-started/cloudflare-setup${NC}\n"
+            printf "  ${DIM}Full setup guide: https://docs.bffless.app/getting-started/cloudflare-setup/${NC}\n"
             echo ""
 
             # Detect server's public IP for PLATFORM_IP
@@ -577,7 +577,7 @@ prompt_configuration() {
         else
             print_info "Let's Encrypt selected"
             echo ""
-            printf "  ${DIM}Full setup guide: https://docs.bffless.com/getting-started/letsencrypt-setup${NC}\n"
+            printf "  ${DIM}Full setup guide: https://docs.bffless.app/getting-started/letsencrypt-setup/${NC}\n"
             echo ""
 
             # Check if certbot is installed, offer to install if missing
@@ -983,7 +983,7 @@ generate_ssl_certificates() {
             echo "  2. Create DNS A records for: @, www, admin, minio, *"
             echo "  3. Generate an Origin Certificate in Cloudflare Dashboard"
             echo ""
-            printf "${CYAN}Full guide: https://docs.bffless.com/getting-started/cloudflare-setup${NC}\n"
+            printf "${CYAN}Full guide: https://docs.bffless.app/getting-started/cloudflare-setup/${NC}\n"
             echo ""
 
             printf "Do you have your Origin Certificate ready? (y/N): "
@@ -1063,7 +1063,7 @@ ${line}"
                     echo "  Complete these steps before starting the platform:"
                     echo ""
                     echo "  1. Follow the Cloudflare setup guide:"
-                    printf "     ${CYAN}https://docs.bffless.com/getting-started/cloudflare-setup${NC}\n"
+                    printf "     ${CYAN}https://docs.bffless.app/getting-started/cloudflare-setup/${NC}\n"
                     echo ""
                     echo "  2. Save your Origin Certificate to:"
                     echo "     ssl/fullchain.pem   - Origin Certificate"
@@ -1081,7 +1081,7 @@ ${line}"
             echo "    ssl/fullchain.pem   - Origin Certificate PEM"
             echo "    ssl/privkey.pem     - Private Key PEM"
             echo ""
-            echo "  Full guide: https://docs.bffless.com/getting-started/cloudflare-setup"
+            echo "  Full guide: https://docs.bffless.app/getting-started/cloudflare-setup/"
             echo ""
             SSL_GENERATED=false
         fi
@@ -1389,6 +1389,53 @@ print_next_steps() {
     printf "${GREEN}+===========================================================================+${NC}\n"
     echo ""
 
+    # Determine the server IP to display (use PLATFORM_IP if set, otherwise try to detect)
+    DISPLAY_IP="${PLATFORM_IP:-}"
+    if [ -z "$DISPLAY_IP" ] && command_exists curl; then
+        DISPLAY_IP=$(curl -4 -s --max-time 5 ifconfig.me 2>/dev/null || echo "")
+    fi
+    DISPLAY_IP="${DISPLAY_IP:-<your-server-ip>}"
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Less important info first (will scroll out of view)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    printf "${BOLD}Important Files:${NC}\n"
+    echo ""
+    printf "  ${CYAN}.env${NC}                        - Environment configuration (KEEP SECRET)\n"
+    printf "  ${CYAN}start.sh${NC}                    - Startup script (reads .env, applies profiles)\n"
+    printf "  ${CYAN}docker-compose.yml${NC}          - Docker service definitions\n"
+    printf "  ${CYAN}ssl/${NC}                        - SSL certificates (if generated)\n"
+    echo ""
+    printf "${YELLOW}⚠ Security Note:${NC}\n"
+    echo "  Keep your .env file secure. It contains sensitive secrets that"
+    echo "  cannot be recovered if lost. Back it up safely!"
+    echo ""
+
+    printf "${BOLD}Advanced: External PostgreSQL${NC}\n"
+    echo ""
+    echo "  To use an external PostgreSQL database instead of Docker:"
+    echo ""
+    echo "  1. Edit .env BEFORE running start.sh:"
+    printf "     ${YELLOW}ENABLE_POSTGRES=false${NC}\n"
+    printf "     ${YELLOW}DATABASE_URL=\"postgresql://user:pass@your-host:5432/assethost\"${NC}\n"
+    printf "     ${YELLOW}SUPERTOKENS_DATABASE_URL=\"postgresql://user:pass@your-host:5432/supertokens\"${NC}\n"
+    echo ""
+    echo "  IMPORTANT:"
+    echo "  - Always quote URLs if they contain special characters like &"
+    echo "  - You need TWO databases: one for app data, one for SuperTokens auth"
+    echo "  - Create both databases before starting (e.g., 'assethost' and 'supertokens')"
+    echo ""
+    echo "  2. Ensure your external database is accessible and both databases exist"
+    echo ""
+    echo "  This saves ~256MB RAM. See .env.example for cloud provider examples"
+    echo "  (AWS RDS, Google Cloud SQL, Azure, DigitalOcean)."
+    echo ""
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Important next steps (will be visible at the end)
+    # ─────────────────────────────────────────────────────────────────────────
+
     # Show SSL status
     if [ "$SSL_GENERATED" = true ]; then
         if [ "$PROXY_MODE" = "cloudflare" ]; then
@@ -1421,13 +1468,15 @@ print_next_steps() {
             step=$((step + 1))
         fi
 
-        printf "  ${CYAN}${step}.${NC} Configure Cloudflare DNS (proxied, orange cloud):\n"
+        printf "  ${CYAN}${step}.${NC} Configure Cloudflare DNS (if not already done):\n"
         echo ""
-        printf "     ${YELLOW}${PRIMARY_DOMAIN}${NC}         → A record → ${YELLOW}<your-server-ip>${NC}  (Proxied)\n"
-        printf "     ${YELLOW}www.${PRIMARY_DOMAIN}${NC}     → A record → ${YELLOW}<your-server-ip>${NC}  (Proxied)\n"
-        printf "     ${YELLOW}admin.${PRIMARY_DOMAIN}${NC}   → A record → ${YELLOW}<your-server-ip>${NC}  (Proxied)\n"
-        printf "     ${YELLOW}minio.${PRIMARY_DOMAIN}${NC}   → A record → ${YELLOW}<your-server-ip>${NC}  (Proxied)\n"
-        printf "     ${YELLOW}*.${PRIMARY_DOMAIN}${NC}       → A record → ${YELLOW}<your-server-ip>${NC}  (Proxied)\n"
+        printf "     ${DIM}Proxied (orange cloud) A records pointing to ${YELLOW}${DISPLAY_IP}${NC}\n"
+        echo ""
+        printf "     ${YELLOW}${PRIMARY_DOMAIN}${NC}         → A record → ${YELLOW}${DISPLAY_IP}${NC}  (Proxied)\n"
+        printf "     ${YELLOW}www.${PRIMARY_DOMAIN}${NC}     → A record → ${YELLOW}${DISPLAY_IP}${NC}  (Proxied)\n"
+        printf "     ${YELLOW}admin.${PRIMARY_DOMAIN}${NC}   → A record → ${YELLOW}${DISPLAY_IP}${NC}  (Proxied)\n"
+        printf "     ${YELLOW}minio.${PRIMARY_DOMAIN}${NC}   → A record → ${YELLOW}${DISPLAY_IP}${NC}  (Proxied)\n"
+        printf "     ${YELLOW}*.${PRIMARY_DOMAIN}${NC}       → A record → ${YELLOW}${DISPLAY_IP}${NC}  (Proxied)\n"
         echo ""
         step=$((step + 1))
 
@@ -1443,11 +1492,11 @@ print_next_steps() {
         echo ""
         echo "     Point these records to your server IP:"
         echo ""
-        printf "     ${YELLOW}${PRIMARY_DOMAIN}${NC}         → A record → ${YELLOW}<your-server-ip>${NC}\n"
-        printf "     ${YELLOW}www.${PRIMARY_DOMAIN}${NC}     → A record → ${YELLOW}<your-server-ip>${NC}\n"
-        printf "     ${YELLOW}admin.${PRIMARY_DOMAIN}${NC}   → A record → ${YELLOW}<your-server-ip>${NC}\n"
-        printf "     ${YELLOW}minio.${PRIMARY_DOMAIN}${NC}   → A record → ${YELLOW}<your-server-ip>${NC}\n"
-        printf "     ${YELLOW}*.${PRIMARY_DOMAIN}${NC}       → A record → ${YELLOW}<your-server-ip>${NC}  ${DIM}(for subdomain mappings)${NC}\n"
+        printf "     ${YELLOW}${PRIMARY_DOMAIN}${NC}         → A record → ${YELLOW}${DISPLAY_IP}${NC}\n"
+        printf "     ${YELLOW}www.${PRIMARY_DOMAIN}${NC}     → A record → ${YELLOW}${DISPLAY_IP}${NC}\n"
+        printf "     ${YELLOW}admin.${PRIMARY_DOMAIN}${NC}   → A record → ${YELLOW}${DISPLAY_IP}${NC}\n"
+        printf "     ${YELLOW}minio.${PRIMARY_DOMAIN}${NC}   → A record → ${YELLOW}${DISPLAY_IP}${NC}\n"
+        printf "     ${YELLOW}*.${PRIMARY_DOMAIN}${NC}       → A record → ${YELLOW}${DISPLAY_IP}${NC}  ${DIM}(for subdomain mappings)${NC}\n"
         echo ""
         printf "     ${DIM}Or use CNAME records pointing to ${PRIMARY_DOMAIN}${NC}\n"
         printf "     ${DIM}Wait 5-15 minutes for DNS propagation${NC}\n"
@@ -1485,70 +1534,16 @@ print_next_steps() {
     echo ""
     printf "     ${YELLOW}./start.sh${NC}\n"
     echo ""
-    printf "     ${DIM}Or with options:${NC}\n"
-    printf "     ${YELLOW}./start.sh --all${NC}       ${DIM}# Start all services (MinIO + Redis)${NC}\n"
-    printf "     ${YELLOW}./start.sh --minimal${NC}   ${DIM}# Start without optional services${NC}\n"
-    echo ""
-    step=$((step + 1))
-
-    # Wait for services
-    printf "  ${CYAN}${step}.${NC} Wait for all services to start (about 30-60 seconds)\n"
-    echo ""
-    printf "     ${YELLOW}docker compose logs -f${NC}  # Watch logs\n"
-    printf "     ${YELLOW}docker compose ps${NC}       # Check status\n"
-    echo ""
     step=$((step + 1))
 
     # Open browser
-    printf "  ${CYAN}${step}.${NC} Open your browser:\n"
+    printf "  ${CYAN}${step}.${NC} Open your browser and complete the setup wizard:\n"
     echo ""
     if [ "$PRIMARY_DOMAIN" != "localhost" ]; then
-        printf "     ${YELLOW}https://www.${PRIMARY_DOMAIN}${NC}         - Main application\n"
-        printf "     ${YELLOW}https://admin.${PRIMARY_DOMAIN}${NC}       - Admin panel\n"
-        printf "     ${YELLOW}https://minio.${PRIMARY_DOMAIN}${NC}       - MinIO console\n"
+        printf "     ${YELLOW}https://admin.${PRIMARY_DOMAIN}${NC}\n"
     else
         printf "     ${YELLOW}http://localhost${NC}\n"
     fi
-    echo ""
-    step=$((step + 1))
-
-    # Complete wizard
-    printf "  ${CYAN}${step}.${NC} Complete the setup wizard:\n"
-    echo "     - Create your admin account"
-    echo "     - Configure storage (MinIO is pre-configured)"
-    echo "     - Test connection and complete setup"
-    echo ""
-
-    printf "${BOLD}Important Files:${NC}\n"
-    echo ""
-    printf "  ${CYAN}.env${NC}                        - Environment configuration (KEEP SECRET)\n"
-    printf "  ${CYAN}start.sh${NC}                    - Startup script (reads .env, applies profiles)\n"
-    printf "  ${CYAN}docker-compose.yml${NC}          - Docker service definitions\n"
-    printf "  ${CYAN}ssl/${NC}                        - SSL certificates (if generated)\n"
-    echo ""
-    printf "${YELLOW}⚠ Security Note:${NC}\n"
-    echo "  Keep your .env file secure. It contains sensitive secrets that"
-    echo "  cannot be recovered if lost. Back it up safely!"
-    echo ""
-
-    printf "${BOLD}Advanced: External PostgreSQL${NC}\n"
-    echo ""
-    echo "  To use an external PostgreSQL database instead of Docker:"
-    echo ""
-    echo "  1. Edit .env BEFORE running start.sh:"
-    printf "     ${YELLOW}ENABLE_POSTGRES=false${NC}\n"
-    printf "     ${YELLOW}DATABASE_URL=\"postgresql://user:pass@your-host:5432/assethost\"${NC}\n"
-    printf "     ${YELLOW}SUPERTOKENS_DATABASE_URL=\"postgresql://user:pass@your-host:5432/supertokens\"${NC}\n"
-    echo ""
-    echo "  IMPORTANT:"
-    echo "  - Always quote URLs if they contain special characters like &"
-    echo "  - You need TWO databases: one for app data, one for SuperTokens auth"
-    echo "  - Create both databases before starting (e.g., 'assethost' and 'supertokens')"
-    echo ""
-    echo "  2. Ensure your external database is accessible and both databases exist"
-    echo ""
-    echo "  This saves ~256MB RAM. See .env.example for cloud provider examples"
-    echo "  (AWS RDS, Google Cloud SQL, Azure, DigitalOcean)."
     echo ""
 }
 
