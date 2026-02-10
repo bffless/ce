@@ -299,12 +299,28 @@ export class PublicController {
       res.setHeader('X-Variant', variantSelection.selectedAlias);
     }
 
+    // Apply path prefix from domain mapping if present
+    // This ensures internal rewrites resolve relative to the domain's path context
+    let fullPath = filePath;
+    if (forwardedHost) {
+      const mapping = await this.getDomainMappingByHost(forwardedHost);
+      if (mapping?.path) {
+        const pathPrefix = mapping.path.replace(/^\/+/, '').replace(/\/+$/, '');
+        if (pathPrefix) {
+          fullPath = `${pathPrefix}/${filePath || ''}`.replace(/\/+/g, '/');
+          this.logger.debug(
+            `[serveAliasAsset] Applied domain path prefix: ${pathPrefix}, fullPath=${fullPath}`,
+          );
+        }
+      }
+    }
+
     await this.serveAssetInternal(
       owner,
       repo,
       commitSha,
       effectiveAlias,
-      filePath,
+      fullPath,
       req,
       res,
       false,
@@ -343,6 +359,9 @@ export class PublicController {
       // This handles the case where nginx's wildcard catch-all intercepts requests
       // that should have gone to domain-specific server blocks (e.g., when the
       // domain config hasn't been loaded by nginx yet, or after a restart).
+      this.logger.debug(
+        `[serveSubdomainAlias] Alias '${aliasName}' not found, checking domain mapping fallback`,
+      );
       const forwardedHost = req.headers['x-forwarded-host'] as string | undefined;
       if (forwardedHost) {
         const served = await this.serveDomainMappingFallback(forwardedHost, filePath, req, res);
@@ -351,6 +370,10 @@ export class PublicController {
 
       return this.serve404Page(res, `Preview not found: ${aliasName}`);
     }
+
+    this.logger.debug(
+      `[serveSubdomainAlias] Alias '${aliasName}' FOUND, serving directly (no domain mapping path prefix)`,
+    );
 
     // Get project from alias
     const project = await this.projectsService.getProjectById(aliasRecord.projectId);
@@ -805,8 +828,13 @@ export class PublicController {
     }
 
     // Apply path prefix from domain mapping
+    // For internal rewrites, the target path is relative to the domain's path context
     const pathPrefix = mapping.path ? mapping.path.replace(/^\/+/, '').replace(/\/+$/, '') : '';
     const fullPath = pathPrefix ? `${pathPrefix}/${filePath || ''}` : (filePath || '');
+
+    this.logger.debug(
+      `[serveDomainMappingFallback] Path resolution: mapping.path=${mapping.path}, pathPrefix=${pathPrefix}, filePath=${filePath}, fullPath=${fullPath}`,
+    );
 
     await this.serveAssetInternal(
       project.owner,
@@ -885,6 +913,30 @@ export class PublicController {
       .where(eq(domainMappings.domain, altDomain))
       .limit(1);
     return altMapping?.id;
+  }
+
+  /**
+   * Get full domain mapping by host (including path field)
+   * Used to apply domain-specific path prefixes for internal rewrites
+   */
+  private async getDomainMappingByHost(
+    domain: string,
+  ): Promise<typeof domainMappings.$inferSelect | null> {
+    const [mapping] = await db
+      .select()
+      .from(domainMappings)
+      .where(and(eq(domainMappings.domain, domain), eq(domainMappings.isActive, true)))
+      .limit(1);
+    if (mapping) return mapping;
+
+    // Try www variant: www.x.com → x.com, or x.com → www.x.com
+    const altDomain = domain.startsWith('www.') ? domain.slice(4) : `www.${domain}`;
+    const [altMapping] = await db
+      .select()
+      .from(domainMappings)
+      .where(and(eq(domainMappings.domain, altDomain), eq(domainMappings.isActive, true)))
+      .limit(1);
+    return altMapping || null;
   }
 
   /**
