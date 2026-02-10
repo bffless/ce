@@ -297,6 +297,8 @@ services:
       NODE_OPTIONS: '--max-old-space-size=128'
       NODE_ENV: production
       PORT: 3000
+      # Log level: error,warn,log (default) or error,warn,log,debug for verbose
+      LOG_LEVEL: ${LOG_LEVEL:-error,warn,log}
       DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:${POSTGRES_PASSWORD:-changeme}@postgres:5432/assethost}
 
       # Storage configuration (will be set via setup wizard, these are defaults)

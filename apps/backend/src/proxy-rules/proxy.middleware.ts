@@ -1,11 +1,12 @@
 import { Injectable, NestMiddleware, Logger } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, or } from 'drizzle-orm';
 import { db } from '../db/client';
-import { projects, deploymentAliases } from '../db/schema';
+import { projects, deploymentAliases, domainMappings } from '../db/schema';
 import { ProxyRulesService } from './proxy-rules.service';
 import { ProxyService } from './proxy.service';
 import { ProxyRule } from '../db/schema/proxy-rules.schema';
+import { ConfigService } from '@nestjs/config';
 
 interface ParsedPublicPath {
   owner: string;
@@ -30,6 +31,7 @@ export class ProxyMiddleware implements NestMiddleware {
   constructor(
     private readonly proxyRulesService: ProxyRulesService,
     private readonly proxyService: ProxyService,
+    private readonly configService: ConfigService,
   ) {}
 
   async use(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -87,6 +89,9 @@ export class ProxyMiddleware implements NestMiddleware {
 
       // Get effective rules from the resolved rule set
       const rules = await this.getCachedRules(effectiveRuleSetId);
+      this.logger.debug(
+        `Proxy middleware: path=${subpathForMatching}, ruleSetId=${effectiveRuleSetId}, rulesCount=${rules.length}`,
+      );
       if (rules.length === 0) {
         return next();
       }
@@ -94,6 +99,30 @@ export class ProxyMiddleware implements NestMiddleware {
       // Find matching rule using the appropriate subpath
       const matchedRule = this.findMatchingRule(rules, subpathForMatching);
       if (!matchedRule) {
+        this.logger.debug(`Proxy middleware: no matching rule for ${subpathForMatching}`);
+        return next();
+      }
+
+      // Handle internal rewrite (no HTTP proxy - just rewrite the URL and continue)
+      if (matchedRule.internalRewrite) {
+        const newSubpath = this.buildRewritePath(matchedRule, subpathForMatching);
+        // Rewrite the URL path for file serving
+        // Replace the subpath portion while keeping the /public/{owner}/{repo}/{ref}/ prefix
+        const oldPath = req.path;
+        const newPath = oldPath.replace(parsed.subpath, newSubpath);
+        req.url = req.url.replace(req.path, newPath);
+
+        // Also update the route params - the wildcard param '0' contains the file path
+        // This is needed because req.params is already populated by route matching
+        // and won't be updated by just modifying req.url
+        if (req.params && req.params['0']) {
+          // Remove leading slash from newSubpath to match how Express extracts the wildcard
+          req.params['0'] = newSubpath.startsWith('/') ? newSubpath.slice(1) : newSubpath;
+        }
+
+        this.logger.log(
+          `Internal rewrite: ${subpathForMatching} → ${newSubpath} (rule: ${matchedRule.id}, params[0]: ${req.params?.['0']})`,
+        );
         return next();
       }
 
@@ -115,6 +144,10 @@ export class ProxyMiddleware implements NestMiddleware {
    * Handle subdomain-alias format: /public/subdomain-alias/{aliasName}/{subpath...}
    * This format is used by nginx wildcard server blocks for preview alias subdomains.
    * We need to look up the alias first to get the project and proxy rules.
+   *
+   * For domain-mapped requests (www.example.com), the aliasName might not match a real alias
+   * (e.g., "www"). In that case, we fall back to looking up the domain mapping to find
+   * the actual project and alias.
    */
   private async handleSubdomainAlias(
     req: Request,
@@ -132,24 +165,52 @@ export class ProxyMiddleware implements NestMiddleware {
       : subpath;
 
     // Look up alias by name (across all projects)
-    const alias = await this.getAliasByNameGlobal(aliasName);
+    let alias = await this.getAliasByNameGlobal(aliasName);
+    let project: typeof projects.$inferSelect | null = null;
+    let resolvedAliasName = aliasName;
+
     if (!alias) {
-      return next();
+      // Alias not found by name - check if this is a domain-mapped request
+      // by looking up the X-Forwarded-Host header
+      const forwardedHost = req.headers['x-forwarded-host'] as string | undefined;
+      if (!forwardedHost) {
+        return next();
+      }
+
+      // Look up domain mapping to find the actual project and alias
+      const domainInfo = await this.resolveDomainMapping(forwardedHost);
+      if (!domainInfo) {
+        return next();
+      }
+
+      project = domainInfo.project;
+      resolvedAliasName = domainInfo.aliasName;
+
+      // Get the alias record for rule lookup
+      alias = await this.getAliasByName(project.id, resolvedAliasName);
+      // alias may still be null if the domain mapping points to an alias that doesn't exist,
+      // but we can still use project default rules
+
+      this.logger.debug(
+        `Domain mapping resolved: host=${forwardedHost}, project=${project.owner}/${project.name}, alias=${resolvedAliasName}`,
+      );
     }
 
-    // Get project to check for default proxy rule set
-    const project = await this.getProjectById(alias.projectId);
+    // Get project if we haven't already (happens when alias was found directly)
     if (!project) {
-      return next();
+      project = await this.getProjectById(alias!.projectId);
+      if (!project) {
+        return next();
+      }
     }
 
     // Determine effective rule set:
     // 1. Alias's own proxyRuleSetId (if set)
     // 2. For preview aliases without rules, check manual aliases with same commit SHA
     // 3. Fall back to project default
-    let effectiveRuleSetId = alias.proxyRuleSetId;
+    let effectiveRuleSetId = alias?.proxyRuleSetId ?? null;
 
-    if (!effectiveRuleSetId && alias.isAutoPreview) {
+    if (!effectiveRuleSetId && alias?.isAutoPreview) {
       // Try to inherit from a manual alias pointing to the same commit
       effectiveRuleSetId = await this.findProxyRuleSetFromCommitAliases(
         alias.projectId,
@@ -163,6 +224,9 @@ export class ProxyMiddleware implements NestMiddleware {
 
     // Get effective rules from the resolved rule set
     const rules = await this.getCachedRules(effectiveRuleSetId);
+    this.logger.debug(
+      `Subdomain proxy middleware: path=${subpathForMatching}, alias=${resolvedAliasName}, ruleSetId=${effectiveRuleSetId}, rulesCount=${rules.length}`,
+    );
     if (rules.length === 0) {
       return next();
     }
@@ -170,11 +234,31 @@ export class ProxyMiddleware implements NestMiddleware {
     // Find matching rule
     const matchedRule = this.findMatchingRule(rules, subpathForMatching);
     if (!matchedRule) {
+      this.logger.debug(`Subdomain proxy middleware: no matching rule for ${subpathForMatching}`);
+      return next();
+    }
+
+    // Handle internal rewrite (no HTTP proxy - just rewrite the URL and continue)
+    if (matchedRule.internalRewrite) {
+      const newSubpath = this.buildRewritePath(matchedRule, subpathForMatching);
+      // For subdomain-alias format, replace the subpath after /public/subdomain-alias/{aliasName}/
+      const oldPath = req.path;
+      const newPath = oldPath.replace(subpath, newSubpath);
+      req.url = req.url.replace(req.path, newPath);
+
+      // Also update the route params - the wildcard param '0' contains the file path
+      if (req.params && req.params['0']) {
+        req.params['0'] = newSubpath.startsWith('/') ? newSubpath.slice(1) : newSubpath;
+      }
+
+      this.logger.log(
+        `Subdomain internal rewrite: ${subpathForMatching} → ${newSubpath} (alias: ${resolvedAliasName}, rule: ${matchedRule.id})`,
+      );
       return next();
     }
 
     this.logger.debug(
-      `Subdomain proxy match: ${subpathForMatching} → ${matchedRule.targetUrl} (alias: ${aliasName}, rule: ${matchedRule.id})`,
+      `Subdomain proxy match: ${subpathForMatching} → ${matchedRule.targetUrl} (alias: ${resolvedAliasName}, rule: ${matchedRule.id})`,
     );
 
     // Forward request
@@ -315,6 +399,71 @@ export class ProxyMiddleware implements NestMiddleware {
   }
 
   /**
+   * Resolve a domain mapping by hostname to get the project and alias.
+   * Handles both direct domain matches and primary domain lookups (www handling).
+   *
+   * @returns Object with project and aliasName, or null if not found
+   */
+  private async resolveDomainMapping(
+    host: string,
+  ): Promise<{ project: typeof projects.$inferSelect; aliasName: string } | null> {
+    // Build domain variants: check both www and non-www versions
+    const wwwVariant = host.startsWith('www.') ? host : `www.${host}`;
+    const nonWwwVariant = host.startsWith('www.') ? host.slice(4) : host;
+
+    // Try direct domain match first (checking both www/non-www)
+    let [mapping] = await db
+      .select()
+      .from(domainMappings)
+      .where(
+        and(
+          or(
+            eq(domainMappings.domain, host),
+            eq(domainMappings.domain, wwwVariant),
+            eq(domainMappings.domain, nonWwwVariant),
+          ),
+          eq(domainMappings.isActive, true),
+        ),
+      )
+      .limit(1);
+
+    // If no direct match, check if host is the primary domain or www.primary_domain
+    if (!mapping) {
+      const primaryDomain = this.configService.get<string>('PRIMARY_DOMAIN') || 'localhost';
+      if (host === primaryDomain || host === `www.${primaryDomain}`) {
+        const [primaryMapping] = await db
+          .select()
+          .from(domainMappings)
+          .where(and(eq(domainMappings.isPrimary, true), eq(domainMappings.isActive, true)))
+          .limit(1);
+
+        if (primaryMapping) {
+          mapping = primaryMapping;
+        }
+      }
+    }
+
+    if (!mapping || !mapping.projectId || !mapping.alias) {
+      return null;
+    }
+
+    // Redirect domain type doesn't serve content
+    if (mapping.domainType === 'redirect') {
+      return null;
+    }
+
+    const project = await this.getProjectById(mapping.projectId);
+    if (!project) {
+      return null;
+    }
+
+    return {
+      project,
+      aliasName: mapping.alias,
+    };
+  }
+
+  /**
    * Get rules with caching based on rule set ID
    *
    * Resolution order:
@@ -353,6 +502,48 @@ export class ProxyMiddleware implements NestMiddleware {
       }
     }
     return null;
+  }
+
+  /**
+   * Build the rewritten path for internal rewrite rules.
+   *
+   * For exact matches: return target path directly
+   * For wildcard patterns: apply substitution
+   */
+  private buildRewritePath(rule: ProxyRule, originalPath: string): string {
+    const targetPath = rule.targetUrl; // For internal rewrites, targetUrl is actually a path
+
+    // For exact matches: return target path directly
+    // /env.json matched by pattern /env.json → target /environments/production.json
+    if (!rule.pathPattern.includes('*')) {
+      return targetPath;
+    }
+
+    // For prefix wildcard patterns: /api/* with targetUrl /v2/api
+    // /api/users becomes /v2/api/users
+    if (rule.pathPattern.endsWith('/*')) {
+      const prefix = rule.pathPattern.slice(0, -2);
+      if (originalPath.startsWith(prefix + '/')) {
+        const remainder = originalPath.substring(prefix.length);
+        return targetPath.replace(/\/$/, '') + remainder;
+      }
+      if (originalPath === prefix) {
+        return targetPath;
+      }
+    }
+
+    // For suffix wildcard patterns: *.json with targetUrl /data/
+    // /config.json becomes /data/config.json
+    if (rule.pathPattern.startsWith('*')) {
+      const suffix = rule.pathPattern.slice(1);
+      if (originalPath.endsWith(suffix)) {
+        const filename = originalPath.substring(originalPath.lastIndexOf('/') + 1);
+        return targetPath.replace(/\/$/, '') + '/' + filename;
+      }
+    }
+
+    // Fallback: just return target path
+    return targetPath;
   }
 
   /**

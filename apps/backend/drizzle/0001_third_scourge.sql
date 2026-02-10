@@ -1,0 +1,1 @@
+ALTER TABLE "proxy_rules" ADD COLUMN "internal_rewrite" boolean DEFAULT false NOT NULL;

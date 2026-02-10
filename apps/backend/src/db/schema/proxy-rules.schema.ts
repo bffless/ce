@@ -197,6 +197,20 @@ export const proxyRules = pgTable(
     authTransform: jsonb('auth_transform').$type<AuthTransformConfig>(),
 
     /**
+     * Whether this is an internal rewrite rule (no HTTP proxy request).
+     *
+     * When true:
+     * - targetUrl is interpreted as a path within the same deployment (e.g., /environments/production.json)
+     * - No HTTP request is made to an external service
+     * - The request URL is rewritten and continues to normal file serving
+     *
+     * Use case: Serve /env.json from /environments/production.json without an HTTP round-trip.
+     *
+     * Default: false (normal external proxy behavior)
+     */
+    internalRewrite: boolean('internal_rewrite').notNull().default(false),
+
+    /**
      * Whether this rule is active.
      * Disabled rules are skipped during matching.
      */

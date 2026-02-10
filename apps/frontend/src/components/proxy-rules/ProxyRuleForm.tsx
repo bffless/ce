@@ -19,6 +19,7 @@ export function ProxyRuleForm({ initialData, onSubmit, onCancel }: ProxyRuleForm
   const [timeout, setTimeout] = useState(initialData?.timeout || 30000);
   const [preserveHost, setPreserveHost] = useState(initialData?.preserveHost ?? false);
   const [forwardCookies, setForwardCookies] = useState(initialData?.forwardCookies ?? false);
+  const [internalRewrite, setInternalRewrite] = useState(initialData?.internalRewrite ?? false);
   const [description, setDescription] = useState(initialData?.description || '');
   const [apiKey, setApiKey] = useState('');
   // Auth transformation (cookie to bearer)
@@ -38,31 +39,45 @@ export function ProxyRuleForm({ initialData, onSubmit, onCancel }: ProxyRuleForm
     if (!pathPattern) {
       newErrors.pathPattern = 'Path pattern is required';
     } else if (!/^(\/[a-zA-Z0-9\-_\/\*\.]*|\*[a-zA-Z0-9\-_\/\.]*)$/.test(pathPattern)) {
-      newErrors.pathPattern = 'Path pattern must start with / or * and contain valid URL characters';
+      newErrors.pathPattern =
+        'Path pattern must start with / or * and contain valid URL characters';
     }
 
-    // Validate target URL
+    // Validate target URL or target path (for internal rewrite)
     if (!targetUrl) {
-      newErrors.targetUrl = 'Target URL is required';
+      newErrors.targetUrl = internalRewrite ? 'Target path is required' : 'Target URL is required';
+    } else if (internalRewrite) {
+      // For internal rewrite, validate as a path starting with /
+      if (!targetUrl.startsWith('/')) {
+        newErrors.targetUrl =
+          'Target path must start with "/" (e.g., /environments/production.json)';
+      } else if (targetUrl.includes('://')) {
+        newErrors.targetUrl =
+          'Target path cannot contain a protocol (use a path like /path/to/file.json)';
+      }
     } else {
+      // For external proxy, validate as a URL
       try {
         const url = new URL(targetUrl);
         // Allow HTTPS for any URL, or HTTP for internal/trusted services
         const isHttps = url.protocol === 'https:';
-        const isInternalK8s = url.protocol === 'http:' &&
+        const isInternalK8s =
+          url.protocol === 'http:' &&
           (url.hostname.endsWith('.svc') || url.hostname.endsWith('.svc.cluster.local'));
-        const isLocalhost = url.protocol === 'http:' &&
+        const isLocalhost =
+          url.protocol === 'http:' &&
           (url.hostname === 'localhost' || url.hostname === '127.0.0.1');
         if (!isHttps && !isInternalK8s && !isLocalhost) {
-          newErrors.targetUrl = 'Target URL must use HTTPS, or HTTP for internal services (*.svc, localhost)';
+          newErrors.targetUrl =
+            'Target URL must use HTTPS, or HTTP for internal services (*.svc, localhost)';
         }
       } catch {
         newErrors.targetUrl = 'Invalid URL format';
       }
     }
 
-    // Validate timeout
-    if (timeout < 1000 || timeout > 60000) {
+    // Validate timeout (only for external proxies)
+    if (!internalRewrite && (timeout < 1000 || timeout > 60000)) {
       newErrors.timeout = 'Timeout must be between 1000ms and 60000ms';
     }
 
@@ -82,16 +97,22 @@ export function ProxyRuleForm({ initialData, onSubmit, onCancel }: ProxyRuleForm
       await onSubmit({
         pathPattern,
         targetUrl,
-        stripPrefix,
+        internalRewrite,
+        // Only include external proxy options when not using internal rewrite
+        ...(internalRewrite
+          ? {}
+          : {
+              stripPrefix,
+              timeout,
+              preserveHost,
+              forwardCookies,
+              headerConfig: apiKey ? { add: { Authorization: apiKey } } : undefined,
+              authTransform: authTransformEnabled
+                ? { type: 'cookie-to-bearer', cookieName }
+                : undefined,
+            }),
         order,
-        timeout,
-        preserveHost,
-        forwardCookies,
         description: description || undefined,
-        headerConfig: apiKey ? { add: { Authorization: apiKey } } : undefined,
-        authTransform: authTransformEnabled
-          ? { type: 'cookie-to-bearer', cookieName }
-          : undefined,
       });
     } finally {
       setIsSubmitting(false);
@@ -112,26 +133,47 @@ export function ProxyRuleForm({ initialData, onSubmit, onCancel }: ProxyRuleForm
         {errors.pathPattern ? (
           <p className="text-xs text-destructive">{errors.pathPattern}</p>
         ) : (
-          <p className="text-xs text-muted-foreground">
-            Examples: /api/*, /graphql, *.json
-          </p>
+          <p className="text-xs text-muted-foreground">Examples: /api/*, /graphql, *.json</p>
         )}
       </div>
 
+      <div className="border rounded-lg p-4 space-y-3 bg-muted/50">
+        <div className="flex items-center gap-2">
+          <Switch
+            id="internalRewrite"
+            checked={internalRewrite}
+            onCheckedChange={setInternalRewrite}
+          />
+          <Label htmlFor="internalRewrite" className="cursor-pointer font-medium">
+            Internal Rewrite
+          </Label>
+        </div>
+        <p className="text-xs text-muted-foreground ml-7">
+          Serve a different path from the same deployment instead of proxying to an external URL. No
+          HTTP request is made.
+        </p>
+      </div>
+
       <div className="space-y-2">
-        <Label htmlFor="targetUrl">Target URL *</Label>
+        <Label htmlFor="targetUrl">{internalRewrite ? 'Target Path *' : 'Target URL *'}</Label>
         <Input
           id="targetUrl"
-          type="url"
+          type={internalRewrite ? 'text' : 'url'}
           value={targetUrl}
           onChange={(e) => setTargetUrl(e.target.value)}
-          placeholder="https://api.example.com"
+          placeholder={
+            internalRewrite ? '/environments/production.json' : 'https://api.example.com'
+          }
           className={errors.targetUrl ? 'border-destructive' : ''}
         />
         {errors.targetUrl ? (
           <p className="text-xs text-destructive">{errors.targetUrl}</p>
         ) : (
-          <p className="text-xs text-muted-foreground">HTTPS required, or HTTP for internal services (*.svc, localhost)</p>
+          <p className="text-xs text-muted-foreground">
+            {internalRewrite
+              ? 'Path within the deployment to serve (e.g., /environments/production.json)'
+              : 'HTTPS required, or HTTP for internal services (*.svc, localhost)'}
+          </p>
         )}
       </div>
 
@@ -151,111 +193,110 @@ export function ProxyRuleForm({ initialData, onSubmit, onCancel }: ProxyRuleForm
         </p>
       </div>
 
-      <div className="flex items-center gap-2">
-        <Switch
-          id="stripPrefix"
-          checked={stripPrefix}
-          onCheckedChange={setStripPrefix}
-        />
-        <Label htmlFor="stripPrefix" className="cursor-pointer">
-          Strip matched path prefix
-        </Label>
-      </div>
-      <p className="text-xs text-muted-foreground -mt-2 ml-7">
-        When enabled, /api/users with pattern /api/* forwards to target/users
-      </p>
+      {/* External proxy options - hidden when internal rewrite is enabled */}
+      {!internalRewrite && (
+        <>
+          <div className="flex items-center gap-2">
+            <Switch id="stripPrefix" checked={stripPrefix} onCheckedChange={setStripPrefix} />
+            <Label htmlFor="stripPrefix" className="cursor-pointer">
+              Strip matched path prefix
+            </Label>
+          </div>
+          <p className="text-xs text-muted-foreground -mt-2 ml-7">
+            When enabled, /api/users with pattern /api/* forwards to target/users
+          </p>
 
-      <div className="flex items-center gap-2">
-        <Switch
-          id="preserveHost"
-          checked={preserveHost}
-          onCheckedChange={setPreserveHost}
-        />
-        <Label htmlFor="preserveHost" className="cursor-pointer">
-          Preserve original Host header
-        </Label>
-      </div>
-      <p className="text-xs text-muted-foreground -mt-2 ml-7">
-        Forward the original Host header instead of using the target host
-      </p>
+          <div className="flex items-center gap-2">
+            <Switch id="preserveHost" checked={preserveHost} onCheckedChange={setPreserveHost} />
+            <Label htmlFor="preserveHost" className="cursor-pointer">
+              Preserve original Host header
+            </Label>
+          </div>
+          <p className="text-xs text-muted-foreground -mt-2 ml-7">
+            Forward the original Host header instead of using the target host
+          </p>
 
-      <div className="flex items-center gap-2">
-        <Switch
-          id="forwardCookies"
-          checked={forwardCookies}
-          onCheckedChange={setForwardCookies}
-        />
-        <Label htmlFor="forwardCookies" className="cursor-pointer">
-          Forward cookies to target
-        </Label>
-      </div>
-      <p className="text-xs text-muted-foreground -mt-2 ml-7">
-        Enable for session-based authentication with trusted backends
-      </p>
+          <div className="flex items-center gap-2">
+            <Switch
+              id="forwardCookies"
+              checked={forwardCookies}
+              onCheckedChange={setForwardCookies}
+            />
+            <Label htmlFor="forwardCookies" className="cursor-pointer">
+              Forward cookies to target
+            </Label>
+          </div>
+          <p className="text-xs text-muted-foreground -mt-2 ml-7">
+            Enable for session-based authentication with trusted backends
+          </p>
 
-      <div className="border rounded-lg p-4 space-y-3 bg-muted/50">
-        <div className="flex items-center gap-2">
-          <Switch
-            id="authTransform"
-            checked={authTransformEnabled}
-            onCheckedChange={setAuthTransformEnabled}
-          />
-          <Label htmlFor="authTransform" className="cursor-pointer font-medium">
-            Cookie to Bearer Token
-          </Label>
-        </div>
-        <p className="text-xs text-muted-foreground ml-7">
-          Extract a cookie value and send it as Authorization: Bearer header.
-          Useful for proxying to APIs that validate JWTs.
-        </p>
-        {authTransformEnabled && (
-          <div className="space-y-2 ml-7">
-            <Label htmlFor="cookieName">Cookie Name</Label>
+          <div className="border rounded-lg p-4 space-y-3 bg-muted/50">
+            <div className="flex items-center gap-2">
+              <Switch
+                id="authTransform"
+                checked={authTransformEnabled}
+                onCheckedChange={setAuthTransformEnabled}
+              />
+              <Label htmlFor="authTransform" className="cursor-pointer font-medium">
+                Cookie to Bearer Token
+              </Label>
+            </div>
+            <p className="text-xs text-muted-foreground ml-7">
+              Extract a cookie value and send it as Authorization: Bearer header. Useful for
+              proxying to APIs that validate JWTs.
+            </p>
+            {authTransformEnabled && (
+              <div className="space-y-2 ml-7">
+                <Label htmlFor="cookieName">Cookie Name</Label>
+                <Input
+                  id="cookieName"
+                  value={cookieName}
+                  onChange={(e) => setCookieName(e.target.value)}
+                  placeholder="sAccessToken"
+                  className="max-w-xs"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Default: sAccessToken (SuperTokens JWT cookie)
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="timeout">Timeout (ms)</Label>
             <Input
-              id="cookieName"
-              value={cookieName}
-              onChange={(e) => setCookieName(e.target.value)}
-              placeholder="sAccessToken"
-              className="max-w-xs"
+              id="timeout"
+              type="number"
+              min={1000}
+              max={60000}
+              value={timeout}
+              onChange={(e) => setTimeout(Number(e.target.value))}
+              className={errors.timeout ? 'border-destructive' : ''}
+            />
+            {errors.timeout ? (
+              <p className="text-xs text-destructive">{errors.timeout}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">1000ms - 60000ms (default: 30000ms)</p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="apiKey">API Key / Authorization Header (optional)</Label>
+            <Input
+              id="apiKey"
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder={
+                initialData ? '(unchanged - enter new value to update)' : 'Bearer sk_live_xxx'
+              }
             />
             <p className="text-xs text-muted-foreground">
-              Default: sAccessToken (SuperTokens JWT cookie)
+              Stored encrypted. Sent as Authorization header with each proxied request.
             </p>
           </div>
-        )}
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="timeout">Timeout (ms)</Label>
-        <Input
-          id="timeout"
-          type="number"
-          min={1000}
-          max={60000}
-          value={timeout}
-          onChange={(e) => setTimeout(Number(e.target.value))}
-          className={errors.timeout ? 'border-destructive' : ''}
-        />
-        {errors.timeout ? (
-          <p className="text-xs text-destructive">{errors.timeout}</p>
-        ) : (
-          <p className="text-xs text-muted-foreground">1000ms - 60000ms (default: 30000ms)</p>
-        )}
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="apiKey">API Key / Authorization Header (optional)</Label>
-        <Input
-          id="apiKey"
-          type="password"
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-          placeholder={initialData ? '(unchanged - enter new value to update)' : 'Bearer sk_live_xxx'}
-        />
-        <p className="text-xs text-muted-foreground">
-          Stored encrypted. Sent as Authorization header with each proxied request.
-        </p>
-      </div>
+        </>
+      )}
 
       <div className="space-y-2">
         <Label htmlFor="description">Description (optional)</Label>
