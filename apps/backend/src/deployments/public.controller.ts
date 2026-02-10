@@ -343,6 +343,9 @@ export class PublicController {
       // This handles the case where nginx's wildcard catch-all intercepts requests
       // that should have gone to domain-specific server blocks (e.g., when the
       // domain config hasn't been loaded by nginx yet, or after a restart).
+      this.logger.debug(
+        `[serveSubdomainAlias] Alias '${aliasName}' not found, checking domain mapping fallback`,
+      );
       const forwardedHost = req.headers['x-forwarded-host'] as string | undefined;
       if (forwardedHost) {
         const served = await this.serveDomainMappingFallback(forwardedHost, filePath, req, res);
@@ -351,6 +354,10 @@ export class PublicController {
 
       return this.serve404Page(res, `Preview not found: ${aliasName}`);
     }
+
+    this.logger.debug(
+      `[serveSubdomainAlias] Alias '${aliasName}' FOUND, serving directly (no domain mapping path prefix)`,
+    );
 
     // Get project from alias
     const project = await this.projectsService.getProjectById(aliasRecord.projectId);
@@ -805,8 +812,13 @@ export class PublicController {
     }
 
     // Apply path prefix from domain mapping
+    // For internal rewrites, the target path is relative to the domain's path context
     const pathPrefix = mapping.path ? mapping.path.replace(/^\/+/, '').replace(/\/+$/, '') : '';
     const fullPath = pathPrefix ? `${pathPrefix}/${filePath || ''}` : (filePath || '');
+
+    this.logger.debug(
+      `[serveDomainMappingFallback] Path resolution: mapping.path=${mapping.path}, pathPrefix=${pathPrefix}, filePath=${filePath}, fullPath=${fullPath}`,
+    );
 
     await this.serveAssetInternal(
       project.owner,
