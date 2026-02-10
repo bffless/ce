@@ -120,6 +120,9 @@ export class ProxyMiddleware implements NestMiddleware {
           req.params['0'] = newSubpath.startsWith('/') ? newSubpath.slice(1) : newSubpath;
         }
 
+        // Mark as internally rewritten so controller applies domain mapping path prefix
+        (req as any).__internalRewrite = true;
+
         this.logger.log(
           `Internal rewrite: ${subpathForMatching} → ${newSubpath} (rule: ${matchedRule.id}, params[0]: ${req.params?.['0']})`,
         );
@@ -250,6 +253,9 @@ export class ProxyMiddleware implements NestMiddleware {
       if (req.params && req.params['0']) {
         req.params['0'] = newSubpath.startsWith('/') ? newSubpath.slice(1) : newSubpath;
       }
+
+      // Mark as internally rewritten so controller applies domain mapping path prefix
+      (req as any).__internalRewrite = true;
 
       this.logger.log(
         `Subdomain internal rewrite: ${subpathForMatching} → ${newSubpath} (alias: ${resolvedAliasName}, rule: ${matchedRule.id})`,

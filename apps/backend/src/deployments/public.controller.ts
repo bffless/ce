@@ -299,17 +299,19 @@ export class PublicController {
       res.setHeader('X-Variant', variantSelection.selectedAlias);
     }
 
-    // Apply path prefix from domain mapping if present
-    // This ensures internal rewrites resolve relative to the domain's path context
+    // Apply path prefix from domain mapping ONLY for internal rewrites
+    // Internal rewrites specify paths relative to the domain's path context
+    // Regular requests already have the full path from nginx
     let fullPath = filePath;
-    if (forwardedHost) {
+    const isInternalRewrite = (req as any).__internalRewrite === true;
+    if (isInternalRewrite && forwardedHost) {
       const mapping = await this.getDomainMappingByHost(forwardedHost);
       if (mapping?.path) {
         const pathPrefix = mapping.path.replace(/^\/+/, '').replace(/\/+$/, '');
         if (pathPrefix) {
           fullPath = `${pathPrefix}/${filePath || ''}`.replace(/\/+/g, '/');
           this.logger.debug(
-            `[serveAliasAsset] Applied domain path prefix: ${pathPrefix}, fullPath=${fullPath}`,
+            `[serveAliasAsset] Applied domain path prefix for internal rewrite: ${pathPrefix}, fullPath=${fullPath}`,
           );
         }
       }
