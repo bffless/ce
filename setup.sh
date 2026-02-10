@@ -401,33 +401,6 @@ check_prerequisites() {
                         print_success "Docker started"
                     fi
 
-                    # Certbot is optional, install if missing
-                    if [ "$CERTBOT_AVAILABLE" = false ]; then
-                        echo ""
-                        printf "${YELLOW}Certbot (SSL Certificates)${NC}\n"
-                        echo "Certbot generates free SSL certificates from Let's Encrypt."
-                        echo ""
-                        printf "${DIM}Note: If you're using Cloudflare as your CDN/proxy, you don't need${NC}\n"
-                        printf "${DIM}Certbot. Cloudflare provides Origin Certificates instead.${NC}\n"
-                        echo ""
-                        printf "Install Certbot for SSL certificates? (y/N): "
-                        if [ "$INTERACTIVE" = true ]; then
-                            read -r certbot_response
-                        else
-                            certbot_response="n"
-                            echo "n"
-                        fi
-                        case "$certbot_response" in
-                            [yY][eE][sS]|[yY])
-                                install_certbot
-                                CERTBOT_AVAILABLE=true
-                                ;;
-                            *)
-                                print_warning "Skipping Certbot installation"
-                                ;;
-                        esac
-                    fi
-
                     echo ""
                     print_success "Prerequisites installed!"
                     echo ""
@@ -605,6 +578,38 @@ prompt_configuration() {
             print_info "Let's Encrypt selected"
             echo ""
             printf "  ${DIM}Full setup guide: https://docs.bffless.com/getting-started/letsencrypt-setup${NC}\n"
+            echo ""
+
+            # Check if certbot is installed, offer to install if missing
+            if [ "$CERTBOT_AVAILABLE" = false ]; then
+                print_warning "Certbot is not installed (required for Let's Encrypt)"
+                echo ""
+
+                if can_auto_install && [ "$(id -u)" -eq 0 ]; then
+                    printf "Install Certbot now? (Y/n): "
+                    if [ "$INTERACTIVE" = true ]; then
+                        read -r certbot_response
+                    else
+                        certbot_response="y"
+                        echo "y"
+                    fi
+                    case "$certbot_response" in
+                        [nN][oO]|[nN])
+                            print_warning "Skipping Certbot installation"
+                            echo "  You'll need to install certbot manually before generating certificates."
+                            ;;
+                        *)
+                            install_certbot
+                            CERTBOT_AVAILABLE=true
+                            ;;
+                    esac
+                else
+                    echo "  Install certbot manually:"
+                    echo "    apt-get install certbot    (Debian/Ubuntu)"
+                    echo "    brew install certbot       (macOS)"
+                    echo ""
+                fi
+            fi
         fi
     fi
 
