@@ -299,12 +299,28 @@ export class PublicController {
       res.setHeader('X-Variant', variantSelection.selectedAlias);
     }
 
+    // Apply path prefix from domain mapping if present
+    // This ensures internal rewrites resolve relative to the domain's path context
+    let fullPath = filePath;
+    if (forwardedHost) {
+      const mapping = await this.getDomainMappingByHost(forwardedHost);
+      if (mapping?.path) {
+        const pathPrefix = mapping.path.replace(/^\/+/, '').replace(/\/+$/, '');
+        if (pathPrefix) {
+          fullPath = `${pathPrefix}/${filePath || ''}`.replace(/\/+/g, '/');
+          this.logger.debug(
+            `[serveAliasAsset] Applied domain path prefix: ${pathPrefix}, fullPath=${fullPath}`,
+          );
+        }
+      }
+    }
+
     await this.serveAssetInternal(
       owner,
       repo,
       commitSha,
       effectiveAlias,
-      filePath,
+      fullPath,
       req,
       res,
       false,
@@ -897,6 +913,30 @@ export class PublicController {
       .where(eq(domainMappings.domain, altDomain))
       .limit(1);
     return altMapping?.id;
+  }
+
+  /**
+   * Get full domain mapping by host (including path field)
+   * Used to apply domain-specific path prefixes for internal rewrites
+   */
+  private async getDomainMappingByHost(
+    domain: string,
+  ): Promise<typeof domainMappings.$inferSelect | null> {
+    const [mapping] = await db
+      .select()
+      .from(domainMappings)
+      .where(and(eq(domainMappings.domain, domain), eq(domainMappings.isActive, true)))
+      .limit(1);
+    if (mapping) return mapping;
+
+    // Try www variant: www.x.com → x.com, or x.com → www.x.com
+    const altDomain = domain.startsWith('www.') ? domain.slice(4) : `www.${domain}`;
+    const [altMapping] = await db
+      .select()
+      .from(domainMappings)
+      .where(and(eq(domainMappings.domain, altDomain), eq(domainMappings.isActive, true)))
+      .limit(1);
+    return altMapping || null;
   }
 
   /**
