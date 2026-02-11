@@ -5,9 +5,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Image tag (e.g., latest, v0.1.0, umbrel)'
+        description: 'Image tag (e.g., umbrel, latest, v0.1.0)'
         required: true
-        default: 'latest'
+        default: 'umbrel'
         type: string
       platforms:
         description: 'Target platforms'
