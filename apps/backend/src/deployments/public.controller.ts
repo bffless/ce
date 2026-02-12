@@ -107,6 +107,103 @@ export class PublicController {
   }
 
   /**
+   * Serve assets via subdomain alias
+   * Called by nginx for wildcard subdomains (*.PRIMARY_DOMAIN)
+   * GET /public/subdomain-alias/:aliasName/*
+   *
+   * NOTE: This route MUST be declared before @Get(':owner/:repo') to ensure
+   * NestJS matches the specific 'subdomain-alias' prefix before the generic
+   * :owner/:repo pattern (which would incorrectly match owner='subdomain-alias').
+   */
+  @Get('subdomain-alias/:aliasName/*')
+  @ApiOperation({ summary: 'Serve asset via subdomain alias' })
+  @ApiParam({ name: 'aliasName', description: 'Alias name (extracted from subdomain)' })
+  @ApiResponse({ status: 200, description: 'File content' })
+  @ApiResponse({ status: 404, description: 'Alias or file not found' })
+  async serveSubdomainAlias(
+    @Param('aliasName') aliasName: string,
+    @Param('0') filePath: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ): Promise<void> {
+    this.logger.debug(
+      `[serveSubdomainAlias] Request: aliasName=${aliasName}, filePath=${filePath}`,
+    );
+
+    // Look up alias by name across all projects
+    const [aliasRecord] = await db
+      .select()
+      .from(deploymentAliases)
+      .where(eq(deploymentAliases.alias, aliasName))
+      .limit(1);
+
+    if (!aliasRecord) {
+      // Fallback: check if the original host matches a domain mapping.
+      // This handles the case where nginx's wildcard catch-all intercepts requests
+      // that should have gone to domain-specific server blocks (e.g., when the
+      // domain config hasn't been loaded by nginx yet, or after a restart).
+      this.logger.debug(
+        `[serveSubdomainAlias] Alias '${aliasName}' not found, checking domain mapping fallback`,
+      );
+      const forwardedHost = req.headers['x-forwarded-host'] as string | undefined;
+      if (forwardedHost) {
+        const served = await this.serveDomainMappingFallback(forwardedHost, filePath, req, res);
+        if (served) return;
+      }
+
+      return this.serve404Page(res, `Preview not found: ${aliasName}`);
+    }
+
+    this.logger.debug(
+      `[serveSubdomainAlias] Alias '${aliasName}' FOUND, serving directly (no domain mapping path prefix)`,
+    );
+
+    // Get project from alias
+    const project = await this.projectsService.getProjectById(aliasRecord.projectId);
+
+    // For auto-preview aliases with basePath, prepend the basePath to the file path
+    let fullPath = filePath || '';
+    if (aliasRecord.basePath && aliasRecord.isAutoPreview) {
+      // Remove leading slash from basePath and filePath for consistency
+      const normalizedBasePath = aliasRecord.basePath.replace(/^\/+/, '').replace(/\/+$/, '');
+      fullPath = normalizedBasePath ? `${normalizedBasePath}/${fullPath}` : fullPath;
+    }
+
+    // Remove duplicate slashes
+    fullPath = fullPath.replace(/\/+/g, '/');
+
+    await this.serveAssetInternal(
+      project.owner,
+      project.name,
+      aliasRecord.commitSha,
+      aliasName,
+      fullPath,
+      req,
+      res,
+      false, // Not immutable - alias-based
+    );
+  }
+
+  /**
+   * Serve root path for subdomain alias
+   * GET /public/subdomain-alias/:aliasName (no trailing path)
+   *
+   * NOTE: This route MUST be declared before @Get(':owner/:repo') - see above.
+   */
+  @Get('subdomain-alias/:aliasName')
+  @ApiOperation({ summary: 'Serve root asset via subdomain alias' })
+  @ApiParam({ name: 'aliasName', description: 'Alias name (extracted from subdomain)' })
+  @ApiResponse({ status: 200, description: 'File content' })
+  @ApiResponse({ status: 404, description: 'Alias or file not found' })
+  async serveSubdomainAliasRoot(
+    @Param('aliasName') aliasName: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ): Promise<void> {
+    return this.serveSubdomainAlias(aliasName, '', req, res);
+  }
+
+  /**
    * Serve public assets by owner/repo with default alias resolution
    * GET /public/:owner/:repo/
    */
@@ -327,97 +424,6 @@ export class PublicController {
       res,
       false,
     );
-  }
-
-  /**
-   * Serve assets via subdomain alias
-   * Called by nginx for wildcard subdomains (*.PRIMARY_DOMAIN)
-   * GET /public/subdomain-alias/:aliasName/*
-   */
-  @Get('subdomain-alias/:aliasName/*')
-  @ApiOperation({ summary: 'Serve asset via subdomain alias' })
-  @ApiParam({ name: 'aliasName', description: 'Alias name (extracted from subdomain)' })
-  @ApiResponse({ status: 200, description: 'File content' })
-  @ApiResponse({ status: 404, description: 'Alias or file not found' })
-  async serveSubdomainAlias(
-    @Param('aliasName') aliasName: string,
-    @Param('0') filePath: string,
-    @Req() req: Request,
-    @Res() res: Response,
-  ): Promise<void> {
-    this.logger.debug(
-      `[serveSubdomainAlias] Request: aliasName=${aliasName}, filePath=${filePath}`,
-    );
-
-    // Look up alias by name across all projects
-    const [aliasRecord] = await db
-      .select()
-      .from(deploymentAliases)
-      .where(eq(deploymentAliases.alias, aliasName))
-      .limit(1);
-
-    if (!aliasRecord) {
-      // Fallback: check if the original host matches a domain mapping.
-      // This handles the case where nginx's wildcard catch-all intercepts requests
-      // that should have gone to domain-specific server blocks (e.g., when the
-      // domain config hasn't been loaded by nginx yet, or after a restart).
-      this.logger.debug(
-        `[serveSubdomainAlias] Alias '${aliasName}' not found, checking domain mapping fallback`,
-      );
-      const forwardedHost = req.headers['x-forwarded-host'] as string | undefined;
-      if (forwardedHost) {
-        const served = await this.serveDomainMappingFallback(forwardedHost, filePath, req, res);
-        if (served) return;
-      }
-
-      return this.serve404Page(res, `Preview not found: ${aliasName}`);
-    }
-
-    this.logger.debug(
-      `[serveSubdomainAlias] Alias '${aliasName}' FOUND, serving directly (no domain mapping path prefix)`,
-    );
-
-    // Get project from alias
-    const project = await this.projectsService.getProjectById(aliasRecord.projectId);
-
-    // For auto-preview aliases with basePath, prepend the basePath to the file path
-    let fullPath = filePath || '';
-    if (aliasRecord.basePath && aliasRecord.isAutoPreview) {
-      // Remove leading slash from basePath and filePath for consistency
-      const normalizedBasePath = aliasRecord.basePath.replace(/^\/+/, '').replace(/\/+$/, '');
-      fullPath = normalizedBasePath ? `${normalizedBasePath}/${fullPath}` : fullPath;
-    }
-
-    // Remove duplicate slashes
-    fullPath = fullPath.replace(/\/+/g, '/');
-
-    await this.serveAssetInternal(
-      project.owner,
-      project.name,
-      aliasRecord.commitSha,
-      aliasName,
-      fullPath,
-      req,
-      res,
-      false, // Not immutable - alias-based
-    );
-  }
-
-  /**
-   * Serve root path for subdomain alias
-   * GET /public/subdomain-alias/:aliasName (no trailing path)
-   */
-  @Get('subdomain-alias/:aliasName')
-  @ApiOperation({ summary: 'Serve root asset via subdomain alias' })
-  @ApiParam({ name: 'aliasName', description: 'Alias name (extracted from subdomain)' })
-  @ApiResponse({ status: 200, description: 'File content' })
-  @ApiResponse({ status: 404, description: 'Alias or file not found' })
-  async serveSubdomainAliasRoot(
-    @Param('aliasName') aliasName: string,
-    @Req() req: Request,
-    @Res() res: Response,
-  ): Promise<void> {
-    return this.serveSubdomainAlias(aliasName, '', req, res);
   }
 
   /**
