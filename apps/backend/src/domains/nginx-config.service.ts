@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import * as Handlebars from 'handlebars';
 import { readFile, writeFile, unlink, access } from 'fs/promises';
 import { join } from 'path';
@@ -106,7 +107,10 @@ export class NginxConfigService implements OnModuleInit {
   private customDomainTemplate: Handlebars.TemplateDelegate<TemplateContext>;
   private redirectTemplate: Handlebars.TemplateDelegate<RedirectTemplateContext>;
 
-  constructor(private readonly featureFlagsService: FeatureFlagsService) {}
+  constructor(
+    private readonly featureFlagsService: FeatureFlagsService,
+    private readonly configService: ConfigService,
+  ) {}
 
   async onModuleInit() {
     await this.loadTemplates();
@@ -604,6 +608,29 @@ ${spaFallback}
     return process.env.PLATFORM_MODE === 'true';
   }
 
+  /**
+   * Check if an external proxy fully terminates SSL.
+   * When PROXY_MODE=cloudflare-tunnel, nginx should generate non-SSL configs (port 80 only)
+   * since Cloudflare Tunnel handles HTTPS termination.
+   *
+   * Note: PROXY_MODE=cloudflare is different - it uses Cloudflare origin certs
+   * and nginx still listens on 443.
+   */
+  private isExternalSslProxy(): boolean {
+    const proxyMode = this.configService.get<string>('PROXY_MODE', 'none');
+    return proxyMode === 'cloudflare-tunnel';
+  }
+
+  /**
+   * Check if nginx should handle SSL directly.
+   * Returns false when:
+   * - PLATFORM_MODE=true (Traefik handles SSL)
+   * - PROXY_MODE=cloudflare-tunnel (Cloudflare Tunnel handles SSL)
+   */
+  private shouldNginxHandleSsl(): boolean {
+    return !this.isPlatformMode() && !this.isExternalSslProxy();
+  }
+
   private getAdminDomain(): string {
     return process.env.ADMIN_DOMAIN || `admin.${this.getBaseDomain()}`;
   }
@@ -626,11 +653,13 @@ ${spaFallback}
    * This redirects all traffic from one domain to another domain.
    * Used when a domain mapping has domainType='redirect'.
    */
-  async generateRedirectDomainConfig(config: RedirectDomainConfig): Promise<string> {
-    if (this.isPlatformMode()) {
-      return this.generatePlatformRedirectDomainConfig(config);
+  generateRedirectDomainConfig(config: RedirectDomainConfig): string {
+    // Check if nginx should handle SSL directly
+    // When false: PLATFORM_MODE=true (Traefik) or PROXY_MODE=cloudflare (external proxy)
+    if (this.shouldNginxHandleSsl()) {
+      return this.generateCERedirectDomainConfig(config);
     }
-    return this.generateCERedirectDomainConfig(config);
+    return this.generatePlatformRedirectDomainConfig(config);
   }
 
   /**
@@ -766,9 +795,11 @@ ${httpServerBlock}${httpsServerBlock}
     const tempPath = join('/tmp', filename);
     const finalPath = join(this.getNginxSitesPath(), filename);
 
-    const nginxConfig = this.isPlatformMode()
-      ? this.generatePlatformPrimaryDomainConfig(config, baseDomain)
-      : this.generateCEPrimaryDomainConfig(config, baseDomain);
+    // Check if nginx should handle SSL directly
+    // When false: PLATFORM_MODE=true (Traefik) or PROXY_MODE=cloudflare (external proxy)
+    const nginxConfig = this.shouldNginxHandleSsl()
+      ? this.generateCEPrimaryDomainConfig(config, baseDomain)
+      : this.generatePlatformPrimaryDomainConfig(config, baseDomain);
 
     await writeFile(tempPath, nginxConfig, 'utf-8');
     this.logger.log(`Wrote primary domain nginx config to temp file: ${tempPath}`);
@@ -1168,10 +1199,12 @@ ${proxyRulesComment}${serverBlocks}`;
   }
 
   private generateWelcomePageNginxConfig(baseDomain: string): string {
-    if (this.isPlatformMode()) {
-      return this.generatePlatformWelcomePageConfig(baseDomain);
+    // Check if nginx should handle SSL directly
+    // When false: PLATFORM_MODE=true (Traefik) or PROXY_MODE=cloudflare (external proxy)
+    if (this.shouldNginxHandleSsl()) {
+      return this.generateCEWelcomePageConfig(baseDomain);
     }
-    return this.generateCEWelcomePageConfig(baseDomain);
+    return this.generatePlatformWelcomePageConfig(baseDomain);
   }
 
   /**
