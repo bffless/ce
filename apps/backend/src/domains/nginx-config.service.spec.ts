@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { NginxConfigService } from './nginx-config.service';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 import * as fs from 'fs/promises';
@@ -16,6 +17,20 @@ jest.mock('fs/promises', () => ({
 const mockFeatureFlagsService = {
   isEnabled: jest.fn().mockResolvedValue(true),
   get: jest.fn(),
+};
+
+// Mock ConfigService
+const mockConfigService = {
+  get: jest.fn().mockImplementation((key: string, defaultValue?: string) => {
+    const config: Record<string, string> = {
+      PRIMARY_DOMAIN: 'example.com',
+      BACKEND_HOST: 'backend',
+      BACKEND_PORT: '3000',
+      PLATFORM_MODE: 'false',
+      PROXY_MODE: 'none',
+    };
+    return config[key] ?? defaultValue;
+  }),
 };
 
 describe('NginxConfigService', () => {
@@ -97,6 +112,7 @@ server {
       providers: [
         NginxConfigService,
         { provide: FeatureFlagsService, useValue: mockFeatureFlagsService },
+        { provide: ConfigService, useValue: mockConfigService },
       ],
     }).compile();
 
