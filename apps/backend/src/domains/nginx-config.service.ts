@@ -377,7 +377,7 @@ export class NginxConfigService implements OnModuleInit {
 ${proxyRulesComment}${pathRedirectsComment}# Note: SSL is terminated by Traefik, nginx listens on port 80
 
 server {
-    listen 80;
+    listen ${this.getNginxListenPort()};
     server_name ${domainMapping.domain};
 
     # Security headers
@@ -502,7 +502,7 @@ ${spaFallback}
 ${proxyRulesComment}${pathRedirectsComment}# Note: SSL is terminated by Traefik, nginx listens on port 80
 
 server {
-    listen 80;
+    listen ${this.getNginxListenPort()};
     server_name ${domainMapping.domain};
 
     # Security headers
@@ -604,6 +604,10 @@ ${spaFallback}
     return process.env.BACKEND_PORT || '3000';
   }
 
+  private getNginxListenPort(): string {
+    return process.env.NGINX_LISTEN_PORT || '80';
+  }
+
   private isPlatformMode(): boolean {
     return process.env.PLATFORM_MODE === 'true';
   }
@@ -674,7 +678,7 @@ ${spaFallback}
 # Note: SSL is terminated by Traefik, nginx listens on port 80
 
 server {
-    listen 80;
+    listen ${this.getNginxListenPort()};
     server_name ${config.domain};
 
     # Block vulnerability scanners (403 for Traefik compatibility)
@@ -708,7 +712,7 @@ server {
 
     const httpServerBlock = `
 server {
-    listen 80;
+    listen ${this.getNginxListenPort()};
     server_name ${config.domain};
 
     # Block vulnerability scanners
@@ -910,7 +914,7 @@ ${errorLocations}`;
       serverBlocks = `
 # Primary Domain - WWW (serves content)
 server {
-    listen 80;
+    listen ${this.getNginxListenPort()};
     server_name www.${baseDomain};
 ${getSecurityHeaders(`www.${baseDomain}`)}
 ${scannerBlock}
@@ -920,7 +924,7 @@ ${locationBlock}
 
 # Primary Domain - Root (redirect to www)
 server {
-    listen 80;
+    listen ${this.getNginxListenPort()};
     server_name ${baseDomain};
 ${scannerBlock}
 
@@ -931,7 +935,7 @@ ${scannerBlock}
       serverBlocks = `
 # Primary Domain - Root (serves content)
 server {
-    listen 80;
+    listen ${this.getNginxListenPort()};
     server_name ${baseDomain};
 ${getSecurityHeaders(baseDomain)}
 ${scannerBlock}
@@ -941,7 +945,7 @@ ${locationBlock}
 
 # Primary Domain - WWW (redirect to root)
 server {
-    listen 80;
+    listen ${this.getNginxListenPort()};
     server_name www.${baseDomain};
 ${scannerBlock}
 
@@ -952,7 +956,7 @@ ${scannerBlock}
       serverBlocks = `
 # Primary Domain - Both domains serve content
 server {
-    listen 80;
+    listen ${this.getNginxListenPort()};
     server_name ${baseDomain} www.${baseDomain};
 ${getSecurityHeaders(`www.${baseDomain}`)}
 ${scannerBlock}
@@ -965,7 +969,7 @@ ${locationBlock}
       serverBlocks = `
 # Primary Domain - Root only (www disabled)
 server {
-    listen 80;
+    listen ${this.getNginxListenPort()};
     server_name ${baseDomain};
 ${getSecurityHeaders(baseDomain)}
 ${scannerBlock}
@@ -1219,7 +1223,7 @@ ${proxyRulesComment}${serverBlocks}`;
 # Note: SSL is terminated by Traefik, nginx listens on port 80
 
 server {
-    listen 80;
+    listen ${this.getNginxListenPort()};
     server_name ${baseDomain};
 
     # Block vulnerability scanners (403 for Traefik compatibility)
