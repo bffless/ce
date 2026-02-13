@@ -48,7 +48,8 @@ while [[ "$#" -gt 0 ]]; do
             echo "Options:"
             echo "  --all       Start all services (PostgreSQL + MinIO + Redis + SuperTokens)"
             echo "  --minimal   Start without optional services"
-            echo "  --fresh     Clear frontend cache (use after pulling new frontend images)"
+            echo "  --fresh     [Deprecated] Clear frontend cache - no longer needed, frontend"
+            echo "              now auto-syncs fresh files on every container start"
             echo "  --help      Show this help message"
             echo ""
             echo "Without options, reads from .env:"
@@ -63,9 +64,10 @@ while [[ "$#" -gt 0 ]]; do
     shift
 done
 
-# Clear frontend cache if --fresh flag is set
+# Clear frontend cache if --fresh flag is set (deprecated - kept for backwards compatibility)
 if [ "$FRESH_FRONTEND" = true ]; then
-    echo -e "${YELLOW}Clearing frontend cache...${NC}"
+    echo -e "${YELLOW}Note: --fresh is deprecated. Frontend now auto-syncs fresh files on every start.${NC}"
+    echo -e "${YELLOW}Clearing frontend cache anyway...${NC}"
     # Stop frontend container if running (it locks the volume)
     docker compose stop frontend 2>/dev/null || true
     # Remove the frontend-dist volume using docker compose's project name
