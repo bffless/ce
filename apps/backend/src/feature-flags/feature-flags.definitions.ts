@@ -288,6 +288,16 @@ export const FLAG_DEFINITIONS: Record<string, FlagDefinition> = {
     exposeToClient: true,
   },
 
+  PROXY_MODE: {
+    envKey: 'PROXY_MODE',
+    defaultValue: 'none',
+    type: 'string',
+    description:
+      'Proxy mode for SSL termination. Values: none (nginx handles SSL), cloudflare (Cloudflare proxy with origin certs), cloudflare-tunnel (Cloudflare Tunnel handles SSL).',
+    category: 'features',
+    exposeToClient: true,
+  },
+
   ENABLE_DOMAIN_SSL_TOGGLE: {
     envKey: 'FEATURE_DOMAIN_SSL_TOGGLE',
     defaultValue: true,

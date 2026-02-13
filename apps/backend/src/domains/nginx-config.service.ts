@@ -318,6 +318,7 @@ export class NginxConfigService implements OnModuleInit {
   /**
    * Generate nginx config for custom domains in PLATFORM_MODE.
    * Simpler config: port 80 only, no SSL (Traefik handles SSL termination).
+   * Handles wwwBehavior for www/apex redirect configurations.
    */
   private generatePlatformCustomDomainConfig(
     domainMapping: DomainMapping,
@@ -330,6 +331,50 @@ export class NginxConfigService implements OnModuleInit {
     const alias = domainMapping.alias || 'latest';
     const pathPrefix = domainMapping.path || '';
     const internalPath = `/public/${project.owner}/${project.name}/alias/${alias}${pathPrefix}`;
+    const listenPort = this.getNginxListenPort();
+
+    // Determine www and apex domain variants
+    const domain = domainMapping.domain;
+    const isWww = domain.startsWith('www.');
+    const apexDomain = isWww ? domain.slice(4) : domain;
+    const wwwDomain = isWww ? domain : `www.${domain}`;
+
+    // Common blocks used in server configurations
+    const securityHeaders = `
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;`;
+
+    const scannerBlock = `
+    # Block vulnerability scanners (403 for Traefik compatibility)
+    if ($block_scanner) {
+        return 403;
+    }`;
+
+    const errorPages = `
+    # Custom error pages
+    error_page 404 /404.html;
+    error_page 500 502 503 504 /50x.html;`;
+
+    const healthCheck = `
+    # Health check endpoint (used for DNS verification)
+    location /.well-known/health {
+        access_log off;
+        return 200 "OK";
+        add_header Content-Type text/plain;
+    }`;
+
+    const errorLocations = `
+    # Static error pages
+    location = /404.html {
+        internal;
+        root /etc/nginx/error-pages;
+    }
+
+    location = /50x.html {
+        internal;
+        root /etc/nginx/error-pages;
+    }`;
 
     const spaFallback = domainMapping.isSpa
       ? `
@@ -351,59 +396,14 @@ export class NginxConfigService implements OnModuleInit {
       : '';
 
     const spaErrorPage = domainMapping.isSpa ? 'error_page 404 = @spa_fallback;' : '';
-
-    // SPA mode: intercept errors to try index.html fallback
-    // Non-SPA mode: let backend's styled 404 page pass through directly
     const proxyInterceptErrors = domainMapping.isSpa ? 'on' : 'off';
 
-    // Generate proxy location blocks for rules with authTransform
+    // Generate proxy and path redirect location blocks
     const proxyLocations = this.generateProxyLocationBlocks(proxyRules);
-    const proxyRulesComment =
-      proxyRules && proxyRules.length > 0
-        ? `# Proxy Rules: ${proxyRules.length} rule(s) with auth transformation\n`
-        : '';
-
-    // Generate path redirect location blocks
     const pathRedirectLocations = this.generatePathRedirectLocationBlocks(pathRedirects);
-    const pathRedirectsComment =
-      pathRedirects && pathRedirects.length > 0
-        ? `# Path Redirects: ${pathRedirects.length} redirect(s)\n`
-        : '';
 
-    return `# Custom Domain Configuration (Platform Mode)
-# Generated: ${new Date().toISOString()}
-# Domain: ${domainMapping.domain}
-# Project: ${project.owner}/${project.name}
-# Alias: ${alias}
-# Path: ${pathPrefix || '/'}
-# SPA Mode: ${domainMapping.isSpa ? 'enabled' : 'disabled'}
-${proxyRulesComment}${pathRedirectsComment}# Note: SSL is terminated by Traefik, nginx listens on port 80
-
-server {
-    listen ${this.getNginxListenPort()};
-    server_name ${domainMapping.domain};
-
-    # Security headers
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-
-    # Block vulnerability scanners (403 for Traefik compatibility)
-    if ($block_scanner) {
-        return 403;
-    }
-
-    # Custom error pages
-    error_page 404 /404.html;
-    error_page 500 502 503 504 /50x.html;
-
-    # Health check endpoint (used for DNS verification)
-    location /.well-known/health {
-        access_log off;
-        return 200 "OK";
-        add_header Content-Type text/plain;
-    }
-${pathRedirectLocations}${proxyLocations}
-
+    // Main content-serving location block
+    const mainLocation = `
     # Main location
     location / {
         rewrite ^/(.*)$ ${internalPath}/$1 break;
@@ -423,20 +423,83 @@ ${pathRedirectLocations}${proxyLocations}
 
         proxy_intercept_errors ${proxyInterceptErrors};
         ${spaErrorPage}
-    }
+    }`;
+
+    // Generate content-serving server block
+    const generateContentServerBlock = (serverName: string) => `
+server {
+    listen ${listenPort};
+    server_name ${serverName};
+${securityHeaders}
+${scannerBlock}
+${errorPages}
+${healthCheck}
+${pathRedirectLocations}${proxyLocations}
+${mainLocation}
 ${spaFallback}
+${errorLocations}
+}`;
 
-    # Static error pages
-    location = /404.html {
-        internal;
-        root /etc/nginx/error-pages;
+    // Generate redirect server block
+    const generateRedirectServerBlock = (sourceDomain: string, targetDomain: string) => `
+server {
+    listen ${listenPort};
+    server_name ${sourceDomain};
+${scannerBlock}
+
+    # Health check endpoint
+    location /.well-known/health {
+        access_log off;
+        return 200 "OK";
+        add_header Content-Type text/plain;
     }
 
-    location = /50x.html {
-        internal;
-        root /etc/nginx/error-pages;
+    # Redirect all traffic to target domain
+    location / {
+        return 301 https://${targetDomain}$request_uri;
     }
-}
+}`;
+
+    // Build comments
+    const proxyRulesComment =
+      proxyRules && proxyRules.length > 0
+        ? `# Proxy Rules: ${proxyRules.length} rule(s) with auth transformation\n`
+        : '';
+    const pathRedirectsComment =
+      pathRedirects && pathRedirects.length > 0
+        ? `# Path Redirects: ${pathRedirects.length} redirect(s)\n`
+        : '';
+    const wwwBehaviorComment = domainMapping.wwwBehavior
+      ? `# WWW Behavior: ${domainMapping.wwwBehavior}\n`
+      : '';
+
+    let serverBlocks: string;
+
+    if (domainMapping.wwwBehavior === 'redirect-to-www') {
+      // Apex redirects to www, www serves content
+      serverBlocks = `${generateContentServerBlock(wwwDomain)}
+${generateRedirectServerBlock(apexDomain, wwwDomain)}`;
+    } else if (domainMapping.wwwBehavior === 'redirect-to-root') {
+      // WWW redirects to apex, apex serves content
+      serverBlocks = `${generateContentServerBlock(apexDomain)}
+${generateRedirectServerBlock(wwwDomain, apexDomain)}`;
+    } else if (domainMapping.wwwBehavior === 'serve-both') {
+      // Both domains serve the same content
+      serverBlocks = generateContentServerBlock(`${apexDomain} ${wwwDomain}`);
+    } else {
+      // No www behavior - just serve the specified domain
+      serverBlocks = generateContentServerBlock(domain);
+    }
+
+    return `# Custom Domain Configuration (Platform Mode)
+# Generated: ${new Date().toISOString()}
+# Domain: ${domainMapping.domain}
+# Project: ${project.owner}/${project.name}
+# Alias: ${alias}
+# Path: ${pathPrefix || '/'}
+# SPA Mode: ${domainMapping.isSpa ? 'enabled' : 'disabled'}
+${proxyRulesComment}${pathRedirectsComment}${wwwBehaviorComment}# Note: SSL is terminated by Traefik/Cloudflare, nginx listens on port ${listenPort}
+${serverBlocks}
 `;
   }
 

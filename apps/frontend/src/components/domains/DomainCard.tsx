@@ -37,8 +37,14 @@ interface DomainCardProps {
 
 export function DomainCard({ domain, onEdit, onDelete }: DomainCardProps) {
   const { toast } = useToast();
-  const { isEnabled, isLoading: flagsLoading } = useFeatureFlags();
-  const fullUrl = `http${domain.sslEnabled ? 's' : ''}://${domain.domain}`;
+  const { isEnabled, isLoading: flagsLoading, getValue } = useFeatureFlags();
+
+  // Detect external proxy mode: SSL is handled by Cloudflare (proxy or tunnel), DNS is managed externally
+  const proxyMode = getValue<string>('PROXY_MODE', 'none');
+  const isExternalProxyMode = proxyMode === 'cloudflare-tunnel' || proxyMode === 'cloudflare';
+
+  // In external proxy mode, always use HTTPS URLs since external proxy handles SSL
+  const fullUrl = `http${domain.sslEnabled || isExternalProxyMode ? 's' : ''}://${domain.domain}`;
 
   // Check wildcard cert status for subdomains (only when feature is enabled)
   const wildcardSslEnabled = isEnabled('ENABLE_WILDCARD_SSL');
@@ -270,28 +276,39 @@ export function DomainCard({ domain, onEdit, onDelete }: DomainCardProps) {
                   </span>
                 )}
               </div>
+            ) : isExternalProxyMode || isPlatformMode ? (
+              <div className="flex items-center gap-1 text-green-600">
+                <Shield className="h-3 w-3" />
+                <span>SSL via {isExternalProxyMode ? 'Cloudflare' : 'Platform'}</span>
+              </div>
             ) : (
               <div className="flex items-center gap-1 text-muted-foreground">
                 <ShieldOff className="h-3 w-3" />
                 <span>SSL Disabled</span>
               </div>
             )}
-            {domain.dnsVerified ? (
-              <div className="flex items-center gap-1 text-green-600">
-                <CheckCircle2 className="h-3 w-3" />
-                <span>DNS Verified</span>
-              </div>
-            ) : (domain.domainType === 'custom' || domain.domainType === 'redirect') ? (
-              <div className="flex items-center gap-1 text-yellow-600">
-                <AlertCircle className="h-3 w-3" />
-                <span>DNS Not Verified</span>
-              </div>
-            ) : null}
+            {/* DNS status - hidden when external proxy or platform handles DNS/routing */}
+            {!isExternalProxyMode && !isPlatformMode && (
+              domain.dnsVerified ? (
+                <div className="flex items-center gap-1 text-green-600">
+                  <CheckCircle2 className="h-3 w-3" />
+                  <span>DNS Verified</span>
+                </div>
+              ) : (domain.domainType === 'custom' || domain.domainType === 'redirect') ? (
+                <div className="flex items-center gap-1 text-yellow-600">
+                  <AlertCircle className="h-3 w-3" />
+                  <span>DNS Not Verified</span>
+                </div>
+              ) : null
+            )}
           </div>
 
           {/* DNS Configuration help for unverified custom/redirect domains */}
+          {/* Hidden when external proxy (Cloudflare) or platform (Traefik) handles DNS/routing */}
           {(domain.domainType === 'custom' || domain.domainType === 'redirect') &&
             !domain.dnsVerified &&
+            !isExternalProxyMode &&
+            !isPlatformMode &&
             dnsRequirements?.requirements && (
               <div className="mt-2 p-3 bg-muted rounded text-xs space-y-2">
                 <p className="font-medium">DNS Configuration Required:</p>
@@ -377,7 +394,8 @@ export function DomainCard({ domain, onEdit, onDelete }: DomainCardProps) {
 
       <CardFooter className="flex justify-end gap-2">
         {/* Verify/Re-check DNS button for custom and redirect domains */}
-        {(domain.domainType === 'custom' || domain.domainType === 'redirect') && (
+        {/* Hidden when external proxy (Cloudflare) or platform (Traefik) handles DNS/routing */}
+        {!isExternalProxyMode && !isPlatformMode && (domain.domainType === 'custom' || domain.domainType === 'redirect') && (
           <Button
             variant="outline"
             size="sm"

@@ -76,8 +76,14 @@ export function DomainsPage() {
   const { data: config } = useGetDomainsConfigQuery();
 
   // Feature flags
-  const { isEnabled } = useFeatureFlags();
-  const showDnsInstructions = isEnabled('ENABLE_DNS_SETUP_INSTRUCTIONS');
+  const { isEnabled, getValue } = useFeatureFlags();
+  const proxyMode = getValue<string>('PROXY_MODE', 'none');
+  const isExternalProxyMode = proxyMode === 'cloudflare-tunnel' || proxyMode === 'cloudflare';
+  const sslToggleEnabled = isEnabled('ENABLE_DOMAIN_SSL_TOGGLE');
+  const isPlatformMode = !sslToggleEnabled;
+  // Hide DNS instructions when external proxy (Cloudflare) or platform (Traefik) handles DNS/SSL
+  // Only show when self-hosted with Let's Encrypt (PROXY_MODE=none, not in platform mode)
+  const showDnsInstructions = isEnabled('ENABLE_DNS_SETUP_INSTRUCTIONS') && !isExternalProxyMode && !isPlatformMode;
 
   const [createDomain, { isLoading: isCreating }] = useCreateDomainMutation();
   const [deleteDomain, { isLoading: isDeleting }] = useDeleteDomainMutation();
