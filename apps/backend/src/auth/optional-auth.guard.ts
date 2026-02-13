@@ -1,6 +1,6 @@
 import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
-import * as bcrypt from 'bcrypt';
+import * as bcrypt from 'bcryptjs';
 import { getSession } from 'supertokens-node/recipe/session';
 import { SessionContainer } from 'supertokens-node/recipe/session';
 import { db } from '../db/client';

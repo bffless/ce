@@ -32,10 +32,10 @@ RUN pnpm --filter backend build
 # Production stage
 FROM node:20-alpine
 
-# Install pnpm, netcat for health checks, and build tools for native modules
+# Install pnpm and netcat for health checks
+# Note: No build tools needed - bcryptjs is pure JavaScript (no native modules)
 RUN npm install -g pnpm && \
-    apk add --no-cache netcat-openbsd python3 make g++ && \
-    ln -sf python3 /usr/bin/python
+    apk add --no-cache netcat-openbsd
 
 WORKDIR /app
 
@@ -44,20 +44,8 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
 COPY apps/backend/package.json ./apps/backend/
 
 # Install production dependencies for backend only
-# Rebuild native modules (like bcrypt) for Alpine Linux
-# Note: bcrypt needs to be rebuilt for Alpine's musl libc
+# Note: bcryptjs is pure JavaScript - no native module rebuilding needed
 RUN pnpm install --prod --frozen-lockfile --filter backend
-
-# Rebuild bcrypt for Alpine Linux (native bindings must match the runtime)
-RUN cd apps/backend && \
-    if [ -d "node_modules/bcrypt" ]; then \
-      cd node_modules/bcrypt && npm rebuild; \
-    elif [ -d "../../node_modules/bcrypt" ]; then \
-      cd ../../node_modules/bcrypt && npm rebuild; \
-    fi
-
-# Remove build tools to reduce image size (bcrypt is already built)
-RUN apk del python3 make g++ || true
 
 # Copy built application and database migrations from builder
 COPY --from=builder /app/apps/backend/dist ./apps/backend/dist

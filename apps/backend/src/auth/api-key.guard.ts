@@ -1,7 +1,7 @@
 import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { eq } from 'drizzle-orm';
-import * as bcrypt from 'bcrypt';
+import * as bcrypt from 'bcryptjs';
 import { verifySession } from 'supertokens-node/recipe/session/framework/express';
 import { SessionContainer } from 'supertokens-node/recipe/session';
 import { db } from '../db/client';

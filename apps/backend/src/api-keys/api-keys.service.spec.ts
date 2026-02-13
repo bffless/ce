@@ -21,8 +21,8 @@ jest.mock('../db/client', () => ({
   },
 }));
 
-// Mock bcrypt
-jest.mock('bcrypt', () => ({
+// Mock bcryptjs
+jest.mock('bcryptjs', () => ({
   hash: jest.fn().mockResolvedValue('hashed_key'),
 }));
 

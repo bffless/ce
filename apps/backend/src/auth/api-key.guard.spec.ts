@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ApiKeyGuard } from './api-key.guard';
-import * as bcrypt from 'bcrypt';
+import * as bcrypt from 'bcryptjs';
 
 // Mock the database
 jest.mock('../db/client', () => ({
@@ -15,7 +15,7 @@ jest.mock('../db/client', () => ({
   },
 }));
 
-jest.mock('bcrypt');
+jest.mock('bcryptjs');
 
 // Get the mocked db
 const mockDb = jest.requireMock('../db/client').db;
