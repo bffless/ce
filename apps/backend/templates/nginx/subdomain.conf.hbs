@@ -107,14 +107,14 @@ server {
 
 # HTTP server - redirect to HTTPS
 server {
-    listen 80;
+    listen {{listenPort}};
     server_name {{domain}};
     return 301 https://$host$request_uri;
 }
 {{else}}
 # HTTP only server - no SSL
 server {
-    listen 80;
+    listen {{listenPort}};
     server_name {{domain}};
 
     # Security headers

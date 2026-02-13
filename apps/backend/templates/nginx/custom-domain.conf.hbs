@@ -97,7 +97,7 @@ server {
 
 # HTTP server - redirect to HTTPS (allows ACME challenges)
 server {
-    listen 80;
+    listen {{listenPort}};
     server_name {{domain}};
 
     # ACME challenge for Let's Encrypt certificate renewal
@@ -113,7 +113,7 @@ server {
 {{else}}
 # HTTP only server - no SSL
 server {
-    listen 80;
+    listen {{listenPort}};
     server_name {{domain}};
 
     # ACME challenge for Let's Encrypt

@@ -86,6 +86,7 @@ interface TemplateContext {
   isSpa: boolean;
   backendHost: string;
   backendPort: string;
+  listenPort: string;
   createdAt: string;
 }
 
@@ -97,6 +98,7 @@ interface RedirectTemplateContext {
   sslCertPath?: string;
   sslKeyPath?: string;
   protocol: 'http' | 'https';
+  listenPort: string;
   createdAt: string;
 }
 
@@ -188,6 +190,7 @@ export class NginxConfigService implements OnModuleInit {
       isSpa: domainMapping.isSpa,
       backendHost: this.getBackendHost(),
       backendPort: this.getBackendPort(),
+      listenPort: this.getNginxListenPort(),
       createdAt: domainMapping.createdAt.toISOString(),
     };
 
@@ -1481,6 +1484,7 @@ server {
       sslCertPath,
       sslKeyPath,
       protocol: sslEnabled ? 'https' : 'http',
+      listenPort: this.getNginxListenPort(),
       createdAt: new Date().toISOString(),
     });
   }

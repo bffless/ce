@@ -27,14 +27,14 @@ server {
 
 # HTTP server - redirects directly to HTTPS target (single redirect)
 server {
-    listen 80;
+    listen {{listenPort}};
     server_name {{sourceDomain}};
     return 301 https://{{targetDomain}}$request_uri;
 }
 {{else}}
 # HTTP only server - no SSL
 server {
-    listen 80;
+    listen {{listenPort}};
     server_name {{sourceDomain}};
 
     # Security headers
