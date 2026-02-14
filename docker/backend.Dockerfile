@@ -15,7 +15,9 @@ COPY apps/backend/package.json ./apps/backend/
 # Install dependencies for the entire workspace
 # This ensures proper module resolution for monorepo in Docker
 # The .npmrc configures pnpm to use hoisted node-linker for better Docker compatibility
-RUN pnpm install --frozen-lockfile
+# Note: --ignore-scripts prevents postinstall scripts from running native code
+# which can crash under QEMU emulation for ARM64 cross-compilation
+RUN pnpm install --frozen-lockfile --ignore-scripts
 
 # Copy backend source files (excluding node_modules via .dockerignore)
 # Copy specific files and directories to avoid conflicts with installed node_modules
@@ -45,7 +47,8 @@ COPY apps/backend/package.json ./apps/backend/
 
 # Install production dependencies for backend only
 # Note: bcryptjs is pure JavaScript - no native module rebuilding needed
-RUN pnpm install --prod --frozen-lockfile --filter backend
+# --ignore-scripts prevents QEMU issues during ARM64 cross-compilation
+RUN pnpm install --prod --frozen-lockfile --filter backend --ignore-scripts
 
 # Copy built application and database migrations from builder
 COPY --from=builder /app/apps/backend/dist ./apps/backend/dist
