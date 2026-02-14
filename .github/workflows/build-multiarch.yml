@@ -73,7 +73,7 @@ jobs:
 
           if [[ "$PLATFORMS" == *"linux/arm64"* ]]; then
             if [ "$FIRST" = false ]; then MATRIX="$MATRIX,"; fi
-            MATRIX="$MATRIX"'{"platform":"linux/arm64","runner":"ubuntu-24.04-arm64","suffix":"arm64"}'
+            MATRIX="$MATRIX"'{"platform":"linux/arm64","runner":"ubuntu-24.04-arm","suffix":"arm64"}'
             FIRST=false
           fi
 
