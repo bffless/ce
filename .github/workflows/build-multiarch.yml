@@ -254,7 +254,7 @@ jobs:
           echo "$GH_PAT" | gh auth login --with-token
           gh workflow run create-bff-release-pr.yml \
             --repo toshimoto821/toshimoto-app-store \
-            --ref bffless \
+            --ref master \
             -f version=$VERSION
           echo "## App Store PR Triggered" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
