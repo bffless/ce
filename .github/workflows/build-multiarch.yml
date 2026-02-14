@@ -18,6 +18,11 @@ on:
           - 'linux/amd64,linux/arm64'
           - 'linux/arm64'
           - 'linux/amd64'
+      trigger_app_store:
+        description: 'Trigger app store PR with latest release version'
+        required: false
+        default: true
+        type: boolean
 
 env:
   REGISTRY: ghcr.io
@@ -31,9 +36,27 @@ jobs:
   build-multiarch:
     name: Build Multi-Arch Images
     runs-on: ubuntu-latest
+    timeout-minutes: 45 # Prevent runaway builds (QEMU ARM64 is slow but shouldn't exceed 30min)
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get latest release version
+        id: get_version
+        run: |
+          git fetch --tags
+          LATEST=$(git tag -l "v*" --sort=-v:refname | head -1)
+          if [ -z "$LATEST" ]; then
+            LATEST="v0.0.0"
+          fi
+          # Remove 'v' prefix for app store version
+          VERSION="${LATEST#v}"
+          echo "Latest release: $LATEST (app store version: $VERSION)"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -111,6 +134,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Platforms:** ${{ inputs.platforms }}" >> $GITHUB_STEP_SUMMARY
           echo "**Tag:** ${{ inputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Release Version:** ${{ steps.get_version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Images" >> $GITHUB_STEP_SUMMARY
           echo "- \`${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend:${{ inputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
@@ -118,3 +142,24 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Usage on Umbrel" >> $GITHUB_STEP_SUMMARY
           echo "These images now support ARM64 (Raspberry Pi) and can be used with the Umbrel app store." >> $GITHUB_STEP_SUMMARY
+
+  trigger-app-store:
+    name: Trigger App Store PR
+    needs: build-multiarch
+    runs-on: ubuntu-latest
+    if: ${{ inputs.trigger_app_store }}
+    steps:
+      - name: Trigger app store workflow
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          VERSION="${{ needs.build-multiarch.outputs.version }}"
+          echo "Triggering app store PR with version: $VERSION"
+          echo "$GH_PAT" | gh auth login --with-token
+          gh workflow run create-bff-release-pr.yml \
+            --repo toshimoto821/toshimoto-app-store \
+            --ref bffless \
+            -f version=$VERSION
+          echo "## App Store PR Triggered" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Triggered \`create-bff-release-pr.yml\` with version **$VERSION**" >> $GITHUB_STEP_SUMMARY
