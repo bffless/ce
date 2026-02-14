@@ -165,12 +165,22 @@ export class NginxConfigService implements OnModuleInit {
 
     // In PLATFORM_MODE, custom domains use a simplified config (port 80 only, Traefik handles SSL)
     if (domainMapping.domainType === 'custom' && this.isPlatformMode()) {
-      return this.generatePlatformCustomDomainConfig(domainMapping, project, proxyRules, pathRedirects);
+      return this.generatePlatformCustomDomainConfig(
+        domainMapping,
+        project,
+        proxyRules,
+        pathRedirects,
+      );
     }
 
     // In PLATFORM_MODE, subdomains also use simplified config
     if (domainMapping.domainType === 'subdomain' && this.isPlatformMode()) {
-      return this.generatePlatformSubdomainConfig(domainMapping, project, proxyRules, pathRedirects);
+      return this.generatePlatformSubdomainConfig(
+        domainMapping,
+        project,
+        proxyRules,
+        pathRedirects,
+      );
     }
 
     const template =
@@ -1290,7 +1300,7 @@ ${proxyRulesComment}${serverBlocks}`;
 
 server {
     listen ${this.getNginxListenPort()};
-    server_name ${baseDomain};
+    server_name ${baseDomain} www.${baseDomain};
 
     # Block vulnerability scanners (403 for Traefik compatibility)
     if ($block_scanner) {
