@@ -33,11 +33,12 @@ permissions:
   packages: write
 
 jobs:
-  # Build frontend once (static files are architecture-independent)
-  build-frontend:
-    name: Build Frontend
+  # Setup job to determine which platforms to build
+  setup:
+    name: Setup Build Matrix
     runs-on: ubuntu-latest
     outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
       version: ${{ steps.get_version.outputs.version }}
     steps:
       - name: Checkout code
@@ -56,6 +57,37 @@ jobs:
           VERSION="${LATEST#v}"
           echo "Latest release: $LATEST (app store version: $VERSION)"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Set build matrix
+        id: set-matrix
+        run: |
+          PLATFORMS="${{ inputs.platforms }}"
+          MATRIX='{"include":['
+          FIRST=true
+
+          if [[ "$PLATFORMS" == *"linux/amd64"* ]]; then
+            if [ "$FIRST" = false ]; then MATRIX="$MATRIX,"; fi
+            MATRIX="$MATRIX"'{"platform":"linux/amd64","runner":"ubuntu-latest","suffix":"amd64"}'
+            FIRST=false
+          fi
+
+          if [[ "$PLATFORMS" == *"linux/arm64"* ]]; then
+            if [ "$FIRST" = false ]; then MATRIX="$MATRIX,"; fi
+            MATRIX="$MATRIX"'{"platform":"linux/arm64","runner":"ubuntu-24.04-arm64","suffix":"arm64"}'
+            FIRST=false
+          fi
+
+          MATRIX="$MATRIX]}"
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+          echo "Generated matrix: $MATRIX"
+
+  # Build frontend once (static files are architecture-independent)
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -85,76 +117,21 @@ jobs:
 
   # Build Docker images on native runners for each architecture
   build-images:
-    name: Build ${{ matrix.app }} (${{ matrix.platform }})
-    needs: build-frontend
+    name: Build Images (${{ matrix.suffix }})
+    needs: [setup, build-frontend]
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
-      matrix:
-        app: [frontend, backend]
-        include_platform:
-          - platform: linux/amd64
-            runner: ubuntu-latest
-            suffix: amd64
-          - platform: linux/arm64
-            runner: ubuntu-24.04-arm64
-            suffix: arm64
-        # Flatten the matrix
-        include:
-          - app: frontend
-            platform: linux/amd64
-            runner: ubuntu-latest
-            suffix: amd64
-          - app: frontend
-            platform: linux/arm64
-            runner: ubuntu-24.04-arm64
-            suffix: arm64
-          - app: backend
-            platform: linux/amd64
-            runner: ubuntu-latest
-            suffix: amd64
-          - app: backend
-            platform: linux/arm64
-            runner: ubuntu-24.04-arm64
-            suffix: arm64
-        exclude:
-          - app: frontend
-          - app: backend
-    # Skip builds for platforms not in the selected list
-    if: contains(inputs.platforms, matrix.platform)
+      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Download frontend build
-        if: matrix.app == 'frontend'
         uses: actions/download-artifact@v4
         with:
           name: frontend-dist
           path: apps/frontend/dist
-
-      - name: Setup pnpm (backend only)
-        if: matrix.app == 'backend'
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
-      - name: Setup Node.js (backend only)
-        if: matrix.app == 'backend'
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'pnpm'
-
-      - name: Install dependencies (backend only)
-        if: matrix.app == 'backend'
-        run: pnpm install --frozen-lockfile
-
-      - name: Build frontend for artifact (backend only)
-        if: matrix.app == 'backend'
-        env:
-          VITE_API_URL: ''
-        run: pnpm --filter frontend build
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -166,30 +143,51 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set Dockerfile path
-        id: dockerfile
-        run: |
-          if [ "${{ matrix.app }}" = "frontend" ]; then
-            echo "path=./docker/frontend.prebuilt.Dockerfile" >> $GITHUB_OUTPUT
-          else
-            echo "path=./docker/backend.Dockerfile" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Build and push image
+      - name: Build and push frontend
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ${{ steps.dockerfile.outputs.path }}
+          file: ./docker/frontend.prebuilt.Dockerfile
           push: true
           platforms: ${{ matrix.platform }}
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.app }}:${{ inputs.tag }}-${{ matrix.suffix }}
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.app }}:buildcache-${{ matrix.suffix }}
-          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.app }}:buildcache-${{ matrix.suffix }},mode=max
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend:${{ inputs.tag }}-${{ matrix.suffix }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend:buildcache-${{ matrix.suffix }}
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend:buildcache-${{ matrix.suffix }},mode=max
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend (for backend Dockerfile context)
+        env:
+          VITE_API_URL: ''
+        run: pnpm --filter frontend build
+
+      - name: Build and push backend
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/backend.Dockerfile
+          push: true
+          platforms: ${{ matrix.platform }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend:${{ inputs.tag }}-${{ matrix.suffix }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend:buildcache-${{ matrix.suffix }}
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend:buildcache-${{ matrix.suffix }},mode=max
 
   # Create multi-arch manifests combining per-arch images
   create-manifests:
     name: Create Multi-Arch Manifests
-    needs: [build-frontend, build-images]
+    needs: [setup, build-images]
     runs-on: ubuntu-latest
     steps:
       - name: Log in to GitHub Container Registry
@@ -227,7 +225,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Platforms:** ${{ inputs.platforms }}" >> $GITHUB_STEP_SUMMARY
           echo "**Tag:** ${{ inputs.tag }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Release Version:** ${{ needs.build-frontend.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Release Version:** ${{ needs.setup.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Images" >> $GITHUB_STEP_SUMMARY
           echo "- \`${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend:${{ inputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
@@ -243,7 +241,7 @@ jobs:
 
   trigger-app-store:
     name: Trigger App Store PR
-    needs: [build-frontend, create-manifests]
+    needs: [setup, create-manifests]
     runs-on: ubuntu-latest
     if: ${{ inputs.trigger_app_store }}
     steps:
@@ -251,7 +249,7 @@ jobs:
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |
-          VERSION="${{ needs.build-frontend.outputs.version }}"
+          VERSION="${{ needs.setup.outputs.version }}"
           echo "Triggering app store PR with version: $VERSION"
           echo "$GH_PAT" | gh auth login --with-token
           gh workflow run create-bff-release-pr.yml \
