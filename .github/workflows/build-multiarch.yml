@@ -1,6 +1,6 @@
 name: Build Multi-Arch Images (Umbrel)
 
-# Manual trigger only - ARM64 builds are slow (~10-15 min with QEMU)
+# Manual trigger only - uses native ARM64 runners for reliable builds
 on:
   workflow_dispatch:
     inputs:
@@ -33,10 +33,10 @@ permissions:
   packages: write
 
 jobs:
-  build-multiarch:
-    name: Build Multi-Arch Images
+  # Build frontend once (static files are architecture-independent)
+  build-frontend:
+    name: Build Frontend
     runs-on: ubuntu-latest
-    timeout-minutes: 45 # Prevent runaway builds (QEMU ARM64 is slow but shouldn't exceed 30min)
     outputs:
       version: ${{ steps.get_version.outputs.version }}
     steps:
@@ -53,7 +53,6 @@ jobs:
           if [ -z "$LATEST" ]; then
             LATEST="v0.0.0"
           fi
-          # Remove 'v' prefix for app store version
           VERSION="${LATEST#v}"
           echo "Latest release: $LATEST (app store version: $VERSION)"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
@@ -77,8 +76,85 @@ jobs:
           VITE_API_URL: ''
         run: pnpm --filter frontend build
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      - name: Upload frontend build
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: apps/frontend/dist
+          retention-days: 1
+
+  # Build Docker images on native runners for each architecture
+  build-images:
+    name: Build ${{ matrix.app }} (${{ matrix.platform }})
+    needs: build-frontend
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [frontend, backend]
+        include_platform:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            suffix: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm64
+            suffix: arm64
+        # Flatten the matrix
+        include:
+          - app: frontend
+            platform: linux/amd64
+            runner: ubuntu-latest
+            suffix: amd64
+          - app: frontend
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm64
+            suffix: arm64
+          - app: backend
+            platform: linux/amd64
+            runner: ubuntu-latest
+            suffix: amd64
+          - app: backend
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm64
+            suffix: arm64
+        exclude:
+          - app: frontend
+          - app: backend
+    # Skip builds for platforms not in the selected list
+    if: contains(inputs.platforms, matrix.platform)
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download frontend build
+        if: matrix.app == 'frontend'
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: apps/frontend/dist
+
+      - name: Setup pnpm (backend only)
+        if: matrix.app == 'backend'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js (backend only)
+        if: matrix.app == 'backend'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies (backend only)
+        if: matrix.app == 'backend'
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend for artifact (backend only)
+        if: matrix.app == 'backend'
+        env:
+          VITE_API_URL: ''
+        run: pnpm --filter frontend build
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -90,43 +166,60 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata - Frontend
-        id: meta-frontend
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend
-          tags: |
-            type=raw,value=${{ inputs.tag }}
+      - name: Set Dockerfile path
+        id: dockerfile
+        run: |
+          if [ "${{ matrix.app }}" = "frontend" ]; then
+            echo "path=./docker/frontend.prebuilt.Dockerfile" >> $GITHUB_OUTPUT
+          else
+            echo "path=./docker/backend.Dockerfile" >> $GITHUB_OUTPUT
+          fi
 
-      - name: Extract metadata - Backend
-        id: meta-backend
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend
-          tags: |
-            type=raw,value=${{ inputs.tag }}
-
-      - name: Build and push frontend (multi-arch)
+      - name: Build and push image
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./docker/frontend.prebuilt.Dockerfile
+          file: ${{ steps.dockerfile.outputs.path }}
           push: true
-          platforms: ${{ inputs.platforms }}
-          tags: ${{ steps.meta-frontend.outputs.tags }}
-          labels: ${{ steps.meta-frontend.outputs.labels }}
+          platforms: ${{ matrix.platform }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.app }}:${{ inputs.tag }}-${{ matrix.suffix }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.app }}:buildcache-${{ matrix.suffix }}
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.app }}:buildcache-${{ matrix.suffix }},mode=max
 
-      - name: Build and push backend (multi-arch)
-        uses: docker/build-push-action@v5
+  # Create multi-arch manifests combining per-arch images
+  create-manifests:
+    name: Create Multi-Arch Manifests
+    needs: [build-frontend, build-images]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
         with:
-          context: .
-          file: ./docker/backend.Dockerfile
-          push: true
-          platforms: ${{ inputs.platforms }}
-          tags: ${{ steps.meta-backend.outputs.tags }}
-          labels: ${{ steps.meta-backend.outputs.labels }}
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend:buildcache-multiarch
-          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend:buildcache-multiarch,mode=max
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create frontend manifest
+        run: |
+          IMAGES=""
+          if [[ "${{ inputs.platforms }}" == *"linux/amd64"* ]]; then
+            IMAGES="$IMAGES ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend:${{ inputs.tag }}-amd64"
+          fi
+          if [[ "${{ inputs.platforms }}" == *"linux/arm64"* ]]; then
+            IMAGES="$IMAGES ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend:${{ inputs.tag }}-arm64"
+          fi
+          docker buildx imagetools create -t ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend:${{ inputs.tag }} $IMAGES
+
+      - name: Create backend manifest
+        run: |
+          IMAGES=""
+          if [[ "${{ inputs.platforms }}" == *"linux/amd64"* ]]; then
+            IMAGES="$IMAGES ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend:${{ inputs.tag }}-amd64"
+          fi
+          if [[ "${{ inputs.platforms }}" == *"linux/arm64"* ]]; then
+            IMAGES="$IMAGES ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend:${{ inputs.tag }}-arm64"
+          fi
+          docker buildx imagetools create -t ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend:${{ inputs.tag }} $IMAGES
 
       - name: Summary
         run: |
@@ -134,18 +227,23 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Platforms:** ${{ inputs.platforms }}" >> $GITHUB_STEP_SUMMARY
           echo "**Tag:** ${{ inputs.tag }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Release Version:** ${{ steps.get_version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Release Version:** ${{ needs.build-frontend.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Images" >> $GITHUB_STEP_SUMMARY
           echo "- \`${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend:${{ inputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- \`${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend:${{ inputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Build Method" >> $GITHUB_STEP_SUMMARY
+          echo "Built using **native runners** (no QEMU emulation):" >> $GITHUB_STEP_SUMMARY
+          echo "- AMD64: \`ubuntu-latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "- ARM64: \`ubuntu-24.04-arm64\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Usage on Umbrel" >> $GITHUB_STEP_SUMMARY
-          echo "These images now support ARM64 (Raspberry Pi) and can be used with the Umbrel app store." >> $GITHUB_STEP_SUMMARY
+          echo "These images support ARM64 (Raspberry Pi) and can be used with the Umbrel app store." >> $GITHUB_STEP_SUMMARY
 
   trigger-app-store:
     name: Trigger App Store PR
-    needs: build-multiarch
+    needs: [build-frontend, create-manifests]
     runs-on: ubuntu-latest
     if: ${{ inputs.trigger_app_store }}
     steps:
@@ -153,7 +251,7 @@ jobs:
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |
-          VERSION="${{ needs.build-multiarch.outputs.version }}"
+          VERSION="${{ needs.build-frontend.outputs.version }}"
           echo "Triggering app store PR with version: $VERSION"
           echo "$GH_PAT" | gh auth login --with-token
           gh workflow run create-bff-release-pr.yml \
