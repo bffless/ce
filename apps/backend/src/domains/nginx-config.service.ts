@@ -163,8 +163,13 @@ export class NginxConfigService implements OnModuleInit {
       }
     }
 
-    // In PLATFORM_MODE, custom domains use a simplified config (port 80 only, Traefik handles SSL)
-    if (domainMapping.domainType === 'custom' && this.isPlatformMode()) {
+    // Use simplified config (port 80 only) when:
+    // - PLATFORM_MODE=true (Traefik handles SSL)
+    // - PROXY_MODE=cloudflare or cloudflare-tunnel (Cloudflare handles SSL at edge)
+    const useSimplifiedConfig = this.isPlatformMode() || this.isExternalSslProxy();
+
+    // Custom domains with simplified config (external SSL termination)
+    if (domainMapping.domainType === 'custom' && useSimplifiedConfig) {
       return this.generatePlatformCustomDomainConfig(
         domainMapping,
         project,
@@ -173,8 +178,8 @@ export class NginxConfigService implements OnModuleInit {
       );
     }
 
-    // In PLATFORM_MODE, subdomains also use simplified config
-    if (domainMapping.domainType === 'subdomain' && this.isPlatformMode()) {
+    // Subdomains with simplified config
+    if (domainMapping.domainType === 'subdomain' && useSimplifiedConfig) {
       return this.generatePlatformSubdomainConfig(
         domainMapping,
         project,
@@ -182,6 +187,10 @@ export class NginxConfigService implements OnModuleInit {
         pathRedirects,
       );
     }
+
+    // Note: wwwBehavior is only supported when using Cloudflare or Platform mode (above).
+    // CE mode with direct SSL (Let's Encrypt) + wwwBehavior is not currently supported.
+    // The template will generate config for the specified domain only.
 
     const template =
       domainMapping.domainType === 'subdomain' ? this.subdomainTemplate : this.customDomainTemplate;
@@ -690,15 +699,17 @@ ${spaFallback}
 
   /**
    * Check if an external proxy fully terminates SSL.
-   * When PROXY_MODE=cloudflare-tunnel, nginx should generate non-SSL configs (port 80 only)
-   * since Cloudflare Tunnel handles HTTPS termination.
+   * When PROXY_MODE=cloudflare or cloudflare-tunnel, nginx should generate non-SSL configs
+   * (port 80 only) since Cloudflare handles HTTPS termination at the edge.
    *
-   * Note: PROXY_MODE=cloudflare is different - it uses Cloudflare origin certs
-   * and nginx still listens on 443.
+   * PROXY_MODE values:
+   * - 'none': nginx handles SSL directly (Let's Encrypt)
+   * - 'cloudflare': Cloudflare terminates SSL at edge, nginx listens on port 80
+   * - 'cloudflare-tunnel': Cloudflare Tunnel routes traffic, nginx listens on port 80
    */
   private isExternalSslProxy(): boolean {
     const proxyMode = this.configService.get<string>('PROXY_MODE', 'none');
-    return proxyMode === 'cloudflare-tunnel';
+    return proxyMode === 'cloudflare' || proxyMode === 'cloudflare-tunnel';
   }
 
   /**
