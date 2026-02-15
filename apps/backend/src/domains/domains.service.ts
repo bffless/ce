@@ -462,8 +462,8 @@ export class DomainsService {
         );
       }
 
-      // Primary domains must specify wwwBehavior
-      if (!createDomainDto.wwwBehavior) {
+      // Primary domains must specify wwwBehavior (null means www is disabled)
+      if (createDomainDto.wwwBehavior === undefined) {
         createDomainDto.wwwBehavior = 'redirect-to-www'; // Default behavior
       }
     }
