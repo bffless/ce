@@ -132,6 +132,11 @@ export class PrimaryContentService {
         );
         await this.domainsService.remove(existingPrimary.id, userId);
 
+        // Wait for nginx watcher to complete its cycle before writing new config
+        // This avoids a race condition where the second write is missed
+        const extraWait = parseInt(process.env.NGINX_RELOAD_WAIT_MS || '3000', 10);
+        await new Promise((resolve) => setTimeout(resolve, extraWait));
+
         // Generate welcome page config so the primary domain still serves something
         this.logger.log(`Generating welcome page config for ${baseDomain}`);
         const { tempPath, finalPath } =
