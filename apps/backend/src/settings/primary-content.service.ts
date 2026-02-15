@@ -3,6 +3,8 @@ import { eq, and } from 'drizzle-orm';
 import { db } from '../db/client';
 import { projects, deploymentAliases } from '../db/schema';
 import { DomainsService } from '../domains/domains.service';
+import { NginxConfigService } from '../domains/nginx-config.service';
+import { NginxReloadService } from '../domains/nginx-reload.service';
 
 export interface PrimaryContentConfig {
   enabled: boolean;
@@ -36,7 +38,11 @@ export interface UpdatePrimaryContentDto {
 export class PrimaryContentService {
   private readonly logger = new Logger(PrimaryContentService.name);
 
-  constructor(private readonly domainsService: DomainsService) {}
+  constructor(
+    private readonly domainsService: DomainsService,
+    private readonly nginxConfigService: NginxConfigService,
+    private readonly nginxReloadService: NginxReloadService,
+  ) {}
 
   async getConfig(): Promise<PrimaryContentConfig> {
     const primaryDomain = await this.domainsService.getPrimaryDomain();
@@ -125,6 +131,15 @@ export class PrimaryContentService {
           `Disabling primary content, deleting domain mapping for ${existingPrimary.domain}`,
         );
         await this.domainsService.remove(existingPrimary.id, userId);
+
+        // Generate welcome page config so the primary domain still serves something
+        this.logger.log(`Generating welcome page config for ${baseDomain}`);
+        const { tempPath, finalPath } =
+          await this.nginxConfigService.generateWelcomePageConfig();
+        const result = await this.nginxReloadService.validateAndReload(tempPath, finalPath);
+        if (!result.success) {
+          this.logger.warn(`Failed to generate welcome page config: ${result.error}`);
+        }
       } else if (projectId && projectId !== existingPrimary.projectId) {
         // Project is changing - delete and recreate
         this.logger.log(`Project changed, recreating primary domain mapping`);
