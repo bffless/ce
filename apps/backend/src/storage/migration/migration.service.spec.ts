@@ -69,11 +69,11 @@ describe('StorageMigrationService', () => {
     });
 
     it('should throw if target connection fails', async () => {
-      mockTarget.testConnection.mockResolvedValueOnce(false);
+      mockTarget.testConnection.mockRejectedValueOnce(new Error('Connection failed'));
 
       await expect(
         service.startMigration(mockSource, mockTarget, 'minio', 's3', mockTargetConfig),
-      ).rejects.toThrow('Cannot connect to target storage provider');
+      ).rejects.toThrow('Cannot connect to target storage provider: Connection failed');
     });
 
     it('should calculate total bytes from all files', async () => {

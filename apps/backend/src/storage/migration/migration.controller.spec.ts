@@ -4,7 +4,7 @@ import { MigrationController } from './migration.controller';
 import { StorageMigrationService } from './migration.service';
 import { SetupService } from '../../setup/setup.service';
 import { STORAGE_ADAPTER, IStorageAdapter } from '../storage.interface';
-import { StorageModule } from '../storage.module';
+import { StorageModule, DYNAMIC_STORAGE_ADAPTER } from '../storage.module';
 import {
   MigrationStatus,
   MigrationProgress,
@@ -20,6 +20,7 @@ jest.mock('../storage.module', () => ({
   StorageModule: {
     createAdapter: jest.fn(),
   },
+  DYNAMIC_STORAGE_ADAPTER: 'DYNAMIC_STORAGE_ADAPTER',
 }));
 
 describe('MigrationController', () => {
@@ -114,6 +115,13 @@ describe('MigrationController', () => {
         {
           provide: STORAGE_ADAPTER,
           useValue: mockCurrentStorage,
+        },
+        {
+          provide: DYNAMIC_STORAGE_ADAPTER,
+          useValue: {
+            setAdapter: jest.fn(),
+            getAdapterType: jest.fn().mockReturnValue('MockAdapter'),
+          },
         },
       ],
     })
@@ -342,7 +350,7 @@ describe('MigrationController', () => {
       migrationService.getProgress.mockReturnValue(createMockProgress(MigrationStatus.IN_PROGRESS));
 
       const dto = {
-        provider: 's3',
+        provider: 's3' as const,
         config: { bucket: 'test', region: 'us-east-1' },
       };
 
@@ -354,7 +362,7 @@ describe('MigrationController', () => {
       migrationService.getProgress.mockReturnValue(null);
 
       const dto = {
-        provider: 's3',
+        provider: 's3' as const,
         config: { bucket: 'test', region: 'us-east-1' },
       };
 

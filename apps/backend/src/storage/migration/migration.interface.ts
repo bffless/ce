@@ -143,6 +143,6 @@ export interface StartMigrationDto {
  * Complete migration request DTO
  */
 export interface CompleteMigrationDto {
-  provider: string;
+  provider: 's3' | 'gcs' | 'azure' | 'minio' | 'local';
   config: Record<string, unknown>;
 }

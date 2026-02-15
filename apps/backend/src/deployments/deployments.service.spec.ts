@@ -622,7 +622,7 @@ describe('DeploymentsService', () => {
       expect(result.message).toBe('Commit deleted successfully');
       expect(result.deletedFiles).toBe(2);
       expect(mockStorageAdapter.deletePrefix).toHaveBeenCalledWith(
-        `${mockOwner}/${mockRepo}/${mockCommitSha}/`,
+        `${mockOwner}/${mockRepo}/commits/${mockCommitSha}/`,
       );
     });
 
