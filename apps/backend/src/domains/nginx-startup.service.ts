@@ -57,6 +57,9 @@ export class NginxStartupService implements OnModuleInit {
     // 0. Clean up orphaned config files (from previous installs or deleted mappings)
     await this.cleanupOrphanedConfigs();
 
+    // 0.5. Clean up stale primary domain mapping if PRIMARY_DOMAIN changed
+    await this.cleanupStalePrimaryDomainMapping();
+
     // 1. Regenerate all domain mapping configs
     await this.regenerateDomainMappingConfigs();
 
@@ -124,6 +127,63 @@ export class NginxStartupService implements OnModuleInit {
       }
     } catch (error) {
       this.logger.warn(`Failed to cleanup orphaned configs: ${error}`);
+    }
+  }
+
+  /**
+   * Detects and cleans up stale primary domain mappings when PRIMARY_DOMAIN changes.
+   *
+   * This handles the case where a user changes their domain.txt file. The old primary
+   * domain mapping in the database needs to be removed so it can be used as a custom domain.
+   */
+  private async cleanupStalePrimaryDomainMapping(): Promise<void> {
+    const currentPrimaryDomain = process.env.PRIMARY_DOMAIN || 'localhost';
+
+    try {
+      // Find any primary domain mapping in the database
+      const [primaryMapping] = await db
+        .select()
+        .from(domainMappings)
+        .where(eq(domainMappings.isPrimary, true))
+        .limit(1);
+
+      if (!primaryMapping) {
+        // No primary domain mapping exists, nothing to clean up
+        return;
+      }
+
+      // Check if the domain in the database matches the current PRIMARY_DOMAIN
+      if (primaryMapping.domain === currentPrimaryDomain) {
+        // Domain matches, no cleanup needed
+        return;
+      }
+
+      // PRIMARY_DOMAIN has changed! The old mapping is stale.
+      this.logger.warn(
+        `PRIMARY_DOMAIN changed from "${primaryMapping.domain}" to "${currentPrimaryDomain}". ` +
+          `Removing stale primary domain mapping to allow the old domain to be used as a custom domain.`,
+      );
+
+      // Delete the stale primary domain mapping
+      await db.delete(domainMappings).where(eq(domainMappings.id, primaryMapping.id));
+
+      // Also clean up the nginx config file for the old mapping
+      const sitesPath = this.nginxConfigService.getNginxSitesPath();
+      const { unlink } = await import('fs/promises');
+      const { join } = await import('path');
+
+      try {
+        await unlink(join(sitesPath, `domain-${primaryMapping.id}.conf`));
+        this.logger.log(`Removed nginx config for stale primary domain: ${primaryMapping.domain}`);
+      } catch {
+        // Config file may not exist, that's fine
+      }
+
+      this.logger.log(
+        `Cleaned up stale primary domain mapping. You can now use "${primaryMapping.domain}" as a custom domain.`,
+      );
+    } catch (error) {
+      this.logger.error(`Failed to cleanup stale primary domain mapping: ${error}`);
     }
   }
 

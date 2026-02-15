@@ -119,8 +119,14 @@ export class PrimaryContentService {
     const baseDomain = process.env.PRIMARY_DOMAIN || 'localhost';
 
     if (existingPrimary) {
-      // Check if project is changing - if so, we need to delete and recreate
-      if (projectId && projectId !== existingPrimary.projectId) {
+      if (!willBeEnabled) {
+        // Disabling primary content - delete the mapping entirely to free up the domain
+        this.logger.log(
+          `Disabling primary content, deleting domain mapping for ${existingPrimary.domain}`,
+        );
+        await this.domainsService.remove(existingPrimary.id, userId);
+      } else if (projectId && projectId !== existingPrimary.projectId) {
+        // Project is changing - delete and recreate
         this.logger.log(`Project changed, recreating primary domain mapping`);
         await this.domainsService.remove(existingPrimary.id, userId);
         const wwwBehavior = dto.wwwEnabled === false ? null : dto.wwwBehavior || 'redirect-to-www';
@@ -138,7 +144,7 @@ export class PrimaryContentService {
           userId,
         );
       } else {
-        // Update existing primary domain mapping
+        // Update existing primary domain mapping (enabled, same project)
         this.logger.log(`Updating existing primary domain mapping: ${existingPrimary.id}`);
         const wwwBehavior = dto.wwwEnabled === false ? null : dto.wwwBehavior;
         await this.domainsService.update(
@@ -146,7 +152,6 @@ export class PrimaryContentService {
           {
             alias: dto.alias ?? undefined,
             path: dto.path ?? undefined,
-            isActive: dto.enabled,
             isSpa: dto.isSpa,
             wwwBehavior,
           },
