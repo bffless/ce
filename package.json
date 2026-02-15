@@ -1,6 +1,6 @@
 {
   "name": "@bffless/ce",
-  "version": "0.0.27",
+  "version": "0.0.28",
   "description": "Static Asset Hosting Platform - Self-contained platform for hosting images and static assets from CI/CD pipelines",
   "private": true,
   "scripts": {
