@@ -103,29 +103,25 @@ export class StorageModule {
         );
         const config = await options.useFactory(...args);
 
-        // If storage is configured, set the proper adapter
-        if (config.storageType !== 'local' || config.config?.localPath !== './uploads') {
-          try {
-            let adapter: IStorageAdapter = StorageModule.createAdapter(config);
+        // Configure storage adapter with caching layer
+        try {
+          let adapter: IStorageAdapter = StorageModule.createAdapter(config);
 
-            // Wrap with caching if cache adapter is available and cache is configured
-            if (cacheAdapter && config.cacheConfig?.enabled !== false) {
-              logger.log('Wrapping storage adapter with caching layer');
-              adapter = new CachingStorageAdapter(
-                adapter,
-                cacheAdapter,
-                config.cacheConfig || { type: 'memory' },
-              );
-            }
-
-            dynamicAdapter.setAdapter(adapter);
-            logger.log(`Storage configured at startup: ${config.storageType}`);
-          } catch (error) {
-            logger.error(`Failed to create storage adapter at startup: ${error}`);
-            logger.warn('Falling back to local storage');
+          // Wrap with caching if cache adapter is available and cache is configured
+          if (cacheAdapter && config.cacheConfig?.enabled !== false) {
+            logger.log('Wrapping storage adapter with caching layer');
+            adapter = new CachingStorageAdapter(
+              adapter,
+              cacheAdapter,
+              config.cacheConfig || { type: 'memory' },
+            );
           }
-        } else {
-          logger.log('Using default local storage (setup not complete or local configured)');
+
+          dynamicAdapter.setAdapter(adapter);
+          logger.log(`Storage configured at startup: ${config.storageType}`);
+        } catch (error) {
+          logger.error(`Failed to create storage adapter at startup: ${error}`);
+          logger.warn('Falling back to default local storage');
         }
 
         return dynamicAdapter;
