@@ -3,10 +3,15 @@ import { DeploymentsController, AliasesController } from './deployments.controll
 import { DeploymentsService } from './deployments.service';
 import { VisibilityService } from '../domains/visibility.service';
 import { ProjectsService } from '../projects/projects.service';
+import { PendingUploadsService } from './pending-uploads.service';
+import { STORAGE_ADAPTER } from '../storage/storage.interface';
 
 describe('DeploymentsController', () => {
   let controller: DeploymentsController;
   let mockDeploymentsService: jest.Mocked<DeploymentsService>;
+  let mockPendingUploadsService: jest.Mocked<PendingUploadsService>;
+  let mockProjectsService: jest.Mocked<ProjectsService>;
+  let mockStorageAdapter: any;
 
   const mockDeploymentId = '550e8400-e29b-41d4-a716-446655440000';
   const mockUserId = 'user-id-123';
@@ -90,12 +95,50 @@ describe('DeploymentsController', () => {
       createOrUpdateAlias: jest.fn(),
     } as any;
 
+    mockPendingUploadsService = {
+      create: jest.fn(),
+      findByToken: jest.fn(),
+      delete: jest.fn(),
+      findExpired: jest.fn(),
+      deleteMany: jest.fn(),
+      getStorageKeysFromUpload: jest.fn(),
+    } as any;
+
+    mockProjectsService = {
+      getProjectByOwnerName: jest.fn().mockResolvedValue({
+        id: 'project-123',
+        owner: 'owner',
+        name: 'repo',
+        isPublic: true,
+      }),
+      findOrCreateProject: jest.fn(),
+      getOrCreateProjectIdForRepository: jest.fn(),
+    } as any;
+
+    mockStorageAdapter = {
+      supportsPresignedUrls: jest.fn().mockReturnValue(false),
+      getPresignedUploadUrl: jest.fn(),
+      exists: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       controllers: [DeploymentsController],
       providers: [
         {
           provide: DeploymentsService,
           useValue: mockDeploymentsService,
+        },
+        {
+          provide: PendingUploadsService,
+          useValue: mockPendingUploadsService,
+        },
+        {
+          provide: ProjectsService,
+          useValue: mockProjectsService,
+        },
+        {
+          provide: STORAGE_ADAPTER,
+          useValue: mockStorageAdapter,
         },
       ],
     }).compile();

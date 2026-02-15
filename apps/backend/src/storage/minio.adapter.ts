@@ -164,7 +164,7 @@ export class MinioStorageAdapter implements IStorageAdapter {
   }
 
   /**
-   * Get presigned URL for accessing the file
+   * Get presigned URL for accessing the file (GET)
    */
   async getUrl(key: string, expiresIn: number = 3600): Promise<string> {
     const sanitizedKey = this.sanitizeKey(key);
@@ -177,6 +177,29 @@ export class MinioStorageAdapter implements IStorageAdapter {
     } catch (error) {
       this.logger.error(`Failed to generate presigned URL: ${storageKey}`, error);
       throw new Error(`Failed to generate presigned URL: ${error.message}`);
+    }
+  }
+
+  /**
+   * Check if presigned upload URLs are supported
+   */
+  supportsPresignedUrls(): boolean {
+    return true;
+  }
+
+  /**
+   * Generate a presigned URL for uploading a file directly to storage (PUT)
+   */
+  async getPresignedUploadUrl(key: string, expiresIn: number = 3600): Promise<string> {
+    const sanitizedKey = this.sanitizeKey(key);
+    const storageKey = this.prefixKey(sanitizedKey);
+
+    try {
+      const url = await this.client.presignedPutObject(this.bucket, storageKey, expiresIn);
+      return url;
+    } catch (error) {
+      this.logger.error(`Failed to generate presigned upload URL: ${storageKey}`, error);
+      throw new Error(`Failed to generate presigned upload URL: ${error.message}`);
     }
   }
 

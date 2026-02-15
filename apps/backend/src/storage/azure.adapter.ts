@@ -179,7 +179,7 @@ export class AzureBlobStorageAdapter implements IStorageAdapter {
   }
 
   /**
-   * Get a SAS URL for accessing the file
+   * Get a SAS URL for accessing the file (read)
    */
   async getUrl(key: string, expiresIn?: number): Promise<string> {
     const sanitizedKey = this.sanitizeKey(key);
@@ -216,6 +216,51 @@ export class AzureBlobStorageAdapter implements IStorageAdapter {
     } catch (error: any) {
       this.logger.error(`Failed to generate SAS URL: ${storageKey}`, error);
       throw new Error(`Failed to generate SAS URL: ${error.message}`);
+    }
+  }
+
+  /**
+   * Check if presigned upload URLs are supported
+   * Only supported when we have shared key credential for SAS generation
+   */
+  supportsPresignedUrls(): boolean {
+    return !!this.sharedKeyCredential;
+  }
+
+  /**
+   * Generate a SAS URL for uploading a file directly to storage (write)
+   */
+  async getPresignedUploadUrl(key: string, expiresIn?: number): Promise<string> {
+    const sanitizedKey = this.sanitizeKey(key);
+    const storageKey = this.prefixKey(sanitizedKey);
+    const blockBlobClient = this.containerClient.getBlockBlobClient(storageKey);
+    const expiration = expiresIn ?? this.config.sasUrlExpiration ?? 3600;
+
+    if (!this.sharedKeyCredential) {
+      throw new Error(
+        'Presigned upload URLs require account key authentication. Managed identity does not support this.',
+      );
+    }
+
+    try {
+      const sasOptions = {
+        containerName: this.config.containerName,
+        blobName: storageKey,
+        permissions: BlobSASPermissions.parse('cw'), // Create and Write
+        startsOn: new Date(),
+        expiresOn: new Date(Date.now() + expiration * 1000),
+        protocol: SASProtocol.HttpsAndHttp,
+      };
+
+      const sasToken = generateBlobSASQueryParameters(
+        sasOptions,
+        this.sharedKeyCredential,
+      ).toString();
+
+      return `${blockBlobClient.url}?${sasToken}`;
+    } catch (error: any) {
+      this.logger.error(`Failed to generate SAS upload URL: ${storageKey}`, error);
+      throw new Error(`Failed to generate SAS upload URL: ${error.message}`);
     }
   }
 

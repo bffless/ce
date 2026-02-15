@@ -15,6 +15,13 @@
       "when": 1770638219330,
       "tag": "0001_third_scourge",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1771162644786,
+      "tag": "0002_flashy_deathstrike",
+      "breakpoints": true
     }
   ]
 }

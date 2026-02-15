@@ -15,6 +15,8 @@ import {
   HttpCode,
   HttpStatus,
   NotFoundException,
+  BadRequestException,
+  Inject,
 } from '@nestjs/common';
 import { FilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
@@ -27,6 +29,7 @@ import {
   ApiSecurity,
 } from '@nestjs/swagger';
 import { DeploymentsService } from './deployments.service';
+import { PendingUploadsService } from './pending-uploads.service';
 import { ApiKeyGuard } from '../auth/api-key.guard';
 import { CurrentUser, CurrentUserData } from '../auth/decorators/current-user.decorator';
 import {
@@ -45,9 +48,15 @@ import {
   AliasVisibilityResponseDto,
   DeleteCommitResponseDto,
   DeleteCommitErrorDto,
+  PrepareBatchUploadDto,
+  PrepareBatchUploadResponseDto,
+  FinalizeUploadDto,
+  FinalizeUploadResponseDto,
 } from './deployments.dto';
 import { VisibilityService } from '../domains/visibility.service';
 import { ProjectsService } from '../projects/projects.service';
+import { IStorageAdapter, STORAGE_ADAPTER } from '../storage/storage.interface';
+import { PendingUploadFile } from '../db/schema/pending-uploads.schema';
 
 @ApiTags('Deployments')
 @Controller('api/deployments')
@@ -55,7 +64,12 @@ import { ProjectsService } from '../projects/projects.service';
 @ApiBearerAuth()
 @ApiSecurity('api-key')
 export class DeploymentsController {
-  constructor(private readonly deploymentsService: DeploymentsService) {}
+  constructor(
+    private readonly deploymentsService: DeploymentsService,
+    private readonly pendingUploadsService: PendingUploadsService,
+    private readonly projectsService: ProjectsService,
+    @Inject(STORAGE_ADAPTER) private readonly storageAdapter: IStorageAdapter,
+  ) {}
 
   @Post()
   @UseInterceptors(
@@ -144,6 +158,207 @@ export class DeploymentsController {
     @CurrentUser() user: CurrentUserData,
   ): Promise<AliasResponseDto> {
     return this.deploymentsService.createAlias(deploymentId, dto, user.id, user.role || 'user');
+  }
+
+  // Pre-signed URL Batch Upload Endpoints
+
+  @Post('prepare-batch-upload')
+  @Throttle({ default: { ttl: 60000, limit: 30 } }) // 30 per minute (prepare calls are lightweight)
+  @ApiOperation({
+    summary: 'Prepare batch upload with presigned URLs',
+    description:
+      'Requests presigned URLs for direct-to-storage file uploads. If the storage backend does not support presigned URLs, returns a fallback response indicating ZIP upload should be used.',
+  })
+  @ApiResponse({ status: 201, type: PrepareBatchUploadResponseDto })
+  @ApiResponse({ status: 400, description: 'Invalid input or too many files' })
+  @ApiResponse({ status: 403, description: 'Not authorized for this repository' })
+  async prepareBatchUpload(
+    @Body() dto: PrepareBatchUploadDto,
+    @CurrentUser() user: CurrentUserData,
+  ): Promise<PrepareBatchUploadResponseDto> {
+    // Check if storage supports presigned URLs
+    const supportsPresigned = this.storageAdapter.supportsPresignedUrls?.() ?? false;
+
+    if (!supportsPresigned) {
+      // Return fallback response - client should use ZIP upload
+      return {
+        presignedUrlsSupported: false,
+      };
+    }
+
+    // Parse repository
+    const [owner, name] = dto.repository.split('/');
+    if (!owner || !name) {
+      throw new BadRequestException('Invalid repository format. Expected "owner/repo"');
+    }
+
+    // Find or create project
+    const project = await this.projectsService.findOrCreateProject(owner, name, user.id);
+
+    // Validate file count
+    if (dto.files.length > 10000) {
+      throw new BadRequestException('Maximum 10,000 files per batch upload');
+    }
+
+    if (dto.files.length === 0) {
+      throw new BadRequestException('At least one file is required');
+    }
+
+    // Generate presigned URLs for each file
+    const expiresInSeconds = 3600; // 1 hour
+    const expiresAt = new Date(Date.now() + expiresInSeconds * 1000);
+    const filesWithUrls: Array<{
+      path: string;
+      presignedUrl: string;
+      storageKey: string;
+    }> = [];
+    const pendingFiles: PendingUploadFile[] = [];
+
+    for (const file of dto.files) {
+      const storageKey = this.deploymentsService.generateStorageKeyPublic(
+        dto.repository,
+        dto.commitSha,
+        file.path,
+      );
+
+      const presignedUrl = await this.storageAdapter.getPresignedUploadUrl!(
+        storageKey,
+        expiresInSeconds,
+      );
+
+      filesWithUrls.push({
+        path: file.path,
+        presignedUrl,
+        storageKey,
+      });
+
+      pendingFiles.push({
+        path: file.path,
+        size: file.size,
+        contentType: file.contentType,
+        storageKey,
+      });
+    }
+
+    // Create pending upload record
+    const pendingUpload = await this.pendingUploadsService.create({
+      projectId: project.id,
+      repository: dto.repository,
+      commitSha: dto.commitSha,
+      branch: dto.branch,
+      alias: dto.alias,
+      basePath: dto.basePath,
+      description: dto.description,
+      tags: dto.tags,
+      proxyRuleSetId: dto.proxyRuleSetId,
+      files: pendingFiles,
+      uploadedBy: user.id,
+      expiresInSeconds,
+    });
+
+    return {
+      presignedUrlsSupported: true,
+      uploadToken: pendingUpload.uploadToken,
+      expiresAt: expiresAt.toISOString(),
+      files: filesWithUrls,
+    };
+  }
+
+  @Post('finalize-upload')
+  @Throttle({ default: { ttl: 60000, limit: 10 } }) // 10 per minute (similar to zip upload)
+  @ApiOperation({
+    summary: 'Finalize batch upload',
+    description:
+      'Completes a batch upload by verifying files were uploaded and creating asset records.',
+  })
+  @ApiResponse({ status: 201, type: FinalizeUploadResponseDto })
+  @ApiResponse({ status: 400, description: 'Invalid upload token or upload expired' })
+  @ApiResponse({ status: 404, description: 'Upload token not found' })
+  async finalizeUpload(
+    @Body() dto: FinalizeUploadDto,
+    @CurrentUser() user: CurrentUserData,
+  ): Promise<FinalizeUploadResponseDto> {
+    // Find pending upload by token
+    const pendingUpload = await this.pendingUploadsService.findByToken(dto.uploadToken);
+
+    if (!pendingUpload) {
+      throw new NotFoundException('Upload token not found');
+    }
+
+    // Check if expired
+    if (new Date() > pendingUpload.expiresAt) {
+      // Clean up expired record
+      await this.pendingUploadsService.delete(pendingUpload.id);
+      throw new BadRequestException('Upload session has expired. Please start a new upload.');
+    }
+
+    // Verify all files exist in storage
+    const missingFiles: string[] = [];
+    for (const file of pendingUpload.files) {
+      const exists = await this.storageAdapter.exists(file.storageKey);
+      if (!exists) {
+        missingFiles.push(file.path);
+      }
+    }
+
+    if (missingFiles.length > 0) {
+      throw new BadRequestException({
+        message: 'Some files were not uploaded',
+        missingFiles: missingFiles.slice(0, 20), // Limit to first 20
+        totalMissing: missingFiles.length,
+      });
+    }
+
+    // Create asset records from manifest
+    const result = await this.deploymentsService.createAssetsFromManifest(
+      {
+        projectId: pendingUpload.projectId!,
+        repository: pendingUpload.repository,
+        commitSha: pendingUpload.commitSha,
+        branch: pendingUpload.branch ?? undefined,
+        description: pendingUpload.description ?? undefined,
+        tags: typeof pendingUpload.tags === 'string' ? pendingUpload.tags : JSON.stringify(pendingUpload.tags),
+        proxyRuleSetId: pendingUpload.proxyRuleSetId ?? undefined,
+        alias: pendingUpload.alias ?? undefined,
+        basePath: pendingUpload.basePath ?? undefined,
+        files: pendingUpload.files,
+        userId: pendingUpload.uploadedBy ?? undefined,
+      },
+      user.role,
+    );
+
+    // Delete pending upload record (successful finalization)
+    await this.pendingUploadsService.delete(pendingUpload.id);
+
+    // Generate URLs
+    const baseUrl = process.env.PUBLIC_URL || 'http://localhost:3000';
+    const primaryDomain = process.env.PRIMARY_DOMAIN;
+
+    // Find preview alias name from created aliases
+    const previewAliasName = result.aliases.find((a) => a.startsWith('pr-'));
+    let previewUrl: string | undefined;
+    if (previewAliasName && primaryDomain) {
+      previewUrl = `https://${previewAliasName}.${primaryDomain}/`;
+    } else if (previewAliasName) {
+      previewUrl = `${baseUrl}/public/subdomain-alias/${previewAliasName}/`;
+    }
+
+    return {
+      deploymentId: result.deploymentId,
+      commitSha: pendingUpload.commitSha,
+      fileCount: result.fileCount,
+      totalSize: result.totalSize,
+      urls: {
+        sha: `${baseUrl}/public/${pendingUpload.repository}/commits/${pendingUpload.commitSha}/`,
+        branch: pendingUpload.branch
+          ? `${baseUrl}/public/${pendingUpload.repository}/alias/${pendingUpload.branch}/`
+          : undefined,
+        default: `${baseUrl}/public/${pendingUpload.repository}/`,
+        preview: previewUrl,
+      },
+      aliases: result.aliases,
+      failed: result.failed.length > 0 ? result.failed : undefined,
+    };
   }
 
   @Delete('commit/:owner/:repo/:commitSha')
