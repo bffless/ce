@@ -7,7 +7,6 @@ import { ThemeProvider } from './components/common/ThemeProvider';
 import App from './App';
 import './index.css';
 
-// testing workspace-usage
 // Read basename from <base> tag to support serving from subdirectories
 const getBasename = (): string => {
   const base = document.querySelector('base');
