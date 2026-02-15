@@ -129,4 +129,20 @@ export interface IStorageAdapter {
    * @returns Object with count of deleted files and any failures
    */
   deletePrefix(prefix: string): Promise<{ deleted: number; failed: string[] }>;
+
+  /**
+   * Check if the storage adapter supports presigned upload URLs
+   * Used to determine if direct uploads from CI/CD are possible
+   * @returns true if presigned URLs are supported
+   */
+  supportsPresignedUrls?(): boolean;
+
+  /**
+   * Generate a presigned URL for uploading a file directly to storage
+   * This allows clients to upload directly without going through the backend
+   * @param key - Storage key/path for the file
+   * @param expiresIn - Optional expiration time in seconds (default: 3600)
+   * @returns Presigned URL for PUT operation
+   */
+  getPresignedUploadUrl?(key: string, expiresIn?: number): Promise<string>;
 }

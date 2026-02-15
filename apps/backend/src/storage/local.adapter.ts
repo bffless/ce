@@ -149,6 +149,14 @@ export class LocalStorageAdapter implements IStorageAdapter {
   }
 
   /**
+   * Check if presigned upload URLs are supported
+   * Local storage does not support presigned URLs - uploads must go through backend
+   */
+  supportsPresignedUrls(): boolean {
+    return false;
+  }
+
+  /**
    * List all storage keys with optional prefix
    */
   async listKeys(prefix?: string): Promise<string[]> {

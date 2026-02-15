@@ -150,7 +150,7 @@ export class GcsStorageAdapter implements IStorageAdapter {
   }
 
   /**
-   * Get a signed URL for accessing the file
+   * Get a signed URL for accessing the file (read)
    */
   async getUrl(key: string, expiresIn?: number): Promise<string> {
     const sanitizedKey = this.sanitizeKey(key);
@@ -170,6 +170,37 @@ export class GcsStorageAdapter implements IStorageAdapter {
     } catch (error: any) {
       this.logger.error(`Failed to generate signed URL: ${storageKey}`, error);
       throw new Error(`Failed to generate signed URL: ${error.message}`);
+    }
+  }
+
+  /**
+   * Check if presigned upload URLs are supported
+   */
+  supportsPresignedUrls(): boolean {
+    return true;
+  }
+
+  /**
+   * Generate a signed URL for uploading a file directly to storage (write)
+   */
+  async getPresignedUploadUrl(key: string, expiresIn?: number): Promise<string> {
+    const sanitizedKey = this.sanitizeKey(key);
+    const storageKey = this.prefixKey(sanitizedKey);
+    const blob = this.bucket.file(storageKey);
+    const expiration = expiresIn ?? this.config.signedUrlExpiration ?? 3600;
+
+    const options: GetSignedUrlConfig = {
+      version: 'v4',
+      action: 'write',
+      expires: Date.now() + expiration * 1000,
+    };
+
+    try {
+      const [url] = await blob.getSignedUrl(options);
+      return url;
+    } catch (error: any) {
+      this.logger.error(`Failed to generate signed upload URL: ${storageKey}`, error);
+      throw new Error(`Failed to generate signed upload URL: ${error.message}`);
     }
   }
 

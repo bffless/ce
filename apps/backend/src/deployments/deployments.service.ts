@@ -1526,6 +1526,179 @@ export class DeploymentsService {
     };
   }
 
+  // Phase: Pre-signed URL Artifact Uploads
+
+  /**
+   * Generate storage key for a file
+   * Exposed for use by controller when preparing presigned URLs
+   */
+  generateStorageKeyPublic(repository: string, commitSha: string, publicPath: string): string {
+    return this.generateStorageKey(repository, commitSha, this.normalizePublicPath(publicPath));
+  }
+
+  /**
+   * Create asset records from a file manifest (for presigned URL uploads)
+   * This method creates database records without handling file content - files are
+   * already uploaded directly to storage via presigned URLs.
+   */
+  async createAssetsFromManifest(
+    params: {
+      projectId: string;
+      repository: string;
+      commitSha: string;
+      branch?: string;
+      description?: string;
+      tags?: string;
+      proxyRuleSetId?: string;
+      alias?: string;
+      basePath?: string;
+      files: Array<{
+        path: string;
+        size: number;
+        contentType: string;
+        storageKey: string;
+      }>;
+      userId?: string;
+    },
+    userRole?: string,
+  ): Promise<{
+    deploymentId: string;
+    fileCount: number;
+    totalSize: number;
+    aliases: string[];
+    failed: { file: string; error: string }[];
+  }> {
+    const deploymentId = uuidv4();
+    const uploadedAssets: (typeof assets.$inferSelect)[] = [];
+    const failed: { file: string; error: string }[] = [];
+    let totalSize = 0;
+
+    // Parse tags if provided
+    const tags = this.parseTags(params.tags);
+
+    for (const file of params.files) {
+      try {
+        const publicPath = this.normalizePublicPath(file.path);
+        const fileName = file.path.split('/').pop() || file.path;
+
+        // Check if asset already exists (upsert logic for re-runs)
+        const [existingAsset] = await db
+          .select()
+          .from(assets)
+          .where(
+            and(
+              eq(assets.projectId, params.projectId),
+              eq(assets.commitSha, params.commitSha),
+              eq(assets.publicPath, publicPath),
+            ),
+          )
+          .limit(1);
+
+        let newAsset: Asset;
+        if (existingAsset) {
+          // Update existing asset
+          const [updated] = await db
+            .update(assets)
+            .set({
+              fileName,
+              originalPath: file.path,
+              storageKey: file.storageKey,
+              mimeType: file.contentType,
+              size: file.size,
+              branch: params.branch,
+              uploadedBy: params.userId,
+              deploymentId,
+              description: params.description,
+              tags,
+              updatedAt: new Date(),
+            })
+            .where(eq(assets.id, existingAsset.id))
+            .returning();
+          newAsset = updated;
+        } else {
+          // Insert new asset
+          const [inserted] = await db
+            .insert(assets)
+            .values({
+              fileName,
+              originalPath: file.path,
+              storageKey: file.storageKey,
+              mimeType: file.contentType,
+              size: file.size,
+              projectId: params.projectId,
+              branch: params.branch,
+              commitSha: params.commitSha,
+              uploadedBy: params.userId,
+              deploymentId,
+              publicPath,
+              assetType: AssetType.COMMITS,
+              description: params.description,
+              tags,
+            })
+            .returning();
+          newAsset = inserted;
+        }
+
+        uploadedAssets.push(newAsset);
+        totalSize += file.size;
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        failed.push({ file: file.path, error: errorMessage });
+        this.logger.error(`Failed to create asset record for ${file.path}:`, errorMessage);
+      }
+    }
+
+    // Create or update aliases
+    const aliases: string[] = [];
+
+    // User-specified alias
+    if (params.alias) {
+      try {
+        await this.createOrUpdateAlias(params.repository, params.alias, params.commitSha, deploymentId, {
+          proxyRuleSetId: params.proxyRuleSetId,
+        });
+        aliases.push(params.alias);
+      } catch (error) {
+        this.logger.warn(`Failed to create/update alias ${params.alias}:`, error.message);
+      }
+    }
+
+    // Auto-create preview alias
+    const effectiveBasePath = params.basePath || '/';
+    const previewAliasName = generatePreviewAliasName(
+      params.commitSha,
+      params.repository,
+      effectiveBasePath,
+    );
+    try {
+      await this.createOrUpdateAlias(
+        params.repository,
+        previewAliasName,
+        params.commitSha,
+        deploymentId,
+        {
+          isAutoPreview: true,
+          basePath: effectiveBasePath,
+          proxyRuleSetId: params.proxyRuleSetId,
+        },
+      );
+      aliases.push(previewAliasName);
+    } catch (error) {
+      this.logger.warn(`Failed to create preview alias: ${error.message}`);
+    }
+
+    // Report usage to Control Plane (fire-and-forget)
+    this.usageReporter.reportUpload(totalSize).catch(() => {});
+
+    return {
+      deploymentId,
+      fileCount: uploadedAssets.length,
+      totalSize,
+      aliases,
+      failed,
+    };
+  }
+
   // Phase B5: Alias Visibility Methods
 
   /**

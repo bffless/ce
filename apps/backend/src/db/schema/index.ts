@@ -24,3 +24,4 @@ export * from './workspace-invitations.schema';
 export * from './retention-rules.schema';
 export * from './cache-rules.schema';
 export * from './share-links.schema';
+export * from './pending-uploads.schema';

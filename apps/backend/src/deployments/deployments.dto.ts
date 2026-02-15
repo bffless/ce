@@ -616,3 +616,153 @@ export class AliasVisibilityResponseDto {
   })
   effectiveRequiredRole?: 'authenticated' | 'viewer' | 'contributor' | 'admin' | 'owner';
 }
+
+// Phase: Pre-signed URL Artifact Uploads
+
+/**
+ * File info for batch upload request
+ */
+export class BatchUploadFileDto {
+  @ApiProperty({ description: 'Relative path within the deployment', example: 'index.html' })
+  @IsString()
+  path: string;
+
+  @ApiProperty({ description: 'File size in bytes', example: 1024 })
+  @IsInt()
+  @Min(0)
+  size: number;
+
+  @ApiProperty({
+    description: 'MIME type of the file',
+    example: 'text/html',
+  })
+  @IsString()
+  contentType: string;
+}
+
+/**
+ * Request DTO for prepare-batch-upload endpoint
+ */
+export class PrepareBatchUploadDto {
+  @ApiProperty({ description: 'GitHub repository (e.g., "owner/repo")' })
+  @IsString()
+  repository: string;
+
+  @ApiProperty({ description: 'Git commit SHA' })
+  @IsString()
+  @Matches(/^[a-f0-9]{7,40}$/i, { message: 'Invalid commit SHA format' })
+  commitSha: string;
+
+  @ApiPropertyOptional({ description: 'Git branch name' })
+  @IsOptional()
+  @IsString()
+  branch?: string;
+
+  @ApiPropertyOptional({ description: 'Alias name (e.g., "main", "production", "staging")' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^[a-zA-Z0-9_-]+$/, {
+    message: 'Alias must contain only letters, numbers, underscores, and hyphens',
+  })
+  alias?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Base path within the upload. When provided, auto-creates a deterministic preview alias pointing to this path.',
+    example: '/apps/dashboard',
+  })
+  @IsOptional()
+  @IsString()
+  basePath?: string;
+
+  @ApiPropertyOptional({ description: 'Deployment description' })
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @ApiPropertyOptional({
+    description: 'Tags for this deployment (comma-separated or JSON array)',
+    example: 'v1.0.0,release',
+  })
+  @IsOptional()
+  @IsString()
+  tags?: string;
+
+  @ApiPropertyOptional({
+    description: 'Proxy rule set name to apply to auto-preview aliases',
+    example: 'api-backend',
+  })
+  @IsOptional()
+  @IsString()
+  proxyRuleSetName?: string;
+
+  @ApiPropertyOptional({
+    description: 'Proxy rule set ID to apply to auto-preview aliases',
+    example: '550e8400-e29b-41d4-a716-446655440000',
+  })
+  @IsOptional()
+  @IsUUID()
+  proxyRuleSetId?: string;
+
+  @ApiProperty({
+    description: 'Array of files to upload',
+    type: [BatchUploadFileDto],
+  })
+  @IsArray()
+  @ArrayMaxSize(10000)
+  files: BatchUploadFileDto[];
+}
+
+/**
+ * Presigned URL info for a single file
+ */
+export class PresignedUrlInfoDto {
+  @ApiProperty({ description: 'Relative path within the deployment' })
+  path: string;
+
+  @ApiProperty({ description: 'Presigned URL for PUT upload' })
+  presignedUrl: string;
+
+  @ApiProperty({ description: 'Storage key where the file will be stored' })
+  storageKey: string;
+}
+
+/**
+ * Response DTO for prepare-batch-upload endpoint
+ */
+export class PrepareBatchUploadResponseDto {
+  @ApiProperty({
+    description: 'Whether presigned URLs are supported by the storage backend',
+  })
+  presignedUrlsSupported: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Upload token to use when finalizing the upload',
+  })
+  uploadToken?: string;
+
+  @ApiPropertyOptional({
+    description: 'When the presigned URLs expire (ISO 8601 timestamp)',
+  })
+  expiresAt?: string;
+
+  @ApiPropertyOptional({
+    description: 'Presigned URLs for each file (only present if presignedUrlsSupported is true)',
+    type: [PresignedUrlInfoDto],
+  })
+  files?: PresignedUrlInfoDto[];
+}
+
+/**
+ * Request DTO for finalize-upload endpoint
+ */
+export class FinalizeUploadDto {
+  @ApiProperty({ description: 'Upload token from prepare-batch-upload response' })
+  @IsString()
+  uploadToken: string;
+}
+
+/**
+ * Response DTO for finalize-upload endpoint (reuses CreateDeploymentResponseDto)
+ */
+export class FinalizeUploadResponseDto extends CreateDeploymentResponseDto {}
