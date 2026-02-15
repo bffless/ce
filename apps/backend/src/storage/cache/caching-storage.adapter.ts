@@ -172,6 +172,23 @@ export class CachingStorageAdapter implements IStorageAdapter {
   }
 
   /**
+   * Check if underlying storage supports presigned URLs
+   */
+  supportsPresignedUrls(): boolean {
+    return this.storage.supportsPresignedUrls?.() ?? false;
+  }
+
+  /**
+   * Get presigned upload URL (pass through to storage)
+   */
+  async getPresignedUploadUrl(key: string, expiresIn?: number): Promise<string> {
+    if (!this.storage.getPresignedUploadUrl) {
+      throw new Error('Presigned URLs not supported by current storage adapter');
+    }
+    return this.storage.getPresignedUploadUrl(key, expiresIn);
+  }
+
+  /**
    * Invalidate cache for a deployment
    * Call this when a deployment is updated
    */
