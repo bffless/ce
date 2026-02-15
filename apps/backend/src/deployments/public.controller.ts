@@ -381,9 +381,10 @@ export class PublicController {
     // Set variant cookie if new selection
     if (variantSelection?.isNewSelection) {
       res.cookie(TrafficRoutingService.VARIANT_COOKIE_NAME, variantSelection.selectedAlias, {
-        maxAge: variantSelection.stickySessionDuration === 0
-          ? 10 * 365 * 24 * 60 * 60 * 1000 // No expiration: 10 years
-          : variantSelection.stickySessionDuration * 1000,
+        maxAge:
+          variantSelection.stickySessionDuration === 0
+            ? 10 * 365 * 24 * 60 * 60 * 1000 // No expiration: 10 years
+            : variantSelection.stickySessionDuration * 1000,
         httpOnly: false,
         secure: req.secure || req.headers['x-forwarded-proto'] === 'https',
         sameSite: 'lax',
@@ -744,6 +745,64 @@ export class PublicController {
       .where(and(eq(domainMappings.domain, host), eq(domainMappings.isActive, true)))
       .limit(1);
 
+    // If no direct match, check for www/apex redirect on custom domains
+    // e.g., host=staticassethostingplatform.com, but mapping exists for www.staticassethostingplatform.com with wwwBehavior='redirect-to-www'
+    if (!mapping) {
+      const isWww = host.startsWith('www.');
+      const apexDomain = isWww ? host.slice(4) : host;
+      const wwwDomain = isWww ? host : `www.${host}`;
+
+      // Check if the www variant exists with redirect-to-www (apex should redirect to www)
+      if (!isWww) {
+        const [wwwMapping] = await db
+          .select()
+          .from(domainMappings)
+          .where(
+            and(
+              eq(domainMappings.domain, wwwDomain),
+              eq(domainMappings.isActive, true),
+              eq(domainMappings.wwwBehavior, 'redirect-to-www'),
+            ),
+          )
+          .limit(1);
+
+        if (wwwMapping) {
+          const protocol = req.headers['x-forwarded-proto'] || 'https';
+          const originalUri = req.headers['x-original-uri'] || req.url || '/';
+          this.logger.debug(
+            `[serveDomainMappingFallback] Redirecting apex ${host} to www ${wwwDomain} (wwwBehavior=redirect-to-www)`,
+          );
+          res.redirect(301, `${protocol}://${wwwDomain}${originalUri}`);
+          return true;
+        }
+      }
+
+      // Check if the apex variant exists with redirect-to-root (www should redirect to apex)
+      if (isWww) {
+        const [apexMapping] = await db
+          .select()
+          .from(domainMappings)
+          .where(
+            and(
+              eq(domainMappings.domain, apexDomain),
+              eq(domainMappings.isActive, true),
+              eq(domainMappings.wwwBehavior, 'redirect-to-root'),
+            ),
+          )
+          .limit(1);
+
+        if (apexMapping) {
+          const protocol = req.headers['x-forwarded-proto'] || 'https';
+          const originalUri = req.headers['x-original-uri'] || req.url || '/';
+          this.logger.debug(
+            `[serveDomainMappingFallback] Redirecting www ${host} to apex ${apexDomain} (wwwBehavior=redirect-to-root)`,
+          );
+          res.redirect(301, `${protocol}://${apexDomain}${originalUri}`);
+          return true;
+        }
+      }
+    }
+
     // If no direct match, check if host is the primary domain or www.primary_domain
     if (!mapping) {
       const primaryDomain = this.configService.get<string>('PRIMARY_DOMAIN') || 'localhost';
@@ -758,12 +817,21 @@ export class PublicController {
           // Handle www redirect behavior
           if (primaryMapping.wwwBehavior === 'redirect-to-www' && host === primaryDomain) {
             const protocol = req.headers['x-forwarded-proto'] || 'https';
-            res.redirect(301, `${protocol}://www.${primaryDomain}${req.headers['x-original-uri'] || '/'}`);
+            res.redirect(
+              301,
+              `${protocol}://www.${primaryDomain}${req.headers['x-original-uri'] || '/'}`,
+            );
             return true;
           }
-          if (primaryMapping.wwwBehavior === 'redirect-to-root' && host === `www.${primaryDomain}`) {
+          if (
+            primaryMapping.wwwBehavior === 'redirect-to-root' &&
+            host === `www.${primaryDomain}`
+          ) {
             const protocol = req.headers['x-forwarded-proto'] || 'https';
-            res.redirect(301, `${protocol}://${primaryDomain}${req.headers['x-original-uri'] || '/'}`);
+            res.redirect(
+              301,
+              `${protocol}://${primaryDomain}${req.headers['x-original-uri'] || '/'}`,
+            );
             return true;
           }
           mapping = primaryMapping;
@@ -820,9 +888,10 @@ export class PublicController {
     // Set variant cookie if new selection
     if (variantSelection?.isNewSelection) {
       res.cookie(TrafficRoutingService.VARIANT_COOKIE_NAME, variantSelection.selectedAlias, {
-        maxAge: variantSelection.stickySessionDuration === 0
-          ? 10 * 365 * 24 * 60 * 60 * 1000 // No expiration: 10 years
-          : variantSelection.stickySessionDuration * 1000,
+        maxAge:
+          variantSelection.stickySessionDuration === 0
+            ? 10 * 365 * 24 * 60 * 60 * 1000 // No expiration: 10 years
+            : variantSelection.stickySessionDuration * 1000,
         httpOnly: false,
         secure: req.secure || req.headers['x-forwarded-proto'] === 'https',
         sameSite: 'lax',
@@ -838,7 +907,7 @@ export class PublicController {
     // Apply path prefix from domain mapping
     // For internal rewrites, the target path is relative to the domain's path context
     const pathPrefix = mapping.path ? mapping.path.replace(/^\/+/, '').replace(/\/+$/, '') : '';
-    const fullPath = pathPrefix ? `${pathPrefix}/${filePath || ''}` : (filePath || '');
+    const fullPath = pathPrefix ? `${pathPrefix}/${filePath || ''}` : filePath || '';
 
     this.logger.debug(
       `[serveDomainMappingFallback] Path resolution: mapping.path=${mapping.path}, pathPrefix=${pathPrefix}, filePath=${filePath}, fullPath=${fullPath}`,
@@ -912,9 +981,7 @@ export class PublicController {
     if (mapping) return mapping.id;
 
     // Try www variant: www.x.com → x.com, or x.com → www.x.com
-    const altDomain = domain.startsWith('www.')
-      ? domain.slice(4)
-      : `www.${domain}`;
+    const altDomain = domain.startsWith('www.') ? domain.slice(4) : `www.${domain}`;
     const [altMapping] = await db
       .select({ id: domainMappings.id })
       .from(domainMappings)
