@@ -244,6 +244,7 @@ export class MinioStorageAdapter implements IStorageAdapter {
 
   /**
    * Test MinIO connection
+   * Throws an error with details if connection fails
    */
   async testConnection(): Promise<boolean> {
     try {
@@ -270,9 +271,46 @@ export class MinioStorageAdapter implements IStorageAdapter {
       this.logger.log('MinIO connection test successful');
       return true;
     } catch (error) {
-      this.logger.error('MinIO connection test failed', error);
-      return false;
+      this.logger.error(`${this.adapterName} connection test failed`, error);
+      // Extract useful error message for the user
+      const message = this.extractS3ErrorMessage(error);
+      throw new Error(message);
     }
+  }
+
+  /**
+   * Extract a user-friendly error message from S3/MinIO errors
+   */
+  protected extractS3ErrorMessage(error: unknown): string {
+    if (error instanceof Error) {
+      const msg = error.message;
+      // Check for common S3 permission errors
+      if (msg.includes('not authorized to perform')) {
+        // Extract the action and resource from AWS error messages
+        const actionMatch = msg.match(/perform: (s3:\w+)/);
+        const resourceMatch = msg.match(/resource: "([^"]+)"/);
+        const action = actionMatch?.[1] || 'the required action';
+        const resource = resourceMatch?.[1] || 'the bucket';
+        return `Permission denied: IAM policy missing "${action}" on ${resource}. Update your IAM policy to include this permission.`;
+      }
+      if (msg.includes('Access Denied') || msg.includes('AccessDenied')) {
+        return `Access denied: Check that your IAM policy grants access to bucket "${this.bucket}" and the credentials are correct.`;
+      }
+      if (msg.includes('NoSuchBucket')) {
+        return `Bucket "${this.bucket}" does not exist. Create the bucket first or check for typos.`;
+      }
+      if (msg.includes('InvalidAccessKeyId')) {
+        return 'Invalid Access Key ID. Check that the Access Key ID is correct.';
+      }
+      if (msg.includes('SignatureDoesNotMatch')) {
+        return 'Invalid Secret Access Key. Check that the Secret Access Key is correct.';
+      }
+      if (msg.includes('ENOTFOUND') || msg.includes('getaddrinfo')) {
+        return `Cannot reach storage endpoint. Check your network connection and endpoint URL.`;
+      }
+      return msg;
+    }
+    return 'Connection test failed: Unknown error';
   }
 
   /**

@@ -35,9 +35,11 @@ export class StorageMigrationService {
     }
 
     // Validate target connection
-    const targetConnected = await targetAdapter.testConnection();
-    if (!targetConnected) {
-      throw new BadRequestException('Cannot connect to target storage provider');
+    try {
+      await targetAdapter.testConnection();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      throw new BadRequestException(`Cannot connect to target storage provider: ${message}`);
     }
 
     // Calculate migration scope
