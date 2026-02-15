@@ -14,7 +14,8 @@ import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { StorageMigrationService } from './migration.service';
 import { SetupService } from '../../setup/setup.service';
 import { STORAGE_ADAPTER, IStorageAdapter } from '../storage.interface';
-import { StorageModule } from '../storage.module';
+import { StorageModule, DYNAMIC_STORAGE_ADAPTER } from '../storage.module';
+import { DynamicStorageAdapter } from '../dynamic-storage.adapter';
 import {
   MigrationProgress,
   MigrationScope,
@@ -37,6 +38,7 @@ export class MigrationController {
     private readonly migrationService: StorageMigrationService,
     private readonly setupService: SetupService,
     @Inject(STORAGE_ADAPTER) private readonly currentStorage: IStorageAdapter,
+    @Inject(DYNAMIC_STORAGE_ADAPTER) private readonly dynamicStorage: DynamicStorageAdapter,
   ) {}
 
   @Get('scope')
@@ -160,9 +162,15 @@ export class MigrationController {
       throw new BadRequestException('Migration is not complete');
     }
 
-    // Save new storage config using SetupService
-    // Note: We need a method on SetupService to update storage config post-setup
+    // Save new storage config to database (for persistence across restarts)
     await this.saveStorageConfig(dto.provider, dto.config);
+
+    // Swap the runtime adapter immediately (so we don't need to restart)
+    const newAdapter = StorageModule.createAdapter({
+      storageType: dto.provider,
+      config: dto.config,
+    });
+    this.dynamicStorage.setAdapter(newAdapter);
 
     this.logger.log(`Storage provider switched to ${dto.provider}`);
 

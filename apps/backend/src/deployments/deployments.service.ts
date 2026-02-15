@@ -1020,9 +1020,16 @@ export class DeploymentsService {
     });
 
     // Delete from storage (after transaction commits)
-    const storageKey = `${owner}/${repo}/${commitSha}/`;
+    // Storage key format matches generateStorageKey: owner/repo/commits/commitSha/
+    const storageKey = `${owner}/${repo}/commits/${commitSha}/`;
     try {
-      await this.storageAdapter.deletePrefix(storageKey);
+      const result = await this.storageAdapter.deletePrefix(storageKey);
+      this.logger.log({
+        event: 'storage_cleanup',
+        storageKey,
+        deletedFromStorage: result.deleted,
+        failedFiles: result.failed.length > 0 ? result.failed : undefined,
+      });
     } catch (error) {
       this.logger.error(`Storage cleanup failed for ${storageKey}`, error);
       // Continue - database is already cleaned up
