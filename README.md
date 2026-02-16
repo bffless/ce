@@ -55,7 +55,7 @@ Contributions welcome! See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
 
 ## Author
 
-Built by [Toshimoto](https://www.j5s.dev)
+Built by [Toshimoto](https://toshimoto.dev/?token=zYTp241X)
 
 ## License
 
