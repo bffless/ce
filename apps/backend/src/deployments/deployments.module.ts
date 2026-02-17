@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { DeploymentsService } from './deployments.service';
 import { PendingUploadsService } from './pending-uploads.service';
 import { PendingUploadsScheduler } from './pending-uploads.scheduler';
-import { DeploymentsController, AliasesController } from './deployments.controller';
+import { DeploymentsController, AliasesController, FilesController } from './deployments.controller';
 import { PublicController } from './public.controller';
 import { ProjectsModule } from '../projects/projects.module';
 import { PermissionsModule } from '../permissions/permissions.module';
@@ -13,7 +13,7 @@ import { PlatformModule } from '../platform/platform.module';
 
 @Module({
   imports: [ProjectsModule, PermissionsModule, DomainsModule, CacheRulesModule, ShareLinksModule, PlatformModule],
-  controllers: [DeploymentsController, AliasesController, PublicController],
+  controllers: [DeploymentsController, AliasesController, PublicController, FilesController],
   providers: [DeploymentsService, PendingUploadsService, PendingUploadsScheduler],
   exports: [DeploymentsService, PendingUploadsService],
 })
