@@ -17,7 +17,10 @@ import {
   NotFoundException,
   BadRequestException,
   Inject,
+  Res,
+  StreamableFile,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { FilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import {
@@ -52,11 +55,16 @@ import {
   PrepareBatchUploadResponseDto,
   FinalizeUploadDto,
   FinalizeUploadResponseDto,
+  PrepareBatchDownloadDto,
+  PrepareBatchDownloadResponseDto,
 } from './deployments.dto';
 import { VisibilityService } from '../domains/visibility.service';
 import { ProjectsService } from '../projects/projects.service';
 import { IStorageAdapter, STORAGE_ADAPTER } from '../storage/storage.interface';
 import { PendingUploadFile } from '../db/schema/pending-uploads.schema';
+import { db } from '../db/client';
+import { assets, deploymentAliases } from '../db/schema';
+import { eq, and, like, desc } from 'drizzle-orm';
 
 @ApiTags('Deployments')
 @Controller('api/deployments')
@@ -361,6 +369,167 @@ export class DeploymentsController {
     };
   }
 
+  @Post('prepare-batch-download')
+  @Throttle({ default: { ttl: 60000, limit: 60 } }) // 60 per minute (read-only operation)
+  @ApiOperation({
+    summary: 'Prepare batch download with presigned URLs',
+    description:
+      'Requests presigned URLs for downloading files from a deployment. Resolves alias/branch/commitSha to get the file manifest.',
+  })
+  @ApiResponse({ status: 201, type: PrepareBatchDownloadResponseDto })
+  @ApiResponse({ status: 400, description: 'Invalid input or missing resolution parameter' })
+  @ApiResponse({ status: 404, description: 'Deployment not found' })
+  @ApiResponse({ status: 403, description: 'Not authorized for this repository' })
+  async prepareBatchDownload(
+    @Body() dto: PrepareBatchDownloadDto,
+    @CurrentUser() user: CurrentUserData,
+  ): Promise<PrepareBatchDownloadResponseDto> {
+    // Validate that at least one resolution parameter is provided
+    if (!dto.alias && !dto.commitSha && !dto.branch) {
+      throw new BadRequestException(
+        'One of alias, commitSha, or branch is required to identify the deployment',
+      );
+    }
+
+    // Parse repository
+    const [owner, name] = dto.repository.split('/');
+    if (!owner || !name) {
+      throw new BadRequestException('Invalid repository format. Expected "owner/repo"');
+    }
+
+    // Get project
+    const project = await this.projectsService.getProjectByOwnerName(owner, name);
+
+    // Resolve to commitSha
+    let commitSha: string | null = null;
+
+    if (dto.commitSha) {
+      // Direct commitSha provided
+      commitSha = dto.commitSha;
+    } else if (dto.alias) {
+      // Resolve alias to commitSha
+      const [aliasRecord] = await db
+        .select()
+        .from(deploymentAliases)
+        .where(
+          and(eq(deploymentAliases.projectId, project.id), eq(deploymentAliases.alias, dto.alias)),
+        )
+        .limit(1);
+
+      if (!aliasRecord) {
+        throw new NotFoundException(`Alias "${dto.alias}" not found`);
+      }
+      commitSha = aliasRecord.commitSha;
+    } else if (dto.branch) {
+      // Resolve branch to commitSha (branch is treated as an alias)
+      const [aliasRecord] = await db
+        .select()
+        .from(deploymentAliases)
+        .where(
+          and(eq(deploymentAliases.projectId, project.id), eq(deploymentAliases.alias, dto.branch)),
+        )
+        .limit(1);
+
+      if (aliasRecord) {
+        commitSha = aliasRecord.commitSha;
+      } else {
+        // Fallback: find most recent deployment on this branch
+        const [latestAsset] = await db
+          .select()
+          .from(assets)
+          .where(and(eq(assets.projectId, project.id), eq(assets.branch, dto.branch)))
+          .orderBy(desc(assets.createdAt))
+          .limit(1);
+
+        if (latestAsset) {
+          commitSha = latestAsset.commitSha;
+        }
+      }
+
+      if (!commitSha) {
+        throw new NotFoundException(`No deployment found for branch "${dto.branch}"`);
+      }
+    }
+
+    if (!commitSha) {
+      throw new NotFoundException('Could not resolve deployment');
+    }
+
+    // Get all assets for this deployment that match the path prefix
+    const normalizedPath = dto.path.replace(/^\/+/, '').replace(/\/+$/, '');
+    const pathPrefix = normalizedPath ? `${normalizedPath}/` : '';
+
+    // Get matching assets
+    const matchingAssets = await db
+      .select()
+      .from(assets)
+      .where(
+        and(
+          eq(assets.projectId, project.id),
+          eq(assets.commitSha, commitSha),
+          pathPrefix ? like(assets.publicPath, `${pathPrefix}%`) : undefined,
+        ),
+      );
+
+    if (matchingAssets.length === 0) {
+      // If no assets found with prefix, try without prefix (maybe path is the exact deployment)
+      const allAssets = await db
+        .select()
+        .from(assets)
+        .where(and(eq(assets.projectId, project.id), eq(assets.commitSha, commitSha)));
+
+      if (allAssets.length === 0) {
+        throw new NotFoundException(`No files found for commit ${commitSha}`);
+      }
+
+      // Return all assets if path doesn't match but deployment exists
+      // This handles the case where the sourcePath is the root of the deployment
+    }
+
+    const finalAssets = matchingAssets.length > 0 ? matchingAssets : await db
+      .select()
+      .from(assets)
+      .where(and(eq(assets.projectId, project.id), eq(assets.commitSha, commitSha)));
+
+    // Check if storage supports presigned URLs
+    const supportsPresigned = this.storageAdapter.supportsPresignedUrls?.() ?? false;
+
+    // Generate presigned URLs for each file
+    const expiresInSeconds = 3600; // 1 hour
+    const files: Array<{ path: string; size: number; downloadUrl: string }> = [];
+
+    for (const asset of finalAssets) {
+      let downloadUrl: string;
+
+      if (supportsPresigned) {
+        // Generate presigned URL for direct download from storage
+        downloadUrl = await this.storageAdapter.getUrl(asset.storageKey, expiresInSeconds);
+      } else {
+        // Generate API fallback URL
+        const baseUrl = process.env.PUBLIC_URL || 'http://localhost:3000';
+        downloadUrl = `${baseUrl}/api/files/${encodeURIComponent(asset.publicPath || asset.fileName)}?repository=${encodeURIComponent(dto.repository)}&commitSha=${commitSha}`;
+      }
+
+      // Calculate relative path within the source-path
+      let relativePath = asset.publicPath || asset.fileName;
+      if (pathPrefix && relativePath.startsWith(pathPrefix)) {
+        relativePath = relativePath.slice(pathPrefix.length);
+      }
+
+      files.push({
+        path: relativePath,
+        size: asset.size,
+        downloadUrl,
+      });
+    }
+
+    return {
+      presignedUrlsSupported: supportsPresigned,
+      commitSha,
+      files,
+    };
+  }
+
   @Delete('commit/:owner/:repo/:commitSha')
   @ApiOperation({ summary: 'Delete a commit and all its deployments' })
   @ApiResponse({
@@ -516,5 +685,133 @@ export class AliasesController {
       aliasOverride: updated.isPublic,
       projectVisibility: project.isPublic,
     };
+  }
+}
+
+// Separate controller for direct file downloads at /api/files (fallback when presigned URLs not supported)
+@ApiTags('Files')
+@Controller('api/files')
+@UseGuards(ApiKeyGuard)
+@ApiBearerAuth()
+@ApiSecurity('api-key')
+export class FilesController {
+  constructor(
+    private readonly projectsService: ProjectsService,
+    @Inject(STORAGE_ADAPTER) private readonly storageAdapter: IStorageAdapter,
+  ) {}
+
+  @Get('*')
+  @ApiOperation({
+    summary: 'Download a file from storage',
+    description:
+      'Direct file download endpoint used as fallback when presigned URLs are not supported. Used by download-artifact action.',
+  })
+  @ApiResponse({ status: 200, description: 'File content streamed' })
+  @ApiResponse({ status: 404, description: 'File not found' })
+  @ApiResponse({ status: 403, description: 'Not authorized for this repository' })
+  async downloadFile(
+    @Param('0') filePath: string,
+    @Query('repository') repository: string,
+    @Query('commitSha') commitSha: string,
+    @Query('alias') alias: string,
+    @Query('branch') branch: string,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    if (!repository) {
+      throw new BadRequestException('repository query parameter is required');
+    }
+
+    if (!commitSha && !alias && !branch) {
+      throw new BadRequestException('One of commitSha, alias, or branch is required');
+    }
+
+    // Parse repository
+    const [owner, name] = repository.split('/');
+    if (!owner || !name) {
+      throw new BadRequestException('Invalid repository format. Expected "owner/repo"');
+    }
+
+    // Get project
+    const project = await this.projectsService.getProjectByOwnerName(owner, name);
+
+    // Resolve to commitSha
+    let resolvedCommitSha: string | null = commitSha || null;
+
+    if (!resolvedCommitSha && alias) {
+      // Resolve alias to commitSha
+      const [aliasRecord] = await db
+        .select()
+        .from(deploymentAliases)
+        .where(and(eq(deploymentAliases.projectId, project.id), eq(deploymentAliases.alias, alias)))
+        .limit(1);
+
+      if (!aliasRecord) {
+        throw new NotFoundException(`Alias "${alias}" not found`);
+      }
+      resolvedCommitSha = aliasRecord.commitSha;
+    }
+
+    if (!resolvedCommitSha && branch) {
+      // Resolve branch to commitSha
+      const [aliasRecord] = await db
+        .select()
+        .from(deploymentAliases)
+        .where(and(eq(deploymentAliases.projectId, project.id), eq(deploymentAliases.alias, branch)))
+        .limit(1);
+
+      if (aliasRecord) {
+        resolvedCommitSha = aliasRecord.commitSha;
+      } else {
+        // Fallback: find most recent deployment on this branch
+        const [latestAsset] = await db
+          .select()
+          .from(assets)
+          .where(and(eq(assets.projectId, project.id), eq(assets.branch, branch)))
+          .orderBy(desc(assets.createdAt))
+          .limit(1);
+
+        if (latestAsset) {
+          resolvedCommitSha = latestAsset.commitSha;
+        }
+      }
+
+      if (!resolvedCommitSha) {
+        throw new NotFoundException(`No deployment found for branch "${branch}"`);
+      }
+    }
+
+    if (!resolvedCommitSha) {
+      throw new NotFoundException('Could not resolve deployment');
+    }
+
+    // Find the asset
+    const normalizedPath = filePath.replace(/^\/+/, '');
+    const [asset] = await db
+      .select()
+      .from(assets)
+      .where(
+        and(
+          eq(assets.projectId, project.id),
+          eq(assets.commitSha, resolvedCommitSha),
+          eq(assets.publicPath, normalizedPath),
+        ),
+      )
+      .limit(1);
+
+    if (!asset) {
+      throw new NotFoundException(`File not found: ${filePath}`);
+    }
+
+    // Download from storage
+    const buffer = await this.storageAdapter.download(asset.storageKey);
+
+    // Set response headers
+    res.set({
+      'Content-Type': asset.mimeType || 'application/octet-stream',
+      'Content-Length': asset.size,
+      'Content-Disposition': `attachment; filename="${asset.fileName}"`,
+    });
+
+    return new StreamableFile(buffer);
   }
 }

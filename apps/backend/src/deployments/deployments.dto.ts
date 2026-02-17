@@ -766,3 +766,70 @@ export class FinalizeUploadDto {
  * Response DTO for finalize-upload endpoint (reuses CreateDeploymentResponseDto)
  */
 export class FinalizeUploadResponseDto extends CreateDeploymentResponseDto {}
+
+// Phase: Batch Download Endpoints (download-artifact action)
+
+/**
+ * Request DTO for prepare-batch-download endpoint
+ */
+export class PrepareBatchDownloadDto {
+  @ApiProperty({ description: 'GitHub repository (e.g., "owner/repo")' })
+  @IsString()
+  repository: string;
+
+  @ApiProperty({ description: 'Path prefix of files to download (e.g., "dist", "apps/frontend/dist")' })
+  @IsString()
+  path: string;
+
+  @ApiPropertyOptional({ description: 'Deployment alias to download from (e.g., "production", "preview")' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^[a-zA-Z0-9_-]+$/, {
+    message: 'Alias must contain only letters, numbers, underscores, and hyphens',
+  })
+  alias?: string;
+
+  @ApiPropertyOptional({ description: 'Specific commit SHA to download from' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^[a-f0-9]{7,40}$/i, { message: 'Invalid commit SHA format' })
+  commitSha?: string;
+
+  @ApiPropertyOptional({ description: 'Branch to download from (resolves to latest deployment)' })
+  @IsOptional()
+  @IsString()
+  branch?: string;
+}
+
+/**
+ * File info in batch download response
+ */
+export class DownloadFileInfoDto {
+  @ApiProperty({ description: 'Relative path within the deployment' })
+  path: string;
+
+  @ApiProperty({ description: 'File size in bytes' })
+  size: number;
+
+  @ApiProperty({ description: 'Presigned download URL (if presigned URLs supported)' })
+  downloadUrl: string;
+}
+
+/**
+ * Response DTO for prepare-batch-download endpoint
+ */
+export class PrepareBatchDownloadResponseDto {
+  @ApiProperty({
+    description: 'Whether presigned URLs are supported by the storage backend',
+  })
+  presignedUrlsSupported: boolean;
+
+  @ApiProperty({ description: 'Commit SHA of the resolved deployment' })
+  commitSha: string;
+
+  @ApiProperty({
+    description: 'Files available for download with presigned URLs',
+    type: [DownloadFileInfoDto],
+  })
+  files: DownloadFileInfoDto[];
+}
