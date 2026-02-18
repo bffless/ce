@@ -8,6 +8,7 @@ import {
   type RequiredRole,
   type WwwBehavior,
 } from '@/services/domainsApi';
+import { useGetPrimaryContentProjectsQuery } from '@/services/settingsApi';
 import {
   Dialog,
   DialogContent,
@@ -64,6 +65,13 @@ export function EditDomainDialog({ domain, open, onOpenChange }: EditDomainDialo
   const { data: visibilityInfo } = useGetDomainVisibilityQuery(domain?.id || '', {
     skip: !domain,
   });
+
+  // Get available aliases for the project
+  const { data: projectsData } = useGetPrimaryContentProjectsQuery();
+  const selectedProject = domain?.projectId
+    ? projectsData?.projects.find((p) => p.id === domain.projectId)
+    : undefined;
+  const availableAliases = selectedProject?.aliases || [];
 
   // Form state
   const [alias, setAlias] = useState('');
@@ -251,12 +259,33 @@ export function EditDomainDialog({ domain, open, onOpenChange }: EditDomainDialo
               {!isRedirectDomain && (
                 <div className="space-y-2">
                   <Label htmlFor="alias">Deployment Alias (Optional)</Label>
-                  <Input
-                    id="alias"
-                    value={alias}
-                    onChange={(e) => setAlias(e.target.value)}
-                    placeholder="production"
-                  />
+                  {availableAliases.length > 0 ? (
+                    <Select
+                      value={alias || '__empty__'}
+                      onValueChange={(value) => setAlias(value === '__empty__' ? '' : value)}
+                    >
+                      <SelectTrigger id="alias">
+                        <SelectValue placeholder="Select an alias (uses 'latest' if empty)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__empty__">
+                          <span className="text-muted-foreground">None (uses "latest")</span>
+                        </SelectItem>
+                        {availableAliases.map((a) => (
+                          <SelectItem key={a} value={a}>
+                            {a}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Input
+                      id="alias"
+                      value={alias}
+                      onChange={(e) => setAlias(e.target.value)}
+                      placeholder="production"
+                    />
+                  )}
                   <p className="text-xs text-muted-foreground">
                     e.g., production, staging, main. Uses "latest" alias if empty.
                   </p>

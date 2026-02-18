@@ -13,6 +13,7 @@ import { Switch } from '@/components/ui/switch';
 import { Globe, Lock, ArrowDown, AlertCircle, ArrowRight } from 'lucide-react';
 import type { CreateDomainDto, WwwBehavior } from '@/services/domainsApi';
 import { useFeatureFlags } from '@/services/featureFlagsApi';
+import { useGetPrimaryContentProjectsQuery } from '@/services/settingsApi';
 
 interface DomainFormProps {
   projectId: string;
@@ -63,6 +64,11 @@ export function DomainForm({
   const { isEnabled } = useFeatureFlags();
   const showSslToggle = isEnabled('ENABLE_DOMAIN_SSL_TOGGLE');
   const customDomainsEnabled = isEnabled('ENABLE_CUSTOM_DOMAINS');
+
+  // Get available aliases for the project
+  const { data: projectsData } = useGetPrimaryContentProjectsQuery();
+  const selectedProject = projectsData?.projects.find((p) => p.id === projectId);
+  const availableAliases = selectedProject?.aliases || [];
 
   const [domainType, setDomainType] = useState<'subdomain' | 'custom' | 'redirect'>('subdomain');
   const [subdomain, setSubdomain] = useState('');
@@ -314,15 +320,36 @@ export function DomainForm({
       {domainType !== 'redirect' && (
         <div>
           <Label htmlFor="alias">Deployment Alias (Optional)</Label>
-        <Input
-          id="alias"
-          placeholder="production"
-          value={alias}
-          onChange={(e) => setAlias(e.target.value)}
-        />
-        <p className="text-xs text-muted-foreground mt-1">
-          e.g., production, staging, main. Uses "latest" alias if empty.
-        </p>
+          {availableAliases.length > 0 ? (
+            <Select
+              value={alias || undefined}
+              onValueChange={(value) => setAlias(value === '__empty__' ? '' : value)}
+            >
+              <SelectTrigger id="alias">
+                <SelectValue placeholder="Select an alias (uses 'latest' if empty)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__empty__">
+                  <span className="text-muted-foreground">None (uses "latest")</span>
+                </SelectItem>
+                {availableAliases.map((a) => (
+                  <SelectItem key={a} value={a}>
+                    {a}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Input
+              id="alias"
+              placeholder="production"
+              value={alias}
+              onChange={(e) => setAlias(e.target.value)}
+            />
+          )}
+          <p className="text-xs text-muted-foreground mt-1">
+            e.g., production, staging, main. Uses "latest" alias if empty.
+          </p>
         </div>
       )}
 
