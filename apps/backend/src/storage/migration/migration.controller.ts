@@ -172,6 +172,9 @@ export class MigrationController {
     });
     this.dynamicStorage.setAdapter(newAdapter);
 
+    // Clear the migration job so user can start a new migration
+    this.migrationService.clearMigrationJob();
+
     this.logger.log(`Storage provider switched to ${dto.provider}`);
 
     return { success: true };

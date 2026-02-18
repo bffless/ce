@@ -295,6 +295,15 @@ export class StorageMigrationService {
   }
 
   /**
+   * Clear migration job (after provider switch is complete)
+   */
+  clearMigrationJob(): void {
+    this.currentMigration = null;
+    this.abortController = null;
+    this.logger.log('Migration job cleared');
+  }
+
+  /**
    * Resume a paused/failed migration
    */
   async resumeMigration(source: IStorageAdapter, target: IStorageAdapter): Promise<void> {
