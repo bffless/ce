@@ -214,15 +214,32 @@ export class PrimaryContentService {
     const result = await Promise.all(
       projectList.map(async (p) => {
         const aliases = await db
-          .select({ alias: deploymentAliases.alias })
+          .select({
+            alias: deploymentAliases.alias,
+            isAutoPreview: deploymentAliases.isAutoPreview,
+            createdAt: deploymentAliases.createdAt,
+          })
           .from(deploymentAliases)
           .where(eq(deploymentAliases.projectId, p.id));
+
+        // Sort aliases: non-auto aliases alphabetically first, then auto aliases by date (newest first)
+        const sortedAliases = aliases.sort((a, b) => {
+          // Non-auto aliases come first
+          if (a.isAutoPreview !== b.isAutoPreview) {
+            return a.isAutoPreview ? 1 : -1;
+          }
+          // Within same category: non-auto alphabetically, auto by date descending
+          if (a.isAutoPreview) {
+            return b.createdAt.getTime() - a.createdAt.getTime();
+          }
+          return a.alias.localeCompare(b.alias);
+        });
 
         return {
           id: p.id,
           owner: p.owner,
           name: p.name,
-          aliases: aliases.map((a) => a.alias),
+          aliases: sortedAliases.map((a) => a.alias),
         };
       }),
     );

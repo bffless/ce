@@ -8,7 +8,6 @@ import { useGetDomainQuery } from '@/services/domainsApi';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -29,6 +28,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Globe, ExternalLink, Info, Loader2, Settings2 } from 'lucide-react';
 import { EditDomainDialog } from '@/components/domains/EditDomainDialog';
+import { PathTypeahead } from '@/components/domains/PathTypeahead';
 import { useFeatureFlags } from '@/services/featureFlagsApi';
 
 export function PrimaryContentSettings() {
@@ -321,14 +321,18 @@ export function PrimaryContentSettings() {
                 <Label htmlFor="path-input">
                   Path <span className="text-muted-foreground">(optional)</span>
                 </Label>
-                <Input
+                <PathTypeahead
                   id="path-input"
+                  owner={selectedProject?.owner || ''}
+                  repo={selectedProject?.name || ''}
+                  alias={alias || ''}
                   value={path}
-                  onChange={(e) => {
-                    setPath(e.target.value);
+                  onChange={(newPath) => {
+                    setPath(newPath);
                     setHasChanges(true);
                   }}
                   placeholder="/dist or leave empty for root"
+                  disabled={!selectedProject || !alias}
                 />
                 <p className="text-sm text-muted-foreground">
                   Subdirectory within the deployment to serve
