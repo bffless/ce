@@ -34,6 +34,7 @@ import { RedirectsTab } from './RedirectsTab';
 import { SslTab } from './SslTab';
 import { TrafficTab } from './TrafficTab';
 import { DomainShareLinksSection } from './DomainShareLinksSection';
+import { PathTypeahead } from './PathTypeahead';
 import { useFeatureFlags } from '@/services/featureFlagsApi';
 
 interface EditDomainDialogProps {
@@ -296,11 +297,15 @@ export function EditDomainDialog({ domain, open, onOpenChange }: EditDomainDialo
               {!isRedirectDomain && (
                 <div className="space-y-2">
                   <Label htmlFor="path">Path (optional)</Label>
-                  <Input
+                  <PathTypeahead
                     id="path"
+                    owner={selectedProject?.owner || ''}
+                    repo={selectedProject?.name || ''}
+                    alias={alias}
                     value={path}
-                    onChange={(e) => setPath(e.target.value)}
+                    onChange={setPath}
                     placeholder="/apps/frontend/coverage"
+                    disabled={!selectedProject}
                   />
                   <p className="text-xs text-muted-foreground">
                     Subdirectory within the deployment to serve

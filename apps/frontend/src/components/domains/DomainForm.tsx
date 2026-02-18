@@ -14,6 +14,7 @@ import { Globe, Lock, ArrowDown, AlertCircle, ArrowRight } from 'lucide-react';
 import type { CreateDomainDto, WwwBehavior } from '@/services/domainsApi';
 import { useFeatureFlags } from '@/services/featureFlagsApi';
 import { useGetPrimaryContentProjectsQuery } from '@/services/settingsApi';
+import { PathTypeahead } from './PathTypeahead';
 
 interface DomainFormProps {
   projectId: string;
@@ -357,11 +358,15 @@ export function DomainForm({
       {domainType !== 'redirect' && (
         <div>
           <Label htmlFor="path">Path (Optional)</Label>
-          <Input
+          <PathTypeahead
             id="path"
-            placeholder="/apps/frontend/coverage"
+            owner={selectedProject?.owner || ''}
+            repo={selectedProject?.name || ''}
+            alias={alias}
             value={path}
-            onChange={(e) => setPath(e.target.value)}
+            onChange={setPath}
+            placeholder="/apps/frontend/coverage"
+            disabled={!selectedProject}
           />
           {errors.path && (
             <p className="text-sm text-destructive mt-1">{errors.path}</p>
