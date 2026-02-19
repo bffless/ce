@@ -62,6 +62,17 @@ vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: mockToast }),
 }));
 
+// Mock useProjectRole to return canEdit: true (so the button renders)
+vi.mock('@/hooks/useProjectRole', () => ({
+  useProjectRole: () => ({
+    role: 'owner',
+    isLoading: false,
+    canEdit: true,
+    canAdmin: true,
+    isOwner: true,
+  }),
+}));
+
 // Default props for tests
 const defaultProps = {
   owner: 'testowner',
