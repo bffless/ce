@@ -1,7 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { BadRequestException } from '@nestjs/common';
 import { PermissionsController } from './permissions.controller';
 import { PermissionsService } from './permissions.service';
 import { ProjectsService } from '../projects/projects.service';
+import { UsersService } from '../users/users.service';
 import { ProjectRole, ProjectGroupRole } from './permissions.dto';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { ProjectPermissionGuard } from '../auth/guards/project-permission.guard';
@@ -10,6 +12,7 @@ describe('PermissionsController', () => {
   let controller: PermissionsController;
   let service: PermissionsService;
   let projectsService: any;
+  let usersService: any;
 
   const mockUser = {
     id: 'user-123',
@@ -21,6 +24,7 @@ describe('PermissionsController', () => {
   const mockRepo = 'test-repo';
   const mockProjectId = 'project-456';
   const mockUserId = 'user-789';
+  const mockUserEmail = 'target@example.com';
   const mockGroupId = 'group-101';
 
   const mockProject = {
@@ -46,6 +50,16 @@ describe('PermissionsController', () => {
     getProjectByOwnerName: jest.fn(),
   };
 
+  const mockUsersService = {
+    findByEmail: jest.fn(),
+  };
+
+  const mockTargetUser = {
+    id: mockUserId,
+    email: mockUserEmail,
+    role: 'user',
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [PermissionsController],
@@ -58,6 +72,10 @@ describe('PermissionsController', () => {
           provide: ProjectsService,
           useValue: mockProjectsService,
         },
+        {
+          provide: UsersService,
+          useValue: mockUsersService,
+        },
       ],
     })
       .overrideGuard(SessionAuthGuard)
@@ -69,12 +87,15 @@ describe('PermissionsController', () => {
     controller = module.get<PermissionsController>(PermissionsController);
     service = module.get<PermissionsService>(PermissionsService);
     projectsService = module.get<ProjectsService>(ProjectsService);
+    usersService = module.get<UsersService>(UsersService);
 
     // Reset all mocks
     jest.clearAllMocks();
 
     // Default mock for getProjectByOwnerName
     mockProjectsService.getProjectByOwnerName.mockResolvedValue(mockProject);
+    // Default mock for findByEmail - return the target user
+    mockUsersService.findByEmail.mockResolvedValue(mockTargetUser);
   });
 
   describe('getProjectPermissions', () => {
@@ -121,9 +142,9 @@ describe('PermissionsController', () => {
   });
 
   describe('grantUserPermission', () => {
-    it('should grant permission to a user', async () => {
+    it('should grant permission to a user by email', async () => {
       const dto = {
-        userId: mockUserId,
+        userEmail: mockUserEmail,
         role: ProjectRole.CONTRIBUTOR,
       };
 
@@ -131,6 +152,7 @@ describe('PermissionsController', () => {
 
       await controller.grantUserPermission(mockOwner, mockRepo, dto, mockUser as any);
 
+      expect(usersService.findByEmail).toHaveBeenCalledWith(mockUserEmail);
       expect(projectsService.getProjectByOwnerName).toHaveBeenCalledWith(mockOwner, mockRepo);
       expect(service.grantPermission).toHaveBeenCalledWith(
         mockProjectId,
@@ -142,7 +164,7 @@ describe('PermissionsController', () => {
 
     it('should allow granting admin role', async () => {
       const dto = {
-        userId: mockUserId,
+        userEmail: mockUserEmail,
         role: ProjectRole.ADMIN,
       };
 
@@ -150,6 +172,7 @@ describe('PermissionsController', () => {
 
       await controller.grantUserPermission(mockOwner, mockRepo, dto, mockUser as any);
 
+      expect(usersService.findByEmail).toHaveBeenCalledWith(mockUserEmail);
       expect(projectsService.getProjectByOwnerName).toHaveBeenCalledWith(mockOwner, mockRepo);
       expect(service.grantPermission).toHaveBeenCalledWith(
         mockProjectId,
@@ -161,7 +184,7 @@ describe('PermissionsController', () => {
 
     it('should allow granting viewer role', async () => {
       const dto = {
-        userId: mockUserId,
+        userEmail: mockUserEmail,
         role: ProjectRole.VIEWER,
       };
 
@@ -169,6 +192,7 @@ describe('PermissionsController', () => {
 
       await controller.grantUserPermission(mockOwner, mockRepo, dto, mockUser as any);
 
+      expect(usersService.findByEmail).toHaveBeenCalledWith(mockUserEmail);
       expect(projectsService.getProjectByOwnerName).toHaveBeenCalledWith(mockOwner, mockRepo);
       expect(service.grantPermission).toHaveBeenCalledWith(
         mockProjectId,
@@ -176,6 +200,22 @@ describe('PermissionsController', () => {
         ProjectRole.VIEWER,
         mockUser.id,
       );
+    });
+
+    it('should throw BadRequestException when user email not found', async () => {
+      const dto = {
+        userEmail: 'nonexistent@example.com',
+        role: ProjectRole.VIEWER,
+      };
+
+      mockUsersService.findByEmail.mockResolvedValue(null);
+
+      await expect(
+        controller.grantUserPermission(mockOwner, mockRepo, dto, mockUser as any),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(usersService.findByEmail).toHaveBeenCalledWith('nonexistent@example.com');
+      expect(service.grantPermission).not.toHaveBeenCalled();
     });
   });
 

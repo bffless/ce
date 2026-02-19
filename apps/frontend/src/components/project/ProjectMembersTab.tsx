@@ -94,7 +94,7 @@ export function ProjectMembersTab({ owner, repo }: ProjectMembersTabProps) {
         owner,
         repo,
         dto: {
-          userId: newUserEmail, // Note: Backend should lookup user by email
+          userEmail: newUserEmail,
           role: newUserRole,
         },
       }).unwrap();
@@ -116,14 +116,14 @@ export function ProjectMembersTab({ owner, repo }: ProjectMembersTabProps) {
     }
   };
 
-  const handleChangeRole = async (userId: string) => {
+  const handleChangeRole = async (userId: string, userEmail: string) => {
     try {
       // First revoke, then grant new role
       await revokePermission({ owner, repo, userId }).unwrap();
       await grantPermission({
         owner,
         repo,
-        dto: { userId, role: editRole },
+        dto: { userEmail, role: editRole },
       }).unwrap();
 
       toast({
@@ -341,7 +341,7 @@ export function ProjectMembersTab({ owner, repo }: ProjectMembersTabProps) {
                                   Cancel
                                 </Button>
                                 <Button
-                                  onClick={() => handleChangeRole(permission.userId)}
+                                  onClick={() => handleChangeRole(permission.userId, permission.user.email)}
                                   disabled={isGranting || isRevoking}
                                 >
                                   {isGranting || isRevoking ? 'Updating...' : 'Update Role'}

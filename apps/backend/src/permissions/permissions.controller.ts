@@ -8,10 +8,12 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { PermissionsService } from './permissions.service';
 import { ProjectsService } from '../projects/projects.service';
+import { UsersService } from '../users/users.service';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { ProjectPermissionGuard } from '../auth/guards/project-permission.guard';
 import { RequireProjectRole } from '../auth/decorators/project-permission.decorator';
@@ -33,6 +35,7 @@ export class PermissionsController {
   constructor(
     private readonly permissionsService: PermissionsService,
     private readonly projectsService: ProjectsService,
+    private readonly usersService: UsersService,
   ) {}
 
   @Get()
@@ -78,8 +81,16 @@ export class PermissionsController {
     @Body() dto: GrantPermissionDto,
     @CurrentUser() user: CurrentUserData,
   ): Promise<void> {
+    // Look up user by email
+    const targetUser = await this.usersService.findByEmail(dto.userEmail);
+    if (!targetUser) {
+      throw new BadRequestException(
+        `User with email ${dto.userEmail} not found. They must be added to this workspace first.`,
+      );
+    }
+
     const project = await this.projectsService.getProjectByOwnerName(owner, repo);
-    await this.permissionsService.grantPermission(project.id, dto.userId, dto.role, user.id);
+    await this.permissionsService.grantPermission(project.id, targetUser.id, dto.role, user.id);
   }
 
   @Delete('users/:userId')

@@ -37,7 +37,7 @@ export interface ProjectPermissionsResponse {
 }
 
 export interface GrantUserPermissionDto {
-  userId: string;
+  userEmail: string;
   role: ProjectRole;
 }
 
