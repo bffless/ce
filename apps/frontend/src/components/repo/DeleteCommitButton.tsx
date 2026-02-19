@@ -19,6 +19,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
+import { useProjectRole } from '@/hooks/useProjectRole';
 import { useDeleteCommitMutation } from '@/services/repoApi';
 import { formatStorageSize } from '@/lib/utils';
 
@@ -50,6 +51,12 @@ export function DeleteCommitButton({
   const [deleteCommit, { isLoading }] = useDeleteCommitMutation();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { canEdit } = useProjectRole(owner, repo);
+
+  // Don't render for viewers
+  if (!canEdit) {
+    return null;
+  }
 
   const hasAliases = aliases.length > 0;
   const shortSha = commitSha.slice(0, 7);
