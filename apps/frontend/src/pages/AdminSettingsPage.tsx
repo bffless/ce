@@ -3,6 +3,7 @@ import { PrimaryContentSettings } from '@/components/settings/PrimaryContentSett
 import { EmailSettings } from '@/components/settings/EmailSettings';
 import { InvitationsSettings } from '@/components/settings/InvitationsSettings';
 import { RegistrationSettings } from '@/components/settings/RegistrationSettings';
+import { OnboardingRulesSettings } from '@/components/settings/OnboardingRulesSettings';
 import { SslSettings } from '@/components/settings/SslSettings';
 import { CacheSettings } from '@/components/settings/CacheSettings';
 import { StorageSettings } from '@/components/settings/StorageSettings';
@@ -62,6 +63,11 @@ export function AdminSettingsPage() {
       {/* User Invitations */}
       <section>
         <InvitationsSettings />
+      </section>
+
+      {/* User Onboarding Rules */}
+      <section>
+        <OnboardingRulesSettings />
       </section>
 
       {/* SSL Certificate Settings */}
