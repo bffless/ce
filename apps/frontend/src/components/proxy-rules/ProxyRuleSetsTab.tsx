@@ -22,6 +22,7 @@ import {
 import { Plus, MoreHorizontal, Edit2, Trash2, Settings, Layers } from 'lucide-react';
 import { useGetProjectRuleSetsQuery, useDeleteRuleSetMutation } from '@/services/proxyRulesApi';
 import { useGetProjectQuery } from '@/services/projectsApi';
+import { useProjectRole } from '@/hooks/useProjectRole';
 import { useToast } from '@/hooks/use-toast';
 import { CreateRuleSetDialog } from './CreateRuleSetDialog';
 import { RuleSetEditorDialog } from './RuleSetEditorDialog';
@@ -37,6 +38,7 @@ interface ProxyRuleSetsTabProps {
  */
 export function ProxyRuleSetsTab({ owner, repo }: ProxyRuleSetsTabProps) {
   const { toast } = useToast();
+  const { canEdit } = useProjectRole(owner, repo);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [editingRuleSet, setEditingRuleSet] = useState<{
     id: string;
@@ -140,25 +142,31 @@ export function ProxyRuleSetsTab({ owner, repo }: ProxyRuleSetsTabProps) {
               <CardTitle>Proxy Rule Sets</CardTitle>
               <CardDescription>Manage reusable proxy rule configurations</CardDescription>
             </div>
-            <Button size="sm" className="gap-2" onClick={() => setIsCreateDialogOpen(true)}>
-              <Plus className="h-4 w-4" />
-              Create Rule Set
-            </Button>
+            {canEdit && (
+              <Button size="sm" className="gap-2" onClick={() => setIsCreateDialogOpen(true)}>
+                <Plus className="h-4 w-4" />
+                Create Rule Set
+              </Button>
+            )}
           </CardHeader>
           <CardContent className="p-8 text-center">
             <Layers className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             <p className="text-muted-foreground font-medium">No proxy rule sets found</p>
             <p className="text-sm text-muted-foreground mt-2">
-              Create a rule set to define proxy rules that can be assigned to aliases
+              {canEdit
+                ? 'Create a rule set to define proxy rules that can be assigned to aliases'
+                : 'No proxy rule sets have been created for this repository yet'}
             </p>
           </CardContent>
         </Card>
 
-        <CreateRuleSetDialog
-          projectId={project?.id || ''}
-          open={isCreateDialogOpen}
-          onOpenChange={setIsCreateDialogOpen}
-        />
+        {canEdit && (
+          <CreateRuleSetDialog
+            projectId={project?.id || ''}
+            open={isCreateDialogOpen}
+            onOpenChange={setIsCreateDialogOpen}
+          />
+        )}
       </>
     );
   }
@@ -171,10 +179,12 @@ export function ProxyRuleSetsTab({ owner, repo }: ProxyRuleSetsTabProps) {
             <CardTitle>Proxy Rule Sets</CardTitle>
             <CardDescription>Manage reusable proxy rule configurations</CardDescription>
           </div>
-          <Button size="sm" className="gap-2" onClick={() => setIsCreateDialogOpen(true)}>
-            <Plus className="h-4 w-4" />
-            Create Rule Set
-          </Button>
+          {canEdit && (
+            <Button size="sm" className="gap-2" onClick={() => setIsCreateDialogOpen(true)}>
+              <Plus className="h-4 w-4" />
+              Create Rule Set
+            </Button>
+          )}
         </CardHeader>
         <CardContent>
           {/* Rule Sets List */}
@@ -206,33 +216,35 @@ export function ProxyRuleSetsTab({ owner, repo }: ProxyRuleSetsTabProps) {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-1"
-                    onClick={() => setEditingRuleSet({ id: ruleSet.id, name: ruleSet.name })}
-                  >
-                    <Edit2 className="h-3 w-3" />
-                    Edit Rules
-                  </Button>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        onClick={() => setDeletingRuleSet({ id: ruleSet.id, name: ruleSet.name })}
-                        className="text-destructive"
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
+                {canEdit && (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1"
+                      onClick={() => setEditingRuleSet({ id: ruleSet.id, name: ruleSet.name })}
+                    >
+                      <Edit2 className="h-3 w-3" />
+                      Edit Rules
+                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={() => setDeletingRuleSet({ id: ruleSet.id, name: ruleSet.name })}
+                          className="text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -240,14 +252,16 @@ export function ProxyRuleSetsTab({ owner, repo }: ProxyRuleSetsTabProps) {
       </Card>
 
       {/* Create Dialog */}
-      <CreateRuleSetDialog
-        projectId={project?.id || ''}
-        open={isCreateDialogOpen}
-        onOpenChange={setIsCreateDialogOpen}
-      />
+      {canEdit && (
+        <CreateRuleSetDialog
+          projectId={project?.id || ''}
+          open={isCreateDialogOpen}
+          onOpenChange={setIsCreateDialogOpen}
+        />
+      )}
 
       {/* Edit Rules Dialog */}
-      {editingRuleSet && (
+      {canEdit && editingRuleSet && (
         <RuleSetEditorDialog
           ruleSetId={editingRuleSet.id}
           ruleSetName={editingRuleSet.name}
@@ -257,28 +271,30 @@ export function ProxyRuleSetsTab({ owner, repo }: ProxyRuleSetsTabProps) {
       )}
 
       {/* Delete Confirmation Dialog */}
-      <AlertDialog open={!!deletingRuleSet} onOpenChange={(open) => !open && setDeletingRuleSet(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Rule Set</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete the rule set "{deletingRuleSet?.name}"? This will
-              remove all rules in this set and unassign it from any aliases using it. This action
-              cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={isDeleting}
-            >
-              {isDeleting ? 'Deleting...' : 'Delete'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {canEdit && (
+        <AlertDialog open={!!deletingRuleSet} onOpenChange={(open) => !open && setDeletingRuleSet(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Rule Set</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete the rule set "{deletingRuleSet?.name}"? This will
+                remove all rules in this set and unassign it from any aliases using it. This action
+                cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDelete}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                disabled={isDeleting}
+              >
+                {isDeleting ? 'Deleting...' : 'Delete'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </>
   );
 }
