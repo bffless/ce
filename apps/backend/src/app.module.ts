@@ -33,6 +33,7 @@ import { CacheRulesModule } from './cache-rules/cache-rules.module';
 import { ShareLinksModule } from './share-links/share-links.module';
 import { PlatformModule } from './platform/platform.module';
 import { StorageUsageModule } from './storage/storage-usage.module';
+import { OnboardingRulesModule } from './onboarding-rules/onboarding-rules.module';
 
 @Module({
   imports: [
@@ -144,6 +145,7 @@ import { StorageUsageModule } from './storage/storage-usage.module';
     InternalModule,
     InvitationsModule,
     StorageUsageModule,
+    OnboardingRulesModule,
   ],
   controllers: [AppController],
   providers: [

@@ -3,6 +3,7 @@ import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useAppDispatch } from '@/store/hooks';
 import { setCurrentRepo } from '@/store/slices/repoSlice';
 import { useGetRepositoryStatsQuery } from '@/services/repoApi';
+import { useProjectRole } from '@/hooks/useProjectRole';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -50,6 +51,9 @@ export function RepositoryOverviewPage() {
       dispatch(setCurrentRepo({ owner, repo }));
     }
   }, [owner, repo, dispatch]);
+
+  // Check user's role for this project
+  const { canAdmin } = useProjectRole(owner!, repo!);
 
   // Fetch repository stats
   const {
@@ -127,15 +131,17 @@ export function RepositoryOverviewPage() {
           <h1 className="text-2xl font-bold">
             {owner}/{repo}
           </h1>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigate(`/repo/${owner}/${repo}/settings`)}
-            className="flex items-center gap-2"
-          >
-            <Settings className="h-4 w-4" />
-            Settings
-          </Button>
+          {canAdmin && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate(`/repo/${owner}/${repo}/settings`)}
+              className="flex items-center gap-2"
+            >
+              <Settings className="h-4 w-4" />
+              Settings
+            </Button>
+          )}
         </div>
 
         {/* Stats Header */}

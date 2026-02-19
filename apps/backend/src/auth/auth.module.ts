@@ -10,6 +10,7 @@ import { RolesGuard } from './roles.guard';
 import { EmailVerificationGuard } from './email-verification.guard';
 import { initSuperTokens } from './supertokens.config';
 import { SetupModule } from '../setup/setup.module';
+import { OnboardingRulesModule } from '../onboarding-rules/onboarding-rules.module';
 
 @Module({})
 export class AuthModule implements NestModule {
@@ -20,7 +21,7 @@ export class AuthModule implements NestModule {
     return {
       module: AuthModule,
       global: true,
-      imports: [forwardRef(() => SetupModule)],
+      imports: [forwardRef(() => SetupModule), forwardRef(() => OnboardingRulesModule)],
       controllers: [AuthController],
       providers: [
         AuthService,

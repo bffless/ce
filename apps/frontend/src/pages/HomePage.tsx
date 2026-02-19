@@ -58,8 +58,9 @@ export function HomePage() {
   };
 
   // Show onboarding modal if user hasn't completed onboarding
+  // Skip for members since they can't create repos (the modal guides through repo creation)
   useEffect(() => {
-    if (sessionData?.user && !hasCompletedOnboarding) {
+    if (sessionData?.user && !hasCompletedOnboarding && sessionData.user.role !== 'member') {
       setShowOnboarding(true);
     }
   }, [sessionData, hasCompletedOnboarding]);
@@ -142,23 +143,21 @@ export function HomePage() {
         )}
 
         {/* Navigation Cards */}
-        <div className={`grid gap-4 ${user?.role === 'admin' ? 'md:grid-cols-4' : user?.role === 'member' ? 'md:grid-cols-1' : 'md:grid-cols-2'}`}>
-          {user?.role !== 'member' && (
-            <Link to="/repo" className="group block">
-              <div className="bg-white dark:bg-card border border-[#3a3a3a]/10 dark:border-border rounded-lg p-6 hover:border-[#d96459]/50 hover:shadow-md transition-all duration-200">
-                <div className="flex items-start justify-between">
-                  <FolderGit2 className="h-8 w-8 text-[#d96459]" />
-                  <ArrowRight className="h-5 w-5 text-[#4a4a4a]/30 group-hover:text-[#d96459] group-hover:translate-x-1 transition-all" />
-                </div>
-                <h2 className="text-lg font-semibold text-[#3a3a3a] dark:text-foreground mt-4">
-                  Repositories
-                </h2>
-                <p className="text-sm text-[#4a4a4a] dark:text-muted-foreground mt-1">
-                  Manage your repositories and deployments
-                </p>
+        <div className={`grid gap-4 ${user?.role === 'admin' ? 'md:grid-cols-4' : 'md:grid-cols-2'}`}>
+          <Link to="/repo" className="group block">
+            <div className="bg-white dark:bg-card border border-[#3a3a3a]/10 dark:border-border rounded-lg p-6 hover:border-[#d96459]/50 hover:shadow-md transition-all duration-200">
+              <div className="flex items-start justify-between">
+                <FolderGit2 className="h-8 w-8 text-[#d96459]" />
+                <ArrowRight className="h-5 w-5 text-[#4a4a4a]/30 group-hover:text-[#d96459] group-hover:translate-x-1 transition-all" />
               </div>
-            </Link>
-          )}
+              <h2 className="text-lg font-semibold text-[#3a3a3a] dark:text-foreground mt-4">
+                Repositories
+              </h2>
+              <p className="text-sm text-[#4a4a4a] dark:text-muted-foreground mt-1">
+                {user?.role === 'member' ? 'View your accessible repositories' : 'Manage your repositories and deployments'}
+              </p>
+            </div>
+          </Link>
 
           {user?.role === 'admin' && (
             <Link to="/users" className="group block">

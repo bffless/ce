@@ -356,15 +356,13 @@ export function ProjectMembersTab({ owner, repo }: ProjectMembersTabProps) {
                               setRemovingMember(open ? permission.userId : null)
                             }
                           >
-                            <DialogTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setRemovingMember(permission.userId)}
-                              >
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                              </Button>
-                            </DialogTrigger>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setRemovingMember(permission.userId)}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
                             <AlertDialogContent>
                               <AlertDialogHeader>
                                 <AlertDialogTitle>Remove Member</AlertDialogTitle>

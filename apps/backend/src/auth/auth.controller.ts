@@ -19,6 +19,7 @@ import { SessionAuthGuard } from './session-auth.guard';
 import { SkipEmailVerification } from './decorators/skip-email-verification.decorator';
 import { SetupService } from '../setup/setup.service';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
+import { OnboardingExecutorService } from '../onboarding-rules/onboarding-executor.service';
 import { db } from '../db/client';
 import { workspaceInvitations } from '../db/schema';
 import { eq, and, isNull, gt } from 'drizzle-orm';
@@ -55,10 +56,13 @@ interface ResetPasswordDto {
 @ApiTags('Authentication')
 @Controller('api/auth')
 export class AuthController {
+  private readonly logger = new (require('@nestjs/common').Logger)(AuthController.name);
+
   constructor(
     private readonly authService: AuthService,
     private readonly setupService: SetupService,
     private readonly featureFlagsService: FeatureFlagsService,
+    private readonly onboardingExecutorService: OnboardingExecutorService,
   ) {}
 
   private getTenantId(): string {
@@ -176,6 +180,20 @@ export class AuthController {
             .where(eq(workspaceInvitations.id, invitation.id));
         }
 
+        // Execute onboarding rules for new signup
+        try {
+          const trigger = invitation ? 'invite_accepted' : 'user_signup';
+          await this.onboardingExecutorService.executeRulesForUser({
+            userId: dbUser.id,
+            userEmail: email,
+            trigger,
+            invitationRole: invitation?.role,
+          });
+        } catch (onboardingError) {
+          // Log but don't fail signup if onboarding rules fail
+          this.logger.error('[Signup] Onboarding rules failed:', onboardingError);
+        }
+
         await Session.createNewSession(req, res, tenantId, signInResponse.recipeUserId);
 
         let emailVerificationRequired = false;
@@ -230,6 +248,20 @@ export class AuthController {
             acceptedUserId: dbUser.id,
           })
           .where(eq(workspaceInvitations.id, invitation.id));
+      }
+
+      // Execute onboarding rules for new signup
+      try {
+        const trigger = invitation ? 'invite_accepted' : 'user_signup';
+        await this.onboardingExecutorService.executeRulesForUser({
+          userId: dbUser.id,
+          userEmail: email,
+          trigger,
+          invitationRole: invitation?.role,
+        });
+      } catch (onboardingError) {
+        // Log but don't fail signup if onboarding rules fail
+        this.logger.error('[Signup] Onboarding rules failed:', onboardingError);
       }
 
       // Create session so user is immediately logged in

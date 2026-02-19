@@ -8,6 +8,7 @@ import {
 } from '@/services/repoApi';
 import { useGetProjectQuery } from '@/services/projectsApi';
 import { useGetProjectRuleSetsQuery } from '@/services/proxyRulesApi';
+import { useProjectRole } from '@/hooks/useProjectRole';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -34,6 +35,7 @@ interface AliasRowProps {
   alias: AliasDetail;
   projectId: string;
   proxyRuleSetName?: string;
+  canEdit: boolean;
   onView: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -44,6 +46,7 @@ function AliasRow({
   alias,
   projectId,
   proxyRuleSetName,
+  canEdit,
   onView,
   onEdit,
   onDelete,
@@ -112,49 +115,56 @@ function AliasRow({
 
       {/* Visibility */}
       <div className="flex items-center">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 gap-1 px-2"
-              disabled={isUpdatingVisibility || !visibilityInfo}
-            >
-              {getCurrentVisibilityIcon()}
-              <span className="text-xs">{getCurrentVisibilityLabel()}</span>
-              <ChevronDown className="h-3 w-3" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            <DropdownMenuItem onClick={() => handleVisibilityChange(null)}>
-              <ArrowDown className="h-3 w-3 mr-2" />
-              Inherit from project
-              {visibilityInfo?.source === 'project' && (
-                <Badge variant="secondary" className="ml-2 text-xs">
-                  Current
-                </Badge>
-              )}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => handleVisibilityChange(true)}>
-              <Globe className="h-3 w-3 mr-2" />
-              Public
-              {visibilityInfo?.aliasOverride === true && (
-                <Badge variant="secondary" className="ml-2 text-xs">
-                  Current
-                </Badge>
-              )}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => handleVisibilityChange(false)}>
-              <Lock className="h-3 w-3 mr-2" />
-              Private
-              {visibilityInfo?.aliasOverride === false && (
-                <Badge variant="secondary" className="ml-2 text-xs">
-                  Current
-                </Badge>
-              )}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {canEdit ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1 px-2"
+                disabled={isUpdatingVisibility || !visibilityInfo}
+              >
+                {getCurrentVisibilityIcon()}
+                <span className="text-xs">{getCurrentVisibilityLabel()}</span>
+                <ChevronDown className="h-3 w-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem onClick={() => handleVisibilityChange(null)}>
+                <ArrowDown className="h-3 w-3 mr-2" />
+                Inherit from project
+                {visibilityInfo?.source === 'project' && (
+                  <Badge variant="secondary" className="ml-2 text-xs">
+                    Current
+                  </Badge>
+                )}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleVisibilityChange(true)}>
+                <Globe className="h-3 w-3 mr-2" />
+                Public
+                {visibilityInfo?.aliasOverride === true && (
+                  <Badge variant="secondary" className="ml-2 text-xs">
+                    Current
+                  </Badge>
+                )}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleVisibilityChange(false)}>
+                <Lock className="h-3 w-3 mr-2" />
+                Private
+                {visibilityInfo?.aliasOverride === false && (
+                  <Badge variant="secondary" className="ml-2 text-xs">
+                    Current
+                  </Badge>
+                )}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <div className="flex items-center gap-1 h-7 px-2">
+            {getCurrentVisibilityIcon()}
+            <span className="text-xs">{getCurrentVisibilityLabel()}</span>
+          </div>
+        )}
       </div>
 
       {/* Points To (commit SHA) */}
@@ -192,18 +202,22 @@ function AliasRow({
         <Button variant="ghost" size="sm" className="h-8 px-2" title="View alias" onClick={onView}>
           <Eye className="h-3 w-3" />
         </Button>
-        <Button variant="ghost" size="sm" className="h-8 px-2" title="Edit alias" onClick={onEdit}>
-          <Pencil className="h-3 w-3" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-8 px-2 text-destructive hover:text-destructive"
-          title="Delete alias"
-          onClick={onDelete}
-        >
-          <Trash2 className="h-3 w-3" />
-        </Button>
+        {canEdit && (
+          <>
+            <Button variant="ghost" size="sm" className="h-8 px-2" title="Edit alias" onClick={onEdit}>
+              <Pencil className="h-3 w-3" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2 text-destructive hover:text-destructive"
+              title="Delete alias"
+              onClick={onDelete}
+            >
+              <Trash2 className="h-3 w-3" />
+            </Button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -215,6 +229,7 @@ function AliasRow({
  */
 export function AliasesTab({ owner, repo }: AliasesTabProps) {
   const navigate = useNavigate();
+  const { canEdit } = useProjectRole(owner, repo);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [updateDialogState, setUpdateDialogState] = useState<{
     open: boolean;
@@ -325,27 +340,33 @@ export function AliasesTab({ owner, repo }: AliasesTabProps) {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Aliases</CardTitle>
-            <Button size="sm" className="gap-2" onClick={() => setIsCreateDialogOpen(true)}>
-              <Plus className="h-4 w-4" />
-              Create Alias
-            </Button>
+            {canEdit && (
+              <Button size="sm" className="gap-2" onClick={() => setIsCreateDialogOpen(true)}>
+                <Plus className="h-4 w-4" />
+                Create Alias
+              </Button>
+            )}
           </CardHeader>
           <CardContent className="p-8 text-center">
             <Tag className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             <p className="text-muted-foreground font-medium">No aliases found</p>
             <p className="text-sm text-muted-foreground mt-2">
-              Create an alias to give a friendly name to a specific deployment
+              {canEdit
+                ? 'Create an alias to give a friendly name to a specific deployment'
+                : 'No aliases have been created for this repository yet'}
             </p>
           </CardContent>
         </Card>
 
-        <CreateAliasDialog
-          owner={owner}
-          repo={repo}
-          projectId={project?.id}
-          open={isCreateDialogOpen}
-          onOpenChange={setIsCreateDialogOpen}
-        />
+        {canEdit && (
+          <CreateAliasDialog
+            owner={owner}
+            repo={repo}
+            projectId={project?.id}
+            open={isCreateDialogOpen}
+            onOpenChange={setIsCreateDialogOpen}
+          />
+        )}
       </>
     );
   }
@@ -355,10 +376,12 @@ export function AliasesTab({ owner, repo }: AliasesTabProps) {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Aliases</CardTitle>
-          <Button size="sm" className="gap-2" onClick={() => setIsCreateDialogOpen(true)}>
-            <Plus className="h-4 w-4" />
-            Create Alias
-          </Button>
+          {canEdit && (
+            <Button size="sm" className="gap-2" onClick={() => setIsCreateDialogOpen(true)}>
+              <Plus className="h-4 w-4" />
+              Create Alias
+            </Button>
+          )}
         </CardHeader>
       <CardContent>
         {/* Aliases Table */}
@@ -381,6 +404,7 @@ export function AliasesTab({ owner, repo }: AliasesTabProps) {
               alias={alias}
               projectId={project?.id || ''}
               proxyRuleSetName={alias.proxyRuleSetId ? ruleSetNameMap.get(alias.proxyRuleSetId) : undefined}
+              canEdit={canEdit}
               formatDate={formatDate}
               onView={() => navigate(`/repo/${owner}/${repo}/${alias.commitSha}`)}
               onEdit={() =>
@@ -404,43 +428,47 @@ export function AliasesTab({ owner, repo }: AliasesTabProps) {
       </CardContent>
     </Card>
 
-    <CreateAliasDialog
-      owner={owner}
-      repo={repo}
-      projectId={project?.id}
-      open={isCreateDialogOpen}
-      onOpenChange={setIsCreateDialogOpen}
-    />
+    {canEdit && (
+      <>
+        <CreateAliasDialog
+          owner={owner}
+          repo={repo}
+          projectId={project?.id}
+          open={isCreateDialogOpen}
+          onOpenChange={setIsCreateDialogOpen}
+        />
 
-    <UpdateAliasDialog
-      owner={owner}
-      repo={repo}
-      projectId={project?.id}
-      aliasName={updateDialogState.aliasName}
-      currentCommitSha={updateDialogState.commitSha}
-      currentBranch={updateDialogState.branch}
-      currentProxyRuleSetId={updateDialogState.proxyRuleSetId}
-      open={updateDialogState.open}
-      onOpenChange={(open) =>
-        setUpdateDialogState({
-          ...updateDialogState,
-          open,
-        })
-      }
-    />
+        <UpdateAliasDialog
+          owner={owner}
+          repo={repo}
+          projectId={project?.id}
+          aliasName={updateDialogState.aliasName}
+          currentCommitSha={updateDialogState.commitSha}
+          currentBranch={updateDialogState.branch}
+          currentProxyRuleSetId={updateDialogState.proxyRuleSetId}
+          open={updateDialogState.open}
+          onOpenChange={(open) =>
+            setUpdateDialogState({
+              ...updateDialogState,
+              open,
+            })
+          }
+        />
 
-    <DeleteAliasDialog
-      owner={owner}
-      repo={repo}
-      aliasName={deleteDialogState.aliasName}
-      open={deleteDialogState.open}
-      onOpenChange={(open) =>
-        setDeleteDialogState({
-          ...deleteDialogState,
-          open,
-        })
-      }
-    />
+        <DeleteAliasDialog
+          owner={owner}
+          repo={repo}
+          aliasName={deleteDialogState.aliasName}
+          open={deleteDialogState.open}
+          onOpenChange={(open) =>
+            setDeleteDialogState({
+              ...deleteDialogState,
+              open,
+            })
+          }
+        />
+      </>
+    )}
   </>
   );
 }

@@ -192,6 +192,7 @@ export const api = createApi({
     'PathRedirects',
     'ShareLink',
     'TrafficRule',
+    'OnboardingRule',
   ],
   endpoints: () => ({}),
 });
