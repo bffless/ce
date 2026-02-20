@@ -7,6 +7,7 @@ import { Eye, EyeOff, Mail, CheckCircle, Info } from 'lucide-react';
 import logoSvg from '@/assets/logo-circle-wire-text.svg';
 import { useSignUpMutation, useCheckEmailMutation, useGetSessionQuery, useGetRegistrationStatusQuery } from '@/services/authApi';
 import { useValidateInvitationTokenQuery } from '@/services/invitationsApi';
+import { useFeatureFlags } from '@/services/featureFlagsApi';
 import { useToast } from '@/hooks/use-toast';
 import { validateRedirectUrl } from '@/lib/validateRedirectUrl';
 import { Button } from '@/components/ui/button';
@@ -24,12 +25,12 @@ import {
   FormDescription,
 } from '@/components/ui/form';
 
-const createSignupSchema = (authMode: 'create' | 'signin') =>
+const createSignupSchema = (authMode: 'create' | 'signin', requireTos: boolean) =>
   z.object({
     email: z.string().min(1, 'Email is required').email('Please enter a valid email address'),
     password: z.string().min(8, 'Password must be at least 8 characters'),
     confirmPassword: z.string(),
-    acceptTerms: z.boolean().refine((val) => authMode === 'signin' || val === true, {
+    acceptTerms: z.boolean().refine((val) => authMode === 'signin' || !requireTos || val === true, {
       message: 'You must accept the terms of service',
     }),
   }).refine((data) => authMode === 'signin' || data.password === data.confirmPassword, {
@@ -73,6 +74,9 @@ export function SignupPage() {
   const [checkEmail] = useCheckEmailMutation();
   const { data: sessionData, isLoading: isLoadingSession } = useGetSessionQuery();
   const { data: registrationStatus, isLoading: isLoadingRegistration } = useGetRegistrationStatusQuery();
+  const { isEnabled, getValue, isLoading: isLoadingFlags } = useFeatureFlags();
+  const requireTos = isEnabled('REQUIRE_TOS_ACCEPTANCE');
+  const tosUrl = getValue<string>('TOS_URL', '');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [authMode, setAuthMode] = useState<'create' | 'signin'>('create');
@@ -100,7 +104,7 @@ export function SignupPage() {
   const signupsAllowed = registrationStatus?.registrationEnabled &&
     (registrationStatus?.allowPublicSignups || hasValidInvitation);
 
-  const signupSchema = useMemo(() => createSignupSchema(authMode), [authMode]);
+  const signupSchema = useMemo(() => createSignupSchema(authMode, requireTos), [authMode, requireTos]);
 
   const form = useForm<SignupFormValues>({
     resolver: zodResolver(signupSchema),
@@ -246,7 +250,7 @@ export function SignupPage() {
     }
   };
 
-  if (isLoadingSession || isLoadingRegistration || isLoadingInvitation) {
+  if (isLoadingSession || isLoadingRegistration || isLoadingInvitation || isLoadingFlags) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-muted-foreground">Loading...</div>
@@ -465,7 +469,7 @@ export function SignupPage() {
                   />
                 )}
 
-                {authMode === 'create' && (
+                {authMode === 'create' && requireTos && (
                   <FormField
                     control={form.control}
                     name="acceptTerms"
@@ -480,19 +484,18 @@ export function SignupPage() {
                         <div className="space-y-1 leading-none">
                           <FormLabel className="text-sm font-normal cursor-pointer">
                             I agree to the{' '}
-                            <button
-                              type="button"
-                              className="text-primary hover:underline"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                toast({
-                                  title: 'Terms of Service',
-                                  description: 'Terms of service page coming soon',
-                                });
-                              }}
-                            >
-                              Terms of Service
-                            </button>
+                            {tosUrl ? (
+                              <a
+                                href={tosUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-primary hover:underline"
+                              >
+                                Terms of Service
+                              </a>
+                            ) : (
+                              <span className="text-primary">Terms of Service</span>
+                            )}
                           </FormLabel>
                           <FormMessage />
                         </div>

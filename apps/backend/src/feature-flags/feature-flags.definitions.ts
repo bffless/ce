@@ -360,6 +360,26 @@ export const FLAG_DEFINITIONS: Record<string, FlagDefinition> = {
     exposeToClient: true,
   },
 
+  REQUIRE_TOS_ACCEPTANCE: {
+    envKey: 'FEATURE_REQUIRE_TOS',
+    defaultValue: false,
+    type: 'boolean',
+    description:
+      'Require users to accept Terms of Service during signup. Enable for hosted platform, disable for self-hosted.',
+    category: 'features',
+    exposeToClient: true,
+  },
+
+  TOS_URL: {
+    envKey: 'FEATURE_TOS_URL',
+    defaultValue: '',
+    type: 'string',
+    description:
+      'URL to Terms of Service page. Used when REQUIRE_TOS_ACCEPTANCE is enabled.',
+    category: 'features',
+    exposeToClient: true,
+  },
+
   // ==========================================================================
   // Resource Limits (for PaaS tiers)
   // ==========================================================================
