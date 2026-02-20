@@ -58,6 +58,38 @@ export interface AuthTransformConfig {
 }
 
 /**
+ * Proxy rule type.
+ *
+ * - 'external_proxy': Forward requests to an external URL (default)
+ * - 'internal_rewrite': Serve a different path from the same deployment (no HTTP request)
+ * - 'email_form_handler': Capture POST form submissions and email them
+ */
+export type ProxyType = 'external_proxy' | 'internal_rewrite' | 'email_form_handler';
+
+/**
+ * Email handler configuration for email_form_handler proxy rules.
+ *
+ * When proxyType is 'email_form_handler', this config specifies how to
+ * handle form submissions and send emails.
+ */
+export interface EmailHandlerConfig {
+  /** Email address to send form submissions to (required) */
+  destinationEmail: string;
+  /** Subject line for the email (default: "Form Submission") */
+  subject?: string;
+  /** URL to redirect to after successful submission (optional) */
+  successRedirect?: string;
+  /** CORS origin to allow (optional, for cross-origin form submissions) */
+  corsOrigin?: string;
+  /** Name of a honeypot field for spam protection (optional) */
+  honeypotField?: string;
+  /** Form field name to use as reply-to address (optional) */
+  replyToField?: string;
+  /** Require authentication to submit the form (optional, default: false) */
+  requireAuth?: boolean;
+}
+
+/**
  * Proxy rules table - stores reverse proxy configurations.
  *
  * Each rule belongs to a ProxyRuleSet. Rule sets can be:
@@ -207,8 +239,30 @@ export const proxyRules = pgTable(
      * Use case: Serve /env.json from /environments/production.json without an HTTP round-trip.
      *
      * Default: false (normal external proxy behavior)
+     *
+     * @deprecated Use proxyType='internal_rewrite' instead. This field is kept for backward compatibility.
      */
     internalRewrite: boolean('internal_rewrite').notNull().default(false),
+
+    /**
+     * Type of proxy rule behavior.
+     *
+     * - 'external_proxy': Forward requests to an external URL (default)
+     * - 'internal_rewrite': Serve a different path from the same deployment
+     * - 'email_form_handler': Capture POST form submissions and email them
+     *
+     * Note: For backward compatibility, if proxyType is null/'external_proxy' but
+     * internalRewrite is true, the rule is treated as 'internal_rewrite'.
+     */
+    proxyType: varchar('proxy_type', { length: 50 }).$type<ProxyType>().default('external_proxy'),
+
+    /**
+     * Configuration for email_form_handler proxy type.
+     *
+     * Required when proxyType is 'email_form_handler'.
+     * Contains settings for email destination, subject, redirects, CORS, and spam protection.
+     */
+    emailHandlerConfig: jsonb('email_handler_config').$type<EmailHandlerConfig>(),
 
     /**
      * Whether this rule is active.
@@ -240,6 +294,11 @@ export const proxyRules = pgTable(
      * Index for ordering rules within a rule set.
      */
     index('proxy_rules_rule_set_order_idx').on(table.ruleSetId, table.order),
+
+    /**
+     * Index for filtering by proxy type.
+     */
+    index('proxy_rules_proxy_type_idx').on(table.proxyType),
   ],
 );
 

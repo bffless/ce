@@ -5,7 +5,8 @@ import { db } from '../db/client';
 import { projects, deploymentAliases, domainMappings } from '../db/schema';
 import { ProxyRulesService } from './proxy-rules.service';
 import { ProxyService } from './proxy.service';
-import { ProxyRule } from '../db/schema/proxy-rules.schema';
+import { EmailFormHandlerService } from './email-form-handler.service';
+import { ProxyRule, ProxyType } from '../db/schema/proxy-rules.schema';
 import { ConfigService } from '@nestjs/config';
 
 interface ParsedPublicPath {
@@ -31,8 +32,27 @@ export class ProxyMiddleware implements NestMiddleware {
   constructor(
     private readonly proxyRulesService: ProxyRulesService,
     private readonly proxyService: ProxyService,
+    private readonly emailFormHandlerService: EmailFormHandlerService,
     private readonly configService: ConfigService,
   ) {}
+
+  /**
+   * Get the effective proxy type for a rule.
+   * Handles backward compatibility with the legacy internalRewrite boolean.
+   */
+  private getProxyType(rule: ProxyRule): ProxyType {
+    // If proxyType is explicitly set and not the default external_proxy
+    if (rule.proxyType && rule.proxyType !== 'external_proxy') {
+      return rule.proxyType;
+    }
+
+    // Backward compatibility: if internalRewrite is true, treat as internal_rewrite
+    if (rule.internalRewrite) {
+      return 'internal_rewrite';
+    }
+
+    return rule.proxyType || 'external_proxy';
+  }
 
   async use(req: Request, res: Response, next: NextFunction): Promise<void> {
     // Only handle /public/* routes
@@ -103,8 +123,19 @@ export class ProxyMiddleware implements NestMiddleware {
         return next();
       }
 
+      // Get the effective proxy type (handles backward compatibility)
+      const proxyType = this.getProxyType(matchedRule);
+
+      // Handle email form handler
+      if (proxyType === 'email_form_handler') {
+        this.logger.debug(
+          `Email form handler: ${subpathForMatching} (rule: ${matchedRule.id})`,
+        );
+        return this.emailFormHandlerService.handleSubmission(req, res, matchedRule);
+      }
+
       // Handle internal rewrite (no HTTP proxy - just rewrite the URL and continue)
-      if (matchedRule.internalRewrite) {
+      if (proxyType === 'internal_rewrite') {
         const newSubpath = this.buildRewritePath(matchedRule, subpathForMatching);
         // Rewrite the URL path for file serving
         // Replace the subpath portion while keeping the /public/{owner}/{repo}/{ref}/ prefix
@@ -241,8 +272,19 @@ export class ProxyMiddleware implements NestMiddleware {
       return next();
     }
 
+    // Get the effective proxy type (handles backward compatibility)
+    const proxyType = this.getProxyType(matchedRule);
+
+    // Handle email form handler
+    if (proxyType === 'email_form_handler') {
+      this.logger.debug(
+        `Subdomain email form handler: ${subpathForMatching} (alias: ${resolvedAliasName}, rule: ${matchedRule.id})`,
+      );
+      return this.emailFormHandlerService.handleSubmission(req, res, matchedRule);
+    }
+
     // Handle internal rewrite (no HTTP proxy - just rewrite the URL and continue)
-    if (matchedRule.internalRewrite) {
+    if (proxyType === 'internal_rewrite') {
       const newSubpath = this.buildRewritePath(matchedRule, subpathForMatching);
       // For subdomain-alias format, replace the subpath after /public/subdomain-alias/{aliasName}/
       const oldPath = req.path;

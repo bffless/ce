@@ -1,6 +1,7 @@
 import { ProxyMiddleware } from './proxy.middleware';
 import { ProxyRulesService } from './proxy-rules.service';
 import { ProxyService } from './proxy.service';
+import { EmailFormHandlerService } from './email-form-handler.service';
 import { ConfigService } from '@nestjs/config';
 import { Request, Response, NextFunction } from 'express';
 
@@ -18,6 +19,7 @@ describe('ProxyMiddleware', () => {
   let middleware: ProxyMiddleware;
   let mockProxyRulesService: jest.Mocked<ProxyRulesService>;
   let mockProxyService: jest.Mocked<ProxyService>;
+  let mockEmailFormHandlerService: jest.Mocked<EmailFormHandlerService>;
   let mockConfigService: jest.Mocked<ConfigService>;
   let mockNext: NextFunction;
 
@@ -30,11 +32,20 @@ describe('ProxyMiddleware', () => {
       forward: jest.fn().mockResolvedValue(undefined),
     } as any;
 
+    mockEmailFormHandlerService = {
+      handleSubmission: jest.fn().mockResolvedValue(undefined),
+    } as any;
+
     mockConfigService = {
       get: jest.fn().mockReturnValue('localhost'),
     } as any;
 
-    middleware = new ProxyMiddleware(mockProxyRulesService, mockProxyService, mockConfigService);
+    middleware = new ProxyMiddleware(
+      mockProxyRulesService,
+      mockProxyService,
+      mockEmailFormHandlerService,
+      mockConfigService,
+    );
     mockNext = jest.fn();
   });
 
@@ -67,6 +78,8 @@ describe('ProxyMiddleware', () => {
     headerConfig: null,
     authTransform: null,
     internalRewrite: false,
+    proxyType: 'external_proxy' as const,
+    emailHandlerConfig: null,
     isEnabled: true,
     description: null,
     createdAt: new Date(),

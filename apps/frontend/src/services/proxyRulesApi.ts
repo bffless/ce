@@ -13,6 +13,20 @@ export interface AuthTransformConfig {
   cookieName: string;
 }
 
+// Proxy rule type
+export type ProxyType = 'external_proxy' | 'internal_rewrite' | 'email_form_handler';
+
+// Email handler configuration for email_form_handler proxy rules
+export interface EmailHandlerConfig {
+  destinationEmail: string;
+  subject?: string;
+  successRedirect?: string;
+  corsOrigin?: string;
+  honeypotField?: string;
+  replyToField?: string;
+  requireAuth?: boolean;
+}
+
 // Proxy rule response from API
 export interface ProxyRule {
   id: string;
@@ -27,6 +41,8 @@ export interface ProxyRule {
   headerConfig: HeaderConfig | null;
   authTransform: AuthTransformConfig | null;
   internalRewrite: boolean;
+  proxyType: ProxyType | null;
+  emailHandlerConfig: EmailHandlerConfig | null;
   isEnabled: boolean;
   description: string | null;
   createdAt: string;
@@ -75,6 +91,8 @@ export interface CreateProxyRuleDto {
   headerConfig?: HeaderConfig;
   authTransform?: AuthTransformConfig;
   internalRewrite?: boolean;
+  proxyType?: ProxyType;
+  emailHandlerConfig?: EmailHandlerConfig;
   description?: string;
   isEnabled?: boolean;
 }
@@ -91,8 +109,15 @@ export interface UpdateProxyRuleDto {
   headerConfig?: HeaderConfig;
   authTransform?: AuthTransformConfig | null;
   internalRewrite?: boolean;
+  proxyType?: ProxyType;
+  emailHandlerConfig?: EmailHandlerConfig | null;
   description?: string;
   isEnabled?: boolean;
+}
+
+// Email config status response
+export interface EmailConfigStatusResponse {
+  isConfigured: boolean;
 }
 
 // List response wrappers
@@ -234,6 +259,13 @@ export const proxyRulesApi = api.injectEndpoints({
       }),
       invalidatesTags: ['ProxyRule', 'ProxyRuleSet'],
     }),
+
+    // ==================== Settings ====================
+
+    // Get email configuration status (public endpoint)
+    getEmailConfigStatus: builder.query<EmailConfigStatusResponse, void>({
+      query: () => '/api/settings/email/status-public',
+    }),
   }),
 });
 
@@ -252,4 +284,6 @@ export const {
   useGetProxyRuleQuery,
   useUpdateProxyRuleMutation,
   useDeleteProxyRuleMutation,
+  // Settings
+  useGetEmailConfigStatusQuery,
 } = proxyRulesApi;

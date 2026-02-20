@@ -4,6 +4,7 @@ import { BadRequestException, ForbiddenException, NotFoundException } from '@nes
 import { ProxyRulesService } from './proxy-rules.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { NginxRegenerationService } from '../domains/nginx-regeneration.service';
+import { EmailService } from '../email/email.service';
 
 // Mock the db client - using factory function for hoisting
 jest.mock('../db/client', () => {
@@ -75,6 +76,11 @@ describe('ProxyRulesService', () => {
     regenerateForAlias: jest.fn().mockResolvedValue(undefined),
   };
 
+  const mockEmailService = {
+    isConfigured: jest.fn().mockReturnValue(true),
+    sendEmail: jest.fn().mockResolvedValue({ success: true }),
+  };
+
   // Helper to create a mock rule (with new schema)
   const createMockRule = (overrides: Record<string, unknown> = {}) => ({
     id: 'rule-1',
@@ -89,6 +95,8 @@ describe('ProxyRulesService', () => {
     headerConfig: null,
     authTransform: null,
     internalRewrite: false,
+    proxyType: 'external_proxy' as const,
+    emailHandlerConfig: null,
     isEnabled: true,
     description: null,
     createdAt: new Date(),
@@ -117,6 +125,7 @@ describe('ProxyRulesService', () => {
         { provide: ConfigService, useValue: mockConfigService },
         { provide: PermissionsService, useValue: mockPermissionsService },
         { provide: NginxRegenerationService, useValue: mockNginxRegenerationService },
+        { provide: EmailService, useValue: mockEmailService },
       ],
     }).compile();
 
@@ -335,6 +344,8 @@ describe('ProxyRulesService', () => {
         headerConfig: encrypted,
         authTransform: null,
         internalRewrite: false,
+        proxyType: 'external_proxy' as const,
+        emailHandlerConfig: null,
         isEnabled: true,
         description: null,
         createdAt: new Date(),
