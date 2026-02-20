@@ -820,7 +820,7 @@ export class AuthController {
   @ApiOperation({
     summary: 'Get registration status',
     description:
-      'Check if user registration is available. Returns whether public signups are allowed. Public endpoint.',
+      'Check if user registration is available. Returns whether public signups are allowed and TOS requirements. Public endpoint.',
   })
   @ApiResponse({
     status: 200,
@@ -836,13 +836,31 @@ export class AuthController {
           type: 'boolean',
           description: 'Whether public signups are allowed (invite-only when false)',
         },
+        requireTosAcceptance: {
+          type: 'boolean',
+          description: 'Whether users must accept Terms of Service to register',
+        },
+        tosUrl: {
+          type: 'string',
+          description: 'URL to the Terms of Service page',
+        },
       },
     },
   })
   async getRegistrationStatus(): Promise<{
     registrationEnabled: boolean;
     allowPublicSignups: boolean;
+    requireTosAcceptance: boolean;
+    tosUrl: string;
   }> {
-    return this.setupService.getRegistrationSettings();
+    const registrationSettings = await this.setupService.getRegistrationSettings();
+    const requireTosAcceptance = await this.featureFlagsService.get('REQUIRE_TOS_ACCEPTANCE');
+    const tosUrl = await this.featureFlagsService.get('TOS_URL');
+
+    return {
+      ...registrationSettings,
+      requireTosAcceptance: requireTosAcceptance as boolean,
+      tosUrl: tosUrl as string,
+    };
   }
 }

@@ -7,7 +7,6 @@ import { Eye, EyeOff, Mail, CheckCircle, Info } from 'lucide-react';
 import logoSvg from '@/assets/logo-circle-wire-text.svg';
 import { useSignUpMutation, useCheckEmailMutation, useGetSessionQuery, useGetRegistrationStatusQuery } from '@/services/authApi';
 import { useValidateInvitationTokenQuery } from '@/services/invitationsApi';
-import { useFeatureFlags } from '@/services/featureFlagsApi';
 import { useToast } from '@/hooks/use-toast';
 import { validateRedirectUrl } from '@/lib/validateRedirectUrl';
 import { Button } from '@/components/ui/button';
@@ -74,9 +73,8 @@ export function SignupPage() {
   const [checkEmail] = useCheckEmailMutation();
   const { data: sessionData, isLoading: isLoadingSession } = useGetSessionQuery();
   const { data: registrationStatus, isLoading: isLoadingRegistration } = useGetRegistrationStatusQuery();
-  const { isEnabled, getValue, isLoading: isLoadingFlags } = useFeatureFlags();
-  const requireTos = isEnabled('REQUIRE_TOS_ACCEPTANCE');
-  const tosUrl = getValue<string>('TOS_URL', '');
+  const requireTos = registrationStatus?.requireTosAcceptance ?? false;
+  const tosUrl = registrationStatus?.tosUrl ?? '';
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [authMode, setAuthMode] = useState<'create' | 'signin'>('create');
@@ -250,7 +248,7 @@ export function SignupPage() {
     }
   };
 
-  if (isLoadingSession || isLoadingRegistration || isLoadingInvitation || isLoadingFlags) {
+  if (isLoadingSession || isLoadingRegistration || isLoadingInvitation) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-muted-foreground">Loading...</div>

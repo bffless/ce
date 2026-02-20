@@ -69,6 +69,8 @@ export interface CheckEmailResponse {
 export interface RegistrationStatusResponse {
   registrationEnabled: boolean;
   allowPublicSignups: boolean;
+  requireTosAcceptance: boolean;
+  tosUrl: string;
 }
 
 export interface SendVerificationEmailResponse {
