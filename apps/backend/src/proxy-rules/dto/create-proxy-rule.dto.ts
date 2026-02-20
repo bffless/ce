@@ -14,22 +14,33 @@ import {
   ValidatorConstraint,
   ValidatorConstraintInterface,
   ValidationArguments,
+  IsIn,
+  IsEmail,
+  MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import type { ProxyType } from '../../db/schema/proxy-rules.schema';
 
 /**
  * Custom validator for target URLs or internal rewrite paths.
- * - For external proxy (internalRewrite=false): Allows HTTPS for any external URL,
+ * - For email_form_handler: Any value is valid (targetUrl is not used)
+ * - For internal_rewrite (or internalRewrite=true): Allows paths starting with '/'
+ * - For external_proxy (default): Allows HTTPS for any external URL,
  *   or HTTP for internal K8s service URLs (*.svc, *.svc.cluster.local) and localhost
- * - For internal rewrite (internalRewrite=true): Allows paths starting with '/'
  */
 @ValidatorConstraint({ name: 'isValidTargetUrlOrPath', async: false })
 export class IsValidTargetUrlOrPath implements ValidatorConstraintInterface {
   validate(value: string, args: ValidationArguments): boolean {
-    const obj = args.object as { internalRewrite?: boolean };
+    const obj = args.object as { internalRewrite?: boolean; proxyType?: ProxyType };
 
-    // Internal rewrite: validate as path
-    if (obj.internalRewrite === true) {
+    // Email form handler: targetUrl can be empty or a placeholder (not used)
+    if (obj.proxyType === 'email_form_handler') {
+      // Allow any value including empty string - targetUrl is not used for this type
+      return true;
+    }
+
+    // Internal rewrite: validate as path (check both new proxyType and legacy internalRewrite)
+    if (obj.proxyType === 'internal_rewrite' || obj.internalRewrite === true) {
       // Must start with / and be a valid path (no protocol, no host)
       return typeof value === 'string' && value.startsWith('/') && !value.includes('://');
     }
@@ -63,9 +74,9 @@ export class IsValidTargetUrlOrPath implements ValidatorConstraintInterface {
   }
 
   defaultMessage(args: ValidationArguments): string {
-    const obj = args.object as { internalRewrite?: boolean };
-    if (obj.internalRewrite === true) {
-      return `${args.property} must be a path starting with '/' when internalRewrite is true (e.g., /environments/production.json)`;
+    const obj = args.object as { internalRewrite?: boolean; proxyType?: ProxyType };
+    if (obj.proxyType === 'internal_rewrite' || obj.internalRewrite === true) {
+      return `${args.property} must be a path starting with '/' when using internal rewrite (e.g., /environments/production.json)`;
     }
     return `${args.property} must be HTTPS, or HTTP for internal services (*.svc, localhost)`;
   }
@@ -159,6 +170,70 @@ export class AuthTransformConfigDto {
   })
   @IsString()
   cookieName: string;
+}
+
+/**
+ * Email handler configuration for email_form_handler proxy rules.
+ * Specifies how to handle form submissions and send emails.
+ */
+export class EmailHandlerConfigDto {
+  @ApiProperty({
+    description: 'Email address to send form submissions to',
+    example: 'contact@example.com',
+  })
+  @IsEmail()
+  destinationEmail: string;
+
+  @ApiPropertyOptional({
+    description: 'Subject line for the email',
+    default: 'Form Submission',
+    example: 'Contact Form Submission',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  subject?: string;
+
+  @ApiPropertyOptional({
+    description: 'URL to redirect to after successful submission',
+    example: 'https://example.com/thank-you',
+  })
+  @IsOptional()
+  @IsString()
+  successRedirect?: string;
+
+  @ApiPropertyOptional({
+    description: 'CORS origin to allow for cross-origin form submissions',
+    example: 'https://example.com',
+  })
+  @IsOptional()
+  @IsString()
+  corsOrigin?: string;
+
+  @ApiPropertyOptional({
+    description: 'Name of a honeypot field for spam protection. If this field is filled, submission is silently ignored.',
+    example: 'website',
+  })
+  @IsOptional()
+  @IsString()
+  honeypotField?: string;
+
+  @ApiPropertyOptional({
+    description: 'Form field name to use as reply-to address',
+    example: 'email',
+  })
+  @IsOptional()
+  @IsString()
+  replyToField?: string;
+
+  @ApiPropertyOptional({
+    description: 'Require authentication to submit the form. When enabled, user details are included in the email.',
+    default: false,
+    example: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  requireAuth?: boolean;
 }
 
 export class CreateProxyRuleDto {
@@ -261,6 +336,26 @@ export class CreateProxyRuleDto {
   @ValidateNested()
   @Type(() => AuthTransformConfigDto)
   authTransform?: AuthTransformConfigDto;
+
+  @ApiPropertyOptional({
+    description: 'Type of proxy rule behavior',
+    enum: ['external_proxy', 'internal_rewrite', 'email_form_handler'],
+    default: 'external_proxy',
+    example: 'external_proxy',
+  })
+  @IsOptional()
+  @IsIn(['external_proxy', 'internal_rewrite', 'email_form_handler'])
+  proxyType?: ProxyType;
+
+  @ApiPropertyOptional({
+    description: 'Configuration for email_form_handler proxy type. Required when proxyType is email_form_handler.',
+    type: EmailHandlerConfigDto,
+    example: { destinationEmail: 'contact@example.com', subject: 'Contact Form' },
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => EmailHandlerConfigDto)
+  emailHandlerConfig?: EmailHandlerConfigDto;
 
   @ApiPropertyOptional({
     description: 'Optional description for documentation',

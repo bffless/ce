@@ -16,6 +16,7 @@ import { proxyRules, proxyRuleSets } from '../db/schema';
 import { ProxyHeaderConfig } from '../db/schema/proxy-rules.schema';
 import { PermissionsService } from '../permissions/permissions.service';
 import { NginxRegenerationService } from '../domains/nginx-regeneration.service';
+import { EmailService } from '../email/email.service';
 import { CreateProxyRuleDto, UpdateProxyRuleDto, ReorderProxyRulesDto } from './dto';
 
 // SSRF protection - blocked hostnames
@@ -50,6 +51,7 @@ export class ProxyRulesService {
     private readonly permissionsService: PermissionsService,
     @Inject(forwardRef(() => NginxRegenerationService))
     private readonly nginxRegenerationService: NginxRegenerationService,
+    private readonly emailService: EmailService,
   ) {
     // Get encryption key from environment (same as used for storage credentials)
     const encryptionKey = this.configService.get<string>('ENCRYPTION_KEY');
@@ -135,8 +137,26 @@ export class ProxyRulesService {
     // Check project access (need contributor or higher)
     await this.checkProjectAccess(ruleSet.projectId, userId, userRole, 'contributor');
 
-    // Validate target URL (skip for internal rewrites - no external request made)
-    if (!dto.internalRewrite) {
+    // Validate email form handler configuration
+    if (dto.proxyType === 'email_form_handler') {
+      if (!dto.emailHandlerConfig?.destinationEmail) {
+        throw new BadRequestException(
+          'destinationEmail is required when proxyType is email_form_handler',
+        );
+      }
+      if (!this.emailService.isConfigured()) {
+        throw new BadRequestException(
+          'Email service must be configured to use email_form_handler proxy type. Configure email in Settings > Email.',
+        );
+      }
+    }
+
+    // Validate target URL (skip for internal rewrites and email form handlers - no external request made)
+    const isInternalOrEmail =
+      dto.proxyType === 'internal_rewrite' ||
+      dto.proxyType === 'email_form_handler' ||
+      dto.internalRewrite;
+    if (!isInternalOrEmail) {
       this.validateTargetUrl(dto.targetUrl);
     }
 
@@ -166,6 +186,8 @@ export class ProxyRulesService {
         headerConfig,
         authTransform: dto.authTransform ?? null,
         internalRewrite: dto.internalRewrite ?? false,
+        proxyType: dto.proxyType ?? 'external_proxy',
+        emailHandlerConfig: dto.emailHandlerConfig ?? null,
         isEnabled: dto.isEnabled ?? true,
         description: dto.description,
       })
@@ -215,8 +237,30 @@ export class ProxyRulesService {
     // Check project access
     await this.checkProjectAccess(ruleSet.projectId, userId, userRole, 'contributor');
 
-    // Validate target URL if changing (skip for internal rewrites)
-    const willBeInternalRewrite = dto.internalRewrite ?? existing.internalRewrite;
+    // Determine effective proxy type after update
+    const effectiveProxyType = dto.proxyType ?? existing.proxyType ?? 'external_proxy';
+
+    // Validate email form handler configuration
+    if (effectiveProxyType === 'email_form_handler') {
+      const effectiveEmailConfig = dto.emailHandlerConfig ?? existing.emailHandlerConfig;
+      if (!effectiveEmailConfig?.destinationEmail) {
+        throw new BadRequestException(
+          'destinationEmail is required when proxyType is email_form_handler',
+        );
+      }
+      if (!this.emailService.isConfigured()) {
+        throw new BadRequestException(
+          'Email service must be configured to use email_form_handler proxy type. Configure email in Settings > Email.',
+        );
+      }
+    }
+
+    // Validate target URL if changing (skip for internal rewrites and email form handlers)
+    const willBeInternalRewrite =
+      effectiveProxyType === 'internal_rewrite' ||
+      effectiveProxyType === 'email_form_handler' ||
+      dto.internalRewrite === true ||
+      (dto.internalRewrite === undefined && existing.internalRewrite);
     if (dto.targetUrl && dto.targetUrl !== existing.targetUrl && !willBeInternalRewrite) {
       this.validateTargetUrl(dto.targetUrl);
     }
@@ -242,6 +286,8 @@ export class ProxyRulesService {
     if (dto.preserveHost !== undefined) updateData.preserveHost = dto.preserveHost;
     if (dto.forwardCookies !== undefined) updateData.forwardCookies = dto.forwardCookies;
     if (dto.internalRewrite !== undefined) updateData.internalRewrite = dto.internalRewrite;
+    if (dto.proxyType !== undefined) updateData.proxyType = dto.proxyType;
+    if (dto.emailHandlerConfig !== undefined) updateData.emailHandlerConfig = dto.emailHandlerConfig;
     if (dto.description !== undefined) updateData.description = dto.description;
     if (dto.isEnabled !== undefined) updateData.isEnabled = dto.isEnabled;
 
@@ -279,6 +325,8 @@ export class ProxyRulesService {
           preserveHost: existing.preserveHost,
           forwardCookies: existing.forwardCookies,
           internalRewrite: existing.internalRewrite,
+          proxyType: existing.proxyType,
+          emailHandlerConfig: existing.emailHandlerConfig,
           description: existing.description,
           isEnabled: existing.isEnabled,
           headerConfig: existing.headerConfig,
@@ -338,6 +386,8 @@ export class ProxyRulesService {
         preserveHost: existing.preserveHost,
         forwardCookies: existing.forwardCookies,
         internalRewrite: existing.internalRewrite,
+        proxyType: existing.proxyType,
+        emailHandlerConfig: existing.emailHandlerConfig,
         description: existing.description,
         isEnabled: existing.isEnabled,
         headerConfig: existing.headerConfig,

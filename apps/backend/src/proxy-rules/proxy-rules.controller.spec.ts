@@ -27,6 +27,8 @@ describe('ProxyRulesController', () => {
     headerConfig: null,
     authTransform: null,
     internalRewrite: false,
+    proxyType: 'external_proxy' as const,
+    emailHandlerConfig: null,
     isEnabled: true,
     description: null,
     createdAt: new Date(),
