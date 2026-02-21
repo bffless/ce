@@ -11,6 +11,7 @@ describe('DeploymentsController', () => {
   let mockDeploymentsService: jest.Mocked<DeploymentsService>;
   let mockPendingUploadsService: jest.Mocked<PendingUploadsService>;
   let mockProjectsService: jest.Mocked<ProjectsService>;
+  let mockVisibilityService: jest.Mocked<VisibilityService>;
   let mockStorageAdapter: any;
 
   const mockDeploymentId = '550e8400-e29b-41d4-a716-446655440000';
@@ -121,6 +122,19 @@ describe('DeploymentsController', () => {
       exists: jest.fn(),
     };
 
+    mockVisibilityService = {
+      resolveVisibility: jest.fn().mockResolvedValue(true),
+      resolveAliasVisibility: jest.fn().mockResolvedValue(true),
+      getVisibilityInfo: jest.fn().mockResolvedValue({
+        effectiveVisibility: true,
+        source: 'project',
+        domainOverride: null,
+        aliasVisibility: null,
+        projectVisibility: true,
+      }),
+      resolveVisibilityByDomain: jest.fn().mockResolvedValue(true),
+    } as any;
+
     const module: TestingModule = await Test.createTestingModule({
       controllers: [DeploymentsController],
       providers: [
@@ -135,6 +149,10 @@ describe('DeploymentsController', () => {
         {
           provide: ProjectsService,
           useValue: mockProjectsService,
+        },
+        {
+          provide: VisibilityService,
+          useValue: mockVisibilityService,
         },
         {
           provide: STORAGE_ADAPTER,
