@@ -828,6 +828,11 @@ export class PrepareBatchDownloadResponseDto {
   commitSha: string;
 
   @ApiProperty({
+    description: 'Whether the deployment is publicly accessible (for embedding images in summaries)',
+  })
+  isPublic: boolean;
+
+  @ApiProperty({
     description: 'Files available for download with presigned URLs',
     type: [DownloadFileInfoDto],
   })

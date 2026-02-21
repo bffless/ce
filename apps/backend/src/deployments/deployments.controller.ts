@@ -76,6 +76,7 @@ export class DeploymentsController {
     private readonly deploymentsService: DeploymentsService,
     private readonly pendingUploadsService: PendingUploadsService,
     private readonly projectsService: ProjectsService,
+    private readonly visibilityService: VisibilityService,
     @Inject(STORAGE_ADAPTER) private readonly storageAdapter: IStorageAdapter,
   ) {}
 
@@ -325,7 +326,10 @@ export class DeploymentsController {
         commitSha: pendingUpload.commitSha,
         branch: pendingUpload.branch ?? undefined,
         description: pendingUpload.description ?? undefined,
-        tags: typeof pendingUpload.tags === 'string' ? pendingUpload.tags : JSON.stringify(pendingUpload.tags),
+        tags:
+          typeof pendingUpload.tags === 'string'
+            ? pendingUpload.tags
+            : JSON.stringify(pendingUpload.tags),
         proxyRuleSetId: pendingUpload.proxyRuleSetId ?? undefined,
         alias: pendingUpload.alias ?? undefined,
         basePath: pendingUpload.basePath ?? undefined,
@@ -400,8 +404,9 @@ export class DeploymentsController {
     // Get project
     const project = await this.projectsService.getProjectByOwnerName(owner, name);
 
-    // Resolve to commitSha
+    // Resolve to commitSha and track which alias was used
     let commitSha: string | null = null;
+    let resolvedAlias: string | null = null;
 
     if (dto.commitSha) {
       // Direct commitSha provided
@@ -420,6 +425,7 @@ export class DeploymentsController {
         throw new NotFoundException(`Alias "${dto.alias}" not found`);
       }
       commitSha = aliasRecord.commitSha;
+      resolvedAlias = dto.alias;
     } else if (dto.branch) {
       // Resolve branch to commitSha (branch is treated as an alias)
       const [aliasRecord] = await db
@@ -432,6 +438,7 @@ export class DeploymentsController {
 
       if (aliasRecord) {
         commitSha = aliasRecord.commitSha;
+        resolvedAlias = dto.branch;
       } else {
         // Fallback: find most recent deployment on this branch
         const [latestAsset] = await db
@@ -486,10 +493,13 @@ export class DeploymentsController {
       // This handles the case where the sourcePath is the root of the deployment
     }
 
-    const finalAssets = matchingAssets.length > 0 ? matchingAssets : await db
-      .select()
-      .from(assets)
-      .where(and(eq(assets.projectId, project.id), eq(assets.commitSha, commitSha)));
+    const finalAssets =
+      matchingAssets.length > 0
+        ? matchingAssets
+        : await db
+            .select()
+            .from(assets)
+            .where(and(eq(assets.projectId, project.id), eq(assets.commitSha, commitSha)));
 
     // Check if storage supports presigned URLs
     const supportsPresigned = this.storageAdapter.supportsPresignedUrls?.() ?? false;
@@ -523,9 +533,17 @@ export class DeploymentsController {
       });
     }
 
+    // Determine visibility
+    let isPublic = project.isPublic;
+    if (resolvedAlias) {
+      // If resolved via alias, use the visibility service to get effective visibility
+      isPublic = await this.visibilityService.resolveAliasVisibility(project.id, resolvedAlias);
+    }
+
     return {
       presignedUrlsSupported: supportsPresigned,
       commitSha,
+      isPublic,
       files,
     };
   }
@@ -756,7 +774,9 @@ export class FilesController {
       const [aliasRecord] = await db
         .select()
         .from(deploymentAliases)
-        .where(and(eq(deploymentAliases.projectId, project.id), eq(deploymentAliases.alias, branch)))
+        .where(
+          and(eq(deploymentAliases.projectId, project.id), eq(deploymentAliases.alias, branch)),
+        )
         .limit(1);
 
       if (aliasRecord) {
