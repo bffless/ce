@@ -39,7 +39,7 @@
     "react"
   ],
   "author": "",
-  "license": "MIT",
+  "license": "O'Saasy",
   "devDependencies": {
     "@types/node": "^20.10.0",
     "concurrently": "^8.2.2",
