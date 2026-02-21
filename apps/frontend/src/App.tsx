@@ -21,8 +21,11 @@ import { Toaster } from '@/components/ui/toaster';
 import { Header } from '@/components/layout/Header';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { usePendoInit } from '@/hooks/usePendoInit';
 
 function App() {
+  usePendoInit();
+
   return (
     <ErrorBoundary>
       <div className="min-h-screen bg-background">
