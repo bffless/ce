@@ -36,8 +36,7 @@ describe('DeploymentsController', () => {
     createdAt: new Date('2025-01-01'),
     updatedAt: new Date('2025-01-01'),
     urls: {
-      sha: `http://localhost:3000/public/${mockRepository}/commits/${mockCommitSha}/`,
-      branch: `http://localhost:3000/public/${mockRepository}/alias/main/`,
+      sha: `http://localhost:3000/repo/${mockRepository}/${mockCommitSha}`,
       default: `http://localhost:3000/public/${mockRepository}/`,
     },
     aliases: ['main'],

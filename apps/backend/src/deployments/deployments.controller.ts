@@ -361,10 +361,7 @@ export class DeploymentsController {
       fileCount: result.fileCount,
       totalSize: result.totalSize,
       urls: {
-        sha: `${baseUrl}/public/${pendingUpload.repository}/commits/${pendingUpload.commitSha}/`,
-        branch: pendingUpload.branch
-          ? `${baseUrl}/public/${pendingUpload.repository}/alias/${pendingUpload.branch}/`
-          : undefined,
+        sha: `${baseUrl}/repo/${pendingUpload.repository}/${pendingUpload.commitSha}`,
         default: `${baseUrl}/public/${pendingUpload.repository}/`,
         preview: previewUrl,
       },

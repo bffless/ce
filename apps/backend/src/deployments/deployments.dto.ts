@@ -414,10 +414,9 @@ export class DeploymentResponseDto {
   @ApiProperty()
   updatedAt: Date;
 
-  @ApiProperty({ description: 'Public URLs for this deployment' })
+  @ApiProperty({ description: 'URLs for this deployment' })
   urls: {
     sha: string;
-    branch?: string;
     default?: string;
   };
 
@@ -446,10 +445,9 @@ export class CreateDeploymentResponseDto {
   @ApiProperty()
   totalSize: number;
 
-  @ApiProperty({ description: 'Public URLs for this deployment' })
+  @ApiProperty({ description: 'URLs for this deployment' })
   urls: {
     sha: string;
-    branch?: string;
     default?: string;
     preview?: string;
   };

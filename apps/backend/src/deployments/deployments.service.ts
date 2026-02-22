@@ -98,10 +98,7 @@ export class DeploymentsService {
         .select({ id: proxyRuleSets.id })
         .from(proxyRuleSets)
         .where(
-          and(
-            eq(proxyRuleSets.projectId, projectId),
-            eq(proxyRuleSets.name, proxyRuleSetName),
-          ),
+          and(eq(proxyRuleSets.projectId, projectId), eq(proxyRuleSets.name, proxyRuleSetName)),
         )
         .limit(1);
 
@@ -364,8 +361,7 @@ export class DeploymentsService {
       }
 
       const urls = {
-        sha: `${baseUrl}/public/${dto.repository}/commits/${dto.commitSha}/`,
-        branch: dto.branch ? `${baseUrl}/public/${dto.repository}/alias/${dto.branch}/` : undefined,
+        sha: `${baseUrl}/repo/${dto.repository}/${dto.commitSha}`,
         default: `${baseUrl}/public/${dto.repository}/`,
         preview: previewUrl,
       };
@@ -595,8 +591,7 @@ export class DeploymentsService {
     }
 
     const urls = {
-      sha: `${baseUrl}/public/${dto.repository}/commits/${dto.commitSha}/`,
-      branch: dto.branch ? `${baseUrl}/public/${dto.repository}/alias/${dto.branch}/` : undefined,
+      sha: `${baseUrl}/repo/${dto.repository}/${dto.commitSha}`,
       default: `${baseUrl}/public/${dto.repository}/`,
       preview: previewUrl,
     };
@@ -806,10 +801,7 @@ export class DeploymentsService {
           createdAt: deploymentData.createdAt,
           updatedAt: deploymentData.updatedAt,
           urls: {
-            sha: `${baseUrl}/public/${deploymentData.repository}/commits/${deploymentData.commitSha}/`,
-            branch: deploymentData.branch
-              ? `${baseUrl}/public/${deploymentData.repository}/alias/${deploymentData.branch}/`
-              : undefined,
+            sha: `${baseUrl}/repo/${deploymentData.repository}/${deploymentData.commitSha}`,
             default: `${baseUrl}/public/${deploymentData.repository}/`,
           },
           aliases: deploymentAliasesList,
@@ -890,10 +882,7 @@ export class DeploymentsService {
       createdAt: firstAsset.createdAt,
       updatedAt: firstAsset.updatedAt,
       urls: {
-        sha: `${baseUrl}/public/${repository}/commits/${firstAsset.commitSha}/`,
-        branch: firstAsset.branch
-          ? `${baseUrl}/public/${repository}/alias/${firstAsset.branch}/`
-          : undefined,
+        sha: `${baseUrl}/repo/${repository}/${firstAsset.commitSha}`,
         default: `${baseUrl}/public/${repository}/`,
       },
       aliases: aliases.map((a) => a.alias),
@@ -1654,9 +1643,15 @@ export class DeploymentsService {
     // User-specified alias
     if (params.alias) {
       try {
-        await this.createOrUpdateAlias(params.repository, params.alias, params.commitSha, deploymentId, {
-          proxyRuleSetId: params.proxyRuleSetId,
-        });
+        await this.createOrUpdateAlias(
+          params.repository,
+          params.alias,
+          params.commitSha,
+          deploymentId,
+          {
+            proxyRuleSetId: params.proxyRuleSetId,
+          },
+        );
         aliases.push(params.alias);
       } catch (error) {
         this.logger.warn(`Failed to create/update alias ${params.alias}:`, error.message);
