@@ -287,28 +287,29 @@ export function DomainCard({ domain, onEdit, onDelete }: DomainCardProps) {
                 <span>SSL Disabled</span>
               </div>
             )}
-            {/* DNS status - hidden when external proxy or platform handles DNS/routing */}
-            {!isExternalProxyMode && !isPlatformMode && (
+            {/* DNS status - hidden when external proxy handles DNS/routing */}
+            {/* Note: In platform mode, subdomains have wildcard DNS, but custom domains still need manual DNS */}
+            {!isExternalProxyMode && (domain.domainType === 'custom' || domain.domainType === 'redirect') && (
               domain.dnsVerified ? (
                 <div className="flex items-center gap-1 text-green-600">
                   <CheckCircle2 className="h-3 w-3" />
                   <span>DNS Verified</span>
                 </div>
-              ) : (domain.domainType === 'custom' || domain.domainType === 'redirect') ? (
+              ) : (
                 <div className="flex items-center gap-1 text-yellow-600">
                   <AlertCircle className="h-3 w-3" />
                   <span>DNS Not Verified</span>
                 </div>
-              ) : null
+              )
             )}
           </div>
 
           {/* DNS Configuration help for unverified custom/redirect domains */}
-          {/* Hidden when external proxy (Cloudflare) or platform (Traefik) handles DNS/routing */}
+          {/* Hidden when external proxy (Cloudflare) handles DNS/routing */}
+          {/* Note: In platform mode, subdomains have wildcard DNS, but custom domains still need manual config */}
           {(domain.domainType === 'custom' || domain.domainType === 'redirect') &&
             !domain.dnsVerified &&
             !isExternalProxyMode &&
-            !isPlatformMode &&
             dnsRequirements?.requirements && (
               <div className="mt-2 p-3 bg-muted rounded text-xs space-y-2">
                 <p className="font-medium">DNS Configuration Required:</p>
@@ -394,8 +395,9 @@ export function DomainCard({ domain, onEdit, onDelete }: DomainCardProps) {
 
       <CardFooter className="flex justify-end gap-2">
         {/* Verify/Re-check DNS button for custom and redirect domains */}
-        {/* Hidden when external proxy (Cloudflare) or platform (Traefik) handles DNS/routing */}
-        {!isExternalProxyMode && !isPlatformMode && (domain.domainType === 'custom' || domain.domainType === 'redirect') && (
+        {/* Hidden when external proxy (Cloudflare) handles DNS/routing */}
+        {/* Note: In platform mode, subdomains have wildcard DNS, but custom domains still need manual verification */}
+        {!isExternalProxyMode && (domain.domainType === 'custom' || domain.domainType === 'redirect') && (
           <Button
             variant="outline"
             size="sm"
