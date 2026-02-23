@@ -215,6 +215,19 @@ export class DomainsController {
     return this.domainsService.requestDomainSsl(id, userId);
   }
 
+  @Post(':id/ssl/provision')
+  @ApiOperation({
+    summary: 'Provision SSL certificate for externally managed domain (platform mode)',
+    description:
+      'For domains with externally managed DNS, this triggers SSL certificate provisioning ' +
+      'after the user has added the required CNAME records. Only applicable in platform mode.',
+  })
+  @ApiResponse({ status: 200, description: 'SSL provisioning started' })
+  @ApiResponse({ status: 400, description: 'DNS not verified or not in platform mode' })
+  async provisionPlatformSsl(@Param('id') id: string, @CurrentUser('id') userId: string) {
+    return this.domainsService.provisionPlatformSsl(id, userId);
+  }
+
   @Get(':id/ssl/status')
   @ApiOperation({ summary: 'Get SSL status for domain' })
   @ApiResponse({ status: 200, description: 'SSL status returned' })

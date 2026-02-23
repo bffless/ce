@@ -146,6 +146,7 @@ export interface DnsVerificationResult {
   };
   // DNS validation records for SSL certificate provisioning (externally managed domains)
   dnsAutoManaged?: boolean;
+  sslDeferred?: boolean;
   dnsValidationRecords?: {
     domain: string;
     name: string;
@@ -469,6 +470,21 @@ export const domainsApi = api.injectEndpoints({
       invalidatesTags: (_result, _error, id) => [{ type: 'Domain' as const, id }],
     }),
 
+    // Provision SSL for externally managed domains (platform mode)
+    provisionPlatformSsl: builder.mutation<
+      { success: boolean; message?: string; error?: string },
+      string
+    >({
+      query: (id) => ({
+        url: `/api/domains/${id}/ssl/provision`,
+        method: 'POST',
+      }),
+      invalidatesTags: (_result, _error, id) => [
+        { type: 'Domain' as const, id },
+        { type: 'Domain' as const, id: 'LIST' },
+      ],
+    }),
+
     getDomainSslStatus: builder.query<DomainSslStatus, string>({
       query: (id) => `/api/domains/${id}/ssl/status`,
     }),
@@ -773,6 +789,7 @@ export const {
   useGetDomainDnsRequirementsQuery,
   useRequestDomainSslMutation,
   useGetDomainSslStatusQuery,
+  useProvisionPlatformSslMutation,
   // Phase B: SSL Certificate Details
   useGetSslDetailsQuery,
   useRenewCertificateMutation,

@@ -347,6 +347,7 @@ export class DomainsService {
     },
   ): Promise<{
     dnsAutoManaged?: boolean;
+    sslDeferred?: boolean;
     dnsValidationRecords?: { domain: string; name: string; value: string }[];
   } | null> {
     if (!this.isPlatformMode()) {
@@ -404,12 +405,78 @@ export class DomainsService {
 
       return {
         dnsAutoManaged: data.dnsAutoManaged,
+        sslDeferred: data.sslDeferred,
         dnsValidationRecords: data.dnsValidationRecords,
       };
     } catch (error) {
       this.logger.error(`Failed to notify Control Plane about domain verification: ${error}`);
       // Don't throw - verification succeeded locally, L2 notification is best-effort
       return null;
+    }
+  }
+
+  /**
+   * Notify the Control Plane to provision SSL certificate.
+   * Called after user has added required CNAME records for externally managed domains.
+   *
+   * @param domain - The domain name
+   * @param options - Additional options for alternate domains
+   */
+  private async notifyControlPlaneProvisionSsl(
+    domain: string,
+    options?: {
+      alternateDomain?: string;
+    },
+  ): Promise<{ success: boolean; error?: string }> {
+    if (!this.isPlatformMode()) {
+      return { success: false, error: 'Not in platform mode' };
+    }
+
+    const controlPlaneUrl = this.configService.get<string>('CONTROL_PLANE_URL');
+    const workspaceId = this.configService.get<string>('WORKSPACE_ID');
+    const workspaceSecret = this.configService.get<string>('WORKSPACE_SECRET');
+
+    if (!controlPlaneUrl || !workspaceId) {
+      const msg = 'CONTROL_PLANE_URL or WORKSPACE_ID not configured';
+      this.logger.error(msg);
+      return { success: false, error: msg };
+    }
+
+    if (!workspaceSecret) {
+      const msg = 'WORKSPACE_SECRET not configured';
+      this.logger.error(msg);
+      return { success: false, error: msg };
+    }
+
+    const endpoint = `${controlPlaneUrl}/api/internal/workspaces/${workspaceId}/domains/provision-ssl`;
+
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Workspace-Secret': workspaceSecret,
+        },
+        body: JSON.stringify({
+          domain,
+          alternateDomain: options?.alternateDomain,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        this.logger.error(
+          `Failed to provision SSL via Control Plane: ${response.status} ${errorText}`,
+        );
+        return { success: false, error: errorText };
+      }
+
+      const data = await response.json();
+      this.logger.log(`SSL provisioning started for ${domain} via Control Plane`);
+      return { success: true };
+    } catch (error) {
+      this.logger.error(`Failed to provision SSL via Control Plane: ${error}`);
+      return { success: false, error: String(error) };
     }
   }
 
@@ -1322,6 +1389,71 @@ export class DomainsService {
     };
   }
 
+  /**
+   * Provision SSL certificate for an externally managed domain in platform mode.
+   * Called after user has added the required CNAME records.
+   * Only applicable in PLATFORM_MODE for domains with deferred SSL.
+   */
+  async provisionPlatformSsl(id: string, userId: string): Promise<{
+    success: boolean;
+    message?: string;
+    error?: string;
+  }> {
+    if (!this.isPlatformMode()) {
+      return {
+        success: false,
+        error: 'SSL provisioning via Control Plane is only available in platform mode',
+      };
+    }
+
+    const domain = await this.findOne(id, userId);
+
+    if (domain.domainType === 'subdomain') {
+      return {
+        success: false,
+        error: 'Subdomains use platform SSL automatically',
+      };
+    }
+
+    if (!domain.dnsVerified) {
+      return {
+        success: false,
+        error: 'DNS must be verified before provisioning SSL',
+      };
+    }
+
+    // Get the alternate domain (www/non-www)
+    const alternateDomain = getAlternateDomain(domain.domain);
+
+    // Notify Control Plane to provision SSL
+    const result = await this.notifyControlPlaneProvisionSsl(domain.domain, {
+      alternateDomain: alternateDomain || undefined,
+    });
+
+    if (!result.success) {
+      return {
+        success: false,
+        error: result.error || 'Failed to provision SSL certificate',
+      };
+    }
+
+    // Update local database to reflect SSL is being provisioned
+    await db
+      .update(domainMappings)
+      .set({
+        sslEnabled: true,
+        updatedAt: new Date(),
+      })
+      .where(eq(domainMappings.id, id));
+
+    this.logger.log(`SSL provisioning started for ${domain.domain} via Control Plane`);
+
+    return {
+      success: true,
+      message: `SSL certificate provisioning started for ${domain.domain}. This may take 5-15 minutes.`,
+    };
+  }
+
   // =====================
   // Phase B: SSL Info Methods
   // =====================
@@ -1539,6 +1671,7 @@ export class DomainsService {
       note: string;
     };
     dnsAutoManaged?: boolean;
+    sslDeferred?: boolean;
     dnsValidationRecords?: { domain: string; name: string; value: string }[];
   }> {
     const domain = await this.findOne(id, userId);
@@ -1650,6 +1783,7 @@ export class DomainsService {
             alternateDomain,
             alternateDomainVerified: false, // Will be verified when SSL is requested
             dnsAutoManaged: cpResponse?.dnsAutoManaged,
+            sslDeferred: cpResponse?.sslDeferred,
             dnsValidationRecords: cpResponse?.dnsValidationRecords,
           };
         } else {

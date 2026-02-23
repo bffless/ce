@@ -27,6 +27,7 @@ import {
   useGetDomainDnsRequirementsQuery,
   useGetTrafficConfigQuery,
   useGetDomainsConfigQuery,
+  useProvisionPlatformSslMutation,
 } from '@/services/domainsApi';
 import { useToast } from '@/hooks/use-toast';
 import { useFeatureFlags } from '@/services/featureFlagsApi';
@@ -45,6 +46,8 @@ export function DomainCard({ domain, onEdit, onDelete }: DomainCardProps) {
   const [dnsValidationRecords, setDnsValidationRecords] = useState<
     { domain: string; name: string; value: string }[] | undefined
   >();
+  // State for tracking if SSL is deferred (externally managed domains)
+  const [sslDeferred, setSslDeferred] = useState(false);
 
   // Detect external proxy mode: SSL is handled by Cloudflare (proxy or tunnel), DNS is managed externally
   const proxyMode = getValue<string>('PROXY_MODE', 'none');
@@ -68,6 +71,7 @@ export function DomainCard({ domain, onEdit, onDelete }: DomainCardProps) {
 
   const [requestSsl, { isLoading: isRequestingSsl }] = useRequestDomainSslMutation();
   const [verifyDns, { isLoading: isVerifyingDns }] = useVerifyDomainDnsMutation();
+  const [provisionSsl, { isLoading: isProvisioningSsl }] = useProvisionPlatformSslMutation();
 
   // Get DNS requirements for custom/redirect domains
   const { data: dnsRequirements } = useGetDomainDnsRequirementsQuery(domain.id, {
@@ -99,6 +103,7 @@ export function DomainCard({ domain, onEdit, onDelete }: DomainCardProps) {
         // Check if DNS validation records are needed (externally managed domain)
         if (result.dnsValidationRecords && result.dnsValidationRecords.length > 0) {
           setDnsValidationRecords(result.dnsValidationRecords);
+          setSslDeferred(result.sslDeferred ?? true);
           description += ' CNAME records are required for SSL certificate provisioning - see instructions below.';
         } else if (isPlatformMode) {
           // In platform mode with managed DNS, SSL is provisioned automatically
@@ -160,6 +165,37 @@ export function DomainCard({ domain, onEdit, onDelete }: DomainCardProps) {
     } catch (err: unknown) {
       const errorMessage =
         (err as { data?: { message?: string } })?.data?.message || 'Failed to enable SSL';
+      toast({
+        title: 'Error',
+        description: errorMessage,
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleProvisionSsl = async () => {
+    try {
+      const result = await provisionSsl(domain.id).unwrap();
+      if (result.success) {
+        toast({
+          title: 'SSL Provisioning Started',
+          description: result.message || `SSL certificate is being provisioned for ${domain.domain}. This may take a few minutes.`,
+        });
+        // Clear the deferred state and validation records
+        setSslDeferred(false);
+        setDnsValidationRecords(undefined);
+      } else {
+        toast({
+          title: 'SSL Provisioning Failed',
+          description: result.error || 'Failed to provision SSL certificate',
+          variant: 'destructive',
+        });
+      }
+    } catch (err: unknown) {
+      const errorMessage =
+        (err as { data?: { message?: string; error?: string } })?.data?.message ||
+        (err as { data?: { message?: string; error?: string } })?.data?.error ||
+        'Failed to provision SSL';
       toast({
         title: 'Error',
         description: errorMessage,
@@ -317,7 +353,7 @@ export function DomainCard({ domain, onEdit, onDelete }: DomainCardProps) {
           </div>
 
           {/* SSL Certificate CNAME Records (for externally managed domains after DNS verification) */}
-          {domain.dnsVerified && dnsValidationRecords && dnsValidationRecords.length > 0 && (
+          {domain.dnsVerified && sslDeferred && dnsValidationRecords && dnsValidationRecords.length > 0 && (
             <div className="mt-2 p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded text-xs space-y-2">
               <div className="flex items-center gap-2">
                 <Clock className="h-4 w-4 text-amber-600" />
@@ -354,9 +390,30 @@ export function DomainCard({ domain, onEdit, onDelete }: DomainCardProps) {
                   </tbody>
                 </table>
               </div>
-              <p className="text-amber-600 dark:text-amber-400 text-xs">
-                Once you add these records, SSL certificate provisioning will complete automatically (typically 5-15 minutes after DNS propagation).
-              </p>
+              <div className="flex items-center justify-between pt-1">
+                <p className="text-amber-600 dark:text-amber-400 text-xs">
+                  After adding the CNAME records, click "Provision SSL" to start certificate provisioning.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleProvisionSsl}
+                  disabled={isProvisioningSsl}
+                  className="ml-4 bg-amber-100 hover:bg-amber-200 dark:bg-amber-900 dark:hover:bg-amber-800 border-amber-300 dark:border-amber-700"
+                >
+                  {isProvisioningSsl ? (
+                    <>
+                      <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                      Provisioning...
+                    </>
+                  ) : (
+                    <>
+                      <Shield className="h-3 w-3 mr-1" />
+                      Provision SSL
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           )}
 
