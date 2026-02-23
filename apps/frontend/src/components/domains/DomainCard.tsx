@@ -17,6 +17,8 @@ import {
   Split,
   ArrowRight,
   Clock,
+  Copy,
+  Check,
 } from 'lucide-react';
 import type { DomainMapping } from '@/services/domainsApi';
 import {
@@ -48,6 +50,23 @@ export function DomainCard({ domain, onEdit, onDelete }: DomainCardProps) {
   >();
   // State for tracking if SSL is deferred (externally managed domains)
   const [sslDeferred, setSslDeferred] = useState(false);
+  // State for tracking copied items (for copy button feedback)
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  // Helper to copy text to clipboard with visual feedback
+  const copyToClipboard = async (text: string, fieldId: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedField(fieldId);
+      setTimeout(() => setCopiedField(null), 2000);
+    } catch {
+      toast({
+        title: 'Failed to copy',
+        description: 'Could not copy to clipboard',
+        variant: 'destructive',
+      });
+    }
+  };
 
   // Detect external proxy mode: SSL is handled by Cloudflare (proxy or tunnel), DNS is managed externally
   const proxyMode = getValue<string>('PROXY_MODE', 'none');
@@ -374,16 +393,42 @@ export function DomainCard({ domain, onEdit, onDelete }: DomainCardProps) {
                     </tr>
                   </thead>
                   <tbody>
-                    {dnsValidationRecords.map((record) => (
+                    {dnsValidationRecords.map((record, idx) => (
                       <tr key={record.name}>
                         <td className="py-1 pr-4">
                           <code className="bg-amber-100 dark:bg-amber-900 px-1 rounded text-amber-800 dark:text-amber-200">CNAME</code>
                         </td>
                         <td className="py-1 pr-4">
-                          <code className="bg-amber-100 dark:bg-amber-900 px-1 rounded text-amber-800 dark:text-amber-200 break-all">{record.name}</code>
+                          <div className="flex items-center gap-1">
+                            <code className="bg-amber-100 dark:bg-amber-900 px-1 rounded text-amber-800 dark:text-amber-200 break-all">{record.name}</code>
+                            <button
+                              onClick={() => copyToClipboard(record.name, `name-${idx}`)}
+                              className="p-1 hover:bg-amber-200 dark:hover:bg-amber-800 rounded transition-colors"
+                              title="Copy host"
+                            >
+                              {copiedField === `name-${idx}` ? (
+                                <Check className="h-3 w-3 text-green-600" />
+                              ) : (
+                                <Copy className="h-3 w-3 text-amber-600" />
+                              )}
+                            </button>
+                          </div>
                         </td>
                         <td className="py-1">
-                          <code className="bg-amber-100 dark:bg-amber-900 px-1 rounded text-amber-800 dark:text-amber-200 break-all">{record.value}</code>
+                          <div className="flex items-center gap-1">
+                            <code className="bg-amber-100 dark:bg-amber-900 px-1 rounded text-amber-800 dark:text-amber-200 break-all">{record.value}</code>
+                            <button
+                              onClick={() => copyToClipboard(record.value, `value-${idx}`)}
+                              className="p-1 hover:bg-amber-200 dark:hover:bg-amber-800 rounded transition-colors"
+                              title="Copy value"
+                            >
+                              {copiedField === `value-${idx}` ? (
+                                <Check className="h-3 w-3 text-green-600" />
+                              ) : (
+                                <Copy className="h-3 w-3 text-amber-600" />
+                              )}
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -392,7 +437,7 @@ export function DomainCard({ domain, onEdit, onDelete }: DomainCardProps) {
               </div>
               <div className="flex items-center justify-between pt-1">
                 <p className="text-amber-600 dark:text-amber-400 text-xs">
-                  After adding the CNAME records, click "Provision SSL" to start certificate provisioning.
+                  After adding the CNAME records, click "Provision SSL". Certificate provisioning typically takes 5-15 minutes.
                 </p>
                 <Button
                   variant="outline"
