@@ -335,6 +335,7 @@ export class DomainsService {
    *
    * @param domain - The domain name
    * @param options - Additional options for alternate domains and redirect targets
+   * @returns The response from Control Plane including DNS validation records
    */
   private async notifyControlPlaneVerify(
     domain: string,
@@ -344,9 +345,12 @@ export class DomainsService {
       domainType?: 'custom' | 'redirect';
       redirectTarget?: string;
     },
-  ): Promise<void> {
+  ): Promise<{
+    dnsAutoManaged?: boolean;
+    dnsValidationRecords?: { domain: string; name: string; value: string }[];
+  } | null> {
     if (!this.isPlatformMode()) {
-      return;
+      return null;
     }
 
     const controlPlaneUrl = this.configService.get<string>('CONTROL_PLANE_URL');
@@ -390,14 +394,22 @@ export class DomainsService {
         this.logger.error(
           `Failed to notify Control Plane about domain verification: ${response.status} ${errorText}`,
         );
-      } else {
-        this.logger.log(
-          `Notified Control Plane: domain ${domain} verified for workspace ${workspaceId}. SSL will be provisioned automatically.`,
-        );
+        return null;
       }
+
+      const data = await response.json();
+      this.logger.log(
+        `Notified Control Plane: domain ${domain} verified for workspace ${workspaceId}. SSL will be provisioned automatically.`,
+      );
+
+      return {
+        dnsAutoManaged: data.dnsAutoManaged,
+        dnsValidationRecords: data.dnsValidationRecords,
+      };
     } catch (error) {
       this.logger.error(`Failed to notify Control Plane about domain verification: ${error}`);
       // Don't throw - verification succeeded locally, L2 notification is best-effort
+      return null;
     }
   }
 
@@ -1526,6 +1538,8 @@ export class DomainsService {
       value: string;
       note: string;
     };
+    dnsAutoManaged?: boolean;
+    dnsValidationRecords?: { domain: string; name: string; value: string }[];
   }> {
     const domain = await this.findOne(id, userId);
 
@@ -1601,7 +1615,7 @@ export class DomainsService {
           // This throws if configuration is missing, preventing false verification
           // Include alternate domain and wwwBehavior for proper routing setup
           const domainType = domain.domainType as 'custom' | 'redirect';
-          await this.notifyControlPlaneVerify(domain.domain, {
+          const cpResponse = await this.notifyControlPlaneVerify(domain.domain, {
             alternateDomain: alternateDomain || undefined,
             wwwBehavior: domain.wwwBehavior as
               | 'redirect-to-www'
@@ -1635,6 +1649,8 @@ export class DomainsService {
             resolvedIps,
             alternateDomain,
             alternateDomainVerified: false, // Will be verified when SSL is requested
+            dnsAutoManaged: cpResponse?.dnsAutoManaged,
+            dnsValidationRecords: cpResponse?.dnsValidationRecords,
           };
         } else {
           return {

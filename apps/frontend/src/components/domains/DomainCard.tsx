@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
@@ -15,6 +16,7 @@ import {
   Lock,
   Split,
   ArrowRight,
+  Clock,
 } from 'lucide-react';
 import type { DomainMapping } from '@/services/domainsApi';
 import {
@@ -38,6 +40,11 @@ interface DomainCardProps {
 export function DomainCard({ domain, onEdit, onDelete }: DomainCardProps) {
   const { toast } = useToast();
   const { isEnabled, isLoading: flagsLoading, getValue } = useFeatureFlags();
+
+  // State for DNS validation records (CNAME records for SSL provisioning)
+  const [dnsValidationRecords, setDnsValidationRecords] = useState<
+    { domain: string; name: string; value: string }[] | undefined
+  >();
 
   // Detect external proxy mode: SSL is handled by Cloudflare (proxy or tunnel), DNS is managed externally
   const proxyMode = getValue<string>('PROXY_MODE', 'none');
@@ -88,8 +95,13 @@ export function DomainCard({ domain, onEdit, onDelete }: DomainCardProps) {
             description += ` Add DNS for ${result.alternateDomain} to enable HTTPS redirects.`;
           }
         }
-        // In platform mode, SSL is provisioned automatically
-        if (isPlatformMode) {
+
+        // Check if DNS validation records are needed (externally managed domain)
+        if (result.dnsValidationRecords && result.dnsValidationRecords.length > 0) {
+          setDnsValidationRecords(result.dnsValidationRecords);
+          description += ' CNAME records are required for SSL certificate provisioning - see instructions below.';
+        } else if (isPlatformMode) {
+          // In platform mode with managed DNS, SSL is provisioned automatically
           description += ' SSL certificate will be provisioned automatically.';
         } else if (!domain.sslEnabled) {
           description += ' You can now enable SSL.';
@@ -303,6 +315,50 @@ export function DomainCard({ domain, onEdit, onDelete }: DomainCardProps) {
               )
             )}
           </div>
+
+          {/* SSL Certificate CNAME Records (for externally managed domains after DNS verification) */}
+          {domain.dnsVerified && dnsValidationRecords && dnsValidationRecords.length > 0 && (
+            <div className="mt-2 p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded text-xs space-y-2">
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4 text-amber-600" />
+                <p className="font-medium text-amber-800 dark:text-amber-200">
+                  SSL Certificate Provisioning - CNAME Records Required
+                </p>
+              </div>
+              <p className="text-amber-700 dark:text-amber-300">
+                Add the following CNAME record{dnsValidationRecords.length > 1 ? 's' : ''} at your domain registrar to complete SSL certificate provisioning:
+              </p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-amber-200 dark:border-amber-700">
+                      <th className="py-1 pr-4 font-medium text-amber-800 dark:text-amber-200">Type</th>
+                      <th className="py-1 pr-4 font-medium text-amber-800 dark:text-amber-200">Host</th>
+                      <th className="py-1 font-medium text-amber-800 dark:text-amber-200">Value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dnsValidationRecords.map((record) => (
+                      <tr key={record.name}>
+                        <td className="py-1 pr-4">
+                          <code className="bg-amber-100 dark:bg-amber-900 px-1 rounded text-amber-800 dark:text-amber-200">CNAME</code>
+                        </td>
+                        <td className="py-1 pr-4">
+                          <code className="bg-amber-100 dark:bg-amber-900 px-1 rounded text-amber-800 dark:text-amber-200 break-all">{record.name}</code>
+                        </td>
+                        <td className="py-1">
+                          <code className="bg-amber-100 dark:bg-amber-900 px-1 rounded text-amber-800 dark:text-amber-200 break-all">{record.value}</code>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-amber-600 dark:text-amber-400 text-xs">
+                Once you add these records, SSL certificate provisioning will complete automatically (typically 5-15 minutes after DNS propagation).
+              </p>
+            </div>
+          )}
 
           {/* DNS Configuration help for unverified custom/redirect domains */}
           {/* Hidden when external proxy (Cloudflare) handles DNS/routing */}

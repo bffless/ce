@@ -144,6 +144,13 @@ export interface DnsVerificationResult {
     value: string;
     note: string;
   };
+  // DNS validation records for SSL certificate provisioning (externally managed domains)
+  dnsAutoManaged?: boolean;
+  dnsValidationRecords?: {
+    domain: string;
+    name: string;
+    value: string;
+  }[];
 }
 
 export interface DnsRequirements {
