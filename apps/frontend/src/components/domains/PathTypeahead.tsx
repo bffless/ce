@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
 import {
   Command,
@@ -7,7 +7,6 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useGetFileTreeQuery } from '@/services/repoApi';
 import { Folder, Loader2 } from 'lucide-react';
 
@@ -64,9 +63,10 @@ export function PathTypeahead({
   disabled = false,
 }: PathTypeaheadProps) {
   const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  // Track whether we just selected an item to prevent reopening on focus
-  const justSelectedRef = useRef(false);
+  // Track pending blur to allow clicking dropdown items
+  const blurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Fetch file tree when alias is provided
   const { data: fileTree, isLoading } = useGetFileTreeQuery(
@@ -87,99 +87,118 @@ export function PathTypeahead({
     return directories.filter((dir) => dir.toLowerCase().includes(lowerValue));
   }, [directories, value]);
 
+  // Don't show suggestions if no alias selected or no directories
+  const showSuggestions = Boolean(alias) && directories.length > 0;
+  const shouldShowDropdown = open && showSuggestions && filteredDirectories.length > 0;
+
+  // Cancel any pending blur timeout
+  const cancelBlurTimeout = useCallback(() => {
+    if (blurTimeoutRef.current) {
+      clearTimeout(blurTimeoutRef.current);
+      blurTimeoutRef.current = null;
+    }
+  }, []);
+
   // Handle input change
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value;
     onChange(newValue);
-    // Open popover when typing
-    if (newValue && filteredDirectories.length > 0) {
+    // Open dropdown when typing if there are suggestions
+    if (showSuggestions) {
       setOpen(true);
     }
   };
 
   // Handle directory selection
   const handleSelect = (dir: string) => {
+    cancelBlurTimeout();
     onChange(dir);
     setOpen(false);
-    // Set flag to prevent reopening on focus
-    justSelectedRef.current = true;
+    // Return focus to input after selection
     inputRef.current?.focus();
-    // Reset flag after a short delay
-    setTimeout(() => {
-      justSelectedRef.current = false;
-    }, 100);
   };
 
-  // Close popover when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (inputRef.current && !inputRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  // Handle focus - open dropdown if there are suggestions
+  const handleFocus = () => {
+    cancelBlurTimeout();
+    if (showSuggestions && filteredDirectories.length > 0) {
+      setOpen(true);
+    }
+  };
 
-  // Don't show suggestions if no alias selected or no directories
-  const showSuggestions = Boolean(alias) && directories.length > 0;
+  // Handle blur - close dropdown with delay to allow clicking items
+  const handleBlur = (e: React.FocusEvent) => {
+    // Check if focus is moving to something within our container
+    const relatedTarget = e.relatedTarget as Node | null;
+    if (containerRef.current?.contains(relatedTarget)) {
+      // Focus is staying within our component, don't close
+      return;
+    }
+    // Delay closing to allow click events on dropdown items to fire
+    blurTimeoutRef.current = setTimeout(() => {
+      setOpen(false);
+    }, 150);
+  };
+
+  // Handle keydown for escape and arrow navigation
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      setOpen(false);
+      e.preventDefault();
+    }
+  };
 
   return (
-    <Popover open={open && showSuggestions} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <div className="relative">
-          <Input
-            ref={inputRef}
-            id={id}
-            value={value}
-            onChange={handleInputChange}
-            onFocus={() => {
-              // Don't reopen if we just selected an item
-              if (justSelectedRef.current) return;
-              showSuggestions && filteredDirectories.length > 0 && setOpen(true);
-            }}
-            placeholder={placeholder}
-            disabled={disabled}
-            autoComplete="off"
-          />
-          {isLoading && alias && (
-            <div className="absolute right-3 top-1/2 -translate-y-1/2">
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-            </div>
-          )}
+    <div ref={containerRef} className="relative" onBlur={handleBlur}>
+      <Input
+        ref={inputRef}
+        id={id}
+        value={value}
+        onChange={handleInputChange}
+        onFocus={handleFocus}
+        onKeyDown={handleKeyDown}
+        placeholder={placeholder}
+        disabled={disabled}
+        autoComplete="off"
+      />
+      {isLoading && alias && (
+        <div className="absolute right-3 top-1/2 -translate-y-1/2">
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
         </div>
-      </PopoverTrigger>
-      <PopoverContent
-        className="w-[--radix-popover-trigger-width] p-0"
-        align="start"
-        onOpenAutoFocus={(e) => e.preventDefault()}
-      >
-        <Command>
-          <CommandList>
-            {filteredDirectories.length === 0 ? (
-              <CommandEmpty>No matching directories</CommandEmpty>
-            ) : (
-              <CommandGroup>
-                {filteredDirectories.slice(0, 10).map((dir) => (
-                  <CommandItem
-                    key={dir}
-                    value={dir}
-                    onSelect={() => handleSelect(dir)}
-                  >
-                    <Folder className="mr-2 h-4 w-4 text-muted-foreground" />
-                    <span className="font-mono text-sm">{dir}</span>
-                  </CommandItem>
-                ))}
-                {filteredDirectories.length > 10 && (
-                  <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                    +{filteredDirectories.length - 10} more directories
-                  </div>
-                )}
-              </CommandGroup>
-            )}
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
+      )}
+      {shouldShowDropdown && (
+        <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md">
+          <Command>
+            <CommandList>
+              {filteredDirectories.length === 0 ? (
+                <CommandEmpty>No matching directories</CommandEmpty>
+              ) : (
+                <CommandGroup>
+                  {filteredDirectories.slice(0, 10).map((dir) => (
+                    <CommandItem
+                      key={dir}
+                      value={dir}
+                      onMouseDown={(e) => {
+                        // Prevent blur from firing before click
+                        e.preventDefault();
+                      }}
+                      onSelect={() => handleSelect(dir)}
+                    >
+                      <Folder className="mr-2 h-4 w-4 text-muted-foreground" />
+                      <span className="font-mono text-sm">{dir}</span>
+                    </CommandItem>
+                  ))}
+                  {filteredDirectories.length > 10 && (
+                    <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                      +{filteredDirectories.length - 10} more directories
+                    </div>
+                  )}
+                </CommandGroup>
+              )}
+            </CommandList>
+          </Command>
+        </div>
+      )}
+    </div>
   );
 }
