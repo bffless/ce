@@ -36,11 +36,12 @@ import { useFeatureFlags } from '@/services/featureFlagsApi';
 
 interface DomainCardProps {
   domain: DomainMapping;
+  projectName?: string;
   onEdit: (domain: DomainMapping) => void;
   onDelete: (id: string) => void;
 }
 
-export function DomainCard({ domain, onEdit, onDelete }: DomainCardProps) {
+export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCardProps) {
   const { toast } = useToast();
   const { isEnabled, isLoading: flagsLoading, getValue } = useFeatureFlags();
 
@@ -242,6 +243,12 @@ export function DomainCard({ domain, onEdit, onDelete }: DomainCardProps) {
       <CardHeader>
         <div className="flex items-start justify-between">
           <div className="flex-1">
+            {/* Project name as title for non-redirect domains */}
+            {projectName && domain.domainType !== 'redirect' && (
+              <p className="text-sm font-medium text-muted-foreground mb-1">
+                {projectName}
+              </p>
+            )}
             <div className="flex items-center gap-2">
               <a
                 href={fullUrl}
@@ -253,8 +260,8 @@ export function DomainCard({ domain, onEdit, onDelete }: DomainCardProps) {
               </a>
               <ExternalLink className="h-4 w-4 text-muted-foreground" />
             </div>
-            <p className="text-sm text-muted-foreground mt-1">
-              Type: {domain.domainType === 'subdomain' ? 'Subdomain' : domain.domainType === 'redirect' ? 'Redirect Domain' : 'Custom Domain'}
+            <p className="text-xs text-muted-foreground mt-1">
+              {domain.domainType === 'subdomain' ? 'Subdomain' : domain.domainType === 'redirect' ? 'Redirect Domain' : 'Custom Domain'}
             </p>
             {/* Show redirect target for redirect domains */}
             {domain.domainType === 'redirect' && domain.redirectTarget && (

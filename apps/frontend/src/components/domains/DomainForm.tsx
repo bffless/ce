@@ -211,7 +211,7 @@ export function DomainForm({
               <SelectValue placeholder="Select type" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="subdomain">Subdomain (Recommended)</SelectItem>
+              <SelectItem value="subdomain">Subdomain</SelectItem>
               <SelectItem value="custom">Custom Domain</SelectItem>
               <SelectItem value="redirect">Redirect Domain</SelectItem>
             </SelectContent>
