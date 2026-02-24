@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Trash2, Plus, Edit2, AlertCircle, ArrowRight, RotateCcw } from 'lucide-react';
+import { Trash2, Plus, Edit2, AlertCircle, ArrowRight, RotateCcw, Mail } from 'lucide-react';
 import type { ProxyRule, CreateProxyRuleDto, UpdateProxyRuleDto } from '@/services/proxyRulesApi';
 import { ProxyRuleForm } from './ProxyRuleForm';
 
@@ -173,14 +173,27 @@ export function ProxyRulesEditor({
                       <code className="font-mono bg-muted px-2 py-0.5 rounded truncate">
                         {rule.pathPattern}
                       </code>
-                      {rule.internalRewrite ? (
+                      {rule.proxyType === 'email_form_handler' ? (
+                        <span title="Email form handler">
+                          <Mail className="h-3 w-3 text-emerald-500 flex-shrink-0" />
+                        </span>
+                      ) : rule.internalRewrite ? (
                         <span title="Internal rewrite">
                           <RotateCcw className="h-3 w-3 text-blue-500 flex-shrink-0" />
                         </span>
                       ) : (
                         <ArrowRight className="h-3 w-3 text-muted-foreground flex-shrink-0" />
                       )}
-                      <span className="text-muted-foreground truncate">{rule.targetUrl}</span>
+                      <span className="text-muted-foreground truncate">
+                        {rule.proxyType === 'email_form_handler'
+                          ? rule.emailHandlerConfig?.destinationEmail || 'No email configured'
+                          : rule.targetUrl}
+                      </span>
+                      {rule.proxyType === 'email_form_handler' && (
+                        <span className="text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300 px-1.5 py-0.5 rounded flex-shrink-0">
+                          email
+                        </span>
+                      )}
                       {rule.internalRewrite && (
                         <span className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 px-1.5 py-0.5 rounded flex-shrink-0">
                           rewrite
@@ -193,7 +206,12 @@ export function ProxyRulesEditor({
                       </p>
                     )}
                     <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                      {rule.internalRewrite ? (
+                      {rule.proxyType === 'email_form_handler' ? (
+                        <>
+                          <span>Sends form data to email</span>
+                          {rule.emailHandlerConfig?.honeypotField && <span>Spam protection</span>}
+                        </>
+                      ) : rule.internalRewrite ? (
                         <span>Internal rewrite (no HTTP request)</span>
                       ) : (
                         <>

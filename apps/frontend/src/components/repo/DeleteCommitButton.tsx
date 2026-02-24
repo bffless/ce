@@ -70,6 +70,9 @@ export function DeleteCommitButton({
         description: `Freed ${formatStorageSize(result.freedBytes)} from ${result.deletedFiles} files`,
       });
 
+      // Close the modal immediately
+      setIsOpen(false);
+
       // Navigate to next commit if available, otherwise to repo overview
       const nextTarget = onGetNextTarget?.();
       if (nextTarget) {
