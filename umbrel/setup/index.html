@@ -350,33 +350,7 @@
         font-size: 0.85rem;
         word-break: break-all;
         display: block;
-        padding-right: 3rem;
-      }
-
-      .command-box .copy-btn {
-        position: absolute;
-        top: 0.75rem;
-        right: 0.75rem;
-        background: rgba(255, 255, 255, 0.1);
-        border: none;
-        border-radius: 6px;
-        padding: 0.5rem;
-        cursor: pointer;
-        color: #d4d4d4;
-        transition: background 0.2s;
-      }
-
-      .command-box .copy-btn:hover {
-        background: rgba(255, 255, 255, 0.2);
-      }
-
-      .command-box .copy-btn.copied {
-        color: var(--success);
-      }
-
-      .command-box .copy-btn svg {
-        width: 18px;
-        height: 18px;
+        user-select: all;
       }
 
       .ssh-info {
@@ -470,10 +444,27 @@
         </div>
       </div>
 
+      <div class="cta" style="margin-bottom: 2rem;">
+        <h2>Step 1: Configure Cloudflare Tunnel</h2>
+        <p>Before configuring BFFless, you need to set up a Cloudflare Tunnel to expose this app to the internet with your domain.</p>
+        <a
+          href="https://docs.bffless.app/deployment/umbrel/"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="btn"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+          </svg>
+          View Cloudflare Tunnel Setup Guide
+        </a>
+      </div>
+
       <div class="setup-form">
-        <h2>Quick Setup</h2>
+        <h2>Step 2: Configure BFFless</h2>
         <p class="description">
-          Enter your domain below and we'll generate the command to configure BFFless.
+          Once your Cloudflare Tunnel is configured, enter your domain below to generate the configuration command.
         </p>
 
         <div class="form-group">
@@ -499,58 +490,27 @@
           </div>
 
           <h3>
-            <span class="step">1</span>
+            <span class="step">A</span>
             Run this command
           </h3>
           <div class="command-box">
             <code id="setupCommand"></code>
-            <button class="copy-btn" onclick="copyCommand()" title="Copy to clipboard">
-              <svg id="copyIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-              </svg>
-              <svg id="checkIcon" style="display:none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="20 6 9 17 4 12"></polyline>
-              </svg>
-            </button>
           </div>
 
           <h3>
-            <span class="step">2</span>
+            <span class="step">B</span>
             Restart BFFless
           </h3>
           <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 1rem;">
             In Umbrel, ctrl+click (right-click on Windows) the BFFless app icon and select <strong>Restart</strong>.
           </p>
 
-          <h3>
-            <span class="step">3</span>
-            Configure Cloudflare Tunnel
-          </h3>
-          <p style="font-size: 0.9rem; color: var(--text-secondary);">
-            In your <a href="https://one.dash.cloudflare.com/" target="_blank" style="color: var(--accent);">Cloudflare Tunnel</a>,
-            add a public hostname <strong id="domainDisplay"></strong> pointing to
-            <code style="background: var(--bg-tertiary); padding: 0.2rem 0.5rem; border-radius: 4px;">http://bffless_nginx_1:80</code>
+          <p style="font-size: 0.9rem; color: var(--text-secondary);" id="domainConfirm">
+            This will configure BFFless to use <strong id="domainDisplay"></strong> as your domain.
           </p>
         </div>
       </div>
 
-      <div class="cta">
-        <h2>Need More Help?</h2>
-        <p>Check out our detailed setup guide for step-by-step instructions including Cloudflare configuration.</p>
-        <a
-          href="https://docs.bffless.app/deployment/umbrel/"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="btn"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-          </svg>
-          View Full Setup Guide
-        </a>
-      </div>
 
       <div class="resources">
         <h2>Resources</h2>
@@ -614,9 +574,7 @@
       const domainDisplay = document.getElementById('domainDisplay');
 
       function generateCommand(domain) {
-        // Umbrel app data path for bffless
-        const configPath = '~/umbrel/app-data/bffless/data/config';
-        return `mkdir -p ${configPath} && echo "${domain}" > ${configPath}/domain.txt`;
+        return `echo "${domain}" > ~/umbrel/app-data/bffless/data/config/domain.txt`;
       }
 
       function updateCommand() {
@@ -632,36 +590,7 @@
         }
       }
 
-      function copyCommand() {
-        const command = setupCommand.textContent;
-        navigator.clipboard.writeText(command).then(() => {
-          const copyIcon = document.getElementById('copyIcon');
-          const checkIcon = document.getElementById('checkIcon');
-          const copyBtn = document.querySelector('.copy-btn');
-
-          copyIcon.style.display = 'none';
-          checkIcon.style.display = 'block';
-          copyBtn.classList.add('copied');
-
-          setTimeout(() => {
-            copyIcon.style.display = 'block';
-            checkIcon.style.display = 'none';
-            copyBtn.classList.remove('copied');
-          }, 2000);
-        });
-      }
-
       domainInput.addEventListener('input', updateCommand);
-
-      // Handle enter key
-      domainInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          if (commandOutput.classList.contains('visible')) {
-            copyCommand();
-          }
-        }
-      });
     </script>
   </body>
 </html>
