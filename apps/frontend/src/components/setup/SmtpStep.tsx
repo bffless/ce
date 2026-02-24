@@ -46,7 +46,7 @@ export function SmtpStep() {
     user: '',
     password: '',
     fromAddress: '',
-    fromName: 'Static Asset Platform',
+    fromName: 'BFFless',
   });
 
   const { data: envConfig, isLoading: isLoadingEnvConfig } = useGetEnvSmtpConfigQuery();
@@ -264,7 +264,16 @@ export function SmtpStep() {
               />
               {manualConfig.host.toLowerCase().includes('gmail') && (
                 <p className="mt-1 text-xs text-muted-foreground">
-                  For Gmail, use an App Password without spaces (Google displays them with spaces for readability)
+                  For Gmail, use an{' '}
+                  <a
+                    href="https://support.google.com/accounts/answer/185833"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline"
+                  >
+                    App Password
+                  </a>
+                  {' '}(not your regular Gmail password)
                 </p>
               )}
             </div>
@@ -274,7 +283,13 @@ export function SmtpStep() {
             <Checkbox
               id="secure"
               checked={manualConfig.secure}
-              onCheckedChange={(checked) => setManualConfig({ ...manualConfig, secure: !!checked })}
+              onCheckedChange={(checked) =>
+                setManualConfig({
+                  ...manualConfig,
+                  secure: !!checked,
+                  port: checked ? 465 : 587,
+                })
+              }
             />
             <Label htmlFor="secure" className="text-sm font-normal">
               Use SSL/TLS (port 465)
@@ -298,7 +313,7 @@ export function SmtpStep() {
                 id="fromName"
                 value={manualConfig.fromName}
                 onChange={(e) => setManualConfig({ ...manualConfig, fromName: e.target.value })}
-                placeholder="Static Asset Platform"
+                placeholder="BFFless"
                 className="mt-1"
               />
             </div>

@@ -1195,7 +1195,7 @@ export class SetupService {
     const secure = this.configService.get<string>('SMTP_SECURE') === 'true';
     const user = this.configService.get<string>('SMTP_USER');
     const fromAddress = this.configService.get<string>('EMAIL_FROM_ADDRESS') || user;
-    const fromName = this.configService.get<string>('EMAIL_FROM_NAME') || 'Static Asset Platform';
+    const fromName = this.configService.get<string>('EMAIL_FROM_NAME') || 'BFFless';
 
     // Mask the user email for display
     const maskedUser = user ? this.maskEmail(user) : undefined;
@@ -1232,7 +1232,7 @@ export class SetupService {
     const user = this.configService.get<string>('SMTP_USER');
     const password = this.configService.get<string>('SMTP_PASSWORD');
     const fromAddress = this.configService.get<string>('EMAIL_FROM_ADDRESS') || user;
-    const fromName = this.configService.get<string>('EMAIL_FROM_NAME') || 'Static Asset Platform';
+    const fromName = this.configService.get<string>('EMAIL_FROM_NAME') || 'BFFless';
 
     if (!user || !password) {
       throw new BadRequestException(

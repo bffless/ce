@@ -239,11 +239,11 @@ export class EmailSettingsService {
 
       const result = await this.emailService.sendEmail({
         to,
-        subject: 'Test Email from Asset Host',
+        subject: 'Test Email from BFFless',
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
             <h2 style="color: #333;">Test Email Successful!</h2>
-            <p>This is a test email from your Asset Host platform.</p>
+            <p>This is a test email from your BFFless platform.</p>
             <p>If you're receiving this email, your <strong>${providerName}</strong> configuration is working correctly.</p>
             <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
             <p style="color: #666; font-size: 14px;">
@@ -252,7 +252,7 @@ export class EmailSettingsService {
             </p>
           </div>
         `,
-        text: `Test Email Successful!\n\nThis is a test email from your Asset Host platform.\n\nIf you're receiving this email, your ${providerName} configuration is working correctly.\n\nSent at: ${new Date().toISOString()}\nProvider: ${providerName}`,
+        text: `Test Email Successful!\n\nThis is a test email from your BFFless platform.\n\nIf you're receiving this email, your ${providerName} configuration is working correctly.\n\nSent at: ${new Date().toISOString()}\nProvider: ${providerName}`,
       });
 
       if (result.success) {

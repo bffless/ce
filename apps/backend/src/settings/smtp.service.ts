@@ -63,7 +63,7 @@ export class SmtpService {
         user: dto.user,
         password: dto.password,
         fromAddress: dto.fromAddress || dto.user,
-        fromName: dto.fromName || 'Static Asset Platform',
+        fromName: dto.fromName || 'BFFless',
       };
 
       const encryptedConfig = this.encryptData(JSON.stringify(smtpConfig));

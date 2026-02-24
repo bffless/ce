@@ -42,7 +42,7 @@ export class EmailStatusResponseDto {
   @ApiPropertyOptional({ description: 'From email address', example: 'noreply@example.com' })
   fromAddress?: string;
 
-  @ApiPropertyOptional({ description: 'From display name', example: 'Asset Host' })
+  @ApiPropertyOptional({ description: 'From display name', example: 'BFFless' })
   fromName?: string;
 
   @ApiPropertyOptional({ description: 'Masked API key', example: 'SG.x...xxxx' })

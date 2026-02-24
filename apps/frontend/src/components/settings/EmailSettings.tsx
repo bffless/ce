@@ -83,13 +83,13 @@ export function EmailSettings() {
     user: '',
     password: '',
     fromAddress: '',
-    fromName: 'Static Asset Platform',
+    fromName: 'BFFless',
   });
 
   const [apiKeyConfig, setApiKeyConfig] = useState({
     apiKey: '',
     fromAddress: '',
-    fromName: 'Static Asset Platform',
+    fromName: 'BFFless',
   });
 
   // Filter to only implemented providers based on feature flags
@@ -123,13 +123,13 @@ export function EmailSettings() {
           port: emailStatus.port || 587,
           secure: emailStatus.secure || false,
           fromAddress: emailStatus.fromAddress || '',
-          fromName: emailStatus.fromName || 'Static Asset Platform',
+          fromName: emailStatus.fromName || 'BFFless',
         }));
       } else {
         setApiKeyConfig((prev) => ({
           ...prev,
           fromAddress: emailStatus.fromAddress || '',
-          fromName: emailStatus.fromName || 'Static Asset Platform',
+          fromName: emailStatus.fromName || 'BFFless',
         }));
       }
     }
@@ -153,12 +153,12 @@ export function EmailSettings() {
       user: '',
       password: '',
       fromAddress: '',
-      fromName: 'Static Asset Platform',
+      fromName: 'BFFless',
     });
     setApiKeyConfig({
       apiKey: '',
       fromAddress: '',
-      fromName: 'Static Asset Platform',
+      fromName: 'BFFless',
     });
   };
 
@@ -608,6 +608,20 @@ export function EmailSettings() {
                           placeholder="App password"
                           className="mt-1"
                         />
+                        {smtpConfig.host.toLowerCase().includes('gmail') && (
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            For Gmail, use an{' '}
+                            <a
+                              href="https://support.google.com/accounts/answer/185833"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary hover:underline"
+                            >
+                              App Password
+                            </a>
+                            {' '}(not your regular Gmail password)
+                          </p>
+                        )}
                       </div>
                     </div>
 
@@ -616,7 +630,11 @@ export function EmailSettings() {
                         id="smtp-secure"
                         checked={smtpConfig.secure}
                         onCheckedChange={(checked) =>
-                          setSmtpConfig({ ...smtpConfig, secure: !!checked })
+                          setSmtpConfig({
+                            ...smtpConfig,
+                            secure: !!checked,
+                            port: checked ? 465 : 587,
+                          })
                         }
                       />
                       <Label htmlFor="smtp-secure" className="text-sm font-normal">
@@ -645,7 +663,7 @@ export function EmailSettings() {
                           onChange={(e) =>
                             setSmtpConfig({ ...smtpConfig, fromName: e.target.value })
                           }
-                          placeholder="Static Asset Platform"
+                          placeholder="BFFless"
                           className="mt-1"
                         />
                       </div>
@@ -702,7 +720,7 @@ export function EmailSettings() {
                           onChange={(e) =>
                             setApiKeyConfig({ ...apiKeyConfig, fromName: e.target.value })
                           }
-                          placeholder="Static Asset Platform"
+                          placeholder="BFFless"
                           className="mt-1"
                         />
                       </div>

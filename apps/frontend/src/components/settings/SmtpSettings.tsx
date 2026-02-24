@@ -36,7 +36,7 @@ export function SmtpSettings() {
     user: '',
     password: '',
     fromAddress: '',
-    fromName: 'Static Asset Platform',
+    fromName: 'BFFless',
   });
 
   // Initialize form when status loads and user starts editing
@@ -49,7 +49,7 @@ export function SmtpSettings() {
         user: '', // Don't populate user - it's masked
         password: '',
         fromAddress: smtpStatus.fromAddress || '',
-        fromName: smtpStatus.fromName || 'Static Asset Platform',
+        fromName: smtpStatus.fromName || 'BFFless',
       });
     }
   }, [smtpStatus, isEditing]);
@@ -67,7 +67,7 @@ export function SmtpSettings() {
         user: '',
         password: '',
         fromAddress: smtpStatus.fromAddress || '',
-        fromName: smtpStatus.fromName || 'Static Asset Platform',
+        fromName: smtpStatus.fromName || 'BFFless',
       });
     }
   };
@@ -83,7 +83,7 @@ export function SmtpSettings() {
       user: '',
       password: '',
       fromAddress: '',
-      fromName: 'Static Asset Platform',
+      fromName: 'BFFless',
     });
   };
 
@@ -248,7 +248,16 @@ export function SmtpSettings() {
                 />
                 {formData.host.toLowerCase().includes('gmail') && (
                   <p className="mt-1 text-xs text-muted-foreground">
-                    For Gmail, use an App Password without spaces
+                    For Gmail, use an{' '}
+                    <a
+                      href="https://support.google.com/accounts/answer/185833"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline"
+                    >
+                      App Password
+                    </a>
+                    {' '}(not your regular Gmail password)
                   </p>
                 )}
               </div>
@@ -258,7 +267,13 @@ export function SmtpSettings() {
               <Checkbox
                 id="smtp-secure"
                 checked={formData.secure}
-                onCheckedChange={(checked) => setFormData({ ...formData, secure: !!checked })}
+                onCheckedChange={(checked) =>
+                  setFormData({
+                    ...formData,
+                    secure: !!checked,
+                    port: checked ? 465 : 587,
+                  })
+                }
               />
               <Label htmlFor="smtp-secure" className="text-sm font-normal">
                 Use SSL/TLS (port 465)
@@ -282,7 +297,7 @@ export function SmtpSettings() {
                   id="smtp-from-name"
                   value={formData.fromName}
                   onChange={(e) => setFormData({ ...formData, fromName: e.target.value })}
-                  placeholder="Static Asset Platform"
+                  placeholder="BFFless"
                   className="mt-1"
                 />
               </div>

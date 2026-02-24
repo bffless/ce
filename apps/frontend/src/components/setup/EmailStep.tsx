@@ -55,19 +55,19 @@ export function EmailStep() {
     user: '',
     password: '',
     fromAddress: '',
-    fromName: 'Static Asset Platform',
+    fromName: 'BFFless',
   });
 
   const [sendGridConfig, setSendGridConfig] = useState<SendGridEmailConfig>({
     apiKey: '',
     fromAddress: '',
-    fromName: 'Static Asset Platform',
+    fromName: 'BFFless',
   });
 
   const [resendConfig, setResendConfig] = useState<ResendEmailConfig>({
     apiKey: '',
     fromAddress: '',
-    fromName: 'Static Asset Platform',
+    fromName: 'BFFless',
   });
 
   const { data: providersData, isLoading: isLoadingProviders } = useGetEmailProvidersQuery();
@@ -589,6 +589,20 @@ export function EmailStep() {
                         placeholder="App password"
                         className="mt-1"
                       />
+                      {smtpConfig.host.toLowerCase().includes('gmail') && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          For Gmail, use an{' '}
+                          <a
+                            href="https://support.google.com/accounts/answer/185833"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline"
+                          >
+                            App Password
+                          </a>
+                          {' '}(not your regular Gmail password)
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -597,7 +611,11 @@ export function EmailStep() {
                       id="secure"
                       checked={smtpConfig.secure}
                       onCheckedChange={(checked) =>
-                        setSmtpConfig({ ...smtpConfig, secure: !!checked })
+                        setSmtpConfig({
+                          ...smtpConfig,
+                          secure: !!checked,
+                          port: checked ? 465 : 587,
+                        })
                       }
                     />
                     <Label htmlFor="secure" className="text-sm font-normal">
@@ -694,7 +712,7 @@ export function EmailStep() {
                         setResendConfig({ ...resendConfig, fromName: value });
                       }
                     }}
-                    placeholder="Static Asset Platform"
+                    placeholder="BFFless"
                     className="mt-1"
                   />
                 </div>
