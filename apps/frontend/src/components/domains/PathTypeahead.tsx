@@ -65,6 +65,8 @@ export function PathTypeahead({
 }: PathTypeaheadProps) {
   const [open, setOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Track whether we just selected an item to prevent reopening on focus
+  const justSelectedRef = useRef(false);
 
   // Fetch file tree when alias is provided
   const { data: fileTree, isLoading } = useGetFileTreeQuery(
@@ -99,7 +101,13 @@ export function PathTypeahead({
   const handleSelect = (dir: string) => {
     onChange(dir);
     setOpen(false);
+    // Set flag to prevent reopening on focus
+    justSelectedRef.current = true;
     inputRef.current?.focus();
+    // Reset flag after a short delay
+    setTimeout(() => {
+      justSelectedRef.current = false;
+    }, 100);
   };
 
   // Close popover when clicking outside
@@ -125,7 +133,11 @@ export function PathTypeahead({
             id={id}
             value={value}
             onChange={handleInputChange}
-            onFocus={() => showSuggestions && filteredDirectories.length > 0 && setOpen(true)}
+            onFocus={() => {
+              // Don't reopen if we just selected an item
+              if (justSelectedRef.current) return;
+              showSuggestions && filteredDirectories.length > 0 && setOpen(true);
+            }}
             placeholder={placeholder}
             disabled={disabled}
             autoComplete="off"

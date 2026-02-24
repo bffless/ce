@@ -177,12 +177,23 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./docker/backend.Dockerfile
+          file: ./docker/backend.umbrel.Dockerfile
           push: true
           platforms: ${{ matrix.platform }}
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend:${{ inputs.tag }}-${{ matrix.suffix }}
           cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend:buildcache-${{ matrix.suffix }}
           cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend:buildcache-${{ matrix.suffix }},mode=max
+
+      - name: Build and push nginx
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/nginx.umbrel.Dockerfile
+          push: true
+          platforms: ${{ matrix.platform }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-nginx:${{ inputs.tag }}-${{ matrix.suffix }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-nginx:buildcache-${{ matrix.suffix }}
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-nginx:buildcache-${{ matrix.suffix }},mode=max
 
   # Create multi-arch manifests combining per-arch images
   create-manifests:
@@ -219,6 +230,17 @@ jobs:
           fi
           docker buildx imagetools create -t ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend:${{ inputs.tag }} $IMAGES
 
+      - name: Create nginx manifest
+        run: |
+          IMAGES=""
+          if [[ "${{ inputs.platforms }}" == *"linux/amd64"* ]]; then
+            IMAGES="$IMAGES ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-nginx:${{ inputs.tag }}-amd64"
+          fi
+          if [[ "${{ inputs.platforms }}" == *"linux/arm64"* ]]; then
+            IMAGES="$IMAGES ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-nginx:${{ inputs.tag }}-arm64"
+          fi
+          docker buildx imagetools create -t ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-nginx:${{ inputs.tag }} $IMAGES
+
       - name: Summary
         run: |
           echo "## Multi-Arch Build Complete" >> $GITHUB_STEP_SUMMARY
@@ -230,6 +252,7 @@ jobs:
           echo "### Images" >> $GITHUB_STEP_SUMMARY
           echo "- \`${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend:${{ inputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- \`${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend:${{ inputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-nginx:${{ inputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Build Method" >> $GITHUB_STEP_SUMMARY
           echo "Built using **native runners** (no QEMU emulation):" >> $GITHUB_STEP_SUMMARY

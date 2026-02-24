@@ -14,6 +14,7 @@ import {
   setSearchQuery,
   setFilterType,
   setFilterStatus,
+  setFilterProjectId,
   resetFilters,
 } from '@/store/slices/domainsSlice';
 import { Button } from '@/components/ui/button';
@@ -60,7 +61,7 @@ import { useToast } from '@/hooks/use-toast';
 export function DomainsPage() {
   const dispatch = useAppDispatch();
   const { toast } = useToast();
-  const { searchQuery, filterType, filterStatus } = useAppSelector(
+  const { searchQuery, filterType, filterStatus, filterProjectId } = useAppSelector(
     (state) => state.domains
   );
 
@@ -98,8 +99,10 @@ export function DomainsPage() {
       filterStatus === 'all' ||
       (filterStatus === 'active' && domain.isActive) ||
       (filterStatus === 'inactive' && !domain.isActive);
+    const matchesProject =
+      filterProjectId === 'all' || domain.projectId === filterProjectId;
 
-    return matchesSearch && matchesType && matchesStatus;
+    return matchesSearch && matchesType && matchesStatus && matchesProject;
   });
 
   const handleCreate = async (data: CreateDomainDto) => {
@@ -161,7 +164,7 @@ export function DomainsPage() {
     setIsFormOpen(true);
   };
 
-  const hasFilters = searchQuery || filterType !== 'all' || filterStatus !== 'all';
+  const hasFilters = searchQuery || filterType !== 'all' || filterStatus !== 'all' || filterProjectId !== 'all';
 
   const copyToClipboard = async (text: string, field: string) => {
     await navigator.clipboard.writeText(text);
@@ -218,6 +221,23 @@ export function DomainsPage() {
         </div>
 
         <Select
+          value={filterProjectId}
+          onValueChange={(value) => dispatch(setFilterProjectId(value))}
+        >
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Project" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Projects</SelectItem>
+            {projects?.map((project) => (
+              <SelectItem key={project.id} value={project.id}>
+                {project.owner}/{project.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select
           value={filterType}
           onValueChange={(value) =>
             dispatch(setFilterType(value as 'all' | 'subdomain' | 'custom'))
@@ -266,17 +286,22 @@ export function DomainsPage() {
         </div>
       ) : filteredDomains && filteredDomains.length > 0 ? (
         <div className="grid gap-4">
-          {filteredDomains.map((domain) => (
-            <DomainCard
-              key={domain.id}
-              domain={domain}
-              onEdit={handleEdit}
-              onDelete={(id) => {
-                const d = domains?.find((dom) => dom.id === id);
-                if (d) setDomainToDelete(d);
-              }}
-            />
-          ))}
+          {filteredDomains.map((domain) => {
+            const project = projects?.find((p) => p.id === domain.projectId);
+            const projectName = project ? `${project.owner}/${project.name}` : undefined;
+            return (
+              <DomainCard
+                key={domain.id}
+                domain={domain}
+                projectName={projectName}
+                onEdit={handleEdit}
+                onDelete={(id) => {
+                  const d = domains?.find((dom) => dom.id === id);
+                  if (d) setDomainToDelete(d);
+                }}
+              />
+            );
+          })}
         </div>
       ) : (
         <div className="text-center py-12 text-muted-foreground">

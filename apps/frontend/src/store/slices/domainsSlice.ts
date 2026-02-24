@@ -5,6 +5,7 @@ interface DomainsState {
   searchQuery: string;
   filterType: 'all' | 'subdomain' | 'custom';
   filterStatus: 'all' | 'active' | 'inactive';
+  filterProjectId: 'all' | string;
 }
 
 const initialState: DomainsState = {
@@ -12,6 +13,7 @@ const initialState: DomainsState = {
   searchQuery: '',
   filterType: 'all',
   filterStatus: 'all',
+  filterProjectId: 'all',
 };
 
 const domainsSlice = createSlice({
@@ -30,10 +32,14 @@ const domainsSlice = createSlice({
     setFilterStatus: (state, action: PayloadAction<'all' | 'active' | 'inactive'>) => {
       state.filterStatus = action.payload;
     },
+    setFilterProjectId: (state, action: PayloadAction<'all' | string>) => {
+      state.filterProjectId = action.payload;
+    },
     resetFilters: (state) => {
       state.searchQuery = '';
       state.filterType = 'all';
       state.filterStatus = 'all';
+      state.filterProjectId = 'all';
     },
   },
 });
@@ -43,6 +49,7 @@ export const {
   setSearchQuery,
   setFilterType,
   setFilterStatus,
+  setFilterProjectId,
   resetFilters,
 } = domainsSlice.actions;
 
