@@ -249,6 +249,151 @@
         text-decoration: underline;
       }
 
+      .setup-form {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+      }
+
+      .setup-form h2 {
+        font-size: 1.25rem;
+        margin-bottom: 0.5rem;
+      }
+
+      .setup-form .description {
+        color: var(--text-secondary);
+        font-size: 0.95rem;
+        margin-bottom: 1.25rem;
+      }
+
+      .form-group {
+        margin-bottom: 1rem;
+      }
+
+      .form-group label {
+        display: block;
+        font-weight: 500;
+        margin-bottom: 0.5rem;
+        font-size: 0.9rem;
+      }
+
+      .form-group input {
+        width: 100%;
+        padding: 0.75rem 1rem;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        font-size: 1rem;
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
+      }
+
+      .form-group input:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(217, 100, 89, 0.1);
+      }
+
+      .form-group input::placeholder {
+        color: var(--text-muted);
+      }
+
+      .form-group .hint {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        margin-top: 0.5rem;
+      }
+
+      .command-output {
+        display: none;
+        margin-top: 1.25rem;
+      }
+
+      .command-output.visible {
+        display: block;
+      }
+
+      .command-output h3 {
+        font-size: 0.95rem;
+        margin-bottom: 0.75rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .command-output h3 .step {
+        background: var(--accent);
+        color: white;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.8rem;
+        font-weight: 600;
+      }
+
+      .command-box {
+        background: #1e1e1e;
+        border-radius: 8px;
+        padding: 1rem;
+        position: relative;
+        margin-bottom: 1rem;
+      }
+
+      .command-box code {
+        color: #d4d4d4;
+        font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+        font-size: 0.85rem;
+        word-break: break-all;
+        display: block;
+        padding-right: 3rem;
+      }
+
+      .command-box .copy-btn {
+        position: absolute;
+        top: 0.75rem;
+        right: 0.75rem;
+        background: rgba(255, 255, 255, 0.1);
+        border: none;
+        border-radius: 6px;
+        padding: 0.5rem;
+        cursor: pointer;
+        color: #d4d4d4;
+        transition: background 0.2s;
+      }
+
+      .command-box .copy-btn:hover {
+        background: rgba(255, 255, 255, 0.2);
+      }
+
+      .command-box .copy-btn.copied {
+        color: var(--success);
+      }
+
+      .command-box .copy-btn svg {
+        width: 18px;
+        height: 18px;
+      }
+
+      .ssh-info {
+        background: var(--bg-tertiary);
+        border-radius: 8px;
+        padding: 1rem;
+        font-size: 0.9rem;
+        color: var(--text-secondary);
+      }
+
+      .ssh-info code {
+        background: var(--bg-secondary);
+        padding: 0.2rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.85rem;
+      }
+
       @media (max-width: 640px) {
         body {
           padding: 1rem;
@@ -300,7 +445,7 @@
         <div class="diagram">
           <div class="diagram-box">
             <div class="label">Internet Users</div>
-            <div class="sublabel">mysite.yourdomain.com</div>
+            <div class="sublabel">example.com</div>
           </div>
           <div class="diagram-arrow">↓</div>
           <div class="diagram-box">
@@ -325,9 +470,74 @@
         </div>
       </div>
 
+      <div class="setup-form">
+        <h2>Quick Setup</h2>
+        <p class="description">
+          Enter your domain below and we'll generate the command to configure BFFless.
+        </p>
+
+        <div class="form-group">
+          <label for="domain">Your Domain</label>
+          <input
+            type="text"
+            id="domain"
+            placeholder="example.com"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <p class="hint">
+            The domain you'll configure in Cloudflare Tunnel to point to BFFless
+          </p>
+        </div>
+
+        <div id="commandOutput" class="command-output">
+          <div class="ssh-info" style="margin-bottom: 1rem;">
+            SSH into your Umbrel and run this command:
+            <br /><br />
+            <code>ssh umbrel@umbrel.local</code>
+            <span style="color: var(--text-muted); margin-left: 0.5rem;">(default password: umbrel)</span>
+          </div>
+
+          <h3>
+            <span class="step">1</span>
+            Run this command
+          </h3>
+          <div class="command-box">
+            <code id="setupCommand"></code>
+            <button class="copy-btn" onclick="copyCommand()" title="Copy to clipboard">
+              <svg id="copyIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+              <svg id="checkIcon" style="display:none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+            </button>
+          </div>
+
+          <h3>
+            <span class="step">2</span>
+            Restart BFFless
+          </h3>
+          <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 1rem;">
+            In Umbrel, ctrl+click (right-click on Windows) the BFFless app icon and select <strong>Restart</strong>.
+          </p>
+
+          <h3>
+            <span class="step">3</span>
+            Configure Cloudflare Tunnel
+          </h3>
+          <p style="font-size: 0.9rem; color: var(--text-secondary);">
+            In your <a href="https://one.dash.cloudflare.com/" target="_blank" style="color: var(--accent);">Cloudflare Tunnel</a>,
+            add a public hostname <strong id="domainDisplay"></strong> pointing to
+            <code style="background: var(--bg-tertiary); padding: 0.2rem 0.5rem; border-radius: 4px;">http://bffless_nginx_1:80</code>
+          </p>
+        </div>
+      </div>
+
       <div class="cta">
-        <h2>Ready to Get Started?</h2>
-        <p>Follow our step-by-step guide to configure Cloudflare Tunnel and connect your domain.</p>
+        <h2>Need More Help?</h2>
+        <p>Check out our detailed setup guide for step-by-step instructions including Cloudflare configuration.</p>
         <a
           href="https://docs.bffless.app/deployment/umbrel/"
           target="_blank"
@@ -338,7 +548,7 @@
             <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
             <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
           </svg>
-          View Setup Guide
+          View Full Setup Guide
         </a>
       </div>
 
@@ -396,5 +606,62 @@
         </p>
       </footer>
     </div>
+
+    <script>
+      const domainInput = document.getElementById('domain');
+      const commandOutput = document.getElementById('commandOutput');
+      const setupCommand = document.getElementById('setupCommand');
+      const domainDisplay = document.getElementById('domainDisplay');
+
+      function generateCommand(domain) {
+        // Umbrel app data path for bffless
+        const configPath = '~/umbrel/app-data/bffless/data/config';
+        return `mkdir -p ${configPath} && echo "${domain}" > ${configPath}/domain.txt`;
+      }
+
+      function updateCommand() {
+        const domain = domainInput.value.trim().toLowerCase();
+
+        if (domain && domain.includes('.')) {
+          const command = generateCommand(domain);
+          setupCommand.textContent = command;
+          domainDisplay.textContent = domain;
+          commandOutput.classList.add('visible');
+        } else {
+          commandOutput.classList.remove('visible');
+        }
+      }
+
+      function copyCommand() {
+        const command = setupCommand.textContent;
+        navigator.clipboard.writeText(command).then(() => {
+          const copyIcon = document.getElementById('copyIcon');
+          const checkIcon = document.getElementById('checkIcon');
+          const copyBtn = document.querySelector('.copy-btn');
+
+          copyIcon.style.display = 'none';
+          checkIcon.style.display = 'block';
+          copyBtn.classList.add('copied');
+
+          setTimeout(() => {
+            copyIcon.style.display = 'block';
+            checkIcon.style.display = 'none';
+            copyBtn.classList.remove('copied');
+          }, 2000);
+        });
+      }
+
+      domainInput.addEventListener('input', updateCommand);
+
+      // Handle enter key
+      domainInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          if (commandOutput.classList.contains('visible')) {
+            copyCommand();
+          }
+        }
+      });
+    </script>
   </body>
 </html>
