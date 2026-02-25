@@ -49,6 +49,10 @@ Upload artifacts from your CI/CD pipeline:
 
 Only 3 required inputs - repository, commit SHA, and branch are auto-detected from GitHub context.
 
+## Community
+
+Join our [Discord](https://discord.gg/BAYKm5Kv) for support, feature discussions, and updates.
+
 ## Contributing
 
 Contributions welcome! See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
@@ -63,4 +67,4 @@ O'Saasy License - see [LICENSE](./LICENSE) for details.
 
 ---
 
-[Documentation](https://docs.bffless.app) | [Changelog](./CHANGELOG.md) | [Issues](https://github.com/bffless/ce/issues)
+[Documentation](https://docs.bffless.app) | [Discord](https://discord.gg/BAYKm5Kv) | [Changelog](./CHANGELOG.md) | [Issues](https://github.com/bffless/ce/issues)
