@@ -81,11 +81,19 @@ export class RepoBrowserService {
     repo: string,
     ref: string,
     userId: string | null,
+    userRole?: string,
   ): Promise<GetFileTreeResponseDto> {
     const repository = `${owner}/${repo}`;
 
     // Phase 3H: Get project first for projectId-based queries
     const project = await this.projectsService.getProjectByOwnerName(owner, repo);
+
+    // Repo-browser always requires membership (isPublic only affects public-facing URLs)
+    if (!userId) {
+      throw new UnauthorizedException('Authentication required to access this resource');
+    }
+    // Check project-level permission (viewer role required for read access)
+    await this.checkProjectAccess(project.id, userId, userRole, 'viewer');
 
     // Determine if ref is SHA or alias (same logic as public.controller.ts)
     const isSha = /^[a-f0-9]{7,40}$/i.test(ref);
@@ -113,15 +121,6 @@ export class RepoBrowserService {
       throw new NotFoundException(
         `No deployment found for repository ${repository} at commit ${commitSha}`,
       );
-    }
-
-    // Check if project is public or user is authenticated
-    // PHASE 3E: Switched from asset-level to project-level access control
-    // Return 401 for private projects when no user - enables frontend session refresh
-    // Note: Frontend will attempt refresh on 401, which is correct for expired sessions.
-    // For users with no session at all, the refresh attempt will fail harmlessly.
-    if (!project.isPublic && !userId) {
-      throw new UnauthorizedException('Authentication required to access this resource');
     }
 
     const firstAsset = deploymentAssets[0];
@@ -154,14 +153,20 @@ export class RepoBrowserService {
     owner: string,
     repo: string,
     query: RepositoryRefsQueryDto = {},
+    userId: string | null = null,
+    userRole?: string,
   ): Promise<GetRepositoryRefsResponseDto> {
     const { cursor, limit = 50 } = query;
 
     // Phase 3H: Get project first for projectId-based queries
     const project = await this.projectsService.getProjectByOwnerName(owner, repo);
 
-    // Note: This endpoint returns metadata (aliases, branches, commits)
-    // Privacy is enforced when actually requesting files via getFileTree()
+    // Repo-browser always requires membership (isPublic only affects public-facing URLs)
+    if (!userId) {
+      throw new UnauthorizedException('Authentication required to access this resource');
+    }
+    // Check project-level permission (viewer role required for read access)
+    await this.checkProjectAccess(project.id, userId, userRole, 'viewer');
 
     // Phase 3H: Get all aliases using projectId
     const aliasesData = await db
@@ -332,12 +337,19 @@ export class RepoBrowserService {
     repo: string,
     query: GetDeploymentsQueryDto,
     userId: string | null,
+    userRole?: string,
   ): Promise<GetDeploymentsResponseDto> {
     const repository = `${owner}/${repo}`;
 
     // PHASE 3E: Check project-level access instead of asset-level
-    // If project is private and no user, throw not found
     const project = await this.projectsService.getProjectByOwnerName(owner, repo);
+
+    // Repo-browser always requires membership (isPublic only affects public-facing URLs)
+    if (!userId) {
+      throw new UnauthorizedException('Authentication required to access this resource');
+    }
+    // Check project-level permission (viewer role required for read access)
+    await this.checkProjectAccess(project.id, userId, userRole, 'viewer');
 
     // Apply defaults and validation
     const page = Math.max(1, query.page || 1);
@@ -352,13 +364,6 @@ export class RepoBrowserService {
     if (query.branch) {
       conditions.push(eq(assets.branch, query.branch));
     }
-    // Return 401 for private projects when no user - enables frontend session refresh
-    // Note: Frontend will attempt refresh on 401, which is correct for expired sessions.
-    // For users with no session at all, the refresh attempt will fail harmlessly.
-    if (!project.isPublic && !userId) {
-      throw new UnauthorizedException('Authentication required to access this resource');
-    }
-    // No need to filter assets by isPublic - all assets in project have same visibility
 
     // Get unique deployments grouped by deploymentId
     // We need to get distinct deployments, not individual files
@@ -438,17 +443,19 @@ export class RepoBrowserService {
     owner: string,
     repo: string,
     userId: string | null,
+    userRole?: string,
   ): Promise<GetRepositoryStatsResponseDto> {
     const repository = `${owner}/${repo}`;
 
     // PHASE 3E: Check project-level access instead of asset-level
     const project = await this.projectsService.getProjectByOwnerName(owner, repo);
-    // Return 401 for private projects when no user - enables frontend session refresh
-    // Note: Frontend will attempt refresh on 401, which is correct for expired sessions.
-    // For users with no session at all, the refresh attempt will fail harmlessly.
-    if (!project.isPublic && !userId) {
+
+    // Repo-browser always requires membership (isPublic only affects public-facing URLs)
+    if (!userId) {
       throw new UnauthorizedException('Authentication required to access this resource');
     }
+    // Check project-level permission (viewer role required for read access)
+    await this.checkProjectAccess(project.id, userId, userRole, 'viewer');
 
     // Base condition for repository
     const conditions = [eq(assets.projectId, project.id)];
@@ -499,14 +506,21 @@ export class RepoBrowserService {
     owner: string,
     repo: string,
     includeAutoPreview: boolean = false,
+    userId: string | null = null,
+    userRole?: string,
   ): Promise<GetAliasesResponseDto> {
     const repository = `${owner}/${repo}`;
 
     // Phase 3H: Get project first for projectId-based queries
     const project = await this.projectsService.getProjectByOwnerName(owner, repo);
 
-    // @TODO: need to add user priviledge logic if repo is not public
-    // however public isnt an option yet at the repo level
+    // Repo-browser always requires membership (isPublic only affects public-facing URLs)
+    if (!userId) {
+      throw new UnauthorizedException('Authentication required to access this resource');
+    }
+    // Check project-level permission (viewer role required for read access)
+    await this.checkProjectAccess(project.id, userId, userRole, 'viewer');
+
     // Get aliases for this repository, optionally filtering out auto-preview aliases
     const conditions = [eq(deploymentAliases.projectId, project.id)];
 
@@ -664,11 +678,19 @@ export class RepoBrowserService {
     repo: string,
     ref: string,
     userId: string | null,
+    userRole?: string,
   ): Promise<GetCommitDetailsResponseDto> {
     const repository = `${owner}/${repo}`;
 
     // PHASE 3E: Get project first for access control and projectId-based queries
     const project = await this.projectsService.getProjectByOwnerName(owner, repo);
+
+    // Repo-browser always requires membership (isPublic only affects public-facing URLs)
+    if (!userId) {
+      throw new UnauthorizedException('Authentication required to access this resource');
+    }
+    // Check project-level permission (viewer role required for read access)
+    await this.checkProjectAccess(project.id, userId, userRole, 'viewer');
 
     // Determine if ref is SHA or alias (same logic as getFileTree)
     const isSha = /^[a-f0-9]{7,40}$/i.test(ref);
@@ -696,14 +718,6 @@ export class RepoBrowserService {
       throw new NotFoundException(
         `No deployment found for repository ${repository} at commit ${commitSha}`,
       );
-    }
-
-    // PHASE 3E: Check project-level access instead of asset-level
-    // Return 401 for private projects when no user - enables frontend session refresh
-    // Note: Frontend will attempt refresh on 401, which is correct for expired sessions.
-    // For users with no session at all, the refresh attempt will fail harmlessly.
-    if (!project.isPublic && !userId) {
-      throw new UnauthorizedException('Authentication required to access this resource');
     }
 
     const firstAsset = deploymentAssets[0];

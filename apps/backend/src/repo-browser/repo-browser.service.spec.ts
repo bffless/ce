@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { RepoBrowserService } from './repo-browser.service';
-import { NotFoundException } from '@nestjs/common';
+import { NotFoundException, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { DeploymentsService } from '../deployments/deployments.service';
 import { ProjectsService } from '../projects/projects.service';
 import { PermissionsService } from '../permissions/permissions.service';
@@ -19,6 +19,7 @@ describe('RepoBrowserService', () => {
   let service: RepoBrowserService;
   let mockDeploymentsService: jest.Mocked<DeploymentsService>;
   let mockProjectsService: jest.Mocked<ProjectsService>;
+  let mockPermissionsService: jest.Mocked<PermissionsService>;
 
   const mockPublicProject = {
     id: 'project-123',
@@ -50,7 +51,7 @@ describe('RepoBrowserService', () => {
       getProjectByOwnerName: jest.fn(),
     } as any;
 
-    const mockPermissionsService = {
+    mockPermissionsService = {
       getUserProjectRole: jest.fn(),
     } as any;
 
@@ -81,6 +82,9 @@ describe('RepoBrowserService', () => {
 
   describe('getFileTree', () => {
     it('should throw NotFoundException when deployment not found', async () => {
+      mockProjectsService.getProjectByOwnerName.mockResolvedValue(mockPrivateProject);
+      mockPermissionsService.getUserProjectRole.mockResolvedValue('viewer');
+
       (mockDb.select as jest.Mock).mockReturnValue({
         from: jest.fn().mockReturnValue({
           where: jest.fn().mockReturnValue({
@@ -89,44 +93,35 @@ describe('RepoBrowserService', () => {
         }),
       });
 
-      await expect(service.getFileTree('owner', 'repo', 'abc123', 'user-123')).rejects.toThrow(
+      await expect(service.getFileTree('owner', 'repo', 'abc123', 'user-123', 'user')).rejects.toThrow(
         NotFoundException,
       );
     });
 
-    it('should throw NotFoundException for private deployment when not authenticated', async () => {
+    it('should throw UnauthorizedException for private project when not authenticated', async () => {
       // Mock private project
       mockProjectsService.getProjectByOwnerName.mockResolvedValue(mockPrivateProject);
 
-      (mockDb.select as jest.Mock).mockReturnValue({
-        from: jest.fn().mockReturnValue({
-          where: jest.fn().mockReturnValue({
-            orderBy: jest.fn().mockResolvedValue([
-              {
-                repository: 'owner/repo',
-                commitSha: 'abc123',
-                isPublic: false,
-                uploadedBy: 'some-user',
-                publicPath: 'index.html',
-                fileName: 'index.html',
-                size: 1024,
-                mimeType: 'text/html',
-                createdAt: new Date(),
-              },
-            ]),
-          }),
-        }),
-      });
-
       await expect(service.getFileTree('owner', 'repo', 'abc123', null)).rejects.toThrow(
-        NotFoundException,
+        UnauthorizedException,
+      );
+    });
+
+    it('should throw ForbiddenException for private project when user has no permission', async () => {
+      // Mock private project
+      mockProjectsService.getProjectByOwnerName.mockResolvedValue(mockPrivateProject);
+      mockPermissionsService.getUserProjectRole.mockResolvedValue(null);
+
+      await expect(service.getFileTree('owner', 'repo', 'abc123', 'user-123', 'user')).rejects.toThrow(
+        ForbiddenException,
       );
     });
 
     it('should resolve alias to commit SHA', async () => {
       const mockCommitSha = 'abc123def456';
       mockDeploymentsService.resolveAlias.mockResolvedValue(mockCommitSha);
-      mockProjectsService.getProjectByOwnerName.mockResolvedValue(mockPublicProject);
+      mockProjectsService.getProjectByOwnerName.mockResolvedValue(mockPrivateProject);
+      mockPermissionsService.getUserProjectRole.mockResolvedValue('viewer');
 
       (mockDb.select as jest.Mock).mockReturnValue({
         from: jest.fn().mockReturnValue({
@@ -149,17 +144,19 @@ describe('RepoBrowserService', () => {
         }),
       });
 
-      const result = await service.getFileTree('owner', 'repo', 'main', 'user-123');
+      const result = await service.getFileTree('owner', 'repo', 'main', 'user-123', 'user');
 
       expect(mockDeploymentsService.resolveAlias).toHaveBeenCalledWith('owner/repo', 'main');
       expect(result.commitSha).toBe(mockCommitSha);
     });
 
     it('should throw NotFoundException when alias does not exist', async () => {
+      mockProjectsService.getProjectByOwnerName.mockResolvedValue(mockPrivateProject);
+      mockPermissionsService.getUserProjectRole.mockResolvedValue('viewer');
       mockDeploymentsService.resolveAlias.mockResolvedValue(null);
 
       await expect(
-        service.getFileTree('owner', 'repo', 'non-existent', 'user-123'),
+        service.getFileTree('owner', 'repo', 'non-existent', 'user-123', 'user'),
       ).rejects.toThrow(NotFoundException);
       expect(mockDeploymentsService.resolveAlias).toHaveBeenCalledWith(
         'owner/repo',
@@ -168,7 +165,8 @@ describe('RepoBrowserService', () => {
     });
 
     it('should not call resolveAlias when ref is a SHA', async () => {
-      mockProjectsService.getProjectByOwnerName.mockResolvedValue(mockPublicProject);
+      mockProjectsService.getProjectByOwnerName.mockResolvedValue(mockPrivateProject);
+      mockPermissionsService.getUserProjectRole.mockResolvedValue('viewer');
 
       (mockDb.select as jest.Mock).mockReturnValue({
         from: jest.fn().mockReturnValue({
@@ -191,9 +189,41 @@ describe('RepoBrowserService', () => {
         }),
       });
 
-      await service.getFileTree('owner', 'repo', 'abc123def456', 'user-123');
+      await service.getFileTree('owner', 'repo', 'abc123def456', 'user-123', 'user');
 
       expect(mockDeploymentsService.resolveAlias).not.toHaveBeenCalled();
+    });
+
+    it('should allow admin users to access any project', async () => {
+      mockProjectsService.getProjectByOwnerName.mockResolvedValue(mockPrivateProject);
+      // Admin users bypass permission check
+
+      (mockDb.select as jest.Mock).mockReturnValue({
+        from: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnValue({
+            orderBy: jest.fn().mockResolvedValue([
+              {
+                repository: 'owner/repo',
+                commitSha: 'abc123def456',
+                isPublic: false,
+                uploadedBy: 'some-user',
+                publicPath: 'index.html',
+                fileName: 'index.html',
+                size: 1024,
+                mimeType: 'text/html',
+                branch: 'main',
+                createdAt: new Date(),
+              },
+            ]),
+          }),
+        }),
+      });
+
+      // Admin role bypasses permission check
+      const result = await service.getFileTree('owner', 'repo', 'abc123def456', 'admin-123', 'admin');
+
+      expect(result.commitSha).toBe('abc123def456');
+      expect(mockPermissionsService.getUserProjectRole).not.toHaveBeenCalled();
     });
   });
 

@@ -1064,7 +1064,7 @@ export class SetupService {
     const fromAddress =
       this.configService.get<string>('MANAGED_EMAIL_FROM_ADDRESS') ||
       this.configService.get<string>('MANAGED_EMAIL_FROM');
-    const fromName = this.configService.get<string>('MANAGED_EMAIL_FROM_NAME') || 'Platform';
+    const fromName = this.configService.get<string>('MANAGED_EMAIL_FROM_NAME') || 'BFFless';
 
     if (!provider || !apiKey || !fromAddress) {
       this.logger.warn('Managed email environment variables not fully configured');

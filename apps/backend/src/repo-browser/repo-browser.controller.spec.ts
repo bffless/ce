@@ -190,6 +190,7 @@ describe('RepoBrowserController', () => {
         mockRepo,
         mockCommitSha,
         mockUser.id,
+        mockUser.role,
       );
     });
 
@@ -202,6 +203,7 @@ describe('RepoBrowserController', () => {
         mockRepo,
         mockCommitSha,
         null,
+        undefined,
       );
     });
   });
@@ -209,13 +211,15 @@ describe('RepoBrowserController', () => {
   describe('getRepositoryRefs', () => {
     it('should return repository refs metadata', async () => {
       const query = {};
-      const result = await controller.getRepositoryRefs(mockOwner, mockRepo, query);
+      const result = await controller.getRepositoryRefs(mockOwner, mockRepo, query, mockUser);
 
       expect(result).toEqual(mockRefsResponse);
       expect(mockRepoBrowserService.getRepositoryRefs).toHaveBeenCalledWith(
         mockOwner,
         mockRepo,
         query,
+        mockUser.id,
+        mockUser.role,
       );
     });
   });
@@ -231,6 +235,7 @@ describe('RepoBrowserController', () => {
         mockRepo,
         query,
         mockUser.id,
+        mockUser.role,
       );
     });
 
@@ -244,6 +249,7 @@ describe('RepoBrowserController', () => {
         mockRepo,
         query,
         null,
+        undefined,
       );
     });
 
@@ -262,6 +268,7 @@ describe('RepoBrowserController', () => {
         mockRepo,
         query,
         mockUser.id,
+        mockUser.role,
       );
     });
 
@@ -274,6 +281,7 @@ describe('RepoBrowserController', () => {
         mockRepo,
         query,
         mockUser.id,
+        mockUser.role,
       );
     });
 
@@ -291,6 +299,7 @@ describe('RepoBrowserController', () => {
         mockRepo,
         query,
         mockUser.id,
+        mockUser.role,
       );
     });
   });
@@ -304,6 +313,7 @@ describe('RepoBrowserController', () => {
         mockOwner,
         mockRepo,
         mockUser.id,
+        mockUser.role,
       );
     });
 
@@ -315,6 +325,7 @@ describe('RepoBrowserController', () => {
         mockOwner,
         mockRepo,
         null,
+        undefined,
       );
     });
 
@@ -328,6 +339,7 @@ describe('RepoBrowserController', () => {
         differentOwner,
         differentRepo,
         mockUser.id,
+        mockUser.role,
       );
     });
   });
@@ -336,31 +348,31 @@ describe('RepoBrowserController', () => {
     const defaultQuery = { includeAutoPreview: false };
 
     it('should return all aliases for a repository', async () => {
-      const result = await controller.getAliases(mockOwner, mockRepo, defaultQuery);
+      const result = await controller.getAliases(mockOwner, mockRepo, defaultQuery, mockUser);
 
       expect(result).toEqual(mockAliasesResponse);
-      expect(mockRepoBrowserService.getAliases).toHaveBeenCalledWith(mockOwner, mockRepo, false);
+      expect(mockRepoBrowserService.getAliases).toHaveBeenCalledWith(mockOwner, mockRepo, false, mockUser.id, mockUser.role);
     });
 
     it('should work without authentication for public repos', async () => {
-      const result = await controller.getAliases(mockOwner, mockRepo, defaultQuery);
+      const result = await controller.getAliases(mockOwner, mockRepo, defaultQuery, undefined);
 
       expect(result).toEqual(mockAliasesResponse);
-      expect(mockRepoBrowserService.getAliases).toHaveBeenCalledWith(mockOwner, mockRepo, false);
+      expect(mockRepoBrowserService.getAliases).toHaveBeenCalledWith(mockOwner, mockRepo, false, null, undefined);
     });
 
     it('should return empty aliases list when no aliases exist', async () => {
       const emptyResponse = { repository: mockRepository, aliases: [] };
       mockRepoBrowserService.getAliases.mockResolvedValueOnce(emptyResponse);
 
-      const result = await controller.getAliases(mockOwner, mockRepo, defaultQuery);
+      const result = await controller.getAliases(mockOwner, mockRepo, defaultQuery, mockUser);
 
       expect(result).toEqual(emptyResponse);
       expect(result.aliases).toHaveLength(0);
     });
 
     it('should include alias details like branch and timestamps', async () => {
-      const result = await controller.getAliases(mockOwner, mockRepo, defaultQuery);
+      const result = await controller.getAliases(mockOwner, mockRepo, defaultQuery, mockUser);
 
       expect(result.aliases[0]).toHaveProperty('id');
       expect(result.aliases[0]).toHaveProperty('name');
@@ -374,9 +386,9 @@ describe('RepoBrowserController', () => {
 
     it('should pass includeAutoPreview=true to service when requested', async () => {
       const queryWithAutoPreview = { includeAutoPreview: true };
-      await controller.getAliases(mockOwner, mockRepo, queryWithAutoPreview);
+      await controller.getAliases(mockOwner, mockRepo, queryWithAutoPreview, mockUser);
 
-      expect(mockRepoBrowserService.getAliases).toHaveBeenCalledWith(mockOwner, mockRepo, true);
+      expect(mockRepoBrowserService.getAliases).toHaveBeenCalledWith(mockOwner, mockRepo, true, mockUser.id, mockUser.role);
     });
   });
 

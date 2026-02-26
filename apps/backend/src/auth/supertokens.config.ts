@@ -31,7 +31,7 @@ export function initSuperTokens() {
       apiKey: process.env.SUPERTOKENS_API_KEY,
     },
     appInfo: {
-      appName: 'Static Asset Hosting Platform',
+      appName: 'BFFless',
       // API_DOMAIN defaults to FRONTEND_URL since nginx proxies both on the same domain
       apiDomain: process.env.API_DOMAIN || process.env.FRONTEND_URL || 'http://localhost:3000',
       websiteDomain: process.env.FRONTEND_URL || 'http://localhost:5173',

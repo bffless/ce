@@ -77,7 +77,7 @@ export class RepoBrowserController {
     @Param('ref') ref: string,
     @CurrentUser() user?: CurrentUserData,
   ): Promise<GetFileTreeResponseDto> {
-    return this.repoBrowserService.getFileTree(owner, repo, ref, user?.id || null);
+    return this.repoBrowserService.getFileTree(owner, repo, ref, user?.id || null, user?.role);
   }
 
   @Get(':owner/:repo/refs')
@@ -104,8 +104,9 @@ export class RepoBrowserController {
     @Param('owner') owner: string,
     @Param('repo') repo: string,
     @Query() query: RepositoryRefsQueryDto,
+    @CurrentUser() user?: CurrentUserData,
   ): Promise<GetRepositoryRefsResponseDto> {
-    return this.repoBrowserService.getRepositoryRefs(owner, repo, query);
+    return this.repoBrowserService.getRepositoryRefs(owner, repo, query, user?.id || null, user?.role);
   }
 
   @Get(':owner/:repo/deployments')
@@ -134,7 +135,7 @@ export class RepoBrowserController {
     @Query() query: GetDeploymentsQueryDto,
     @CurrentUser() user?: CurrentUserData,
   ): Promise<GetDeploymentsResponseDto> {
-    return this.repoBrowserService.getDeployments(owner, repo, query, user?.id || null);
+    return this.repoBrowserService.getDeployments(owner, repo, query, user?.id || null, user?.role);
   }
 
   @Get(':owner/:repo/stats')
@@ -162,7 +163,7 @@ export class RepoBrowserController {
     @Param('repo') repo: string,
     @CurrentUser() user?: CurrentUserData,
   ): Promise<GetRepositoryStatsResponseDto> {
-    return this.repoBrowserService.getRepositoryStats(owner, repo, user?.id || null);
+    return this.repoBrowserService.getRepositoryStats(owner, repo, user?.id || null, user?.role);
   }
 
   // Alias Management Endpoints (Phase 2J)
@@ -191,14 +192,9 @@ export class RepoBrowserController {
     @Param('owner') owner: string,
     @Param('repo') repo: string,
     @Query() query: GetAliasesQueryDto,
-    // @CurrentUser() user?: CurrentUserData,
+    @CurrentUser() user?: CurrentUserData,
   ): Promise<GetAliasesResponseDto> {
-    // console.log('todo handle user permissions', user);
-    // @TODO: this needs permission check for public repos
-    // currently permissions are setup on the upload for a deployment
-    // this needs to be migrated to a repo level permission
-    // that will require a new table to store the repo config (users, settings, etc)
-    return this.repoBrowserService.getAliases(owner, repo, query.includeAutoPreview ?? false);
+    return this.repoBrowserService.getAliases(owner, repo, query.includeAutoPreview ?? false, user?.id || null, user?.role);
   }
 
   @Post(':owner/:repo/aliases')
@@ -359,8 +355,8 @@ export class RepoBrowserController {
     @Param('owner') owner: string,
     @Param('repo') repo: string,
     @Param('commitSha') commitSha: string,
-    @CurrentUser() user: CurrentUserData | null,
+    @CurrentUser() user?: CurrentUserData,
   ): Promise<GetCommitDetailsResponseDto> {
-    return this.repoBrowserService.getCommitDetails(owner, repo, commitSha, user?.id || null);
+    return this.repoBrowserService.getCommitDetails(owner, repo, commitSha, user?.id || null, user?.role);
   }
 }
