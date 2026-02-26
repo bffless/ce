@@ -144,8 +144,8 @@ export class MyRepositoryDto {
   @ApiProperty({ description: 'Repository name' })
   name: string;
 
-  @ApiProperty({ description: 'Permission type', enum: ['owner', 'direct', 'group'] })
-  permissionType: 'owner' | 'direct' | 'group';
+  @ApiProperty({ description: 'Permission type', enum: ['owner', 'direct', 'group', 'admin'] })
+  permissionType: 'owner' | 'direct' | 'group' | 'admin';
 
   @ApiProperty({ description: 'User role', enum: ['owner', 'admin', 'contributor', 'viewer'] })
   role: 'owner' | 'admin' | 'contributor' | 'viewer';

@@ -3,7 +3,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiSecurity } from '
 import { ProjectsService } from './projects.service';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { OptionalAuthGuard } from '../auth/optional-auth.guard';
-import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { CurrentUser, CurrentUserData } from '../auth/decorators/current-user.decorator';
 import {
   GetMyRepositoriesResponseDto,
   GetRepositoryFeedQueryDto,
@@ -34,9 +34,9 @@ export class RepositoriesController {
     description: 'User not authenticated',
   })
   async getMyRepositories(
-    @CurrentUser('id') userId: string,
+    @CurrentUser() user: CurrentUserData,
   ): Promise<GetMyRepositoriesResponseDto> {
-    return this.projectsService.getMyRepositories(userId);
+    return this.projectsService.getMyRepositories(user.id, user.role);
   }
 
   @Get('feed')

@@ -294,19 +294,77 @@ export class ProjectsService {
 
   /**
    * Get my repositories (sidebar) - owned + direct + group permissions
+   * Admin users see ALL repositories
    * Returns minimal data sorted alphabetically by name
    * Limited to 100 repos max
    */
-  async getMyRepositories(userId: string): Promise<{
+  async getMyRepositories(userId: string, userRole?: string): Promise<{
     total: number;
     repositories: Array<{
       id: string;
       owner: string;
       name: string;
-      permissionType: 'owner' | 'direct' | 'group';
+      permissionType: 'owner' | 'direct' | 'group' | 'admin';
       role: 'owner' | 'admin' | 'contributor' | 'viewer';
     }>;
   }> {
+    // Admin users see all repositories
+    if (userRole === 'admin') {
+      const allRepos = await db
+        .select({
+          id: projects.id,
+          owner: projects.owner,
+          name: projects.name,
+        })
+        .from(projects)
+        .orderBy(asc(projects.name))
+        .limit(100);
+
+      // For admin, check if they have explicit ownership/permission on each repo
+      const ownedIds = new Set<string>();
+      const directPermissions = new Map<string, string>();
+
+      // Get owned projects
+      const owned = await db
+        .select({ id: projects.id })
+        .from(projects)
+        .where(eq(projects.createdBy, userId));
+      owned.forEach(p => ownedIds.add(p.id));
+
+      // Get direct permissions
+      const direct = await db
+        .select({ projectId: projectPermissions.projectId, role: projectPermissions.role })
+        .from(projectPermissions)
+        .where(eq(projectPermissions.userId, userId));
+      direct.forEach(p => directPermissions.set(p.projectId, p.role));
+
+      const repositories = allRepos.map(repo => {
+        let permissionType: 'owner' | 'direct' | 'group' | 'admin' = 'admin';
+        let role: 'owner' | 'admin' | 'contributor' | 'viewer' = 'admin';
+
+        if (ownedIds.has(repo.id)) {
+          permissionType = 'owner';
+          role = 'owner';
+        } else if (directPermissions.has(repo.id)) {
+          permissionType = 'direct';
+          role = directPermissions.get(repo.id) as 'owner' | 'admin' | 'contributor' | 'viewer';
+        }
+
+        return {
+          id: repo.id,
+          owner: repo.owner,
+          name: repo.name,
+          permissionType,
+          role,
+        };
+      });
+
+      return {
+        total: repositories.length,
+        repositories,
+      };
+    }
+
     // Query 1: Owned repositories
     const ownedRepos = await db
       .select({
@@ -358,7 +416,7 @@ export class ProjectsService {
       id: string;
       owner: string;
       name: string;
-      permissionType: 'owner' | 'direct' | 'group';
+      permissionType: 'owner' | 'direct' | 'group' | 'admin';
       role: 'owner' | 'admin' | 'contributor' | 'viewer';
     }> = [];
 
