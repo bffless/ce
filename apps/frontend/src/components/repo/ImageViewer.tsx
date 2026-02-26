@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, ReactNode } from 'react';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -21,6 +21,8 @@ interface ImageViewerProps {
   filepath: string;
   /** File size in bytes */
   fileSize?: number;
+  /** Optional left-side actions to render in toolbar (e.g., hamburger menu) */
+  leftActions?: ReactNode;
 }
 
 /**
@@ -33,7 +35,7 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
-export function ImageViewer({ owner, repo, gitRef, filepath, fileSize }: ImageViewerProps) {
+export function ImageViewer({ owner, repo, gitRef, filepath, fileSize, leftActions }: ImageViewerProps) {
   const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
@@ -92,7 +94,10 @@ export function ImageViewer({ owner, repo, gitRef, filepath, fileSize }: ImageVi
   return (
     <div className="flex-1 min-h-0 flex flex-col bg-background">
       {/* Toolbar */}
-      <div className="flex items-center gap-2 px-4 py-2 border-b bg-muted/30">
+      <div className="flex items-center gap-2 px-2 py-2 border-b bg-muted/30">
+        {/* Left actions (hamburger menu when sidebar collapsed) */}
+        {leftActions}
+
         <div className="flex-1 text-xs text-muted-foreground">
           {dimensions && (
             <span>

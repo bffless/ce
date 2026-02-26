@@ -1,13 +1,18 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, ReactNode } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Checkbox } from '@/components/ui/checkbox';
-import { RefreshCw, AlertCircle, Copy, ExternalLink, Check } from 'lucide-react';
+import { RefreshCw, AlertCircle, Copy, ExternalLink, Check, Code, Eye } from 'lucide-react';
 import { useIframeNavigation } from '@/hooks/useIframeNavigation';
 import { useAppDispatch } from '@/store/hooks';
 import { setCurrentRoute } from '@/store/slices/iframeNavigationSlice';
-import { useGetPathPreferenceQuery, useUpdatePathPreferenceMutation, useGetCommitDetailsQuery } from '@/services/repoApi';
+import {
+  useGetPathPreferenceQuery,
+  useUpdatePathPreferenceMutation,
+  useGetCommitDetailsQuery,
+} from '@/services/repoApi';
 import { useToast } from '@/hooks/use-toast';
 import { buildPublicUrl, getPublicUrlPath, buildPreviewAliasUrl, isCommitSha } from '@/lib/utils';
 const VITE_API_URL = import.meta.env.VITE_API_URL || '';
@@ -17,11 +22,21 @@ interface HtmlPreviewProps {
   repo: string;
   gitRef: string;
   filepath: string;
+  /** Optional left-side actions to render in toolbar (e.g., hamburger menu) */
+  leftActions?: ReactNode;
 }
 
-export function HtmlPreview({ owner, repo, gitRef, filepath }: HtmlPreviewProps) {
+export function HtmlPreview({ owner, repo, gitRef, filepath, leftActions }: HtmlPreviewProps) {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+
+  // Handle switching to code view
+  const handleSwitchToCode = useCallback(() => {
+    const newParams = new URLSearchParams(searchParams);
+    newParams.set('tab', 'code');
+    setSearchParams(newParams);
+  }, [searchParams, setSearchParams]);
   const [key, setKey] = useState(0); // Used to force iframe reload
   const [copied, setCopied] = useState(false);
   // Track the current navigated path within the iframe (relative to commit SHA)
@@ -64,7 +79,7 @@ export function HtmlPreview({ owner, repo, gitRef, filepath }: HtmlPreviewProps)
   const isCommitRef = isCommitSha(gitRef);
   const { data: commitData, isLoading: isCommitDataLoading } = useGetCommitDetailsQuery(
     { owner, repo, commitSha: gitRef },
-    { skip: !isCommitRef }
+    { skip: !isCommitRef },
   );
 
   // Don't render iframe until commit data is loaded (when viewing a commit SHA)
@@ -217,7 +232,9 @@ export function HtmlPreview({ owner, repo, gitRef, filepath }: HtmlPreviewProps)
   const iframeSrc = (() => {
     if (matchingPreviewAlias) {
       // Calculate the path relative to the basePath
-      const normalizedBasePath = matchingPreviewAlias.basePath!.replace(/^\//, '').replace(/\/$/, '');
+      const normalizedBasePath = matchingPreviewAlias
+        .basePath!.replace(/^\//, '')
+        .replace(/\/$/, '');
       let relativePath = effectivePath;
       if (effectivePath.startsWith(normalizedBasePath + '/')) {
         relativePath = effectivePath.slice(normalizedBasePath.length + 1);
@@ -247,9 +264,6 @@ export function HtmlPreview({ owner, repo, gitRef, filepath }: HtmlPreviewProps)
     setHasError(false);
     setKey((prev) => prev + 1); // Change key to force remount
   };
-
-  // Determine if injection failed
-  const injectionFailed = injectionStatus.attempted && !injectionStatus.success;
 
   // Compute the display path from currentRoute
   // currentRoute from iframe is the full location.pathname (e.g., /public/owner/repo/commits/sha/apps/frontend/coverage/...)
@@ -324,15 +338,16 @@ export function HtmlPreview({ owner, repo, gitRef, filepath }: HtmlPreviewProps)
     <div className="flex-1 min-h-0 flex flex-col bg-background">
       {/* Unified Toolbar */}
       <TooltipProvider>
-        <div className="flex items-center gap-2 px-4 py-2 border-b bg-muted/30">
+        <div className="flex items-center gap-2 px-2 py-2 border-b bg-muted/30">
+          {/* Left actions (hamburger menu when sidebar collapsed) */}
+          {leftActions}
+
+          {/* Path info */}
           <div className="flex-1 text-sm text-muted-foreground truncate min-w-0">
             <span>Preview: </span>
             <code className="font-mono" title={displayPath}>
               {displayPath}
             </code>
-            {injectionFailed && (
-              <span className="ml-2 text-xs text-yellow-600">(route tracking unavailable)</span>
-            )}
           </div>
 
           <div className="flex items-center gap-1 shrink-0">
@@ -358,6 +373,37 @@ export function HtmlPreview({ owner, repo, gitRef, filepath }: HtmlPreviewProps)
               <TooltipContent>
                 Enable SPA mode to persist routes when switching commits
               </TooltipContent>
+            </Tooltip>
+
+            <div className="w-px h-4 bg-border mx-1" />
+
+            {/* View Mode Toggle */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleSwitchToCode}
+                  className="h-7 w-7 p-0"
+                >
+                  <Code className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>View source (Alt+C)</TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0 bg-accent"
+                  disabled
+                >
+                  <Eye className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Preview (Alt+P)</TooltipContent>
             </Tooltip>
 
             <div className="w-px h-4 bg-border mx-1" />

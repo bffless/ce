@@ -15,7 +15,7 @@ interface ContentViewerProps {
   filepath: string;
   /** File metadata from the file tree API */
   fileData?: FileItem;
-  /** Optional left-side actions to render before the tabs */
+  /** Optional left-side actions to render in viewer toolbars (e.g., hamburger menu) */
   leftActions?: React.ReactNode;
 }
 
@@ -126,7 +126,6 @@ export function ContentViewer({ owner, repo, gitRef, filepath, fileData, leftAct
     <div className="h-full flex flex-col">
       <BrowserTabs
         filepath={filepath}
-        leftActions={leftActions}
         codeContent={
           <div className="flex-1 min-h-0 flex flex-col">
             {isBinary ? (
@@ -137,6 +136,7 @@ export function ContentViewer({ owner, repo, gitRef, filepath, fileData, leftAct
                 filepath={filepath}
                 fileSize={fileData?.size}
                 mimeType={fileData?.mimeType}
+                leftActions={leftActions}
               />
             ) : (
               <CodeViewer
@@ -145,6 +145,7 @@ export function ContentViewer({ owner, repo, gitRef, filepath, fileData, leftAct
                 gitRef={gitRef}
                 filepath={filepath}
                 mimeType={fileData?.mimeType}
+                leftActions={leftActions}
               />
             )}
           </div>
@@ -158,11 +159,24 @@ export function ContentViewer({ owner, repo, gitRef, filepath, fileData, leftAct
                 gitRef={gitRef}
                 filepath={filepath}
                 fileSize={fileData?.size}
+                leftActions={leftActions}
               />
             ) : isHtml ? (
-              <HtmlPreview owner={owner} repo={repo} gitRef={gitRef} filepath={filepath} />
+              <HtmlPreview
+                owner={owner}
+                repo={repo}
+                gitRef={gitRef}
+                filepath={filepath}
+                leftActions={leftActions}
+              />
             ) : isMarkdown ? (
-              <MarkdownViewer owner={owner} repo={repo} gitRef={gitRef} filepath={filepath} />
+              <MarkdownViewer
+                owner={owner}
+                repo={repo}
+                gitRef={gitRef}
+                filepath={filepath}
+                leftActions={leftActions}
+              />
             ) : isBinary ? (
               <BinaryFileViewer
                 owner={owner}
@@ -171,6 +185,7 @@ export function ContentViewer({ owner, repo, gitRef, filepath, fileData, leftAct
                 filepath={filepath}
                 fileSize={fileData?.size}
                 mimeType={fileData?.mimeType}
+                leftActions={leftActions}
               />
             ) : (
               <div className="flex-1 flex items-center justify-center p-8">
@@ -183,16 +198,6 @@ export function ContentViewer({ owner, repo, gitRef, filepath, fileData, leftAct
                 </div>
               </div>
             )}
-          </div>
-        }
-        historyContent={
-          <div className="flex-1 flex items-center justify-center p-8">
-            <div className="text-center max-w-md">
-              <p className="text-sm text-muted-foreground mb-2">History view coming soon</p>
-              <p className="text-xs text-muted-foreground">
-                This will show the commit history for this file.
-              </p>
-            </div>
           </div>
         }
       />

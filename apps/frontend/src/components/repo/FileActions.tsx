@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { Copy, Download, ExternalLink, Check, Share2 } from 'lucide-react';
 import { buildPublicUrl } from '@/lib/utils';
 
@@ -91,57 +92,75 @@ export function FileActions({
   const isShareSupported = typeof navigator.share === 'function';
 
   return (
-    <div className="flex items-center gap-2 px-4 py-2 border-t bg-muted/30">
-      <div className="flex-1" />
+    <TooltipProvider>
+      <div className="flex items-center gap-2 px-4 py-2 border-t bg-muted/30">
+        <div className="flex-1" />
 
-      <div className="flex items-center gap-1">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleCopyUrl}
-          title="Copy public URL"
-          className="h-8 gap-2"
-        >
-          {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-          <span className="hidden sm:inline">{copied ? 'Copied!' : 'Copy URL'}</span>
-        </Button>
+        <div className="flex items-center gap-1">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCopyUrl}
+                className="h-8 gap-2"
+              >
+                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                <span className="hidden sm:inline">{copied ? 'Copied!' : 'Copy URL'}</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Copy public URL</TooltipContent>
+          </Tooltip>
 
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleDownload}
-          title="Download file"
-          className="h-8 gap-2"
-        >
-          <Download className="h-4 w-4" />
-          <span className="hidden sm:inline">Download</span>
-        </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDownload}
+                className="h-8 gap-2"
+              >
+                <Download className="h-4 w-4" />
+                <span className="hidden sm:inline">Download</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Download file</TooltipContent>
+          </Tooltip>
 
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleViewRaw}
-          title="View raw file in new tab"
-          className="h-8 gap-2"
-        >
-          <ExternalLink className="h-4 w-4" />
-          <span className="hidden sm:inline">View Raw</span>
-        </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleViewRaw}
+                className="h-8 gap-2"
+              >
+                <ExternalLink className="h-4 w-4" />
+                <span className="hidden sm:inline">View Raw</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>View raw file in new tab</TooltipContent>
+          </Tooltip>
 
-        {/* Share button - only show if Web Share API is available */}
-        {isShareSupported && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleShare}
-            title="Share file"
-            className="h-8 gap-2"
-          >
-            <Share2 className="h-4 w-4" />
-            <span className="hidden sm:inline">Share</span>
-          </Button>
-        )}
+          {/* Share button - only show if Web Share API is available */}
+          {isShareSupported && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleShare}
+                  className="h-8 gap-2"
+                >
+                  <Share2 className="h-4 w-4" />
+                  <span className="hidden sm:inline">Share</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Share file</TooltipContent>
+            </Tooltip>
+          )}
+        </div>
       </div>
-    </div>
+    </TooltipProvider>
   );
 }

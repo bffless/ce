@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Download, FileArchive, File, ExternalLink } from 'lucide-react';
 import { buildPublicUrl } from '@/lib/utils';
@@ -10,6 +10,8 @@ interface BinaryFileViewerProps {
   filepath: string;
   fileSize?: number;
   mimeType?: string;
+  /** Optional left-side actions to render in toolbar (e.g., hamburger menu) */
+  leftActions?: ReactNode;
 }
 
 /**
@@ -101,6 +103,7 @@ export function BinaryFileViewer({
   filepath,
   fileSize,
   mimeType,
+  leftActions,
 }: BinaryFileViewerProps) {
   const [isDownloading, setIsDownloading] = useState(false);
 
@@ -148,7 +151,10 @@ export function BinaryFileViewer({
   return (
     <div className="flex-1 min-h-0 flex flex-col bg-background">
       {/* Header */}
-      <div className="flex items-center gap-2 px-4 py-2 border-b bg-muted/30">
+      <div className="flex items-center gap-2 px-2 py-2 border-b bg-muted/30">
+        {/* Left actions (hamburger menu when sidebar collapsed) */}
+        {leftActions}
+
         <div className="flex-1 text-xs text-muted-foreground">
           {fileType}
           {' • '}

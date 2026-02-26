@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, ReactNode, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import {
   Copy,
   Download,
@@ -10,6 +12,8 @@ import {
   ExternalLink,
   RefreshCw,
   AlertCircle,
+  Code,
+  Eye,
 } from 'lucide-react';
 import { useTheme } from '@/components/common/ThemeProvider';
 import { highlightCode } from '@/lib/syntax-highlighter';
@@ -22,6 +26,8 @@ interface CodeViewerProps {
   filepath: string;
   /** MIME type to help determine the language */
   mimeType?: string;
+  /** Optional left-side actions to render in toolbar (e.g., hamburger menu) */
+  leftActions?: ReactNode;
 }
 
 /**
@@ -124,7 +130,8 @@ function getLanguageFromFilepath(filepath: string): string {
   return languageMap[extension] || 'text';
 }
 
-export function CodeViewer({ owner, repo, gitRef, filepath, mimeType }: CodeViewerProps) {
+export function CodeViewer({ owner, repo, gitRef, filepath, mimeType, leftActions }: CodeViewerProps) {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [highlightedCode, setHighlightedCode] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -134,6 +141,13 @@ export function CodeViewer({ owner, repo, gitRef, filepath, mimeType }: CodeView
   const { resolvedTheme } = useTheme();
 
   const language = getLanguageFromFilepath(filepath);
+
+  // Handle switching to preview view
+  const handleSwitchToPreview = useCallback(() => {
+    const newParams = new URLSearchParams(searchParams);
+    newParams.set('tab', 'preview');
+    setSearchParams(newParams);
+  }, [searchParams, setSearchParams]);
 
   // Build the public URL for the file
   // In development, use relative path (proxied by Vite to localhost:3000)
@@ -272,55 +286,107 @@ export function CodeViewer({ owner, repo, gitRef, filepath, mimeType }: CodeView
   return (
     <div className="flex-1 min-h-0 flex flex-col bg-background">
       {/* Toolbar */}
-      <div className="flex items-center gap-2 px-4 py-2 border-b bg-muted/30">
-        <div className="flex-1 text-xs text-muted-foreground">
-          Language: <span className="font-medium">{language}</span>
-          {' • '}
-          Lines: <span className="font-medium">{rawCode.split('\n').length}</span>
+      <TooltipProvider>
+        <div className="flex items-center gap-2 px-2 py-2 border-b bg-muted/30">
+          {/* Left actions (hamburger menu when sidebar collapsed) */}
+          {leftActions}
+
+          <div className="flex-1 text-xs text-muted-foreground">
+            Language: <span className="font-medium">{language}</span>
+            {' • '}
+            Lines: <span className="font-medium">{rawCode.split('\n').length}</span>
+          </div>
+
+          <div className="flex items-center gap-1">
+            {/* View Mode Toggle */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0 bg-accent"
+                  disabled
+                >
+                  <Code className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>View source (Alt+C)</TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleSwitchToPreview}
+                  className="h-7 w-7 p-0"
+                >
+                  <Eye className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Preview (Alt+P)</TooltipContent>
+            </Tooltip>
+
+            <div className="w-px h-4 bg-border mx-1" />
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setWrapLines(!wrapLines)}
+                  className="h-7 w-7 p-0"
+                >
+                  <WrapText className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{wrapLines ? 'Disable line wrapping' : 'Enable line wrapping'}</TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleCopy}
+                  className="h-7 w-7 p-0"
+                >
+                  {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{copied ? 'Copied!' : 'Copy code'}</TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleDownload}
+                  className="h-7 w-7 p-0"
+                >
+                  <Download className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Download file</TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleOpenInNewTab}
+                  className="h-7 w-7 p-0"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Open in new tab</TooltipContent>
+            </Tooltip>
+          </div>
         </div>
-
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setWrapLines(!wrapLines)}
-            title={wrapLines ? 'Disable line wrapping' : 'Enable line wrapping'}
-            className="h-7 px-2"
-          >
-            <WrapText className="h-4 w-4" />
-          </Button>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleCopy}
-            title="Copy code"
-            className="h-7 px-2"
-          >
-            {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-          </Button>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleDownload}
-            title="Download file"
-            className="h-7 px-2"
-          >
-            <Download className="h-4 w-4" />
-          </Button>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleOpenInNewTab}
-            title="Open in new tab"
-            className="h-7 px-2"
-          >
-            <ExternalLink className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
+      </TooltipProvider>
 
       {/* Code content */}
       <div className="flex-1 overflow-auto">
