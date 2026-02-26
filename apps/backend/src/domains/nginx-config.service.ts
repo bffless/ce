@@ -165,7 +165,7 @@ export class NginxConfigService implements OnModuleInit {
 
     // Use simplified config (port 80 only) when:
     // - PLATFORM_MODE=true (Traefik handles SSL)
-    // - PROXY_MODE=cloudflare or cloudflare-tunnel (Cloudflare handles SSL at edge)
+    // - PROXY_MODE=cloudflare-tunnel (Cloudflare Tunnel handles SSL at edge)
     const useSimplifiedConfig = this.isPlatformMode() || this.isExternalSslProxy();
 
     // Custom domains with simplified config (external SSL termination)
@@ -698,18 +698,21 @@ ${spaFallback}
   }
 
   /**
-   * Check if an external proxy fully terminates SSL.
-   * When PROXY_MODE=cloudflare or cloudflare-tunnel, nginx should generate non-SSL configs
-   * (port 80 only) since Cloudflare handles HTTPS termination at the edge.
+   * Check if an external proxy fully terminates SSL (no SSL needed on nginx).
    *
    * PROXY_MODE values:
    * - 'none': nginx handles SSL directly (Let's Encrypt)
-   * - 'cloudflare': Cloudflare terminates SSL at edge, nginx listens on port 80
-   * - 'cloudflare-tunnel': Cloudflare Tunnel routes traffic, nginx listens on port 80
+   * - 'cloudflare': nginx handles SSL with Origin Certificate (Full Strict mode)
+   * - 'cloudflare-tunnel': Cloudflare Tunnel terminates SSL, nginx listens on port 80
+   *
+   * Only cloudflare-tunnel means nginx doesn't need SSL. Regular cloudflare mode
+   * uses Origin Certificates which requires nginx to handle SSL on port 443.
    */
   private isExternalSslProxy(): boolean {
     const proxyMode = this.configService.get<string>('PROXY_MODE', 'none');
-    return proxyMode === 'cloudflare' || proxyMode === 'cloudflare-tunnel';
+    // Only cloudflare-tunnel fully terminates SSL at Cloudflare's edge
+    // Regular cloudflare mode uses Origin Certificates (nginx needs SSL)
+    return proxyMode === 'cloudflare-tunnel';
   }
 
   /**
@@ -746,7 +749,7 @@ ${spaFallback}
    */
   generateRedirectDomainConfig(config: RedirectDomainConfig): string {
     // Check if nginx should handle SSL directly
-    // When false: PLATFORM_MODE=true (Traefik) or PROXY_MODE=cloudflare (external proxy)
+    // When false: PLATFORM_MODE=true (Traefik) or PROXY_MODE=cloudflare-tunnel (external proxy)
     if (this.shouldNginxHandleSsl()) {
       return this.generateCERedirectDomainConfig(config);
     }
@@ -887,7 +890,7 @@ ${httpServerBlock}${httpsServerBlock}
     const finalPath = join(this.getNginxSitesPath(), filename);
 
     // Check if nginx should handle SSL directly
-    // When false: PLATFORM_MODE=true (Traefik) or PROXY_MODE=cloudflare (external proxy)
+    // When false: PLATFORM_MODE=true (Traefik) or PROXY_MODE=cloudflare-tunnel (external proxy)
     const nginxConfig = this.shouldNginxHandleSsl()
       ? this.generateCEPrimaryDomainConfig(config, baseDomain)
       : this.generatePlatformPrimaryDomainConfig(config, baseDomain);
@@ -1291,7 +1294,7 @@ ${proxyRulesComment}${serverBlocks}`;
 
   private generateWelcomePageNginxConfig(baseDomain: string): string {
     // Check if nginx should handle SSL directly
-    // When false: PLATFORM_MODE=true (Traefik) or PROXY_MODE=cloudflare (external proxy)
+    // When false: PLATFORM_MODE=true (Traefik) or PROXY_MODE=cloudflare-tunnel (external proxy)
     if (this.shouldNginxHandleSsl()) {
       return this.generateCEWelcomePageConfig(baseDomain);
     }
