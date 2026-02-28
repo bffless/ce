@@ -58,6 +58,7 @@ import {
   PrepareBatchDownloadDto,
   PrepareBatchDownloadResponseDto,
 } from './deployments.dto';
+import { isPreviewAliasPattern } from './preview-alias.util';
 import { VisibilityService } from '../domains/visibility.service';
 import { ProjectsService } from '../projects/projects.service';
 import { IStorageAdapter, STORAGE_ADAPTER } from '../storage/storage.interface';
@@ -345,9 +346,13 @@ export class DeploymentsController {
     // Generate URLs
     const baseUrl = process.env.PUBLIC_URL || 'http://localhost:3000';
     const primaryDomain = process.env.PRIMARY_DOMAIN;
+    // SHA URL uses admin domain since /repo/... is an admin UI route
+    const adminDomain =
+      process.env.ADMIN_DOMAIN || (primaryDomain ? `admin.${primaryDomain}` : null);
+    const adminUrl = adminDomain ? `https://${adminDomain}` : baseUrl;
 
-    // Find preview alias name from created aliases
-    const previewAliasName = result.aliases.find((a) => a.startsWith('pr-'));
+    // Find preview alias name from created aliases (uses pattern like e85879-portfoli-ee59-02bc)
+    const previewAliasName = result.aliases.find((a) => isPreviewAliasPattern(a));
     let previewUrl: string | undefined;
     if (previewAliasName && primaryDomain) {
       previewUrl = `https://${previewAliasName}.${primaryDomain}/`;
@@ -361,7 +366,7 @@ export class DeploymentsController {
       fileCount: result.fileCount,
       totalSize: result.totalSize,
       urls: {
-        sha: `${baseUrl}/repo/${pendingUpload.repository}/${pendingUpload.commitSha}`,
+        sha: `${adminUrl}/repo/${pendingUpload.repository}/${pendingUpload.commitSha}`,
         default: `${baseUrl}/public/${pendingUpload.repository}/`,
         preview: previewUrl,
       },

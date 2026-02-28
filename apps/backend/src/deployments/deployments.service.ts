@@ -350,6 +350,10 @@ export class DeploymentsService {
       // Generate URLs
       const baseUrl = process.env.PUBLIC_URL || 'http://localhost:3000';
       const primaryDomain = process.env.PRIMARY_DOMAIN;
+      // SHA URL uses admin domain since /repo/... is an admin UI route
+      const adminDomain =
+        process.env.ADMIN_DOMAIN || (primaryDomain ? `admin.${primaryDomain}` : null);
+      const adminUrl = adminDomain ? `https://${adminDomain}` : baseUrl;
 
       // Build preview URL using PRIMARY_DOMAIN if available
       let previewUrl: string | undefined;
@@ -361,7 +365,7 @@ export class DeploymentsService {
       }
 
       const urls = {
-        sha: `${baseUrl}/repo/${dto.repository}/${dto.commitSha}`,
+        sha: `${adminUrl}/repo/${dto.repository}/${dto.commitSha}`,
         default: `${baseUrl}/public/${dto.repository}/`,
         preview: previewUrl,
       };
@@ -580,6 +584,10 @@ export class DeploymentsService {
     // Generate URLs
     const baseUrl = process.env.PUBLIC_URL || 'http://localhost:3000';
     const primaryDomain = process.env.PRIMARY_DOMAIN;
+    // SHA URL uses admin domain since /repo/... is an admin UI route
+    const adminDomain =
+      process.env.ADMIN_DOMAIN || (primaryDomain ? `admin.${primaryDomain}` : null);
+    const adminUrl = adminDomain ? `https://${adminDomain}` : baseUrl;
 
     // Build preview URL using PRIMARY_DOMAIN if available
     let previewUrl: string | undefined;
@@ -591,7 +599,7 @@ export class DeploymentsService {
     }
 
     const urls = {
-      sha: `${baseUrl}/repo/${dto.repository}/${dto.commitSha}`,
+      sha: `${adminUrl}/repo/${dto.repository}/${dto.commitSha}`,
       default: `${baseUrl}/public/${dto.repository}/`,
       preview: previewUrl,
     };
@@ -782,6 +790,11 @@ export class DeploymentsService {
 
     // Build response
     const baseUrl = process.env.PUBLIC_URL || 'http://localhost:3000';
+    // SHA URL uses admin domain since /repo/... is an admin UI route
+    const primaryDomain = process.env.PRIMARY_DOMAIN;
+    const adminDomain =
+      process.env.ADMIN_DOMAIN || (primaryDomain ? `admin.${primaryDomain}` : null);
+    const adminUrl = adminDomain ? `https://${adminDomain}` : baseUrl;
     const data: DeploymentResponseDto[] = paginatedDeployments.map(
       ([deploymentId, deploymentData]) => {
         const totalSize = deploymentData.assets.reduce((sum, a) => sum + a.size, 0);
@@ -801,7 +814,7 @@ export class DeploymentsService {
           createdAt: deploymentData.createdAt,
           updatedAt: deploymentData.updatedAt,
           urls: {
-            sha: `${baseUrl}/repo/${deploymentData.repository}/${deploymentData.commitSha}`,
+            sha: `${adminUrl}/repo/${deploymentData.repository}/${deploymentData.commitSha}`,
             default: `${baseUrl}/public/${deploymentData.repository}/`,
           },
           aliases: deploymentAliasesList,
@@ -869,6 +882,11 @@ export class DeploymentsService {
     const deploymentAssets = results.map((r) => r.asset);
     const totalSize = deploymentAssets.reduce((sum, a) => sum + a.size, 0);
     const baseUrl = process.env.PUBLIC_URL || 'http://localhost:3000';
+    // SHA URL uses admin domain since /repo/... is an admin UI route
+    const primaryDomain = process.env.PRIMARY_DOMAIN;
+    const adminDomain =
+      process.env.ADMIN_DOMAIN || (primaryDomain ? `admin.${primaryDomain}` : null);
+    const adminUrl = adminDomain ? `https://${adminDomain}` : baseUrl;
 
     return {
       deploymentId,
@@ -882,7 +900,7 @@ export class DeploymentsService {
       createdAt: firstAsset.createdAt,
       updatedAt: firstAsset.updatedAt,
       urls: {
-        sha: `${baseUrl}/repo/${repository}/${firstAsset.commitSha}`,
+        sha: `${adminUrl}/repo/${repository}/${firstAsset.commitSha}`,
         default: `${baseUrl}/public/${repository}/`,
       },
       aliases: aliases.map((a) => a.alias),
