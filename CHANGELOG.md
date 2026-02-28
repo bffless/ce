@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.73](https://github.com/bffless/ce/compare/v0.0.72...v0.0.73) (2026-02-28)
+
+
+### Bug Fixes
+
+* restore CI uploads and chain release-please to Docker build ([5772c15](https://github.com/bffless/ce/commit/5772c1566b8d529a9ffaf080dd0cc8ce17f5df37))
+
 ## [0.0.72](https://github.com/bffless/ce/compare/v0.0.71...v0.0.72) (2026-02-28)
 
 
