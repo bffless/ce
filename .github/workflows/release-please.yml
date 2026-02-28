@@ -8,6 +8,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  packages: write
 
 jobs:
   release-please:
@@ -29,5 +30,12 @@ jobs:
         run: |
           echo "Release created: ${{ steps.release.outputs.tag_name }}"
           echo "Version: ${{ steps.release.outputs.version }}"
-          echo ""
-          echo "Docker images will be built by the tag-triggered workflow."
+
+  build-docker:
+    name: Build Docker Images
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    uses: ./.github/workflows/main-release.yml
+    with:
+      tag: ${{ needs.release-please.outputs.tag_name }}
+    secrets: inherit

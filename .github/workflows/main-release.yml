@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Tag to build'
+        required: true
+        type: string
 
 concurrency:
   group: release-${{ github.ref }}
@@ -26,6 +32,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -107,11 +114,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Get version from tag
         id: version
         run: |
-          VERSION="${GITHUB_REF_NAME}"
+          VERSION="${{ inputs.tag || github.ref_name }}"
           echo "Building version: $VERSION"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
@@ -138,7 +146,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend
           tags: |
             type=raw,value=latest
-            type=ref,event=tag
+            type=raw,value=${{ steps.version.outputs.version }}
             type=sha,prefix=main-
 
       - name: Extract metadata - Backend
@@ -148,7 +156,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend
           tags: |
             type=raw,value=latest
-            type=ref,event=tag
+            type=raw,value=${{ steps.version.outputs.version }}
             type=sha,prefix=main-
 
       - name: Build and push frontend
@@ -183,13 +191,20 @@ jobs:
           summary: 'false'
 
       - name: Update release with Docker image info
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
 
+          # Check if release exists
+          if ! gh release view "$VERSION" &>/dev/null; then
+            echo "No release found for $VERSION, skipping release update"
+            exit 0
+          fi
+
           # Get the current release body
-          CURRENT_BODY=$(gh release view "$VERSION" --json body -q '.body' 2>/dev/null || echo "")
+          CURRENT_BODY=$(gh release view "$VERSION" --json body -q '.body')
 
           # Append Docker image info
           DOCKER_INFO="

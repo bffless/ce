@@ -1,0 +1,86 @@
+name: Main Branch CI
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: main-ci-${{ github.sha }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-upload:
+    name: Test & Upload
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: TypeScript type check
+        run: |
+          echo "Running TypeScript type check..."
+          pnpm --filter frontend exec tsc --noEmit &
+          pnpm --filter backend exec tsc --noEmit &
+          wait
+
+      - name: Build frontend
+        env:
+          VITE_API_URL: ''
+        run: pnpm --filter frontend build
+
+      - name: Upload frontend build
+        continue-on-error: true
+        uses: bffless/upload-artifact@v1
+        with:
+          path: apps/frontend/dist
+          api-url: ${{ vars.ASSET_HOST_URL }}
+          api-key: ${{ secrets.ASSET_HOST_KEY }}
+          alias: production
+          description: 'Frontend build for ${{ github.ref_name }}@${{ github.sha }}'
+          summary-title: Frontend Build
+
+      - name: Run tests with coverage
+        run: pnpm test
+
+      - name: Upload backend coverage
+        if: hashFiles('apps/backend/coverage') != ''
+        continue-on-error: true
+        uses: bffless/upload-artifact@v1
+        with:
+          path: apps/backend/coverage
+          api-url: ${{ vars.ASSET_HOST_URL }}
+          api-key: ${{ secrets.ASSET_HOST_KEY }}
+          alias: production
+          description: 'Backend test coverage for ${{ github.ref_name }}@${{ github.sha }}'
+          summary: 'false'
+
+      - name: Upload frontend coverage
+        if: hashFiles('apps/frontend/coverage') != ''
+        continue-on-error: true
+        uses: bffless/upload-artifact@v1
+        with:
+          path: apps/frontend/coverage
+          api-url: ${{ vars.ASSET_HOST_URL }}
+          api-key: ${{ secrets.ASSET_HOST_KEY }}
+          alias: production
+          description: 'Frontend test coverage for ${{ github.ref_name }}@${{ github.sha }}'
+          summary: 'false'
