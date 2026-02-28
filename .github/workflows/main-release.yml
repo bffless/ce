@@ -1,27 +1,12 @@
-name: Main Branch Release
+name: Build & Push Docker Images
 
 on:
   push:
-    branches: [main]
-  workflow_dispatch:
-    inputs:
-      version_bump:
-        description: 'Version bump type'
-        required: false
-        default: 'patch'
-        type: choice
-        options:
-          - patch
-          - minor
-          - major
-      skip_release:
-        description: 'Skip release creation'
-        required: false
-        default: false
-        type: boolean
+    tags:
+      - 'v*'
 
 concurrency:
-  group: main-release
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 env:
@@ -29,9 +14,8 @@ env:
   IMAGE_PREFIX: ${{ github.repository }}
 
 permissions:
-  contents: write # For creating releases
-  packages: write # For pushing Docker images
-  checks: read
+  contents: write
+  packages: write
 
 jobs:
   test:
@@ -118,49 +102,24 @@ jobs:
     name: Build Docker Images
     needs: [test]
     runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.next_version.outputs.version }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      - name: Get version from tag
+        id: version
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          echo "Building version: $VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
       - name: Download frontend build artifact
         uses: actions/download-artifact@v4
         with:
           name: frontend-build
           path: apps/frontend/dist/
-
-      - name: Get next version
-        id: next_version
-        run: |
-          git fetch --tags
-          LATEST=$(git tag -l "v*" --sort=-v:refname | head -1)
-          if [ -z "$LATEST" ]; then
-            LATEST="v0.0.0"
-          fi
-          echo "Latest tag: $LATEST"
-
-          VERSION=${LATEST#v}
-          MAJOR=$(echo $VERSION | cut -d. -f1)
-          MINOR=$(echo $VERSION | cut -d. -f2)
-          PATCH=$(echo $VERSION | cut -d. -f3)
-
-          BUMP_TYPE="${{ github.event.inputs.version_bump || 'patch' }}"
-
-          case $BUMP_TYPE in
-            major)
-              MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
-            minor)
-              MINOR=$((MINOR + 1)); PATCH=0 ;;
-            patch)
-              PATCH=$((PATCH + 1)) ;;
-          esac
-
-          NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
-          echo "Next version: $NEW_VERSION"
-          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -179,8 +138,8 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend
           tags: |
             type=raw,value=latest
-            type=raw,value=${{ steps.next_version.outputs.version }}
-            type=sha,prefix={{branch}}-
+            type=ref,event=tag
+            type=sha,prefix=main-
 
       - name: Extract metadata - Backend
         id: meta-backend
@@ -189,8 +148,8 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend
           tags: |
             type=raw,value=latest
-            type=raw,value=${{ steps.next_version.outputs.version }}
-            type=sha,prefix={{branch}}-
+            type=ref,event=tag
+            type=sha,prefix=main-
 
       - name: Build and push frontend
         uses: docker/build-push-action@v5
@@ -212,125 +171,50 @@ jobs:
           cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend:buildcache
           cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend:buildcache,mode=max
 
-  release:
-    name: Create Release
-    needs: [build-and-push]
-    if: ${{ github.event.inputs.skip_release != 'true' }}
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ needs.build-and-push.outputs.version }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Configure Git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Update package.json version
-        run: |
-          VERSION="${{ needs.build-and-push.outputs.version }}"
-          # Remove 'v' prefix for package.json (uses X.Y.Z format)
-          PKG_VERSION="${VERSION#v}"
-          echo "Updating package.json to version $PKG_VERSION"
-
-          # Update root package.json
-          jq --arg v "$PKG_VERSION" '.version = $v' package.json > package.json.tmp
-          mv package.json.tmp package.json
-
-          # Commit the version bump
-          git add package.json
-          git commit -m "chore: bump version to $VERSION"
-          git push origin main
-
-      - name: Create tag
-        run: |
-          VERSION="${{ needs.build-and-push.outputs.version }}"
-          echo "Creating tag: $VERSION"
-          git tag -a "$VERSION" -m "Release $VERSION"
-          git push origin "$VERSION"
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ needs.build-and-push.outputs.version }}
-          name: Release ${{ needs.build-and-push.outputs.version }}
-          generate_release_notes: true
-          draft: false
-          body: |
-            ## Docker Images
-
-            ```bash
-            # Pull images for this release
-            docker pull ghcr.io/${{ github.repository }}-frontend:${{ needs.build-and-push.outputs.version }}
-            docker pull ghcr.io/${{ github.repository }}-backend:${{ needs.build-and-push.outputs.version }}
-            ```
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  release-frontend-build:
-    name: Upload Frontend & Summary
-    needs: [test, build-and-push, release]
-    if: ${{ github.event.inputs.skip_release != 'true' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: main
-
-      - name: Get latest commit SHA
-        id: latest-commit
-        run: |
-          git fetch origin main
-          git checkout origin/main
-          LATEST_SHA=$(git rev-parse HEAD)
-          echo "sha=$LATEST_SHA" >> $GITHUB_OUTPUT
-          echo "Latest commit on main: $LATEST_SHA"
-
-      - name: Download frontend build artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: frontend-build
-          path: apps/frontend/dist/
-
       - name: Upload frontend build with release tag
         uses: bffless/upload-artifact@v1
         with:
           path: apps/frontend/dist
           api-url: ${{ vars.ASSET_HOST_URL }}
           api-key: ${{ secrets.ASSET_HOST_KEY }}
-          commit-sha: ${{ steps.latest-commit.outputs.sha }}
           alias: production
-          tags: ${{ needs.release.outputs.version }}
-          description: 'Frontend build for release ${{ needs.release.outputs.version }}'
+          tags: ${{ steps.version.outputs.version }}
+          description: 'Frontend build for release ${{ steps.version.outputs.version }}'
           summary: 'false'
 
-      - name: Generate Summary
-        if: always()
+      - name: Update release with Docker image info
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "## Main Branch Release Summary" >> $GITHUB_STEP_SUMMARY
+          VERSION="${{ steps.version.outputs.version }}"
+
+          # Get the current release body
+          CURRENT_BODY=$(gh release view "$VERSION" --json body -q '.body' 2>/dev/null || echo "")
+
+          # Append Docker image info
+          DOCKER_INFO="
+
+          ## Docker Images
+
+          \`\`\`bash
+          # Pull images for this release
+          docker pull ghcr.io/${{ github.repository }}-frontend:${VERSION}
+          docker pull ghcr.io/${{ github.repository }}-backend:${VERSION}
+          \`\`\`"
+
+          # Update the release
+          gh release edit "$VERSION" --notes "${CURRENT_BODY}${DOCKER_INFO}"
+
+      - name: Generate Summary
+        run: |
+          echo "## Release Build Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Version**: ${{ needs.build-and-push.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Job Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Test & Coverage | ${{ needs.test.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Build Docker Images | ${{ needs.build-and-push.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Release | ${{ needs.release.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Docker Images" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          echo "ghcr.io/${{ github.repository }}-frontend:${{ needs.build-and-push.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "ghcr.io/${{ github.repository }}-backend:${{ needs.build-and-push.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ghcr.io/${{ github.repository }}-frontend:${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ghcr.io/${{ github.repository }}-backend:${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
