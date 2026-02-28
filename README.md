@@ -68,3 +68,5 @@ O'Saasy License - see [LICENSE](./LICENSE) for details.
 ---
 
 [Documentation](https://docs.bffless.app) | [Discord](https://discord.gg/BAYKm5Kv) | [Changelog](./CHANGELOG.md) | [Issues](https://github.com/bffless/ce/issues)
+
+<!-- test -->
