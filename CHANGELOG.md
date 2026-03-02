@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.74](https://github.com/bffless/ce/compare/v0.0.73...v0.0.74) (2026-03-02)
+
+
+### Bug Fixes
+
+* redirect domain dns messaging ([7ebfbd6](https://github.com/bffless/ce/commit/7ebfbd63d2095951ad43d367c3177c37901beb00))
+
 ## [0.0.73](https://github.com/bffless/ce/compare/v0.0.72...v0.0.73) (2026-02-28)
 
 
