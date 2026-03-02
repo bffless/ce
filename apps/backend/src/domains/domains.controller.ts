@@ -192,7 +192,7 @@ export class DomainsController {
       dnsVerified: domain.dnsVerified,
       dnsVerifiedAt: domain.dnsVerifiedAt,
       requirements:
-        domain.domainType === 'custom'
+        domain.domainType === 'custom' || domain.domainType === 'redirect'
           ? {
               recordType: 'A',
               host: '@',
