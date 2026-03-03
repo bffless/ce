@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.76](https://github.com/bffless/ce/compare/v0.0.75...v0.0.76) (2026-03-03)
+
+
+### Features
+
+* **invitations:** add redirect URL support for post-signup redirects ([5caa9e9](https://github.com/bffless/ce/commit/5caa9e9becd5acdc140071d25b28658d43cf7b1d))
+
 ## [0.0.75](https://github.com/bffless/ce/compare/v0.0.74...v0.0.75) (2026-03-03)
 
 
