@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.75](https://github.com/bffless/ce/compare/v0.0.74...v0.0.75) (2026-03-03)
+
+
+### Bug Fixes
+
+* clear all nginx configs on startup to prevent stale config crashes ([ab9972e](https://github.com/bffless/ce/commit/ab9972e9560a57100ff73b023739d2448a5c156b))
+
 ## [0.0.74](https://github.com/bffless/ce/compare/v0.0.73...v0.0.74) (2026-03-02)
 
 
