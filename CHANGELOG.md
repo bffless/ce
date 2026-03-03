@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.77](https://github.com/bffless/ce/compare/v0.0.76...v0.0.77) (2026-03-03)
+
+
+### Features
+
+* **invitations:** add redirect URL field to UsersPage invitations tab ([240bd77](https://github.com/bffless/ce/commit/240bd77682866febb2fd99b0af22c3d4e8fe8e9d))
+
 ## [0.0.76](https://github.com/bffless/ce/compare/v0.0.75...v0.0.76) (2026-03-03)
 
 
