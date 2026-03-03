@@ -73,10 +73,18 @@ export class NginxStartupService implements OnModuleInit {
   }
 
   /**
-   * Cleans up orphaned nginx config files that don't match any database records.
-   * This can happen when:
-   * - App is reinstalled but nginx volume persists
-   * - Domain mappings are deleted but config files weren't removed
+   * Cleans up ALL domain and redirect nginx config files before regenerating.
+   *
+   * Why delete ALL configs instead of just orphaned ones?
+   * - Nginx starts before backend finishes startup
+   * - If a stale config has errors (e.g., SSL certs that don't exist), nginx crashes
+   * - By the time backend cleans up orphaned configs, nginx is already in CrashLoopBackOff
+   * - Deleting ALL configs and regenerating ensures a clean slate with current code/templates
+   *
+   * This also handles:
+   * - App reinstalled but nginx volume persists
+   * - Domain mappings deleted but config files weren't removed
+   * - Template changes that need to be applied to all configs
    */
   private async cleanupOrphanedConfigs(): Promise<void> {
     const sitesPath = this.nginxConfigService.getNginxSitesPath();
@@ -87,46 +95,30 @@ export class NginxStartupService implements OnModuleInit {
 
       const files = await readdir(sitesPath);
 
-      // Get all domain mapping IDs from database
-      const dbMappings = await db.select({ id: domainMappings.id }).from(domainMappings);
-      const dbMappingIds = new Set(dbMappings.map((m) => m.id));
-
-      // Get all redirect IDs from database
-      const dbRedirects = await db.select({ id: domainRedirects.id }).from(domainRedirects);
-      const dbRedirectIds = new Set(dbRedirects.map((r) => r.id));
-
       let cleanedCount = 0;
 
       for (const file of files) {
-        // Check domain-*.conf files
-        const domainMatch = file.match(/^domain-([a-f0-9-]+)\.conf$/);
-        if (domainMatch) {
-          const id = domainMatch[1];
-          if (!dbMappingIds.has(id)) {
-            this.logger.log(`Cleaning up orphaned domain config: ${file}`);
-            await unlink(join(sitesPath, file));
-            cleanedCount++;
-          }
+        // Delete ALL domain-*.conf files (will be regenerated from DB)
+        if (file.match(/^domain-[a-f0-9-]+\.conf$/)) {
+          this.logger.debug(`Removing domain config for regeneration: ${file}`);
+          await unlink(join(sitesPath, file));
+          cleanedCount++;
           continue;
         }
 
-        // Check redirect-*.conf files
-        const redirectMatch = file.match(/^redirect-([a-f0-9-]+)\.conf$/);
-        if (redirectMatch) {
-          const id = redirectMatch[1];
-          if (!dbRedirectIds.has(id)) {
-            this.logger.log(`Cleaning up orphaned redirect config: ${file}`);
-            await unlink(join(sitesPath, file));
-            cleanedCount++;
-          }
+        // Delete ALL redirect-*.conf files (will be regenerated from DB)
+        if (file.match(/^redirect-[a-f0-9-]+\.conf$/)) {
+          this.logger.debug(`Removing redirect config for regeneration: ${file}`);
+          await unlink(join(sitesPath, file));
+          cleanedCount++;
         }
       }
 
       if (cleanedCount > 0) {
-        this.logger.log(`Cleaned up ${cleanedCount} orphaned nginx config file(s)`);
+        this.logger.log(`Cleared ${cleanedCount} nginx config file(s) for regeneration`);
       }
     } catch (error) {
-      this.logger.warn(`Failed to cleanup orphaned configs: ${error}`);
+      this.logger.warn(`Failed to cleanup configs: ${error}`);
     }
   }
 
