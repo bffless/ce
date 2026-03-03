@@ -66,6 +66,7 @@ export class InvitationsService {
       isExpired: this.isExpired(invitation),
       acceptedAt: invitation.acceptedAt || undefined,
       acceptedUserId: invitation.acceptedUserId || undefined,
+      redirectUrl: invitation.redirectUrl || undefined,
       createdAt: invitation.createdAt,
     };
 
@@ -125,6 +126,7 @@ export class InvitationsService {
         token,
         invitedBy,
         expiresAt,
+        redirectUrl: dto.redirectUrl,
       })
       .returning();
 
@@ -182,7 +184,7 @@ export class InvitationsService {
    */
   async validateToken(
     token: string,
-  ): Promise<{ valid: boolean; email?: string; role?: string; error?: string }> {
+  ): Promise<{ valid: boolean; email?: string; role?: string; redirectUrl?: string; error?: string }> {
     const [invitation] = await db
       .select()
       .from(workspaceInvitations)
@@ -205,6 +207,7 @@ export class InvitationsService {
       valid: true,
       email: invitation.email,
       role: invitation.role,
+      redirectUrl: invitation.redirectUrl || undefined,
     };
   }
 

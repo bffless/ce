@@ -1,0 +1,1 @@
+ALTER TABLE "workspace_invitations" ADD COLUMN "redirect_url" varchar(2048);

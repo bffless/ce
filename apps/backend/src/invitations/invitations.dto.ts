@@ -1,4 +1,4 @@
-import { IsString, IsEmail, IsOptional, IsEnum, IsNumber, Min, Max } from 'class-validator';
+import { IsString, IsEmail, IsOptional, IsEnum, IsNumber, IsUrl, Min, Max } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export enum InvitationRole {
@@ -39,6 +39,14 @@ export class CreateInvitationDto {
   @Min(1)
   @Max(720)
   expiresInHours?: number;
+
+  @ApiPropertyOptional({
+    description: 'URL to redirect to after accepting the invitation (can be external)',
+    example: 'https://console.example.com',
+  })
+  @IsOptional()
+  @IsUrl({ protocols: ['http', 'https'], require_protocol: true })
+  redirectUrl?: string;
 }
 
 export class ListInvitationsQueryDto {
@@ -92,6 +100,9 @@ export class InvitationResponseDto {
   @ApiPropertyOptional({ description: 'User ID who accepted' })
   acceptedUserId?: string;
 
+  @ApiPropertyOptional({ description: 'URL to redirect to after accepting the invitation' })
+  redirectUrl?: string;
+
   @ApiProperty({ description: 'Creation timestamp' })
   createdAt: Date;
 }
@@ -133,6 +144,9 @@ export class ValidateInvitationResponseDto {
 
   @ApiPropertyOptional({ description: 'Role to be assigned' })
   role?: string;
+
+  @ApiPropertyOptional({ description: 'URL to redirect to after accepting the invitation' })
+  redirectUrl?: string;
 
   @ApiPropertyOptional({ description: 'Error message if invalid' })
   error?: string;

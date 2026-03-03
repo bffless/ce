@@ -36,6 +36,13 @@
       "when": 1771546929816,
       "tag": "0004_safe_jack_murdock",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1772540741324,
+      "tag": "0005_same_the_watchers",
+      "breakpoints": true
     }
   ]
 }

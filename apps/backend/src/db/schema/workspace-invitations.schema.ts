@@ -37,6 +37,10 @@ export const workspaceInvitations = pgTable(
     // ID of the user who accepted (null if pending)
     acceptedUserId: uuid('accepted_user_id').references(() => users.id, { onDelete: 'set null' }),
 
+    // URL to redirect to after accepting the invitation (optional)
+    // Allows external URLs for cross-app redirects (e.g., console -> workspace)
+    redirectUrl: varchar('redirect_url', { length: 2048 }),
+
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => [

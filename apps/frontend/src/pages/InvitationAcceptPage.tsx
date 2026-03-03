@@ -49,7 +49,12 @@ export function InvitationAcceptPage() {
           title: 'Welcome!',
           description: result.message,
         });
-        navigate('/');
+        // Redirect to the specified URL if present, otherwise go to home
+        if (validation.redirectUrl) {
+          window.location.href = validation.redirectUrl;
+        } else {
+          navigate('/');
+        }
       } catch (error: any) {
         const statusCode = error?.status;
         const errorMessage = error?.data?.message || 'Failed to accept invitation';
@@ -61,7 +66,12 @@ export function InvitationAcceptPage() {
             title: 'Welcome!',
             description: 'You are now a member of this workspace.',
           });
-          navigate('/');
+          // Redirect to the specified URL if present, otherwise go to home
+          if (validation.redirectUrl) {
+            window.location.href = validation.redirectUrl;
+          } else {
+            navigate('/');
+          }
           return;
         }
 

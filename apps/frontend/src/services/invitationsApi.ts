@@ -15,6 +15,7 @@ export interface Invitation {
   isExpired: boolean;
   acceptedAt?: string;
   acceptedUserId?: string;
+  redirectUrl?: string;
   createdAt: string;
 }
 
@@ -24,6 +25,7 @@ export interface CreateInvitationDto {
   email: string;
   role?: InvitationRole;
   expiresInHours?: number;
+  redirectUrl?: string;
 }
 
 export interface ListInvitationsQuery {
@@ -49,6 +51,7 @@ export interface ValidateInvitationResponse {
   valid: boolean;
   email?: string;
   role?: string;
+  redirectUrl?: string;
   error?: string;
 }
 

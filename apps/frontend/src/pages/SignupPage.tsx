@@ -211,13 +211,17 @@ export function SignupPage() {
       }
 
       // If user signed up with a valid invitation, the backend already accepted it
-      // Go directly to home instead of back to the invite page
+      // Redirect to specified URL if present, otherwise go to home
       if (hasValidInvitation) {
         toast({
           title: 'Welcome!',
           description: `Your account has been created and you've joined the workspace as ${invitationData?.role}.`,
         });
-        navigate('/');
+        if (invitationData?.redirectUrl) {
+          window.location.href = invitationData.redirectUrl;
+        } else {
+          navigate('/');
+        }
       } else if (authMode === 'signin') {
         toast({
           title: 'Welcome back!',
