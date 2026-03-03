@@ -86,12 +86,14 @@ import {
   XCircle,
   Loader2,
   Mail,
+  ExternalLink,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const inviteSchema = z.object({
   email: z.string().min(1, 'Email is required').email('Please enter a valid email'),
   role: z.enum(['admin', 'user', 'member']),
+  redirectUrl: z.string().url('Please enter a valid URL').optional().or(z.literal('')),
 });
 
 type InviteFormValues = z.infer<typeof inviteSchema>;
@@ -169,6 +171,7 @@ export function UsersPage() {
     defaultValues: {
       email: '',
       role: 'member',
+      redirectUrl: '',
     },
   });
 
@@ -234,7 +237,13 @@ export function UsersPage() {
   // Invitation handlers
   const onSubmitInvite = async (data: InviteFormValues) => {
     try {
-      const result = await createInvitation(data).unwrap();
+      // Only include redirectUrl if it's not empty
+      const payload = {
+        email: data.email,
+        role: data.role,
+        ...(data.redirectUrl && { redirectUrl: data.redirectUrl }),
+      };
+      const result = await createInvitation(payload).unwrap();
       toast({
         title: 'Invitation sent',
         description: `Invitation sent to ${data.email}`,
@@ -718,6 +727,27 @@ export function UsersPage() {
                             />
                           </div>
 
+                          <FormField
+                            control={form.control}
+                            name="redirectUrl"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Redirect URL (Optional)</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type="url"
+                                    placeholder="https://example.com/welcome"
+                                    {...field}
+                                  />
+                                </FormControl>
+                                <p className="text-xs text-muted-foreground">
+                                  Where to redirect the user after they accept the invitation. Can be an external URL.
+                                </p>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
                           <div className="flex justify-end gap-2">
                             <Button
                               type="button"
@@ -774,6 +804,7 @@ export function UsersPage() {
                         <TableRow>
                           <TableHead>Email</TableHead>
                           <TableHead>Role</TableHead>
+                          <TableHead>Redirect</TableHead>
                           <TableHead>Status</TableHead>
                           <TableHead>Expires</TableHead>
                           <TableHead className="text-right">Actions</TableHead>
@@ -787,6 +818,22 @@ export function UsersPage() {
                               <Badge variant={invitation.role === 'admin' ? 'default' : 'secondary'}>
                                 {invitation.role}
                               </Badge>
+                            </TableCell>
+                            <TableCell>
+                              {invitation.redirectUrl ? (
+                                <a
+                                  href={invitation.redirectUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground truncate max-w-[150px]"
+                                  title={invitation.redirectUrl}
+                                >
+                                  <ExternalLink className="h-3 w-3 flex-shrink-0" />
+                                  <span className="truncate">{new URL(invitation.redirectUrl).hostname}</span>
+                                </a>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">-</span>
+                              )}
                             </TableCell>
                             <TableCell>{getStatusBadge(invitation)}</TableCell>
                             <TableCell className="text-muted-foreground text-sm">
