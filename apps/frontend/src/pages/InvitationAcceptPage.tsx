@@ -58,10 +58,14 @@ export function InvitationAcceptPage() {
       } catch (error: any) {
         const statusCode = error?.status;
         const errorMessage = error?.data?.message || 'Failed to accept invitation';
+        const errorMessageLower = errorMessage.toLowerCase();
 
-        // If user is already a member (409), treat as success - invitation was likely
-        // accepted during signup process
-        if (statusCode === 409 && errorMessage.toLowerCase().includes('already a member')) {
+        // If user is already a member (409) or invitation was already accepted (400),
+        // treat as success - invitation was likely accepted during signup process
+        const isAlreadyMember = statusCode === 409 && errorMessageLower.includes('already a member');
+        const isAlreadyAccepted = statusCode === 400 && errorMessageLower.includes('already been accepted');
+
+        if (isAlreadyMember || isAlreadyAccepted) {
           toast({
             title: 'Welcome!',
             description: 'You are now a member of this workspace.',
