@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.80](https://github.com/bffless/ce/compare/v0.0.79...v0.0.80) (2026-03-05)
+
+
+### Bug Fixes
+
+* base domain for cname ([f891b44](https://github.com/bffless/ce/commit/f891b442ac82644662182d6f41a43b2723f6bf63))
+
 ## [0.0.79](https://github.com/bffless/ce/compare/v0.0.78...v0.0.79) (2026-03-05)
 
 
