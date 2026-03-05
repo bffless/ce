@@ -149,6 +149,16 @@ export class NginxConfigService implements OnModuleInit {
     proxyRules?: NginxProxyRule[],
     pathRedirects?: NginxPathRedirect[],
   ): Promise<string> {
+    // Handle redirect domain type separately - it uses its own config generation
+    if (domainMapping.domainType === 'redirect') {
+      return this.generateRedirectDomainConfig({
+        id: domainMapping.id,
+        domain: domainMapping.domain,
+        redirectTarget: domainMapping.redirectTarget || domainMapping.domain,
+        sslEnabled: domainMapping.sslEnabled,
+      });
+    }
+
     // Determine if SSL should be enabled
     // For subdomains, check ENABLE_WILDCARD_SSL flag - if false (PaaS mode where Traefik handles SSL),
     // force sslEnabled to false so nginx doesn't try to load wildcard certs

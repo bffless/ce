@@ -400,45 +400,51 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
                     </tr>
                   </thead>
                   <tbody>
-                    {dnsValidationRecords.map((record, idx) => (
-                      <tr key={record.name}>
-                        <td className="py-1 pr-4">
-                          <code className="bg-amber-100 dark:bg-amber-900 px-1 rounded text-amber-800 dark:text-amber-200">CNAME</code>
-                        </td>
-                        <td className="py-1 pr-4">
-                          <div className="flex items-center gap-1">
-                            <code className="bg-amber-100 dark:bg-amber-900 px-1 rounded text-amber-800 dark:text-amber-200 break-all">{record.name}</code>
-                            <button
-                              onClick={() => copyToClipboard(record.name, `name-${idx}`)}
-                              className="p-1 hover:bg-amber-200 dark:hover:bg-amber-800 rounded transition-colors"
-                              title="Copy host"
-                            >
-                              {copiedField === `name-${idx}` ? (
-                                <Check className="h-3 w-3 text-green-600" />
-                              ) : (
-                                <Copy className="h-3 w-3 text-amber-600" />
-                              )}
-                            </button>
-                          </div>
-                        </td>
-                        <td className="py-1">
-                          <div className="flex items-center gap-1">
-                            <code className="bg-amber-100 dark:bg-amber-900 px-1 rounded text-amber-800 dark:text-amber-200 break-all">{record.value}</code>
-                            <button
-                              onClick={() => copyToClipboard(record.value, `value-${idx}`)}
-                              className="p-1 hover:bg-amber-200 dark:hover:bg-amber-800 rounded transition-colors"
-                              title="Copy value"
-                            >
-                              {copiedField === `value-${idx}` ? (
-                                <Check className="h-3 w-3 text-green-600" />
-                              ) : (
-                                <Copy className="h-3 w-3 text-amber-600" />
-                              )}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                    {dnsValidationRecords.map((record, idx) => {
+                      // Strip domain suffix for providers like Namecheap that append it automatically
+                      const hostWithoutDomain = record.name.endsWith(`.${record.domain}`)
+                        ? record.name.slice(0, -(record.domain.length + 1))
+                        : record.name;
+                      return (
+                        <tr key={record.name}>
+                          <td className="py-1 pr-4">
+                            <code className="bg-amber-100 dark:bg-amber-900 px-1 rounded text-amber-800 dark:text-amber-200">CNAME</code>
+                          </td>
+                          <td className="py-1 pr-4">
+                            <div className="flex items-center gap-1">
+                              <code className="bg-amber-100 dark:bg-amber-900 px-1 rounded text-amber-800 dark:text-amber-200 break-all">{hostWithoutDomain}</code>
+                              <button
+                                onClick={() => copyToClipboard(hostWithoutDomain, `name-${idx}`)}
+                                className="p-1 hover:bg-amber-200 dark:hover:bg-amber-800 rounded transition-colors"
+                                title="Copy host"
+                              >
+                                {copiedField === `name-${idx}` ? (
+                                  <Check className="h-3 w-3 text-green-600" />
+                                ) : (
+                                  <Copy className="h-3 w-3 text-amber-600" />
+                                )}
+                              </button>
+                            </div>
+                          </td>
+                          <td className="py-1">
+                            <div className="flex items-center gap-1">
+                              <code className="bg-amber-100 dark:bg-amber-900 px-1 rounded text-amber-800 dark:text-amber-200 break-all">{record.value}</code>
+                              <button
+                                onClick={() => copyToClipboard(record.value, `value-${idx}`)}
+                                className="p-1 hover:bg-amber-200 dark:hover:bg-amber-800 rounded transition-colors"
+                                title="Copy value"
+                              >
+                                {copiedField === `value-${idx}` ? (
+                                  <Check className="h-3 w-3 text-green-600" />
+                                ) : (
+                                  <Copy className="h-3 w-3 text-amber-600" />
+                                )}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -514,7 +520,20 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
                                     <code className="bg-background px-1 rounded">{host}</code>
                                   </td>
                                   <td className="py-1 pr-4">
-                                    <code className="bg-background px-1 rounded">{cnameTarget}</code>
+                                    <span className="inline-flex items-center gap-1">
+                                      <code className="bg-background px-1 rounded">{cnameTarget}</code>
+                                      <button
+                                        onClick={() => copyToClipboard(cnameTarget!, `cname-${host}`)}
+                                        className="p-0.5 hover:bg-muted rounded"
+                                        title="Copy to clipboard"
+                                      >
+                                        {copiedField === `cname-${host}` ? (
+                                          <Check className="h-3 w-3 text-green-500" />
+                                        ) : (
+                                          <Copy className="h-3 w-3 text-muted-foreground" />
+                                        )}
+                                      </button>
+                                    </span>
                                   </td>
                                   <td className="py-1">Automatic</td>
                                 </tr>
@@ -528,7 +547,20 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
                                       <code className="bg-background px-1 rounded">@</code>
                                     </td>
                                     <td className="py-1 pr-4">
-                                      <code className="bg-background px-1 rounded">{cnameTarget}</code>
+                                      <span className="inline-flex items-center gap-1">
+                                        <code className="bg-background px-1 rounded">{cnameTarget}</code>
+                                        <button
+                                          onClick={() => copyToClipboard(cnameTarget!, 'alias-root')}
+                                          className="p-0.5 hover:bg-muted rounded"
+                                          title="Copy to clipboard"
+                                        >
+                                          {copiedField === 'alias-root' ? (
+                                            <Check className="h-3 w-3 text-green-500" />
+                                          ) : (
+                                            <Copy className="h-3 w-3 text-muted-foreground" />
+                                          )}
+                                        </button>
+                                      </span>
                                     </td>
                                     <td className="py-1">Automatic</td>
                                   </tr>
@@ -564,7 +596,20 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
                                       <code className="bg-background px-1 rounded">@</code>
                                     </td>
                                     <td className="py-1 pr-4">
-                                      <code className="bg-background px-1 rounded">{cnameTarget}</code>
+                                      <span className="inline-flex items-center gap-1">
+                                        <code className="bg-background px-1 rounded">{cnameTarget}</code>
+                                        <button
+                                          onClick={() => copyToClipboard(cnameTarget!, 'apex-alias')}
+                                          className="p-0.5 hover:bg-muted rounded"
+                                          title="Copy to clipboard"
+                                        >
+                                          {copiedField === 'apex-alias' ? (
+                                            <Check className="h-3 w-3 text-green-500" />
+                                          ) : (
+                                            <Copy className="h-3 w-3 text-muted-foreground" />
+                                          )}
+                                        </button>
+                                      </span>
                                     </td>
                                     <td className="py-1">Automatic</td>
                                   </tr>
@@ -576,7 +621,20 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
                                       <code className="bg-background px-1 rounded">www</code>
                                     </td>
                                     <td className="py-1 pr-4">
-                                      <code className="bg-background px-1 rounded">{cnameTarget}</code>
+                                      <span className="inline-flex items-center gap-1">
+                                        <code className="bg-background px-1 rounded">{cnameTarget}</code>
+                                        <button
+                                          onClick={() => copyToClipboard(cnameTarget!, 'apex-www-cname')}
+                                          className="p-0.5 hover:bg-muted rounded"
+                                          title="Copy to clipboard"
+                                        >
+                                          {copiedField === 'apex-www-cname' ? (
+                                            <Check className="h-3 w-3 text-green-500" />
+                                          ) : (
+                                            <Copy className="h-3 w-3 text-muted-foreground" />
+                                          )}
+                                        </button>
+                                      </span>
                                     </td>
                                     <td className="py-1">Automatic</td>
                                   </tr>
@@ -609,7 +667,20 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
                                           <code className="bg-background px-1 rounded">@</code>
                                         </td>
                                         <td className="py-1 pr-4">
-                                          <code className="bg-background px-1 rounded">{platformIp}</code>
+                                          <span className="inline-flex items-center gap-1">
+                                            <code className="bg-background px-1 rounded">{platformIp}</code>
+                                            <button
+                                              onClick={() => copyToClipboard(platformIp!, 'apex-a-record')}
+                                              className="p-0.5 hover:bg-muted rounded"
+                                              title="Copy to clipboard"
+                                            >
+                                              {copiedField === 'apex-a-record' ? (
+                                                <Check className="h-3 w-3 text-green-500" />
+                                              ) : (
+                                                <Copy className="h-3 w-3 text-muted-foreground" />
+                                              )}
+                                            </button>
+                                          </span>
                                         </td>
                                         <td className="py-1">Automatic</td>
                                       </tr>
@@ -621,7 +692,20 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
                                           <code className="bg-background px-1 rounded">www</code>
                                         </td>
                                         <td className="py-1 pr-4">
-                                          <code className="bg-background px-1 rounded">{cnameTarget}</code>
+                                          <span className="inline-flex items-center gap-1">
+                                            <code className="bg-background px-1 rounded">{cnameTarget}</code>
+                                            <button
+                                              onClick={() => copyToClipboard(cnameTarget!, 'opt2-www-cname')}
+                                              className="p-0.5 hover:bg-muted rounded"
+                                              title="Copy to clipboard"
+                                            >
+                                              {copiedField === 'opt2-www-cname' ? (
+                                                <Check className="h-3 w-3 text-green-500" />
+                                              ) : (
+                                                <Copy className="h-3 w-3 text-muted-foreground" />
+                                              )}
+                                            </button>
+                                          </span>
                                         </td>
                                         <td className="py-1">Automatic</td>
                                       </tr>
@@ -681,7 +765,20 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
                                   <code className="bg-background px-1 rounded">{row.host}</code>
                                 </td>
                                 <td className="py-1 pr-4">
-                                  <code className="bg-background px-1 rounded">{row.value}</code>
+                                  <span className="inline-flex items-center gap-1">
+                                    <code className="bg-background px-1 rounded">{row.value}</code>
+                                    <button
+                                      onClick={() => copyToClipboard(row.value, `a-record-${row.host}`)}
+                                      className="p-0.5 hover:bg-muted rounded"
+                                      title="Copy to clipboard"
+                                    >
+                                      {copiedField === `a-record-${row.host}` ? (
+                                        <Check className="h-3 w-3 text-green-500" />
+                                      ) : (
+                                        <Copy className="h-3 w-3 text-muted-foreground" />
+                                      )}
+                                    </button>
+                                  </span>
                                 </td>
                                 <td className="py-1">Automatic</td>
                               </tr>
