@@ -159,11 +159,13 @@ export class DomainsController {
     const isPlatformMode = process.env.PLATFORM_MODE === 'true';
 
     // CNAME target for custom domains (e.g., "cname.bffless.app")
-    // In platform mode: use CNAME_TARGET env var, or fall back to cname.{baseDomain}
+    // In platform mode: use CNAME_TARGET env var, or fall back to cname.{PLATFORM_BASE_DOMAIN}
+    // PLATFORM_BASE_DOMAIN is the platform's root domain (e.g., "bffless.app"), not the workspace domain
     // In self-hosted mode: null (users configure A records to their own server)
     let cnameTarget: string | null = null;
     if (isPlatformMode) {
-      cnameTarget = process.env.CNAME_TARGET || `cname.${baseDomain}`;
+      const platformBaseDomain = process.env.PLATFORM_BASE_DOMAIN || baseDomain;
+      cnameTarget = process.env.CNAME_TARGET || `cname.${platformBaseDomain}`;
     }
 
     return {
