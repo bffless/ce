@@ -155,10 +155,22 @@ export class DomainsController {
   @ApiResponse({ status: 200, description: 'Configuration returned' })
   async getConfig() {
     const platformIp = await this.domainsService.getPlatformIp();
+    const baseDomain = process.env.PRIMARY_DOMAIN || 'localhost';
+    const isPlatformMode = process.env.PLATFORM_MODE === 'true';
+
+    // CNAME target for custom domains (e.g., "cname.bffless.app")
+    // In platform mode: use CNAME_TARGET env var, or fall back to cname.{baseDomain}
+    // In self-hosted mode: null (users configure A records to their own server)
+    let cnameTarget: string | null = null;
+    if (isPlatformMode) {
+      cnameTarget = process.env.CNAME_TARGET || `cname.${baseDomain}`;
+    }
+
     return {
-      baseDomain: process.env.PRIMARY_DOMAIN || 'localhost',
+      baseDomain,
       mockSslMode: process.env.MOCK_SSL === 'true',
       platformIp,
+      cnameTarget,
     };
   }
 

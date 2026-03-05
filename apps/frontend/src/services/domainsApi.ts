@@ -170,6 +170,8 @@ export interface DomainsConfig {
   baseDomain: string;
   mockSslMode?: boolean;
   platformIp?: string | null;
+  /** CNAME target for custom domains (e.g., "custom.bffless.app"). When set, platform mode shows CNAME instructions. */
+  cnameTarget?: string | null;
 }
 
 // Phase B: SSL Certificate Info Types

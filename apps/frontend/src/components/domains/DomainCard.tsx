@@ -481,69 +481,238 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
                 <p className="text-muted-foreground">
                   Add the following DNS record{domain.domain.startsWith('www.') ? 's' : ''} at your domain registrar:
                 </p>
-                {domainsConfig?.platformIp && (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="border-b border-border">
-                          <th className="py-1 pr-4 font-medium">Type</th>
-                          <th className="py-1 pr-4 font-medium">Host</th>
-                          <th className="py-1 pr-4 font-medium">Value</th>
-                          <th className="py-1 font-medium">TTL</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(() => {
-                          const parts = domain.domain.split('.');
-                          const isWww = parts[0] === 'www';
-                          const isRoot = parts.length === 2;
-                          // Determine the host value for the A record
-                          const host = isRoot ? '@' : parts[0];
-                          const rows = [{ host, value: domainsConfig.platformIp }];
-                          // If www subdomain, also suggest root domain record
-                          if (isWww) {
-                            rows.push({ host: '@', value: domainsConfig.platformIp });
-                          }
-                          // If root domain, also suggest www record
-                          if (isRoot) {
-                            rows.push({ host: 'www', value: domainsConfig.platformIp });
-                          }
-                          return rows.map((row, i) => (
-                            <tr key={row.host} className={i > 0 ? 'text-muted-foreground' : ''}>
-                              <td className="py-1 pr-4">
-                                <code className="bg-background px-1 rounded">A</code>
-                              </td>
-                              <td className="py-1 pr-4">
-                                <code className="bg-background px-1 rounded">{row.host}</code>
-                              </td>
-                              <td className="py-1 pr-4">
-                                <code className="bg-background px-1 rounded">{row.value}</code>
-                              </td>
-                              <td className="py-1">Automatic</td>
+                {(() => {
+                  const parts = domain.domain.split('.');
+                  const isWww = parts[0] === 'www';
+                  const isApex = parts.length === 2;
+                  const host = isApex ? '@' : parts[0];
+                  const cnameTarget = domainsConfig?.cnameTarget;
+                  const platformIp = domainsConfig?.platformIp;
+
+                  // Platform mode with CNAME target configured
+                  if (isPlatformMode && cnameTarget) {
+                    return (
+                      <div className="space-y-3">
+                        {/* Non-apex domains: Show CNAME (recommended) */}
+                        {!isApex && (
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                              <thead>
+                                <tr className="border-b border-border">
+                                  <th className="py-1 pr-4 font-medium">Type</th>
+                                  <th className="py-1 pr-4 font-medium">Host</th>
+                                  <th className="py-1 pr-4 font-medium">Value</th>
+                                  <th className="py-1 font-medium">TTL</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                <tr>
+                                  <td className="py-1 pr-4">
+                                    <code className="bg-background px-1 rounded">CNAME</code>
+                                  </td>
+                                  <td className="py-1 pr-4">
+                                    <code className="bg-background px-1 rounded">{host}</code>
+                                  </td>
+                                  <td className="py-1 pr-4">
+                                    <code className="bg-background px-1 rounded">{cnameTarget}</code>
+                                  </td>
+                                  <td className="py-1">Automatic</td>
+                                </tr>
+                                {/* If www subdomain, also suggest root domain */}
+                                {isWww && (
+                                  <tr className="text-muted-foreground">
+                                    <td className="py-1 pr-4">
+                                      <code className="bg-background px-1 rounded">ALIAS</code>
+                                    </td>
+                                    <td className="py-1 pr-4">
+                                      <code className="bg-background px-1 rounded">@</code>
+                                    </td>
+                                    <td className="py-1 pr-4">
+                                      <code className="bg-background px-1 rounded">{cnameTarget}</code>
+                                    </td>
+                                    <td className="py-1">Automatic</td>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+
+                        {/* Apex domains: Show ALIAS (preferred) + A record (fallback) */}
+                        {isApex && (
+                          <>
+                            <p className="text-muted-foreground">
+                              <strong>Option 1 (Recommended):</strong> If your DNS provider supports ALIAS/ANAME records
+                              (Namecheap, Cloudflare, Route 53, DNSimple):
+                            </p>
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left border-collapse">
+                                <thead>
+                                  <tr className="border-b border-border">
+                                    <th className="py-1 pr-4 font-medium">Type</th>
+                                    <th className="py-1 pr-4 font-medium">Host</th>
+                                    <th className="py-1 pr-4 font-medium">Value</th>
+                                    <th className="py-1 font-medium">TTL</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  <tr>
+                                    <td className="py-1 pr-4">
+                                      <code className="bg-background px-1 rounded">ALIAS</code>
+                                    </td>
+                                    <td className="py-1 pr-4">
+                                      <code className="bg-background px-1 rounded">@</code>
+                                    </td>
+                                    <td className="py-1 pr-4">
+                                      <code className="bg-background px-1 rounded">{cnameTarget}</code>
+                                    </td>
+                                    <td className="py-1">Automatic</td>
+                                  </tr>
+                                  <tr className="text-muted-foreground">
+                                    <td className="py-1 pr-4">
+                                      <code className="bg-background px-1 rounded">CNAME</code>
+                                    </td>
+                                    <td className="py-1 pr-4">
+                                      <code className="bg-background px-1 rounded">www</code>
+                                    </td>
+                                    <td className="py-1 pr-4">
+                                      <code className="bg-background px-1 rounded">{cnameTarget}</code>
+                                    </td>
+                                    <td className="py-1">Automatic</td>
+                                  </tr>
+                                </tbody>
+                              </table>
+                            </div>
+
+                            {platformIp && (
+                              <>
+                                <p className="text-muted-foreground">
+                                  <strong>Option 2:</strong> If your DNS provider doesn't support ALIAS records
+                                  (GoDaddy, Google Domains):
+                                </p>
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-left border-collapse">
+                                    <thead>
+                                      <tr className="border-b border-border">
+                                        <th className="py-1 pr-4 font-medium">Type</th>
+                                        <th className="py-1 pr-4 font-medium">Host</th>
+                                        <th className="py-1 pr-4 font-medium">Value</th>
+                                        <th className="py-1 font-medium">TTL</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      <tr>
+                                        <td className="py-1 pr-4">
+                                          <code className="bg-background px-1 rounded">A</code>
+                                        </td>
+                                        <td className="py-1 pr-4">
+                                          <code className="bg-background px-1 rounded">@</code>
+                                        </td>
+                                        <td className="py-1 pr-4">
+                                          <code className="bg-background px-1 rounded">{platformIp}</code>
+                                        </td>
+                                        <td className="py-1">Automatic</td>
+                                      </tr>
+                                      <tr className="text-muted-foreground">
+                                        <td className="py-1 pr-4">
+                                          <code className="bg-background px-1 rounded">CNAME</code>
+                                        </td>
+                                        <td className="py-1 pr-4">
+                                          <code className="bg-background px-1 rounded">www</code>
+                                        </td>
+                                        <td className="py-1 pr-4">
+                                          <code className="bg-background px-1 rounded">{cnameTarget}</code>
+                                        </td>
+                                        <td className="py-1">Automatic</td>
+                                      </tr>
+                                    </tbody>
+                                  </table>
+                                </div>
+                                <p className="text-amber-600 dark:text-amber-500">
+                                  <AlertCircle className="h-3 w-3 inline mr-1" />
+                                  A records point to an IP address that may change in the future. We recommend using
+                                  ALIAS/ANAME records when possible to avoid manual updates.
+                                </p>
+                              </>
+                            )}
+                          </>
+                        )}
+
+                        {!isApex && isWww && (
+                          <p className="text-muted-foreground">
+                            Use <code className="bg-background px-1 rounded">ALIAS</code> for the{' '}
+                            <code className="bg-background px-1 rounded">@</code> record if your DNS provider supports
+                            it (Namecheap, Cloudflare, Route 53). Otherwise, use an A record pointing to{' '}
+                            <code className="bg-background px-1 rounded">{platformIp}</code>.
+                          </p>
+                        )}
+                      </div>
+                    );
+                  }
+
+                  // Self-hosted or platform without CNAME target: Show A records
+                  if (platformIp) {
+                    const rows = [{ host, value: platformIp }];
+                    if (isWww) {
+                      rows.push({ host: '@', value: platformIp });
+                    }
+                    if (isApex) {
+                      rows.push({ host: 'www', value: platformIp });
+                    }
+
+                    return (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="border-b border-border">
+                              <th className="py-1 pr-4 font-medium">Type</th>
+                              <th className="py-1 pr-4 font-medium">Host</th>
+                              <th className="py-1 pr-4 font-medium">Value</th>
+                              <th className="py-1 font-medium">TTL</th>
                             </tr>
-                          ));
-                        })()}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-                {!domainsConfig?.platformIp && (
-                  <p>
-                    Add an <strong>A record</strong> pointing to this server's IP address.
-                  </p>
-                )}
-                {domain.domain.startsWith('www.') && (
+                          </thead>
+                          <tbody>
+                            {rows.map((row, i) => (
+                              <tr key={row.host} className={i > 0 ? 'text-muted-foreground' : ''}>
+                                <td className="py-1 pr-4">
+                                  <code className="bg-background px-1 rounded">A</code>
+                                </td>
+                                <td className="py-1 pr-4">
+                                  <code className="bg-background px-1 rounded">{row.host}</code>
+                                </td>
+                                <td className="py-1 pr-4">
+                                  <code className="bg-background px-1 rounded">{row.value}</code>
+                                </td>
+                                <td className="py-1">Automatic</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  }
+
+                  // No IP configured (self-hosted without known IP)
+                  return (
+                    <p>
+                      Add an <strong>A record</strong> pointing to this server's IP address.
+                    </p>
+                  );
+                })()}
+                {domain.domain.startsWith('www.') && !domainsConfig?.cnameTarget && (
                   <p className="text-muted-foreground">
                     The <code className="bg-background px-1 rounded">@</code> record is recommended so{' '}
                     <strong>{domain.domain.replace('www.', '')}</strong> also resolves to your site.
                   </p>
                 )}
-                {!domain.domain.startsWith('www.') && domain.domain.split('.').length === 2 && (
-                  <p className="text-muted-foreground">
-                    The <code className="bg-background px-1 rounded">www</code> record is recommended so{' '}
-                    <strong>www.{domain.domain}</strong> also resolves to your site.
-                  </p>
-                )}
+                {!domain.domain.startsWith('www.') &&
+                  domain.domain.split('.').length === 2 &&
+                  !domainsConfig?.cnameTarget && (
+                    <p className="text-muted-foreground">
+                      The <code className="bg-background px-1 rounded">www</code> record is recommended so{' '}
+                      <strong>www.{domain.domain}</strong> also resolves to your site.
+                    </p>
+                  )}
                 {isPlatformMode && (
                   <p className="text-muted-foreground">
                     SSL certificate will be provisioned automatically after DNS verification.
