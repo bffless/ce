@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.79](https://github.com/bffless/ce/compare/v0.0.78...v0.0.79) (2026-03-05)
+
+
+### Features
+
+* adds cname instructions ([e17bac4](https://github.com/bffless/ce/commit/e17bac46320829145aaca42d270702b7f46e8e9a))
+
 ## [0.0.78](https://github.com/bffless/ce/compare/v0.0.77...v0.0.78) (2026-03-04)
 
 
