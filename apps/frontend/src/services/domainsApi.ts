@@ -474,7 +474,7 @@ export const domainsApi = api.injectEndpoints({
 
     // Provision SSL for externally managed domains (platform mode)
     provisionPlatformSsl: builder.mutation<
-      { success: boolean; message?: string; error?: string },
+      { success: boolean; message?: string; error?: string; missingRecords?: string[] },
       string
     >({
       query: (id) => ({

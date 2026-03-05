@@ -208,14 +208,23 @@ export class DomainsController {
       requirements:
         domain.domainType === 'custom' || domain.domainType === 'redirect'
           ? {
-              recordType: 'A',
+              recordType: process.env.PLATFORM_MODE === 'true' ? 'CNAME' : 'A',
               host: '@',
-              instructions: [
-                `1. Go to your DNS provider for ${domain.domain}`,
-                `2. Add an A record pointing to this server's IP address`,
-                `3. Wait 1-5 minutes for DNS propagation`,
-                `4. Click "Verify DNS"`,
-              ],
+              instructions:
+                process.env.PLATFORM_MODE === 'true'
+                  ? [
+                      `1. Go to your DNS provider for ${domain.domain}`,
+                      `2. Add a CNAME record pointing to cname.${process.env.PLATFORM_BASE_DOMAIN || 'bffless.app'}`,
+                      `3. For apex domains, use an ALIAS/ANAME record instead`,
+                      `4. Wait 1-5 minutes for DNS propagation`,
+                      `5. Click "Verify DNS"`,
+                    ]
+                  : [
+                      `1. Go to your DNS provider for ${domain.domain}`,
+                      `2. Add an A record pointing to this server's IP address`,
+                      `3. Wait 1-5 minutes for DNS propagation`,
+                      `4. Click "Verify DNS"`,
+                    ],
             }
           : null,
     };

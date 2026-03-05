@@ -7,7 +7,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { eq, and, SQL } from 'drizzle-orm';
+import { eq, and, SQL, asc } from 'drizzle-orm';
 import { promises as dns } from 'dns';
 import { join } from 'path';
 import { db } from '../db/client';
@@ -770,7 +770,9 @@ export class DomainsService {
       conditions.push(eq(domainMappings.isActive, filters.isActive));
     }
 
-    const results = await query.where(and(...conditions));
+    const results = await query
+      .where(and(...conditions))
+      .orderBy(asc(domainMappings.domain));
 
     // In platform mode, SSL is managed externally for subdomains — report as enabled
     if (this.isPlatformMode()) {
@@ -1398,6 +1400,7 @@ export class DomainsService {
     success: boolean;
     message?: string;
     error?: string;
+    missingRecords?: string[];
   }> {
     if (!this.isPlatformMode()) {
       return {
@@ -1424,6 +1427,37 @@ export class DomainsService {
 
     // Get the alternate domain (www/non-www)
     const alternateDomain = getAlternateDomain(domain.domain);
+
+    // Verify ACME challenge CNAME records exist before provisioning
+    const domainsToValidate = [domain.domain];
+    if (alternateDomain) {
+      domainsToValidate.push(alternateDomain);
+    }
+
+    const missingRecords: string[] = [];
+    for (const d of domainsToValidate) {
+      const acmeHost = `_acme-challenge.${d}`;
+      try {
+        await dns.resolveCname(acmeHost);
+        this.logger.log(`ACME challenge CNAME verified for ${acmeHost}`);
+      } catch (err) {
+        const errCode = (err as NodeJS.ErrnoException).code;
+        if (errCode === 'ENODATA' || errCode === 'ENOTFOUND') {
+          missingRecords.push(acmeHost);
+        } else {
+          this.logger.warn(`DNS lookup error for ${acmeHost}: ${err}`);
+          // Don't block on transient DNS errors, let GCP handle validation
+        }
+      }
+    }
+
+    if (missingRecords.length > 0) {
+      return {
+        success: false,
+        error: `Missing ACME challenge CNAME records. Please add the CNAME records shown above before provisioning SSL.`,
+        missingRecords,
+      };
+    }
 
     // Notify Control Plane to provision SSL
     const result = await this.notifyControlPlaneProvisionSsl(domain.domain, {
@@ -1715,11 +1749,19 @@ export class DomainsService {
       } catch (dnsError) {
         const errCode = (dnsError as NodeJS.ErrnoException).code;
         if (errCode === 'ENODATA' || errCode === 'ENOTFOUND') {
+          // In platform mode, recommend CNAME/ALIAS records; in self-hosted mode, recommend A records
+          const isApex = !domain.domain.startsWith('www.');
+          const errorMessage = this.isPlatformMode()
+            ? isApex
+              ? `No DNS record found for ${domain.domain}. Add an ALIAS record pointing to cname.${process.env.PLATFORM_BASE_DOMAIN || 'bffless.app'}.`
+              : `No DNS record found for ${domain.domain}. Add a CNAME record pointing to cname.${process.env.PLATFORM_BASE_DOMAIN || 'bffless.app'}.`
+            : `No A record found for ${domain.domain}. Add an A record pointing to this server's IP address.`;
+
           return {
             success: false,
             verified: false,
             domain: domain.domain,
-            error: `No A record found for ${domain.domain}. Add an A record pointing to this server's IP address.`,
+            error: errorMessage,
             alternateDomain,
           };
         }
@@ -1792,7 +1834,7 @@ export class DomainsService {
             verified: false,
             domain: domain.domain,
             resolvedIps,
-            error: `Domain resolves to ${resolvedIps.join(', ')} but should point to ${expectedIp}. Update your A record.`,
+            error: `Domain resolves to ${resolvedIps.join(', ')} but should point to ${expectedIp}. Update your DNS record (CNAME to cname.${process.env.PLATFORM_BASE_DOMAIN || 'bffless.app'} or A record to ${expectedIp}).`,
             alternateDomain,
           };
         }

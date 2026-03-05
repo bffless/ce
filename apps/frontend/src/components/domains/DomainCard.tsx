@@ -205,17 +205,23 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
         setSslDeferred(false);
         setDnsValidationRecords(undefined);
       } else {
+        // Include missing records in the error message if provided
+        let errorDesc = result.error || 'Failed to provision SSL certificate';
+        if (result.missingRecords && result.missingRecords.length > 0) {
+          errorDesc += ` Missing: ${result.missingRecords.join(', ')}`;
+        }
         toast({
           title: 'SSL Provisioning Failed',
-          description: result.error || 'Failed to provision SSL certificate',
+          description: errorDesc,
           variant: 'destructive',
         });
       }
     } catch (err: unknown) {
-      const errorMessage =
-        (err as { data?: { message?: string; error?: string } })?.data?.message ||
-        (err as { data?: { message?: string; error?: string } })?.data?.error ||
-        'Failed to provision SSL';
+      const errorData = (err as { data?: { message?: string; error?: string; missingRecords?: string[] } })?.data;
+      let errorMessage = errorData?.message || errorData?.error || 'Failed to provision SSL';
+      if (errorData?.missingRecords && errorData.missingRecords.length > 0) {
+        errorMessage += ` Missing: ${errorData.missingRecords.join(', ')}`;
+      }
       toast({
         title: 'Error',
         description: errorMessage,
@@ -401,9 +407,14 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
                   </thead>
                   <tbody>
                     {dnsValidationRecords.map((record, idx) => {
-                      // Strip domain suffix for providers like Namecheap that append it automatically
-                      const hostWithoutDomain = record.name.endsWith(`.${record.domain}`)
-                        ? record.name.slice(0, -(record.domain.length + 1))
+                      // Strip apex domain suffix for providers like Namecheap that append it automatically
+                      // For www subdomains, we need to keep the "www" part (e.g., _acme-challenge.www)
+                      // Extract apex domain by removing www. prefix if present
+                      const apexDomain = record.domain.startsWith('www.')
+                        ? record.domain.slice(4)
+                        : record.domain;
+                      const hostWithoutDomain = record.name.endsWith(`.${apexDomain}`)
+                        ? record.name.slice(0, -(apexDomain.length + 1))
                         : record.name;
                       return (
                         <tr key={record.name}>
