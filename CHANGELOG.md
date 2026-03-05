@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.81](https://github.com/bffless/ce/compare/v0.0.80...v0.0.81) (2026-03-05)
+
+
+### Bug Fixes
+
+* redirect domain ssl bug on platform ([6597d6e](https://github.com/bffless/ce/commit/6597d6e07c717eabca79467bc3d48a8ae1112d63))
+
 ## [0.0.80](https://github.com/bffless/ce/compare/v0.0.79...v0.0.80) (2026-03-05)
 
 
