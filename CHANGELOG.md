@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.84](https://github.com/bffless/ce/compare/v0.0.83...v0.0.84) (2026-03-06)
+
+
+### Bug Fixes
+
+* allow private visibility on custom domains in backend ([fc7a2eb](https://github.com/bffless/ce/commit/fc7a2eb6972a18f98a8a41fdbb7ad756bad460c8))
+
 ## [0.0.83](https://github.com/bffless/ce/compare/v0.0.82...v0.0.83) (2026-03-06)
 
 
