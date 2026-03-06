@@ -1,10 +1,11 @@
-import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
+import { Injectable, CanActivate, ExecutionContext, Logger } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import * as bcrypt from 'bcrypt';
 import { getSession } from 'supertokens-node/recipe/session';
 import { SessionContainer } from 'supertokens-node/recipe/session';
 import { db } from '../db/client';
 import { apiKeys, users } from '../db/schema';
+import { CustomDomainAuthService } from './custom-domain-auth.service';
 
 /**
  * Optional authentication guard
@@ -17,6 +18,34 @@ import { apiKeys, users } from '../db/schema';
  */
 @Injectable()
 export class OptionalAuthGuard implements CanActivate {
+  private readonly logger = new Logger(OptionalAuthGuard.name);
+  private customDomainAuthService: CustomDomainAuthService | null = null;
+
+  constructor() {
+    // Lazy-load CustomDomainAuthService to avoid circular dependency issues
+    // The service will be created on first use
+  }
+
+  private getCustomDomainAuthService(): CustomDomainAuthService | null {
+    if (!this.customDomainAuthService) {
+      try {
+        // Import dynamically to avoid circular dependency
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { CustomDomainAuthService } = require('./custom-domain-auth.service');
+        const { ConfigService } = require('@nestjs/config');
+        // Create a minimal ConfigService for JWT_SECRET access
+        const configService = {
+          get: (key: string) => process.env[key],
+        } as any;
+        this.customDomainAuthService = new CustomDomainAuthService(configService);
+      } catch (error) {
+        this.logger.debug('CustomDomainAuthService not available');
+        return null;
+      }
+    }
+    return this.customDomainAuthService;
+  }
+
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
     const response = context.switchToHttp().getResponse();
@@ -31,8 +60,14 @@ export class OptionalAuthGuard implements CanActivate {
     }
 
     // Try session authentication
-    const authenticated = await this.trySessionAuth(request, response);
-    if (authenticated) {
+    const sessionAuthenticated = await this.trySessionAuth(request, response);
+    if (sessionAuthenticated) {
+      return true; // Continue with authenticated user
+    }
+
+    // Try custom domain cookie authentication
+    const customDomainAuthenticated = await this.tryCustomDomainAuth(request);
+    if (customDomainAuthenticated) {
       return true; // Continue with authenticated user
     }
 
@@ -115,6 +150,70 @@ export class OptionalAuthGuard implements CanActivate {
       return true;
     } catch (error) {
       // Silently fail - this is optional auth
+      return false;
+    }
+  }
+
+  /**
+   * Try to authenticate via custom domain cookies (bffless_access).
+   * This is used for custom domains that have their own JWT-based auth
+   * instead of SuperTokens session cookies.
+   */
+  private async tryCustomDomainAuth(request: any): Promise<boolean> {
+    try {
+      const accessToken = request.cookies?.[CustomDomainAuthService.ACCESS_COOKIE_NAME];
+      if (!accessToken) {
+        return false;
+      }
+
+      const authService = this.getCustomDomainAuthService();
+      if (!authService) {
+        return false;
+      }
+
+      const payload = authService.validateAccessToken(accessToken);
+      if (!payload) {
+        return false;
+      }
+
+      // Verify the domain matches the request
+      const host = request.headers['x-forwarded-host'] || request.headers.host;
+      const requestDomain = host?.split(':')[0]; // Remove port if present
+
+      if (payload.domain !== requestDomain) {
+        this.logger.debug(
+          `Custom domain auth: domain mismatch (token: ${payload.domain}, request: ${requestDomain})`,
+        );
+        return false;
+      }
+
+      // Verify user still exists in the database
+      const [user] = await db.select().from(users).where(eq(users.id, payload.sub)).limit(1);
+
+      if (!user) {
+        this.logger.debug(`Custom domain auth: user ${payload.sub} not found`);
+        return false;
+      }
+
+      // Check if user is disabled
+      if (user.disabled) {
+        this.logger.debug(`Custom domain auth: user ${payload.sub} is disabled`);
+        return false;
+      }
+
+      // Attach user info to request for use in controllers
+      request.user = {
+        id: payload.sub,
+        email: payload.email,
+        role: payload.role,
+        allowedRepositories: undefined, // Custom domain users don't have repo restrictions
+      };
+
+      this.logger.debug(`Custom domain auth: authenticated user ${payload.sub} on domain ${payload.domain}`);
+      return true;
+    } catch (error) {
+      // Silently fail - this is optional auth
+      this.logger.debug('Custom domain auth failed', error);
       return false;
     }
   }

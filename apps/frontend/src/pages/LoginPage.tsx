@@ -48,6 +48,11 @@ export function LoginPage() {
   const redirectTo = validateRedirectUrl(searchParams.get('redirect'));
   const shouldTryRefresh = searchParams.get('tryRefresh') === 'true';
 
+  // Custom domain relay params (for authenticating on custom domains)
+  const customDomainRelay = searchParams.get('customDomainRelay') === 'true';
+  const targetDomain = searchParams.get('targetDomain');
+  const [isRelaying, setIsRelaying] = useState(false);
+
   // Attempt session refresh when redirected from a private deployment
   // This handles the case where access token expired but refresh token is still valid
   useEffect(() => {
@@ -121,6 +126,45 @@ export function LoginPage() {
         description: 'You have successfully logged in.',
       });
 
+      // Handle custom domain relay flow
+      if (customDomainRelay && targetDomain) {
+        setIsRelaying(true);
+        try {
+          const response = await fetch('/api/auth/domain-token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              targetDomain,
+              redirectPath: searchParams.get('redirect'),
+            }),
+          });
+
+          if (response.ok) {
+            const { redirectUrl } = await response.json();
+            // Redirect to custom domain callback
+            window.location.href = redirectUrl;
+            return;
+          } else {
+            // Domain token request failed, fall back to normal redirect
+            console.error('Failed to get domain token:', await response.text());
+            toast({
+              title: 'Warning',
+              description: 'Could not authenticate to custom domain. Redirecting to dashboard.',
+              variant: 'destructive',
+            });
+          }
+        } catch (error) {
+          console.error('Domain relay error:', error);
+          toast({
+            title: 'Warning',
+            description: 'Could not authenticate to custom domain. Redirecting to dashboard.',
+            variant: 'destructive',
+          });
+        }
+        setIsRelaying(false);
+      }
+
       navigate(redirectTo);
     } catch (error: any) {
       const errorMessage = error?.data?.message || 'Invalid email or password. Please try again.';
@@ -136,11 +180,11 @@ export function LoginPage() {
     }
   };
 
-  if (isLoadingSession || isLoadingSetup || isRefreshing) {
+  if (isLoadingSession || isLoadingSetup || isRefreshing || isRelaying) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-muted-foreground">
-          {isRefreshing ? 'Restoring session...' : 'Loading...'}
+          {isRefreshing ? 'Restoring session...' : isRelaying ? 'Redirecting to custom domain...' : 'Loading...'}
         </div>
       </div>
     );

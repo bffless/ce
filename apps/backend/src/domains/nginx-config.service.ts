@@ -393,6 +393,39 @@ export class NginxConfigService implements OnModuleInit {
         add_header Content-Type text/plain;
     }`;
 
+    // Custom domain authentication endpoints (namespaced to avoid collision with user routes)
+    const authLocations = `
+    # Custom domain authentication endpoints
+    location /_bffless/auth/callback {
+        proxy_pass http://${backendHost}:${backendPort}/_bffless/auth/callback;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+    }
+
+    location /_bffless/auth/refresh {
+        proxy_pass http://${backendHost}:${backendPort}/_bffless/auth/refresh;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+    }
+
+    location /_bffless/auth/logout {
+        proxy_pass http://${backendHost}:${backendPort}/_bffless/auth/logout;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+    }`;
+
     const errorLocations = `
     # Static error pages
     location = /404.html {
@@ -463,6 +496,7 @@ ${securityHeaders}
 ${scannerBlock}
 ${errorPages}
 ${healthCheck}
+${authLocations}
 ${pathRedirectLocations}${proxyLocations}
 ${mainLocation}
 ${spaFallback}

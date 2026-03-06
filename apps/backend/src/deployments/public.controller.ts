@@ -270,7 +270,7 @@ export class PublicController {
             }
             const fullUrl = this.buildFullRequestUrl(req);
             // Try session restore first if refresh token exists, otherwise go to login
-            const authUrl = this.getAuthRedirectUrl(req, fullUrl);
+            const authUrl = await this.getAuthRedirectUrl(req, fullUrl);
             return res.redirect(302, authUrl);
           }
           return this.isImageRequest(req) ? this.serve404Image(res) : this.serve404Page(res);
@@ -525,7 +525,7 @@ export class PublicController {
             }
             const fullUrl = this.buildFullRequestUrl(req);
             // Try session restore first if refresh token exists, otherwise go to login
-            const authUrl = this.getAuthRedirectUrl(req, fullUrl);
+            const authUrl = await this.getAuthRedirectUrl(req, fullUrl);
             return res.redirect(302, authUrl);
           }
           return this.isImageRequest(req) ? this.serve404Image(res) : this.serve404Page(res);
@@ -1269,11 +1269,56 @@ export class PublicController {
   }
 
   /**
-   * Get the auth redirect URL for private deployments
-   * Always redirects to login with tryRefresh=true - the frontend handles session refresh
-   * (Server can't reliably check for refresh token cookie due to cookie path restrictions)
+   * Get the auth redirect URL for private deployments.
+   * For custom domains, redirects to the workspace admin domain with customDomainRelay=true
+   * so the frontend knows to request a domain token after login.
+   * For workspace domains, uses standard login redirect with tryRefresh=true.
    */
-  private getAuthRedirectUrl(req: Request, redirectUrl: string): string {
+  private async getAuthRedirectUrl(req: Request, redirectUrl: string): Promise<string> {
+    const host = (req.headers['x-forwarded-host'] || req.get('host')) as string;
+    const requestDomain = host?.split(':')[0]; // Remove port if present
+
+    // Check if this is a custom domain by looking it up in domain_mappings
+    const [mapping] = await db
+      .select()
+      .from(domainMappings)
+      .where(and(eq(domainMappings.domain, requestDomain), eq(domainMappings.isActive, true)))
+      .limit(1);
+
+    if (mapping?.domainType === 'custom') {
+      // Custom domain - redirect to workspace admin with customDomainRelay param
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+
+      // Get the original path from the request
+      const originalUri = req.headers['x-original-uri'] as string | undefined;
+      const originalPath = originalUri || req.originalUrl || '/';
+
+      // Build admin domain URL with custom domain relay params
+      const adminDomain = this.configService.get<string>('ADMIN_DOMAIN');
+      let loginHost: string;
+
+      if (adminDomain) {
+        loginHost = adminDomain;
+      } else {
+        // Extract workspace base and build admin domain
+        const primaryDomain = this.configService.get<string>('PRIMARY_DOMAIN') || 'localhost';
+        loginHost = `admin.${primaryDomain}`;
+      }
+
+      const params = new URLSearchParams({
+        customDomainRelay: 'true',
+        targetDomain: requestDomain,
+        redirect: originalPath,
+      });
+
+      this.logger.debug(
+        `Custom domain auth redirect: ${requestDomain} -> ${loginHost}/login with relay params`,
+      );
+
+      return `${protocol}://${loginHost}/login?${params.toString()}`;
+    }
+
+    // Standard workspace domain redirect
     return this.buildLoginUrl(req, redirectUrl);
   }
 

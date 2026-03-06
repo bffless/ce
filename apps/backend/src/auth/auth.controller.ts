@@ -20,8 +20,10 @@ import { SkipEmailVerification } from './decorators/skip-email-verification.deco
 import { SetupService } from '../setup/setup.service';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 import { OnboardingExecutorService } from '../onboarding-rules/onboarding-executor.service';
+import { DomainTokenService } from './domain-token.service';
+import { CreateDomainTokenDto } from './dto/create-domain-token.dto';
 import { db } from '../db/client';
-import { workspaceInvitations } from '../db/schema';
+import { workspaceInvitations, domainMappings } from '../db/schema';
 import { eq, and, isNull, gt } from 'drizzle-orm';
 import EmailPassword from 'supertokens-node/recipe/emailpassword';
 import EmailVerification from 'supertokens-node/recipe/emailverification';
@@ -63,6 +65,7 @@ export class AuthController {
     private readonly setupService: SetupService,
     private readonly featureFlagsService: FeatureFlagsService,
     private readonly onboardingExecutorService: OnboardingExecutorService,
+    private readonly domainTokenService: DomainTokenService,
   ) {}
 
   private getTenantId(): string {
@@ -862,5 +865,87 @@ export class AuthController {
       requireTosAcceptance: requireTosAcceptance as boolean,
       tosUrl: tosUrl as string,
     };
+  }
+
+  @Post('domain-token')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(SessionAuthGuard)
+  @SkipEmailVerification()
+  @ApiOperation({
+    summary: 'Create a domain relay token',
+    description:
+      'Creates a short-lived token for authenticating on a custom domain. The token can be exchanged for auth cookies on the custom domain callback endpoint.',
+  })
+  @ApiBody({
+    type: CreateDomainTokenDto,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Domain token created successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        token: { type: 'string', description: 'The domain relay token' },
+        redirectUrl: {
+          type: 'string',
+          description: 'Full URL to redirect to on the custom domain',
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Invalid target domain' })
+  @ApiResponse({ status: 401, description: 'Not authenticated' })
+  async createDomainToken(
+    @Body() body: CreateDomainTokenDto,
+    @Req() req: Request & { user?: { id: string; email: string; role: string } },
+  ): Promise<{ token: string; redirectUrl: string }> {
+    const { targetDomain, redirectPath } = body;
+
+    // Validate that the target domain is a registered custom domain
+    const [mapping] = await db
+      .select()
+      .from(domainMappings)
+      .where(
+        and(
+          eq(domainMappings.domain, targetDomain),
+          eq(domainMappings.domainType, 'custom'),
+          eq(domainMappings.isActive, true),
+        ),
+      )
+      .limit(1);
+
+    if (!mapping) {
+      throw new BadRequestException(
+        `Domain '${targetDomain}' is not a registered custom domain for this workspace`,
+      );
+    }
+
+    // Get user from request (already authenticated via SessionAuthGuard)
+    const user = req.user;
+    if (!user) {
+      throw new UnauthorizedException('User not found in request');
+    }
+
+    // Create the domain token
+    const token = this.domainTokenService.createDomainToken(
+      user.id,
+      user.email,
+      user.role,
+      targetDomain,
+      redirectPath,
+    );
+
+    // Build the callback URL
+    // Use HTTPS by default, but check x-forwarded-proto for the original protocol
+    const protocol = (req.headers['x-forwarded-proto'] as string) || 'https';
+    const callbackPath = '/_bffless/auth/callback';
+    const redirectParam = redirectPath ? `&redirect=${encodeURIComponent(redirectPath)}` : '';
+    const redirectUrl = `${protocol}://${targetDomain}${callbackPath}?token=${encodeURIComponent(token)}${redirectParam}`;
+
+    this.logger.log(
+      `Created domain token for user ${user.id} targeting ${targetDomain}`,
+    );
+
+    return { token, redirectUrl };
   }
 }

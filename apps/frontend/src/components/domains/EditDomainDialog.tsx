@@ -29,7 +29,7 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Globe, Lock, ArrowDown, AlertCircle, Shield } from 'lucide-react';
+import { Globe, Lock, ArrowDown, Shield } from 'lucide-react';
 import { RedirectsTab } from './RedirectsTab';
 import { SslTab } from './SslTab';
 import { TrafficTab } from './TrafficTab';
@@ -96,12 +96,7 @@ export function EditDomainDialog({ domain, open, onOpenChange }: EditDomainDialo
       setIsActive(domain.isActive);
       setIsSpa(domain.isSpa ?? false);
       // Convert isPublic to visibility state
-      // Custom domains (except primary) must always be public - cookies don't work cross-domain
-      // Primary domains can be private since they're on the same base domain
-      const forcePublic = domain.domainType === 'custom' && !domain.isPrimary;
-      if (forcePublic) {
-        setVisibility('public');
-      } else if (domain.isPublic === null || domain.isPublic === undefined) {
+      if (domain.isPublic === null || domain.isPublic === undefined) {
         setVisibility('inherit');
       } else if (domain.isPublic === true) {
         setVisibility('public');
@@ -205,9 +200,6 @@ export function EditDomainDialog({ domain, open, onOpenChange }: EditDomainDialo
 
   if (!domain) return null;
 
-  // Custom domains (except primary) must be public - cookies don't work cross-domain
-  // Primary domains and subdomains can be private since they share the same base domain
-  const isCustomNonPrimary = domain.domainType === 'custom' && !domain.isPrimary;
 
   // For redirect domains, hide most tabs as they only need general settings and SSL
   const isRedirectDomain = domain.domainType === 'redirect';
@@ -354,13 +346,12 @@ export function EditDomainDialog({ domain, open, onOpenChange }: EditDomainDialo
                   <Select
                     value={visibility}
                     onValueChange={(v) => setVisibility(v as 'inherit' | 'public' | 'private')}
-                    disabled={isCustomNonPrimary}
                   >
                     <SelectTrigger id="visibility">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="inherit" disabled={isCustomNonPrimary}>
+                      <SelectItem value="inherit">
                         <div className="flex items-center gap-2">
                           <ArrowDown className="h-3 w-3" />
                           <span>Inherit from {domain.alias ? 'alias' : 'project'}</span>
@@ -372,7 +363,7 @@ export function EditDomainDialog({ domain, open, onOpenChange }: EditDomainDialo
                           <span>Public</span>
                         </div>
                       </SelectItem>
-                      <SelectItem value="private" disabled={isCustomNonPrimary}>
+                      <SelectItem value="private">
                         <div className="flex items-center gap-2">
                           <Lock className="h-3 w-3" />
                           <span>Private</span>
@@ -380,13 +371,7 @@ export function EditDomainDialog({ domain, open, onOpenChange }: EditDomainDialo
                       </SelectItem>
                     </SelectContent>
                   </Select>
-                  {isCustomNonPrimary && (
-                    <p className="text-xs text-amber-600 flex items-center gap-1">
-                      <AlertCircle className="h-3 w-3" />
-                      Custom domains must be public (authentication cookies don't work cross-domain)
-                    </p>
-                  )}
-                  {!isCustomNonPrimary && visibilityInfo && visibility === 'inherit' && (
+                  {visibilityInfo && visibility === 'inherit' && (
                     <p className="text-xs text-muted-foreground">
                       Currently inherits "{visibilityInfo.effectiveVisibility}" from {visibilityInfo.source}
                     </p>
@@ -395,7 +380,7 @@ export function EditDomainDialog({ domain, open, onOpenChange }: EditDomainDialo
               )}
 
               {/* Access Control Overrides - Only show when private and not redirect domain */}
-              {!isRedirectDomain && visibility === 'private' && !isCustomNonPrimary && (
+              {!isRedirectDomain && visibility === 'private' && (
                 <div className="space-y-4 p-3 rounded-md bg-muted/50 border">
                   <div className="flex items-center gap-2 text-sm font-medium">
                     <Shield className="h-4 w-4" />

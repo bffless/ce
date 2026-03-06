@@ -1,7 +1,10 @@
 import { Module, NestModule, MiddlewareConsumer, DynamicModule, forwardRef } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { AuthController } from './auth.controller';
+import { CustomDomainAuthController } from './custom-domain-auth.controller';
 import { AuthService } from './auth.service';
+import { DomainTokenService } from './domain-token.service';
+import { CustomDomainAuthService } from './custom-domain-auth.service';
 import { AuthMiddleware } from './auth.middleware';
 import { SessionAuthGuard } from './session-auth.guard';
 import { ApiKeyGuard } from './api-key.guard';
@@ -22,9 +25,11 @@ export class AuthModule implements NestModule {
       module: AuthModule,
       global: true,
       imports: [forwardRef(() => SetupModule), forwardRef(() => OnboardingRulesModule)],
-      controllers: [AuthController],
+      controllers: [AuthController, CustomDomainAuthController],
       providers: [
         AuthService,
+        DomainTokenService,
+        CustomDomainAuthService,
         SessionAuthGuard,
         ApiKeyGuard,
         OptionalAuthGuard,
@@ -37,6 +42,8 @@ export class AuthModule implements NestModule {
       ],
       exports: [
         AuthService,
+        DomainTokenService,
+        CustomDomainAuthService,
         SessionAuthGuard,
         ApiKeyGuard,
         OptionalAuthGuard,

@@ -102,14 +102,14 @@ export function DomainForm({
     return getAlternateDomain(customDomain);
   }, [domainType, customDomain]);
 
-  // Force custom/redirect domains to be public (cookies don't work cross-domain)
-  // and disable SSL (must be requested after DNS verification)
+  // Disable SSL for custom/redirect domains (must be requested after DNS verification)
+  // Force redirect domains to public
   useEffect(() => {
     if (domainType === 'custom' || domainType === 'redirect') {
-      setVisibility('public');
       setSslEnabled(false);
     }
     if (domainType === 'redirect') {
+      setVisibility('public');
       setIsSpa(false);
     }
   }, [domainType]);
@@ -384,7 +384,6 @@ export function DomainForm({
           <Select
             value={visibility}
             onValueChange={(v) => setVisibility(v as 'inherit' | 'public' | 'private')}
-            disabled={domainType === 'custom'}
           >
             <SelectTrigger id="visibility">
               <SelectValue />
@@ -402,7 +401,7 @@ export function DomainForm({
                   <span>Public</span>
                 </div>
               </SelectItem>
-              <SelectItem value="private" disabled={domainType === 'custom'}>
+              <SelectItem value="private">
                 <div className="flex items-center gap-2">
                   <Lock className="h-3 w-3" />
                   <span>Private</span>
@@ -410,13 +409,7 @@ export function DomainForm({
               </SelectItem>
             </SelectContent>
           </Select>
-          {domainType === 'custom' && (
-            <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
-              <AlertCircle className="h-3 w-3" />
-              Custom domains must be public (authentication cookies don't work cross-domain)
-            </p>
-          )}
-          {domainType === 'subdomain' && (
+          {(domainType === 'subdomain' || domainType === 'custom') && (
             <p className="text-xs text-muted-foreground mt-1">
               Choose visibility or inherit from the deployment alias or project settings
             </p>
