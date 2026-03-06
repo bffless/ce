@@ -202,7 +202,7 @@ export class CustomDomainAuthService {
       maxAge: this.ACCESS_TOKEN_EXPIRY_SECONDS * 1000,
       httpOnly: true,
       secure,
-      sameSite: 'strict',
+      sameSite: 'lax',
       path: '/',
     });
 
@@ -211,7 +211,7 @@ export class CustomDomainAuthService {
       maxAge: this.REFRESH_TOKEN_EXPIRY_SECONDS * 1000,
       httpOnly: true,
       secure,
-      sameSite: 'strict',
+      sameSite: 'lax',
       path: '/_bffless/auth', // Only sent to auth endpoints
     });
 
@@ -228,14 +228,14 @@ export class CustomDomainAuthService {
     res.clearCookie(CustomDomainAuthService.ACCESS_COOKIE_NAME, {
       httpOnly: true,
       secure,
-      sameSite: 'strict',
+      sameSite: 'lax',
       path: '/',
     });
 
     res.clearCookie(CustomDomainAuthService.REFRESH_COOKIE_NAME, {
       httpOnly: true,
       secure,
-      sameSite: 'strict',
+      sameSite: 'lax',
       path: '/_bffless/auth',
     });
 

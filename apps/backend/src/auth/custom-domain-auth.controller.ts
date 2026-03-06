@@ -193,7 +193,7 @@ export class CustomDomainAuthController {
       maxAge: this.customDomainAuthService.getAccessTokenExpiry() * 1000,
       httpOnly: true,
       secure: true,
-      sameSite: 'strict',
+      sameSite: 'lax',
       path: '/',
     });
 
