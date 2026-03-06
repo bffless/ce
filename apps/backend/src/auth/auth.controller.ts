@@ -936,8 +936,9 @@ export class AuthController {
     );
 
     // Build the callback URL
-    // Use HTTPS by default, but check x-forwarded-proto for the original protocol
-    const protocol = (req.headers['x-forwarded-proto'] as string) || 'https';
+    // Always use HTTPS for custom domain callbacks in production
+    // Custom domains should always be accessed via HTTPS
+    const protocol = 'https';
     const callbackPath = '/_bffless/auth/callback';
     const redirectParam = redirectPath ? `&redirect=${encodeURIComponent(redirectPath)}` : '';
     const redirectUrl = `${protocol}://${targetDomain}${callbackPath}?token=${encodeURIComponent(token)}${redirectParam}`;

@@ -107,9 +107,9 @@ export class CustomDomainAuthController {
       payload.targetDomain,
     );
 
-    // Determine if we should use secure cookies
-    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-    const secure = protocol === 'https';
+    // Always use secure cookies for custom domains (they should always be HTTPS)
+    // The x-forwarded-proto may be 'http' due to internal proxy, but client is on HTTPS
+    const secure = true;
 
     // Set auth cookies
     this.customDomainAuthService.setAuthCookies(res, accessToken, refreshToken, secure);
@@ -147,9 +147,8 @@ export class CustomDomainAuthController {
     const payload = this.customDomainAuthService.validateRefreshToken(refreshToken);
     if (!payload) {
       // Clear invalid cookies
-      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-      const secure = protocol === 'https';
-      this.customDomainAuthService.clearAuthCookies(res, secure);
+      // Always use secure cookies for custom domains
+      this.customDomainAuthService.clearAuthCookies(res, true);
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
 
@@ -168,18 +167,16 @@ export class CustomDomainAuthController {
     const user = await this.authService.getUserById(payload.sub);
     if (!user) {
       this.logger.warn(`User ${payload.sub} not found during refresh`);
-      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-      const secure = protocol === 'https';
-      this.customDomainAuthService.clearAuthCookies(res, secure);
+      // Always use secure cookies for custom domains
+      this.customDomainAuthService.clearAuthCookies(res, true);
       throw new UnauthorizedException('User not found');
     }
 
     // Check if user is disabled
     if (user.disabled) {
       this.logger.warn(`User ${payload.sub} is disabled during refresh`);
-      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-      const secure = protocol === 'https';
-      this.customDomainAuthService.clearAuthCookies(res, secure);
+      // Always use secure cookies for custom domains
+      this.customDomainAuthService.clearAuthCookies(res, true);
       throw new UnauthorizedException('User account is disabled');
     }
 
@@ -191,14 +188,11 @@ export class CustomDomainAuthController {
       payload.domain,
     );
 
-    // Set the new access cookie
-    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-    const secure = protocol === 'https';
-
+    // Set the new access cookie (always secure for custom domains)
     res.cookie(CustomDomainAuthService.ACCESS_COOKIE_NAME, accessToken, {
       maxAge: this.customDomainAuthService.getAccessTokenExpiry() * 1000,
       httpOnly: true,
-      secure,
+      secure: true,
       sameSite: 'strict',
       path: '/',
     });
@@ -219,10 +213,8 @@ export class CustomDomainAuthController {
   })
   @ApiResponse({ status: 200, description: 'Logged out successfully' })
   async logout(@Req() req: Request, @Res() res: Response): Promise<void> {
-    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-    const secure = protocol === 'https';
-
-    this.customDomainAuthService.clearAuthCookies(res, secure);
+    // Always use secure cookies for custom domains
+    this.customDomainAuthService.clearAuthCookies(res, true);
 
     this.logger.debug('Cleared auth cookies for custom domain logout');
 

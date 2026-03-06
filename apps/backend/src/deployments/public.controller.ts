@@ -1287,7 +1287,8 @@ export class PublicController {
 
     if (mapping?.domainType === 'custom') {
       // Custom domain - redirect to workspace admin with customDomainRelay param
-      const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+      // Always use HTTPS for login redirects in production
+      const protocol = 'https';
 
       // Get the original path from the request
       const originalUri = req.headers['x-original-uri'] as string | undefined;
