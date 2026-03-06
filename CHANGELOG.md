@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.85](https://github.com/bffless/ce/compare/v0.0.84...v0.0.85) (2026-03-06)
+
+
+### Bug Fixes
+
+* always use HTTPS for custom domain auth redirects and cookies ([26ca8be](https://github.com/bffless/ce/commit/26ca8be2eda1bbe4e1368cac6600c62b79de33a2))
+
 ## [0.0.84](https://github.com/bffless/ce/compare/v0.0.83...v0.0.84) (2026-03-06)
 
 
