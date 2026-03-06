@@ -596,14 +596,12 @@ export class DomainsService {
       project = await this.projectsService.getProjectById(createDomainDto.projectId);
     }
 
-    // Force custom/redirect domains to be public since authentication cookies don't work cross-domain
-    // Exception: Primary domains can be private since they're on the same base domain
-    // Subdomains can inherit or override visibility since they share the same domain
+    // Force redirect domains to be public (they don't serve content, just redirect)
+    // Custom domains and subdomains can have any visibility setting
     const isPublic =
-      (createDomainDto.domainType === 'custom' || createDomainDto.domainType === 'redirect') &&
-      !createDomainDto.isPrimary
-        ? true // Custom/redirect non-primary domains must be public
-        : createDomainDto.isPublic; // Primary domains and subdomains can use provided value or inherit (null)
+      createDomainDto.domainType === 'redirect'
+        ? true // Redirect domains must be public
+        : createDomainDto.isPublic; // Custom domains and subdomains can use provided value or inherit (null)
 
     // For custom/redirect domains, SSL must be requested separately after DNS verification.
     // Force sslEnabled=false on creation to prevent nginx config from referencing non-existent certs.
@@ -819,17 +817,12 @@ export class DomainsService {
       ? await this.projectsService.getProjectById(existing.projectId)
       : null;
 
-    // Force custom domains to remain public (cannot be set to private)
-    // Authentication cookies don't work cross-domain
-    // Exception: Primary domains can be private since they're on the same base domain
+    // Force redirect domains to remain public (they don't serve content, just redirect)
+    // Custom domains and subdomains can have any visibility setting
     let isPublicValue = updateDomainDto.isPublic;
-    if (
-      existing.domainType === 'custom' &&
-      !existing.isPrimary &&
-      updateDomainDto.isPublic === false
-    ) {
+    if (existing.domainType === 'redirect' && updateDomainDto.isPublic === false) {
       this.logger.warn(
-        `Ignoring attempt to set custom domain ${existing.domain} to private - custom domains must be public`,
+        `Ignoring attempt to set redirect domain ${existing.domain} to private - redirect domains must be public`,
       );
       isPublicValue = true; // Force it to remain public
     }
