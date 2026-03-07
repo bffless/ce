@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.88](https://github.com/bffless/ce/compare/v0.0.87...v0.0.88) (2026-03-07)
+
+
+### Features
+
+* add session endpoint to nginx custom domain template ([134eb87](https://github.com/bffless/ce/commit/134eb870308a0bea57cab3d456745c3a89991ab6))
+
 ## [0.0.87](https://github.com/bffless/ce/compare/v0.0.86...v0.0.87) (2026-03-07)
 
 
