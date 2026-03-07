@@ -1,7 +1,4 @@
-import { useEffect } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
-import { useAppDispatch } from '@/store/hooks';
-import { setCurrentRepo } from '@/store/slices/repoSlice';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -13,6 +10,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
+import { ArrowLeft } from 'lucide-react';
 import {
   useGetProxyRuleQuery,
   useGetRuleSetQuery,
@@ -27,9 +25,10 @@ import { routes } from '@/utils/routes';
 
 /**
  * RuleEditorPage - Full page for creating or editing a proxy rule.
+ * Rendered inside RepositoryLayout via Outlet.
  * Routes:
- *   - /repo/:owner/:repo/tab/proxy-rules/:ruleSetId/new (create)
- *   - /repo/:owner/:repo/tab/proxy-rules/:ruleSetId/:ruleId (edit)
+ *   - /repo/:owner/:repo/proxy-rules/:ruleSetId/new (create)
+ *   - /repo/:owner/:repo/proxy-rules/:ruleSetId/:ruleId (edit)
  */
 export function RuleEditorPage() {
   const { owner, repo, ruleSetId, ruleId } = useParams<{
@@ -40,20 +39,12 @@ export function RuleEditorPage() {
   }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const dispatch = useAppDispatch();
   const { toast } = useToast();
   const { canEdit } = useProjectRole(owner!, repo!);
 
   // Determine mode: create or edit
   const isCreateMode = location.pathname.endsWith('/new');
   const isEditMode = !isCreateMode && !!ruleId;
-
-  // Update Redux store when URL params change
-  useEffect(() => {
-    if (owner && repo) {
-      dispatch(setCurrentRepo({ owner, repo }));
-    }
-  }, [owner, repo, dispatch]);
 
   // Fetch rule set to get the name for breadcrumb
   const { data: ruleSet, isLoading: isLoadingRuleSet } = useGetRuleSetQuery(ruleSetId!, {
@@ -110,23 +101,19 @@ export function RuleEditorPage() {
   // Check permissions
   if (!canEdit) {
     return (
-      <div className="bg-background">
-        <div className="p-4 md:p-8 max-w-5xl mx-auto">
-          <Card>
-            <CardContent className="p-8 text-center">
-              <p className="text-destructive">You do not have permission to edit proxy rules.</p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-4"
-                onClick={() => navigate(routes.ruleSet(owner!, repo!, ruleSetId!))}
-              >
-                Back to Rule Set
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      <Card>
+        <CardContent className="p-8 text-center">
+          <p className="text-destructive">You do not have permission to edit proxy rules.</p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-4"
+            onClick={() => navigate(routes.ruleSet(owner!, repo!, ruleSetId!))}
+          >
+            Back to Rule Set
+          </Button>
+        </CardContent>
+      </Card>
     );
   }
 
@@ -134,13 +121,12 @@ export function RuleEditorPage() {
   const isLoading = isLoadingRuleSet || (isEditMode && isLoadingRule);
   if (isLoading) {
     return (
-      <div className="bg-background">
-        <div className="p-4 md:p-8 max-w-5xl mx-auto">
-          <Skeleton className="h-6 w-96 mb-6" />
-          <div className="space-y-6">
-            <Skeleton className="h-64 w-full" />
-            <Skeleton className="h-48 w-full" />
-          </div>
+      <div className="space-y-4">
+        <Skeleton className="h-6 w-64" />
+        <Skeleton className="h-8 w-32" />
+        <div className="space-y-6">
+          <Skeleton className="h-64 w-full" />
+          <Skeleton className="h-48 w-full" />
         </div>
       </div>
     );
@@ -149,100 +135,68 @@ export function RuleEditorPage() {
   // Error state for edit mode
   if (isEditMode && (ruleError || !rule)) {
     return (
-      <div className="bg-background">
-        <div className="p-4 md:p-8 max-w-5xl mx-auto">
-          <BreadcrumbNav
-            owner={owner!}
-            repo={repo!}
-            ruleSetId={ruleSetId!}
-            ruleSetName={ruleSet?.name || 'Rule Set'}
-            pageName="Error"
-          />
-          <Card>
-            <CardContent className="p-8 text-center">
-              <p className="text-destructive">Failed to load rule</p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-4"
-                onClick={() => navigate(routes.ruleSet(owner!, repo!, ruleSetId!))}
-              >
-                Back to Rule Set
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      <Card>
+        <CardContent className="p-8 text-center">
+          <p className="text-destructive">Failed to load rule</p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-4"
+            onClick={() => navigate(routes.ruleSet(owner!, repo!, ruleSetId!))}
+          >
+            Back to Rule Set
+          </Button>
+        </CardContent>
+      </Card>
     );
   }
 
   const pageTitle = isCreateMode ? 'New Rule' : 'Edit Rule';
 
   return (
-    <div className="bg-background">
-      <div className="p-4 md:p-8 max-w-5xl mx-auto">
-        {/* Breadcrumb Navigation */}
-        <BreadcrumbNav
-          owner={owner!}
-          repo={repo!}
-          ruleSetId={ruleSetId!}
-          ruleSetName={ruleSet?.name || 'Rule Set'}
-          pageName={pageTitle}
-        />
-
-        {/* Page Title */}
-        <h1 className="text-2xl font-bold mb-6">{pageTitle}</h1>
-
-        {/* Form */}
-        <ExpandedProxyRuleForm
-          initialData={isEditMode ? rule : undefined}
-          onSubmit={handleSubmit}
-          onCancel={handleCancel}
-          isSubmitting={isCreating || isUpdating}
-        />
+    <div className="space-y-4">
+      {/* Breadcrumb Navigation */}
+      <div className="flex items-center gap-4">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => navigate(routes.ruleSet(owner!, repo!, ruleSetId!))}
+          className="gap-1 -ml-2"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back
+        </Button>
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink asChild>
+                <Link to={routes.proxyRules(owner!, repo!)}>Proxy Rules</Link>
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbLink asChild>
+                <Link to={routes.ruleSet(owner!, repo!, ruleSetId!)}>{ruleSet?.name || 'Rule Set'}</Link>
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbPage>{pageTitle}</BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
       </div>
-    </div>
-  );
-}
 
-function BreadcrumbNav({
-  owner,
-  repo,
-  ruleSetId,
-  ruleSetName,
-  pageName,
-}: {
-  owner: string;
-  repo: string;
-  ruleSetId: string;
-  ruleSetName: string;
-  pageName: string;
-}) {
-  return (
-    <Breadcrumb className="mb-6">
-      <BreadcrumbList>
-        <BreadcrumbItem>
-          <BreadcrumbLink asChild>
-            <Link to={routes.repository(owner, repo)}>{owner}/{repo}</Link>
-          </BreadcrumbLink>
-        </BreadcrumbItem>
-        <BreadcrumbSeparator />
-        <BreadcrumbItem>
-          <BreadcrumbLink asChild>
-            <Link to={routes.proxyRules(owner, repo)}>Proxy Rules</Link>
-          </BreadcrumbLink>
-        </BreadcrumbItem>
-        <BreadcrumbSeparator />
-        <BreadcrumbItem>
-          <BreadcrumbLink asChild>
-            <Link to={routes.ruleSet(owner, repo, ruleSetId)}>{ruleSetName}</Link>
-          </BreadcrumbLink>
-        </BreadcrumbItem>
-        <BreadcrumbSeparator />
-        <BreadcrumbItem>
-          <BreadcrumbPage>{pageName}</BreadcrumbPage>
-        </BreadcrumbItem>
-      </BreadcrumbList>
-    </Breadcrumb>
+      {/* Page Title */}
+      <h2 className="text-xl font-semibold">{pageTitle}</h2>
+
+      {/* Form */}
+      <ExpandedProxyRuleForm
+        initialData={isEditMode ? rule : undefined}
+        onSubmit={handleSubmit}
+        onCancel={handleCancel}
+        isSubmitting={isCreating || isUpdating}
+      />
+    </div>
   );
 }

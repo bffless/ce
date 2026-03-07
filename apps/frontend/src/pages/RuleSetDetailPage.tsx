@@ -1,7 +1,4 @@
-import { useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { useAppDispatch } from '@/store/hooks';
-import { setCurrentRepo } from '@/store/slices/repoSlice';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -14,7 +11,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
-import { Plus } from 'lucide-react';
+import { Plus, ArrowLeft } from 'lucide-react';
 import {
   useGetRuleSetQuery,
   useUpdateProxyRuleMutation,
@@ -27,8 +24,9 @@ import { RulesList } from '@/components/proxy-rules/RulesList';
 import { routes } from '@/utils/routes';
 
 /**
- * RuleSetDetailPage - Full page showing rules within a rule set.
- * Route: /repo/:owner/:repo/tab/proxy-rules/:ruleSetId
+ * RuleSetDetailPage - Shows rules within a rule set.
+ * Rendered inside RepositoryLayout via Outlet.
+ * Route: /repo/:owner/:repo/proxy-rules/:ruleSetId
  */
 export function RuleSetDetailPage() {
   const { owner, repo, ruleSetId } = useParams<{
@@ -37,16 +35,8 @@ export function RuleSetDetailPage() {
     ruleSetId: string;
   }>();
   const navigate = useNavigate();
-  const dispatch = useAppDispatch();
   const { toast } = useToast();
   const { canEdit } = useProjectRole(owner!, repo!);
-
-  // Update Redux store when URL params change
-  useEffect(() => {
-    if (owner && repo) {
-      dispatch(setCurrentRepo({ owner, repo }));
-    }
-  }, [owner, repo, dispatch]);
 
   // Fetch the rule set with its rules
   const { data: ruleSet, isLoading, error } = useGetRuleSetQuery(ruleSetId!, {
@@ -102,23 +92,21 @@ export function RuleSetDetailPage() {
   // Loading state
   if (isLoading) {
     return (
-      <div className="bg-background">
-        <div className="p-4 md:p-8 max-w-5xl mx-auto">
-          <Skeleton className="h-6 w-96 mb-6" />
-          <Card>
-            <CardHeader>
-              <Skeleton className="h-8 w-48" />
-              <Skeleton className="h-4 w-64 mt-2" />
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {[...Array(3)].map((_, i) => (
-                  <Skeleton key={i} className="h-16 w-full" />
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+      <div className="space-y-4">
+        <Skeleton className="h-6 w-48" />
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-4 w-64 mt-2" />
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {[...Array(3)].map((_, i) => (
+                <Skeleton key={i} className="h-16 w-full" />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -126,101 +114,85 @@ export function RuleSetDetailPage() {
   // Error state
   if (error || !ruleSet) {
     return (
-      <div className="bg-background">
-        <div className="p-4 md:p-8 max-w-5xl mx-auto">
-          <BreadcrumbNav owner={owner!} repo={repo!} ruleSetName="Error" />
-          <Card>
-            <CardContent className="p-8 text-center">
-              <p className="text-destructive">Failed to load rule set</p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-4"
-                onClick={() => navigate(routes.proxyRules(owner!, repo!))}
-              >
-                Back to Rule Sets
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      <Card>
+        <CardContent className="p-8 text-center">
+          <p className="text-destructive">Failed to load rule set</p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-4"
+            onClick={() => navigate(routes.proxyRules(owner!, repo!))}
+          >
+            Back to Rule Sets
+          </Button>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <div className="bg-background">
-      <div className="p-4 md:p-8 max-w-5xl mx-auto">
-        {/* Breadcrumb Navigation */}
-        <BreadcrumbNav owner={owner!} repo={repo!} ruleSetName={ruleSet.name} />
-
-        {/* Rule Set Header */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <CardTitle>{ruleSet.name}</CardTitle>
-                {ruleSet.environment && (
-                  <Badge variant="outline">{ruleSet.environment}</Badge>
-                )}
-              </div>
-              <CardDescription className="mt-1">
-                {ruleSet.description || 'Configure proxy rules for this rule set. Rules are evaluated in order.'}
-              </CardDescription>
-            </div>
-            {canEdit && (
-              <Button
-                size="sm"
-                className="gap-2"
-                onClick={() => navigate(routes.newRule(owner!, repo!, ruleSetId!))}
-              >
-                <Plus className="h-4 w-4" />
-                Add Rule
-              </Button>
-            )}
-          </CardHeader>
-          <CardContent>
-            <RulesList
-              rules={ruleSet.rules || []}
-              isLoading={false}
-              onRuleClick={handleRuleClick}
-              onUpdateRule={handleUpdateRule}
-              onDeleteRule={handleDeleteRule}
-            />
-          </CardContent>
-        </Card>
+    <div className="space-y-4">
+      {/* Breadcrumb Navigation */}
+      <div className="flex items-center gap-4">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => navigate(routes.proxyRules(owner!, repo!))}
+          className="gap-1 -ml-2"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back
+        </Button>
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink asChild>
+                <Link to={routes.proxyRules(owner!, repo!)}>Proxy Rules</Link>
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbPage>{ruleSet.name}</BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
       </div>
-    </div>
-  );
-}
 
-function BreadcrumbNav({
-  owner,
-  repo,
-  ruleSetName,
-}: {
-  owner: string;
-  repo: string;
-  ruleSetName: string;
-}) {
-  return (
-    <Breadcrumb className="mb-6">
-      <BreadcrumbList>
-        <BreadcrumbItem>
-          <BreadcrumbLink asChild>
-            <Link to={routes.repository(owner, repo)}>{owner}/{repo}</Link>
-          </BreadcrumbLink>
-        </BreadcrumbItem>
-        <BreadcrumbSeparator />
-        <BreadcrumbItem>
-          <BreadcrumbLink asChild>
-            <Link to={routes.proxyRules(owner, repo)}>Proxy Rules</Link>
-          </BreadcrumbLink>
-        </BreadcrumbItem>
-        <BreadcrumbSeparator />
-        <BreadcrumbItem>
-          <BreadcrumbPage>{ruleSetName}</BreadcrumbPage>
-        </BreadcrumbItem>
-      </BreadcrumbList>
-    </Breadcrumb>
+      {/* Rule Set Content */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <CardTitle>{ruleSet.name}</CardTitle>
+              {ruleSet.environment && (
+                <Badge variant="outline">{ruleSet.environment}</Badge>
+              )}
+            </div>
+            <CardDescription className="mt-1">
+              {ruleSet.description || 'Configure proxy rules for this rule set. Rules are evaluated in order.'}
+            </CardDescription>
+          </div>
+          {canEdit && (
+            <Button
+              size="sm"
+              className="gap-2"
+              onClick={() => navigate(routes.newRule(owner!, repo!, ruleSetId!))}
+            >
+              <Plus className="h-4 w-4" />
+              Add Rule
+            </Button>
+          )}
+        </CardHeader>
+        <CardContent>
+          <RulesList
+            rules={ruleSet.rules || []}
+            isLoading={false}
+            onRuleClick={handleRuleClick}
+            onUpdateRule={handleUpdateRule}
+            onDeleteRule={handleDeleteRule}
+          />
+        </CardContent>
+      </Card>
+    </div>
   );
 }
