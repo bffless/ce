@@ -34,6 +34,7 @@ import { ShareLinksModule } from './share-links/share-links.module';
 import { PlatformModule } from './platform/platform.module';
 import { StorageUsageModule } from './storage/storage-usage.module';
 import { OnboardingRulesModule } from './onboarding-rules/onboarding-rules.module';
+import { PipelinesModule } from './pipelines/pipelines.module';
 
 @Module({
   imports: [
@@ -136,6 +137,7 @@ import { OnboardingRulesModule } from './onboarding-rules/onboarding-rules.modul
     RetentionModule,
     CacheRulesModule,
     ShareLinksModule,    // Must come BEFORE ProjectsModule (route ordering)
+    PipelinesModule,     // Must come BEFORE ProjectsModule (route ordering)
     ProjectsModule,
     UserGroupsModule,
     PermissionsModule,

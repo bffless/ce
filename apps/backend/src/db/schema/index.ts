@@ -27,3 +27,7 @@ export * from './share-links.schema';
 export * from './pending-uploads.schema';
 export * from './onboarding-rules.schema';
 export * from './onboarding-rule-executions.schema';
+export * from './pipelines.schema';
+export * from './pipeline-steps.schema';
+export * from './pipeline-schemas.schema';
+export * from './pipeline-data.schema';
