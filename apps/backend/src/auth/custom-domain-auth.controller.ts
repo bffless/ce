@@ -220,4 +220,69 @@ export class CustomDomainAuthController {
 
     res.status(200).json({ message: 'Logged out successfully' });
   }
+
+  /**
+   * Session endpoint for custom domain authentication.
+   * Returns the current user's session info from the access token cookie.
+   */
+  @Get('session')
+  @ApiOperation({
+    summary: 'Get current session information',
+    description:
+      'Returns user info from the bffless_access cookie. Does not require SuperTokens session.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Session information retrieved',
+    schema: {
+      type: 'object',
+      properties: {
+        authenticated: { type: 'boolean' },
+        user: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            email: { type: 'string' },
+            role: { type: 'string' },
+          },
+        },
+      },
+    },
+  })
+  async session(@Req() req: Request): Promise<{
+    authenticated: boolean;
+    user: { id: string; email: string; role: string } | null;
+  }> {
+    const accessToken = req.cookies?.[CustomDomainAuthService.ACCESS_COOKIE_NAME];
+
+    if (!accessToken) {
+      return { authenticated: false, user: null };
+    }
+
+    // Validate the access token
+    const payload = this.customDomainAuthService.validateAccessToken(accessToken);
+    if (!payload) {
+      return { authenticated: false, user: null };
+    }
+
+    // Verify the domain matches the current request
+    const host = (req.headers['x-forwarded-host'] as string) || req.headers.host;
+    const requestDomain = host?.split(':')[0];
+
+    if (requestDomain !== payload.domain) {
+      this.logger.warn(
+        `Domain mismatch on session: token for ${payload.domain}, request from ${requestDomain}`,
+      );
+      return { authenticated: false, user: null };
+    }
+
+    return {
+      authenticated: true,
+      user: {
+        id: payload.sub,
+        email: payload.email,
+        role: payload.role,
+      },
+    };
+  }
 }
