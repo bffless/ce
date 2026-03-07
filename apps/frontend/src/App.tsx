@@ -1,8 +1,15 @@
 import { Routes, Route } from 'react-router-dom';
 import { RepositoryPage } from '@/pages/RepositoryPage';
-import { RepositoryOverviewPage } from '@/pages/RepositoryOverviewPage';
+import { RepositoryLayout } from '@/pages/RepositoryLayout';
 import { RepositoriesPage } from '@/pages/RepositoriesPage';
 import { ProjectSettingsPage } from '@/pages/ProjectSettingsPage';
+import { DeploymentsTab } from '@/pages/DeploymentsTab';
+import { BranchesPage } from '@/pages/BranchesPage';
+import { AliasesPage } from '@/pages/AliasesPage';
+import { ProxyRuleSetsPage } from '@/pages/ProxyRuleSetsPage';
+import { RuleSetDetailPage } from '@/pages/RuleSetDetailPage';
+import { RuleEditorPage } from '@/pages/RuleEditorPage';
+import { RepositoryTabRedirect } from '@/pages/RepositoryTabRedirect';
 import { UserGroupsPage } from '@/pages/UserGroupsPage';
 import { GroupDetailPage } from '@/pages/GroupDetailPage';
 import { UsersPage } from '@/pages/UsersPage';
@@ -51,12 +58,28 @@ function App() {
         {/* Admin Settings route (requires admin) */}
         <Route path="/admin/settings" element={<ProtectedRoute requireAdmin><AdminSettingsPage /></ProtectedRoute>} />
 
-        {/* Repository routes */}
+        {/* Repository list */}
         <Route path="/repo" element={<ProtectedRoute><RepositoriesPage /></ProtectedRoute>} />
+
+        {/* Repository settings (outside of tab layout) */}
         <Route path="/repo/:owner/:repo/settings" element={<ProtectedRoute><ProjectSettingsPage /></ProtectedRoute>} />
+
+        {/* File browser routes (must come before the layout to avoid matching) */}
         <Route path="/repo/:owner/:repo/:ref/*" element={<RepositoryPage />} />
         <Route path="/repo/:owner/:repo/:ref" element={<RepositoryPage />} />
-        <Route path="/repo/:owner/:repo" element={<RepositoryOverviewPage />} />
+
+        {/* Repository tabs layout with nested routes */}
+        <Route path="/repo/:owner/:repo" element={<ProtectedRoute><RepositoryLayout /></ProtectedRoute>}>
+          {/* Handle old query param URLs and redirect to deployments by default */}
+          <Route index element={<RepositoryTabRedirect />} />
+          <Route path="deployments" element={<DeploymentsTab />} />
+          <Route path="branches" element={<BranchesPage />} />
+          <Route path="aliases" element={<AliasesPage />} />
+          <Route path="proxy-rules" element={<ProxyRuleSetsPage />} />
+          <Route path="proxy-rules/:ruleSetId" element={<RuleSetDetailPage />} />
+          <Route path="proxy-rules/:ruleSetId/new" element={<RuleEditorPage />} />
+          <Route path="proxy-rules/:ruleSetId/:ruleId" element={<RuleEditorPage />} />
+        </Route>
 
         {/* User Groups routes (admin only) */}
         <Route path="/groups" element={<ProtectedRoute requireAdmin><UserGroupsPage /></ProtectedRoute>} />

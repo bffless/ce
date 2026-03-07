@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useParams, useSearchParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, Outlet, useLocation } from 'react-router-dom';
 import { useAppDispatch } from '@/store/hooks';
 import { setCurrentRepo } from '@/store/slices/repoSlice';
 import { useGetRepositoryStatsQuery } from '@/services/repoApi';
@@ -7,49 +7,31 @@ import { useProjectRole } from '@/hooks/useProjectRole';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AlertCircle, RefreshCw, Settings } from 'lucide-react';
-import { DeploymentsList } from '@/components/repo/DeploymentsList';
 import { RepositoryStatsHeader } from '@/components/repo/RepositoryStatsHeader';
-import { AliasesTab } from '@/components/repo/AliasesTab';
-import { BranchesTab } from '@/components/repo/BranchesTab';
 import { routes } from '@/utils/routes';
 
-type TabValue = 'deployments' | 'branches' | 'aliases';
-
 /**
- * RepositoryOverviewPage - Main page showing deployments, stats, and aliases
- * Route: /repo/:owner/:repo
+ * RepositoryLayout - Shared layout for repository pages with nested routes.
+ * Displays the header, stats, and tabs. Child routes render via <Outlet />.
+ * Route: /repo/:owner/:repo/*
  */
-export function RepositoryOverviewPage() {
-  const { owner, repo } = useParams<{
-    owner: string;
-    repo: string;
-  }>();
-
-  const [searchParams] = useSearchParams();
+export function RepositoryLayout() {
+  const { owner, repo } = useParams<{ owner: string; repo: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const dispatch = useAppDispatch();
 
-  // Get tab from query params, default to 'deployments'
-  // Note: proxy-rules now has its own route, so redirect if that tab was requested
-  const tabParam = searchParams.get('tab');
-  const currentTab: TabValue =
-    tabParam === 'branches' || tabParam === 'aliases' ? tabParam : 'deployments';
-
-  // Redirect to proxy rules page if that tab was requested via query param
-  useEffect(() => {
-    if (tabParam === 'proxy-rules' && owner && repo) {
-      navigate(routes.proxyRules(owner, repo), { replace: true });
-    }
-  }, [tabParam, owner, repo, navigate]);
-
-  // Handler for tab changes
-  const handleTabChange = (value: string) => {
-    const newTab = value as TabValue;
-    // Update URL with new tab
-    navigate(`/repo/${owner}/${repo}?tab=${newTab}`, { replace: true });
-  };
+  // Determine current tab from pathname
+  const pathAfterRepo = location.pathname.replace(`/repo/${owner}/${repo}`, '');
+  const currentTab = pathAfterRepo.startsWith('/proxy-rules')
+    ? 'proxy-rules'
+    : pathAfterRepo.startsWith('/aliases')
+      ? 'aliases'
+      : pathAfterRepo.startsWith('/branches')
+        ? 'branches'
+        : 'deployments';
 
   // Update Redux store when URL params change
   useEffect(() => {
@@ -67,20 +49,17 @@ export function RepositoryOverviewPage() {
     isLoading: isLoadingStats,
     error: statsError,
   } = useGetRepositoryStatsQuery(
-    {
-      owner: owner!,
-      repo: repo!,
-    },
-    {
-      skip: !owner || !repo,
-    },
+    { owner: owner!, repo: repo! },
+    { skip: !owner || !repo },
   );
 
   // Loading state
   if (isLoadingStats) {
     return (
       <div className="bg-background">
-        <div className="p-8 space-y-6">
+        <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6">
+          {/* Title skeleton */}
+          <Skeleton className="h-8 w-48" />
           {/* Stats skeleton */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Skeleton className="h-32" />
@@ -88,6 +67,8 @@ export function RepositoryOverviewPage() {
             <Skeleton className="h-32" />
             <Skeleton className="h-32" />
           </div>
+          {/* Tabs skeleton */}
+          <Skeleton className="h-10 w-96" />
           {/* Content skeleton */}
           <Skeleton className="h-96" />
         </div>
@@ -130,7 +111,6 @@ export function RepositoryOverviewPage() {
 
   return (
     <div className="bg-background">
-      {/* Main content */}
       <div className="p-4 md:p-8 max-w-7xl mx-auto">
         {/* Repository Title with Settings */}
         <div className="flex items-center justify-between mb-6">
@@ -141,7 +121,7 @@ export function RepositoryOverviewPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => navigate(`/repo/${owner}/${repo}/settings`)}
+              onClick={() => navigate(routes.repositorySettings(owner!, repo!))}
               className="flex items-center gap-2"
             >
               <Settings className="h-4 w-4" />
@@ -157,29 +137,28 @@ export function RepositoryOverviewPage() {
           </div>
         )}
 
-        {/* Tabs for Deployments, Branches, Aliases, Proxy Rules */}
-        <Tabs value={currentTab} onValueChange={handleTabChange} className="w-full">
+        {/* Tabs Navigation */}
+        <Tabs value={currentTab} className="w-full">
           <TabsList>
-            <TabsTrigger value="deployments">Deployments</TabsTrigger>
-            <TabsTrigger value="branches">Branches</TabsTrigger>
-            <TabsTrigger value="aliases">Aliases</TabsTrigger>
+            <TabsTrigger value="deployments" asChild>
+              <Link to={routes.deployments(owner!, repo!)}>Deployments</Link>
+            </TabsTrigger>
+            <TabsTrigger value="branches" asChild>
+              <Link to={routes.branches(owner!, repo!)}>Branches</Link>
+            </TabsTrigger>
+            <TabsTrigger value="aliases" asChild>
+              <Link to={routes.aliases(owner!, repo!)}>Aliases</Link>
+            </TabsTrigger>
             <TabsTrigger value="proxy-rules" asChild>
               <Link to={routes.proxyRules(owner!, repo!)}>Proxy Rules</Link>
             </TabsTrigger>
           </TabsList>
-
-          <TabsContent value="deployments" className="mt-6">
-            <DeploymentsList owner={owner!} repo={repo!} />
-          </TabsContent>
-
-          <TabsContent value="branches" className="mt-6">
-            <BranchesTab owner={owner!} repo={repo!} />
-          </TabsContent>
-
-          <TabsContent value="aliases" className="mt-6">
-            <AliasesTab owner={owner!} repo={repo!} />
-          </TabsContent>
         </Tabs>
+
+        {/* Tab Content - rendered via Outlet */}
+        <div className="mt-6">
+          <Outlet />
+        </div>
       </div>
     </div>
   );
