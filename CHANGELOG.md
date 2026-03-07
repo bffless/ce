@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.89](https://github.com/bffless/ce/compare/v0.0.88...v0.0.89) (2026-03-07)
+
+
+### Bug Fixes
+
+* update platform mode nginx template with consolidated auth routes ([a64c044](https://github.com/bffless/ce/commit/a64c0448784e42f610ef2d2ec247a090105ee7a1))
+
 ## [0.0.88](https://github.com/bffless/ce/compare/v0.0.87...v0.0.88) (2026-03-07)
 
 
