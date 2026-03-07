@@ -394,30 +394,11 @@ export class NginxConfigService implements OnModuleInit {
     }`;
 
     // Custom domain authentication endpoints (namespaced to avoid collision with user routes)
+    // Handles: callback, refresh, logout, session
     const authLocations = `
     # Custom domain authentication endpoints
-    location /_bffless/auth/callback {
-        proxy_pass http://${backendHost}:${backendPort}/_bffless/auth/callback;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-Host $host;
-    }
-
-    location /_bffless/auth/refresh {
-        proxy_pass http://${backendHost}:${backendPort}/_bffless/auth/refresh;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-Host $host;
-    }
-
-    location /_bffless/auth/logout {
-        proxy_pass http://${backendHost}:${backendPort}/_bffless/auth/logout;
+    location /_bffless/auth/ {
+        proxy_pass http://${backendHost}:${backendPort}/_bffless/auth/;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
