@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { useAppDispatch } from '@/store/hooks';
 import { setCurrentRepo } from '@/store/slices/repoSlice';
 import { useGetRepositoryStatsQuery } from '@/services/repoApi';
@@ -13,9 +13,9 @@ import { DeploymentsList } from '@/components/repo/DeploymentsList';
 import { RepositoryStatsHeader } from '@/components/repo/RepositoryStatsHeader';
 import { AliasesTab } from '@/components/repo/AliasesTab';
 import { BranchesTab } from '@/components/repo/BranchesTab';
-import { ProxyRuleSetsTab } from '@/components/proxy-rules';
+import { routes } from '@/utils/routes';
 
-type TabValue = 'deployments' | 'branches' | 'aliases' | 'proxy-rules';
+type TabValue = 'deployments' | 'branches' | 'aliases';
 
 /**
  * RepositoryOverviewPage - Main page showing deployments, stats, and aliases
@@ -32,11 +32,17 @@ export function RepositoryOverviewPage() {
   const dispatch = useAppDispatch();
 
   // Get tab from query params, default to 'deployments'
+  // Note: proxy-rules now has its own route, so redirect if that tab was requested
   const tabParam = searchParams.get('tab');
   const currentTab: TabValue =
-    tabParam === 'branches' || tabParam === 'aliases' || tabParam === 'proxy-rules'
-      ? tabParam
-      : 'deployments';
+    tabParam === 'branches' || tabParam === 'aliases' ? tabParam : 'deployments';
+
+  // Redirect to proxy rules page if that tab was requested via query param
+  useEffect(() => {
+    if (tabParam === 'proxy-rules' && owner && repo) {
+      navigate(routes.proxyRules(owner, repo), { replace: true });
+    }
+  }, [tabParam, owner, repo, navigate]);
 
   // Handler for tab changes
   const handleTabChange = (value: string) => {
@@ -157,7 +163,9 @@ export function RepositoryOverviewPage() {
             <TabsTrigger value="deployments">Deployments</TabsTrigger>
             <TabsTrigger value="branches">Branches</TabsTrigger>
             <TabsTrigger value="aliases">Aliases</TabsTrigger>
-            <TabsTrigger value="proxy-rules">Proxy Rules</TabsTrigger>
+            <TabsTrigger value="proxy-rules" asChild>
+              <Link to={routes.proxyRules(owner!, repo!)}>Proxy Rules</Link>
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="deployments" className="mt-6">
@@ -170,10 +178,6 @@ export function RepositoryOverviewPage() {
 
           <TabsContent value="aliases" className="mt-6">
             <AliasesTab owner={owner!} repo={repo!} />
-          </TabsContent>
-
-          <TabsContent value="proxy-rules" className="mt-6">
-            <ProxyRuleSetsTab owner={owner!} repo={repo!} />
           </TabsContent>
         </Tabs>
       </div>

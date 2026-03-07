@@ -3,6 +3,9 @@ import { RepositoryPage } from '@/pages/RepositoryPage';
 import { RepositoryOverviewPage } from '@/pages/RepositoryOverviewPage';
 import { RepositoriesPage } from '@/pages/RepositoriesPage';
 import { ProjectSettingsPage } from '@/pages/ProjectSettingsPage';
+import { ProxyRuleSetsPage } from '@/pages/ProxyRuleSetsPage';
+import { RuleSetDetailPage } from '@/pages/RuleSetDetailPage';
+import { RuleEditorPage } from '@/pages/RuleEditorPage';
 import { UserGroupsPage } from '@/pages/UserGroupsPage';
 import { GroupDetailPage } from '@/pages/GroupDetailPage';
 import { UsersPage } from '@/pages/UsersPage';
@@ -54,6 +57,12 @@ function App() {
         {/* Repository routes */}
         <Route path="/repo" element={<ProtectedRoute><RepositoriesPage /></ProtectedRoute>} />
         <Route path="/repo/:owner/:repo/settings" element={<ProtectedRoute><ProjectSettingsPage /></ProtectedRoute>} />
+        {/* Proxy Rules path-based routes */}
+        <Route path="/repo/:owner/:repo/tab/proxy-rules" element={<ProtectedRoute><ProxyRuleSetsPage /></ProtectedRoute>} />
+        <Route path="/repo/:owner/:repo/tab/proxy-rules/:ruleSetId" element={<ProtectedRoute><RuleSetDetailPage /></ProtectedRoute>} />
+        <Route path="/repo/:owner/:repo/tab/proxy-rules/:ruleSetId/new" element={<ProtectedRoute><RuleEditorPage /></ProtectedRoute>} />
+        <Route path="/repo/:owner/:repo/tab/proxy-rules/:ruleSetId/:ruleId" element={<ProtectedRoute><RuleEditorPage /></ProtectedRoute>} />
+        {/* File browser routes */}
         <Route path="/repo/:owner/:repo/:ref/*" element={<RepositoryPage />} />
         <Route path="/repo/:owner/:repo/:ref" element={<RepositoryPage />} />
         <Route path="/repo/:owner/:repo" element={<RepositoryOverviewPage />} />
