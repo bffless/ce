@@ -198,3 +198,18 @@ export interface FormHandlerConfig extends BaseHandlerConfig {
    */
   honeypotField?: string;
 }
+
+/**
+ * Configuration for aggregate_handler (performs aggregation operations on arrays)
+ */
+export interface AggregateHandlerConfig extends BaseHandlerConfig {
+  /**
+   * Aggregation operation to perform
+   */
+  operation: 'sum' | 'count' | 'avg' | 'min' | 'max';
+
+  /**
+   * Field to aggregate (required for sum, avg, min, max)
+   */
+  field?: string;
+}

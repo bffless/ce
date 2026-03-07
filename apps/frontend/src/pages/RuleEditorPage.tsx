@@ -196,6 +196,7 @@ export function RuleEditorPage() {
         onSubmit={handleSubmit}
         onCancel={handleCancel}
         isSubmitting={isCreating || isUpdating}
+        projectId={ruleSet?.projectId}
       />
     </div>
   );

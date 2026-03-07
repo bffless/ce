@@ -4,7 +4,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import {
   Select,
   SelectContent,
@@ -20,12 +19,14 @@ import type {
 } from '@/services/proxyRulesApi';
 import { useGetEmailConfigStatusQuery } from '@/services/proxyRulesApi';
 import { AlertTriangle } from 'lucide-react';
+import { PipelineConfig, type PipelineConfigData } from '@/components/pipelines';
 
 interface ExpandedProxyRuleFormProps {
   initialData?: ProxyRule;
   onSubmit: (data: CreateProxyRuleDto) => Promise<void>;
   onCancel: () => void;
   isSubmitting?: boolean;
+  projectId?: string;
 }
 
 /**
@@ -51,6 +52,7 @@ export function ExpandedProxyRuleForm({
   onSubmit,
   onCancel,
   isSubmitting: externalIsSubmitting,
+  projectId = '',
 }: ExpandedProxyRuleFormProps) {
   // Get email config status
   const { data: emailStatus } = useGetEmailConfigStatusQuery();
@@ -100,6 +102,12 @@ export function ExpandedProxyRuleForm({
     initialData?.emailHandlerConfig?.requireAuth ?? false,
   );
 
+  // Pipeline config
+  const [pipelineConfig, setPipelineConfig] = useState<PipelineConfigData>(() => {
+    const existingPipeline = initialData?.pipelineConfig;
+    return existingPipeline || { name: '', steps: [] };
+  });
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -107,8 +115,7 @@ export function ExpandedProxyRuleForm({
   const isEmailHandler = proxyType === 'email_form_handler';
   const isInternalRewrite = proxyType === 'internal_rewrite';
   const isExternalProxy = proxyType === 'external_proxy';
-  // Pipeline is a future feature - for now just display as disabled option
-  const isPipeline = (proxyType as string) === 'pipeline';
+  const isPipeline = proxyType === 'pipeline';
   const submitting = externalIsSubmitting || isSubmitting;
 
   const validate = (): boolean => {
@@ -177,6 +184,14 @@ export function ExpandedProxyRuleForm({
       if (timeout < 1000 || timeout > 60000) {
         newErrors.timeout = 'Timeout must be between 1000ms and 60000ms';
       }
+    } else if (isPipeline) {
+      // Validate pipeline config
+      if (!pipelineConfig.name) {
+        newErrors.pipelineName = 'Pipeline name is required';
+      }
+      if (!pipelineConfig.steps || pipelineConfig.steps.length === 0) {
+        newErrors.pipelineSteps = 'At least one step is required';
+      }
     }
 
     setErrors(newErrors);
@@ -208,12 +223,14 @@ export function ExpandedProxyRuleForm({
 
       await onSubmit({
         pathPattern,
-        targetUrl: isEmailHandler ? '' : targetUrl, // Email handler doesn't use targetUrl
+        targetUrl: isEmailHandler || isPipeline ? '' : targetUrl, // Email handler and pipeline don't use targetUrl
         proxyType,
         // Include internalRewrite for backward compatibility
         internalRewrite: isInternalRewrite,
         // Email handler config
         ...(isEmailHandler && { emailHandlerConfig }),
+        // Pipeline config
+        ...(isPipeline && { pipelineConfig }),
         // Only include external proxy options when using external proxy
         ...(isExternalProxy && {
           stripPrefix,
@@ -270,19 +287,14 @@ export function ExpandedProxyRuleForm({
                 <SelectItem value="external_proxy">External Proxy</SelectItem>
                 <SelectItem value="internal_rewrite">Internal Rewrite</SelectItem>
                 <SelectItem value="email_form_handler">Email Form Handler</SelectItem>
-                <SelectItem value="pipeline" disabled>
-                  <span className="flex items-center gap-2">
-                    Pipeline
-                    <Badge variant="secondary" className="text-xs">Coming Soon</Badge>
-                  </span>
-                </SelectItem>
+                <SelectItem value="pipeline">Pipeline</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
               {isExternalProxy && 'Forward requests to an external URL'}
               {isInternalRewrite && 'Serve a different path from the same deployment'}
               {isEmailHandler && 'Capture form submissions and email them'}
-              {isPipeline && 'Execute a serverless pipeline function'}
+              {isPipeline && 'Build a custom workflow with multiple steps'}
             </p>
           </div>
 
@@ -488,6 +500,31 @@ export function ExpandedProxyRuleForm({
                 will be included in the notification email.
               </p>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Pipeline Configuration */}
+      {isPipeline && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Pipeline Configuration</CardTitle>
+            <CardDescription>
+              Define the steps that process incoming requests
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {errors.pipelineName && (
+              <p className="text-xs text-destructive mb-2">{errors.pipelineName}</p>
+            )}
+            {errors.pipelineSteps && (
+              <p className="text-xs text-destructive mb-2">{errors.pipelineSteps}</p>
+            )}
+            <PipelineConfig
+              config={pipelineConfig}
+              onChange={setPipelineConfig}
+              projectId={projectId}
+            />
           </CardContent>
         </Card>
       )}

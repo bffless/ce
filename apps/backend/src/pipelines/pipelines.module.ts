@@ -14,6 +14,17 @@ import {
   ExpressionEvaluator,
 } from './execution';
 import { PermissionsModule } from '../permissions/permissions.module';
+// Step handlers
+import {
+  FormHandler,
+  ResponseHandler,
+  DataCreateHandler,
+  DataQueryHandler,
+  DataUpdateHandler,
+  DataDeleteHandler,
+  EmailHandler,
+  AggregateHandler,
+} from './handlers';
 
 @Module({
   imports: [PermissionsModule],
@@ -34,6 +45,15 @@ import { PermissionsModule } from '../permissions/permissions.module';
     StepHandlerRegistry,
     ValidatorRegistry,
     ExpressionEvaluator,
+    // Step handlers (auto-register on construction)
+    FormHandler,
+    ResponseHandler,
+    DataCreateHandler,
+    DataQueryHandler,
+    DataUpdateHandler,
+    DataDeleteHandler,
+    EmailHandler,
+    AggregateHandler,
   ],
   exports: [
     PipelinesService,

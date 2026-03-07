@@ -1,4 +1,5 @@
 import { api } from './api';
+import type { HandlerType } from './pipelinesApi';
 
 // Header configuration for proxy rules
 export interface HeaderConfig {
@@ -14,7 +15,7 @@ export interface AuthTransformConfig {
 }
 
 // Proxy rule type
-export type ProxyType = 'external_proxy' | 'internal_rewrite' | 'email_form_handler';
+export type ProxyType = 'external_proxy' | 'internal_rewrite' | 'email_form_handler' | 'pipeline';
 
 // Email handler configuration for email_form_handler proxy rules
 export interface EmailHandlerConfig {
@@ -25,6 +26,22 @@ export interface EmailHandlerConfig {
   honeypotField?: string;
   replyToField?: string;
   requireAuth?: boolean;
+}
+
+// Pipeline step configuration
+export interface PipelineStepConfig {
+  id: string;
+  name?: string;
+  handlerType: HandlerType;
+  config: Record<string, unknown>;
+  isEnabled: boolean;
+}
+
+// Pipeline configuration for pipeline proxy rules
+export interface PipelineConfig {
+  name: string;
+  description?: string;
+  steps: PipelineStepConfig[];
 }
 
 // Proxy rule response from API
@@ -43,6 +60,7 @@ export interface ProxyRule {
   internalRewrite: boolean;
   proxyType: ProxyType | null;
   emailHandlerConfig: EmailHandlerConfig | null;
+  pipelineConfig: PipelineConfig | null;
   isEnabled: boolean;
   description: string | null;
   createdAt: string;
@@ -93,6 +111,7 @@ export interface CreateProxyRuleDto {
   internalRewrite?: boolean;
   proxyType?: ProxyType;
   emailHandlerConfig?: EmailHandlerConfig;
+  pipelineConfig?: PipelineConfig;
   description?: string;
   isEnabled?: boolean;
 }
