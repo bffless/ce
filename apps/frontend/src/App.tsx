@@ -9,6 +9,9 @@ import { AliasesPage } from '@/pages/AliasesPage';
 import { ProxyRuleSetsPage } from '@/pages/ProxyRuleSetsPage';
 import { RuleSetDetailPage } from '@/pages/RuleSetDetailPage';
 import { RuleEditorPage } from '@/pages/RuleEditorPage';
+import { SchemasListPage } from '@/pages/SchemasListPage';
+import { SchemaDetailPage } from '@/pages/SchemaDetailPage';
+import { SchemaEditorPage } from '@/pages/SchemaEditorPage';
 import { RepositoryTabRedirect } from '@/pages/RepositoryTabRedirect';
 import { UserGroupsPage } from '@/pages/UserGroupsPage';
 import { GroupDetailPage } from '@/pages/GroupDetailPage';
@@ -79,6 +82,10 @@ function App() {
           <Route path="proxy-rules/:ruleSetId" element={<RuleSetDetailPage />} />
           <Route path="proxy-rules/:ruleSetId/new" element={<RuleEditorPage />} />
           <Route path="proxy-rules/:ruleSetId/:ruleId" element={<RuleEditorPage />} />
+          <Route path="data" element={<SchemasListPage />} />
+          <Route path="data/new" element={<SchemaEditorPage />} />
+          <Route path="data/:schemaId" element={<SchemaDetailPage />} />
+          <Route path="data/:schemaId/edit" element={<SchemaEditorPage />} />
         </Route>
 
         {/* User Groups routes (admin only) */}

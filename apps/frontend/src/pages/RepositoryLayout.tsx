@@ -25,13 +25,15 @@ export function RepositoryLayout() {
 
   // Determine current tab from pathname
   const pathAfterRepo = location.pathname.replace(`/repo/${owner}/${repo}`, '');
-  const currentTab = pathAfterRepo.startsWith('/proxy-rules')
-    ? 'proxy-rules'
-    : pathAfterRepo.startsWith('/aliases')
-      ? 'aliases'
-      : pathAfterRepo.startsWith('/branches')
-        ? 'branches'
-        : 'deployments';
+  const currentTab = pathAfterRepo.startsWith('/data')
+    ? 'data'
+    : pathAfterRepo.startsWith('/proxy-rules')
+      ? 'proxy-rules'
+      : pathAfterRepo.startsWith('/aliases')
+        ? 'aliases'
+        : pathAfterRepo.startsWith('/branches')
+          ? 'branches'
+          : 'deployments';
 
   // Update Redux store when URL params change
   useEffect(() => {
@@ -151,6 +153,9 @@ export function RepositoryLayout() {
             </TabsTrigger>
             <TabsTrigger value="proxy-rules" asChild>
               <Link to={routes.proxyRules(owner!, repo!)}>Proxy Rules</Link>
+            </TabsTrigger>
+            <TabsTrigger value="data" asChild>
+              <Link to={`/repo/${owner}/${repo}/data`}>Data</Link>
             </TabsTrigger>
           </TabsList>
         </Tabs>

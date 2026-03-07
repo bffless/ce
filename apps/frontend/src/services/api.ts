@@ -193,6 +193,10 @@ export const api = createApi({
     'ShareLink',
     'TrafficRule',
     'OnboardingRule',
+    'Pipeline',
+    'PipelineStep',
+    'PipelineSchema',
+    'PipelineData',
   ],
   endpoints: () => ({}),
 });

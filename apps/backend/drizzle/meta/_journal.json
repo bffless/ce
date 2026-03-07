@@ -43,6 +43,13 @@
       "when": 1772540741324,
       "tag": "0005_same_the_watchers",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1772889396302,
+      "tag": "0006_nosy_impossible_man",
+      "breakpoints": true
     }
   ]
 }
