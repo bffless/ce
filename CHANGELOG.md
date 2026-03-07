@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.87](https://github.com/bffless/ce/compare/v0.0.86...v0.0.87) (2026-03-07)
+
+
+### Features
+
+* add session endpoint for custom domain authentication ([8198cab](https://github.com/bffless/ce/commit/8198cab6c116350acf21e0cdbef2b83a4c994011))
+
 ## [0.0.86](https://github.com/bffless/ce/compare/v0.0.85...v0.0.86) (2026-03-06)
 
 
