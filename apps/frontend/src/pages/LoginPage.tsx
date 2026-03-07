@@ -105,9 +105,39 @@ export function LoginPage() {
   // Redirect if already logged in
   useEffect(() => {
     if (!isLoadingSession && sessionData?.user) {
+      // Handle custom domain relay flow when already logged in
+      if (customDomainRelay && targetDomain) {
+        setIsRelaying(true);
+        fetch('/api/auth/domain-token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            targetDomain,
+            redirectPath: searchParams.get('redirect'),
+          }),
+        })
+          .then(async (response) => {
+            if (response.ok) {
+              const { redirectUrl } = await response.json();
+              window.location.href = redirectUrl;
+            } else {
+              // Domain token request failed, fall back to normal redirect
+              console.error('Failed to get domain token');
+              setIsRelaying(false);
+              navigate(redirectTo);
+            }
+          })
+          .catch((error) => {
+            console.error('Domain relay error:', error);
+            setIsRelaying(false);
+            navigate(redirectTo);
+          });
+        return;
+      }
       navigate(redirectTo);
     }
-  }, [isLoadingSession, sessionData, navigate, redirectTo]);
+  }, [isLoadingSession, sessionData, navigate, redirectTo, customDomainRelay, targetDomain, searchParams]);
 
   // Redirect to setup if not complete
   if (!isLoadingSetup && setupStatus && !setupStatus.isSetupComplete) {
