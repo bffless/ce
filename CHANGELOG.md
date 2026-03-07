@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.90](https://github.com/bffless/ce/compare/v0.0.89...v0.0.90) (2026-03-07)
+
+
+### Bug Fixes
+
+* handle custom domain relay when already logged in ([3088ee8](https://github.com/bffless/ce/commit/3088ee87c2f7d5477d61eddf944361dc290d8c53))
+
 ## [0.0.89](https://github.com/bffless/ce/compare/v0.0.88...v0.0.89) (2026-03-07)
 
 
