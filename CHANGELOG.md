@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.96](https://github.com/bffless/ce/compare/v0.0.95...v0.0.96) (2026-03-08)
+
+
+### Bug Fixes
+
+* honeypot ([78d02f9](https://github.com/bffless/ce/commit/78d02f9d57cf13842f4fc7a70f2e2170d0e3a499))
+
 ## [0.0.95](https://github.com/bffless/ce/compare/v0.0.94...v0.0.95) (2026-03-08)
 
 
