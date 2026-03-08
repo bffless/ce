@@ -6,8 +6,10 @@ import { projects, deploymentAliases, domainMappings } from '../db/schema';
 import { ProxyRulesService } from './proxy-rules.service';
 import { ProxyService } from './proxy.service';
 import { EmailFormHandlerService } from './email-form-handler.service';
-import { ProxyRule, ProxyType } from '../db/schema/proxy-rules.schema';
+import { ProxyRule, ProxyType, PipelineConfig } from '../db/schema/proxy-rules.schema';
 import { ConfigService } from '@nestjs/config';
+import { PipelineExecutionService } from '../pipelines/execution';
+import { Pipeline, PipelineStep } from '../pipelines/types';
 
 interface ParsedPublicPath {
   owner: string;
@@ -34,6 +36,7 @@ export class ProxyMiddleware implements NestMiddleware {
     private readonly proxyService: ProxyService,
     private readonly emailFormHandlerService: EmailFormHandlerService,
     private readonly configService: ConfigService,
+    private readonly pipelineExecutionService: PipelineExecutionService,
   ) {}
 
   /**
@@ -63,9 +66,7 @@ export class ProxyMiddleware implements NestMiddleware {
     try {
       // Check for subdomain-alias format first: /public/subdomain-alias/{aliasName}/{subpath...}
       // This format is used by nginx wildcard server blocks for preview alias subdomains
-      const subdomainMatch = req.path.match(
-        /^\/public\/subdomain-alias\/([^/]+)(\/.*)?$/,
-      );
+      const subdomainMatch = req.path.match(/^\/public\/subdomain-alias\/([^/]+)(\/.*)?$/);
       if (subdomainMatch) {
         return this.handleSubdomainAlias(req, res, next, subdomainMatch);
       }
@@ -128,9 +129,7 @@ export class ProxyMiddleware implements NestMiddleware {
 
       // Handle email form handler
       if (proxyType === 'email_form_handler') {
-        this.logger.debug(
-          `Email form handler: ${subpathForMatching} (rule: ${matchedRule.id})`,
-        );
+        this.logger.debug(`Email form handler: ${subpathForMatching} (rule: ${matchedRule.id})`);
         return this.emailFormHandlerService.handleSubmission(req, res, matchedRule);
       }
 
@@ -158,6 +157,12 @@ export class ProxyMiddleware implements NestMiddleware {
           `Internal rewrite: ${subpathForMatching} → ${newSubpath} (rule: ${matchedRule.id}, params[0]: ${req.params?.['0']})`,
         );
         return next();
+      }
+
+      // Handle pipeline execution
+      if (proxyType === 'pipeline') {
+        this.logger.debug(`Pipeline execution: ${subpathForMatching} (rule: ${matchedRule.id})`);
+        return this.handlePipelineExecution(req, res, matchedRule, project.id);
       }
 
       this.logger.debug(
@@ -194,9 +199,7 @@ export class ProxyMiddleware implements NestMiddleware {
 
     // Check for X-Original-URI header (set by nginx for wildcard subdomain requests)
     const originalUri = req.headers['x-original-uri'] as string | undefined;
-    const subpathForMatching = originalUri
-      ? this.extractPathFromUri(originalUri)
-      : subpath;
+    const subpathForMatching = originalUri ? this.extractPathFromUri(originalUri) : subpath;
 
     // Look up alias by name (across all projects)
     let alias = await this.getAliasByNameGlobal(aliasName);
@@ -303,6 +306,14 @@ export class ProxyMiddleware implements NestMiddleware {
         `Subdomain internal rewrite: ${subpathForMatching} → ${newSubpath} (alias: ${resolvedAliasName}, rule: ${matchedRule.id})`,
       );
       return next();
+    }
+
+    // Handle pipeline execution
+    if (proxyType === 'pipeline') {
+      this.logger.debug(
+        `Subdomain pipeline execution: ${subpathForMatching} (alias: ${resolvedAliasName}, rule: ${matchedRule.id})`,
+      );
+      return this.handlePipelineExecution(req, res, matchedRule, project.id);
     }
 
     this.logger.debug(
@@ -434,14 +445,8 @@ export class ProxyMiddleware implements NestMiddleware {
   /**
    * Get project by ID (returns null if not found)
    */
-  private async getProjectById(
-    projectId: string,
-  ): Promise<typeof projects.$inferSelect | null> {
-    const [project] = await db
-      .select()
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
+  private async getProjectById(projectId: string): Promise<typeof projects.$inferSelect | null> {
+    const [project] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
 
     return project || null;
   }
@@ -550,6 +555,81 @@ export class ProxyMiddleware implements NestMiddleware {
       }
     }
     return null;
+  }
+
+  /**
+   * Handle pipeline execution for pipeline proxy rules.
+   * Builds a Pipeline object from the proxy rule's pipelineConfig and executes it.
+   */
+  private async handlePipelineExecution(
+    req: Request,
+    res: Response,
+    rule: ProxyRule,
+    projectId: string,
+  ): Promise<void> {
+    const pipelineConfig = rule.pipelineConfig as PipelineConfig | null;
+
+    if (!pipelineConfig || !pipelineConfig.steps || pipelineConfig.steps.length === 0) {
+      this.logger.error(`Pipeline rule ${rule.id} has no pipeline configuration`);
+      res.status(500).json({
+        error: 'Pipeline configuration missing',
+        code: 'PIPELINE_CONFIG_MISSING',
+      });
+      return;
+    }
+
+    // Build Pipeline object from proxy rule config
+    const pipeline: Pipeline & { steps: PipelineStep[] } = {
+      id: rule.id,
+      projectId: projectId,
+      name: pipelineConfig.name || `Pipeline for ${rule.pathPattern}`,
+      validators: [], // Pipeline validators not yet supported via proxy rules
+      steps: pipelineConfig.steps.map((step, index) => ({
+        id: step.id || `step-${index}`,
+        pipelineId: rule.id,
+        name: step.name || null,
+        handlerType: step.handlerType,
+        config: step.config,
+        order: index,
+        isEnabled: step.isEnabled !== false,
+      })),
+    };
+
+    try {
+      // Execute the pipeline
+      const result = await this.pipelineExecutionService.executePipelineWithDebug(
+        pipeline,
+        req,
+        undefined, // user - could extract from session if needed
+      );
+
+      if (result.success && result.response) {
+        // Set response headers if provided
+        if (result.response.headers) {
+          for (const [key, value] of Object.entries(result.response.headers)) {
+            res.setHeader(key, value);
+          }
+        }
+        res.status(result.response.status).json(result.response.body);
+      } else {
+        // Pipeline failed
+        const statusCode = result.error?.code === 'VALIDATION_ERROR' ? 400 : 500;
+        res.status(statusCode).json({
+          success: false,
+          error: result.error,
+        });
+      }
+    } catch (error) {
+      this.logger.error(
+        `Pipeline execution failed: ${error instanceof Error ? error.message : String(error)}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      res.status(500).json({
+        error: 'Pipeline execution failed',
+        code: 'PIPELINE_EXECUTION_ERROR',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
   }
 
   /**

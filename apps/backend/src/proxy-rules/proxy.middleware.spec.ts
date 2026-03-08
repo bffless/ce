@@ -3,6 +3,7 @@ import { ProxyRulesService } from './proxy-rules.service';
 import { ProxyService } from './proxy.service';
 import { EmailFormHandlerService } from './email-form-handler.service';
 import { ConfigService } from '@nestjs/config';
+import { PipelineExecutionService } from '../pipelines/execution';
 import { Request, Response, NextFunction } from 'express';
 
 // Mock the database client
@@ -21,6 +22,7 @@ describe('ProxyMiddleware', () => {
   let mockProxyService: jest.Mocked<ProxyService>;
   let mockEmailFormHandlerService: jest.Mocked<EmailFormHandlerService>;
   let mockConfigService: jest.Mocked<ConfigService>;
+  let mockPipelineExecutionService: jest.Mocked<PipelineExecutionService>;
   let mockNext: NextFunction;
 
   beforeEach(() => {
@@ -40,11 +42,19 @@ describe('ProxyMiddleware', () => {
       get: jest.fn().mockReturnValue('localhost'),
     } as any;
 
+    mockPipelineExecutionService = {
+      executePipelineWithDebug: jest.fn().mockResolvedValue({
+        success: true,
+        response: { status: 200, body: { success: true } },
+      }),
+    } as any;
+
     middleware = new ProxyMiddleware(
       mockProxyRulesService,
       mockProxyService,
       mockEmailFormHandlerService,
       mockConfigService,
+      mockPipelineExecutionService,
     );
     mockNext = jest.fn();
   });
