@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.99](https://github.com/bffless/ce/compare/v0.0.98...v0.0.99) (2026-03-08)
+
+
+### Features
+
+* add HTTP method filtering to proxy rules ([7308484](https://github.com/bffless/ce/commit/73084848d494cfda0d0607c0d9b3366ce44810ff))
+
 ## [0.0.98](https://github.com/bffless/ce/compare/v0.0.97...v0.0.98) (2026-03-08)
 
 
