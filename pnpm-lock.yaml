@@ -95,6 +95,9 @@ importers:
       ioredis:
         specifier: ^5.8.2
         version: 5.8.2
+      json5:
+        specifier: ^2.2.3
+        version: 2.2.3
       jsonwebtoken:
         specifier: ^9.0.3
         version: 9.0.3

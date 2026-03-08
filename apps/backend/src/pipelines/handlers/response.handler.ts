@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import JSON5 from 'json5';
 import { StepHandler, ResponseHandlerConfig } from '../execution/step-handler.interface';
 import { StepHandlerRegistry } from '../execution/step-handler.registry';
 import { ExpressionEvaluator } from '../execution/expression-evaluator';
@@ -100,10 +101,13 @@ export class ResponseHandler implements StepHandler<ResponseHandlerConfig> {
     // For JSON content type, ensure body is properly formatted
     if (contentType.includes('application/json')) {
       if (typeof body === 'string') {
-        // Try to parse as JSON, otherwise wrap in an object
+        // Try to parse as JSON5 (handles unquoted keys, trailing commas, etc.)
+        // This allows templates like { success: true, data: {{ steps.foo.value }} }
+        // to work even though they produce non-strict JSON
         try {
-          return JSON.parse(body);
+          return JSON5.parse(body);
         } catch {
+          // If even JSON5 fails, wrap in an object
           return { message: body };
         }
       }
