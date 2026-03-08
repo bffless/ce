@@ -17,6 +17,7 @@ import {
   IsIn,
   IsEmail,
   MaxLength,
+  IsArray,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import type { ProxyType } from '../../db/schema/proxy-rules.schema';
@@ -36,6 +37,11 @@ export class IsValidTargetUrlOrPath implements ValidatorConstraintInterface {
     // Email form handler: targetUrl can be empty or a placeholder (not used)
     if (obj.proxyType === 'email_form_handler') {
       // Allow any value including empty string - targetUrl is not used for this type
+      return true;
+    }
+
+    // Pipeline: targetUrl can be empty (not used)
+    if (obj.proxyType === 'pipeline') {
       return true;
     }
 
@@ -170,6 +176,80 @@ export class AuthTransformConfigDto {
   })
   @IsString()
   cookieName: string;
+}
+
+/**
+ * Pipeline step configuration for pipeline proxy rules.
+ */
+export class PipelineStepDto {
+  @ApiPropertyOptional({
+    description: 'Unique identifier for this step (frontend use)',
+    example: 'step_123',
+  })
+  @IsOptional()
+  @IsString()
+  id?: string;
+
+  @ApiPropertyOptional({
+    description: 'Optional name for this step',
+    example: 'Validate form data',
+  })
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @ApiProperty({
+    description: 'Handler type for this step',
+    example: 'form_handler',
+  })
+  @IsString()
+  handlerType: string;
+
+  @ApiProperty({
+    description: 'Handler-specific configuration',
+    example: { fields: { email: { type: 'email', required: true } } },
+  })
+  @IsObject()
+  config: Record<string, unknown>;
+
+  @ApiPropertyOptional({
+    description: 'Whether this step is enabled',
+    default: true,
+    example: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  isEnabled?: boolean;
+}
+
+/**
+ * Pipeline configuration for pipeline proxy rules.
+ * Contains the pipeline definition with steps and execution settings.
+ */
+export class PipelineConfigDto {
+  @ApiProperty({
+    description: 'Pipeline name for identification',
+    example: 'Contact Form Pipeline',
+  })
+  @IsString()
+  name: string;
+
+  @ApiPropertyOptional({
+    description: 'Optional description of the pipeline',
+    example: 'Handles contact form submissions',
+  })
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @ApiProperty({
+    description: 'Array of pipeline steps to execute',
+    type: [PipelineStepDto],
+  })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PipelineStepDto)
+  steps: PipelineStepDto[];
 }
 
 /**
@@ -344,7 +424,7 @@ export class CreateProxyRuleDto {
     example: 'external_proxy',
   })
   @IsOptional()
-  @IsIn(['external_proxy', 'internal_rewrite', 'email_form_handler'])
+  @IsIn(['external_proxy', 'internal_rewrite', 'email_form_handler', 'pipeline'])
   proxyType?: ProxyType;
 
   @ApiPropertyOptional({
@@ -356,6 +436,21 @@ export class CreateProxyRuleDto {
   @ValidateNested()
   @Type(() => EmailHandlerConfigDto)
   emailHandlerConfig?: EmailHandlerConfigDto;
+
+  @ApiPropertyOptional({
+    description: 'Configuration for pipeline proxy type. Required when proxyType is pipeline.',
+    type: PipelineConfigDto,
+    example: {
+      name: 'Contact Form Pipeline',
+      steps: [
+        { handlerType: 'form_handler', config: { fields: { email: { type: 'email', required: true } } } },
+      ],
+    },
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PipelineConfigDto)
+  pipelineConfig?: PipelineConfigDto;
 
   @ApiPropertyOptional({
     description: 'Optional description for documentation',

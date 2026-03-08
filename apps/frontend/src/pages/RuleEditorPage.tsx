@@ -67,20 +67,21 @@ export function RuleEditorPage() {
   const handleSubmit = async (data: CreateProxyRuleDto) => {
     try {
       if (isCreateMode) {
-        await createRule({ ruleSetId: ruleSetId!, rule: data }).unwrap();
+        const newRule = await createRule({ ruleSetId: ruleSetId!, rule: data }).unwrap();
         toast({
           title: 'Rule created',
           description: `Proxy rule for "${data.pathPattern}" has been created.`,
         });
+        // Navigate to the edit page of the newly created rule
+        navigate(routes.editRule(owner!, repo!, ruleSetId!, newRule.id), { replace: true });
       } else if (isEditMode && ruleId) {
         await updateRule({ id: ruleId, updates: data }).unwrap();
         toast({
           title: 'Rule updated',
           description: 'Proxy rule has been updated.',
         });
+        // Stay on the same page (don't navigate)
       }
-      // Navigate back to rule set detail page
-      navigate(routes.ruleSet(owner!, repo!, ruleSetId!));
     } catch (err: unknown) {
       const errorMessage =
         (err as { data?: { message?: string } })?.data?.message ||
@@ -196,6 +197,7 @@ export function RuleEditorPage() {
         onSubmit={handleSubmit}
         onCancel={handleCancel}
         isSubmitting={isCreating || isUpdating}
+        projectId={ruleSet?.projectId}
       />
     </div>
   );

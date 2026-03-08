@@ -116,6 +116,18 @@ export class ProxyRulesService {
   }
 
   /**
+   * Get a rule set by ID
+   */
+  async getRuleSetById(id: string): Promise<typeof proxyRuleSets.$inferSelect | null> {
+    const [ruleSet] = await db
+      .select()
+      .from(proxyRuleSets)
+      .where(eq(proxyRuleSets.id, id))
+      .limit(1);
+    return ruleSet || null;
+  }
+
+  /**
    * Create a new proxy rule within a rule set
    */
   async create(
@@ -151,12 +163,13 @@ export class ProxyRulesService {
       }
     }
 
-    // Validate target URL (skip for internal rewrites and email form handlers - no external request made)
-    const isInternalOrEmail =
+    // Validate target URL (skip for internal rewrites, email form handlers, and pipelines - no external request made)
+    const skipUrlValidation =
       dto.proxyType === 'internal_rewrite' ||
       dto.proxyType === 'email_form_handler' ||
+      dto.proxyType === 'pipeline' ||
       dto.internalRewrite;
-    if (!isInternalOrEmail) {
+    if (!skipUrlValidation) {
       this.validateTargetUrl(dto.targetUrl);
     }
 
@@ -188,6 +201,7 @@ export class ProxyRulesService {
         internalRewrite: dto.internalRewrite ?? false,
         proxyType: dto.proxyType ?? 'external_proxy',
         emailHandlerConfig: dto.emailHandlerConfig ?? null,
+        pipelineConfig: dto.pipelineConfig ?? null,
         isEnabled: dto.isEnabled ?? true,
         description: dto.description,
       })
@@ -255,13 +269,14 @@ export class ProxyRulesService {
       }
     }
 
-    // Validate target URL if changing (skip for internal rewrites and email form handlers)
-    const willBeInternalRewrite =
+    // Validate target URL if changing (skip for internal rewrites, email form handlers, and pipelines)
+    const skipUrlValidation =
       effectiveProxyType === 'internal_rewrite' ||
       effectiveProxyType === 'email_form_handler' ||
+      effectiveProxyType === 'pipeline' ||
       dto.internalRewrite === true ||
       (dto.internalRewrite === undefined && existing.internalRewrite);
-    if (dto.targetUrl && dto.targetUrl !== existing.targetUrl && !willBeInternalRewrite) {
+    if (dto.targetUrl && dto.targetUrl !== existing.targetUrl && !skipUrlValidation) {
       this.validateTargetUrl(dto.targetUrl);
     }
 
@@ -288,6 +303,7 @@ export class ProxyRulesService {
     if (dto.internalRewrite !== undefined) updateData.internalRewrite = dto.internalRewrite;
     if (dto.proxyType !== undefined) updateData.proxyType = dto.proxyType;
     if (dto.emailHandlerConfig !== undefined) updateData.emailHandlerConfig = dto.emailHandlerConfig;
+    if (dto.pipelineConfig !== undefined) updateData.pipelineConfig = dto.pipelineConfig;
     if (dto.description !== undefined) updateData.description = dto.description;
     if (dto.isEnabled !== undefined) updateData.isEnabled = dto.isEnabled;
 
@@ -327,6 +343,7 @@ export class ProxyRulesService {
           internalRewrite: existing.internalRewrite,
           proxyType: existing.proxyType,
           emailHandlerConfig: existing.emailHandlerConfig,
+          pipelineConfig: existing.pipelineConfig,
           description: existing.description,
           isEnabled: existing.isEnabled,
           headerConfig: existing.headerConfig,
@@ -388,6 +405,7 @@ export class ProxyRulesService {
         internalRewrite: existing.internalRewrite,
         proxyType: existing.proxyType,
         emailHandlerConfig: existing.emailHandlerConfig,
+        pipelineConfig: existing.pipelineConfig,
         description: existing.description,
         isEnabled: existing.isEnabled,
         headerConfig: existing.headerConfig,

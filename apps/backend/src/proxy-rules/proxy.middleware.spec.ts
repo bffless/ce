@@ -80,6 +80,7 @@ describe('ProxyMiddleware', () => {
     internalRewrite: false,
     proxyType: 'external_proxy' as const,
     emailHandlerConfig: null,
+    pipelineConfig: null,
     isEnabled: true,
     description: null,
     createdAt: new Date(),

@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Post,
   Patch,
   Delete,
   Body,
@@ -8,6 +9,7 @@ import {
   UseGuards,
   ParseUUIDPipe,
   NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -21,6 +23,8 @@ import { ProxyRulesService } from './proxy-rules.service';
 import { UpdateProxyRuleDto, ProxyRuleResponseDto } from './dto';
 import { ApiKeyGuard } from '../auth/api-key.guard';
 import { CurrentUser, CurrentUserData } from '../auth/decorators/current-user.decorator';
+import { PipelineExecutionService } from '../pipelines/execution';
+import { TestPipelineDto, PipelineTestResultDto } from '../pipelines/dto';
 
 /**
  * Controller for individual proxy rule operations.
@@ -32,7 +36,10 @@ import { CurrentUser, CurrentUserData } from '../auth/decorators/current-user.de
 @Controller('api/proxy-rules')
 @UseGuards(ApiKeyGuard)
 export class ProxyRulesController {
-  constructor(private readonly proxyRulesService: ProxyRulesService) {}
+  constructor(
+    private readonly proxyRulesService: ProxyRulesService,
+    private readonly pipelineExecutionService: PipelineExecutionService,
+  ) {}
 
   @Get(':id')
   @ApiOperation({ summary: 'Get a specific proxy rule' })
@@ -80,5 +87,114 @@ export class ProxyRulesController {
   ): Promise<{ success: boolean }> {
     await this.proxyRulesService.delete(id, user.id, user.role || 'user');
     return { success: true };
+  }
+
+  @Post(':id/test')
+  @ApiOperation({ summary: 'Test a pipeline proxy rule with sample data' })
+  @ApiParam({ name: 'id', type: 'string' })
+  @ApiResponse({ status: 200, description: 'Test result with debug info', type: PipelineTestResultDto })
+  @ApiResponse({ status: 400, description: 'Rule is not a pipeline type' })
+  @ApiResponse({ status: 404, description: 'Rule not found' })
+  async testPipelineRule(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: TestPipelineDto,
+    @CurrentUser() user: CurrentUserData,
+  ): Promise<PipelineTestResultDto> {
+    const rule = await this.proxyRulesService.getRuleById(id);
+    if (!rule) {
+      throw new NotFoundException(`Proxy rule ${id} not found`);
+    }
+
+    if (rule.proxyType !== 'pipeline' || !rule.pipelineConfig) {
+      throw new BadRequestException('This endpoint only works for pipeline-type proxy rules');
+    }
+
+    // Get the rule set to find the project ID
+    const ruleSet = await this.proxyRulesService.getRuleSetById(rule.ruleSetId);
+    if (!ruleSet) {
+      throw new NotFoundException('Rule set not found');
+    }
+
+    // Build a pipeline-like object from the proxy rule's pipeline config
+    const pipelineConfig = rule.pipelineConfig as {
+      name?: string;
+      description?: string;
+      steps?: Array<{
+        id: string;
+        name?: string;
+        handlerType: string;
+        config: Record<string, unknown>;
+        isEnabled?: boolean;
+      }>;
+    };
+
+    const pipelineLike = {
+      id: `proxy-rule-${id}`,
+      projectId: ruleSet.projectId,
+      name: pipelineConfig.name || 'Pipeline',
+      pathPattern: rule.pathPattern,
+      httpMethods: ['POST'], // Default for pipelines
+      validators: [],
+      isEnabled: true,
+      steps: (pipelineConfig.steps || []).map((step, index) => ({
+        id: step.id,
+        pipelineId: `proxy-rule-${id}`,
+        name: step.name || null,
+        handlerType: step.handlerType,
+        config: step.config,
+        order: index,
+        isEnabled: step.isEnabled ?? true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })),
+    };
+
+    // Create a mock request object for testing
+    const mockReq = {
+      method: dto.method || 'POST',
+      path: dto.path || rule.pathPattern,
+      body: dto.input,
+      query: {},
+      headers: dto.headers || {},
+      ip: '127.0.0.1',
+      socket: { remoteAddress: '127.0.0.1' },
+      get: (header: string) => dto.headers?.[header],
+    } as any;
+
+    // Determine which user to use for the test
+    let testUser: { id: string; email?: string; role?: string } | undefined;
+
+    if (dto.simulateAuth !== false) {
+      if (dto.mockUser) {
+        testUser = {
+          id: dto.mockUser.id,
+          email: dto.mockUser.email,
+          role: dto.mockUser.role,
+        };
+      } else {
+        testUser = {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+        };
+      }
+    }
+
+    // Use debug execution mode
+    const result = await this.pipelineExecutionService.executePipelineWithDebug(
+      pipelineLike as any,
+      mockReq,
+      testUser,
+      { dryRun: dto.dryRun },
+    );
+
+    return {
+      success: result.success,
+      response: result.response,
+      error: result.error,
+      stepOutputs: result.stepOutputs || {},
+      durationMs: result.debug?.totalDurationMs || 0,
+      debug: result.debug,
+    };
   }
 }

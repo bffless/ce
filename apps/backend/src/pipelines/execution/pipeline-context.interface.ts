@@ -76,6 +76,137 @@ export interface StepResult {
 }
 
 /**
+ * Debug information for a single step execution
+ */
+export interface StepDebugInfo {
+  /**
+   * Step identifier
+   */
+  stepId: string;
+
+  /**
+   * Step name (if defined)
+   */
+  stepName?: string;
+
+  /**
+   * Handler type that executed this step
+   */
+  handlerType: string;
+
+  /**
+   * When the step started executing
+   */
+  startTime: string;
+
+  /**
+   * When the step finished executing
+   */
+  endTime: string;
+
+  /**
+   * Duration in milliseconds
+   */
+  durationMs: number;
+
+  /**
+   * Execution status
+   */
+  status: 'success' | 'failed' | 'skipped';
+
+  /**
+   * Input snapshot before execution (context state)
+   */
+  input: {
+    requestInput: Record<string, unknown>;
+    previousStepOutputs: Record<string, unknown>;
+  };
+
+  /**
+   * Output from the step (if successful)
+   */
+  output?: unknown;
+
+  /**
+   * Error information (if failed)
+   */
+  error?: {
+    code: string;
+    message: string;
+    details?: unknown;
+  };
+
+  /**
+   * Condition that was evaluated (if any)
+   */
+  condition?: string;
+
+  /**
+   * Result of condition evaluation
+   */
+  conditionResult?: boolean;
+}
+
+/**
+ * Debug information for a validator execution
+ */
+export interface ValidatorDebugInfo {
+  /**
+   * Validator type
+   */
+  type: string;
+
+  /**
+   * Whether validation passed
+   */
+  passed: boolean;
+
+  /**
+   * Duration in milliseconds
+   */
+  durationMs: number;
+
+  /**
+   * Error information (if failed)
+   */
+  error?: {
+    code: string;
+    message: string;
+    details?: unknown;
+  };
+}
+
+/**
+ * Debug information for the entire pipeline execution
+ */
+export interface PipelineDebugInfo {
+  /**
+   * Validator execution results
+   */
+  validators: ValidatorDebugInfo[];
+
+  /**
+   * Step execution results
+   */
+  steps: StepDebugInfo[];
+
+  /**
+   * Total execution time in milliseconds
+   */
+  totalDurationMs: number;
+
+  /**
+   * When execution started
+   */
+  startTime: string;
+
+  /**
+   * When execution ended
+   */
+  endTime: string;
+}
+
+/**
  * Result of executing an entire pipeline
  */
 export interface PipelineResult {
@@ -107,4 +238,14 @@ export interface PipelineResult {
    * Outputs from all steps (for debugging/testing)
    */
   stepOutputs?: Record<string, unknown>;
+}
+
+/**
+ * Result of executing a pipeline with debug information
+ */
+export interface PipelineDebugResult extends PipelineResult {
+  /**
+   * Debug information (present when debug mode is enabled)
+   */
+  debug?: PipelineDebugInfo;
 }

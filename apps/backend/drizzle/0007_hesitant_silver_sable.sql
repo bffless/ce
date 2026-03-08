@@ -1,0 +1,1 @@
+ALTER TABLE "proxy_rules" ADD COLUMN "pipeline_config" jsonb;

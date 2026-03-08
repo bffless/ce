@@ -29,6 +29,7 @@ describe('ProxyService', () => {
     internalRewrite: false,
     proxyType: 'external_proxy',
     emailHandlerConfig: null,
+    pipelineConfig: null,
     isEnabled: true,
     description: null,
     createdAt: new Date(),

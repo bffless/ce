@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { StepHandler } from './step-handler.interface';
-import { HandlerType } from '../../db/schema';
+import { HandlerType } from '../types';
 import { HandlerNotFoundError } from '../errors';
 
 /**

@@ -105,7 +105,26 @@ export function SchemaEditorPage() {
       return;
     }
 
-    const validFields = fields.filter((f) => f.name.trim());
+    const validFields = fields
+      .filter((f) => f.name.trim())
+      .map((f) => {
+        // Process default value based on type
+        let processedDefault = f.default;
+        if (f.default !== undefined && f.default !== '') {
+          if (f.type === 'number') {
+            processedDefault = Number(f.default);
+          } else if (f.type === 'boolean') {
+            processedDefault = f.default === true || f.default === 'true';
+          }
+        } else {
+          processedDefault = undefined;
+        }
+        return {
+          ...f,
+          default: processedDefault,
+        };
+      });
+
     if (validFields.length === 0) {
       toast({
         title: 'Validation error',
@@ -232,7 +251,7 @@ export function SchemaEditorPage() {
                     key={index}
                     className="flex items-start gap-3 p-3 border rounded-md bg-muted/30"
                   >
-                    <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-3">
+                    <div className="flex-1 grid grid-cols-1 md:grid-cols-5 gap-3">
                       <div className="space-y-1">
                         <Label className="text-xs text-muted-foreground">Name</Label>
                         <Input
@@ -272,6 +291,39 @@ export function SchemaEditorPage() {
                           />
                           <span className="ml-2 text-sm text-muted-foreground">Required</span>
                         </div>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Default</Label>
+                        {field.type === 'boolean' ? (
+                          <Select
+                            value={field.default === undefined ? '' : String(field.default)}
+                            onValueChange={(value) =>
+                              handleFieldChange(index, {
+                                default: value === '' ? undefined : value === 'true',
+                              })
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="No default" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="">No default</SelectItem>
+                              <SelectItem value="true">True</SelectItem>
+                              <SelectItem value="false">False</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <Input
+                            value={field.default !== undefined ? String(field.default) : ''}
+                            onChange={(e) =>
+                              handleFieldChange(index, {
+                                default: e.target.value === '' ? undefined : e.target.value,
+                              })
+                            }
+                            placeholder="No default"
+                            type={field.type === 'number' ? 'number' : 'text'}
+                          />
+                        )}
                       </div>
                       <div className="flex items-end">
                         <Button

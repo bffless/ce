@@ -50,6 +50,20 @@
       "when": 1772889396302,
       "tag": "0006_nosy_impossible_man",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1772922414196,
+      "tag": "0007_hesitant_silver_sable",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1772974812145,
+      "tag": "0008_lame_stone_men",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { HttpMethod, ValidatorConfig, SchemaField, HandlerType } from '../../db/schema';
+import { SchemaField } from '../../db/schema';
+import { HttpMethod, ValidatorConfig, HandlerType } from '../types';
 
 export { SchemaField };
 
@@ -171,6 +172,95 @@ export class PaginatedDataResponseDto {
 }
 
 /**
+ * Validator debug information
+ */
+export class ValidatorDebugInfoDto {
+  @ApiProperty({ description: 'Validator type' })
+  type: string;
+
+  @ApiProperty({ description: 'Whether validation passed' })
+  passed: boolean;
+
+  @ApiProperty({ description: 'Execution duration in milliseconds' })
+  durationMs: number;
+
+  @ApiPropertyOptional({ description: 'Error information if validation failed' })
+  error?: {
+    code: string;
+    message: string;
+    details?: unknown;
+  };
+}
+
+/**
+ * Step debug information
+ */
+export class StepDebugInfoDto {
+  @ApiProperty({ description: 'Step ID' })
+  stepId: string;
+
+  @ApiPropertyOptional({ description: 'Step name' })
+  stepName?: string;
+
+  @ApiProperty({ description: 'Handler type' })
+  handlerType: string;
+
+  @ApiProperty({ description: 'Start time (ISO 8601)' })
+  startTime: string;
+
+  @ApiProperty({ description: 'End time (ISO 8601)' })
+  endTime: string;
+
+  @ApiProperty({ description: 'Execution duration in milliseconds' })
+  durationMs: number;
+
+  @ApiProperty({ description: 'Execution status', enum: ['success', 'failed', 'skipped'] })
+  status: 'success' | 'failed' | 'skipped';
+
+  @ApiProperty({ description: 'Input snapshot before execution' })
+  input: {
+    requestInput: Record<string, unknown>;
+    previousStepOutputs: Record<string, unknown>;
+  };
+
+  @ApiPropertyOptional({ description: 'Step output' })
+  output?: unknown;
+
+  @ApiPropertyOptional({ description: 'Error information if step failed' })
+  error?: {
+    code: string;
+    message: string;
+    details?: unknown;
+  };
+
+  @ApiPropertyOptional({ description: 'Condition expression if any' })
+  condition?: string;
+
+  @ApiPropertyOptional({ description: 'Result of condition evaluation' })
+  conditionResult?: boolean;
+}
+
+/**
+ * Pipeline debug information
+ */
+export class PipelineDebugInfoDto {
+  @ApiProperty({ type: [ValidatorDebugInfoDto], description: 'Validator execution results' })
+  validators: ValidatorDebugInfoDto[];
+
+  @ApiProperty({ type: [StepDebugInfoDto], description: 'Step execution results' })
+  steps: StepDebugInfoDto[];
+
+  @ApiProperty({ description: 'Total execution duration in milliseconds' })
+  totalDurationMs: number;
+
+  @ApiProperty({ description: 'Execution start time (ISO 8601)' })
+  startTime: string;
+
+  @ApiProperty({ description: 'Execution end time (ISO 8601)' })
+  endTime: string;
+}
+
+/**
  * Pipeline test result DTO
  */
 export class PipelineTestResultDto {
@@ -197,6 +287,9 @@ export class PipelineTestResultDto {
 
   @ApiProperty()
   durationMs: number;
+
+  @ApiPropertyOptional({ type: PipelineDebugInfoDto, description: 'Debug information with step-by-step details' })
+  debug?: PipelineDebugInfoDto;
 }
 
 /**

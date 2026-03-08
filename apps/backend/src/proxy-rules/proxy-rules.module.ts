@@ -8,9 +8,10 @@ import { ProxyMiddleware } from './proxy.middleware';
 import { EmailFormHandlerService } from './email-form-handler.service';
 import { PermissionsModule } from '../permissions/permissions.module';
 import { DomainsModule } from '../domains/domains.module';
+import { PipelinesModule } from '../pipelines/pipelines.module';
 
 @Module({
-  imports: [PermissionsModule, forwardRef(() => DomainsModule)],
+  imports: [PermissionsModule, forwardRef(() => DomainsModule), PipelinesModule],
   controllers: [ProxyRulesController, ProxyRuleSetsController],
   providers: [ProxyRulesService, ProxyRuleSetsService, ProxyService, ProxyMiddleware, EmailFormHandlerService],
   exports: [ProxyRulesService, ProxyRuleSetsService, ProxyService],

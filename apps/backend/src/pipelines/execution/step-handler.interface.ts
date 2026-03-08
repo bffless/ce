@@ -1,5 +1,5 @@
 import { PipelineContext, StepResult } from './pipeline-context.interface';
-import { HandlerType, PipelineStep } from '../../db/schema';
+import { HandlerType, PipelineStep } from '../types';
 
 /**
  * Interface that all step handlers must implement
@@ -197,4 +197,41 @@ export interface FormHandlerConfig extends BaseHandlerConfig {
    * Honeypot field name for spam detection
    */
   honeypotField?: string;
+}
+
+/**
+ * Configuration for aggregate_handler (performs aggregation operations on arrays)
+ */
+export interface AggregateHandlerConfig extends BaseHandlerConfig {
+  /**
+   * Aggregation operation to perform
+   */
+  operation: 'sum' | 'count' | 'avg' | 'min' | 'max';
+
+  /**
+   * Field to aggregate (required for sum, avg, min, max)
+   */
+  field?: string;
+}
+
+/**
+ * Configuration for function_handler (executes custom JavaScript code)
+ */
+export interface FunctionHandlerConfig extends BaseHandlerConfig {
+  /**
+   * JavaScript code to execute.
+   * The code should return the transformed data.
+   * Available variables:
+   * - data.input: The pipeline input
+   * - data.user: Current user info (id, email, role) if authenticated
+   * - data.request: Request info (method, path, query)
+   * - data.steps: Output from previous steps (keyed by step name)
+   */
+  code: string;
+
+  /**
+   * Execution timeout in milliseconds (1000-30000ms)
+   * @default 5000
+   */
+  timeout?: number;
 }
