@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Trash2, Edit2, AlertCircle, ArrowRight, RotateCcw, Mail } from 'lucide-react';
+import { Trash2, Edit2, AlertCircle, ArrowRight, RotateCcw, Mail, Workflow } from 'lucide-react';
 import type { ProxyRule, UpdateProxyRuleDto } from '@/services/proxyRulesApi';
 
 interface RulesListProps {
@@ -130,6 +130,10 @@ export function RulesList({
                   <span title="Email form handler">
                     <Mail className="h-3 w-3 text-emerald-500 flex-shrink-0" />
                   </span>
+                ) : rule.proxyType === 'pipeline' ? (
+                  <span title="Pipeline">
+                    <Workflow className="h-3 w-3 text-purple-500 flex-shrink-0" />
+                  </span>
                 ) : rule.internalRewrite ? (
                   <span title="Internal rewrite">
                     <RotateCcw className="h-3 w-3 text-blue-500 flex-shrink-0" />
@@ -140,11 +144,18 @@ export function RulesList({
                 <span className="text-muted-foreground truncate">
                   {rule.proxyType === 'email_form_handler'
                     ? rule.emailHandlerConfig?.destinationEmail || 'No email configured'
-                    : rule.targetUrl}
+                    : rule.proxyType === 'pipeline'
+                      ? rule.pipelineConfig?.name || 'Pipeline'
+                      : rule.targetUrl}
                 </span>
                 {rule.proxyType === 'email_form_handler' && (
                   <span className="text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300 px-1.5 py-0.5 rounded flex-shrink-0">
                     email
+                  </span>
+                )}
+                {rule.proxyType === 'pipeline' && (
+                  <span className="text-xs bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 px-1.5 py-0.5 rounded flex-shrink-0">
+                    pipeline
                   </span>
                 )}
                 {rule.internalRewrite && (
@@ -163,6 +174,14 @@ export function RulesList({
                   <>
                     <span>Sends form data to email</span>
                     {rule.emailHandlerConfig?.honeypotField && <span>Spam protection</span>}
+                  </>
+                ) : rule.proxyType === 'pipeline' ? (
+                  <>
+                    <span>
+                      {rule.pipelineConfig?.steps?.length
+                        ? `${rule.pipelineConfig.steps.length} step${rule.pipelineConfig.steps.length === 1 ? '' : 's'}`
+                        : 'No steps configured'}
+                    </span>
                   </>
                 ) : rule.internalRewrite ? (
                   <span>Internal rewrite (no HTTP request)</span>

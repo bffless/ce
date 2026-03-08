@@ -14,6 +14,48 @@ import type { EmailHandlerConfig } from './types';
 // Lazy load Monaco Editor to reduce initial bundle size
 const Editor = lazy(() => import('@monaco-editor/react'));
 
+// Default HTML template for new email handlers
+const DEFAULT_EMAIL_TEMPLATE = `<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { border-bottom: 2px solid #007bff; padding-bottom: 10px; margin-bottom: 20px; }
+    .field { margin-bottom: 15px; }
+    .label { font-weight: 600; color: #555; }
+    .value { margin-top: 5px; }
+    .footer { margin-top: 30px; padding-top: 15px; border-top: 1px solid #eee; font-size: 12px; color: #888; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h2>New Form Submission</h2>
+    </div>
+
+    <div class="field">
+      <div class="label">Name</div>
+      <div class="value">{{input.name}}</div>
+    </div>
+
+    <div class="field">
+      <div class="label">Email</div>
+      <div class="value">{{input.email}}</div>
+    </div>
+
+    <div class="field">
+      <div class="label">Message</div>
+      <div class="value">{{input.message}}</div>
+    </div>
+
+    <div class="footer">
+      Submitted on {{metadata.path}} via {{metadata.method}}
+    </div>
+  </div>
+</body>
+</html>`;
+
 interface EmailHandlerConfigProps {
   config: Partial<EmailHandlerConfig>;
   onChange: (config: EmailHandlerConfig) => void;
@@ -22,7 +64,7 @@ interface EmailHandlerConfigProps {
 export function EmailHandlerConfig({ config, onChange }: EmailHandlerConfigProps) {
   const [to, setTo] = useState(config.to || '');
   const [subject, setSubject] = useState(config.subject || '');
-  const [body, setBody] = useState(config.body || '');
+  const [body, setBody] = useState(config.body || DEFAULT_EMAIL_TEMPLATE);
   const [replyTo, setReplyTo] = useState(config.replyTo || '');
 
   useEffect(() => {
@@ -98,9 +140,9 @@ export function EmailHandlerConfig({ config, onChange }: EmailHandlerConfigProps
           </Tooltip>
         </div>
         <div className="border rounded-md overflow-hidden">
-          <Suspense fallback={<Skeleton className="h-[200px] w-full" />}>
+          <Suspense fallback={<Skeleton className="h-[300px] w-full" />}>
             <Editor
-              height="200px"
+              height="300px"
               defaultLanguage="html"
               value={body}
               onChange={(value) => setBody(value || '')}
