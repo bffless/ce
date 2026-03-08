@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+import { Skeleton } from '@/components/ui/skeleton';
 import { HelpCircle } from 'lucide-react';
 import {
   Tooltip,
@@ -10,6 +10,9 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import type { EmailHandlerConfig } from './types';
+
+// Lazy load Monaco Editor to reduce initial bundle size
+const Editor = lazy(() => import('@monaco-editor/react'));
 
 interface EmailHandlerConfigProps {
   config: Partial<EmailHandlerConfig>;
@@ -94,14 +97,34 @@ export function EmailHandlerConfig({ config, onChange }: EmailHandlerConfigProps
             </TooltipContent>
           </Tooltip>
         </div>
-        <Textarea
-          id="body"
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          placeholder="<p>Hello {{input.name}},</p>
-<p>Thank you for your submission.</p>"
-          rows={6}
-        />
+        <div className="border rounded-md overflow-hidden">
+          <Suspense fallback={<Skeleton className="h-[200px] w-full" />}>
+            <Editor
+              height="200px"
+              defaultLanguage="html"
+              value={body}
+              onChange={(value) => setBody(value || '')}
+              options={{
+                minimap: { enabled: false },
+                lineNumbers: 'off',
+                scrollBeyondLastLine: false,
+                wordWrap: 'on',
+                fontSize: 13,
+                tabSize: 2,
+                padding: { top: 8, bottom: 8 },
+                renderLineHighlight: 'none',
+                overviewRulerLanes: 0,
+                hideCursorInOverviewRuler: true,
+                overviewRulerBorder: false,
+                scrollbar: {
+                  vertical: 'auto',
+                  horizontal: 'hidden',
+                },
+              }}
+              theme="vs-dark"
+            />
+          </Suspense>
+        </div>
       </div>
 
       <div className="space-y-2">

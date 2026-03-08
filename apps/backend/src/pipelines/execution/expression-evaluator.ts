@@ -56,6 +56,16 @@ export class ExpressionEvaluator {
       return trimmed.slice(1, -1);
     }
 
+    // Check if this looks like a valid expression path (must start with a known root)
+    // This allows literal values like email addresses to pass through unchanged
+    const validRoots = ['input', 'user', 'steps', 'metadata'];
+    const firstPart = trimmed.split('.')[0];
+    if (!validRoots.includes(firstPart)) {
+      // Not a valid expression path - return as literal string
+      // This handles email addresses, URLs, and other literal values
+      return trimmed;
+    }
+
     // Handle path expressions (input.field, user.id, steps.name.field)
     const parts = trimmed.split('.');
     if (parts.length === 0) {
@@ -73,7 +83,12 @@ export class ExpressionEvaluator {
         if (!context.user) {
           return null; // No user available
         }
-        value = this.getNestedValue(context.user as unknown as Record<string, unknown>, parts.slice(1), expression, stepName);
+        value = this.getNestedValue(
+          context.user as unknown as Record<string, unknown>,
+          parts.slice(1),
+          expression,
+          stepName,
+        );
         break;
       case 'steps':
         if (parts.length < 2) {
@@ -86,14 +101,28 @@ export class ExpressionEvaluator {
         if (parts.length === 2) {
           value = stepOutput;
         } else {
-          value = this.getNestedValue(stepOutput as Record<string, unknown>, parts.slice(2), expression, stepName);
+          value = this.getNestedValue(
+            stepOutput as Record<string, unknown>,
+            parts.slice(2),
+            expression,
+            stepName,
+          );
         }
         break;
       case 'metadata':
-        value = this.getNestedValue(context.metadata as Record<string, unknown>, parts.slice(1), expression, stepName);
+        value = this.getNestedValue(
+          context.metadata as Record<string, unknown>,
+          parts.slice(1),
+          expression,
+          stepName,
+        );
         break;
       default:
-        throw new ExpressionError(expression, `Unknown root '${root}'. Valid roots: input, user, steps, metadata`, stepName);
+        throw new ExpressionError(
+          expression,
+          `Unknown root '${root}'. Valid roots: input, user, steps, metadata`,
+          stepName,
+        );
     }
 
     return value;
