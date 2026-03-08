@@ -23,12 +23,28 @@ export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 export type ValidatorType = 'auth_required' | 'rate_limit';
 
 /**
- * Configuration for a pipeline validator
+ * Configuration for auth_required validator
  */
-export interface ValidatorConfig {
-  type: ValidatorType;
-  config: Record<string, unknown>;
+export interface AuthRequiredConfig {
+  roles?: string[];
+  allowApiKey?: boolean;
 }
+
+/**
+ * Configuration for rate_limit validator
+ */
+export interface RateLimitConfig {
+  limit: number;
+  windowSeconds: number;
+  keyBy?: 'ip' | 'user' | 'ip+user';
+}
+
+/**
+ * Configuration for a pipeline validator (discriminated union)
+ */
+export type ValidatorConfig =
+  | { type: 'auth_required'; config: AuthRequiredConfig }
+  | { type: 'rate_limit'; config: RateLimitConfig };
 
 /**
  * Pipelines table - defines request handlers for a project

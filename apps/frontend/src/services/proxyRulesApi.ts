@@ -1,5 +1,5 @@
 import { api } from './api';
-import type { HandlerType } from './pipelinesApi';
+import type { HandlerType, TestPipelineDto, TestPipelineResult } from './pipelinesApi';
 
 // Header configuration for proxy rules
 export interface HeaderConfig {
@@ -279,6 +279,15 @@ export const proxyRulesApi = api.injectEndpoints({
       invalidatesTags: ['ProxyRule', 'ProxyRuleSet'],
     }),
 
+    // Test a pipeline-type proxy rule with sample data
+    testProxyRule: builder.mutation<TestPipelineResult, { id: string; data: TestPipelineDto }>({
+      query: ({ id, data }) => ({
+        url: `/api/proxy-rules/${id}/test`,
+        method: 'POST',
+        body: data,
+      }),
+    }),
+
     // ==================== Settings ====================
 
     // Get email configuration status (public endpoint)
@@ -303,6 +312,7 @@ export const {
   useGetProxyRuleQuery,
   useUpdateProxyRuleMutation,
   useDeleteProxyRuleMutation,
+  useTestProxyRuleMutation,
   // Settings
   useGetEmailConfigStatusQuery,
 } = proxyRulesApi;

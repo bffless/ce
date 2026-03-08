@@ -9,7 +9,7 @@ import { eq, and, asc } from 'drizzle-orm';
 import { db } from '../db/client';
 import { pipelines, pipelineSteps, Pipeline, NewPipeline } from '../db/schema';
 import { PermissionsService } from '../permissions/permissions.service';
-import { CreatePipelineDto, UpdatePipelineDto } from './dto';
+import { CreatePipelineDto, UpdatePipelineDto, toValidatorConfig } from './dto';
 
 @Injectable()
 export class PipelinesService {
@@ -83,7 +83,7 @@ export class PipelinesService {
         description: dto.description,
         pathPattern: dto.pathPattern,
         httpMethods: dto.httpMethods || ['POST'],
-        validators: dto.validators || [],
+        validators: dto.validators?.map(toValidatorConfig) || [],
         isEnabled: dto.isEnabled ?? true,
         order,
       } as NewPipeline)
@@ -127,7 +127,7 @@ export class PipelinesService {
     if (dto.description !== undefined) updateData.description = dto.description;
     if (dto.pathPattern !== undefined) updateData.pathPattern = dto.pathPattern;
     if (dto.httpMethods !== undefined) updateData.httpMethods = dto.httpMethods;
-    if (dto.validators !== undefined) updateData.validators = dto.validators;
+    if (dto.validators !== undefined) updateData.validators = dto.validators.map(toValidatorConfig);
     if (dto.isEnabled !== undefined) updateData.isEnabled = dto.isEnabled;
     if (dto.order !== undefined) updateData.order = dto.order;
 

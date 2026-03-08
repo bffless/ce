@@ -5,10 +5,21 @@ import { api } from './api';
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 export type ValidatorType = 'auth_required' | 'rate_limit';
 
-export interface ValidatorConfig {
-  type: ValidatorType;
-  config: Record<string, unknown>;
+export interface AuthRequiredConfig {
+  roles?: string[];
+  allowApiKey?: boolean;
 }
+
+export interface RateLimitConfig {
+  limit: number;
+  windowSeconds: number;
+  keyBy?: 'ip' | 'user' | 'ip+user';
+}
+
+// Discriminated union for validator configs
+export type ValidatorConfig =
+  | { type: 'auth_required'; config: AuthRequiredConfig }
+  | { type: 'rate_limit'; config: RateLimitConfig };
 
 export type HandlerType =
   | 'form_handler'
@@ -95,11 +106,61 @@ export interface ReorderStepsDto {
   stepIds: string[];
 }
 
+export interface MockUser {
+  id: string;
+  email?: string;
+  role?: string;
+}
+
 export interface TestPipelineDto {
   method?: string;
   path?: string;
   input: Record<string, unknown>;
   headers?: Record<string, string>;
+  mockUser?: MockUser;
+  simulateAuth?: boolean;
+  dryRun?: boolean;
+}
+
+export interface ValidatorDebugInfo {
+  type: string;
+  passed: boolean;
+  durationMs: number;
+  error?: {
+    code: string;
+    message: string;
+    details?: unknown;
+  };
+}
+
+export interface StepDebugInfo {
+  stepId: string;
+  stepName?: string;
+  handlerType: string;
+  startTime: string;
+  endTime: string;
+  durationMs: number;
+  status: 'success' | 'failed' | 'skipped';
+  input: {
+    requestInput: Record<string, unknown>;
+    previousStepOutputs: Record<string, unknown>;
+  };
+  output?: unknown;
+  error?: {
+    code: string;
+    message: string;
+    details?: unknown;
+  };
+  condition?: string;
+  conditionResult?: boolean;
+}
+
+export interface PipelineDebugInfo {
+  validators: ValidatorDebugInfo[];
+  steps: StepDebugInfo[];
+  totalDurationMs: number;
+  startTime: string;
+  endTime: string;
 }
 
 export interface TestPipelineResult {
@@ -117,6 +178,7 @@ export interface TestPipelineResult {
   };
   stepOutputs?: Record<string, unknown>;
   durationMs: number;
+  debug?: PipelineDebugInfo;
 }
 
 // ==================== List Responses ====================

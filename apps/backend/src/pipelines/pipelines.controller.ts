@@ -25,6 +25,7 @@ import {
   CreatePipelineDto,
   UpdatePipelineDto,
   TestPipelineDto,
+  TestPipelineConfigDto,
   PipelineResponseDto,
   PipelineWithStepsResponseDto,
   PipelinesListResponseDto,
@@ -121,10 +122,88 @@ export class PipelinesController {
     return { success: true };
   }
 
+  @Post('test-config')
+  @ApiOperation({ summary: 'Test a pipeline configuration directly without saving' })
+  @ApiResponse({ status: 200, description: 'Test result with debug info', type: PipelineTestResultDto })
+  async testPipelineConfig(
+    @Body() dto: TestPipelineConfigDto,
+    @CurrentUser() user: CurrentUserData,
+  ): Promise<PipelineTestResultDto> {
+    // Build a pipeline-like object from the config
+    const pipelineLike = {
+      id: 'test-config',
+      projectId: dto.projectId,
+      name: dto.pipelineName || 'Test Pipeline',
+      pathPattern: dto.path || '/test',
+      httpMethods: [dto.method || 'POST'],
+      validators: [],
+      isEnabled: true,
+      steps: dto.steps.map((step, index) => ({
+        id: step.id,
+        pipelineId: 'test-config',
+        name: step.name || null,
+        handlerType: step.handlerType,
+        config: step.config,
+        order: index,
+        isEnabled: step.isEnabled ?? true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })),
+    };
+
+    // Create a mock request object for testing
+    const mockReq = {
+      method: dto.method || 'POST',
+      path: dto.path || '/test',
+      body: dto.input,
+      query: {},
+      headers: dto.headers || {},
+      ip: '127.0.0.1',
+      socket: { remoteAddress: '127.0.0.1' },
+      get: (header: string) => dto.headers?.[header],
+    } as any;
+
+    // Determine which user to use for the test
+    let testUser: { id: string; email?: string; role?: string } | undefined;
+
+    if (dto.simulateAuth !== false) {
+      if (dto.mockUser) {
+        testUser = {
+          id: dto.mockUser.id,
+          email: dto.mockUser.email,
+          role: dto.mockUser.role,
+        };
+      } else {
+        testUser = {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+        };
+      }
+    }
+
+    // Use debug execution mode
+    const result = await this.executionService.executePipelineWithDebug(
+      pipelineLike as any,
+      mockReq,
+      testUser,
+      { dryRun: dto.dryRun },
+    );
+
+    return {
+      success: result.success,
+      response: result.response,
+      error: result.error,
+      stepOutputs: result.stepOutputs || {},
+      durationMs: result.debug?.totalDurationMs || 0,
+      debug: result.debug,
+    };
+  }
+
   @Post(':id/test')
-  @ApiOperation({ summary: 'Test a pipeline with sample data' })
+  @ApiOperation({ summary: 'Test a pipeline with sample data and debug information' })
   @ApiParam({ name: 'id', type: 'string' })
-  @ApiResponse({ status: 200, description: 'Test result', type: PipelineTestResultDto })
+  @ApiResponse({ status: 200, description: 'Test result with debug info', type: PipelineTestResultDto })
   @ApiResponse({ status: 404, description: 'Pipeline not found' })
   async testPipeline(
     @Param('id', ParseUUIDPipe) id: string,
@@ -137,7 +216,6 @@ export class PipelinesController {
     }
 
     // Create a mock request object for testing
-    const startTime = Date.now();
     const mockReq = {
       method: dto.method || 'POST',
       path: dto.path || pipeline.pathPattern,
@@ -149,15 +227,43 @@ export class PipelinesController {
       get: (header: string) => dto.headers?.[header],
     } as any;
 
-    const result = await this.executionService.executePipeline(pipeline, mockReq, {
-      id: user.id,
-      email: user.email,
-      role: user.role,
-    });
+    // Determine which user to use for the test
+    // If simulateAuth is explicitly false, don't include any user
+    // If mockUser is provided, use it
+    // Otherwise, use the authenticated user
+    let testUser: { id: string; email?: string; role?: string } | undefined;
+
+    if (dto.simulateAuth !== false) {
+      if (dto.mockUser) {
+        testUser = {
+          id: dto.mockUser.id,
+          email: dto.mockUser.email,
+          role: dto.mockUser.role,
+        };
+      } else {
+        testUser = {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+        };
+      }
+    }
+
+    // Use debug execution mode to capture step-by-step information
+    const result = await this.executionService.executePipelineWithDebug(
+      pipeline,
+      mockReq,
+      testUser,
+      { dryRun: dto.dryRun },
+    );
 
     return {
-      ...result,
-      durationMs: Date.now() - startTime,
+      success: result.success,
+      response: result.response,
+      error: result.error,
+      stepOutputs: result.stepOutputs || {},
+      durationMs: result.debug?.totalDurationMs || 0,
+      debug: result.debug,
     };
   }
 }

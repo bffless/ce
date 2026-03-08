@@ -22,7 +22,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { ChevronDown, ChevronRight, ChevronUp, GripVertical, Plus, Trash2, Send, Info } from 'lucide-react';
-import type { HandlerType } from '@/services/pipelinesApi';
+import type { HandlerType, ValidatorConfig, HttpMethod } from '@/services/pipelinesApi';
 import type {
   PipelineStepConfig,
   PipelineConfig as PipelineConfigType,
@@ -35,6 +35,8 @@ import {
 } from './handlers';
 import { AvailableVariables, type PreviousStep } from './handlers/AvailableVariables';
 import type { ResponseHandlerConfig as ResponseConfig, ProxyForwardConfig as ProxyConfig } from './handlers/types';
+import { ValidatorsConfig } from './ValidatorsConfig';
+import { PipelineTestPanel } from './PipelineTestPanel';
 
 // Re-export types for convenience
 export type PipelineStep = PipelineStepConfig;
@@ -44,6 +46,16 @@ interface PipelineConfigProps {
   config: Partial<PipelineConfigData>;
   onChange: (config: PipelineConfigData) => void;
   projectId: string;
+  /** Optional validators configuration (for standalone pipelines) */
+  validators?: ValidatorConfig[];
+  /** Callback when validators change (required if validators prop is provided) */
+  onValidatorsChange?: (validators: ValidatorConfig[]) => void;
+  /** Pipeline ID for testing (for standalone pipelines) */
+  pipelineId?: string;
+  /** Path pattern for the pipeline (required for test panel) */
+  pathPattern?: string;
+  /** HTTP methods the pipeline responds to (required for test panel) */
+  httpMethods?: HttpMethod[];
 }
 
 // Handler types available for pipeline steps (excluding response_handler which is a terminal step)
@@ -69,8 +81,21 @@ type TerminalStepType = 'none' | 'response' | 'proxy';
  * PipelineConfig - Full pipeline editor component.
  * Allows adding, removing, and reordering steps with their handler configs.
  * Terminal steps (response/proxy) are handled separately at the end.
+ *
+ * Optional features (for standalone pipelines):
+ * - validators/onValidatorsChange: Configure pipeline validators
+ * - pipelineId: Enable test panel for running test requests
  */
-export function PipelineConfig({ config, onChange, projectId }: PipelineConfigProps) {
+export function PipelineConfig({
+  config,
+  onChange,
+  projectId,
+  validators,
+  onValidatorsChange,
+  pipelineId,
+  pathPattern: externalPathPattern,
+  httpMethods: externalHttpMethods,
+}: PipelineConfigProps) {
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [terminalExpanded, setTerminalExpanded] = useState(false);
@@ -279,6 +304,11 @@ export function PipelineConfig({ config, onChange, projectId }: PipelineConfigPr
           />
         </div>
       </div>
+
+      {/* Validators (only shown for standalone pipelines) */}
+      {validators !== undefined && onValidatorsChange && (
+        <ValidatorsConfig validators={validators} onChange={onValidatorsChange} />
+      )}
 
       {/* Steps */}
       <div className="space-y-4">
@@ -566,6 +596,15 @@ export function PipelineConfig({ config, onChange, projectId }: PipelineConfigPr
           </Card>
         )}
       </div>
+
+      {/* Test Panel (only shown for standalone pipelines with an ID) */}
+      {pipelineId && externalPathPattern && externalHttpMethods && externalHttpMethods.length > 0 && (
+        <PipelineTestPanel
+          pipelineId={pipelineId}
+          pathPattern={externalPathPattern}
+          httpMethods={externalHttpMethods}
+        />
+      )}
 
       {/* Delete confirmation dialog */}
       <AlertDialog open={!!deleteConfirm} onOpenChange={() => setDeleteConfirm(null)}>

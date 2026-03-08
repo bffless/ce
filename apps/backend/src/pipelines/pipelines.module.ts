@@ -28,6 +28,8 @@ import {
 } from './handlers';
 // Services
 import { FunctionRunnerService } from './function-runner.service';
+// Validators
+import { AuthRequiredValidator, RateLimitValidator } from './execution/validators';
 
 @Module({
   imports: [PermissionsModule],
@@ -60,6 +62,9 @@ import { FunctionRunnerService } from './function-runner.service';
     EmailHandler,
     AggregateHandler,
     FunctionHandler,
+    // Validators (auto-register on construction)
+    AuthRequiredValidator,
+    RateLimitValidator,
   ],
   exports: [
     PipelinesService,

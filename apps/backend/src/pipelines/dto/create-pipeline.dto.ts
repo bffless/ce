@@ -11,12 +11,70 @@ import {
   Matches,
   ValidateNested,
   IsIn,
+  IsNumber,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { HttpMethod, ValidatorType } from '../../db/schema';
+import {
+  HttpMethod,
+  ValidatorType,
+  ValidatorConfig,
+  AuthRequiredConfig,
+  RateLimitConfig,
+} from '../../db/schema';
 
 /**
- * Validator configuration DTO
+ * Auth Required validator configuration DTO
+ */
+export class AuthRequiredConfigDto implements AuthRequiredConfig {
+  @ApiPropertyOptional({
+    description: 'Roles that are allowed to access this pipeline (any match grants access)',
+    example: ['admin', 'editor'],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  roles?: string[];
+
+  @ApiPropertyOptional({
+    description: 'Whether to allow API key authentication',
+    example: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  allowApiKey?: boolean;
+}
+
+/**
+ * Rate Limit validator configuration DTO
+ */
+export class RateLimitConfigDto implements RateLimitConfig {
+  @ApiProperty({
+    description: 'Maximum number of requests allowed in the window',
+    example: 100,
+  })
+  @IsNumber()
+  limit: number;
+
+  @ApiProperty({
+    description: 'Time window in seconds',
+    example: 60,
+  })
+  @IsNumber()
+  windowSeconds: number;
+
+  @ApiPropertyOptional({
+    description: 'Key to use for rate limiting',
+    enum: ['ip', 'user', 'ip+user'],
+    example: 'ip',
+  })
+  @IsOptional()
+  @IsIn(['ip', 'user', 'ip+user'])
+  keyBy?: 'ip' | 'user' | 'ip+user';
+}
+
+/**
+ * Validator configuration DTO (discriminated union)
+ * Runtime validation uses class-transformer to pick the right config type
  */
 export class ValidatorConfigDto {
   @ApiProperty({
@@ -29,9 +87,30 @@ export class ValidatorConfigDto {
 
   @ApiProperty({
     description: 'Validator-specific configuration',
+    oneOf: [
+      { $ref: '#/components/schemas/AuthRequiredConfigDto' },
+      { $ref: '#/components/schemas/RateLimitConfigDto' },
+    ],
     example: { roles: ['admin'] },
   })
-  config: Record<string, unknown>;
+  config: AuthRequiredConfig | RateLimitConfig;
+}
+
+/**
+ * Convert ValidatorConfigDto to ValidatorConfig (discriminated union)
+ * This ensures type safety when passing to the database
+ */
+export function toValidatorConfig(dto: ValidatorConfigDto): ValidatorConfig {
+  if (dto.type === 'auth_required') {
+    return {
+      type: 'auth_required',
+      config: dto.config as AuthRequiredConfig,
+    };
+  }
+  return {
+    type: 'rate_limit',
+    config: dto.config as RateLimitConfig,
+  };
 }
 
 export class CreatePipelineDto {

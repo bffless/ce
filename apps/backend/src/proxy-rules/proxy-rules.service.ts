@@ -116,6 +116,18 @@ export class ProxyRulesService {
   }
 
   /**
+   * Get a rule set by ID
+   */
+  async getRuleSetById(id: string): Promise<typeof proxyRuleSets.$inferSelect | null> {
+    const [ruleSet] = await db
+      .select()
+      .from(proxyRuleSets)
+      .where(eq(proxyRuleSets.id, id))
+      .limit(1);
+    return ruleSet || null;
+  }
+
+  /**
    * Create a new proxy rule within a rule set
    */
   async create(

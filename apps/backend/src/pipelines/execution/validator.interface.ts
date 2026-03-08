@@ -1,5 +1,14 @@
 import { PipelineContext } from './pipeline-context.interface';
-import { ValidatorType, ValidatorConfig } from '../../db/schema';
+import {
+  ValidatorType,
+  ValidatorConfig,
+  AuthRequiredConfig,
+  RateLimitConfig,
+} from '../../db/schema';
+
+// Re-export config types for validators to use
+export type { AuthRequiredConfig as AuthRequiredValidatorConfig };
+export type { RateLimitConfig as RateLimitValidatorConfig };
 
 /**
  * Interface that all pipeline validators must implement
@@ -23,39 +32,4 @@ export interface Validator<TConfig = unknown> {
    * @throws ValidationError, AuthenticationRequiredError, RateLimitError on failure
    */
   validate(context: PipelineContext, config: ValidatorConfig): Promise<void>;
-}
-
-/**
- * Configuration for auth_required validator
- */
-export interface AuthRequiredValidatorConfig {
-  /**
-   * Required roles (any match allows access)
-   */
-  roles?: string[];
-
-  /**
-   * Allow API key authentication
-   */
-  allowApiKey?: boolean;
-}
-
-/**
- * Configuration for rate_limit validator
- */
-export interface RateLimitValidatorConfig {
-  /**
-   * Maximum requests allowed
-   */
-  limit: number;
-
-  /**
-   * Time window in seconds
-   */
-  windowSeconds: number;
-
-  /**
-   * Key to use for rate limiting: 'ip' | 'user' | 'ip+user'
-   */
-  keyBy?: 'ip' | 'user' | 'ip+user';
 }

@@ -3,7 +3,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import {
   Select,
   SelectContent,
@@ -11,15 +13,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 import type {
   ProxyRule,
   CreateProxyRuleDto,
   ProxyType,
   EmailHandlerConfig,
 } from '@/services/proxyRulesApi';
-import { useGetEmailConfigStatusQuery } from '@/services/proxyRulesApi';
-import { AlertTriangle } from 'lucide-react';
-import { PipelineConfig, type PipelineConfigData } from '@/components/pipelines';
+import { useGetEmailConfigStatusQuery, useTestProxyRuleMutation } from '@/services/proxyRulesApi';
+import type { TestPipelineResult } from '@/services/pipelinesApi';
+import { AlertTriangle, Play, ChevronDown, ChevronRight, Loader2, CheckCircle2, XCircle, Plus, Trash2 } from 'lucide-react';
+import { PipelineConfig, type PipelineConfigData, TestResultsVisualization } from '@/components/pipelines';
 
 interface ExpandedProxyRuleFormProps {
   initialData?: ProxyRule;
@@ -548,6 +556,11 @@ export function ExpandedProxyRuleForm({
         </Card>
       )}
 
+      {/* Pipeline Test Panel - Only shown when rule is saved */}
+      {isPipeline && initialData?.id && (
+        <PipelineTestCard ruleId={initialData.id} pathPattern={pathPattern} />
+      )}
+
       {/* External Proxy Options */}
       {isExternalProxy && (
         <Card>
@@ -680,5 +693,273 @@ export function ExpandedProxyRuleForm({
         </Button>
       </div>
     </form>
+  );
+}
+
+// ==================== Pipeline Test Card ====================
+
+interface HeaderEntry {
+  key: string;
+  value: string;
+}
+
+interface PipelineTestCardProps {
+  ruleId: string;
+  pathPattern: string;
+}
+
+function PipelineTestCard({ ruleId, pathPattern }: PipelineTestCardProps) {
+  const [testProxyRule, { isLoading }] = useTestProxyRuleMutation();
+
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [inputJson, setInputJson] = useState('{\n  "email": "test@example.com",\n  "name": "Test User"\n}');
+  const [headers, setHeaders] = useState<HeaderEntry[]>([{ key: 'Content-Type', value: 'application/json' }]);
+  const [simulateAuth, setSimulateAuth] = useState(true);
+  const [mockUserId, setMockUserId] = useState('');
+  const [mockUserEmail, setMockUserEmail] = useState('');
+  const [mockUserRole, setMockUserRole] = useState('');
+  const [result, setResult] = useState<TestPipelineResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const addHeader = () => {
+    setHeaders([...headers, { key: '', value: '' }]);
+  };
+
+  const removeHeader = (index: number) => {
+    setHeaders(headers.filter((_, i) => i !== index));
+  };
+
+  const updateHeader = (index: number, field: 'key' | 'value', value: string) => {
+    setHeaders(headers.map((h, i) => (i === index ? { ...h, [field]: value } : h)));
+  };
+
+  const runTest = async () => {
+    setError(null);
+    setResult(null);
+
+    // Parse input JSON
+    let input: Record<string, unknown>;
+    try {
+      input = JSON.parse(inputJson);
+    } catch {
+      setError('Invalid JSON in request body');
+      return;
+    }
+
+    // Build headers object
+    const headersObj: Record<string, string> = {};
+    for (const h of headers) {
+      if (h.key) {
+        headersObj[h.key] = h.value;
+      }
+    }
+
+    // Build mock user if provided
+    const mockUser = mockUserId
+      ? {
+          id: mockUserId,
+          email: mockUserEmail || undefined,
+          role: mockUserRole || undefined,
+        }
+      : undefined;
+
+    try {
+      const testResult = await testProxyRule({
+        id: ruleId,
+        data: {
+          method: 'POST',
+          path: pathPattern,
+          input,
+          headers: headersObj,
+          simulateAuth,
+          mockUser,
+        },
+      }).unwrap();
+
+      setResult(testResult);
+    } catch (err: unknown) {
+      const errorMessage =
+        (err as { data?: { message?: string } })?.data?.message || 'Test execution failed';
+      setError(errorMessage);
+    }
+  };
+
+  return (
+    <Card className="border-blue-500/30 bg-blue-500/5">
+      <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
+        <CollapsibleTrigger asChild>
+          <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
+            <div className="flex items-center gap-2">
+              {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+              <Play className="h-4 w-4 text-blue-500" />
+              <CardTitle className="text-base">Test Pipeline</CardTitle>
+              <Badge variant="outline" className="text-xs">Debug Mode</Badge>
+            </div>
+            <CardDescription>
+              Run the pipeline with test data and view step-by-step execution results
+            </CardDescription>
+          </CardHeader>
+        </CollapsibleTrigger>
+
+        <CollapsibleContent>
+          <CardContent className="space-y-4 pt-0">
+            {/* Request Body */}
+            <div className="space-y-2">
+              <Label>Request Body (JSON)</Label>
+              <Textarea
+                value={inputJson}
+                onChange={(e) => setInputJson(e.target.value)}
+                className="font-mono text-sm min-h-[120px]"
+                placeholder='{"key": "value"}'
+              />
+            </div>
+
+            {/* Headers */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Headers</Label>
+                <Button type="button" variant="ghost" size="sm" onClick={addHeader}>
+                  <Plus className="h-3 w-3 mr-1" />
+                  Add Header
+                </Button>
+              </div>
+              <div className="space-y-2">
+                {headers.map((header, index) => (
+                  <div key={index} className="flex gap-2">
+                    <Input
+                      placeholder="Header name"
+                      value={header.key}
+                      onChange={(e) => updateHeader(index, 'key', e.target.value)}
+                      className="flex-1"
+                    />
+                    <Input
+                      placeholder="Value"
+                      value={header.value}
+                      onChange={(e) => updateHeader(index, 'value', e.target.value)}
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeHeader(index)}
+                      className="shrink-0"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Authentication */}
+            <div className="space-y-3 p-3 border rounded-lg bg-muted/30">
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="simulateAuth"
+                  checked={simulateAuth}
+                  onCheckedChange={setSimulateAuth}
+                />
+                <Label htmlFor="simulateAuth" className="cursor-pointer">
+                  Simulate authenticated user
+                </Label>
+              </div>
+              {simulateAuth && (
+                <div className="grid grid-cols-3 gap-2 mt-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Mock User ID</Label>
+                    <Input
+                      placeholder="Leave empty to use your ID"
+                      value={mockUserId}
+                      onChange={(e) => setMockUserId(e.target.value)}
+                      className="text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Mock Email</Label>
+                    <Input
+                      placeholder="test@example.com"
+                      value={mockUserEmail}
+                      onChange={(e) => setMockUserEmail(e.target.value)}
+                      className="text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Mock Role</Label>
+                    <Input
+                      placeholder="admin"
+                      value={mockUserRole}
+                      onChange={(e) => setMockUserRole(e.target.value)}
+                      className="text-sm"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Run Button */}
+            <Button
+              type="button"
+              onClick={runTest}
+              disabled={isLoading}
+              className="w-full"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Running Test...
+                </>
+              ) : (
+                <>
+                  <Play className="h-4 w-4 mr-2" />
+                  Run Test
+                </>
+              )}
+            </Button>
+
+            {/* Error Display */}
+            {error && (
+              <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-lg">
+                <div className="flex items-center gap-2 text-destructive">
+                  <XCircle className="h-4 w-4" />
+                  <span className="font-medium">Error</span>
+                </div>
+                <p className="text-sm mt-1">{error}</p>
+              </div>
+            )}
+
+            {/* Results */}
+            {result && (
+              <div className="space-y-3">
+                {/* Quick Summary */}
+                <div className={`p-3 rounded-lg border ${result.success ? 'bg-green-500/10 border-green-500/30' : 'bg-destructive/10 border-destructive/30'}`}>
+                  <div className="flex items-center gap-2">
+                    {result.success ? (
+                      <CheckCircle2 className="h-5 w-5 text-green-500" />
+                    ) : (
+                      <XCircle className="h-5 w-5 text-destructive" />
+                    )}
+                    <span className="font-medium">
+                      {result.success ? 'Test Passed' : 'Test Failed'}
+                    </span>
+                    <Badge variant="outline" className="ml-auto">
+                      {result.durationMs}ms
+                    </Badge>
+                  </div>
+                  {result.error && (
+                    <p className="text-sm text-destructive mt-2">{result.error.message}</p>
+                  )}
+                </div>
+
+                {/* Detailed Results */}
+                {result.debug && (
+                  <TestResultsVisualization result={result} />
+                )}
+              </div>
+            )}
+          </CardContent>
+        </CollapsibleContent>
+      </Collapsible>
+    </Card>
   );
 }
