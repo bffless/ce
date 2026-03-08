@@ -73,6 +73,12 @@ export interface StepResult {
     message: string;
     details?: unknown;
   };
+
+  /**
+   * If true and success is true, stop pipeline execution and use output as final response.
+   * Useful for honeypot detection where we want to return fake success without processing.
+   */
+  terminates?: boolean;
 }
 
 /**

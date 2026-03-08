@@ -116,6 +116,30 @@ export class PipelineExecutionService {
         if (step.name && lastStepResult.output !== undefined) {
           context.stepOutputs[step.name] = lastStepResult.output;
         }
+
+        // Check for early termination (e.g., honeypot detection)
+        // Step succeeded but wants to stop pipeline and return its output as final response
+        if (lastStepResult.terminates) {
+          const executionEndTime = Date.now();
+          this.logger.debug(
+            `Pipeline '${pipeline.name}' terminated early at step '${step.name || step.id}'`,
+          );
+
+          const response = this.buildResponse(lastStepResult, context);
+
+          return {
+            success: true,
+            response,
+            stepOutputs: context.stepOutputs,
+            debug: {
+              validators: validatorDebugInfo,
+              steps: stepDebugInfo,
+              totalDurationMs: executionEndTime - executionStartTime,
+              startTime: executionStartIso,
+              endTime: new Date(executionEndTime).toISOString(),
+            },
+          };
+        }
       }
 
       const executionEndTime = Date.now();

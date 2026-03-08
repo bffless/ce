@@ -55,16 +55,21 @@ export class FormHandler implements StepHandler<FormHandlerConfig> {
     const validatedData: Record<string, unknown> = {};
 
     // Check honeypot field (spam detection)
+    // If honeypot is filled, return fake success to fool bots but don't process
     if (config.honeypotField) {
       const honeypotValue = input[config.honeypotField];
       if (honeypotValue !== undefined && honeypotValue !== null && honeypotValue !== '') {
         this.logger.warn(`Honeypot field '${config.honeypotField}' was filled - likely spam`);
+        // Return fake success to fool bots - terminates stops further step execution
         return {
-          success: false,
-          error: {
-            code: 'SPAM_DETECTED',
-            message: 'Request rejected',
-            details: { honeypot: true },
+          success: true,
+          terminates: true,
+          output: {
+            status: 200,
+            body: {
+              success: true,
+              message: 'Thank you for your submission!',
+            },
           },
         };
       }
