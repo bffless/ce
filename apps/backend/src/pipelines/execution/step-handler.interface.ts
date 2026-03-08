@@ -1,5 +1,5 @@
 import { PipelineContext, StepResult } from './pipeline-context.interface';
-import { HandlerType, PipelineStep } from '../../db/schema';
+import { HandlerType, PipelineStep } from '../types';
 
 /**
  * Interface that all step handlers must implement

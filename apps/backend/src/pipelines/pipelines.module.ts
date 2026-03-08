@@ -1,10 +1,6 @@
 import { Module } from '@nestjs/common';
-import { PipelinesController } from './pipelines.controller';
-import { PipelineStepsController } from './pipeline-steps.controller';
 import { PipelineSchemasController } from './pipeline-schemas.controller';
 import { PipelineDataController } from './pipeline-data.controller';
-import { PipelinesService } from './pipelines.service';
-import { PipelineStepsService } from './pipeline-steps.service';
 import { PipelineSchemasService } from './pipeline-schemas.service';
 import { PipelineDataService } from './pipeline-data.service';
 import {
@@ -34,15 +30,11 @@ import { AuthRequiredValidator, RateLimitValidator } from './execution/validator
 @Module({
   imports: [PermissionsModule],
   controllers: [
-    PipelinesController,
-    PipelineStepsController,
     PipelineSchemasController,
     PipelineDataController,
   ],
   providers: [
     // Core services
-    PipelinesService,
-    PipelineStepsService,
     PipelineSchemasService,
     PipelineDataService,
     // Execution engine
@@ -67,7 +59,6 @@ import { AuthRequiredValidator, RateLimitValidator } from './execution/validator
     RateLimitValidator,
   ],
   exports: [
-    PipelinesService,
     PipelineExecutionService,
     PipelineSchemasService,
     PipelineDataService,

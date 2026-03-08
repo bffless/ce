@@ -4,7 +4,8 @@ import { StepHandler, DataUpdateHandlerConfig } from '../execution/step-handler.
 import { StepHandlerRegistry } from '../execution/step-handler.registry';
 import { ExpressionEvaluator } from '../execution/expression-evaluator';
 import { PipelineContext, StepResult } from '../execution/pipeline-context.interface';
-import { PipelineStep, pipelineData } from '../../db/schema';
+import { PipelineStep } from '../types';
+import { pipelineData } from '../../db/schema';
 import { PipelineSchemasService } from '../pipeline-schemas.service';
 import { db } from '../../db/client';
 import { ConfigurationError, SchemaNotFoundError } from '../errors';

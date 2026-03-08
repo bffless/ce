@@ -4,7 +4,7 @@ import {
   ValidatorConfig,
   AuthRequiredConfig,
   RateLimitConfig,
-} from '../../db/schema';
+} from '../types';
 
 // Re-export config types for validators to use
 export type { AuthRequiredConfig as AuthRequiredValidatorConfig };

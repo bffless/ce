@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { HttpMethod, ValidatorConfig, SchemaField, HandlerType } from '../../db/schema';
+import { SchemaField } from '../../db/schema';
+import { HttpMethod, ValidatorConfig, HandlerType } from '../types';
 
 export { SchemaField };
 

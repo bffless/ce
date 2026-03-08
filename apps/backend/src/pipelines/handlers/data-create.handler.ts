@@ -3,7 +3,7 @@ import { StepHandler, DataCreateHandlerConfig } from '../execution/step-handler.
 import { StepHandlerRegistry } from '../execution/step-handler.registry';
 import { ExpressionEvaluator } from '../execution/expression-evaluator';
 import { PipelineContext, StepResult } from '../execution/pipeline-context.interface';
-import { PipelineStep } from '../../db/schema';
+import { PipelineStep } from '../types';
 import { PipelineDataService } from '../pipeline-data.service';
 import { PipelineSchemasService } from '../pipeline-schemas.service';
 import { ConfigurationError, SchemaNotFoundError } from '../errors';

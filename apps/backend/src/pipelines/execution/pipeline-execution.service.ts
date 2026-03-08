@@ -1,11 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
-import { eq, and, asc } from 'drizzle-orm';
-import { db } from '../../db/client';
-import { pipelines, pipelineSteps, Pipeline, PipelineStep } from '../../db/schema';
 import {
   PipelineContext,
-  PipelineResult,
   PipelineDebugResult,
   StepResult,
   StepDebugInfo,
@@ -16,6 +12,7 @@ import { ValidatorRegistry } from './validator.registry';
 import { ExpressionEvaluator } from './expression-evaluator';
 import { PipelineError, StepExecutionError, ConfigurationError } from '../errors';
 import { BaseHandlerConfig } from './step-handler.interface';
+import { Pipeline, PipelineStep, ValidatorType, ValidatorConfig, HandlerType } from '../types';
 
 /**
  * Service that orchestrates pipeline execution
@@ -31,164 +28,16 @@ export class PipelineExecutionService {
   ) {}
 
   /**
-   * Find a matching pipeline for the given request
-   * @param projectId Project ID to search in
-   * @param path Request path (relative to pipeline endpoint)
-   * @param method HTTP method
-   * @returns Matching pipeline or null
-   */
-  async findMatchingPipeline(
-    projectId: string,
-    path: string,
-    method: string,
-  ): Promise<Pipeline | null> {
-    // Get all enabled pipelines for this project, ordered by priority
-    const projectPipelines = await db
-      .select()
-      .from(pipelines)
-      .where(and(eq(pipelines.projectId, projectId), eq(pipelines.isEnabled, true)))
-      .orderBy(asc(pipelines.order));
-
-    // Find first matching pipeline
-    for (const pipeline of projectPipelines) {
-      if (this.matchesPath(path, pipeline.pathPattern) && this.matchesMethod(method, pipeline.httpMethods)) {
-        return pipeline;
-      }
-    }
-
-    return null;
-  }
-
-  /**
-   * Execute a pipeline with the given request
-   * @param pipeline The pipeline to execute
-   * @param req Express request object
-   * @param userId Optional authenticated user ID
-   * @returns Pipeline execution result
-   */
-  async executePipeline(
-    pipeline: Pipeline,
-    req: Request,
-    user?: { id: string; email?: string; role?: string },
-  ): Promise<PipelineResult> {
-    const startTime = Date.now();
-    this.logger.log(`Executing pipeline '${pipeline.name}' (${pipeline.id})`);
-
-    // Build context
-    const context: PipelineContext = {
-      request: req,
-      user,
-      input: this.extractInput(req),
-      stepOutputs: {},
-      projectId: pipeline.projectId,
-      metadata: {
-        path: req.path,
-        method: req.method,
-        headers: req.headers as Record<string, string | string[] | undefined>,
-        query: req.query as Record<string, unknown>,
-        ip: req.ip || req.socket.remoteAddress,
-        userAgent: req.get('user-agent'),
-      },
-    };
-
-    try {
-      // Run validators
-      await this.runValidators(pipeline, context);
-
-      // Get pipeline steps
-      const steps = await db
-        .select()
-        .from(pipelineSteps)
-        .where(and(eq(pipelineSteps.pipelineId, pipeline.id), eq(pipelineSteps.isEnabled, true)))
-        .orderBy(asc(pipelineSteps.order));
-
-      if (steps.length === 0) {
-        throw new ConfigurationError(`Pipeline '${pipeline.name}' has no enabled steps`);
-      }
-
-      // Execute steps sequentially
-      let lastStepResult: StepResult | null = null;
-      for (const step of steps) {
-        lastStepResult = await this.executeStep(step, context);
-
-        if (!lastStepResult.success) {
-          // Step failed - return error
-          const duration = Date.now() - startTime;
-          this.logger.error(`Pipeline '${pipeline.name}' failed at step '${step.name || step.id}' after ${duration}ms`);
-
-          return {
-            success: false,
-            error: lastStepResult.error || {
-              code: 'STEP_FAILED',
-              message: `Step '${step.name || step.id}' failed`,
-              step: step.name || step.id,
-            },
-            stepOutputs: context.stepOutputs,
-          };
-        }
-
-        // Store step output for use in subsequent steps
-        if (step.name && lastStepResult.output !== undefined) {
-          context.stepOutputs[step.name] = lastStepResult.output;
-        }
-      }
-
-      const duration = Date.now() - startTime;
-      this.logger.log(`Pipeline '${pipeline.name}' completed successfully in ${duration}ms`);
-
-      // Build response
-      // If last step was a response_handler, use its output
-      // Otherwise, return a default success response
-      const response = this.buildResponse(lastStepResult, context);
-
-      return {
-        success: true,
-        response,
-        stepOutputs: context.stepOutputs,
-      };
-    } catch (error) {
-      const duration = Date.now() - startTime;
-
-      if (error instanceof PipelineError) {
-        this.logger.error(
-          `Pipeline '${pipeline.name}' failed after ${duration}ms: ${error.message}`,
-          error.stack,
-        );
-        return {
-          success: false,
-          error: error.toResponse(),
-          stepOutputs: context.stepOutputs,
-        };
-      }
-
-      this.logger.error(
-        `Pipeline '${pipeline.name}' failed with unexpected error after ${duration}ms`,
-        error instanceof Error ? error.stack : String(error),
-      );
-
-      return {
-        success: false,
-        error: {
-          code: 'INTERNAL_ERROR',
-          message: 'An unexpected error occurred',
-          details: process.env.NODE_ENV === 'development' ? String(error) : undefined,
-        },
-        stepOutputs: context.stepOutputs,
-      };
-    }
-  }
-
-  /**
    * Execute a pipeline with debug information
    * Captures per-step timing, I/O snapshots, and validator results
-   * @param pipeline The pipeline to execute (can include inline steps)
+   * @param pipeline The pipeline to execute with inline steps
    * @param req Express request object
    * @param user Optional authenticated user
    * @param options Execution options (dryRun not yet implemented)
    * @returns Pipeline execution result with debug info
    */
   async executePipelineWithDebug(
-    pipeline: Pipeline & { steps?: PipelineStep[] },
+    pipeline: Pipeline & { steps: PipelineStep[] },
     req: Request,
     user?: { id: string; email?: string; role?: string },
     _options?: { dryRun?: boolean },
@@ -223,20 +72,12 @@ export class PipelineExecutionService {
       // Run validators with debug capture
       await this.runValidatorsWithDebug(pipeline, context, validatorDebugInfo);
 
-      // Get pipeline steps - use inline steps if provided, otherwise query database
-      let steps: PipelineStep[];
-      if (pipeline.steps && pipeline.steps.length > 0) {
-        // Use inline steps (for proxy rule pipelines)
-        steps = pipeline.steps.filter((s) => s.isEnabled);
-      } else {
-        // Query from database (for standalone pipelines)
-        steps = await db
-          .select()
-          .from(pipelineSteps)
-          .where(and(eq(pipelineSteps.pipelineId, pipeline.id), eq(pipelineSteps.isEnabled, true)))
-          .orderBy(asc(pipelineSteps.order));
+      // Get pipeline steps from inline config (required for proxy rule pipelines)
+      if (!pipeline.steps || pipeline.steps.length === 0) {
+        throw new ConfigurationError(`Pipeline '${pipeline.name}' has no steps defined`);
       }
 
+      const steps = pipeline.steps.filter((s) => s.isEnabled);
       if (steps.length === 0) {
         throw new ConfigurationError(`Pipeline '${pipeline.name}' has no enabled steps`);
       }
@@ -348,11 +189,11 @@ export class PipelineExecutionService {
   ): Promise<void> {
     for (const validatorConfig of pipeline.validators) {
       const startTime = Date.now();
-      const validator = this.validatorRegistry.get(validatorConfig.type);
+      const validator = this.validatorRegistry.get(validatorConfig.type as ValidatorType);
 
       try {
         await validator.validateConfig(validatorConfig.config);
-        await validator.validate(context, validatorConfig);
+        await validator.validate(context, validatorConfig as ValidatorConfig);
 
         debugInfo.push({
           type: validatorConfig.type,
@@ -424,7 +265,7 @@ export class PipelineExecutionService {
     }
 
     // Get handler
-    const handler = this.handlerRegistry.get(step.handlerType, stepName);
+    const handler = this.handlerRegistry.get(step.handlerType as HandlerType, stepName);
 
     // Validate config
     await handler.validateConfig(step.config);
@@ -438,7 +279,7 @@ export class PipelineExecutionService {
     });
 
     try {
-      const result = await Promise.race([handler.execute(context, step), timeoutPromise]);
+      const result = await Promise.race([handler.execute(context, step as PipelineStep), timeoutPromise]);
       const endTime = Date.now();
 
       return {
@@ -487,62 +328,6 @@ export class PipelineExecutionService {
   }
 
   /**
-   * Run pipeline validators
-   */
-  private async runValidators(pipeline: Pipeline, context: PipelineContext): Promise<void> {
-    for (const validatorConfig of pipeline.validators) {
-      const validator = this.validatorRegistry.get(validatorConfig.type);
-      await validator.validateConfig(validatorConfig.config);
-      await validator.validate(context, validatorConfig);
-    }
-  }
-
-  /**
-   * Execute a single step
-   */
-  private async executeStep(step: PipelineStep, context: PipelineContext): Promise<StepResult> {
-    const stepName = step.name || step.id;
-    const config = step.config as BaseHandlerConfig;
-
-    // Check condition if present
-    if (config.condition) {
-      const shouldRun = this.expressionEvaluator.evaluateCondition(config.condition, context, stepName);
-      if (!shouldRun) {
-        this.logger.debug(`Skipping step '${stepName}' - condition not met`);
-        return { success: true, output: null };
-      }
-    }
-
-    // Get handler
-    const handler = this.handlerRegistry.get(step.handlerType, stepName);
-
-    // Validate config
-    await handler.validateConfig(step.config);
-
-    // Execute with timeout
-    const timeout = config.timeout || 30000;
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => {
-        reject(new StepExecutionError(`Step timed out after ${timeout}ms`, stepName));
-      }, timeout);
-    });
-
-    try {
-      const result = await Promise.race([handler.execute(context, step), timeoutPromise]);
-      return result;
-    } catch (error) {
-      if (error instanceof PipelineError) {
-        throw error;
-      }
-      throw new StepExecutionError(
-        error instanceof Error ? error.message : 'Unknown error',
-        stepName,
-        error,
-      );
-    }
-  }
-
-  /**
    * Build the final response from step results
    */
   private buildResponse(
@@ -569,32 +354,6 @@ export class PipelineExecutionService {
         data: lastStepResult?.output,
       },
     };
-  }
-
-  /**
-   * Check if a path matches a pattern
-   * Supports :param style path parameters
-   */
-  private matchesPath(path: string, pattern: string): boolean {
-    // Normalize paths
-    const normalizedPath = path.replace(/\/+$/, '') || '/';
-    const normalizedPattern = pattern.replace(/\/+$/, '') || '/';
-
-    // Convert pattern to regex
-    // :param becomes [^/]+
-    const regexPattern = normalizedPattern
-      .replace(/:[^/]+/g, '[^/]+')
-      .replace(/\//g, '\\/');
-
-    const regex = new RegExp(`^${regexPattern}$`);
-    return regex.test(normalizedPath);
-  }
-
-  /**
-   * Check if a method matches allowed methods
-   */
-  private matchesMethod(method: string, allowedMethods: string[]): boolean {
-    return allowedMethods.includes(method.toUpperCase());
   }
 
   /**

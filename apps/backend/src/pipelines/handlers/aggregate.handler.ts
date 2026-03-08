@@ -3,7 +3,7 @@ import { StepHandler, AggregateHandlerConfig } from '../execution/step-handler.i
 import { StepHandlerRegistry } from '../execution/step-handler.registry';
 import { ExpressionEvaluator } from '../execution/expression-evaluator';
 import { PipelineContext, StepResult } from '../execution/pipeline-context.interface';
-import { PipelineStep } from '../../db/schema';
+import { PipelineStep } from '../types';
 import { ConfigurationError, StepExecutionError } from '../errors';
 
 /**

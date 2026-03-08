@@ -255,6 +255,7 @@ export function FunctionHandlerConfig({
           detail?: string;
           documentation?: string;
           sortText?: string;
+          filterText?: string;
         }> = [];
 
         const CompletionItemKind = monacoInstance.languages.CompletionItemKind;

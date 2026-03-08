@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { StepHandler, FunctionHandlerConfig } from '../execution/step-handler.interface';
 import { StepHandlerRegistry } from '../execution/step-handler.registry';
 import { PipelineContext, StepResult } from '../execution/pipeline-context.interface';
-import { PipelineStep } from '../../db/schema';
+import { PipelineStep } from '../types';
 import { ConfigurationError } from '../errors';
 import { FunctionRunnerService } from '../function-runner.service';
 

@@ -3,7 +3,7 @@ import { StepHandler, EmailHandlerConfig } from '../execution/step-handler.inter
 import { StepHandlerRegistry } from '../execution/step-handler.registry';
 import { ExpressionEvaluator } from '../execution/expression-evaluator';
 import { PipelineContext, StepResult } from '../execution/pipeline-context.interface';
-import { PipelineStep } from '../../db/schema';
+import { PipelineStep } from '../types';
 import { EmailService } from '../../email/email.service';
 import { ConfigurationError, StepExecutionError } from '../errors';
 

@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Validator, RateLimitValidatorConfig } from '../validator.interface';
 import { ValidatorRegistry } from '../validator.registry';
 import { PipelineContext } from '../pipeline-context.interface';
-import { ValidatorConfig } from '../../../db/schema';
+import { ValidatorConfig } from '../../types';
 import { RateLimitError } from '../../errors';
 import { ConfigurationError } from '../../errors';
 

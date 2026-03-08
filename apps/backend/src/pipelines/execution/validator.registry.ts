@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Validator } from './validator.interface';
-import { ValidatorType } from '../../db/schema';
+import { ValidatorType } from '../types';
 import { ConfigurationError } from '../errors';
 
 /**
