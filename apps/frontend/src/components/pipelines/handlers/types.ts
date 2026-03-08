@@ -64,9 +64,29 @@ export interface ResponseHandlerConfig extends BaseHandlerConfig {
   contentType?: string;
 }
 
+export interface ProxyForwardConfig extends BaseHandlerConfig {
+  /** Target URL to forward the request to (supports template expressions) */
+  targetUrl: string;
+  /** HTTP method to use (defaults to original request method if not specified) */
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  /** Headers to add/override on the forwarded request */
+  headers?: Record<string, string>;
+  /** Whether to include the original request body */
+  includeBody?: boolean;
+  /** Whether to include original request headers */
+  includeOriginalHeaders?: boolean;
+  /** Timeout in milliseconds for the proxy request */
+  timeout?: number;
+}
+
 export interface AggregateHandlerConfig extends BaseHandlerConfig {
   operation: 'sum' | 'count' | 'avg' | 'min' | 'max';
   field?: string;
+}
+
+export interface FunctionHandlerConfig extends BaseHandlerConfig {
+  code: string;
+  timeout?: number;
 }
 
 export type HandlerConfig =
@@ -77,4 +97,6 @@ export type HandlerConfig =
   | DataDeleteHandlerConfig
   | EmailHandlerConfig
   | ResponseHandlerConfig
-  | AggregateHandlerConfig;
+  | ProxyForwardConfig
+  | AggregateHandlerConfig
+  | FunctionHandlerConfig;

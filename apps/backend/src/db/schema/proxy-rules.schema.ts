@@ -63,8 +63,38 @@ export interface AuthTransformConfig {
  * - 'external_proxy': Forward requests to an external URL (default)
  * - 'internal_rewrite': Serve a different path from the same deployment (no HTTP request)
  * - 'email_form_handler': Capture POST form submissions and email them
+ * - 'pipeline': Execute a pipeline with defined steps
  */
-export type ProxyType = 'external_proxy' | 'internal_rewrite' | 'email_form_handler';
+export type ProxyType = 'external_proxy' | 'internal_rewrite' | 'email_form_handler' | 'pipeline';
+
+/**
+ * Pipeline step configuration for pipeline proxy rules.
+ */
+export interface PipelineStepConfig {
+  /** Unique identifier for this step (frontend use) */
+  id?: string;
+  /** Optional name for the step */
+  name?: string;
+  /** Handler type for this step */
+  handlerType: string;
+  /** Handler-specific configuration */
+  config: Record<string, unknown>;
+  /** Whether this step is enabled */
+  isEnabled?: boolean;
+}
+
+/**
+ * Pipeline configuration for pipeline proxy rules.
+ * Stores the pipeline steps and execution settings.
+ */
+export interface PipelineConfig {
+  /** Pipeline name for identification */
+  name: string;
+  /** Optional description */
+  description?: string;
+  /** Array of pipeline steps */
+  steps: PipelineStepConfig[];
+}
 
 /**
  * Email handler configuration for email_form_handler proxy rules.
@@ -263,6 +293,14 @@ export const proxyRules = pgTable(
      * Contains settings for email destination, subject, redirects, CORS, and spam protection.
      */
     emailHandlerConfig: jsonb('email_handler_config').$type<EmailHandlerConfig>(),
+
+    /**
+     * Configuration for pipeline proxy type.
+     *
+     * Required when proxyType is 'pipeline'.
+     * Contains the pipeline definition with steps and execution settings.
+     */
+    pipelineConfig: jsonb('pipeline_config').$type<PipelineConfig>(),
 
     /**
      * Whether this rule is active.

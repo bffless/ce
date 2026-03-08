@@ -24,7 +24,10 @@ import {
   DataDeleteHandler,
   EmailHandler,
   AggregateHandler,
+  FunctionHandler,
 } from './handlers';
+// Services
+import { FunctionRunnerService } from './function-runner.service';
 
 @Module({
   imports: [PermissionsModule],
@@ -45,6 +48,8 @@ import {
     StepHandlerRegistry,
     ValidatorRegistry,
     ExpressionEvaluator,
+    // Function runner service
+    FunctionRunnerService,
     // Step handlers (auto-register on construction)
     FormHandler,
     ResponseHandler,
@@ -54,6 +59,7 @@ import {
     DataDeleteHandler,
     EmailHandler,
     AggregateHandler,
+    FunctionHandler,
   ],
   exports: [
     PipelinesService,

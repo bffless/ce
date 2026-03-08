@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -21,7 +21,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { ChevronDown, ChevronRight, ChevronUp, GripVertical, Plus, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronUp, GripVertical, Plus, Trash2, Send, Info } from 'lucide-react';
 import type { HandlerType } from '@/services/pipelinesApi';
 import type {
   PipelineStepConfig,
@@ -30,8 +30,11 @@ import type {
 import {
   HandlerConfigWrapper,
   getHandlerDisplayName,
-  getHandlerDescription,
+  ResponseHandlerConfig,
+  ProxyForwardConfig,
 } from './handlers';
+import { AvailableVariables, type PreviousStep } from './handlers/AvailableVariables';
+import type { ResponseHandlerConfig as ResponseConfig, ProxyForwardConfig as ProxyConfig } from './handlers/types';
 
 // Re-export types for convenience
 export type PipelineStep = PipelineStepConfig;
@@ -43,6 +46,7 @@ interface PipelineConfigProps {
   projectId: string;
 }
 
+// Handler types available for pipeline steps (excluding response_handler which is a terminal step)
 const HANDLER_TYPES: HandlerType[] = [
   'form_handler',
   'data_create',
@@ -50,7 +54,7 @@ const HANDLER_TYPES: HandlerType[] = [
   'data_update',
   'data_delete',
   'email_handler',
-  'response_handler',
+  'function_handler',
   'aggregate_handler',
 ];
 
@@ -58,29 +62,148 @@ function generateId(): string {
   return `step_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 }
 
+// Terminal step types
+type TerminalStepType = 'none' | 'response' | 'proxy';
+
 /**
  * PipelineConfig - Full pipeline editor component.
  * Allows adding, removing, and reordering steps with their handler configs.
+ * Terminal steps (response/proxy) are handled separately at the end.
  */
 export function PipelineConfig({ config, onChange, projectId }: PipelineConfigProps) {
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [terminalExpanded, setTerminalExpanded] = useState(false);
 
-  const steps = config.steps || [];
+  // Separate terminal steps (response_handler, proxy_forward) from regular steps
+  const allSteps = config.steps || [];
+  const terminalStep = allSteps.find(
+    (s) => s.handlerType === 'response_handler' || s.handlerType === 'proxy_forward',
+  );
+  const steps = allSteps.filter(
+    (s) => s.handlerType !== 'response_handler' && s.handlerType !== 'proxy_forward',
+  );
+
+  // Determine current terminal step type
+  const terminalStepType: TerminalStepType = terminalStep
+    ? terminalStep.handlerType === 'proxy_forward'
+      ? 'proxy'
+      : 'response'
+    : 'none';
+
   const name = config.name || '';
   const description = config.description || '';
 
+  // Combine steps with terminal step (terminal always goes last)
+  const getAllSteps = useCallback(
+    (regularSteps: PipelineStep[], termStep?: PipelineStep) => {
+      return termStep ? [...regularSteps, termStep] : regularSteps;
+    },
+    [],
+  );
+
   const updateConfig = useCallback(
     (updates: Partial<PipelineConfigData>) => {
+      // If updating steps, we need to re-combine with terminal step
+      const newSteps = updates.steps !== undefined
+        ? getAllSteps(updates.steps, terminalStep)
+        : getAllSteps(steps, terminalStep);
+
       onChange({
         name,
         description,
-        steps,
+        steps: newSteps,
         ...updates,
+        // Make sure steps is always the combined value
+        ...(updates.steps !== undefined ? { steps: getAllSteps(updates.steps, terminalStep) } : {}),
       });
     },
-    [name, description, steps, onChange],
+    [name, description, steps, terminalStep, onChange, getAllSteps],
   );
+
+  // Change terminal step type
+  const setTerminalType = useCallback(
+    (type: TerminalStepType) => {
+      if (type === 'none') {
+        // Remove terminal step
+        onChange({
+          name,
+          description,
+          steps: steps,
+        });
+        setTerminalExpanded(false);
+      } else if (type === 'response') {
+        // Add or replace with response_handler
+        const newTerminalStep: PipelineStep = {
+          id: terminalStep?.id || generateId(),
+          handlerType: 'response_handler',
+          config: {
+            status: 200,
+            body: '',
+            contentType: 'application/json',
+          },
+          isEnabled: true,
+        };
+        onChange({
+          name,
+          description,
+          steps: [...steps, newTerminalStep],
+        });
+        setTerminalExpanded(true);
+      } else if (type === 'proxy') {
+        // Add or replace with proxy_forward
+        const newTerminalStep: PipelineStep = {
+          id: terminalStep?.id || generateId(),
+          handlerType: 'proxy_forward',
+          config: {
+            targetUrl: '',
+            includeBody: true,
+            includeOriginalHeaders: true,
+            timeout: 30000,
+          },
+          isEnabled: true,
+        };
+        onChange({
+          name,
+          description,
+          steps: [...steps, newTerminalStep],
+        });
+        setTerminalExpanded(true);
+      }
+    },
+    [name, description, steps, terminalStep, onChange],
+  );
+
+  // Update terminal step config
+  const updateTerminalConfig = useCallback(
+    (newConfig: ResponseConfig | ProxyConfig) => {
+      if (!terminalStep) return;
+      onChange({
+        name,
+        description,
+        steps: [...steps, { ...terminalStep, config: newConfig as unknown as Record<string, unknown> }],
+      });
+    },
+    [name, description, steps, terminalStep, onChange],
+  );
+
+  // Calculate previous steps for response (all regular steps)
+  const previousStepsForResponse: PreviousStep[] = useMemo(
+    () =>
+      steps.map((s) => ({
+        name: s.name || getHandlerDisplayName(s.handlerType),
+        handlerType: s.handlerType,
+        config: s.config,
+      })),
+    [steps],
+  );
+
+  // Get last step name for default response preview
+  const lastStepName = useMemo(() => {
+    if (steps.length === 0) return 'input';
+    const lastStep = steps[steps.length - 1];
+    return lastStep.name || getHandlerDisplayName(lastStep.handlerType);
+  }, [steps]);
 
   const addStep = () => {
     const newStep: PipelineStep = {
@@ -181,6 +304,12 @@ export function PipelineConfig({ config, onChange, projectId }: PipelineConfigPr
           <div className="space-y-3">
             {steps.map((step, index) => {
               const isExpanded = expandedSteps.has(step.id);
+              // Calculate previous steps for context
+              const previousSteps = steps.slice(0, index).map((s) => ({
+                name: s.name || getHandlerDisplayName(s.handlerType),
+                handlerType: s.handlerType,
+                config: s.config,
+              }));
               return (
                 <Card key={step.id} className={!step.isEnabled ? 'opacity-60' : ''}>
                   <CardHeader className="py-3">
@@ -279,12 +408,7 @@ export function PipelineConfig({ config, onChange, projectId }: PipelineConfigPr
                             <SelectContent>
                               {HANDLER_TYPES.map((type) => (
                                 <SelectItem key={type} value={type}>
-                                  <div>
-                                    <div>{getHandlerDisplayName(type)}</div>
-                                    <div className="text-xs text-muted-foreground">
-                                      {getHandlerDescription(type)}
-                                    </div>
-                                  </div>
+                                  {getHandlerDisplayName(type)}
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -299,6 +423,7 @@ export function PipelineConfig({ config, onChange, projectId }: PipelineConfigPr
                           config={step.config}
                           onChange={(newConfig) => updateStep(step.id, { config: newConfig })}
                           projectId={projectId}
+                          previousSteps={previousSteps}
                         />
                       </div>
                     </CardContent>
@@ -307,6 +432,138 @@ export function PipelineConfig({ config, onChange, projectId }: PipelineConfigPr
               );
             })}
           </div>
+        )}
+      </div>
+
+      {/* Terminal Step Configuration */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Send className="h-4 w-4 text-muted-foreground" />
+            <Label className="text-base">Terminal Step</Label>
+          </div>
+          <Select
+            value={terminalStepType}
+            onValueChange={(v) => setTerminalType(v as TerminalStepType)}
+          >
+            <SelectTrigger className="w-[200px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Default Response</SelectItem>
+              <SelectItem value="response">Custom HTTP Response</SelectItem>
+              <SelectItem value="proxy">Forward Request (Proxy)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {terminalStepType === 'response' && terminalStep && (
+          // Custom Response Configuration
+          <Card className="border-primary/20 bg-primary/5">
+            <CardHeader className="py-3">
+              <button
+                type="button"
+                onClick={() => setTerminalExpanded(!terminalExpanded)}
+                className="flex items-center gap-2 text-left hover:text-primary w-full"
+              >
+                {terminalExpanded ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <Send className="h-4 w-4" />
+                  HTTP Response
+                </CardTitle>
+                <Badge variant="outline" className="text-xs">
+                  Terminal
+                </Badge>
+              </button>
+            </CardHeader>
+            {terminalExpanded && (
+              <CardContent className="pt-0 space-y-4">
+                <AvailableVariables
+                  previousSteps={previousStepsForResponse}
+                  syntax="template"
+                  className="mb-4"
+                />
+                <ResponseHandlerConfig
+                  config={terminalStep.config as Partial<ResponseConfig>}
+                  onChange={updateTerminalConfig}
+                />
+              </CardContent>
+            )}
+          </Card>
+        )}
+
+        {terminalStepType === 'proxy' && terminalStep && (
+          // Proxy Forward Configuration
+          <Card className="border-blue-500/20 bg-blue-500/5">
+            <CardHeader className="py-3">
+              <button
+                type="button"
+                onClick={() => setTerminalExpanded(!terminalExpanded)}
+                className="flex items-center gap-2 text-left hover:text-primary w-full"
+              >
+                {terminalExpanded ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <Send className="h-4 w-4" />
+                  Forward Request
+                </CardTitle>
+                <Badge variant="outline" className="text-xs bg-blue-500/10">
+                  Proxy
+                </Badge>
+              </button>
+            </CardHeader>
+            {terminalExpanded && (
+              <CardContent className="pt-0 space-y-4">
+                <AvailableVariables
+                  previousSteps={previousStepsForResponse}
+                  syntax="template"
+                  className="mb-4"
+                />
+                <ProxyForwardConfig
+                  config={terminalStep.config as Partial<ProxyConfig>}
+                  onChange={updateTerminalConfig}
+                />
+              </CardContent>
+            )}
+          </Card>
+        )}
+
+        {terminalStepType === 'none' && (
+          // Default Response Preview
+          <Card className="bg-muted/30">
+            <CardHeader className="py-3">
+              <div className="flex items-center gap-2">
+                <Info className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium">Default Response</CardTitle>
+              </div>
+              <CardDescription className="text-xs">
+                The pipeline returns a JSON response with the last step's output.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="bg-muted rounded-md p-3 font-mono text-xs">
+                <div className="text-muted-foreground">// HTTP 200 OK</div>
+                <div className="text-muted-foreground">// Content-Type: application/json</div>
+                <pre className="mt-2 text-foreground">
+{`{
+  "success": true,
+  "data": <output from "${lastStepName}">
+}`}
+                </pre>
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                Select "Custom HTTP Response" to configure status codes, headers, and templates, or
+                "Forward Request" to proxy to another service.
+              </p>
+            </CardContent>
+          </Card>
         )}
       </div>
 

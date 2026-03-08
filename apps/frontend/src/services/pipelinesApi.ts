@@ -18,6 +18,7 @@ export type HandlerType =
   | 'data_delete'
   | 'email_handler'
   | 'response_handler'
+  | 'proxy_forward'
   | 'function_handler'
   | 'aggregate_handler';
 

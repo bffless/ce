@@ -6,6 +6,7 @@ import { HelpCircle } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
+  TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import type { EmailHandlerConfig } from './types';
@@ -31,13 +32,16 @@ export function EmailHandlerConfig({ config, onChange }: EmailHandlerConfigProps
   }, [to, subject, body, replyTo, onChange]);
 
   return (
-    <div className="space-y-4">
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <Label htmlFor="to">Recipient (To)</Label>
-          <Tooltip>
-            <TooltipTrigger>
-              <HelpCircle className="h-4 w-4 text-muted-foreground" />
+    <TooltipProvider>
+      <div className="space-y-4">
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Label htmlFor="to">Recipient (To)</Label>
+            <Tooltip>
+            <TooltipTrigger asChild>
+              <button type="button" className="cursor-help">
+                <HelpCircle className="h-4 w-4 text-muted-foreground" />
+              </button>
             </TooltipTrigger>
             <TooltipContent>
               <p>Use an expression like <code>input.email</code> or <code>user.email</code></p>
@@ -56,8 +60,10 @@ export function EmailHandlerConfig({ config, onChange }: EmailHandlerConfigProps
         <div className="flex items-center gap-2">
           <Label htmlFor="subject">Subject</Label>
           <Tooltip>
-            <TooltipTrigger>
-              <HelpCircle className="h-4 w-4 text-muted-foreground" />
+            <TooltipTrigger asChild>
+              <button type="button" className="cursor-help">
+                <HelpCircle className="h-4 w-4 text-muted-foreground" />
+              </button>
             </TooltipTrigger>
             <TooltipContent>
               <p>Use template syntax: <code>{'{{input.name}}'}</code> for dynamic values</p>
@@ -76,8 +82,10 @@ export function EmailHandlerConfig({ config, onChange }: EmailHandlerConfigProps
         <div className="flex items-center gap-2">
           <Label htmlFor="body">Body (HTML)</Label>
           <Tooltip>
-            <TooltipTrigger>
-              <HelpCircle className="h-4 w-4 text-muted-foreground" />
+            <TooltipTrigger asChild>
+              <button type="button" className="cursor-help">
+                <HelpCircle className="h-4 w-4 text-muted-foreground" />
+              </button>
             </TooltipTrigger>
             <TooltipContent className="max-w-xs">
               <p>HTML email body with template syntax.</p>
@@ -100,8 +108,10 @@ export function EmailHandlerConfig({ config, onChange }: EmailHandlerConfigProps
         <div className="flex items-center gap-2">
           <Label htmlFor="replyTo">Reply-To (optional)</Label>
           <Tooltip>
-            <TooltipTrigger>
-              <HelpCircle className="h-4 w-4 text-muted-foreground" />
+            <TooltipTrigger asChild>
+              <button type="button" className="cursor-help">
+                <HelpCircle className="h-4 w-4 text-muted-foreground" />
+              </button>
             </TooltipTrigger>
             <TooltipContent>
               <p>Expression for reply-to address, e.g., <code>input.email</code></p>
@@ -116,5 +126,6 @@ export function EmailHandlerConfig({ config, onChange }: EmailHandlerConfigProps
         />
       </div>
     </div>
+    </TooltipProvider>
   );
 }

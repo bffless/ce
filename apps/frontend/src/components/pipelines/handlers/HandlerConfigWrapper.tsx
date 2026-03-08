@@ -8,6 +8,8 @@ import { DataDeleteConfig } from './DataDeleteConfig';
 import { EmailHandlerConfig } from './EmailHandlerConfig';
 import { ResponseHandlerConfig } from './ResponseHandlerConfig';
 import { AggregateHandlerConfig } from './AggregateHandlerConfig';
+import { FunctionHandlerConfig } from './FunctionHandlerConfig';
+import { AvailableVariables, type PreviousStep } from './AvailableVariables';
 import type { HandlerConfig } from './types';
 
 interface HandlerConfigWrapperProps {
@@ -15,6 +17,8 @@ interface HandlerConfigWrapperProps {
   config: Record<string, unknown>;
   onChange: (config: Record<string, unknown>) => void;
   projectId: string;
+  /** Previous steps in the pipeline (for showing available variables) */
+  previousSteps?: PreviousStep[];
 }
 
 /**
@@ -26,6 +30,7 @@ export function HandlerConfigWrapper({
   config,
   onChange,
   projectId,
+  previousSteps = [],
 }: HandlerConfigWrapperProps) {
   // Wrap onChange to ensure proper typing
   const handleChange = useCallback(
@@ -34,6 +39,24 @@ export function HandlerConfigWrapper({
     },
     [onChange],
   );
+
+  // Determine syntax based on handler type
+  // Template syntax for response/email handlers, code syntax for function handler
+  const usesTemplateSyntax = handlerType === 'response_handler' || handlerType === 'email_handler';
+
+  // Render available variables panel (shown for handlers that use expressions)
+  const renderVariablesPanel = () => {
+    // Don't show for form_handler (it's usually the first step)
+    if (handlerType === 'form_handler') return null;
+
+    return (
+      <AvailableVariables
+        previousSteps={previousSteps}
+        syntax={usesTemplateSyntax ? 'template' : 'code'}
+        className="mb-4"
+      />
+    );
+  };
 
   switch (handlerType) {
     case 'form_handler':
@@ -46,70 +69,97 @@ export function HandlerConfigWrapper({
 
     case 'data_create':
       return (
-        <DataCreateConfig
-          config={config}
-          onChange={handleChange}
-          projectId={projectId}
-        />
+        <>
+          {renderVariablesPanel()}
+          <DataCreateConfig
+            config={config}
+            onChange={handleChange}
+            projectId={projectId}
+          />
+        </>
       );
 
     case 'data_query':
       return (
-        <DataQueryConfig
-          config={config}
-          onChange={handleChange}
-          projectId={projectId}
-        />
+        <>
+          {renderVariablesPanel()}
+          <DataQueryConfig
+            config={config}
+            onChange={handleChange}
+            projectId={projectId}
+          />
+        </>
       );
 
     case 'data_update':
       return (
-        <DataUpdateConfig
-          config={config}
-          onChange={handleChange}
-          projectId={projectId}
-        />
+        <>
+          {renderVariablesPanel()}
+          <DataUpdateConfig
+            config={config}
+            onChange={handleChange}
+            projectId={projectId}
+          />
+        </>
       );
 
     case 'data_delete':
       return (
-        <DataDeleteConfig
-          config={config}
-          onChange={handleChange}
-          projectId={projectId}
-        />
+        <>
+          {renderVariablesPanel()}
+          <DataDeleteConfig
+            config={config}
+            onChange={handleChange}
+            projectId={projectId}
+          />
+        </>
       );
 
     case 'email_handler':
       return (
-        <EmailHandlerConfig
-          config={config}
-          onChange={handleChange}
-        />
+        <>
+          {renderVariablesPanel()}
+          <EmailHandlerConfig
+            config={config}
+            onChange={handleChange}
+          />
+        </>
       );
 
+    // Note: response_handler is usually rendered as a terminal step in PipelineConfig,
+    // but we keep this case for direct usage of HandlerConfigWrapper
     case 'response_handler':
       return (
-        <ResponseHandlerConfig
-          config={config}
-          onChange={handleChange}
-        />
+        <>
+          {renderVariablesPanel()}
+          <ResponseHandlerConfig
+            config={config}
+            onChange={handleChange}
+          />
+        </>
       );
 
     case 'aggregate_handler':
       return (
-        <AggregateHandlerConfig
-          config={config}
-          onChange={handleChange}
-        />
+        <>
+          {renderVariablesPanel()}
+          <AggregateHandlerConfig
+            config={config}
+            onChange={handleChange}
+          />
+        </>
       );
 
     case 'function_handler':
       return (
-        <div className="text-sm text-muted-foreground p-4 bg-muted/50 rounded-md">
-          Function handler configuration is not yet available.
-          This handler type is reserved for future custom JavaScript functions.
-        </div>
+        <>
+          {renderVariablesPanel()}
+          <FunctionHandlerConfig
+            config={config}
+            onChange={handleChange}
+            previousSteps={previousSteps}
+          />
+        </>
       );
 
     default:
@@ -133,6 +183,7 @@ export function getHandlerDisplayName(type: HandlerType): string {
     data_delete: 'Delete Records',
     email_handler: 'Send Email',
     response_handler: 'HTTP Response',
+    proxy_forward: 'Forward Request',
     function_handler: 'Custom Function',
     aggregate_handler: 'Aggregate Data',
   };
@@ -151,6 +202,7 @@ export function getHandlerDescription(type: HandlerType): string {
     data_delete: 'Delete records from a schema',
     email_handler: 'Send an email notification',
     response_handler: 'Define the HTTP response to return',
+    proxy_forward: 'Forward the request to another service',
     function_handler: 'Execute custom JavaScript code',
     aggregate_handler: 'Perform aggregation on array data',
   };

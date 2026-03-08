@@ -213,3 +213,25 @@ export interface AggregateHandlerConfig extends BaseHandlerConfig {
    */
   field?: string;
 }
+
+/**
+ * Configuration for function_handler (executes custom JavaScript code)
+ */
+export interface FunctionHandlerConfig extends BaseHandlerConfig {
+  /**
+   * JavaScript code to execute.
+   * The code should return the transformed data.
+   * Available variables:
+   * - data.input: The pipeline input
+   * - data.user: Current user info (id, email, role) if authenticated
+   * - data.request: Request info (method, path, query)
+   * - data.steps: Output from previous steps (keyed by step name)
+   */
+  code: string;
+
+  /**
+   * Execution timeout in milliseconds (1000-30000ms)
+   * @default 5000
+   */
+  timeout?: number;
+}

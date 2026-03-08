@@ -118,7 +118,7 @@ export function ExpandedProxyRuleForm({
   const isPipeline = proxyType === 'pipeline';
   const submitting = externalIsSubmitting || isSubmitting;
 
-  const validate = (): boolean => {
+  const validate = (): Record<string, string> => {
     const newErrors: Record<string, string> = {};
 
     // Validate path pattern
@@ -195,13 +195,32 @@ export function ExpandedProxyRuleForm({
     }
 
     setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    return newErrors;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!validate()) {
+    const validationErrors = validate();
+    if (Object.keys(validationErrors).length > 0) {
+      // Scroll to first error field
+      const firstErrorKey = Object.keys(validationErrors)[0];
+      if (firstErrorKey) {
+        // Map error keys to input IDs
+        const idMap: Record<string, string> = {
+          pipelineName: 'pipeline-name',
+          pipelineSteps: 'pipeline-name', // Scroll to pipeline section
+        };
+        const targetId = idMap[firstErrorKey] || firstErrorKey;
+        const errorElement = document.getElementById(targetId);
+        if (errorElement) {
+          errorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          errorElement.focus();
+        } else {
+          // Scroll to top if we can't find the specific field
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+      }
       return;
     }
 
@@ -350,8 +369,8 @@ export function ExpandedProxyRuleForm({
         </div>
       )}
 
-      {/* Target Configuration (External Proxy & Internal Rewrite) */}
-      {!isEmailHandler && (
+      {/* Target Configuration (External Proxy & Internal Rewrite only) */}
+      {!isEmailHandler && !isPipeline && (
         <Card>
           <CardHeader>
             <CardTitle>Target Configuration</CardTitle>

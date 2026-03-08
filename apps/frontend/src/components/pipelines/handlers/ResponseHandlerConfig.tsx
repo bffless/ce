@@ -15,6 +15,7 @@ import { Plus, Trash2, HelpCircle } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
+  TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import type { ResponseHandlerConfig } from './types';
@@ -173,15 +174,19 @@ export function ResponseHandlerConfig({ config, onChange }: ResponseHandlerConfi
       <div className="space-y-2">
         <div className="flex items-center gap-2">
           <Label>Response Body</Label>
-          <Tooltip>
-            <TooltipTrigger>
-              <HelpCircle className="h-4 w-4 text-muted-foreground" />
-            </TooltipTrigger>
-            <TooltipContent className="max-w-xs">
-              <p><strong>Template:</strong> Use <code>{'{{expression}}'}</code> for dynamic values</p>
-              <p className="mt-1"><strong>JSON:</strong> Map keys to expressions</p>
-            </TooltipContent>
-          </Tooltip>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button type="button" className="cursor-help">
+                  <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                <p><strong>Template:</strong> Use <code>{'{{expression}}'}</code> for dynamic values</p>
+                <p className="mt-1"><strong>JSON:</strong> Map keys to expressions</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
 
         <Tabs value={bodyMode} onValueChange={(v) => setBodyMode(v as 'template' | 'json')}>
