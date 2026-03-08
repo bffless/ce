@@ -86,6 +86,7 @@ describe('ProxyRulesService', () => {
     id: 'rule-1',
     ruleSetId: 'rule-set-1',
     pathPattern: '/api/*',
+    method: null,
     targetUrl: 'https://api.example.com',
     stripPrefix: true,
     order: 0,
@@ -350,6 +351,7 @@ describe('ProxyRulesService', () => {
         pipelineConfig: null,
         isEnabled: true,
         description: null,
+        method: null,
         createdAt: new Date(),
         updatedAt: new Date(),
       };

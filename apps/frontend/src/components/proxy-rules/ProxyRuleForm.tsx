@@ -14,6 +14,7 @@ import type {
   ProxyRule,
   CreateProxyRuleDto,
   ProxyType,
+  HttpMethod,
   EmailHandlerConfig,
 } from '@/services/proxyRulesApi';
 import { useGetEmailConfigStatusQuery } from '@/services/proxyRulesApi';
@@ -45,6 +46,7 @@ export function ProxyRuleForm({ initialData, onSubmit, onCancel }: ProxyRuleForm
 
   // Basic fields
   const [pathPattern, setPathPattern] = useState(initialData?.pathPattern || '');
+  const [method, setMethod] = useState<HttpMethod | null>(initialData?.method || null);
   const [targetUrl, setTargetUrl] = useState(initialData?.targetUrl || '');
   const [proxyType, setProxyType] = useState<ProxyType>(getEffectiveProxyType(initialData));
   const [order, setOrder] = useState<number | undefined>(initialData?.order);
@@ -193,6 +195,7 @@ export function ProxyRuleForm({ initialData, onSubmit, onCancel }: ProxyRuleForm
 
       await onSubmit({
         pathPattern,
+        method: method || undefined, // null/undefined = match any method
         targetUrl: isEmailHandler ? '' : targetUrl, // Email handler doesn't use targetUrl
         proxyType,
         // Include internalRewrite for backward compatibility
@@ -220,21 +223,43 @@ export function ProxyRuleForm({ initialData, onSubmit, onCancel }: ProxyRuleForm
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Path Pattern */}
-      <div className="space-y-2">
-        <Label htmlFor="pathPattern">Path Pattern *</Label>
-        <Input
-          id="pathPattern"
-          value={pathPattern}
-          onChange={(e) => setPathPattern(e.target.value)}
-          placeholder="/api/*"
-          className={errors.pathPattern ? 'border-destructive' : ''}
-        />
-        {errors.pathPattern ? (
-          <p className="text-xs text-destructive">{errors.pathPattern}</p>
-        ) : (
-          <p className="text-xs text-muted-foreground">Examples: /api/*, /graphql, *.json</p>
-        )}
+      {/* Path Pattern and Method */}
+      <div className="grid grid-cols-[1fr,auto] gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="pathPattern">Path Pattern *</Label>
+          <Input
+            id="pathPattern"
+            value={pathPattern}
+            onChange={(e) => setPathPattern(e.target.value)}
+            placeholder="/api/*"
+            className={errors.pathPattern ? 'border-destructive' : ''}
+          />
+          {errors.pathPattern ? (
+            <p className="text-xs text-destructive">{errors.pathPattern}</p>
+          ) : (
+            <p className="text-xs text-muted-foreground">Examples: /api/*, /graphql, *.json</p>
+          )}
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="method">Method</Label>
+          <Select
+            value={method || 'ANY'}
+            onValueChange={(v) => setMethod(v === 'ANY' ? null : (v as HttpMethod))}
+          >
+            <SelectTrigger id="method" className="w-28">
+              <SelectValue placeholder="Any" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ANY">Any</SelectItem>
+              <SelectItem value="GET">GET</SelectItem>
+              <SelectItem value="POST">POST</SelectItem>
+              <SelectItem value="PUT">PUT</SelectItem>
+              <SelectItem value="PATCH">PATCH</SelectItem>
+              <SelectItem value="DELETE">DELETE</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">HTTP method</p>
+        </div>
       </div>
 
       {/* Proxy Type Selector */}

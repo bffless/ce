@@ -44,11 +44,15 @@ export interface PipelineConfig {
   steps: PipelineStepConfig[];
 }
 
+// HTTP methods supported for method filtering
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS';
+
 // Proxy rule response from API
 export interface ProxyRule {
   id: string;
   ruleSetId: string;
   pathPattern: string;
+  method: HttpMethod | null; // null = match any method
   targetUrl: string;
   stripPrefix: boolean;
   order: number;
@@ -100,6 +104,7 @@ export interface UpdateProxyRuleSetDto {
 // DTO for creating a proxy rule
 export interface CreateProxyRuleDto {
   pathPattern: string;
+  method?: HttpMethod | null; // null or omitted = match any method
   targetUrl: string;
   stripPrefix?: boolean;
   order?: number;
@@ -119,6 +124,7 @@ export interface CreateProxyRuleDto {
 // DTO for updating a proxy rule
 export interface UpdateProxyRuleDto {
   pathPattern?: string;
+  method?: HttpMethod | null; // null = match any method
   targetUrl?: string;
   stripPrefix?: boolean;
   order?: number;

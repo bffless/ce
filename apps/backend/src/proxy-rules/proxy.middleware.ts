@@ -117,10 +117,10 @@ export class ProxyMiddleware implements NestMiddleware {
         return next();
       }
 
-      // Find matching rule using the appropriate subpath
-      const matchedRule = this.findMatchingRule(rules, subpathForMatching);
+      // Find matching rule using the appropriate subpath and method
+      const matchedRule = this.findMatchingRule(rules, subpathForMatching, req.method);
       if (!matchedRule) {
-        this.logger.debug(`Proxy middleware: no matching rule for ${subpathForMatching}`);
+        this.logger.debug(`Proxy middleware: no matching rule for ${req.method} ${subpathForMatching}`);
         return next();
       }
 
@@ -269,9 +269,9 @@ export class ProxyMiddleware implements NestMiddleware {
     }
 
     // Find matching rule
-    const matchedRule = this.findMatchingRule(rules, subpathForMatching);
+    const matchedRule = this.findMatchingRule(rules, subpathForMatching, req.method);
     if (!matchedRule) {
-      this.logger.debug(`Subdomain proxy middleware: no matching rule for ${subpathForMatching}`);
+      this.logger.debug(`Subdomain proxy middleware: no matching rule for ${req.method} ${subpathForMatching}`);
       return next();
     }
 
@@ -542,17 +542,32 @@ export class ProxyMiddleware implements NestMiddleware {
   }
 
   /**
-   * Find a matching rule for the given subpath
+   * Find a matching rule for the given subpath and HTTP method
    * Rules are already sorted by order, so the first match wins
+   *
+   * Method matching:
+   * - If rule.method is null, it matches any HTTP method
+   * - If rule.method is set, it must match the request method (case-insensitive)
    */
-  private findMatchingRule(rules: ProxyRule[], subpath: string): ProxyRule | null {
+  private findMatchingRule(rules: ProxyRule[], subpath: string, method?: string): ProxyRule | null {
+    const requestMethod = method?.toUpperCase();
+
     for (const rule of rules) {
       if (!rule.isEnabled) {
         continue;
       }
-      if (this.matchesPattern(rule.pathPattern, subpath)) {
-        return rule;
+
+      // Check path pattern first
+      if (!this.matchesPattern(rule.pathPattern, subpath)) {
+        continue;
       }
+
+      // Check method if specified on rule
+      if (rule.method && requestMethod && rule.method.toUpperCase() !== requestMethod) {
+        continue;
+      }
+
+      return rule;
     }
     return null;
   }

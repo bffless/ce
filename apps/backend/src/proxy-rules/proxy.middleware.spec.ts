@@ -79,6 +79,7 @@ describe('ProxyMiddleware', () => {
     id: 'rule-1',
     ruleSetId: 'rule-set-1',
     pathPattern: '/api/*',
+    method: null,
     targetUrl: 'https://api.example.com',
     stripPrefix: true,
     order: 0,

@@ -175,6 +175,19 @@ export const proxyRules = pgTable(
     pathPattern: varchar('path_pattern', { length: 500 }).notNull(),
 
     /**
+     * HTTP method to match (GET, POST, PUT, PATCH, DELETE, etc.).
+     *
+     * - null (default): Match any HTTP method
+     * - 'GET': Match only GET requests
+     * - 'POST': Match only POST requests
+     * - etc.
+     *
+     * This allows creating separate rules for the same path with different methods,
+     * e.g., GET /api/items (query) vs POST /api/items (create).
+     */
+    method: varchar('method', { length: 10 }),
+
+    /**
      * Target URL to forward matching requests to.
      *
      * Must be HTTPS. Internal IPs and localhost are blocked for security.
@@ -319,9 +332,10 @@ export const proxyRules = pgTable(
   },
   (table) => [
     /**
-     * Each rule set can only have one rule per path pattern.
+     * Each rule set can only have one rule per path pattern + method combination.
+     * This allows separate rules for GET /api/items vs POST /api/items.
      */
-    uniqueIndex('proxy_rules_rule_set_path_unique').on(table.ruleSetId, table.pathPattern),
+    uniqueIndex('proxy_rules_rule_set_path_method_unique').on(table.ruleSetId, table.pathPattern, table.method),
 
     /**
      * Index for efficient lookup by rule set.
