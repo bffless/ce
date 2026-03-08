@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.93](https://github.com/bffless/ce/compare/v0.0.92...v0.0.93) (2026-03-08)
+
+
+### Features
+
+* completes test ([4637f59](https://github.com/bffless/ce/commit/4637f59a397b4329052ec4a2734fecac8ca7e1ea))
+* implement function handler with sandboxed JS execution (Phase D) ([5e342e4](https://github.com/bffless/ce/commit/5e342e4d08979ee078395b2702c15f9b30ddf608))
+* implement handler library for pipelines (Phase C) ([e84bc74](https://github.com/bffless/ce/commit/e84bc744dff2c3d446567b51ab2b778d0bbb39d4))
+
+
+### Bug Fixes
+
+* json parsing ([4382fbe](https://github.com/bffless/ce/commit/4382fbe174d0cd106d04ff7f53391d112e1a7446))
+* tests ([ca04b02](https://github.com/bffless/ce/commit/ca04b02eaa2698098c143bd2cba86f815730a472))
+
 ## [0.0.92](https://github.com/bffless/ce/compare/v0.0.91...v0.0.92) (2026-03-07)
 
 
