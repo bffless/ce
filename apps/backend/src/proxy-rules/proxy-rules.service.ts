@@ -173,10 +173,11 @@ export class ProxyRulesService {
       this.validateTargetUrl(dto.targetUrl);
     }
 
-    // Check for duplicate path pattern within the rule set
-    const existingRule = await this.findRuleByPattern(dto.ruleSetId, dto.pathPattern);
+    // Check for duplicate path pattern + method within the rule set
+    const existingRule = await this.findRuleByPattern(dto.ruleSetId, dto.pathPattern, dto.method);
     if (existingRule) {
-      throw new ConflictException(`A rule with path pattern "${dto.pathPattern}" already exists`);
+      const methodDesc = dto.method ? ` with method ${dto.method}` : '';
+      throw new ConflictException(`A rule with path pattern "${dto.pathPattern}"${methodDesc} already exists`);
     }
 
     // Auto-assign order if not provided
@@ -190,6 +191,7 @@ export class ProxyRulesService {
       .values({
         ruleSetId: dto.ruleSetId,
         pathPattern: dto.pathPattern,
+        method: dto.method ?? null,
         targetUrl: dto.targetUrl,
         stripPrefix: dto.stripPrefix ?? true,
         order,
@@ -280,11 +282,14 @@ export class ProxyRulesService {
       this.validateTargetUrl(dto.targetUrl);
     }
 
-    // Check for duplicate path pattern if changing
-    if (dto.pathPattern && dto.pathPattern !== existing.pathPattern) {
-      const duplicate = await this.findRuleByPattern(existing.ruleSetId, dto.pathPattern);
+    // Check for duplicate path pattern + method if changing
+    const newPattern = dto.pathPattern ?? existing.pathPattern;
+    const newMethod = dto.method !== undefined ? dto.method : existing.method;
+    if (dto.pathPattern !== existing.pathPattern || dto.method !== existing.method) {
+      const duplicate = await this.findRuleByPattern(existing.ruleSetId, newPattern, newMethod);
       if (duplicate && duplicate.id !== id) {
-        throw new ConflictException(`A rule with path pattern "${dto.pathPattern}" already exists`);
+        const methodDesc = newMethod ? ` with method ${newMethod}` : '';
+        throw new ConflictException(`A rule with path pattern "${newPattern}"${methodDesc} already exists`);
       }
     }
 
@@ -294,6 +299,7 @@ export class ProxyRulesService {
     };
 
     if (dto.pathPattern !== undefined) updateData.pathPattern = dto.pathPattern;
+    if (dto.method !== undefined) updateData.method = dto.method;
     if (dto.targetUrl !== undefined) updateData.targetUrl = dto.targetUrl;
     if (dto.stripPrefix !== undefined) updateData.stripPrefix = dto.stripPrefix;
     if (dto.order !== undefined) updateData.order = dto.order;
@@ -334,6 +340,7 @@ export class ProxyRulesService {
         .update(proxyRules)
         .set({
           pathPattern: existing.pathPattern,
+          method: existing.method,
           targetUrl: existing.targetUrl,
           stripPrefix: existing.stripPrefix,
           order: existing.order,
@@ -396,6 +403,7 @@ export class ProxyRulesService {
         id: existing.id,
         ruleSetId: existing.ruleSetId,
         pathPattern: existing.pathPattern,
+        method: existing.method,
         targetUrl: existing.targetUrl,
         stripPrefix: existing.stripPrefix,
         order: existing.order,
@@ -523,10 +531,11 @@ export class ProxyRulesService {
     return rule || null;
   }
 
-  private async findRuleByPattern(ruleSetId: string, pattern: string) {
+  private async findRuleByPattern(ruleSetId: string, pattern: string, method?: string | null) {
     const rules = await db.select().from(proxyRules).where(eq(proxyRules.ruleSetId, ruleSetId));
 
-    return rules.find((r) => r.pathPattern === pattern) || null;
+    // Match both pathPattern and method (null method matches null method)
+    return rules.find((r) => r.pathPattern === pattern && r.method === (method ?? null)) || null;
   }
 
   private async getNextOrder(ruleSetId: string): Promise<number> {

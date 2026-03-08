@@ -45,13 +45,17 @@ export interface DataQueryHandlerConfig extends BaseHandlerConfig {
 
 export interface DataUpdateHandlerConfig extends BaseHandlerConfig {
   schemaId: string;
-  filters: Record<string, { op: 'eq' | 'ne'; value: string }>;
+  /** Find a specific record by its ID (table column). Ignores filters when set. */
+  recordId?: string;
+  filters?: Record<string, { op: 'eq' | 'ne'; value: string }>;
   fields: Record<string, string>;
 }
 
 export interface DataDeleteHandlerConfig extends BaseHandlerConfig {
   schemaId: string;
-  filters: Record<string, { op: 'eq' | 'ne'; value: string }>;
+  /** Find a specific record by its ID (table column). Ignores filters when set. */
+  recordId?: string;
+  filters?: Record<string, { op: 'eq' | 'ne'; value: string }>;
 }
 
 export interface EmailHandlerConfig extends BaseHandlerConfig {

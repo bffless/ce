@@ -114,9 +114,15 @@ export interface DataUpdateHandlerConfig extends BaseHandlerConfig {
   schemaId: string;
 
   /**
-   * Filter to identify records to update
+   * Find a specific record by its ID (table column, not JSON field).
+   * When specified, filters are ignored.
    */
-  filters: Record<string, { op: 'eq' | 'ne'; value: string }>;
+  recordId?: string;
+
+  /**
+   * Filter to identify records to update (ignored if recordId is set)
+   */
+  filters?: Record<string, { op: 'eq' | 'ne'; value: string }>;
 
   /**
    * Field updates: { schemaField: "expression" }
@@ -134,9 +140,15 @@ export interface DataDeleteHandlerConfig extends BaseHandlerConfig {
   schemaId: string;
 
   /**
-   * Filter to identify records to delete
+   * Find a specific record by its ID (table column, not JSON field).
+   * When specified, filters are ignored.
    */
-  filters: Record<string, { op: 'eq' | 'ne'; value: string }>;
+  recordId?: string;
+
+  /**
+   * Filter to identify records to delete (ignored if recordId is set)
+   */
+  filters?: Record<string, { op: 'eq' | 'ne'; value: string }>;
 }
 
 /**

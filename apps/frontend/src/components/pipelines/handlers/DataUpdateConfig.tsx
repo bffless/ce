@@ -32,6 +32,7 @@ interface FieldMapping {
 
 export function DataUpdateConfig({ config, onChange, projectId }: DataUpdateConfigProps) {
   const [schemaId, setSchemaId] = useState(config.schemaId || '');
+  const [recordId, setRecordId] = useState(config.recordId || '');
   const [filters, setFilters] = useState<FilterEntry[]>(() => {
     const existing = config.filters || {};
     const entries = Object.entries(existing);
@@ -64,10 +65,11 @@ export function DataUpdateConfig({ config, onChange, projectId }: DataUpdateConf
 
     onChange({
       schemaId,
-      filters: filtersRecord,
+      recordId: recordId.trim() || undefined,
+      filters: Object.keys(filtersRecord).length > 0 ? filtersRecord : undefined,
       fields,
     });
-  }, [schemaId, filters, fieldMappings, onChange]);
+  }, [schemaId, recordId, filters, fieldMappings, onChange]);
 
   const handleAddFilter = () => {
     setFilters([...filters, { field: '', op: 'eq', value: '' }]);
@@ -104,6 +106,19 @@ export function DataUpdateConfig({ config, onChange, projectId }: DataUpdateConf
       <div className="space-y-2">
         <Label>Target Schema</Label>
         <SchemaPicker projectId={projectId} value={schemaId} onChange={setSchemaId} />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="recordId">Record ID (optional)</Label>
+        <Input
+          id="recordId"
+          value={recordId}
+          onChange={(e) => setRecordId(e.target.value)}
+          placeholder="Find by record ID (expression)"
+        />
+        <p className="text-xs text-muted-foreground">
+          Update a specific record by its ID. Ignores filters when set.
+        </p>
       </div>
 
       <div className="space-y-2">

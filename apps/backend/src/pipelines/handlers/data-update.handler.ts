@@ -34,22 +34,28 @@ export class DataUpdateHandler implements StepHandler<DataUpdateHandlerConfig> {
       throw new ConfigurationError('schemaId is required', 'data_update');
     }
 
-    if (!config.filters || Object.keys(config.filters).length === 0) {
-      throw new ConfigurationError('At least one filter is required', 'data_update');
+    // Either recordId or filters must be provided
+    const hasRecordId = config.recordId && config.recordId.trim();
+    const hasFilters = config.filters && Object.keys(config.filters).length > 0;
+
+    if (!hasRecordId && !hasFilters) {
+      throw new ConfigurationError('Either recordId or at least one filter is required', 'data_update');
     }
 
     if (!config.fields || Object.keys(config.fields).length === 0) {
       throw new ConfigurationError('At least one field to update is required', 'data_update');
     }
 
-    // Validate filter operators
-    const validOps = ['eq', 'ne'];
-    for (const [field, filter] of Object.entries(config.filters)) {
-      if (!validOps.includes(filter.op)) {
-        throw new ConfigurationError(
-          `Invalid operator '${filter.op}' for field '${field}'. Valid operators for update: ${validOps.join(', ')}`,
-          'data_update',
-        );
+    // Validate filter operators if filters are provided
+    if (hasFilters) {
+      const validOps = ['eq', 'ne'];
+      for (const [field, filter] of Object.entries(config.filters!)) {
+        if (!validOps.includes(filter.op)) {
+          throw new ConfigurationError(
+            `Invalid operator '${filter.op}' for field '${field}'. Valid operators for update: ${validOps.join(', ')}`,
+            'data_update',
+          );
+        }
       }
     }
   }
@@ -79,25 +85,35 @@ export class DataUpdateHandler implements StepHandler<DataUpdateHandlerConfig> {
       eq(pipelineData.projectId, context.projectId),
     ];
 
-    // Add filter conditions
-    for (const [fieldName, filter] of Object.entries(config.filters)) {
-      // Evaluate the filter value as an expression
-      const value = this.expressionEvaluator.evaluateExpression(
-        filter.value,
+    // If recordId is provided, use it directly (ignoring filters)
+    if (config.recordId && config.recordId.trim()) {
+      const evaluatedRecordId = this.expressionEvaluator.evaluateExpression(
+        config.recordId,
         context,
         stepName,
       );
+      conditions.push(eq(pipelineData.id, String(evaluatedRecordId)));
+    } else if (config.filters) {
+      // Add filter conditions
+      for (const [fieldName, filter] of Object.entries(config.filters)) {
+        // Evaluate the filter value as an expression
+        const value = this.expressionEvaluator.evaluateExpression(
+          filter.value,
+          context,
+          stepName,
+        );
 
-      // Build JSONB field accessor for the data column
-      const fieldPath = sql`${pipelineData.data}->>${sql.raw(`'${fieldName}'`)}`;
+        // Build JSONB field accessor for the data column
+        const fieldPath = sql`${pipelineData.data}->>${sql.raw(`'${fieldName}'`)}`;
 
-      switch (filter.op) {
-        case 'eq':
-          conditions.push(sql`${fieldPath} = ${String(value)}`);
-          break;
-        case 'ne':
-          conditions.push(sql`${fieldPath} != ${String(value)}`);
-          break;
+        switch (filter.op) {
+          case 'eq':
+            conditions.push(sql`${fieldPath} = ${String(value)}`);
+            break;
+          case 'ne':
+            conditions.push(sql`${fieldPath} != ${String(value)}`);
+            break;
+        }
       }
     }
 
