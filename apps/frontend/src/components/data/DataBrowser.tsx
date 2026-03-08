@@ -21,7 +21,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Trash2, ChevronDown, ChevronRight, ChevronLeft, Database, Plus, Pencil } from 'lucide-react';
+import { Trash2, ChevronDown, ChevronRight, ChevronLeft, Database, Plus, Pencil, Copy, Check } from 'lucide-react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import {
   useGetSchemaDataQuery,
   useDeleteRecordMutation,
@@ -46,6 +52,17 @@ export function DataBrowser({ schemaId, fields, canEdit }: DataBrowserProps) {
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'single' | 'bulk'; ids: string[] } | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<PipelineDataRecord | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const copyToClipboard = async (id: string) => {
+    await navigator.clipboard.writeText(id);
+    setCopiedId(id);
+    toast({
+      title: 'ID copied',
+      description: 'Record ID copied to clipboard',
+    });
+    setTimeout(() => setCopiedId(null), 2000);
+  };
 
   const pageSize = 20;
 
@@ -259,7 +276,27 @@ export function DataBrowser({ schemaId, fields, canEdit }: DataBrowserProps) {
                             </Button>
                           </TableCell>
                           <TableCell className="font-mono text-xs">
-                            {record.id.slice(0, 8)}...
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    className="flex items-center gap-1 hover:text-foreground text-muted-foreground transition-colors cursor-pointer"
+                                    onClick={() => copyToClipboard(record.id)}
+                                  >
+                                    <span>{record.id.slice(0, 8)}...</span>
+                                    {copiedId === record.id ? (
+                                      <Check className="h-3 w-3 text-green-500" />
+                                    ) : (
+                                      <Copy className="h-3 w-3 opacity-50 hover:opacity-100" />
+                                    )}
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="font-mono text-xs max-w-md break-all">
+                                  <p>{record.id}</p>
+                                  <p className="text-muted-foreground mt-1">Click to copy</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           </TableCell>
                           <TableCell className="max-w-md truncate text-sm text-muted-foreground">
                             {JSON.stringify(record.data).slice(0, 100)}

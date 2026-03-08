@@ -65,7 +65,21 @@ export interface DataQueryHandlerConfig extends BaseHandlerConfig {
   schemaId: string;
 
   /**
-   * Filter conditions: { field: { op: "eq", value: "expression" } }
+   * Find a specific record by its ID (table column, not JSON field).
+   * When specified, returns a single object (or null if not found).
+   * Other filters are ignored when recordId is set.
+   */
+  recordId?: string;
+
+  /**
+   * When true, returns a single object instead of an array.
+   * Returns the first matching record or null if none found.
+   * @default false
+   */
+  single?: boolean;
+
+  /**
+   * Filter conditions on JSON data fields: { field: { op: "eq", value: "expression" } }
    */
   filters?: Record<string, { op: 'eq' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte' | 'like'; value: string }>;
 

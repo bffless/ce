@@ -32,6 +32,10 @@ export interface FilterConfig {
 
 export interface DataQueryHandlerConfig extends BaseHandlerConfig {
   schemaId: string;
+  /** Find a specific record by its ID (table column). Returns single object or null. */
+  recordId?: string;
+  /** When true, returns a single object instead of an array */
+  single?: boolean;
   filters?: Record<string, FilterConfig>;
   select?: string[];
   limit?: number;

@@ -84,8 +84,16 @@ export class DataQueryHandler implements StepHandler<DataQueryHandlerConfig> {
       eq(pipelineData.projectId, context.projectId),
     ];
 
-    // Add filter conditions
-    if (config.filters) {
+    // If recordId is specified, find by table ID directly (ignores other filters)
+    if (config.recordId) {
+      const recordIdValue = this.expressionEvaluator.evaluateExpression(
+        config.recordId,
+        context,
+        stepName,
+      );
+      conditions.push(eq(pipelineData.id, String(recordIdValue)));
+    } else if (config.filters) {
+      // Add filter conditions on JSON data fields
       for (const [fieldName, filter] of Object.entries(config.filters)) {
         // Evaluate the filter value as an expression
         const value = this.expressionEvaluator.evaluateExpression(
@@ -176,8 +184,12 @@ export class DataQueryHandler implements StepHandler<DataQueryHandlerConfig> {
 
     this.logger.debug(`Query returned ${results.length} records`);
 
-    // Return single record if limit is 1, otherwise return array
-    const output = config.limit === 1 ? (results[0] || null) : results;
+    // Return single object when:
+    // - recordId is specified (find by ID)
+    // - single is true (find one)
+    // - limit is 1 (legacy behavior)
+    const returnSingle = config.recordId || config.single || config.limit === 1;
+    const output = returnSingle ? (results[0] || null) : results;
 
     return {
       success: true,
