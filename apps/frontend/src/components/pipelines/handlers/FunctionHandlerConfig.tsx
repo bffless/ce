@@ -15,15 +15,15 @@ const Editor = lazy(() => import('@monaco-editor/react'));
 // Default code template shown when adding a new function handler
 const DEFAULT_CODE = `/**
  * Transform your data in the handler function.
- * Type 'data.' to see available properties with autocomplete.
+ * Type 'input.', 'user.', 'request.', or 'steps.' for autocomplete.
  */
-function handler(data) {
-  // Access input fields: data.input.fieldName
-  // Access user info: data.user?.email
-  // Access previous steps: data.steps['Step Name']
+function handler({ input, user, request, steps }) {
+  // Access input fields: input.fieldName
+  // Access user info: user?.email
+  // Access previous steps: steps['Step Name']
 
   return {
-    ...data.input,
+    ...input,
     processedAt: new Date().toISOString(),
   };
 }
@@ -260,45 +260,8 @@ export function FunctionHandlerConfig({
 
         const CompletionItemKind = monacoInstance.languages.CompletionItemKind;
 
-        // After "data." (with optional partial word)
-        if (/\bdata\.\w*$/.test(textUntilPosition)) {
-          suggestions.push(
-            {
-              label: 'input',
-              kind: CompletionItemKind.Property,
-              insertText: 'input',
-              detail: 'Record<string, any>',
-              documentation: 'Form data or JSON body from the request',
-              sortText: '0',
-            },
-            {
-              label: 'user',
-              kind: CompletionItemKind.Property,
-              insertText: 'user',
-              detail: 'User | undefined',
-              documentation: 'Current authenticated user { id, email, role }',
-              sortText: '1',
-            },
-            {
-              label: 'request',
-              kind: CompletionItemKind.Property,
-              insertText: 'request',
-              detail: 'RequestInfo',
-              documentation: 'Request info { method, path, query }',
-              sortText: '2',
-            },
-            {
-              label: 'steps',
-              kind: CompletionItemKind.Property,
-              insertText: 'steps',
-              detail: 'StepOutputs',
-              documentation: 'Output from previous pipeline steps',
-              sortText: '3',
-            },
-          );
-        }
-        // After "data.user." (with optional partial word)
-        if (/\bdata\.user\.\w*$/.test(textUntilPosition)) {
+        // After "user." (with optional partial word)
+        if (/\buser\.\w*$/.test(textUntilPosition)) {
           suggestions.push(
             {
               label: 'id',
@@ -326,8 +289,8 @@ export function FunctionHandlerConfig({
             },
           );
         }
-        // After "data.request." (with optional partial word)
-        if (/\bdata\.request\.\w*$/.test(textUntilPosition)) {
+        // After "request." (with optional partial word)
+        if (/\brequest\.\w*$/.test(textUntilPosition)) {
           suggestions.push(
             {
               label: 'method',
@@ -355,8 +318,8 @@ export function FunctionHandlerConfig({
             },
           );
         }
-        // After "data.steps." (with optional partial word)
-        if (/\bdata\.steps\.\w*$/.test(textUntilPosition)) {
+        // After "steps." (with optional partial word)
+        if (/\bsteps\.\w*$/.test(textUntilPosition)) {
           for (let i = 0; i < completionItems.steps.length; i++) {
             const item = completionItems.steps[i];
             suggestions.push({
@@ -369,12 +332,12 @@ export function FunctionHandlerConfig({
             });
           }
         }
-        // After "data.steps['StepName']." or "data.steps.stepName." (with optional partial word)
+        // After "steps['StepName']." or "steps.stepName." (with optional partial word)
         for (const item of completionItems.steps) {
           // Escape special regex characters in name, keep underscores for dot notation
           const escapedName = item.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
           const pattern = new RegExp(
-            `\\bdata\\.steps\\['${escapedName}'\\]\\.\\w*$|\\bdata\\.steps\\.${escapedName}\\.\\w*$`,
+            `\\bsteps\\['${escapedName}'\\]\\.\\w*$|\\bsteps\\.${escapedName}\\.\\w*$`,
           );
           if (pattern.test(textUntilPosition)) {
             for (let i = 0; i < item.fields.length; i++) {
@@ -575,10 +538,10 @@ export function FunctionHandlerConfig({
         <Shield className="h-4 w-4" />
         <AlertDescription className="text-xs">
           <strong>Sandboxed Execution:</strong> Code runs in an isolated environment with access to{' '}
-          <code className="bg-muted px-1 rounded">data.input</code>,{' '}
-          <code className="bg-muted px-1 rounded">data.user</code>,{' '}
-          <code className="bg-muted px-1 rounded">data.request</code>, and{' '}
-          <code className="bg-muted px-1 rounded">data.steps</code>. Node.js APIs (require, process,
+          <code className="bg-muted px-1 rounded">input</code>,{' '}
+          <code className="bg-muted px-1 rounded">user</code>,{' '}
+          <code className="bg-muted px-1 rounded">request</code>, and{' '}
+          <code className="bg-muted px-1 rounded">steps</code>. Node.js APIs (require, process,
           etc.) are not available.
         </AlertDescription>
       </Alert>

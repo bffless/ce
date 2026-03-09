@@ -207,7 +207,7 @@ export class FunctionRunnerService {
       // Create the context
       vm.createContext(sandbox);
 
-      // Wrap user code: user defines a handler(data) function, we call it
+      // Wrap user code: user defines a handler({ input, user, request, steps }) function, we call it
       // This matches the serverless function pattern (AWS Lambda, Cloud Functions, etc.)
       const wrappedCode = `
         (async function() {
@@ -217,7 +217,7 @@ export class FunctionRunnerService {
 
             // Verify handler function exists
             if (typeof handler !== 'function') {
-              throw new Error('You must define a handler(data) function. Example: function handler(data) { return data.input; }');
+              throw new Error('You must define a handler function. Example: function handler({ input }) { return input; }');
             }
 
             // Call the user's handler function with data

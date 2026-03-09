@@ -8,50 +8,56 @@ describe('FunctionRunnerService', () => {
   });
 
   describe('validateCode', () => {
-    it('should accept valid handler function', () => {
+    it('should accept valid handler function with destructured params', () => {
+      const result = service.validateCode('function handler({ input }) { return input.name; }');
+      expect(result.valid).toBe(true);
+      expect(result.errors).toBeUndefined();
+    });
+
+    it('should accept valid handler function with data param (backward compat)', () => {
       const result = service.validateCode('function handler(data) { return data.input.name; }');
       expect(result.valid).toBe(true);
       expect(result.errors).toBeUndefined();
     });
 
     it('should reject code with eval()', () => {
-      const result = service.validateCode('function handler(data) { return eval("1+1"); }');
+      const result = service.validateCode('function handler({ input }) { return eval("1+1"); }');
       expect(result.valid).toBe(false);
       expect(result.errors).toContain('Prohibited pattern detected: \\beval\\s*\\(');
     });
 
     it('should reject code with new Function()', () => {
-      const result = service.validateCode('function handler(data) { return new Function("return 1")(); }');
+      const result = service.validateCode('function handler({ input }) { return new Function("return 1")(); }');
       expect(result.valid).toBe(false);
       expect(result.errors).toContain('Prohibited pattern detected: \\bnew\\s+Function\\s*\\(');
     });
 
     it('should reject code with require()', () => {
-      const result = service.validateCode('function handler(data) { const fs = require("fs"); return fs; }');
+      const result = service.validateCode('function handler({ input }) { const fs = require("fs"); return fs; }');
       expect(result.valid).toBe(false);
       expect(result.errors).toContain('Prohibited pattern detected: \\brequire\\s*\\(');
     });
 
     it('should reject code with process access', () => {
-      const result = service.validateCode('function handler(data) { return process.env.SECRET; }');
+      const result = service.validateCode('function handler({ input }) { return process.env.SECRET; }');
       expect(result.valid).toBe(false);
       expect(result.errors).toContain('Prohibited pattern detected: \\bprocess\\s*\\.');
     });
 
     it('should reject code with global access', () => {
-      const result = service.validateCode('function handler(data) { return global.process; }');
+      const result = service.validateCode('function handler({ input }) { return global.process; }');
       expect(result.valid).toBe(false);
       expect(result.errors).toContain('Prohibited pattern detected: \\bglobal\\s*\\.');
     });
 
     it('should reject code with __proto__ access', () => {
-      const result = service.validateCode('function handler(data) { return {}.__proto__; }');
+      const result = service.validateCode('function handler({ input }) { return {}.__proto__; }');
       expect(result.valid).toBe(false);
       expect(result.errors).toContain('Prohibited pattern detected: \\.__proto__');
     });
 
     it('should reject code with syntax errors', () => {
-      const result = service.validateCode('function handler(data) { return {');
+      const result = service.validateCode('function handler({ input }) { return {');
       expect(result.valid).toBe(false);
       expect(result.errors?.[0]).toContain('Syntax error');
     });
@@ -62,10 +68,19 @@ describe('FunctionRunnerService', () => {
       it('should require a handler function', async () => {
         const result = await service.run('const x = 1;', {});
         expect(result.success).toBe(false);
-        expect(result.error?.message).toContain('handler(data)');
+        expect(result.error?.message).toContain('handler');
       });
 
-      it('should execute handler function with data', async () => {
+      it('should execute handler function with destructured params', async () => {
+        const result = await service.run(
+          'function handler({ input }) { return input.name; }',
+          { input: { name: 'test' } },
+        );
+        expect(result.success).toBe(true);
+        expect(result.output).toBe('test');
+      });
+
+      it('should execute handler function with data param (backward compat)', async () => {
         const result = await service.run(
           'function handler(data) { return data.input.name; }',
           { input: { name: 'test' } },
@@ -78,25 +93,25 @@ describe('FunctionRunnerService', () => {
     describe('basic execution', () => {
       it('should execute simple return statement', async () => {
         const result = await service.run(
-          'function handler(data) { return 42; }',
+          'function handler({ input }) { return 42; }',
           {},
         );
         expect(result.success).toBe(true);
         expect(result.output).toBe(42);
       });
 
-      it('should have access to data.input', async () => {
+      it('should have access to input', async () => {
         const result = await service.run(
-          'function handler(data) { return data.input.name; }',
+          'function handler({ input }) { return input.name; }',
           { input: { name: 'test' } },
         );
         expect(result.success).toBe(true);
         expect(result.output).toBe('test');
       });
 
-      it('should have access to data.user', async () => {
+      it('should have access to user', async () => {
         const result = await service.run(
-          'function handler(data) { return data.user.email; }',
+          'function handler({ user }) { return user.email; }',
           {
             input: {},
             user: { id: '1', email: 'test@example.com', role: 'admin' },
@@ -106,9 +121,9 @@ describe('FunctionRunnerService', () => {
         expect(result.output).toBe('test@example.com');
       });
 
-      it('should have access to data.steps', async () => {
+      it('should have access to steps', async () => {
         const result = await service.run(
-          'function handler(data) { return data.steps.form.email; }',
+          'function handler({ steps }) { return steps.form.email; }',
           {
             input: {},
             steps: { form: { email: 'test@example.com' } },
@@ -117,12 +132,24 @@ describe('FunctionRunnerService', () => {
         expect(result.success).toBe(true);
         expect(result.output).toBe('test@example.com');
       });
+
+      it('should have access to request', async () => {
+        const result = await service.run(
+          'function handler({ request }) { return request.method; }',
+          {
+            input: {},
+            request: { method: 'POST', path: '/api/test', query: {} },
+          },
+        );
+        expect(result.success).toBe(true);
+        expect(result.output).toBe('POST');
+      });
     });
 
     describe('data transformations', () => {
       it('should transform objects', async () => {
         const result = await service.run(
-          'function handler(data) { return { ...data.input, transformed: true }; }',
+          'function handler({ input }) { return { ...input, transformed: true }; }',
           { input: { name: 'test' } },
         );
         expect(result.success).toBe(true);
@@ -131,7 +158,7 @@ describe('FunctionRunnerService', () => {
 
       it('should filter arrays', async () => {
         const result = await service.run(
-          'function handler(data) { return data.input.items.filter(item => item.active); }',
+          'function handler({ input }) { return input.items.filter(item => item.active); }',
           {
             input: {
               items: [
@@ -151,7 +178,7 @@ describe('FunctionRunnerService', () => {
 
       it('should map arrays', async () => {
         const result = await service.run(
-          'function handler(data) { return data.input.items.map(item => item.id); }',
+          'function handler({ input }) { return input.items.map(item => item.id); }',
           { input: { items: [{ id: 1 }, { id: 2 }, { id: 3 }] } },
         );
         expect(result.success).toBe(true);
@@ -160,7 +187,7 @@ describe('FunctionRunnerService', () => {
 
       it('should support reduce operations', async () => {
         const result = await service.run(
-          'function handler(data) { return data.input.numbers.reduce((sum, n) => sum + n, 0); }',
+          'function handler({ input }) { return input.numbers.reduce((sum, n) => sum + n, 0); }',
           { input: { numbers: [1, 2, 3, 4, 5] } },
         );
         expect(result.success).toBe(true);
@@ -171,7 +198,7 @@ describe('FunctionRunnerService', () => {
     describe('built-in objects', () => {
       it('should have access to Math', async () => {
         const result = await service.run(
-          'function handler(data) { return Math.max(1, 2, 3); }',
+          'function handler({ input }) { return Math.max(1, 2, 3); }',
           {},
         );
         expect(result.success).toBe(true);
@@ -180,7 +207,7 @@ describe('FunctionRunnerService', () => {
 
       it('should have access to Date', async () => {
         const result = await service.run(
-          'function handler(data) { return typeof new Date().getTime(); }',
+          'function handler({ input }) { return typeof new Date().getTime(); }',
           {},
         );
         expect(result.success).toBe(true);
@@ -189,7 +216,7 @@ describe('FunctionRunnerService', () => {
 
       it('should have access to JSON', async () => {
         const result = await service.run(
-          'function handler(data) { return JSON.parse(JSON.stringify({ a: 1 })); }',
+          'function handler({ input }) { return JSON.parse(JSON.stringify({ a: 1 })); }',
           {},
         );
         expect(result.success).toBe(true);
@@ -198,7 +225,7 @@ describe('FunctionRunnerService', () => {
 
       it('should have access to Array methods', async () => {
         const result = await service.run(
-          'function handler(data) { return Array.isArray([1, 2, 3]); }',
+          'function handler({ input }) { return Array.isArray([1, 2, 3]); }',
           {},
         );
         expect(result.success).toBe(true);
@@ -207,7 +234,7 @@ describe('FunctionRunnerService', () => {
 
       it('should have access to Object methods', async () => {
         const result = await service.run(
-          'function handler(data) { return Object.keys({ a: 1, b: 2 }); }',
+          'function handler({ input }) { return Object.keys({ a: 1, b: 2 }); }',
           {},
         );
         expect(result.success).toBe(true);
@@ -218,7 +245,7 @@ describe('FunctionRunnerService', () => {
     describe('security', () => {
       it('should not have access to require', async () => {
         const result = await service.run(
-          'function handler(data) { return typeof require; }',
+          'function handler({ input }) { return typeof require; }',
           {},
         );
         expect(result.success).toBe(true);
@@ -227,7 +254,7 @@ describe('FunctionRunnerService', () => {
 
       it('should not have access to process', async () => {
         const result = await service.run(
-          'function handler(data) { return typeof process; }',
+          'function handler({ input }) { return typeof process; }',
           {},
         );
         expect(result.success).toBe(true);
@@ -236,7 +263,7 @@ describe('FunctionRunnerService', () => {
 
       it('should not have access to global', async () => {
         const result = await service.run(
-          'function handler(data) { return typeof global; }',
+          'function handler({ input }) { return typeof global; }',
           {},
         );
         expect(result.success).toBe(true);
@@ -248,9 +275,9 @@ describe('FunctionRunnerService', () => {
         // Even if modification succeeds in sandbox, original data is unchanged
         // because we pass a structuredClone
         const result = await service.run(
-          `function handler(data) {
-            data.input.name = 'modified';
-            return data.input.name;
+          `function handler({ input }) {
+            input.name = 'modified';
+            return input.name;
           }`,
           originalData,
         );
@@ -263,7 +290,7 @@ describe('FunctionRunnerService', () => {
     describe('timeout', () => {
       it('should timeout on infinite loop', async () => {
         const result = await service.run(
-          'function handler(data) { while(true) {} }',
+          'function handler({ input }) { while(true) {} }',
           {},
           { timeout: 1000 },
         );
@@ -274,7 +301,7 @@ describe('FunctionRunnerService', () => {
       it('should respect custom timeout', async () => {
         const start = Date.now();
         const result = await service.run(
-          'function handler(data) { while(true) {} }',
+          'function handler({ input }) { while(true) {} }',
           {},
           { timeout: 1500 },
         );
@@ -290,7 +317,7 @@ describe('FunctionRunnerService', () => {
     describe('console logging', () => {
       it('should capture console.log output', async () => {
         const result = await service.run(
-          'function handler(data) { console.log("test message"); return 1; }',
+          'function handler({ input }) { console.log("test message"); return 1; }',
           {},
         );
         expect(result.success).toBe(true);
@@ -299,7 +326,7 @@ describe('FunctionRunnerService', () => {
 
       it('should capture console.warn output', async () => {
         const result = await service.run(
-          'function handler(data) { console.warn("warning"); return 1; }',
+          'function handler({ input }) { console.warn("warning"); return 1; }',
           {},
         );
         expect(result.success).toBe(true);
@@ -308,7 +335,7 @@ describe('FunctionRunnerService', () => {
 
       it('should capture console.error output', async () => {
         const result = await service.run(
-          'function handler(data) { console.error("error"); return 1; }',
+          'function handler({ input }) { console.error("error"); return 1; }',
           {},
         );
         expect(result.success).toBe(true);
@@ -317,7 +344,7 @@ describe('FunctionRunnerService', () => {
 
       it('should limit log entries to 100', async () => {
         const result = await service.run(
-          'function handler(data) { for(let i = 0; i < 150; i++) { console.log(i); } return 1; }',
+          'function handler({ input }) { for(let i = 0; i < 150; i++) { console.log(i); } return 1; }',
           {},
         );
         expect(result.success).toBe(true);
@@ -328,7 +355,7 @@ describe('FunctionRunnerService', () => {
     describe('async operations', () => {
       it('should support async handler function', async () => {
         const result = await service.run(
-          'async function handler(data) { return await Promise.resolve(42); }',
+          'async function handler({ input }) { return await Promise.resolve(42); }',
           {},
         );
         expect(result.success).toBe(true);
@@ -337,7 +364,7 @@ describe('FunctionRunnerService', () => {
 
       it('should handle Promise chains', async () => {
         const result = await service.run(
-          'function handler(data) { return Promise.resolve(1).then(x => x + 1).then(x => x * 2); }',
+          'function handler({ input }) { return Promise.resolve(1).then(x => x + 1).then(x => x * 2); }',
           {},
         );
         expect(result.success).toBe(true);
@@ -348,7 +375,7 @@ describe('FunctionRunnerService', () => {
     describe('error handling', () => {
       it('should catch and report runtime errors', async () => {
         const result = await service.run(
-          'function handler(data) { return nonExistentVariable; }',
+          'function handler({ input }) { return nonExistentVariable; }',
           {},
         );
         expect(result.success).toBe(false);
@@ -358,7 +385,7 @@ describe('FunctionRunnerService', () => {
 
       it('should catch and report type errors', async () => {
         const result = await service.run(
-          'function handler(data) { return data.input.foo.bar; }',
+          'function handler({ input }) { return input.foo.bar; }',
           { input: {} },
         );
         expect(result.success).toBe(false);
@@ -369,7 +396,7 @@ describe('FunctionRunnerService', () => {
     describe('execution time tracking', () => {
       it('should track execution time', async () => {
         const result = await service.run(
-          'function handler(data) { return 1; }',
+          'function handler({ input }) { return 1; }',
           {},
         );
         expect(result.success).toBe(true);

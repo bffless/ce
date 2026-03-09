@@ -598,7 +598,7 @@ export class ProxyMiddleware implements NestMiddleware {
       id: rule.id,
       projectId: projectId,
       name: pipelineConfig.name || `Pipeline for ${rule.pathPattern}`,
-      validators: [], // Pipeline validators not yet supported via proxy rules
+      validators: pipelineConfig.validators || [],
       steps: pipelineConfig.steps.map((step, index) => ({
         id: step.id || `step-${index}`,
         pipelineId: rule.id,

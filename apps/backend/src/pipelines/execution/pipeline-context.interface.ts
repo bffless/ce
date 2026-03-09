@@ -39,6 +39,11 @@ export interface PipelineContext {
   projectId: string;
 
   /**
+   * The pipeline being executed
+   */
+  pipelineId: string;
+
+  /**
    * Request metadata
    */
   metadata: {

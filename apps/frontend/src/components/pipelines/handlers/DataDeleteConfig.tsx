@@ -12,12 +12,16 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Plus, Trash2, AlertTriangle } from 'lucide-react';
 import { SchemaPicker } from './SchemaPicker';
+import { SchemaFieldPicker } from './SchemaFieldPicker';
+import { ExpressionInput } from './ExpressionInput';
+import type { PreviousStep } from './AvailableVariables';
 import type { DataDeleteHandlerConfig } from './types';
 
 interface DataDeleteConfigProps {
   config: Partial<DataDeleteHandlerConfig>;
   onChange: (config: DataDeleteHandlerConfig) => void;
   projectId: string;
+  previousSteps?: PreviousStep[];
 }
 
 interface FilterEntry {
@@ -26,7 +30,7 @@ interface FilterEntry {
   value: string;
 }
 
-export function DataDeleteConfig({ config, onChange, projectId }: DataDeleteConfigProps) {
+export function DataDeleteConfig({ config, onChange, projectId, previousSteps = [] }: DataDeleteConfigProps) {
   const [schemaId, setSchemaId] = useState(config.schemaId || '');
   const [recordId, setRecordId] = useState(config.recordId || '');
   const [filters, setFilters] = useState<FilterEntry[]>(() => {
@@ -105,12 +109,14 @@ export function DataDeleteConfig({ config, onChange, projectId }: DataDeleteConf
         <div className="space-y-2">
           {filters.map((filter, index) => (
             <div key={index} className="flex items-center gap-2">
-              <Input
-                value={filter.field}
-                onChange={(e) => handleFilterChange(index, { field: e.target.value })}
-                placeholder="Field name"
-                className="flex-1"
-              />
+              <div className="flex-1">
+                <SchemaFieldPicker
+                  schemaId={schemaId}
+                  value={filter.field}
+                  onChange={(field) => handleFilterChange(index, { field })}
+                  placeholder="Select field"
+                />
+              </div>
               <Select
                 value={filter.op}
                 onValueChange={(value) =>
@@ -125,12 +131,14 @@ export function DataDeleteConfig({ config, onChange, projectId }: DataDeleteConf
                   <SelectItem value="ne">Not Equals</SelectItem>
                 </SelectContent>
               </Select>
-              <Input
-                value={filter.value}
-                onChange={(e) => handleFilterChange(index, { value: e.target.value })}
-                placeholder="Expression"
-                className="flex-1"
-              />
+              <div className="flex-1">
+                <ExpressionInput
+                  value={filter.value}
+                  onChange={(value) => handleFilterChange(index, { value })}
+                  placeholder="Expression"
+                  previousSteps={previousSteps}
+                />
+              </div>
               <Button
                 type="button"
                 variant="ghost"

@@ -11,12 +11,16 @@ import {
 } from '@/components/ui/select';
 import { Plus, Trash2 } from 'lucide-react';
 import { SchemaPicker } from './SchemaPicker';
+import { SchemaFieldPicker } from './SchemaFieldPicker';
+import { ExpressionInput } from './ExpressionInput';
+import type { PreviousStep } from './AvailableVariables';
 import type { DataUpdateHandlerConfig } from './types';
 
 interface DataUpdateConfigProps {
   config: Partial<DataUpdateHandlerConfig>;
   onChange: (config: DataUpdateHandlerConfig) => void;
   projectId: string;
+  previousSteps?: PreviousStep[];
 }
 
 interface FilterEntry {
@@ -30,7 +34,7 @@ interface FieldMapping {
   expression: string;
 }
 
-export function DataUpdateConfig({ config, onChange, projectId }: DataUpdateConfigProps) {
+export function DataUpdateConfig({ config, onChange, projectId, previousSteps = [] }: DataUpdateConfigProps) {
   const [schemaId, setSchemaId] = useState(config.schemaId || '');
   const [recordId, setRecordId] = useState(config.recordId || '');
   const [filters, setFilters] = useState<FilterEntry[]>(() => {
@@ -133,12 +137,14 @@ export function DataUpdateConfig({ config, onChange, projectId }: DataUpdateConf
         <div className="space-y-2">
           {filters.map((filter, index) => (
             <div key={index} className="flex items-center gap-2">
-              <Input
-                value={filter.field}
-                onChange={(e) => handleFilterChange(index, { field: e.target.value })}
-                placeholder="Field name"
-                className="flex-1"
-              />
+              <div className="flex-1">
+                <SchemaFieldPicker
+                  schemaId={schemaId}
+                  value={filter.field}
+                  onChange={(field) => handleFilterChange(index, { field })}
+                  placeholder="Select field"
+                />
+              </div>
               <Select
                 value={filter.op}
                 onValueChange={(value) =>
@@ -153,12 +159,14 @@ export function DataUpdateConfig({ config, onChange, projectId }: DataUpdateConf
                   <SelectItem value="ne">Not Equals</SelectItem>
                 </SelectContent>
               </Select>
-              <Input
-                value={filter.value}
-                onChange={(e) => handleFilterChange(index, { value: e.target.value })}
-                placeholder="Expression"
-                className="flex-1"
-              />
+              <div className="flex-1">
+                <ExpressionInput
+                  value={filter.value}
+                  onChange={(value) => handleFilterChange(index, { value })}
+                  placeholder="Expression"
+                  previousSteps={previousSteps}
+                />
+              </div>
               <Button
                 type="button"
                 variant="ghost"
@@ -186,19 +194,23 @@ export function DataUpdateConfig({ config, onChange, projectId }: DataUpdateConf
         <div className="space-y-2">
           {fieldMappings.map((mapping, index) => (
             <div key={index} className="flex items-center gap-2">
-              <Input
-                value={mapping.schemaField}
-                onChange={(e) => handleMappingChange(index, { schemaField: e.target.value })}
-                placeholder="Field to update"
-                className="flex-1"
-              />
+              <div className="flex-1">
+                <SchemaFieldPicker
+                  schemaId={schemaId}
+                  value={mapping.schemaField}
+                  onChange={(schemaField) => handleMappingChange(index, { schemaField })}
+                  placeholder="Select field"
+                />
+              </div>
               <span className="text-muted-foreground">=</span>
-              <Input
-                value={mapping.expression}
-                onChange={(e) => handleMappingChange(index, { expression: e.target.value })}
-                placeholder="New value expression"
-                className="flex-1"
-              />
+              <div className="flex-1">
+                <ExpressionInput
+                  value={mapping.expression}
+                  onChange={(expression) => handleMappingChange(index, { expression })}
+                  placeholder="New value expression"
+                  previousSteps={previousSteps}
+                />
+              </div>
               <Button
                 type="button"
                 variant="ghost"

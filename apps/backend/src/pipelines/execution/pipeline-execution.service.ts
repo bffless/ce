@@ -54,6 +54,7 @@ export class PipelineExecutionService {
       input: this.extractInput(req),
       stepOutputs: {},
       projectId: pipeline.projectId,
+      pipelineId: pipeline.id,
       metadata: {
         path: req.path,
         method: req.method,

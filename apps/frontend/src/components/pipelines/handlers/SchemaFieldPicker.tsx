@@ -16,6 +16,8 @@ interface SchemaFieldPickerProps {
   /** Fields already used in other mappings (to show as disabled or indicate reuse) */
   usedFields?: string[];
   placeholder?: string;
+  /** Allow clearing the selection (default: true) */
+  allowClear?: boolean;
 }
 
 const TYPE_COLORS: Record<string, string> = {
@@ -34,10 +36,20 @@ export function SchemaFieldPicker({
   onChange,
   usedFields = [],
   placeholder = 'Select field',
+  allowClear = true,
 }: SchemaFieldPickerProps) {
   const { data: schema, isLoading, error } = useGetSchemaQuery(schemaId, {
     skip: !schemaId,
   });
+
+  const handleChange = (newValue: string) => {
+    // Handle the special "clear" value
+    if (newValue === '__clear__') {
+      onChange('');
+    } else {
+      onChange(newValue);
+    }
+  };
 
   if (!schemaId) {
     return (
@@ -66,11 +78,17 @@ export function SchemaFieldPicker({
   const fields = schema?.fields || [];
 
   return (
-    <Select value={value} onValueChange={onChange}>
+    <Select value={value || ''} onValueChange={handleChange}>
       <SelectTrigger>
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>
+        {/* Clear option - always show when allowClear is true */}
+        {allowClear && fields.length > 0 && (
+          <SelectItem value="__clear__" className="text-muted-foreground italic">
+            None
+          </SelectItem>
+        )}
         {fields.length === 0 ? (
           <SelectItem value="__none" disabled>
             No fields in schema

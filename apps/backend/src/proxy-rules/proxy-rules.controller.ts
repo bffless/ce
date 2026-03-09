@@ -126,6 +126,10 @@ export class ProxyRulesController {
         config: Record<string, unknown>;
         isEnabled?: boolean;
       }>;
+      validators?: Array<{
+        type: string;
+        config: Record<string, unknown>;
+      }>;
     };
 
     const pipelineLike = {
@@ -134,7 +138,7 @@ export class ProxyRulesController {
       name: pipelineConfig.name || 'Pipeline',
       pathPattern: rule.pathPattern,
       httpMethods: ['POST'], // Default for pipelines
-      validators: [],
+      validators: pipelineConfig.validators || [],
       isEnabled: true,
       steps: (pipelineConfig.steps || []).map((step, index) => ({
         id: step.id,

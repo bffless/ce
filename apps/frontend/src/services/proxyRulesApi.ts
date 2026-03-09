@@ -1,5 +1,5 @@
 import { api } from './api';
-import type { HandlerType, TestPipelineDto, TestPipelineResult } from './pipelinesApi';
+import type { HandlerType, TestPipelineDto, TestPipelineResult, ValidatorConfig } from './pipelinesApi';
 
 // Header configuration for proxy rules
 export interface HeaderConfig {
@@ -42,6 +42,7 @@ export interface PipelineConfig {
   name: string;
   description?: string;
   steps: PipelineStepConfig[];
+  validators?: ValidatorConfig[];
 }
 
 // HTTP methods supported for method filtering

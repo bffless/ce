@@ -18,10 +18,10 @@ export const functionTemplates: FunctionTemplate[] = [
     name: 'Add Field',
     category: 'transform',
     description: 'Add a new field to the input data',
-    code: `function handler(data) {
+    code: `function handler({ input }) {
   // Add a new field to the input
   return {
-    ...data.input,
+    ...input,
     timestamp: new Date().toISOString(),
   };
 }`,
@@ -31,9 +31,9 @@ export const functionTemplates: FunctionTemplate[] = [
     name: 'Rename Field',
     category: 'transform',
     description: 'Rename a field in the input data',
-    code: `function handler(data) {
+    code: `function handler({ input }) {
   // Rename a field (from 'oldName' to 'newName')
-  const { oldName, ...rest } = data.input;
+  const { oldName, ...rest } = input;
   return {
     ...rest,
     newName: oldName,
@@ -45,9 +45,9 @@ export const functionTemplates: FunctionTemplate[] = [
     name: 'Pick Fields',
     category: 'transform',
     description: 'Select only specific fields from input',
-    code: `function handler(data) {
+    code: `function handler({ input }) {
   // Pick only specific fields
-  const { field1, field2, field3 } = data.input;
+  const { field1, field2, field3 } = input;
   return { field1, field2, field3 };
 }`,
   },
@@ -56,9 +56,9 @@ export const functionTemplates: FunctionTemplate[] = [
     name: 'Omit Fields',
     category: 'transform',
     description: 'Remove specific fields from input',
-    code: `function handler(data) {
+    code: `function handler({ input }) {
   // Remove specific fields (password, secret)
-  const { password, secret, ...rest } = data.input;
+  const { password, secret, ...rest } = input;
   return rest;
 }`,
   },
@@ -67,11 +67,11 @@ export const functionTemplates: FunctionTemplate[] = [
     name: 'Format Date',
     category: 'transform',
     description: 'Format a date field',
-    code: `function handler(data) {
+    code: `function handler({ input }) {
   // Format a date field
-  const date = new Date(data.input.dateField);
+  const date = new Date(input.dateField);
   return {
-    ...data.input,
+    ...input,
     formattedDate: date.toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'long',
@@ -87,9 +87,9 @@ export const functionTemplates: FunctionTemplate[] = [
     name: 'Filter Array',
     category: 'array',
     description: 'Filter items in an array',
-    code: `function handler(data) {
+    code: `function handler({ input }) {
   // Filter items where active is true
-  return data.input.items.filter(item => item.active);
+  return input.items.filter(item => item.active);
 }`,
   },
   {
@@ -97,9 +97,9 @@ export const functionTemplates: FunctionTemplate[] = [
     name: 'Map Array',
     category: 'array',
     description: 'Transform each item in an array',
-    code: `function handler(data) {
+    code: `function handler({ input }) {
   // Transform each item (extract id and name)
-  return data.input.items.map(item => ({
+  return input.items.map(item => ({
     id: item.id,
     name: item.name,
   }));
@@ -110,9 +110,9 @@ export const functionTemplates: FunctionTemplate[] = [
     name: 'Sort Array',
     category: 'array',
     description: 'Sort items in an array',
-    code: `function handler(data) {
+    code: `function handler({ input }) {
   // Sort items by a field (ascending)
-  return [...data.input.items].sort((a, b) => {
+  return [...input.items].sort((a, b) => {
     if (a.name < b.name) return -1;
     if (a.name > b.name) return 1;
     return 0;
@@ -124,9 +124,9 @@ export const functionTemplates: FunctionTemplate[] = [
     name: 'Group By',
     category: 'array',
     description: 'Group items by a field value',
-    code: `function handler(data) {
+    code: `function handler({ input }) {
   // Group items by category
-  return data.input.items.reduce((groups, item) => {
+  return input.items.reduce((groups, item) => {
     const key = item.category;
     if (!groups[key]) {
       groups[key] = [];
@@ -141,9 +141,9 @@ export const functionTemplates: FunctionTemplate[] = [
     name: 'Find Item',
     category: 'array',
     description: 'Find a single item in an array',
-    code: `function handler(data) {
+    code: `function handler({ input }) {
   // Find item by id
-  return data.input.items.find(item => item.id === data.input.searchId);
+  return input.items.find(item => item.id === input.searchId);
 }`,
   },
 
@@ -153,12 +153,12 @@ export const functionTemplates: FunctionTemplate[] = [
     name: 'Conditional Check',
     category: 'validation',
     description: 'Check a condition and return different results',
-    code: `function handler(data) {
+    code: `function handler({ input }) {
   // Check condition and return different results
-  if (data.input.amount > 1000) {
-    return { status: 'requires_approval', amount: data.input.amount };
+  if (input.amount > 1000) {
+    return { status: 'requires_approval', amount: input.amount };
   }
-  return { status: 'approved', amount: data.input.amount };
+  return { status: 'approved', amount: input.amount };
 }`,
   },
   {
@@ -166,21 +166,21 @@ export const functionTemplates: FunctionTemplate[] = [
     name: 'Validate Fields',
     category: 'validation',
     description: 'Validate multiple fields',
-    code: `function handler(data) {
+    code: `function handler({ input }) {
   // Validate required fields
   const errors = [];
 
-  if (!data.input.email) {
+  if (!input.email) {
     errors.push('Email is required');
   }
-  if (!data.input.name || data.input.name.length < 2) {
+  if (!input.name || input.name.length < 2) {
     errors.push('Name must be at least 2 characters');
   }
 
   if (errors.length > 0) {
     return { valid: false, errors };
   }
-  return { valid: true, data: data.input };
+  return { valid: true, data: input };
 }`,
   },
 
@@ -190,12 +190,12 @@ export const functionTemplates: FunctionTemplate[] = [
     name: 'Add Owner Info',
     category: 'user',
     description: 'Add current user as owner',
-    code: `function handler(data) {
+    code: `function handler({ input, user }) {
   // Add owner information from current user
   return {
-    ...data.input,
-    ownerId: data.user?.id,
-    ownerEmail: data.user?.email,
+    ...input,
+    ownerId: user?.id,
+    ownerEmail: user?.email,
     createdAt: new Date().toISOString(),
   };
 }`,
@@ -205,12 +205,12 @@ export const functionTemplates: FunctionTemplate[] = [
     name: 'Check User Role',
     category: 'user',
     description: 'Check user role before proceeding',
-    code: `function handler(data) {
+    code: `function handler({ input, user }) {
   // Check if user has required role
-  if (data.user?.role !== 'admin') {
+  if (user?.role !== 'admin') {
     return { error: 'Admin access required', allowed: false };
   }
-  return { ...data.input, allowed: true };
+  return { ...input, allowed: true };
 }`,
   },
   {
@@ -218,12 +218,12 @@ export const functionTemplates: FunctionTemplate[] = [
     name: 'Merge User Data',
     category: 'user',
     description: 'Combine input with user information',
-    code: `function handler(data) {
+    code: `function handler({ input, user, request }) {
   // Merge input with user metadata
   return {
-    ...data.input,
-    submittedBy: data.user?.email || 'anonymous',
-    requestPath: data.request?.path,
+    ...input,
+    submittedBy: user?.email || 'anonymous',
+    requestPath: request?.path,
     timestamp: new Date().toISOString(),
   };
 }`,

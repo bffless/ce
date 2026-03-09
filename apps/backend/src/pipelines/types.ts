@@ -74,9 +74,6 @@ export interface Pipeline {
   id: string;
   projectId: string;
   name: string;
-  validators: Array<{
-    type: string; // ValidatorType at runtime
-    config: Record<string, unknown>;
-  }>;
+  validators: ValidatorConfig[];
   steps: PipelineStep[];
 }

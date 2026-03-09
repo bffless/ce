@@ -12,6 +12,7 @@ import {
   index,
 } from 'drizzle-orm/pg-core';
 import { proxyRuleSets } from './proxy-rule-sets.schema';
+import type { ValidatorConfig } from '../../pipelines/types';
 
 /**
  * Header configuration for proxy rules.
@@ -94,6 +95,8 @@ export interface PipelineConfig {
   description?: string;
   /** Array of pipeline steps */
   steps: PipelineStepConfig[];
+  /** Optional validators (auth_required, rate_limit) */
+  validators?: ValidatorConfig[];
 }
 
 /**

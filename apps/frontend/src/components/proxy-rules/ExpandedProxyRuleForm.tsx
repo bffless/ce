@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -26,7 +26,7 @@ import type {
   EmailHandlerConfig,
 } from '@/services/proxyRulesApi';
 import { useGetEmailConfigStatusQuery, useTestProxyRuleMutation } from '@/services/proxyRulesApi';
-import type { TestPipelineResult } from '@/services/pipelinesApi';
+import type { TestPipelineResult, ValidatorConfig } from '@/services/pipelinesApi';
 import { AlertTriangle, Play, ChevronDown, ChevronRight, Loader2, CheckCircle2, XCircle, Plus, Trash2 } from 'lucide-react';
 import { PipelineConfig, type PipelineConfigData, TestResultsVisualization } from '@/components/pipelines';
 
@@ -117,6 +117,9 @@ export function ExpandedProxyRuleForm({
     const existingPipeline = initialData?.pipelineConfig;
     return existingPipeline || { name: '', steps: [] };
   });
+  const [validators, setValidators] = useState<ValidatorConfig[]>(() => {
+    return initialData?.pipelineConfig?.validators || [];
+  });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -127,6 +130,74 @@ export function ExpandedProxyRuleForm({
   const isExternalProxy = proxyType === 'external_proxy';
   const isPipeline = proxyType === 'pipeline';
   const submitting = externalIsSubmitting || isSubmitting;
+
+  // Detect unsaved changes by comparing current state to initialData
+  const isDirty = useMemo(() => {
+    if (!initialData) {
+      // Create mode - always dirty if any required field is filled
+      return pathPattern.length > 0 || (isPipeline && pipelineConfig.steps?.length > 0);
+    }
+
+    // Compare each field to initial values
+    if (pathPattern !== (initialData.pathPattern || '')) return true;
+    if (method !== (initialData.method || null)) return true;
+    if (targetUrl !== (initialData.targetUrl || '')) return true;
+    if (proxyType !== getEffectiveProxyType(initialData)) return true;
+    if (order !== initialData.order) return true;
+    if (description !== (initialData.description || '')) return true;
+
+    // External proxy options
+    if (isExternalProxy) {
+      if (stripPrefix !== (initialData.stripPrefix ?? true)) return true;
+      if (timeout !== (initialData.timeout || 30000)) return true;
+      if (preserveHost !== (initialData.preserveHost ?? false)) return true;
+      if (forwardCookies !== (initialData.forwardCookies ?? false)) return true;
+      if (apiKey) return true; // Any new API key means dirty
+      if (authTransformEnabled !== !!initialData.authTransform?.type) return true;
+      if (authTransformEnabled && cookieName !== (initialData.authTransform?.cookieName || 'sAccessToken')) return true;
+    }
+
+    // Email handler options
+    if (isEmailHandler) {
+      if (destinationEmail !== (initialData.emailHandlerConfig?.destinationEmail || '')) return true;
+      if (emailSubject !== (initialData.emailHandlerConfig?.subject || '')) return true;
+      if (successRedirect !== (initialData.emailHandlerConfig?.successRedirect || '')) return true;
+      if (corsOrigin !== (initialData.emailHandlerConfig?.corsOrigin || '')) return true;
+      if (honeypotField !== (initialData.emailHandlerConfig?.honeypotField || '')) return true;
+      if (replyToField !== (initialData.emailHandlerConfig?.replyToField || '')) return true;
+      if (requireAuth !== (initialData.emailHandlerConfig?.requireAuth ?? false)) return true;
+    }
+
+    // Pipeline config - deep compare
+    if (isPipeline) {
+      const initialPipeline = initialData.pipelineConfig || { name: '', steps: [] };
+      if (JSON.stringify(pipelineConfig) !== JSON.stringify(initialPipeline)) return true;
+      // Check validators separately
+      const initialValidators = initialData.pipelineConfig?.validators || [];
+      if (JSON.stringify(validators) !== JSON.stringify(initialValidators)) return true;
+    }
+
+    return false;
+  }, [
+    initialData, pathPattern, method, targetUrl, proxyType, order, description,
+    isExternalProxy, stripPrefix, timeout, preserveHost, forwardCookies, apiKey,
+    authTransformEnabled, cookieName, isEmailHandler, destinationEmail, emailSubject,
+    successRedirect, corsOrigin, honeypotField, replyToField, requireAuth,
+    isPipeline, pipelineConfig, validators,
+  ]);
+
+  // Warn user before leaving with unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isDirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isDirty]);
 
   const validate = (): Record<string, string> => {
     const newErrors: Record<string, string> = {};
@@ -259,8 +330,8 @@ export function ExpandedProxyRuleForm({
         internalRewrite: isInternalRewrite,
         // Email handler config
         ...(isEmailHandler && { emailHandlerConfig }),
-        // Pipeline config
-        ...(isPipeline && { pipelineConfig }),
+        // Pipeline config (include validators)
+        ...(isPipeline && { pipelineConfig: { ...pipelineConfig, validators } }),
         // Only include external proxy options when using external proxy
         ...(isExternalProxy && {
           stripPrefix,
@@ -577,6 +648,8 @@ export function ExpandedProxyRuleForm({
               config={pipelineConfig}
               onChange={setPipelineConfig}
               projectId={projectId}
+              validators={validators}
+              onValidatorsChange={setValidators}
             />
           </CardContent>
         </Card>
@@ -710,7 +783,12 @@ export function ExpandedProxyRuleForm({
       )}
 
       {/* Submit buttons */}
-      <div className="flex justify-end gap-2 pt-4">
+      <div className="flex items-center justify-end gap-2 pt-4">
+        {isDirty && (
+          <Badge variant="outline" className="text-yellow-600 border-yellow-500/50 bg-yellow-500/10">
+            Unsaved changes
+          </Badge>
+        )}
         <Button type="button" variant="outline" onClick={onCancel} disabled={submitting}>
           Cancel
         </Button>

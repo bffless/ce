@@ -9,13 +9,18 @@ import { ConfigurationError } from '../../errors';
 interface RateLimitEntry {
   count: number;
   windowStart: number;
+  /** Window duration in ms - stored for proper cleanup */
+  windowMs: number;
 }
 
 /**
  * Rate Limit Validator
  *
  * Limits the number of requests to a pipeline within a time window.
- * Uses in-memory storage (can be swapped to Redis for distributed systems).
+ * Uses in-memory storage with proper isolation per pipeline/config.
+ *
+ * Key format: "{pipelineId}:{limit}:{windowSeconds}:{keyBy}:{identifier}"
+ * This ensures different validators (even on the same pipeline) have separate counters.
  */
 @Injectable()
 export class RateLimitValidator implements Validator<RateLimitValidatorConfig> {
@@ -23,17 +28,19 @@ export class RateLimitValidator implements Validator<RateLimitValidatorConfig> {
   private readonly logger = new Logger(RateLimitValidator.name);
 
   // In-memory rate limit store
-  // Key format: "pipelineId:keyByValue"
   private readonly rateLimitStore = new Map<string, RateLimitEntry>();
 
-  // Cleanup interval for expired entries (every 5 minutes)
+  // Cleanup interval (every minute)
   private readonly cleanupInterval: ReturnType<typeof setInterval>;
+
+  // Maximum entries to prevent unbounded growth (safety valve)
+  private readonly MAX_ENTRIES = 100_000;
 
   constructor(private readonly registry: ValidatorRegistry) {
     this.registry.register(this);
 
-    // Start cleanup interval
-    this.cleanupInterval = setInterval(() => this.cleanupExpiredEntries(), 5 * 60 * 1000);
+    // Start cleanup interval - runs every minute
+    this.cleanupInterval = setInterval(() => this.cleanupExpiredEntries(), 60 * 1000);
   }
 
   validateConfig(config: RateLimitValidatorConfig): void {
@@ -62,8 +69,8 @@ export class RateLimitValidator implements Validator<RateLimitValidatorConfig> {
     const config = validatorConfig.config;
     const { limit, windowSeconds, keyBy = 'ip' } = config;
 
-    // Generate the rate limit key
-    const key = this.generateKey(context, keyBy);
+    // Generate the rate limit key (includes pipeline + config for isolation)
+    const key = this.generateKey(context, config);
 
     if (!key) {
       // If we can't generate a key (e.g., no user when keyBy='user'), skip rate limiting
@@ -84,8 +91,10 @@ export class RateLimitValidator implements Validator<RateLimitValidatorConfig> {
       entry = {
         count: 1,
         windowStart: now,
+        windowMs,
       };
       this.rateLimitStore.set(key, entry);
+      this.checkAndEnforceMaxEntries();
       this.logger.debug(`Rate limit: New window started for key '${key}'`);
       return;
     }
@@ -108,54 +117,91 @@ export class RateLimitValidator implements Validator<RateLimitValidatorConfig> {
   }
 
   /**
-   * Generate a unique key for rate limiting based on the keyBy configuration
+   * Generate a unique key for rate limiting.
+   * Includes pipeline ID and config values to ensure isolation between:
+   * - Different pipelines
+   * - Different rate limit configs on the same pipeline
    */
-  private generateKey(context: PipelineContext, keyBy: 'ip' | 'user' | 'ip+user'): string | null {
-    const projectId = context.projectId;
+  private generateKey(
+    context: PipelineContext,
+    config: RateLimitValidatorConfig,
+  ): string | null {
+    const { limit, windowSeconds, keyBy = 'ip' } = config;
+    const pipelineId = context.pipelineId;
     const ip = context.metadata.ip || 'unknown';
     const userId = context.user?.id;
 
+    // Config prefix ensures different validators have separate counters
+    const configPrefix = `${pipelineId}:${limit}:${windowSeconds}:${keyBy}`;
+
     switch (keyBy) {
       case 'ip':
-        return `${projectId}:ip:${ip}`;
+        return `${configPrefix}:ip:${ip}`;
 
       case 'user':
         if (!userId) {
           return null; // Can't rate limit by user if not authenticated
         }
-        return `${projectId}:user:${userId}`;
+        return `${configPrefix}:user:${userId}`;
 
       case 'ip+user':
         if (!userId) {
           // Fall back to IP only if user not authenticated
-          return `${projectId}:ip:${ip}`;
+          return `${configPrefix}:ip:${ip}`;
         }
-        return `${projectId}:ip+user:${ip}:${userId}`;
+        return `${configPrefix}:ip+user:${ip}:${userId}`;
 
       default:
-        return `${projectId}:ip:${ip}`;
+        return `${configPrefix}:ip:${ip}`;
     }
   }
 
   /**
-   * Clean up expired rate limit entries
+   * Clean up expired rate limit entries.
+   * Uses each entry's stored windowMs for accurate expiration.
    */
   private cleanupExpiredEntries(): void {
     const now = Date.now();
     let cleaned = 0;
 
     for (const [key, entry] of this.rateLimitStore.entries()) {
-      // Assume max window of 1 hour for cleanup purposes
-      // Entries older than 1 hour are definitely expired
-      if (now - entry.windowStart > 60 * 60 * 1000) {
+      // Entry is expired if current time is past windowStart + windowMs
+      if (now - entry.windowStart >= entry.windowMs) {
         this.rateLimitStore.delete(key);
         cleaned++;
       }
     }
 
     if (cleaned > 0) {
-      this.logger.debug(`Cleaned up ${cleaned} expired rate limit entries`);
+      this.logger.debug(
+        `Cleaned up ${cleaned} expired rate limit entries (${this.rateLimitStore.size} remaining)`,
+      );
     }
+  }
+
+  /**
+   * Enforce maximum entries to prevent unbounded memory growth.
+   * If exceeded, removes oldest entries first.
+   */
+  private checkAndEnforceMaxEntries(): void {
+    if (this.rateLimitStore.size <= this.MAX_ENTRIES) {
+      return;
+    }
+
+    this.logger.warn(
+      `Rate limit store exceeded max entries (${this.MAX_ENTRIES}), removing oldest entries`,
+    );
+
+    // Convert to array, sort by windowStart, remove oldest 10%
+    const entries = Array.from(this.rateLimitStore.entries());
+    entries.sort((a, b) => a[1].windowStart - b[1].windowStart);
+
+    const toRemove = Math.ceil(entries.length * 0.1);
+    for (let i = 0; i < toRemove; i++) {
+      this.rateLimitStore.delete(entries[i][0]);
+    }
+
+    this.logger.warn(`Removed ${toRemove} oldest rate limit entries`);
   }
 
   /**
@@ -163,9 +209,9 @@ export class RateLimitValidator implements Validator<RateLimitValidatorConfig> {
    */
   getRateLimitStatus(
     context: PipelineContext,
-    keyBy: 'ip' | 'user' | 'ip+user' = 'ip',
-  ): { count: number; windowStart: number } | null {
-    const key = this.generateKey(context, keyBy);
+    config: RateLimitValidatorConfig,
+  ): { count: number; windowStart: number; windowMs: number } | null {
+    const key = this.generateKey(context, config);
     if (!key) return null;
     return this.rateLimitStore.get(key) || null;
   }
@@ -173,10 +219,17 @@ export class RateLimitValidator implements Validator<RateLimitValidatorConfig> {
   /**
    * Reset rate limit for a key (useful for testing)
    */
-  resetRateLimit(context: PipelineContext, keyBy: 'ip' | 'user' | 'ip+user' = 'ip'): void {
-    const key = this.generateKey(context, keyBy);
+  resetRateLimit(context: PipelineContext, config: RateLimitValidatorConfig): void {
+    const key = this.generateKey(context, config);
     if (key) {
       this.rateLimitStore.delete(key);
     }
+  }
+
+  /**
+   * Get current store size (useful for monitoring)
+   */
+  getStoreSize(): number {
+    return this.rateLimitStore.size;
   }
 }

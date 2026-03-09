@@ -12,12 +12,16 @@ import {
 } from '@/components/ui/select';
 import { Plus, Trash2 } from 'lucide-react';
 import { SchemaPicker } from './SchemaPicker';
+import { SchemaFieldPicker } from './SchemaFieldPicker';
+import { ExpressionInput } from './ExpressionInput';
+import type { PreviousStep } from './AvailableVariables';
 import type { DataQueryHandlerConfig, FilterConfig } from './types';
 
 interface DataQueryConfigProps {
   config: Partial<DataQueryHandlerConfig>;
   onChange: (config: DataQueryHandlerConfig) => void;
   projectId: string;
+  previousSteps?: PreviousStep[];
 }
 
 interface FilterEntry {
@@ -36,7 +40,7 @@ const FILTER_OPS: { value: FilterConfig['op']; label: string }[] = [
   { value: 'like', label: 'Like (pattern)' },
 ];
 
-export function DataQueryConfig({ config, onChange, projectId }: DataQueryConfigProps) {
+export function DataQueryConfig({ config, onChange, projectId, previousSteps = [] }: DataQueryConfigProps) {
   const [schemaId, setSchemaId] = useState(config.schemaId || '');
   const [recordId, setRecordId] = useState(config.recordId || '');
   const [single, setSingle] = useState(config.single || false);
@@ -140,12 +144,14 @@ export function DataQueryConfig({ config, onChange, projectId }: DataQueryConfig
           <div className="space-y-2">
             {filters.map((filter, index) => (
               <div key={index} className="flex items-center gap-2">
-                <Input
-                  value={filter.field}
-                  onChange={(e) => handleFilterChange(index, { field: e.target.value })}
-                  placeholder="Field name"
-                  className="flex-1"
-                />
+                <div className="flex-1">
+                  <SchemaFieldPicker
+                    schemaId={schemaId}
+                    value={filter.field}
+                    onChange={(field) => handleFilterChange(index, { field })}
+                    placeholder="Select field"
+                  />
+                </div>
                 <Select
                   value={filter.op}
                   onValueChange={(value) =>
@@ -163,12 +169,14 @@ export function DataQueryConfig({ config, onChange, projectId }: DataQueryConfig
                     ))}
                   </SelectContent>
                 </Select>
-                <Input
-                  value={filter.value}
-                  onChange={(e) => handleFilterChange(index, { value: e.target.value })}
-                  placeholder="Expression"
-                  className="flex-1"
-                />
+                <div className="flex-1">
+                  <ExpressionInput
+                    value={filter.value}
+                    onChange={(value) => handleFilterChange(index, { value })}
+                    placeholder="Expression"
+                    previousSteps={previousSteps}
+                  />
+                </div>
                 <Button
                   type="button"
                   variant="ghost"
@@ -186,12 +194,12 @@ export function DataQueryConfig({ config, onChange, projectId }: DataQueryConfig
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="orderByField">Order By</Label>
-          <Input
-            id="orderByField"
+          <Label>Order By</Label>
+          <SchemaFieldPicker
+            schemaId={schemaId}
             value={orderByField}
-            onChange={(e) => setOrderByField(e.target.value)}
-            placeholder="Field name"
+            onChange={setOrderByField}
+            placeholder="Select field"
           />
         </div>
         <div className="space-y-2">

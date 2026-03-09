@@ -31,7 +31,7 @@ export function AvailableVariables({
     if (syntax === 'template') {
       return `{{${path}}}`;
     }
-    return `data.${path}`;
+    return path;
   };
 
   const formatStepRef = (stepName: string, field?: string) => {
@@ -43,7 +43,7 @@ export function AvailableVariables({
     if (syntax === 'template') {
       return `{{${fullPath}}}`;
     }
-    return `data.${fullPath}`;
+    return fullPath;
   };
 
   return (
@@ -128,7 +128,7 @@ export function AvailableVariables({
                       {formatStepRef(step.name)}
                     </code>
                     <div className="text-muted-foreground mt-0.5">
-                      {getStepOutputDescription(step.handlerType)}
+                      {getStepOutputDescription(step.handlerType, step.config)}
                     </div>
                     {getStepOutputExamples(step.handlerType, step.name, syntax, step.config).map((example, i) => (
                       <code key={i} className="block bg-muted px-2 py-1 rounded text-[11px] mt-0.5">
@@ -146,7 +146,12 @@ export function AvailableVariables({
   );
 }
 
-function getStepOutputDescription(handlerType: string): string {
+function getStepOutputDescription(handlerType: string, config?: Record<string, unknown>): string {
+  // Check if data_query has single record mode enabled
+  if (handlerType === 'data_query' && (config?.single || config?.recordId)) {
+    return 'Single matching record or null';
+  }
+
   const descriptions: Record<string, string> = {
     form_handler: 'Validated and typed form fields',
     data_create: 'Created record with id and fields',
@@ -167,7 +172,7 @@ function getStepOutputExamples(
   syntax: 'template' | 'code',
   config?: Record<string, unknown>
 ): string[] {
-  const fmt = (path: string) => syntax === 'template' ? `{{${path}}}` : `data.${path}`;
+  const fmt = (path: string) => syntax === 'template' ? `{{${path}}}` : path;
   const needsBrackets = /\s/.test(stepName);
   const stepPath = needsBrackets ? `steps['${stepName}']` : `steps.${stepName}`;
 
@@ -188,6 +193,14 @@ function getStepOutputExamples(
       examples.push(fmt(`${stepPath}.${fieldName}`));
     });
     return examples;
+  }
+
+  // Check if data_query has single record mode enabled
+  if (handlerType === 'data_query' && (config?.single || config?.recordId)) {
+    return [
+      fmt(`${stepPath}.id`),
+      fmt(`${stepPath}.fieldName`),
+    ];
   }
 
   // Default examples for handlers without config-based fields
