@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -34,9 +35,13 @@ import {
   useDeleteRecordsMutation,
   SchemaField,
   PipelineDataRecord,
+  FieldFilter,
 } from '@/services/pipelineSchemasApi';
 import { useToast } from '@/hooks/use-toast';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { RecordEditorDialog } from './RecordEditorDialog';
+import { DataSearchBar } from './DataSearchBar';
+import { DataFilters } from './DataFilters';
 
 interface DataBrowserProps {
   schemaId: string;
@@ -46,13 +51,81 @@ interface DataBrowserProps {
 
 export function DataBrowser({ schemaId, fields, canEdit }: DataBrowserProps) {
   const { toast } = useToast();
-  const [page, setPage] = useState(1);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Parse URL state
+  const pageFromUrl = parseInt(searchParams.get('page') || '1', 10);
+  const searchFromUrl = searchParams.get('search') || '';
+  const createdAfterFromUrl = searchParams.get('createdAfter') || undefined;
+  const createdBeforeFromUrl = searchParams.get('createdBefore') || undefined;
+  const filtersFromUrl = searchParams.get('filters');
+
+  // Local state
+  const [page, setPage] = useState(pageFromUrl);
+  const [searchInput, setSearchInput] = useState(searchFromUrl);
+  const [createdAfter, setCreatedAfter] = useState<string | undefined>(createdAfterFromUrl);
+  const [createdBefore, setCreatedBefore] = useState<string | undefined>(createdBeforeFromUrl);
+  const [filters, setFilters] = useState<Record<string, FieldFilter>>(() => {
+    if (filtersFromUrl) {
+      try {
+        return JSON.parse(filtersFromUrl);
+      } catch {
+        return {};
+      }
+    }
+    return {};
+  });
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'single' | 'bulk'; ids: string[] } | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<PipelineDataRecord | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Debounce search input
+  const debouncedSearch = useDebouncedValue(searchInput, 300);
+
+  // Update URL when filters change
+  const updateUrl = useCallback(() => {
+    const params = new URLSearchParams();
+    if (page > 1) params.set('page', String(page));
+    if (debouncedSearch) params.set('search', debouncedSearch);
+    if (createdAfter) params.set('createdAfter', createdAfter);
+    if (createdBefore) params.set('createdBefore', createdBefore);
+    if (Object.keys(filters).length > 0) params.set('filters', JSON.stringify(filters));
+    setSearchParams(params, { replace: true });
+  }, [page, debouncedSearch, createdAfter, createdBefore, filters, setSearchParams]);
+
+  useEffect(() => {
+    updateUrl();
+  }, [updateUrl]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, createdAfter, createdBefore, filters]);
+
+  const pageSize = 20;
+
+  // Fetch data with filters
+  const { data, isLoading, error, refetch } = useGetSchemaDataQuery(
+    {
+      schemaId,
+      page,
+      pageSize,
+      search: debouncedSearch || undefined,
+      createdAfter,
+      createdBefore,
+      filters: Object.keys(filters).length > 0 ? filters : undefined,
+    },
+    { skip: !schemaId },
+  );
+
+  // Mutations
+  const [deleteRecord, { isLoading: isDeletingSingle }] = useDeleteRecordMutation();
+  const [deleteRecords, { isLoading: isDeletingBulk }] = useDeleteRecordsMutation();
+
+  const isDeleting = isDeletingSingle || isDeletingBulk;
 
   const copyToClipboard = async (id: string) => {
     await navigator.clipboard.writeText(id);
@@ -63,20 +136,6 @@ export function DataBrowser({ schemaId, fields, canEdit }: DataBrowserProps) {
     });
     setTimeout(() => setCopiedId(null), 2000);
   };
-
-  const pageSize = 20;
-
-  // Fetch data
-  const { data, isLoading, error, refetch } = useGetSchemaDataQuery(
-    { schemaId, page, pageSize },
-    { skip: !schemaId },
-  );
-
-  // Mutations
-  const [deleteRecord, { isLoading: isDeletingSingle }] = useDeleteRecordMutation();
-  const [deleteRecords, { isLoading: isDeletingBulk }] = useDeleteRecordsMutation();
-
-  const isDeleting = isDeletingSingle || isDeletingBulk;
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -141,8 +200,23 @@ export function DataBrowser({ schemaId, fields, canEdit }: DataBrowserProps) {
     setEditorOpen(true);
   };
 
+  const handleClearAll = () => {
+    setSearchInput('');
+    setCreatedAfter(undefined);
+    setCreatedBefore(undefined);
+    setFilters({});
+    setPage(1);
+  };
+
+  const handleDateFiltersChange = (after?: string, before?: string) => {
+    setCreatedAfter(after);
+    setCreatedBefore(before);
+  };
+
+  const hasActiveFilters = !!debouncedSearch || !!createdAfter || !!createdBefore || Object.keys(filters).length > 0;
+
   // Loading state
-  if (isLoading) {
+  if (isLoading && !data) {
     return (
       <Card>
         <CardHeader>
@@ -188,7 +262,7 @@ export function DataBrowser({ schemaId, fields, canEdit }: DataBrowserProps) {
           <div>
             <CardTitle>Data Records</CardTitle>
             <CardDescription>
-              {total} total record{total === 1 ? '' : 's'}
+              {total} {hasActiveFilters ? 'matching ' : 'total '}record{total === 1 ? '' : 's'}
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
@@ -216,13 +290,41 @@ export function DataBrowser({ schemaId, fields, canEdit }: DataBrowserProps) {
           </div>
         </CardHeader>
         <CardContent>
+          {/* Search and Filters */}
+          <div className="flex items-center gap-2 mb-4">
+            <DataSearchBar value={searchInput} onChange={setSearchInput} />
+            <DataFilters
+              fields={fields}
+              filters={filters}
+              createdAfter={createdAfter}
+              createdBefore={createdBefore}
+              onFiltersChange={setFilters}
+              onDateFiltersChange={handleDateFiltersChange}
+              onClearAll={handleClearAll}
+            />
+          </div>
+
           {records.length === 0 ? (
             <div className="p-8 text-center">
               <Database className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-muted-foreground font-medium">No data records yet</p>
-              <p className="text-sm text-muted-foreground mt-2">
-                Records will appear here when pipeline handlers create them
-              </p>
+              {hasActiveFilters ? (
+                <>
+                  <p className="text-muted-foreground font-medium">No matching records</p>
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Try adjusting your search or filters
+                  </p>
+                  <Button variant="outline" size="sm" className="mt-4" onClick={handleClearAll}>
+                    Clear Filters
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <p className="text-muted-foreground font-medium">No data records yet</p>
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Records will appear here when pipeline handlers create them
+                  </p>
+                </>
+              )}
             </div>
           ) : (
             <>

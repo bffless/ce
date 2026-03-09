@@ -62,6 +62,22 @@ export interface UpdateRecordDto {
   data: Record<string, unknown>;
 }
 
+export interface FieldFilter {
+  op: 'eq' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte' | 'like';
+  value: string;
+}
+
+export interface DataFilterParams {
+  search?: string;
+  createdAfter?: string;
+  createdBefore?: string;
+  updatedAfter?: string;
+  updatedBefore?: string;
+  filters?: Record<string, FieldFilter>;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+}
+
 // ==================== Responses ====================
 
 export interface SchemasListResponse {
@@ -133,10 +149,24 @@ export const pipelineSchemasApi = api.injectEndpoints({
 
     getSchemaData: builder.query<
       PaginatedDataResponse,
-      { schemaId: string; page?: number; pageSize?: number }
+      { schemaId: string; page?: number; pageSize?: number } & DataFilterParams
     >({
-      query: ({ schemaId, page = 1, pageSize = 20 }) =>
-        `/api/pipeline-schemas/${schemaId}/data?page=${page}&pageSize=${pageSize}`,
+      query: ({ schemaId, page = 1, pageSize = 20, search, createdAfter, createdBefore, updatedAfter, updatedBefore, filters, sortBy, sortOrder }) => {
+        const params = new URLSearchParams();
+        params.set('page', String(page));
+        params.set('pageSize', String(pageSize));
+        if (search) params.set('search', search);
+        if (createdAfter) params.set('createdAfter', createdAfter);
+        if (createdBefore) params.set('createdBefore', createdBefore);
+        if (updatedAfter) params.set('updatedAfter', updatedAfter);
+        if (updatedBefore) params.set('updatedBefore', updatedBefore);
+        if (filters && Object.keys(filters).length > 0) {
+          params.set('filters', JSON.stringify(filters));
+        }
+        if (sortBy) params.set('sortBy', sortBy);
+        if (sortOrder) params.set('sortOrder', sortOrder);
+        return `/api/pipeline-schemas/${schemaId}/data?${params.toString()}`;
+      },
       providesTags: (_result, _error, { schemaId }) => [
         { type: 'PipelineData' as const, id: `schema-${schemaId}` },
         'PipelineData',

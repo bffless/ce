@@ -12,6 +12,7 @@ import {
   ParseIntPipe,
   DefaultValuePipe,
   Body,
+  BadRequestException,
 } from '@nestjs/common';
 import { Response } from 'express';
 import {
@@ -41,21 +42,64 @@ export class PipelineDataController {
   constructor(private readonly dataService: PipelineDataService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List data records with pagination' })
+  @ApiOperation({ summary: 'List data records with pagination, search, and filtering' })
   @ApiParam({ name: 'schemaId', type: 'string' })
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
   @ApiQuery({ name: 'pageSize', required: false, type: Number, example: 20 })
+  @ApiQuery({ name: 'search', required: false, type: String, description: 'Search text across ID and text fields' })
+  @ApiQuery({ name: 'createdAfter', required: false, type: String, description: 'ISO date for createdAt >= filter' })
+  @ApiQuery({ name: 'createdBefore', required: false, type: String, description: 'ISO date for createdAt <= filter' })
+  @ApiQuery({ name: 'updatedAfter', required: false, type: String, description: 'ISO date for updatedAt >= filter' })
+  @ApiQuery({ name: 'updatedBefore', required: false, type: String, description: 'ISO date for updatedAt <= filter' })
+  @ApiQuery({ name: 'filters', required: false, type: String, description: 'JSON string of field filters: {"fieldName":{"op":"eq","value":"xxx"}}' })
+  @ApiQuery({ name: 'sortBy', required: false, type: String, description: 'Field to sort by (createdAt, updatedAt, or data field name)' })
+  @ApiQuery({ name: 'sortOrder', required: false, enum: ['asc', 'desc'], description: 'Sort order' })
   @ApiResponse({ status: 200, description: 'Paginated data records', type: PaginatedDataResponseDto })
   @ApiResponse({ status: 404, description: 'Schema not found' })
   async listRecords(
     @Param('schemaId', ParseUUIDPipe) schemaId: string,
+    @CurrentUser() user: CurrentUserData,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('pageSize', new DefaultValuePipe(20), ParseIntPipe) pageSize: number,
-    @CurrentUser() user: CurrentUserData,
+    @Query('search') search?: string,
+    @Query('createdAfter') createdAfter?: string,
+    @Query('createdBefore') createdBefore?: string,
+    @Query('updatedAfter') updatedAfter?: string,
+    @Query('updatedBefore') updatedBefore?: string,
+    @Query('filters') filtersJson?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortOrder') sortOrder?: 'asc' | 'desc',
   ): Promise<PaginatedDataResponseDto> {
     // Limit page size to prevent excessive queries
     const limitedPageSize = Math.min(pageSize, 100);
-    return this.dataService.getBySchemaId(schemaId, page, limitedPageSize, user.id, user.role || 'user');
+
+    // Parse filters JSON if provided
+    let filters: Record<string, { op: string; value: string }> | undefined;
+    if (filtersJson) {
+      try {
+        filters = JSON.parse(filtersJson);
+      } catch {
+        throw new BadRequestException('Invalid filters JSON');
+      }
+    }
+
+    return this.dataService.getBySchemaId(
+      schemaId,
+      page,
+      limitedPageSize,
+      user.id,
+      user.role || 'user',
+      {
+        search,
+        createdAfter: createdAfter ? new Date(createdAfter) : undefined,
+        createdBefore: createdBefore ? new Date(createdBefore) : undefined,
+        updatedAfter: updatedAfter ? new Date(updatedAfter) : undefined,
+        updatedBefore: updatedBefore ? new Date(updatedBefore) : undefined,
+        filters,
+        sortBy,
+        sortOrder,
+      },
+    );
   }
 
   @Post()

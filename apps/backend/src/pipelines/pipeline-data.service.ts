@@ -4,7 +4,7 @@ import {
   ForbiddenException,
   Logger,
 } from '@nestjs/common';
-import { eq, and, desc, count, inArray } from 'drizzle-orm';
+import { eq, and, desc, asc, count, inArray, gte, lte, or, sql, SQL } from 'drizzle-orm';
 import { db } from '../db/client';
 import { pipelineSchemas, pipelineData, PipelineData, NewPipelineData } from '../db/schema';
 import { PermissionsService } from '../permissions/permissions.service';
@@ -17,6 +17,17 @@ export interface PaginatedDataResult {
   totalPages: number;
 }
 
+export interface DataFilterOptions {
+  search?: string;
+  createdAfter?: Date;
+  createdBefore?: Date;
+  updatedAfter?: Date;
+  updatedBefore?: Date;
+  filters?: Record<string, { op: string; value: string }>;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+}
+
 @Injectable()
 export class PipelineDataService {
   private readonly logger = new Logger(PipelineDataService.name);
@@ -24,7 +35,7 @@ export class PipelineDataService {
   constructor(private readonly permissionsService: PermissionsService) {}
 
   /**
-   * Get paginated data records for a schema
+   * Get paginated data records for a schema with optional filtering
    */
   async getBySchemaId(
     schemaId: string,
@@ -32,6 +43,7 @@ export class PipelineDataService {
     pageSize = 20,
     userId: string,
     userRole: string,
+    filterOptions?: DataFilterOptions,
   ): Promise<PaginatedDataResult> {
     // Get schema for project ID and access check
     const [schema] = await db
@@ -46,22 +58,111 @@ export class PipelineDataService {
 
     await this.checkProjectAccess(schema.projectId, userId, userRole, 'viewer');
 
-    // Get total count
+    // Build filter conditions
+    const conditions: SQL[] = [eq(pipelineData.schemaId, schemaId)];
+
+    if (filterOptions) {
+      // Search: match ID or text fields
+      if (filterOptions.search) {
+        const searchTerm = `%${filterOptions.search}%`;
+        const searchConditions: SQL[] = [
+          // Cast UUID to text for ILIKE search
+          sql`${pipelineData.id}::text ILIKE ${searchTerm}`,
+        ];
+        // Search in all text fields of the JSONB data
+        for (const field of schema.fields) {
+          if (['string', 'text', 'email'].includes(field.type)) {
+            const fieldPath = sql`${pipelineData.data}->>${sql.raw(`'${field.name}'`)}`;
+            searchConditions.push(sql`${fieldPath} ILIKE ${searchTerm}`);
+          }
+        }
+        conditions.push(or(...searchConditions)!);
+      }
+
+      // Date range filters
+      if (filterOptions.createdAfter) {
+        conditions.push(gte(pipelineData.createdAt, filterOptions.createdAfter));
+      }
+      if (filterOptions.createdBefore) {
+        conditions.push(lte(pipelineData.createdAt, filterOptions.createdBefore));
+      }
+      if (filterOptions.updatedAfter) {
+        conditions.push(gte(pipelineData.updatedAt, filterOptions.updatedAfter));
+      }
+      if (filterOptions.updatedBefore) {
+        conditions.push(lte(pipelineData.updatedAt, filterOptions.updatedBefore));
+      }
+
+      // Field-specific filters on JSONB data column
+      if (filterOptions.filters) {
+        for (const [fieldName, filter] of Object.entries(filterOptions.filters)) {
+          const fieldPath = sql`${pipelineData.data}->>${sql.raw(`'${fieldName}'`)}`;
+          const value = filter.value;
+
+          switch (filter.op) {
+            case 'eq':
+              conditions.push(sql`${fieldPath} = ${value}`);
+              break;
+            case 'ne':
+              conditions.push(sql`${fieldPath} != ${value}`);
+              break;
+            case 'gt':
+              conditions.push(sql`(${fieldPath})::numeric > ${Number(value)}`);
+              break;
+            case 'lt':
+              conditions.push(sql`(${fieldPath})::numeric < ${Number(value)}`);
+              break;
+            case 'gte':
+              conditions.push(sql`(${fieldPath})::numeric >= ${Number(value)}`);
+              break;
+            case 'lte':
+              conditions.push(sql`(${fieldPath})::numeric <= ${Number(value)}`);
+              break;
+            case 'like':
+              conditions.push(sql`${fieldPath} ILIKE ${`%${value}%`}`);
+              break;
+          }
+        }
+      }
+    }
+
+    const whereClause = and(...conditions);
+
+    // Get total count with filters applied
     const [countResult] = await db
       .select({ count: count() })
       .from(pipelineData)
-      .where(eq(pipelineData.schemaId, schemaId));
+      .where(whereClause);
 
     const total = countResult?.count ?? 0;
     const totalPages = Math.ceil(total / pageSize);
+
+    // Build order by clause
+    let orderByClause;
+    if (filterOptions?.sortBy) {
+      const direction = filterOptions.sortOrder === 'asc' ? asc : desc;
+      if (filterOptions.sortBy === 'createdAt') {
+        orderByClause = direction(pipelineData.createdAt);
+      } else if (filterOptions.sortBy === 'updatedAt') {
+        orderByClause = direction(pipelineData.updatedAt);
+      } else {
+        // Sort by JSONB field
+        const fieldPath = sql`${pipelineData.data}->>${sql.raw(`'${filterOptions.sortBy}'`)}`;
+        orderByClause = filterOptions.sortOrder === 'asc'
+          ? sql`${fieldPath} ASC`
+          : sql`${fieldPath} DESC`;
+      }
+    } else {
+      orderByClause = desc(pipelineData.createdAt);
+    }
 
     // Get records with pagination
     const offset = (page - 1) * pageSize;
     const records = await db
       .select()
       .from(pipelineData)
-      .where(eq(pipelineData.schemaId, schemaId))
-      .orderBy(desc(pipelineData.createdAt))
+      .where(whereClause)
+      .orderBy(orderByClause)
       .limit(pageSize)
       .offset(offset);
 
