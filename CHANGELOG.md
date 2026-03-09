@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.101](https://github.com/bffless/ce/compare/v0.0.100...v0.0.101) (2026-03-09)
+
+
+### Features
+
+* pipeline UX improvements and validator support ([f9d4cf7](https://github.com/bffless/ce/commit/f9d4cf72df7727e8067a6fc21f0570e6a72dc0bf))
+
 ## [0.0.100](https://github.com/bffless/ce/compare/v0.0.99...v0.0.100) (2026-03-08)
 
 
