@@ -111,17 +111,17 @@ export class FunctionHandler implements StepHandler<FunctionHandlerConfig> {
       `Function execution successful for step '${stepName}' (${result.executionTime}ms)`,
     );
 
-    // Include execution metadata in output if it's an object
-    const output =
-      result.output && typeof result.output === 'object'
-        ? {
-            ...(result.output as Record<string, unknown>),
-            __functionMeta: {
-              executionTime: result.executionTime,
-              logs: result.logs,
-            },
-          }
-        : result.output;
+    // Include execution metadata in output only if debug is enabled
+    let output = result.output;
+    if (config.debug && result.output && typeof result.output === 'object') {
+      output = {
+        ...(result.output as Record<string, unknown>),
+        __functionMeta: {
+          executionTime: result.executionTime,
+          logs: result.logs,
+        },
+      };
+    }
 
     return {
       success: true,

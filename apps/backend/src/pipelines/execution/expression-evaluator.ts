@@ -224,13 +224,27 @@ export class ExpressionEvaluator {
 
   /**
    * Evaluate a condition expression and return boolean
+   * Supports negation with ! prefix (e.g., "!steps.find")
    * @param condition The condition expression
    * @param context The pipeline context
    * @param stepName Optional step name for error messages
    * @returns Boolean result
    */
   evaluateCondition(condition: string, context: PipelineContext, stepName?: string): boolean {
-    const value = this.evaluateExpression(condition, context, stepName);
+    if (!condition || typeof condition !== 'string') {
+      return false;
+    }
+
+    const trimmed = condition.trim();
+
+    // Handle negation prefix
+    if (trimmed.startsWith('!')) {
+      const innerExpression = trimmed.slice(1).trim();
+      const value = this.evaluateExpression(innerExpression, context, stepName);
+      return !Boolean(value);
+    }
+
+    const value = this.evaluateExpression(trimmed, context, stepName);
     return Boolean(value);
   }
 

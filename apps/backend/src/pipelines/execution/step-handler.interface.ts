@@ -274,6 +274,13 @@ export interface FunctionHandlerConfig extends BaseHandlerConfig {
   code: string;
 
   /**
+   * Include execution metadata (__functionMeta) in output.
+   * Contains executionTime and console logs.
+   * @default false
+   */
+  debug?: boolean;
+
+  /**
    * Execution timeout in milliseconds (1000-30000ms)
    * @default 5000
    */

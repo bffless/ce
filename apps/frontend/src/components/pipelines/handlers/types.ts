@@ -101,6 +101,8 @@ export interface AggregateHandlerConfig extends BaseHandlerConfig {
 export interface FunctionHandlerConfig extends BaseHandlerConfig {
   code: string;
   timeout?: number;
+  /** Include execution metadata (__functionMeta) in output. Default: false */
+  debug?: boolean;
 }
 
 export type HandlerConfig =

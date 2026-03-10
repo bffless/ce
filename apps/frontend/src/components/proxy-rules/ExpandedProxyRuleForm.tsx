@@ -130,6 +130,10 @@ export function ExpandedProxyRuleForm({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Simple dirty detection using timestamps
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(initialData ? Date.now() : null);
+  const [lastModifiedAt, setLastModifiedAt] = useState<number | null>(null);
+
   // Pipeline export/import handlers
   const handleExportPipeline = () => {
     const exportData = {
@@ -190,60 +194,26 @@ export function ExpandedProxyRuleForm({
   const isPipeline = proxyType === 'pipeline';
   const submitting = externalIsSubmitting || isSubmitting;
 
-  // Detect unsaved changes by comparing current state to initialData
-  const isDirty = useMemo(() => {
-    if (!initialData) {
-      // Create mode - always dirty if any required field is filled
-      return pathPattern.length > 0 || (isPipeline && pipelineConfig.steps?.length > 0);
+  // Simple dirty detection: form is dirty if modified after last save
+  const isDirty = lastModifiedAt !== null && (lastSavedAt === null || lastModifiedAt > lastSavedAt);
+
+  // Track if this is the first render to skip initial effect
+  const isFirstRender = useRef(true);
+
+  // Mark form as modified whenever any field changes (skip initial render)
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
     }
-
-    // Compare each field to initial values
-    if (pathPattern !== (initialData.pathPattern || '')) return true;
-    if (method !== (initialData.method || null)) return true;
-    if (targetUrl !== (initialData.targetUrl || '')) return true;
-    if (proxyType !== getEffectiveProxyType(initialData)) return true;
-    if (order !== initialData.order) return true;
-    if (description !== (initialData.description || '')) return true;
-
-    // External proxy options
-    if (isExternalProxy) {
-      if (stripPrefix !== (initialData.stripPrefix ?? true)) return true;
-      if (timeout !== (initialData.timeout || 30000)) return true;
-      if (preserveHost !== (initialData.preserveHost ?? false)) return true;
-      if (forwardCookies !== (initialData.forwardCookies ?? false)) return true;
-      if (apiKey) return true; // Any new API key means dirty
-      if (authTransformEnabled !== !!initialData.authTransform?.type) return true;
-      if (authTransformEnabled && cookieName !== (initialData.authTransform?.cookieName || 'sAccessToken')) return true;
-    }
-
-    // Email handler options
-    if (isEmailHandler) {
-      if (destinationEmail !== (initialData.emailHandlerConfig?.destinationEmail || '')) return true;
-      if (emailSubject !== (initialData.emailHandlerConfig?.subject || '')) return true;
-      if (successRedirect !== (initialData.emailHandlerConfig?.successRedirect || '')) return true;
-      if (corsOrigin !== (initialData.emailHandlerConfig?.corsOrigin || '')) return true;
-      if (honeypotField !== (initialData.emailHandlerConfig?.honeypotField || '')) return true;
-      if (replyToField !== (initialData.emailHandlerConfig?.replyToField || '')) return true;
-      if (requireAuth !== (initialData.emailHandlerConfig?.requireAuth ?? false)) return true;
-    }
-
-    // Pipeline config - deep compare
-    if (isPipeline) {
-      // Strip validators from comparison since they're compared separately
-      const { validators: _initValidators, ...initialPipelineWithoutValidators } = initialData.pipelineConfig || { name: '', steps: [] };
-      if (JSON.stringify(pipelineConfig) !== JSON.stringify(initialPipelineWithoutValidators)) return true;
-      // Check validators separately
-      const initialValidators = initialData.pipelineConfig?.validators || [];
-      if (JSON.stringify(validators) !== JSON.stringify(initialValidators)) return true;
-    }
-
-    return false;
+    setLastModifiedAt(Date.now());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    initialData, pathPattern, method, targetUrl, proxyType, order, description,
-    isExternalProxy, stripPrefix, timeout, preserveHost, forwardCookies, apiKey,
-    authTransformEnabled, cookieName, isEmailHandler, destinationEmail, emailSubject,
+    pathPattern, method, targetUrl, proxyType, order, description,
+    stripPrefix, timeout, preserveHost, forwardCookies, apiKey,
+    authTransformEnabled, cookieName, destinationEmail, emailSubject,
     successRedirect, corsOrigin, honeypotField, replyToField, requireAuth,
-    isPipeline, pipelineConfig, validators,
+    pipelineConfig, validators,
   ]);
 
   // Warn user before leaving with unsaved changes
@@ -406,6 +376,9 @@ export function ExpandedProxyRuleForm({
         order,
         description: description || undefined,
       });
+
+      // After successful save, update the timestamp to clear dirty state
+      setLastSavedAt(Date.now());
     } finally {
       setIsSubmitting(false);
     }
