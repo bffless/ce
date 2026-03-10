@@ -19,12 +19,15 @@ import {
   ApiSecurity,
 } from '@nestjs/swagger';
 import { PipelineSchemasService } from './pipeline-schemas.service';
+import { StateSchemaGeneratorService } from './state-schema-generator.service';
 import {
   CreatePipelineSchemaDto,
   UpdatePipelineSchemaDto,
   PipelineSchemaResponseDto,
   PipelineSchemaWithCountDto,
   SchemasListResponseDto,
+  GenerateStateSchemaDto,
+  GenerateStateSchemaResponseDto,
 } from './dto';
 import { ApiKeyGuard } from '../auth/api-key.guard';
 import { CurrentUser, CurrentUserData } from '../auth/decorators/current-user.decorator';
@@ -39,7 +42,10 @@ import { CurrentUser, CurrentUserData } from '../auth/decorators/current-user.de
 @Controller('api/pipeline-schemas')
 @UseGuards(ApiKeyGuard)
 export class PipelineSchemasController {
-  constructor(private readonly schemasService: PipelineSchemasService) {}
+  constructor(
+    private readonly schemasService: PipelineSchemasService,
+    private readonly stateSchemaGenerator: StateSchemaGeneratorService,
+  ) {}
 
   @Get('project/:projectId')
   @ApiOperation({ summary: 'List all schemas for a project with record counts' })
@@ -63,6 +69,32 @@ export class PipelineSchemasController {
     @CurrentUser() user: CurrentUserData,
   ): Promise<PipelineSchemaResponseDto> {
     return this.schemasService.create(dto, user.id, user.role || 'user');
+  }
+
+  @Post('generate-state')
+  @ApiOperation({
+    summary: 'Generate a state schema with GET/POST pipelines',
+    description:
+      'Creates a schema optimized for @bffless/use-bff-state React hook with ' +
+      'automatic GET and POST pipelines for state management.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'State schema and pipelines created',
+    type: GenerateStateSchemaResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid input' })
+  @ApiResponse({ status: 403, description: 'Not authorized' })
+  @ApiResponse({ status: 409, description: 'Schema name already exists' })
+  async generateStateSchema(
+    @Body() dto: GenerateStateSchemaDto,
+    @CurrentUser() user: CurrentUserData,
+  ): Promise<GenerateStateSchemaResponseDto> {
+    return this.stateSchemaGenerator.generateStateSchema(
+      dto,
+      user.id,
+      user.role || 'user',
+    );
   }
 
   @Get(':id')

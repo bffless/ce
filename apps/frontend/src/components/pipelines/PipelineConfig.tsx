@@ -21,7 +21,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { ChevronDown, ChevronRight, ChevronUp, GripVertical, Plus, Trash2, Send, Info } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronUp, GripVertical, Plus, Trash2, Send, Info, Filter } from 'lucide-react';
 import type { HandlerType, ValidatorConfig } from '@/services/pipelinesApi';
 import type {
   PipelineStepConfig,
@@ -34,6 +34,7 @@ import {
   ProxyForwardConfig,
 } from './handlers';
 import { AvailableVariables, type PreviousStep } from './handlers/AvailableVariables';
+import { ExpressionInput } from './handlers/ExpressionInput';
 import type { ResponseHandlerConfig as ResponseConfig, ProxyForwardConfig as ProxyConfig } from './handlers/types';
 import { ValidatorsConfig } from './ValidatorsConfig';
 
@@ -435,12 +436,46 @@ export function PipelineConfig({
                         </div>
                       </div>
 
+                      {/* Run Condition (optional) */}
+                      {index > 0 && (
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Filter className="h-4 w-4 text-muted-foreground" />
+                            <Label htmlFor={`step-${step.id}-condition`}>
+                              Run Condition <span className="text-muted-foreground font-normal">(optional)</span>
+                            </Label>
+                          </div>
+                          <ExpressionInput
+                            value={(step.config as Record<string, unknown>)?.condition as string || ''}
+                            onChange={(value) => {
+                              const currentConfig = (step.config || {}) as Record<string, unknown>;
+                              updateStep(step.id, {
+                                config: { ...currentConfig, condition: value || undefined },
+                              });
+                            }}
+                            placeholder="e.g., steps.query or !steps.check_exists"
+                            previousSteps={previousSteps}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Step only runs if this expression is truthy. Use to skip create when record exists, or skip update when it doesn't.
+                          </p>
+                        </div>
+                      )}
+
                       {/* Handler-specific config */}
                       <div className="border rounded-lg p-4 bg-muted/30">
                         <HandlerConfigWrapper
                           handlerType={step.handlerType}
                           config={step.config}
-                          onChange={(newConfig) => updateStep(step.id, { config: newConfig })}
+                          onChange={(newConfig) => {
+                            // Preserve the condition field when handler config updates
+                            const currentCondition = (step.config as Record<string, unknown>)?.condition;
+                            updateStep(step.id, {
+                              config: currentCondition
+                                ? { ...newConfig, condition: currentCondition }
+                                : newConfig,
+                            });
+                          }}
                           projectId={projectId}
                           previousSteps={previousSteps}
                         />
@@ -509,6 +544,7 @@ export function PipelineConfig({
                 <ResponseHandlerConfig
                   config={terminalStep.config as Partial<ResponseConfig>}
                   onChange={updateTerminalConfig}
+                  previousSteps={previousStepsForResponse}
                 />
               </CardContent>
             )}

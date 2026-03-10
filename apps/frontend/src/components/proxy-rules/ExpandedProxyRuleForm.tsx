@@ -27,7 +27,8 @@ import type {
 } from '@/services/proxyRulesApi';
 import { useGetEmailConfigStatusQuery, useTestProxyRuleMutation } from '@/services/proxyRulesApi';
 import type { TestPipelineResult, ValidatorConfig } from '@/services/pipelinesApi';
-import { AlertTriangle, Play, ChevronDown, ChevronRight, Loader2, CheckCircle2, XCircle, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, Play, ChevronDown, ChevronRight, Loader2, CheckCircle2, XCircle, Plus, Trash2, Download, Upload } from 'lucide-react';
+import { useRef } from 'react';
 import { PipelineConfig, type PipelineConfigData, TestResultsVisualization } from '@/components/pipelines';
 
 interface ExpandedProxyRuleFormProps {
@@ -112,10 +113,14 @@ export function ExpandedProxyRuleForm({
     initialData?.emailHandlerConfig?.requireAuth ?? false,
   );
 
-  // Pipeline config
+  // Pipeline config (validators stored separately)
   const [pipelineConfig, setPipelineConfig] = useState<PipelineConfigData>(() => {
-    const existingPipeline = initialData?.pipelineConfig;
-    return existingPipeline || { name: '', steps: [] };
+    if (initialData?.pipelineConfig) {
+      // Strip validators since they're stored separately
+      const { validators: _v, ...pipelineWithoutValidators } = initialData.pipelineConfig;
+      return pipelineWithoutValidators as PipelineConfigData;
+    }
+    return { name: '', steps: [] };
   });
   const [validators, setValidators] = useState<ValidatorConfig[]>(() => {
     return initialData?.pipelineConfig?.validators || [];
@@ -123,6 +128,60 @@ export function ExpandedProxyRuleForm({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Pipeline export/import handlers
+  const handleExportPipeline = () => {
+    const exportData = {
+      name: pipelineConfig.name,
+      description: pipelineConfig.description,
+      steps: pipelineConfig.steps,
+      validators: validators,
+      // Include rule metadata for context
+      _meta: {
+        pathPattern,
+        method: method || 'ANY',
+        exportedAt: new Date().toISOString(),
+      },
+    };
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pipeline-${pipelineConfig.name || 'config'}.json`.replace(/[^a-z0-9-_.]/gi, '_');
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportPipeline = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target?.result as string);
+        // Update pipeline config
+        setPipelineConfig({
+          name: data.name || '',
+          description: data.description || '',
+          steps: data.steps || [],
+        });
+        // Update validators
+        if (data.validators) {
+          setValidators(data.validators);
+        }
+      } catch (err) {
+        console.error('Failed to parse pipeline JSON:', err);
+        alert('Invalid pipeline JSON file');
+      }
+    };
+    reader.readAsText(file);
+    // Reset file input so the same file can be imported again
+    event.target.value = '';
+  };
 
   // Derived state
   const isEmailHandler = proxyType === 'email_form_handler';
@@ -170,8 +229,9 @@ export function ExpandedProxyRuleForm({
 
     // Pipeline config - deep compare
     if (isPipeline) {
-      const initialPipeline = initialData.pipelineConfig || { name: '', steps: [] };
-      if (JSON.stringify(pipelineConfig) !== JSON.stringify(initialPipeline)) return true;
+      // Strip validators from comparison since they're compared separately
+      const { validators: _initValidators, ...initialPipelineWithoutValidators } = initialData.pipelineConfig || { name: '', steps: [] };
+      if (JSON.stringify(pipelineConfig) !== JSON.stringify(initialPipelineWithoutValidators)) return true;
       // Check validators separately
       const initialValidators = initialData.pipelineConfig?.validators || [];
       if (JSON.stringify(validators) !== JSON.stringify(initialValidators)) return true;
@@ -631,11 +691,40 @@ export function ExpandedProxyRuleForm({
       {/* Pipeline Configuration */}
       {isPipeline && (
         <Card>
-          <CardHeader>
-            <CardTitle>Pipeline Configuration</CardTitle>
-            <CardDescription>
-              Define the steps that process incoming requests
-            </CardDescription>
+          <CardHeader className="flex flex-row items-start justify-between space-y-0">
+            <div>
+              <CardTitle>Pipeline Configuration</CardTitle>
+              <CardDescription>
+                Define the steps that process incoming requests
+              </CardDescription>
+            </div>
+            <div className="flex gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json"
+                onChange={handleImportPipeline}
+                className="hidden"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload className="h-4 w-4 mr-1" />
+                Import
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleExportPipeline}
+              >
+                <Download className="h-4 w-4 mr-1" />
+                Export
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             {errors.pipelineName && (

@@ -106,25 +106,28 @@ export function ExpressionInput({
     return suggestions;
   }, [previousSteps]);
 
+  // Ensure value is always a string
+  const safeValue = typeof value === 'string' ? value : String(value ?? '');
+
   // Filter suggestions based on current input
   const filteredSuggestions = useMemo(() => {
-    if (!value) {
+    if (!safeValue) {
       // Show all suggestions when input is empty but focused
       return allSuggestions.slice(0, 10);
     }
 
-    const lowerValue = value.toLowerCase();
+    const lowerValue = safeValue.toLowerCase();
 
     return allSuggestions.filter((s) =>
       s.value.toLowerCase().includes(lowerValue) ||
       s.value.toLowerCase().startsWith(lowerValue)
     ).slice(0, 10); // Limit to 10 suggestions
-  }, [value, allSuggestions]);
+  }, [safeValue, allSuggestions]);
 
-  // Reset selected index when suggestions change
+  // Reset selected index when input value changes (new search)
   useEffect(() => {
     setSelectedIndex(0);
-  }, [filteredSuggestions]);
+  }, [safeValue]);
 
   // Close suggestions when clicking outside
   useEffect(() => {
@@ -184,15 +187,15 @@ export function ExpressionInput({
   };
 
   return (
-    <div className="relative">
+    <div className={cn('relative', className)}>
       <Input
         ref={inputRef}
-        value={value}
+        value={safeValue}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
         onFocus={() => setShowSuggestions(true)}
         placeholder={placeholder}
-        className={className}
+        className="w-full"
         autoComplete="off"
       />
 

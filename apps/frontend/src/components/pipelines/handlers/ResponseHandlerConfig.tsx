@@ -19,10 +19,13 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import type { ResponseHandlerConfig } from './types';
+import type { PreviousStep } from './AvailableVariables';
+import { ExpressionInput } from './ExpressionInput';
 
 interface ResponseHandlerConfigProps {
   config: Partial<ResponseHandlerConfig>;
   onChange: (config: ResponseHandlerConfig) => void;
+  previousSteps?: PreviousStep[];
 }
 
 interface HeaderEntry {
@@ -52,7 +55,7 @@ const CONTENT_TYPES = [
   { value: 'text/plain', label: 'Plain Text (text/plain)' },
 ];
 
-export function ResponseHandlerConfig({ config, onChange }: ResponseHandlerConfigProps) {
+export function ResponseHandlerConfig({ config, onChange, previousSteps = [] }: ResponseHandlerConfigProps) {
   const [status, setStatus] = useState<number>(config.status || 200);
   const [contentType, setContentType] = useState(config.contentType || 'application/json');
   const [bodyMode, setBodyMode] = useState<'template' | 'json'>(() => {
@@ -214,10 +217,11 @@ export function ResponseHandlerConfig({ config, onChange }: ResponseHandlerConfi
                   className="flex-1"
                 />
                 <span className="text-muted-foreground">:</span>
-                <Input
+                <ExpressionInput
                   value={field.expression}
-                  onChange={(e) => handleBodyFieldChange(index, { expression: e.target.value })}
+                  onChange={(value) => handleBodyFieldChange(index, { expression: value })}
                   placeholder="expression"
+                  previousSteps={previousSteps}
                   className="flex-1"
                 />
                 <Button

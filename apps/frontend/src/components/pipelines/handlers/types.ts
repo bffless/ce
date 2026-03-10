@@ -37,6 +37,8 @@ export interface DataQueryHandlerConfig extends BaseHandlerConfig {
   /** When true, returns a single object instead of an array */
   single?: boolean;
   filters?: Record<string, FilterConfig>;
+  /** How to combine multiple filters: 'and' (all must match) or 'or' (any must match). Default: 'and' */
+  filterLogic?: 'and' | 'or';
   select?: string[];
   limit?: number;
   offset?: number;
@@ -48,6 +50,8 @@ export interface DataUpdateHandlerConfig extends BaseHandlerConfig {
   /** Find a specific record by its ID (table column). Ignores filters when set. */
   recordId?: string;
   filters?: Record<string, { op: 'eq' | 'ne'; value: string }>;
+  /** How to combine multiple filters: 'and' (all must match) or 'or' (any must match). Default: 'and' */
+  filterLogic?: 'and' | 'or';
   fields: Record<string, string>;
 }
 
@@ -56,6 +60,8 @@ export interface DataDeleteHandlerConfig extends BaseHandlerConfig {
   /** Find a specific record by its ID (table column). Ignores filters when set. */
   recordId?: string;
   filters?: Record<string, { op: 'eq' | 'ne'; value: string }>;
+  /** How to combine multiple filters: 'and' (all must match) or 'or' (any must match). Default: 'and' */
+  filterLogic?: 'and' | 'or';
 }
 
 export interface EmailHandlerConfig extends BaseHandlerConfig {

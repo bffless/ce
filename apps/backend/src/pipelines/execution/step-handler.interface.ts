@@ -84,6 +84,12 @@ export interface DataQueryHandlerConfig extends BaseHandlerConfig {
   filters?: Record<string, { op: 'eq' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte' | 'like'; value: string }>;
 
   /**
+   * How to combine multiple filters: 'and' (all must match) or 'or' (any must match)
+   * @default 'and'
+   */
+  filterLogic?: 'and' | 'or';
+
+  /**
    * Fields to return (null = all)
    */
   select?: string[];
@@ -125,6 +131,12 @@ export interface DataUpdateHandlerConfig extends BaseHandlerConfig {
   filters?: Record<string, { op: 'eq' | 'ne'; value: string }>;
 
   /**
+   * How to combine multiple filters: 'and' (all must match) or 'or' (any must match)
+   * @default 'and'
+   */
+  filterLogic?: 'and' | 'or';
+
+  /**
    * Field updates: { schemaField: "expression" }
    */
   fields: Record<string, string>;
@@ -149,6 +161,12 @@ export interface DataDeleteHandlerConfig extends BaseHandlerConfig {
    * Filter to identify records to delete (ignored if recordId is set)
    */
   filters?: Record<string, { op: 'eq' | 'ne'; value: string }>;
+
+  /**
+   * How to combine multiple filters: 'and' (all must match) or 'or' (any must match)
+   * @default 'and'
+   */
+  filterLogic?: 'and' | 'or';
 }
 
 /**

@@ -75,6 +75,7 @@ export function HandlerConfigWrapper({
             config={config}
             onChange={handleChange}
             projectId={projectId}
+            previousSteps={previousSteps}
           />
         </>
       );
@@ -138,6 +139,7 @@ export function HandlerConfigWrapper({
           <ResponseHandlerConfig
             config={config}
             onChange={handleChange}
+            previousSteps={previousSteps}
           />
         </>
       );

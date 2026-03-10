@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Plus, Trash2, HelpCircle, AlertTriangle } from 'lucide-react';
 import {
@@ -11,12 +10,15 @@ import {
 } from '@/components/ui/tooltip';
 import { SchemaPicker } from './SchemaPicker';
 import { SchemaFieldPicker, useSchemaFields } from './SchemaFieldPicker';
+import { ExpressionInput } from './ExpressionInput';
 import type { DataCreateHandlerConfig } from './types';
+import type { PreviousStep } from './AvailableVariables';
 
 interface DataCreateConfigProps {
   config: Partial<DataCreateHandlerConfig>;
   onChange: (config: DataCreateHandlerConfig) => void;
   projectId: string;
+  previousSteps?: PreviousStep[];
 }
 
 interface FieldMapping {
@@ -24,7 +26,7 @@ interface FieldMapping {
   expression: string;
 }
 
-export function DataCreateConfig({ config, onChange, projectId }: DataCreateConfigProps) {
+export function DataCreateConfig({ config, onChange, projectId, previousSteps = [] }: DataCreateConfigProps) {
   const [schemaId, setSchemaId] = useState(config.schemaId || '');
   const [fieldMappings, setFieldMappings] = useState<FieldMapping[]>(() => {
     const existing = config.fields || {};
@@ -154,10 +156,11 @@ export function DataCreateConfig({ config, onChange, projectId }: DataCreateConf
                   </div>
                   <span className="text-muted-foreground">=</span>
                   <div className="flex-1 flex items-center gap-2">
-                    <Input
+                    <ExpressionInput
                       value={mapping.expression}
-                      onChange={(e) => handleMappingChange(index, { expression: e.target.value })}
+                      onChange={(value) => handleMappingChange(index, { expression: value })}
                       placeholder={schemaField ? getPlaceholderForType(schemaField.type) : 'input.fieldName'}
+                      previousSteps={previousSteps}
                       className="flex-1"
                     />
                   </div>

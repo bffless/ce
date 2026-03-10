@@ -3,6 +3,7 @@ import { PipelineSchemasController } from './pipeline-schemas.controller';
 import { PipelineDataController } from './pipeline-data.controller';
 import { PipelineSchemasService } from './pipeline-schemas.service';
 import { PipelineDataService } from './pipeline-data.service';
+import { StateSchemaGeneratorService } from './state-schema-generator.service';
 import {
   PipelineExecutionService,
   StepHandlerRegistry,
@@ -37,6 +38,7 @@ import { AuthRequiredValidator, RateLimitValidator } from './execution/validator
     // Core services
     PipelineSchemasService,
     PipelineDataService,
+    StateSchemaGeneratorService,
     // Execution engine
     PipelineExecutionService,
     StepHandlerRegistry,

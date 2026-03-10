@@ -18,6 +18,7 @@ import { PermissionsService } from '../permissions/permissions.service';
 import { NginxRegenerationService } from '../domains/nginx-regeneration.service';
 import { EmailService } from '../email/email.service';
 import { CreateProxyRuleDto, UpdateProxyRuleDto, ReorderProxyRulesDto } from './dto';
+import type { PipelineConfig } from '../db/schema/proxy-rules.schema';
 
 // SSRF protection - blocked hostnames
 const BLOCKED_HOSTS = [
@@ -203,7 +204,7 @@ export class ProxyRulesService {
         internalRewrite: dto.internalRewrite ?? false,
         proxyType: dto.proxyType ?? 'external_proxy',
         emailHandlerConfig: dto.emailHandlerConfig ?? null,
-        pipelineConfig: dto.pipelineConfig ?? null,
+        pipelineConfig: (dto.pipelineConfig as PipelineConfig) ?? null,
         isEnabled: dto.isEnabled ?? true,
         description: dto.description,
       })
@@ -309,7 +310,7 @@ export class ProxyRulesService {
     if (dto.internalRewrite !== undefined) updateData.internalRewrite = dto.internalRewrite;
     if (dto.proxyType !== undefined) updateData.proxyType = dto.proxyType;
     if (dto.emailHandlerConfig !== undefined) updateData.emailHandlerConfig = dto.emailHandlerConfig;
-    if (dto.pipelineConfig !== undefined) updateData.pipelineConfig = dto.pipelineConfig;
+    if (dto.pipelineConfig !== undefined) updateData.pipelineConfig = dto.pipelineConfig as PipelineConfig;
     if (dto.description !== undefined) updateData.description = dto.description;
     if (dto.isEnabled !== undefined) updateData.isEnabled = dto.isEnabled;
 

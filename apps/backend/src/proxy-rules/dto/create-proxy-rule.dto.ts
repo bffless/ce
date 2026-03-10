@@ -222,6 +222,7 @@ export class PipelineStepDto {
   isEnabled?: boolean;
 }
 
+
 /**
  * Pipeline configuration for pipeline proxy rules.
  * Contains the pipeline definition with steps and execution settings.
@@ -250,6 +251,14 @@ export class PipelineConfigDto {
   @ValidateNested({ each: true })
   @Type(() => PipelineStepDto)
   steps: PipelineStepDto[];
+
+  @ApiPropertyOptional({
+    description: 'Pre-pipeline validators (auth, rate limiting)',
+    example: [{ type: 'auth_required', config: { roles: ['admin'] } }],
+  })
+  @IsOptional()
+  @IsArray()
+  validators?: Array<{ type: string; config: Record<string, unknown> }>;
 }
 
 /**

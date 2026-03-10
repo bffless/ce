@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { eq, and, sql, inArray } from 'drizzle-orm';
+import { eq, and, or, sql, inArray } from 'drizzle-orm';
 import { StepHandler, DataDeleteHandlerConfig } from '../execution/step-handler.interface';
 import { StepHandlerRegistry } from '../execution/step-handler.registry';
 import { ExpressionEvaluator } from '../execution/expression-evaluator';
@@ -90,7 +90,9 @@ export class DataDeleteHandler implements StepHandler<DataDeleteHandlerConfig> {
       );
       conditions.push(eq(pipelineData.id, String(evaluatedRecordId)));
     } else if (config.filters) {
-      // Add filter conditions
+      // Collect filter conditions on JSON data fields
+      const filterConditions: ReturnType<typeof sql>[] = [];
+
       for (const [fieldName, filter] of Object.entries(config.filters)) {
         // Evaluate the filter value as an expression
         const value = this.expressionEvaluator.evaluateExpression(
@@ -104,11 +106,21 @@ export class DataDeleteHandler implements StepHandler<DataDeleteHandlerConfig> {
 
         switch (filter.op) {
           case 'eq':
-            conditions.push(sql`${fieldPath} = ${String(value)}`);
+            filterConditions.push(sql`${fieldPath} = ${String(value)}`);
             break;
           case 'ne':
-            conditions.push(sql`${fieldPath} != ${String(value)}`);
+            filterConditions.push(sql`${fieldPath} != ${String(value)}`);
             break;
+        }
+      }
+
+      // Combine filter conditions with AND or OR based on filterLogic
+      if (filterConditions.length > 0) {
+        const combinedFilters = config.filterLogic === 'or'
+          ? or(...filterConditions)
+          : and(...filterConditions);
+        if (combinedFilters) {
+          conditions.push(combinedFilters);
         }
       }
     }

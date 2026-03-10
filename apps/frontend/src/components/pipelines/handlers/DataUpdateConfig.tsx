@@ -44,6 +44,7 @@ export function DataUpdateConfig({ config, onChange, projectId, previousSteps = 
       ? entries.map(([field, conf]) => ({ field, op: conf.op, value: conf.value }))
       : [{ field: '', op: 'eq' as const, value: '' }];
   });
+  const [filterLogic, setFilterLogic] = useState<'and' | 'or'>(config.filterLogic || 'and');
   const [fieldMappings, setFieldMappings] = useState<FieldMapping[]>(() => {
     const existing = config.fields || {};
     const entries = Object.entries(existing);
@@ -67,13 +68,17 @@ export function DataUpdateConfig({ config, onChange, projectId, previousSteps = 
       }
     }
 
+    // Only include filterLogic if there are multiple filters
+    const hasMultipleFilters = Object.keys(filtersRecord).length > 1;
+
     onChange({
       schemaId,
       recordId: recordId.trim() || undefined,
       filters: Object.keys(filtersRecord).length > 0 ? filtersRecord : undefined,
+      filterLogic: hasMultipleFilters ? filterLogic : undefined,
       fields,
     });
-  }, [schemaId, recordId, filters, fieldMappings, onChange]);
+  }, [schemaId, recordId, filters, filterLogic, fieldMappings, onChange]);
 
   const handleAddFilter = () => {
     setFilters([...filters, { field: '', op: 'eq', value: '' }]);
@@ -179,6 +184,38 @@ export function DataUpdateConfig({ config, onChange, projectId, previousSteps = 
               </Button>
             </div>
           ))}
+
+          {/* Filter logic selector - only show when 2+ filters */}
+          {filters.length > 1 && (
+            <div className="flex items-center gap-3 pt-2 border-t">
+              <span className="text-sm text-muted-foreground">Match:</span>
+              <div className="flex items-center gap-1">
+                <Button
+                  type="button"
+                  variant={filterLogic === 'and' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setFilterLogic('and')}
+                  className="h-7 px-3"
+                >
+                  All (AND)
+                </Button>
+                <Button
+                  type="button"
+                  variant={filterLogic === 'or' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setFilterLogic('or')}
+                  className="h-7 px-3"
+                >
+                  Any (OR)
+                </Button>
+              </div>
+              <span className="text-xs text-muted-foreground">
+                {filterLogic === 'and'
+                  ? 'All conditions must match'
+                  : 'Any condition can match'}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 

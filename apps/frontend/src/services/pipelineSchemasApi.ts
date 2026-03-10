@@ -62,6 +62,18 @@ export interface UpdateRecordDto {
   data: Record<string, unknown>;
 }
 
+export interface GenerateStateSchemaDto {
+  projectId: string;
+  name: string;
+  scope: 'global' | 'user';
+  ruleSetId?: string;
+}
+
+export interface GenerateStateSchemaResponse {
+  schema: PipelineSchema;
+  pipelines: { id: string; path: string; method: string }[];
+}
+
 export interface FieldFilter {
   op: 'eq' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte' | 'like';
   value: string;
@@ -143,6 +155,20 @@ export const pipelineSchemasApi = api.injectEndpoints({
         method: 'DELETE',
       }),
       invalidatesTags: ['PipelineSchema', 'PipelineData'],
+    }),
+
+    generateStateSchema: builder.mutation<GenerateStateSchemaResponse, GenerateStateSchemaDto>({
+      query: (data) => ({
+        url: '/api/pipeline-schemas/generate-state',
+        method: 'POST',
+        body: data,
+      }),
+      invalidatesTags: (_result, _error, { projectId }) => [
+        { type: 'PipelineSchema' as const, id: `project-${projectId}` },
+        'PipelineSchema',
+        'Pipeline',
+        'ProxyRuleSet',
+      ],
     }),
 
     // ==================== Schema Data ====================
@@ -252,6 +278,7 @@ export const {
   useCreateSchemaMutation,
   useUpdateSchemaMutation,
   useDeleteSchemaMutation,
+  useGenerateStateSchemaMutation,
   // Data
   useGetSchemaDataQuery,
   useGetRecordQuery,

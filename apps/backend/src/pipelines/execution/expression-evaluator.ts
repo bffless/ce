@@ -58,7 +58,7 @@ export class ExpressionEvaluator {
 
     // Check if this looks like a valid expression path (must start with a known root)
     // This allows literal values like email addresses to pass through unchanged
-    const validRoots = ['input', 'user', 'steps', 'metadata'];
+    const validRoots = ['input', 'user', 'steps', 'metadata', 'request'];
     const firstPart = trimmed.split('.')[0];
     if (!validRoots.includes(firstPart)) {
       // Not a valid expression path - return as literal string
@@ -117,10 +117,46 @@ export class ExpressionEvaluator {
           stepName,
         );
         break;
+      case 'request':
+        // Map request.* to context.metadata for convenience
+        // request.query -> metadata.query
+        // request.method -> metadata.method
+        // request.path -> metadata.path
+        // request.headers -> metadata.headers
+        if (parts.length < 2) {
+          throw new ExpressionError(expression, 'Request reference requires property (query, method, path, headers)', stepName);
+        }
+        const requestProp = parts[1];
+        if (!['query', 'method', 'path', 'headers', 'ip', 'userAgent'].includes(requestProp)) {
+          throw new ExpressionError(
+            expression,
+            `Unknown request property '${requestProp}'. Valid: query, method, path, headers, ip, userAgent`,
+            stepName,
+          );
+        }
+        const requestData = {
+          query: context.metadata.query,
+          method: context.metadata.method,
+          path: context.metadata.path,
+          headers: context.metadata.headers,
+          ip: context.metadata.ip,
+          userAgent: context.metadata.userAgent,
+        };
+        if (parts.length === 2) {
+          value = requestData[requestProp as keyof typeof requestData];
+        } else {
+          value = this.getNestedValue(
+            requestData[requestProp as keyof typeof requestData] as Record<string, unknown>,
+            parts.slice(2),
+            expression,
+            stepName,
+          );
+        }
+        break;
       default:
         throw new ExpressionError(
           expression,
-          `Unknown root '${root}'. Valid roots: input, user, steps, metadata`,
+          `Unknown root '${root}'. Valid roots: input, user, steps, metadata, request`,
           stepName,
         );
     }
@@ -140,10 +176,31 @@ export class ExpressionEvaluator {
       return String(template ?? '');
     }
 
-    return template.replace(/\{\{(.+?)\}\}/g, (_, expression) => {
+    // First, handle triple braces {{{expr}}} for raw JSON output
+    let result = template.replace(/\{\{\{(.+?)\}\}\}/g, (_, expression) => {
       const value = this.evaluateExpression(expression.trim(), context, stepName);
-      return value === null || value === undefined ? '' : String(value);
+      if (value === null || value === undefined) {
+        return 'null';
+      }
+      // For triple braces, always output as JSON (raw, no escaping)
+      if (typeof value === 'object') {
+        return JSON.stringify(value);
+      }
+      // Primitives also get JSON serialization for consistency
+      return JSON.stringify(value);
     });
+
+    // Then, handle double braces {{expr}} for string interpolation
+    result = result.replace(/\{\{(.+?)\}\}/g, (_, expression) => {
+      const value = this.evaluateExpression(expression.trim(), context, stepName);
+      if (value === null || value === undefined) {
+        return '';
+      }
+      // For double braces, convert to string (objects become [object Object])
+      return String(value);
+    });
+
+    return result;
   }
 
   /**

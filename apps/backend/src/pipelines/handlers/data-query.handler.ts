@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { eq, and, desc, sql } from 'drizzle-orm';
+import { eq, and, or, desc, sql } from 'drizzle-orm';
 import { StepHandler, DataQueryHandlerConfig } from '../execution/step-handler.interface';
 import { StepHandlerRegistry } from '../execution/step-handler.registry';
 import { ExpressionEvaluator } from '../execution/expression-evaluator';
@@ -78,8 +78,8 @@ export class DataQueryHandler implements StepHandler<DataQueryHandlerConfig> {
       );
     }
 
-    // Build where conditions - always filter by projectId for security
-    const conditions = [
+    // Build where conditions - always filter by projectId and schemaId for security
+    const baseConditions = [
       eq(pipelineData.schemaId, config.schemaId),
       eq(pipelineData.projectId, context.projectId),
     ];
@@ -91,9 +91,11 @@ export class DataQueryHandler implements StepHandler<DataQueryHandlerConfig> {
         context,
         stepName,
       );
-      conditions.push(eq(pipelineData.id, String(recordIdValue)));
+      baseConditions.push(eq(pipelineData.id, String(recordIdValue)));
     } else if (config.filters) {
-      // Add filter conditions on JSON data fields
+      // Collect filter conditions on JSON data fields
+      const filterConditions: ReturnType<typeof sql>[] = [];
+
       for (const [fieldName, filter] of Object.entries(config.filters)) {
         // Evaluate the filter value as an expression
         const value = this.expressionEvaluator.evaluateExpression(
@@ -107,29 +109,42 @@ export class DataQueryHandler implements StepHandler<DataQueryHandlerConfig> {
 
         switch (filter.op) {
           case 'eq':
-            conditions.push(sql`${fieldPath} = ${String(value)}`);
+            filterConditions.push(sql`${fieldPath} = ${String(value)}`);
             break;
           case 'ne':
-            conditions.push(sql`${fieldPath} != ${String(value)}`);
+            filterConditions.push(sql`${fieldPath} != ${String(value)}`);
             break;
           case 'gt':
-            conditions.push(sql`(${fieldPath})::numeric > ${Number(value)}`);
+            filterConditions.push(sql`(${fieldPath})::numeric > ${Number(value)}`);
             break;
           case 'lt':
-            conditions.push(sql`(${fieldPath})::numeric < ${Number(value)}`);
+            filterConditions.push(sql`(${fieldPath})::numeric < ${Number(value)}`);
             break;
           case 'gte':
-            conditions.push(sql`(${fieldPath})::numeric >= ${Number(value)}`);
+            filterConditions.push(sql`(${fieldPath})::numeric >= ${Number(value)}`);
             break;
           case 'lte':
-            conditions.push(sql`(${fieldPath})::numeric <= ${Number(value)}`);
+            filterConditions.push(sql`(${fieldPath})::numeric <= ${Number(value)}`);
             break;
           case 'like':
-            conditions.push(sql`${fieldPath} ILIKE ${String(value)}`);
+            filterConditions.push(sql`${fieldPath} ILIKE ${String(value)}`);
             break;
         }
       }
+
+      // Combine filter conditions with AND or OR based on filterLogic
+      if (filterConditions.length > 0) {
+        const combinedFilters = config.filterLogic === 'or'
+          ? or(...filterConditions)
+          : and(...filterConditions);
+        if (combinedFilters) {
+          baseConditions.push(combinedFilters);
+        }
+      }
     }
+
+    // All conditions are combined with AND (base + filters)
+    const conditions = baseConditions;
 
     // Build order by clause
     let orderByClause;

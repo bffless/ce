@@ -19,12 +19,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Plus, Database, MoreHorizontal, Trash2, Pencil } from 'lucide-react';
+import { Plus, Database, MoreHorizontal, Trash2, Pencil, Zap } from 'lucide-react';
 import { useGetProjectSchemasQuery, useDeleteSchemaMutation } from '@/services/pipelineSchemasApi';
 import { useGetProjectQuery } from '@/services/projectsApi';
 import { useProjectRole } from '@/hooks/useProjectRole';
 import { useToast } from '@/hooks/use-toast';
 import { SchemaCard } from '@/components/data/SchemaCard';
+import { GenerateStateModal } from '@/components/data/GenerateStateModal';
 
 /**
  * SchemasListPage - Content for the Data tab showing all schemas.
@@ -41,6 +42,7 @@ export function SchemasListPage() {
     name: string;
     recordCount: number;
   } | null>(null);
+  const [showGenerateStateModal, setShowGenerateStateModal] = useState(false);
 
   // Fetch project to get projectId
   const { data: project, isLoading: isLoadingProject } = useGetProjectQuery(
@@ -136,14 +138,25 @@ export function SchemasListPage() {
             <CardDescription>Manage data structures for pipeline handlers</CardDescription>
           </div>
           {canEdit && (
-            <Button
-              size="sm"
-              className="gap-2"
-              onClick={() => navigate(`/repo/${owner}/${repo}/data/new`)}
-            >
-              <Plus className="h-4 w-4" />
-              Create Schema
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => setShowGenerateStateModal(true)}
+              >
+                <Zap className="h-4 w-4" />
+                Generate State Schema
+              </Button>
+              <Button
+                size="sm"
+                className="gap-2"
+                onClick={() => navigate(`/repo/${owner}/${repo}/data/new`)}
+              >
+                <Plus className="h-4 w-4" />
+                Create Schema
+              </Button>
+            </div>
           )}
         </CardHeader>
         <CardContent>
@@ -238,6 +251,15 @@ export function SchemasListPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+      )}
+
+      {/* Generate State Schema Modal */}
+      {canEdit && project && (
+        <GenerateStateModal
+          open={showGenerateStateModal}
+          onOpenChange={setShowGenerateStateModal}
+          projectId={project.id}
+        />
       )}
     </>
   );
