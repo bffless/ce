@@ -110,7 +110,8 @@ export function DataCreateConfig({ config, onChange, projectId, previousSteps = 
                 <TooltipContent className="max-w-xs">
                   <p>Map schema fields to expressions. Available paths:</p>
                   <ul className="list-disc list-inside mt-1 text-xs">
-                    <li><code>input.fieldName</code> - Request input</li>
+                    <li><code>request.body.fieldName</code> - Request body</li>
+                    <li><code>request.query.param</code> - Query params</li>
                     <li><code>user.id</code>, <code>user.email</code> - Current user</li>
                     <li><code>steps.stepName.field</code> - Previous step output</li>
                     <li><code>now()</code> - Current timestamp</li>
@@ -159,7 +160,7 @@ export function DataCreateConfig({ config, onChange, projectId, previousSteps = 
                     <ExpressionInput
                       value={mapping.expression}
                       onChange={(value) => handleMappingChange(index, { expression: value })}
-                      placeholder={schemaField ? getPlaceholderForType(schemaField.type) : 'input.fieldName'}
+                      placeholder={schemaField ? getPlaceholderForType(schemaField.type) : 'request.body.fieldName'}
                       previousSteps={previousSteps}
                       className="flex-1"
                     />
@@ -190,16 +191,16 @@ export function DataCreateConfig({ config, onChange, projectId, previousSteps = 
 function getPlaceholderForType(type: string): string {
   switch (type) {
     case 'number':
-      return 'input.quantity or 42';
+      return 'request.body.quantity or 42';
     case 'boolean':
-      return 'input.enabled or true';
+      return 'request.body.enabled or true';
     case 'email':
-      return 'input.email or user.email';
+      return 'request.body.email or user.email';
     case 'datetime':
-      return 'now() or input.date';
+      return 'now() or request.body.date';
     case 'json':
-      return 'input.metadata or {}';
+      return 'request.body.metadata or {}';
     default:
-      return 'input.fieldName';
+      return 'request.body.fieldName';
   }
 }

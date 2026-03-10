@@ -215,7 +215,7 @@ export class StateSchemaGeneratorService {
           single: true,
           filters: {
             user_id: { op: 'eq', value: 'user.id' },
-            guest_id: { op: 'eq', value: 'input._bffGuestId' },
+            guest_id: { op: 'eq', value: 'request.query._bffGuestId' },
           },
           filterLogic: 'or',
         },
@@ -247,7 +247,7 @@ export class StateSchemaGeneratorService {
         code: `/**
  * Extract value from query result or return empty object.
  */
-function handler({ input, user, request, steps }) {
+function handler({ user, request, steps }) {
   const { value } = steps.query || {};
 
   if (!value) {
@@ -344,7 +344,7 @@ function handler({ input, user, request, steps }) {
           schemaId,
           fields: {
             key: name,
-            value: 'input',
+            value: 'request.body',
             user_id: 'user.id',
             guest_id: 'request.query._bffGuestId',
             version: '0',
@@ -362,7 +362,7 @@ function handler({ input, user, request, steps }) {
           schemaId,
           fields: {
             key: name,
-            value: 'input',
+            value: 'request.body',
             version: '0',
           },
           condition: '!steps.find',
@@ -385,7 +385,7 @@ function handler({ input, user, request, steps }) {
           },
           filterLogic: 'or',
           fields: {
-            value: 'input',
+            value: 'request.body',
           },
           condition: 'steps.find',
         },
@@ -402,7 +402,7 @@ function handler({ input, user, request, steps }) {
             key: { op: 'eq', value: name },
           },
           fields: {
-            value: 'input',
+            value: 'request.body',
           },
           condition: 'steps.find',
         },
@@ -419,7 +419,7 @@ function handler({ input, user, request, steps }) {
         code: `/**
  * Extract value from create or update result.
  */
-function handler({ input, user, request, steps }) {
+function handler({ user, request, steps }) {
   const { value = {} } = steps.create || steps.update || {};
 
   return {

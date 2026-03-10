@@ -219,7 +219,7 @@ export class StepDebugInfoDto {
 
   @ApiProperty({ description: 'Input snapshot before execution' })
   input: {
-    requestInput: Record<string, unknown>;
+    requestBody: Record<string, unknown>;
     previousStepOutputs: Record<string, unknown>;
   };
 

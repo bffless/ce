@@ -157,8 +157,8 @@ export class ProxyRulesController {
     const mockReq = {
       method: dto.method || 'POST',
       path: dto.path || rule.pathPattern,
-      body: dto.input,
-      query: {},
+      body: dto.body || {},
+      query: dto.query || {},
       headers: dto.headers || {},
       ip: '127.0.0.1',
       socket: { remoteAddress: '127.0.0.1' },

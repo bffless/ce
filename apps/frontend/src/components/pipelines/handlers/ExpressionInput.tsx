@@ -37,25 +37,19 @@ export function ExpressionInput({
   const allSuggestions = useMemo(() => {
     const suggestions: Suggestion[] = [];
 
-    // Input data
-    suggestions.push({
-      value: 'input',
-      description: 'Form data or JSON body',
-      category: 'Input',
-    });
+    // Request info (body first as most commonly used)
+    suggestions.push(
+      { value: 'request.body', description: 'POST/PUT body data', category: 'Request' },
+      { value: 'request.query', description: 'Query params object', category: 'Request' },
+      { value: 'request.method', description: 'GET, POST, etc.', category: 'Request' },
+      { value: 'request.path', description: 'URL path', category: 'Request' },
+    );
 
     // User info
     suggestions.push(
       { value: 'user.id', description: 'User ID', category: 'User' },
       { value: 'user.email', description: 'User email', category: 'User' },
       { value: 'user.role', description: 'User role', category: 'User' },
-    );
-
-    // Request info
-    suggestions.push(
-      { value: 'request.method', description: 'GET, POST, etc.', category: 'Request' },
-      { value: 'request.path', description: 'URL path', category: 'Request' },
-      { value: 'request.query', description: 'Query params object', category: 'Request' },
     );
 
     // Previous steps

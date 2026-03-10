@@ -74,7 +74,8 @@ export interface MockUser {
 export interface TestPipelineDto {
   method?: string;
   path?: string;
-  input: Record<string, unknown>;
+  body?: Record<string, unknown>;
+  query?: Record<string, unknown>;
   headers?: Record<string, string>;
   mockUser?: MockUser;
   simulateAuth?: boolean;
@@ -101,7 +102,7 @@ export interface StepDebugInfo {
   durationMs: number;
   status: 'success' | 'failed' | 'skipped';
   input: {
-    requestInput: Record<string, unknown>;
+    requestBody: Record<string, unknown>;
     previousStepOutputs: Record<string, unknown>;
   };
   output?: unknown;

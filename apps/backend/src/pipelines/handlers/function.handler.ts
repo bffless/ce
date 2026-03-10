@@ -10,7 +10,7 @@ import { FunctionRunnerService } from '../function-runner.service';
  * Function Handler
  *
  * Executes custom JavaScript code in a sandboxed environment for data transformations.
- * The code has access to pipeline context data (input, user, request, previous step outputs).
+ * The code has access to pipeline context data (request.body, user, request, previous step outputs).
  *
  * Security:
  * - Code runs in a restricted vm context
@@ -67,7 +67,6 @@ export class FunctionHandler implements StepHandler<FunctionHandlerConfig> {
 
     // Prepare data available to user code
     const data: Record<string, unknown> = {
-      input: context.input,
       user: context.user
         ? {
             id: context.user.id,
@@ -76,9 +75,13 @@ export class FunctionHandler implements StepHandler<FunctionHandlerConfig> {
           }
         : undefined,
       request: {
-        method: context.request?.method,
-        path: context.request?.path,
-        query: context.request?.query,
+        body: context.metadata.body,
+        query: context.metadata.query,
+        method: context.metadata.method,
+        path: context.metadata.path,
+        headers: context.metadata.headers,
+        ip: context.metadata.ip,
+        userAgent: context.metadata.userAgent,
       },
       steps: context.stepOutputs,
     };

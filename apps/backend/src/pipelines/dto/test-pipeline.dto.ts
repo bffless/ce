@@ -56,12 +56,21 @@ export class TestPipelineDto {
   @IsString()
   path?: string;
 
-  @ApiProperty({
-    description: 'Input data to use for testing',
+  @ApiPropertyOptional({
+    description: 'Request body data (for POST/PUT/PATCH)',
     example: { email: 'test@example.com', name: 'Test User' },
   })
+  @IsOptional()
   @IsObject()
-  input: Record<string, unknown>;
+  body?: Record<string, unknown>;
+
+  @ApiPropertyOptional({
+    description: 'Query parameters',
+    example: { page: '1', limit: '10' },
+  })
+  @IsOptional()
+  @IsObject()
+  query?: Record<string, unknown>;
 
   @ApiPropertyOptional({
     description: 'Headers to include in the test request',

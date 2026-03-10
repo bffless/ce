@@ -109,13 +109,13 @@ export function StepDebugCard({ step, index }: StepDebugCardProps) {
               <div className="text-xs font-medium text-muted-foreground">Input Snapshot</div>
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
-                  <div className="text-xs text-muted-foreground">Request Input</div>
+                  <div className="text-xs text-muted-foreground">Request Body</div>
                   <pre className="text-xs bg-muted p-2 rounded overflow-auto max-h-[150px]">
-                    {JSON.stringify(step.input.requestInput, null, 2)}
+                    {JSON.stringify(step.input.requestBody, null, 2)}
                   </pre>
                 </div>
                 <div className="space-y-1">
-                  <div className="text-xs text-muted-foreground">Previous Step Outputs</div>
+                  <div className="text-xs text-muted-foreground">steps (all prior outputs)</div>
                   <pre className="text-xs bg-muted p-2 rounded overflow-auto max-h-[150px]">
                     {Object.keys(step.input.previousStepOutputs).length > 0
                       ? JSON.stringify(step.input.previousStepOutputs, null, 2)

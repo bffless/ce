@@ -15,15 +15,16 @@ const Editor = lazy(() => import('@monaco-editor/react'));
 // Default code template shown when adding a new function handler
 const DEFAULT_CODE = `/**
  * Transform your data in the handler function.
- * Type 'input.', 'user.', 'request.', or 'steps.' for autocomplete.
+ * Type 'request.', 'user.', or 'steps.' for autocomplete.
  */
-function handler({ input, user, request, steps }) {
-  // Access input fields: input.fieldName
+function handler({ user, request, steps }) {
+  // Access body fields: request.body.fieldName
+  // Access query params: request.query.paramName
   // Access user info: user?.email
   // Access previous steps: steps['Step Name']
 
   return {
-    ...input,
+    ...request.body,
     processedAt: new Date().toISOString(),
   };
 }

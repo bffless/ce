@@ -24,11 +24,6 @@ export interface PipelineContext {
   user?: PipelineUser;
 
   /**
-   * Parsed input from request body/query
-   */
-  input: Record<string, unknown>;
-
-  /**
    * Outputs from previous steps, keyed by step name
    */
   stepOutputs: Record<string, unknown>;
@@ -51,6 +46,7 @@ export interface PipelineContext {
     method: string;
     headers: Record<string, string | string[] | undefined>;
     query: Record<string, unknown>;
+    body: Record<string, unknown>;
     ip?: string;
     userAgent?: string;
   };
@@ -129,7 +125,7 @@ export interface StepDebugInfo {
    * Input snapshot before execution (context state)
    */
   input: {
-    requestInput: Record<string, unknown>;
+    requestBody: Record<string, unknown>;
     previousStepOutputs: Record<string, unknown>;
   };
 

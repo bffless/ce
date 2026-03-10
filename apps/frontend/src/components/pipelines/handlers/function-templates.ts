@@ -17,11 +17,11 @@ export const functionTemplates: FunctionTemplate[] = [
     id: 'add-field',
     name: 'Add Field',
     category: 'transform',
-    description: 'Add a new field to the input data',
-    code: `function handler({ input }) {
-  // Add a new field to the input
+    description: 'Add a new field to the request body data',
+    code: `function handler({ request }) {
+  // Add a new field to the body
   return {
-    ...input,
+    ...request.body,
     timestamp: new Date().toISOString(),
   };
 }`,
@@ -30,10 +30,10 @@ export const functionTemplates: FunctionTemplate[] = [
     id: 'rename-field',
     name: 'Rename Field',
     category: 'transform',
-    description: 'Rename a field in the input data',
-    code: `function handler({ input }) {
+    description: 'Rename a field in the request body',
+    code: `function handler({ request }) {
   // Rename a field (from 'oldName' to 'newName')
-  const { oldName, ...rest } = input;
+  const { oldName, ...rest } = request.body;
   return {
     ...rest,
     newName: oldName,
@@ -44,10 +44,10 @@ export const functionTemplates: FunctionTemplate[] = [
     id: 'pick-fields',
     name: 'Pick Fields',
     category: 'transform',
-    description: 'Select only specific fields from input',
-    code: `function handler({ input }) {
+    description: 'Select only specific fields from body',
+    code: `function handler({ request }) {
   // Pick only specific fields
-  const { field1, field2, field3 } = input;
+  const { field1, field2, field3 } = request.body;
   return { field1, field2, field3 };
 }`,
   },
@@ -55,10 +55,10 @@ export const functionTemplates: FunctionTemplate[] = [
     id: 'omit-fields',
     name: 'Omit Fields',
     category: 'transform',
-    description: 'Remove specific fields from input',
-    code: `function handler({ input }) {
+    description: 'Remove specific fields from body',
+    code: `function handler({ request }) {
   // Remove specific fields (password, secret)
-  const { password, secret, ...rest } = input;
+  const { password, secret, ...rest } = request.body;
   return rest;
 }`,
   },
@@ -67,11 +67,11 @@ export const functionTemplates: FunctionTemplate[] = [
     name: 'Format Date',
     category: 'transform',
     description: 'Format a date field',
-    code: `function handler({ input }) {
+    code: `function handler({ request }) {
   // Format a date field
-  const date = new Date(input.dateField);
+  const date = new Date(request.body.dateField);
   return {
-    ...input,
+    ...request.body,
     formattedDate: date.toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'long',
@@ -87,9 +87,9 @@ export const functionTemplates: FunctionTemplate[] = [
     name: 'Filter Array',
     category: 'array',
     description: 'Filter items in an array',
-    code: `function handler({ input }) {
+    code: `function handler({ request }) {
   // Filter items where active is true
-  return input.items.filter(item => item.active);
+  return request.body.items.filter(item => item.active);
 }`,
   },
   {
@@ -97,9 +97,9 @@ export const functionTemplates: FunctionTemplate[] = [
     name: 'Map Array',
     category: 'array',
     description: 'Transform each item in an array',
-    code: `function handler({ input }) {
+    code: `function handler({ request }) {
   // Transform each item (extract id and name)
-  return input.items.map(item => ({
+  return request.body.items.map(item => ({
     id: item.id,
     name: item.name,
   }));
@@ -110,9 +110,9 @@ export const functionTemplates: FunctionTemplate[] = [
     name: 'Sort Array',
     category: 'array',
     description: 'Sort items in an array',
-    code: `function handler({ input }) {
+    code: `function handler({ request }) {
   // Sort items by a field (ascending)
-  return [...input.items].sort((a, b) => {
+  return [...request.body.items].sort((a, b) => {
     if (a.name < b.name) return -1;
     if (a.name > b.name) return 1;
     return 0;
@@ -124,9 +124,9 @@ export const functionTemplates: FunctionTemplate[] = [
     name: 'Group By',
     category: 'array',
     description: 'Group items by a field value',
-    code: `function handler({ input }) {
+    code: `function handler({ request }) {
   // Group items by category
-  return input.items.reduce((groups, item) => {
+  return request.body.items.reduce((groups, item) => {
     const key = item.category;
     if (!groups[key]) {
       groups[key] = [];
@@ -141,9 +141,9 @@ export const functionTemplates: FunctionTemplate[] = [
     name: 'Find Item',
     category: 'array',
     description: 'Find a single item in an array',
-    code: `function handler({ input }) {
+    code: `function handler({ request }) {
   // Find item by id
-  return input.items.find(item => item.id === input.searchId);
+  return request.body.items.find(item => item.id === request.body.searchId);
 }`,
   },
 
@@ -153,12 +153,12 @@ export const functionTemplates: FunctionTemplate[] = [
     name: 'Conditional Check',
     category: 'validation',
     description: 'Check a condition and return different results',
-    code: `function handler({ input }) {
+    code: `function handler({ request }) {
   // Check condition and return different results
-  if (input.amount > 1000) {
-    return { status: 'requires_approval', amount: input.amount };
+  if (request.body.amount > 1000) {
+    return { status: 'requires_approval', amount: request.body.amount };
   }
-  return { status: 'approved', amount: input.amount };
+  return { status: 'approved', amount: request.body.amount };
 }`,
   },
   {
@@ -166,21 +166,21 @@ export const functionTemplates: FunctionTemplate[] = [
     name: 'Validate Fields',
     category: 'validation',
     description: 'Validate multiple fields',
-    code: `function handler({ input }) {
+    code: `function handler({ request }) {
   // Validate required fields
   const errors = [];
 
-  if (!input.email) {
+  if (!request.body.email) {
     errors.push('Email is required');
   }
-  if (!input.name || input.name.length < 2) {
+  if (!request.body.name || request.body.name.length < 2) {
     errors.push('Name must be at least 2 characters');
   }
 
   if (errors.length > 0) {
     return { valid: false, errors };
   }
-  return { valid: true, data: input };
+  return { valid: true, data: request.body };
 }`,
   },
 
@@ -190,10 +190,10 @@ export const functionTemplates: FunctionTemplate[] = [
     name: 'Add Owner Info',
     category: 'user',
     description: 'Add current user as owner',
-    code: `function handler({ input, user }) {
+    code: `function handler({ request, user }) {
   // Add owner information from current user
   return {
-    ...input,
+    ...request.body,
     ownerId: user?.id,
     ownerEmail: user?.email,
     createdAt: new Date().toISOString(),
@@ -205,23 +205,23 @@ export const functionTemplates: FunctionTemplate[] = [
     name: 'Check User Role',
     category: 'user',
     description: 'Check user role before proceeding',
-    code: `function handler({ input, user }) {
+    code: `function handler({ request, user }) {
   // Check if user has required role
   if (user?.role !== 'admin') {
     return { error: 'Admin access required', allowed: false };
   }
-  return { ...input, allowed: true };
+  return { ...request.body, allowed: true };
 }`,
   },
   {
     id: 'merge-user-data',
     name: 'Merge User Data',
     category: 'user',
-    description: 'Combine input with user information',
-    code: `function handler({ input, user, request }) {
-  // Merge input with user metadata
+    description: 'Combine body with user information',
+    code: `function handler({ request, user }) {
+  // Merge body with user metadata
   return {
-    ...input,
+    ...request.body,
     submittedBy: user?.email || 'anonymous',
     requestPath: request?.path,
     timestamp: new Date().toISOString(),

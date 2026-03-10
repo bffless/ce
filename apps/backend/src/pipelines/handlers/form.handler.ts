@@ -8,7 +8,7 @@ import { ConfigurationError, ValidationError } from '../errors';
 /**
  * Form Handler
  *
- * Parses and validates form data from request input.
+ * Parses and validates form data from request body.
  * Supports field type validation, coercion, and honeypot spam detection.
  */
 @Injectable()
@@ -50,7 +50,7 @@ export class FormHandler implements StepHandler<FormHandlerConfig> {
 
     this.logger.debug(`Executing form handler for step '${stepName}'`);
 
-    const input = context.input;
+    const input = context.metadata.body;
     const errors: Record<string, string> = {};
     const validatedData: Record<string, unknown> = {};
 

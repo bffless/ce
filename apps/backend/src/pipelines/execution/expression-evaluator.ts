@@ -7,20 +7,21 @@ import { v4 as uuidv4 } from 'uuid';
  * Service for evaluating expressions and templates in pipeline configurations
  *
  * Expressions reference data using dot notation:
- * - input.fieldName - Request input
+ * - request.body.fieldName - Request body
+ * - request.query.paramName - Query parameters
  * - user.id, user.email - Current user
  * - steps.stepName.fieldName - Previous step output
  * - now() - Current timestamp
  * - uuid() - Generate UUID
  *
  * Templates use {{expression}} syntax:
- * - "Hello {{input.name}}" - String interpolation
+ * - "Hello {{request.body.name}}" - String interpolation
  */
 @Injectable()
 export class ExpressionEvaluator {
   /**
    * Evaluate an expression and return the result
-   * @param expression The expression to evaluate (e.g., "input.email", "steps.createUser.id")
+   * @param expression The expression to evaluate (e.g., "request.body.email", "steps.createUser.id")
    * @param context The pipeline context
    * @param stepName Optional step name for error messages
    * @returns The evaluated value
@@ -58,7 +59,7 @@ export class ExpressionEvaluator {
 
     // Check if this looks like a valid expression path (must start with a known root)
     // This allows literal values like email addresses to pass through unchanged
-    const validRoots = ['input', 'user', 'steps', 'metadata', 'request'];
+    const validRoots = ['user', 'steps', 'metadata', 'request'];
     const firstPart = trimmed.split('.')[0];
     if (!validRoots.includes(firstPart)) {
       // Not a valid expression path - return as literal string
@@ -66,7 +67,7 @@ export class ExpressionEvaluator {
       return trimmed;
     }
 
-    // Handle path expressions (input.field, user.id, steps.name.field)
+    // Handle path expressions (request.body.field, user.id, steps.name.field)
     const parts = trimmed.split('.');
     if (parts.length === 0) {
       throw new ExpressionError(expression, 'Empty expression', stepName);
@@ -76,9 +77,6 @@ export class ExpressionEvaluator {
     const root = parts[0];
 
     switch (root) {
-      case 'input':
-        value = this.getNestedValue(context.input, parts.slice(1), expression, stepName);
-        break;
       case 'user':
         if (!context.user) {
           return null; // No user available
@@ -119,22 +117,24 @@ export class ExpressionEvaluator {
         break;
       case 'request':
         // Map request.* to context.metadata for convenience
-        // request.query -> metadata.query
+        // request.body -> metadata.body (POST/PUT body)
+        // request.query -> metadata.query (query parameters)
         // request.method -> metadata.method
         // request.path -> metadata.path
         // request.headers -> metadata.headers
         if (parts.length < 2) {
-          throw new ExpressionError(expression, 'Request reference requires property (query, method, path, headers)', stepName);
+          throw new ExpressionError(expression, 'Request reference requires property (body, query, method, path, headers)', stepName);
         }
         const requestProp = parts[1];
-        if (!['query', 'method', 'path', 'headers', 'ip', 'userAgent'].includes(requestProp)) {
+        if (!['body', 'query', 'method', 'path', 'headers', 'ip', 'userAgent'].includes(requestProp)) {
           throw new ExpressionError(
             expression,
-            `Unknown request property '${requestProp}'. Valid: query, method, path, headers, ip, userAgent`,
+            `Unknown request property '${requestProp}'. Valid: body, query, method, path, headers, ip, userAgent`,
             stepName,
           );
         }
         const requestData = {
+          body: context.metadata.body,
           query: context.metadata.query,
           method: context.metadata.method,
           path: context.metadata.path,
@@ -156,7 +156,7 @@ export class ExpressionEvaluator {
       default:
         throw new ExpressionError(
           expression,
-          `Unknown root '${root}'. Valid roots: input, user, steps, metadata, request`,
+          `Unknown root '${root}'. Valid roots: user, steps, metadata, request`,
           stepName,
         );
     }

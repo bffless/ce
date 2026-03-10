@@ -130,19 +130,22 @@ export class DataUpdateHandler implements StepHandler<DataUpdateHandlerConfig> {
     }
 
     // Find matching records first
-    const existingRecords = await db
+    // In single mode, only get the first record
+    const query = db
       .select()
       .from(pipelineData)
       .where(and(...conditions));
 
+    const existingRecords = config.single
+      ? await query.limit(1)
+      : await query;
+
     if (existingRecords.length === 0) {
       this.logger.debug(`No records found matching filters`);
+      // In single mode, return null; otherwise return empty result
       return {
         success: true,
-        output: {
-          count: 0,
-          updated: [],
-        },
+        output: config.single ? null : { count: 0, updated: [] },
       };
     }
 
@@ -181,6 +184,14 @@ export class DataUpdateHandler implements StepHandler<DataUpdateHandlerConfig> {
     }
 
     this.logger.debug(`Updated ${updatedRecords.length} records`);
+
+    // In single mode, return just the updated object (or null)
+    if (config.single) {
+      return {
+        success: true,
+        output: updatedRecords[0] || null,
+      };
+    }
 
     return {
       success: true,

@@ -51,7 +51,6 @@ export class PipelineExecutionService {
     const context: PipelineContext = {
       request: req,
       user,
-      input: this.extractInput(req),
       stepOutputs: {},
       projectId: pipeline.projectId,
       pipelineId: pipeline.id,
@@ -60,6 +59,7 @@ export class PipelineExecutionService {
         method: req.method,
         headers: req.headers as Record<string, string | string[] | undefined>,
         query: req.query as Record<string, unknown>,
+        body: (req.body as Record<string, unknown>) || {},
         ip: req.ip || req.socket.remoteAddress,
         userAgent: req.get('user-agent'),
       },
@@ -261,7 +261,7 @@ export class PipelineExecutionService {
 
     // Capture input snapshot
     const inputSnapshot = {
-      requestInput: { ...context.input },
+      requestBody: { ...context.metadata.body },
       previousStepOutputs: { ...context.stepOutputs },
     };
 
@@ -381,13 +381,4 @@ export class PipelineExecutionService {
     };
   }
 
-  /**
-   * Extract input from request body and query
-   */
-  private extractInput(req: Request): Record<string, unknown> {
-    return {
-      ...(req.query as Record<string, unknown>),
-      ...(req.body as Record<string, unknown>),
-    };
-  }
 }

@@ -69,14 +69,14 @@ export function AvailableVariables({
 
       {isExpanded && (
         <div className="px-3 pb-3 pt-1 space-y-3 border-t">
-          {/* Input */}
+          {/* Request Body */}
           <div>
-            <div className="font-medium text-muted-foreground mb-1">Request Input</div>
+            <div className="font-medium text-muted-foreground mb-1">Request Body</div>
             <code className="block bg-muted px-2 py-1 rounded text-[11px]">
-              {formatVar('input')}
+              {formatVar('request.body')}
             </code>
             <div className="text-muted-foreground mt-0.5">
-              Form data or JSON body from the request
+              POST/PUT body data (JSON or form data)
             </div>
           </div>
 
@@ -101,13 +101,16 @@ export function AvailableVariables({
             <div className="font-medium text-muted-foreground mb-1">Request Info</div>
             <div className="space-y-0.5">
               <code className="block bg-muted px-2 py-1 rounded text-[11px]">
+                {formatVar('request.body')} <span className="text-muted-foreground">- POST/PUT body</span>
+              </code>
+              <code className="block bg-muted px-2 py-1 rounded text-[11px]">
+                {formatVar('request.query')} <span className="text-muted-foreground">- Query params</span>
+              </code>
+              <code className="block bg-muted px-2 py-1 rounded text-[11px]">
                 {formatVar('request.method')} <span className="text-muted-foreground">- GET, POST, etc.</span>
               </code>
               <code className="block bg-muted px-2 py-1 rounded text-[11px]">
                 {formatVar('request.path')} <span className="text-muted-foreground">- URL path</span>
-              </code>
-              <code className="block bg-muted px-2 py-1 rounded text-[11px]">
-                {formatVar('request.query')} <span className="text-muted-foreground">- Query params object</span>
               </code>
             </div>
           </div>

@@ -49,10 +49,10 @@ export class AggregateHandler implements StepHandler<AggregateHandlerConfig> {
     this.logger.debug(`Executing aggregate handler for step '${stepName}'`);
 
     // Get input from context - should be an array from a previous step
-    const input = context.input;
+    const body = context.metadata.body;
 
-    // Check if input is an array
-    if (!Array.isArray(input)) {
+    // Check if body is an array (unusual but possible)
+    if (!Array.isArray(body)) {
       // Check if we can get input from the last step output
       const stepNames = Object.keys(context.stepOutputs);
       if (stepNames.length > 0) {
@@ -69,12 +69,12 @@ export class AggregateHandler implements StepHandler<AggregateHandlerConfig> {
         error: {
           code: 'INVALID_INPUT',
           message: 'Input must be an array. Use this handler after a data_query step.',
-          details: { inputType: typeof input },
+          details: { inputType: typeof body },
         },
       };
     }
 
-    return this.performAggregation(input, config, stepName);
+    return this.performAggregation(body, config, stepName);
   }
 
   private performAggregation(

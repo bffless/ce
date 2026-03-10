@@ -137,6 +137,13 @@ export interface DataUpdateHandlerConfig extends BaseHandlerConfig {
   filterLogic?: 'and' | 'or';
 
   /**
+   * When true, returns a single updated object instead of { count, updated: [] }.
+   * Updates only the first matching record and returns it (or null if none found).
+   * @default false
+   */
+  single?: boolean;
+
+  /**
    * Field updates: { schemaField: "expression" }
    */
   fields: Record<string, string>;

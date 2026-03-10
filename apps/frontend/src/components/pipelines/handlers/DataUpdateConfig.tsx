@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import {
   Select,
   SelectContent,
@@ -37,6 +38,7 @@ interface FieldMapping {
 export function DataUpdateConfig({ config, onChange, projectId, previousSteps = [] }: DataUpdateConfigProps) {
   const [schemaId, setSchemaId] = useState(config.schemaId || '');
   const [recordId, setRecordId] = useState(config.recordId || '');
+  const [single, setSingle] = useState(config.single || false);
   const [filters, setFilters] = useState<FilterEntry[]>(() => {
     const existing = config.filters || {};
     const entries = Object.entries(existing);
@@ -74,11 +76,12 @@ export function DataUpdateConfig({ config, onChange, projectId, previousSteps = 
     onChange({
       schemaId,
       recordId: recordId.trim() || undefined,
+      single: single || undefined,
       filters: Object.keys(filtersRecord).length > 0 ? filtersRecord : undefined,
       filterLogic: hasMultipleFilters ? filterLogic : undefined,
       fields,
     });
-  }, [schemaId, recordId, filters, filterLogic, fieldMappings, onChange]);
+  }, [schemaId, recordId, single, filters, filterLogic, fieldMappings, onChange]);
 
   const handleAddFilter = () => {
     setFilters([...filters, { field: '', op: 'eq', value: '' }]);
@@ -128,6 +131,20 @@ export function DataUpdateConfig({ config, onChange, projectId, previousSteps = 
         <p className="text-xs text-muted-foreground">
           Update a specific record by its ID. Ignores filters when set.
         </p>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <div className="space-y-0.5">
+          <Label htmlFor="single">Return Single Object</Label>
+          <p className="text-xs text-muted-foreground">
+            Update only first match and return object instead of {"{ count, updated: [] }"}
+          </p>
+        </div>
+        <Switch
+          id="single"
+          checked={single}
+          onCheckedChange={setSingle}
+        />
       </div>
 
       <div className="space-y-2">

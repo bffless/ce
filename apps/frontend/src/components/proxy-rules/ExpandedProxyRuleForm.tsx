@@ -734,7 +734,7 @@ export function ExpandedProxyRuleForm({
 
       {/* Pipeline Test Panel - Only shown when rule is saved */}
       {isPipeline && initialData?.id && (
-        <PipelineTestCard ruleId={initialData.id} pathPattern={pathPattern} />
+        <PipelineTestCard ruleId={initialData.id} pathPattern={pathPattern} method={method} />
       )}
 
       {/* External Proxy Options */}
@@ -887,18 +887,26 @@ interface HeaderEntry {
   value: string;
 }
 
+interface QueryParamEntry {
+  key: string;
+  value: string;
+}
+
 interface PipelineTestCardProps {
   ruleId: string;
   pathPattern: string;
+  method: HttpMethod | null;
 }
 
-function PipelineTestCard({ ruleId, pathPattern }: PipelineTestCardProps) {
+function PipelineTestCard({ ruleId, pathPattern, method }: PipelineTestCardProps) {
   const [testProxyRule, { isLoading }] = useTestProxyRuleMutation();
 
   const [isExpanded, setIsExpanded] = useState(false);
-  const [inputJson, setInputJson] = useState(
+  const [selectedMethod, setSelectedMethod] = useState<HttpMethod>('POST');
+  const [bodyJson, setBodyJson] = useState(
     '{\n  "email": "test@example.com",\n  "name": "Test User"\n}',
   );
+  const [queryParams, setQueryParams] = useState<QueryParamEntry[]>([]);
   const [headers, setHeaders] = useState<HeaderEntry[]>([
     { key: 'Content-Type', value: 'application/json' },
   ]);
@@ -908,6 +916,11 @@ function PipelineTestCard({ ruleId, pathPattern }: PipelineTestCardProps) {
   const [mockUserRole, setMockUserRole] = useState('');
   const [result, setResult] = useState<TestPipelineResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Determine if this method typically has a body
+  // If method prop is null (any), use selectedMethod; otherwise use the fixed method
+  const effectiveMethod = method || selectedMethod;
+  const methodHasBody = ['POST', 'PUT', 'PATCH'].includes(effectiveMethod);
 
   const addHeader = () => {
     setHeaders([...headers, { key: '', value: '' }]);
@@ -921,17 +934,39 @@ function PipelineTestCard({ ruleId, pathPattern }: PipelineTestCardProps) {
     setHeaders(headers.map((h, i) => (i === index ? { ...h, [field]: value } : h)));
   };
 
+  const addQueryParam = () => {
+    setQueryParams([...queryParams, { key: '', value: '' }]);
+  };
+
+  const removeQueryParam = (index: number) => {
+    setQueryParams(queryParams.filter((_, i) => i !== index));
+  };
+
+  const updateQueryParam = (index: number, field: 'key' | 'value', value: string) => {
+    setQueryParams(queryParams.map((p, i) => (i === index ? { ...p, [field]: value } : p)));
+  };
+
   const runTest = async () => {
     setError(null);
     setResult(null);
 
-    // Parse input JSON
-    let input: Record<string, unknown>;
-    try {
-      input = JSON.parse(inputJson);
-    } catch {
-      setError('Invalid JSON in request body');
-      return;
+    // Parse body JSON only if method has body
+    let body: Record<string, unknown> | undefined;
+    if (methodHasBody && bodyJson.trim()) {
+      try {
+        body = JSON.parse(bodyJson);
+      } catch {
+        setError('Invalid JSON in request body');
+        return;
+      }
+    }
+
+    // Build query params object
+    const query: Record<string, unknown> = {};
+    for (const p of queryParams) {
+      if (p.key) {
+        query[p.key] = p.value;
+      }
     }
 
     // Build headers object
@@ -955,9 +990,10 @@ function PipelineTestCard({ ruleId, pathPattern }: PipelineTestCardProps) {
       const testResult = await testProxyRule({
         id: ruleId,
         data: {
-          method: 'POST',
+          method: effectiveMethod,
           path: pathPattern,
-          input,
+          body,
+          query: Object.keys(query).length > 0 ? query : undefined,
           headers: headersObj,
           simulateAuth,
           mockUser,
@@ -997,16 +1033,87 @@ function PipelineTestCard({ ruleId, pathPattern }: PipelineTestCardProps) {
 
         <CollapsibleContent>
           <CardContent className="space-y-4 pt-0">
-            {/* Request Body */}
-            <div className="space-y-2">
-              <Label>Request Body (JSON)</Label>
-              <Textarea
-                value={inputJson}
-                onChange={(e) => setInputJson(e.target.value)}
-                className="font-mono text-sm min-h-[120px]"
-                placeholder='{"key": "value"}'
-              />
+            {/* Method selector / indicator */}
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-muted-foreground">Testing as:</span>
+              {method ? (
+                <Badge variant="outline">{method}</Badge>
+              ) : (
+                <Select
+                  value={selectedMethod}
+                  onValueChange={(v) => setSelectedMethod(v as HttpMethod)}
+                >
+                  <SelectTrigger className="w-28 h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="GET">GET</SelectItem>
+                    <SelectItem value="POST">POST</SelectItem>
+                    <SelectItem value="PUT">PUT</SelectItem>
+                    <SelectItem value="PATCH">PATCH</SelectItem>
+                    <SelectItem value="DELETE">DELETE</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+              {!method && (
+                <span className="text-xs text-muted-foreground">(rule matches any method)</span>
+              )}
             </div>
+
+            {/* Query Parameters */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Query Parameters</Label>
+                <Button type="button" variant="ghost" size="sm" onClick={addQueryParam}>
+                  <Plus className="h-3 w-3 mr-1" />
+                  Add Param
+                </Button>
+              </div>
+              {queryParams.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No query parameters</p>
+              ) : (
+                <div className="space-y-2">
+                  {queryParams.map((param, index) => (
+                    <div key={index} className="flex gap-2">
+                      <Input
+                        placeholder="Parameter name"
+                        value={param.key}
+                        onChange={(e) => updateQueryParam(index, 'key', e.target.value)}
+                        className="flex-1"
+                      />
+                      <Input
+                        placeholder="Value"
+                        value={param.value}
+                        onChange={(e) => updateQueryParam(index, 'value', e.target.value)}
+                        className="flex-1"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeQueryParam(index)}
+                        className="shrink-0"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Request Body - only show for methods that have body */}
+            {methodHasBody && (
+              <div className="space-y-2">
+                <Label>Request Body (JSON)</Label>
+                <Textarea
+                  value={bodyJson}
+                  onChange={(e) => setBodyJson(e.target.value)}
+                  className="font-mono text-sm min-h-[120px]"
+                  placeholder='{"key": "value"}'
+                />
+              </div>
+            )}
 
             {/* Headers */}
             <div className="space-y-2">

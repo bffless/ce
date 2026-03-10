@@ -36,21 +36,21 @@ const DEFAULT_EMAIL_TEMPLATE = `<!DOCTYPE html>
 
     <div class="field">
       <div class="label">Name</div>
-      <div class="value">{{input.name}}</div>
+      <div class="value">{{request.body.name}}</div>
     </div>
 
     <div class="field">
       <div class="label">Email</div>
-      <div class="value">{{input.email}}</div>
+      <div class="value">{{request.body.email}}</div>
     </div>
 
     <div class="field">
       <div class="label">Message</div>
-      <div class="value">{{input.message}}</div>
+      <div class="value">{{request.body.message}}</div>
     </div>
 
     <div class="footer">
-      Submitted on {{metadata.path}} via {{metadata.method}}
+      Submitted on {{request.path}} via {{request.method}}
     </div>
   </div>
 </body>
@@ -89,7 +89,7 @@ export function EmailHandlerConfig({ config, onChange }: EmailHandlerConfigProps
               </button>
             </TooltipTrigger>
             <TooltipContent>
-              <p>Use an expression like <code>input.email</code> or <code>user.email</code></p>
+              <p>Use an expression like <code>request.body.email</code> or <code>user.email</code></p>
             </TooltipContent>
           </Tooltip>
         </div>
@@ -97,7 +97,7 @@ export function EmailHandlerConfig({ config, onChange }: EmailHandlerConfigProps
           id="to"
           value={to}
           onChange={(e) => setTo(e.target.value)}
-          placeholder="input.email"
+          placeholder="request.body.email"
         />
       </div>
 
@@ -111,7 +111,7 @@ export function EmailHandlerConfig({ config, onChange }: EmailHandlerConfigProps
               </button>
             </TooltipTrigger>
             <TooltipContent>
-              <p>Use template syntax: <code>{'{{input.name}}'}</code> for dynamic values</p>
+              <p>Use template syntax: <code>{'{{request.body.name}}'}</code> for dynamic values</p>
             </TooltipContent>
           </Tooltip>
         </div>
@@ -119,7 +119,7 @@ export function EmailHandlerConfig({ config, onChange }: EmailHandlerConfigProps
           id="subject"
           value={subject}
           onChange={(e) => setSubject(e.target.value)}
-          placeholder="New submission from {{input.name}}"
+          placeholder="New submission from {{request.body.name}}"
         />
       </div>
 
@@ -135,7 +135,7 @@ export function EmailHandlerConfig({ config, onChange }: EmailHandlerConfigProps
             <TooltipContent className="max-w-xs">
               <p>HTML email body with template syntax.</p>
               <p className="mt-1">Example:</p>
-              <code className="text-xs">{'<p>Hello {{input.name}},</p>'}</code>
+              <code className="text-xs">{'<p>Hello {{request.body.name}},</p>'}</code>
             </TooltipContent>
           </Tooltip>
         </div>
@@ -179,7 +179,7 @@ export function EmailHandlerConfig({ config, onChange }: EmailHandlerConfigProps
               </button>
             </TooltipTrigger>
             <TooltipContent>
-              <p>Expression for reply-to address, e.g., <code>input.email</code></p>
+              <p>Expression for reply-to address, e.g., <code>request.body.email</code></p>
             </TooltipContent>
           </Tooltip>
         </div>
@@ -187,7 +187,7 @@ export function EmailHandlerConfig({ config, onChange }: EmailHandlerConfigProps
           id="replyTo"
           value={replyTo}
           onChange={(e) => setReplyTo(e.target.value)}
-          placeholder="input.email (optional)"
+          placeholder="request.body.email (optional)"
         />
       </div>
     </div>

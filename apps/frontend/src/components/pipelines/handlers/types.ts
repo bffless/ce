@@ -52,6 +52,8 @@ export interface DataUpdateHandlerConfig extends BaseHandlerConfig {
   filters?: Record<string, { op: 'eq' | 'ne'; value: string }>;
   /** How to combine multiple filters: 'and' (all must match) or 'or' (any must match). Default: 'and' */
   filterLogic?: 'and' | 'or';
+  /** When true, updates only first match and returns single object (or null). Default: false */
+  single?: boolean;
   fields: Record<string, string>;
 }
 
