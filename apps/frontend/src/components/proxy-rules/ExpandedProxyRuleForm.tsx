@@ -402,8 +402,9 @@ export function ExpandedProxyRuleForm({
         description: description || undefined,
       });
 
-      // After successful save, update the timestamp to clear dirty state
+      // After successful save, reset dirty state
       setLastSavedAt(Date.now());
+      setLastModifiedAt(null);
     } finally {
       setIsSubmitting(false);
     }
