@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.107](https://github.com/bffless/ce/compare/v0.0.106...v0.0.107) (2026-03-10)
+
+
+### Bug Fixes
+
+* reset lastModifiedAt after save to clear dirty state ([0f27546](https://github.com/bffless/ce/commit/0f27546b570e68575552398e90a6356c6aba384e))
+
 ## [0.0.106](https://github.com/bffless/ce/compare/v0.0.105...v0.0.106) (2026-03-10)
 
 
