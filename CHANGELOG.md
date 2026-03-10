@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.105](https://github.com/bffless/ce/compare/v0.0.104...v0.0.105) (2026-03-10)
+
+
+### Bug Fixes
+
+* lint ([611e260](https://github.com/bffless/ce/commit/611e260a2a9f71aa7fcb3f8ef818e53306e9081e))
+
 ## [0.0.104](https://github.com/bffless/ce/compare/v0.0.103...v0.0.104) (2026-03-10)
 
 
