@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,11 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import type {
   ProxyRule,
   CreateProxyRuleDto,
@@ -27,9 +23,25 @@ import type {
 } from '@/services/proxyRulesApi';
 import { useGetEmailConfigStatusQuery, useTestProxyRuleMutation } from '@/services/proxyRulesApi';
 import type { TestPipelineResult, ValidatorConfig } from '@/services/pipelinesApi';
-import { AlertTriangle, Play, ChevronDown, ChevronRight, Loader2, CheckCircle2, XCircle, Plus, Trash2, Download, Upload } from 'lucide-react';
+import {
+  AlertTriangle,
+  Play,
+  ChevronDown,
+  ChevronRight,
+  Loader2,
+  CheckCircle2,
+  XCircle,
+  Plus,
+  Trash2,
+  Download,
+  Upload,
+} from 'lucide-react';
 import { useRef } from 'react';
-import { PipelineConfig, type PipelineConfigData, TestResultsVisualization } from '@/components/pipelines';
+import {
+  PipelineConfig,
+  type PipelineConfigData,
+  TestResultsVisualization,
+} from '@/components/pipelines';
 
 interface ExpandedProxyRuleFormProps {
   initialData?: ProxyRule;
@@ -94,15 +106,11 @@ export function ExpandedProxyRuleForm({
   const [destinationEmail, setDestinationEmail] = useState(
     initialData?.emailHandlerConfig?.destinationEmail || '',
   );
-  const [emailSubject, setEmailSubject] = useState(
-    initialData?.emailHandlerConfig?.subject || '',
-  );
+  const [emailSubject, setEmailSubject] = useState(initialData?.emailHandlerConfig?.subject || '');
   const [successRedirect, setSuccessRedirect] = useState(
     initialData?.emailHandlerConfig?.successRedirect || '',
   );
-  const [corsOrigin, setCorsOrigin] = useState(
-    initialData?.emailHandlerConfig?.corsOrigin || '',
-  );
+  const [corsOrigin, setCorsOrigin] = useState(initialData?.emailHandlerConfig?.corsOrigin || '');
   const [honeypotField, setHoneypotField] = useState(
     initialData?.emailHandlerConfig?.honeypotField || '',
   );
@@ -209,11 +217,28 @@ export function ExpandedProxyRuleForm({
     setLastModifiedAt(Date.now());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    pathPattern, method, targetUrl, proxyType, order, description,
-    stripPrefix, timeout, preserveHost, forwardCookies, apiKey,
-    authTransformEnabled, cookieName, destinationEmail, emailSubject,
-    successRedirect, corsOrigin, honeypotField, replyToField, requireAuth,
-    pipelineConfig, validators,
+    pathPattern,
+    method,
+    targetUrl,
+    proxyType,
+    order,
+    description,
+    stripPrefix,
+    timeout,
+    preserveHost,
+    forwardCookies,
+    apiKey,
+    authTransformEnabled,
+    cookieName,
+    destinationEmail,
+    emailSubject,
+    successRedirect,
+    corsOrigin,
+    honeypotField,
+    replyToField,
+    requireAuth,
+    pipelineConfig,
+    validators,
   ]);
 
   // Warn user before leaving with unsaved changes
@@ -432,7 +457,6 @@ export function ExpandedProxyRuleForm({
             </div>
           </div>
 
-
           {/* Proxy Type Selector */}
           <div className="space-y-2">
             <Label htmlFor="proxyType">Rule Type</Label>
@@ -500,8 +524,8 @@ export function ExpandedProxyRuleForm({
               Email not configured
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              Email form handler requires email to be configured in Settings &gt; Email.
-              Form submissions will fail until email is set up.
+              Email form handler requires email to be configured in Settings &gt; Email. Form
+              submissions will fail until email is set up.
             </p>
           </div>
         </div>
@@ -520,7 +544,9 @@ export function ExpandedProxyRuleForm({
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="targetUrl">{isInternalRewrite ? 'Target Path *' : 'Target URL *'}</Label>
+              <Label htmlFor="targetUrl">
+                {isInternalRewrite ? 'Target Path *' : 'Target URL *'}
+              </Label>
               <Input
                 id="targetUrl"
                 type={isInternalRewrite ? 'text' : 'url'}
@@ -643,11 +669,7 @@ export function ExpandedProxyRuleForm({
 
             <div className="border-t pt-4 mt-4">
               <div className="flex items-center gap-2">
-                <Switch
-                  id="requireAuth"
-                  checked={requireAuth}
-                  onCheckedChange={setRequireAuth}
-                />
+                <Switch id="requireAuth" checked={requireAuth} onCheckedChange={setRequireAuth} />
                 <Label htmlFor="requireAuth" className="cursor-pointer font-medium">
                   Require Authentication
                 </Label>
@@ -667,9 +689,7 @@ export function ExpandedProxyRuleForm({
           <CardHeader className="flex flex-row items-start justify-between space-y-0">
             <div>
               <CardTitle>Pipeline Configuration</CardTitle>
-              <CardDescription>
-                Define the steps that process incoming requests
-              </CardDescription>
+              <CardDescription>Define the steps that process incoming requests</CardDescription>
             </div>
             <div className="flex gap-2">
               <input
@@ -688,12 +708,7 @@ export function ExpandedProxyRuleForm({
                 <Upload className="h-4 w-4 mr-1" />
                 Import
               </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleExportPipeline}
-              >
+              <Button type="button" variant="outline" size="sm" onClick={handleExportPipeline}>
                 <Download className="h-4 w-4 mr-1" />
                 Export
               </Button>
@@ -847,7 +862,10 @@ export function ExpandedProxyRuleForm({
       {/* Submit buttons */}
       <div className="flex items-center justify-end gap-2 pt-4">
         {isDirty && (
-          <Badge variant="outline" className="text-yellow-600 border-yellow-500/50 bg-yellow-500/10">
+          <Badge
+            variant="outline"
+            className="text-yellow-600 border-yellow-500/50 bg-yellow-500/10"
+          >
             Unsaved changes
           </Badge>
         )}
@@ -878,8 +896,12 @@ function PipelineTestCard({ ruleId, pathPattern }: PipelineTestCardProps) {
   const [testProxyRule, { isLoading }] = useTestProxyRuleMutation();
 
   const [isExpanded, setIsExpanded] = useState(false);
-  const [inputJson, setInputJson] = useState('{\n  "email": "test@example.com",\n  "name": "Test User"\n}');
-  const [headers, setHeaders] = useState<HeaderEntry[]>([{ key: 'Content-Type', value: 'application/json' }]);
+  const [inputJson, setInputJson] = useState(
+    '{\n  "email": "test@example.com",\n  "name": "Test User"\n}',
+  );
+  const [headers, setHeaders] = useState<HeaderEntry[]>([
+    { key: 'Content-Type', value: 'application/json' },
+  ]);
   const [simulateAuth, setSimulateAuth] = useState(true);
   const [mockUserId, setMockUserId] = useState('');
   const [mockUserEmail, setMockUserEmail] = useState('');
@@ -956,10 +978,16 @@ function PipelineTestCard({ ruleId, pathPattern }: PipelineTestCardProps) {
         <CollapsibleTrigger asChild>
           <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
             <div className="flex items-center gap-2">
-              {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+              {isExpanded ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
               <Play className="h-4 w-4 text-blue-500" />
               <CardTitle className="text-base">Test Pipeline</CardTitle>
-              <Badge variant="outline" className="text-xs">Debug Mode</Badge>
+              <Badge variant="outline" className="text-xs">
+                Debug Mode
+              </Badge>
             </div>
             <CardDescription>
               Run the pipeline with test data and view step-by-step execution results
@@ -1064,12 +1092,7 @@ function PipelineTestCard({ ruleId, pathPattern }: PipelineTestCardProps) {
             </div>
 
             {/* Run Button */}
-            <Button
-              type="button"
-              onClick={runTest}
-              disabled={isLoading}
-              className="w-full"
-            >
+            <Button type="button" onClick={runTest} disabled={isLoading} className="w-full">
               {isLoading ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -1098,7 +1121,9 @@ function PipelineTestCard({ ruleId, pathPattern }: PipelineTestCardProps) {
             {result && (
               <div className="space-y-3">
                 {/* Quick Summary */}
-                <div className={`p-3 rounded-lg border ${result.success ? 'bg-green-500/10 border-green-500/30' : 'bg-destructive/10 border-destructive/30'}`}>
+                <div
+                  className={`p-3 rounded-lg border ${result.success ? 'bg-green-500/10 border-green-500/30' : 'bg-destructive/10 border-destructive/30'}`}
+                >
                   <div className="flex items-center gap-2">
                     {result.success ? (
                       <CheckCircle2 className="h-5 w-5 text-green-500" />
@@ -1118,9 +1143,7 @@ function PipelineTestCard({ ruleId, pathPattern }: PipelineTestCardProps) {
                 </div>
 
                 {/* Detailed Results */}
-                {result.debug && (
-                  <TestResultsVisualization result={result} />
-                )}
+                {result.debug && <TestResultsVisualization result={result} />}
               </div>
             )}
           </CardContent>
