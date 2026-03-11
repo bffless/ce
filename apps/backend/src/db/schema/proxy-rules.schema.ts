@@ -74,8 +74,8 @@ export type ProxyType = 'external_proxy' | 'internal_rewrite' | 'email_form_hand
 export interface PipelineStepConfig {
   /** Unique identifier for this step (frontend use) */
   id?: string;
-  /** Optional name for the step */
-  name?: string;
+  /** Name for the step (required - used to reference output in subsequent steps) */
+  name: string;
   /** Handler type for this step */
   handlerType: string;
   /** Handler-specific configuration */

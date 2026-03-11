@@ -60,6 +60,7 @@ describe('DeploymentsService', () => {
     requiredRole: 'authenticated',
     settings: {},
     defaultProxyRuleSetId: null,
+    aiProviders: null,
     createdBy: mockUserId,
     createdAt: new Date('2025-01-01'),
     updatedAt: new Date('2025-01-01'),

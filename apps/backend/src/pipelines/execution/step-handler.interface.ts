@@ -81,7 +81,10 @@ export interface DataQueryHandlerConfig extends BaseHandlerConfig {
   /**
    * Filter conditions on JSON data fields: { field: { op: "eq", value: "expression" } }
    */
-  filters?: Record<string, { op: 'eq' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte' | 'like'; value: string }>;
+  filters?: Record<
+    string,
+    { op: 'eq' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte' | 'like'; value: string }
+  >;
 
   /**
    * How to combine multiple filters: 'and' (all must match) or 'or' (any must match)
@@ -292,4 +295,80 @@ export interface FunctionHandlerConfig extends BaseHandlerConfig {
    * @default 5000
    */
   timeout?: number;
+}
+
+/**
+ * Configuration for chat_handler (AI-powered chat responses)
+ */
+export interface ChatHandlerConfig extends BaseHandlerConfig {
+  /**
+   * AI provider to use ('openai' | 'anthropic' | 'google')
+   * If not specified, uses the default configured provider.
+   */
+  provider?: 'openai' | 'anthropic' | 'google';
+
+  /**
+   * Model to use (e.g., 'gpt-4o', 'claude-sonnet-4-6')
+   * If not specified, uses the provider's default model.
+   */
+  model?: string;
+
+  /**
+   * Response mode:
+   * - 'stream': Returns Server-Sent Events (SSE) stream for real-time responses
+   * - 'message': Returns complete JSON response after generation
+   * @default 'message'
+   */
+  responseMode?: 'stream' | 'message';
+
+  /**
+   * System prompt for the AI assistant.
+   * Can be a static string or an expression (e.g., "$input.systemPrompt")
+   */
+  systemPrompt?: string;
+
+  /**
+   * Field in the input containing the user's message.
+   * @default 'message'
+   */
+  messageField?: string;
+
+  /**
+   * Field in the input containing conversation history.
+   * Expected format: Array of { role: 'user' | 'assistant', content: string }
+   * If not provided, starts a new conversation.
+   */
+  messagesField?: string;
+
+  /**
+   * Maximum number of history messages to include.
+   * Older messages are truncated from the beginning.
+   * @default 50
+   */
+  maxHistoryMessages?: number;
+
+  /**
+   * Maximum tokens to generate in the response.
+   * @default 4096
+   */
+  maxTokens?: number;
+
+  /**
+   * Temperature for response generation (0-2).
+   * Lower values are more deterministic, higher values more creative.
+   * @default 0.7
+   */
+  temperature?: number;
+
+  /**
+   * Schema ID for conversations table (for automatic updates).
+   * When provided, handler updates token counts after completion.
+   */
+  conversationsSchemaId?: string;
+
+  /**
+   * Schema ID for messages table (for automatic saving).
+   * When provided, handler saves both user message and AI response.
+   */
+  messagesSchemaId?: string;
 }

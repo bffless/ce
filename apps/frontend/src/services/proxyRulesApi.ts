@@ -31,7 +31,7 @@ export interface EmailHandlerConfig {
 // Pipeline step configuration
 export interface PipelineStepConfig {
   id: string;
-  name?: string;
+  name: string; // Required - used to reference step output in subsequent steps
   handlerType: HandlerType;
   config: Record<string, unknown>;
   isEnabled: boolean;

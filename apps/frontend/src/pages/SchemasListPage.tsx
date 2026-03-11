@@ -26,6 +26,8 @@ import { useProjectRole } from '@/hooks/useProjectRole';
 import { useToast } from '@/hooks/use-toast';
 import { SchemaCard } from '@/components/data/SchemaCard';
 import { GenerateStateModal } from '@/components/data/GenerateStateModal';
+import { GenerateSchemaTypeModal, SchemaType } from '@/components/data/GenerateSchemaTypeModal';
+import { GenerateChatModal } from '@/components/data/GenerateChatModal';
 
 /**
  * SchemasListPage - Content for the Data tab showing all schemas.
@@ -42,7 +44,17 @@ export function SchemasListPage() {
     name: string;
     recordCount: number;
   } | null>(null);
+  const [showGenerateTypeModal, setShowGenerateTypeModal] = useState(false);
   const [showGenerateStateModal, setShowGenerateStateModal] = useState(false);
+  const [showGenerateChatModal, setShowGenerateChatModal] = useState(false);
+
+  const handleSchemaTypeSelected = (type: SchemaType) => {
+    if (type === 'state') {
+      setShowGenerateStateModal(true);
+    } else if (type === 'chat') {
+      setShowGenerateChatModal(true);
+    }
+  };
 
   // Fetch project to get projectId
   const { data: project, isLoading: isLoadingProject } = useGetProjectQuery(
@@ -143,10 +155,10 @@ export function SchemasListPage() {
                 variant="outline"
                 size="sm"
                 className="gap-2"
-                onClick={() => setShowGenerateStateModal(true)}
+                onClick={() => setShowGenerateTypeModal(true)}
               >
                 <Zap className="h-4 w-4" />
-                Generate State Schema
+                Generate Schema
               </Button>
               <Button
                 size="sm"
@@ -253,11 +265,29 @@ export function SchemasListPage() {
         </AlertDialog>
       )}
 
+      {/* Schema Type Selection Modal */}
+      {canEdit && (
+        <GenerateSchemaTypeModal
+          open={showGenerateTypeModal}
+          onOpenChange={setShowGenerateTypeModal}
+          onSelectType={handleSchemaTypeSelected}
+        />
+      )}
+
       {/* Generate State Schema Modal */}
       {canEdit && project && (
         <GenerateStateModal
           open={showGenerateStateModal}
           onOpenChange={setShowGenerateStateModal}
+          projectId={project.id}
+        />
+      )}
+
+      {/* Generate Chat Schema Modal */}
+      {canEdit && project && (
+        <GenerateChatModal
+          open={showGenerateChatModal}
+          onOpenChange={setShowGenerateChatModal}
           projectId={project.id}
         />
       )}

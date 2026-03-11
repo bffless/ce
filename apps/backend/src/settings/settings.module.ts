@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { SettingsController } from './settings.controller';
 import { SettingsPublicController } from './settings-public.controller';
 import { PrimaryContentService } from './primary-content.service';
@@ -9,7 +9,7 @@ import { DomainsModule } from '../domains/domains.module';
 import { EmailModule } from '../email/email.module';
 
 @Module({
-  imports: [DomainsModule, EmailModule],
+  imports: [forwardRef(() => DomainsModule), EmailModule],
   controllers: [SettingsController, SettingsPublicController],
   providers: [
     PrimaryContentService,
