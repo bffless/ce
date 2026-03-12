@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.113](https://github.com/bffless/ce/compare/v0.0.112...v0.0.113) (2026-03-12)
+
+
+### Bug Fixes
+
+* save user message and conversation when using smart defaults ([d3f7488](https://github.com/bffless/ce/commit/d3f7488e4e13addff0f5c208feb90b2d72a05056))
+
 ## [0.0.112](https://github.com/bffless/ce/compare/v0.0.111...v0.0.112) (2026-03-12)
 
 
