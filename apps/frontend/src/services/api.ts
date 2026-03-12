@@ -197,6 +197,7 @@ export const api = createApi({
     'PipelineStep',
     'PipelineSchema',
     'PipelineData',
+    'ProjectAI',
   ],
   endpoints: () => ({}),
 });

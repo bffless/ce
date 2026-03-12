@@ -74,6 +74,22 @@ export interface GenerateStateSchemaResponse {
   pipelines: { id: string; path: string; method: string }[];
 }
 
+export interface GenerateChatSchemaDto {
+  projectId: string;
+  name: string;
+  scope: 'user' | 'guest';
+  provider?: string;
+  model?: string;
+  systemPrompt?: string;
+  ruleSetId?: string;
+}
+
+export interface GenerateChatSchemaResponse {
+  conversationsSchema: PipelineSchema;
+  messagesSchema: PipelineSchema;
+  pipelines: { id: string; path: string; method: string }[];
+}
+
 export interface FieldFilter {
   op: 'eq' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte' | 'like';
   value: string;
@@ -160,6 +176,20 @@ export const pipelineSchemasApi = api.injectEndpoints({
     generateStateSchema: builder.mutation<GenerateStateSchemaResponse, GenerateStateSchemaDto>({
       query: (data) => ({
         url: '/api/pipeline-schemas/generate-state',
+        method: 'POST',
+        body: data,
+      }),
+      invalidatesTags: (_result, _error, { projectId }) => [
+        { type: 'PipelineSchema' as const, id: `project-${projectId}` },
+        'PipelineSchema',
+        'Pipeline',
+        'ProxyRuleSet',
+      ],
+    }),
+
+    generateChatSchema: builder.mutation<GenerateChatSchemaResponse, GenerateChatSchemaDto>({
+      query: (data) => ({
+        url: '/api/pipeline-schemas/generate-chat',
         method: 'POST',
         body: data,
       }),
@@ -279,6 +309,7 @@ export const {
   useUpdateSchemaMutation,
   useDeleteSchemaMutation,
   useGenerateStateSchemaMutation,
+  useGenerateChatSchemaMutation,
   // Data
   useGetSchemaDataQuery,
   useGetRecordQuery,

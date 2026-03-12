@@ -40,6 +40,9 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.58",
+    "@ai-sdk/google": "^3.0.43",
+    "@ai-sdk/openai": "^3.0.41",
     "@aws-sdk/client-s3": "^3.478.0",
     "@aws-sdk/s3-request-presigner": "^3.478.0",
     "@azure/identity": "^4.13.0",
@@ -55,6 +58,7 @@
     "@nestjs/throttler": "^6.5.0",
     "@types/jsonwebtoken": "^9.0.10",
     "acme-client": "^5.4.0",
+    "ai": "^6.0.116",
     "bcrypt": "^5.1.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.0",

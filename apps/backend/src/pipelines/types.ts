@@ -50,7 +50,8 @@ export type HandlerType =
   | 'email_handler'
   | 'response_handler'
   | 'function_handler'
-  | 'aggregate_handler';
+  | 'aggregate_handler'
+  | 'ai_handler';
 
 /**
  * Pipeline step definition for execution.
@@ -59,7 +60,7 @@ export type HandlerType =
 export interface PipelineStep {
   id: string;
   pipelineId: string;
-  name: string | null;
+  name: string;
   handlerType: string; // HandlerType at runtime
   config: unknown; // Handler-specific config, cast as needed
   order: number;

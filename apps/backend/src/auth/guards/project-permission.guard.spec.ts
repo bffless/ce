@@ -31,6 +31,7 @@ describe('ProjectPermissionGuard', () => {
     requiredRole: 'authenticated',
     settings: {},
     defaultProxyRuleSetId: null,
+    aiProviders: null,
     createdBy: 'user-123',
     createdAt: new Date(),
     updatedAt: new Date(),

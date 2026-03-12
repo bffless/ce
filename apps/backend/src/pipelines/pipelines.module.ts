@@ -1,9 +1,10 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { PipelineSchemasController } from './pipeline-schemas.controller';
 import { PipelineDataController } from './pipeline-data.controller';
 import { PipelineSchemasService } from './pipeline-schemas.service';
 import { PipelineDataService } from './pipeline-data.service';
 import { StateSchemaGeneratorService } from './state-schema-generator.service';
+import { ChatSchemaGeneratorService } from './chat-schema-generator.service';
 import {
   PipelineExecutionService,
   StepHandlerRegistry,
@@ -11,6 +12,8 @@ import {
   ExpressionEvaluator,
 } from './execution';
 import { PermissionsModule } from '../permissions/permissions.module';
+import { SettingsModule } from '../settings/settings.module';
+import { ProjectsModule } from '../projects/projects.module';
 // Step handlers
 import {
   FormHandler,
@@ -22,6 +25,7 @@ import {
   EmailHandler,
   AggregateHandler,
   FunctionHandler,
+  AIHandler,
 } from './handlers';
 // Services
 import { FunctionRunnerService } from './function-runner.service';
@@ -29,7 +33,7 @@ import { FunctionRunnerService } from './function-runner.service';
 import { AuthRequiredValidator, RateLimitValidator } from './execution/validators';
 
 @Module({
-  imports: [PermissionsModule],
+  imports: [PermissionsModule, SettingsModule, forwardRef(() => ProjectsModule)],
   controllers: [
     PipelineSchemasController,
     PipelineDataController,
@@ -39,6 +43,7 @@ import { AuthRequiredValidator, RateLimitValidator } from './execution/validator
     PipelineSchemasService,
     PipelineDataService,
     StateSchemaGeneratorService,
+    ChatSchemaGeneratorService,
     // Execution engine
     PipelineExecutionService,
     StepHandlerRegistry,
@@ -56,6 +61,7 @@ import { AuthRequiredValidator, RateLimitValidator } from './execution/validator
     EmailHandler,
     AggregateHandler,
     FunctionHandler,
+    AIHandler,
     // Validators (auto-register on construction)
     AuthRequiredValidator,
     RateLimitValidator,

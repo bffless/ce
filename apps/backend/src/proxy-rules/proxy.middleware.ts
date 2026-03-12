@@ -602,7 +602,7 @@ export class ProxyMiddleware implements NestMiddleware {
       steps: pipelineConfig.steps.map((step, index) => ({
         id: step.id || `step-${index}`,
         pipelineId: rule.id,
-        name: step.name || null,
+        name: step.name || `step_${index + 1}`, // Fallback for legacy data without names
         handlerType: step.handlerType,
         config: step.config,
         order: index,

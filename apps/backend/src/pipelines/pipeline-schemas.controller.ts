@@ -20,6 +20,7 @@ import {
 } from '@nestjs/swagger';
 import { PipelineSchemasService } from './pipeline-schemas.service';
 import { StateSchemaGeneratorService } from './state-schema-generator.service';
+import { ChatSchemaGeneratorService } from './chat-schema-generator.service';
 import {
   CreatePipelineSchemaDto,
   UpdatePipelineSchemaDto,
@@ -28,6 +29,8 @@ import {
   SchemasListResponseDto,
   GenerateStateSchemaDto,
   GenerateStateSchemaResponseDto,
+  GenerateChatSchemaDto,
+  GenerateChatSchemaResponseDto,
 } from './dto';
 import { ApiKeyGuard } from '../auth/api-key.guard';
 import { CurrentUser, CurrentUserData } from '../auth/decorators/current-user.decorator';
@@ -45,6 +48,7 @@ export class PipelineSchemasController {
   constructor(
     private readonly schemasService: PipelineSchemasService,
     private readonly stateSchemaGenerator: StateSchemaGeneratorService,
+    private readonly chatSchemaGenerator: ChatSchemaGeneratorService,
   ) {}
 
   @Get('project/:projectId')
@@ -91,6 +95,32 @@ export class PipelineSchemasController {
     @CurrentUser() user: CurrentUserData,
   ): Promise<GenerateStateSchemaResponseDto> {
     return this.stateSchemaGenerator.generateStateSchema(
+      dto,
+      user.id,
+      user.role || 'user',
+    );
+  }
+
+  @Post('generate-chat')
+  @ApiOperation({
+    summary: 'Generate a chat schema with AI-powered pipelines',
+    description:
+      'Creates conversations and messages schemas with ' +
+      'automatic CRUD and AI chat pipelines for conversation management.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Chat schemas and pipelines created',
+    type: GenerateChatSchemaResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid input' })
+  @ApiResponse({ status: 403, description: 'Not authorized' })
+  @ApiResponse({ status: 409, description: 'Schema name already exists' })
+  async generateChatSchema(
+    @Body() dto: GenerateChatSchemaDto,
+    @CurrentUser() user: CurrentUserData,
+  ): Promise<GenerateChatSchemaResponseDto> {
+    return this.chatSchemaGenerator.generateChatSchema(
       dto,
       user.id,
       user.role || 'user',

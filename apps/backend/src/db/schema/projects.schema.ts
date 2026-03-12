@@ -41,6 +41,13 @@ export const projects = pgTable(
     settings: jsonb('settings'), // Extensible settings object
 
     /**
+     * AI Provider Configuration (supports multiple providers per project)
+     * Each provider is stored with its encrypted config in a JSON array
+     * Format: [{ provider: 'openai', config: '<encrypted>', isDefault: true }, ...]
+     */
+    aiProviders: text('ai_providers'),
+
+    /**
      * Default proxy rule set for this project.
      * Used as fallback when an alias doesn't have its own proxyRuleSetId.
      * NULL means no default proxy rules.

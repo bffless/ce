@@ -9,6 +9,7 @@ import { EmailHandlerConfig } from './EmailHandlerConfig';
 import { ResponseHandlerConfig } from './ResponseHandlerConfig';
 import { AggregateHandlerConfig } from './AggregateHandlerConfig';
 import { FunctionHandlerConfig } from './FunctionHandlerConfig';
+import { AIHandlerConfig } from './AIHandlerConfig';
 import { AvailableVariables, type PreviousStep } from './AvailableVariables';
 import type { HandlerConfig } from './types';
 
@@ -167,6 +168,18 @@ export function HandlerConfigWrapper({
         </>
       );
 
+    case 'ai_handler':
+      return (
+        <>
+          {renderVariablesPanel()}
+          <AIHandlerConfig
+            config={config}
+            onChange={handleChange}
+            projectId={projectId}
+          />
+        </>
+      );
+
     default:
       return (
         <div className="text-sm text-destructive p-4 bg-destructive/10 rounded-md">
@@ -191,6 +204,7 @@ export function getHandlerDisplayName(type: HandlerType): string {
     proxy_forward: 'Forward Request',
     function_handler: 'Custom Function',
     aggregate_handler: 'Aggregate Data',
+    ai_handler: 'AI',
   };
   return names[type] || type;
 }
@@ -210,6 +224,7 @@ export function getHandlerDescription(type: HandlerType): string {
     proxy_forward: 'Forward the request to another service',
     function_handler: 'Execute custom JavaScript code',
     aggregate_handler: 'Perform aggregation on array data',
+    ai_handler: 'Call an AI model for chat or text completion',
   };
   return descriptions[type] || '';
 }

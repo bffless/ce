@@ -7,3 +7,4 @@ export * from './data-delete.handler';
 export * from './email.handler';
 export * from './aggregate.handler';
 export * from './function.handler';
+export * from './ai.handler';

@@ -81,7 +81,10 @@ export interface DataQueryHandlerConfig extends BaseHandlerConfig {
   /**
    * Filter conditions on JSON data fields: { field: { op: "eq", value: "expression" } }
    */
-  filters?: Record<string, { op: 'eq' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte' | 'like'; value: string }>;
+  filters?: Record<
+    string,
+    { op: 'eq' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte' | 'like'; value: string }
+  >;
 
   /**
    * How to combine multiple filters: 'and' (all must match) or 'or' (any must match)
@@ -293,3 +296,99 @@ export interface FunctionHandlerConfig extends BaseHandlerConfig {
    */
   timeout?: number;
 }
+
+/**
+ * Configuration for ai_handler (AI-powered responses)
+ */
+export interface AIHandlerConfig extends BaseHandlerConfig {
+  /**
+   * Handler mode:
+   * - 'chat': For useChat integration. Reads messages from request body.
+   *           Client sends { messages: [...] }, handler streams response.
+   * - 'completion': One-off AI processing. Configure system prompt + message template.
+   *                 Useful for form processing, content generation, etc.
+   * @default 'completion'
+   */
+  mode?: 'chat' | 'completion';
+
+  /**
+   * AI provider to use ('openai' | 'anthropic' | 'google')
+   * If not specified, uses the default configured provider.
+   */
+  provider?: 'openai' | 'anthropic' | 'google';
+
+  /**
+   * Model to use (e.g., 'gpt-4o', 'claude-sonnet-4-6')
+   * If not specified, uses the provider's default model.
+   */
+  model?: string;
+
+  /**
+   * Response format:
+   * - 'stream': Returns Server-Sent Events (SSE) stream for real-time responses
+   * - 'message': Returns complete JSON response after generation
+   * @default 'stream' for chat mode, 'message' for completion mode
+   */
+  responseMode?: 'stream' | 'message';
+
+  /**
+   * System prompt for the AI assistant.
+   * Can be a static string or use template syntax (e.g., "Help user {{input.name}}")
+   * Configured server-side for security (not sent from client).
+   */
+  systemPrompt?: string;
+
+  /**
+   * [Completion mode only]
+   * The message to send to the AI. Can be:
+   * - Simple field name: "message" -> reads $input.message
+   * - Expression: "$steps.form.message"
+   * - Template: "Name: {{steps.form.name}}, Message: {{steps.form.message}}"
+   * @default 'message'
+   */
+  messageField?: string;
+
+  /**
+   * [Chat mode only]
+   * Field in the request body containing conversation history.
+   * Expected format: Array of { role: 'user' | 'assistant', content: string }
+   * For useChat integration, this is typically 'messages'.
+   * @default 'messages'
+   */
+  messagesField?: string;
+
+  /**
+   * Maximum number of history messages to include.
+   * Older messages are truncated from the beginning.
+   * @default 50
+   */
+  maxHistoryMessages?: number;
+
+  /**
+   * Maximum tokens to generate in the response.
+   * @default 4096
+   */
+  maxTokens?: number;
+
+  /**
+   * Temperature for response generation (0-2).
+   * Lower values are more deterministic, higher values more creative.
+   * @default 0.7
+   */
+  temperature?: number;
+
+  /**
+   * Schema ID for conversations table (for automatic updates).
+   * When provided, handler updates token counts after completion.
+   */
+  conversationsSchemaId?: string;
+
+  /**
+   * Schema ID for messages table (for automatic saving).
+   * When provided, handler saves both user message and AI response.
+   */
+  messagesSchemaId?: string;
+}
+
+// Backwards compatibility alias
+export type ChatHandlerConfig = AIHandlerConfig;

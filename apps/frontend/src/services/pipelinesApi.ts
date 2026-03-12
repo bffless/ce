@@ -31,7 +31,8 @@ export type HandlerType =
   | 'response_handler'
   | 'proxy_forward'
   | 'function_handler'
-  | 'aggregate_handler';
+  | 'aggregate_handler'
+  | 'ai_handler';
 
 export interface Pipeline {
   id: string;
@@ -50,7 +51,7 @@ export interface Pipeline {
 export interface PipelineStep {
   id: string;
   pipelineId: string;
-  name: string | null;
+  name: string; // Required - used to reference step output in subsequent steps
   handlerType: HandlerType;
   config: Record<string, unknown>;
   order: number;

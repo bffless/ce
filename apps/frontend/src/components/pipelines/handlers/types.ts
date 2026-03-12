@@ -2,6 +2,15 @@
  * Handler configuration types for pipeline steps
  */
 
+export type ModelTier = 'economy' | 'balanced' | 'premium';
+
+export interface ModelInfo {
+  id: string;
+  name: string;
+  tier: ModelTier;
+  description?: string;
+}
+
 export interface BaseHandlerConfig {
   condition?: string;
   timeout?: number;
@@ -107,6 +116,41 @@ export interface FunctionHandlerConfig extends BaseHandlerConfig {
   debug?: boolean;
 }
 
+export interface AIHandlerConfig extends BaseHandlerConfig {
+  /**
+   * Handler mode:
+   * - 'chat': For useChat integration. Client sends messages array.
+   * - 'completion': One-off AI processing with templated message.
+   * Default: 'completion'
+   */
+  mode?: 'chat' | 'completion';
+  /** AI provider to use ('openai' | 'anthropic' | 'google'). Uses default if not specified. */
+  provider?: 'openai' | 'anthropic' | 'google';
+  /** Model to use (e.g., 'gpt-4o', 'claude-sonnet-4-6'). Uses provider's default if not specified. */
+  model?: string;
+  /** Response mode: 'stream' for SSE, 'message' for JSON. Default based on mode. */
+  responseMode?: 'stream' | 'message';
+  /** System prompt for the AI assistant. Configured server-side for security. */
+  systemPrompt?: string;
+  /** [Completion mode] Message template. Supports {{steps.form.field}} syntax. Default: 'message' */
+  messageField?: string;
+  /** [Chat mode] Field in input containing conversation history. Default: 'messages' */
+  messagesField?: string;
+  /** Maximum number of history messages to include. Default: 50 */
+  maxHistoryMessages?: number;
+  /** Maximum tokens to generate. Default: 4096 */
+  maxTokens?: number;
+  /** Temperature for generation (0-2). Default: 0.7 */
+  temperature?: number;
+  /** Schema ID for conversations table (for automatic updates) */
+  conversationsSchemaId?: string;
+  /** Schema ID for messages table (for automatic saving) */
+  messagesSchemaId?: string;
+}
+
+// Backwards compatibility alias
+export type ChatHandlerConfig = AIHandlerConfig;
+
 export type HandlerConfig =
   | FormHandlerConfig
   | DataCreateHandlerConfig
@@ -117,4 +161,5 @@ export type HandlerConfig =
   | ResponseHandlerConfig
   | ProxyForwardConfig
   | AggregateHandlerConfig
-  | FunctionHandlerConfig;
+  | FunctionHandlerConfig
+  | AIHandlerConfig;
