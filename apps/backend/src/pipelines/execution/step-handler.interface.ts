@@ -341,8 +341,8 @@ export interface AIHandlerConfig extends BaseHandlerConfig {
   /**
    * [Completion mode only]
    * The message to send to the AI. Can be:
-   * - Simple field name: "message" -> reads $input.message
-   * - Expression: "$steps.form.message"
+   * - Simple field name: "message" -> reads request.body.message
+   * - Expression: "steps.form.message"
    * - Template: "Name: {{steps.form.name}}, Message: {{steps.form.message}}"
    * @default 'message'
    */

@@ -51,6 +51,8 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useGetProjectAIStatusQuery, ConfiguredProvider } from '@/services/projectsApi';
 import type { AIHandlerConfig as AIHandlerConfigType, ModelTier, ModelInfo } from './types';
+import type { PreviousStep } from './AvailableVariables';
+import { ExpressionInput } from './ExpressionInput';
 import { cn } from '@/lib/utils';
 
 // Lazy load Monaco Editor
@@ -80,9 +82,10 @@ interface AIHandlerConfigProps {
   config: Partial<AIHandlerConfigType>;
   onChange: (config: AIHandlerConfigType) => void;
   projectId: string;
+  previousSteps?: PreviousStep[];
 }
 
-export function AIHandlerConfig({ config, onChange, projectId }: AIHandlerConfigProps) {
+export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [] }: AIHandlerConfigProps) {
   const { data: aiStatus, isLoading: isLoadingAI } = useGetProjectAIStatusQuery(projectId);
 
   // Use ref to store onChange to avoid useEffect re-triggering on callback changes
@@ -102,7 +105,7 @@ export function AIHandlerConfig({ config, onChange, projectId }: AIHandlerConfig
   );
   const [systemPrompt, setSystemPrompt] = useState(config.systemPrompt || DEFAULT_SYSTEM_PROMPT);
   const [messageField, setMessageField] = useState(config.messageField || 'message');
-  const [messagesField, setMessagesField] = useState(config.messagesField || 'messages');
+  const [messagesField, setMessagesField] = useState(config.messagesField || 'request.body.messages');
   const [maxHistoryMessages, setMaxHistoryMessages] = useState(config.maxHistoryMessages ?? 50);
   const [maxTokens, setMaxTokens] = useState(config.maxTokens ?? 4096);
   const [temperature, setTemperature] = useState(config.temperature ?? 0.7);
@@ -446,15 +449,15 @@ export function AIHandlerConfig({ config, onChange, projectId }: AIHandlerConfig
                   </button>
                 </TooltipTrigger>
                 <TooltipContent className="max-w-xs">
-                  <p>Field in request body containing the conversation history. For useChat, this is typically <code>messages</code>.</p>
+                  <p>Expression for the messages array. For useChat, use <code>request.body.messages</code>.</p>
                 </TooltipContent>
               </Tooltip>
             </div>
-            <Input
-              id="messagesField"
+            <ExpressionInput
               value={messagesField}
-              onChange={(e) => setMessagesField(e.target.value)}
-              placeholder="messages"
+              onChange={setMessagesField}
+              placeholder="request.body.messages"
+              previousSteps={previousSteps}
             />
             <p className="text-xs text-muted-foreground">
               Expected format: Array of <code className="bg-muted px-1 rounded">{'{role, content}'}</code> objects from useChat

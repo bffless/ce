@@ -139,10 +139,14 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
     }
 
     if (mode === 'chat') {
-      // Chat mode: Read messages from request body
+      // Chat mode: Read messages from request body or expression
       const messagesField = config.messagesField || 'messages';
+      // Support full expressions (request.body.messages, steps.step1.data) or simple field names
+      const messagesExpression = messagesField.includes('.')
+        ? messagesField
+        : `request.body.${messagesField}`;
       const clientMessages = this.expressionEvaluator.evaluateExpression(
-        `$input.${messagesField}`,
+        messagesExpression,
         context,
         stepName,
       ) as Array<{ role: string; content: string }>;
@@ -175,20 +179,23 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
       let userMessage: string;
 
       if (messageFieldConfig.includes('{{')) {
+        // Template syntax: "Hello {{request.body.name}}"
         userMessage = this.expressionEvaluator.evaluateTemplate(
           messageFieldConfig,
           context,
           stepName,
         );
-      } else if (messageFieldConfig.startsWith('$')) {
+      } else if (messageFieldConfig.includes('.')) {
+        // Full expression: request.body.message, steps.form.data
         userMessage = this.expressionEvaluator.evaluateExpression(
           messageFieldConfig,
           context,
           stepName,
         ) as string;
       } else {
+        // Simple field name: "message" → request.body.message
         userMessage = this.expressionEvaluator.evaluateExpression(
-          `$input.${messageFieldConfig}`,
+          `request.body.${messageFieldConfig}`,
           context,
           stepName,
         ) as string;

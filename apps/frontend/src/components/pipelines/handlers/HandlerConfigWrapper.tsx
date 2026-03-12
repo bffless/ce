@@ -176,6 +176,7 @@ export function HandlerConfigWrapper({
             config={config}
             onChange={handleChange}
             projectId={projectId}
+            previousSteps={previousSteps}
           />
         </>
       );

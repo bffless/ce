@@ -25,7 +25,7 @@ import { useGetProjectRuleSetsQuery } from '@/services/proxyRulesApi';
 import { useGetProjectAIStatusQuery, ConfiguredProvider, ModelInfo } from '@/services/projectsApi';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertTriangle, Bot, Settings } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 
 // Lazy load Monaco Editor
 const Editor = lazy(() => import('@monaco-editor/react'));
@@ -51,6 +51,7 @@ export function GenerateChatModal({
   projectId,
   onSuccess,
 }: GenerateChatModalProps) {
+  const { owner, repo } = useParams<{ owner: string; repo: string }>();
   const { toast } = useToast();
   const [schemaName, setSchemaName] = useState('');
   const [scope, setScope] = useState<ChatScope>('user');
@@ -111,7 +112,7 @@ export function GenerateChatModal({
     if (!aiStatus?.hasAIConfigured) {
       toast({
         title: 'AI Not Configured',
-        description: 'Please configure an AI provider in Site Settings first',
+        description: 'Please configure an AI provider in Project Settings first',
         variant: 'destructive',
       });
       return;
@@ -190,8 +191,8 @@ export function GenerateChatModal({
           <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
             <AlertDescription className="flex items-center justify-between">
-              <span>AI provider not configured. Configure it in Site Settings first.</span>
-              <Link to="/admin/settings">
+              <span>AI provider not configured. Configure it in Project Settings first.</span>
+              <Link to={`/repo/${owner}/${repo}/settings?tab=ai`}>
                 <Button variant="outline" size="sm" className="ml-2">
                   <Settings className="h-4 w-4 mr-1" />
                   Settings
