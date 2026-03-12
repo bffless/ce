@@ -345,7 +345,7 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
     this.logger.debug(`Starting streaming response for step '${stepName}'`);
 
     // Save user message before streaming if persistence is enabled
-    if (config.persistMessages && config.persistMessagesSchemaId && config.userMessageFields) {
+    if (config.persistMessages && config.persistMessagesSchemaId) {
       try {
         await this.saveUserMessage(context, stepName, config, userContent);
       } catch (error) {
