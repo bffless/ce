@@ -273,7 +273,7 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
   }
 
   /**
-   * Execute in streaming mode - sends SSE events directly to response
+   * Execute in streaming mode - uses AI SDK's data stream protocol for useChat compatibility
    */
   private async executeStreaming(
     context: PipelineContext,
@@ -296,12 +296,6 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
       };
     }
 
-    // Set up SSE headers
-    response.setHeader('Content-Type', 'text/event-stream');
-    response.setHeader('Cache-Control', 'no-cache');
-    response.setHeader('Connection', 'keep-alive');
-    response.setHeader('X-Accel-Buffering', 'no');
-
     this.logger.debug(`Starting streaming response for step '${stepName}'`);
 
     const result = streamText({
@@ -311,57 +305,40 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
       temperature,
     });
 
-    let fullContent = '';
-    let totalTokens = 0;
+    // Use AI SDK's built-in UI message stream response for useChat compatibility
+    const streamResponse = result.toUIMessageStreamResponse();
 
-    try {
-      for await (const chunk of result.textStream) {
-        fullContent += chunk;
-        // Send SSE event
-        response.write(`data: ${JSON.stringify({ type: 'text', content: chunk })}\n\n`);
+    // Copy headers from the AI SDK response
+    streamResponse.headers.forEach((value, key) => {
+      response.setHeader(key, value);
+    });
+
+    // Pipe the stream body to the Express response
+    if (streamResponse.body) {
+      const reader = streamResponse.body.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          response.write(value);
+        }
+      } finally {
+        reader.releaseLock();
       }
-
-      // Get final usage info
-      const usage = await result.usage;
-      totalTokens = usage?.totalTokens || 0;
-
-      // Send completion event
-      response.write(
-        `data: ${JSON.stringify({
-          type: 'done',
-          content: fullContent,
-          usage: {
-            inputTokens: usage?.inputTokens || 0,
-            outputTokens: usage?.outputTokens || 0,
-            totalTokens,
-          },
-        })}\n\n`,
-      );
-
-      response.end();
-
-      this.logger.debug(`Streaming complete for step '${stepName}', ${totalTokens} tokens used`);
-
-      // Return result with terminates flag since we've already sent the response
-      return {
-        success: true,
-        output: {
-          content: fullContent,
-          role: 'assistant',
-          tokensUsed: totalTokens,
-          streamed: true,
-        },
-        terminates: true, // Pipeline should not continue, response already sent
-      };
-    } catch (error) {
-      // Send error event
-      response.write(
-        `data: ${JSON.stringify({ type: 'error', error: error.message })}\n\n`,
-      );
-      response.end();
-
-      throw error;
     }
+
+    response.end();
+
+    this.logger.debug(`Streaming complete for step '${stepName}'`);
+
+    // Return result with terminates flag since we've already sent the response
+    return {
+      success: true,
+      output: {
+        streamed: true,
+      },
+      terminates: true, // Pipeline should not continue, response already sent
+    };
   }
 
   /**

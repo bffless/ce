@@ -501,6 +501,16 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
               Stream (SSE)
             </Button>
           </div>
+          {mode === 'chat' && responseMode === 'stream' && (
+            <Alert className="mt-2 border-purple-500/30 bg-purple-500/5">
+              <MessageSquare className="h-4 w-4 text-purple-600" />
+              <AlertDescription className="text-xs">
+                <strong>This step becomes the terminal response.</strong> Chat streaming sends the response directly to the client
+                using the AI SDK protocol, compatible with <code className="bg-muted px-1 rounded">useChat</code>.
+                Ensure this is the last step in your pipeline.
+              </AlertDescription>
+            </Alert>
+          )}
         </div>
 
         {/* Advanced Options */}

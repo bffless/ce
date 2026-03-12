@@ -223,6 +223,20 @@ export function PipelineConfig({
     return lastStep.name || getHandlerDisplayName(lastStep.handlerType);
   }, [steps]);
 
+  // Check if there's an AI step in chat mode with streaming (auto-terminal)
+  const streamingAIStep = useMemo(() => {
+    return steps.find((s) => {
+      if (s.handlerType !== 'ai_handler') return false;
+      const config = s.config as Record<string, unknown>;
+      const mode = config?.mode || 'completion';
+      const responseMode = config?.responseMode || (mode === 'chat' ? 'stream' : 'message');
+      return mode === 'chat' && responseMode === 'stream';
+    });
+  }, [steps]);
+
+  // AI chat streaming steps are implicitly terminal
+  const hasImplicitTerminal = !!streamingAIStep;
+
   // Generate a unique step name based on handler type
   const generateStepName = (handlerType: HandlerType, existingSteps: PipelineStep[]) => {
     const baseName = getHandlerDisplayName(handlerType).toLowerCase().replace(/\s+/g, '_');
@@ -526,19 +540,26 @@ export function PipelineConfig({
             <Send className="h-4 w-4 text-muted-foreground" />
             <Label className="text-base">Terminal Step</Label>
           </div>
-          <Select
-            value={terminalStepType}
-            onValueChange={(v) => setTerminalType(v as TerminalStepType)}
-          >
-            <SelectTrigger className="w-[200px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">Default Response</SelectItem>
-              <SelectItem value="response">Custom HTTP Response</SelectItem>
-              <SelectItem value="proxy">Forward Request (Proxy)</SelectItem>
-            </SelectContent>
-          </Select>
+          {!hasImplicitTerminal && (
+            <Select
+              value={terminalStepType}
+              onValueChange={(v) => setTerminalType(v as TerminalStepType)}
+            >
+              <SelectTrigger className="w-[200px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Default Response</SelectItem>
+                <SelectItem value="response">Custom HTTP Response</SelectItem>
+                <SelectItem value="proxy">Forward Request (Proxy)</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+          {hasImplicitTerminal && (
+            <Badge variant="secondary" className="text-xs">
+              AI Chat (Streaming)
+            </Badge>
+          )}
         </div>
 
         {terminalStepType === 'response' && terminalStep && (
@@ -620,7 +641,7 @@ export function PipelineConfig({
           </Card>
         )}
 
-        {terminalStepType === 'none' && (
+        {terminalStepType === 'none' && !hasImplicitTerminal && (
           // Default Response Preview
           <Card className="bg-muted/30">
             <CardHeader className="py-3">
@@ -646,6 +667,37 @@ export function PipelineConfig({
               <p className="text-xs text-muted-foreground mt-2">
                 Select "Custom HTTP Response" to configure status codes, headers, and templates, or
                 "Forward Request" to proxy to another service.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {hasImplicitTerminal && streamingAIStep && (
+          // AI Chat Streaming - Implicit Terminal
+          <Card className="border-purple-500/20 bg-purple-500/5">
+            <CardHeader className="py-3">
+              <div className="flex items-center gap-2">
+                <Info className="h-4 w-4 text-purple-600" />
+                <CardTitle className="text-sm font-medium">AI Chat Streaming Response</CardTitle>
+              </div>
+              <CardDescription className="text-xs">
+                The "{streamingAIStep.name || 'ai'}" step streams directly to the client using the AI SDK protocol.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="bg-muted rounded-md p-3 font-mono text-xs">
+                <div className="text-muted-foreground">// Content-Type: text/event-stream</div>
+                <div className="text-muted-foreground">// x-vercel-ai-ui-message: v1</div>
+                <pre className="mt-2 text-foreground">
+{`// Streaming response compatible with useChat
+data: {"type":"text-delta","value":"Hello"}
+data: {"type":"text-delta","value":" world"}
+...`}
+                </pre>
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                Chat mode with streaming must be the last step in the pipeline. The response streams directly
+                to the client for real-time display.
               </p>
             </CardContent>
           </Card>
