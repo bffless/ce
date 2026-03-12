@@ -145,11 +145,16 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
       const messagesExpression = messagesField.includes('.')
         ? messagesField
         : `request.body.${messagesField}`;
+      // Support both old format (content) and new AI SDK v3 format (parts)
       const clientMessages = this.expressionEvaluator.evaluateExpression(
         messagesExpression,
         context,
         stepName,
-      ) as Array<{ role: string; content: string }>;
+      ) as Array<{
+        role: string;
+        content?: string;
+        parts?: Array<{ type: string; text?: string }>;
+      }>;
 
       if (!Array.isArray(clientMessages)) {
         return {
@@ -167,10 +172,28 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
 
       for (const msg of trimmedMessages) {
         if (msg.role === 'user' || msg.role === 'assistant') {
-          messages.push({
-            role: msg.role as 'user' | 'assistant',
-            content: String(msg.content),
-          });
+          // Support both old format (content) and new AI SDK v3 format (parts)
+          let content: string;
+          if (typeof msg.content === 'string') {
+            // Old format: { role, content: "text" }
+            content = msg.content;
+          } else if (Array.isArray((msg as any).parts)) {
+            // New AI SDK v3 format: { role, parts: [{type: "text", text: "..."}] }
+            content = ((msg as any).parts as Array<{ type: string; text?: string }>)
+              .filter((part) => part.type === 'text' && part.text)
+              .map((part) => part.text)
+              .join('');
+          } else {
+            // Fallback
+            content = String(msg.content || '');
+          }
+
+          if (content) {
+            messages.push({
+              role: msg.role as 'user' | 'assistant',
+              content,
+            });
+          }
         }
       }
     } else {
