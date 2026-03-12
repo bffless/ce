@@ -654,6 +654,12 @@ export class PublicController {
       );
       res.setHeader('Cache-Control', cacheControlHeader);
 
+      // For private content, add Vary: Cookie so caches differentiate by auth state
+      // This prevents cached private content from being served to unauthenticated users
+      if (!isPublic) {
+        res.setHeader('Vary', 'Cookie');
+      }
+
       // Add debug headers for cache rule matching
       res.setHeader('X-Cache-Path', filePath);
       res.setHeader('X-Cache-Project', projectId);
@@ -1106,7 +1112,14 @@ export class PublicController {
 </body>
 </html>`;
 
-    res.status(404).setHeader('Content-Type', 'text/html').send(html);
+    // Prevent caching of auth-dependent 404 responses by upstream proxies/CDN
+    // These responses vary based on authentication state, so must not be cached
+    res
+      .status(404)
+      .setHeader('Content-Type', 'text/html')
+      .setHeader('Cache-Control', 'private, no-store')
+      .setHeader('Vary', 'Cookie')
+      .send(html);
   }
 
   /**
@@ -1225,7 +1238,13 @@ export class PublicController {
 </body>
 </html>`;
 
-    res.status(403).setHeader('Content-Type', 'text/html').send(html);
+    // Prevent caching of auth-dependent 403 responses by upstream proxies/CDN
+    res
+      .status(403)
+      .setHeader('Content-Type', 'text/html')
+      .setHeader('Cache-Control', 'private, no-store')
+      .setHeader('Vary', 'Cookie')
+      .send(html);
   }
 
   /**
@@ -1403,13 +1422,25 @@ export class PublicController {
    * Serve a placeholder image for 404 responses
    */
   private serve404Image(res: Response): void {
-    res.status(404).setHeader('Content-Type', 'image/svg+xml').send(this.svg404);
+    // Prevent caching of auth-dependent 404 responses by upstream proxies/CDN
+    res
+      .status(404)
+      .setHeader('Content-Type', 'image/svg+xml')
+      .setHeader('Cache-Control', 'private, no-store')
+      .setHeader('Vary', 'Cookie')
+      .send(this.svg404);
   }
 
   /**
    * Serve a placeholder image for 403 responses
    */
   private serve403Image(res: Response): void {
-    res.status(403).setHeader('Content-Type', 'image/svg+xml').send(this.svg403);
+    // Prevent caching of auth-dependent 403 responses by upstream proxies/CDN
+    res
+      .status(403)
+      .setHeader('Content-Type', 'image/svg+xml')
+      .setHeader('Cache-Control', 'private, no-store')
+      .setHeader('Vary', 'Cookie')
+      .send(this.svg403);
   }
 }
