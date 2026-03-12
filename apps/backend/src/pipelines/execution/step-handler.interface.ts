@@ -386,8 +386,65 @@ export interface AIHandlerConfig extends BaseHandlerConfig {
   /**
    * Schema ID for messages table (for automatic saving).
    * When provided, handler saves both user message and AI response.
+   * @deprecated Use persistMessages + userMessageFields/aiResponseFields instead
    */
   messagesSchemaId?: string;
+
+  /**
+   * Enable automatic message persistence for chat mode with streaming.
+   * When enabled, both user messages and AI responses are saved to the specified schema.
+   * @default false
+   */
+  persistMessages?: boolean;
+
+  /**
+   * Schema ID for storing messages when persistMessages is enabled.
+   * Required when persistMessages is true.
+   * Should be a messages schema with fields: conversation_id, role, content, tokens_used
+   */
+  persistMessagesSchemaId?: string;
+
+  /**
+   * Schema ID for conversations when persistMessages is enabled.
+   * Optional - if provided, handler will create/update conversation records.
+   * Should be a conversations schema with fields: user_id, title, model, message_count, total_tokens
+   */
+  persistConversationsSchemaId?: string;
+
+  /**
+   * Expression for the conversation ID.
+   * Used to link messages to a conversation.
+   * For useChat, the conversation ID is sent as 'id' in the request body.
+   * @default 'request.body.id'
+   */
+  conversationIdField?: string;
+
+  /**
+   * [Advanced] Custom field mappings for the user message record.
+   * If not provided, uses smart defaults for standard _messages schema:
+   *   conversation_id = conversationIdField
+   *   role = "user"
+   *   content = __userContent
+   *
+   * Special variables available:
+   * - __userContent: The user's message content (extracted from messages array)
+   */
+  userMessageFields?: Record<string, string>;
+
+  /**
+   * [Advanced] Custom field mappings for the AI response record.
+   * If not provided, uses smart defaults for standard _messages schema:
+   *   conversation_id = conversationIdField
+   *   role = "assistant"
+   *   content = __aiContent
+   *   tokens_used = __tokensUsed
+   *
+   * Special variables available:
+   * - __aiContent: The AI's complete response text
+   * - __tokensUsed: Total tokens used (input + output)
+   * - __finishReason: Why generation stopped ('stop', 'length', etc.)
+   */
+  aiResponseFields?: Record<string, string>;
 }
 
 // Backwards compatibility alias

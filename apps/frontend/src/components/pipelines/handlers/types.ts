@@ -144,8 +144,30 @@ export interface AIHandlerConfig extends BaseHandlerConfig {
   temperature?: number;
   /** Schema ID for conversations table (for automatic updates) */
   conversationsSchemaId?: string;
-  /** Schema ID for messages table (for automatic saving) */
+  /** Schema ID for messages table (for automatic saving) @deprecated Use persistMessages instead */
   messagesSchemaId?: string;
+  /** Enable automatic message persistence for chat mode with streaming. Default: false */
+  persistMessages?: boolean;
+  /** Schema ID for storing messages when persistMessages is enabled */
+  persistMessagesSchemaId?: string;
+  /** Schema ID for conversations - if provided, handler will create/update conversation records */
+  persistConversationsSchemaId?: string;
+  /**
+   * Expression for the conversation ID. Default: 'request.body.id' (useChat sends id in request)
+   */
+  conversationIdField?: string;
+  /**
+   * [Advanced] Custom field mappings for the user message record.
+   * If not provided, uses smart defaults for standard _messages schema.
+   * Special variables: __userContent, __conversationId
+   */
+  userMessageFields?: Record<string, string>;
+  /**
+   * [Advanced] Custom field mappings for the AI response record.
+   * If not provided, uses smart defaults for standard _messages schema.
+   * Special variables: __aiContent, __tokensUsed, __finishReason, __conversationId
+   */
+  aiResponseFields?: Record<string, string>;
 }
 
 // Backwards compatibility alias

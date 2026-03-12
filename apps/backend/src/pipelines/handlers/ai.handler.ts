@@ -6,7 +6,9 @@ import { ExpressionEvaluator } from '../execution/expression-evaluator';
 import { PipelineContext, StepResult } from '../execution/pipeline-context.interface';
 import { PipelineStep } from '../types';
 import { ProjectAISettingsService, AIProviderType } from '../../projects/project-ai-settings.service';
-import { ConfigurationError } from '../errors';
+import { PipelineDataService } from '../pipeline-data.service';
+import { PipelineSchemasService } from '../pipeline-schemas.service';
+import { ConfigurationError, SchemaNotFoundError } from '../errors';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
@@ -36,6 +38,8 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
     private readonly registry: StepHandlerRegistry,
     private readonly expressionEvaluator: ExpressionEvaluator,
     private readonly projectAISettingsService: ProjectAISettingsService,
+    private readonly dataService: PipelineDataService,
+    private readonly schemasService: PipelineSchemasService,
   ) {
     this.registry.register(this);
   }
@@ -81,6 +85,17 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
         `Invalid provider: ${config.provider}. Must be 'openai', 'anthropic', or 'google'.`,
         'ai_handler',
       );
+    }
+
+    // Validate persistence config
+    if (config.persistMessages) {
+      if (!config.persistMessagesSchemaId) {
+        throw new ConfigurationError(
+          'persistMessagesSchemaId is required when persistMessages is enabled',
+          'ai_handler',
+        );
+      }
+      // userMessageFields and aiResponseFields are optional - we use smart defaults
     }
   }
 
@@ -259,15 +274,21 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
     const maxTokens = config.maxTokens ?? 4096;
     const temperature = config.temperature ?? 0.7;
 
+    // Extract the last user message content for persistence
+    const lastUserMessage = [...messages].reverse().find(m => m.role === 'user');
+    const userContent = lastUserMessage?.content || '';
+
     try {
       if (responseMode === 'stream') {
         return await this.executeStreaming(
           context,
           stepName,
+          config,
           model,
           messages,
           maxTokens,
           temperature,
+          userContent as string,
         );
       } else {
         return await this.executeMessage(
@@ -301,10 +322,12 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
   private async executeStreaming(
     context: PipelineContext,
     stepName: string,
+    config: AIHandlerConfig,
     model: LanguageModel,
     messages: ModelMessage[],
     maxTokens: number,
     temperature: number,
+    userContent: string,
   ): Promise<StepResult> {
     const response = context.request.res as Response;
 
@@ -321,11 +344,32 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
 
     this.logger.debug(`Starting streaming response for step '${stepName}'`);
 
+    // Save user message before streaming if persistence is enabled
+    if (config.persistMessages && config.persistMessagesSchemaId && config.userMessageFields) {
+      try {
+        await this.saveUserMessage(context, stepName, config, userContent);
+      } catch (error) {
+        this.logger.error(`Failed to save user message: ${error.message}`, error.stack);
+        // Continue with AI response - don't block on persistence errors
+      }
+    }
+
     const result = streamText({
       model,
       messages,
       maxOutputTokens: maxTokens,
       temperature,
+      onFinish: async ({ text, usage, finishReason }) => {
+        // Save AI response after streaming completes if persistence is enabled
+        if (config.persistMessages && config.persistMessagesSchemaId) {
+          try {
+            await this.saveAIResponse(context, stepName, config, text, usage, finishReason);
+          } catch (error) {
+            this.logger.error(`Failed to save AI response: ${error.message}`, error.stack);
+            // Don't throw - response has already been sent to client
+          }
+        }
+      },
     });
 
     // Use AI SDK's built-in UI message stream response for useChat compatibility
@@ -433,5 +477,271 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
       default:
         return null;
     }
+  }
+
+  /**
+   * Save user message to the specified schema and ensure conversation exists
+   */
+  private async saveUserMessage(
+    context: PipelineContext,
+    stepName: string,
+    config: AIHandlerConfig,
+    userContent: string,
+  ): Promise<void> {
+    if (!config.persistMessagesSchemaId) {
+      return;
+    }
+
+    // Verify messages schema exists and belongs to project
+    const messagesSchema = await this.schemasService.getById(config.persistMessagesSchemaId);
+    if (!messagesSchema) {
+      throw new SchemaNotFoundError(config.persistMessagesSchemaId, stepName);
+    }
+
+    if (messagesSchema.projectId !== context.projectId) {
+      throw new ConfigurationError(
+        `Schema '${config.persistMessagesSchemaId}' does not belong to this project`,
+        stepName,
+      );
+    }
+
+    // Get chat ID (useChat sends it as 'id' in the request body)
+    const conversationIdField = config.conversationIdField || 'request.body.id';
+    const chatId = this.expressionEvaluator.evaluateExpression(
+      conversationIdField,
+      context,
+      stepName,
+    ) as string;
+
+    // If conversations schema is configured, ensure conversation exists
+    if (config.persistConversationsSchemaId) {
+      await this.ensureConversationExists(context, stepName, config, chatId);
+    }
+
+    // Save user message
+    let data: Record<string, unknown>;
+
+    if (config.userMessageFields && Object.keys(config.userMessageFields).length > 0) {
+      data = this.evaluateFieldMappings(
+        config.userMessageFields,
+        context,
+        stepName,
+        { __userContent: userContent, __conversationId: chatId },
+      );
+    } else {
+      data = {
+        conversation_id: chatId,
+        role: 'user',
+        content: userContent,
+      };
+    }
+
+    await this.dataService.create(
+      config.persistMessagesSchemaId,
+      context.projectId,
+      data,
+      context.user?.id,
+    );
+
+    // Update conversation message count
+    if (config.persistConversationsSchemaId) {
+      await this.updateConversationCounts(context, config, chatId, 1, 0);
+    }
+
+    this.logger.debug(`Saved user message to schema ${config.persistMessagesSchemaId}`);
+  }
+
+  /**
+   * Save AI response to the specified schema
+   */
+  private async saveAIResponse(
+    context: PipelineContext,
+    stepName: string,
+    config: AIHandlerConfig,
+    aiContent: string,
+    usage: { totalTokens?: number } | undefined,
+    finishReason: string,
+  ): Promise<void> {
+    if (!config.persistMessagesSchemaId) {
+      return;
+    }
+
+    const conversationIdField = config.conversationIdField || 'request.body.id';
+    const chatId = this.expressionEvaluator.evaluateExpression(
+      conversationIdField,
+      context,
+      stepName,
+    ) as string;
+
+    const tokensUsed = usage?.totalTokens || 0;
+
+    // Save AI message
+    let data: Record<string, unknown>;
+
+    if (config.aiResponseFields && Object.keys(config.aiResponseFields).length > 0) {
+      data = this.evaluateFieldMappings(
+        config.aiResponseFields,
+        context,
+        stepName,
+        {
+          __aiContent: aiContent,
+          __tokensUsed: tokensUsed,
+          __finishReason: finishReason,
+          __conversationId: chatId,
+        },
+      );
+    } else {
+      data = {
+        conversation_id: chatId,
+        role: 'assistant',
+        content: aiContent,
+        tokens_used: tokensUsed,
+      };
+    }
+
+    await this.dataService.create(
+      config.persistMessagesSchemaId,
+      context.projectId,
+      data,
+      context.user?.id,
+    );
+
+    // Update conversation message count and tokens
+    if (config.persistConversationsSchemaId) {
+      await this.updateConversationCounts(context, config, chatId, 1, tokensUsed);
+    }
+
+    this.logger.debug(`Saved AI response to schema ${config.persistMessagesSchemaId}`);
+  }
+
+  /**
+   * Ensure a conversation record exists for the given chat ID
+   */
+  private async ensureConversationExists(
+    context: PipelineContext,
+    stepName: string,
+    config: AIHandlerConfig,
+    chatId: string,
+  ): Promise<void> {
+    if (!config.persistConversationsSchemaId) {
+      return;
+    }
+
+    // Query for existing conversation by chat_id
+    const result = await this.dataService.getBySchemaId(
+      config.persistConversationsSchemaId,
+      1, // page
+      1, // pageSize - we just need to know if it exists
+      context.user?.id || 'system',
+      'admin', // Use admin to bypass permission checks since this is internal
+      {
+        filters: {
+          chat_id: { op: 'eq', value: chatId },
+        },
+      },
+    );
+
+    if (result.total === 0) {
+      // Create new conversation
+      const conversationData: Record<string, unknown> = {
+        chat_id: chatId,
+        user_id: context.user?.id || null,
+        model: config.model || 'unknown',
+        message_count: 0,
+        total_tokens: 0,
+      };
+
+      await this.dataService.create(
+        config.persistConversationsSchemaId,
+        context.projectId,
+        conversationData,
+        context.user?.id,
+      );
+
+      this.logger.debug(`Created conversation ${chatId} in schema ${config.persistConversationsSchemaId}`);
+    }
+  }
+
+  /**
+   * Update conversation message count and token usage
+   */
+  private async updateConversationCounts(
+    context: PipelineContext,
+    config: AIHandlerConfig,
+    chatId: string,
+    messageIncrement: number,
+    tokensIncrement: number,
+  ): Promise<void> {
+    if (!config.persistConversationsSchemaId) {
+      return;
+    }
+
+    try {
+      // Find the conversation record
+      const result = await this.dataService.getBySchemaId(
+        config.persistConversationsSchemaId,
+        1,
+        1,
+        context.user?.id || 'system',
+        'admin',
+        {
+          filters: {
+            chat_id: { op: 'eq', value: chatId },
+          },
+        },
+      );
+
+      if (result.records.length > 0) {
+        const conversation = result.records[0];
+        const currentData = conversation.data as Record<string, unknown>;
+        const newMessageCount = ((currentData.message_count as number) || 0) + messageIncrement;
+        const newTotalTokens = ((currentData.total_tokens as number) || 0) + tokensIncrement;
+
+        // Update using the update method
+        await this.dataService.update(
+          conversation.id,
+          {
+            ...currentData,
+            message_count: newMessageCount,
+            total_tokens: newTotalTokens,
+          },
+          context.user?.id || 'system',
+          'admin',
+        );
+
+        this.logger.debug(`Updated conversation ${chatId}: messages=${newMessageCount}, tokens=${newTotalTokens}`);
+      }
+    } catch (error) {
+      // Log but don't fail - conversation updates are not critical
+      this.logger.warn(`Failed to update conversation counts: ${error.message}`);
+    }
+  }
+
+  /**
+   * Evaluate field mappings with support for special variables
+   */
+  private evaluateFieldMappings(
+    fields: Record<string, string>,
+    context: PipelineContext,
+    stepName: string,
+    specialVars: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const data: Record<string, unknown> = {};
+
+    for (const [fieldName, expression] of Object.entries(fields)) {
+      // Check if expression is a special variable
+      if (expression.startsWith('__') && expression in specialVars) {
+        data[fieldName] = specialVars[expression];
+      } else {
+        // Evaluate as a regular expression
+        data[fieldName] = this.expressionEvaluator.evaluateExpression(
+          expression,
+          context,
+          stepName,
+        );
+      }
+    }
+
+    return data;
   }
 }

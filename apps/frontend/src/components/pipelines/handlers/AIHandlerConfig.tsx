@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import {
   Select,
   SelectContent,
@@ -41,6 +42,7 @@ import {
   AlertTriangle,
   MessageSquare,
   FileText,
+  Database,
 } from 'lucide-react';
 import {
   Tooltip,
@@ -53,6 +55,7 @@ import { useGetProjectAIStatusQuery, ConfiguredProvider } from '@/services/proje
 import type { AIHandlerConfig as AIHandlerConfigType, ModelTier, ModelInfo } from './types';
 import type { PreviousStep } from './AvailableVariables';
 import { ExpressionInput } from './ExpressionInput';
+import { SchemaPicker } from './SchemaPicker';
 import { cn } from '@/lib/utils';
 
 // Lazy load Monaco Editor
@@ -112,6 +115,13 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [modelSelectorOpen, setModelSelectorOpen] = useState(false);
 
+  // Message persistence state (simplified - uses smart defaults)
+  const [persistMessages, setPersistMessages] = useState(config.persistMessages ?? false);
+  const [persistMessagesSchemaId, setPersistMessagesSchemaId] = useState(config.persistMessagesSchemaId || '');
+  const [persistConversationsSchemaId, setPersistConversationsSchemaId] = useState(config.persistConversationsSchemaId || '');
+  const [conversationIdField, setConversationIdField] = useState(config.conversationIdField || 'request.body.id');
+  const [showPersistence, setShowPersistence] = useState(config.persistMessages ?? false);
+
   // Initialize provider/model from AI status
   useEffect(() => {
     if (defaultProvider && !provider) {
@@ -152,6 +162,7 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
 
   // Update parent when values change
   useEffect(() => {
+    const shouldPersist = persistMessages && mode === 'chat' && responseMode === 'stream';
     onChangeRef.current({
       mode,
       provider: provider as 'openai' | 'anthropic' | 'google' | undefined,
@@ -163,8 +174,13 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
       maxHistoryMessages,
       maxTokens,
       temperature,
+      // Message persistence (simplified - backend uses smart defaults)
+      persistMessages: shouldPersist ? true : undefined,
+      persistMessagesSchemaId: shouldPersist && persistMessagesSchemaId ? persistMessagesSchemaId : undefined,
+      persistConversationsSchemaId: shouldPersist && persistConversationsSchemaId ? persistConversationsSchemaId : undefined,
+      conversationIdField: shouldPersist && conversationIdField !== 'request.body.id' ? conversationIdField : undefined,
     });
-  }, [mode, provider, model, responseMode, systemPrompt, messageField, messagesField, maxHistoryMessages, maxTokens, temperature]);
+  }, [mode, provider, model, responseMode, systemPrompt, messageField, messagesField, maxHistoryMessages, maxTokens, temperature, persistMessages, persistMessagesSchemaId, persistConversationsSchemaId, conversationIdField]);
 
   // Find selected model info
   const selectedModelInfo = suggestedModels.find(m => m.id === model);
@@ -512,6 +528,143 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
             </Alert>
           )}
         </div>
+
+        {/* Message Persistence (Chat + Stream mode only) */}
+        {mode === 'chat' && responseMode === 'stream' && (
+          <Collapsible open={showPersistence} onOpenChange={setShowPersistence}>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="w-full justify-between">
+                <span className="flex items-center gap-2">
+                  <Database className="h-4 w-4" />
+                  Message Persistence
+                  {persistMessages && <Badge variant="secondary" className="text-xs">Enabled</Badge>}
+                </span>
+                <ChevronDown className={cn('h-4 w-4 transition-transform', showPersistence && 'rotate-180')} />
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="space-y-4 pt-4">
+              {/* Enable Persistence Toggle */}
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="persist-messages">Save messages to schema</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Automatically save user messages and AI responses
+                  </p>
+                </div>
+                <Switch
+                  id="persist-messages"
+                  checked={persistMessages}
+                  onCheckedChange={setPersistMessages}
+                />
+              </div>
+
+              {persistMessages && (
+                <>
+                  {/* Conversations Schema */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Label>Conversations Schema</Label>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button type="button" className="cursor-help">
+                            <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          <p>Select a <code>_conversations</code> schema. Conversations are auto-created on first message.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                    <SchemaPicker
+                      projectId={projectId}
+                      value={persistConversationsSchemaId}
+                      onChange={setPersistConversationsSchemaId}
+                    />
+                  </div>
+
+                  {/* Messages Schema */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Label>Messages Schema</Label>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button type="button" className="cursor-help">
+                            <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          <p>Select a <code>_messages</code> schema for storing chat messages.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                    <SchemaPicker
+                      projectId={projectId}
+                      value={persistMessagesSchemaId}
+                      onChange={setPersistMessagesSchemaId}
+                    />
+                  </div>
+
+                  {/* Conversation ID Field */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Label>Conversation ID Field</Label>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button type="button" className="cursor-help">
+                            <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          <p>useChat sends conversation ID as <code>id</code> in the request body.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                    <ExpressionInput
+                      value={conversationIdField}
+                      onChange={setConversationIdField}
+                      placeholder="request.body.id"
+                      previousSteps={previousSteps}
+                    />
+                  </div>
+
+                  {/* Info about auto-behavior and required fields */}
+                  <Alert className="border-blue-500/30 bg-blue-500/5">
+                    <Database className="h-4 w-4 text-blue-600" />
+                    <AlertDescription className="text-xs space-y-2">
+                      <p><strong>Auto-managed:</strong> Conversations are created on first message. Messages are saved automatically and conversation counters are updated.</p>
+                      <div className="mt-2 space-y-1.5">
+                        <p className="font-medium">Required schema fields:</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <p className="font-medium text-blue-700">Conversations:</p>
+                            <ul className="list-disc list-inside text-muted-foreground">
+                              <li><code className="bg-muted px-1 rounded">chat_id</code> (string)</li>
+                              <li><code className="bg-muted px-1 rounded">model</code> (string)</li>
+                              <li><code className="bg-muted px-1 rounded">message_count</code> (number)</li>
+                              <li><code className="bg-muted px-1 rounded">total_tokens</code> (number)</li>
+                            </ul>
+                          </div>
+                          <div>
+                            <p className="font-medium text-blue-700">Messages:</p>
+                            <ul className="list-disc list-inside text-muted-foreground">
+                              <li><code className="bg-muted px-1 rounded">conversation_id</code> (string)</li>
+                              <li><code className="bg-muted px-1 rounded">role</code> (string)</li>
+                              <li><code className="bg-muted px-1 rounded">content</code> (text)</li>
+                              <li><code className="bg-muted px-1 rounded">tokens_used</code> (number)</li>
+                            </ul>
+                          </div>
+                        </div>
+                        <p className="text-muted-foreground pt-1">
+                          Tip: Use <strong>Create Chat Schema</strong> in Data Schemas to auto-generate compatible schemas.
+                        </p>
+                      </div>
+                    </AlertDescription>
+                  </Alert>
+                </>
+              )}
+            </CollapsibleContent>
+          </Collapsible>
+        )}
 
         {/* Advanced Options */}
         <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
