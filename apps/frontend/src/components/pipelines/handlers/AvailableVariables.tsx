@@ -165,6 +165,8 @@ function getStepOutputDescription(handlerType: string, config?: Record<string, u
     function_handler: 'Custom return value from handler()',
     aggregate_handler: 'Aggregation result',
     response_handler: 'Response config (usually last step)',
+    ai_handler: 'AI response with content and usage stats',
+    chat_handler: 'AI response with content and usage stats',
   };
   return descriptions[handlerType] || 'Step output data';
 }
@@ -233,6 +235,16 @@ function getStepOutputExamples(
     ],
     aggregate_handler: [
       fmt(`${stepPath}.result`),
+    ],
+    ai_handler: [
+      fmt(`${stepPath}.content`),
+      fmt(`${stepPath}.tokensUsed`),
+      fmt(`${stepPath}.usage.inputTokens`),
+    ],
+    chat_handler: [
+      fmt(`${stepPath}.content`),
+      fmt(`${stepPath}.tokensUsed`),
+      fmt(`${stepPath}.usage.inputTokens`),
     ],
   };
 

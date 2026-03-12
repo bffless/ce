@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
+import { useState, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -85,6 +85,12 @@ interface AIHandlerConfigProps {
 export function AIHandlerConfig({ config, onChange, projectId }: AIHandlerConfigProps) {
   const { data: aiStatus, isLoading: isLoadingAI } = useGetProjectAIStatusQuery(projectId);
 
+  // Use ref to store onChange to avoid useEffect re-triggering on callback changes
+  const onChangeRef = useRef(onChange);
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
   // Find default provider from configured providers
   const defaultProvider = aiStatus?.providers?.find((p: ConfiguredProvider) => p.isDefault) || aiStatus?.providers?.[0];
 
@@ -143,7 +149,7 @@ export function AIHandlerConfig({ config, onChange, projectId }: AIHandlerConfig
 
   // Update parent when values change
   useEffect(() => {
-    onChange({
+    onChangeRef.current({
       mode,
       provider: provider as 'openai' | 'anthropic' | 'google' | undefined,
       model: model || undefined,
@@ -155,7 +161,7 @@ export function AIHandlerConfig({ config, onChange, projectId }: AIHandlerConfig
       maxTokens,
       temperature,
     });
-  }, [mode, provider, model, responseMode, systemPrompt, messageField, messagesField, maxHistoryMessages, maxTokens, temperature, onChange]);
+  }, [mode, provider, model, responseMode, systemPrompt, messageField, messagesField, maxHistoryMessages, maxTokens, temperature]);
 
   // Find selected model info
   const selectedModelInfo = suggestedModels.find(m => m.id === model);
