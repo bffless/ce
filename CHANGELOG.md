@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.109](https://github.com/bffless/ce/compare/v0.0.108...v0.0.109) (2026-03-12)
+
+
+### Features
+
+* adds duplicate proxy ruleset ([a73719e](https://github.com/bffless/ce/commit/a73719e889251abce586d31894fd507d0bf13d18))
+
+
+### Bug Fixes
+
+* chat ([05d4f2f](https://github.com/bffless/ce/commit/05d4f2f6f622f88bd686e8c270c2aa31b4c626e7))
+* textarea changes ([f75203a](https://github.com/bffless/ce/commit/f75203ab3b05ab455c2190613f4a9c2ed9865523))
+
 ## [0.0.108](https://github.com/bffless/ce/compare/v0.0.107...v0.0.108) (2026-03-12)
 
 
