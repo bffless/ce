@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.108](https://github.com/bffless/ce/compare/v0.0.107...v0.0.108) (2026-03-12)
+
+
+### Features
+
+* add AI chat handler for pipelines with project-level AI settings ([a402db9](https://github.com/bffless/ce/commit/a402db989e1c6c248a7227550f2a06f55410fdce))
+* AI handler for pipelines with project-level provider settings ([5dd67fc](https://github.com/bffless/ce/commit/5dd67fc946c8623dfbdf31bceb2ecc2e1b31ca39))
+* rename chat_handler to ai_handler with mode toggle ([b4c764f](https://github.com/bffless/ce/commit/b4c764f2d00c57b986dbf496eea2e4bda1ca5e7d))
+
 ## [0.0.107](https://github.com/bffless/ce/compare/v0.0.106...v0.0.107) (2026-03-10)
 
 
