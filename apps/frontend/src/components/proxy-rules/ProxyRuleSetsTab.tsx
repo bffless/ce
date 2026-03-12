@@ -19,8 +19,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Plus, MoreHorizontal, Edit2, Trash2, Settings, Layers } from 'lucide-react';
-import { useGetProjectRuleSetsQuery, useDeleteRuleSetMutation } from '@/services/proxyRulesApi';
+import { Plus, MoreHorizontal, Edit2, Trash2, Settings, Layers, CopyPlus } from 'lucide-react';
+import {
+  useGetProjectRuleSetsQuery,
+  useDeleteRuleSetMutation,
+  useCopyRuleSetMutation,
+} from '@/services/proxyRulesApi';
 import { useGetProjectQuery } from '@/services/projectsApi';
 import { useProjectRole } from '@/hooks/useProjectRole';
 import { useToast } from '@/hooks/use-toast';
@@ -63,6 +67,27 @@ export function ProxyRuleSetsTab({ owner, repo }: ProxyRuleSetsTabProps) {
 
   // Delete mutation
   const [deleteRuleSet, { isLoading: isDeleting }] = useDeleteRuleSetMutation();
+
+  // Copy mutation
+  const [copyRuleSet, { isLoading: isCopying }] = useCopyRuleSetMutation();
+
+  const handleCopy = async (ruleSetId: string) => {
+    try {
+      const copiedRuleSet = await copyRuleSet(ruleSetId).unwrap();
+      toast({
+        title: 'Rule set copied',
+        description: `Created "${copiedRuleSet.name}" with ${copiedRuleSet.rules.length} rule${copiedRuleSet.rules.length !== 1 ? 's' : ''}.`,
+      });
+    } catch (err: unknown) {
+      const errorMessage =
+        (err as { data?: { message?: string } })?.data?.message || 'Failed to copy rule set';
+      toast({
+        title: 'Error',
+        description: errorMessage,
+        variant: 'destructive',
+      });
+    }
+  };
 
   const handleDelete = async () => {
     if (!deletingRuleSet) return;
@@ -235,6 +260,13 @@ export function ProxyRuleSetsTab({ owner, repo }: ProxyRuleSetsTabProps) {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem
+                          onClick={() => handleCopy(ruleSet.id)}
+                          disabled={isCopying}
+                        >
+                          <CopyPlus className="h-4 w-4 mr-2" />
+                          {isCopying ? 'Duplicating...' : 'Duplicate'}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
                           onClick={() => setDeletingRuleSet({ id: ruleSet.id, name: ruleSet.name })}
                           className="text-destructive"
                         >
@@ -272,7 +304,10 @@ export function ProxyRuleSetsTab({ owner, repo }: ProxyRuleSetsTabProps) {
 
       {/* Delete Confirmation Dialog */}
       {canEdit && (
-        <AlertDialog open={!!deletingRuleSet} onOpenChange={(open) => !open && setDeletingRuleSet(null)}>
+        <AlertDialog
+          open={!!deletingRuleSet}
+          onOpenChange={(open) => !open && setDeletingRuleSet(null)}
+        >
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Delete Rule Set</AlertDialogTitle>

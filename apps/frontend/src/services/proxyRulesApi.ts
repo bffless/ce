@@ -218,6 +218,15 @@ export const proxyRulesApi = api.injectEndpoints({
       invalidatesTags: ['ProxyRuleSet', 'ProxyRule'],
     }),
 
+    // Copy a rule set with all its rules
+    copyRuleSet: builder.mutation<ProxyRuleSetWithRules, string>({
+      query: (id) => ({
+        url: `/api/proxy-rule-sets/${id}/copy`,
+        method: 'POST',
+      }),
+      invalidatesTags: ['ProxyRuleSet', 'ProxyRule'],
+    }),
+
     // ==================== Rules within a Rule Set ====================
 
     // List rules in a rule set
@@ -311,6 +320,7 @@ export const {
   useGetRuleSetQuery,
   useUpdateRuleSetMutation,
   useDeleteRuleSetMutation,
+  useCopyRuleSetMutation,
   // Rules within a Rule Set
   useGetRuleSetRulesQuery,
   useCreateRuleInSetMutation,

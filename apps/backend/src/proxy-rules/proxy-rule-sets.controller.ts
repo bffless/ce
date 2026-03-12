@@ -125,6 +125,19 @@ export class ProxyRuleSetsController {
     return { success: true };
   }
 
+  @Post(':id/copy')
+  @ApiOperation({ summary: 'Copy a rule set with all its rules' })
+  @ApiParam({ name: 'id', type: 'string' })
+  @ApiResponse({ status: 201, description: 'Copied rule set with rules', type: ProxyRuleSetWithRulesResponseDto })
+  @ApiResponse({ status: 403, description: 'Not authorized' })
+  @ApiResponse({ status: 404, description: 'Rule set not found' })
+  async copy(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: CurrentUserData,
+  ): Promise<ProxyRuleSetWithRulesResponseDto> {
+    return this.proxyRuleSetsService.copy(id, user.id, user.role || 'user');
+  }
+
   // ==================== Rules within a Rule Set ====================
 
   @Get(':id/rules')

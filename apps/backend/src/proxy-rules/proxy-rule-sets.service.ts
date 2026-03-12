@@ -147,6 +147,81 @@ export class ProxyRuleSetsService {
   }
 
   /**
+   * Copy a rule set with all its rules
+   */
+  async copy(
+    id: string,
+    userId: string,
+    userRole: string,
+  ): Promise<ProxyRuleSetWithRulesResponseDto> {
+    // Get the existing rule set
+    const existingRuleSet = await this.findById(id);
+    if (!existingRuleSet) {
+      throw new NotFoundException(`Rule set ${id} not found`);
+    }
+
+    // Check project access (need contributor or higher)
+    await this.checkProjectAccess(existingRuleSet.projectId, userId, userRole, 'contributor');
+
+    // Get the rules directly from database (with full schema type)
+    const existingRules = await this.proxyRulesService.getRulesByRuleSetId(id);
+
+    // Generate a unique name for the copy
+    let copyName = `${existingRuleSet.name} (Copy)`;
+    let copyIndex = 1;
+    while (await this.findByName(existingRuleSet.projectId, copyName)) {
+      copyIndex++;
+      copyName = `${existingRuleSet.name} (Copy ${copyIndex})`;
+    }
+
+    // Create the new rule set
+    const [newRuleSet] = await db
+      .insert(proxyRuleSets)
+      .values({
+        projectId: existingRuleSet.projectId,
+        name: copyName,
+        description: existingRuleSet.description,
+        environment: existingRuleSet.environment,
+      })
+      .returning();
+
+    // Copy all rules from the original rule set
+    const copiedRules: (typeof proxyRules.$inferSelect)[] = [];
+    for (const rule of existingRules) {
+      const [newRule] = await db
+        .insert(proxyRules)
+        .values({
+          ruleSetId: newRuleSet.id,
+          pathPattern: rule.pathPattern,
+          method: rule.method,
+          targetUrl: rule.targetUrl,
+          stripPrefix: rule.stripPrefix,
+          order: rule.order,
+          timeout: rule.timeout,
+          preserveHost: rule.preserveHost,
+          forwardCookies: rule.forwardCookies,
+          headerConfig: rule.headerConfig,
+          authTransform: rule.authTransform,
+          internalRewrite: rule.internalRewrite,
+          proxyType: rule.proxyType,
+          emailHandlerConfig: rule.emailHandlerConfig,
+          pipelineConfig: rule.pipelineConfig,
+          isEnabled: rule.isEnabled,
+          description: rule.description,
+        })
+        .returning();
+      copiedRules.push(newRule);
+    }
+
+    this.logger.log(`Copied proxy rule set ${id} to ${newRuleSet.id} with ${copiedRules.length} rules`);
+
+    return {
+      ...newRuleSet,
+      rules: copiedRules as ProxyRuleSetWithRulesResponseDto['rules'],
+    };
+  }
+
+  /**
    * Delete a rule set (cascades to rules)
    */
   async delete(id: string, userId: string, userRole: string): Promise<void> {
