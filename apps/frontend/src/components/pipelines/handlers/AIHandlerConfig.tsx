@@ -39,6 +39,8 @@ import {
   ChevronsUpDown,
   Check,
   AlertTriangle,
+  MessageSquare,
+  FileText,
 } from 'lucide-react';
 import {
   Tooltip,
@@ -48,7 +50,7 @@ import {
 } from '@/components/ui/tooltip';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useGetProjectAIStatusQuery, ConfiguredProvider } from '@/services/projectsApi';
-import type { ChatHandlerConfig as ChatHandlerConfigType, ModelTier, ModelInfo } from './types';
+import type { AIHandlerConfig as AIHandlerConfigType, ModelTier, ModelInfo } from './types';
 import { cn } from '@/lib/utils';
 
 // Lazy load Monaco Editor
@@ -74,24 +76,27 @@ function TierBadge({ tier }: { tier: ModelTier }) {
   );
 }
 
-interface ChatHandlerConfigProps {
-  config: Partial<ChatHandlerConfigType>;
-  onChange: (config: ChatHandlerConfigType) => void;
+interface AIHandlerConfigProps {
+  config: Partial<AIHandlerConfigType>;
+  onChange: (config: AIHandlerConfigType) => void;
   projectId: string;
 }
 
-export function ChatHandlerConfig({ config, onChange, projectId }: ChatHandlerConfigProps) {
+export function AIHandlerConfig({ config, onChange, projectId }: AIHandlerConfigProps) {
   const { data: aiStatus, isLoading: isLoadingAI } = useGetProjectAIStatusQuery(projectId);
 
   // Find default provider from configured providers
   const defaultProvider = aiStatus?.providers?.find((p: ConfiguredProvider) => p.isDefault) || aiStatus?.providers?.[0];
 
+  const [mode, setMode] = useState<'chat' | 'completion'>(config.mode || 'completion');
   const [provider, setProvider] = useState(config.provider || '');
   const [model, setModel] = useState(config.model || '');
-  const [responseMode, setResponseMode] = useState<'stream' | 'message'>(config.responseMode || 'message');
+  const [responseMode, setResponseMode] = useState<'stream' | 'message'>(
+    config.responseMode || (config.mode === 'chat' ? 'stream' : 'message')
+  );
   const [systemPrompt, setSystemPrompt] = useState(config.systemPrompt || DEFAULT_SYSTEM_PROMPT);
   const [messageField, setMessageField] = useState(config.messageField || 'message');
-  const [messagesField, setMessagesField] = useState(config.messagesField || '');
+  const [messagesField, setMessagesField] = useState(config.messagesField || 'messages');
   const [maxHistoryMessages, setMaxHistoryMessages] = useState(config.maxHistoryMessages ?? 50);
   const [maxTokens, setMaxTokens] = useState(config.maxTokens ?? 4096);
   const [temperature, setTemperature] = useState(config.temperature ?? 0.7);
@@ -104,15 +109,24 @@ export function ChatHandlerConfig({ config, onChange, projectId }: ChatHandlerCo
       setProvider(defaultProvider.provider);
       if (!model && defaultProvider.defaultModel) {
         setModel(defaultProvider.defaultModel);
-      } else if (!model && defaultProvider.models?.length > 0) {
-        setModel(defaultProvider.models[0].id);
+      } else if (!model && defaultProvider.suggestedModels?.length > 0) {
+        setModel(defaultProvider.suggestedModels[0].id);
       }
     }
   }, [defaultProvider, provider, model]);
 
+  // Update response mode default when mode changes
+  useEffect(() => {
+    if (mode === 'chat' && responseMode === 'message') {
+      setResponseMode('stream');
+    } else if (mode === 'completion' && responseMode === 'stream') {
+      setResponseMode('message');
+    }
+  }, [mode]);
+
   // Get selected provider info
   const selectedProvider = aiStatus?.providers?.find((p: ConfiguredProvider) => p.provider === provider);
-  const suggestedModels: ModelInfo[] = selectedProvider?.models || [];
+  const suggestedModels: ModelInfo[] = selectedProvider?.suggestedModels || [];
 
   // Group models by tier
   const groupedModels = useMemo(() => {
@@ -130,17 +144,18 @@ export function ChatHandlerConfig({ config, onChange, projectId }: ChatHandlerCo
   // Update parent when values change
   useEffect(() => {
     onChange({
+      mode,
       provider: provider as 'openai' | 'anthropic' | 'google' | undefined,
       model: model || undefined,
       responseMode,
       systemPrompt: systemPrompt.trim() || undefined,
-      messageField: messageField || 'message',
-      messagesField: messagesField || undefined,
+      messageField: mode === 'completion' ? (messageField || 'message') : undefined,
+      messagesField: mode === 'chat' ? (messagesField || 'messages') : undefined,
       maxHistoryMessages,
       maxTokens,
       temperature,
     });
-  }, [provider, model, responseMode, systemPrompt, messageField, messagesField, maxHistoryMessages, maxTokens, temperature, onChange]);
+  }, [mode, provider, model, responseMode, systemPrompt, messageField, messagesField, maxHistoryMessages, maxTokens, temperature, onChange]);
 
   // Find selected model info
   const selectedModelInfo = suggestedModels.find(m => m.id === model);
@@ -163,6 +178,51 @@ export function ChatHandlerConfig({ config, onChange, projectId }: ChatHandlerCo
   return (
     <TooltipProvider>
       <div className="space-y-4">
+        {/* Mode Selection */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Label>Mode</Label>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button type="button" className="cursor-help">
+                  <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                <p><strong>Chat:</strong> For useChat integration. Client sends message history, handler streams response.</p>
+                <p className="mt-1"><strong>Completion:</strong> One-off AI processing. Configure message template for form processing, content generation, etc.</p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant={mode === 'completion' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setMode('completion')}
+              className="flex-1"
+            >
+              <FileText className="h-4 w-4 mr-2" />
+              Completion
+            </Button>
+            <Button
+              type="button"
+              variant={mode === 'chat' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setMode('chat')}
+              className="flex-1"
+            >
+              <MessageSquare className="h-4 w-4 mr-2" />
+              Chat
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {mode === 'chat'
+              ? 'For chat interfaces using useChat. Client sends messages array, handler manages conversation.'
+              : 'For one-off AI processing. Configure a message template to process form data, generate content, etc.'}
+          </p>
+        </div>
+
         {/* Provider and Model Selection */}
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
@@ -174,7 +234,7 @@ export function ChatHandlerConfig({ config, onChange, projectId }: ChatHandlerCo
                 // Reset model when provider changes
                 const newProvider = aiStatus?.providers?.find((p: ConfiguredProvider) => p.provider === value);
                 if (newProvider) {
-                  setModel(newProvider.defaultModel || newProvider.models?.[0]?.id || '');
+                  setModel(newProvider.defaultModel || newProvider.suggestedModels?.[0]?.id || '');
                 }
               }}
             >
@@ -196,19 +256,7 @@ export function ChatHandlerConfig({ config, onChange, projectId }: ChatHandlerCo
           </div>
 
           <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Label>Model</Label>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button type="button" className="cursor-help">
-                    <HelpCircle className="h-4 w-4 text-muted-foreground" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Select a suggested model or type any model ID</p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
+            <Label>Model</Label>
             <Popover open={modelSelectorOpen} onOpenChange={setModelSelectorOpen}>
               <PopoverTrigger asChild>
                 <Button
@@ -286,49 +334,6 @@ export function ChatHandlerConfig({ config, onChange, projectId }: ChatHandlerCo
           </div>
         </div>
 
-        {/* Response Mode */}
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <Label>Response Mode</Label>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button type="button" className="cursor-help">
-                  <HelpCircle className="h-4 w-4 text-muted-foreground" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent className="max-w-xs">
-                <p><strong>Stream:</strong> Returns Server-Sent Events for real-time chat UIs</p>
-                <p className="mt-1"><strong>Message:</strong> Returns complete JSON response after generation</p>
-              </TooltipContent>
-            </Tooltip>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant={responseMode === 'message' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setResponseMode('message')}
-              className="flex-1"
-            >
-              Message (JSON)
-            </Button>
-            <Button
-              type="button"
-              variant={responseMode === 'stream' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setResponseMode('stream')}
-              className="flex-1"
-            >
-              Stream (SSE)
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {responseMode === 'stream'
-              ? 'Streams response in real-time via Server-Sent Events. Ideal for chat interfaces.'
-              : 'Returns complete response as JSON. Ideal for form submissions and pipelines.'}
-          </p>
-        </div>
-
         {/* System Prompt */}
         <div className="space-y-2">
           <div className="flex items-center gap-2">
@@ -340,7 +345,7 @@ export function ChatHandlerConfig({ config, onChange, projectId }: ChatHandlerCo
                 </button>
               </TooltipTrigger>
               <TooltipContent className="max-w-xs">
-                <p>Instructions for the AI assistant. Can use expressions like <code>$input.prompt</code></p>
+                <p>Instructions for the AI. Configured server-side for security.</p>
               </TooltipContent>
             </Tooltip>
           </div>
@@ -374,10 +379,87 @@ export function ChatHandlerConfig({ config, onChange, projectId }: ChatHandlerCo
           </div>
         </div>
 
-        {/* Message */}
+        {/* Mode-specific configuration */}
+        {mode === 'completion' ? (
+          /* Completion Mode: Message Template */
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="messageField">Message</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button type="button" className="cursor-help">
+                    <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p>The message to send to the AI. Use template variables like <code>{'{{steps.form.message}}'}</code> to include data from previous steps.</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            <div className="border rounded-md overflow-hidden">
+              <Suspense fallback={<Skeleton className="h-[80px] w-full" />}>
+                <Editor
+                  height="80px"
+                  defaultLanguage="handlebars"
+                  value={messageField}
+                  onChange={(value) => setMessageField(value || '')}
+                  options={{
+                    minimap: { enabled: false },
+                    lineNumbers: 'off',
+                    scrollBeyondLastLine: false,
+                    wordWrap: 'on',
+                    fontSize: 13,
+                    tabSize: 2,
+                    padding: { top: 8, bottom: 8 },
+                    renderLineHighlight: 'none',
+                    overviewRulerLanes: 0,
+                    hideCursorInOverviewRuler: true,
+                    overviewRulerBorder: false,
+                    scrollbar: {
+                      vertical: 'auto',
+                      horizontal: 'hidden',
+                    },
+                  }}
+                  theme="vs-dark"
+                />
+              </Suspense>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Use <code className="bg-muted px-1 rounded">{'{{variable}}'}</code> syntax for template variables (e.g., <code className="bg-muted px-1 rounded">{'{{steps.form.name}}'}</code>)
+            </p>
+          </div>
+        ) : (
+          /* Chat Mode: Messages Field */
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="messagesField">Messages Field</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button type="button" className="cursor-help">
+                    <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p>Field in request body containing the conversation history. For useChat, this is typically <code>messages</code>.</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            <Input
+              id="messagesField"
+              value={messagesField}
+              onChange={(e) => setMessagesField(e.target.value)}
+              placeholder="messages"
+            />
+            <p className="text-xs text-muted-foreground">
+              Expected format: Array of <code className="bg-muted px-1 rounded">{'{role, content}'}</code> objects from useChat
+            </p>
+          </div>
+        )}
+
+        {/* Response Mode */}
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <Label htmlFor="messageField">Message</Label>
+            <Label>Response Format</Label>
             <Tooltip>
               <TooltipTrigger asChild>
                 <button type="button" className="cursor-help">
@@ -385,41 +467,31 @@ export function ChatHandlerConfig({ config, onChange, projectId }: ChatHandlerCo
                 </button>
               </TooltipTrigger>
               <TooltipContent className="max-w-xs">
-                <p>The message to send to the AI. Use template variables like <code>{'{{steps.form_validation.message}}'}</code> to include data from previous steps.</p>
+                <p><strong>Stream:</strong> Returns Server-Sent Events for real-time UIs</p>
+                <p className="mt-1"><strong>Message:</strong> Returns complete JSON response</p>
               </TooltipContent>
             </Tooltip>
           </div>
-          <div className="border rounded-md overflow-hidden">
-            <Suspense fallback={<Skeleton className="h-[80px] w-full" />}>
-              <Editor
-                height="80px"
-                defaultLanguage="handlebars"
-                value={messageField}
-                onChange={(value) => setMessageField(value || '')}
-                options={{
-                  minimap: { enabled: false },
-                  lineNumbers: 'off',
-                  scrollBeyondLastLine: false,
-                  wordWrap: 'on',
-                  fontSize: 13,
-                  tabSize: 2,
-                  padding: { top: 8, bottom: 8 },
-                  renderLineHighlight: 'none',
-                  overviewRulerLanes: 0,
-                  hideCursorInOverviewRuler: true,
-                  overviewRulerBorder: false,
-                  scrollbar: {
-                    vertical: 'auto',
-                    horizontal: 'hidden',
-                  },
-                }}
-                theme="vs-dark"
-              />
-            </Suspense>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant={responseMode === 'message' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setResponseMode('message')}
+              className="flex-1"
+            >
+              JSON
+            </Button>
+            <Button
+              type="button"
+              variant={responseMode === 'stream' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setResponseMode('stream')}
+              className="flex-1"
+            >
+              Stream (SSE)
+            </Button>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Use <code className="bg-muted px-1 rounded">{'{{variable}}'}</code> syntax for template variables (e.g., <code className="bg-muted px-1 rounded">{'{{steps.form_validation.name}}'}</code>)
-          </p>
         </div>
 
         {/* Advanced Options */}
@@ -431,41 +503,23 @@ export function ChatHandlerConfig({ config, onChange, projectId }: ChatHandlerCo
             </Button>
           </CollapsibleTrigger>
           <CollapsibleContent className="space-y-4 pt-4">
-            {/* Messages Field (for history) */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Label htmlFor="messagesField">Messages Field (optional)</Label>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button type="button" className="cursor-help">
-                      <HelpCircle className="h-4 w-4 text-muted-foreground" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-xs">
-                    <p>Field containing conversation history as array of {'{role, content}'}</p>
-                  </TooltipContent>
-                </Tooltip>
+            {/* Max History Messages (Chat mode) */}
+            {mode === 'chat' && (
+              <div className="space-y-2">
+                <Label htmlFor="maxHistoryMessages">Max History Messages</Label>
+                <Input
+                  id="maxHistoryMessages"
+                  type="number"
+                  value={maxHistoryMessages}
+                  onChange={(e) => setMaxHistoryMessages(Number(e.target.value) || 50)}
+                  min={0}
+                  max={200}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Maximum messages from history to include (older messages are trimmed)
+                </p>
               </div>
-              <Input
-                id="messagesField"
-                value={messagesField}
-                onChange={(e) => setMessagesField(e.target.value)}
-                placeholder="e.g., messages or history"
-              />
-            </div>
-
-            {/* Max History Messages */}
-            <div className="space-y-2">
-              <Label htmlFor="maxHistoryMessages">Max History Messages</Label>
-              <Input
-                id="maxHistoryMessages"
-                type="number"
-                value={maxHistoryMessages}
-                onChange={(e) => setMaxHistoryMessages(Number(e.target.value) || 50)}
-                min={0}
-                max={200}
-              />
-            </div>
+            )}
 
             {/* Max Tokens */}
             <div className="space-y-2">

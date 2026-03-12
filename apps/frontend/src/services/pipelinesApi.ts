@@ -32,7 +32,7 @@ export type HandlerType =
   | 'proxy_forward'
   | 'function_handler'
   | 'aggregate_handler'
-  | 'chat_handler';
+  | 'ai_handler';
 
 export interface Pipeline {
   id: string;

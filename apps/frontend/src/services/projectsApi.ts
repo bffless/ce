@@ -11,15 +11,17 @@ export interface ModelInfo {
   id: string;
   name: string;
   tier: ModelTier;
-  contextWindow: number;
+  contextWindow?: number;
   description?: string;
 }
 
 export interface ConfiguredProvider {
   provider: AIProviderType;
+  providerName: string;
+  apiKey: string; // Masked
   isDefault: boolean;
   defaultModel?: string;
-  models: ModelInfo[];
+  suggestedModels: ModelInfo[];
 }
 
 export interface AIStatusResponse {

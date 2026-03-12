@@ -116,18 +116,25 @@ export interface FunctionHandlerConfig extends BaseHandlerConfig {
   debug?: boolean;
 }
 
-export interface ChatHandlerConfig extends BaseHandlerConfig {
+export interface AIHandlerConfig extends BaseHandlerConfig {
+  /**
+   * Handler mode:
+   * - 'chat': For useChat integration. Client sends messages array.
+   * - 'completion': One-off AI processing with templated message.
+   * Default: 'completion'
+   */
+  mode?: 'chat' | 'completion';
   /** AI provider to use ('openai' | 'anthropic' | 'google'). Uses default if not specified. */
   provider?: 'openai' | 'anthropic' | 'google';
-  /** Model to use (e.g., 'gpt-4o', 'claude-3-sonnet'). Uses provider's default if not specified. */
+  /** Model to use (e.g., 'gpt-4o', 'claude-sonnet-4-6'). Uses provider's default if not specified. */
   model?: string;
-  /** Response mode: 'stream' for SSE, 'message' for JSON. Default: 'message' */
+  /** Response mode: 'stream' for SSE, 'message' for JSON. Default based on mode. */
   responseMode?: 'stream' | 'message';
-  /** System prompt for the AI assistant. Can be expression (e.g., "$input.systemPrompt") */
+  /** System prompt for the AI assistant. Configured server-side for security. */
   systemPrompt?: string;
-  /** Field in input containing the user's message. Default: 'message' */
+  /** [Completion mode] Message template. Supports {{steps.form.field}} syntax. Default: 'message' */
   messageField?: string;
-  /** Field in input containing conversation history (array of {role, content}) */
+  /** [Chat mode] Field in input containing conversation history. Default: 'messages' */
   messagesField?: string;
   /** Maximum number of history messages to include. Default: 50 */
   maxHistoryMessages?: number;
@@ -141,6 +148,9 @@ export interface ChatHandlerConfig extends BaseHandlerConfig {
   messagesSchemaId?: string;
 }
 
+// Backwards compatibility alias
+export type ChatHandlerConfig = AIHandlerConfig;
+
 export type HandlerConfig =
   | FormHandlerConfig
   | DataCreateHandlerConfig
@@ -152,4 +162,4 @@ export type HandlerConfig =
   | ProxyForwardConfig
   | AggregateHandlerConfig
   | FunctionHandlerConfig
-  | ChatHandlerConfig;
+  | AIHandlerConfig;

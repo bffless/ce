@@ -298,9 +298,19 @@ export interface FunctionHandlerConfig extends BaseHandlerConfig {
 }
 
 /**
- * Configuration for chat_handler (AI-powered chat responses)
+ * Configuration for ai_handler (AI-powered responses)
  */
-export interface ChatHandlerConfig extends BaseHandlerConfig {
+export interface AIHandlerConfig extends BaseHandlerConfig {
+  /**
+   * Handler mode:
+   * - 'chat': For useChat integration. Reads messages from request body.
+   *           Client sends { messages: [...] }, handler streams response.
+   * - 'completion': One-off AI processing. Configure system prompt + message template.
+   *                 Useful for form processing, content generation, etc.
+   * @default 'completion'
+   */
+  mode?: 'chat' | 'completion';
+
   /**
    * AI provider to use ('openai' | 'anthropic' | 'google')
    * If not specified, uses the default configured provider.
@@ -314,29 +324,36 @@ export interface ChatHandlerConfig extends BaseHandlerConfig {
   model?: string;
 
   /**
-   * Response mode:
+   * Response format:
    * - 'stream': Returns Server-Sent Events (SSE) stream for real-time responses
    * - 'message': Returns complete JSON response after generation
-   * @default 'message'
+   * @default 'stream' for chat mode, 'message' for completion mode
    */
   responseMode?: 'stream' | 'message';
 
   /**
    * System prompt for the AI assistant.
-   * Can be a static string or an expression (e.g., "$input.systemPrompt")
+   * Can be a static string or use template syntax (e.g., "Help user {{input.name}}")
+   * Configured server-side for security (not sent from client).
    */
   systemPrompt?: string;
 
   /**
-   * Field in the input containing the user's message.
+   * [Completion mode only]
+   * The message to send to the AI. Can be:
+   * - Simple field name: "message" -> reads $input.message
+   * - Expression: "$steps.form.message"
+   * - Template: "Name: {{steps.form.name}}, Message: {{steps.form.message}}"
    * @default 'message'
    */
   messageField?: string;
 
   /**
-   * Field in the input containing conversation history.
+   * [Chat mode only]
+   * Field in the request body containing conversation history.
    * Expected format: Array of { role: 'user' | 'assistant', content: string }
-   * If not provided, starts a new conversation.
+   * For useChat integration, this is typically 'messages'.
+   * @default 'messages'
    */
   messagesField?: string;
 
@@ -372,3 +389,6 @@ export interface ChatHandlerConfig extends BaseHandlerConfig {
    */
   messagesSchemaId?: string;
 }
+
+// Backwards compatibility alias
+export type ChatHandlerConfig = AIHandlerConfig;

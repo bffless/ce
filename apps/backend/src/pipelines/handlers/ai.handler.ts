@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Response } from 'express';
-import { StepHandler, ChatHandlerConfig } from '../execution/step-handler.interface';
+import { StepHandler, AIHandlerConfig } from '../execution/step-handler.interface';
 import { StepHandlerRegistry } from '../execution/step-handler.registry';
 import { ExpressionEvaluator } from '../execution/expression-evaluator';
 import { PipelineContext, StepResult } from '../execution/pipeline-context.interface';
@@ -18,16 +18,19 @@ import {
 } from 'ai';
 
 /**
- * Chat Handler
+ * AI Handler
  *
- * AI-powered chat handler using Vercel AI SDK.
- * Supports streaming (SSE) and message (JSON) response modes.
+ * AI-powered handler using Vercel AI SDK.
+ * Supports two modes:
+ * - Chat: For useChat integration with message history from client
+ * - Completion: One-off AI processing with templated messages
+ *
  * Works with OpenAI, Anthropic, and Google AI providers.
  */
 @Injectable()
-export class ChatHandler implements StepHandler<ChatHandlerConfig> {
-  readonly type = 'chat_handler' as const;
-  private readonly logger = new Logger(ChatHandler.name);
+export class AIHandler implements StepHandler<AIHandlerConfig> {
+  readonly type = 'ai_handler' as const;
+  private readonly logger = new Logger(AIHandler.name);
 
   constructor(
     private readonly registry: StepHandlerRegistry,
@@ -37,49 +40,59 @@ export class ChatHandler implements StepHandler<ChatHandlerConfig> {
     this.registry.register(this);
   }
 
-  validateConfig(config: ChatHandlerConfig): void {
+  validateConfig(config: AIHandlerConfig): void {
+    if (config.mode && !['chat', 'completion'].includes(config.mode)) {
+      throw new ConfigurationError(
+        `Invalid mode: ${config.mode}. Must be 'chat' or 'completion'.`,
+        'ai_handler',
+      );
+    }
+
     if (config.responseMode && !['stream', 'message'].includes(config.responseMode)) {
       throw new ConfigurationError(
         `Invalid responseMode: ${config.responseMode}. Must be 'stream' or 'message'.`,
-        'chat_handler',
+        'ai_handler',
       );
     }
 
     if (config.maxTokens !== undefined && (config.maxTokens < 1 || config.maxTokens > 100000)) {
       throw new ConfigurationError(
         `Invalid maxTokens: ${config.maxTokens}. Must be between 1 and 100000.`,
-        'chat_handler',
+        'ai_handler',
       );
     }
 
     if (config.temperature !== undefined && (config.temperature < 0 || config.temperature > 2)) {
       throw new ConfigurationError(
         `Invalid temperature: ${config.temperature}. Must be between 0 and 2.`,
-        'chat_handler',
+        'ai_handler',
       );
     }
 
     if (config.maxHistoryMessages !== undefined && config.maxHistoryMessages < 0) {
       throw new ConfigurationError(
         `Invalid maxHistoryMessages: ${config.maxHistoryMessages}. Must be >= 0.`,
-        'chat_handler',
+        'ai_handler',
       );
     }
 
     if (config.provider && !['openai', 'anthropic', 'google'].includes(config.provider)) {
       throw new ConfigurationError(
         `Invalid provider: ${config.provider}. Must be 'openai', 'anthropic', or 'google'.`,
-        'chat_handler',
+        'ai_handler',
       );
     }
   }
 
   async execute(context: PipelineContext, step: PipelineStep): Promise<StepResult> {
-    const config = step.config as ChatHandlerConfig;
-    const stepName = step.name || 'chat_handler';
-    const responseMode = config.responseMode || 'message';
+    const config = step.config as AIHandlerConfig;
+    const stepName = step.name || 'ai_handler';
+    const mode = config.mode || 'completion';
 
-    this.logger.debug(`Executing chat handler for step '${stepName}' in ${responseMode} mode`);
+    // Default responseMode based on mode
+    const responseMode = config.responseMode || (mode === 'chat' ? 'stream' : 'message');
+
+    this.logger.debug(`Executing AI handler for step '${stepName}' in ${mode} mode (${responseMode})`);
 
     // Get AI provider configuration from project settings
     const aiConfig = await this.projectAISettingsService.getProviderConfig(
@@ -100,54 +113,12 @@ export class ChatHandler implements StepHandler<ChatHandlerConfig> {
       };
     }
 
-    // Get the user message - supports three formats:
-    // 1. Simple field name: "message" -> reads $input.message
-    // 2. Expression: "$input.message" or "$steps.form.message" -> evaluates expression
-    // 3. Template: "Name: {{steps.form.name}}, Message: {{steps.form.message}}" -> evaluates template
-    const messageFieldConfig = config.messageField || 'message';
-    let userMessage: string;
-
-    if (messageFieldConfig.includes('{{')) {
-      // Template syntax - evaluate with Handlebars-style templates
-      userMessage = this.expressionEvaluator.evaluateTemplate(
-        messageFieldConfig,
-        context,
-        stepName,
-      );
-    } else if (messageFieldConfig.startsWith('$')) {
-      // Expression syntax - evaluate directly
-      userMessage = this.expressionEvaluator.evaluateExpression(
-        messageFieldConfig,
-        context,
-        stepName,
-      ) as string;
-    } else {
-      // Simple field name - read from input
-      userMessage = this.expressionEvaluator.evaluateExpression(
-        `$input.${messageFieldConfig}`,
-        context,
-        stepName,
-      ) as string;
-    }
-
-    if (!userMessage || typeof userMessage !== 'string') {
-      return {
-        success: false,
-        error: {
-          code: 'MISSING_MESSAGE',
-          message: `Missing or invalid message. Config: '${messageFieldConfig}'`,
-          details: { step: stepName, messageField: messageFieldConfig },
-        },
-      };
-    }
-
-    // Build message history
+    // Build messages based on mode
     const messages: ModelMessage[] = [];
 
-    // Add system prompt if provided
+    // Add system prompt if provided (both modes)
     let systemPrompt = config.systemPrompt;
     if (systemPrompt) {
-      // Check if it's an expression
       if (systemPrompt.startsWith('$')) {
         systemPrompt = this.expressionEvaluator.evaluateExpression(
           systemPrompt,
@@ -167,31 +138,75 @@ export class ChatHandler implements StepHandler<ChatHandlerConfig> {
       }
     }
 
-    // Add conversation history if provided
-    if (config.messagesField) {
-      const historyMessages = this.expressionEvaluator.evaluateExpression(
-        `$input.${config.messagesField}`,
+    if (mode === 'chat') {
+      // Chat mode: Read messages from request body
+      const messagesField = config.messagesField || 'messages';
+      const clientMessages = this.expressionEvaluator.evaluateExpression(
+        `$input.${messagesField}`,
         context,
         stepName,
       ) as Array<{ role: string; content: string }>;
 
-      if (Array.isArray(historyMessages)) {
-        const maxHistory = config.maxHistoryMessages ?? 50;
-        const trimmedHistory = historyMessages.slice(-maxHistory);
+      if (!Array.isArray(clientMessages)) {
+        return {
+          success: false,
+          error: {
+            code: 'MISSING_MESSAGES',
+            message: `Missing or invalid messages array in field '${messagesField}'`,
+            details: { step: stepName, field: messagesField },
+          },
+        };
+      }
 
-        for (const msg of trimmedHistory) {
-          if (msg.role === 'user' || msg.role === 'assistant') {
-            messages.push({
-              role: msg.role as 'user' | 'assistant',
-              content: String(msg.content),
-            });
-          }
+      const maxHistory = config.maxHistoryMessages ?? 50;
+      const trimmedMessages = clientMessages.slice(-maxHistory);
+
+      for (const msg of trimmedMessages) {
+        if (msg.role === 'user' || msg.role === 'assistant') {
+          messages.push({
+            role: msg.role as 'user' | 'assistant',
+            content: String(msg.content),
+          });
         }
       }
-    }
+    } else {
+      // Completion mode: Build message from template/field
+      const messageFieldConfig = config.messageField || 'message';
+      let userMessage: string;
 
-    // Add the current user message
-    messages.push({ role: 'user', content: userMessage });
+      if (messageFieldConfig.includes('{{')) {
+        userMessage = this.expressionEvaluator.evaluateTemplate(
+          messageFieldConfig,
+          context,
+          stepName,
+        );
+      } else if (messageFieldConfig.startsWith('$')) {
+        userMessage = this.expressionEvaluator.evaluateExpression(
+          messageFieldConfig,
+          context,
+          stepName,
+        ) as string;
+      } else {
+        userMessage = this.expressionEvaluator.evaluateExpression(
+          `$input.${messageFieldConfig}`,
+          context,
+          stepName,
+        ) as string;
+      }
+
+      if (!userMessage || typeof userMessage !== 'string') {
+        return {
+          success: false,
+          error: {
+            code: 'MISSING_MESSAGE',
+            message: `Missing or invalid message. Config: '${messageFieldConfig}'`,
+            details: { step: stepName, messageField: messageFieldConfig },
+          },
+        };
+      }
+
+      messages.push({ role: 'user', content: userMessage });
+    }
 
     // Create the AI model instance
     const model = this.createModel(
@@ -216,7 +231,6 @@ export class ChatHandler implements StepHandler<ChatHandlerConfig> {
 
     try {
       if (responseMode === 'stream') {
-        // Streaming mode - returns SSE stream
         return await this.executeStreaming(
           context,
           stepName,
@@ -226,7 +240,6 @@ export class ChatHandler implements StepHandler<ChatHandlerConfig> {
           temperature,
         );
       } else {
-        // Message mode - returns complete response
         return await this.executeMessage(
           stepName,
           model,
@@ -236,7 +249,7 @@ export class ChatHandler implements StepHandler<ChatHandlerConfig> {
         );
       }
     } catch (error) {
-      this.logger.error(`Chat handler error: ${error.message}`, error.stack);
+      this.logger.error(`AI handler error: ${error.message}`, error.stack);
       return {
         success: false,
         error: {

@@ -25,7 +25,7 @@ import {
   EmailHandler,
   AggregateHandler,
   FunctionHandler,
-  ChatHandler,
+  AIHandler,
 } from './handlers';
 // Services
 import { FunctionRunnerService } from './function-runner.service';
@@ -61,7 +61,7 @@ import { AuthRequiredValidator, RateLimitValidator } from './execution/validator
     EmailHandler,
     AggregateHandler,
     FunctionHandler,
-    ChatHandler,
+    AIHandler,
     // Validators (auto-register on construction)
     AuthRequiredValidator,
     RateLimitValidator,

@@ -62,7 +62,7 @@ const HANDLER_TYPES: HandlerType[] = [
   'email_handler',
   'function_handler',
   'aggregate_handler',
-  'chat_handler',
+  'ai_handler',
 ];
 
 function generateId(): string {

@@ -51,7 +51,7 @@ export type HandlerType =
   | 'response_handler'
   | 'function_handler'
   | 'aggregate_handler'
-  | 'chat_handler';
+  | 'ai_handler';
 
 /**
  * Pipeline step definition for execution.

@@ -67,7 +67,7 @@ export function GenerateChatModal({
 
   // Get available models for selected provider from configured providers
   const selectedProvider = aiStatus?.providers?.find((p: ConfiguredProvider) => p.provider === provider);
-  const availableModels: ModelInfo[] = selectedProvider?.models || [];
+  const availableModels: ModelInfo[] = selectedProvider?.suggestedModels || [];
 
   // Initialize provider/model from AI settings (default provider)
   useEffect(() => {
@@ -77,8 +77,8 @@ export function GenerateChatModal({
         setProvider(defaultProvider.provider);
         if (defaultProvider.defaultModel) {
           setModel(defaultProvider.defaultModel);
-        } else if (defaultProvider.models?.length > 0) {
-          setModel(defaultProvider.models[0].id);
+        } else if (defaultProvider.suggestedModels?.length > 0) {
+          setModel(defaultProvider.suggestedModels[0].id);
         }
       }
     }
@@ -156,7 +156,7 @@ export function GenerateChatModal({
     if (aiStatus?.hasAIConfigured && aiStatus.providers?.length > 0) {
       const defaultProvider = aiStatus.providers.find((p: ConfiguredProvider) => p.isDefault) || aiStatus.providers[0];
       setProvider(defaultProvider.provider);
-      setModel(defaultProvider.defaultModel || defaultProvider.models?.[0]?.id || '');
+      setModel(defaultProvider.defaultModel || defaultProvider.suggestedModels?.[0]?.id || '');
     } else {
       setProvider('');
       setModel('');
@@ -262,7 +262,7 @@ export function GenerateChatModal({
                     // Reset model when provider changes
                     const newProvider = aiStatus?.providers?.find((p: ConfiguredProvider) => p.provider === value);
                     if (newProvider) {
-                      setModel(newProvider.defaultModel || newProvider.models?.[0]?.id || '');
+                      setModel(newProvider.defaultModel || newProvider.suggestedModels?.[0]?.id || '');
                     }
                   }}
                   disabled={isLoading || !aiStatus?.hasAIConfigured}

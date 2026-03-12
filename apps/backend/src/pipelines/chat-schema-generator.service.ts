@@ -651,18 +651,18 @@ export class ChatSchemaGeneratorService {
       isEnabled: true,
     });
 
-    // Step 5: Call AI chat handler
+    // Step 5: Call AI handler in chat mode
     steps.push({
       id: 'chat',
       name: 'chat',
-      handlerType: 'chat_handler',
+      handlerType: 'ai_handler',
       config: {
+        mode: 'chat',
         provider,
         model,
-        responseMode: 'message',
-        systemPromptField: 'steps.getConversation.system_prompt',
+        responseMode: 'stream',
+        systemPrompt: '$steps.getConversation.system_prompt',
         messagesField: 'steps.getHistory',
-        userMessageField: 'request.body.content',
         maxHistoryMessages: 50,
         conversationsSchemaId,
         messagesSchemaId,
