@@ -635,8 +635,18 @@ export class ProxyMiddleware implements NestMiddleware {
         }
         res.status(result.response.status).json(result.response.body);
       } else {
-        // Pipeline failed
-        const statusCode = result.error?.code === 'VALIDATION_ERROR' ? 400 : 500;
+        // Pipeline failed - map error codes to appropriate HTTP status codes
+        const errorCode = result.error?.code;
+        let statusCode = 500;
+        if (errorCode === 'VALIDATION_ERROR') {
+          statusCode = 400;
+        } else if (errorCode === 'AUTH_REQUIRED') {
+          statusCode = 401;
+        } else if (errorCode === 'AUTHORIZATION_ERROR') {
+          statusCode = 403;
+        } else if (errorCode === 'RATE_LIMIT_EXCEEDED') {
+          statusCode = 429;
+        }
         res.status(statusCode).json({
           success: false,
           error: result.error,
@@ -666,24 +676,31 @@ export class ProxyMiddleware implements NestMiddleware {
     try {
       // Check if user was already populated by a guard
       if ((req as any).user?.id) {
+        this.logger.debug(`User already on request: ${(req as any).user.id}`);
         return (req as any).user;
       }
+
+      this.logger.debug(`Attempting to get session for ${req.path}`);
 
       // Try to get session using SuperTokens with sessionRequired: false
       const session = await getSession(req, res, { sessionRequired: false });
       if (!session) {
+        this.logger.debug('No session found');
         return undefined;
       }
 
       const userId = session.getUserId();
+      this.logger.debug(`Session found for user: ${userId}`);
 
       // Get user from database to include role information
       const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
 
       if (!user) {
+        this.logger.debug(`User ${userId} not found in database`);
         return undefined;
       }
 
+      this.logger.debug(`User authenticated: ${userId}, role: ${user.role}`);
       return {
         id: userId,
         email: user.email || undefined,
@@ -691,7 +708,7 @@ export class ProxyMiddleware implements NestMiddleware {
       };
     } catch (error) {
       // Silently fail - this is optional auth
-      this.logger.debug(`Optional user extraction failed: ${error}`);
+      this.logger.warn(`Optional user extraction failed: ${error}`);
       return undefined;
     }
   }
