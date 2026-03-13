@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.118](https://github.com/bffless/ce/compare/v0.0.117...v0.0.118) (2026-03-13)
+
+
+### Bug Fixes
+
+* aligns cookie to supertokens expiration ([c135f86](https://github.com/bffless/ce/commit/c135f8610496fe7144354ad775675b945acaaa28))
+* custom domain cookie length ([d845fad](https://github.com/bffless/ce/commit/d845fad9fcd25cd18a5564e115bc3ac50a6bba40))
+
 ## [0.0.117](https://github.com/bffless/ce/compare/v0.0.116...v0.0.117) (2026-03-13)
 
 
