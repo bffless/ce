@@ -2,6 +2,7 @@ import { Injectable, NestMiddleware, Logger } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import { eq, and, or } from 'drizzle-orm';
 import { getSession } from 'supertokens-node/recipe/session';
+import * as jwt from 'jsonwebtoken';
 import { db } from '../db/client';
 import { projects, deploymentAliases, domainMappings, users } from '../db/schema';
 import { ProxyRulesService } from './proxy-rules.service';
@@ -11,6 +12,7 @@ import { ProxyRule, ProxyType, PipelineConfig } from '../db/schema/proxy-rules.s
 import { ConfigService } from '@nestjs/config';
 import { PipelineExecutionService } from '../pipelines/execution';
 import { Pipeline, PipelineStep } from '../pipelines/types';
+import { CustomDomainAuthService } from '../auth/custom-domain-auth.service';
 
 interface ParsedPublicPath {
   owner: string;
@@ -682,33 +684,105 @@ export class ProxyMiddleware implements NestMiddleware {
 
       this.logger.debug(`Attempting to get session for ${req.path}`);
 
-      // Try to get session using SuperTokens with sessionRequired: false
+      // Try SuperTokens session first
       const session = await getSession(req, res, { sessionRequired: false });
-      if (!session) {
-        this.logger.debug('No session found');
-        return undefined;
+      if (session) {
+        const userId = session.getUserId();
+        this.logger.debug(`SuperTokens session found for user: ${userId}`);
+
+        const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+        if (user) {
+          this.logger.debug(`User authenticated via SuperTokens: ${userId}, role: ${user.role}`);
+          return {
+            id: userId,
+            email: user.email || undefined,
+            role: user.role || undefined,
+          };
+        }
       }
 
-      const userId = session.getUserId();
-      this.logger.debug(`Session found for user: ${userId}`);
-
-      // Get user from database to include role information
-      const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-
-      if (!user) {
-        this.logger.debug(`User ${userId} not found in database`);
-        return undefined;
+      // Try custom domain JWT auth (bffless_access cookie)
+      const customDomainUser = await this.tryCustomDomainAuth(req);
+      if (customDomainUser) {
+        return customDomainUser;
       }
 
-      this.logger.debug(`User authenticated: ${userId}, role: ${user.role}`);
-      return {
-        id: userId,
-        email: user.email || undefined,
-        role: user.role || undefined,
-      };
+      this.logger.debug('No session or custom domain auth found');
+      return undefined;
     } catch (error) {
       // Silently fail - this is optional auth
       this.logger.warn(`Optional user extraction failed: ${error}`);
+      return undefined;
+    }
+  }
+
+  /**
+   * Try to authenticate via custom domain cookies (bffless_access).
+   * Used for custom domains that have their own JWT-based auth.
+   */
+  private async tryCustomDomainAuth(
+    req: Request,
+  ): Promise<{ id: string; email?: string; role?: string } | undefined> {
+    try {
+      const accessToken = (req as any).cookies?.[CustomDomainAuthService.ACCESS_COOKIE_NAME];
+      if (!accessToken) {
+        return undefined;
+      }
+
+      const jwtSecret = this.configService.get<string>('JWT_SECRET');
+      if (!jwtSecret) {
+        this.logger.warn('JWT_SECRET not configured for custom domain auth');
+        return undefined;
+      }
+
+      // Validate the JWT token
+      const decoded = jwt.verify(accessToken, jwtSecret, {
+        algorithms: ['HS256'],
+      }) as { sub: string; email: string; role: string; domain: string; type: string };
+
+      // Verify this is an access token
+      if (decoded.type !== 'access') {
+        this.logger.debug('Token is not an access token');
+        return undefined;
+      }
+
+      // Verify the domain matches the request
+      const host = req.headers['x-forwarded-host'] || req.headers.host;
+      const requestDomain = typeof host === 'string' ? host.split(':')[0] : undefined;
+
+      if (decoded.domain !== requestDomain) {
+        this.logger.debug(
+          `Custom domain auth: domain mismatch (token: ${decoded.domain}, request: ${requestDomain})`,
+        );
+        return undefined;
+      }
+
+      // Verify user still exists in the database
+      const [user] = await db.select().from(users).where(eq(users.id, decoded.sub)).limit(1);
+      if (!user) {
+        this.logger.debug(`Custom domain auth: user ${decoded.sub} not found`);
+        return undefined;
+      }
+
+      if (user.disabled) {
+        this.logger.debug(`Custom domain auth: user ${decoded.sub} is disabled`);
+        return undefined;
+      }
+
+      this.logger.debug(
+        `User authenticated via custom domain: ${decoded.sub}, role: ${decoded.role}`,
+      );
+      return {
+        id: decoded.sub,
+        email: decoded.email,
+        role: decoded.role,
+      };
+    } catch (error) {
+      if (error instanceof jwt.TokenExpiredError) {
+        this.logger.debug('Custom domain access token expired');
+      } else {
+        this.logger.debug(`Custom domain auth failed: ${error}`);
+      }
       return undefined;
     }
   }
