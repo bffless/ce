@@ -1,8 +1,9 @@
 import { Injectable, NestMiddleware, Logger } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import { eq, and, or } from 'drizzle-orm';
+import { getSession } from 'supertokens-node/recipe/session';
 import { db } from '../db/client';
-import { projects, deploymentAliases, domainMappings } from '../db/schema';
+import { projects, deploymentAliases, domainMappings, users } from '../db/schema';
 import { ProxyRulesService } from './proxy-rules.service';
 import { ProxyService } from './proxy.service';
 import { EmailFormHandlerService } from './email-form-handler.service';
@@ -611,11 +612,14 @@ export class ProxyMiddleware implements NestMiddleware {
     };
 
     try {
+      // Extract user from session if available (optional - don't fail if not authenticated)
+      const user = await this.getOptionalUser(req, res);
+
       // Execute the pipeline
       const result = await this.pipelineExecutionService.executePipelineWithDebug(
         pipeline,
         req,
-        undefined, // user - could extract from session if needed
+        user,
       );
 
       if (result.success && result.response) {
@@ -644,6 +648,47 @@ export class ProxyMiddleware implements NestMiddleware {
         code: 'PIPELINE_EXECUTION_ERROR',
         message: error instanceof Error ? error.message : 'Unknown error',
       });
+    }
+  }
+
+  /**
+   * Optionally extract user from session without failing if not authenticated.
+   * Returns undefined if no session exists or user cannot be determined.
+   */
+  private async getOptionalUser(
+    req: Request,
+    res: Response,
+  ): Promise<{ id: string; email?: string; role?: string } | undefined> {
+    try {
+      // Check if user was already populated by a guard
+      if ((req as any).user?.id) {
+        return (req as any).user;
+      }
+
+      // Try to get session using SuperTokens with sessionRequired: false
+      const session = await getSession(req, res, { sessionRequired: false });
+      if (!session) {
+        return undefined;
+      }
+
+      const userId = session.getUserId();
+
+      // Get user from database to include role information
+      const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+
+      if (!user) {
+        return undefined;
+      }
+
+      return {
+        id: userId,
+        email: user.email || undefined,
+        role: user.role || undefined,
+      };
+    } catch (error) {
+      // Silently fail - this is optional auth
+      this.logger.debug(`Optional user extraction failed: ${error}`);
+      return undefined;
     }
   }
 
