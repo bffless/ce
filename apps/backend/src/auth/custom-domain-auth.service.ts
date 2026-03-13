@@ -191,6 +191,12 @@ export class CustomDomainAuthService {
    * Set both access and refresh cookies on the response.
    * Access cookie is available site-wide, refresh cookie is restricted to the refresh endpoint.
    *
+   * Note: Access cookie maxAge uses REFRESH_TOKEN_EXPIRY (7 days), not ACCESS_TOKEN_EXPIRY (15 min).
+   * This ensures the cookie persists even after the JWT expires, allowing the client to detect
+   * the expired token and trigger a refresh. If cookie maxAge matched JWT expiry, the browser
+   * would delete the cookie when the JWT expires, and we couldn't distinguish "expired token"
+   * (should return TRY_REFRESH_TOKEN) from "no token" (should return AUTH_REQUIRED).
+   *
    * @param res - Express response object
    * @param accessToken - The access token to set
    * @param refreshToken - The refresh token to set
@@ -198,8 +204,9 @@ export class CustomDomainAuthService {
    */
   setAuthCookies(res: Response, accessToken: string, refreshToken: string, secure: boolean = true): void {
     // Access cookie - available site-wide
+    // Uses refresh token expiry for cookie lifetime so expired JWTs can trigger refresh flow
     res.cookie(CustomDomainAuthService.ACCESS_COOKIE_NAME, accessToken, {
-      maxAge: this.ACCESS_TOKEN_EXPIRY_SECONDS * 1000,
+      maxAge: this.REFRESH_TOKEN_EXPIRY_SECONDS * 1000,
       httpOnly: true,
       secure,
       sameSite: 'lax',

@@ -7,6 +7,10 @@ import * as jwt from 'jsonwebtoken';
  * Auth middleware that wraps SuperTokens middleware with additional
  * expired token detection for better client-side handling.
  *
+ * Handles both auth methods:
+ * - SuperTokens (sAccessToken cookie) - for subdomain/admin panel auth
+ * - Custom domain auth (bffless_access cookie) - for custom domain auth
+ *
  * For API requests with expired access tokens, returns a 401 with
  * "session expired" message (no "unauthorised") so clients know to
  * attempt a token refresh before giving up.
@@ -25,17 +29,21 @@ export class AuthMiddleware implements NestMiddleware {
     }
 
     // Check for expired access token BEFORE SuperTokens middleware
-    const accessToken = (req as any).cookies?.sAccessToken;
+    // Supports both SuperTokens (sAccessToken) and custom domain auth (bffless_access)
+    const supertokensToken = (req as any).cookies?.sAccessToken;
+    const customDomainToken = (req as any).cookies?.bffless_access;
+    const accessToken = supertokensToken || customDomainToken;
 
     if (accessToken) {
       try {
-        // Decode JWT (SuperTokens exposes access token as JWT)
-        // We just decode without verification - SuperTokens will verify later
+        // Decode JWT (both SuperTokens and custom domain auth use JWTs)
+        // We just decode without verification - auth guards will verify later
         const decoded = jwt.decode(accessToken) as { exp?: number } | null;
 
         if (decoded?.exp && decoded.exp * 1000 < Date.now()) {
           // Token is expired
-          this.logger.debug(`Access token expired for ${req.method} ${req.path}`);
+          const tokenType = supertokensToken ? 'SuperTokens' : 'custom domain';
+          this.logger.debug(`${tokenType} access token expired for ${req.method} ${req.path}`);
 
           // Set flag for downstream use
           (req as any).tokenExpired = true;
@@ -53,7 +61,7 @@ export class AuthMiddleware implements NestMiddleware {
           // For browser requests, continue - guards will handle redirect
         }
       } catch (error) {
-        // Invalid token format - let SuperTokens middleware handle it
+        // Invalid token format - let downstream middleware/guards handle it
         this.logger.debug(`Failed to decode access token: ${error}`);
       }
     }
@@ -67,12 +75,16 @@ export class AuthMiddleware implements NestMiddleware {
    * These endpoints need to work even with expired tokens.
    */
   private isAuthEndpoint(path: string): boolean {
-    // All SuperTokens/auth endpoints
+    // SuperTokens auth endpoints
     if (path.startsWith('/api/auth/')) {
       return true;
     }
     // Also skip for the auth path without /api prefix (if used)
     if (path.startsWith('/auth/')) {
+      return true;
+    }
+    // Custom domain auth endpoints (used by bffless_access/bffless_refresh)
+    if (path.startsWith('/_bffless/auth')) {
       return true;
     }
     return false;
