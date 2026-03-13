@@ -379,22 +379,33 @@ export class ProxyMiddleware implements NestMiddleware {
     project: typeof projects.$inferSelect,
     aliasName: string | null,
   ): Promise<'allowed' | 'blocked'> {
-    // Resolve access control for this alias/project
-    let accessControl: AccessControlInfo;
+    // Resolve access control - check domain mapping first (for subdomain requests),
+    // then fall back to alias/project
+    let accessControl: AccessControlInfo | null = null;
 
-    if (aliasName) {
-      accessControl = await this.visibilityService.resolveAccessControlForAlias(
-        project.id,
-        aliasName,
-      );
-    } else {
-      // No alias - use project defaults
-      accessControl = {
-        isPublic: project.isPublic,
-        unauthorizedBehavior: (project.unauthorizedBehavior as 'not_found' | 'redirect_login') || 'not_found',
-        requiredRole: (project.requiredRole as 'authenticated' | 'viewer' | 'contributor' | 'admin' | 'owner') || 'authenticated',
-        source: 'project',
-      };
+    // Check if this is a domain-mapped request (has X-Forwarded-Host)
+    const forwardedHost = req.headers['x-forwarded-host'] as string | undefined;
+    if (forwardedHost) {
+      // Try to resolve from domain mapping - this handles domain-level visibility overrides
+      accessControl = await this.visibilityService.resolveAccessControlByDomain(forwardedHost);
+    }
+
+    // If no domain-level access control, fall back to alias or project
+    if (!accessControl) {
+      if (aliasName) {
+        accessControl = await this.visibilityService.resolveAccessControlForAlias(
+          project.id,
+          aliasName,
+        );
+      } else {
+        // No alias - use project defaults
+        accessControl = {
+          isPublic: project.isPublic,
+          unauthorizedBehavior: (project.unauthorizedBehavior as 'not_found' | 'redirect_login') || 'not_found',
+          requiredRole: (project.requiredRole as 'authenticated' | 'viewer' | 'contributor' | 'admin' | 'owner') || 'authenticated',
+          source: 'project',
+        };
+      }
     }
 
     // If public, allow the request

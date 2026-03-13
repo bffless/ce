@@ -18,6 +18,12 @@ export class AuthMiddleware implements NestMiddleware {
   private readonly logger = new Logger(AuthMiddleware.name);
 
   use(req: Request, res: Response, next: NextFunction) {
+    // Skip expired token check for auth endpoints - they need to work with expired tokens!
+    // These are the endpoints used to sign in, refresh, or manage sessions
+    if (this.isAuthEndpoint(req.path)) {
+      return middleware()(req, res, next);
+    }
+
     // Check for expired access token BEFORE SuperTokens middleware
     const accessToken = (req as any).cookies?.sAccessToken;
 
@@ -54,6 +60,22 @@ export class AuthMiddleware implements NestMiddleware {
 
     // Continue with SuperTokens middleware
     middleware()(req, res, next);
+  }
+
+  /**
+   * Check if this is an auth-related endpoint that should skip token expiry checks.
+   * These endpoints need to work even with expired tokens.
+   */
+  private isAuthEndpoint(path: string): boolean {
+    // All SuperTokens/auth endpoints
+    if (path.startsWith('/api/auth/')) {
+      return true;
+    }
+    // Also skip for the auth path without /api prefix (if used)
+    if (path.startsWith('/auth/')) {
+      return true;
+    }
+    return false;
   }
 
   /**
