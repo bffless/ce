@@ -121,7 +121,9 @@ export class ProxyMiddleware implements NestMiddleware {
       // Find matching rule using the appropriate subpath and method
       const matchedRule = this.findMatchingRule(rules, subpathForMatching, req.method);
       if (!matchedRule) {
-        this.logger.debug(`Proxy middleware: no matching rule for ${req.method} ${subpathForMatching}`);
+        this.logger.debug(
+          `Proxy middleware: no matching rule for ${req.method} ${subpathForMatching}`,
+        );
         return next();
       }
 
@@ -272,7 +274,9 @@ export class ProxyMiddleware implements NestMiddleware {
     // Find matching rule
     const matchedRule = this.findMatchingRule(rules, subpathForMatching, req.method);
     if (!matchedRule) {
-      this.logger.debug(`Subdomain proxy middleware: no matching rule for ${req.method} ${subpathForMatching}`);
+      this.logger.debug(
+        `Subdomain proxy middleware: no matching rule for ${req.method} ${subpathForMatching}`,
+      );
       return next();
     }
 
