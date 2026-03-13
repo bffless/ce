@@ -13,6 +13,8 @@ import { ConfigService } from '@nestjs/config';
 import { PipelineExecutionService } from '../pipelines/execution';
 import { Pipeline, PipelineStep } from '../pipelines/types';
 import { CustomDomainAuthService } from '../auth/custom-domain-auth.service';
+import { VisibilityService, AccessControlInfo } from '../domains/visibility.service';
+import { PermissionsService } from '../permissions/permissions.service';
 
 interface ParsedPublicPath {
   owner: string;
@@ -40,6 +42,8 @@ export class ProxyMiddleware implements NestMiddleware {
     private readonly emailFormHandlerService: EmailFormHandlerService,
     private readonly configService: ConfigService,
     private readonly pipelineExecutionService: PipelineExecutionService,
+    private readonly visibilityService: VisibilityService,
+    private readonly permissionsService: PermissionsService,
   ) {}
 
   /**
@@ -100,8 +104,10 @@ export class ProxyMiddleware implements NestMiddleware {
       // Determine if ref is alias or SHA (40 hex chars = SHA)
       const isSha = /^[a-f0-9]{40}$/i.test(ref);
       let effectiveRuleSetId: string | null = project.defaultProxyRuleSetId;
+      let aliasName: string | null = null;
 
       if (!isSha) {
+        aliasName = ref;
         // Look up alias to get its proxyRuleSetId
         const alias = await this.getAliasByName(project.id, ref);
         if (alias?.proxyRuleSetId) {
@@ -132,13 +138,8 @@ export class ProxyMiddleware implements NestMiddleware {
       // Get the effective proxy type (handles backward compatibility)
       const proxyType = this.getProxyType(matchedRule);
 
-      // Handle email form handler
-      if (proxyType === 'email_form_handler') {
-        this.logger.debug(`Email form handler: ${subpathForMatching} (rule: ${matchedRule.id})`);
-        return this.emailFormHandlerService.handleSubmission(req, res, matchedRule);
-      }
-
       // Handle internal rewrite (no HTTP proxy - just rewrite the URL and continue)
+      // This continues to PublicController which has its own visibility check
       if (proxyType === 'internal_rewrite') {
         const newSubpath = this.buildRewritePath(matchedRule, subpathForMatching);
         // Rewrite the URL path for file serving
@@ -162,6 +163,24 @@ export class ProxyMiddleware implements NestMiddleware {
           `Internal rewrite: ${subpathForMatching} → ${newSubpath} (rule: ${matchedRule.id}, params[0]: ${req.params?.['0']})`,
         );
         return next();
+      }
+
+      // For all other proxy types (pipeline, email_form_handler, external_proxy),
+      // check visibility BEFORE handling - these bypass PublicController
+      const visibilityResult = await this.checkVisibilityAndAuth(
+        req,
+        res,
+        project,
+        aliasName,
+      );
+      if (visibilityResult === 'blocked') {
+        return; // Response already sent
+      }
+
+      // Handle email form handler
+      if (proxyType === 'email_form_handler') {
+        this.logger.debug(`Email form handler: ${subpathForMatching} (rule: ${matchedRule.id})`);
+        return this.emailFormHandlerService.handleSubmission(req, res, matchedRule);
       }
 
       // Handle pipeline execution
@@ -285,15 +304,8 @@ export class ProxyMiddleware implements NestMiddleware {
     // Get the effective proxy type (handles backward compatibility)
     const proxyType = this.getProxyType(matchedRule);
 
-    // Handle email form handler
-    if (proxyType === 'email_form_handler') {
-      this.logger.debug(
-        `Subdomain email form handler: ${subpathForMatching} (alias: ${resolvedAliasName}, rule: ${matchedRule.id})`,
-      );
-      return this.emailFormHandlerService.handleSubmission(req, res, matchedRule);
-    }
-
     // Handle internal rewrite (no HTTP proxy - just rewrite the URL and continue)
+    // This continues to PublicController which has its own visibility check
     if (proxyType === 'internal_rewrite') {
       const newSubpath = this.buildRewritePath(matchedRule, subpathForMatching);
       // For subdomain-alias format, replace the subpath after /public/subdomain-alias/{aliasName}/
@@ -315,6 +327,26 @@ export class ProxyMiddleware implements NestMiddleware {
       return next();
     }
 
+    // For all other proxy types (pipeline, email_form_handler, external_proxy),
+    // check visibility BEFORE handling - these bypass PublicController
+    const visibilityResult = await this.checkVisibilityAndAuth(
+      req,
+      res,
+      project,
+      resolvedAliasName,
+    );
+    if (visibilityResult === 'blocked') {
+      return; // Response already sent
+    }
+
+    // Handle email form handler
+    if (proxyType === 'email_form_handler') {
+      this.logger.debug(
+        `Subdomain email form handler: ${subpathForMatching} (alias: ${resolvedAliasName}, rule: ${matchedRule.id})`,
+      );
+      return this.emailFormHandlerService.handleSubmission(req, res, matchedRule);
+    }
+
     // Handle pipeline execution
     if (proxyType === 'pipeline') {
       this.logger.debug(
@@ -329,6 +361,206 @@ export class ProxyMiddleware implements NestMiddleware {
 
     // Forward request
     await this.proxyService.forward(req, res, matchedRule, subpathForMatching);
+  }
+
+  /**
+   * Check visibility and authentication for proxy requests.
+   * This enforces project/alias visibility before allowing proxy handling.
+   *
+   * For private deployments:
+   * - If not authenticated: returns 401 with appropriate message
+   * - If authenticated but insufficient role: returns 403
+   *
+   * @returns 'allowed' if request should proceed, 'blocked' if response was sent
+   */
+  private async checkVisibilityAndAuth(
+    req: Request,
+    res: Response,
+    project: typeof projects.$inferSelect,
+    aliasName: string | null,
+  ): Promise<'allowed' | 'blocked'> {
+    // Resolve access control for this alias/project
+    let accessControl: AccessControlInfo;
+
+    if (aliasName) {
+      accessControl = await this.visibilityService.resolveAccessControlForAlias(
+        project.id,
+        aliasName,
+      );
+    } else {
+      // No alias - use project defaults
+      accessControl = {
+        isPublic: project.isPublic,
+        unauthorizedBehavior: (project.unauthorizedBehavior as 'not_found' | 'redirect_login') || 'not_found',
+        requiredRole: (project.requiredRole as 'authenticated' | 'viewer' | 'contributor' | 'admin' | 'owner') || 'authenticated',
+        source: 'project',
+      };
+    }
+
+    // If public, allow the request
+    if (accessControl.isPublic) {
+      return 'allowed';
+    }
+
+    // Private deployment - check authentication
+    const user = await this.getOptionalUser(req, res);
+
+    if (!user) {
+      // Not authenticated
+      this.logger.debug(`Proxy blocked: not authenticated for private ${aliasName || 'project'}`);
+
+      if (this.isApiRequest(req)) {
+        // Check if token was expired (set by AuthMiddleware)
+        // If so, the response was already sent by AuthMiddleware
+        // This is a fallback for cases where AuthMiddleware didn't catch it
+        const tokenExpired = (req as any).tokenExpired;
+
+        if (tokenExpired) {
+          // Token was expired - signal try refresh
+          res.status(401).json({
+            message: 'session expired',
+            code: 'TRY_REFRESH_TOKEN',
+          });
+        } else {
+          // No token at all
+          res.status(401).json({
+            message: 'unauthorised',
+            code: 'AUTH_REQUIRED',
+          });
+        }
+      } else {
+        // Browser request - redirect to login
+        const fullUrl = this.buildFullRequestUrl(req);
+        const authUrl = await this.getAuthRedirectUrl(req, fullUrl);
+        res.redirect(302, authUrl);
+      }
+
+      return 'blocked';
+    }
+
+    // Authenticated - check role requirements
+    const userRole = await this.permissionsService.getUserProjectRole(user.id, project.id);
+
+    if (!this.permissionsService.meetsRoleRequirement(userRole, accessControl.requiredRole)) {
+      this.logger.debug(
+        `Proxy blocked: user ${user.id} has role ${userRole}, needs ${accessControl.requiredRole}`,
+      );
+
+      res.status(403).json({
+        message: 'Access denied',
+        code: 'FORBIDDEN',
+        requiredRole: accessControl.requiredRole,
+        currentRole: userRole,
+      });
+
+      return 'blocked';
+    }
+
+    // User has access
+    return 'allowed';
+  }
+
+  /**
+   * Determines if this is an API request (expects JSON response)
+   * vs a browser request (can handle redirects)
+   */
+  private isApiRequest(req: Request): boolean {
+    const acceptHeader = req.headers.accept || '';
+    const contentType = req.headers['content-type'] || '';
+
+    // XHR/fetch requests typically want JSON
+    if (acceptHeader.includes('application/json')) {
+      return true;
+    }
+
+    // Requests sending JSON are likely API calls
+    if (contentType.includes('application/json')) {
+      return true;
+    }
+
+    // X-Requested-With header indicates AJAX
+    if (req.headers['x-requested-with'] === 'XMLHttpRequest') {
+      return true;
+    }
+
+    // API key header indicates programmatic access
+    if (req.headers['x-api-key']) {
+      return true;
+    }
+
+    // Accept header starts with application/* (not text/html) suggests API client
+    if (acceptHeader.startsWith('application/') && !acceptHeader.includes('text/html')) {
+      return true;
+    }
+
+    // Default: treat as browser request
+    return false;
+  }
+
+  /**
+   * Build the full request URL including protocol, host, and path
+   */
+  private buildFullRequestUrl(req: Request): string {
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+    const host = req.headers['x-forwarded-host'] || req.get('host');
+    const originalUri = req.headers['x-original-uri'] as string | undefined;
+    const path = originalUri || req.originalUrl;
+
+    return `${protocol}://${host}${path}`;
+  }
+
+  /**
+   * Get the auth redirect URL for private deployments.
+   * Matches PublicController's getAuthRedirectUrl logic.
+   */
+  private async getAuthRedirectUrl(req: Request, redirectUrl: string): Promise<string> {
+    const host = (req.headers['x-forwarded-host'] || req.get('host')) as string;
+    const requestDomain = host?.split(':')[0]; // Remove port if present
+
+    // Check if this is a custom domain by looking it up in domain_mappings
+    const [mapping] = await db
+      .select()
+      .from(domainMappings)
+      .where(and(eq(domainMappings.domain, requestDomain), eq(domainMappings.isActive, true)))
+      .limit(1);
+
+    if (mapping?.domainType === 'custom') {
+      // Custom domain - redirect to workspace admin with customDomainRelay param
+      const protocol = 'https';
+      const originalUri = req.headers['x-original-uri'] as string | undefined;
+      const originalPath = originalUri || req.originalUrl || '/';
+
+      const adminDomain = this.configService.get<string>('ADMIN_DOMAIN');
+      let loginHost: string;
+
+      if (adminDomain) {
+        loginHost = adminDomain;
+      } else {
+        const primaryDomain = this.configService.get<string>('PRIMARY_DOMAIN') || 'localhost';
+        loginHost = `admin.${primaryDomain}`;
+      }
+
+      const params = new URLSearchParams({
+        customDomainRelay: 'true',
+        targetDomain: requestDomain,
+        redirect: originalPath,
+      });
+
+      return `${protocol}://${loginHost}/login?${params.toString()}`;
+    }
+
+    // Standard workspace domain redirect
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+    const params = `redirect=${encodeURIComponent(redirectUrl)}&tryRefresh=true`;
+
+    const adminDomain = this.configService.get<string>('ADMIN_DOMAIN');
+    if (adminDomain) {
+      return `${protocol}://${adminDomain}/login?${params}`;
+    }
+
+    // Fallback for self-hosted setups
+    const primaryDomain = this.configService.get<string>('PRIMARY_DOMAIN') || 'localhost';
+    return `${protocol}://admin.${primaryDomain}/login?${params}`;
   }
 
   /**

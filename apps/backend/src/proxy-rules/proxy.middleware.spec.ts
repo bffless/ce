@@ -4,6 +4,8 @@ import { ProxyService } from './proxy.service';
 import { EmailFormHandlerService } from './email-form-handler.service';
 import { ConfigService } from '@nestjs/config';
 import { PipelineExecutionService } from '../pipelines/execution';
+import { VisibilityService } from '../domains/visibility.service';
+import { PermissionsService } from '../permissions/permissions.service';
 import { Request, Response, NextFunction } from 'express';
 
 // Mock the database client
@@ -23,6 +25,8 @@ describe('ProxyMiddleware', () => {
   let mockEmailFormHandlerService: jest.Mocked<EmailFormHandlerService>;
   let mockConfigService: jest.Mocked<ConfigService>;
   let mockPipelineExecutionService: jest.Mocked<PipelineExecutionService>;
+  let mockVisibilityService: jest.Mocked<VisibilityService>;
+  let mockPermissionsService: jest.Mocked<PermissionsService>;
   let mockNext: NextFunction;
 
   beforeEach(() => {
@@ -49,12 +53,28 @@ describe('ProxyMiddleware', () => {
       }),
     } as any;
 
+    mockVisibilityService = {
+      resolveAccessControlForAlias: jest.fn().mockResolvedValue({
+        isPublic: true,
+        unauthorizedBehavior: 'not_found',
+        requiredRole: 'authenticated',
+        source: 'project',
+      }),
+    } as any;
+
+    mockPermissionsService = {
+      getUserProjectRole: jest.fn().mockResolvedValue(null),
+      meetsRoleRequirement: jest.fn().mockReturnValue(true),
+    } as any;
+
     middleware = new ProxyMiddleware(
       mockProxyRulesService,
       mockProxyService,
       mockEmailFormHandlerService,
       mockConfigService,
       mockPipelineExecutionService,
+      mockVisibilityService,
+      mockPermissionsService,
     );
     mockNext = jest.fn();
   });
