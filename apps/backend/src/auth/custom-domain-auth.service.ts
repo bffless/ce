@@ -49,11 +49,18 @@ export class CustomDomainAuthService {
   private readonly logger = new Logger(CustomDomainAuthService.name);
   private readonly jwtSecret: string;
 
-  /** Access token expires in 15 minutes */
-  private readonly ACCESS_TOKEN_EXPIRY_SECONDS = 15 * 60; // 900 seconds
+  /** Access token JWT expires in 1 hour (matches SuperTokens default) */
+  private readonly ACCESS_TOKEN_EXPIRY_SECONDS = 60 * 60; // 3600 seconds
 
-  /** Refresh token expires in 7 days */
-  private readonly REFRESH_TOKEN_EXPIRY_SECONDS = 7 * 24 * 60 * 60; // 604800 seconds
+  /** Refresh token JWT expires in 100 days (matches SuperTokens default) */
+  private readonly REFRESH_TOKEN_EXPIRY_SECONDS = 100 * 24 * 60 * 60; // 8640000 seconds
+
+  /**
+   * Access token COOKIE expires in 400 days (~13 months, matches SuperTokens).
+   * This is intentionally much longer than the JWT expiry to ensure the cookie
+   * persists for the refresh flow to work.
+   */
+  private readonly ACCESS_COOKIE_EXPIRY_SECONDS = 400 * 24 * 60 * 60; // 34560000 seconds
 
   /** Cookie names */
   static readonly ACCESS_COOKIE_NAME = 'bffless_access';
@@ -69,7 +76,7 @@ export class CustomDomainAuthService {
 
   /**
    * Create an access token for a custom domain.
-   * Access tokens are short-lived (15 minutes) and contain full user info.
+   * Access tokens are short-lived (1 hour) and contain full user info.
    *
    * @param userId - User ID from the database
    * @param email - User email address
@@ -100,7 +107,7 @@ export class CustomDomainAuthService {
 
   /**
    * Create a refresh token for a custom domain.
-   * Refresh tokens are longer-lived (7 days) and contain minimal info.
+   * Refresh tokens are longer-lived (~100 days) and contain minimal info.
    *
    * @param userId - User ID from the database
    * @param domain - The custom domain this token is valid for
@@ -191,11 +198,12 @@ export class CustomDomainAuthService {
    * Set both access and refresh cookies on the response.
    * Access cookie is available site-wide, refresh cookie is restricted to the refresh endpoint.
    *
-   * Note: Access cookie maxAge uses REFRESH_TOKEN_EXPIRY (7 days), not ACCESS_TOKEN_EXPIRY (15 min).
-   * This ensures the cookie persists even after the JWT expires, allowing the client to detect
-   * the expired token and trigger a refresh. If cookie maxAge matched JWT expiry, the browser
-   * would delete the cookie when the JWT expires, and we couldn't distinguish "expired token"
-   * (should return TRY_REFRESH_TOKEN) from "no token" (should return AUTH_REQUIRED).
+   * Cookie expiry pattern matches SuperTokens:
+   * - Access cookie: ~13 months (much longer than JWT to enable refresh detection)
+   * - Refresh cookie: ~100 days (matches refresh token JWT validity)
+   *
+   * This ensures the access cookie persists even after the JWT expires, allowing the client
+   * to detect the expired token and trigger a refresh.
    *
    * @param res - Express response object
    * @param accessToken - The access token to set
@@ -204,9 +212,9 @@ export class CustomDomainAuthService {
    */
   setAuthCookies(res: Response, accessToken: string, refreshToken: string, secure: boolean = true): void {
     // Access cookie - available site-wide
-    // Uses refresh token expiry for cookie lifetime so expired JWTs can trigger refresh flow
+    // Uses long cookie expiry (~13 months) so expired JWTs can trigger refresh flow
     res.cookie(CustomDomainAuthService.ACCESS_COOKIE_NAME, accessToken, {
-      maxAge: this.REFRESH_TOKEN_EXPIRY_SECONDS * 1000,
+      maxAge: this.ACCESS_COOKIE_EXPIRY_SECONDS * 1000,
       httpOnly: true,
       secure,
       sameSite: 'lax',
@@ -214,6 +222,7 @@ export class CustomDomainAuthService {
     });
 
     // Refresh cookie - restricted to the refresh endpoint path
+    // Cookie expiry matches refresh token JWT validity (~100 days)
     res.cookie(CustomDomainAuthService.REFRESH_COOKIE_NAME, refreshToken, {
       maxAge: this.REFRESH_TOKEN_EXPIRY_SECONDS * 1000,
       httpOnly: true,
