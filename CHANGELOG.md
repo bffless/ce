@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.117](https://github.com/bffless/ce/compare/v0.0.116...v0.0.117) (2026-03-13)
+
+
+### Bug Fixes
+
+* exclude auth endpoints from token expiry check and use domain visibility ([c9f7327](https://github.com/bffless/ce/commit/c9f732714f970dc5f5f8f05cd317bf351aadeb6e))
+
 ## [0.0.116](https://github.com/bffless/ce/compare/v0.0.115...v0.0.116) (2026-03-13)
 
 
