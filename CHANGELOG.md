@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.121](https://github.com/bffless/ce/compare/v0.0.120...v0.0.121) (2026-03-14)
+
+
+### Bug Fixes
+
+* allow public domains to bypass auth middleware 401 on expired tokens ([83438aa](https://github.com/bffless/ce/commit/83438aa83c464f31c2c85d400d32c3923fde9c61))
+
 ## [0.0.120](https://github.com/bffless/ce/compare/v0.0.119...v0.0.120) (2026-03-14)
 
 
