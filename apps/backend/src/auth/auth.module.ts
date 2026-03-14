@@ -17,7 +17,10 @@ import { OnboardingRulesModule } from '../onboarding-rules/onboarding-rules.modu
 import { DomainsModule } from '../domains/domains.module';
 import { VisibilityService } from '../domains/visibility.service';
 
-@Module({})
+@Module({
+  imports: [DomainsModule],
+  providers: [VisibilityService],
+})
 export class AuthModule implements NestModule {
   static forRoot(): DynamicModule {
     // Initialize SuperTokens
