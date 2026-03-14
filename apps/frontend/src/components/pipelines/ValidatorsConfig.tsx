@@ -11,10 +11,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Plus, Trash2, Shield, Lock, Timer } from 'lucide-react';
+import { Plus, Trash2, Shield, Lock, Timer, Filter } from 'lucide-react';
+import { ExpressionInput } from './handlers/ExpressionInput';
 import type {
   ValidatorConfig,
   ValidatorType,
+  ValidatorCondition,
+  ValidatorConditionOperator,
   AuthRequiredConfig,
   RateLimitConfig,
 } from '@/services/pipelinesApi';
@@ -102,6 +105,17 @@ export function ValidatorsConfig({ validators, onChange }: ValidatorsConfigProps
     [validators, onChange]
   );
 
+  const updateCondition = useCallback(
+    (index: number, condition: ValidatorCondition | undefined) => {
+      onChange(
+        validators.map((v, i) =>
+          i === index ? { ...v, condition } : v
+        )
+      );
+    },
+    [validators, onChange]
+  );
+
   // Get available validator types (not already added)
   const availableTypes = (Object.keys(VALIDATOR_INFO) as ValidatorType[]).filter(
     (type) => !validators.some((v) => v.type === type)
@@ -181,7 +195,7 @@ export function ValidatorsConfig({ validators, onChange }: ValidatorsConfigProps
                   </div>
                   <CardDescription className="text-xs">{info.description}</CardDescription>
                 </CardHeader>
-                <CardContent className="pt-0">
+                <CardContent className="pt-0 space-y-4">
                   {validator.type === 'auth_required' && (
                     <AuthRequiredConfigForm
                       config={validator.config}
@@ -194,6 +208,10 @@ export function ValidatorsConfig({ validators, onChange }: ValidatorsConfigProps
                       onChange={(config) => updateRateLimitConfig(index, config)}
                     />
                   )}
+                  <ValidatorConditionForm
+                    condition={validator.condition}
+                    onChange={(condition) => updateCondition(index, condition)}
+                  />
                 </CardContent>
               </Card>
             );
@@ -251,6 +269,121 @@ function AuthRequiredConfigForm({ config, onChange }: AuthRequiredConfigFormProp
 interface RateLimitConfigFormProps {
   config: RateLimitConfig;
   onChange: (config: RateLimitConfig) => void;
+}
+
+// ==================== Validator Condition Form ====================
+
+const CONDITION_OPS: { value: ValidatorConditionOperator; label: string }[] = [
+  { value: 'exists', label: 'Exists' },
+  { value: 'not_exists', label: 'Does Not Exist' },
+  { value: 'equals', label: 'Equals' },
+  { value: 'not_equals', label: 'Not Equals' },
+];
+
+interface ValidatorConditionFormProps {
+  condition: ValidatorCondition | undefined;
+  onChange: (condition: ValidatorCondition | undefined) => void;
+}
+
+function ValidatorConditionForm({ condition, onChange }: ValidatorConditionFormProps) {
+  const needsValue = condition?.operator === 'equals' || condition?.operator === 'not_equals';
+
+  if (!condition) {
+    return (
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="text-xs text-muted-foreground"
+        onClick={() =>
+          onChange({ field: 'user.id', operator: 'exists' })
+        }
+      >
+        <Filter className="h-3 w-3 mr-1" />
+        Add Condition
+      </Button>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+          <Label className="text-xs text-muted-foreground">
+            Only run when
+          </Label>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 text-muted-foreground hover:text-destructive"
+          onClick={() => onChange(undefined)}
+        >
+          <Trash2 className="h-3 w-3" />
+        </Button>
+      </div>
+      <div className={`grid gap-2 ${needsValue ? 'grid-cols-3' : 'grid-cols-2'}`}>
+        <ExpressionInput
+          value={condition.field}
+          onChange={(field) => onChange({ ...condition, field })}
+          placeholder="Select field"
+        />
+        <Select
+          value={condition.operator}
+          onValueChange={(op) => {
+            const newCondition: ValidatorCondition = {
+              ...condition,
+              operator: op as ValidatorConditionOperator,
+            };
+            // Clear value when switching to exists/not_exists
+            if (op === 'exists' || op === 'not_exists') {
+              delete newCondition.value;
+            }
+            onChange(newCondition);
+          }}
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {CONDITION_OPS.map((op) => (
+              <SelectItem key={op.value} value={op.value}>
+                {op.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {needsValue && (
+          <Input
+            value={condition.value || ''}
+            onChange={(e) => onChange({ ...condition, value: e.target.value })}
+            placeholder="Value"
+          />
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {describeCondition(condition)}
+      </p>
+    </div>
+  );
+}
+
+function describeCondition(condition: ValidatorCondition): string {
+  const field = condition.field || '...';
+  switch (condition.operator) {
+    case 'exists':
+      return `Runs only when ${field} is present.`;
+    case 'not_exists':
+      return `Runs only when ${field} is not present.`;
+    case 'equals':
+      return `Runs only when ${field} equals "${condition.value || '...'}"`;
+    case 'not_equals':
+      return `Runs only when ${field} does not equal "${condition.value || '...'}"`;
+    default:
+      return '';
+  }
 }
 
 function RateLimitConfigForm({ config, onChange }: RateLimitConfigFormProps) {

@@ -218,6 +218,26 @@ export class PipelineExecutionService {
   ): Promise<void> {
     for (const validatorConfig of pipeline.validators) {
       const startTime = Date.now();
+
+      // Evaluate condition if present - skip validator if condition is not met
+      if (validatorConfig.condition) {
+        const conditionMet = this.evaluateValidatorCondition(validatorConfig.condition, context);
+        if (!conditionMet) {
+          this.logger.debug(
+            `Skipping validator '${validatorConfig.type}' - condition not met (${validatorConfig.condition.field} ${validatorConfig.condition.operator}${validatorConfig.condition.value !== undefined ? ' ' + validatorConfig.condition.value : ''})`,
+          );
+          debugInfo.push({
+            type: validatorConfig.type,
+            passed: true,
+            skipped: true,
+            durationMs: Date.now() - startTime,
+            condition: validatorConfig.condition,
+            conditionResult: false,
+          });
+          continue;
+        }
+      }
+
       const validator = this.validatorRegistry.get(validatorConfig.type as ValidatorType);
 
       try {
@@ -228,6 +248,8 @@ export class PipelineExecutionService {
           type: validatorConfig.type,
           passed: true,
           durationMs: Date.now() - startTime,
+          condition: validatorConfig.condition,
+          conditionResult: validatorConfig.condition ? true : undefined,
         });
       } catch (error) {
         const errorInfo =
@@ -242,12 +264,43 @@ export class PipelineExecutionService {
           type: validatorConfig.type,
           passed: false,
           durationMs: Date.now() - startTime,
+          condition: validatorConfig.condition,
+          conditionResult: validatorConfig.condition ? true : undefined,
           error: errorInfo,
         });
 
         // Re-throw to stop execution
         throw error;
       }
+    }
+  }
+
+  /**
+   * Evaluate a validator condition against the pipeline context.
+   * Returns true if the validator should run, false if it should be skipped.
+   */
+  private evaluateValidatorCondition(
+    condition: { field: string; operator: string; value?: string },
+    context: PipelineContext,
+  ): boolean {
+    const fieldValue = this.expressionEvaluator.evaluateExpression(
+      condition.field,
+      context,
+      'validator-condition',
+    );
+
+    switch (condition.operator) {
+      case 'exists':
+        return fieldValue !== null && fieldValue !== undefined;
+      case 'not_exists':
+        return fieldValue === null || fieldValue === undefined;
+      case 'equals':
+        return String(fieldValue ?? '') === String(condition.value ?? '');
+      case 'not_equals':
+        return String(fieldValue ?? '') !== String(condition.value ?? '');
+      default:
+        this.logger.warn(`Unknown validator condition operator: ${condition.operator}`);
+        return true; // Run validator by default if operator is unknown
     }
   }
 

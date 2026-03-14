@@ -16,10 +16,18 @@ export interface RateLimitConfig {
   keyBy?: 'ip' | 'user' | 'ip+user';
 }
 
+export type ValidatorConditionOperator = 'exists' | 'not_exists' | 'equals' | 'not_equals';
+
+export interface ValidatorCondition {
+  field: string;
+  operator: ValidatorConditionOperator;
+  value?: string;
+}
+
 // Discriminated union for validator configs
 export type ValidatorConfig =
-  | { type: 'auth_required'; config: AuthRequiredConfig }
-  | { type: 'rate_limit'; config: RateLimitConfig };
+  | { type: 'auth_required'; config: AuthRequiredConfig; condition?: ValidatorCondition }
+  | { type: 'rate_limit'; config: RateLimitConfig; condition?: ValidatorCondition };
 
 export type HandlerType =
   | 'form_handler'
@@ -88,6 +96,13 @@ export interface ValidatorDebugInfo {
   type: string;
   passed: boolean;
   durationMs: number;
+  skipped?: boolean;
+  condition?: {
+    field: string;
+    operator: string;
+    value?: string;
+  };
+  conditionResult?: boolean;
   error?: {
     code: string;
     message: string;

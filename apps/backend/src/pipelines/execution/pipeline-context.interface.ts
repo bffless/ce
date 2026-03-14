@@ -184,6 +184,25 @@ export interface ValidatorDebugInfo {
   durationMs: number;
 
   /**
+   * Whether the validator was skipped due to a condition not being met
+   */
+  skipped?: boolean;
+
+  /**
+   * The condition that was evaluated (if any)
+   */
+  condition?: {
+    field: string;
+    operator: string;
+    value?: string;
+  };
+
+  /**
+   * Result of condition evaluation
+   */
+  conditionResult?: boolean;
+
+  /**
    * Error information (if failed)
    */
   error?: {

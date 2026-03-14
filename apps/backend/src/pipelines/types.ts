@@ -32,11 +32,26 @@ export interface RateLimitConfig {
 }
 
 /**
+ * Condition operator for validator conditions
+ */
+export type ValidatorConditionOperator = 'exists' | 'not_exists' | 'equals' | 'not_equals';
+
+/**
+ * Condition that determines whether a validator should run.
+ * Uses the same expression fields available in pipeline steps (user.id, request.ip, etc.)
+ */
+export interface ValidatorCondition {
+  field: string;
+  operator: ValidatorConditionOperator;
+  value?: string;
+}
+
+/**
  * Configuration for a pipeline validator (discriminated union)
  */
 export type ValidatorConfig =
-  | { type: 'auth_required'; config: AuthRequiredConfig }
-  | { type: 'rate_limit'; config: RateLimitConfig };
+  | { type: 'auth_required'; config: AuthRequiredConfig; condition?: ValidatorCondition }
+  | { type: 'rate_limit'; config: RateLimitConfig; condition?: ValidatorCondition };
 
 /**
  * Handler types for pipeline steps
