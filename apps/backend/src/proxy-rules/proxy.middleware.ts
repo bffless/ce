@@ -15,6 +15,7 @@ import { Pipeline, PipelineStep } from '../pipelines/types';
 import { CustomDomainAuthService } from '../auth/custom-domain-auth.service';
 import { VisibilityService, AccessControlInfo } from '../domains/visibility.service';
 import { PermissionsService } from '../permissions/permissions.service';
+import { TrafficRoutingService } from '../domains/traffic-routing.service';
 
 interface ParsedPublicPath {
   owner: string;
@@ -44,6 +45,7 @@ export class ProxyMiddleware implements NestMiddleware {
     private readonly pipelineExecutionService: PipelineExecutionService,
     private readonly visibilityService: VisibilityService,
     private readonly permissionsService: PermissionsService,
+    private readonly trafficRoutingService: TrafficRoutingService,
   ) {}
 
   /**
@@ -257,6 +259,20 @@ export class ProxyMiddleware implements NestMiddleware {
       this.logger.debug(
         `Domain mapping resolved: host=${forwardedHost}, project=${project.owner}/${project.name}, alias=${resolvedAliasName}`,
       );
+
+      // Apply traffic splitting: check if variant cookie should override the alias
+      const variantCookie = req.cookies?.[TrafficRoutingService.VARIANT_COOKIE_NAME];
+      if (variantCookie) {
+        // Check if the variant cookie points to a valid alias for this project
+        const variantAlias = await this.getAliasByName(project.id, variantCookie);
+        if (variantAlias) {
+          this.logger.debug(
+            `Traffic splitting: variant cookie "${variantCookie}" overriding default alias "${resolvedAliasName}"`,
+          );
+          alias = variantAlias;
+          resolvedAliasName = variantCookie;
+        }
+      }
     }
 
     // Get project if we haven't already (happens when alias was found directly)
@@ -883,6 +899,11 @@ export class ProxyMiddleware implements NestMiddleware {
         { deployment },
       );
 
+      // If the response was already sent (e.g., by a streaming handler), don't try to send again
+      if (res.headersSent) {
+        return;
+      }
+
       if (result.success && result.response) {
         // Set response headers if provided
         if (result.response.headers) {
@@ -914,11 +935,13 @@ export class ProxyMiddleware implements NestMiddleware {
         `Pipeline execution failed: ${error instanceof Error ? error.message : String(error)}`,
         error instanceof Error ? error.stack : undefined,
       );
-      res.status(500).json({
-        error: 'Pipeline execution failed',
-        code: 'PIPELINE_EXECUTION_ERROR',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
+      if (!res.headersSent) {
+        res.status(500).json({
+          error: 'Pipeline execution failed',
+          code: 'PIPELINE_EXECUTION_ERROR',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
     }
   }
 

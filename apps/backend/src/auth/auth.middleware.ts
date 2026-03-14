@@ -2,6 +2,7 @@ import { Injectable, NestMiddleware, Logger } from '@nestjs/common';
 import { middleware } from 'supertokens-node/framework/express';
 import { Request, Response, NextFunction } from 'express';
 import * as jwt from 'jsonwebtoken';
+import { VisibilityService } from '../domains/visibility.service';
 
 /**
  * Auth middleware that wraps SuperTokens middleware with additional
@@ -16,12 +17,18 @@ import * as jwt from 'jsonwebtoken';
  * attempt a token refresh before giving up.
  *
  * For browser requests, continues normally - guards will redirect to login.
+ *
+ * IMPORTANT: For /public/* routes on public domains, we skip the 401
+ * response and let the request continue to PublicController, which
+ * will serve the content without authentication.
  */
 @Injectable()
 export class AuthMiddleware implements NestMiddleware {
   private readonly logger = new Logger(AuthMiddleware.name);
 
-  use(req: Request, res: Response, next: NextFunction) {
+  constructor(private readonly visibilityService: VisibilityService) {}
+
+  async use(req: Request, res: Response, next: NextFunction) {
     // Use originalUrl which preserves the full path even after nginx proxy_pass
     // req.path may be stripped by nginx depending on proxy configuration
     const requestPath = req.originalUrl?.split('?')[0] || req.path;
@@ -53,13 +60,21 @@ export class AuthMiddleware implements NestMiddleware {
           (req as any).tokenExpired = true;
 
           // For API requests, return "try refresh" response immediately
+          // UNLESS this is a public route on a public domain - then let it through
           // This prevents unnecessary pipeline/controller execution
           // Uses SuperTokens response format for consistency
           if (this.isApiRequest(req)) {
-            this.logger.debug('Returning try refresh token response for API request');
-            return res.status(401).json({
-              message: 'try refresh token',
-            });
+            // Check if this is a public route on a public domain
+            const isPublic = await this.isPublicRoute(req);
+            if (isPublic) {
+              this.logger.debug(`Skipping 401 for expired token on public domain: ${requestPath}`);
+              // Continue to controller - it will serve public content
+            } else {
+              this.logger.debug('Returning try refresh token response for API request');
+              return res.status(401).json({
+                message: 'try refresh token',
+              });
+            }
           }
 
           // For browser requests, continue - guards will handle redirect
@@ -72,6 +87,60 @@ export class AuthMiddleware implements NestMiddleware {
 
     // Continue with SuperTokens middleware
     middleware()(req, res, next);
+  }
+
+  /**
+   * Check if this is a public route on a public domain.
+   * If so, we should skip the 401 "try refresh token" response and let
+   * the request continue to the controller, which will serve public content.
+   *
+   * @param req - The Express request object
+   * @returns true if this is a public route that should bypass auth, false otherwise
+   */
+  private async isPublicRoute(req: Request): Promise<boolean> {
+    const requestPath = req.originalUrl?.split('?')[0] || req.path;
+
+    // Only check /public/* routes - other routes require auth
+    if (!requestPath.startsWith('/public/')) {
+      return false;
+    }
+
+    // Get the host from X-Forwarded-Host (set by nginx) or Host header
+    const host =
+      (req.headers['x-forwarded-host'] as string) || (req.headers['host'] as string) || '';
+
+    // Strip port if present
+    const domain = host.split(':')[0];
+
+    if (!domain) {
+      this.logger.debug('No domain found in request headers, treating as private');
+      return false;
+    }
+
+    try {
+      // Check if this domain is configured as public
+      const accessControl = await this.visibilityService.resolveAccessControlByDomain(domain);
+
+      if (accessControl === null) {
+        // Domain not found in mappings - let the controller handle it
+        // (could be primary domain, subdomain, or unknown)
+        this.logger.debug(`Domain ${domain} not found in mappings, continuing to controller`);
+        return true; // Let the request through, PublicController will handle visibility
+      }
+
+      if (accessControl.isPublic) {
+        this.logger.debug(`Domain ${domain} is public, bypassing auth for ${requestPath}`);
+        return true;
+      }
+
+      this.logger.debug(`Domain ${domain} is private, requiring auth for ${requestPath}`);
+      return false;
+    } catch (error) {
+      // On error, be permissive and let the request through
+      // The controller will handle the access control check
+      this.logger.debug(`Error checking domain visibility: ${error}, continuing to controller`);
+      return true;
+    }
   }
 
   /**

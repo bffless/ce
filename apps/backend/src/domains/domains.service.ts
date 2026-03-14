@@ -21,6 +21,7 @@ import { SslCertificateService } from './ssl-certificate.service';
 import { SslInfoService, DomainSslInfo } from './ssl-info.service';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 import { ProxyRulesService } from '../proxy-rules/proxy-rules.service';
+import { VisibilityService } from './visibility.service';
 
 const RESERVED_SUBDOMAINS = [
   'www',
@@ -92,6 +93,7 @@ export class DomainsService {
     private readonly sslInfoService: SslInfoService,
     private readonly featureFlagsService: FeatureFlagsService,
     private readonly proxyRulesService: ProxyRulesService,
+    private readonly visibilityService: VisibilityService,
   ) {}
 
   /**
@@ -1006,6 +1008,15 @@ export class DomainsService {
       }
     }
 
+    // Invalidate visibility cache if visibility-related fields were updated
+    if (
+      updateDomainDto.isPublic !== undefined ||
+      updateDomainDto.unauthorizedBehavior !== undefined ||
+      updateDomainDto.requiredRole !== undefined
+    ) {
+      this.visibilityService.invalidateDomainCache(updated.domain);
+    }
+
     return updated;
   }
 
@@ -1033,6 +1044,9 @@ export class DomainsService {
     if (existing.domainType === 'custom' || existing.domainType === 'redirect') {
       await this.notifyControlPlane('remove', existing.domain);
     }
+
+    // Invalidate visibility cache for the removed domain
+    this.visibilityService.invalidateDomainCache(existing.domain);
 
     return { success: true, nginxConfigPath: existing.nginxConfigPath };
   }

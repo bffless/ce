@@ -14,6 +14,7 @@ import { EmailVerificationGuard } from './email-verification.guard';
 import { initSuperTokens } from './supertokens.config';
 import { SetupModule } from '../setup/setup.module';
 import { OnboardingRulesModule } from '../onboarding-rules/onboarding-rules.module';
+import { DomainsModule } from '../domains/domains.module';
 
 @Module({})
 export class AuthModule implements NestModule {
@@ -24,7 +25,11 @@ export class AuthModule implements NestModule {
     return {
       module: AuthModule,
       global: true,
-      imports: [forwardRef(() => SetupModule), forwardRef(() => OnboardingRulesModule)],
+      imports: [
+        forwardRef(() => SetupModule),
+        forwardRef(() => OnboardingRulesModule),
+        forwardRef(() => DomainsModule),
+      ],
       controllers: [AuthController, CustomDomainAuthController],
       providers: [
         AuthService,

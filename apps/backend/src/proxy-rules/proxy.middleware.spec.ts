@@ -6,6 +6,7 @@ import { ConfigService } from '@nestjs/config';
 import { PipelineExecutionService } from '../pipelines/execution';
 import { VisibilityService } from '../domains/visibility.service';
 import { PermissionsService } from '../permissions/permissions.service';
+import { TrafficRoutingService } from '../domains/traffic-routing.service';
 import { Request, Response, NextFunction } from 'express';
 
 // Mock the database client
@@ -27,6 +28,7 @@ describe('ProxyMiddleware', () => {
   let mockPipelineExecutionService: jest.Mocked<PipelineExecutionService>;
   let mockVisibilityService: jest.Mocked<VisibilityService>;
   let mockPermissionsService: jest.Mocked<PermissionsService>;
+  let mockTrafficRoutingService: jest.Mocked<TrafficRoutingService>;
   let mockNext: NextFunction;
 
   beforeEach(() => {
@@ -67,6 +69,10 @@ describe('ProxyMiddleware', () => {
       meetsRoleRequirement: jest.fn().mockReturnValue(true),
     } as any;
 
+    mockTrafficRoutingService = {
+      selectVariant: jest.fn().mockResolvedValue(null),
+    } as any;
+
     middleware = new ProxyMiddleware(
       mockProxyRulesService,
       mockProxyService,
@@ -75,6 +81,7 @@ describe('ProxyMiddleware', () => {
       mockPipelineExecutionService,
       mockVisibilityService,
       mockPermissionsService,
+      mockTrafficRoutingService,
     );
     mockNext = jest.fn();
   });

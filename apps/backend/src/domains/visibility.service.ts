@@ -20,6 +20,14 @@ export interface AccessControlInfo {
 }
 
 /**
+ * Cache entry for domain visibility lookups
+ */
+interface DomainVisibilityCache {
+  accessControl: AccessControlInfo | null;
+  expiresAt: number;
+}
+
+/**
  * Phase B5: Visibility Resolution Service
  *
  * Handles visibility cascade resolution for domains and aliases.
@@ -37,6 +45,16 @@ export interface AccessControlInfo {
 @Injectable()
 export class VisibilityService {
   private readonly logger = new Logger(VisibilityService.name);
+
+  /**
+   * In-memory cache for domain visibility lookups.
+   * This cache improves performance for the AuthMiddleware's public route check,
+   * which runs on every request with an expired token.
+   *
+   * Cache entries expire after 30 seconds (configurable via DOMAIN_VISIBILITY_CACHE_TTL_MS).
+   */
+  private readonly domainVisibilityCache = new Map<string, DomainVisibilityCache>();
+  private readonly cacheTtlMs = parseInt(process.env.DOMAIN_VISIBILITY_CACHE_TTL_MS || '30000', 10);
 
   /**
    * Resolve effective visibility for a domain mapping
@@ -290,12 +308,24 @@ export class VisibilityService {
   }
 
   /**
-   * Resolve access control for a domain by its domain name string
+   * Resolve access control for a domain by its domain name string.
+   * Results are cached for performance (used by AuthMiddleware on every request).
    *
    * @param domain - The full domain string
    * @returns Access control info or null if domain not found
    */
   async resolveAccessControlByDomain(domain: string): Promise<AccessControlInfo | null> {
+    // Normalize domain for cache key (lowercase, no port)
+    const cacheKey = domain.toLowerCase().split(':')[0];
+
+    // Check cache first
+    const cached = this.domainVisibilityCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      this.logger.debug(`Cache hit for domain visibility: ${cacheKey}`);
+      return cached.accessControl;
+    }
+
+    // Cache miss - query database
     const alternate = domain.startsWith('www.') ? domain.slice(4) : `www.${domain}`;
 
     const [domainMapping] = await db
@@ -304,11 +334,46 @@ export class VisibilityService {
       .where(or(eq(domainMappings.domain, domain), eq(domainMappings.domain, alternate)))
       .limit(1);
 
-    if (!domainMapping) {
-      return null;
+    let accessControl: AccessControlInfo | null = null;
+    if (domainMapping) {
+      accessControl = await this.resolveAccessControl(domainMapping);
     }
 
-    return this.resolveAccessControl(domainMapping);
+    // Store in cache
+    this.domainVisibilityCache.set(cacheKey, {
+      accessControl,
+      expiresAt: Date.now() + this.cacheTtlMs,
+    });
+
+    this.logger.debug(`Cached domain visibility for ${cacheKey}: ${accessControl?.isPublic ?? 'not found'}`);
+    return accessControl;
+  }
+
+  /**
+   * Invalidate cache entry for a specific domain.
+   * Should be called when domain visibility settings are updated.
+   *
+   * @param domain - The domain to invalidate (will also invalidate www variant)
+   */
+  invalidateDomainCache(domain: string): void {
+    const normalized = domain.toLowerCase().split(':')[0];
+    const alternate = normalized.startsWith('www.')
+      ? normalized.slice(4)
+      : `www.${normalized}`;
+
+    this.domainVisibilityCache.delete(normalized);
+    this.domainVisibilityCache.delete(alternate);
+
+    this.logger.debug(`Invalidated visibility cache for ${normalized} and ${alternate}`);
+  }
+
+  /**
+   * Clear the entire domain visibility cache.
+   * Useful for testing or bulk updates.
+   */
+  clearDomainCache(): void {
+    this.domainVisibilityCache.clear();
+    this.logger.debug('Cleared all domain visibility cache entries');
   }
 
   /**

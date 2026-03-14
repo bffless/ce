@@ -9,6 +9,7 @@ import { SslCertificateService } from './ssl-certificate.service';
 import { SslInfoService } from './ssl-info.service';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 import { ProxyRulesService } from '../proxy-rules/proxy-rules.service';
+import { VisibilityService } from './visibility.service';
 
 // Mock the database client
 jest.mock('../db/client', () => ({
@@ -31,6 +32,7 @@ describe('DomainsService', () => {
   let mockSslInfoService: jest.Mocked<SslInfoService>;
   let mockFeatureFlagsService: jest.Mocked<FeatureFlagsService>;
   let mockProxyRulesService: jest.Mocked<ProxyRulesService>;
+  let mockVisibilityService: jest.Mocked<VisibilityService>;
 
   beforeEach(async () => {
     // Get the mocked db instance
@@ -121,6 +123,39 @@ describe('DomainsService', () => {
       delete: jest.fn(),
     } as unknown as jest.Mocked<ProxyRulesService>;
 
+    mockVisibilityService = {
+      resolveVisibility: jest.fn().mockResolvedValue(true),
+      resolveAliasVisibility: jest.fn().mockResolvedValue(true),
+      resolveVisibilityByDomain: jest.fn().mockResolvedValue(true),
+      resolveAccessControl: jest.fn().mockResolvedValue({
+        isPublic: true,
+        unauthorizedBehavior: 'not_found',
+        requiredRole: 'authenticated',
+        source: 'project',
+      }),
+      resolveAccessControlByDomain: jest.fn().mockResolvedValue({
+        isPublic: true,
+        unauthorizedBehavior: 'not_found',
+        requiredRole: 'authenticated',
+        source: 'project',
+      }),
+      resolveAccessControlForAlias: jest.fn().mockResolvedValue({
+        isPublic: true,
+        unauthorizedBehavior: 'not_found',
+        requiredRole: 'authenticated',
+        source: 'project',
+      }),
+      getVisibilityInfo: jest.fn().mockResolvedValue({
+        effectiveVisibility: true,
+        source: 'project',
+        domainOverride: null,
+        aliasVisibility: null,
+        projectVisibility: true,
+      }),
+      invalidateDomainCache: jest.fn(),
+      clearDomainCache: jest.fn(),
+    } as unknown as jest.Mocked<VisibilityService>;
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         DomainsService,
@@ -132,6 +167,7 @@ describe('DomainsService', () => {
         { provide: SslInfoService, useValue: mockSslInfoService },
         { provide: FeatureFlagsService, useValue: mockFeatureFlagsService },
         { provide: ProxyRulesService, useValue: mockProxyRulesService },
+        { provide: VisibilityService, useValue: mockVisibilityService },
       ],
     }).compile();
 
