@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.120](https://github.com/bffless/ce/compare/v0.0.119...v0.0.120) (2026-03-14)
+
+
+### Features
+
+* add conditional validators for pipelines ([824bd8e](https://github.com/bffless/ce/commit/824bd8e2fbedbae23fb01114101e2fa330b6b9a8))
+
 ## [0.0.119](https://github.com/bffless/ce/compare/v0.0.118...v0.0.119) (2026-03-14)
 
 
