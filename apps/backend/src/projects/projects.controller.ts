@@ -10,6 +10,9 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  NotFoundException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { ProjectsService } from './projects.service';
@@ -32,6 +35,8 @@ import {
   AIProvidersResponseDto,
   AIProviderEnum,
 } from '../settings/dto/ai-settings.dto';
+import { SkillsService, SkillSummary } from '../pipelines/skills.service';
+import { DeploymentsService } from '../deployments/deployments.service';
 
 @ApiTags('projects')
 @Controller('api/projects')
@@ -39,6 +44,9 @@ export class ProjectsController {
   constructor(
     private readonly projectsService: ProjectsService,
     private readonly aiSettingsService: ProjectAISettingsService,
+    private readonly skillsService: SkillsService,
+    @Inject(forwardRef(() => DeploymentsService))
+    private readonly deploymentsService: DeploymentsService,
   ) {}
 
   @Get()
@@ -141,6 +149,55 @@ export class ProjectsController {
     return {
       providers: this.aiSettingsService.getAvailableProviders(),
     };
+  }
+
+  @Get(':id/ai/skills')
+  @UseGuards(SessionAuthGuard, ProjectPermissionGuard)
+  @RequireProjectRole('contributor')
+  @ApiOperation({ summary: 'List available AI skills for the project deployment' })
+  @ApiResponse({
+    status: 200,
+    description: 'List of available skills',
+  })
+  async listSkills(
+    @Param('id') projectId: string,
+    @Query('commitSha') commitSha?: string,
+    @CurrentUser('id') userId?: string,
+  ): Promise<{ skills: SkillSummary[] }> {
+    const project = await this.projectsService.getProjectById(projectId);
+    if (!project) {
+      throw new NotFoundException('Project not found');
+    }
+
+    // Resolve commitSha: use provided, or try to get from production alias
+    let sha = commitSha;
+    if (!sha) {
+      try {
+        const alias = await this.deploymentsService.getAlias(
+          projectId,
+          'production',
+          userId || 'system',
+          'admin',
+        );
+        sha = alias?.commitSha;
+      } catch {
+        // No production alias - that's OK
+      }
+    }
+
+    if (!sha) {
+      return { skills: [] };
+    }
+
+    const skillsPath = await this.aiSettingsService.getSkillsPath(projectId);
+    const skills = await this.skillsService.listSkills(
+      project.owner,
+      project.name,
+      sha,
+      skillsPath,
+    );
+
+    return { skills };
   }
 
   // ==========================================================================

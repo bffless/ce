@@ -915,6 +915,7 @@ function PipelineTestCard({ ruleId, pathPattern, method }: PipelineTestCardProps
   const [mockUserId, setMockUserId] = useState('');
   const [mockUserEmail, setMockUserEmail] = useState('');
   const [mockUserRole, setMockUserRole] = useState('');
+  const [deploymentAlias, setDeploymentAlias] = useState('production');
   const [result, setResult] = useState<TestPipelineResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -998,6 +999,7 @@ function PipelineTestCard({ ruleId, pathPattern, method }: PipelineTestCardProps
           headers: headersObj,
           simulateAuth,
           mockUser,
+          deploymentAlias: deploymentAlias || undefined,
         },
       }).unwrap();
 
@@ -1197,6 +1199,21 @@ function PipelineTestCard({ ruleId, pathPattern, method }: PipelineTestCardProps
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* Deployment / Skills Context */}
+            <div className="space-y-2">
+              <Label htmlFor="deploymentAlias">Deployment Alias (for Skills)</Label>
+              <Input
+                id="deploymentAlias"
+                placeholder="production"
+                value={deploymentAlias}
+                onChange={(e) => setDeploymentAlias(e.target.value)}
+                className="max-w-xs"
+              />
+              <p className="text-xs text-muted-foreground">
+                Used to load skills from a specific deployment (e.g., production, staging)
+              </p>
             </div>
 
             {/* Run Button */}

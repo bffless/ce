@@ -20,7 +20,7 @@ import { ProxyRulesModule } from '../proxy-rules/proxy-rules.module';
 
 @Module({
   imports: [
-    ProjectsModule,
+    forwardRef(() => ProjectsModule),
     ScheduleModule.forRoot(),
     FeatureFlagsModule,
     forwardRef(() => ProxyRulesModule),

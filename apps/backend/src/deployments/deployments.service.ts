@@ -198,8 +198,14 @@ export class DeploymentsService {
         // Get file path (remove leading slash if present)
         const filePath = entryPath.replace(/^\/+/, '');
 
-        // Skip hidden files and system files
-        if (filePath.startsWith('.') || filePath.includes('/__MACOSX/')) {
+        // Skip hidden files and system files, but allow .bffless/ (skills directory)
+        const isHiddenFile =
+          (filePath.startsWith('.') && !filePath.startsWith('.bffless/')) ||
+          filePath.includes('/__MACOSX/') ||
+          filePath.includes('/.') || // Hidden files in subdirectories (e.g., assets/.DS_Store)
+          filePath === '.DS_Store';
+
+        if (isHiddenFile) {
           fileCount--; // Don't count these
           continue;
         }

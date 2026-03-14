@@ -104,6 +104,14 @@ export class TestPipelineDto {
   @IsOptional()
   @IsBoolean()
   dryRun?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Deployment alias to use for skills/deployment context (e.g., "production", "staging")',
+    example: 'production',
+  })
+  @IsOptional()
+  @IsString()
+  deploymentAlias?: string;
 }
 
 /**

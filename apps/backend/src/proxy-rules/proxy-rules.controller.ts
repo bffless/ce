@@ -10,6 +10,8 @@ import {
   ParseUUIDPipe,
   NotFoundException,
   BadRequestException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -25,6 +27,8 @@ import { ApiKeyGuard } from '../auth/api-key.guard';
 import { CurrentUser, CurrentUserData } from '../auth/decorators/current-user.decorator';
 import { PipelineExecutionService } from '../pipelines/execution';
 import { TestPipelineDto, PipelineTestResultDto } from '../pipelines/dto';
+import { DeploymentsService } from '../deployments/deployments.service';
+import { ProjectsService } from '../projects/projects.service';
 
 /**
  * Controller for individual proxy rule operations.
@@ -39,6 +43,10 @@ export class ProxyRulesController {
   constructor(
     private readonly proxyRulesService: ProxyRulesService,
     private readonly pipelineExecutionService: PipelineExecutionService,
+    @Inject(forwardRef(() => DeploymentsService))
+    private readonly deploymentsService: DeploymentsService,
+    @Inject(forwardRef(() => ProjectsService))
+    private readonly projectsService: ProjectsService,
   ) {}
 
   @Get(':id')
@@ -184,12 +192,41 @@ export class ProxyRulesController {
       }
     }
 
+    // Resolve deployment context if alias is provided (for skills testing)
+    // Auto-fallback to "production" alias when skills are configured but no alias specified
+    let deployment: { owner: string; repo: string; commitSha: string } | undefined;
+
+    // Check if skills are configured in any step
+    const hasSkillsConfig = (pipelineConfig.steps || []).some(
+      (step) => step.config?.skills && (step.config.skills as any).mode !== 'none',
+    );
+
+    // Use provided alias, or fallback to "production" if skills are configured
+    const aliasToResolve = dto.deploymentAlias || (hasSkillsConfig ? 'production' : undefined);
+
+    if (aliasToResolve) {
+      const project = await this.projectsService.getProjectById(ruleSet.projectId);
+
+      if (project) {
+        const repoPath = `${project.owner}/${project.name}`;
+        const commitSha = await this.deploymentsService.resolveAlias(repoPath, aliasToResolve);
+
+        if (commitSha) {
+          deployment = {
+            owner: project.owner,
+            repo: project.name,
+            commitSha,
+          };
+        }
+      }
+    }
+
     // Use debug execution mode
     const result = await this.pipelineExecutionService.executePipelineWithDebug(
       pipelineLike as any,
       mockReq,
       testUser,
-      { dryRun: dto.dryRun },
+      { dryRun: dto.dryRun, deployment },
     );
 
     return {

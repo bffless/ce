@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { DeploymentsService } from './deployments.service';
 import { PendingUploadsService } from './pending-uploads.service';
 import { PendingUploadsScheduler } from './pending-uploads.scheduler';
@@ -12,7 +12,14 @@ import { ShareLinksModule } from '../share-links/share-links.module';
 import { PlatformModule } from '../platform/platform.module';
 
 @Module({
-  imports: [ProjectsModule, PermissionsModule, DomainsModule, CacheRulesModule, ShareLinksModule, PlatformModule],
+  imports: [
+    forwardRef(() => ProjectsModule),
+    PermissionsModule,
+    forwardRef(() => DomainsModule),
+    CacheRulesModule,
+    ShareLinksModule,
+    PlatformModule,
+  ],
   controllers: [DeploymentsController, AliasesController, PublicController, FilesController],
   providers: [DeploymentsService, PendingUploadsService, PendingUploadsScheduler],
   exports: [DeploymentsService, PendingUploadsService],
