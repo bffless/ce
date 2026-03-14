@@ -123,6 +123,29 @@ export class ProxyMiddleware implements NestMiddleware {
         // If alias doesn't have a rule set, fall through to project default
       }
 
+      // Apply traffic splitting: check if variant cookie should override the alias
+      // This applies to domain-mapped requests (with X-Forwarded-Host) where the URL
+      // uses an alias (not a raw SHA). The variant cookie allows A/B testing by
+      // redirecting users to content from a different alias.
+      const forwardedHost = req.headers['x-forwarded-host'] as string | undefined;
+      if (forwardedHost && !isSha && aliasName) {
+        const variantCookie = req.cookies?.[TrafficRoutingService.VARIANT_COOKIE_NAME];
+        if (variantCookie && variantCookie !== aliasName) {
+          const variantAlias = await this.getAliasByName(project.id, variantCookie);
+          if (variantAlias?.commitSha) {
+            this.logger.debug(
+              `Traffic splitting: variant cookie "${variantCookie}" overriding URL alias "${aliasName}"`,
+            );
+            resolvedCommitSha = variantAlias.commitSha;
+            // Update effectiveRuleSetId if variant alias has its own rules
+            if (variantAlias.proxyRuleSetId) {
+              effectiveRuleSetId = variantAlias.proxyRuleSetId;
+            }
+            aliasName = variantCookie;
+          }
+        }
+      }
+
       // Get effective rules from the resolved rule set
       const rules = await this.getCachedRules(effectiveRuleSetId);
       this.logger.debug(
@@ -259,20 +282,6 @@ export class ProxyMiddleware implements NestMiddleware {
       this.logger.debug(
         `Domain mapping resolved: host=${forwardedHost}, project=${project.owner}/${project.name}, alias=${resolvedAliasName}`,
       );
-
-      // Apply traffic splitting: check if variant cookie should override the alias
-      const variantCookie = req.cookies?.[TrafficRoutingService.VARIANT_COOKIE_NAME];
-      if (variantCookie) {
-        // Check if the variant cookie points to a valid alias for this project
-        const variantAlias = await this.getAliasByName(project.id, variantCookie);
-        if (variantAlias) {
-          this.logger.debug(
-            `Traffic splitting: variant cookie "${variantCookie}" overriding default alias "${resolvedAliasName}"`,
-          );
-          alias = variantAlias;
-          resolvedAliasName = variantCookie;
-        }
-      }
     }
 
     // Get project if we haven't already (happens when alias was found directly)
@@ -280,6 +289,23 @@ export class ProxyMiddleware implements NestMiddleware {
       project = await this.getProjectById(alias!.projectId);
       if (!project) {
         return next();
+      }
+    }
+
+    // Apply traffic splitting: check if variant cookie should override the alias
+    // This runs AFTER we've resolved the project, regardless of whether the alias
+    // was found globally or via domain mapping. This ensures variant cookies work
+    // for all request paths (dedicated domain server blocks, wildcard subdomains, etc.)
+    const variantCookie = req.cookies?.[TrafficRoutingService.VARIANT_COOKIE_NAME];
+    if (variantCookie && variantCookie !== resolvedAliasName) {
+      // Check if the variant cookie points to a valid alias for this project
+      const variantAlias = await this.getAliasByName(project.id, variantCookie);
+      if (variantAlias) {
+        this.logger.debug(
+          `Traffic splitting: variant cookie "${variantCookie}" overriding alias "${resolvedAliasName}"`,
+        );
+        alias = variantAlias;
+        resolvedAliasName = variantCookie;
       }
     }
 
