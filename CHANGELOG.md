@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.119](https://github.com/bffless/ce/compare/v0.0.118...v0.0.119) (2026-03-14)
+
+
+### Features
+
+* add AI pipeline skills support ([8d1ded8](https://github.com/bffless/ce/commit/8d1ded8bf3c10d07d225436fcb67c2164b7961a0))
+* add AI pipeline skills support ([8e915b4](https://github.com/bffless/ce/commit/8e915b402b3ee5cc9f8d52172a82f94e76bba5e0))
+
+
+### Bug Fixes
+
+* add missing service mocks to ProxyRulesController test ([aeadb23](https://github.com/bffless/ce/commit/aeadb236f9f2903e91c6f0a00446b92f4de09ff9))
+
 ## [0.0.118](https://github.com/bffless/ce/compare/v0.0.117...v0.0.118) (2026-03-13)
 
 
