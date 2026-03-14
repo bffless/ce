@@ -15,6 +15,7 @@ import { initSuperTokens } from './supertokens.config';
 import { SetupModule } from '../setup/setup.module';
 import { OnboardingRulesModule } from '../onboarding-rules/onboarding-rules.module';
 import { DomainsModule } from '../domains/domains.module';
+import { VisibilityService } from '../domains/visibility.service';
 
 @Module({})
 export class AuthModule implements NestModule {
@@ -40,6 +41,7 @@ export class AuthModule implements NestModule {
         OptionalAuthGuard,
         RolesGuard,
         EmailVerificationGuard,
+        VisibilityService, // Required for AuthMiddleware
         {
           provide: APP_GUARD,
           useClass: EmailVerificationGuard,
