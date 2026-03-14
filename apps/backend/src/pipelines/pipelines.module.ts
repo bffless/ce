@@ -29,6 +29,7 @@ import {
 } from './handlers';
 // Services
 import { FunctionRunnerService } from './function-runner.service';
+import { SkillsService } from './skills.service';
 // Validators
 import { AuthRequiredValidator, RateLimitValidator } from './execution/validators';
 
@@ -51,6 +52,8 @@ import { AuthRequiredValidator, RateLimitValidator } from './execution/validator
     ExpressionEvaluator,
     // Function runner service
     FunctionRunnerService,
+    // Skills service for AI agent skills
+    SkillsService,
     // Step handlers (auto-register on construction)
     FormHandler,
     ResponseHandler,
@@ -70,6 +73,7 @@ import { AuthRequiredValidator, RateLimitValidator } from './execution/validator
     PipelineExecutionService,
     PipelineSchemasService,
     PipelineDataService,
+    SkillsService,
   ],
 })
 export class PipelinesModule {}

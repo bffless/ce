@@ -57,6 +57,12 @@ export interface AvailableProvider {
   models: ModelInfo[];
 }
 
+// Skill types
+export interface SkillSummary {
+  name: string;
+  description: string;
+}
+
 export interface Project {
   id: string;
   owner: string;
@@ -221,6 +227,20 @@ export const projectsApi = api.injectEndpoints({
     >({
       query: (projectId) => `/api/projects/${projectId}/ai/providers`,
     }),
+
+    // Skills endpoint
+    listProjectSkills: builder.query<
+      { skills: SkillSummary[] },
+      { projectId: string; commitSha?: string }
+    >({
+      query: ({ projectId, commitSha }) => ({
+        url: `/api/projects/${projectId}/ai/skills`,
+        params: commitSha ? { commitSha } : undefined,
+      }),
+      providesTags: (_result, _error, { projectId }) => [
+        { type: 'ProjectAI' as const, id: `${projectId}-skills` },
+      ],
+    }),
   }),
 });
 
@@ -238,4 +258,6 @@ export const {
   useSetProjectDefaultAIProviderMutation,
   useTestProjectAIMutation,
   useGetAvailableAIProvidersQuery,
+  // Skills
+  useListProjectSkillsQuery,
 } = projectsApi;

@@ -50,6 +50,16 @@ export interface PipelineContext {
     ip?: string;
     userAgent?: string;
   };
+
+  /**
+   * Deployment context for accessing deployment-specific resources like skills.
+   * Populated when pipeline is executed in the context of a deployment.
+   */
+  deployment?: {
+    owner: string;
+    repo: string;
+    commitSha: string;
+  };
 }
 
 /**

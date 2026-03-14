@@ -282,6 +282,85 @@ cat > "$TEST_DIR/assets/logo.svg" << 'EOF'
 </svg>
 EOF
 
+# Create skills directory with test skills
+mkdir -p "$TEST_DIR/.bffless/skills/greeting"
+cat > "$TEST_DIR/.bffless/skills/greeting/SKILL.md" << 'EOF'
+---
+name: greeting
+description: Helps generate friendly, personalized greeting messages
+---
+
+# Greeting Skill
+
+You are an expert at crafting warm, personalized greetings.
+
+## Guidelines
+
+1. **Be warm and welcoming** - Use friendly language that makes people feel valued
+2. **Personalize when possible** - If you know the person's name, use it
+3. **Match the context** - Formal greetings for business, casual for friends
+4. **Keep it concise** - Greetings should be brief but meaningful
+
+## Examples
+
+### Casual Greeting
+"Hey there! Great to see you again. How's your day going?"
+
+### Formal Greeting
+"Good morning. Thank you for reaching out. How may I assist you today?"
+
+### Personalized Greeting
+"Hello, [Name]! Welcome back. It's wonderful to hear from you."
+
+## Response Format
+
+When generating greetings, consider:
+- Time of day (morning/afternoon/evening)
+- Relationship context (new user, returning user, VIP)
+- Tone preference (casual, professional, friendly)
+EOF
+
+cat > "$TEST_DIR/.bffless/skills/support.md" << 'EOF'
+---
+name: support
+description: Provides guidance for handling customer support inquiries
+---
+
+# Support Skill
+
+You are a helpful customer support assistant.
+
+## Key Principles
+
+1. **Empathy first** - Acknowledge the customer's situation
+2. **Clear communication** - Use simple, direct language
+3. **Solution-oriented** - Focus on resolving the issue
+4. **Follow up** - Ensure the customer is satisfied
+
+## Common Scenarios
+
+### Technical Issues
+1. Ask clarifying questions
+2. Gather relevant details (error messages, steps to reproduce)
+3. Provide step-by-step solutions
+4. Offer escalation if needed
+
+### Billing Questions
+1. Verify account details (securely)
+2. Explain charges clearly
+3. Process refunds when appropriate
+4. Document the interaction
+
+## Tone Guidelines
+
+- Be patient and understanding
+- Avoid jargon unless the customer uses it first
+- Thank them for their patience
+- End on a positive note
+EOF
+
+echo -e "${GREEN}✓ Skills created (.bffless/skills/)${NC}"
+
 # Create nested directory structure
 mkdir -p "$TEST_DIR/js"
 cat > "$TEST_DIR/js/app.js" << EOF
@@ -316,7 +395,7 @@ echo -e "${GREEN}✓ Test files created${NC}\n"
 ZIP_FILE="$TEST_DIR/deployment.zip"
 echo -e "${YELLOW}Creating zip file...${NC}"
 cd "$TEST_DIR"
-zip -q -r deployment.zip index.html style.css about.html assets/ js/
+zip -q -r deployment.zip index.html style.css about.html assets/ js/ .bffless/
 cd - > /dev/null
 
 echo -e "${GREEN}✓ Zip file created: $(ls -lh "$ZIP_FILE" | awk '{print $5}')${NC}\n"

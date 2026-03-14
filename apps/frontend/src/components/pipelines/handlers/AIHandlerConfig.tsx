@@ -43,6 +43,7 @@ import {
   MessageSquare,
   FileText,
   Database,
+  BookOpen,
 } from 'lucide-react';
 import {
   Tooltip,
@@ -56,6 +57,7 @@ import type { AIHandlerConfig as AIHandlerConfigType, ModelTier, ModelInfo } fro
 import type { PreviousStep } from './AvailableVariables';
 import { ExpressionInput } from './ExpressionInput';
 import { SchemaPicker } from './SchemaPicker';
+import { SkillsConfig, SkillsConfigValue } from './SkillsConfig';
 import { cn } from '@/lib/utils';
 
 // Lazy load Monaco Editor
@@ -122,6 +124,12 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
   const [conversationIdField, setConversationIdField] = useState(config.conversationIdField || 'request.body.id');
   const [showPersistence, setShowPersistence] = useState(config.persistMessages ?? false);
 
+  // Skills state
+  const [skills, setSkills] = useState<SkillsConfigValue>(
+    (config.skills as SkillsConfigValue) || { mode: 'none' }
+  );
+  const [showSkills, setShowSkills] = useState(config.skills?.mode !== 'none' && config.skills?.mode !== undefined);
+
   // Initialize provider/model from AI status
   useEffect(() => {
     if (defaultProvider && !provider) {
@@ -179,8 +187,10 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
       persistMessagesSchemaId: shouldPersist && persistMessagesSchemaId ? persistMessagesSchemaId : undefined,
       persistConversationsSchemaId: shouldPersist && persistConversationsSchemaId ? persistConversationsSchemaId : undefined,
       conversationIdField: shouldPersist && conversationIdField !== 'request.body.id' ? conversationIdField : undefined,
+      // Skills
+      skills: skills.mode !== 'none' ? skills : undefined,
     });
-  }, [mode, provider, model, responseMode, systemPrompt, messageField, messagesField, maxHistoryMessages, maxTokens, temperature, persistMessages, persistMessagesSchemaId, persistConversationsSchemaId, conversationIdField]);
+  }, [mode, provider, model, responseMode, systemPrompt, messageField, messagesField, maxHistoryMessages, maxTokens, temperature, persistMessages, persistMessagesSchemaId, persistConversationsSchemaId, conversationIdField, skills]);
 
   // Find selected model info
   const selectedModelInfo = suggestedModels.find(m => m.id === model);
@@ -665,6 +675,27 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
             </CollapsibleContent>
           </Collapsible>
         )}
+
+        {/* Skills Configuration */}
+        <Collapsible open={showSkills} onOpenChange={setShowSkills}>
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" size="sm" className="w-full justify-between">
+              <span className="flex items-center gap-2">
+                <BookOpen className="h-4 w-4" />
+                Skills
+                {skills.mode !== 'none' && (
+                  <Badge variant="secondary" className="text-xs">
+                    {skills.mode === 'all' ? 'All' : `${skills.enabled?.length ?? 0} selected`}
+                  </Badge>
+                )}
+              </span>
+              <ChevronDown className={cn('h-4 w-4 transition-transform', showSkills && 'rotate-180')} />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="pt-4">
+            <SkillsConfig config={skills} onChange={setSkills} projectId={projectId} />
+          </CollapsibleContent>
+        </Collapsible>
 
         {/* Advanced Options */}
         <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>

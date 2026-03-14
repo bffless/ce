@@ -142,6 +142,23 @@ export interface AIHandlerConfig extends BaseHandlerConfig {
   maxTokens?: number;
   /** Temperature for generation (0-2). Default: 0.7 */
   temperature?: number;
+  /**
+   * Skills configuration for AI agent capabilities.
+   * Skills are markdown files with specialized knowledge that the AI can load on demand.
+   */
+  skills?: {
+    /**
+     * Skills mode:
+     * - 'none': Disable skills (default)
+     * - 'all': Enable all discovered skills from the deployment
+     * - 'selected': Enable only specified skills
+     */
+    mode: 'none' | 'all' | 'selected';
+    /**
+     * Skill names to enable when mode is 'selected'.
+     */
+    enabled?: string[];
+  };
   /** Schema ID for conversations table (for automatic updates) */
   conversationsSchemaId?: string;
   /** Schema ID for messages table (for automatic saving) @deprecated Use persistMessages instead */

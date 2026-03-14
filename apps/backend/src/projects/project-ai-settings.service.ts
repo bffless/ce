@@ -443,6 +443,44 @@ export class ProjectAISettingsService {
     }));
   }
 
+  // ===== Skills Path Settings =====
+
+  /**
+   * Get the skills path for a project (default: .bffless/skills)
+   */
+  async getSkillsPath(projectId: string): Promise<string> {
+    const project = await this.getProject(projectId);
+    if (!project?.settings) {
+      return '.bffless/skills';
+    }
+
+    const settings = project.settings as Record<string, unknown>;
+    return (settings.skillsPath as string) ?? '.bffless/skills';
+  }
+
+  /**
+   * Set the skills path for a project
+   */
+  async setSkillsPath(projectId: string, skillsPath: string): Promise<void> {
+    const project = await this.getProject(projectId);
+    if (!project) {
+      throw new NotFoundException('Project not found');
+    }
+
+    const settings = (project.settings || {}) as Record<string, unknown>;
+    settings.skillsPath = skillsPath;
+
+    await db
+      .update(projects)
+      .set({
+        settings,
+        updatedAt: new Date(),
+      })
+      .where(eq(projects.id, projectId));
+
+    this.logger.log(`Updated skillsPath for project ${projectId}: ${skillsPath}`);
+  }
+
   // ===== Private methods =====
 
   private async getProject(projectId: string) {

@@ -33,14 +33,17 @@ export class PipelineExecutionService {
    * @param pipeline The pipeline to execute with inline steps
    * @param req Express request object
    * @param user Optional authenticated user
-   * @param options Execution options (dryRun not yet implemented)
+   * @param options Execution options (deployment context for skills, dryRun not yet implemented)
    * @returns Pipeline execution result with debug info
    */
   async executePipelineWithDebug(
     pipeline: Pipeline & { steps: PipelineStep[] },
     req: Request,
     user?: { id: string; email?: string; role?: string },
-    _options?: { dryRun?: boolean },
+    options?: {
+      dryRun?: boolean;
+      deployment?: { owner: string; repo: string; commitSha: string };
+    },
   ): Promise<PipelineDebugResult> {
     const executionStartTime = Date.now();
     const executionStartIso = new Date(executionStartTime).toISOString();
@@ -63,6 +66,7 @@ export class PipelineExecutionService {
         ip: req.ip || req.socket.remoteAddress,
         userAgent: req.get('user-agent'),
       },
+      deployment: options?.deployment,
     };
 
     // Debug info collections

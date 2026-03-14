@@ -9,9 +9,17 @@ import { EmailFormHandlerService } from './email-form-handler.service';
 import { PermissionsModule } from '../permissions/permissions.module';
 import { DomainsModule } from '../domains/domains.module';
 import { PipelinesModule } from '../pipelines/pipelines.module';
+import { DeploymentsModule } from '../deployments/deployments.module';
+import { ProjectsModule } from '../projects/projects.module';
 
 @Module({
-  imports: [PermissionsModule, forwardRef(() => DomainsModule), PipelinesModule],
+  imports: [
+    PermissionsModule,
+    forwardRef(() => DomainsModule),
+    forwardRef(() => PipelinesModule),
+    forwardRef(() => DeploymentsModule),
+    forwardRef(() => ProjectsModule),
+  ],
   controllers: [ProxyRulesController, ProxyRuleSetsController],
   providers: [ProxyRulesService, ProxyRuleSetsService, ProxyService, ProxyMiddleware, EmailFormHandlerService],
   exports: [ProxyRulesService, ProxyRuleSetsService, ProxyService],

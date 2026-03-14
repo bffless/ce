@@ -81,6 +81,7 @@ export interface TestPipelineDto {
   mockUser?: MockUser;
   simulateAuth?: boolean;
   dryRun?: boolean;
+  deploymentAlias?: string;
 }
 
 export interface ValidatorDebugInfo {

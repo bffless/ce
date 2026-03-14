@@ -5,19 +5,19 @@ import { StepHandlerRegistry } from '../execution/step-handler.registry';
 import { ExpressionEvaluator } from '../execution/expression-evaluator';
 import { PipelineContext, StepResult } from '../execution/pipeline-context.interface';
 import { PipelineStep } from '../types';
-import { ProjectAISettingsService, AIProviderType } from '../../projects/project-ai-settings.service';
+import {
+  ProjectAISettingsService,
+  AIProviderType,
+} from '../../projects/project-ai-settings.service';
 import { PipelineDataService } from '../pipeline-data.service';
 import { PipelineSchemasService } from '../pipeline-schemas.service';
+import { SkillsService, SkillSummary } from '../skills.service';
 import { ConfigurationError, SchemaNotFoundError } from '../errors';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import {
-  streamText,
-  generateText,
-  LanguageModel,
-  ModelMessage,
-} from 'ai';
+import { streamText, generateText, LanguageModel, ModelMessage, stepCountIs } from 'ai';
+import { z } from 'zod';
 
 /**
  * AI Handler
@@ -40,6 +40,7 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
     private readonly projectAISettingsService: ProjectAISettingsService,
     private readonly dataService: PipelineDataService,
     private readonly schemasService: PipelineSchemasService,
+    private readonly skillsService: SkillsService,
   ) {
     this.registry.register(this);
   }
@@ -105,9 +106,21 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
     const mode = config.mode || 'completion';
 
     // Default responseMode based on mode
-    const responseMode = config.responseMode || (mode === 'chat' ? 'stream' : 'message');
+    let responseMode = config.responseMode || (mode === 'chat' ? 'stream' : 'message');
 
-    this.logger.debug(`Executing AI handler for step '${stepName}' in ${mode} mode (${responseMode})`);
+    // Force 'message' mode if no response object available (e.g., in test/debug mode)
+    const hasResponseObject =
+      context.request?.res && typeof (context.request.res as any).write === 'function';
+    if (responseMode === 'stream' && !hasResponseObject) {
+      this.logger.debug(
+        `Forcing responseMode to 'message' for step '${stepName}' - no response object available (test/debug mode)`,
+      );
+      responseMode = 'message';
+    }
+
+    this.logger.debug(
+      `Executing AI handler for step '${stepName}' in ${mode} mode (${responseMode})`,
+    );
 
     // Get AI provider configuration from project settings
     const aiConfig = await this.projectAISettingsService.getProviderConfig(
@@ -141,11 +154,7 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
           stepName,
         ) as string;
       } else {
-        systemPrompt = this.expressionEvaluator.evaluateTemplate(
-          systemPrompt,
-          context,
-          stepName,
-        );
+        systemPrompt = this.expressionEvaluator.evaluateTemplate(systemPrompt, context, stepName);
       }
 
       if (systemPrompt) {
@@ -253,6 +262,63 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
       messages.push({ role: 'user', content: userMessage });
     }
 
+    // Handle skills if deployment context is available
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let tools: Record<string, any> | undefined;
+
+    // Log skills configuration for debugging
+    this.logger.debug(`Skills config for step '${stepName}': mode=${config.skills?.mode || 'undefined'}`);
+    this.logger.debug(
+      `Deployment context for step '${stepName}': ${context.deployment ? `${context.deployment.owner}/${context.deployment.repo}@${context.deployment.commitSha?.substring(0, 8)}` : 'NOT SET'}`,
+    );
+
+    if (config.skills?.mode !== 'none' && context.deployment) {
+      const { owner, repo, commitSha } = context.deployment;
+      const skillsPath = await this.projectAISettingsService.getSkillsPath(context.projectId);
+      this.logger.debug(`Skills path for project ${context.projectId}: ${skillsPath}`);
+
+      try {
+        const allSkills = await this.skillsService.listSkills(owner, repo, commitSha, skillsPath);
+        this.logger.debug(`Found ${allSkills.length} skills: ${allSkills.map((s) => s.name).join(', ') || 'none'}`);
+
+        const enabledSkills = this.filterSkills(allSkills, config.skills);
+        this.logger.debug(
+          `Enabled ${enabledSkills.length} skills after filtering: ${enabledSkills.map((s) => s.name).join(', ') || 'none'}`,
+        );
+
+        if (enabledSkills.length > 0) {
+          // Append skills section to system prompt
+          const skillsPromptSection = this.buildSkillsPromptSection(enabledSkills);
+          const systemMessageIndex = messages.findIndex((m) => m.role === 'system');
+
+          if (systemMessageIndex >= 0) {
+            messages[systemMessageIndex].content += `\n\n${skillsPromptSection}`;
+            this.logger.debug(`Appended skills section to existing system message`);
+          } else {
+            // Add system message if none exists
+            messages.unshift({ role: 'system', content: skillsPromptSection });
+            this.logger.debug(`Created new system message with skills section`);
+          }
+
+          // Create load_skill tool
+          tools = {
+            load_skill: this.createLoadSkillTool(owner, repo, commitSha, skillsPath, enabledSkills),
+          };
+
+          this.logger.debug(
+            `Injected load_skill tool with ${enabledSkills.length} skills: ${enabledSkills.map((s) => s.name).join(', ')}`,
+          );
+        }
+      } catch (error) {
+        this.logger.warn(`Failed to load skills: ${error.message}`);
+        // Continue without skills - don't fail the entire request
+      }
+    } else if (config.skills?.mode && config.skills.mode !== 'none' && !context.deployment) {
+      this.logger.debug(
+        `Skills mode is '${config.skills.mode}' but deployment context is not set - skills disabled`,
+      );
+    }
+
     // Create the AI model instance
     const model = this.createModel(
       aiConfig.provider,
@@ -275,7 +341,7 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
     const temperature = config.temperature ?? 0.7;
 
     // Extract the last user message content for persistence
-    const lastUserMessage = [...messages].reverse().find(m => m.role === 'user');
+    const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user');
     const userContent = lastUserMessage?.content || '';
 
     try {
@@ -289,15 +355,10 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
           maxTokens,
           temperature,
           userContent as string,
+          tools,
         );
       } else {
-        return await this.executeMessage(
-          stepName,
-          model,
-          messages,
-          maxTokens,
-          temperature,
-        );
+        return await this.executeMessage(stepName, model, messages, maxTokens, temperature, tools);
       }
     } catch (error) {
       this.logger.error(`AI handler error: ${error.message}`, error.stack);
@@ -328,6 +389,8 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
     maxTokens: number,
     temperature: number,
     userContent: string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    tools?: Record<string, any>,
   ): Promise<StepResult> {
     const response = context.request.res as Response;
 
@@ -354,11 +417,16 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
       }
     }
 
+    const hasTools = tools && Object.keys(tools).length > 0;
     const result = streamText({
       model,
       messages,
       maxOutputTokens: maxTokens,
       temperature,
+      tools,
+      // Enable multi-step execution when tools are available
+      // Default is stepCountIs(1), increase to allow tool calls
+      stopWhen: hasTools ? stepCountIs(5) : stepCountIs(1),
       onFinish: async ({ text, usage, finishReason }) => {
         // Save AI response after streaming completes if persistence is enabled
         if (config.persistMessages && config.persistMessagesSchemaId) {
@@ -417,8 +485,13 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
     messages: ModelMessage[],
     maxTokens: number,
     temperature: number,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    tools?: Record<string, any>,
   ): Promise<StepResult> {
-    this.logger.debug(`Generating message response for step '${stepName}'`);
+    const hasTools = tools && Object.keys(tools).length > 0;
+    this.logger.debug(
+      `Generating message response for step '${stepName}' (tools: ${hasTools ? Object.keys(tools).join(', ') : 'none'})`,
+    );
 
     const startTime = Date.now();
 
@@ -427,14 +500,50 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
       messages,
       maxOutputTokens: maxTokens,
       temperature,
+      tools,
+      // Enable tool calling when tools are available
+      toolChoice: hasTools ? 'auto' : undefined,
+      // Enable multi-step execution when tools are available
+      // Default is stepCountIs(1), increase to allow tool calls
+      stopWhen: hasTools ? stepCountIs(5) : stepCountIs(1),
     });
 
     const latencyMs = Date.now() - startTime;
     const totalTokens = result.usage?.totalTokens || 0;
 
+    // Extract tool call info from steps
+    const allToolCalls: Array<{ toolName: string; input: unknown }> = [];
+    const allToolResults: Array<{ toolName: string; output: unknown }> = [];
+    const steps = (result as any).steps;
+
     this.logger.debug(
-      `Message generation complete for step '${stepName}', ${totalTokens} tokens in ${latencyMs}ms`,
+      `AI generation complete for '${stepName}': ${totalTokens} tokens, ${latencyMs}ms, ${steps?.length || 1} steps`,
     );
+
+    // Extract tool calls from steps
+    if (steps) {
+      for (const step of steps) {
+        if (step.toolCalls?.length) {
+          for (const tc of step.toolCalls) {
+            allToolCalls.push({
+              toolName: tc.toolName,
+              input: tc.args || tc.input,
+            });
+          }
+        }
+        if (step.toolResults?.length) {
+          for (const tr of step.toolResults) {
+            allToolResults.push({
+              toolName: tr.toolName,
+              output: tr.result || tr.output,
+            });
+          }
+        }
+      }
+    }
+
+    const toolCalls = allToolCalls.length > 0 ? allToolCalls : undefined;
+    const toolResults = allToolResults.length > 0 ? allToolResults : undefined;
 
     return {
       success: true,
@@ -449,6 +558,9 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
         },
         latencyMs,
         finishReason: result.finishReason,
+        // Include tool call info if any tools were called
+        ...(toolCalls?.length && { toolCalls }),
+        ...(toolResults?.length && { toolResults }),
       },
     };
   }
@@ -522,12 +634,10 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
     let data: Record<string, unknown>;
 
     if (config.userMessageFields && Object.keys(config.userMessageFields).length > 0) {
-      data = this.evaluateFieldMappings(
-        config.userMessageFields,
-        context,
-        stepName,
-        { __userContent: userContent, __conversationId: chatId },
-      );
+      data = this.evaluateFieldMappings(config.userMessageFields, context, stepName, {
+        __userContent: userContent,
+        __conversationId: chatId,
+      });
     } else {
       data = {
         conversation_id: chatId,
@@ -579,17 +689,12 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
     let data: Record<string, unknown>;
 
     if (config.aiResponseFields && Object.keys(config.aiResponseFields).length > 0) {
-      data = this.evaluateFieldMappings(
-        config.aiResponseFields,
-        context,
-        stepName,
-        {
-          __aiContent: aiContent,
-          __tokensUsed: tokensUsed,
-          __finishReason: finishReason,
-          __conversationId: chatId,
-        },
-      );
+      data = this.evaluateFieldMappings(config.aiResponseFields, context, stepName, {
+        __aiContent: aiContent,
+        __tokensUsed: tokensUsed,
+        __finishReason: finishReason,
+        __conversationId: chatId,
+      });
     } else {
       data = {
         conversation_id: chatId,
@@ -658,7 +763,9 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
         context.user?.id,
       );
 
-      this.logger.debug(`Created conversation ${chatId} in schema ${config.persistConversationsSchemaId}`);
+      this.logger.debug(
+        `Created conversation ${chatId} in schema ${config.persistConversationsSchemaId}`,
+      );
     }
   }
 
@@ -709,7 +816,9 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
           'admin',
         );
 
-        this.logger.debug(`Updated conversation ${chatId}: messages=${newMessageCount}, tokens=${newTotalTokens}`);
+        this.logger.debug(
+          `Updated conversation ${chatId}: messages=${newMessageCount}, tokens=${newTotalTokens}`,
+        );
       }
     } catch (error) {
       // Log but don't fail - conversation updates are not critical
@@ -743,5 +852,105 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
     }
 
     return data;
+  }
+
+  // ===== Skills Helper Methods =====
+
+  /**
+   * Filter skills based on the skills configuration mode.
+   */
+  private filterSkills(
+    skills: SkillSummary[],
+    config?: { mode: 'none' | 'all' | 'selected'; enabled?: string[] },
+  ): SkillSummary[] {
+    if (!config || config.mode === 'none') {
+      return [];
+    }
+
+    if (config.mode === 'all') {
+      return skills;
+    }
+
+    if (config.mode === 'selected' && config.enabled) {
+      return skills.filter((s) => config.enabled!.includes(s.name));
+    }
+
+    return [];
+  }
+
+  /**
+   * Build a prompt section describing available skills for the AI.
+   */
+  private buildSkillsPromptSection(skills: SkillSummary[]): string {
+    const skillList = skills.map((s) => `- **${s.name}**: ${s.description}`).join('\n');
+
+    return `## Available Skills
+
+You have access to specialized skills that provide domain-specific knowledge and instructions. Use the \`load_skill\` tool to get full instructions when you need detailed guidance for a specific task.
+
+${skillList}`;
+  }
+
+  /**
+   * Create a load_skill tool that allows the AI to dynamically load skill content.
+   */
+  private createLoadSkillTool(
+    owner: string,
+    repo: string,
+    commitSha: string,
+    skillsPath: string,
+    enabledSkills: SkillSummary[],
+  ) {
+    const skillNames = new Set(enabledSkills.map((s) => s.name));
+    const skillsService = this.skillsService;
+    const logger = this.logger;
+
+    // Use simple string schema with description listing valid values
+    // Validation happens in execute to avoid complex type inference
+    const skillNamesDescription = Array.from(skillNames).join(', ');
+
+    // Create tool object directly without the tool() helper to avoid deep type inference
+    // The tool() helper just returns its input as-is anyway
+    return {
+      description: `Load detailed instructions and guidance for a specific skill. Available skills: ${skillNamesDescription}`,
+      inputSchema: z.object({
+        skillName: z
+          .string()
+          .describe(`Name of the skill to load. Must be one of: ${skillNamesDescription}`),
+      }),
+      execute: async ({ skillName }: { skillName: string }) => {
+        // Validate skill name
+        if (!skillNames.has(skillName)) {
+          logger.warn(`Invalid skill name requested: '${skillName}'`);
+          return {
+            error: `Invalid skill name '${skillName}'. Available skills: ${skillNamesDescription}`,
+          };
+        }
+
+        try {
+          const skill = await skillsService.loadSkill(
+            owner,
+            repo,
+            commitSha,
+            skillsPath,
+            skillName,
+          );
+
+          if (!skill) {
+            logger.warn(`Skill '${skillName}' not found during tool call`);
+            return { error: `Skill '${skillName}' not found` };
+          }
+
+          return {
+            name: skill.name,
+            description: skill.description,
+            instructions: skill.content,
+          };
+        } catch (error) {
+          logger.error(`Error loading skill '${skillName}': ${error.message}`);
+          return { error: `Failed to load skill '${skillName}': ${error.message}` };
+        }
+      },
+    };
   }
 }

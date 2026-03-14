@@ -378,6 +378,26 @@ export interface AIHandlerConfig extends BaseHandlerConfig {
   temperature?: number;
 
   /**
+   * Skills configuration for AI agent capabilities.
+   * Skills are markdown files with specialized knowledge that the AI can load on demand.
+   */
+  skills?: {
+    /**
+     * Skills mode:
+     * - 'none': Disable skills (default)
+     * - 'all': Enable all discovered skills from the deployment
+     * - 'selected': Enable only specified skills
+     */
+    mode: 'none' | 'all' | 'selected';
+
+    /**
+     * Skill names to enable when mode is 'selected'.
+     * Each name should match a skill's `name` field in its frontmatter.
+     */
+    enabled?: string[];
+  };
+
+  /**
    * Schema ID for conversations table (for automatic updates).
    * When provided, handler updates token counts after completion.
    */

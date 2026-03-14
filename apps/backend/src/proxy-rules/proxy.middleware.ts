@@ -105,14 +105,18 @@ export class ProxyMiddleware implements NestMiddleware {
       const isSha = /^[a-f0-9]{40}$/i.test(ref);
       let effectiveRuleSetId: string | null = project.defaultProxyRuleSetId;
       let aliasName: string | null = null;
+      let resolvedCommitSha: string | null = isSha ? ref : null;
 
       if (!isSha) {
         aliasName = ref;
-        // Look up alias to get its proxyRuleSetId
+        // Look up alias to get its proxyRuleSetId and commitSha
         const alias = await this.getAliasByName(project.id, ref);
         if (alias?.proxyRuleSetId) {
           // Alias has its own rule set - use it (overrides project default)
           effectiveRuleSetId = alias.proxyRuleSetId;
+        }
+        if (alias?.commitSha) {
+          resolvedCommitSha = alias.commitSha;
         }
         // If alias doesn't have a rule set, fall through to project default
       }
@@ -167,12 +171,7 @@ export class ProxyMiddleware implements NestMiddleware {
 
       // For all other proxy types (pipeline, email_form_handler, external_proxy),
       // check visibility BEFORE handling - these bypass PublicController
-      const visibilityResult = await this.checkVisibilityAndAuth(
-        req,
-        res,
-        project,
-        aliasName,
-      );
+      const visibilityResult = await this.checkVisibilityAndAuth(req, res, project, aliasName);
       if (visibilityResult === 'blocked') {
         return; // Response already sent
       }
@@ -186,7 +185,10 @@ export class ProxyMiddleware implements NestMiddleware {
       // Handle pipeline execution
       if (proxyType === 'pipeline') {
         this.logger.debug(`Pipeline execution: ${subpathForMatching} (rule: ${matchedRule.id})`);
-        return this.handlePipelineExecution(req, res, matchedRule, project.id);
+        const deployment = resolvedCommitSha
+          ? { owner: project.owner, repo: project.name, commitSha: resolvedCommitSha }
+          : undefined;
+        return this.handlePipelineExecution(req, res, matchedRule, project.id, deployment);
       }
 
       this.logger.debug(
@@ -352,7 +354,10 @@ export class ProxyMiddleware implements NestMiddleware {
       this.logger.debug(
         `Subdomain pipeline execution: ${subpathForMatching} (alias: ${resolvedAliasName}, rule: ${matchedRule.id})`,
       );
-      return this.handlePipelineExecution(req, res, matchedRule, project.id);
+      const deployment = alias?.commitSha
+        ? { owner: project.owner, repo: project.name, commitSha: alias.commitSha }
+        : undefined;
+      return this.handlePipelineExecution(req, res, matchedRule, project.id, deployment);
     }
 
     this.logger.debug(
@@ -401,8 +406,15 @@ export class ProxyMiddleware implements NestMiddleware {
         // No alias - use project defaults
         accessControl = {
           isPublic: project.isPublic,
-          unauthorizedBehavior: (project.unauthorizedBehavior as 'not_found' | 'redirect_login') || 'not_found',
-          requiredRole: (project.requiredRole as 'authenticated' | 'viewer' | 'contributor' | 'admin' | 'owner') || 'authenticated',
+          unauthorizedBehavior:
+            (project.unauthorizedBehavior as 'not_found' | 'redirect_login') || 'not_found',
+          requiredRole:
+            (project.requiredRole as
+              | 'authenticated'
+              | 'viewer'
+              | 'contributor'
+              | 'admin'
+              | 'owner') || 'authenticated',
           source: 'project',
         };
       }
@@ -427,16 +439,14 @@ export class ProxyMiddleware implements NestMiddleware {
         const tokenExpired = (req as any).tokenExpired;
 
         if (tokenExpired) {
-          // Token was expired - signal try refresh
+          // Token was expired - signal try refresh (SuperTokens format)
           res.status(401).json({
-            message: 'session expired',
-            code: 'TRY_REFRESH_TOKEN',
+            message: 'try refresh token',
           });
         } else {
-          // No token at all
+          // No token at all (SuperTokens format)
           res.status(401).json({
             message: 'unauthorised',
-            code: 'AUTH_REQUIRED',
           });
         }
       } else {
@@ -831,6 +841,7 @@ export class ProxyMiddleware implements NestMiddleware {
     res: Response,
     rule: ProxyRule,
     projectId: string,
+    deployment?: { owner: string; repo: string; commitSha: string },
   ): Promise<void> {
     const pipelineConfig = rule.pipelineConfig as PipelineConfig | null;
 
@@ -864,11 +875,12 @@ export class ProxyMiddleware implements NestMiddleware {
       // Extract user from session if available (optional - don't fail if not authenticated)
       const user = await this.getOptionalUser(req, res);
 
-      // Execute the pipeline
+      // Execute the pipeline with deployment context for skills access
       const result = await this.pipelineExecutionService.executePipelineWithDebug(
         pipeline,
         req,
         user,
+        { deployment },
       );
 
       if (result.success && result.response) {

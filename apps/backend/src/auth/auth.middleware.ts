@@ -12,7 +12,7 @@ import * as jwt from 'jsonwebtoken';
  * - Custom domain auth (bffless_access cookie) - for custom domain auth
  *
  * For API requests with expired access tokens, returns a 401 with
- * "session expired" message (no "unauthorised") so clients know to
+ * "try refresh token" message (SuperTokens format) so clients know to
  * attempt a token refresh before giving up.
  *
  * For browser requests, continues normally - guards will redirect to login.
@@ -22,9 +22,13 @@ export class AuthMiddleware implements NestMiddleware {
   private readonly logger = new Logger(AuthMiddleware.name);
 
   use(req: Request, res: Response, next: NextFunction) {
+    // Use originalUrl which preserves the full path even after nginx proxy_pass
+    // req.path may be stripped by nginx depending on proxy configuration
+    const requestPath = req.originalUrl?.split('?')[0] || req.path;
+
     // Skip expired token check for auth endpoints - they need to work with expired tokens!
     // These are the endpoints used to sign in, refresh, or manage sessions
-    if (this.isAuthEndpoint(req.path)) {
+    if (this.isAuthEndpoint(requestPath)) {
       return middleware()(req, res, next);
     }
 
@@ -43,18 +47,18 @@ export class AuthMiddleware implements NestMiddleware {
         if (decoded?.exp && decoded.exp * 1000 < Date.now()) {
           // Token is expired
           const tokenType = supertokensToken ? 'SuperTokens' : 'custom domain';
-          this.logger.debug(`${tokenType} access token expired for ${req.method} ${req.path}`);
+          this.logger.debug(`${tokenType} access token expired for ${req.method} ${requestPath}`);
 
           // Set flag for downstream use
           (req as any).tokenExpired = true;
 
           // For API requests, return "try refresh" response immediately
           // This prevents unnecessary pipeline/controller execution
+          // Uses SuperTokens response format for consistency
           if (this.isApiRequest(req)) {
-            this.logger.debug('Returning session expired response for API request');
+            this.logger.debug('Returning try refresh token response for API request');
             return res.status(401).json({
-              message: 'session expired',
-              code: 'TRY_REFRESH_TOKEN',
+              message: 'try refresh token',
             });
           }
 
