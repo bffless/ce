@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.123](https://github.com/bffless/ce/compare/v0.0.122...v0.0.123) (2026-03-14)
+
+
+### Bug Fixes
+
+* apply variant cookie to pipeline requests via dedicated domains ([be51bfe](https://github.com/bffless/ce/commit/be51bfeac2ecfbe8429e7e3099cca13c4e36bdcc))
+
 ## [0.0.122](https://github.com/bffless/ce/compare/v0.0.121...v0.0.122) (2026-03-14)
 
 
