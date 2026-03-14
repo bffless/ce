@@ -3,12 +3,16 @@ import { NotFoundException } from '@nestjs/common';
 import { ProxyRulesController } from './proxy-rules.controller';
 import { ProxyRulesService } from './proxy-rules.service';
 import { PipelineExecutionService } from '../pipelines/execution';
+import { DeploymentsService } from '../deployments/deployments.service';
+import { ProjectsService } from '../projects/projects.service';
 import { CurrentUserData } from '../auth/decorators/current-user.decorator';
 
 describe('ProxyRulesController', () => {
   let controller: ProxyRulesController;
   let mockProxyRulesService: jest.Mocked<ProxyRulesService>;
   let mockPipelineExecutionService: jest.Mocked<PipelineExecutionService>;
+  let mockDeploymentsService: jest.Mocked<DeploymentsService>;
+  let mockProjectsService: jest.Mocked<ProjectsService>;
 
   const mockUser: CurrentUserData = {
     id: 'user-1',
@@ -55,11 +59,21 @@ describe('ProxyRulesController', () => {
       executePipelineWithDebug: jest.fn(),
     } as unknown as jest.Mocked<PipelineExecutionService>;
 
+    mockDeploymentsService = {
+      resolveAlias: jest.fn(),
+    } as unknown as jest.Mocked<DeploymentsService>;
+
+    mockProjectsService = {
+      getProjectById: jest.fn(),
+    } as unknown as jest.Mocked<ProjectsService>;
+
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ProxyRulesController],
       providers: [
         { provide: ProxyRulesService, useValue: mockProxyRulesService },
         { provide: PipelineExecutionService, useValue: mockPipelineExecutionService },
+        { provide: DeploymentsService, useValue: mockDeploymentsService },
+        { provide: ProjectsService, useValue: mockProjectsService },
       ],
     }).compile();
 
