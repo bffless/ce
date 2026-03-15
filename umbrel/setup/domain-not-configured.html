@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BFFless - Domain Not Configured</title>
+    <style>
+      :root {
+        --bg-primary: #ede8dd;
+        --bg-secondary: #ffffff;
+        --bg-tertiary: #f5f2eb;
+        --text-primary: #3a3a3a;
+        --text-secondary: #5a5a5a;
+        --text-muted: #7a7a7a;
+        --accent: #d96459;
+        --accent-hover: #c45348;
+        --success: #4a9d5b;
+        --border: #d4d0c7;
+        --code-bg: #f5f2eb;
+        --warning-bg: #fef3cd;
+        --warning-border: #ffc107;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 2rem;
+        line-height: 1.6;
+      }
+
+      .container {
+        max-width: 720px;
+        width: 100%;
+      }
+
+      .header {
+        text-align: center;
+        margin-bottom: 2rem;
+      }
+
+      .logo {
+        width: 80px;
+        height: 80px;
+        margin-bottom: 1rem;
+      }
+
+      h1 {
+        font-size: 1.75rem;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+        color: var(--text-primary);
+      }
+
+      .error-code {
+        font-size: 4rem;
+        font-weight: 700;
+        color: var(--accent);
+        margin-bottom: 0.5rem;
+      }
+
+      .alert {
+        background: var(--warning-bg);
+        border: 1px solid var(--warning-border);
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+      }
+
+      .alert-title {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        font-size: 1.25rem;
+        font-weight: 600;
+        margin-bottom: 0.75rem;
+        color: #856404;
+      }
+
+      .alert-icon {
+        width: 24px;
+        height: 24px;
+      }
+
+      .alert p {
+        color: #856404;
+      }
+
+      .setup-steps {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+      }
+
+      .setup-steps h2 {
+        font-size: 1.25rem;
+        margin-bottom: 1.25rem;
+      }
+
+      .step {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+      }
+
+      .step:last-child {
+        margin-bottom: 0;
+      }
+
+      .step-number {
+        background: var(--accent);
+        color: white;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        font-size: 0.9rem;
+        flex-shrink: 0;
+      }
+
+      .step-content {
+        flex: 1;
+      }
+
+      .step-content h3 {
+        font-size: 1rem;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+      }
+
+      .step-content p {
+        color: var(--text-secondary);
+        font-size: 0.95rem;
+        margin-bottom: 0.75rem;
+      }
+
+      .command-box {
+        background: #1e1e1e;
+        border-radius: 8px;
+        padding: 1rem;
+        position: relative;
+        margin-top: 0.5rem;
+      }
+
+      .command-box code {
+        color: #d4d4d4;
+        font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+        font-size: 0.85rem;
+        word-break: break-all;
+        display: block;
+        user-select: all;
+      }
+
+      .command-box .placeholder {
+        color: #9cdcfe;
+      }
+
+      .detected-domain {
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 2rem;
+        text-align: center;
+      }
+
+      .detected-domain p {
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+        margin-bottom: 0.5rem;
+      }
+
+      .detected-domain .domain {
+        font-family: 'SF Mono', Monaco, monospace;
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: var(--accent);
+      }
+
+      .cta {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+        text-align: center;
+      }
+
+      .cta p {
+        color: var(--text-secondary);
+        margin-bottom: 1rem;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: var(--accent);
+        color: white;
+        text-decoration: none;
+        padding: 0.875rem 1.5rem;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 1rem;
+        transition: background 0.2s;
+      }
+
+      .btn:hover {
+        background: var(--accent-hover);
+      }
+
+      .btn svg {
+        width: 20px;
+        height: 20px;
+      }
+
+      .footer {
+        text-align: center;
+        color: var(--text-muted);
+        font-size: 0.875rem;
+        margin-top: auto;
+        padding-top: 2rem;
+      }
+
+      .footer a {
+        color: var(--text-secondary);
+        text-decoration: none;
+      }
+
+      .footer a:hover {
+        text-decoration: underline;
+      }
+
+      @media (max-width: 640px) {
+        body {
+          padding: 1rem;
+        }
+
+        h1 {
+          font-size: 1.5rem;
+        }
+
+        .error-code {
+          font-size: 3rem;
+        }
+
+        .step {
+          flex-direction: column;
+          gap: 0.5rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header class="header">
+        <img src="logo-circle.svg" alt="BFFless" class="logo" />
+        <div class="error-code">503</div>
+        <h1>Domain Not Configured</h1>
+      </header>
+
+      <div class="alert">
+        <div class="alert-title">
+          <svg
+            class="alert-icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+            <line x1="12" y1="9" x2="12" y2="13" />
+            <line x1="12" y1="17" x2="12.01" y2="17" />
+          </svg>
+          Configuration Required
+        </div>
+        <p>
+          BFFless is installed but hasn't been configured with your domain yet.
+          Complete the setup to start hosting your static sites.
+        </p>
+      </div>
+
+      <div class="detected-domain">
+        <p>You're accessing BFFless via:</p>
+        <div class="domain" id="currentDomain">Loading...</div>
+      </div>
+
+      <div class="setup-steps">
+        <h2>Quick Setup</h2>
+
+        <div class="step">
+          <div class="step-number">1</div>
+          <div class="step-content">
+            <h3>SSH into your Umbrel</h3>
+            <div class="command-box">
+              <code>ssh umbrel@umbrel.local</code>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-number">2</div>
+          <div class="step-content">
+            <h3>Configure your domain</h3>
+            <p>Replace <code style="background: var(--bg-tertiary); padding: 0.1rem 0.4rem; border-radius: 4px;">yourdomain.com</code> with your actual domain:</p>
+            <div class="command-box">
+              <code>echo "<span class="placeholder" id="domainPlaceholder">yourdomain.com</span>" > ~/umbrel/app-data/bffless/data/config/domain.txt</code>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-number">3</div>
+          <div class="step-content">
+            <h3>Restart BFFless</h3>
+            <p>In your Umbrel dashboard, right-click the BFFless app icon and select <strong>Restart</strong>.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="cta">
+        <p>Need help setting up Cloudflare Tunnel or configuring DNS?</p>
+        <a
+          href="https://docs.bffless.app/deployment/umbrel/"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="btn"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+          </svg>
+          View Full Setup Guide
+        </a>
+      </div>
+
+      <footer class="footer">
+        <p>
+          BFFless &copy; 2026 &middot;
+          <a href="https://bffless.app" target="_blank" rel="noopener noreferrer">bffless.app</a>
+        </p>
+      </footer>
+    </div>
+
+    <script>
+      // Display the current domain the user is accessing
+      const currentDomain = window.location.hostname;
+      document.getElementById('currentDomain').textContent = currentDomain;
+
+      // Pre-fill the domain placeholder with a cleaned version
+      // Remove common subdomains like 'www', 'admin', etc.
+      let suggestedDomain = currentDomain;
+      const prefixes = ['www.', 'admin.', 'app.'];
+      for (const prefix of prefixes) {
+        if (suggestedDomain.startsWith(prefix)) {
+          suggestedDomain = suggestedDomain.slice(prefix.length);
+          break;
+        }
+      }
+      document.getElementById('domainPlaceholder').textContent = suggestedDomain;
+    </script>
+  </body>
+</html>

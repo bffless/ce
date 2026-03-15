@@ -20,6 +20,37 @@ fi
 echo "📝 Generating nginx config for domain: $PRIMARY_DOMAIN"
 envsubst '$PRIMARY_DOMAIN' < /etc/nginx/nginx.conf.template > /etc/nginx/conf.d/default.conf
 
+# If PRIMARY_DOMAIN is localhost, add a catch-all server block that shows setup instructions
+# This catches requests from actual domains when the user hasn't configured their domain yet
+# The default_server must be moved to this new block so it catches non-localhost requests
+if [ "$PRIMARY_DOMAIN" = "localhost" ]; then
+    echo "⚠️  Domain not configured - adding catch-all server for setup instructions"
+
+    # Remove default_server from the wildcard block so our catch-all takes precedence
+    sed -i 's/listen 5537 default_server;/listen 5537;/' /etc/nginx/conf.d/default.conf
+
+    # Add catch-all server block that shows the setup instructions page
+    cat >> /etc/nginx/conf.d/default.conf << 'CATCHALL'
+
+# ============================================================================
+# Catch-all Server: Domain Not Configured
+# ============================================================================
+# This server block catches requests from non-localhost domains when PRIMARY_DOMAIN
+# is not configured. It shows the setup instructions page instead of a confusing 404.
+server {
+    listen 5537 default_server;
+    server_name _;
+
+    root /usr/share/nginx/html/setup;
+    index domain-not-configured.html index.html;
+
+    location / {
+        try_files /domain-not-configured.html /index.html =404;
+    }
+}
+CATCHALL
+fi
+
 # Validate config
 if ! nginx -t 2>&1; then
     echo "❌ Nginx config validation failed!"
