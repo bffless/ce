@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.125](https://github.com/bffless/ce/compare/v0.0.124...v0.0.125) (2026-03-15)
+
+
+### Features
+
+* add custom headers for proxy rules and header-based traffic rules ([4b5ca0c](https://github.com/bffless/ce/commit/4b5ca0ccaca94e486aaed4819026352ed36d5ddf))
+* add custom headers for proxy rules and header-based traffic rules ([1ac5774](https://github.com/bffless/ce/commit/1ac57743904c37e843820f76c51c7f15eff0abc9))
+
 ## [0.0.124](https://github.com/bffless/ce/compare/v0.0.123...v0.0.124) (2026-03-15)
 
 
