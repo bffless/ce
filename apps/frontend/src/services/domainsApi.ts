@@ -314,7 +314,7 @@ export interface TrafficRule {
   id: string;
   domainId: string;
   alias: string;
-  conditionType: 'query_param' | 'cookie';
+  conditionType: 'query_param' | 'cookie' | 'header';
   conditionKey: string;
   conditionValue: string;
   priority: number;
@@ -326,7 +326,7 @@ export interface TrafficRule {
 
 export interface CreateTrafficRuleRequest {
   alias: string;
-  conditionType: 'query_param' | 'cookie';
+  conditionType: 'query_param' | 'cookie' | 'header';
   conditionKey: string;
   conditionValue: string;
   priority?: number;
@@ -335,7 +335,7 @@ export interface CreateTrafficRuleRequest {
 
 export interface UpdateTrafficRuleRequest {
   alias?: string;
-  conditionType?: 'query_param' | 'cookie';
+  conditionType?: 'query_param' | 'cookie' | 'header';
   conditionKey?: string;
   conditionValue?: string;
   priority?: number;

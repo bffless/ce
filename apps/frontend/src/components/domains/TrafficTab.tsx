@@ -10,7 +10,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Plus, Trash2, AlertCircle, BarChart3, Scale, Info, Search, Cookie } from 'lucide-react';
+import { Plus, Trash2, AlertCircle, BarChart3, Scale, Info, Search, Cookie, FileCode } from 'lucide-react';
 import {
   useGetTrafficConfigQuery,
   useSetTrafficWeightsMutation,
@@ -411,7 +411,7 @@ function TrafficRulesSection({ domainId, availableAliases, weightAliases }: Traf
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [newRule, setNewRule] = useState({
-    conditionType: 'query_param' as 'query_param' | 'cookie',
+    conditionType: 'query_param' as 'query_param' | 'cookie' | 'header',
     conditionKey: '',
     conditionValue: '',
     alias: '',
@@ -442,7 +442,7 @@ function TrafficRulesSection({ domainId, availableAliases, weightAliases }: Traf
       toast({ title: 'Success', description: 'Traffic rule created' });
       setShowAddForm(false);
       setNewRule({
-        conditionType: 'query_param',
+        conditionType: 'query_param' as 'query_param' | 'cookie' | 'header',
         conditionKey: '',
         conditionValue: '',
         alias: '',
@@ -503,12 +503,14 @@ function TrafficRulesSection({ domainId, availableAliases, weightAliases }: Traf
               <div className="flex items-center gap-1.5 flex-1 min-w-0">
                 {rule.conditionType === 'query_param' ? (
                   <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                ) : (
+                ) : rule.conditionType === 'cookie' ? (
                   <Cookie className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                ) : (
+                  <FileCode className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                 )}
                 <span className="text-sm truncate">
                   <span className="text-muted-foreground">
-                    {rule.conditionType === 'query_param' ? 'Query param' : 'Cookie'}
+                    {rule.conditionType === 'query_param' ? 'Query param' : rule.conditionType === 'cookie' ? 'Cookie' : 'Header'}
                   </span>{' '}
                   <code className="text-xs bg-muted px-1 py-0.5 rounded">{rule.conditionKey}</code>
                   {' = '}
@@ -559,7 +561,7 @@ function TrafficRulesSection({ domainId, availableAliases, weightAliases }: Traf
               <Select
                 value={newRule.conditionType}
                 onValueChange={(v) =>
-                  setNewRule({ ...newRule, conditionType: v as 'query_param' | 'cookie' })
+                  setNewRule({ ...newRule, conditionType: v as 'query_param' | 'cookie' | 'header' })
                 }
               >
                 <SelectTrigger>
@@ -568,6 +570,7 @@ function TrafficRulesSection({ domainId, availableAliases, weightAliases }: Traf
                 <SelectContent>
                   <SelectItem value="query_param">Query Parameter</SelectItem>
                   <SelectItem value="cookie">Cookie</SelectItem>
+                  <SelectItem value="header">Header</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -362,6 +362,7 @@ export class PublicController {
         variantCookie,
         req.query as Record<string, string>,
         req.cookies,
+        req.headers as Record<string, string | string[] | undefined>,
       );
 
       if (variantSelection) {
@@ -876,6 +877,7 @@ export class PublicController {
       variantCookie,
       req.query as Record<string, string>,
       req.cookies,
+      req.headers as Record<string, string | string[] | undefined>,
     );
 
     if (variantSelection) {
