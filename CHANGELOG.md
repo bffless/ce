@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.127](https://github.com/bffless/ce/compare/v0.0.126...v0.0.127) (2026-03-15)
+
+
+### Bug Fixes
+
+* **umbrel:** show helpful setup page when domain not configured ([135e603](https://github.com/bffless/ce/commit/135e60316f89aa8297f469b4ab367cacdee29073))
+
 ## [0.0.126](https://github.com/bffless/ce/compare/v0.0.125...v0.0.126) (2026-03-15)
 
 
