@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.124](https://github.com/bffless/ce/compare/v0.0.123...v0.0.124) (2026-03-15)
+
+
+### Features
+
+* add request.ip, request.headers, request.userAgent to pipeline expressions ([28fff09](https://github.com/bffless/ce/commit/28fff091530fbefc7360cb54d47e694d96200c54))
+
 ## [0.0.123](https://github.com/bffless/ce/compare/v0.0.122...v0.0.123) (2026-03-14)
 
 
