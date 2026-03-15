@@ -123,25 +123,47 @@ export class ProxyMiddleware implements NestMiddleware {
         // If alias doesn't have a rule set, fall through to project default
       }
 
-      // Apply traffic splitting: check if variant cookie should override the alias
+      // Apply traffic splitting: check traffic rules and variant cookie
       // This applies to domain-mapped requests (with X-Forwarded-Host) where the URL
-      // uses an alias (not a raw SHA). The variant cookie allows A/B testing by
+      // uses an alias (not a raw SHA). Traffic rules and cookies allow A/B testing by
       // redirecting users to content from a different alias.
       const forwardedHost = req.headers['x-forwarded-host'] as string | undefined;
       if (forwardedHost && !isSha && aliasName) {
-        const variantCookie = req.cookies?.[TrafficRoutingService.VARIANT_COOKIE_NAME];
-        if (variantCookie && variantCookie !== aliasName) {
-          const variantAlias = await this.getAliasByName(project.id, variantCookie);
+        // First, evaluate traffic rules (including header-based rules)
+        const variantSelection = await this.trafficRoutingService.selectVariant(
+          forwardedHost,
+          req.cookies?.[TrafficRoutingService.VARIANT_COOKIE_NAME],
+          req.query as Record<string, string>,
+          req.cookies,
+          req.headers as Record<string, string | string[] | undefined>,
+        );
+
+        if (variantSelection && variantSelection.selectedAlias !== aliasName) {
+          const variantAlias = await this.getAliasByName(project.id, variantSelection.selectedAlias);
           if (variantAlias?.commitSha) {
             this.logger.debug(
-              `Traffic splitting: variant cookie "${variantCookie}" overriding URL alias "${aliasName}"`,
+              `Traffic splitting: selected variant "${variantSelection.selectedAlias}" overriding URL alias "${aliasName}"`,
             );
             resolvedCommitSha = variantAlias.commitSha;
             // Update effectiveRuleSetId if variant alias has its own rules
             if (variantAlias.proxyRuleSetId) {
               effectiveRuleSetId = variantAlias.proxyRuleSetId;
             }
-            aliasName = variantCookie;
+            aliasName = variantSelection.selectedAlias;
+
+            // Set variant cookie if this is a new selection
+            if (variantSelection.isNewSelection) {
+              res.cookie(TrafficRoutingService.VARIANT_COOKIE_NAME, variantSelection.selectedAlias, {
+                maxAge:
+                  variantSelection.stickySessionDuration === 0
+                    ? 10 * 365 * 24 * 60 * 60 * 1000 // No expiration: 10 years
+                    : variantSelection.stickySessionDuration * 1000,
+                httpOnly: false,
+                secure: req.secure || req.headers['x-forwarded-proto'] === 'https',
+                sameSite: 'lax',
+                path: '/',
+              });
+            }
           }
         }
       }
@@ -292,20 +314,43 @@ export class ProxyMiddleware implements NestMiddleware {
       }
     }
 
-    // Apply traffic splitting: check if variant cookie should override the alias
+    // Apply traffic splitting: check traffic rules and variant cookie
     // This runs AFTER we've resolved the project, regardless of whether the alias
-    // was found globally or via domain mapping. This ensures variant cookies work
+    // was found globally or via domain mapping. This ensures traffic rules work
     // for all request paths (dedicated domain server blocks, wildcard subdomains, etc.)
-    const variantCookie = req.cookies?.[TrafficRoutingService.VARIANT_COOKIE_NAME];
-    if (variantCookie && variantCookie !== resolvedAliasName) {
-      // Check if the variant cookie points to a valid alias for this project
-      const variantAlias = await this.getAliasByName(project.id, variantCookie);
-      if (variantAlias) {
-        this.logger.debug(
-          `Traffic splitting: variant cookie "${variantCookie}" overriding alias "${resolvedAliasName}"`,
-        );
-        alias = variantAlias;
-        resolvedAliasName = variantCookie;
+    const forwardedHost = req.headers['x-forwarded-host'] as string | undefined;
+    if (forwardedHost) {
+      const variantSelection = await this.trafficRoutingService.selectVariant(
+        forwardedHost,
+        req.cookies?.[TrafficRoutingService.VARIANT_COOKIE_NAME],
+        req.query as Record<string, string>,
+        req.cookies,
+        req.headers as Record<string, string | string[] | undefined>,
+      );
+
+      if (variantSelection && variantSelection.selectedAlias !== resolvedAliasName) {
+        const variantAlias = await this.getAliasByName(project.id, variantSelection.selectedAlias);
+        if (variantAlias) {
+          this.logger.debug(
+            `Traffic splitting: selected variant "${variantSelection.selectedAlias}" overriding alias "${resolvedAliasName}"`,
+          );
+          alias = variantAlias;
+          resolvedAliasName = variantSelection.selectedAlias;
+
+          // Set variant cookie if this is a new selection
+          if (variantSelection.isNewSelection) {
+            res.cookie(TrafficRoutingService.VARIANT_COOKIE_NAME, variantSelection.selectedAlias, {
+              maxAge:
+                variantSelection.stickySessionDuration === 0
+                  ? 10 * 365 * 24 * 60 * 60 * 1000 // No expiration: 10 years
+                  : variantSelection.stickySessionDuration * 1000,
+              httpOnly: false,
+              secure: req.secure || req.headers['x-forwarded-proto'] === 'https',
+              sameSite: 'lax',
+              path: '/',
+            });
+          }
+        }
       }
     }
 
