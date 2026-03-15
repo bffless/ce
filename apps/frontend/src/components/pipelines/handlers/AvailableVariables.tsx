@@ -112,6 +112,18 @@ export function AvailableVariables({
               <code className="block bg-muted px-2 py-1 rounded text-[11px]">
                 {formatVar('request.path')} <span className="text-muted-foreground">- URL path</span>
               </code>
+              <code className="block bg-muted px-2 py-1 rounded text-[11px]">
+                {formatVar('request.ip')} <span className="text-muted-foreground">- Client IP address</span>
+              </code>
+              <code className="block bg-muted px-2 py-1 rounded text-[11px]">
+                {formatVar('request.userAgent')} <span className="text-muted-foreground">- Browser/client info</span>
+              </code>
+              <code className="block bg-muted px-2 py-1 rounded text-[11px]">
+                {formatVar('request.headers')} <span className="text-muted-foreground">- All HTTP headers</span>
+              </code>
+              <code className="block bg-muted px-2 py-1 rounded text-[11px] text-muted-foreground">
+                {formatVar("request.headers['x-forwarded-for']")} <span>- Use brackets for hyphenated headers</span>
+              </code>
             </div>
           </div>
 

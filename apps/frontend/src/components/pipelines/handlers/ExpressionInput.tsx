@@ -43,6 +43,13 @@ export function ExpressionInput({
       { value: 'request.query', description: 'Query params object', category: 'Request' },
       { value: 'request.method', description: 'GET, POST, etc.', category: 'Request' },
       { value: 'request.path', description: 'URL path', category: 'Request' },
+      { value: 'request.ip', description: 'Client IP address', category: 'Request' },
+      { value: 'request.userAgent', description: 'Browser/client info', category: 'Request' },
+      { value: 'request.headers', description: 'All HTTP headers', category: 'Request' },
+      { value: "request.headers['x-forwarded-for']", description: 'Original client IP (proxied)', category: 'Headers' },
+      { value: "request.headers['x-real-ip']", description: 'Real client IP', category: 'Headers' },
+      { value: "request.headers['referer']", description: 'Referring page URL', category: 'Headers' },
+      { value: "request.headers['origin']", description: 'Request origin', category: 'Headers' },
     );
 
     // User info

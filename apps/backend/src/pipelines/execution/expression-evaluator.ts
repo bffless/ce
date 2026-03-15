@@ -60,7 +60,9 @@ export class ExpressionEvaluator {
     // Check if this looks like a valid expression path (must start with a known root)
     // This allows literal values like email addresses to pass through unchanged
     const validRoots = ['user', 'steps', 'metadata', 'request'];
-    const firstPart = trimmed.split('.')[0];
+    // Extract first part before '.' or '[' for root check
+    const firstPartMatch = trimmed.match(/^([a-zA-Z_][a-zA-Z0-9_]*)/);
+    const firstPart = firstPartMatch ? firstPartMatch[1] : '';
     if (!validRoots.includes(firstPart)) {
       // Not a valid expression path - return as literal string
       // This handles email addresses, URLs, and other literal values
@@ -68,7 +70,8 @@ export class ExpressionEvaluator {
     }
 
     // Handle path expressions (request.body.field, user.id, steps.name.field)
-    const parts = trimmed.split('.');
+    // Supports both dot notation and bracket notation for keys with special chars
+    const parts = this.parsePath(trimmed);
     if (parts.length === 0) {
       throw new ExpressionError(expression, 'Empty expression', stepName);
     }
@@ -272,5 +275,73 @@ export class ExpressionEvaluator {
       current = (current as Record<string, unknown>)[part];
     }
     return current;
+  }
+
+  /**
+   * Parse an expression path into parts, supporting both dot notation and bracket notation.
+   * Examples:
+   *   "request.headers.host" -> ["request", "headers", "host"]
+   *   "request.headers['x-forwarded-for']" -> ["request", "headers", "x-forwarded-for"]
+   *   "steps['my step'].field" -> ["steps", "my step", "field"]
+   */
+  private parsePath(expression: string): string[] {
+    const parts: string[] = [];
+    let current = '';
+    let i = 0;
+
+    while (i < expression.length) {
+      const char = expression[i];
+
+      if (char === '.') {
+        // Dot separator - push current part and continue
+        if (current) {
+          parts.push(current);
+          current = '';
+        }
+        i++;
+      } else if (char === '[') {
+        // Bracket notation - push current part if any
+        if (current) {
+          parts.push(current);
+          current = '';
+        }
+        i++; // Skip '['
+
+        // Check for quote type
+        const quote = expression[i];
+        if (quote === '"' || quote === "'") {
+          i++; // Skip opening quote
+          // Read until closing quote
+          let bracketContent = '';
+          while (i < expression.length && expression[i] !== quote) {
+            bracketContent += expression[i];
+            i++;
+          }
+          i++; // Skip closing quote
+          i++; // Skip ']'
+          parts.push(bracketContent);
+        } else {
+          // No quotes - read until ']' (for numeric indices)
+          let bracketContent = '';
+          while (i < expression.length && expression[i] !== ']') {
+            bracketContent += expression[i];
+            i++;
+          }
+          i++; // Skip ']'
+          parts.push(bracketContent);
+        }
+      } else {
+        // Regular character
+        current += char;
+        i++;
+      }
+    }
+
+    // Push final part if any
+    if (current) {
+      parts.push(current);
+    }
+
+    return parts;
   }
 }

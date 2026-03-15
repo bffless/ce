@@ -51,6 +51,9 @@ export class PipelineExecutionService {
     this.logger.log(`Executing pipeline '${pipeline.name}' (${pipeline.id}) with debug mode`);
 
     // Build context
+    // Extract real client IP (prefer X-Forwarded-For for proxied requests)
+    const clientIp = this.extractClientIp(req);
+
     const context: PipelineContext = {
       request: req,
       user,
@@ -63,7 +66,7 @@ export class PipelineExecutionService {
         headers: req.headers as Record<string, string | string[] | undefined>,
         query: req.query as Record<string, unknown>,
         body: (req.body as Record<string, unknown>) || {},
-        ip: req.ip || req.socket.remoteAddress,
+        ip: clientIp,
         userAgent: req.get('user-agent'),
       },
       deployment: options?.deployment,
@@ -436,6 +439,35 @@ export class PipelineExecutionService {
         data: lastStepResult?.output,
       },
     };
+  }
+
+  /**
+   * Extract the real client IP address from request.
+   * Prefers X-Forwarded-For header (for proxied requests) over socket IP.
+   * Strips IPv6-mapped IPv4 prefix (::ffff:) for cleaner output.
+   */
+  private extractClientIp(req: Request): string | undefined {
+    // Check X-Forwarded-For first (set by reverse proxies like nginx, Traefik, Umbrel)
+    const forwardedFor = req.headers['x-forwarded-for'];
+    let ip: string | undefined;
+
+    if (forwardedFor) {
+      // X-Forwarded-For can be a comma-separated list; first IP is the original client
+      const forwardedIp = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor.split(',')[0];
+      ip = forwardedIp?.trim();
+    }
+
+    // Fall back to Express req.ip or socket address
+    if (!ip) {
+      ip = req.ip || req.socket?.remoteAddress;
+    }
+
+    // Strip IPv6-mapped IPv4 prefix (::ffff:192.168.1.1 -> 192.168.1.1)
+    if (ip?.startsWith('::ffff:')) {
+      ip = ip.slice(7);
+    }
+
+    return ip;
   }
 
 }
