@@ -419,6 +419,12 @@ export class AuthController {
       if (error instanceof UnauthorizedException || error instanceof BadRequestException) {
         throw error;
       }
+      console.error('[Signin] Unexpected error during signin:', error);
+      console.warn(
+        '[Signin] If login fails after a backup restore, the SuperTokens database may be out of sync. ' +
+        'Check if the user exists in SuperTokens: ' +
+        'psql -U postgres -d supertokens -c "SELECT user_id, email FROM emailpassword_users;"',
+      );
       throw new UnauthorizedException('Failed to sign in');
     }
   }
@@ -603,10 +609,26 @@ export class AuthController {
 
         // Use SuperTokens to send password reset email
         // Pass origin in userContext so email delivery can construct the correct URL
-        await EmailPassword.sendResetPasswordEmail(tenantId, user.id, email, {
-          requestOrigin: origin,
-        });
-        console.log('[Password Reset] Reset email sent for:', email);
+        try {
+          await EmailPassword.sendResetPasswordEmail(tenantId, user.id, email, {
+            requestOrigin: origin,
+          });
+          console.log('[Password Reset] Reset email sent for:', email);
+        } catch (resetError) {
+          // This can happen if the user exists in app DB but not in SuperTokens
+          // (e.g., after a backup restore where SuperTokens DB wasn't included)
+          console.error('[Password Reset] Failed to generate reset link for:', email);
+          console.error('[Password Reset] Error:', resetError);
+          console.warn(
+            '[Password Reset] If the user exists in the app database but not in SuperTokens, ' +
+            'you may need to re-create the user in SuperTokens. See container logs for details. ' +
+            'You can create the user via the SuperTokens API: ' +
+            'curl -X POST http://<supertokens-host>:3567/recipe/signup ' +
+            '-H "Content-Type: application/json" -H "rid: emailpassword" ' +
+            '-d \'{"email":"<email>","password":"<new-password>"}\'  ' +
+            'Then update the user ID in the app database to match.',
+          );
+        }
       } else {
         console.log('[Password Reset] No user found for email:', email);
       }
