@@ -145,6 +145,7 @@ export class TrafficRoutingService {
     existingVariantCookie: string | undefined,
     queryParams?: Record<string, string>,
     cookies?: Record<string, string>,
+    headers?: Record<string, string | string[] | undefined>,
   ): Promise<VariantSelectionResult | null> {
     // Find domain by name (also check www/non-www alternate for redirect-to-www/root cases)
     const alternate = domainName.startsWith('www.') ? domainName.slice(4) : `www.${domainName}`;
@@ -174,11 +175,12 @@ export class TrafficRoutingService {
     // Rule aliases don't need to be in the weights list — they can route to any
     // valid deployment alias (e.g., a share link forcing alias "netflix" while
     // normal traffic splits between "skills" and "production").
-    if (queryParams || cookies) {
+    if (queryParams || cookies || headers) {
       const ruleMatch = await this.trafficRulesService.evaluateRules(
         domain.id,
         queryParams,
         cookies,
+        headers,
       );
       if (ruleMatch) {
         return {

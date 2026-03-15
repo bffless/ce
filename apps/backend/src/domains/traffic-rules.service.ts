@@ -110,6 +110,7 @@ export class TrafficRulesService {
     domainId: string,
     queryParams: Record<string, string> | undefined,
     cookies: Record<string, string> | undefined,
+    headers?: Record<string, string | string[] | undefined>,
   ): Promise<string | null> {
     const rules = await db
       .select()
@@ -126,6 +127,12 @@ export class TrafficRulesService {
         match = queryParams?.[rule.conditionKey] === rule.conditionValue;
       } else if (rule.conditionType === 'cookie') {
         match = cookies?.[rule.conditionKey] === rule.conditionValue;
+      } else if (rule.conditionType === 'header') {
+        // Headers are lowercase in Express
+        const headerKey = rule.conditionKey.toLowerCase();
+        const headerValue = headers?.[headerKey];
+        // Header value can be string or string[] - compare against first value if array
+        match = (Array.isArray(headerValue) ? headerValue[0] : headerValue) === rule.conditionValue;
       }
 
       if (match) {

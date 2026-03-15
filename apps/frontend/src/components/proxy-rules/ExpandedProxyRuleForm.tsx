@@ -92,7 +92,16 @@ export function ExpandedProxyRuleForm({
   const [timeout, setTimeout] = useState(initialData?.timeout || 30000);
   const [preserveHost, setPreserveHost] = useState(initialData?.preserveHost ?? false);
   const [forwardCookies, setForwardCookies] = useState(initialData?.forwardCookies ?? false);
-  const [apiKey, setApiKey] = useState('');
+
+  // Custom headers for proxy requests (replaces single apiKey)
+  const [customHeaders, setCustomHeaders] = useState<{ key: string; value: string }[]>(() => {
+    if (initialData?.headerConfig?.add) {
+      return Object.entries(initialData.headerConfig.add).map(([key, value]) => ({ key, value }));
+    }
+    return [];
+  });
+  // Track if headers have been modified (to know when to include them in submit)
+  const [headersModified, setHeadersModified] = useState(false);
 
   // Auth transformation (cookie to bearer)
   const [authTransformEnabled, setAuthTransformEnabled] = useState(
@@ -227,7 +236,8 @@ export function ExpandedProxyRuleForm({
     timeout,
     preserveHost,
     forwardCookies,
-    apiKey,
+    customHeaders,
+    headersModified,
     authTransformEnabled,
     cookieName,
     destinationEmail,
@@ -393,7 +403,14 @@ export function ExpandedProxyRuleForm({
           timeout,
           preserveHost,
           forwardCookies,
-          headerConfig: apiKey ? { add: { Authorization: apiKey } } : undefined,
+          // Only include headerConfig if headers were modified or there are headers to send
+          headerConfig: headersModified || customHeaders.some(h => h.key)
+            ? {
+                add: Object.fromEntries(
+                  customHeaders.filter(h => h.key).map(h => [h.key, h.value])
+                ),
+              }
+            : undefined,
           authTransform: authTransformEnabled
             ? { type: 'cookie-to-bearer' as const, cookieName }
             : undefined,
@@ -805,23 +822,76 @@ export function ExpandedProxyRuleForm({
       {isExternalProxy && (
         <Card>
           <CardHeader>
-            <CardTitle>Authentication</CardTitle>
-            <CardDescription>Configure authentication for proxied requests</CardDescription>
+            <CardTitle>Authentication & Headers</CardTitle>
+            <CardDescription>Configure headers sent with proxied requests</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Custom Headers */}
             <div className="space-y-2">
-              <Label htmlFor="apiKey">API Key / Authorization Header (optional)</Label>
-              <Input
-                id="apiKey"
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder={
-                  initialData ? '(unchanged - enter new value to update)' : 'Bearer sk_live_xxx'
-                }
-              />
+              <div className="flex items-center justify-between">
+                <Label>Custom Headers (optional)</Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setCustomHeaders([...customHeaders, { key: '', value: '' }]);
+                    setHeadersModified(true);
+                  }}
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  Add Header
+                </Button>
+              </div>
+              {customHeaders.length === 0 ? (
+                <p className="text-xs text-muted-foreground py-2">
+                  No custom headers configured. Add headers like Authorization, X-API-Key, etc.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {customHeaders.map((header, index) => (
+                    <div key={index} className="flex gap-2">
+                      <Input
+                        placeholder="Header name (e.g. Authorization)"
+                        value={header.key}
+                        onChange={(e) => {
+                          const newHeaders = [...customHeaders];
+                          newHeaders[index] = { ...newHeaders[index], key: e.target.value };
+                          setCustomHeaders(newHeaders);
+                          setHeadersModified(true);
+                        }}
+                        className="flex-1"
+                      />
+                      <Input
+                        type="password"
+                        placeholder={initialData?.headerConfig?.add?.[header.key] ? '(unchanged)' : 'Value'}
+                        value={header.value}
+                        onChange={(e) => {
+                          const newHeaders = [...customHeaders];
+                          newHeaders[index] = { ...newHeaders[index], value: e.target.value };
+                          setCustomHeaders(newHeaders);
+                          setHeadersModified(true);
+                        }}
+                        className="flex-1"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          setCustomHeaders(customHeaders.filter((_, i) => i !== index));
+                          setHeadersModified(true);
+                        }}
+                        className="shrink-0"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
               <p className="text-xs text-muted-foreground">
-                Stored encrypted. Sent as Authorization header with each proxied request.
+                Stored encrypted. Headers are sent with each proxied request.
               </p>
             </div>
 

@@ -9,11 +9,11 @@ export class CreateTrafficRuleDto {
 
   @ApiProperty({
     description: 'Condition type',
-    enum: ['query_param', 'cookie'],
+    enum: ['query_param', 'cookie', 'header'],
   })
   @IsString()
-  @IsIn(['query_param', 'cookie'])
-  conditionType: 'query_param' | 'cookie';
+  @IsIn(['query_param', 'cookie', 'header'])
+  conditionType: 'query_param' | 'cookie' | 'header';
 
   @ApiProperty({ description: 'Parameter or cookie name to match', example: 'token' })
   @IsString()
@@ -50,12 +50,12 @@ export class UpdateTrafficRuleDto {
 
   @ApiPropertyOptional({
     description: 'Condition type',
-    enum: ['query_param', 'cookie'],
+    enum: ['query_param', 'cookie', 'header'],
   })
   @IsOptional()
   @IsString()
-  @IsIn(['query_param', 'cookie'])
-  conditionType?: 'query_param' | 'cookie';
+  @IsIn(['query_param', 'cookie', 'header'])
+  conditionType?: 'query_param' | 'cookie' | 'header';
 
   @ApiPropertyOptional({ description: 'Parameter or cookie name to match' })
   @IsOptional()
