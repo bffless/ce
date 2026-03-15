@@ -42,16 +42,10 @@ server {
     server_name _;
 
     root /usr/share/nginx/html/setup;
-    index domain-not-configured.html index.html;
+    index domain-not-configured.html;
 
-    # Serve static assets (logo, etc.)
-    location ~* \.(svg|png|jpg|jpeg|gif|ico|css|js)$ {
-        try_files $uri =404;
-    }
-
-    # All other requests get the setup page
     location / {
-        try_files /domain-not-configured.html /index.html =404;
+        try_files $uri $uri/ /domain-not-configured.html;
     }
 }
 CATCHALL
