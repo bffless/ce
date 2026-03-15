@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.128](https://github.com/bffless/ce/compare/v0.0.127...v0.0.128) (2026-03-15)
+
+
+### Features
+
+* **proxy-rules:** add ability to edit rule set name, environment, and description ([b74f703](https://github.com/bffless/ce/commit/b74f703c4de9eb6bd1c351a6b5c3bbea3eb2bc98))
+
+
+### Bug Fixes
+
+* **umbrel:** serve static assets on domain-not-configured page ([ec9d6ba](https://github.com/bffless/ce/commit/ec9d6ba35c5590487a6d2a74cd68131114d9553a))
+
 ## [0.0.127](https://github.com/bffless/ce/compare/v0.0.126...v0.0.127) (2026-03-15)
 
 
