@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,7 +12,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
-import { Plus, ArrowLeft } from 'lucide-react';
+import { Plus, ArrowLeft, Pencil } from 'lucide-react';
 import {
   useGetRuleSetQuery,
   useUpdateProxyRuleMutation,
@@ -21,6 +22,7 @@ import {
 import { useProjectRole } from '@/hooks/useProjectRole';
 import { useToast } from '@/hooks/use-toast';
 import { RulesList } from '@/components/proxy-rules/RulesList';
+import { EditRuleSetDialog } from '@/components/proxy-rules/EditRuleSetDialog';
 import { routes } from '@/utils/routes';
 
 /**
@@ -46,6 +48,9 @@ export function RuleSetDetailPage() {
   // Mutations
   const [updateRule] = useUpdateProxyRuleMutation();
   const [deleteRule] = useDeleteProxyRuleMutation();
+
+  // Edit dialog state
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
 
   const handleUpdateRule = async (id: string, updates: UpdateProxyRuleDto) => {
     try {
@@ -167,6 +172,17 @@ export function RuleSetDetailPage() {
               {ruleSet.environment && (
                 <Badge variant="outline">{ruleSet.environment}</Badge>
               )}
+              {canEdit && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  onClick={() => setEditDialogOpen(true)}
+                  title="Edit rule set"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+              )}
             </div>
             <CardDescription className="mt-1">
               {ruleSet.description || 'Configure proxy rules for this rule set. Rules are evaluated in order.'}
@@ -193,6 +209,13 @@ export function RuleSetDetailPage() {
           />
         </CardContent>
       </Card>
+
+      {/* Edit Rule Set Dialog */}
+      <EditRuleSetDialog
+        ruleSet={ruleSet}
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+      />
     </div>
   );
 }
