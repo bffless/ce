@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Patch,
   Delete,
   Param,
@@ -36,6 +37,7 @@ import {
   AIProviderEnum,
 } from '../settings/dto/ai-settings.dto';
 import { SkillsService, SkillSummary } from '../pipelines/skills.service';
+import { AIToolPluginService, PluginListItem } from '../pipelines/ai-plugins/ai-tool-plugin.service';
 import { DeploymentsService } from '../deployments/deployments.service';
 
 @ApiTags('projects')
@@ -45,6 +47,7 @@ export class ProjectsController {
     private readonly projectsService: ProjectsService,
     private readonly aiSettingsService: ProjectAISettingsService,
     private readonly skillsService: SkillsService,
+    private readonly pluginService: AIToolPluginService,
     @Inject(forwardRef(() => DeploymentsService))
     private readonly deploymentsService: DeploymentsService,
   ) {}
@@ -198,6 +201,59 @@ export class ProjectsController {
     );
 
     return { skills };
+  }
+
+  // ==========================================================================
+  // AI Plugin Endpoints (Project-Level)
+  // NOTE: These MUST be defined BEFORE :owner/:name to avoid route conflicts
+  // ==========================================================================
+
+  @Get(':id/ai-plugins')
+  @UseGuards(SessionAuthGuard, ProjectPermissionGuard)
+  @RequireProjectRole('admin')
+  @ApiOperation({ summary: 'List all plugins with enabled status for this project' })
+  @ApiResponse({ status: 200, description: 'List of plugins' })
+  async listPlugins(@Param('id') id: string): Promise<PluginListItem[]> {
+    return this.pluginService.getAvailablePlugins(id);
+  }
+
+  @Post(':id/ai-plugins/:pluginId')
+  @UseGuards(SessionAuthGuard, ProjectPermissionGuard)
+  @RequireProjectRole('admin')
+  @ApiOperation({ summary: 'Enable a plugin for this project' })
+  @ApiResponse({ status: 200, description: 'Plugin enabled' })
+  async enablePlugin(
+    @Param('id') id: string,
+    @Param('pluginId') pluginId: string,
+    @Body() body: { config?: Record<string, unknown> },
+  ): Promise<PluginListItem> {
+    return this.pluginService.enablePlugin(id, pluginId, body.config);
+  }
+
+  @Put(':id/ai-plugins/:pluginId')
+  @UseGuards(SessionAuthGuard, ProjectPermissionGuard)
+  @RequireProjectRole('admin')
+  @ApiOperation({ summary: 'Update plugin configuration' })
+  @ApiResponse({ status: 200, description: 'Plugin config updated' })
+  async updatePluginConfig(
+    @Param('id') id: string,
+    @Param('pluginId') pluginId: string,
+    @Body() body: { config: Record<string, unknown> },
+  ): Promise<PluginListItem> {
+    return this.pluginService.updatePluginConfig(id, pluginId, body.config);
+  }
+
+  @Delete(':id/ai-plugins/:pluginId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(SessionAuthGuard, ProjectPermissionGuard)
+  @RequireProjectRole('admin')
+  @ApiOperation({ summary: 'Disable a plugin for this project' })
+  @ApiResponse({ status: 204, description: 'Plugin disabled' })
+  async disablePlugin(
+    @Param('id') id: string,
+    @Param('pluginId') pluginId: string,
+  ): Promise<void> {
+    return this.pluginService.disablePlugin(id, pluginId);
   }
 
   // ==========================================================================

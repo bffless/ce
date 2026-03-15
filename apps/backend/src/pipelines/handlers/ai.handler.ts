@@ -12,6 +12,7 @@ import {
 import { PipelineDataService } from '../pipeline-data.service';
 import { PipelineSchemasService } from '../pipeline-schemas.service';
 import { SkillsService, SkillSummary } from '../skills.service';
+import { AIToolPluginService } from '../ai-plugins/ai-tool-plugin.service';
 import { ConfigurationError, SchemaNotFoundError } from '../errors';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';
@@ -41,6 +42,7 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
     private readonly dataService: PipelineDataService,
     private readonly schemasService: PipelineSchemasService,
     private readonly skillsService: SkillsService,
+    private readonly pluginService: AIToolPluginService,
   ) {
     this.registry.register(this);
   }
@@ -317,6 +319,37 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
       this.logger.debug(
         `Skills mode is '${config.skills.mode}' but deployment context is not set - skills disabled`,
       );
+    }
+
+    // Build plugin tools (independent of skills system)
+    // Only load plugins if the step config enables them
+    if (config.plugins?.mode && config.plugins.mode !== 'none') {
+      try {
+        const allPluginTools = await this.pluginService.buildToolsForProject(context.projectId);
+        const filteredPluginTools = this.filterPluginTools(allPluginTools, config.plugins);
+        const pluginToolNames = Object.keys(filteredPluginTools);
+
+        if (pluginToolNames.length > 0) {
+          tools = { ...(tools || {}), ...filteredPluginTools };
+
+          // Append plugin tool descriptions to system prompt
+          const pluginPromptSection = this.buildPluginToolsPromptSection(pluginToolNames);
+          const systemMessageIndex = messages.findIndex((m) => m.role === 'system');
+
+          if (systemMessageIndex >= 0) {
+            messages[systemMessageIndex].content += `\n\n${pluginPromptSection}`;
+          } else {
+            messages.unshift({ role: 'system', content: pluginPromptSection });
+          }
+
+          this.logger.debug(
+            `Injected ${pluginToolNames.length} plugin tools: ${pluginToolNames.join(', ')}`,
+          );
+        }
+      } catch (error) {
+        this.logger.warn(`Failed to load AI plugin tools: ${error.message}`);
+        // Continue without plugin tools - don't fail the entire request
+      }
     }
 
     // Create the AI model instance
@@ -852,6 +885,50 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
     }
 
     return data;
+  }
+
+  // ===== Plugin Helper Methods =====
+
+  /**
+   * Filter plugin tools based on the step's plugins configuration.
+   * Tool names are namespaced as {pluginId}_{toolName}.
+   */
+  private filterPluginTools(
+    allTools: Record<string, any>,
+    config: { mode: 'none' | 'all' | 'selected'; enabled?: string[] },
+  ): Record<string, any> {
+    if (config.mode === 'all') {
+      return allTools;
+    }
+
+    if (config.mode === 'selected' && config.enabled) {
+      const enabledSet = new Set(config.enabled);
+      const filtered: Record<string, any> = {};
+      for (const [toolName, tool] of Object.entries(allTools)) {
+        // Tool names are {pluginId}_{toolName}, extract pluginId
+        const pluginId = toolName.substring(0, toolName.indexOf('_'));
+        if (enabledSet.has(pluginId)) {
+          filtered[toolName] = tool;
+        }
+      }
+      return filtered;
+    }
+
+    return {};
+  }
+
+  /**
+   * Build a prompt section describing available plugin tools for the AI.
+   */
+  private buildPluginToolsPromptSection(toolNames: string[]): string {
+    const toolList = toolNames.map((name) => `- \`${name}\``).join('\n');
+    return `## Available Plugin Tools
+
+You have access to the following plugin tools that can perform actions:
+
+${toolList}
+
+Use these tools when they are relevant to the user's request.`;
   }
 
   // ===== Skills Helper Methods =====

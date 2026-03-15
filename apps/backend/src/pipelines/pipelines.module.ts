@@ -32,6 +32,13 @@ import { FunctionRunnerService } from './function-runner.service';
 import { SkillsService } from './skills.service';
 // Validators
 import { AuthRequiredValidator, RateLimitValidator } from './execution/validators';
+// AI Plugin system
+import {
+  AIToolPluginRegistry,
+  AIToolPluginService,
+  CalculatorPlugin,
+  WebSearchPlugin,
+} from './ai-plugins';
 
 @Module({
   imports: [PermissionsModule, SettingsModule, forwardRef(() => ProjectsModule)],
@@ -68,12 +75,20 @@ import { AuthRequiredValidator, RateLimitValidator } from './execution/validator
     // Validators (auto-register on construction)
     AuthRequiredValidator,
     RateLimitValidator,
+    // AI Plugin system
+    AIToolPluginRegistry,
+    AIToolPluginService,
+    // Built-in plugins (self-register via constructor)
+    // To add a new plugin: create the class in ai-plugins/plugins/, add it here
+    CalculatorPlugin,
+    WebSearchPlugin,
   ],
   exports: [
     PipelineExecutionService,
     PipelineSchemasService,
     PipelineDataService,
     SkillsService,
+    AIToolPluginService,
   ],
 })
 export class PipelinesModule {}

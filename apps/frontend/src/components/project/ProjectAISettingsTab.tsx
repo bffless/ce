@@ -55,6 +55,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { ProjectAIPluginsSection } from './ProjectAIPluginsSection';
 
 // Provider display config
 const PROVIDER_CONFIG: Record<string, { color: string; bgColor: string; displayName: string }> = {
@@ -659,6 +660,8 @@ export function ProjectAISettingsTab({ project }: ProjectAISettingsTabProps) {
           )}
         </CardContent>
       </Card>
+
+      <ProjectAIPluginsSection project={project} />
 
       <AddProviderDialog
         open={showAddDialog}

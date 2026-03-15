@@ -44,6 +44,7 @@ import {
   FileText,
   Database,
   BookOpen,
+  Puzzle,
 } from 'lucide-react';
 import {
   Tooltip,
@@ -58,6 +59,7 @@ import type { PreviousStep } from './AvailableVariables';
 import { ExpressionInput } from './ExpressionInput';
 import { SchemaPicker } from './SchemaPicker';
 import { SkillsConfig, SkillsConfigValue } from './SkillsConfig';
+import { PluginsConfig, PluginsConfigValue } from './PluginsConfig';
 import { cn } from '@/lib/utils';
 
 // Lazy load Monaco Editor
@@ -130,6 +132,12 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
   );
   const [showSkills, setShowSkills] = useState(config.skills?.mode !== 'none' && config.skills?.mode !== undefined);
 
+  // Plugins state
+  const [plugins, setPlugins] = useState<PluginsConfigValue>(
+    (config.plugins as PluginsConfigValue) || { mode: 'none' }
+  );
+  const [showPlugins, setShowPlugins] = useState(config.plugins?.mode !== 'none' && config.plugins?.mode !== undefined);
+
   // Initialize provider/model from AI status
   useEffect(() => {
     if (defaultProvider && !provider) {
@@ -189,8 +197,10 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
       conversationIdField: shouldPersist && conversationIdField !== 'request.body.id' ? conversationIdField : undefined,
       // Skills
       skills: skills.mode !== 'none' ? skills : undefined,
+      // Plugins
+      plugins: plugins.mode !== 'none' ? plugins : undefined,
     });
-  }, [mode, provider, model, responseMode, systemPrompt, messageField, messagesField, maxHistoryMessages, maxTokens, temperature, persistMessages, persistMessagesSchemaId, persistConversationsSchemaId, conversationIdField, skills]);
+  }, [mode, provider, model, responseMode, systemPrompt, messageField, messagesField, maxHistoryMessages, maxTokens, temperature, persistMessages, persistMessagesSchemaId, persistConversationsSchemaId, conversationIdField, skills, plugins]);
 
   // Find selected model info
   const selectedModelInfo = suggestedModels.find(m => m.id === model);
@@ -694,6 +704,27 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
           </CollapsibleTrigger>
           <CollapsibleContent className="pt-4">
             <SkillsConfig config={skills} onChange={setSkills} projectId={projectId} />
+          </CollapsibleContent>
+        </Collapsible>
+
+        {/* Plugins Configuration */}
+        <Collapsible open={showPlugins} onOpenChange={setShowPlugins}>
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" size="sm" className="w-full justify-between">
+              <span className="flex items-center gap-2">
+                <Puzzle className="h-4 w-4" />
+                Plugins
+                {plugins.mode !== 'none' && (
+                  <Badge variant="secondary" className="text-xs">
+                    {plugins.mode === 'all' ? 'All' : `${plugins.enabled?.length ?? 0} selected`}
+                  </Badge>
+                )}
+              </span>
+              <ChevronDown className={cn('h-4 w-4 transition-transform', showPlugins && 'rotate-180')} />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="pt-4">
+            <PluginsConfig config={plugins} onChange={setPlugins} projectId={projectId} />
           </CollapsibleContent>
         </Collapsible>
 
