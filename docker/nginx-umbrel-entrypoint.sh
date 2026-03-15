@@ -42,10 +42,9 @@ server {
     server_name _;
 
     root /usr/share/nginx/html/setup;
-    index domain-not-configured.html;
 
     location / {
-        try_files $uri $uri/ /domain-not-configured.html;
+        try_files /domain-not-configured.html =404;
     }
 }
 CATCHALL
