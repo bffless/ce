@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.126](https://github.com/bffless/ce/compare/v0.0.125...v0.0.126) (2026-03-15)
+
+
+### Bug Fixes
+
+* evaluate traffic rules in proxy middleware for pipelines ([e92c0fd](https://github.com/bffless/ce/commit/e92c0fd51b8ea6207fd73edd720cd4a36bb167e6))
+* evaluate traffic rules in proxy middleware for pipelines ([1d73dbf](https://github.com/bffless/ce/commit/1d73dbfdb20d4e1129d9e0d0697dd57b3bd27890))
+
 ## [0.0.125](https://github.com/bffless/ce/compare/v0.0.124...v0.0.125) (2026-03-15)
 
 
