@@ -1,0 +1,70 @@
+import { z } from 'zod';
+
+/**
+ * Context passed to plugin tool execution
+ */
+export interface AIToolContext {
+  projectId: string;
+  userId?: string;
+  pluginConfig: Record<string, unknown>;
+}
+
+/**
+ * A single tool definition provided by a plugin
+ */
+export interface AIToolDefinition {
+  name: string;
+  description: string;
+  inputSchema: z.ZodObject<any>;
+  execute: (args: any, context: AIToolContext) => Promise<any>;
+}
+
+/**
+ * Metadata describing a plugin (used for UI display and configuration)
+ */
+export interface AIToolPluginMetadata {
+  /** Unique identifier, e.g. 'google-calendar' */
+  id: string;
+  /** Display name, e.g. 'Google Calendar' */
+  name: string;
+  /** Brief description of what the plugin does */
+  description: string;
+  /** Category for grouping, e.g. 'scheduling', 'communication', 'utility' */
+  category: string;
+  /** Optional icon identifier */
+  icon?: string;
+  /** Zod schema for plugin configuration/credentials */
+  configSchema?: z.ZodObject<any>;
+  /** Whether this plugin requires OAuth authentication */
+  requiresOAuth?: boolean;
+  /** OAuth provider identifier (e.g. 'google') */
+  oauthProvider?: string;
+}
+
+/**
+ * Interface that all AI tool plugins must implement.
+ * Plugins are NestJS @Injectable() classes that self-register with the AIToolPluginRegistry.
+ */
+export interface AIToolPlugin {
+  readonly metadata: AIToolPluginMetadata;
+
+  /**
+   * Return the tools this plugin provides, configured with the given config.
+   * Called only when the plugin is enabled for a project.
+   */
+  getTools(config: Record<string, unknown>): AIToolDefinition[];
+
+  /**
+   * Optional: validate plugin configuration before storing.
+   * Called when a user enables the plugin or updates its config.
+   */
+  validateConfig?(config: Record<string, unknown>): Promise<{ valid: boolean; error?: string }>;
+}
+
+/**
+ * Stored plugin configuration in projects.settings.aiPlugins
+ */
+export interface StoredPluginConfig {
+  enabled: boolean;
+  config?: string; // encrypted JSON string
+}

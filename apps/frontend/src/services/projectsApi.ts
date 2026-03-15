@@ -57,6 +57,20 @@ export interface AvailableProvider {
   models: ModelInfo[];
 }
 
+// Plugin types
+export interface PluginListItem {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  icon?: string;
+  requiresOAuth?: boolean;
+  oauthProvider?: string;
+  enabled: boolean;
+  hasConfig: boolean;
+  configSchema?: Record<string, unknown>;
+}
+
 // Skill types
 export interface SkillSummary {
   name: string;
@@ -228,6 +242,55 @@ export const projectsApi = api.injectEndpoints({
       query: (projectId) => `/api/projects/${projectId}/ai/providers`,
     }),
 
+    // AI Plugin endpoints
+    listProjectPlugins: builder.query<PluginListItem[], string>({
+      query: (id) => `/api/projects/${id}/ai-plugins`,
+      providesTags: (_result, _error, projectId) => [
+        { type: 'ProjectPlugin' as const, id: projectId },
+      ],
+    }),
+
+    enableProjectPlugin: builder.mutation<
+      PluginListItem,
+      { projectId: string; pluginId: string; config?: Record<string, unknown> }
+    >({
+      query: ({ projectId, pluginId, config }) => ({
+        url: `/api/projects/${projectId}/ai-plugins/${pluginId}`,
+        method: 'POST',
+        body: { config },
+      }),
+      invalidatesTags: (_result, _error, { projectId }) => [
+        { type: 'ProjectPlugin' as const, id: projectId },
+      ],
+    }),
+
+    updateProjectPluginConfig: builder.mutation<
+      PluginListItem,
+      { projectId: string; pluginId: string; config: Record<string, unknown> }
+    >({
+      query: ({ projectId, pluginId, config }) => ({
+        url: `/api/projects/${projectId}/ai-plugins/${pluginId}`,
+        method: 'PUT',
+        body: { config },
+      }),
+      invalidatesTags: (_result, _error, { projectId }) => [
+        { type: 'ProjectPlugin' as const, id: projectId },
+      ],
+    }),
+
+    disableProjectPlugin: builder.mutation<
+      void,
+      { projectId: string; pluginId: string }
+    >({
+      query: ({ projectId, pluginId }) => ({
+        url: `/api/projects/${projectId}/ai-plugins/${pluginId}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: (_result, _error, { projectId }) => [
+        { type: 'ProjectPlugin' as const, id: projectId },
+      ],
+    }),
+
     // Skills endpoint
     listProjectSkills: builder.query<
       { skills: SkillSummary[] },
@@ -258,6 +321,11 @@ export const {
   useSetProjectDefaultAIProviderMutation,
   useTestProjectAIMutation,
   useGetAvailableAIProvidersQuery,
+  // Plugins
+  useListProjectPluginsQuery,
+  useEnableProjectPluginMutation,
+  useUpdateProjectPluginConfigMutation,
+  useDisableProjectPluginMutation,
   // Skills
   useListProjectSkillsQuery,
 } = projectsApi;

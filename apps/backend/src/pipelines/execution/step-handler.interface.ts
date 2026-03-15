@@ -398,6 +398,27 @@ export interface AIHandlerConfig extends BaseHandlerConfig {
   };
 
   /**
+   * Plugins configuration for AI tool plugins.
+   * Plugins are executable tools (calculator, web search, etc.) enabled at the project level.
+   * This controls which project-enabled plugins are available to this specific pipeline step.
+   */
+  plugins?: {
+    /**
+     * Plugins mode:
+     * - 'none': Disable plugins (default)
+     * - 'all': Enable all project-enabled plugins
+     * - 'selected': Enable only specified plugins
+     */
+    mode: 'none' | 'all' | 'selected';
+
+    /**
+     * Plugin IDs to enable when mode is 'selected'.
+     * Each ID should match a plugin's `metadata.id` (e.g., 'calculator', 'web-search').
+     */
+    enabled?: string[];
+  };
+
+  /**
    * Schema ID for conversations table (for automatic updates).
    * When provided, handler updates token counts after completion.
    */

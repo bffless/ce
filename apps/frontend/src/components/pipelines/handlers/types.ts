@@ -159,6 +159,23 @@ export interface AIHandlerConfig extends BaseHandlerConfig {
      */
     enabled?: string[];
   };
+  /**
+   * Plugins configuration for AI tool plugins.
+   * Controls which project-enabled plugins are available to this pipeline step.
+   */
+  plugins?: {
+    /**
+     * Plugins mode:
+     * - 'none': Disable plugins (default)
+     * - 'all': Enable all project-enabled plugins
+     * - 'selected': Enable only specified plugins
+     */
+    mode: 'none' | 'all' | 'selected';
+    /**
+     * Plugin IDs to enable when mode is 'selected'.
+     */
+    enabled?: string[];
+  };
   /** Schema ID for conversations table (for automatic updates) */
   conversationsSchemaId?: string;
   /** Schema ID for messages table (for automatic saving) @deprecated Use persistMessages instead */
