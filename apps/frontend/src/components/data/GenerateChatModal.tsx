@@ -305,10 +305,10 @@ export function GenerateChatModal({
 
             <div className="space-y-2">
               <Label htmlFor="system-prompt">System Prompt</Label>
-              <div className="border rounded-md overflow-hidden">
-                <Suspense fallback={<Skeleton className="h-[150px] w-full" />}>
+              <div className="border rounded-md overflow-hidden resize-y" style={{ minHeight: '300px', height: '300px' }}>
+                <Suspense fallback={<Skeleton className="h-[300px] w-full" />}>
                   <Editor
-                    height="150px"
+                    height="100%"
                     defaultLanguage="markdown"
                     value={systemPrompt}
                     onChange={(value) => setSystemPrompt(value || '')}

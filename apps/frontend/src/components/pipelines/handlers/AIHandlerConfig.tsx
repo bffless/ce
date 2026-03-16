@@ -394,10 +394,10 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
               </TooltipContent>
             </Tooltip>
           </div>
-          <div className="border rounded-md overflow-hidden">
-            <Suspense fallback={<Skeleton className="h-[120px] w-full" />}>
+          <div className="border rounded-md overflow-hidden resize-y" style={{ minHeight: '240px', height: '240px' }}>
+            <Suspense fallback={<Skeleton className="h-[240px] w-full" />}>
               <Editor
-                height="120px"
+                height="100%"
                 defaultLanguage="markdown"
                 value={systemPrompt}
                 onChange={(value) => setSystemPrompt(value || '')}
