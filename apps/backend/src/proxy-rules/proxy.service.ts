@@ -227,8 +227,13 @@ export class ProxyService {
       }
     }
 
-    // Add forwarding headers
-    headers['x-forwarded-for'] = req.ip || req.socket?.remoteAddress || '';
+    // Add forwarding headers — preserve the original client IP from the proxy chain
+    const existingForwardedFor = req.headers['x-forwarded-for'];
+    if (existingForwardedFor) {
+      headers['x-forwarded-for'] = String(existingForwardedFor);
+    } else {
+      headers['x-forwarded-for'] = req.ip || req.socket?.remoteAddress || '';
+    }
     headers['x-forwarded-proto'] = req.protocol;
     headers['x-forwarded-host'] = req.hostname;
 
