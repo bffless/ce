@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.132](https://github.com/bffless/ce/compare/v0.0.131...v0.0.132) (2026-03-16)
+
+
+### Features
+
+* system prompt height ([af08262](https://github.com/bffless/ce/commit/af08262b55c158b7f111436e1cf8a0a407cf0f6e))
+
 ## [0.0.131](https://github.com/bffless/ce/compare/v0.0.130...v0.0.131) (2026-03-16)
 
 
