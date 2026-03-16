@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.131](https://github.com/bffless/ce/compare/v0.0.130...v0.0.131) (2026-03-16)
+
+
+### Features
+
+* add AI plugin system for executable tools in chat pipelines ([d96fc9d](https://github.com/bffless/ce/commit/d96fc9dfb0f16dc10d962de45aa97778d706bdd8))
+* AI plugin system for chat pipelines ([d24d5b8](https://github.com/bffless/ce/commit/d24d5b85db0b097f495be3cb2aa3dc876c85120d))
+
+
+### Bug Fixes
+
+* ip ([2d7c676](https://github.com/bffless/ce/commit/2d7c676ebe4803e60f5f3990e78835e9d92cae77))
+
 ## [0.0.130](https://github.com/bffless/ce/compare/v0.0.129...v0.0.130) (2026-03-15)
 
 
