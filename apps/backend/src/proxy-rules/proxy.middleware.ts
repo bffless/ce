@@ -956,6 +956,15 @@ export class ProxyMiddleware implements NestMiddleware {
         order: index,
         isEnabled: step.isEnabled !== false,
       })),
+      postSteps: pipelineConfig.postSteps?.map((step, index) => ({
+        id: step.id || `post-step-${index}`,
+        pipelineId: rule.id,
+        name: step.name || `post_step_${index + 1}`,
+        handlerType: step.handlerType,
+        config: step.config,
+        order: index,
+        isEnabled: step.isEnabled !== false,
+      })),
     };
 
     try {

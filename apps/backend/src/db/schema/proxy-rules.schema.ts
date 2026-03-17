@@ -95,6 +95,8 @@ export interface PipelineConfig {
   description?: string;
   /** Array of pipeline steps */
   steps: PipelineStepConfig[];
+  /** Post-processing steps that run after the response is sent */
+  postSteps?: PipelineStepConfig[];
   /** Optional validators (auth_required, rate_limit) */
   validators?: ValidatorConfig[];
 }
