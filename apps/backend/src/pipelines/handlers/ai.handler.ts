@@ -325,7 +325,10 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
     // Only load plugins if the step config enables them
     if (config.plugins?.mode && config.plugins.mode !== 'none') {
       try {
-        const allPluginTools = await this.pluginService.buildToolsForProject(context.projectId);
+        const allPluginTools = await this.pluginService.buildToolsForProject(
+          context.projectId,
+          config.plugins.options,
+        );
         const filteredPluginTools = this.filterPluginTools(allPluginTools, config.plugins);
         const pluginToolNames = Object.keys(filteredPluginTools);
 

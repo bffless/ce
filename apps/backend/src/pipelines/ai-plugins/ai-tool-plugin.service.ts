@@ -19,6 +19,7 @@ import {
 export interface PluginListItem extends AIToolPluginMetadata {
   enabled: boolean;
   hasConfig: boolean;
+  oauthConnectedEmail?: string;
 }
 
 /**
@@ -57,10 +58,23 @@ export class AIToolPluginService {
 
     return allPlugins.map((plugin) => {
       const stored = storedPlugins[plugin.metadata.id];
+      let oauthConnectedEmail: string | undefined;
+
+      // For OAuth plugins, extract connectedEmail from stored config
+      if (plugin.metadata.requiresOAuth && stored?.config) {
+        try {
+          const decrypted = JSON.parse(this.decryptData(stored.config));
+          oauthConnectedEmail = decrypted.connectedEmail;
+        } catch {
+          // Ignore decryption errors
+        }
+      }
+
       return {
         ...plugin.metadata,
         enabled: stored?.enabled ?? false,
         hasConfig: !!stored?.config,
+        oauthConnectedEmail,
       };
     });
   }
@@ -164,10 +178,32 @@ export class AIToolPluginService {
   }
 
   /**
+   * Get the decrypted config for an enabled plugin.
+   * Used by OAuth services that need to read stored credentials.
+   */
+  async getDecryptedPluginConfig(
+    projectId: string,
+    pluginId: string,
+  ): Promise<Record<string, unknown> | null> {
+    const storedPlugins = await this.getStoredPlugins(projectId);
+    const stored = storedPlugins[pluginId];
+    if (!stored?.enabled || !stored.config) return null;
+
+    try {
+      return JSON.parse(this.decryptData(stored.config));
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Build Vercel AI SDK tools for all enabled plugins for a project.
    * Tools are namespaced as {pluginId}_{toolName} to prevent collisions.
    */
-  async buildToolsForProject(projectId: string): Promise<Record<string, any>> {
+  async buildToolsForProject(
+    projectId: string,
+    pipelinePluginOptions?: Record<string, Record<string, unknown>>,
+  ): Promise<Record<string, any>> {
     const storedPlugins = await this.getStoredPlugins(projectId);
     const tools: Record<string, any> = {};
 
@@ -189,6 +225,7 @@ export class AIToolPluginService {
         const context: AIToolContext = {
           projectId,
           pluginConfig: decryptedConfig,
+          pipelineOptions: pipelinePluginOptions?.[pluginId],
         };
 
         for (const toolDef of pluginTools) {

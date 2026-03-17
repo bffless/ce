@@ -4,6 +4,8 @@ import {
   useEnableProjectPluginMutation,
   useDisableProjectPluginMutation,
   useUpdateProjectPluginConfigMutation,
+  useLazyInitiatePluginOAuthQuery,
+  useDisconnectPluginOAuthMutation,
   PluginListItem,
   Project,
 } from '@/services/projectsApi';
@@ -26,15 +28,20 @@ import {
   Puzzle,
   Calculator,
   Search,
+  Calendar,
   Settings2,
+  ExternalLink,
+  Unplug,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import { useParams } from 'react-router-dom';
 
 // Icon mapping for plugins
 const PLUGIN_ICONS: Record<string, React.ElementType> = {
   calculator: Calculator,
   search: Search,
+  calendar: Calendar,
 };
 
 // Category display config
@@ -49,15 +56,24 @@ function PluginCard({
   plugin,
   onToggle,
   onConfigure,
+  onConnectOAuth,
+  onDisconnectOAuth,
   isToggling,
+  isConnecting,
 }: {
   plugin: PluginListItem;
   onToggle: (enabled: boolean) => void;
   onConfigure: () => void;
+  onConnectOAuth: () => void;
+  onDisconnectOAuth: () => void;
   isToggling: boolean;
+  isConnecting: boolean;
 }) {
   const Icon = PLUGIN_ICONS[plugin.icon || ''] || Puzzle;
   const categoryColor = CATEGORY_COLORS[plugin.category] || 'bg-gray-50 text-gray-700';
+  const isOAuthPlugin = plugin.requiresOAuth;
+  const isOAuthConnected = isOAuthPlugin && plugin.oauthConnectedEmail;
+  const needsOAuthConnect = isOAuthPlugin && plugin.enabled && !plugin.oauthConnectedEmail && plugin.hasConfig;
 
   return (
     <div className="border rounded-lg p-4">
@@ -74,6 +90,44 @@ function PluginCard({
               </Badge>
             </div>
             <p className="text-sm text-muted-foreground mt-0.5">{plugin.description}</p>
+
+            {/* OAuth connected state */}
+            {isOAuthConnected && (
+              <div className="flex items-center gap-2 mt-2">
+                <Badge variant="secondary" className="text-xs font-normal">
+                  Connected: {plugin.oauthConnectedEmail}
+                </Badge>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-xs text-destructive hover:text-destructive"
+                  onClick={onDisconnectOAuth}
+                >
+                  <Unplug className="h-3 w-3 mr-1" />
+                  Disconnect
+                </Button>
+              </div>
+            )}
+
+            {/* OAuth needs connect */}
+            {needsOAuthConnect && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-2 h-7 text-xs"
+                onClick={onConnectOAuth}
+                disabled={isConnecting}
+              >
+                {isConnecting ? (
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                ) : (
+                  <ExternalLink className="h-3 w-3 mr-1" />
+                )}
+                Connect Google Account
+              </Button>
+            )}
+
+            {/* Configure button */}
             {plugin.enabled && plugin.configSchema && (
               <Button
                 variant="ghost"
@@ -120,7 +174,6 @@ function PluginConfigDialog({
   if (!plugin) return null;
 
   // Derive config fields from plugin metadata
-  // The configSchema from the backend is a Zod schema serialized — for now we handle known plugins
   const configFields = getConfigFieldsForPlugin(plugin.id);
 
   const handleSave = () => {
@@ -214,6 +267,22 @@ function getConfigFieldsForPlugin(pluginId: string): ConfigField[] {
           helpText: 'The Custom Search Engine ID (cx parameter)',
         },
       ];
+    case 'google-calendar':
+      return [
+        {
+          key: 'clientId',
+          label: 'Google OAuth Client ID',
+          placeholder: 'xxxxx.apps.googleusercontent.com',
+          helpText: 'From Google Cloud Console > APIs & Services > Credentials',
+        },
+        {
+          key: 'clientSecret',
+          label: 'Google OAuth Client Secret',
+          placeholder: 'GOCSPX-...',
+          secret: true,
+          helpText: 'The client secret for your OAuth 2.0 application',
+        },
+      ];
     default:
       return [];
   }
@@ -225,13 +294,17 @@ interface ProjectAIPluginsSectionProps {
 
 export function ProjectAIPluginsSection({ project }: ProjectAIPluginsSectionProps) {
   const { toast } = useToast();
+  const { owner, repo } = useParams<{ owner: string; repo: string }>();
   const { data: plugins, isLoading } = useListProjectPluginsQuery(project.id);
   const [enablePlugin] = useEnableProjectPluginMutation();
   const [disablePlugin] = useDisableProjectPluginMutation();
   const [updatePluginConfig, { isLoading: isUpdatingConfig }] =
     useUpdateProjectPluginConfigMutation();
+  const [initiateOAuth] = useLazyInitiatePluginOAuthQuery();
+  const [disconnectOAuth] = useDisconnectPluginOAuthMutation();
 
   const [togglingPlugin, setTogglingPlugin] = useState<string | null>(null);
+  const [connectingPlugin, setConnectingPlugin] = useState<string | null>(null);
   const [configuringPlugin, setConfiguringPlugin] = useState<PluginListItem | null>(null);
 
   const handleToggle = async (plugin: PluginListItem, enabled: boolean) => {
@@ -291,6 +364,58 @@ export function ProjectAIPluginsSection({ project }: ProjectAIPluginsSectionProp
     }
   };
 
+  const handleConnectOAuth = async (plugin: PluginListItem) => {
+    setConnectingPlugin(plugin.id);
+    try {
+      const redirectUri = window.location.origin + '/oauth/callback';
+
+      // Store context for the callback page
+      sessionStorage.setItem(
+        'oauth_plugin_context',
+        JSON.stringify({
+          projectId: project.id,
+          pluginId: plugin.id,
+          owner,
+          repo,
+        }),
+      );
+
+      const result = await initiateOAuth({
+        projectId: project.id,
+        pluginId: plugin.id,
+        redirectUri,
+      }).unwrap();
+
+      // Redirect to Google OAuth
+      window.location.href = result.authUrl;
+    } catch (error: unknown) {
+      const err = error as { data?: { message?: string } };
+      toast({
+        title: 'Error',
+        description: err.data?.message || 'Failed to initiate OAuth connection',
+        variant: 'destructive',
+      });
+      setConnectingPlugin(null);
+    }
+  };
+
+  const handleDisconnectOAuth = async (plugin: PluginListItem) => {
+    try {
+      await disconnectOAuth({
+        projectId: project.id,
+        pluginId: plugin.id,
+      }).unwrap();
+      toast({ title: `${plugin.name} disconnected` });
+    } catch (error: unknown) {
+      const err = error as { data?: { message?: string } };
+      toast({
+        title: 'Error',
+        description: err.data?.message || 'Failed to disconnect',
+        variant: 'destructive',
+      });
+    }
+  };
+
   if (isLoading) {
     return (
       <Card className="mt-6">
@@ -337,7 +462,10 @@ export function ProjectAIPluginsSection({ project }: ProjectAIPluginsSectionProp
                 plugin={plugin}
                 onToggle={(enabled) => handleToggle(plugin, enabled)}
                 onConfigure={() => setConfiguringPlugin(plugin)}
+                onConnectOAuth={() => handleConnectOAuth(plugin)}
+                onDisconnectOAuth={() => handleDisconnectOAuth(plugin)}
                 isToggling={togglingPlugin === plugin.id}
+                isConnecting={connectingPlugin === plugin.id}
               />
             ))
           ) : (

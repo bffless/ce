@@ -69,6 +69,14 @@ export interface PluginListItem {
   enabled: boolean;
   hasConfig: boolean;
   configSchema?: Record<string, unknown>;
+  oauthConnectedEmail?: string;
+  pipelineOptionsSchema?: Record<string, unknown>;
+}
+
+export interface CalendarListItem {
+  id: string;
+  summary: string;
+  primary: boolean;
 }
 
 // Skill types
@@ -291,6 +299,50 @@ export const projectsApi = api.injectEndpoints({
       ],
     }),
 
+    // OAuth Plugin endpoints
+    initiatePluginOAuth: builder.query<
+      { authUrl: string },
+      { projectId: string; pluginId: string; redirectUri: string }
+    >({
+      query: ({ projectId, pluginId, redirectUri }) =>
+        `/api/projects/${projectId}/ai-plugins/${pluginId}/oauth/initiate?redirectUri=${encodeURIComponent(redirectUri)}`,
+    }),
+
+    completePluginOAuth: builder.mutation<
+      { success: boolean; connectedEmail: string },
+      { projectId: string; pluginId: string; code: string; state: string; redirectUri: string }
+    >({
+      query: ({ projectId, pluginId, code, state, redirectUri }) => ({
+        url: `/api/projects/${projectId}/ai-plugins/${pluginId}/oauth/callback`,
+        method: 'POST',
+        body: { code, state, redirectUri },
+      }),
+      invalidatesTags: (_result, _error, { projectId }) => [
+        { type: 'ProjectPlugin' as const, id: projectId },
+      ],
+    }),
+
+    disconnectPluginOAuth: builder.mutation<
+      void,
+      { projectId: string; pluginId: string }
+    >({
+      query: ({ projectId, pluginId }) => ({
+        url: `/api/projects/${projectId}/ai-plugins/${pluginId}/oauth`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: (_result, _error, { projectId }) => [
+        { type: 'ProjectPlugin' as const, id: projectId },
+      ],
+    }),
+
+    listPluginCalendars: builder.query<
+      { calendars: CalendarListItem[] },
+      string
+    >({
+      query: (projectId) =>
+        `/api/projects/${projectId}/ai-plugins/google-calendar/calendars`,
+    }),
+
     // Skills endpoint
     listProjectSkills: builder.query<
       { skills: SkillSummary[] },
@@ -326,6 +378,11 @@ export const {
   useEnableProjectPluginMutation,
   useUpdateProjectPluginConfigMutation,
   useDisableProjectPluginMutation,
+  // Plugin OAuth
+  useLazyInitiatePluginOAuthQuery,
+  useCompletePluginOAuthMutation,
+  useDisconnectPluginOAuthMutation,
+  useListPluginCalendarsQuery,
   // Skills
   useListProjectSkillsQuery,
 } = projectsApi;

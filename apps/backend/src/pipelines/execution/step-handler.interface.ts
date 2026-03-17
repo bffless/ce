@@ -416,6 +416,13 @@ export interface AIHandlerConfig extends BaseHandlerConfig {
      * Each ID should match a plugin's `metadata.id` (e.g., 'calculator', 'web-search').
      */
     enabled?: string[];
+
+    /**
+     * Per-plugin options configured at the pipeline level.
+     * Keys are plugin IDs, values are option objects.
+     * e.g., { 'google-calendar': { calendarId: 'demos@group.calendar.google.com' } }
+     */
+    options?: Record<string, Record<string, unknown>>;
   };
 
   /**
