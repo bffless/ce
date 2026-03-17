@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.134](https://github.com/bffless/ce/compare/v0.0.133...v0.0.134) (2026-03-17)
+
+
+### Features
+
+* post-processing steps to pipeline ([cc0ac25](https://github.com/bffless/ce/commit/cc0ac251462a959b07a15bcd5592768bf2a6bf15))
+* post-processing steps to pipeline ([49582b2](https://github.com/bffless/ce/commit/49582b2b4f3b3b61310d94215dd206ce5d5fa2e1))
+
 ## [0.0.133](https://github.com/bffless/ce/compare/v0.0.132...v0.0.133) (2026-03-17)
 
 
