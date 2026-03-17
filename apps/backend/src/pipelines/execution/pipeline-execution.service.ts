@@ -135,6 +135,9 @@ export class PipelineExecutionService {
 
           const response = this.buildResponse(lastStepResult, context);
 
+          // Fire-and-forget post-processing steps
+          this.firePostSteps(pipeline, context);
+
           return {
             success: true,
             response,
@@ -155,6 +158,9 @@ export class PipelineExecutionService {
 
       // Build response
       const response = this.buildResponse(lastStepResult, context);
+
+      // Fire-and-forget post-processing steps
+      this.firePostSteps(pipeline, context);
 
       return {
         success: true,
@@ -409,6 +415,77 @@ export class PipelineExecutionService {
           error: errorInfo,
         },
       };
+    }
+  }
+
+  /**
+   * Fire post-processing steps as fire-and-forget if the pipeline has any.
+   */
+  private firePostSteps(pipeline: Pipeline, context: PipelineContext): void {
+    if (pipeline.postSteps && pipeline.postSteps.length > 0) {
+      const enabledPostSteps = pipeline.postSteps.filter((s) => s.isEnabled);
+      if (enabledPostSteps.length > 0) {
+        this.logger.log(
+          `Running ${enabledPostSteps.length} post-processing step(s) for pipeline '${pipeline.name}'`,
+        );
+        this.runPostSteps(enabledPostSteps, context).catch((err) =>
+          this.logger.error(
+            `Post-processing steps failed for pipeline '${pipeline.name}': ${err.message}`,
+            err.stack,
+          ),
+        );
+      }
+    }
+  }
+
+  /**
+   * Run post-processing steps sequentially. Errors are logged per-step
+   * but don't stop subsequent steps from running.
+   */
+  private async runPostSteps(
+    postSteps: PipelineStep[],
+    context: PipelineContext,
+  ): Promise<void> {
+    for (const step of postSteps) {
+      const stepName = step.name || step.id;
+      try {
+        const handler = this.handlerRegistry.get(step.handlerType as HandlerType, stepName);
+        await handler.validateConfig(step.config);
+
+        const config = step.config as BaseHandlerConfig;
+
+        // Evaluate condition if present
+        if (config.condition) {
+          const conditionMet = this.expressionEvaluator.evaluateCondition(
+            config.condition,
+            context,
+            stepName,
+          );
+          if (!conditionMet) {
+            this.logger.debug(`Skipping post-processing step '${stepName}' - condition not met`);
+            continue;
+          }
+        }
+
+        const result = await handler.execute(context, step);
+
+        if (result.success && step.name && result.output !== undefined) {
+          context.stepOutputs[step.name] = result.output;
+        }
+
+        if (!result.success) {
+          this.logger.warn(
+            `Post-processing step '${stepName}' failed: ${result.error?.message || 'unknown error'}`,
+          );
+        } else {
+          this.logger.debug(`Post-processing step '${stepName}' completed successfully`);
+        }
+      } catch (error) {
+        this.logger.error(
+          `Post-processing step '${stepName}' threw an error: ${error instanceof Error ? error.message : String(error)}`,
+          error instanceof Error ? error.stack : undefined,
+        );
+      }
     }
   }
 

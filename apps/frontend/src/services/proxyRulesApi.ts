@@ -42,6 +42,7 @@ export interface PipelineConfig {
   name: string;
   description?: string;
   steps: PipelineStepConfig[];
+  postSteps?: PipelineStepConfig[];
   validators?: ValidatorConfig[];
 }
 

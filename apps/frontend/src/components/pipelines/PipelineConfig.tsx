@@ -88,7 +88,9 @@ export function PipelineConfig({
   onValidatorsChange,
 }: PipelineConfigProps) {
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
+  const [expandedPostSteps, setExpandedPostSteps] = useState<Set<string>>(new Set());
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [deletePostConfirm, setDeletePostConfirm] = useState<string | null>(null);
   const [terminalExpanded, setTerminalExpanded] = useState(false);
 
   // Separate terminal steps (response_handler, proxy_forward) from regular steps
@@ -99,6 +101,9 @@ export function PipelineConfig({
   const steps = allSteps.filter(
     (s) => s.handlerType !== 'response_handler' && s.handlerType !== 'proxy_forward',
   );
+
+  // Post-processing steps
+  const postSteps = config.postSteps || [];
 
   // Determine current terminal step type
   const terminalStepType: TerminalStepType = terminalStep
@@ -129,12 +134,13 @@ export function PipelineConfig({
         name,
         description,
         steps: newSteps,
+        postSteps,
         ...updates,
         // Make sure steps is always the combined value
         ...(updates.steps !== undefined ? { steps: getAllSteps(updates.steps, terminalStep) } : {}),
       });
     },
-    [name, description, steps, terminalStep, onChange, getAllSteps],
+    [name, description, steps, postSteps, terminalStep, onChange, getAllSteps],
   );
 
   // Change terminal step type
@@ -146,6 +152,7 @@ export function PipelineConfig({
           name,
           description,
           steps: steps,
+          postSteps,
         });
         setTerminalExpanded(false);
       } else if (type === 'response') {
@@ -165,6 +172,7 @@ export function PipelineConfig({
           name,
           description,
           steps: [...steps, newTerminalStep],
+          postSteps,
         });
         setTerminalExpanded(true);
       } else if (type === 'proxy') {
@@ -185,11 +193,12 @@ export function PipelineConfig({
           name,
           description,
           steps: [...steps, newTerminalStep],
+          postSteps,
         });
         setTerminalExpanded(true);
       }
     },
-    [name, description, steps, terminalStep, onChange],
+    [name, description, steps, postSteps, terminalStep, onChange],
   );
 
   // Update terminal step config
@@ -200,9 +209,10 @@ export function PipelineConfig({
         name,
         description,
         steps: [...steps, { ...terminalStep, config: newConfig as unknown as Record<string, unknown> }],
+        postSteps,
       });
     },
-    [name, description, steps, terminalStep, onChange],
+    [name, description, steps, postSteps, terminalStep, onChange],
   );
 
   // Calculate previous steps for response (all regular steps)
@@ -303,6 +313,82 @@ export function PipelineConfig({
       return next;
     });
   };
+
+  // Post-processing step management
+  const addPostStep = () => {
+    const handlerType: HandlerType = 'function_handler';
+    const allExistingSteps = [...steps, ...postSteps];
+    const newStep: PipelineStep = {
+      id: generateId(),
+      name: generateStepName(handlerType, allExistingSteps),
+      handlerType,
+      config: {},
+      isEnabled: true,
+    };
+    updateConfig({ postSteps: [...postSteps, newStep] });
+    setExpandedPostSteps((prev) => new Set([...prev, newStep.id]));
+  };
+
+  const removePostStep = (stepId: string) => {
+    updateConfig({ postSteps: postSteps.filter((s) => s.id !== stepId) });
+    setExpandedPostSteps((prev) => {
+      const next = new Set(prev);
+      next.delete(stepId);
+      return next;
+    });
+    setDeletePostConfirm(null);
+  };
+
+  const updatePostStep = (stepId: string, updates: Partial<PipelineStep>) => {
+    updateConfig({
+      postSteps: postSteps.map((s) => (s.id === stepId ? { ...s, ...updates } : s)),
+    });
+  };
+
+  const movePostStep = (stepId: string, direction: 'up' | 'down') => {
+    const index = postSteps.findIndex((s) => s.id === stepId);
+    if (index === -1) return;
+
+    const newIndex = direction === 'up' ? index - 1 : index + 1;
+    if (newIndex < 0 || newIndex >= postSteps.length) return;
+
+    const newPostSteps = [...postSteps];
+    [newPostSteps[index], newPostSteps[newIndex]] = [newPostSteps[newIndex], newPostSteps[index]];
+    updateConfig({ postSteps: newPostSteps });
+  };
+
+  const togglePostExpanded = (stepId: string) => {
+    setExpandedPostSteps((prev) => {
+      const next = new Set(prev);
+      if (next.has(stepId)) {
+        next.delete(stepId);
+      } else {
+        next.add(stepId);
+      }
+      return next;
+    });
+  };
+
+  // Previous steps available for post-processing steps (all regular + terminal)
+  const previousStepsForPost: PreviousStep[] = useMemo(
+    () => [
+      ...steps.map((s) => ({
+        name: s.name || getHandlerDisplayName(s.handlerType),
+        handlerType: s.handlerType,
+        config: s.config,
+      })),
+      ...(terminalStep
+        ? [
+            {
+              name: terminalStep.name || getHandlerDisplayName(terminalStep.handlerType),
+              handlerType: terminalStep.handlerType,
+              config: terminalStep.config,
+            },
+          ]
+        : []),
+    ],
+    [steps, terminalStep],
+  );
 
   return (
     <div className="space-y-6">
@@ -704,6 +790,201 @@ data: {"type":"text-delta","value":" world"}
         )}
       </div>
 
+      {/* Post-Processing Steps */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <Label className="text-base">Post-Processing Steps</Label>
+          <Button type="button" variant="outline" size="sm" onClick={addPostStep}>
+            <Plus className="h-4 w-4 mr-1" />
+            Add Post-Processing Step
+          </Button>
+        </div>
+
+        {postSteps.length === 0 ? (
+          <Card className="bg-muted/30">
+            <CardContent className="py-6 text-center text-muted-foreground">
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <Info className="h-4 w-4" />
+                <p className="text-sm">No post-processing steps.</p>
+              </div>
+              <p className="text-xs">
+                Add steps here to run background work after the response is sent (e.g., logging, emails, database writes).
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-md px-3 py-2">
+              <Info className="h-3.5 w-3.5 shrink-0" />
+              <span>These steps run after the response is sent to the client. Errors are logged but don't affect the client response.</span>
+            </div>
+            {postSteps.map((step, index) => {
+              const isExpanded = expandedPostSteps.has(step.id);
+              // Post-processing steps can reference all regular steps + terminal step + prior post-steps
+              const previousPostSteps: PreviousStep[] = [
+                ...previousStepsForPost,
+                ...postSteps.slice(0, index).map((s) => ({
+                  name: s.name || getHandlerDisplayName(s.handlerType),
+                  handlerType: s.handlerType,
+                  config: s.config,
+                })),
+              ];
+              return (
+                <Card key={step.id} className={`border-amber-500/20 ${!step.isEnabled ? 'opacity-60' : ''}`}>
+                  <CardHeader className="py-3">
+                    <div className="flex items-center gap-2">
+                      <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab" />
+                      <Badge variant="secondary" className="font-mono bg-amber-500/10 text-amber-700">
+                        P{index + 1}
+                      </Badge>
+                      <button
+                        type="button"
+                        onClick={() => togglePostExpanded(step.id)}
+                        className="flex-1 flex items-center gap-2 text-left hover:text-primary"
+                      >
+                        {isExpanded ? (
+                          <ChevronDown className="h-4 w-4" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4" />
+                        )}
+                        <CardTitle className="text-sm font-medium">
+                          {step.name || getHandlerDisplayName(step.handlerType)}
+                        </CardTitle>
+                        <span className="text-xs text-muted-foreground">
+                          {step.name && `(${getHandlerDisplayName(step.handlerType)})`}
+                        </span>
+                      </button>
+                      <div className="flex gap-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          disabled={index === 0}
+                          onClick={() => movePostStep(step.id, 'up')}
+                        >
+                          <ChevronUp className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          disabled={index === postSteps.length - 1}
+                          onClick={() => movePostStep(step.id, 'down')}
+                        >
+                          <ChevronDown className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        onClick={() => setDeletePostConfirm(step.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  {isExpanded && (
+                    <CardContent className="pt-0 space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor={`post-step-${step.id}-name`}>
+                            Step Name <span className="text-destructive">*</span>
+                          </Label>
+                          <Input
+                            id={`post-step-${step.id}-name`}
+                            value={step.name || ''}
+                            onChange={(e) => updatePostStep(step.id, { name: e.target.value })}
+                            placeholder={getHandlerDisplayName(step.handlerType).toLowerCase().replace(/\s+/g, '_')}
+                            className={!step.name ? 'border-destructive' : ''}
+                          />
+                          {!step.name && (
+                            <p className="text-xs text-destructive">Required to reference step output in other steps</p>
+                          )}
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor={`post-step-${step.id}-type`}>Handler Type</Label>
+                          <Select
+                            value={step.handlerType}
+                            onValueChange={(v) => {
+                              const newType = v as HandlerType;
+                              const oldBaseName = getHandlerDisplayName(step.handlerType).toLowerCase().replace(/\s+/g, '_');
+                              const isAutoGenerated = !step.name || step.name === oldBaseName || step.name.match(new RegExp(`^${oldBaseName}_\\d+$`));
+                              const allExistingSteps = [...steps, ...postSteps.filter(s => s.id !== step.id)];
+                              updatePostStep(step.id, {
+                                handlerType: newType,
+                                config: {},
+                                ...(isAutoGenerated ? { name: generateStepName(newType, allExistingSteps) } : {}),
+                              });
+                            }}
+                          >
+                            <SelectTrigger id={`post-step-${step.id}-type`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {HANDLER_TYPES.map((type) => (
+                                <SelectItem key={type} value={type}>
+                                  {getHandlerDisplayName(type)}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      {/* Run Condition */}
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Filter className="h-4 w-4 text-muted-foreground" />
+                          <Label htmlFor={`post-step-${step.id}-condition`}>
+                            Run Condition <span className="text-muted-foreground font-normal">(optional)</span>
+                          </Label>
+                        </div>
+                        <ExpressionInput
+                          value={(step.config as Record<string, unknown>)?.condition as string || ''}
+                          onChange={(value) => {
+                            const currentConfig = (step.config || {}) as Record<string, unknown>;
+                            updatePostStep(step.id, {
+                              config: { ...currentConfig, condition: value || undefined },
+                            });
+                          }}
+                          placeholder="e.g., steps.ai_chat.toolCalls"
+                          previousSteps={previousPostSteps}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Step only runs if this expression is truthy.
+                        </p>
+                      </div>
+
+                      {/* Handler-specific config */}
+                      <div className="border rounded-lg p-4 bg-muted/30">
+                        <HandlerConfigWrapper
+                          handlerType={step.handlerType}
+                          config={step.config}
+                          onChange={(newConfig) => {
+                            const currentCondition = (step.config as Record<string, unknown>)?.condition;
+                            updatePostStep(step.id, {
+                              config: currentCondition
+                                ? { ...newConfig, condition: currentCondition }
+                                : newConfig,
+                            });
+                          }}
+                          projectId={projectId}
+                          previousSteps={previousPostSteps}
+                        />
+                      </div>
+                    </CardContent>
+                  )}
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {/* Delete confirmation dialog */}
       <AlertDialog open={!!deleteConfirm} onOpenChange={() => setDeleteConfirm(null)}>
         <AlertDialogContent>
@@ -717,6 +998,27 @@ data: {"type":"text-delta","value":" world"}
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteConfirm && removeStep(deleteConfirm)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete post-processing step confirmation dialog */}
+      <AlertDialog open={!!deletePostConfirm} onOpenChange={() => setDeletePostConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Post-Processing Step</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this post-processing step? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deletePostConfirm && removePostStep(deletePostConfirm)}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Delete

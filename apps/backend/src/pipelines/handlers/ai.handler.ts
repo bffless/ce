@@ -453,6 +453,22 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
       }
     }
 
+    // Deferred promise to capture onFinish data for post-processing steps
+    let resolveFinishData: (data: {
+      text: string;
+      usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+      finishReason: string;
+      steps?: any[];
+    }) => void;
+    const finishDataPromise = new Promise<{
+      text: string;
+      usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+      finishReason: string;
+      steps?: any[];
+    }>((resolve) => {
+      resolveFinishData = resolve;
+    });
+
     const hasTools = tools && Object.keys(tools).length > 0;
     const result = streamText({
       model,
@@ -463,7 +479,15 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
       // Enable multi-step execution when tools are available
       // Default is stepCountIs(1), increase to allow tool calls
       stopWhen: hasTools ? stepCountIs(5) : stepCountIs(1),
-      onFinish: async ({ text, usage, finishReason }) => {
+      onFinish: async ({ text, usage, finishReason, steps: finishSteps }) => {
+        // Resolve deferred promise with finish data for post-processing
+        resolveFinishData!({
+          text,
+          usage: usage || {},
+          finishReason,
+          steps: finishSteps,
+        });
+
         // Save AI response after streaming completes if persistence is enabled
         if (config.persistMessages && config.persistMessagesSchemaId) {
           try {
@@ -502,11 +526,45 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
 
     this.logger.debug(`Streaming complete for step '${stepName}'`);
 
-    // Return result with terminates flag since we've already sent the response
+    // Await finish data to enrich output for post-processing steps
+    const finishData = await finishDataPromise;
+
+    // Extract tool calls from steps (same pattern as executeMessage)
+    const allToolCalls: Array<{ toolName: string; input: unknown; output?: unknown }> = [];
+    if (finishData.steps) {
+      for (const step of finishData.steps) {
+        if (step.toolCalls?.length) {
+          for (const tc of step.toolCalls) {
+            const toolCall: { toolName: string; input: unknown; output?: unknown } = {
+              toolName: tc.toolName,
+              input: tc.args || tc.input,
+            };
+            // Find matching tool result
+            const matchingResult = step.toolResults?.find(
+              (tr: any) => tr.toolCallId === tc.toolCallId,
+            );
+            if (matchingResult) {
+              toolCall.output = matchingResult.result || matchingResult.output;
+            }
+            allToolCalls.push(toolCall);
+          }
+        }
+      }
+    }
+
+    // Return enriched result with terminates flag since we've already sent the response
     return {
       success: true,
       output: {
         streamed: true,
+        text: finishData.text,
+        ...(allToolCalls.length > 0 && { toolCalls: allToolCalls }),
+        usage: {
+          inputTokens: finishData.usage?.inputTokens || 0,
+          outputTokens: finishData.usage?.outputTokens || 0,
+          totalTokens: finishData.usage?.totalTokens || 0,
+        },
+        finishReason: finishData.finishReason,
       },
       terminates: true, // Pipeline should not continue, response already sent
     };

@@ -134,6 +134,13 @@ export class ProxyRulesController {
         config: Record<string, unknown>;
         isEnabled?: boolean;
       }>;
+      postSteps?: Array<{
+        id: string;
+        name?: string;
+        handlerType: string;
+        config: Record<string, unknown>;
+        isEnabled?: boolean;
+      }>;
       validators?: Array<{
         type: string;
         config: Record<string, unknown>;
@@ -158,6 +165,15 @@ export class ProxyRulesController {
         isEnabled: step.isEnabled ?? true,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+      })),
+      postSteps: pipelineConfig.postSteps?.map((step, index) => ({
+        id: step.id || `post-step-${index}`,
+        pipelineId: `proxy-rule-${id}`,
+        name: step.name || `post_step_${index + 1}`,
+        handlerType: step.handlerType,
+        config: step.config,
+        order: index,
+        isEnabled: step.isEnabled ?? true,
       })),
     };
 
