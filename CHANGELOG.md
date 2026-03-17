@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.133](https://github.com/bffless/ce/compare/v0.0.132...v0.0.133) (2026-03-17)
+
+
+### Features
+
+* add Google Calendar AI plugin with OAuth2 integration ([6a146f2](https://github.com/bffless/ce/commit/6a146f21f9a374157f6d938ddfcb55e70c06513e))
+* Google Calendar AI plugin with OAuth2 ([e3749e3](https://github.com/bffless/ce/commit/e3749e311d029b91969dff155a76afbab145ea81))
+
 ## [0.0.132](https://github.com/bffless/ce/compare/v0.0.131...v0.0.132) (2026-03-16)
 
 
