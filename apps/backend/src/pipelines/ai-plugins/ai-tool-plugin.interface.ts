@@ -7,6 +7,8 @@ export interface AIToolContext {
   projectId: string;
   userId?: string;
   pluginConfig: Record<string, unknown>;
+  /** Per-pipeline options set in the pipeline editor (e.g., calendarId) */
+  pipelineOptions?: Record<string, unknown>;
 }
 
 /**
@@ -39,6 +41,8 @@ export interface AIToolPluginMetadata {
   requiresOAuth?: boolean;
   /** OAuth provider identifier (e.g. 'google') */
   oauthProvider?: string;
+  /** Optional Zod schema for per-pipeline options (e.g., calendarId selection) */
+  pipelineOptionsSchema?: z.ZodObject<any>;
 }
 
 /**

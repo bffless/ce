@@ -36,8 +36,11 @@ import { AuthRequiredValidator, RateLimitValidator } from './execution/validator
 import {
   AIToolPluginRegistry,
   AIToolPluginService,
+  AIPluginsController,
+  GoogleOAuthService,
   CalculatorPlugin,
   WebSearchPlugin,
+  GoogleCalendarPlugin,
 } from './ai-plugins';
 
 @Module({
@@ -45,6 +48,7 @@ import {
   controllers: [
     PipelineSchemasController,
     PipelineDataController,
+    AIPluginsController,
   ],
   providers: [
     // Core services
@@ -78,10 +82,12 @@ import {
     // AI Plugin system
     AIToolPluginRegistry,
     AIToolPluginService,
+    GoogleOAuthService,
     // Built-in plugins (self-register via constructor)
     // To add a new plugin: create the class in ai-plugins/plugins/, add it here
     CalculatorPlugin,
     WebSearchPlugin,
+    GoogleCalendarPlugin,
   ],
   exports: [
     PipelineExecutionService,

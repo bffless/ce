@@ -27,6 +27,7 @@ import { ResetPasswordPage } from '@/pages/ResetPasswordPage';
 import { VerifyEmailPage } from '@/pages/VerifyEmailPage';
 import { SetupPage } from '@/pages/SetupPage';
 import { InvitationAcceptPage } from '@/pages/InvitationAcceptPage';
+import { OAuthCallbackPage } from '@/pages/OAuthCallbackPage';
 import { Toaster } from '@/components/ui/toaster';
 import { Header } from '@/components/layout/Header';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
@@ -54,6 +55,9 @@ function App() {
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/verify-email" element={<VerifyEmailPage />} />
         <Route path="/invite/:token" element={<InvitationAcceptPage />} />
+
+        {/* OAuth callback (handles plugin OAuth redirects) */}
+        <Route path="/oauth/callback" element={<ProtectedRoute><OAuthCallbackPage /></ProtectedRoute>} />
 
         {/* User Settings route (requires auth) */}
         <Route path="/settings" element={<ProtectedRoute><UserSettingsPage /></ProtectedRoute>} />
