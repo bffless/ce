@@ -58,24 +58,37 @@ export class EmailHandler implements StepHandler<EmailHandlerConfig> {
       };
     }
 
-    // Evaluate recipient (expression)
-    const to = this.expressionEvaluator.evaluateExpression(
+    // Evaluate recipient (expression) - supports a single email string or an array of emails
+    const toRaw = this.expressionEvaluator.evaluateExpression(
       config.to,
       context,
       stepName,
-    ) as string;
+    );
 
-    // Validate email format
-    if (!to || typeof to !== 'string' || !this.isValidEmail(to)) {
+    // Normalize to array
+    const toList: string[] = Array.isArray(toRaw)
+      ? toRaw.map(String)
+      : typeof toRaw === 'string'
+        ? toRaw.split(',').map((e) => e.trim()).filter(Boolean)
+        : [];
+
+    // Validate all emails
+    const invalidEmails = toList.filter((e) => !this.isValidEmail(e));
+    if (toList.length === 0 || invalidEmails.length > 0) {
       return {
         success: false,
         error: {
           code: 'INVALID_RECIPIENT',
-          message: `Invalid email recipient: ${to}`,
-          details: { to },
+          message: invalidEmails.length > 0
+            ? `Invalid email recipient(s): ${invalidEmails.join(', ')}`
+            : `Missing email recipient`,
+          details: { to: toRaw },
         },
       };
     }
+
+    // Join for sending (most SMTP transports accept comma-separated recipients)
+    const to = toList.join(', ');
 
     // Evaluate subject (template)
     const subject = this.expressionEvaluator.evaluateTemplate(

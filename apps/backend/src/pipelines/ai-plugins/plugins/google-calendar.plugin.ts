@@ -115,6 +115,10 @@ export class GoogleCalendarPlugin implements AIToolPlugin {
             .string()
             .describe('End time in ISO 8601 format (e.g., "2024-03-15T15:00:00Z")'),
           description: z.string().optional().describe('Optional event description'),
+          attendees: z
+            .array(z.string().email())
+            .optional()
+            .describe('Email addresses of attendees to invite to the event'),
           timezone: z
             .string()
             .optional()
@@ -126,6 +130,7 @@ export class GoogleCalendarPlugin implements AIToolPlugin {
             startTime: string;
             endTime: string;
             description?: string;
+            attendees?: string[];
             timezone?: string;
           },
           context: AIToolContext,
@@ -197,6 +202,7 @@ export class GoogleCalendarPlugin implements AIToolPlugin {
       startTime: string;
       endTime: string;
       description?: string;
+      attendees?: string[];
       timezone?: string;
     },
     context: AIToolContext,
@@ -214,6 +220,10 @@ export class GoogleCalendarPlugin implements AIToolPlugin {
 
       if (args.description) {
         eventBody.description = args.description;
+      }
+
+      if (args.attendees?.length) {
+        eventBody.attendees = args.attendees.map((email) => ({ email }));
       }
 
       const response = await fetch(`${EVENTS_URL}/${encodeURIComponent(calendarId)}/events`, {
@@ -240,6 +250,7 @@ export class GoogleCalendarPlugin implements AIToolPlugin {
           title: event.summary,
           start: event.start?.dateTime || event.start?.date,
           end: event.end?.dateTime || event.end?.date,
+          attendees: event.attendees?.map((a: any) => a.email) || [],
           htmlLink: event.htmlLink,
         },
       };
