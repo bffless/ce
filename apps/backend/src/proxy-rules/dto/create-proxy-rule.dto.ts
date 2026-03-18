@@ -253,6 +253,16 @@ export class PipelineConfigDto {
   steps: PipelineStepDto[];
 
   @ApiPropertyOptional({
+    description: 'Post-processing steps that run after the response is sent to the client',
+    type: [PipelineStepDto],
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PipelineStepDto)
+  postSteps?: PipelineStepDto[];
+
+  @ApiPropertyOptional({
     description: 'Pre-pipeline validators (auth, rate limiting)',
     example: [{ type: 'auth_required', config: { roles: ['admin'] } }],
   })
