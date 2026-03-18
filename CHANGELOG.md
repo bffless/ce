@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.138](https://github.com/bffless/ce/compare/v0.0.137...v0.0.138) (2026-03-18)
+
+
+### Features
+
+* show alias and version in data UI, auto-increment schema version ([397ac2f](https://github.com/bffless/ce/commit/397ac2f3e9d455338f8c54b77a96caf07eabc85c))
+
 ## [0.0.137](https://github.com/bffless/ce/compare/v0.0.136...v0.0.137) (2026-03-18)
 
 
