@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.137](https://github.com/bffless/ce/compare/v0.0.136...v0.0.137) (2026-03-18)
+
+
+### Features
+
+* add alias and version columns to pipeline data schema ([db873df](https://github.com/bffless/ce/commit/db873df8700cadc3efac6214a0473920907748e5))
+
 ## [0.0.136](https://github.com/bffless/ce/compare/v0.0.135...v0.0.136) (2026-03-18)
 
 
