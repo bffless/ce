@@ -214,12 +214,24 @@ export function SchemaEditorPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>{isEditing ? 'Edit Schema' : 'Create Schema'}</CardTitle>
-          <CardDescription>
-            {isEditing
-              ? 'Update the schema definition. Existing data will be preserved.'
-              : 'Define a new data schema for pipeline handlers to use.'}
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>{isEditing ? 'Edit Schema' : 'Create Schema'}</CardTitle>
+              <CardDescription>
+                {isEditing
+                  ? 'Update the schema definition. Existing data will be preserved.'
+                  : 'Define a new data schema for pipeline handlers to use.'}
+              </CardDescription>
+            </div>
+            {isEditing && existingSchema && (
+              <span className="text-sm text-muted-foreground">
+                Version <span className="font-mono font-medium text-foreground">{existingSchema.version}</span>
+                {' '}&rarr;{' '}
+                <span className="font-mono font-medium text-foreground">{existingSchema.version + 1}</span>
+                <span className="text-xs ml-1">(on save)</span>
+              </span>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">

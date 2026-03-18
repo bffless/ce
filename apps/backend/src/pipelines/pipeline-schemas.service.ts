@@ -137,7 +137,12 @@ export class PipelineSchemasService {
     };
 
     if (dto.name !== undefined) updateData.name = dto.name;
-    if (dto.version !== undefined) updateData.version = dto.version;
+    if (dto.version !== undefined) {
+      updateData.version = dto.version;
+    } else if (dto.fields !== undefined) {
+      // Auto-increment version when fields change (unless version is explicitly set)
+      updateData.version = existing.version + 1;
+    }
     if (dto.fields !== undefined) {
       updateData.fields = dto.fields.map((f) => ({
         ...f,

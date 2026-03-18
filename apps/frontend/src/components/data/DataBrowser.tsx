@@ -344,6 +344,8 @@ export function DataBrowser({ schemaId, fields, canEdit }: DataBrowserProps) {
                       <TableHead className="w-12"></TableHead>
                       <TableHead>ID</TableHead>
                       <TableHead>Data Preview</TableHead>
+                      <TableHead>Alias</TableHead>
+                      <TableHead>Ver</TableHead>
                       <TableHead>Created</TableHead>
                       {canEdit && <TableHead className="w-12"></TableHead>}
                     </TableRow>
@@ -405,6 +407,12 @@ export function DataBrowser({ schemaId, fields, canEdit }: DataBrowserProps) {
                             {JSON.stringify(record.data).length > 100 && '...'}
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
+                            {record.alias || <span className="text-muted-foreground/50">&mdash;</span>}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {record.version}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
                             {new Date(record.createdAt).toLocaleString()}
                           </TableCell>
                           {canEdit && (
@@ -435,7 +443,7 @@ export function DataBrowser({ schemaId, fields, canEdit }: DataBrowserProps) {
                         {expandedId === record.id && (
                           <TableRow>
                             <TableCell
-                              colSpan={canEdit ? 6 : 4}
+                              colSpan={canEdit ? 8 : 6}
                               className="bg-muted/30 p-4"
                             >
                               <pre className="text-xs overflow-auto max-h-96 whitespace-pre-wrap">

@@ -199,6 +199,7 @@ export function SchemaDetailPage() {
                 <CardTitle className="flex items-center gap-2">
                   {schema.name}
                   <Badge variant="secondary">{schema.recordCount} records</Badge>
+                  <Badge variant="outline">v{schema.version}</Badge>
                 </CardTitle>
                 <CardDescription>
                   Created {new Date(schema.createdAt).toLocaleDateString()}

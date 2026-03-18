@@ -22,6 +22,7 @@ export interface PipelineSchema {
   id: string;
   projectId: string;
   name: string;
+  version: number;
   fields: SchemaField[];
   createdAt: string;
   updatedAt: string;
@@ -35,6 +36,8 @@ export interface PipelineDataRecord {
   id: string;
   projectId: string;
   schemaId: string;
+  alias: string | null;
+  version: number;
   data: Record<string, unknown>;
   createdBy: string | null;
   createdAt: string;
@@ -51,6 +54,7 @@ export interface CreateSchemaDto {
 
 export interface UpdateSchemaDto {
   name?: string;
+  version?: number;
   fields?: SchemaField[];
 }
 

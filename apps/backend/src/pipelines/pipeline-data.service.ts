@@ -239,7 +239,7 @@ export class PipelineDataService {
 
     await this.checkProjectAccess(schema.projectId, userId, userRole, 'contributor');
 
-    return this.create(schemaId, schema.projectId, data, userId);
+    return this.create(schemaId, schema.projectId, data, userId, null, schema.version);
   }
 
   /**
