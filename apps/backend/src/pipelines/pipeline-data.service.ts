@@ -145,6 +145,10 @@ export class PipelineDataService {
         orderByClause = direction(pipelineData.createdAt);
       } else if (filterOptions.sortBy === 'updatedAt') {
         orderByClause = direction(pipelineData.updatedAt);
+      } else if (filterOptions.sortBy === 'version') {
+        orderByClause = direction(pipelineData.version);
+      } else if (filterOptions.sortBy === 'alias') {
+        orderByClause = direction(pipelineData.alias);
       } else {
         // Sort by JSONB field
         const fieldPath = sql`${pipelineData.data}->>${sql.raw(`'${filterOptions.sortBy}'`)}`;
@@ -192,6 +196,8 @@ export class PipelineDataService {
     projectId: string,
     data: Record<string, unknown>,
     createdBy?: string,
+    alias?: string | null,
+    version?: number,
   ): Promise<PipelineData> {
     const [record] = await db
       .insert(pipelineData)
@@ -200,6 +206,8 @@ export class PipelineDataService {
         projectId,
         data,
         createdBy,
+        alias: alias ?? null,
+        version: version ?? 1,
       } as NewPipelineData)
       .returning();
 
@@ -365,6 +373,8 @@ export class PipelineDataService {
       return JSON.stringify(
         records.map((r) => ({
           id: r.id,
+          alias: r.alias,
+          version: r.version,
           ...r.data as Record<string, unknown>,
           createdAt: r.createdAt,
           updatedAt: r.updatedAt,
@@ -381,7 +391,7 @@ export class PipelineDataService {
 
     // Get field names from schema
     const fieldNames = schema.fields.map((f) => f.name);
-    const headers = ['id', ...fieldNames, 'createdAt', 'updatedAt'];
+    const headers = ['id', 'alias', 'version', ...fieldNames, 'createdAt', 'updatedAt'];
 
     const rows: string[] = [headers.join(',')];
 
@@ -389,6 +399,8 @@ export class PipelineDataService {
       const data = record.data as Record<string, unknown>;
       const row = [
         this.escapeCSV(record.id),
+        this.escapeCSV(record.alias ?? ''),
+        this.escapeCSV(String(record.version)),
         ...fieldNames.map((name) => this.escapeCSV(String(data[name] ?? ''))),
         this.escapeCSV(record.createdAt.toISOString()),
         this.escapeCSV(record.updatedAt.toISOString()),

@@ -210,7 +210,7 @@ export class ProxyRulesController {
 
     // Resolve deployment context if alias is provided (for skills testing)
     // Auto-fallback to "production" alias when skills are configured but no alias specified
-    let deployment: { owner: string; repo: string; commitSha: string } | undefined;
+    let deployment: { owner: string; repo: string; commitSha: string; alias?: string } | undefined;
 
     // Check if skills are configured in any step
     const hasSkillsConfig = (pipelineConfig.steps || []).some(
@@ -232,6 +232,7 @@ export class ProxyRulesController {
             owner: project.owner,
             repo: project.name,
             commitSha,
+            alias: aliasToResolve,
           };
         }
       }

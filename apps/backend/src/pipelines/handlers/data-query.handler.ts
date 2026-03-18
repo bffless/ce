@@ -177,7 +177,11 @@ export class DataQueryHandler implements StepHandler<DataQueryHandlerConfig> {
         const selected: Record<string, unknown> = { id: record.id };
         for (const field of config.select) {
           if (field === 'id') continue;
-          if (field === 'createdAt') {
+          if (field === 'alias') {
+            selected.alias = record.alias;
+          } else if (field === 'version') {
+            selected.version = record.version;
+          } else if (field === 'createdAt') {
             selected.createdAt = record.createdAt;
           } else if (field === 'updatedAt') {
             selected.updatedAt = record.updatedAt;
@@ -191,6 +195,8 @@ export class DataQueryHandler implements StepHandler<DataQueryHandlerConfig> {
       // Return all fields
       return {
         id: record.id,
+        alias: record.alias,
+        version: record.version,
         ...data,
         createdAt: record.createdAt,
         updatedAt: record.updatedAt,

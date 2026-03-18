@@ -2,6 +2,7 @@ import {
   pgTable,
   uuid,
   varchar,
+  integer,
   jsonb,
   timestamp,
   index,
@@ -46,6 +47,11 @@ export const pipelineSchemas = pgTable(
      * Schema name (unique within project)
      */
     name: varchar('name', { length: 255 }).notNull(),
+    /**
+     * Schema version number. Bumped when fields change so data records
+     * can be associated with the schema definition that created them.
+     */
+    version: integer('version').notNull().default(1),
     /**
      * Field definitions for this schema
      */

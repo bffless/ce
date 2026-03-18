@@ -177,6 +177,8 @@ export class DataUpdateHandler implements StepHandler<DataUpdateHandlerConfig> {
       if (updated) {
         updatedRecords.push({
           id: updated.id,
+          alias: updated.alias,
+          version: updated.version,
           ...(updated.data as Record<string, unknown>),
           updatedAt: updated.updatedAt,
         });

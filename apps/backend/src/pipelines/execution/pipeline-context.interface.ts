@@ -59,6 +59,7 @@ export interface PipelineContext {
     owner: string;
     repo: string;
     commitSha: string;
+    alias?: string;
   };
 }
 

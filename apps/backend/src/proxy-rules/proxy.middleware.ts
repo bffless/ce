@@ -233,7 +233,7 @@ export class ProxyMiddleware implements NestMiddleware {
       if (proxyType === 'pipeline') {
         this.logger.debug(`Pipeline execution: ${subpathForMatching} (rule: ${matchedRule.id})`);
         const deployment = resolvedCommitSha
-          ? { owner: project.owner, repo: project.name, commitSha: resolvedCommitSha }
+          ? { owner: project.owner, repo: project.name, commitSha: resolvedCommitSha, alias: aliasName ?? undefined }
           : undefined;
         return this.handlePipelineExecution(req, res, matchedRule, project.id, deployment);
       }
@@ -442,7 +442,7 @@ export class ProxyMiddleware implements NestMiddleware {
         `Subdomain pipeline execution: ${subpathForMatching} (alias: ${resolvedAliasName}, rule: ${matchedRule.id})`,
       );
       const deployment = alias?.commitSha
-        ? { owner: project.owner, repo: project.name, commitSha: alias.commitSha }
+        ? { owner: project.owner, repo: project.name, commitSha: alias.commitSha, alias: resolvedAliasName ?? undefined }
         : undefined;
       return this.handlePipelineExecution(req, res, matchedRule, project.id, deployment);
     }
@@ -928,7 +928,7 @@ export class ProxyMiddleware implements NestMiddleware {
     res: Response,
     rule: ProxyRule,
     projectId: string,
-    deployment?: { owner: string; repo: string; commitSha: string },
+    deployment?: { owner: string; repo: string; commitSha: string; alias?: string },
   ): Promise<void> {
     const pipelineConfig = rule.pipelineConfig as PipelineConfig | null;
 

@@ -1,6 +1,8 @@
 import {
   pgTable,
   uuid,
+  varchar,
+  integer,
   jsonb,
   timestamp,
   index,
@@ -23,6 +25,17 @@ export const pipelineData = pgTable(
     schemaId: uuid('schema_id')
       .notNull()
       .references(() => pipelineSchemas.id, { onDelete: 'cascade' }),
+    /**
+     * Deployment alias that was active when this record was created
+     * (e.g., "production", "staging"). Matches the alias used for serving static assets.
+     * Null when created outside a deployment context (e.g., admin UI, API).
+     */
+    alias: varchar('alias', { length: 255 }),
+    /**
+     * Schema version at the time this record was created.
+     * Allows distinguishing records created under different schema field definitions.
+     */
+    version: integer('version').notNull().default(1),
     /**
      * The actual data record (JSON object matching the schema fields)
      */

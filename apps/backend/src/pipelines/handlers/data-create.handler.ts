@@ -86,20 +86,25 @@ export class DataCreateHandler implements StepHandler<DataCreateHandlerConfig> {
       };
     }
 
-    // Create the record
+    // Create the record with alias from deployment context and version from schema
+    const alias = context.deployment?.alias ?? null;
     const record = await this.dataService.create(
       config.schemaId,
       context.projectId,
       data,
       context.user?.id,
+      alias,
+      schema.version,
     );
 
-    this.logger.debug(`Created data record ${record.id} in schema ${config.schemaId}`);
+    this.logger.debug(`Created data record ${record.id} in schema ${config.schemaId} (alias: ${alias}, version: ${schema.version})`);
 
     return {
       success: true,
       output: {
         id: record.id,
+        alias: record.alias,
+        version: record.version,
         ...record.data as Record<string, unknown>,
         createdAt: record.createdAt,
       },

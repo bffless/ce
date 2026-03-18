@@ -105,7 +105,7 @@ export class GoogleCalendarPlugin implements AIToolPlugin {
       {
         name: 'create_event',
         description:
-          'Create a new event on Google Calendar. Returns event details including a link to the event.',
+          'Create a new event on Google Calendar. Always include attendee email addresses when available so they receive a calendar invite. Returns event details including a link to the event.',
         inputSchema: z.object({
           title: z.string().describe('Event title/summary'),
           startTime: z
@@ -118,7 +118,7 @@ export class GoogleCalendarPlugin implements AIToolPlugin {
           attendees: z
             .array(z.string().email())
             .optional()
-            .describe('Email addresses of attendees to invite to the event'),
+            .describe('Email addresses of attendees. Always include attendee emails when known so they receive a calendar invite.'),
           timezone: z
             .string()
             .optional()

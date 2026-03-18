@@ -2,6 +2,8 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsString,
   IsOptional,
+  IsInt,
+  Min,
   IsArray,
   MaxLength,
   ValidateNested,
@@ -18,6 +20,15 @@ export class UpdatePipelineSchemaDto {
   @IsString()
   @MaxLength(255)
   name?: string;
+
+  @ApiPropertyOptional({
+    description: 'Schema version number. Bump when fields change to track which records were created under which schema definition.',
+    example: 2,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  version?: number;
 
   @ApiPropertyOptional({
     description: 'Field definitions',

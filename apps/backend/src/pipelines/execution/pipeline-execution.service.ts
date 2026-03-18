@@ -42,7 +42,7 @@ export class PipelineExecutionService {
     user?: { id: string; email?: string; role?: string },
     options?: {
       dryRun?: boolean;
-      deployment?: { owner: string; repo: string; commitSha: string };
+      deployment?: { owner: string; repo: string; commitSha: string; alias?: string };
     },
   ): Promise<PipelineDebugResult> {
     const executionStartTime = Date.now();

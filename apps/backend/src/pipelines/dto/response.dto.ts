@@ -107,6 +107,9 @@ export class PipelineSchemaResponseDto {
   @ApiProperty()
   name: string;
 
+  @ApiProperty({ description: 'Schema version number, bumped when fields change' })
+  version: number;
+
   @ApiProperty()
   fields: SchemaField[];
 
@@ -137,6 +140,12 @@ export class PipelineDataResponseDto {
 
   @ApiProperty()
   schemaId: string;
+
+  @ApiPropertyOptional({ description: 'Deployment alias active when this record was created' })
+  alias?: string | null;
+
+  @ApiProperty({ description: 'Schema version at the time this record was created' })
+  version: number;
 
   @ApiProperty()
   data: unknown;
