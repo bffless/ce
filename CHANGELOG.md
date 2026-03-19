@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.140](https://github.com/bffless/ce/compare/v0.0.139...v0.0.140) (2026-03-19)
+
+
+### Bug Fixes
+
+* skipped steps preserve previous output, form handler reads query params ([f36a9aa](https://github.com/bffless/ce/commit/f36a9aa32f16a704b128242e128840dcc2f5355f))
+
 ## [0.0.139](https://github.com/bffless/ce/compare/v0.0.138...v0.0.139) (2026-03-19)
 
 
