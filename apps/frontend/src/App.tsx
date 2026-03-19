@@ -12,6 +12,8 @@ import { RuleEditorPage } from '@/pages/RuleEditorPage';
 import { SchemasListPage } from '@/pages/SchemasListPage';
 import { SchemaDetailPage } from '@/pages/SchemaDetailPage';
 import { SchemaEditorPage } from '@/pages/SchemaEditorPage';
+import { UploadsListPage } from '@/pages/UploadsListPage';
+import { UploadDetailPage } from '@/pages/UploadDetailPage';
 import { RepositoryTabRedirect } from '@/pages/RepositoryTabRedirect';
 import { UserGroupsPage } from '@/pages/UserGroupsPage';
 import { GroupDetailPage } from '@/pages/GroupDetailPage';
@@ -90,6 +92,8 @@ function App() {
           <Route path="data/new" element={<SchemaEditorPage />} />
           <Route path="data/:schemaId" element={<SchemaDetailPage />} />
           <Route path="data/:schemaId/edit" element={<SchemaEditorPage />} />
+          <Route path="uploads" element={<UploadsListPage />} />
+          <Route path="uploads/:schemaId" element={<UploadDetailPage />} />
         </Route>
 
         {/* User Groups routes (admin only) */}

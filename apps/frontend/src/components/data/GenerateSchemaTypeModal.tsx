@@ -6,9 +6,9 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Card, CardContent } from '@/components/ui/card';
-import { Database, MessageSquare, ArrowRight } from 'lucide-react';
+import { Database, MessageSquare, Upload, ArrowRight } from 'lucide-react';
 
-export type SchemaType = 'state' | 'chat';
+export type SchemaType = 'state' | 'chat' | 'upload';
 
 interface GenerateSchemaTypeModalProps {
   open: boolean;
@@ -92,6 +92,34 @@ export function GenerateSchemaTypeModal({
                     <span className="text-xs bg-muted px-2 py-0.5 rounded">Conversations</span>
                     <span className="text-xs bg-muted px-2 py-0.5 rounded">Messages</span>
                     <span className="text-xs bg-muted px-2 py-0.5 rounded">5 pipelines</span>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          {/* Upload Schema Option */}
+          <Card
+            className="cursor-pointer hover:bg-muted/50 transition-colors border-2 hover:border-primary/50"
+            onClick={() => handleSelect('upload')}
+          >
+            <CardContent className="p-4">
+              <div className="flex items-start gap-4">
+                <div className="h-12 w-12 rounded-lg bg-green-500/10 flex items-center justify-center shrink-0">
+                  <Upload className="h-6 w-6 text-green-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold">Upload Schema</h3>
+                    <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    For file uploads with metadata tracking and configurable access control.
+                    Includes upload and serve endpoints.
+                  </p>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    <span className="text-xs bg-muted px-2 py-0.5 rounded">File Storage</span>
+                    <span className="text-xs bg-muted px-2 py-0.5 rounded">Date Bucketing</span>
+                    <span className="text-xs bg-muted px-2 py-0.5 rounded">2 pipelines</span>
                   </div>
                 </div>
               </div>

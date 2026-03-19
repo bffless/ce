@@ -5,6 +5,7 @@ import { PipelineSchemasService } from './pipeline-schemas.service';
 import { PipelineDataService } from './pipeline-data.service';
 import { StateSchemaGeneratorService } from './state-schema-generator.service';
 import { ChatSchemaGeneratorService } from './chat-schema-generator.service';
+import { UploadSchemaGeneratorService } from './upload-schema-generator.service';
 import {
   PipelineExecutionService,
   StepHandlerRegistry,
@@ -26,6 +27,8 @@ import {
   DbAggregateHandler,
   FunctionHandler,
   AIHandler,
+  FileUploadHandler,
+  FileServeHandler,
 } from './handlers';
 // Services
 import { FunctionRunnerService } from './function-runner.service';
@@ -56,6 +59,7 @@ import {
     PipelineDataService,
     StateSchemaGeneratorService,
     ChatSchemaGeneratorService,
+    UploadSchemaGeneratorService,
     // Execution engine
     PipelineExecutionService,
     StepHandlerRegistry,
@@ -76,6 +80,8 @@ import {
     DbAggregateHandler,
     FunctionHandler,
     AIHandler,
+    FileUploadHandler,
+    FileServeHandler,
     // Validators (auto-register on construction)
     AuthRequiredValidator,
     RateLimitValidator,
