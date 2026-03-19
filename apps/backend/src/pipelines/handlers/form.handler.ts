@@ -50,7 +50,9 @@ export class FormHandler implements StepHandler<FormHandlerConfig> {
 
     this.logger.debug(`Executing form handler for step '${stepName}'`);
 
-    const input = context.metadata.body;
+    // Merge query params and body — body values take precedence over query params
+    // This allows form validation to work with GET requests using query strings
+    const input = { ...context.metadata.query, ...context.metadata.body };
     const errors: Record<string, string> = {};
     const validatedData: Record<string, unknown> = {};
 

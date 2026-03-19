@@ -95,6 +95,13 @@ export class PipelineExecutionService {
       for (const step of steps) {
         const stepDebug = await this.executeStepWithDebug(step, context);
         stepDebugInfo.push(stepDebug);
+
+        // When a step is skipped (condition not met), preserve the previous step's output
+        // so the response comes from the last step that actually ran
+        if (stepDebug.status === 'skipped') {
+          continue;
+        }
+
         lastStepResult = stepDebug.result;
 
         if (!lastStepResult.success) {
