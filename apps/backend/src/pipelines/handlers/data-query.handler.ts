@@ -29,6 +29,27 @@ export class DataQueryHandler implements StepHandler<DataQueryHandlerConfig> {
     this.registry.register(this);
   }
 
+  /**
+   * Resolve a config value that may be a number or an expression string.
+   * Returns the resolved number, or the default if the value is not set.
+   */
+  private resolveNumericExpression(
+    value: number | string | undefined,
+    defaultValue: number,
+    context: PipelineContext,
+    stepName: string,
+  ): number {
+    if (value === undefined || value === null) {
+      return defaultValue;
+    }
+    if (typeof value === 'number') {
+      return value;
+    }
+    const resolved = this.expressionEvaluator.evaluateExpression(value, context, stepName);
+    const num = Number(resolved);
+    return isNaN(num) ? defaultValue : num;
+  }
+
   validateConfig(config: DataQueryHandlerConfig): void {
     if (!config.schemaId) {
       throw new ConfigurationError('schemaId is required', 'data_query');
@@ -165,8 +186,8 @@ export class DataQueryHandler implements StepHandler<DataQueryHandlerConfig> {
       .from(pipelineData)
       .where(and(...conditions))
       .orderBy(orderByClause)
-      .limit(config.limit ?? 100)
-      .offset(config.offset ?? 0);
+      .limit(this.resolveNumericExpression(config.limit, 100, context, stepName))
+      .offset(this.resolveNumericExpression(config.offset, 0, context, stepName));
 
     // Format results - include id and data fields
     const results = records.map((record) => {
@@ -209,7 +230,8 @@ export class DataQueryHandler implements StepHandler<DataQueryHandlerConfig> {
     // - recordId is specified (find by ID)
     // - single is true (find one)
     // - limit is 1 (legacy behavior)
-    const returnSingle = config.recordId || config.single || config.limit === 1;
+    const resolvedLimit = this.resolveNumericExpression(config.limit, 100, context, stepName);
+    const returnSingle = config.recordId || config.single || resolvedLimit === 1;
     const output = returnSingle ? (results[0] || null) : results;
 
     return {

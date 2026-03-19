@@ -39,7 +39,7 @@ export type HandlerType =
   | 'response_handler'
   | 'proxy_forward'
   | 'function_handler'
-  | 'aggregate_handler'
+  | 'db_aggregate'
   | 'ai_handler';
 
 export interface Pipeline {

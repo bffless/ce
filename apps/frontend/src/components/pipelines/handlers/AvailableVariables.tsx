@@ -175,7 +175,7 @@ function getStepOutputDescription(handlerType: string, config?: Record<string, u
     data_delete: 'Deletion result',
     email_handler: 'Email send result',
     function_handler: 'Custom return value from handler()',
-    aggregate_handler: 'Aggregation result',
+    db_aggregate: 'DB aggregation result',
     response_handler: 'Response config (usually last step)',
     ai_handler: 'AI response with content and usage stats',
     chat_handler: 'AI response with content and usage stats',
@@ -245,8 +245,9 @@ function getStepOutputExamples(
     function_handler: [
       fmt(`${stepPath}.result`),
     ],
-    aggregate_handler: [
+    db_aggregate: [
       fmt(`${stepPath}.result`),
+      fmt(`${stepPath}.operation`),
     ],
     ai_handler: [
       fmt(`${stepPath}.content`),

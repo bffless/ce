@@ -61,7 +61,7 @@ const HANDLER_TYPES: HandlerType[] = [
   'data_delete',
   'email_handler',
   'function_handler',
-  'aggregate_handler',
+  'db_aggregate',
   'ai_handler',
 ];
 

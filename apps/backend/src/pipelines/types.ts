@@ -65,7 +65,7 @@ export type HandlerType =
   | 'email_handler'
   | 'response_handler'
   | 'function_handler'
-  | 'aggregate_handler'
+  | 'db_aggregate'
   | 'ai_handler';
 
 /**

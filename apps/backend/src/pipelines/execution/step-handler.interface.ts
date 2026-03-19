@@ -98,14 +98,14 @@ export interface DataQueryHandlerConfig extends BaseHandlerConfig {
   select?: string[];
 
   /**
-   * Maximum records to return
+   * Maximum records to return (number or expression)
    */
-  limit?: number;
+  limit?: number | string;
 
   /**
-   * Offset for pagination
+   * Offset for pagination (number or expression)
    */
-  offset?: number;
+  offset?: number | string;
 
   /**
    * Sort field and direction
@@ -254,18 +254,37 @@ export interface FormHandlerConfig extends BaseHandlerConfig {
 }
 
 /**
- * Configuration for aggregate_handler (performs aggregation operations on arrays)
+ * Configuration for db_aggregate handler (performs aggregation at the database level)
  */
-export interface AggregateHandlerConfig extends BaseHandlerConfig {
+export interface DbAggregateHandlerConfig extends BaseHandlerConfig {
+  /**
+   * Schema ID to aggregate from
+   */
+  schemaId: string;
+
   /**
    * Aggregation operation to perform
    */
-  operation: 'sum' | 'count' | 'avg' | 'min' | 'max';
+  operation: 'sum' | 'count' | 'avg' | 'min' | 'max' | 'array_length';
 
   /**
-   * Field to aggregate (required for sum, avg, min, max)
+   * Field to aggregate (required for sum, avg, min, max, array_length)
    */
   field?: string;
+
+  /**
+   * Filter conditions on JSON data fields: { field: { op: "eq", value: "expression" } }
+   */
+  filters?: Record<
+    string,
+    { op: 'eq' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte' | 'like'; value: string }
+  >;
+
+  /**
+   * How to combine multiple filters: 'and' (all must match) or 'or' (any must match)
+   * @default 'and'
+   */
+  filterLogic?: 'and' | 'or';
 }
 
 /**

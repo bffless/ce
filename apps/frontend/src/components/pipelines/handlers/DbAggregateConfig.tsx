@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Switch } from '@/components/ui/switch';
 import {
   Select,
   SelectContent,
@@ -10,16 +8,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Plus, Trash2 } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Info, Plus, Trash2 } from 'lucide-react';
 import { SchemaPicker } from './SchemaPicker';
 import { SchemaFieldPicker } from './SchemaFieldPicker';
 import { ExpressionInput } from './ExpressionInput';
 import type { PreviousStep } from './AvailableVariables';
-import type { DataQueryHandlerConfig, FilterConfig } from './types';
+import type { DbAggregateHandlerConfig, FilterConfig } from './types';
 
-interface DataQueryConfigProps {
-  config: Partial<DataQueryHandlerConfig>;
-  onChange: (config: DataQueryHandlerConfig) => void;
+interface DbAggregateConfigProps {
+  config: Partial<DbAggregateHandlerConfig>;
+  onChange: (config: DbAggregateHandlerConfig) => void;
   projectId: string;
   previousSteps?: PreviousStep[];
 }
@@ -29,6 +28,19 @@ interface FilterEntry {
   op: FilterConfig['op'];
   value: string;
 }
+
+const OPERATIONS: {
+  value: DbAggregateHandlerConfig['operation'];
+  label: string;
+  requiresField: boolean;
+}[] = [
+  { value: 'count', label: 'Count', requiresField: false },
+  { value: 'sum', label: 'Sum', requiresField: true },
+  { value: 'avg', label: 'Average', requiresField: true },
+  { value: 'min', label: 'Minimum', requiresField: true },
+  { value: 'max', label: 'Maximum', requiresField: true },
+  { value: 'array_length', label: 'Array Length (sum)', requiresField: true },
+];
 
 const FILTER_OPS: { value: FilterConfig['op']; label: string }[] = [
   { value: 'eq', label: 'Equals (=)' },
@@ -40,23 +52,23 @@ const FILTER_OPS: { value: FilterConfig['op']; label: string }[] = [
   { value: 'like', label: 'Like (pattern)' },
 ];
 
-export function DataQueryConfig({ config, onChange, projectId, previousSteps = [] }: DataQueryConfigProps) {
+export function DbAggregateConfig({ config, onChange, projectId, previousSteps = [] }: DbAggregateConfigProps) {
   const [schemaId, setSchemaId] = useState(config.schemaId || '');
-  const [recordId, setRecordId] = useState(config.recordId || '');
-  const [single, setSingle] = useState(config.single || false);
+  const [operation, setOperation] = useState<DbAggregateHandlerConfig['operation']>(
+    config.operation || 'count',
+  );
+  const [field, setField] = useState(config.field || '');
   const [filters, setFilters] = useState<FilterEntry[]>(() => {
     const existing = config.filters || {};
     const entries = Object.entries(existing);
     return entries.length > 0
-      ? entries.map(([field, conf]) => ({ field, op: conf.op, value: conf.value }))
+      ? entries.map(([f, conf]) => ({ field: f, op: conf.op, value: conf.value }))
       : [];
   });
   const [filterLogic, setFilterLogic] = useState<'and' | 'or'>(config.filterLogic || 'and');
-  const [limit, setLimit] = useState<string>(config.limit != null ? String(config.limit) : '');
-  const [offset, setOffset] = useState<string>(config.offset != null ? String(config.offset) : '');
-  const [orderByField, setOrderByField] = useState(config.orderBy?.field || '');
-  const [orderByDir, setOrderByDir] = useState<'asc' | 'desc'>(config.orderBy?.direction || 'desc');
-  const [selectFields, setSelectFields] = useState(config.select?.join(', ') || '');
+
+  const selectedOp = OPERATIONS.find((op) => op.value === operation);
+  const requiresField = selectedOp?.requiresField ?? false;
 
   useEffect(() => {
     const filtersRecord: Record<string, FilterConfig> = {};
@@ -66,29 +78,16 @@ export function DataQueryConfig({ config, onChange, projectId, previousSteps = [
       }
     }
 
-    const select = selectFields.trim()
-      ? selectFields.split(',').map((s) => s.trim()).filter(Boolean)
-      : undefined;
-
-    const orderBy = orderByField.trim()
-      ? { field: orderByField.trim(), direction: orderByDir }
-      : undefined;
-
-    // Only include filterLogic if there are multiple filters
     const hasMultipleFilters = Object.keys(filtersRecord).length > 1;
 
     onChange({
       schemaId,
-      recordId: recordId.trim() || undefined,
-      single: single || undefined,
+      operation,
+      field: requiresField ? field : undefined,
       filters: Object.keys(filtersRecord).length > 0 ? filtersRecord : undefined,
       filterLogic: hasMultipleFilters ? filterLogic : undefined,
-      select,
-      limit: limit.trim() ? (isNaN(Number(limit)) ? limit.trim() : Number(limit)) : undefined,
-      offset: offset.trim() ? (isNaN(Number(offset)) ? offset.trim() : Number(offset)) : undefined,
-      orderBy,
     });
-  }, [schemaId, recordId, single, filters, filterLogic, limit, offset, orderByField, orderByDir, selectFields, onChange]);
+  }, [schemaId, operation, field, requiresField, filters, filterLogic, onChange]);
 
   const handleAddFilter = () => {
     setFilters([...filters, { field: '', op: 'eq', value: '' }]);
@@ -104,37 +103,54 @@ export function DataQueryConfig({ config, onChange, projectId, previousSteps = [
 
   return (
     <div className="space-y-4">
+      <Alert>
+        <Info className="h-4 w-4" />
+        <AlertDescription>
+          Performs aggregation directly in the database using SQL. Much more efficient than loading
+          all records into memory with Aggregate Data.
+        </AlertDescription>
+      </Alert>
+
       <div className="space-y-2">
         <Label>Source Schema</Label>
         <SchemaPicker projectId={projectId} value={schemaId} onChange={setSchemaId} />
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="recordId">Record ID (optional)</Label>
-        <Input
-          id="recordId"
-          value={recordId}
-          onChange={(e) => setRecordId(e.target.value)}
-          placeholder="Find by record ID (expression)"
-        />
-        <p className="text-xs text-muted-foreground">
-          Find a specific record by its ID. Returns a single object or null. Ignores filters when set.
-        </p>
+        <Label htmlFor="operation">Operation</Label>
+        <Select
+          value={operation}
+          onValueChange={(v) => setOperation(v as DbAggregateHandlerConfig['operation'])}
+        >
+          <SelectTrigger id="operation">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {OPERATIONS.map((op) => (
+              <SelectItem key={op.value} value={op.value}>
+                {op.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
-      <div className="flex items-center justify-between">
-        <div className="space-y-0.5">
-          <Label htmlFor="single">Return Single Object</Label>
+      {requiresField && (
+        <div className="space-y-2">
+          <Label>Field to Aggregate</Label>
+          <SchemaFieldPicker
+            schemaId={schemaId}
+            value={field}
+            onChange={setField}
+            placeholder="Select numeric field"
+          />
           <p className="text-xs text-muted-foreground">
-            Return an object instead of an array (first match or null)
+            {operation === 'array_length'
+              ? 'The JSON array field to sum lengths across all matching records.'
+              : 'The numeric field from matching records to use for the calculation.'}
           </p>
         </div>
-        <Switch
-          id="single"
-          checked={single}
-          onCheckedChange={setSingle}
-        />
-      </div>
+      )}
 
       <div className="space-y-2">
         <div className="flex items-center justify-between">
@@ -153,7 +169,7 @@ export function DataQueryConfig({ config, onChange, projectId, previousSteps = [
                   <SchemaFieldPicker
                     schemaId={schemaId}
                     value={filter.field}
-                    onChange={(field) => handleFilterChange(index, { field })}
+                    onChange={(f) => handleFilterChange(index, { field: f })}
                     placeholder="Select field"
                   />
                 </div>
@@ -194,7 +210,6 @@ export function DataQueryConfig({ config, onChange, projectId, previousSteps = [
               </div>
             ))}
 
-            {/* Filter logic selector - only show when 2+ filters */}
             {filters.length > 1 && (
               <div className="flex items-center gap-3 pt-2 border-t">
                 <span className="text-sm text-muted-foreground">Match:</span>
@@ -229,62 +244,13 @@ export function DataQueryConfig({ config, onChange, projectId, previousSteps = [
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label>Order By</Label>
-          <SchemaFieldPicker
-            schemaId={schemaId}
-            value={orderByField}
-            onChange={setOrderByField}
-            placeholder="Select field"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="orderByDir">Direction</Label>
-          <Select value={orderByDir} onValueChange={(v) => setOrderByDir(v as 'asc' | 'desc')}>
-            <SelectTrigger id="orderByDir">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="asc">Ascending</SelectItem>
-              <SelectItem value="desc">Descending</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="limit">Limit</Label>
-          <ExpressionInput
-            value={limit}
-            onChange={setLimit}
-            placeholder="100"
-            previousSteps={previousSteps}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="offset">Offset</Label>
-          <ExpressionInput
-            value={offset}
-            onChange={setOffset}
-            placeholder="0"
-            previousSteps={previousSteps}
-          />
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="selectFields">Select Fields (optional)</Label>
-        <Input
-          id="selectFields"
-          value={selectFields}
-          onChange={(e) => setSelectFields(e.target.value)}
-          placeholder="field1, field2, field3"
-        />
-        <p className="text-xs text-muted-foreground">
-          Comma-separated list of fields to return. Leave empty for all fields.
-        </p>
+      <div className="p-3 bg-muted/50 rounded-md text-sm">
+        <p className="font-medium mb-1">Output:</p>
+        <code className="text-xs">
+          {operation === 'count'
+            ? '{ operation: "count", result: <number> }'
+            : `{ operation: "${operation}", field: "${field || '<field>'}", result: <number> }`}
+        </code>
       </div>
     </div>
   );

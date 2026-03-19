@@ -23,7 +23,7 @@ import {
   DataUpdateHandler,
   DataDeleteHandler,
   EmailHandler,
-  AggregateHandler,
+  DbAggregateHandler,
   FunctionHandler,
   AIHandler,
 } from './handlers';
@@ -73,7 +73,7 @@ import {
     DataUpdateHandler,
     DataDeleteHandler,
     EmailHandler,
-    AggregateHandler,
+    DbAggregateHandler,
     FunctionHandler,
     AIHandler,
     // Validators (auto-register on construction)

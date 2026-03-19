@@ -7,7 +7,7 @@ import { DataUpdateConfig } from './DataUpdateConfig';
 import { DataDeleteConfig } from './DataDeleteConfig';
 import { EmailHandlerConfig } from './EmailHandlerConfig';
 import { ResponseHandlerConfig } from './ResponseHandlerConfig';
-import { AggregateHandlerConfig } from './AggregateHandlerConfig';
+import { DbAggregateConfig } from './DbAggregateConfig';
 import { FunctionHandlerConfig } from './FunctionHandlerConfig';
 import { AIHandlerConfig } from './AIHandlerConfig';
 import { AvailableVariables, type PreviousStep } from './AvailableVariables';
@@ -145,13 +145,15 @@ export function HandlerConfigWrapper({
         </>
       );
 
-    case 'aggregate_handler':
+    case 'db_aggregate':
       return (
         <>
           {renderVariablesPanel()}
-          <AggregateHandlerConfig
+          <DbAggregateConfig
             config={config}
             onChange={handleChange}
+            projectId={projectId}
+            previousSteps={previousSteps}
           />
         </>
       );
@@ -204,7 +206,7 @@ export function getHandlerDisplayName(type: HandlerType): string {
     response_handler: 'HTTP Response',
     proxy_forward: 'Forward Request',
     function_handler: 'Custom Function',
-    aggregate_handler: 'Aggregate Data',
+    db_aggregate: 'DB Aggregate',
     ai_handler: 'AI',
   };
   return names[type] || type;
@@ -224,7 +226,7 @@ export function getHandlerDescription(type: HandlerType): string {
     response_handler: 'Define the HTTP response to return',
     proxy_forward: 'Forward the request to another service',
     function_handler: 'Execute custom JavaScript code',
-    aggregate_handler: 'Perform aggregation on array data',
+    db_aggregate: 'Aggregate directly from database (sum, count, avg, min, max)',
     ai_handler: 'Call an AI model for chat or text completion',
   };
   return descriptions[type] || '';

@@ -73,7 +73,7 @@ export class PipelineStepResponseDto {
       'email_handler',
       'response_handler',
       'function_handler',
-      'aggregate_handler',
+      'db_aggregate',
     ],
   })
   handlerType: HandlerType;

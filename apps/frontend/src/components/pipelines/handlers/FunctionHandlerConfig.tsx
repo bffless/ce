@@ -154,11 +154,15 @@ const getHandlerOutputInfo = (
         documentation: 'Custom return value from handler()',
         fields: [],
       };
-    case 'aggregate_handler':
+    case 'db_aggregate':
       return {
-        type: 'AggregateResult',
-        documentation: 'Aggregation result',
-        fields: [{ name: 'result', type: 'number | array' }],
+        type: 'DbAggregateResult',
+        documentation: 'DB aggregation result',
+        fields: [
+          { name: 'operation', type: 'string' },
+          { name: 'field', type: 'string | undefined' },
+          { name: 'result', type: 'number | null' },
+        ],
       };
     default:
       return {

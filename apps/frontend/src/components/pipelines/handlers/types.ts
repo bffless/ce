@@ -49,8 +49,8 @@ export interface DataQueryHandlerConfig extends BaseHandlerConfig {
   /** How to combine multiple filters: 'and' (all must match) or 'or' (any must match). Default: 'and' */
   filterLogic?: 'and' | 'or';
   select?: string[];
-  limit?: number;
-  offset?: number;
+  limit?: number | string;
+  offset?: number | string;
   orderBy?: { field: string; direction: 'asc' | 'desc' };
 }
 
@@ -104,9 +104,12 @@ export interface ProxyForwardConfig extends BaseHandlerConfig {
   timeout?: number;
 }
 
-export interface AggregateHandlerConfig extends BaseHandlerConfig {
-  operation: 'sum' | 'count' | 'avg' | 'min' | 'max';
+export interface DbAggregateHandlerConfig extends BaseHandlerConfig {
+  schemaId: string;
+  operation: 'sum' | 'count' | 'avg' | 'min' | 'max' | 'array_length';
   field?: string;
+  filters?: Record<string, FilterConfig>;
+  filterLogic?: 'and' | 'or';
 }
 
 export interface FunctionHandlerConfig extends BaseHandlerConfig {
@@ -216,6 +219,6 @@ export type HandlerConfig =
   | EmailHandlerConfig
   | ResponseHandlerConfig
   | ProxyForwardConfig
-  | AggregateHandlerConfig
+  | DbAggregateHandlerConfig
   | FunctionHandlerConfig
   | AIHandlerConfig;

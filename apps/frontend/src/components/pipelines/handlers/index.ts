@@ -10,7 +10,7 @@ export { DataDeleteConfig } from './DataDeleteConfig';
 export { EmailHandlerConfig } from './EmailHandlerConfig';
 export { ResponseHandlerConfig } from './ResponseHandlerConfig';
 export { ProxyForwardConfig } from './ProxyForwardConfig';
-export { AggregateHandlerConfig } from './AggregateHandlerConfig';
+export { DbAggregateConfig } from './DbAggregateConfig';
 export { FunctionHandlerConfig } from './FunctionHandlerConfig';
 
 // Function templates
