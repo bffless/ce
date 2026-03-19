@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.139](https://github.com/bffless/ce/compare/v0.0.138...v0.0.139) (2026-03-19)
+
+
+### Features
+
+* add db_aggregate handler, expression support for query limit/offset ([c387abb](https://github.com/bffless/ce/commit/c387abbc68555163d848e191ecd405e7b7d7d6b0))
+
 ## [0.0.138](https://github.com/bffless/ce/compare/v0.0.137...v0.0.138) (2026-03-18)
 
 
