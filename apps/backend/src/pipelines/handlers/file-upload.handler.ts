@@ -107,7 +107,9 @@ export class FileUploadHandler implements StepHandler<FileUploadHandlerConfig> {
     }
 
     const uuid = randomUUID();
-    const sanitizedFilename = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+    // Multer encodes originalname as Latin-1; decode to UTF-8 for proper unicode support
+    const decodedOriginalName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+    const sanitizedFilename = decodedOriginalName.replace(/[^a-zA-Z0-9._-]/g, '_');
     let storageKey = `${owner}/${repo}/uploads/${config.subDir}`;
 
     if (config.dateBucket) {
@@ -137,7 +139,7 @@ export class FileUploadHandler implements StepHandler<FileUploadHandlerConfig> {
       size: file.size,
       url: publicPath,
       sub_dir: config.subDir,
-      original_name: file.originalname,
+      original_name: decodedOriginalName,
     };
 
     const record = await this.dataService.create(
@@ -181,7 +183,7 @@ export class FileUploadHandler implements StepHandler<FileUploadHandlerConfig> {
         storage_path: storageKey,
         content_type: file.mimetype,
         size: file.size,
-        original_name: file.originalname,
+        original_name: decodedOriginalName,
       },
     };
   }

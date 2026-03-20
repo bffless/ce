@@ -6,13 +6,16 @@ import {
   Delete,
   Body,
   Param,
+  Req,
   UseGuards,
+  UseInterceptors,
   ParseUUIDPipe,
   NotFoundException,
   BadRequestException,
   Inject,
   forwardRef,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiTags,
   ApiOperation,
@@ -98,6 +101,7 @@ export class ProxyRulesController {
   }
 
   @Post(':id/test')
+  @UseInterceptors(FileInterceptor('file', { storage: require('multer').memoryStorage() }))
   @ApiOperation({ summary: 'Test a pipeline proxy rule with sample data' })
   @ApiParam({ name: 'id', type: 'string' })
   @ApiResponse({ status: 200, description: 'Test result with debug info', type: PipelineTestResultDto })
@@ -105,9 +109,22 @@ export class ProxyRulesController {
   @ApiResponse({ status: 404, description: 'Rule not found' })
   async testPipelineRule(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: TestPipelineDto,
+    @Body() body: TestPipelineDto | any,
     @CurrentUser() user: CurrentUserData,
+    @Req() req: any,
   ): Promise<PipelineTestResultDto> {
+    // Support both JSON body and multipart form data.
+    // When multipart, the test config is in the 'data' field as a JSON string.
+    let dto: TestPipelineDto;
+    if (typeof body?.data === 'string') {
+      try {
+        dto = JSON.parse(body.data);
+      } catch {
+        throw new BadRequestException('Invalid JSON in "data" field');
+      }
+    } else {
+      dto = body;
+    }
     const rule = await this.proxyRulesService.getRuleById(id);
     if (!rule) {
       throw new NotFoundException(`Proxy rule ${id} not found`);
@@ -187,6 +204,7 @@ export class ProxyRulesController {
       ip: '127.0.0.1',
       socket: { remoteAddress: '127.0.0.1' },
       get: (header: string) => dto.headers?.[header],
+      file: req.file || undefined, // Pass through uploaded file for file_upload_handler
     } as any;
 
     // Determine which user to use for the test

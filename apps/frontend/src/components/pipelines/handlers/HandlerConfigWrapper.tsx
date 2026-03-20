@@ -10,6 +10,8 @@ import { ResponseHandlerConfig } from './ResponseHandlerConfig';
 import { DbAggregateConfig } from './DbAggregateConfig';
 import { FunctionHandlerConfig } from './FunctionHandlerConfig';
 import { AIHandlerConfig } from './AIHandlerConfig';
+import { FileUploadHandlerConfig } from './FileUploadHandlerConfig';
+import { FileServeHandlerConfig } from './FileServeHandlerConfig';
 import { AvailableVariables, type PreviousStep } from './AvailableVariables';
 import type { HandlerConfig } from './types';
 
@@ -183,6 +185,23 @@ export function HandlerConfigWrapper({
         </>
       );
 
+    case 'file_upload_handler':
+      return (
+        <FileUploadHandlerConfig
+          config={config}
+          onChange={handleChange}
+          projectId={projectId}
+        />
+      );
+
+    case 'file_serve_handler':
+      return (
+        <FileServeHandlerConfig
+          config={config}
+          onChange={handleChange}
+        />
+      );
+
     default:
       return (
         <div className="text-sm text-destructive p-4 bg-destructive/10 rounded-md">
@@ -208,6 +227,8 @@ export function getHandlerDisplayName(type: HandlerType): string {
     function_handler: 'Custom Function',
     db_aggregate: 'DB Aggregate',
     ai_handler: 'AI',
+    file_upload_handler: 'File Upload',
+    file_serve_handler: 'File Serve',
   };
   return names[type] || type;
 }
@@ -228,6 +249,8 @@ export function getHandlerDescription(type: HandlerType): string {
     function_handler: 'Execute custom JavaScript code',
     db_aggregate: 'Aggregate directly from database (sum, count, avg, min, max)',
     ai_handler: 'Call an AI model for chat or text completion',
+    file_upload_handler: 'Upload a file to storage and create a metadata record',
+    file_serve_handler: 'Serve a file from storage with caching headers',
   };
   return descriptions[type] || '';
 }

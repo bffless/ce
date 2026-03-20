@@ -752,7 +752,7 @@ export function ExpandedProxyRuleForm({
 
       {/* Pipeline Test Panel - Only shown when rule is saved */}
       {isPipeline && initialData?.id && (
-        <PipelineTestCard ruleId={initialData.id} pathPattern={pathPattern} method={method} />
+        <PipelineTestCard ruleId={initialData.id} pathPattern={pathPattern} method={method} steps={pipelineConfig.steps} />
       )}
 
       {/* External Proxy Options */}
@@ -967,16 +967,20 @@ interface PipelineTestCardProps {
   ruleId: string;
   pathPattern: string;
   method: HttpMethod | null;
+  steps?: Array<{ handlerType: string; config: Record<string, unknown> }>;
 }
 
-function PipelineTestCard({ ruleId, pathPattern, method }: PipelineTestCardProps) {
+function PipelineTestCard({ ruleId, pathPattern, method, steps = [] }: PipelineTestCardProps) {
   const [testProxyRule, { isLoading }] = useTestProxyRuleMutation();
+
+  const hasFileUploadHandler = steps.some((s) => s.handlerType === 'file_upload_handler');
 
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedMethod, setSelectedMethod] = useState<HttpMethod>('POST');
   const [bodyJson, setBodyJson] = useState(
     '{\n  "email": "test@example.com",\n  "name": "Test User"\n}',
   );
+  const [testFile, setTestFile] = useState<File | null>(null);
   const [queryParams, setQueryParams] = useState<QueryParamEntry[]>([]);
   const [headers, setHeaders] = useState<HeaderEntry[]>([
     { key: 'Content-Type', value: 'application/json' },
@@ -1071,6 +1075,7 @@ function PipelineTestCard({ ruleId, pathPattern, method }: PipelineTestCardProps
           mockUser,
           deploymentAlias: deploymentAlias || undefined,
         },
+        file: testFile || undefined,
       }).unwrap();
 
       setResult(testResult);
@@ -1185,6 +1190,28 @@ function PipelineTestCard({ ruleId, pathPattern, method }: PipelineTestCardProps
                   className="font-mono text-sm min-h-[120px]"
                   placeholder='{"key": "value"}'
                 />
+              </div>
+            )}
+
+            {/* File Upload - shown when pipeline has file_upload_handler */}
+            {hasFileUploadHandler && (
+              <div className="space-y-2">
+                <Label>File</Label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="file"
+                    onChange={(e) => setTestFile(e.target.files?.[0] || null)}
+                    className="text-sm file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border file:border-input file:bg-background file:text-sm file:font-medium hover:file:bg-accent hover:file:text-accent-foreground cursor-pointer"
+                  />
+                  {testFile && (
+                    <span className="text-xs text-muted-foreground">
+                      {testFile.name} ({(testFile.size / 1024).toFixed(1)} KB)
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Select a file to upload through the file_upload_handler pipeline step.
+                </p>
               </div>
             )}
 

@@ -40,7 +40,9 @@ export type HandlerType =
   | 'proxy_forward'
   | 'function_handler'
   | 'db_aggregate'
-  | 'ai_handler';
+  | 'ai_handler'
+  | 'file_upload_handler'
+  | 'file_serve_handler';
 
 export interface Pipeline {
   id: string;

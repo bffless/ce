@@ -14,6 +14,10 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import {
+  Dialog,
+  DialogContent,
+} from '@/components/ui/dialog';
+import {
   Table,
   TableBody,
   TableCell,
@@ -21,7 +25,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { ArrowLeft, Trash2, Copy, ChevronLeft, ChevronRight, Image } from 'lucide-react';
+import { ArrowLeft, Trash2, Copy, Download, ChevronLeft, ChevronRight, Image, Search } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import {
   useGetSchemaQuery,
   useGetSchemaDataQuery,
@@ -30,7 +35,10 @@ import {
 } from '@/services/pipelineSchemasApi';
 import { useProjectRole } from '@/hooks/useProjectRole';
 import { useToast } from '@/hooks/use-toast';
-import { FileUploadZone } from '@/components/uploads/FileUploadZone';
+
+function getPreviewUrl(storagePath: string): string {
+  return `/api/pipeline-schemas/storage/preview?path=${encodeURIComponent(storagePath)}`;
+}
 
 /**
  * UploadDetailPage - Shows uploaded files for a specific upload schema.
@@ -46,7 +54,23 @@ export function UploadDetailPage() {
   const { canEdit } = useProjectRole(owner!, repo!);
   const [page, setPage] = useState(1);
   const [deletingRecord, setDeletingRecord] = useState<PipelineDataRecord | null>(null);
+  const [previewImage, setPreviewImage] = useState<{ src: string; alt: string } | null>(null);
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const pageSize = 20;
+
+  // Debounce search input
+  const searchTimeoutRef = useState<ReturnType<typeof setTimeout> | null>(null);
+  const handleSearchChange = (value: string) => {
+    setSearch(value);
+    if (searchTimeoutRef[0]) clearTimeout(searchTimeoutRef[0]);
+    searchTimeoutRef[0] = setTimeout(() => {
+      setDebouncedSearch(value);
+      setPage(1);
+    }, 300);
+  };
 
   // Fetch schema details
   const { data: schema, isLoading: isLoadingSchema } = useGetSchemaQuery(schemaId!, {
@@ -57,9 +81,17 @@ export function UploadDetailPage() {
   const {
     data: filesData,
     isLoading: isLoadingFiles,
-    refetch: refetchFiles,
   } = useGetSchemaDataQuery(
-    { schemaId: schemaId!, page, pageSize },
+    {
+      schemaId: schemaId!,
+      page,
+      pageSize,
+      search: debouncedSearch || undefined,
+      createdAfter: dateFrom ? new Date(dateFrom).toISOString() : undefined,
+      createdBefore: dateTo ? new Date(dateTo + 'T23:59:59').toISOString() : undefined,
+      sortBy: 'createdAt',
+      sortOrder: 'desc',
+    },
     { skip: !schemaId },
   );
 
@@ -90,17 +122,19 @@ export function UploadDetailPage() {
     toast({ title: 'Copied', description: 'URL copied to clipboard' });
   };
 
+  const handleDownload = (storagePath: string, filename: string) => {
+    const url = getPreviewUrl(storagePath);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
   const isLoading = isLoadingSchema || isLoadingFiles;
   const files = filesData?.records || [];
   const totalPages = filesData?.totalPages || 1;
-
-  // Determine upload URL from schema's sub_dir field
-  // We look at the first record's sub_dir, or fallback to the schema name
-  const subDir =
-    files.length > 0
-      ? (files[0].data?.sub_dir as string)
-      : schema?.name || '';
-  const uploadUrl = subDir ? `/public/${owner}/${repo}/alias/production/api/uploads/${subDir}` : '';
 
   const formatFileSize = (bytes: unknown): string => {
     const size = Number(bytes);
@@ -144,24 +178,6 @@ export function UploadDetailPage() {
           Back to Uploads
         </Link>
 
-        {/* Upload zone */}
-        {canEdit && uploadUrl && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Upload Files</CardTitle>
-              <CardDescription>
-                Upload files to {schema?.name || 'this schema'}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <FileUploadZone
-                uploadUrl={uploadUrl}
-                onUploadComplete={() => refetchFiles()}
-              />
-            </CardContent>
-          </Card>
-        )}
-
         {/* Files table */}
         <Card>
           <CardHeader>
@@ -171,6 +187,46 @@ export function UploadDetailPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {/* Search & Date Filters */}
+            <div className="flex flex-wrap items-center gap-3 mb-4">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  value={search}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  placeholder="Search by filename..."
+                  className="pl-9"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
+                  className="w-[150px] text-sm"
+                  title="From date"
+                />
+                <span className="text-sm text-muted-foreground">to</span>
+                <Input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
+                  className="w-[150px] text-sm"
+                  title="To date"
+                />
+                {(dateFrom || dateTo) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => { setDateFrom(''); setDateTo(''); setPage(1); }}
+                    className="text-xs"
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
+            </div>
+
             {files.length === 0 ? (
               <div className="p-8 text-center">
                 <Image className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
@@ -186,21 +242,30 @@ export function UploadDetailPage() {
                       <TableHead>Type</TableHead>
                       <TableHead>Size</TableHead>
                       <TableHead>Uploaded</TableHead>
-                      <TableHead>URL</TableHead>
-                      {canEdit && <TableHead className="w-12" />}
+                      <TableHead></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {files.map((record) => {
                       const data = record.data || {};
+                      const storagePath = typeof data.storage_path === 'string' ? data.storage_path : '';
+                      const filename = String(data.original_name || data.filename || 'file');
+                      const isImage = isImageType(data.content_type);
+
                       return (
                         <TableRow key={record.id}>
                           <TableCell className="w-16">
-                            {isImageType(data.content_type) && data.url ? (
+                            {isImage && storagePath ? (
                               <img
-                                src={`/public/${owner}/${repo}/alias/production${data.url}`}
+                                src={getPreviewUrl(storagePath)}
                                 alt={String(data.filename || '')}
-                                className="h-10 w-10 object-cover rounded"
+                                className="h-10 w-10 object-cover rounded cursor-pointer hover:opacity-80 transition-opacity"
+                                onClick={() =>
+                                  setPreviewImage({
+                                    src: getPreviewUrl(storagePath),
+                                    alt: filename,
+                                  })
+                                }
                               />
                             ) : (
                               <div className="h-10 w-10 bg-muted rounded flex items-center justify-center">
@@ -209,7 +274,7 @@ export function UploadDetailPage() {
                             )}
                           </TableCell>
                           <TableCell className="font-medium max-w-[200px] truncate">
-                            {String(data.original_name || data.filename || '—')}
+                            {filename}
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
                             {String(data.content_type || '—')}
@@ -221,29 +286,42 @@ export function UploadDetailPage() {
                             {new Date(record.createdAt).toLocaleDateString()}
                           </TableCell>
                           <TableCell>
-                            {typeof data.url === 'string' && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={() => handleCopyUrl(data.url as string)}
-                              >
-                                <Copy className="h-3.5 w-3.5" />
-                              </Button>
-                            )}
+                            <div className="flex items-center gap-1">
+                              {typeof data.url === 'string' && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  title="Copy URL"
+                                  onClick={() => handleCopyUrl(data.url as string)}
+                                >
+                                  <Copy className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
+                              {storagePath && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  title="Download"
+                                  onClick={() => handleDownload(storagePath, filename)}
+                                >
+                                  <Download className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
+                              {canEdit && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-destructive hover:text-destructive"
+                                  title="Delete"
+                                  onClick={() => setDeletingRecord(record)}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
+                            </div>
                           </TableCell>
-                          {canEdit && (
-                            <TableCell>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-destructive hover:text-destructive"
-                                onClick={() => setDeletingRecord(record)}
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
-                            </TableCell>
-                          )}
                         </TableRow>
                       );
                     })}
@@ -281,6 +359,19 @@ export function UploadDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Image Preview Lightbox */}
+      <Dialog open={!!previewImage} onOpenChange={(open) => !open && setPreviewImage(null)}>
+        <DialogContent className="max-w-4xl p-2">
+          {previewImage && (
+            <img
+              src={previewImage.src}
+              alt={previewImage.alt}
+              className="w-full h-auto max-h-[80vh] object-contain rounded"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog

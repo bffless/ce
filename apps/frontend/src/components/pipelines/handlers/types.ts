@@ -210,6 +210,19 @@ export interface AIHandlerConfig extends BaseHandlerConfig {
 // Backwards compatibility alias
 export type ChatHandlerConfig = AIHandlerConfig;
 
+export interface FileUploadHandlerConfig extends BaseHandlerConfig {
+  schemaId: string;
+  subDir: string;
+  dateBucket?: boolean;
+  maxFileSize?: number;
+  allowedMimeTypes?: string[];
+}
+
+export interface FileServeHandlerConfig extends BaseHandlerConfig {
+  subDir: string;
+  cacheMaxAge?: number;
+}
+
 export type HandlerConfig =
   | FormHandlerConfig
   | DataCreateHandlerConfig
@@ -221,4 +234,6 @@ export type HandlerConfig =
   | ProxyForwardConfig
   | DbAggregateHandlerConfig
   | FunctionHandlerConfig
-  | AIHandlerConfig;
+  | AIHandlerConfig
+  | FileUploadHandlerConfig
+  | FileServeHandlerConfig;

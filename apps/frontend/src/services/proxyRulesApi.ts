@@ -297,12 +297,24 @@ export const proxyRulesApi = api.injectEndpoints({
     }),
 
     // Test a pipeline-type proxy rule with sample data
-    testProxyRule: builder.mutation<TestPipelineResult, { id: string; data: TestPipelineDto }>({
-      query: ({ id, data }) => ({
-        url: `/api/proxy-rules/${id}/test`,
-        method: 'POST',
-        body: data,
-      }),
+    testProxyRule: builder.mutation<TestPipelineResult, { id: string; data: TestPipelineDto; file?: File }>({
+      query: ({ id, data, file }) => {
+        if (file) {
+          const formData = new FormData();
+          formData.append('file', file);
+          formData.append('data', JSON.stringify(data));
+          return {
+            url: `/api/proxy-rules/${id}/test`,
+            method: 'POST',
+            body: formData,
+          };
+        }
+        return {
+          url: `/api/proxy-rules/${id}/test`,
+          method: 'POST',
+          body: data,
+        };
+      },
     }),
 
     // ==================== Settings ====================
