@@ -187,11 +187,15 @@ export function HandlerConfigWrapper({
 
     case 'file_upload_handler':
       return (
-        <FileUploadHandlerConfig
-          config={config}
-          onChange={handleChange}
-          projectId={projectId}
-        />
+        <>
+          {renderVariablesPanel()}
+          <FileUploadHandlerConfig
+            config={config}
+            onChange={handleChange}
+            projectId={projectId}
+            previousSteps={previousSteps}
+          />
+        </>
       );
 
     case 'file_serve_handler':

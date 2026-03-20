@@ -1,80 +1,111 @@
+import { useState, useEffect, useMemo } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Plus, Trash2 } from 'lucide-react';
-import { useGetProjectSchemasQuery } from '@/services/pipelineSchemasApi';
+import { SchemaPicker } from './SchemaPicker';
+import { SchemaFieldPicker, useSchemaFields } from './SchemaFieldPicker';
+import { ExpressionInput } from './ExpressionInput';
 import type { FileUploadHandlerConfig as Config } from './types';
+import type { PreviousStep } from './AvailableVariables';
+
+// Fields that are always set by the handler — exclude from the field picker
+const BUILT_IN_FIELDS = new Set([
+  'filename', 'storage_path', 'content_type', 'size', 'url', 'sub_dir', 'original_name',
+]);
 
 interface Props {
   config: Record<string, unknown>;
   onChange: (config: Config) => void;
   projectId: string;
+  previousSteps?: PreviousStep[];
 }
 
-export function FileUploadHandlerConfig({ config, onChange, projectId }: Props) {
+interface FieldMapping {
+  schemaField: string;
+  expression: string;
+}
+
+export function FileUploadHandlerConfig({ config, onChange, projectId, previousSteps = [] }: Props) {
   const typedConfig = config as unknown as Partial<Config>;
-  const { data: schemasData } = useGetProjectSchemasQuery(projectId);
 
-  const update = (partial: Partial<Config>) => {
-    onChange({ ...typedConfig, ...partial } as Config);
-  };
+  const [schemaId, setSchemaId] = useState(typedConfig.schemaId || '');
+  const [subDir, setSubDir] = useState(typedConfig.subDir || '');
+  const [dateBucket, setDateBucket] = useState(typedConfig.dateBucket || false);
+  const [maxFileSize, setMaxFileSize] = useState<number | undefined>(typedConfig.maxFileSize);
+  const [allowedMimeTypes, setAllowedMimeTypes] = useState(
+    (typedConfig.allowedMimeTypes || []).join(', '),
+  );
+  const [fieldMappings, setFieldMappings] = useState<FieldMapping[]>(() => {
+    const existing = typedConfig.extraFields || {};
+    const entries = Object.entries(existing);
+    return entries.length > 0
+      ? entries.map(([schemaField, expression]) => ({ schemaField, expression }))
+      : [];
+  });
 
-  const extraFields = typedConfig.extraFields || {};
-  const extraFieldEntries = Object.entries(extraFields);
+  const schemaFields = useSchemaFields(schemaId);
 
-  const addExtraField = () => {
-    update({ extraFields: { ...extraFields, '': '' } });
-  };
+  // Filter out built-in fields from schema fields for the picker
+  const extraSchemaFields = useMemo(
+    () => schemaFields.filter((f) => !BUILT_IN_FIELDS.has(f.name)),
+    [schemaFields],
+  );
 
-  const updateExtraFieldKey = (oldKey: string, newKey: string) => {
-    const newFields: Record<string, string> = {};
-    for (const [k, v] of Object.entries(extraFields)) {
-      if (k === oldKey) {
-        newFields[newKey] = v;
-      } else {
-        newFields[k] = v;
+  const usedFields = useMemo(
+    () => [
+      ...Array.from(BUILT_IN_FIELDS),
+      ...fieldMappings.map((m) => m.schemaField).filter(Boolean),
+    ],
+    [fieldMappings],
+  );
+
+  // Emit config changes
+  useEffect(() => {
+    const extraFields: Record<string, string> = {};
+    for (const mapping of fieldMappings) {
+      if (mapping.schemaField.trim()) {
+        extraFields[mapping.schemaField.trim()] = mapping.expression;
       }
     }
-    update({ extraFields: newFields });
+
+    onChange({
+      schemaId,
+      subDir,
+      dateBucket,
+      maxFileSize,
+      allowedMimeTypes: allowedMimeTypes.trim()
+        ? allowedMimeTypes.split(',').map((t) => t.trim())
+        : undefined,
+      extraFields: Object.keys(extraFields).length > 0 ? extraFields : undefined,
+    });
+  }, [schemaId, subDir, dateBucket, maxFileSize, allowedMimeTypes, fieldMappings, onChange]);
+
+  const handleSchemaChange = (newSchemaId: string) => {
+    setSchemaId(newSchemaId);
+    setFieldMappings([]);
   };
 
-  const updateExtraFieldValue = (key: string, value: string) => {
-    update({ extraFields: { ...extraFields, [key]: value } });
+  const handleAddMapping = () => {
+    setFieldMappings([...fieldMappings, { schemaField: '', expression: '' }]);
   };
 
-  const removeExtraField = (key: string) => {
-    const newFields = { ...extraFields };
-    delete newFields[key];
-    update({ extraFields: Object.keys(newFields).length > 0 ? newFields : undefined });
+  const handleRemoveMapping = (index: number) => {
+    setFieldMappings(fieldMappings.filter((_, i) => i !== index));
+  };
+
+  const handleMappingChange = (index: number, updates: Partial<FieldMapping>) => {
+    setFieldMappings(
+      fieldMappings.map((m, i) => (i === index ? { ...m, ...updates } : m)),
+    );
   };
 
   return (
     <div className="space-y-4">
       <div className="space-y-2">
         <Label>Schema</Label>
-        <Select
-          value={typedConfig.schemaId || ''}
-          onValueChange={(value) => update({ schemaId: value })}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Select a schema for metadata records" />
-          </SelectTrigger>
-          <SelectContent>
-            {schemasData?.schemas?.map((schema) => (
-              <SelectItem key={schema.id} value={schema.id}>
-                {schema.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <SchemaPicker projectId={projectId} value={schemaId} onChange={handleSchemaChange} />
         <p className="text-xs text-muted-foreground">
           Schema where upload metadata records will be stored.
         </p>
@@ -83,8 +114,8 @@ export function FileUploadHandlerConfig({ config, onChange, projectId }: Props) 
       <div className="space-y-2">
         <Label>Sub-directory</Label>
         <Input
-          value={typedConfig.subDir || ''}
-          onChange={(e) => update({ subDir: e.target.value })}
+          value={subDir}
+          onChange={(e) => setSubDir(e.target.value)}
           placeholder="e.g., images, documents"
         />
         <p className="text-xs text-muted-foreground">
@@ -100,8 +131,8 @@ export function FileUploadHandlerConfig({ config, onChange, projectId }: Props) 
           </p>
         </div>
         <Switch
-          checked={typedConfig.dateBucket || false}
-          onCheckedChange={(checked) => update({ dateBucket: checked })}
+          checked={dateBucket}
+          onCheckedChange={setDateBucket}
         />
       </div>
 
@@ -109,8 +140,8 @@ export function FileUploadHandlerConfig({ config, onChange, projectId }: Props) 
         <Label>Max File Size (bytes)</Label>
         <Input
           type="number"
-          value={typedConfig.maxFileSize || ''}
-          onChange={(e) => update({ maxFileSize: e.target.value ? Number(e.target.value) : undefined })}
+          value={maxFileSize ?? ''}
+          onChange={(e) => setMaxFileSize(e.target.value ? Number(e.target.value) : undefined)}
           placeholder="10485760 (10MB)"
         />
       </div>
@@ -118,15 +149,9 @@ export function FileUploadHandlerConfig({ config, onChange, projectId }: Props) 
       <div className="space-y-2">
         <Label>Allowed MIME Types</Label>
         <Input
-          value={(typedConfig.allowedMimeTypes || []).join(', ')}
-          onChange={(e) =>
-            update({
-              allowedMimeTypes: e.target.value
-                ? e.target.value.split(',').map((t) => t.trim())
-                : undefined,
-            })
-          }
-          placeholder='e.g., image/*, application/pdf'
+          value={allowedMimeTypes}
+          onChange={(e) => setAllowedMimeTypes(e.target.value)}
+          placeholder="e.g., image/*, application/pdf"
         />
         <p className="text-xs text-muted-foreground">
           Comma-separated. Leave empty to allow all file types.
@@ -142,46 +167,75 @@ export function FileUploadHandlerConfig({ config, onChange, projectId }: Props) 
               Map additional form fields to schema fields. Built-in fields (filename, storage_path, etc.) are always included.
             </p>
           </div>
-          <Button type="button" variant="ghost" size="sm" onClick={addExtraField}>
-            <Plus className="h-3 w-3 mr-1" />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleAddMapping}
+            disabled={extraSchemaFields.length === 0 && !schemaId}
+          >
+            <Plus className="h-4 w-4 mr-1" />
             Add Field
           </Button>
         </div>
-        {extraFieldEntries.length > 0 && (
+
+        {fieldMappings.length > 0 && (
           <div className="space-y-2">
-            <div className="grid grid-cols-[1fr_1fr_auto] gap-2 text-xs text-muted-foreground px-1">
-              <span>Schema Field</span>
-              <span>Expression</span>
-              <span></span>
-            </div>
-            {extraFieldEntries.map(([key, value], index) => (
-              <div key={index} className="grid grid-cols-[1fr_1fr_auto] gap-2">
-                <Input
-                  value={key}
-                  onChange={(e) => updateExtraFieldKey(key, e.target.value)}
-                  placeholder="e.g., description"
-                  className="text-sm"
-                />
-                <Input
-                  value={value}
-                  onChange={(e) => updateExtraFieldValue(key, e.target.value)}
-                  placeholder="e.g., request.body.description"
-                  className="text-sm font-mono"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => removeExtraField(key)}
-                  className="shrink-0"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
+            {fieldMappings.map((mapping, index) => {
+              const schemaField = schemaFields.find((f) => f.name === mapping.schemaField);
+
+              return (
+                <div key={index} className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <SchemaFieldPicker
+                      schemaId={schemaId}
+                      value={mapping.schemaField}
+                      onChange={(value) => handleMappingChange(index, { schemaField: value })}
+                      usedFields={usedFields}
+                      placeholder="Select field"
+                    />
+                  </div>
+                  <span className="text-muted-foreground">=</span>
+                  <div className="flex-1">
+                    <ExpressionInput
+                      value={mapping.expression}
+                      onChange={(value) => handleMappingChange(index, { expression: value })}
+                      placeholder={schemaField ? getPlaceholderForType(schemaField.type) : 'request.body.fieldName'}
+                      previousSteps={previousSteps}
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleRemoveMapping(index)}
+                    className="text-muted-foreground hover:text-destructive shrink-0"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
     </div>
   );
+}
+
+function getPlaceholderForType(type: string): string {
+  switch (type) {
+    case 'number':
+      return 'request.body.quantity or 42';
+    case 'boolean':
+      return 'request.body.enabled or true';
+    case 'email':
+      return 'request.body.email or user.email';
+    case 'datetime':
+      return 'now() or request.body.date';
+    case 'json':
+      return 'request.body.metadata or {}';
+    default:
+      return 'request.body.fieldName';
+  }
 }
