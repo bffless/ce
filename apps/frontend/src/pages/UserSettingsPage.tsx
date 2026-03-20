@@ -1,11 +1,12 @@
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useGetSessionQuery } from '@/services/authApi';
+import { useGetSessionQuery, useGetLoginMethodsQuery } from '@/services/authApi';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertCircle, ArrowLeft, User as UserIcon } from 'lucide-react';
 import { GlobalApiKeysTab } from '@/components/settings/GlobalApiKeysTab';
+import { ChangePasswordCard } from '@/components/settings/ChangePasswordCard';
 
 type TabValue = 'profile' | 'api-keys' | 'preferences';
 
@@ -21,6 +22,9 @@ export function UserSettingsPage() {
   // Fetch session data for user info (auth already verified by ProtectedRoute)
   const { data: sessionData } = useGetSessionQuery();
   const user = sessionData?.user;
+
+  // Fetch login methods to determine if change password should be shown
+  const { data: loginMethods } = useGetLoginMethodsQuery();
 
   // Members cannot access API keys
   const canAccessApiKeys = user?.role !== 'member';
@@ -116,6 +120,8 @@ export function UserSettingsPage() {
               </div>
             </CardContent>
           </Card>
+
+          {loginMethods?.hasPassword && <ChangePasswordCard />}
         </TabsContent>
 
         {/* API Keys Tab - Hidden for member role */}
