@@ -217,6 +217,7 @@ export interface FileUploadHandlerConfig extends BaseHandlerConfig {
   maxFileSize?: number;
   allowedMimeTypes?: string[];
   extraFields?: Record<string, string>;
+  fileField?: string;
 }
 
 export interface FileServeHandlerConfig extends BaseHandlerConfig {

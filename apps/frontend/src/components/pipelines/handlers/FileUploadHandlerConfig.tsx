@@ -37,6 +37,7 @@ export function FileUploadHandlerConfig({ config, onChange, projectId, previousS
   const [allowedMimeTypes, setAllowedMimeTypes] = useState(
     (typedConfig.allowedMimeTypes || []).join(', '),
   );
+  const [fileField, setFileField] = useState(typedConfig.fileField || '');
   const [fieldMappings, setFieldMappings] = useState<FieldMapping[]>(() => {
     const existing = typedConfig.extraFields || {};
     const entries = Object.entries(existing);
@@ -79,8 +80,9 @@ export function FileUploadHandlerConfig({ config, onChange, projectId, previousS
         ? allowedMimeTypes.split(',').map((t) => t.trim())
         : undefined,
       extraFields: Object.keys(extraFields).length > 0 ? extraFields : undefined,
+      fileField: fileField.trim() || undefined,
     });
-  }, [schemaId, subDir, dateBucket, maxFileSize, allowedMimeTypes, fieldMappings, onChange]);
+  }, [schemaId, subDir, dateBucket, maxFileSize, allowedMimeTypes, fileField, fieldMappings, onChange]);
 
   const handleSchemaChange = (newSchemaId: string) => {
     setSchemaId(newSchemaId);
@@ -120,6 +122,18 @@ export function FileUploadHandlerConfig({ config, onChange, projectId, previousS
         />
         <p className="text-xs text-muted-foreground">
           Storage sub-directory for uploaded files.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <Label>File Field Name</Label>
+        <Input
+          value={fileField}
+          onChange={(e) => setFileField(e.target.value)}
+          placeholder="file"
+        />
+        <p className="text-xs text-muted-foreground">
+          The multipart form field name for the uploaded file. Default: <code>file</code>
         </p>
       </div>
 

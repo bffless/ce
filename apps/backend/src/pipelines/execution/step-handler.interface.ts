@@ -553,6 +553,12 @@ export interface FileUploadHandlerConfig extends BaseHandlerConfig {
    * Example: { "description": "request.body.description", "category": "request.body.category" }
    */
   extraFields?: Record<string, string>;
+
+  /**
+   * Form field name for the uploaded file
+   * @default "file"
+   */
+  fileField?: string;
 }
 
 /**

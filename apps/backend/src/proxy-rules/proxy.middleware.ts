@@ -140,7 +140,10 @@ export class ProxyMiddleware implements NestMiddleware {
         );
 
         if (variantSelection && variantSelection.selectedAlias !== aliasName) {
-          const variantAlias = await this.getAliasByName(project.id, variantSelection.selectedAlias);
+          const variantAlias = await this.getAliasByName(
+            project.id,
+            variantSelection.selectedAlias,
+          );
           if (variantAlias?.commitSha) {
             this.logger.debug(
               `Traffic splitting: selected variant "${variantSelection.selectedAlias}" overriding URL alias "${aliasName}"`,
@@ -154,16 +157,20 @@ export class ProxyMiddleware implements NestMiddleware {
 
             // Set variant cookie if this is a new selection
             if (variantSelection.isNewSelection) {
-              res.cookie(TrafficRoutingService.VARIANT_COOKIE_NAME, variantSelection.selectedAlias, {
-                maxAge:
-                  variantSelection.stickySessionDuration === 0
-                    ? 10 * 365 * 24 * 60 * 60 * 1000 // No expiration: 10 years
-                    : variantSelection.stickySessionDuration * 1000,
-                httpOnly: false,
-                secure: req.secure || req.headers['x-forwarded-proto'] === 'https',
-                sameSite: 'lax',
-                path: '/',
-              });
+              res.cookie(
+                TrafficRoutingService.VARIANT_COOKIE_NAME,
+                variantSelection.selectedAlias,
+                {
+                  maxAge:
+                    variantSelection.stickySessionDuration === 0
+                      ? 10 * 365 * 24 * 60 * 60 * 1000 // No expiration: 10 years
+                      : variantSelection.stickySessionDuration * 1000,
+                  httpOnly: false,
+                  secure: req.secure || req.headers['x-forwarded-proto'] === 'https',
+                  sameSite: 'lax',
+                  path: '/',
+                },
+              );
             }
           }
         }
@@ -234,7 +241,12 @@ export class ProxyMiddleware implements NestMiddleware {
       if (proxyType === 'pipeline') {
         this.logger.debug(`Pipeline execution: ${subpathForMatching} (rule: ${matchedRule.id})`);
         const deployment = resolvedCommitSha
-          ? { owner: project.owner, repo: project.name, commitSha: resolvedCommitSha, alias: aliasName ?? undefined }
+          ? {
+              owner: project.owner,
+              repo: project.name,
+              commitSha: resolvedCommitSha,
+              alias: aliasName ?? undefined,
+            }
           : undefined;
         return this.handlePipelineExecution(req, res, matchedRule, project.id, deployment);
       }
@@ -443,7 +455,12 @@ export class ProxyMiddleware implements NestMiddleware {
         `Subdomain pipeline execution: ${subpathForMatching} (alias: ${resolvedAliasName}, rule: ${matchedRule.id})`,
       );
       const deployment = alias?.commitSha
-        ? { owner: project.owner, repo: project.name, commitSha: alias.commitSha, alias: resolvedAliasName ?? undefined }
+        ? {
+            owner: project.owner,
+            repo: project.name,
+            commitSha: alias.commitSha,
+            alias: resolvedAliasName ?? undefined,
+          }
         : undefined;
       return this.handlePipelineExecution(req, res, matchedRule, project.id, deployment);
     }
@@ -970,8 +987,13 @@ export class ProxyMiddleware implements NestMiddleware {
 
     try {
       // If pipeline has file_upload_handler, parse multipart before executing
-      if (pipelineConfig.steps.some((s) => s.handlerType === 'file_upload_handler')) {
-        await this.parseMultipartUpload(req);
+      const uploadStep = pipelineConfig.steps.find((s) => s.handlerType === 'file_upload_handler');
+      if (uploadStep) {
+        const uploadConfig = uploadStep.config as any;
+        const fileField = uploadConfig?.fileField || 'file';
+        const hardLimit = 50 * 1024 * 1024; // 50MB absolute ceiling
+        const maxFileSize = Math.min(uploadConfig?.maxFileSize || hardLimit, hardLimit);
+        await this.parseMultipartUpload(req, fileField, maxFileSize);
       }
 
       // Extract user from session if available (optional - don't fail if not authenticated)
@@ -1035,12 +1057,12 @@ export class ProxyMiddleware implements NestMiddleware {
    * Parse multipart form data using multer (for file upload pipelines).
    * Populates req.file with the uploaded file buffer.
    */
-  private parseMultipartUpload(req: Request): Promise<void> {
+  private parseMultipartUpload(req: Request, fieldName = 'file', maxFileSize = 50 * 1024 * 1024): Promise<void> {
     return new Promise((resolve, reject) => {
       const upload = multer({
         storage: multer.memoryStorage(),
-        limits: { fileSize: 50 * 1024 * 1024 }, // 50MB hard limit
-      }).single('file');
+        limits: { fileSize: maxFileSize },
+      }).single(fieldName);
       upload(req, {} as any, (err: any) => (err ? reject(err) : resolve()));
     });
   }
