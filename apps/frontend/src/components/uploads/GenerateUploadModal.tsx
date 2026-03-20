@@ -175,7 +175,7 @@ export function GenerateUploadModal({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Generate Upload Schema</DialogTitle>
           <DialogDescription>
