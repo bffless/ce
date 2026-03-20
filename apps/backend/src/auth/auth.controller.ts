@@ -928,23 +928,30 @@ export class AuthController {
   ): Promise<{ token: string; redirectUrl: string }> {
     const { targetDomain, redirectPath } = body;
 
-    // Validate that the target domain is a registered custom domain
+    // Validate that the target domain belongs to this workspace.
+    // Check registered domain mappings (custom or subdomain types),
+    // or verify it's a subdomain of the workspace's PRIMARY_DOMAIN.
     const [mapping] = await db
       .select()
       .from(domainMappings)
       .where(
         and(
           eq(domainMappings.domain, targetDomain),
-          eq(domainMappings.domainType, 'custom'),
           eq(domainMappings.isActive, true),
         ),
       )
       .limit(1);
 
     if (!mapping) {
-      throw new BadRequestException(
-        `Domain '${targetDomain}' is not a registered custom domain for this workspace`,
-      );
+      // Also allow subdomains of PRIMARY_DOMAIN (e.g., preview URLs)
+      const primaryDomain = process.env.PRIMARY_DOMAIN;
+      const isWorkspaceSubdomain = primaryDomain && targetDomain.endsWith(`.${primaryDomain}`);
+
+      if (!isWorkspaceSubdomain) {
+        throw new BadRequestException(
+          `Domain '${targetDomain}' is not a registered domain for this workspace`,
+        );
+      }
     }
 
     // Get user from request (already authenticated via SessionAuthGuard)
