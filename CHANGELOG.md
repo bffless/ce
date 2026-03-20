@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.143](https://github.com/bffless/ce/compare/v0.0.142...v0.0.143) (2026-03-20)
+
+
+### Features
+
+* add extra fields mapping to file upload handler ([133f7a2](https://github.com/bffless/ce/commit/133f7a21126528f040ccfd6153244246ca144500))
+
+
+### Bug Fixes
+
+* allow domain-token for workspace subdomains and all domain types ([dffbb7e](https://github.com/bffless/ce/commit/dffbb7e7b40824f3055509888c2f786031210967))
+
 ## [0.0.142](https://github.com/bffless/ce/compare/v0.0.141...v0.0.142) (2026-03-20)
 
 
