@@ -249,7 +249,7 @@ export class CustomDomainAuthController {
       },
     },
   })
-  async session(@Req() req: Request): Promise<{
+  async session(@Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<{
     authenticated: boolean;
     user: { id: string; email: string; role: string } | null;
   }> {
@@ -262,6 +262,12 @@ export class CustomDomainAuthController {
     // Validate the access token
     const payload = this.customDomainAuthService.validateAccessToken(accessToken);
     if (!payload) {
+      // If the token is expired (not invalid), tell the client to try refreshing
+      // Use res.status().json() to match the exact SuperTokens format
+      if (this.customDomainAuthService.isAccessTokenExpired(accessToken)) {
+        res.status(401).json({ message: 'try refresh token' });
+        return;
+      }
       return { authenticated: false, user: null };
     }
 

@@ -164,6 +164,19 @@ export class CustomDomainAuthService {
   }
 
   /**
+   * Check if an access token is expired (as opposed to invalid/malformed).
+   * Used by the session endpoint to tell clients to try refreshing.
+   */
+  isAccessTokenExpired(token: string): boolean {
+    try {
+      jwt.verify(token, this.jwtSecret, { algorithms: ['HS256'] });
+      return false;
+    } catch (error) {
+      return error instanceof jwt.TokenExpiredError;
+    }
+  }
+
+  /**
    * Validate and decode a refresh token.
    *
    * @param token - The JWT token string to verify
