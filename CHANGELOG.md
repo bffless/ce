@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.141](https://github.com/bffless/ce/compare/v0.0.140...v0.0.141) (2026-03-20)
+
+
+### Features
+
+* add change password to settings page ([c7fe76d](https://github.com/bffless/ce/commit/c7fe76dc03118022e73421d40f220074e1ab259e))
+* add change password to settings page ([9b620c2](https://github.com/bffless/ce/commit/9b620c2d5abb254cff7cb627af8037dcf82782d3))
+* add file upload/serve pipeline handlers with schema generator ([ccf4724](https://github.com/bffless/ce/commit/ccf4724a5239bdb457f714864071ab76f58c0ff9))
+* add file upload/serve pipeline handlers with schema generator ([ae2014d](https://github.com/bffless/ce/commit/ae2014dd5c746ca37365e3adde2dd3f1f03977d0))
+
+
+### Bug Fixes
+
+* add missing upload components and fix gitignore rule ([66f61b1](https://github.com/bffless/ce/commit/66f61b136507eac1f51f515ca799dbcbc28309dd))
+
 ## [0.0.140](https://github.com/bffless/ce/compare/v0.0.139...v0.0.140) (2026-03-19)
 
 
