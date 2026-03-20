@@ -55,6 +55,11 @@ interface ResetPasswordDto {
   password: string;
 }
 
+interface ChangePasswordDto {
+  currentPassword: string;
+  newPassword: string;
+}
+
 @ApiTags('Authentication')
 @Controller('api/auth')
 export class AuthController {
@@ -970,5 +975,135 @@ export class AuthController {
     );
 
     return { token, redirectUrl };
+  }
+
+  @Get('login-methods')
+  @UseGuards(SessionAuthGuard)
+  @ApiOperation({
+    summary: 'Get login methods for the current user',
+    description:
+      'Returns which login methods the user has (e.g., email/password). Used to conditionally show change password UI.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Login methods retrieved',
+    schema: {
+      type: 'object',
+      properties: {
+        hasPassword: { type: 'boolean', description: 'Whether the user has email/password login' },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Not authenticated' })
+  async getLoginMethods(@Req() req: Request & { session?: SessionContainer }) {
+    if (!req.session) {
+      throw new UnauthorizedException('No active session');
+    }
+
+    const userId = req.session.getUserId();
+    const stUser = await getUser(userId);
+
+    if (!stUser) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    const hasPassword = stUser.loginMethods.some(
+      (method) => method.recipeId === 'emailpassword',
+    );
+
+    return { hasPassword };
+  }
+
+  @Post('change-password')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(SessionAuthGuard)
+  @ApiOperation({
+    summary: 'Change password for the current user',
+    description:
+      'Verifies the current password and updates to a new password. Only works for users with email/password login.',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        currentPassword: { type: 'string', example: 'OldPassword123!' },
+        newPassword: { type: 'string', minLength: 8, example: 'NewSecurePassword123!' },
+      },
+      required: ['currentPassword', 'newPassword'],
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Password updated successfully' })
+  @ApiResponse({ status: 400, description: 'Incorrect current password or invalid new password' })
+  @ApiResponse({ status: 401, description: 'Not authenticated' })
+  async changePassword(
+    @Body() body: ChangePasswordDto,
+    @Req() req: Request & { session?: SessionContainer },
+  ) {
+    const { currentPassword, newPassword } = body;
+
+    if (!currentPassword || !newPassword) {
+      throw new BadRequestException('Current password and new password are required');
+    }
+
+    if (newPassword.length < 8) {
+      throw new BadRequestException('New password must be at least 8 characters long');
+    }
+
+    if (!req.session) {
+      throw new UnauthorizedException('No active session');
+    }
+
+    const userId = req.session.getUserId();
+    const stUser = await getUser(userId);
+
+    if (!stUser) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    // Find the email/password login method
+    const emailPasswordMethod = stUser.loginMethods.find(
+      (method) => method.recipeId === 'emailpassword',
+    );
+
+    if (!emailPasswordMethod) {
+      throw new BadRequestException('User does not have email/password login');
+    }
+
+    const email = emailPasswordMethod.email;
+    if (!email) {
+      throw new BadRequestException('Could not determine user email');
+    }
+
+    const tenantId = this.getTenantId();
+
+    // Verify current password by attempting sign-in
+    const signInResponse = await EmailPassword.signIn(tenantId, email, currentPassword);
+
+    if (signInResponse.status === 'WRONG_CREDENTIALS_ERROR') {
+      throw new BadRequestException('Incorrect current password');
+    }
+
+    if (signInResponse.status !== 'OK') {
+      throw new BadRequestException('Failed to verify current password');
+    }
+
+    // Update password
+    const recipeUserId = emailPasswordMethod.recipeUserId;
+    const updateResponse = await EmailPassword.updateEmailOrPassword({
+      recipeUserId,
+      password: newPassword,
+    });
+
+    if (updateResponse.status === 'PASSWORD_POLICY_VIOLATED_ERROR') {
+      throw new BadRequestException(
+        updateResponse.failureReason || 'Password does not meet the required policy',
+      );
+    }
+
+    if (updateResponse.status !== 'OK') {
+      throw new BadRequestException('Failed to update password');
+    }
+
+    return { message: 'Password updated successfully' };
   }
 }

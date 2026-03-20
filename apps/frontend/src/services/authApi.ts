@@ -82,6 +82,19 @@ export interface VerifyEmailResponse {
   message: string;
 }
 
+export interface LoginMethodsResponse {
+  hasPassword: boolean;
+}
+
+export interface ChangePasswordDto {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export interface ChangePasswordResponse {
+  message: string;
+}
+
 export const authApi = api.injectEndpoints({
   endpoints: (builder) => ({
     getSession: builder.query<SessionInfo, void>({
@@ -174,6 +187,18 @@ export const authApi = api.injectEndpoints({
       }),
       invalidatesTags: ['User'],
     }),
+
+    getLoginMethods: builder.query<LoginMethodsResponse, void>({
+      query: () => '/api/auth/login-methods',
+    }),
+
+    changePassword: builder.mutation<ChangePasswordResponse, ChangePasswordDto>({
+      query: (data) => ({
+        url: '/api/auth/change-password',
+        method: 'POST',
+        body: data,
+      }),
+    }),
   }),
 });
 
@@ -188,4 +213,6 @@ export const {
   useGetRegistrationStatusQuery,
   useSendVerificationEmailMutation,
   useVerifyEmailMutation,
+  useGetLoginMethodsQuery,
+  useChangePasswordMutation,
 } = authApi;
