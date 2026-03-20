@@ -44,7 +44,7 @@ lerna-debug.log*
 *.sw?
 
 # Uploads directory (local development)
-uploads/
+/uploads/
 apps/backend/uploads/
 
 # Database
