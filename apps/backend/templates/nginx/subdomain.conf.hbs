@@ -33,6 +33,17 @@ server {
     # Custom error pages (50x only - 404s handled by backend or SPA fallback)
     error_page 500 502 503 504 /50x.html;
 
+    # Authentication endpoints (callback, refresh, logout, session)
+    location /_bffless/auth/ {
+        proxy_pass http://{{backendHost}}:{{backendPort}}/_bffless/auth/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+    }
+
     # Main location
     location / {
         # Rewrite path to internal backend URL
@@ -130,6 +141,17 @@ server {
 
     # Custom error pages (50x only - 404s handled by backend or SPA fallback)
     error_page 500 502 503 504 /50x.html;
+
+    # Authentication endpoints (callback, refresh, logout, session)
+    location /_bffless/auth/ {
+        proxy_pass http://{{backendHost}}:{{backendPort}}/_bffless/auth/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+    }
 
     # Main location
     location / {

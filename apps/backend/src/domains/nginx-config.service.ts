@@ -636,6 +636,17 @@ server {
     }
 ${pathRedirectLocations}${proxyLocations}
 
+    # Authentication endpoints (callback, refresh, logout, session)
+    location /_bffless/auth/ {
+        proxy_pass http://${backendHost}:${backendPort}/_bffless/auth/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+    }
+
     # Main location
     location / {
         rewrite ^/(.*)$ ${internalPath}/$1 break;
