@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.142](https://github.com/bffless/ce/compare/v0.0.141...v0.0.142) (2026-03-20)
+
+
+### Features
+
+* upload handler UI, pipeline tester file support, and admin previews ([dba80e8](https://github.com/bffless/ce/commit/dba80e81ff7f0fab658687745933d06b04c0e0e5))
+
+
+### Bug Fixes
+
+* make generate upload modal scrollable ([901a4b0](https://github.com/bffless/ce/commit/901a4b045fb6e1ec3de493e36246bda31e20c571))
+
 ## [0.0.141](https://github.com/bffless/ce/compare/v0.0.140...v0.0.141) (2026-03-20)
 
 
