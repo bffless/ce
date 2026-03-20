@@ -1,6 +1,7 @@
 import { Injectable, Inject, Logger } from '@nestjs/common';
 import { StepHandler, FileUploadHandlerConfig } from '../execution/step-handler.interface';
 import { StepHandlerRegistry } from '../execution/step-handler.registry';
+import { ExpressionEvaluator } from '../execution/expression-evaluator';
 import { PipelineContext, StepResult } from '../execution/pipeline-context.interface';
 import { PipelineStep } from '../types';
 import { PipelineDataService } from '../pipeline-data.service';
@@ -26,6 +27,7 @@ export class FileUploadHandler implements StepHandler<FileUploadHandlerConfig> {
 
   constructor(
     private readonly registry: StepHandlerRegistry,
+    private readonly expressionEvaluator: ExpressionEvaluator,
     private readonly dataService: PipelineDataService,
     private readonly schemasService: PipelineSchemasService,
     @Inject(STORAGE_ADAPTER) private readonly storageAdapter: IStorageAdapter,
@@ -141,6 +143,17 @@ export class FileUploadHandler implements StepHandler<FileUploadHandlerConfig> {
       sub_dir: config.subDir,
       original_name: decodedOriginalName,
     };
+
+    // Evaluate extra field expressions and merge into data
+    if (config.extraFields) {
+      for (const [fieldName, expression] of Object.entries(config.extraFields)) {
+        data[fieldName] = this.expressionEvaluator.evaluateExpression(
+          expression,
+          context,
+          stepName,
+        );
+      }
+    }
 
     const record = await this.dataService.create(
       config.schemaId,

@@ -545,6 +545,14 @@ export interface FileUploadHandlerConfig extends BaseHandlerConfig {
    * @default ["*\/*"]
    */
   allowedMimeTypes?: string[];
+
+  /**
+   * Extra field mappings: { schemaField: "expression" }
+   * Allows mapping additional form fields or expressions to schema fields.
+   * Built-in fields (filename, storage_path, etc.) are always included.
+   * Example: { "description": "request.body.description", "category": "request.body.category" }
+   */
+  extraFields?: Record<string, string>;
 }
 
 /**
