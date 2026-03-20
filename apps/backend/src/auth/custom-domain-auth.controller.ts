@@ -266,7 +266,7 @@ export class CustomDomainAuthController {
       // Use res.status().json() to match the exact SuperTokens format
       if (this.customDomainAuthService.isAccessTokenExpired(accessToken)) {
         res.status(401).json({ message: 'try refresh token' });
-        return;
+        return undefined as any;
       }
       return { authenticated: false, user: null };
     }
