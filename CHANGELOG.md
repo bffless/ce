@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.148](https://github.com/bffless/ce/compare/v0.0.147...v0.0.148) (2026-03-20)
+
+
+### Features
+
+* configurable file field name and respect maxFileSize in multer ([858b497](https://github.com/bffless/ce/commit/858b497dc8ee878c772d0864fd168ac782abd9b7))
+
 ## [0.0.147](https://github.com/bffless/ce/compare/v0.0.146...v0.0.147) (2026-03-20)
 
 
