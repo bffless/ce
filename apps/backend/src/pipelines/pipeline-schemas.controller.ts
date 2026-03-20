@@ -21,6 +21,7 @@ import {
 import { PipelineSchemasService } from './pipeline-schemas.service';
 import { StateSchemaGeneratorService } from './state-schema-generator.service';
 import { ChatSchemaGeneratorService } from './chat-schema-generator.service';
+import { UploadSchemaGeneratorService } from './upload-schema-generator.service';
 import {
   CreatePipelineSchemaDto,
   UpdatePipelineSchemaDto,
@@ -31,6 +32,8 @@ import {
   GenerateStateSchemaResponseDto,
   GenerateChatSchemaDto,
   GenerateChatSchemaResponseDto,
+  GenerateUploadSchemaDto,
+  GenerateUploadSchemaResponseDto,
 } from './dto';
 import { ApiKeyGuard } from '../auth/api-key.guard';
 import { CurrentUser, CurrentUserData } from '../auth/decorators/current-user.decorator';
@@ -49,6 +52,7 @@ export class PipelineSchemasController {
     private readonly schemasService: PipelineSchemasService,
     private readonly stateSchemaGenerator: StateSchemaGeneratorService,
     private readonly chatSchemaGenerator: ChatSchemaGeneratorService,
+    private readonly uploadSchemaGenerator: UploadSchemaGeneratorService,
   ) {}
 
   @Get('project/:projectId')
@@ -121,6 +125,32 @@ export class PipelineSchemasController {
     @CurrentUser() user: CurrentUserData,
   ): Promise<GenerateChatSchemaResponseDto> {
     return this.chatSchemaGenerator.generateChatSchema(
+      dto,
+      user.id,
+      user.role || 'user',
+    );
+  }
+
+  @Post('generate-upload')
+  @ApiOperation({
+    summary: 'Generate an upload schema with POST/GET pipelines',
+    description:
+      'Creates a schema for file upload metadata with ' +
+      'automatic POST (upload) and GET (serve) pipelines.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Upload schema and pipelines created',
+    type: GenerateUploadSchemaResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid input' })
+  @ApiResponse({ status: 403, description: 'Not authorized' })
+  @ApiResponse({ status: 409, description: 'Schema name already exists' })
+  async generateUploadSchema(
+    @Body() dto: GenerateUploadSchemaDto,
+    @CurrentUser() user: CurrentUserData,
+  ): Promise<GenerateUploadSchemaResponseDto> {
+    return this.uploadSchemaGenerator.generateUploadSchema(
       dto,
       user.id,
       user.role || 'user',

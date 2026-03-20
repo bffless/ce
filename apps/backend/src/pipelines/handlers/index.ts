@@ -8,3 +8,5 @@ export * from './email.handler';
 export * from './db-aggregate.handler';
 export * from './function.handler';
 export * from './ai.handler';
+export * from './file-upload.handler';
+export * from './file-serve.handler';

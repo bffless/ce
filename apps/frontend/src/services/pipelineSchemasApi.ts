@@ -94,6 +94,23 @@ export interface GenerateChatSchemaResponse {
   pipelines: { id: string; path: string; method: string }[];
 }
 
+export interface GenerateUploadSchemaDto {
+  projectId: string;
+  name: string;
+  subDir: string;
+  dateBucket?: boolean;
+  maxFileSize?: number;
+  allowedMimeTypes?: string[];
+  accessControl?: 'public' | 'authenticated' | 'role';
+  requiredRole?: string;
+  ruleSetId?: string;
+}
+
+export interface GenerateUploadSchemaResponse {
+  schema: PipelineSchema;
+  pipelines: { id: string; path: string; method: string }[];
+}
+
 export interface FieldFilter {
   op: 'eq' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte' | 'like';
   value: string;
@@ -194,6 +211,20 @@ export const pipelineSchemasApi = api.injectEndpoints({
     generateChatSchema: builder.mutation<GenerateChatSchemaResponse, GenerateChatSchemaDto>({
       query: (data) => ({
         url: '/api/pipeline-schemas/generate-chat',
+        method: 'POST',
+        body: data,
+      }),
+      invalidatesTags: (_result, _error, { projectId }) => [
+        { type: 'PipelineSchema' as const, id: `project-${projectId}` },
+        'PipelineSchema',
+        'Pipeline',
+        'ProxyRuleSet',
+      ],
+    }),
+
+    generateUploadSchema: builder.mutation<GenerateUploadSchemaResponse, GenerateUploadSchemaDto>({
+      query: (data) => ({
+        url: '/api/pipeline-schemas/generate-upload',
         method: 'POST',
         body: data,
       }),
@@ -314,6 +345,7 @@ export const {
   useDeleteSchemaMutation,
   useGenerateStateSchemaMutation,
   useGenerateChatSchemaMutation,
+  useGenerateUploadSchemaMutation,
   // Data
   useGetSchemaDataQuery,
   useGetRecordQuery,

@@ -28,6 +28,7 @@ import { SchemaCard } from '@/components/data/SchemaCard';
 import { GenerateStateModal } from '@/components/data/GenerateStateModal';
 import { GenerateSchemaTypeModal, SchemaType } from '@/components/data/GenerateSchemaTypeModal';
 import { GenerateChatModal } from '@/components/data/GenerateChatModal';
+import { GenerateUploadModal } from '@/components/uploads/GenerateUploadModal';
 
 /**
  * SchemasListPage - Content for the Data tab showing all schemas.
@@ -47,12 +48,15 @@ export function SchemasListPage() {
   const [showGenerateTypeModal, setShowGenerateTypeModal] = useState(false);
   const [showGenerateStateModal, setShowGenerateStateModal] = useState(false);
   const [showGenerateChatModal, setShowGenerateChatModal] = useState(false);
+  const [showGenerateUploadModal, setShowGenerateUploadModal] = useState(false);
 
   const handleSchemaTypeSelected = (type: SchemaType) => {
     if (type === 'state') {
       setShowGenerateStateModal(true);
     } else if (type === 'chat') {
       setShowGenerateChatModal(true);
+    } else if (type === 'upload') {
+      setShowGenerateUploadModal(true);
     }
   };
 
@@ -288,6 +292,15 @@ export function SchemasListPage() {
         <GenerateChatModal
           open={showGenerateChatModal}
           onOpenChange={setShowGenerateChatModal}
+          projectId={project.id}
+        />
+      )}
+
+      {/* Generate Upload Schema Modal */}
+      {canEdit && project && (
+        <GenerateUploadModal
+          open={showGenerateUploadModal}
+          onOpenChange={setShowGenerateUploadModal}
           projectId={project.id}
         />
       )}

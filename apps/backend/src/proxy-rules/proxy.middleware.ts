@@ -12,6 +12,7 @@ import { ProxyRule, ProxyType, PipelineConfig } from '../db/schema/proxy-rules.s
 import { ConfigService } from '@nestjs/config';
 import { PipelineExecutionService } from '../pipelines/execution';
 import { Pipeline, PipelineStep } from '../pipelines/types';
+import multer from 'multer';
 import { CustomDomainAuthService } from '../auth/custom-domain-auth.service';
 import { VisibilityService, AccessControlInfo } from '../domains/visibility.service';
 import { PermissionsService } from '../permissions/permissions.service';
@@ -968,6 +969,11 @@ export class ProxyMiddleware implements NestMiddleware {
     };
 
     try {
+      // If pipeline has file_upload_handler, parse multipart before executing
+      if (pipelineConfig.steps.some((s) => s.handlerType === 'file_upload_handler')) {
+        await this.parseMultipartUpload(req);
+      }
+
       // Extract user from session if available (optional - don't fail if not authenticated)
       const user = await this.getOptionalUser(req, res);
 
@@ -1023,6 +1029,20 @@ export class ProxyMiddleware implements NestMiddleware {
         });
       }
     }
+  }
+
+  /**
+   * Parse multipart form data using multer (for file upload pipelines).
+   * Populates req.file with the uploaded file buffer.
+   */
+  private parseMultipartUpload(req: Request): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const upload = multer({
+        storage: multer.memoryStorage(),
+        limits: { fileSize: 50 * 1024 * 1024 }, // 50MB hard limit
+      }).single('file');
+      upload(req, {} as any, (err: any) => (err ? reject(err) : resolve()));
+    });
   }
 
   /**

@@ -66,7 +66,9 @@ export type HandlerType =
   | 'response_handler'
   | 'function_handler'
   | 'db_aggregate'
-  | 'ai_handler';
+  | 'ai_handler'
+  | 'file_upload_handler'
+  | 'file_serve_handler';
 
 /**
  * Pipeline step definition for execution.

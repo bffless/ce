@@ -514,5 +514,54 @@ export interface AIHandlerConfig extends BaseHandlerConfig {
   aiResponseFields?: Record<string, string>;
 }
 
+/**
+ * Configuration for file_upload_handler
+ */
+export interface FileUploadHandlerConfig extends BaseHandlerConfig {
+  /**
+   * Schema ID for storing upload metadata records
+   */
+  schemaId: string;
+
+  /**
+   * Storage sub-directory (e.g. "images", "documents")
+   */
+  subDir: string;
+
+  /**
+   * Enable YYYY-MM-DD date folders in storage path
+   * @default false
+   */
+  dateBucket?: boolean;
+
+  /**
+   * Maximum file size in bytes
+   * @default 10485760 (10MB)
+   */
+  maxFileSize?: number;
+
+  /**
+   * Allowed MIME type patterns (e.g. ["image/*", "application/pdf"])
+   * @default ["*\/*"]
+   */
+  allowedMimeTypes?: string[];
+}
+
+/**
+ * Configuration for file_serve_handler
+ */
+export interface FileServeHandlerConfig extends BaseHandlerConfig {
+  /**
+   * Storage sub-directory to serve from
+   */
+  subDir: string;
+
+  /**
+   * Cache-Control max-age in seconds
+   * @default 3600
+   */
+  cacheMaxAge?: number;
+}
+
 // Backwards compatibility alias
 export type ChatHandlerConfig = AIHandlerConfig;
