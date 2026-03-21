@@ -29,3 +29,4 @@ export * from './onboarding-rules.schema';
 export * from './onboarding-rule-executions.schema';
 export * from './pipeline-schemas.schema';
 export * from './pipeline-data.schema';
+export * from './pipeline-data-embeddings.schema';

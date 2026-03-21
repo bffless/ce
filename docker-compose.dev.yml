@@ -12,7 +12,7 @@
 
 services:
   postgres:
-    image: postgres:17-alpine
+    image: pgvector/pgvector:0.8.2-pg17
     container_name: assethost-postgres-dev
     profiles:
       - postgres                         # Only starts with --profile postgres

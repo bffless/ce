@@ -47,7 +47,7 @@ services:
     restart: unless-stopped
 
   postgres:
-    image: postgres:17-alpine
+    image: pgvector/pgvector:0.8.2-pg17
     container_name: assethost-postgres
     profiles:
       - postgres # Only starts with --profile postgres

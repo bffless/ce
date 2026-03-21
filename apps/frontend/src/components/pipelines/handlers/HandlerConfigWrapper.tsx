@@ -13,6 +13,8 @@ import { AIHandlerConfig } from './AIHandlerConfig';
 import { FileUploadHandlerConfig } from './FileUploadHandlerConfig';
 import { FileServeHandlerConfig } from './FileServeHandlerConfig';
 import { ReplicateHandlerConfig } from './ReplicateHandlerConfig';
+import { EmbedStoreConfig } from './EmbedStoreConfig';
+import { VectorSearchConfig } from './VectorSearchConfig';
 import { AvailableVariables, type PreviousStep } from './AvailableVariables';
 import type { HandlerConfig } from './types';
 
@@ -220,6 +222,32 @@ export function HandlerConfigWrapper({
         </>
       );
 
+    case 'embed_store':
+      return (
+        <>
+          {renderVariablesPanel()}
+          <EmbedStoreConfig
+            config={config}
+            onChange={handleChange}
+            projectId={projectId}
+            previousSteps={previousSteps}
+          />
+        </>
+      );
+
+    case 'vector_search':
+      return (
+        <>
+          {renderVariablesPanel()}
+          <VectorSearchConfig
+            config={config}
+            onChange={handleChange}
+            projectId={projectId}
+            previousSteps={previousSteps}
+          />
+        </>
+      );
+
     default:
       return (
         <div className="text-sm text-destructive p-4 bg-destructive/10 rounded-md">
@@ -248,6 +276,8 @@ export function getHandlerDisplayName(type: HandlerType): string {
     file_upload_handler: 'File Upload',
     file_serve_handler: 'File Serve',
     replicate: 'Replicate AI',
+    embed_store: 'Store Embedding',
+    vector_search: 'Vector Search',
   };
   return names[type] || type;
 }
@@ -271,6 +301,8 @@ export function getHandlerDescription(type: HandlerType): string {
     file_upload_handler: 'Upload a file to storage and create a metadata record',
     file_serve_handler: 'Serve a file from storage with caching headers',
     replicate: 'Call a Replicate ML model (embeddings, image gen, transcription, etc.)',
+    embed_store: 'Store embedding vectors in pgvector for similarity search',
+    vector_search: 'Search stored embeddings by cosine similarity',
   };
   return descriptions[type] || '';
 }

@@ -7,3 +7,6 @@ CREATE DATABASE supertokens;
 
 -- Grant permissions to default postgres user
 GRANT ALL PRIVILEGES ON DATABASE supertokens TO postgres;
+
+-- Enable pgvector extension for embedding storage and vector search
+CREATE EXTENSION IF NOT EXISTS vector;

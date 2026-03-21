@@ -590,6 +590,79 @@ export interface FileServeHandlerConfig extends BaseHandlerConfig {
 export type ChatHandlerConfig = AIHandlerConfig;
 
 /**
+ * Configuration for embed_store handler (stores embeddings in pgvector)
+ */
+export interface EmbedStoreHandlerConfig extends BaseHandlerConfig {
+  /**
+   * Schema ID the pipeline_data record belongs to
+   */
+  schemaId: string;
+
+  /**
+   * Expression that resolves to the pipeline_data record ID
+   */
+  recordId: string;
+
+  /**
+   * Field name to store the embedding under (used for HNSW index grouping)
+   */
+  fieldName: string;
+
+  /**
+   * Expression that resolves to number[] (the embedding vector).
+   * For 1:1 mode (single embedding per record).
+   */
+  embedding?: string;
+
+  /**
+   * Expression that resolves to an array of { embedding: number[], text?: string, metadata?: object }.
+   * For 1:N mode (chunked documents).
+   */
+  chunks?: string;
+
+  /**
+   * Optional metadata expression (resolves to object) — applied to all embeddings
+   */
+  metadata?: string;
+}
+
+/**
+ * Configuration for vector_search handler (cosine similarity search via pgvector)
+ */
+export interface VectorSearchHandlerConfig extends BaseHandlerConfig {
+  /**
+   * Schema ID to search embeddings within
+   */
+  schemaId: string;
+
+  /**
+   * Field name to search (must match the fieldName used during embed_store)
+   */
+  fieldName: string;
+
+  /**
+   * Expression that resolves to number[] (the query vector)
+   */
+  queryVector: string;
+
+  /**
+   * Maximum number of results to return
+   * @default 10
+   */
+  limit?: number;
+
+  /**
+   * Minimum cosine similarity threshold (0-1). Results below this are excluded.
+   */
+  threshold?: number;
+
+  /**
+   * Optional list of data fields to include in results (null = all)
+   */
+  select?: string[];
+}
+
+/**
  * Configuration for replicate handler (calls Replicate ML models)
  */
 export interface ReplicateHandlerConfig extends BaseHandlerConfig {
