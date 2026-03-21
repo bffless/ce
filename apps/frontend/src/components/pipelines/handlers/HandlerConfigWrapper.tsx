@@ -12,6 +12,7 @@ import { FunctionHandlerConfig } from './FunctionHandlerConfig';
 import { AIHandlerConfig } from './AIHandlerConfig';
 import { FileUploadHandlerConfig } from './FileUploadHandlerConfig';
 import { FileServeHandlerConfig } from './FileServeHandlerConfig';
+import { ImageConvertHandlerConfig } from './ImageConvertHandlerConfig';
 import { ReplicateHandlerConfig } from './ReplicateHandlerConfig';
 import { EmbedStoreConfig } from './EmbedStoreConfig';
 import { VectorSearchConfig } from './VectorSearchConfig';
@@ -209,6 +210,18 @@ export function HandlerConfigWrapper({
         />
       );
 
+    case 'image_convert_handler':
+      return (
+        <>
+          {renderVariablesPanel()}
+          <ImageConvertHandlerConfig
+            config={config}
+            onChange={handleChange}
+            previousSteps={previousSteps}
+          />
+        </>
+      );
+
     case 'replicate':
       return (
         <>
@@ -275,6 +288,7 @@ export function getHandlerDisplayName(type: HandlerType): string {
     ai_handler: 'AI',
     file_upload_handler: 'File Upload',
     file_serve_handler: 'File Serve',
+    image_convert_handler: 'Image Convert',
     replicate: 'Replicate AI',
     embed_store: 'Store Embedding',
     vector_search: 'Vector Search',
@@ -300,6 +314,7 @@ export function getHandlerDescription(type: HandlerType): string {
     ai_handler: 'Call an AI model for chat or text completion',
     file_upload_handler: 'Upload a file to storage and create a metadata record',
     file_serve_handler: 'Serve a file from storage with caching headers',
+    image_convert_handler: 'Convert an image to a different format (e.g., HEIC to PNG)',
     replicate: 'Call a Replicate ML model (embeddings, image gen, transcription, etc.)',
     embed_store: 'Store embedding vectors in pgvector for similarity search',
     vector_search: 'Search stored embeddings by cosine similarity',

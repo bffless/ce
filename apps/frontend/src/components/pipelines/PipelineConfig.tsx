@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, Fragment } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -7,7 +7,10 @@ import { Badge } from '@/components/ui/badge';
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -30,6 +33,7 @@ import type {
 import {
   HandlerConfigWrapper,
   getHandlerDisplayName,
+  getHandlerDescription,
   ResponseHandlerConfig,
   ProxyForwardConfig,
 } from './handlers';
@@ -52,23 +56,37 @@ interface PipelineConfigProps {
   onValidatorsChange?: (validators: ValidatorConfig[]) => void;
 }
 
-// Handler types available for pipeline steps (excluding response_handler which is a terminal step)
-const HANDLER_TYPES: HandlerType[] = [
-  'form_handler',
-  'data_create',
-  'data_query',
-  'data_update',
-  'data_delete',
-  'email_handler',
-  'function_handler',
-  'db_aggregate',
-  'ai_handler',
-  'file_upload_handler',
-  'file_serve_handler',
-  'replicate',
-  'embed_store',
-  'vector_search',
+// Handler types grouped by category
+const HANDLER_GROUPS: { label: string; types: HandlerType[] }[] = [
+  { label: 'Input', types: ['form_handler'] },
+  { label: 'Data', types: ['data_create', 'data_query', 'data_update', 'data_delete', 'db_aggregate'] },
+  { label: 'Files', types: ['file_upload_handler', 'file_serve_handler', 'image_convert_handler'] },
+  { label: 'AI & ML', types: ['ai_handler', 'replicate', 'embed_store', 'vector_search'] },
+  { label: 'Other', types: ['email_handler', 'function_handler'] },
 ];
+
+function HandlerTypeSelectContent() {
+  return (
+    <>
+      {HANDLER_GROUPS.map((group, i) => (
+        <Fragment key={group.label}>
+          {i > 0 && <SelectSeparator />}
+          <SelectGroup>
+            <SelectLabel className="text-xs text-muted-foreground font-semibold">{group.label}</SelectLabel>
+            {group.types.map((type) => (
+              <SelectItem key={type} value={type} className="py-1.5">
+                <div>
+                  <div className="font-medium">{getHandlerDisplayName(type)}</div>
+                  <div className="text-xs text-muted-foreground">{getHandlerDescription(type)}</div>
+                </div>
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        </Fragment>
+      ))}
+    </>
+  );
+}
 
 function generateId(): string {
   return `step_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
@@ -560,12 +578,8 @@ export function PipelineConfig({
                             <SelectTrigger id={`step-${step.id}-type`}>
                               <SelectValue />
                             </SelectTrigger>
-                            <SelectContent>
-                              {HANDLER_TYPES.map((type) => (
-                                <SelectItem key={type} value={type}>
-                                  {getHandlerDisplayName(type)}
-                                </SelectItem>
-                              ))}
+                            <SelectContent className="max-h-[400px]">
+                              <HandlerTypeSelectContent />
                             </SelectContent>
                           </Select>
                         </div>
@@ -929,12 +943,8 @@ data: {"type":"text-delta","value":" world"}
                             <SelectTrigger id={`post-step-${step.id}-type`}>
                               <SelectValue />
                             </SelectTrigger>
-                            <SelectContent>
-                              {HANDLER_TYPES.map((type) => (
-                                <SelectItem key={type} value={type}>
-                                  {getHandlerDisplayName(type)}
-                                </SelectItem>
-                              ))}
+                            <SelectContent className="max-h-[400px]">
+                              <HandlerTypeSelectContent />
                             </SelectContent>
                           </Select>
                         </div>

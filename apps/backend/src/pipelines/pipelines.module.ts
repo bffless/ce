@@ -32,6 +32,7 @@ import {
   ReplicateHandler,
   EmbedStoreHandler,
   VectorSearchHandler,
+  ImageConvertHandler,
 } from './handlers';
 // Embeddings service
 import { PipelineEmbeddingsService } from './pipeline-embeddings.service';
@@ -92,6 +93,7 @@ import {
     ReplicateHandler,
     EmbedStoreHandler,
     VectorSearchHandler,
+    ImageConvertHandler,
     // Validators (auto-register on construction)
     AuthRequiredValidator,
     RateLimitValidator,

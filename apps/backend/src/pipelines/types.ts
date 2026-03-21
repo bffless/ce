@@ -69,6 +69,7 @@ export type HandlerType =
   | 'ai_handler'
   | 'file_upload_handler'
   | 'file_serve_handler'
+  | 'image_convert_handler'
   | 'replicate'
   | 'embed_store'
   | 'vector_search';

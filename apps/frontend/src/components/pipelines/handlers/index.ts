@@ -13,6 +13,7 @@ export { ProxyForwardConfig } from './ProxyForwardConfig';
 export { DbAggregateConfig } from './DbAggregateConfig';
 export { FunctionHandlerConfig } from './FunctionHandlerConfig';
 export { ReplicateHandlerConfig } from './ReplicateHandlerConfig';
+export { ImageConvertHandlerConfig } from './ImageConvertHandlerConfig';
 export { EmbedStoreConfig } from './EmbedStoreConfig';
 export { VectorSearchConfig } from './VectorSearchConfig';
 

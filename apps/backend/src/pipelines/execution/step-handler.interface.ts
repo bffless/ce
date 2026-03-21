@@ -568,6 +568,42 @@ export interface FileUploadHandlerConfig extends BaseHandlerConfig {
    * Supports expressions (e.g., "steps.replicate_ai.output").
    */
   sourceUrl?: string;
+
+  /**
+   * Override the stored filename. Supports expressions (e.g., "request.body.name").
+   * The resolved value is sanitized and used instead of the original upload/download filename.
+   * File extension from the original file is preserved if not present in the override.
+   */
+  filename?: string;
+
+  /**
+   * Convert the uploaded image to a different format before storing.
+   * Uses sharp for conversion. Supported targets: 'png', 'jpeg', 'webp'.
+   * Non-image files or files already in the target format are passed through unchanged.
+   */
+  convertTo?: 'png' | 'jpeg' | 'webp';
+}
+
+/**
+ * Configuration for image_convert_handler
+ */
+export interface ImageConvertHandlerConfig extends BaseHandlerConfig {
+  /**
+   * Expression resolving to the storage path of the input file (e.g., "steps.upload.storage_path")
+   */
+  inputPath: string;
+
+  /**
+   * Target image format to convert to
+   * @default 'png'
+   */
+  outputFormat?: 'png' | 'jpeg' | 'webp';
+
+  /**
+   * Quality for lossy formats (jpeg, webp). 1-100.
+   * @default 90
+   */
+  quality?: number;
 }
 
 /**

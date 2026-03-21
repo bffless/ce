@@ -3,6 +3,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, Trash2 } from 'lucide-react';
 import { SchemaPicker } from './SchemaPicker';
 import { SchemaFieldPicker, useSchemaFields } from './SchemaFieldPicker';
@@ -39,6 +40,8 @@ export function FileUploadHandlerConfig({ config, onChange, projectId, previousS
   );
   const [fileField, setFileField] = useState(typedConfig.fileField || '');
   const [sourceUrl, setSourceUrl] = useState(typedConfig.sourceUrl || '');
+  const [filename, setFilename] = useState(typedConfig.filename || '');
+  const [convertTo, setConvertTo] = useState<string>(typedConfig.convertTo || 'none');
   const [fieldMappings, setFieldMappings] = useState<FieldMapping[]>(() => {
     const existing = typedConfig.extraFields || {};
     const entries = Object.entries(existing);
@@ -83,8 +86,10 @@ export function FileUploadHandlerConfig({ config, onChange, projectId, previousS
       extraFields: Object.keys(extraFields).length > 0 ? extraFields : undefined,
       fileField: fileField.trim() || undefined,
       sourceUrl: sourceUrl.trim() || undefined,
+      filename: filename.trim() || undefined,
+      convertTo: convertTo !== 'none' ? (convertTo as 'png' | 'jpeg' | 'webp') : undefined,
     });
-  }, [schemaId, subDir, dateBucket, maxFileSize, allowedMimeTypes, fileField, sourceUrl, fieldMappings, onChange]);
+  }, [schemaId, subDir, dateBucket, maxFileSize, allowedMimeTypes, fileField, sourceUrl, filename, convertTo, fieldMappings, onChange]);
 
   const handleSchemaChange = (newSchemaId: string) => {
     setSchemaId(newSchemaId);
@@ -140,6 +145,41 @@ export function FileUploadHandlerConfig({ config, onChange, projectId, previousS
           Download a file from a URL instead of reading from a multipart form upload.
           Use an expression to reference a URL from a previous step (e.g., a Replicate AI output).
           {sourceUrl && ' File Field Name below is ignored when Source URL is set.'}
+        </p>
+      </div>
+
+      {/* Filename override */}
+      <div className="space-y-2">
+        <Label>Filename Override (optional)</Label>
+        <ExpressionInput
+          value={filename}
+          onChange={setFilename}
+          placeholder="e.g., request.body.name"
+          previousSteps={previousSteps}
+        />
+        <p className="text-xs text-muted-foreground">
+          Override the stored filename. Supports expressions. The original file extension is
+          preserved if not included in the override.
+        </p>
+      </div>
+
+      {/* Image format conversion */}
+      <div className="space-y-2">
+        <Label>Convert Image Format (optional)</Label>
+        <Select value={convertTo} onValueChange={setConvertTo}>
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">No conversion</SelectItem>
+            <SelectItem value="png">PNG</SelectItem>
+            <SelectItem value="jpeg">JPEG</SelectItem>
+            <SelectItem value="webp">WebP</SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          Convert uploaded images to a different format (e.g., HEIC to PNG).
+          Non-image files pass through unchanged.
         </p>
       </div>
 

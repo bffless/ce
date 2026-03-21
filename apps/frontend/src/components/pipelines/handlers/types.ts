@@ -220,6 +220,19 @@ export interface FileUploadHandlerConfig extends BaseHandlerConfig {
   fileField?: string;
   /** Download a file from a URL instead of multipart form. Supports expressions (e.g., steps.replicate_ai.output). */
   sourceUrl?: string;
+  /** Override the stored filename. Supports expressions (e.g., request.body.name). */
+  filename?: string;
+  /** Convert uploaded image to a different format (e.g., HEIC → PNG). */
+  convertTo?: 'png' | 'jpeg' | 'webp';
+}
+
+export interface ImageConvertHandlerConfig extends BaseHandlerConfig {
+  /** Expression resolving to the storage path of the input file */
+  inputPath: string;
+  /** Target image format. Default: 'png' */
+  outputFormat?: 'png' | 'jpeg' | 'webp';
+  /** Quality for lossy formats (1-100). Default: 90 */
+  quality?: number;
 }
 
 export interface FileServeHandlerConfig extends BaseHandlerConfig {
@@ -282,6 +295,7 @@ export type HandlerConfig =
   | AIHandlerConfig
   | FileUploadHandlerConfig
   | FileServeHandlerConfig
+  | ImageConvertHandlerConfig
   | ReplicateHandlerConfig
   | EmbedStoreHandlerConfig
   | VectorSearchHandlerConfig;
