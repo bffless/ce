@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.149](https://github.com/bffless/ce/compare/v0.0.148...v0.0.149) (2026-03-21)
+
+
+### Features
+
+* add Replicate AI pipeline handler and AI Services settings ([ade3b0b](https://github.com/bffless/ce/commit/ade3b0b9cc4fb2f7437bcd0e19cd4b674c178ed9))
+* Replicate AI pipeline handler ([adb5b64](https://github.com/bffless/ce/commit/adb5b64bd013898a6e0684f52fc1623a9de2ec1f))
+
 ## [0.0.148](https://github.com/bffless/ce/compare/v0.0.147...v0.0.148) (2026-03-20)
 
 
