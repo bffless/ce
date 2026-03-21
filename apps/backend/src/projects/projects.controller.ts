@@ -17,7 +17,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { ProjectsService } from './projects.service';
-import { ProjectAISettingsService, AIProviderType } from './project-ai-settings.service';
+import { ProjectAISettingsService, AIProviderType, AIServiceType } from './project-ai-settings.service';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { ProjectPermissionGuard } from '../auth/guards/project-permission.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -201,6 +201,59 @@ export class ProjectsController {
     );
 
     return { skills };
+  }
+
+  // ==========================================================================
+  // AI Services Endpoints (Replicate, etc.)
+  // NOTE: These MUST be defined BEFORE :owner/:name to avoid route conflicts
+  // ==========================================================================
+
+  @Get(':id/ai-services')
+  @UseGuards(SessionAuthGuard, ProjectPermissionGuard)
+  @RequireProjectRole('admin')
+  @ApiOperation({ summary: 'Get AI services configured for this project' })
+  @ApiResponse({ status: 200, description: 'AI services status' })
+  async getAIServicesStatus(@Param('id') id: string) {
+    return this.aiSettingsService.getAIServicesStatus(id);
+  }
+
+  @Post(':id/ai-services')
+  @UseGuards(SessionAuthGuard, ProjectPermissionGuard)
+  @RequireProjectRole('admin')
+  @ApiOperation({ summary: 'Add or update an AI service for this project' })
+  @ApiResponse({ status: 200, description: 'Service added/updated' })
+  async addOrUpdateAIService(
+    @Param('id') id: string,
+    @Body() body: { service: AIServiceType; apiToken: string },
+  ) {
+    return this.aiSettingsService.addOrUpdateService(id, body.service, body.apiToken);
+  }
+
+  @Delete(':id/ai-services/:service')
+  @UseGuards(SessionAuthGuard, ProjectPermissionGuard)
+  @RequireProjectRole('admin')
+  @ApiOperation({ summary: 'Remove an AI service from this project' })
+  @ApiResponse({ status: 200, description: 'Service removed' })
+  async removeAIService(
+    @Param('id') id: string,
+    @Param('service') service: AIServiceType,
+  ) {
+    return this.aiSettingsService.removeService(id, service);
+  }
+
+  @Post(':id/ai-services/test')
+  @UseGuards(SessionAuthGuard, ProjectPermissionGuard)
+  @RequireProjectRole('admin')
+  @ApiOperation({ summary: 'Test AI service connection' })
+  @ApiResponse({ status: 200, description: 'Test result' })
+  async testAIService(
+    @Param('id') _id: string,
+    @Body() body: { service: AIServiceType; apiToken: string },
+  ) {
+    if (body.service === 'replicate') {
+      return this.aiSettingsService.testReplicateConnection(body.apiToken);
+    }
+    return { success: false, message: `Unknown service: ${body.service}` };
   }
 
   // ==========================================================================

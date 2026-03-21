@@ -29,6 +29,7 @@ import {
   AIHandler,
   FileUploadHandler,
   FileServeHandler,
+  ReplicateHandler,
 } from './handlers';
 // Services
 import { FunctionRunnerService } from './function-runner.service';
@@ -82,6 +83,7 @@ import {
     AIHandler,
     FileUploadHandler,
     FileServeHandler,
+    ReplicateHandler,
     // Validators (auto-register on construction)
     AuthRequiredValidator,
     RateLimitValidator,

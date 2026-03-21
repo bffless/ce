@@ -559,6 +559,15 @@ export interface FileUploadHandlerConfig extends BaseHandlerConfig {
    * @default "file"
    */
   fileField?: string;
+
+  /**
+   * Download a file from a URL instead of reading from multipart form data.
+   * When set, the handler fetches this URL, stores the file, and creates records
+   * just like a regular upload. Useful for saving output files from external
+   * services (e.g., Replicate AI prediction results).
+   * Supports expressions (e.g., "steps.replicate_ai.output").
+   */
+  sourceUrl?: string;
 }
 
 /**
@@ -579,3 +588,28 @@ export interface FileServeHandlerConfig extends BaseHandlerConfig {
 
 // Backwards compatibility alias
 export type ChatHandlerConfig = AIHandlerConfig;
+
+/**
+ * Configuration for replicate handler (calls Replicate ML models)
+ */
+export interface ReplicateHandlerConfig extends BaseHandlerConfig {
+  /**
+   * Replicate model identifier (e.g., 'andreasjansson/clip-features')
+   */
+  model: string;
+
+  /**
+   * Pin a specific model version hash (optional)
+   */
+  version?: string;
+
+  /**
+   * Input field mappings: { modelInputName: "expression" }
+   */
+  input: Record<string, string>;
+
+  /**
+   * Extract a specific key from the prediction output (optional)
+   */
+  outputField?: string;
+}

@@ -38,6 +38,7 @@ export function FileUploadHandlerConfig({ config, onChange, projectId, previousS
     (typedConfig.allowedMimeTypes || []).join(', '),
   );
   const [fileField, setFileField] = useState(typedConfig.fileField || '');
+  const [sourceUrl, setSourceUrl] = useState(typedConfig.sourceUrl || '');
   const [fieldMappings, setFieldMappings] = useState<FieldMapping[]>(() => {
     const existing = typedConfig.extraFields || {};
     const entries = Object.entries(existing);
@@ -81,8 +82,9 @@ export function FileUploadHandlerConfig({ config, onChange, projectId, previousS
         : undefined,
       extraFields: Object.keys(extraFields).length > 0 ? extraFields : undefined,
       fileField: fileField.trim() || undefined,
+      sourceUrl: sourceUrl.trim() || undefined,
     });
-  }, [schemaId, subDir, dateBucket, maxFileSize, allowedMimeTypes, fileField, fieldMappings, onChange]);
+  }, [schemaId, subDir, dateBucket, maxFileSize, allowedMimeTypes, fileField, sourceUrl, fieldMappings, onChange]);
 
   const handleSchemaChange = (newSchemaId: string) => {
     setSchemaId(newSchemaId);
@@ -125,17 +127,35 @@ export function FileUploadHandlerConfig({ config, onChange, projectId, previousS
         </p>
       </div>
 
+      {/* Source URL — download from URL instead of multipart */}
       <div className="space-y-2">
-        <Label>File Field Name</Label>
-        <Input
-          value={fileField}
-          onChange={(e) => setFileField(e.target.value)}
-          placeholder="file"
+        <Label>Source URL (optional)</Label>
+        <ExpressionInput
+          value={sourceUrl}
+          onChange={setSourceUrl}
+          placeholder="e.g., steps.replicate_ai.output"
+          previousSteps={previousSteps}
         />
         <p className="text-xs text-muted-foreground">
-          The multipart form field name for the uploaded file. Default: <code>file</code>
+          Download a file from a URL instead of reading from a multipart form upload.
+          Use an expression to reference a URL from a previous step (e.g., a Replicate AI output).
+          {sourceUrl && ' File Field Name below is ignored when Source URL is set.'}
         </p>
       </div>
+
+      {!sourceUrl && (
+        <div className="space-y-2">
+          <Label>File Field Name</Label>
+          <Input
+            value={fileField}
+            onChange={(e) => setFileField(e.target.value)}
+            placeholder="file"
+          />
+          <p className="text-xs text-muted-foreground">
+            The multipart form field name for the uploaded file. Default: <code>file</code>
+          </p>
+        </div>
+      )}
 
       <div className="flex items-center justify-between">
         <div className="space-y-0.5">
@@ -170,6 +190,29 @@ export function FileUploadHandlerConfig({ config, onChange, projectId, previousS
         <p className="text-xs text-muted-foreground">
           Comma-separated. Leave empty to allow all file types.
         </p>
+      </div>
+
+      {/* Step Output Reference */}
+      <div className="rounded-md border bg-muted/30 p-3 space-y-1.5">
+        <p className="text-xs font-medium text-muted-foreground">
+          Step output (available to subsequent steps)
+        </p>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs">
+          <code className="bg-muted px-1.5 py-0.5 rounded text-[11px]">storage_path</code>
+          <span className="text-muted-foreground">Full storage key</span>
+          <code className="bg-muted px-1.5 py-0.5 rounded text-[11px]">url</code>
+          <span className="text-muted-foreground">Internal API URL</span>
+          <code className="bg-muted px-1.5 py-0.5 rounded text-[11px]">content_type</code>
+          <span className="text-muted-foreground">MIME type (e.g., image/png)</span>
+          <code className="bg-muted px-1.5 py-0.5 rounded text-[11px]">filename</code>
+          <span className="text-muted-foreground">Sanitized filename</span>
+          <code className="bg-muted px-1.5 py-0.5 rounded text-[11px]">size</code>
+          <span className="text-muted-foreground">File size in bytes</span>
+          <code className="bg-muted px-1.5 py-0.5 rounded text-[11px]">original_name</code>
+          <span className="text-muted-foreground">Original upload name</span>
+          <code className="bg-muted px-1.5 py-0.5 rounded text-[11px]">id</code>
+          <span className="text-muted-foreground">Record ID</span>
+        </div>
       </div>
 
       {/* Extra Fields */}

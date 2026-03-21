@@ -12,6 +12,7 @@ import { FunctionHandlerConfig } from './FunctionHandlerConfig';
 import { AIHandlerConfig } from './AIHandlerConfig';
 import { FileUploadHandlerConfig } from './FileUploadHandlerConfig';
 import { FileServeHandlerConfig } from './FileServeHandlerConfig';
+import { ReplicateHandlerConfig } from './ReplicateHandlerConfig';
 import { AvailableVariables, type PreviousStep } from './AvailableVariables';
 import type { HandlerConfig } from './types';
 
@@ -206,6 +207,19 @@ export function HandlerConfigWrapper({
         />
       );
 
+    case 'replicate':
+      return (
+        <>
+          {renderVariablesPanel()}
+          <ReplicateHandlerConfig
+            config={config}
+            onChange={handleChange}
+            projectId={projectId}
+            previousSteps={previousSteps}
+          />
+        </>
+      );
+
     default:
       return (
         <div className="text-sm text-destructive p-4 bg-destructive/10 rounded-md">
@@ -233,6 +247,7 @@ export function getHandlerDisplayName(type: HandlerType): string {
     ai_handler: 'AI',
     file_upload_handler: 'File Upload',
     file_serve_handler: 'File Serve',
+    replicate: 'Replicate AI',
   };
   return names[type] || type;
 }
@@ -255,6 +270,7 @@ export function getHandlerDescription(type: HandlerType): string {
     ai_handler: 'Call an AI model for chat or text completion',
     file_upload_handler: 'Upload a file to storage and create a metadata record',
     file_serve_handler: 'Serve a file from storage with caching headers',
+    replicate: 'Call a Replicate ML model (embeddings, image gen, transcription, etc.)',
   };
   return descriptions[type] || '';
 }

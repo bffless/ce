@@ -179,6 +179,9 @@ function getStepOutputDescription(handlerType: string, config?: Record<string, u
     response_handler: 'Response config (usually last step)',
     ai_handler: 'AI response with content and usage stats',
     chat_handler: 'AI response with content and usage stats',
+    file_upload_handler: 'Uploaded file metadata (path, URL, size, type)',
+    file_serve_handler: 'Served file info',
+    replicate: 'Replicate prediction result with model output',
   };
   return descriptions[handlerType] || 'Step output data';
 }
@@ -258,6 +261,22 @@ function getStepOutputExamples(
       fmt(`${stepPath}.content`),
       fmt(`${stepPath}.tokensUsed`),
       fmt(`${stepPath}.usage.inputTokens`),
+    ],
+    file_upload_handler: [
+      `${fmt(`${stepPath}.storage_path`)} — full storage key`,
+      `${fmt(`${stepPath}.url`)} — internal URL path`,
+      `${fmt(`${stepPath}.content_type`)} — MIME type`,
+      `${fmt(`${stepPath}.filename`)} — sanitized filename`,
+      `${fmt(`${stepPath}.size`)} — file size in bytes`,
+      `${fmt(`${stepPath}.original_name`)} — original filename`,
+      `${fmt(`${stepPath}.id`)} — record ID`,
+    ],
+    replicate: [
+      `${fmt(`${stepPath}.output`)} — model output (URL, array, object, etc.)`,
+      `${fmt(`${stepPath}.predictionId`)} — prediction ID`,
+      `${fmt(`${stepPath}.model`)} — model that was run`,
+      `${fmt(`${stepPath}.status`)} — succeeded/failed`,
+      `${fmt(`${stepPath}.metrics`)} — timing metrics`,
     ],
   };
 

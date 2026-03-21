@@ -57,6 +57,17 @@ export interface AvailableProvider {
   models: ModelInfo[];
 }
 
+// AI Service types
+export type AIServiceType = 'replicate';
+
+export interface AIServicesStatus {
+  services: {
+    service: AIServiceType;
+    apiToken: string; // Masked
+    createdAt: string;
+  }[];
+}
+
 // Plugin types
 export interface PluginListItem {
   id: string;
@@ -343,6 +354,52 @@ export const projectsApi = api.injectEndpoints({
         `/api/projects/${projectId}/ai-plugins/google-calendar/calendars`,
     }),
 
+    // AI Services endpoints
+    getProjectAIServices: builder.query<AIServicesStatus, string>({
+      query: (projectId) => `/api/projects/${projectId}/ai-services`,
+      providesTags: (_result, _error, projectId) => [
+        { type: 'ProjectAIServices' as const, id: projectId },
+      ],
+    }),
+
+    addProjectAIService: builder.mutation<
+      AIServicesStatus,
+      { projectId: string; service: AIServiceType; apiToken: string }
+    >({
+      query: ({ projectId, service, apiToken }) => ({
+        url: `/api/projects/${projectId}/ai-services`,
+        method: 'POST',
+        body: { service, apiToken },
+      }),
+      invalidatesTags: (_result, _error, { projectId }) => [
+        { type: 'ProjectAIServices' as const, id: projectId },
+      ],
+    }),
+
+    removeProjectAIService: builder.mutation<
+      AIServicesStatus,
+      { projectId: string; service: AIServiceType }
+    >({
+      query: ({ projectId, service }) => ({
+        url: `/api/projects/${projectId}/ai-services/${service}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: (_result, _error, { projectId }) => [
+        { type: 'ProjectAIServices' as const, id: projectId },
+      ],
+    }),
+
+    testProjectAIService: builder.mutation<
+      TestAIResponse,
+      { projectId: string; service: AIServiceType; apiToken: string }
+    >({
+      query: ({ projectId, service, apiToken }) => ({
+        url: `/api/projects/${projectId}/ai-services/test`,
+        method: 'POST',
+        body: { service, apiToken },
+      }),
+    }),
+
     // Skills endpoint
     listProjectSkills: builder.query<
       { skills: SkillSummary[] },
@@ -383,6 +440,11 @@ export const {
   useCompletePluginOAuthMutation,
   useDisconnectPluginOAuthMutation,
   useListPluginCalendarsQuery,
+  // AI Services
+  useGetProjectAIServicesQuery,
+  useAddProjectAIServiceMutation,
+  useRemoveProjectAIServiceMutation,
+  useTestProjectAIServiceMutation,
   // Skills
   useListProjectSkillsQuery,
 } = projectsApi;

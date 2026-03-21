@@ -12,6 +12,7 @@ export { ResponseHandlerConfig } from './ResponseHandlerConfig';
 export { ProxyForwardConfig } from './ProxyForwardConfig';
 export { DbAggregateConfig } from './DbAggregateConfig';
 export { FunctionHandlerConfig } from './FunctionHandlerConfig';
+export { ReplicateHandlerConfig } from './ReplicateHandlerConfig';
 
 // Function templates
 export * from './function-templates';

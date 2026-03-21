@@ -10,3 +10,4 @@ export * from './function.handler';
 export * from './ai.handler';
 export * from './file-upload.handler';
 export * from './file-serve.handler';
+export * from './replicate.handler';

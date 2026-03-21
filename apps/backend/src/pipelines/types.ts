@@ -68,7 +68,8 @@ export type HandlerType =
   | 'db_aggregate'
   | 'ai_handler'
   | 'file_upload_handler'
-  | 'file_serve_handler';
+  | 'file_serve_handler'
+  | 'replicate';
 
 /**
  * Pipeline step definition for execution.

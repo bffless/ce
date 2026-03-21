@@ -32,6 +32,7 @@ describe('ProjectPermissionGuard', () => {
     settings: {},
     defaultProxyRuleSetId: null,
     aiProviders: null,
+    aiServices: null,
     createdBy: 'user-123',
     createdAt: new Date(),
     updatedAt: new Date(),
