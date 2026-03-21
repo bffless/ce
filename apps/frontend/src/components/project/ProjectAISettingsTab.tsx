@@ -6,7 +6,12 @@ import {
   useSetProjectDefaultAIProviderMutation,
   useTestProjectAIMutation,
   useGetAvailableAIProvidersQuery,
+  useGetProjectAIServicesQuery,
+  useAddProjectAIServiceMutation,
+  useRemoveProjectAIServiceMutation,
+  useTestProjectAIServiceMutation,
   AIProviderType,
+  AIServiceType,
   ConfiguredProvider,
   ModelInfo,
   ModelTier,
@@ -56,6 +61,260 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { ProjectAIPluginsSection } from './ProjectAIPluginsSection';
+
+// AI Service display config
+const SERVICE_CONFIG: Record<string, { name: string; color: string; bgColor: string; description: string }> = {
+  replicate: {
+    name: 'Replicate',
+    color: 'text-indigo-600',
+    bgColor: 'bg-indigo-50',
+    description: 'Run ML models (CLIP embeddings, image generation, transcription, etc.)',
+  },
+};
+
+// AI Services section component
+function ProjectAIServicesSection({ project }: { project: Project }) {
+  const { data: servicesStatus } = useGetProjectAIServicesQuery(project.id);
+  const [addService, { isLoading: isAdding }] = useAddProjectAIServiceMutation();
+  const [removeService] = useRemoveProjectAIServiceMutation();
+  const [testService] = useTestProjectAIServiceMutation();
+
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [addToken, setAddToken] = useState('');
+  const [addError, setAddError] = useState<string | null>(null);
+  const [removingService, setRemovingService] = useState<string | null>(null);
+  const [testingToken, setTestingToken] = useState('');
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const configuredServices = servicesStatus?.services || [];
+  const hasReplicate = configuredServices.some((s) => s.service === 'replicate');
+
+  const handleAdd = async () => {
+    try {
+      setAddError(null);
+      await addService({
+        projectId: project.id,
+        service: 'replicate' as AIServiceType,
+        apiToken: addToken.trim(),
+      }).unwrap();
+      setShowAddDialog(false);
+      setAddToken('');
+    } catch (error: unknown) {
+      const err = error as { data?: { message?: string } };
+      setAddError(err.data?.message || 'Failed to add service');
+    }
+  };
+
+  const handleRemove = async (service: string) => {
+    try {
+      setRemovingService(service);
+      await removeService({
+        projectId: project.id,
+        service: service as AIServiceType,
+      }).unwrap();
+    } catch (error) {
+      console.error('Failed to remove service:', error);
+    } finally {
+      setRemovingService(null);
+    }
+  };
+
+  const handleTest = async () => {
+    if (!testingToken.trim()) return;
+    try {
+      setTestResult(null);
+      const result = await testService({
+        projectId: project.id,
+        service: 'replicate' as AIServiceType,
+        apiToken: testingToken.trim(),
+      }).unwrap();
+      setTestResult({
+        success: result.success,
+        message: result.message || (result.success ? 'Connection successful' : 'Connection failed'),
+      });
+    } catch (error: unknown) {
+      const err = error as { data?: { message?: string } };
+      setTestResult({
+        success: false,
+        message: err.data?.message || 'Test failed',
+      });
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Zap className="h-5 w-5" />
+              AI Services
+            </CardTitle>
+            <CardDescription>
+              Configure external ML services for pipeline steps.
+            </CardDescription>
+          </div>
+          {!hasReplicate && (
+            <Button onClick={() => setShowAddDialog(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Service
+            </Button>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {configuredServices.length > 0 ? (
+          <div className="space-y-3">
+            {configuredServices.map((svc) => {
+              const meta = SERVICE_CONFIG[svc.service] || { name: svc.service, color: 'text-gray-600', bgColor: 'bg-gray-50', description: '' };
+              return (
+                <div key={svc.service} className="border rounded-lg p-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className={cn('p-2 rounded-lg', meta.bgColor)}>
+                        <Zap className={cn('w-5 h-5', meta.color)} />
+                      </div>
+                      <div>
+                        <h4 className="font-medium">{meta.name}</h4>
+                        <p className="text-sm text-muted-foreground">
+                          Token: <span className="font-mono text-xs">{svc.apiToken}</span>
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">{meta.description}</p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleRemove(svc.service)}
+                      disabled={removingService === svc.service}
+                      className="text-destructive hover:text-destructive"
+                      title="Remove service"
+                    >
+                      {removingService === svc.service ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-center text-sm">
+              <AlertTriangle className="h-4 w-4 text-yellow-500 mr-2" />
+              <span className="text-muted-foreground">No AI services configured</span>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Add an AI service to enable Replicate ML model pipelines.
+            </p>
+            <Button onClick={() => setShowAddDialog(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Service
+            </Button>
+          </div>
+        )}
+      </CardContent>
+
+      <Dialog open={showAddDialog} onOpenChange={(open) => {
+        setShowAddDialog(open);
+        if (!open) {
+          setAddToken('');
+          setAddError(null);
+          setTestingToken('');
+          setTestResult(null);
+        }
+      }}>
+        <DialogContent className="sm:max-w-[450px]">
+          <DialogHeader>
+            <DialogTitle>Add Replicate</DialogTitle>
+            <DialogDescription>
+              Add your Replicate API token to enable ML model pipelines.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div>
+              <Label htmlFor="replicate-token">API Token</Label>
+              <Input
+                id="replicate-token"
+                type="password"
+                value={addToken}
+                onChange={(e) => {
+                  setAddToken(e.target.value);
+                  setTestingToken(e.target.value);
+                }}
+                placeholder="r8_..."
+                className="mt-1"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Get your API token from{' '}
+                <a
+                  href="https://replicate.com/account/api-tokens"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline"
+                >
+                  replicate.com/account/api-tokens
+                </a>
+              </p>
+            </div>
+
+            {addToken.trim() && (
+              <div>
+                <Button variant="outline" size="sm" onClick={handleTest}>
+                  <Zap className="h-4 w-4 mr-1" />
+                  Test Connection
+                </Button>
+                {testResult && (
+                  <div className={cn(
+                    'mt-2 p-2 rounded text-sm flex items-center gap-2',
+                    testResult.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+                  )}>
+                    {testResult.success ? (
+                      <CheckCircle className="h-4 w-4" />
+                    ) : (
+                      <XCircle className="h-4 w-4" />
+                    )}
+                    {testResult.message}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {addError && (
+              <Alert variant="destructive">
+                <XCircle className="h-4 w-4" />
+                <AlertDescription>{addError}</AlertDescription>
+              </Alert>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAdd}
+              disabled={!addToken.trim() || isAdding}
+            >
+              {isAdding ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Adding...
+                </>
+              ) : (
+                'Add Replicate'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Card>
+  );
+}
 
 // Provider display config
 const PROVIDER_CONFIG: Record<string, { color: string; bgColor: string; displayName: string }> = {
@@ -662,6 +921,8 @@ export function ProjectAISettingsTab({ project }: ProjectAISettingsTabProps) {
       </Card>
 
       <ProjectAIPluginsSection project={project} />
+
+      <ProjectAIServicesSection project={project} />
 
       <AddProviderDialog
         open={showAddDialog}

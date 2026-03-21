@@ -101,6 +101,25 @@ export function ExpressionInput({
             });
           }
         }
+      } else if (step.handlerType === 'file_upload_handler') {
+        suggestions.push(
+          { value: `${stepPath}.storage_path`, description: 'Full storage key', category: 'Steps' },
+          { value: `${stepPath}.url`, description: 'Internal URL path', category: 'Steps' },
+          { value: `${stepPath}.content_type`, description: 'MIME type (e.g., image/png)', category: 'Steps' },
+          { value: `${stepPath}.filename`, description: 'Sanitized filename', category: 'Steps' },
+          { value: `${stepPath}.size`, description: 'File size in bytes', category: 'Steps' },
+          { value: `${stepPath}.original_name`, description: 'Original filename', category: 'Steps' },
+          { value: `${stepPath}.id`, description: 'Record ID', category: 'Steps' },
+        );
+      } else if (step.handlerType === 'replicate') {
+        suggestions.push(
+          { value: `${stepPath}.output`, description: 'Model output (URL, array, object, etc.)', category: 'Steps' },
+          { value: `${stepPath}.output[0]`, description: 'First output (for array results)', category: 'Steps' },
+          { value: `${stepPath}.predictionId`, description: 'Prediction ID', category: 'Steps' },
+          { value: `${stepPath}.model`, description: 'Model that was run', category: 'Steps' },
+          { value: `${stepPath}.status`, description: 'Prediction status', category: 'Steps' },
+          { value: `${stepPath}.metrics`, description: 'Timing metrics', category: 'Steps' },
+        );
       }
     }
 

@@ -218,11 +218,24 @@ export interface FileUploadHandlerConfig extends BaseHandlerConfig {
   allowedMimeTypes?: string[];
   extraFields?: Record<string, string>;
   fileField?: string;
+  /** Download a file from a URL instead of multipart form. Supports expressions (e.g., steps.replicate_ai.output). */
+  sourceUrl?: string;
 }
 
 export interface FileServeHandlerConfig extends BaseHandlerConfig {
   subDir: string;
   cacheMaxAge?: number;
+}
+
+export interface ReplicateHandlerConfig extends BaseHandlerConfig {
+  /** Replicate model identifier (e.g., 'andreasjansson/clip-features') */
+  model: string;
+  /** Pin a specific model version hash */
+  version?: string;
+  /** Input field mappings: { modelInputName: "expression" } */
+  input: Record<string, string>;
+  /** Extract a specific key from the prediction output */
+  outputField?: string;
 }
 
 export type HandlerConfig =
@@ -238,4 +251,5 @@ export type HandlerConfig =
   | FunctionHandlerConfig
   | AIHandlerConfig
   | FileUploadHandlerConfig
-  | FileServeHandlerConfig;
+  | FileServeHandlerConfig
+  | ReplicateHandlerConfig;

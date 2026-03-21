@@ -17,8 +17,12 @@ import { createHash } from 'crypto';
 /**
  * File Upload Handler
  *
- * Handles file uploads via multipart form data.
- * Stores files in the storage adapter and creates pipeline_data + asset records.
+ * Handles file uploads from two sources:
+ * 1. Multipart form data (default) — user uploads a file via form
+ * 2. URL download (sourceUrl) — fetches a file from a URL (e.g., Replicate output)
+ *
+ * In both cases, stores the file in the storage adapter and creates
+ * pipeline_data + asset records with the same output shape.
  */
 @Injectable()
 export class FileUploadHandler implements StepHandler<FileUploadHandlerConfig> {
@@ -62,38 +66,59 @@ export class FileUploadHandler implements StepHandler<FileUploadHandlerConfig> {
       );
     }
 
-    // Extract file from multer-parsed request
-    const file = (context.request as any).file as Express.Multer.File | undefined;
-    if (!file) {
-      return {
-        success: false,
-        error: {
-          code: 'NO_FILE',
-          message: 'No file uploaded. Send a multipart form with a "file" field.',
-        },
-      };
-    }
+    // Determine file source: URL download or multipart form upload
+    let fileBuffer: Buffer;
+    let mimeType: string;
+    let originalName: string;
 
-    // Validate MIME type
-    const allowedMimeTypes = config.allowedMimeTypes || ['*/*'];
-    if (!this.isMimeTypeAllowed(file.mimetype, allowedMimeTypes)) {
-      return {
-        success: false,
-        error: {
-          code: 'INVALID_MIME_TYPE',
-          message: `File type "${file.mimetype}" is not allowed. Allowed types: ${allowedMimeTypes.join(', ')}`,
-        },
-      };
+    if (config.sourceUrl) {
+      // URL download mode: fetch the file from a URL expression
+      const resolved = await this.resolveFileFromUrl(config.sourceUrl, context, stepName);
+      if (!resolved.success) {
+        return resolved.error!;
+      }
+      fileBuffer = resolved.buffer!;
+      mimeType = resolved.mimeType!;
+      originalName = resolved.filename!;
+    } else {
+      // Multipart form upload mode (original behavior)
+      const file = (context.request as any).file as Express.Multer.File | undefined;
+      if (!file) {
+        return {
+          success: false,
+          error: {
+            code: 'NO_FILE',
+            message: 'No file uploaded. Send a multipart form with a "file" field.',
+          },
+        };
+      }
+
+      // Validate MIME type
+      const allowedMimeTypes = config.allowedMimeTypes || ['*/*'];
+      if (!this.isMimeTypeAllowed(file.mimetype, allowedMimeTypes)) {
+        return {
+          success: false,
+          error: {
+            code: 'INVALID_MIME_TYPE',
+            message: `File type "${file.mimetype}" is not allowed. Allowed types: ${allowedMimeTypes.join(', ')}`,
+          },
+        };
+      }
+
+      fileBuffer = file.buffer;
+      mimeType = file.mimetype;
+      // Multer encodes originalname as Latin-1; decode to UTF-8 for proper unicode support
+      originalName = Buffer.from(file.originalname, 'latin1').toString('utf8');
     }
 
     // Validate file size
     const maxFileSize = config.maxFileSize || 10 * 1024 * 1024; // default 10MB
-    if (file.size > maxFileSize) {
+    if (fileBuffer.length > maxFileSize) {
       return {
         success: false,
         error: {
           code: 'FILE_TOO_LARGE',
-          message: `File size ${file.size} bytes exceeds maximum ${maxFileSize} bytes`,
+          message: `File size ${fileBuffer.length} bytes exceeds maximum ${maxFileSize} bytes`,
         },
       };
     }
@@ -109,9 +134,7 @@ export class FileUploadHandler implements StepHandler<FileUploadHandlerConfig> {
     }
 
     const uuid = randomUUID();
-    // Multer encodes originalname as Latin-1; decode to UTF-8 for proper unicode support
-    const decodedOriginalName = Buffer.from(file.originalname, 'latin1').toString('utf8');
-    const sanitizedFilename = decodedOriginalName.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const sanitizedFilename = originalName.replace(/[^a-zA-Z0-9._-]/g, '_');
     let storageKey = `${owner}/${repo}/uploads/${config.subDir}`;
 
     if (config.dateBucket) {
@@ -122,26 +145,25 @@ export class FileUploadHandler implements StepHandler<FileUploadHandlerConfig> {
     storageKey += `/${uuid}-${sanitizedFilename}`;
 
     // Upload to storage
-    await this.storageAdapter.upload(file.buffer, storageKey, {
-      mimeType: file.mimetype,
+    await this.storageAdapter.upload(fileBuffer, storageKey, {
+      mimeType,
     });
 
     // Build the public URL path
-    const alias = context.deployment?.alias ?? 'production';
     const publicPath = `/api/uploads/${config.subDir}/${uuid}-${sanitizedFilename}`;
 
     // Compute content hash
-    const contentHash = createHash('md5').update(file.buffer).digest('hex');
+    const contentHash = createHash('md5').update(fileBuffer).digest('hex');
 
     // Create pipeline_data record with metadata
     const data: Record<string, unknown> = {
       filename: sanitizedFilename,
       storage_path: storageKey,
-      content_type: file.mimetype,
-      size: file.size,
+      content_type: mimeType,
+      size: fileBuffer.length,
       url: publicPath,
       sub_dir: config.subDir,
-      original_name: decodedOriginalName,
+      original_name: originalName,
     };
 
     // Evaluate extra field expressions and merge into data
@@ -168,10 +190,10 @@ export class FileUploadHandler implements StepHandler<FileUploadHandlerConfig> {
     try {
       await db.insert(assets).values({
         fileName: sanitizedFilename,
-        originalPath: file.originalname,
+        originalPath: originalName,
         storageKey,
-        mimeType: file.mimetype,
-        size: file.size,
+        mimeType,
+        size: fileBuffer.length,
         projectId: context.projectId,
         uploadedBy: context.user?.id || null,
         assetType: AssetType.UPLOADS,
@@ -194,11 +216,132 @@ export class FileUploadHandler implements StepHandler<FileUploadHandlerConfig> {
         filename: sanitizedFilename,
         url: publicPath,
         storage_path: storageKey,
-        content_type: file.mimetype,
-        size: file.size,
-        original_name: decodedOriginalName,
+        content_type: mimeType,
+        size: fileBuffer.length,
+        original_name: originalName,
       },
     };
+  }
+
+  /**
+   * Fetch a file from a URL (evaluated from an expression).
+   * Extracts filename from URL path or Content-Disposition header,
+   * and MIME type from Content-Type header.
+   */
+  private async resolveFileFromUrl(
+    sourceUrlExpression: string,
+    context: PipelineContext,
+    stepName: string,
+  ): Promise<{
+    success: boolean;
+    buffer?: Buffer;
+    mimeType?: string;
+    filename?: string;
+    error?: StepResult;
+  }> {
+    const url = this.expressionEvaluator.evaluateExpression(
+      sourceUrlExpression,
+      context,
+      stepName,
+    );
+
+    if (!url || typeof url !== 'string') {
+      return {
+        success: false,
+        error: {
+          success: false,
+          error: {
+            code: 'INVALID_SOURCE_URL',
+            message: `sourceUrl expression "${sourceUrlExpression}" resolved to ${url === null ? 'null' : typeof url}, expected a URL string`,
+          },
+        },
+      };
+    }
+
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      return {
+        success: false,
+        error: {
+          success: false,
+          error: {
+            code: 'INVALID_SOURCE_URL',
+            message: `sourceUrl must be an HTTP(S) URL, got: ${url.substring(0, 100)}`,
+          },
+        },
+      };
+    }
+
+    try {
+      this.logger.debug(`Downloading file from URL: ${url}`);
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: {
+            success: false,
+            error: {
+              code: 'SOURCE_URL_FETCH_FAILED',
+              message: `Failed to download file from URL (${response.status}): ${url}`,
+            },
+          },
+        };
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+
+      // Extract MIME type from Content-Type header
+      const contentType = response.headers.get('content-type');
+      const mimeType = contentType?.split(';')[0]?.trim() || 'application/octet-stream';
+
+      // Extract filename from Content-Disposition header or URL path
+      let filename = this.extractFilenameFromHeaders(response.headers);
+      if (!filename) {
+        filename = this.extractFilenameFromUrl(url);
+      }
+
+      return { success: true, buffer, mimeType, filename };
+    } catch (error) {
+      return {
+        success: false,
+        error: {
+          success: false,
+          error: {
+            code: 'SOURCE_URL_FETCH_FAILED',
+            message: `Failed to download file from URL: ${(error as Error).message}`,
+          },
+        },
+      };
+    }
+  }
+
+  /**
+   * Try to extract filename from Content-Disposition header.
+   */
+  private extractFilenameFromHeaders(headers: Headers): string | null {
+    const disposition = headers.get('content-disposition');
+    if (!disposition) return null;
+
+    // Match filename="..." or filename*=UTF-8''...
+    const match = disposition.match(/filename[*]?=(?:UTF-8''|"?)([^";]+)/i);
+    return match ? decodeURIComponent(match[1].replace(/"/g, '')) : null;
+  }
+
+  /**
+   * Extract filename from URL path as fallback.
+   */
+  private extractFilenameFromUrl(url: string): string {
+    try {
+      const pathname = new URL(url).pathname;
+      const lastSegment = pathname.split('/').pop();
+      if (lastSegment && lastSegment.includes('.')) {
+        return decodeURIComponent(lastSegment);
+      }
+    } catch {
+      // ignore URL parse errors
+    }
+    return `download-${randomUUID().substring(0, 8)}`;
   }
 
   /**

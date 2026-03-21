@@ -61,6 +61,7 @@ describe('DeploymentsService', () => {
     settings: {},
     defaultProxyRuleSetId: null,
     aiProviders: null,
+    aiServices: null,
     createdBy: mockUserId,
     createdAt: new Date('2025-01-01'),
     updatedAt: new Date('2025-01-01'),

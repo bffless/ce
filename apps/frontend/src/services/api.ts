@@ -198,6 +198,7 @@ export const api = createApi({
     'PipelineSchema',
     'PipelineData',
     'ProjectAI',
+    'ProjectAIServices',
     'ProjectPlugin',
   ],
   endpoints: () => ({}),

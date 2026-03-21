@@ -65,6 +65,7 @@ const HANDLER_TYPES: HandlerType[] = [
   'ai_handler',
   'file_upload_handler',
   'file_serve_handler',
+  'replicate',
 ];
 
 function generateId(): string {

@@ -11,6 +11,11 @@ import * as crypto from 'crypto';
 export type AIProviderType = 'openai' | 'anthropic' | 'google';
 
 /**
+ * AI Service types (external ML services, separate from chat LLM providers)
+ */
+export type AIServiceType = 'replicate';
+
+/**
  * Model tier for pricing/capability categorization
  */
 export type ModelTier = 'economy' | 'balanced' | 'premium';
@@ -126,6 +131,34 @@ export interface TestAIResponse {
   error?: string;
   latencyMs?: number;
   model?: string;
+}
+
+/**
+ * Stored AI service configuration
+ */
+interface StoredServiceConfig {
+  service: AIServiceType;
+  config: string; // encrypted
+  createdAt: string;
+}
+
+/**
+ * Decrypted AI service configuration
+ */
+export interface AIServiceConfig {
+  service: AIServiceType;
+  apiToken: string;
+}
+
+/**
+ * AI Services status response (for frontend display)
+ */
+export interface AIServicesStatusResponse {
+  services: {
+    service: AIServiceType;
+    apiToken: string; // Masked
+    createdAt: string;
+  }[];
 }
 
 @Injectable()
@@ -479,6 +512,188 @@ export class ProjectAISettingsService {
       .where(eq(projects.id, projectId));
 
     this.logger.log(`Updated skillsPath for project ${projectId}: ${skillsPath}`);
+  }
+
+  // ===== AI Services (Replicate, etc.) =====
+
+  /**
+   * Get all configured AI services for a project (with masked tokens)
+   */
+  async getAIServicesStatus(projectId: string): Promise<AIServicesStatusResponse> {
+    try {
+      const stored = await this.getStoredServices(projectId);
+
+      return {
+        services: stored.map((s) => {
+          const config = JSON.parse(this.decryptData(s.config));
+          return {
+            service: s.service,
+            apiToken: this.maskApiKey(config.apiToken),
+            createdAt: s.createdAt,
+          };
+        }),
+      };
+    } catch (error) {
+      this.logger.error('Error getting AI services status:', error);
+      return { services: [] };
+    }
+  }
+
+  /**
+   * Add or update an AI service for a project
+   */
+  async addOrUpdateService(
+    projectId: string,
+    service: AIServiceType,
+    apiToken: string,
+  ): Promise<AIServicesStatusResponse> {
+    try {
+      const project = await this.getProject(projectId);
+      if (!project) {
+        throw new NotFoundException('Project not found');
+      }
+
+      const existing = await this.getStoredServices(projectId);
+      const existingIndex = existing.findIndex((s) => s.service === service);
+
+      const newConfig: StoredServiceConfig = {
+        service,
+        config: this.encryptData(JSON.stringify({ apiToken })),
+        createdAt: new Date().toISOString(),
+      };
+
+      if (existingIndex >= 0) {
+        existing[existingIndex] = { ...existing[existingIndex], config: newConfig.config };
+      } else {
+        existing.push(newConfig);
+      }
+
+      await db
+        .update(projects)
+        .set({
+          aiServices: JSON.stringify(existing),
+          updatedAt: new Date(),
+        })
+        .where(eq(projects.id, projectId));
+
+      this.logger.log(`AI service ${service} ${existingIndex >= 0 ? 'updated' : 'added'} for project ${projectId}`);
+      return this.getAIServicesStatus(projectId);
+    } catch (error) {
+      this.logger.error('Error adding/updating AI service:', error);
+      if (error instanceof NotFoundException) throw error;
+      throw new InternalServerErrorException('Failed to update AI service configuration');
+    }
+  }
+
+  /**
+   * Remove an AI service from a project
+   */
+  async removeService(projectId: string, service: AIServiceType): Promise<AIServicesStatusResponse> {
+    try {
+      const project = await this.getProject(projectId);
+      if (!project) {
+        throw new NotFoundException('Project not found');
+      }
+
+      const existing = await this.getStoredServices(projectId);
+      const serviceIndex = existing.findIndex((s) => s.service === service);
+
+      if (serviceIndex < 0) {
+        throw new NotFoundException(`Service ${service} not configured`);
+      }
+
+      existing.splice(serviceIndex, 1);
+
+      await db
+        .update(projects)
+        .set({
+          aiServices: JSON.stringify(existing),
+          updatedAt: new Date(),
+        })
+        .where(eq(projects.id, projectId));
+
+      this.logger.log(`AI service ${service} removed from project ${projectId}`);
+      return this.getAIServicesStatus(projectId);
+    } catch (error) {
+      this.logger.error('Error removing AI service:', error);
+      if (error instanceof NotFoundException) throw error;
+      throw new InternalServerErrorException('Failed to remove AI service');
+    }
+  }
+
+  /**
+   * Get decrypted service config (for use by handlers)
+   */
+  async getServiceConfig(projectId: string, service: AIServiceType): Promise<AIServiceConfig | null> {
+    try {
+      const stored = await this.getStoredServices(projectId);
+      const entry = stored.find((s) => s.service === service);
+
+      if (!entry) {
+        return null;
+      }
+
+      const config = JSON.parse(this.decryptData(entry.config));
+      return {
+        service: entry.service,
+        apiToken: config.apiToken,
+      };
+    } catch (error) {
+      this.logger.error('Failed to get AI service config:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Test Replicate API connection
+   */
+  async testReplicateConnection(apiToken: string): Promise<TestAIResponse> {
+    try {
+      const startTime = Date.now();
+      const response = await fetch('https://api.replicate.com/v1/models', {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${apiToken}`,
+        },
+      });
+
+      const latencyMs = Date.now() - startTime;
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        return {
+          success: false,
+          message: 'Replicate API test failed',
+          error: (error as Record<string, string>).detail || `HTTP ${response.status}`,
+          latencyMs,
+        };
+      }
+
+      return {
+        success: true,
+        message: 'Replicate connection successful',
+        latencyMs,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Replicate connection failed',
+        error: (error as Error).message,
+      };
+    }
+  }
+
+  private async getStoredServices(projectId: string): Promise<StoredServiceConfig[]> {
+    const project = await this.getProject(projectId);
+    if (!project?.aiServices) {
+      return [];
+    }
+
+    try {
+      return JSON.parse(project.aiServices);
+    } catch {
+      return [];
+    }
   }
 
   // ===== Private methods =====

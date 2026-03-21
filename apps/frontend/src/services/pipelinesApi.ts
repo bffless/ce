@@ -42,7 +42,8 @@ export type HandlerType =
   | 'db_aggregate'
   | 'ai_handler'
   | 'file_upload_handler'
-  | 'file_serve_handler';
+  | 'file_serve_handler'
+  | 'replicate';
 
 export interface Pipeline {
   id: string;

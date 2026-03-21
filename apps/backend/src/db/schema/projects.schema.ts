@@ -48,6 +48,13 @@ export const projects = pgTable(
     aiProviders: text('ai_providers'),
 
     /**
+     * AI Service Configuration (external ML services like Replicate)
+     * Each service is stored with its encrypted config in a JSON array
+     * Format: [{ service: 'replicate', config: '<encrypted>', createdAt: '...' }, ...]
+     */
+    aiServices: text('ai_services'),
+
+    /**
      * Default proxy rule set for this project.
      * Used as fallback when an alias doesn't have its own proxyRuleSetId.
      * NULL means no default proxy rules.
