@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.155](https://github.com/bffless/ce/compare/v0.0.154...v0.0.155) (2026-03-21)
+
+
+### Bug Fixes
+
+* use heic-convert for HEIC decoding instead of relying on system libheif ([df2facb](https://github.com/bffless/ce/commit/df2facbc80f87db58af3f5f84761b70798e9cbaa))
+
 ## [0.0.154](https://github.com/bffless/ce/compare/v0.0.153...v0.0.154) (2026-03-21)
 
 
