@@ -237,7 +237,7 @@ export class ProxyRulesController {
 
     // Check if any step requires deployment context (file uploads need owner/repo for storage keys)
     const needsDeploymentContext = (pipelineConfig.steps || []).some(
-      (step) => step.type === 'file_upload_handler' || step.type === 'file_serve_handler',
+      (step) => step.handlerType === 'file_upload_handler' || step.handlerType === 'file_serve_handler',
     );
 
     // Use provided alias, or fallback to "production" if skills or deployment context are needed
