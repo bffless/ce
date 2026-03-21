@@ -126,16 +126,40 @@ export class FileUploadHandler implements StepHandler<FileUploadHandlerConfig> {
     }
 
     // Convert image format if configured (e.g., HEIC → PNG)
-    if (config.convertTo) {
-      const converted = await this.convertImage(fileBuffer, mimeType, config.convertTo, stepName);
-      if (converted) {
-        fileBuffer = converted.buffer;
-        mimeType = converted.mimeType;
-        // Update the extension on originalName
-        const ext = '.' + config.convertTo;
-        const baseName = path.basename(originalName, path.extname(originalName));
-        originalName = baseName + ext;
-        this.logger.debug(`Converted image to ${config.convertTo} (${fileBuffer.length} bytes)`);
+    if (config.convertTo && mimeType.startsWith('image/')) {
+      const targetMime = `image/${config.convertTo}`;
+      if (mimeType !== targetMime) {
+        try {
+          const sharp = (await import('sharp')).default;
+          let pipeline = sharp(fileBuffer);
+
+          switch (config.convertTo) {
+            case 'png':
+              pipeline = pipeline.png();
+              break;
+            case 'jpeg':
+              pipeline = pipeline.jpeg({ quality: 90 });
+              break;
+            case 'webp':
+              pipeline = pipeline.webp({ quality: 90 });
+              break;
+          }
+
+          fileBuffer = await pipeline.toBuffer();
+          mimeType = targetMime;
+          const ext = '.' + config.convertTo;
+          const baseName = path.basename(originalName, path.extname(originalName));
+          originalName = baseName + ext;
+          this.logger.debug(`Converted image to ${config.convertTo} (${fileBuffer.length} bytes)`);
+        } catch (err) {
+          return {
+            success: false,
+            error: {
+              code: 'IMAGE_CONVERSION_FAILED',
+              message: `Failed to convert image from ${mimeType} to ${config.convertTo}: ${(err as Error).message}`,
+            },
+          };
+        }
       }
     }
 
@@ -382,54 +406,6 @@ export class FileUploadHandler implements StepHandler<FileUploadHandlerConfig> {
       // ignore URL parse errors
     }
     return `download-${randomUUID().substring(0, 8)}`;
-  }
-
-  /**
-   * Convert an image buffer to a different format using sharp.
-   * Returns null if the file is not an image or is already in the target format.
-   */
-  private async convertImage(
-    buffer: Buffer,
-    currentMimeType: string,
-    targetFormat: 'png' | 'jpeg' | 'webp',
-    stepName: string,
-  ): Promise<{ buffer: Buffer; mimeType: string } | null> {
-    // Only convert image types
-    if (!currentMimeType.startsWith('image/')) {
-      this.logger.debug(`Skipping conversion: not an image (${currentMimeType})`);
-      return null;
-    }
-
-    // Check if already in target format
-    const targetMime = `image/${targetFormat}`;
-    if (currentMimeType === targetMime) {
-      this.logger.debug(`Skipping conversion: already ${targetFormat}`);
-      return null;
-    }
-
-    try {
-      const sharp = (await import('sharp')).default;
-      let pipeline = sharp(buffer);
-
-      switch (targetFormat) {
-        case 'png':
-          pipeline = pipeline.png();
-          break;
-        case 'jpeg':
-          pipeline = pipeline.jpeg({ quality: 90 });
-          break;
-        case 'webp':
-          pipeline = pipeline.webp({ quality: 90 });
-          break;
-      }
-
-      const converted = await pipeline.toBuffer();
-      return { buffer: converted, mimeType: targetMime };
-    } catch (err) {
-      this.logger.warn(`Image conversion failed for step '${stepName}': ${err}`);
-      // Return null to use original file
-      return null;
-    }
   }
 
   /**
