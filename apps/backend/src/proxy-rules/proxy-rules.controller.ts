@@ -235,8 +235,14 @@ export class ProxyRulesController {
       (step) => step.config?.skills && (step.config.skills as any).mode !== 'none',
     );
 
-    // Use provided alias, or fallback to "production" if skills are configured
-    const aliasToResolve = dto.deploymentAlias || (hasSkillsConfig ? 'production' : undefined);
+    // Check if any step requires deployment context (file uploads need owner/repo for storage keys)
+    const needsDeploymentContext = (pipelineConfig.steps || []).some(
+      (step) => step.type === 'file_upload_handler' || step.type === 'file_serve_handler',
+    );
+
+    // Use provided alias, or fallback to "production" if skills or deployment context are needed
+    const aliasToResolve =
+      dto.deploymentAlias || (hasSkillsConfig || needsDeploymentContext ? 'production' : undefined);
 
     if (aliasToResolve) {
       const project = await this.projectsService.getProjectById(ruleSet.projectId);

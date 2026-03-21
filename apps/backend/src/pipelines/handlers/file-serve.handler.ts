@@ -5,6 +5,9 @@ import { PipelineContext, StepResult } from '../execution/pipeline-context.inter
 import { PipelineStep } from '../types';
 import { ConfigurationError } from '../errors';
 import { IStorageAdapter, STORAGE_ADAPTER } from '../../storage/storage.interface';
+import { db } from '../../db/client';
+import { projects } from '../../db/schema';
+import { eq } from 'drizzle-orm';
 import * as path from 'path';
 
 // Common MIME type lookup
@@ -63,13 +66,22 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
 
     this.logger.debug(`Executing file serve handler for step '${stepName}'`);
 
-    const owner = context.deployment?.owner;
-    const repo = context.deployment?.repo;
+    let owner = context.deployment?.owner;
+    let repo = context.deployment?.repo;
     if (!owner || !repo) {
-      throw new ConfigurationError(
-        'Deployment context (owner/repo) is required for file serving',
-        stepName,
-      );
+      const [project] = await db
+        .select({ owner: projects.owner, name: projects.name })
+        .from(projects)
+        .where(eq(projects.id, context.projectId))
+        .limit(1);
+      if (!project) {
+        throw new ConfigurationError(
+          'Could not resolve project for file serving storage path',
+          stepName,
+        );
+      }
+      owner = project.owner;
+      repo = project.name;
     }
 
     // Extract the file path from the request URL

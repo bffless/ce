@@ -9,10 +9,11 @@ import { PipelineSchemasService } from '../pipeline-schemas.service';
 import { ConfigurationError, SchemaNotFoundError } from '../errors';
 import { IStorageAdapter, STORAGE_ADAPTER } from '../../storage/storage.interface';
 import { db } from '../../db/client';
-import { assets } from '../../db/schema';
+import { assets, projects } from '../../db/schema';
 import { AssetType } from '../../types/asset-type.enum';
 import { randomUUID } from 'crypto';
 import { createHash } from 'crypto';
+import { eq } from 'drizzle-orm';
 
 /**
  * File Upload Handler
@@ -123,14 +124,23 @@ export class FileUploadHandler implements StepHandler<FileUploadHandlerConfig> {
       };
     }
 
-    // Build storage key
-    const owner = context.deployment?.owner;
-    const repo = context.deployment?.repo;
+    // Build storage key — get owner/repo from deployment context, or fall back to project lookup
+    let owner = context.deployment?.owner;
+    let repo = context.deployment?.repo;
     if (!owner || !repo) {
-      throw new ConfigurationError(
-        'Deployment context (owner/repo) is required for file uploads',
-        stepName,
-      );
+      const [project] = await db
+        .select({ owner: projects.owner, name: projects.name })
+        .from(projects)
+        .where(eq(projects.id, context.projectId))
+        .limit(1);
+      if (!project) {
+        throw new ConfigurationError(
+          'Could not resolve project for file upload storage path',
+          stepName,
+        );
+      }
+      owner = project.owner;
+      repo = project.name;
     }
 
     const uuid = randomUUID();

@@ -308,10 +308,10 @@ export function SchemaEditorPage() {
                         <Label className="text-xs text-muted-foreground">Default</Label>
                         {field.type === 'boolean' ? (
                           <Select
-                            value={field.default === undefined ? '' : String(field.default)}
+                            value={field.default === undefined ? 'none' : String(field.default)}
                             onValueChange={(value) =>
                               handleFieldChange(index, {
-                                default: value === '' ? undefined : value === 'true',
+                                default: value === 'none' ? undefined : value === 'true',
                               })
                             }
                           >
@@ -319,7 +319,7 @@ export function SchemaEditorPage() {
                               <SelectValue placeholder="No default" />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="">No default</SelectItem>
+                              <SelectItem value="none">No default</SelectItem>
                               <SelectItem value="true">True</SelectItem>
                               <SelectItem value="false">False</SelectItem>
                             </SelectContent>
