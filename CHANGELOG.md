@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.151](https://github.com/bffless/ce/compare/v0.0.150...v0.0.151) (2026-03-21)
+
+
+### Bug Fixes
+
+* admin pipeline bugs ([97c97d4](https://github.com/bffless/ce/commit/97c97d4d60f63132e1c82930df4d8bcec17e3e0d))
+
 ## [0.0.150](https://github.com/bffless/ce/compare/v0.0.149...v0.0.150) (2026-03-21)
 
 
