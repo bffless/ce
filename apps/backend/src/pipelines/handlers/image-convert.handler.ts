@@ -109,24 +109,46 @@ export class ImageConvertHandler implements StepHandler<ImageConvertHandlerConfi
       };
     }
 
-    // Convert using sharp
+    // Convert image
     try {
-      const sharp = (await import('sharp')).default;
-      let pipeline = sharp(fileBuffer);
+      let convertedBuffer: Buffer;
+      const isHeic = ext === 'heic' || ext === 'heif';
 
-      switch (outputFormat) {
-        case 'png':
-          pipeline = pipeline.png();
-          break;
-        case 'jpeg':
-          pipeline = pipeline.jpeg({ quality });
-          break;
-        case 'webp':
-          pipeline = pipeline.webp({ quality });
-          break;
+      if (isHeic) {
+        // Use heic-convert (pure JS) for HEIC decoding, then sharp for output
+        const heicConvert = (await import('heic-convert')).default;
+        const heicFormat = outputFormat === 'jpeg' ? 'JPEG' : 'PNG';
+        const decoded = await heicConvert({
+          buffer: fileBuffer,
+          format: heicFormat as 'JPEG' | 'PNG',
+          quality: outputFormat === 'jpeg' ? quality / 100 : 1,
+        });
+        convertedBuffer = Buffer.from(decoded);
+
+        // If target is webp, run decoded output through sharp
+        if (outputFormat === 'webp') {
+          const sharp = (await import('sharp')).default;
+          convertedBuffer = await sharp(convertedBuffer).webp({ quality }).toBuffer();
+        }
+      } else {
+        // Non-HEIC: use sharp directly
+        const sharp = (await import('sharp')).default;
+        let pipeline = sharp(fileBuffer);
+
+        switch (outputFormat) {
+          case 'png':
+            pipeline = pipeline.png();
+            break;
+          case 'jpeg':
+            pipeline = pipeline.jpeg({ quality });
+            break;
+          case 'webp':
+            pipeline = pipeline.webp({ quality });
+            break;
+        }
+
+        convertedBuffer = await pipeline.toBuffer();
       }
-
-      const convertedBuffer = await pipeline.toBuffer();
 
       // Build new storage path with updated extension
       const basePath = inputPath.replace(/\.[^.]+$/, '');

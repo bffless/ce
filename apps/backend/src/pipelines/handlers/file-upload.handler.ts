@@ -130,22 +130,44 @@ export class FileUploadHandler implements StepHandler<FileUploadHandlerConfig> {
       const targetMime = `image/${config.convertTo}`;
       if (mimeType !== targetMime) {
         try {
-          const sharp = (await import('sharp')).default;
-          let pipeline = sharp(fileBuffer);
+          const isHeic = mimeType === 'image/heic' || mimeType === 'image/heif';
 
-          switch (config.convertTo) {
-            case 'png':
-              pipeline = pipeline.png();
-              break;
-            case 'jpeg':
-              pipeline = pipeline.jpeg({ quality: 90 });
-              break;
-            case 'webp':
-              pipeline = pipeline.webp({ quality: 90 });
-              break;
+          if (isHeic) {
+            // Use heic-convert (pure JS) to decode HEIC, then sharp for output encoding
+            const heicConvert = (await import('heic-convert')).default;
+            const outputFormat = config.convertTo === 'jpeg' ? 'JPEG' : 'PNG';
+            const converted = await heicConvert({
+              buffer: fileBuffer,
+              format: outputFormat as 'JPEG' | 'PNG',
+              quality: config.convertTo === 'jpeg' ? 0.9 : 1,
+            });
+            fileBuffer = Buffer.from(converted);
+
+            // If target is webp, run through sharp for the final encode
+            if (config.convertTo === 'webp') {
+              const sharp = (await import('sharp')).default;
+              fileBuffer = await sharp(fileBuffer).webp({ quality: 90 }).toBuffer();
+            }
+          } else {
+            // Non-HEIC images: use sharp directly
+            const sharp = (await import('sharp')).default;
+            let pipeline = sharp(fileBuffer);
+
+            switch (config.convertTo) {
+              case 'png':
+                pipeline = pipeline.png();
+                break;
+              case 'jpeg':
+                pipeline = pipeline.jpeg({ quality: 90 });
+                break;
+              case 'webp':
+                pipeline = pipeline.webp({ quality: 90 });
+                break;
+            }
+
+            fileBuffer = await pipeline.toBuffer();
           }
 
-          fileBuffer = await pipeline.toBuffer();
           mimeType = targetMime;
           const ext = '.' + config.convertTo;
           const baseName = path.basename(originalName, path.extname(originalName));
