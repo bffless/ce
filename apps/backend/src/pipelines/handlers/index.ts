@@ -11,3 +11,5 @@ export * from './ai.handler';
 export * from './file-upload.handler';
 export * from './file-serve.handler';
 export * from './replicate.handler';
+export * from './embed-store.handler';
+export * from './vector-search.handler';

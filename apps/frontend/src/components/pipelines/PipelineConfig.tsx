@@ -66,6 +66,8 @@ const HANDLER_TYPES: HandlerType[] = [
   'file_upload_handler',
   'file_serve_handler',
   'replicate',
+  'embed_store',
+  'vector_search',
 ];
 
 function generateId(): string {

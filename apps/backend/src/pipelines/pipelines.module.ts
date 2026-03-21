@@ -30,7 +30,11 @@ import {
   FileUploadHandler,
   FileServeHandler,
   ReplicateHandler,
+  EmbedStoreHandler,
+  VectorSearchHandler,
 } from './handlers';
+// Embeddings service
+import { PipelineEmbeddingsService } from './pipeline-embeddings.service';
 // Services
 import { FunctionRunnerService } from './function-runner.service';
 import { SkillsService } from './skills.service';
@@ -66,6 +70,8 @@ import {
     StepHandlerRegistry,
     ValidatorRegistry,
     ExpressionEvaluator,
+    // Embeddings service (pgvector operations)
+    PipelineEmbeddingsService,
     // Function runner service
     FunctionRunnerService,
     // Skills service for AI agent skills
@@ -84,6 +90,8 @@ import {
     FileUploadHandler,
     FileServeHandler,
     ReplicateHandler,
+    EmbedStoreHandler,
+    VectorSearchHandler,
     // Validators (auto-register on construction)
     AuthRequiredValidator,
     RateLimitValidator,

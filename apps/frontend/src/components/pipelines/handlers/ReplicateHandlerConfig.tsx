@@ -63,10 +63,10 @@ const MODEL_PRESETS: ModelPreset[] = [
     label: 'Text Embeddings (E5)',
     description: 'Multilingual text embeddings for semantic search',
     inputs: [
-      { name: 'text', type: 'text', required: true, description: 'Text to generate embeddings for', defaultExpression: 'request.body.text' },
+      { name: 'texts', type: 'text', required: true, description: 'JSON array of texts to embed, e.g. ["hello world"]', defaultExpression: 'request.body.texts' },
     ],
-    outputDescription: 'Array of numbers (embedding vector)',
-    outputExample: '[0.013, -0.028, 0.051, ...]',
+    outputDescription: 'Array of embedding vectors (one per input text)',
+    outputExample: '[[0.013, -0.028, 0.051, ...]]',
   },
   {
     id: 'black-forest-labs/flux-schnell',

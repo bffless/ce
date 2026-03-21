@@ -43,7 +43,9 @@ export type HandlerType =
   | 'ai_handler'
   | 'file_upload_handler'
   | 'file_serve_handler'
-  | 'replicate';
+  | 'replicate'
+  | 'embed_store'
+  | 'vector_search';
 
 export interface Pipeline {
   id: string;

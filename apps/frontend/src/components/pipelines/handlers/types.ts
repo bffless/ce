@@ -238,6 +238,36 @@ export interface ReplicateHandlerConfig extends BaseHandlerConfig {
   outputField?: string;
 }
 
+export interface EmbedStoreHandlerConfig extends BaseHandlerConfig {
+  /** Schema ID the pipeline_data record belongs to */
+  schemaId: string;
+  /** Expression resolving to the pipeline_data record ID */
+  recordId: string;
+  /** Field name for the embedding (used for HNSW index grouping) */
+  fieldName: string;
+  /** Expression resolving to number[] (single embedding). For 1:1 mode. */
+  embedding?: string;
+  /** Expression resolving to array of { embedding, text?, metadata? }. For 1:N chunked mode. */
+  chunks?: string;
+  /** Optional metadata expression (resolves to object) */
+  metadata?: string;
+}
+
+export interface VectorSearchHandlerConfig extends BaseHandlerConfig {
+  /** Schema ID to search embeddings within */
+  schemaId: string;
+  /** Field name to search (must match embed_store fieldName) */
+  fieldName: string;
+  /** Expression resolving to number[] (the query vector) */
+  queryVector: string;
+  /** Max results to return. Default: 10 */
+  limit?: number;
+  /** Minimum cosine similarity threshold (0-1) */
+  threshold?: number;
+  /** Data fields to include in results (null = all) */
+  select?: string[];
+}
+
 export type HandlerConfig =
   | FormHandlerConfig
   | DataCreateHandlerConfig
@@ -252,4 +282,6 @@ export type HandlerConfig =
   | AIHandlerConfig
   | FileUploadHandlerConfig
   | FileServeHandlerConfig
-  | ReplicateHandlerConfig;
+  | ReplicateHandlerConfig
+  | EmbedStoreHandlerConfig
+  | VectorSearchHandlerConfig;
