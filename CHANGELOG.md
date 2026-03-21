@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.150](https://github.com/bffless/ce/compare/v0.0.149...v0.0.150) (2026-03-21)
+
+
+### Features
+
+* add pgvector embedding storage and vector search pipeline handlers ([7c6ce6b](https://github.com/bffless/ce/commit/7c6ce6bba14f50d0e27096d27040eca7b4c2f2a1))
+* pgvector embedding storage & vector search handlers ([1467b69](https://github.com/bffless/ce/commit/1467b69ba12de06e9a0d0cfda7e3bb4a09c9fa1e))
+
 ## [0.0.149](https://github.com/bffless/ce/compare/v0.0.148...v0.0.149) (2026-03-21)
 
 
