@@ -131,40 +131,47 @@ export class FileUploadHandler implements StepHandler<FileUploadHandlerConfig> {
       if (mimeType !== targetMime) {
         try {
           const isHeic = mimeType === 'image/heic' || mimeType === 'image/heif';
+          const sharp = (await import('sharp')).default;
 
+          // Try sharp first (native libvips — fast), fall back to heic-convert (pure JS) for HEIC
+          let converted = false;
           if (isHeic) {
-            // Use heic-convert (pure JS) to decode HEIC, then sharp for output encoding
-            const heicConvert = (await import('heic-convert')).default;
-            const outputFormat = config.convertTo === 'jpeg' ? 'JPEG' : 'PNG';
-            const converted = await heicConvert({
-              buffer: fileBuffer,
-              format: outputFormat as 'JPEG' | 'PNG',
-              quality: config.convertTo === 'jpeg' ? 0.9 : 1,
-            });
-            fileBuffer = Buffer.from(converted);
+            try {
+              let pipeline = sharp(fileBuffer);
+              switch (config.convertTo) {
+                case 'png': pipeline = pipeline.png(); break;
+                case 'jpeg': pipeline = pipeline.jpeg({ quality: 90 }); break;
+                case 'webp': pipeline = pipeline.webp({ quality: 90 }); break;
+              }
+              fileBuffer = await pipeline.toBuffer();
+              converted = true;
+            } catch {
+              // sharp lacks HEIC support on this platform — fall back to heic-convert
+              this.logger.debug('sharp HEIC support unavailable, falling back to heic-convert');
+              const heicConvert = (await import('heic-convert')).default;
+              const intermediateFormat = config.convertTo === 'jpeg' ? 'JPEG' : 'PNG';
+              const intermediate = await heicConvert({
+                buffer: fileBuffer,
+                format: intermediateFormat as 'JPEG' | 'PNG',
+                quality: config.convertTo === 'jpeg' ? 0.9 : 1,
+              });
+              fileBuffer = Buffer.from(intermediate);
 
-            // If target is webp, run through sharp for the final encode
-            if (config.convertTo === 'webp') {
-              const sharp = (await import('sharp')).default;
-              fileBuffer = await sharp(fileBuffer).webp({ quality: 90 }).toBuffer();
+              // If target is webp, re-encode with sharp
+              if (config.convertTo === 'webp') {
+                fileBuffer = await sharp(fileBuffer).webp({ quality: 90 }).toBuffer();
+              }
+              converted = true;
             }
-          } else {
-            // Non-HEIC images: use sharp directly
-            const sharp = (await import('sharp')).default;
+          }
+
+          if (!converted) {
             let pipeline = sharp(fileBuffer);
-
             switch (config.convertTo) {
-              case 'png':
-                pipeline = pipeline.png();
-                break;
-              case 'jpeg':
-                pipeline = pipeline.jpeg({ quality: 90 });
-                break;
-              case 'webp':
-                pipeline = pipeline.webp({ quality: 90 });
-                break;
+              case 'png': pipeline = pipeline.png(); break;
+              case 'jpeg': pipeline = pipeline.jpeg({ quality: 90 }); break;
+              case 'webp': pipeline = pipeline.webp({ quality: 90 }); break;
             }
-
             fileBuffer = await pipeline.toBuffer();
           }
 
