@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.162](https://github.com/bffless/ce/compare/v0.0.161...v0.0.162) (2026-03-22)
+
+
+### Bug Fixes
+
+* file serve handler ([862d792](https://github.com/bffless/ce/commit/862d7921477f22f2d4a791c99dc6a1283c06ea63))
+
 ## [0.0.161](https://github.com/bffless/ce/compare/v0.0.160...v0.0.161) (2026-03-22)
 
 
