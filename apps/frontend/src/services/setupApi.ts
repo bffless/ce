@@ -496,7 +496,8 @@ export const setupApi = api.injectEndpoints({
     }),
 
     // Check if email exists in auth system (for existing user adoption)
-    checkEmail: builder.mutation<CheckEmailResponse, CheckEmailRequest>({
+    // Named differently from authApi's checkEmail to avoid RTK Query endpoint name collision
+    checkSetupEmail: builder.mutation<CheckEmailResponse, CheckEmailRequest>({
       query: (body) => ({
         url: '/api/setup/check-email',
         method: 'POST',
@@ -705,7 +706,7 @@ export const {
   useGetConstraintsQuery,
   useGetAvailableOptionsQuery,
   useInitializeMutation,
-  useCheckEmailMutation,
+  useCheckSetupEmailMutation,
   useAdoptExistingUserMutation,
   useAdoptSessionUserMutation,
   useConfigureStorageMutation,

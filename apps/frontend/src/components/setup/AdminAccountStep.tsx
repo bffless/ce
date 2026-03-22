@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useSearchParams } from 'react-router-dom';
 import {
   useInitializeMutation,
-  useCheckEmailMutation,
+  useCheckSetupEmailMutation,
   useAdoptExistingUserMutation,
   useAdoptSessionUserMutation,
   useGetSetupStatusQuery,
@@ -44,7 +44,7 @@ export function AdminAccountStep() {
   const [emailMessage, setEmailMessage] = useState<string>('');
 
   const [initialize, { isLoading: isInitializing }] = useInitializeMutation();
-  const [checkEmail] = useCheckEmailMutation();
+  const [checkEmail] = useCheckSetupEmailMutation();
   const [adoptExistingUser, { isLoading: isAdopting }] = useAdoptExistingUserMutation();
   const [adoptSessionUser, { isLoading: isAdoptingSession }] = useAdoptSessionUserMutation();
 
