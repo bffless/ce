@@ -113,6 +113,7 @@ import {
     PipelineDataService,
     SkillsService,
     AIToolPluginService,
+    UploadSchemaGeneratorService,
   ],
 })
 export class PipelinesModule {}

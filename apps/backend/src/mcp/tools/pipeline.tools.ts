@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { Request } from 'express';
 import { PipelineSchemasService } from '../../pipelines/pipeline-schemas.service';
 import { PipelineDataService } from '../../pipelines/pipeline-data.service';
+import { UploadSchemaGeneratorService } from '../../pipelines/upload-schema-generator.service';
 import { SchemaFieldType } from '../../db/schema';
 import { AuthService } from '../../auth/auth.service';
 import { getUserContext } from '../helpers/user-context.helper';
@@ -13,6 +14,7 @@ export class PipelineTools {
   constructor(
     private readonly schemasService: PipelineSchemasService,
     private readonly dataService: PipelineDataService,
+    private readonly uploadSchemaGenerator: UploadSchemaGeneratorService,
     private readonly authService: AuthService,
   ) {}
 
@@ -111,6 +113,65 @@ export class PipelineTools {
     const user = await getUserContext(request, this.authService);
     await this.schemasService.delete(id, user.id, user.role);
     return JSON.stringify({ success: true, id });
+  }
+
+  @Tool({
+    name: 'generate_upload_schema',
+    description:
+      'Generate an upload schema with POST (upload) and GET (serve) pipelines. This is the recommended way to set up file uploads — it creates the schema with proper upload metadata fields (filename, storage_path, url, etc.), a POST pipeline with file_upload_handler, and a GET pipeline with file_serve_handler. Files uploaded through this schema appear in the Uploads tab in the admin UI. Use this instead of manually creating schemas + proxy rules for file uploads.',
+    parameters: z.object({
+      projectId: z.string().describe('Project ID'),
+      name: z
+        .string()
+        .describe('Schema name (lowercase letters, numbers, underscores, e.g. "product_images")'),
+      subDir: z
+        .string()
+        .describe(
+          'Storage sub-directory for files (e.g. "images", "documents"). Endpoint will be POST /api/uploads/{subDir}',
+        ),
+      dateBucket: z
+        .boolean()
+        .optional()
+        .describe('Organize files in YYYY-MM-DD date folders (default false)'),
+      maxFileSize: z
+        .number()
+        .optional()
+        .describe('Maximum file size in bytes (default 10485760 = 10MB)'),
+      allowedMimeTypes: z
+        .array(z.string())
+        .optional()
+        .describe('Allowed MIME types (e.g. ["image/*", "application/pdf"]). Default: all types'),
+      accessControl: z
+        .enum(['public', 'authenticated', 'role'])
+        .optional()
+        .describe('Access control for serving files (default "public")'),
+      ruleSetId: z
+        .string()
+        .optional()
+        .describe('Add pipelines to existing rule set (creates new one if omitted)'),
+    }),
+  })
+  async generateUploadSchema(
+    args: {
+      projectId: string;
+      name: string;
+      subDir: string;
+      dateBucket?: boolean;
+      maxFileSize?: number;
+      allowedMimeTypes?: string[];
+      accessControl?: 'public' | 'authenticated' | 'role';
+      ruleSetId?: string;
+    },
+    _context: Context,
+    request: Request,
+  ) {
+    const user = await getUserContext(request, this.authService);
+    const result = await this.uploadSchemaGenerator.generateUploadSchema(
+      args,
+      user.id,
+      user.role,
+    );
+    return JSON.stringify(result);
   }
 
   // =====================

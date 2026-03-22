@@ -32,7 +32,12 @@ export class SettingsTools {
       enabled: z.boolean().optional().describe('Enable/disable primary content'),
       projectId: z.string().optional().describe('Project ID to serve'),
       alias: z.string().optional().describe('Deployment alias to serve'),
-      path: z.string().optional().describe('Subdirectory path to serve'),
+      path: z
+        .string()
+        .optional()
+        .describe(
+          'Subdirectory within the deployment to serve as the root (e.g. "apps/home/dist" for monorepo deployments where files are nested under a build path)',
+        ),
       isSpa: z.boolean().optional().describe('Enable SPA fallback (serve index.html for all paths)'),
       wwwBehavior: z
         .enum(['redirect-to-www', 'redirect-to-root', 'serve-both'])

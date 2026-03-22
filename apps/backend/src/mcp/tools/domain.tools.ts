@@ -73,7 +73,12 @@ export class DomainTools {
         .string()
         .optional()
         .describe('Deployment alias to serve (e.g. "production")'),
-      path: z.string().optional().describe('Subdirectory path to serve'),
+      path: z
+        .string()
+        .optional()
+        .describe(
+          'Subdirectory within the deployment to serve as the root (e.g. "apps/myapp/dist" for monorepo deployments where files are nested under a build path)',
+        ),
       redirectTarget: z
         .string()
         .optional()
@@ -104,6 +109,53 @@ export class DomainTools {
       },
       user.id,
     );
+    return JSON.stringify(result);
+  }
+
+  @Tool({
+    name: 'update_domain',
+    description:
+      'Update a domain mapping. Can change alias, path, visibility, SPA mode, www behavior, etc. Requires admin role.',
+    parameters: z.object({
+      id: z.string().describe('Domain mapping ID (UUID) to update'),
+      alias: z.string().optional().describe('Deployment alias to serve (e.g. "production")'),
+      path: z
+        .string()
+        .optional()
+        .describe(
+          'Subdirectory within the deployment to serve as the root (e.g. "apps/myapp/dist")',
+        ),
+      isActive: z.boolean().optional().describe('Active status'),
+      isPublic: z
+        .boolean()
+        .nullable()
+        .optional()
+        .describe('Visibility: true=public, false=private, null=inherit from alias/project'),
+      isSpa: z.boolean().optional().describe('Enable SPA fallback (serve index.html for all paths)'),
+      wwwBehavior: z
+        .enum(['redirect-to-www', 'redirect-to-root', 'serve-both'])
+        .optional()
+        .describe('How to handle www/apex redirects'),
+      redirectTarget: z.string().optional().describe('Target domain for redirect type'),
+    }),
+  })
+  async updateDomain(
+    args: {
+      id: string;
+      alias?: string;
+      path?: string;
+      isActive?: boolean;
+      isPublic?: boolean | null;
+      isSpa?: boolean;
+      wwwBehavior?: 'redirect-to-www' | 'redirect-to-root' | 'serve-both';
+      redirectTarget?: string;
+    },
+    _context: Context,
+    request: Request,
+  ) {
+    const user = await getUserContext(request, this.authService);
+    const { id, ...dto } = args;
+    const result = await this.domainsService.update(id, dto, user.id);
     return JSON.stringify(result);
   }
 

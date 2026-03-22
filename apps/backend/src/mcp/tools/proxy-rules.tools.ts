@@ -11,29 +11,48 @@ const pipelineStepSchema = z.object({
   id: z.string().describe('Unique step ID'),
   name: z.string().describe('Step name'),
   handlerType: z
-    .string()
+    .enum([
+      'form_handler',
+      'response_handler',
+      'data_create',
+      'data_query',
+      'data_update',
+      'data_delete',
+      'email_handler',
+      'db_aggregate',
+      'function_handler',
+      'ai_handler',
+      'file_upload_handler',
+      'file_serve_handler',
+      'replicate',
+      'embed_store',
+      'vector_search',
+      'image_convert_handler',
+    ])
     .describe(
-      'Handler type: form, response, data_create, data_query, data_update, data_delete, email, db_aggregate, function, ai, file_upload, file_serve, replicate, embed_store, vector_search, image_convert',
+      'IMPORTANT: Use exact handler type strings. Some have _handler suffix, some do not. The enum values are the only valid options.',
     ),
   config: z
     .record(z.string(), z.unknown())
     .describe(
-      `Handler-specific configuration object. Key configs by handler type:
+      `Handler-specific configuration. All input/expression values MUST be strings (even numbers like "1024").
 
-- form: { fields: { fieldName: { type: "string"|"number"|"email"|"boolean", required?: bool } } }
-- response: { body: "Handlebars template string producing valid JSON. Use \\"key\\": \\"{{expr}}\\" for strings, \\"key\\": {{expr}} for numbers, \\"key\\": {{{expr}}} for raw JSON objects. Keys must always be quoted.", status?: number, headers?: {}, contentType?: string }
+- form_handler: { fields: { fieldName: { type: "string"|"number"|"email"|"boolean", required?: bool } } }
+- response_handler: { body: "Handlebars template string producing valid JSON. Use \\"key\\": \\"{{expr}}\\" for strings, \\"key\\": {{expr}} for numbers, \\"key\\": {{{expr}}} for raw JSON objects. Keys must always be quoted.", status?: number, headers?: {}, contentType?: string }
 - data_create: { schemaId: "uuid", fields: { schemaField: "expression" } }
 - data_query: { schemaId: "uuid", filters?: {}, pageSize?: number }
 - data_update: { schemaId: "uuid", recordId: "expression", fields: { schemaField: "expression" } }
 - data_delete: { schemaId: "uuid", recordId: "expression" }
-- replicate: { model: "owner/name" (JUST the model, e.g. "stability-ai/sdxl"), version?: "64-char hash" (SEPARATE from model — pin for deterministic results), input: { inputName: "expression" }, outputField?: "key" }
-- file_upload: { schemaId: "uuid", subDir: "folder", sourceUrl?: "expression" (for downloading from URL e.g. "steps.replicate.output[0]"), extraFields?: { field: "expression" }, filename?: "expression", convertTo?: "png"|"jpeg"|"webp" }
-- ai: { provider: "anthropic"|"openai", model: "model-id", systemPrompt?: "text", userPrompt: "expression", temperature?: number }
-- email: { to: "expression", subject: "expression", body: "expression" }
+- replicate: { model: "owner/name" (JUST the model, e.g. "stability-ai/sdxl"), version?: "64-char hash" (SEPARATE field), input: { inputName: "expression or literal" } (strings for expressions e.g. "request.body.prompt", numbers for literals e.g. 1024), outputField?: "key" }
+- file_upload_handler: { schemaId: "uuid", subDir: "folder", sourceUrl?: "expression" (e.g. "steps.generate.output[0]"), extraFields?: { field: "expression" }, filename?: "expression", convertTo?: "png"|"jpeg"|"webp" }. NOTE: file_upload_handler automatically creates a record in the schema with built-in fields (filename, storage_path, mime_type, size, url). Use extraFields to add custom data (e.g. "prompt": "request.body.prompt"). Do NOT add a separate data_create step for the same schema — it would create a duplicate record. IMPORTANT: Use the generate_upload_schema MCP tool to create the schema first — this creates a schema with the correct upload metadata fields so files appear in the Uploads tab in the admin UI.
+- ai_handler: { provider: "anthropic"|"openai", model: "model-id", systemPrompt?: "text", userPrompt: "expression", temperature?: number }
+- email_handler: { to: "expression", subject: "expression", body: "expression" }
 - db_aggregate: { schemaId: "uuid", operation: "sum"|"count"|"avg"|"min"|"max", field?: "name", filters?: {} }
+- function_handler: { code: "function handler({ input, user, request, steps }) { return {}; }" }
+- file_serve_handler: { path: "expression" }
 
 All configs support: condition?: "expression" (skip step if falsy), timeout?: number (ms).
-Expressions reference prior steps: "steps.stepName.fieldName" or request data: "request.body.field".`,
+Expressions reference prior steps by step NAME (not id): "steps.stepName.field" or request data: "request.body.field". Use bracket notation for names with spaces: "steps['Step Name'].field". Use simple names without spaces to keep expressions clean.`,
     ),
   isEnabled: z.boolean().optional().describe('Whether step is enabled (default true)'),
 });
