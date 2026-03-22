@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.165](https://github.com/bffless/ce/compare/v0.0.164...v0.0.165) (2026-03-22)
+
+
+### Bug Fixes
+
+* support object body format in HttpRequestConfig UI ([58f59c9](https://github.com/bffless/ce/commit/58f59c9df78ae7c9a3a0e03880c083a680742f9e))
+
 ## [0.0.164](https://github.com/bffless/ce/compare/v0.0.163...v0.0.164) (2026-03-22)
 
 
