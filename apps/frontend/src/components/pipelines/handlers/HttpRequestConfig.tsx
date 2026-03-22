@@ -31,7 +31,13 @@ export function HttpRequestConfig({ config, onChange, previousSteps = [] }: Http
   const [url, setUrl] = useState(config.url || '');
   const [method, setMethod] = useState<HttpRequestHandlerConfig['method']>(config.method || 'GET');
   const [forwardAuth, setForwardAuth] = useState(config.forwardAuth ?? false);
+  const [bodyMode, setBodyMode] = useState<'expression' | 'fields'>(
+    typeof config.body === 'object' && config.body !== null ? 'fields' : 'expression',
+  );
   const [body, setBody] = useState(typeof config.body === 'string' ? config.body : '');
+  const [bodyFields, setBodyFields] = useState<[string, string][]>(
+    typeof config.body === 'object' && config.body !== null ? Object.entries(config.body) : [],
+  );
   const [headers, setHeaders] = useState<[string, string][]>(
     config.headers ? Object.entries(config.headers) : [],
   );
@@ -45,15 +51,25 @@ export function HttpRequestConfig({ config, onChange, previousSteps = [] }: Http
 
     const fwdHeaders = forwardHeaders.length > 0 ? forwardHeaders : undefined;
 
+    let resolvedBody: string | Record<string, string> | undefined;
+    if (method !== 'GET') {
+      if (bodyMode === 'fields') {
+        const filtered = bodyFields.filter(([k]) => k.trim());
+        resolvedBody = filtered.length > 0 ? Object.fromEntries(filtered) : undefined;
+      } else {
+        resolvedBody = body.trim() || undefined;
+      }
+    }
+
     onChange({
       url,
       method,
       forwardAuth: forwardAuth || undefined,
-      body: body.trim() && method !== 'GET' ? body.trim() : undefined,
+      body: resolvedBody,
       headers: headerObj,
       forwardHeaders: fwdHeaders,
     });
-  }, [url, method, forwardAuth, body, headers, forwardHeaders, onChange]);
+  }, [url, method, forwardAuth, body, bodyMode, bodyFields, headers, forwardHeaders, onChange]);
 
   const isBodyMethod = method !== 'GET';
 
@@ -112,25 +128,84 @@ export function HttpRequestConfig({ config, onChange, previousSteps = [] }: Http
         {/* Body (for non-GET methods) */}
         {isBodyMethod && (
           <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Label htmlFor="http-body">Request Body</Label>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button type="button" className="cursor-help">
-                    <HelpCircle className="h-4 w-4 text-muted-foreground" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Expression that resolves to the body payload, e.g., <code>steps.validate</code></p>
-                </TooltipContent>
-              </Tooltip>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Label>Request Body</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button type="button" className="cursor-help">
+                      <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Expression mode: reference a step output (e.g., <code>steps.validate</code>).</p>
+                    <p>Fields mode: define key-value pairs with expression values.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <Select value={bodyMode} onValueChange={(v) => setBodyMode(v as 'expression' | 'fields')}>
+                <SelectTrigger className="w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="expression">Expression</SelectItem>
+                  <SelectItem value="fields">Fields</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <ExpressionInput
-              value={body}
-              onChange={setBody}
-              placeholder='steps.validate or { "amount": 1 }'
-              previousSteps={previousSteps}
-            />
+            {bodyMode === 'expression' ? (
+              <ExpressionInput
+                value={body}
+                onChange={setBody}
+                placeholder="steps.validate"
+                previousSteps={previousSteps}
+              />
+            ) : (
+              <div className="space-y-2">
+                {bodyFields.map(([key, value], i) => (
+                  <div key={i} className="flex gap-2 items-center">
+                    <Input
+                      value={key}
+                      onChange={(e) => {
+                        const updated = [...bodyFields];
+                        updated[i] = [e.target.value, value];
+                        setBodyFields(updated);
+                      }}
+                      placeholder="field name"
+                      className="w-1/3"
+                    />
+                    <ExpressionInput
+                      value={value}
+                      onChange={(v) => {
+                        const updated = [...bodyFields];
+                        updated[i] = [key, v];
+                        setBodyFields(updated);
+                      }}
+                      placeholder="value or expression"
+                      previousSteps={previousSteps}
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setBodyFields(bodyFields.filter((_, j) => j !== i))}
+                    >
+                      <Trash2 className="h-4 w-4 text-muted-foreground" />
+                    </Button>
+                  </div>
+                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setBodyFields([...bodyFields, ['', '']])}
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  Add Field
+                </Button>
+              </div>
+            )}
           </div>
         )}
 
