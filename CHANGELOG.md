@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.158](https://github.com/bffless/ce/compare/v0.0.157...v0.0.158) (2026-03-22)
+
+
+### Bug Fixes
+
+* rename setup checkEmail endpoint to avoid RTK Query collision with authApi ([a6b4d55](https://github.com/bffless/ce/commit/a6b4d559d2be1494425e2042e124518db6a3de55))
+
 ## [0.0.157](https://github.com/bffless/ce/compare/v0.0.156...v0.0.157) (2026-03-22)
 
 
