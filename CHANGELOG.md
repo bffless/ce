@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.156](https://github.com/bffless/ce/compare/v0.0.155...v0.0.156) (2026-03-22)
+
+
+### Bug Fixes
+
+* use native sharp for HEIC conversion with heic-convert fallback ([e8da604](https://github.com/bffless/ce/commit/e8da6040c1f8bb8aa79f2632e4e8618b60a7df81))
+
 ## [0.0.155](https://github.com/bffless/ce/compare/v0.0.154...v0.0.155) (2026-03-21)
 
 
