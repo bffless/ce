@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.160](https://github.com/bffless/ce/compare/v0.0.159...v0.0.160) (2026-03-22)
+
+
+### Features
+
+* add proxyRuleSetId to update_alias and improve file upload docs ([0a0067c](https://github.com/bffless/ce/commit/0a0067cc196d0f0ef73fd9951fdaf8d273777664))
+* improve MCP tools for pipelines, domains, and proxy rules ([2151da1](https://github.com/bffless/ce/commit/2151da1841c70e6b20e1a606e05802971e00716f))
+
+
+### Bug Fixes
+
+* add /mcp location to nginx configs for MCP endpoint proxying ([ba69496](https://github.com/bffless/ce/commit/ba69496f7a134364635fc19d99f5821a1d50b1ea))
+* cache rules ([38312ee](https://github.com/bffless/ce/commit/38312eee91052f9b07a367a6d00e174a1dd2d864))
+
 ## [0.0.159](https://github.com/bffless/ce/compare/v0.0.158...v0.0.159) (2026-03-22)
 
 
