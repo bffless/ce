@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.159](https://github.com/bffless/ce/compare/v0.0.158...v0.0.159) (2026-03-22)
+
+
+### Features
+
+* add MCP server for CE admin API ([1d26a9c](https://github.com/bffless/ce/commit/1d26a9c114dd520db11541d61d8219260f3dd755))
+* add MCP server for CE admin API ([6840ade](https://github.com/bffless/ce/commit/6840adede33d637d0b66433948afa99535d1a321))
+
 ## [0.0.158](https://github.com/bffless/ce/compare/v0.0.157...v0.0.158) (2026-03-22)
 
 
