@@ -125,55 +125,32 @@ export class FileUploadHandler implements StepHandler<FileUploadHandlerConfig> {
       };
     }
 
-    // Convert image format if configured (e.g., HEIC → PNG)
+    // Convert image format if configured (e.g., PNG → WebP)
     if (config.convertTo && mimeType.startsWith('image/')) {
+      const isHeic = mimeType === 'image/heic' || mimeType === 'image/heif';
+      if (isHeic) {
+        return {
+          success: false,
+          error: {
+            code: 'UNSUPPORTED_FORMAT',
+            message: 'HEIC/HEIF files must be converted to JPEG or WebP in the browser before uploading.',
+          },
+        };
+      }
+
       const targetMime = `image/${config.convertTo}`;
       if (mimeType !== targetMime) {
         try {
-          const isHeic = mimeType === 'image/heic' || mimeType === 'image/heif';
           const sharp = (await import('sharp')).default;
+          let pipeline = sharp(fileBuffer);
 
-          // Try sharp first (native libvips — fast), fall back to heic-convert (pure JS) for HEIC
-          let converted = false;
-          if (isHeic) {
-            try {
-              let pipeline = sharp(fileBuffer);
-              switch (config.convertTo) {
-                case 'png': pipeline = pipeline.png(); break;
-                case 'jpeg': pipeline = pipeline.jpeg({ quality: 90 }); break;
-                case 'webp': pipeline = pipeline.webp({ quality: 90 }); break;
-              }
-              fileBuffer = await pipeline.toBuffer();
-              converted = true;
-            } catch {
-              // sharp lacks HEIC support on this platform — fall back to heic-convert
-              this.logger.debug('sharp HEIC support unavailable, falling back to heic-convert');
-              const heicConvert = (await import('heic-convert')).default;
-              const intermediateFormat = config.convertTo === 'jpeg' ? 'JPEG' : 'PNG';
-              const intermediate = await heicConvert({
-                buffer: fileBuffer,
-                format: intermediateFormat as 'JPEG' | 'PNG',
-                quality: config.convertTo === 'jpeg' ? 0.9 : 1,
-              });
-              fileBuffer = Buffer.from(intermediate);
-
-              // If target is webp, re-encode with sharp
-              if (config.convertTo === 'webp') {
-                fileBuffer = await sharp(fileBuffer).webp({ quality: 90 }).toBuffer();
-              }
-              converted = true;
-            }
+          switch (config.convertTo) {
+            case 'png': pipeline = pipeline.png(); break;
+            case 'jpeg': pipeline = pipeline.jpeg({ quality: 90 }); break;
+            case 'webp': pipeline = pipeline.webp({ quality: 90 }); break;
           }
 
-          if (!converted) {
-            let pipeline = sharp(fileBuffer);
-            switch (config.convertTo) {
-              case 'png': pipeline = pipeline.png(); break;
-              case 'jpeg': pipeline = pipeline.jpeg({ quality: 90 }); break;
-              case 'webp': pipeline = pipeline.webp({ quality: 90 }); break;
-            }
-            fileBuffer = await pipeline.toBuffer();
-          }
+          fileBuffer = await pipeline.toBuffer();
 
           mimeType = targetMime;
           const ext = '.' + config.convertTo;

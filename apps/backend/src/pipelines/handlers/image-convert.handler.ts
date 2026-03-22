@@ -93,6 +93,17 @@ export class ImageConvertHandler implements StepHandler<ImageConvertHandlerConfi
     const ext = path.extname(inputPath).toLowerCase().replace('.', '');
     const currentMime = FORMAT_MIME[ext] || this.guessMimeFromExtension(ext);
 
+    // HEIC/HEIF not supported server-side — must be converted in the browser before upload
+    if (ext === 'heic' || ext === 'heif') {
+      return {
+        success: false,
+        error: {
+          code: 'UNSUPPORTED_FORMAT',
+          message: 'HEIC/HEIF files must be converted to JPEG or WebP in the browser before uploading.',
+        },
+      };
+    }
+
     // Pass through if already in target format or not an image
     if (!currentMime.startsWith('image/') || ext === outputFormat) {
       this.logger.debug(
@@ -111,44 +122,22 @@ export class ImageConvertHandler implements StepHandler<ImageConvertHandlerConfi
 
     // Convert image
     try {
-      let convertedBuffer: Buffer;
-      const isHeic = ext === 'heic' || ext === 'heif';
+      const sharp = (await import('sharp')).default;
+      let pipeline = sharp(fileBuffer);
 
-      if (isHeic) {
-        // Use heic-convert (pure JS) for HEIC decoding, then sharp for output
-        const heicConvert = (await import('heic-convert')).default;
-        const heicFormat = outputFormat === 'jpeg' ? 'JPEG' : 'PNG';
-        const decoded = await heicConvert({
-          buffer: fileBuffer,
-          format: heicFormat as 'JPEG' | 'PNG',
-          quality: outputFormat === 'jpeg' ? quality / 100 : 1,
-        });
-        convertedBuffer = Buffer.from(decoded);
-
-        // If target is webp, run decoded output through sharp
-        if (outputFormat === 'webp') {
-          const sharp = (await import('sharp')).default;
-          convertedBuffer = await sharp(convertedBuffer).webp({ quality }).toBuffer();
-        }
-      } else {
-        // Non-HEIC: use sharp directly
-        const sharp = (await import('sharp')).default;
-        let pipeline = sharp(fileBuffer);
-
-        switch (outputFormat) {
-          case 'png':
-            pipeline = pipeline.png();
-            break;
-          case 'jpeg':
-            pipeline = pipeline.jpeg({ quality });
-            break;
-          case 'webp':
-            pipeline = pipeline.webp({ quality });
-            break;
-        }
-
-        convertedBuffer = await pipeline.toBuffer();
+      switch (outputFormat) {
+        case 'png':
+          pipeline = pipeline.png();
+          break;
+        case 'jpeg':
+          pipeline = pipeline.jpeg({ quality });
+          break;
+        case 'webp':
+          pipeline = pipeline.webp({ quality });
+          break;
       }
+
+      const convertedBuffer = await pipeline.toBuffer();
 
       // Build new storage path with updated extension
       const basePath = inputPath.replace(/\.[^.]+$/, '');
