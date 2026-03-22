@@ -212,7 +212,8 @@ export class FileUploadHandler implements StepHandler<FileUploadHandlerConfig> {
       storageKey += `/${today}`;
     }
 
-    storageKey += `/${uuid}-${sanitizedFilename}`;
+    const storedFilename = `${uuid}-${sanitizedFilename}`;
+    storageKey += `/${storedFilename}`;
 
     // Upload to storage
     await this.storageAdapter.upload(fileBuffer, storageKey, {
@@ -220,14 +221,14 @@ export class FileUploadHandler implements StepHandler<FileUploadHandlerConfig> {
     });
 
     // Build the public URL path
-    const publicPath = `/api/uploads/${config.subDir}/${uuid}-${sanitizedFilename}`;
+    const publicPath = `/api/uploads/${config.subDir}/${storedFilename}`;
 
     // Compute content hash
     const contentHash = createHash('md5').update(fileBuffer).digest('hex');
 
     // Create pipeline_data record with metadata
     const data: Record<string, unknown> = {
-      filename: sanitizedFilename,
+      filename: storedFilename,
       storage_path: storageKey,
       content_type: mimeType,
       size: fileBuffer.length,

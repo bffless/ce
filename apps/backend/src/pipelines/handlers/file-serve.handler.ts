@@ -5,6 +5,7 @@ import { PipelineContext, StepResult } from '../execution/pipeline-context.inter
 import { PipelineStep } from '../types';
 import { ConfigurationError } from '../errors';
 import { IStorageAdapter, STORAGE_ADAPTER } from '../../storage/storage.interface';
+import { CacheConfigService } from '../../cache-rules/cache-config.service';
 import { db } from '../../db/client';
 import { projects } from '../../db/schema';
 import { eq } from 'drizzle-orm';
@@ -50,6 +51,7 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
   constructor(
     private readonly registry: StepHandlerRegistry,
     @Inject(STORAGE_ADAPTER) private readonly storageAdapter: IStorageAdapter,
+    private readonly cacheConfigService: CacheConfigService,
   ) {
     this.registry.register(this);
   }
@@ -137,7 +139,21 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
       // Determine content type from file extension
       const ext = path.extname(sanitized).toLowerCase();
       const contentType = MIME_TYPES[ext] || 'application/octet-stream';
-      const cacheMaxAge = config.cacheMaxAge ?? 3600;
+
+      // Resolve cache headers: check cache rules first, fall back to config/default
+      let cacheControlHeader: string;
+      const cacheConfig = await this.cacheConfigService.getCacheConfig(
+        context.projectId,
+        requestPath,
+        false,
+      );
+      if (cacheConfig.source === 'rule') {
+        cacheControlHeader = this.cacheConfigService.buildCacheControlHeader(cacheConfig, true);
+      } else {
+        // No cache rule matched — use handler config default or 3600s
+        const cacheMaxAge = config.cacheMaxAge ?? 3600;
+        cacheControlHeader = `public, max-age=${cacheMaxAge}`;
+      }
 
       // Set response headers and stream content
       const res = context.request.res;
@@ -153,7 +169,7 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
 
       res.setHeader('Content-Type', contentType);
       res.setHeader('Content-Length', data.length);
-      res.setHeader('Cache-Control', `public, max-age=${cacheMaxAge}`);
+      res.setHeader('Cache-Control', cacheControlHeader);
       if (etag) {
         res.setHeader('ETag', etag);
       }

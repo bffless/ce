@@ -15,6 +15,7 @@ import {
 import { PermissionsModule } from '../permissions/permissions.module';
 import { SettingsModule } from '../settings/settings.module';
 import { ProjectsModule } from '../projects/projects.module';
+import { CacheRulesModule } from '../cache-rules/cache-rules.module';
 // Step handlers
 import {
   FormHandler,
@@ -53,7 +54,7 @@ import {
 } from './ai-plugins';
 
 @Module({
-  imports: [PermissionsModule, SettingsModule, forwardRef(() => ProjectsModule)],
+  imports: [PermissionsModule, SettingsModule, forwardRef(() => ProjectsModule), CacheRulesModule],
   controllers: [
     PipelineSchemasController,
     PipelineDataController,
