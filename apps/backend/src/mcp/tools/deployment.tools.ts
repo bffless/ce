@@ -139,15 +139,22 @@ export class DeploymentTools {
 
   @Tool({
     name: 'update_alias',
-    description: 'Update an alias to point to a different commit SHA.',
+    description:
+      'Update an alias — change commit SHA and/or assign a proxy rule set. IMPORTANT: After creating proxy rules, you must assign the rule set to an alias using proxyRuleSetId for the rules to take effect.',
     parameters: z.object({
       repository: z.string().describe('Repository in "owner/name" format'),
       alias: z.string().describe('Alias name to update'),
-      commitSha: z.string().describe('New commit SHA to point to'),
+      commitSha: z.string().optional().describe('New commit SHA to point to'),
+      proxyRuleSetId: z
+        .string()
+        .optional()
+        .describe(
+          'Proxy rule set ID to assign. This activates the proxy rules for this alias. Set to null to clear.',
+        ),
     }),
   })
   async updateAlias(
-    args: { repository: string; alias: string; commitSha: string },
+    args: { repository: string; alias: string; commitSha?: string; proxyRuleSetId?: string },
     _context: Context,
     request: Request,
   ) {
@@ -155,7 +162,7 @@ export class DeploymentTools {
     const result = await this.deploymentsService.updateAlias(
       args.repository,
       args.alias,
-      { commitSha: args.commitSha },
+      { commitSha: args.commitSha, proxyRuleSetId: args.proxyRuleSetId },
       user.id,
       user.role,
     );
