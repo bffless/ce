@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import picomatch from 'picomatch';
 import { CacheRulesService } from './cache-rules.service';
 import { CacheRule } from '../db/schema';
@@ -39,7 +39,10 @@ export class CacheConfigService {
   // In-memory cache for compiled glob matchers (projectId -> rules with matchers)
   private ruleCache = new Map<string, CachedRules>();
 
-  constructor(private readonly cacheRulesService: CacheRulesService) {}
+  constructor(
+    @Inject(forwardRef(() => CacheRulesService))
+    private readonly cacheRulesService: CacheRulesService,
+  ) {}
 
   /**
    * Get cache configuration for a specific file path.
