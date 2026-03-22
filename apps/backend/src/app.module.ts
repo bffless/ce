@@ -35,6 +35,9 @@ import { PlatformModule } from './platform/platform.module';
 import { StorageUsageModule } from './storage/storage-usage.module';
 import { OnboardingRulesModule } from './onboarding-rules/onboarding-rules.module';
 import { PipelinesModule } from './pipelines/pipelines.module';
+import { McpModule, McpTransportType } from '@rekog/mcp-nest';
+import { ApiKeyGuard } from './auth/api-key.guard';
+import { McpToolsModule } from './mcp/mcp-tools.module';
 
 @Module({
   imports: [
@@ -52,6 +55,16 @@ import { PipelinesModule } from './pipelines/pipelines.module';
     // Platform module provides L1 → L2 communication services (global)
     PlatformModule,
     AuthModule.forRoot(),
+    McpModule.forRoot({
+      name: 'bffless-ce',
+      version: '1.0.0',
+      transport: McpTransportType.STREAMABLE_HTTP,
+      guards: [ApiKeyGuard],
+      streamableHttp: {
+        enableJsonResponse: true,
+        statelessMode: true,
+      },
+    }),
     SetupModule,
     FeatureFlagsModule,
     CacheModule.forRootAsync({
@@ -148,6 +161,7 @@ import { PipelinesModule } from './pipelines/pipelines.module';
     InvitationsModule,
     StorageUsageModule,
     OnboardingRulesModule,
+    McpToolsModule,
   ],
   controllers: [AppController],
   providers: [

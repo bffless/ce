@@ -36,7 +36,7 @@ import {
   UpdateTrafficRuleDto,
   TrafficRuleResponseDto,
 } from './dto/traffic-rule.dto';
-import { SessionAuthGuard } from '../auth/session-auth.guard';
+import { ApiKeyGuard } from '../auth/api-key.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -44,7 +44,7 @@ import { FeatureFlagGuard, RequireFeatureFlags } from '../feature-flags';
 
 @ApiTags('Domains')
 @Controller('api/domains')
-@UseGuards(SessionAuthGuard, RolesGuard)
+@UseGuards(ApiKeyGuard, RolesGuard)
 @Roles('admin')
 export class DomainsController {
   constructor(

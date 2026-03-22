@@ -28,7 +28,7 @@ import {
   OnboardingRuleResponseDto,
   OnboardingRuleExecutionResponseDto,
 } from './dto';
-import { SessionAuthGuard } from '../auth/session-auth.guard';
+import { ApiKeyGuard } from '../auth/api-key.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { CurrentUser, CurrentUserData } from '../auth/decorators/current-user.decorator';
@@ -36,7 +36,7 @@ import { CurrentUser, CurrentUserData } from '../auth/decorators/current-user.de
 @ApiTags('Onboarding Rules')
 @ApiBearerAuth()
 @Controller('api/onboarding-rules')
-@UseGuards(SessionAuthGuard, RolesGuard)
+@UseGuards(ApiKeyGuard, RolesGuard)
 @Roles('admin')
 export class OnboardingRulesController {
   constructor(private readonly onboardingRulesService: OnboardingRulesService) {}

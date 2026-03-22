@@ -77,9 +77,10 @@ export class ResponseHandler implements StepHandler<ResponseHandlerConfig> {
     const contentType = config.contentType || 'application/json';
 
     // Build the response object
+    const { body: formattedBody, warning } = this.formatBody(body, contentType);
     const response = {
       status: config.status || 200,
-      body: this.formatBody(body, contentType),
+      body: formattedBody,
       headers: {
         'Content-Type': contentType,
         ...headers,
@@ -90,6 +91,7 @@ export class ResponseHandler implements StepHandler<ResponseHandlerConfig> {
 
     return {
       success: true,
+      warning,
       output: {
         __isResponse: true,
         ...response,
@@ -97,7 +99,10 @@ export class ResponseHandler implements StepHandler<ResponseHandlerConfig> {
     };
   }
 
-  private formatBody(body: unknown, contentType: string): unknown {
+  private formatBody(
+    body: unknown,
+    contentType: string,
+  ): { body: unknown; warning?: string } {
     // For JSON content type, ensure body is properly formatted
     if (contentType.includes('application/json')) {
       if (typeof body === 'string') {
@@ -105,20 +110,33 @@ export class ResponseHandler implements StepHandler<ResponseHandlerConfig> {
         // This allows templates like { success: true, data: {{ steps.foo.value }} }
         // to work even though they produce non-strict JSON
         try {
-          return JSON5.parse(body);
-        } catch {
-          // If even JSON5 fails, wrap in an object
-          return { message: body };
+          return { body: JSON5.parse(body) };
+        } catch (err) {
+          // JSON5 parse failed - this usually means the rendered template has
+          // unquoted string values (e.g. { name: John Doe } instead of { name: "John Doe" }).
+          // Wrap {{expressions}} that produce strings in quotes: "{{steps.step.field}}"
+          // Use triple braces {{{expr}}} for objects/arrays (already valid JSON).
+          const parseError = err instanceof Error ? err.message : String(err);
+          const truncatedBody =
+            body.length > 200 ? body.substring(0, 200) + '...' : body;
+          const warning =
+            `Response body template produced invalid JSON and was wrapped in { "message": ... }. ` +
+            `Parse error: ${parseError}. ` +
+            `Rendered body: ${truncatedBody}. ` +
+            `Tip: Quote string expressions in your template, e.g. "{{steps.myStep.field}}". ` +
+            `Use triple braces {{{expr}}} for objects/arrays that are already valid JSON.`;
+          this.logger.warn(warning);
+          return { body: { message: body }, warning };
         }
       }
-      return body;
+      return { body };
     }
 
     // For HTML/text, convert to string if needed
     if (contentType.includes('text/') || contentType.includes('html')) {
-      return typeof body === 'string' ? body : JSON.stringify(body);
+      return { body: typeof body === 'string' ? body : JSON.stringify(body) };
     }
 
-    return body;
+    return { body };
   }
 }

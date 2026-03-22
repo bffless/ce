@@ -18,7 +18,7 @@ import {
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { ProjectsService } from './projects.service';
 import { ProjectAISettingsService, AIProviderType, AIServiceType } from './project-ai-settings.service';
-import { SessionAuthGuard } from '../auth/session-auth.guard';
+import { ApiKeyGuard } from '../auth/api-key.guard';
 import { ProjectPermissionGuard } from '../auth/guards/project-permission.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import {
@@ -53,7 +53,7 @@ export class ProjectsController {
   ) {}
 
   @Get()
-  @UseGuards(SessionAuthGuard)
+  @UseGuards(ApiKeyGuard)
   @ApiOperation({ summary: 'List all projects for the current user' })
   @ApiResponse({ status: 200, description: 'List of projects', type: [ProjectResponseDto] })
   async listUserProjects(@CurrentUser('id') userId: string): Promise<ProjectResponseDto[]> {
@@ -67,7 +67,7 @@ export class ProjectsController {
   // ==========================================================================
 
   @Get(':id/ai')
-  @UseGuards(SessionAuthGuard, ProjectPermissionGuard)
+  @UseGuards(ApiKeyGuard, ProjectPermissionGuard)
   @RequireProjectRole('admin')
   @ApiOperation({ summary: 'Get AI providers configured for this project' })
   @ApiResponse({
@@ -80,7 +80,7 @@ export class ProjectsController {
   }
 
   @Post(':id/ai')
-  @UseGuards(SessionAuthGuard, ProjectPermissionGuard)
+  @UseGuards(ApiKeyGuard, ProjectPermissionGuard)
   @RequireProjectRole('admin')
   @ApiOperation({ summary: 'Add or update an AI provider for this project' })
   @ApiResponse({
@@ -96,7 +96,7 @@ export class ProjectsController {
   }
 
   @Delete(':id/ai/:provider')
-  @UseGuards(SessionAuthGuard, ProjectPermissionGuard)
+  @UseGuards(ApiKeyGuard, ProjectPermissionGuard)
   @RequireProjectRole('admin')
   @ApiOperation({ summary: 'Remove an AI provider from this project' })
   @ApiResponse({
@@ -112,7 +112,7 @@ export class ProjectsController {
   }
 
   @Post(':id/ai/default')
-  @UseGuards(SessionAuthGuard, ProjectPermissionGuard)
+  @UseGuards(ApiKeyGuard, ProjectPermissionGuard)
   @RequireProjectRole('admin')
   @ApiOperation({ summary: 'Set default AI provider for this project' })
   @ApiResponse({
@@ -128,7 +128,7 @@ export class ProjectsController {
   }
 
   @Post(':id/ai/test')
-  @UseGuards(SessionAuthGuard, ProjectPermissionGuard)
+  @UseGuards(ApiKeyGuard, ProjectPermissionGuard)
   @RequireProjectRole('admin')
   @ApiOperation({ summary: 'Test AI connection for this project' })
   @ApiResponse({ status: 200, description: 'AI test result', type: TestAIResponseDto })
@@ -140,7 +140,7 @@ export class ProjectsController {
   }
 
   @Get(':id/ai/providers')
-  @UseGuards(SessionAuthGuard, ProjectPermissionGuard)
+  @UseGuards(ApiKeyGuard, ProjectPermissionGuard)
   @RequireProjectRole('admin')
   @ApiOperation({ summary: 'Get available AI providers with model suggestions' })
   @ApiResponse({
@@ -155,7 +155,7 @@ export class ProjectsController {
   }
 
   @Get(':id/ai/skills')
-  @UseGuards(SessionAuthGuard, ProjectPermissionGuard)
+  @UseGuards(ApiKeyGuard, ProjectPermissionGuard)
   @RequireProjectRole('contributor')
   @ApiOperation({ summary: 'List available AI skills for the project deployment' })
   @ApiResponse({
@@ -209,7 +209,7 @@ export class ProjectsController {
   // ==========================================================================
 
   @Get(':id/ai-services')
-  @UseGuards(SessionAuthGuard, ProjectPermissionGuard)
+  @UseGuards(ApiKeyGuard, ProjectPermissionGuard)
   @RequireProjectRole('admin')
   @ApiOperation({ summary: 'Get AI services configured for this project' })
   @ApiResponse({ status: 200, description: 'AI services status' })
@@ -218,7 +218,7 @@ export class ProjectsController {
   }
 
   @Post(':id/ai-services')
-  @UseGuards(SessionAuthGuard, ProjectPermissionGuard)
+  @UseGuards(ApiKeyGuard, ProjectPermissionGuard)
   @RequireProjectRole('admin')
   @ApiOperation({ summary: 'Add or update an AI service for this project' })
   @ApiResponse({ status: 200, description: 'Service added/updated' })
@@ -230,7 +230,7 @@ export class ProjectsController {
   }
 
   @Delete(':id/ai-services/:service')
-  @UseGuards(SessionAuthGuard, ProjectPermissionGuard)
+  @UseGuards(ApiKeyGuard, ProjectPermissionGuard)
   @RequireProjectRole('admin')
   @ApiOperation({ summary: 'Remove an AI service from this project' })
   @ApiResponse({ status: 200, description: 'Service removed' })
@@ -242,7 +242,7 @@ export class ProjectsController {
   }
 
   @Post(':id/ai-services/test')
-  @UseGuards(SessionAuthGuard, ProjectPermissionGuard)
+  @UseGuards(ApiKeyGuard, ProjectPermissionGuard)
   @RequireProjectRole('admin')
   @ApiOperation({ summary: 'Test AI service connection' })
   @ApiResponse({ status: 200, description: 'Test result' })
@@ -262,7 +262,7 @@ export class ProjectsController {
   // ==========================================================================
 
   @Get(':id/ai-plugins')
-  @UseGuards(SessionAuthGuard, ProjectPermissionGuard)
+  @UseGuards(ApiKeyGuard, ProjectPermissionGuard)
   @RequireProjectRole('admin')
   @ApiOperation({ summary: 'List all plugins with enabled status for this project' })
   @ApiResponse({ status: 200, description: 'List of plugins' })
@@ -271,7 +271,7 @@ export class ProjectsController {
   }
 
   @Post(':id/ai-plugins/:pluginId')
-  @UseGuards(SessionAuthGuard, ProjectPermissionGuard)
+  @UseGuards(ApiKeyGuard, ProjectPermissionGuard)
   @RequireProjectRole('admin')
   @ApiOperation({ summary: 'Enable a plugin for this project' })
   @ApiResponse({ status: 200, description: 'Plugin enabled' })
@@ -284,7 +284,7 @@ export class ProjectsController {
   }
 
   @Put(':id/ai-plugins/:pluginId')
-  @UseGuards(SessionAuthGuard, ProjectPermissionGuard)
+  @UseGuards(ApiKeyGuard, ProjectPermissionGuard)
   @RequireProjectRole('admin')
   @ApiOperation({ summary: 'Update plugin configuration' })
   @ApiResponse({ status: 200, description: 'Plugin config updated' })
@@ -298,7 +298,7 @@ export class ProjectsController {
 
   @Delete(':id/ai-plugins/:pluginId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @UseGuards(SessionAuthGuard, ProjectPermissionGuard)
+  @UseGuards(ApiKeyGuard, ProjectPermissionGuard)
   @RequireProjectRole('admin')
   @ApiOperation({ summary: 'Disable a plugin for this project' })
   @ApiResponse({ status: 204, description: 'Plugin disabled' })
@@ -315,7 +315,7 @@ export class ProjectsController {
   // ==========================================================================
 
   @Get(':owner/:name')
-  @UseGuards(SessionAuthGuard, ProjectPermissionGuard)
+  @UseGuards(ApiKeyGuard, ProjectPermissionGuard)
   @RequireProjectRole('viewer')
   @AllowPublicAccess()
   @ApiOperation({ summary: 'Get project by owner and name' })
@@ -330,7 +330,7 @@ export class ProjectsController {
   }
 
   @Get(':id')
-  @UseGuards(SessionAuthGuard, ProjectPermissionGuard)
+  @UseGuards(ApiKeyGuard, ProjectPermissionGuard)
   @RequireProjectRole('viewer')
   @AllowPublicAccess()
   @ApiOperation({ summary: 'Get project by ID' })
@@ -342,7 +342,7 @@ export class ProjectsController {
   }
 
   @Post()
-  @UseGuards(SessionAuthGuard, RolesGuard)
+  @UseGuards(ApiKeyGuard, RolesGuard)
   @Roles('admin', 'user')
   @ApiOperation({ summary: 'Create a new project' })
   @ApiResponse({ status: 201, description: 'Project created', type: ProjectResponseDto })
@@ -359,7 +359,7 @@ export class ProjectsController {
   }
 
   @Patch(':id')
-  @UseGuards(SessionAuthGuard, ProjectPermissionGuard)
+  @UseGuards(ApiKeyGuard, ProjectPermissionGuard)
   @RequireProjectRole('admin')
   @ApiOperation({ summary: 'Update project settings' })
   @ApiResponse({ status: 200, description: 'Project updated', type: ProjectResponseDto })
@@ -373,7 +373,7 @@ export class ProjectsController {
   }
 
   @Delete(':id')
-  @UseGuards(SessionAuthGuard, ProjectPermissionGuard)
+  @UseGuards(ApiKeyGuard, ProjectPermissionGuard)
   @RequireProjectRole('owner')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete a project' })

@@ -11,7 +11,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
-import { SessionAuthGuard } from '../auth/session-auth.guard';
+import { ApiKeyGuard } from '../auth/api-key.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -33,7 +33,7 @@ interface CurrentUserData {
 }
 
 @Controller('api/user-groups')
-@UseGuards(SessionAuthGuard, RolesGuard)
+@UseGuards(ApiKeyGuard, RolesGuard)
 @Roles('admin')
 @ApiTags('User Groups')
 @ApiBearerAuth()

@@ -391,6 +391,7 @@ export class PipelineExecutionService {
         input: inputSnapshot,
         output: result.output,
         error: result.error,
+        warning: result.warning,
         condition: config.condition,
         conditionResult: conditionResult,
         result,

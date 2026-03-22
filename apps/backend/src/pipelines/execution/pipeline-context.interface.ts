@@ -91,6 +91,12 @@ export interface StepResult {
    * Useful for honeypot detection where we want to return fake success without processing.
    */
   terminates?: boolean;
+
+  /**
+   * Optional warning message when step succeeded but with a non-ideal outcome.
+   * Surfaced in debug UI to help users diagnose template/config issues.
+   */
+  warning?: string;
 }
 
 /**
@@ -153,6 +159,11 @@ export interface StepDebugInfo {
     message: string;
     details?: unknown;
   };
+
+  /**
+   * Warning message if step succeeded but with a non-ideal outcome
+   */
+  warning?: string;
 
   /**
    * Condition that was evaluated (if any)

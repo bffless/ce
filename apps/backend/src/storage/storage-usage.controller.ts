@@ -1,6 +1,6 @@
 import { Controller, Get, Param, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
-import { SessionAuthGuard } from '../auth/session-auth.guard';
+import { ApiKeyGuard } from '../auth/api-key.guard';
 import { StorageUsageService, WorkspaceStorageUsage, ProjectUsage, BranchUsage } from './storage-usage.service';
 
 /**
@@ -11,7 +11,7 @@ import { StorageUsageService, WorkspaceStorageUsage, ProjectUsage, BranchUsage }
  */
 @ApiTags('Storage')
 @Controller('api/storage')
-@UseGuards(SessionAuthGuard)
+@UseGuards(ApiKeyGuard)
 @ApiBearerAuth()
 export class StorageUsageController {
   constructor(private readonly storageUsageService: StorageUsageService) {}
