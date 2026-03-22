@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.157](https://github.com/bffless/ce/compare/v0.0.156...v0.0.157) (2026-03-22)
+
+
+### Bug Fixes
+
+* remove heic-convert dependency, reject HEIC uploads server-side ([36e651c](https://github.com/bffless/ce/commit/36e651cb77abb4f3449a681cc211cd5d56404c6a))
+
 ## [0.0.156](https://github.com/bffless/ce/compare/v0.0.155...v0.0.156) (2026-03-22)
 
 
