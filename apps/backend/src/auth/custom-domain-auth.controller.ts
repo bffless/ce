@@ -11,14 +11,32 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { Request, Response } from 'express';
+import { getSession } from 'supertokens-node/recipe/session';
+import { SessionContainer } from 'supertokens-node/recipe/session';
+import { eq } from 'drizzle-orm';
 import { DomainTokenService } from './domain-token.service';
 import { CustomDomainAuthService } from './custom-domain-auth.service';
 import { AuthService } from './auth.service';
+import { db } from '../db/client';
+import { users } from '../db/schema';
 
 /**
- * Controller for custom domain authentication endpoints.
- * These endpoints are namespaced under /_bffless/auth/ to avoid
- * collision with user application routes on custom domains.
+ * Controller for content domain authentication endpoints.
+ * Handles auth for any domain serving deployed content (not the admin panel).
+ *
+ * Despite the name, this is NOT limited to custom domains — it handles auth for:
+ * - Custom domains (e.g., mysite.com)
+ * - Workspace subdomains (e.g., myworkspace.bffless.app)
+ * - Preview alias subdomains (e.g., abc123.myworkspace.workspace.bffless.app)
+ *
+ * These endpoints are namespaced under /_bffless/auth/ to avoid collision with
+ * user application routes.
+ *
+ * Auth strategy (in order of priority):
+ * 1. bffless_access cookie (custom domain JWT) — used on true custom domains
+ *    where SuperTokens cookies aren't available (different domain)
+ * 2. sAccessToken cookie (SuperTokens session) — fallback for workspace subdomains
+ *    where the SuperTokens cookie is available on the same parent domain
  */
 @ApiTags('Custom Domain Authentication')
 @Controller('_bffless/auth')
@@ -256,7 +274,10 @@ export class CustomDomainAuthController {
     const accessToken = req.cookies?.[CustomDomainAuthService.ACCESS_COOKIE_NAME];
 
     if (!accessToken) {
-      return { authenticated: false, user: null };
+      // No custom domain cookie — fall back to SuperTokens session (sAccessToken).
+      // This handles workspace subdomains where the SuperTokens cookie is available
+      // on the same parent domain but no bffless_access cookie has been issued.
+      return this.trySupertokensSession(req, res);
     }
 
     // Validate the access token
@@ -290,5 +311,43 @@ export class CustomDomainAuthController {
         role: payload.role,
       },
     };
+  }
+
+  /**
+   * Fall back to SuperTokens session verification.
+   * Used when no bffless_access cookie is present but the user may have
+   * a valid sAccessToken (e.g., on workspace subdomains).
+   */
+  private async trySupertokensSession(
+    req: Request,
+    res: Response,
+  ): Promise<{ authenticated: boolean; user: { id: string; email: string; role: string } | null }> {
+    try {
+      const session: SessionContainer | undefined = await getSession(req, res, {
+        sessionRequired: false,
+      });
+
+      if (!session) {
+        return { authenticated: false, user: null };
+      }
+
+      const userId = session.getUserId();
+      const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+
+      if (!user) {
+        return { authenticated: false, user: null };
+      }
+
+      return {
+        authenticated: true,
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+        },
+      };
+    } catch {
+      return { authenticated: false, user: null };
+    }
   }
 }
