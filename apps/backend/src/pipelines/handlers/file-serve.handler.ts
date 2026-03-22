@@ -96,7 +96,9 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
       filePath = requestPath.slice(prefix.length);
     } else {
       // Try to extract from X-Original-URI if available
-      const originalUri = context.metadata.headers['x-original-uri'] as string | undefined;
+      // Strip query string first since $request_uri includes it
+      const rawOriginalUri = context.metadata.headers['x-original-uri'] as string | undefined;
+      const originalUri = rawOriginalUri?.split('?')[0];
       if (originalUri && originalUri.includes(prefix)) {
         filePath = originalUri.slice(originalUri.indexOf(prefix) + prefix.length);
       }
