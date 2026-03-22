@@ -12,11 +12,11 @@ import {
   SendTestEmailDto,
   SendTestEmailResponseDto,
 } from './dto/email-settings.dto';
-import { SessionAuthGuard, RolesGuard, Roles, CurrentUser } from '../auth';
+import { ApiKeyGuard, RolesGuard, Roles, CurrentUser } from '../auth';
 
 @ApiTags('Settings')
 @Controller('api/settings')
-@UseGuards(SessionAuthGuard, RolesGuard)
+@UseGuards(ApiKeyGuard, RolesGuard)
 export class SettingsController {
   constructor(
     private readonly primaryContentService: PrimaryContentService,

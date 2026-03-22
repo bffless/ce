@@ -14,7 +14,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { PermissionsService } from './permissions.service';
 import { ProjectsService } from '../projects/projects.service';
 import { UsersService } from '../users/users.service';
-import { SessionAuthGuard } from '../auth/session-auth.guard';
+import { ApiKeyGuard } from '../auth/api-key.guard';
 import { ProjectPermissionGuard } from '../auth/guards/project-permission.guard';
 import { RequireProjectRole } from '../auth/decorators/project-permission.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -29,7 +29,7 @@ import {
 
 @ApiTags('Permissions')
 @Controller('api/projects/:owner/:repo/permissions')
-@UseGuards(SessionAuthGuard, ProjectPermissionGuard)
+@UseGuards(ApiKeyGuard, ProjectPermissionGuard)
 @ApiBearerAuth()
 export class PermissionsController {
   constructor(

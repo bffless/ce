@@ -12,7 +12,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
-import { SessionAuthGuard, RolesGuard, Roles } from '../auth';
+import { ApiKeyGuard, RolesGuard, Roles } from '../auth';
 import { FeatureFlagsService, ResolvedFlag } from './feature-flags.service';
 import { isValidFlagKey } from './feature-flags.definitions';
 import {
@@ -33,7 +33,7 @@ export class FeatureFlagsController {
   // ==========================================================================
 
   @Get('client')
-  @UseGuards(SessionAuthGuard)
+  @UseGuards(ApiKeyGuard)
   @ApiOperation({ summary: 'Get UI-exposed feature flags (allowlisted only)' })
   @ApiResponse({
     status: 200,
@@ -44,7 +44,7 @@ export class FeatureFlagsController {
   }
 
   @Get()
-  @UseGuards(SessionAuthGuard)
+  @UseGuards(ApiKeyGuard)
   @ApiOperation({ summary: 'Get all feature flags with resolved values' })
   @ApiResponse({
     status: 200,
@@ -57,7 +57,7 @@ export class FeatureFlagsController {
   }
 
   @Get('grouped')
-  @UseGuards(SessionAuthGuard)
+  @UseGuards(ApiKeyGuard)
   @ApiOperation({ summary: 'Get all feature flags grouped by category' })
   @ApiResponse({
     status: 200,
@@ -75,7 +75,7 @@ export class FeatureFlagsController {
   }
 
   @Get(':key')
-  @UseGuards(SessionAuthGuard)
+  @UseGuards(ApiKeyGuard)
   @ApiOperation({ summary: 'Get a single feature flag' })
   @ApiParam({ name: 'key', description: 'Feature flag key', example: 'ENABLE_CUSTOM_DOMAINS' })
   @ApiResponse({
@@ -90,7 +90,7 @@ export class FeatureFlagsController {
   }
 
   @Get(':key/sources')
-  @UseGuards(SessionAuthGuard, RolesGuard)
+  @UseGuards(ApiKeyGuard, RolesGuard)
   @Roles('admin')
   @ApiOperation({ summary: 'Get all source values for a feature flag (admin only)' })
   @ApiParam({ name: 'key', description: 'Feature flag key' })
@@ -109,7 +109,7 @@ export class FeatureFlagsController {
   // ==========================================================================
 
   @Put(':key')
-  @UseGuards(SessionAuthGuard, RolesGuard)
+  @UseGuards(ApiKeyGuard, RolesGuard)
   @Roles('admin')
   @ApiOperation({ summary: 'Set a feature flag value (creates database override)' })
   @ApiParam({ name: 'key', description: 'Feature flag key' })
@@ -130,7 +130,7 @@ export class FeatureFlagsController {
   }
 
   @Put()
-  @UseGuards(SessionAuthGuard, RolesGuard)
+  @UseGuards(ApiKeyGuard, RolesGuard)
   @Roles('admin')
   @ApiOperation({ summary: 'Set multiple feature flags at once' })
   @ApiResponse({
@@ -157,7 +157,7 @@ export class FeatureFlagsController {
   }
 
   @Delete(':key')
-  @UseGuards(SessionAuthGuard, RolesGuard)
+  @UseGuards(ApiKeyGuard, RolesGuard)
   @Roles('admin')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete a database override (reverts to file/env/default)' })
@@ -169,7 +169,7 @@ export class FeatureFlagsController {
   }
 
   @Post('refresh')
-  @UseGuards(SessionAuthGuard, RolesGuard)
+  @UseGuards(ApiKeyGuard, RolesGuard)
   @Roles('admin')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Refresh all caches (reload file and database)' })
@@ -179,7 +179,7 @@ export class FeatureFlagsController {
   }
 
   @Get('admin/overrides')
-  @UseGuards(SessionAuthGuard, RolesGuard)
+  @UseGuards(ApiKeyGuard, RolesGuard)
   @Roles('admin')
   @ApiOperation({ summary: 'Get all database overrides (admin only)' })
   @ApiResponse({

@@ -48,6 +48,7 @@
     "@azure/identity": "^4.13.0",
     "@azure/storage-blob": "^12.29.1",
     "@google-cloud/storage": "^7.7.0",
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "@nestjs/common": "^10.3.0",
     "@nestjs/config": "^3.1.1",
     "@nestjs/core": "^10.3.0",
@@ -56,6 +57,7 @@
     "@nestjs/schedule": "^6.1.0",
     "@nestjs/swagger": "^7.1.17",
     "@nestjs/throttler": "^6.5.0",
+    "@rekog/mcp-nest": "^1.9.8",
     "@types/jsonwebtoken": "^9.0.10",
     "acme-client": "^5.4.0",
     "ai": "^6.0.116",
@@ -83,7 +85,8 @@
     "sharp": "^0.34.5",
     "supertokens-auth-react": "^0.39.0",
     "supertokens-node": "^17.0.0",
-    "uuid": "^9.0.1"
+    "uuid": "^9.0.1",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.2.1",

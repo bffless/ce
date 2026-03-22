@@ -17,7 +17,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@ne
 import { Request } from 'express';
 import { getUser } from 'supertokens-node';
 import { InvitationsService } from './invitations.service.js';
-import { SessionAuthGuard } from '../auth/session-auth.guard.js';
+import { ApiKeyGuard } from '../auth/api-key.guard.js';
 import { RolesGuard } from '../auth/roles.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
 import { CurrentUser, CurrentUserData } from '../auth/decorators/current-user.decorator.js';
@@ -67,7 +67,7 @@ export class InvitationsController {
   // ============================================================================
 
   @Post('admin/invitations')
-  @UseGuards(SessionAuthGuard, RolesGuard)
+  @UseGuards(ApiKeyGuard, RolesGuard)
   @Roles('admin')
   @ApiBearerAuth()
   @ApiOperation({
@@ -104,7 +104,7 @@ export class InvitationsController {
   }
 
   @Get('admin/invitations')
-  @UseGuards(SessionAuthGuard, RolesGuard)
+  @UseGuards(ApiKeyGuard, RolesGuard)
   @Roles('admin')
   @ApiBearerAuth()
   @ApiOperation({
@@ -124,7 +124,7 @@ export class InvitationsController {
   }
 
   @Get('admin/invitations/:id')
-  @UseGuards(SessionAuthGuard, RolesGuard)
+  @UseGuards(ApiKeyGuard, RolesGuard)
   @Roles('admin')
   @ApiBearerAuth()
   @ApiOperation({
@@ -145,7 +145,7 @@ export class InvitationsController {
   }
 
   @Post('admin/invitations/:id/resend')
-  @UseGuards(SessionAuthGuard, RolesGuard)
+  @UseGuards(ApiKeyGuard, RolesGuard)
   @Roles('admin')
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
@@ -182,7 +182,7 @@ export class InvitationsController {
   }
 
   @Delete('admin/invitations/:id')
-  @UseGuards(SessionAuthGuard, RolesGuard)
+  @UseGuards(ApiKeyGuard, RolesGuard)
   @Roles('admin')
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
@@ -228,7 +228,7 @@ export class InvitationsController {
   }
 
   @Post('invitations/:token/accept')
-  @UseGuards(SessionAuthGuard)
+  @UseGuards(ApiKeyGuard)
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
