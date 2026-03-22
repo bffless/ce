@@ -28,6 +28,7 @@ const pipelineStepSchema = z.object({
       'embed_store',
       'vector_search',
       'image_convert_handler',
+      'http_request',
     ])
     .describe(
       'IMPORTANT: Use exact handler type strings. Some have _handler suffix, some do not. The enum values are the only valid options.',
@@ -50,6 +51,7 @@ const pipelineStepSchema = z.object({
 - db_aggregate: { schemaId: "uuid", operation: "sum"|"count"|"avg"|"min"|"max", field?: "name", filters?: {} }
 - function_handler: { code: "function handler({ input, user, request, steps }) { return {}; }" }
 - file_serve_handler: { path: "expression" }
+- http_request: { url: "target URL (expression)", method?: "GET"|"POST"|"PUT"|"PATCH"|"DELETE", forwardAuth?: boolean (forwards cookies + authorization header from original request), body?: "expression" or { field: "expression" } (for POST/PUT/PATCH), headers?: { "Header-Name": "expression or static value" }, forwardHeaders?: ["header-name"] (forward specific headers from original request), timeout?: number (ms, default 30000) }
 
 All configs support: condition?: "expression" (skip step if falsy), timeout?: number (ms).
 Expressions reference prior steps by step NAME (not id): "steps.stepName.field" or request data: "request.body.field". Use bracket notation for names with spaces: "steps['Step Name'].field". Use simple names without spaces to keep expressions clean.`,

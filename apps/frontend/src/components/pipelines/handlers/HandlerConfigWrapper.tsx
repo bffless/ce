@@ -16,6 +16,7 @@ import { ImageConvertHandlerConfig } from './ImageConvertHandlerConfig';
 import { ReplicateHandlerConfig } from './ReplicateHandlerConfig';
 import { EmbedStoreConfig } from './EmbedStoreConfig';
 import { VectorSearchConfig } from './VectorSearchConfig';
+import { HttpRequestConfig } from './HttpRequestConfig';
 import { AvailableVariables, type PreviousStep } from './AvailableVariables';
 import type { HandlerConfig } from './types';
 
@@ -261,6 +262,18 @@ export function HandlerConfigWrapper({
         </>
       );
 
+    case 'http_request':
+      return (
+        <>
+          {renderVariablesPanel()}
+          <HttpRequestConfig
+            config={config}
+            onChange={handleChange}
+            previousSteps={previousSteps}
+          />
+        </>
+      );
+
     default:
       return (
         <div className="text-sm text-destructive p-4 bg-destructive/10 rounded-md">
@@ -292,6 +305,7 @@ export function getHandlerDisplayName(type: HandlerType): string {
     replicate: 'Replicate AI',
     embed_store: 'Store Embedding',
     vector_search: 'Vector Search',
+    http_request: 'HTTP Request',
   };
   return names[type] || type;
 }
@@ -318,6 +332,7 @@ export function getHandlerDescription(type: HandlerType): string {
     replicate: 'Call a Replicate ML model (embeddings, image gen, transcription, etc.)',
     embed_store: 'Store embedding vectors in pgvector for similarity search',
     vector_search: 'Search stored embeddings by cosine similarity',
+    http_request: 'Make an outbound HTTP request to an external URL',
   };
   return descriptions[type] || '';
 }

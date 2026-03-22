@@ -281,6 +281,21 @@ export interface VectorSearchHandlerConfig extends BaseHandlerConfig {
   select?: string[];
 }
 
+export interface HttpRequestHandlerConfig extends BaseHandlerConfig {
+  /** Target URL (can be expression) */
+  url: string;
+  /** HTTP method. Default: GET */
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  /** Forward auth cookies and Authorization header from original request */
+  forwardAuth?: boolean;
+  /** Request body expression (for POST/PUT/PATCH) */
+  body?: string | Record<string, string>;
+  /** Additional headers to send (values can be expressions) */
+  headers?: Record<string, string>;
+  /** Headers to forward from the original request */
+  forwardHeaders?: string[];
+}
+
 export type HandlerConfig =
   | FormHandlerConfig
   | DataCreateHandlerConfig
@@ -298,4 +313,5 @@ export type HandlerConfig =
   | ImageConvertHandlerConfig
   | ReplicateHandlerConfig
   | EmbedStoreHandlerConfig
-  | VectorSearchHandlerConfig;
+  | VectorSearchHandlerConfig
+  | HttpRequestHandlerConfig;

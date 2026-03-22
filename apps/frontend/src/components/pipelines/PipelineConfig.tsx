@@ -62,7 +62,7 @@ const HANDLER_GROUPS: { label: string; types: HandlerType[] }[] = [
   { label: 'Data', types: ['data_create', 'data_query', 'data_update', 'data_delete', 'db_aggregate'] },
   { label: 'Files', types: ['file_upload_handler', 'file_serve_handler', 'image_convert_handler'] },
   { label: 'AI & ML', types: ['ai_handler', 'replicate', 'embed_store', 'vector_search'] },
-  { label: 'Other', types: ['email_handler', 'function_handler'] },
+  { label: 'Other', types: ['email_handler', 'function_handler', 'http_request'] },
 ];
 
 function HandlerTypeSelectContent() {

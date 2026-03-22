@@ -14,3 +14,4 @@ export * from './replicate.handler';
 export * from './embed-store.handler';
 export * from './vector-search.handler';
 export * from './image-convert.handler';
+export * from './http-request.handler';

@@ -722,3 +722,6 @@ export interface ReplicateHandlerConfig extends BaseHandlerConfig {
    */
   outputField?: string;
 }
+
+// HttpRequestHandlerConfig is defined in handlers/http-request.handler.ts
+export type { HttpRequestHandlerConfig } from '../handlers/http-request.handler';

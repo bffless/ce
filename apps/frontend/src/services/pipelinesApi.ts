@@ -46,7 +46,8 @@ export type HandlerType =
   | 'image_convert_handler'
   | 'replicate'
   | 'embed_store'
-  | 'vector_search';
+  | 'vector_search'
+  | 'http_request';
 
 export interface Pipeline {
   id: string;
