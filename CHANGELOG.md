@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.161](https://github.com/bffless/ce/compare/v0.0.160...v0.0.161) (2026-03-22)
+
+
+### Bug Fixes
+
+* circular dep ([825a574](https://github.com/bffless/ce/commit/825a574be6ed36b1ab162dc50f6ebe7752b34a3b))
+
 ## [0.0.160](https://github.com/bffless/ce/compare/v0.0.159...v0.0.160) (2026-03-22)
 
 
