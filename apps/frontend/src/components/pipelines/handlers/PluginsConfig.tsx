@@ -106,6 +106,23 @@ function GoogleCalendarOptions({
           Maximum free slots to return (leave empty for all)
         </p>
       </div>
+      <div className="flex items-center gap-2">
+        <Checkbox
+          id="add-google-meet"
+          checked={(options.addGoogleMeet as boolean) || false}
+          onCheckedChange={(checked) =>
+            onChange({ ...options, addGoogleMeet: checked === true ? true : undefined })
+          }
+        />
+        <div>
+          <label htmlFor="add-google-meet" className="text-xs font-medium cursor-pointer">
+            Add Google Meet link
+          </label>
+          <p className="text-xs text-muted-foreground">
+            Automatically attach a Google Meet video conference to created events
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

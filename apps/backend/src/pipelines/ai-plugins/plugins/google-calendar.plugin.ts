@@ -41,6 +41,10 @@ export class GoogleCalendarPlugin implements AIToolPlugin {
         .max(20)
         .optional()
         .describe('Maximum number of free slots to return (default: all)'),
+      addGoogleMeet: z
+        .boolean()
+        .optional()
+        .describe('Automatically add a Google Meet video conference link to created events'),
     }),
   };
 
@@ -105,7 +109,7 @@ export class GoogleCalendarPlugin implements AIToolPlugin {
       {
         name: 'create_event',
         description:
-          'Create a new event on Google Calendar. Always include attendee email addresses when available so they receive a calendar invite. Returns event details including a link to the event.',
+          'Create a new event on Google Calendar. Always include attendee email addresses when available so they receive a calendar invite. Always include a description with relevant context, agenda, or notes from the conversation so attendees know the purpose of the meeting. Returns event details including a link to the event.',
         inputSchema: z.object({
           title: z.string().describe('Event title/summary'),
           startTime: z
@@ -114,7 +118,7 @@ export class GoogleCalendarPlugin implements AIToolPlugin {
           endTime: z
             .string()
             .describe('End time in ISO 8601 format (e.g., "2024-03-15T15:00:00Z")'),
-          description: z.string().optional().describe('Optional event description'),
+          description: z.string().optional().describe('Event description/notes. Always include relevant context, agenda items, or a summary of what was discussed so attendees understand the purpose of the meeting.'),
           attendees: z
             .array(z.string().email())
             .optional()
@@ -212,6 +216,8 @@ export class GoogleCalendarPlugin implements AIToolPlugin {
       const calendarId = (context.pipelineOptions?.calendarId as string) || 'primary';
       const timezone = args.timezone || 'UTC';
 
+      const addGoogleMeet = context.pipelineOptions?.addGoogleMeet as boolean | undefined;
+
       const eventBody: any = {
         summary: args.title,
         start: { dateTime: args.startTime, timeZone: timezone },
@@ -226,7 +232,21 @@ export class GoogleCalendarPlugin implements AIToolPlugin {
         eventBody.attendees = args.attendees.map((email) => ({ email }));
       }
 
-      const response = await fetch(`${EVENTS_URL}/${encodeURIComponent(calendarId)}/events`, {
+      if (addGoogleMeet) {
+        eventBody.conferenceData = {
+          createRequest: {
+            requestId: `meet-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+            conferenceSolutionKey: { type: 'hangoutsMeet' },
+          },
+        };
+      }
+
+      const eventsUrl = new URL(`${EVENTS_URL}/${encodeURIComponent(calendarId)}/events`);
+      if (addGoogleMeet) {
+        eventsUrl.searchParams.set('conferenceDataVersion', '1');
+      }
+
+      const response = await fetch(eventsUrl.toString(), {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -244,6 +264,10 @@ export class GoogleCalendarPlugin implements AIToolPlugin {
 
       const event = await response.json();
 
+      const meetLink = event.conferenceData?.entryPoints?.find(
+        (ep: any) => ep.entryPointType === 'video',
+      )?.uri;
+
       return {
         event: {
           id: event.id,
@@ -252,6 +276,7 @@ export class GoogleCalendarPlugin implements AIToolPlugin {
           end: event.end?.dateTime || event.end?.date,
           attendees: event.attendees?.map((a: any) => a.email) || [],
           htmlLink: event.htmlLink,
+          ...(meetLink && { meetLink }),
         },
       };
     } catch (error) {
