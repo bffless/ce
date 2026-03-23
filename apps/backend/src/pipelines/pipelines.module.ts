@@ -38,6 +38,8 @@ import {
 } from './handlers';
 // Embeddings service
 import { PipelineEmbeddingsService } from './pipeline-embeddings.service';
+// Execution logging
+import { PipelineExecutionLogService } from './pipeline-execution-log.service';
 // Services
 import { FunctionRunnerService } from './function-runner.service';
 import { SkillsService } from './skills.service';
@@ -75,6 +77,8 @@ import {
     ExpressionEvaluator,
     // Embeddings service (pgvector operations)
     PipelineEmbeddingsService,
+    // Execution log persistence
+    PipelineExecutionLogService,
     // Function runner service
     FunctionRunnerService,
     // Skills service for AI agent skills
@@ -117,6 +121,7 @@ import {
     SkillsService,
     AIToolPluginService,
     UploadSchemaGeneratorService,
+    PipelineExecutionLogService,
   ],
 })
 export class PipelinesModule {}

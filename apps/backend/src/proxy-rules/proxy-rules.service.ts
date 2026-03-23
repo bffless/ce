@@ -313,6 +313,7 @@ export class ProxyRulesService {
     if (dto.pipelineConfig !== undefined) updateData.pipelineConfig = dto.pipelineConfig as PipelineConfig;
     if (dto.description !== undefined) updateData.description = dto.description;
     if (dto.isEnabled !== undefined) updateData.isEnabled = dto.isEnabled;
+    if (dto.debugEnabled !== undefined) updateData.debugEnabled = dto.debugEnabled;
 
     // Handle header config separately (needs encryption)
     if (dto.headerConfig !== undefined) {

@@ -13,8 +13,10 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Trash2, Edit2, AlertCircle, ArrowRight, RotateCcw, Mail, Workflow } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Trash2, Edit2, AlertCircle, ArrowRight, RotateCcw, Mail, Workflow, Bug } from 'lucide-react';
 import type { ProxyRule, UpdateProxyRuleDto } from '@/services/proxyRulesApi';
+import { useGetRuleLogCountQuery } from '@/services/proxyRulesApi';
 
 interface RulesListProps {
   rules: ProxyRule[];
@@ -23,12 +25,30 @@ interface RulesListProps {
   onRuleClick: (rule: ProxyRule) => void;
   onUpdateRule: (id: string, updates: UpdateProxyRuleDto) => Promise<void>;
   onDeleteRule: (id: string) => Promise<void>;
+  onViewLogs?: (rule: ProxyRule) => void;
 }
 
 /**
  * RulesList - Displays a list of proxy rules with toggle and delete actions.
  * Rules are clickable to navigate to edit page.
  */
+/**
+ * Small inline component to show log count badge for a pipeline rule.
+ */
+function LogCountBadge({ ruleId, onClick }: { ruleId: string; onClick: (e: React.MouseEvent) => void }) {
+  const { data } = useGetRuleLogCountQuery(ruleId);
+  if (!data || data.count === 0) return null;
+  return (
+    <Badge
+      variant="secondary"
+      className="cursor-pointer text-xs"
+      onClick={onClick}
+    >
+      {data.count} run{data.count === 1 ? '' : 's'}
+    </Badge>
+  );
+}
+
 export function RulesList({
   rules,
   isLoading,
@@ -36,6 +56,7 @@ export function RulesList({
   onRuleClick,
   onUpdateRule,
   onDeleteRule,
+  onViewLogs,
 }: RulesListProps) {
   const [deletingRule, setDeletingRule] = useState<ProxyRule | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -67,6 +88,16 @@ export function RulesList({
   const handleEditClick = (rule: ProxyRule, e: React.MouseEvent) => {
     e.stopPropagation();
     onRuleClick(rule);
+  };
+
+  const handleToggleDebug = async (rule: ProxyRule, e: React.MouseEvent) => {
+    e.stopPropagation();
+    await onUpdateRule(rule.id, { debugEnabled: !rule.debugEnabled });
+  };
+
+  const handleViewLogs = (rule: ProxyRule, e: React.MouseEvent) => {
+    e.stopPropagation();
+    onViewLogs?.(rule);
   };
 
   // Loading state
@@ -193,6 +224,25 @@ export function RulesList({
                 )}
               </div>
             </div>
+            {rule.proxyType === 'pipeline' && (
+              <>
+                {rule.debugEnabled && (
+                  <LogCountBadge
+                    ruleId={rule.id}
+                    onClick={(e) => handleViewLogs(rule, e)}
+                  />
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={(e) => handleToggleDebug(rule, e)}
+                  title={rule.debugEnabled ? 'Disable debug logging' : 'Enable debug logging'}
+                  className={rule.debugEnabled ? 'text-purple-500' : ''}
+                >
+                  <Bug className="h-4 w-4" />
+                </Button>
+              </>
+            )}
             <Switch
               checked={rule.isEnabled}
               onCheckedChange={() => {}}

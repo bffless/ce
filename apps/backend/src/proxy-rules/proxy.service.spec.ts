@@ -33,6 +33,7 @@ describe('ProxyService', () => {
     pipelineConfig: null,
     isEnabled: true,
     description: null,
+    debugEnabled: false,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,

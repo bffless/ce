@@ -4,6 +4,7 @@ import { ProxyService } from './proxy.service';
 import { EmailFormHandlerService } from './email-form-handler.service';
 import { ConfigService } from '@nestjs/config';
 import { PipelineExecutionService } from '../pipelines/execution';
+import { PipelineExecutionLogService } from '../pipelines/pipeline-execution-log.service';
 import { VisibilityService } from '../domains/visibility.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { TrafficRoutingService } from '../domains/traffic-routing.service';
@@ -26,6 +27,7 @@ describe('ProxyMiddleware', () => {
   let mockEmailFormHandlerService: jest.Mocked<EmailFormHandlerService>;
   let mockConfigService: jest.Mocked<ConfigService>;
   let mockPipelineExecutionService: jest.Mocked<PipelineExecutionService>;
+  let mockExecutionLogService: { log: jest.Mock };
   let mockVisibilityService: jest.Mocked<VisibilityService>;
   let mockPermissionsService: jest.Mocked<PermissionsService>;
   let mockTrafficRoutingService: jest.Mocked<TrafficRoutingService>;
@@ -55,6 +57,10 @@ describe('ProxyMiddleware', () => {
       }),
     } as any;
 
+    mockExecutionLogService = {
+      log: jest.fn().mockResolvedValue(undefined),
+    };
+
     mockVisibilityService = {
       resolveAccessControlForAlias: jest.fn().mockResolvedValue({
         isPublic: true,
@@ -79,6 +85,7 @@ describe('ProxyMiddleware', () => {
       mockEmailFormHandlerService,
       mockConfigService,
       mockPipelineExecutionService,
+      mockExecutionLogService as any,
       mockVisibilityService,
       mockPermissionsService,
       mockTrafficRoutingService,
@@ -121,6 +128,7 @@ describe('ProxyMiddleware', () => {
     pipelineConfig: null,
     isEnabled: true,
     description: null,
+    debugEnabled: false,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,

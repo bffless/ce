@@ -1,5 +1,5 @@
 import { Module, MiddlewareConsumer, NestModule, RequestMethod, forwardRef } from '@nestjs/common';
-import { ProxyRulesController } from './proxy-rules.controller';
+import { ProxyRulesController, PipelineLogsController } from './proxy-rules.controller';
 import { ProxyRuleSetsController } from './proxy-rule-sets.controller';
 import { ProxyRulesService } from './proxy-rules.service';
 import { ProxyRuleSetsService } from './proxy-rule-sets.service';
@@ -20,7 +20,7 @@ import { ProjectsModule } from '../projects/projects.module';
     forwardRef(() => DeploymentsModule),
     forwardRef(() => ProjectsModule),
   ],
-  controllers: [ProxyRulesController, ProxyRuleSetsController],
+  controllers: [ProxyRulesController, PipelineLogsController, ProxyRuleSetsController],
   providers: [ProxyRulesService, ProxyRuleSetsService, ProxyService, ProxyMiddleware, EmailFormHandlerService],
   exports: [ProxyRulesService, ProxyRuleSetsService, ProxyService],
 })

@@ -11,6 +11,7 @@ import { EmailFormHandlerService } from './email-form-handler.service';
 import { ProxyRule, ProxyType, PipelineConfig } from '../db/schema/proxy-rules.schema';
 import { ConfigService } from '@nestjs/config';
 import { PipelineExecutionService } from '../pipelines/execution';
+import { PipelineExecutionLogService } from '../pipelines/pipeline-execution-log.service';
 import { Pipeline, PipelineStep } from '../pipelines/types';
 import multer from 'multer';
 import { CustomDomainAuthService } from '../auth/custom-domain-auth.service';
@@ -44,6 +45,7 @@ export class ProxyMiddleware implements NestMiddleware {
     private readonly emailFormHandlerService: EmailFormHandlerService,
     private readonly configService: ConfigService,
     private readonly pipelineExecutionService: PipelineExecutionService,
+    private readonly executionLogService: PipelineExecutionLogService,
     private readonly visibilityService: VisibilityService,
     private readonly permissionsService: PermissionsService,
     private readonly trafficRoutingService: TrafficRoutingService,
@@ -1037,6 +1039,19 @@ export class ProxyMiddleware implements NestMiddleware {
           success: false,
           error: result.error,
         });
+      }
+
+      // Fire-and-forget: persist execution log if debug is enabled
+      if (rule.debugEnabled) {
+        this.executionLogService
+          .log(rule.id, projectId, result, {
+            ip: req.ip,
+            userAgent: req.headers['user-agent'],
+            userId: user?.id,
+          }, req.method, req.path)
+          .catch((err) =>
+            this.logger.error('Failed to persist pipeline execution log', err),
+          );
       }
     } catch (error) {
       this.logger.error(

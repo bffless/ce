@@ -9,6 +9,7 @@ import { AliasesPage } from '@/pages/AliasesPage';
 import { ProxyRuleSetsPage } from '@/pages/ProxyRuleSetsPage';
 import { RuleSetDetailPage } from '@/pages/RuleSetDetailPage';
 import { RuleEditorPage } from '@/pages/RuleEditorPage';
+import PipelineLogsPage from '@/pages/PipelineLogsPage';
 import { SchemasListPage } from '@/pages/SchemasListPage';
 import { SchemaDetailPage } from '@/pages/SchemaDetailPage';
 import { SchemaEditorPage } from '@/pages/SchemaEditorPage';
@@ -88,6 +89,7 @@ function App() {
           <Route path="proxy-rules/:ruleSetId" element={<RuleSetDetailPage />} />
           <Route path="proxy-rules/:ruleSetId/new" element={<RuleEditorPage />} />
           <Route path="proxy-rules/:ruleSetId/:ruleId" element={<RuleEditorPage />} />
+          <Route path="proxy-rules/:ruleSetId/:ruleId/logs" element={<PipelineLogsPage />} />
           <Route path="data" element={<SchemasListPage />} />
           <Route path="data/new" element={<SchemaEditorPage />} />
           <Route path="data/:schemaId" element={<SchemaDetailPage />} />

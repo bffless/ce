@@ -3,6 +3,7 @@ import { NotFoundException } from '@nestjs/common';
 import { ProxyRulesController } from './proxy-rules.controller';
 import { ProxyRulesService } from './proxy-rules.service';
 import { PipelineExecutionService } from '../pipelines/execution';
+import { PipelineExecutionLogService } from '../pipelines/pipeline-execution-log.service';
 import { DeploymentsService } from '../deployments/deployments.service';
 import { ProjectsService } from '../projects/projects.service';
 import { CurrentUserData } from '../auth/decorators/current-user.decorator';
@@ -39,6 +40,7 @@ describe('ProxyRulesController', () => {
     pipelineConfig: null,
     isEnabled: true,
     description: null,
+    debugEnabled: false,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
@@ -67,11 +69,16 @@ describe('ProxyRulesController', () => {
       getProjectById: jest.fn(),
     } as unknown as jest.Mocked<ProjectsService>;
 
+    const mockExecutionLogService = {
+      log: jest.fn().mockResolvedValue(undefined),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ProxyRulesController],
       providers: [
         { provide: ProxyRulesService, useValue: mockProxyRulesService },
         { provide: PipelineExecutionService, useValue: mockPipelineExecutionService },
+        { provide: PipelineExecutionLogService, useValue: mockExecutionLogService },
         { provide: DeploymentsService, useValue: mockDeploymentsService },
         { provide: ProjectsService, useValue: mockProjectsService },
       ],

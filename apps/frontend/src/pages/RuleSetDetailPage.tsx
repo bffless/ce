@@ -206,6 +206,9 @@ export function RuleSetDetailPage() {
             onRuleClick={handleRuleClick}
             onUpdateRule={handleUpdateRule}
             onDeleteRule={handleDeleteRule}
+            onViewLogs={(rule) =>
+              navigate(`/repo/${owner}/${repo}/proxy-rules/${ruleSetId}/${rule.id}/logs`)
+            }
           />
         </CardContent>
       </Card>

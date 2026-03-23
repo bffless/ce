@@ -327,6 +327,13 @@ export const proxyRules = pgTable(
     isEnabled: boolean('is_enabled').notNull().default(true),
 
     /**
+     * Whether debug logging is enabled for this pipeline rule.
+     * When true, pipeline execution results are persisted to pipeline_execution_logs.
+     * Only applies to pipeline-type proxy rules.
+     */
+    debugEnabled: boolean('debug_enabled').notNull().default(false),
+
+    /**
      * Optional description for documentation purposes.
      */
     description: text('description'),

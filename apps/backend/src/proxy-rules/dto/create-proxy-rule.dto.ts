@@ -495,6 +495,14 @@ export class CreateProxyRuleDto {
   @IsOptional()
   @IsBoolean()
   isEnabled?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Enable debug logging for pipeline execution. When enabled, execution results are persisted for debugging.',
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  debugEnabled?: boolean;
 }
 
 /**

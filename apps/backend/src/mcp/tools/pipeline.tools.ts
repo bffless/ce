@@ -4,7 +4,9 @@ import { z } from 'zod';
 import { Request } from 'express';
 import { PipelineSchemasService } from '../../pipelines/pipeline-schemas.service';
 import { PipelineDataService } from '../../pipelines/pipeline-data.service';
+import { PipelineExecutionLogService } from '../../pipelines/pipeline-execution-log.service';
 import { UploadSchemaGeneratorService } from '../../pipelines/upload-schema-generator.service';
+import { ProxyRulesService } from '../../proxy-rules/proxy-rules.service';
 import { SchemaFieldType } from '../../db/schema';
 import { AuthService } from '../../auth/auth.service';
 import { getUserContext } from '../helpers/user-context.helper';
@@ -15,6 +17,8 @@ export class PipelineTools {
     private readonly schemasService: PipelineSchemasService,
     private readonly dataService: PipelineDataService,
     private readonly uploadSchemaGenerator: UploadSchemaGeneratorService,
+    private readonly executionLogService: PipelineExecutionLogService,
+    private readonly proxyRulesService: ProxyRulesService,
     private readonly authService: AuthService,
   ) {}
 
@@ -338,5 +342,102 @@ export class PipelineTools {
     const user = await getUserContext(request, this.authService);
     await this.dataService.delete(id, user.id, user.role);
     return JSON.stringify({ success: true, id });
+  }
+
+  // =====================
+  // Pipeline Execution Log Tools
+  // =====================
+
+  @Tool({
+    name: 'enable_pipeline_debug',
+    description: 'Toggle debug logging on a proxy rule. When enabled, pipeline execution results are persisted for debugging.',
+    parameters: z.object({
+      ruleId: z.string().describe('Proxy rule ID'),
+      enabled: z.boolean().describe('Whether to enable debug logging'),
+    }),
+  })
+  async enableDebug(
+    args: { ruleId: string; enabled: boolean },
+    _context: Context,
+    request: Request,
+  ) {
+    const user = await getUserContext(request, this.authService);
+    const result = await this.proxyRulesService.update(
+      args.ruleId,
+      { debugEnabled: args.enabled },
+      user.id,
+      user.role,
+    );
+    return JSON.stringify({ id: result.id, debugEnabled: result.debugEnabled });
+  }
+
+  @Tool({
+    name: 'list_pipeline_logs',
+    description: 'List execution logs for a proxy rule. Shows recent pipeline runs with status, duration, and errors.',
+    parameters: z.object({
+      ruleId: z.string().describe('Proxy rule ID'),
+      page: z.number().optional().describe('Page number (default 1)'),
+      pageSize: z.number().optional().describe('Items per page (default 10)'),
+    }),
+  })
+  async listLogs(
+    args: { ruleId: string; page?: number; pageSize?: number },
+    _context: Context,
+    _request: Request,
+  ) {
+    const result = await this.executionLogService.getByRuleId(
+      args.ruleId,
+      args.page ?? 1,
+      args.pageSize ?? 10,
+    );
+    return JSON.stringify(result);
+  }
+
+  @Tool({
+    name: 'get_pipeline_log',
+    description: 'Get full detail of a single pipeline execution log, including all step debug data (input/output/timing).',
+    parameters: z.object({
+      id: z.string().describe('Execution log ID'),
+    }),
+  })
+  async getLog(
+    { id }: { id: string },
+    _context: Context,
+    _request: Request,
+  ) {
+    const result = await this.executionLogService.getById(id);
+    if (!result) {
+      return JSON.stringify({ error: 'Log not found' });
+    }
+    return JSON.stringify(result);
+  }
+
+  @Tool({
+    name: 'get_pipeline_log_step',
+    description: 'Get a specific step\'s input/output from a pipeline execution log.',
+    parameters: z.object({
+      logId: z.string().describe('Execution log ID'),
+      stepName: z.string().describe('Step name to find'),
+    }),
+  })
+  async getLogStep(
+    args: { logId: string; stepName: string },
+    _context: Context,
+    _request: Request,
+  ) {
+    const log = await this.executionLogService.getById(args.logId);
+    if (!log) {
+      return JSON.stringify({ error: 'Log not found' });
+    }
+    const step = log.debug?.steps?.find(
+      (s) => s.stepName === args.stepName || s.stepId === args.stepName,
+    );
+    if (!step) {
+      return JSON.stringify({
+        error: `Step '${args.stepName}' not found`,
+        availableSteps: log.debug?.steps?.map((s) => s.stepName || s.stepId) ?? [],
+      });
+    }
+    return JSON.stringify(step);
   }
 }

@@ -157,6 +157,7 @@ export function ExpandedProxyRuleForm({
       name: pipelineConfig.name,
       description: pipelineConfig.description,
       steps: pipelineConfig.steps,
+      ...(pipelineConfig.postSteps && pipelineConfig.postSteps.length > 0 && { postSteps: pipelineConfig.postSteps }),
       validators: validators,
       // Include rule metadata for context
       _meta: {
@@ -189,6 +190,7 @@ export function ExpandedProxyRuleForm({
           name: data.name || '',
           description: data.description || '',
           steps: data.steps || [],
+          ...(data.postSteps && { postSteps: data.postSteps }),
         });
         // Update validators
         if (data.validators) {

@@ -68,6 +68,7 @@ export interface ProxyRule {
   emailHandlerConfig: EmailHandlerConfig | null;
   pipelineConfig: PipelineConfig | null;
   isEnabled: boolean;
+  debugEnabled: boolean;
   description: string | null;
   createdAt: string;
   updatedAt: string;
@@ -140,6 +141,64 @@ export interface UpdateProxyRuleDto {
   emailHandlerConfig?: EmailHandlerConfig | null;
   description?: string;
   isEnabled?: boolean;
+  debugEnabled?: boolean;
+}
+
+// Pipeline execution log summary (list view)
+export interface PipelineExecutionLogSummary {
+  id: string;
+  success: boolean;
+  statusCode: number;
+  method: string;
+  path: string;
+  durationMs: number;
+  stepsCount: number;
+  errorCode: string | null;
+  errorMessage: string | null;
+  errorStep: string | null;
+  createdAt: string;
+}
+
+// Pipeline execution log with full debug data
+export interface PipelineExecutionLog extends PipelineExecutionLogSummary {
+  projectId: string;
+  proxyRuleId: string;
+  requestMeta: { ip?: string; userAgent?: string; userId?: string } | null;
+  debug: {
+    validators: Array<{
+      type: string;
+      passed: boolean;
+      durationMs: number;
+      skipped?: boolean;
+      error?: { code: string; message: string };
+    }>;
+    steps: Array<{
+      stepId: string;
+      stepName?: string;
+      handlerType: string;
+      startTime: string;
+      endTime: string;
+      durationMs: number;
+      status: 'success' | 'failed' | 'skipped';
+      input: { requestBody: Record<string, unknown>; previousStepOutputs: Record<string, unknown> };
+      output?: unknown;
+      error?: { code: string; message: string; details?: unknown };
+      warning?: string;
+      condition?: string;
+      conditionResult?: boolean;
+    }>;
+    totalDurationMs: number;
+    startTime: string;
+    endTime: string;
+  };
+}
+
+// Paginated logs response
+export interface PipelineLogsResponse {
+  logs: PipelineExecutionLogSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
 }
 
 // Email config status response
@@ -317,6 +376,42 @@ export const proxyRulesApi = api.injectEndpoints({
       },
     }),
 
+    // ==================== Pipeline Execution Logs ====================
+
+    // List execution logs for a rule
+    getRuleLogs: builder.query<PipelineLogsResponse, { ruleId: string; page?: number; pageSize?: number }>({
+      query: ({ ruleId, page = 1, pageSize = 20 }) =>
+        `/api/proxy-rules/${ruleId}/logs?page=${page}&pageSize=${pageSize}`,
+      providesTags: (_result, _error, { ruleId }) => [
+        { type: 'PipelineLog' as const, id: `rule-${ruleId}` },
+      ],
+    }),
+
+    // Get log count for badge display
+    getRuleLogCount: builder.query<{ count: number }, string>({
+      query: (ruleId) => `/api/proxy-rules/${ruleId}/logs/count`,
+      providesTags: (_result, _error, ruleId) => [
+        { type: 'PipelineLog' as const, id: `count-${ruleId}` },
+      ],
+    }),
+
+    // Get full detail of a single execution log
+    getLogDetail: builder.query<PipelineExecutionLog, string>({
+      query: (logId) => `/api/pipeline-logs/${logId}`,
+    }),
+
+    // Clear all logs for a rule
+    clearRuleLogs: builder.mutation<{ success: boolean }, string>({
+      query: (ruleId) => ({
+        url: `/api/proxy-rules/${ruleId}/logs`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: (_result, _error, ruleId) => [
+        { type: 'PipelineLog' as const, id: `rule-${ruleId}` },
+        { type: 'PipelineLog' as const, id: `count-${ruleId}` },
+      ],
+    }),
+
     // ==================== Settings ====================
 
     // Get email configuration status (public endpoint)
@@ -343,6 +438,11 @@ export const {
   useUpdateProxyRuleMutation,
   useDeleteProxyRuleMutation,
   useTestProxyRuleMutation,
+  // Pipeline Execution Logs
+  useGetRuleLogsQuery,
+  useGetRuleLogCountQuery,
+  useGetLogDetailQuery,
+  useClearRuleLogsMutation,
   // Settings
   useGetEmailConfigStatusQuery,
 } = proxyRulesApi;

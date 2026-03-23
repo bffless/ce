@@ -6,6 +6,7 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   Req,
   UseGuards,
   UseInterceptors,
@@ -29,6 +30,7 @@ import { UpdateProxyRuleDto, ProxyRuleResponseDto } from './dto';
 import { ApiKeyGuard } from '../auth/api-key.guard';
 import { CurrentUser, CurrentUserData } from '../auth/decorators/current-user.decorator';
 import { PipelineExecutionService } from '../pipelines/execution';
+import { PipelineExecutionLogService } from '../pipelines/pipeline-execution-log.service';
 import { TestPipelineDto, PipelineTestResultDto } from '../pipelines/dto';
 import { DeploymentsService } from '../deployments/deployments.service';
 import { ProjectsService } from '../projects/projects.service';
@@ -46,6 +48,7 @@ export class ProxyRulesController {
   constructor(
     private readonly proxyRulesService: ProxyRulesService,
     private readonly pipelineExecutionService: PipelineExecutionService,
+    private readonly executionLogService: PipelineExecutionLogService,
     @Inject(forwardRef(() => DeploymentsService))
     private readonly deploymentsService: DeploymentsService,
     @Inject(forwardRef(() => ProjectsService))
@@ -97,6 +100,50 @@ export class ProxyRulesController {
     @CurrentUser() user: CurrentUserData,
   ): Promise<{ success: boolean }> {
     await this.proxyRulesService.delete(id, user.id, user.role || 'user');
+    return { success: true };
+  }
+
+  @Get(':id/logs')
+  @ApiOperation({ summary: 'List pipeline execution logs for a rule' })
+  @ApiParam({ name: 'id', type: 'string' })
+  @ApiResponse({ status: 200, description: 'Paginated execution logs' })
+  async getRuleLogs(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    const rule = await this.proxyRulesService.getRuleById(id);
+    if (!rule) {
+      throw new NotFoundException(`Proxy rule ${id} not found`);
+    }
+    return this.executionLogService.getByRuleId(
+      id,
+      page ? parseInt(page, 10) : 1,
+      pageSize ? parseInt(pageSize, 10) : 20,
+    );
+  }
+
+  @Get(':id/logs/count')
+  @ApiOperation({ summary: 'Get log count for a rule' })
+  @ApiParam({ name: 'id', type: 'string' })
+  @ApiResponse({ status: 200, description: 'Log count' })
+  async getRuleLogCount(@Param('id', ParseUUIDPipe) id: string) {
+    return { count: await this.executionLogService.getCountByRuleId(id) };
+  }
+
+  @Delete(':id/logs')
+  @ApiOperation({ summary: 'Clear all execution logs for a rule' })
+  @ApiParam({ name: 'id', type: 'string' })
+  @ApiResponse({ status: 200, description: 'Logs cleared' })
+  async clearRuleLogs(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: CurrentUserData,
+  ) {
+    const rule = await this.proxyRulesService.getRuleById(id);
+    if (!rule) {
+      throw new NotFoundException(`Proxy rule ${id} not found`);
+    }
+    await this.executionLogService.deleteByRuleId(id);
     return { success: true };
   }
 
@@ -278,5 +325,31 @@ export class ProxyRulesController {
       durationMs: result.debug?.totalDurationMs || 0,
       debug: result.debug,
     };
+  }
+}
+
+/**
+ * Separate controller for pipeline log detail (different base path).
+ */
+@ApiTags('Pipeline Logs')
+@ApiBearerAuth()
+@ApiSecurity('api-key')
+@Controller('api/pipeline-logs')
+@UseGuards(ApiKeyGuard)
+export class PipelineLogsController {
+  constructor(
+    private readonly executionLogService: PipelineExecutionLogService,
+  ) {}
+
+  @Get(':logId')
+  @ApiOperation({ summary: 'Get a single pipeline execution log' })
+  @ApiParam({ name: 'logId', type: 'string' })
+  @ApiResponse({ status: 200, description: 'Full execution log with debug data' })
+  async getLogDetail(@Param('logId', ParseUUIDPipe) logId: string) {
+    const log = await this.executionLogService.getById(logId);
+    if (!log) {
+      throw new NotFoundException(`Pipeline log ${logId} not found`);
+    }
+    return log;
   }
 }

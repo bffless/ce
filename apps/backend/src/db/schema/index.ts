@@ -30,3 +30,4 @@ export * from './onboarding-rule-executions.schema';
 export * from './pipeline-schemas.schema';
 export * from './pipeline-data.schema';
 export * from './pipeline-data-embeddings.schema';
+export * from './pipeline-execution-logs.schema';
