@@ -182,6 +182,8 @@ function getStepOutputDescription(handlerType: string, config?: Record<string, u
     file_upload_handler: 'Uploaded file metadata (path, URL, size, type)',
     file_serve_handler: 'Served file info',
     replicate: 'Replicate prediction result with model output',
+    stripe_checkout: 'Stripe Checkout Session with payment URL',
+    stripe_webhook: 'Verified Stripe event object',
   };
   return descriptions[handlerType] || 'Step output data';
 }
@@ -277,6 +279,18 @@ function getStepOutputExamples(
       `${fmt(`${stepPath}.model`)} — model that was run`,
       `${fmt(`${stepPath}.status`)} — succeeded/failed`,
       `${fmt(`${stepPath}.metrics`)} — timing metrics`,
+    ],
+    stripe_checkout: [
+      `${fmt(`${stepPath}.url`)} — Stripe Checkout URL (redirect user here)`,
+      `${fmt(`${stepPath}.sessionId`)} — Checkout Session ID`,
+    ],
+    stripe_webhook: [
+      `${fmt(`${stepPath}.type`)} — event type (e.g., checkout.session.completed)`,
+      `${fmt(`${stepPath}.id`)} — event ID`,
+      `${fmt(`${stepPath}.data.object`)} — the Stripe object (Session, Invoice, etc.)`,
+      `${fmt(`${stepPath}.data.object.client_reference_id`)} — your reference ID from checkout`,
+      `${fmt(`${stepPath}.data.object.amount_total`)} — payment amount in cents`,
+      `${fmt(`${stepPath}.data.object.customer_email`)} — customer email`,
     ],
   };
 

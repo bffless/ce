@@ -29,9 +29,10 @@ import { ProjectStorageRetentionTab } from '@/components/project/ProjectStorageR
 import { ProjectCacheRulesTab } from '@/components/project/ProjectCacheRulesTab';
 import { ProjectShareLinksTab } from '@/components/project/ProjectShareLinksTab';
 import { ProjectAISettingsTab } from '@/components/project/ProjectAISettingsTab';
+import { ProjectIntegrationsTab } from '@/components/project/ProjectIntegrationsTab';
 import { RepoBreadcrumb } from '@/components/repo/RepoBreadcrumb';
 
-type TabValue = 'general' | 'members' | 'groups' | 'api-keys' | 'proxy-rules' | 'storage' | 'cache-rules' | 'share-links' | 'ai';
+type TabValue = 'general' | 'members' | 'groups' | 'api-keys' | 'proxy-rules' | 'storage' | 'cache-rules' | 'share-links' | 'ai' | 'integrations';
 
 /**
  * ProjectSettingsPage - Project settings and permissions management
@@ -50,7 +51,7 @@ export function ProjectSettingsPage() {
   // Get tab from query params, default to 'general'
   const tabParam = searchParams.get('tab');
   const currentTab: TabValue =
-    tabParam === 'members' || tabParam === 'groups' || tabParam === 'api-keys' || tabParam === 'proxy-rules' || tabParam === 'storage' || tabParam === 'cache-rules' || tabParam === 'share-links' || tabParam === 'ai'
+    tabParam === 'members' || tabParam === 'groups' || tabParam === 'api-keys' || tabParam === 'proxy-rules' || tabParam === 'storage' || tabParam === 'cache-rules' || tabParam === 'share-links' || tabParam === 'ai' || tabParam === 'integrations'
       ? tabParam
       : 'general';
 
@@ -277,6 +278,7 @@ export function ProjectSettingsPage() {
             <TabsTrigger value="cache-rules">Cache Rules</TabsTrigger>
             <TabsTrigger value="share-links">Share Links</TabsTrigger>
             <TabsTrigger value="ai">AI</TabsTrigger>
+            <TabsTrigger value="integrations">Integrations</TabsTrigger>
           </TabsList>
 
           {/* General Tab */}
@@ -499,6 +501,11 @@ export function ProjectSettingsPage() {
           {/* AI Settings Tab */}
           <TabsContent value="ai" className="mt-6">
             {project && <ProjectAISettingsTab project={project} />}
+          </TabsContent>
+
+          {/* Integrations Tab */}
+          <TabsContent value="integrations" className="mt-6">
+            {project && <ProjectIntegrationsTab project={project} />}
           </TabsContent>
         </Tabs>
       </div>

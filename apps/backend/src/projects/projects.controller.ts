@@ -39,6 +39,7 @@ import {
 import { SkillsService, SkillSummary } from '../pipelines/skills.service';
 import { AIToolPluginService, PluginListItem } from '../pipelines/ai-plugins/ai-tool-plugin.service';
 import { DeploymentsService } from '../deployments/deployments.service';
+import { IntegrationsService, IntegrationInfo } from '../integrations/integrations.service';
 
 @ApiTags('projects')
 @Controller('api/projects')
@@ -50,6 +51,7 @@ export class ProjectsController {
     private readonly pluginService: AIToolPluginService,
     @Inject(forwardRef(() => DeploymentsService))
     private readonly deploymentsService: DeploymentsService,
+    private readonly integrationsService: IntegrationsService,
   ) {}
 
   @Get()
@@ -307,6 +309,79 @@ export class ProjectsController {
     @Param('pluginId') pluginId: string,
   ): Promise<void> {
     return this.pluginService.disablePlugin(id, pluginId);
+  }
+
+  // ==========================================================================
+  // Integrations Endpoints (Project-Level)
+  // NOTE: These MUST be defined BEFORE :owner/:name to avoid route conflicts
+  // ==========================================================================
+
+  @Get(':id/integrations')
+  @UseGuards(ApiKeyGuard, ProjectPermissionGuard)
+  @RequireProjectRole('admin')
+  @ApiOperation({ summary: 'List all integrations for this project' })
+  async listIntegrations(@Param('id') id: string): Promise<IntegrationInfo[]> {
+    return this.integrationsService.listIntegrations(id);
+  }
+
+  @Get(':id/integrations/:integrationId')
+  @UseGuards(ApiKeyGuard, ProjectPermissionGuard)
+  @RequireProjectRole('admin')
+  @ApiOperation({ summary: 'Get integration details' })
+  async getIntegration(
+    @Param('id') id: string,
+    @Param('integrationId') integrationId: string,
+  ): Promise<IntegrationInfo> {
+    return this.integrationsService.getIntegration(id, integrationId);
+  }
+
+  @Put(':id/integrations/:integrationId/:environment')
+  @UseGuards(ApiKeyGuard, ProjectPermissionGuard)
+  @RequireProjectRole('admin')
+  @ApiOperation({ summary: 'Set integration config for an environment' })
+  async setIntegrationConfig(
+    @Param('id') id: string,
+    @Param('integrationId') integrationId: string,
+    @Param('environment') environment: 'sandbox' | 'production',
+    @Body() body: { config: Record<string, unknown> },
+  ): Promise<IntegrationInfo> {
+    return this.integrationsService.setConfig(id, integrationId, environment, body.config);
+  }
+
+  @Patch(':id/integrations/:integrationId/environment')
+  @UseGuards(ApiKeyGuard, ProjectPermissionGuard)
+  @RequireProjectRole('admin')
+  @ApiOperation({ summary: 'Switch active environment' })
+  async switchIntegrationEnvironment(
+    @Param('id') id: string,
+    @Param('integrationId') integrationId: string,
+    @Body() body: { environment: 'sandbox' | 'production' },
+  ): Promise<IntegrationInfo> {
+    return this.integrationsService.switchEnvironment(id, integrationId, body.environment);
+  }
+
+  @Delete(':id/integrations/:integrationId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(ApiKeyGuard, ProjectPermissionGuard)
+  @RequireProjectRole('admin')
+  @ApiOperation({ summary: 'Delete an integration' })
+  async deleteIntegration(
+    @Param('id') id: string,
+    @Param('integrationId') integrationId: string,
+  ): Promise<void> {
+    return this.integrationsService.deleteIntegration(id, integrationId);
+  }
+
+  @Post(':id/integrations/:integrationId/test')
+  @UseGuards(ApiKeyGuard, ProjectPermissionGuard)
+  @RequireProjectRole('admin')
+  @ApiOperation({ summary: 'Test integration connection' })
+  async testIntegrationConnection(
+    @Param('id') id: string,
+    @Param('integrationId') integrationId: string,
+    @Body() body: { environment?: 'sandbox' | 'production' },
+  ): Promise<{ success: boolean; error?: string }> {
+    return this.integrationsService.testConnection(id, integrationId, body.environment);
   }
 
   // ==========================================================================

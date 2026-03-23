@@ -73,7 +73,9 @@ export type HandlerType =
   | 'replicate'
   | 'embed_store'
   | 'vector_search'
-  | 'http_request';
+  | 'http_request'
+  | 'stripe_checkout'
+  | 'stripe_webhook';
 
 /**
  * Pipeline step definition for execution.

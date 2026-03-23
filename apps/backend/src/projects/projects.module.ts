@@ -6,12 +6,14 @@ import { RepositoriesController } from './repositories.controller';
 import { PermissionsModule } from '../permissions/permissions.module';
 import { PipelinesModule } from '../pipelines/pipelines.module';
 import { DeploymentsModule } from '../deployments/deployments.module';
+import { IntegrationsModule } from '../integrations/integrations.module';
 
 @Module({
   imports: [
     forwardRef(() => PermissionsModule),
     forwardRef(() => PipelinesModule),
     forwardRef(() => DeploymentsModule),
+    IntegrationsModule,
   ],
   controllers: [ProjectsController, RepositoriesController],
   providers: [ProjectsService, ProjectAISettingsService],
