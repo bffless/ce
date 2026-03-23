@@ -8,6 +8,7 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     logger: (process.env.LOG_LEVEL?.split(',') as LogLevel[]) || ['error', 'warn', 'log'],
+    rawBody: true, // Needed for Stripe webhook signature verification
   });
 
   // Security headers (production only)

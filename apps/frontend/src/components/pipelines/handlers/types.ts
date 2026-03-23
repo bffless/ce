@@ -314,4 +314,21 @@ export type HandlerConfig =
   | ReplicateHandlerConfig
   | EmbedStoreHandlerConfig
   | VectorSearchHandlerConfig
-  | HttpRequestHandlerConfig;
+  | HttpRequestHandlerConfig
+  | StripeCheckoutHandlerConfig
+  | StripeWebhookHandlerConfig;
+
+export interface StripeCheckoutHandlerConfig extends BaseHandlerConfig {
+  priceId: string;
+  mode?: 'payment' | 'subscription';
+  successUrl: string;
+  cancelUrl: string;
+  customerEmail?: string;
+  clientReferenceId?: string;
+  quantity?: string;
+  metadata?: Record<string, string>;
+}
+
+export interface StripeWebhookHandlerConfig extends BaseHandlerConfig {
+  allowedEventTypes?: string[];
+}

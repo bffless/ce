@@ -1,0 +1,318 @@
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { db } from '../db/client';
+import { projects } from '../db/schema';
+import { eq } from 'drizzle-orm';
+import * as crypto from 'crypto';
+
+/**
+ * Stored integration config shape in projects.settings.integrations
+ */
+export interface StoredIntegrationConfig {
+  enabled: boolean;
+  activeEnvironment: 'sandbox' | 'production';
+  sandbox?: { config: string }; // encrypted JSON
+  production?: { config: string }; // encrypted JSON
+  webhookPipelines?: Array<{
+    eventType: string;
+    pipelinePath: string;
+  }>;
+}
+
+/**
+ * Decrypted Stripe config (what gets encrypted/decrypted)
+ */
+export interface StripeIntegrationKeys {
+  publishableKey: string;
+  secretKey: string;
+  webhookSecret: string;
+}
+
+/**
+ * Public-facing integration info (no secrets exposed)
+ */
+export interface IntegrationInfo {
+  id: string;
+  enabled: boolean;
+  activeEnvironment: 'sandbox' | 'production';
+  hasSandboxConfig: boolean;
+  hasProductionConfig: boolean;
+  webhookPipelines: Array<{
+    eventType: string;
+    pipelinePath: string;
+  }>;
+}
+
+/**
+ * Service for managing project-level integrations with encrypted credential storage.
+ * Follows the same encryption pattern as AIToolPluginService.
+ */
+@Injectable()
+export class IntegrationsService {
+  private readonly logger = new Logger(IntegrationsService.name);
+  private readonly ENCRYPTION_KEY: Buffer;
+  private readonly ENCRYPTION_ALGORITHM = 'aes-256-gcm';
+
+  constructor(private configService: ConfigService) {
+    const encryptionKey = this.configService.get<string>('ENCRYPTION_KEY');
+    if (encryptionKey) {
+      this.ENCRYPTION_KEY = Buffer.from(encryptionKey, 'base64');
+    } else {
+      this.ENCRYPTION_KEY = crypto.randomBytes(32);
+      this.logger.warn('No ENCRYPTION_KEY found. Generated temporary key.');
+    }
+  }
+
+  /**
+   * Get integration info for a project (no secrets exposed)
+   */
+  async getIntegration(projectId: string, integrationId: string): Promise<IntegrationInfo> {
+    const stored = await this.getStoredIntegration(projectId, integrationId);
+    return {
+      id: integrationId,
+      enabled: stored?.enabled ?? false,
+      activeEnvironment: stored?.activeEnvironment ?? 'sandbox',
+      hasSandboxConfig: !!stored?.sandbox?.config,
+      hasProductionConfig: !!stored?.production?.config,
+      webhookPipelines: stored?.webhookPipelines ?? [],
+    };
+  }
+
+  /**
+   * List all integrations for a project
+   */
+  async listIntegrations(projectId: string): Promise<IntegrationInfo[]> {
+    const allIntegrations = await this.getAllStoredIntegrations(projectId);
+    const supported = ['stripe'];
+
+    return supported.map((id) => {
+      const stored = allIntegrations[id];
+      return {
+        id,
+        enabled: stored?.enabled ?? false,
+        activeEnvironment: stored?.activeEnvironment ?? 'sandbox',
+        hasSandboxConfig: !!stored?.sandbox?.config,
+        hasProductionConfig: !!stored?.production?.config,
+        webhookPipelines: stored?.webhookPipelines ?? [],
+      };
+    });
+  }
+
+  /**
+   * Save integration config for a specific environment
+   */
+  async setConfig(
+    projectId: string,
+    integrationId: string,
+    environment: 'sandbox' | 'production',
+    config: Record<string, unknown>,
+  ): Promise<IntegrationInfo> {
+    const allIntegrations = await this.getAllStoredIntegrations(projectId);
+    const stored: StoredIntegrationConfig = allIntegrations[integrationId] || {
+      enabled: true,
+      activeEnvironment: 'sandbox',
+    };
+
+    stored.enabled = true;
+    stored[environment] = {
+      config: this.encryptData(JSON.stringify(config)),
+    };
+
+    allIntegrations[integrationId] = stored;
+    await this.saveAllIntegrations(projectId, allIntegrations);
+
+    this.logger.log(`Saved ${environment} config for integration '${integrationId}' in project ${projectId}`);
+
+    return this.getIntegration(projectId, integrationId);
+  }
+
+  /**
+   * Switch active environment for an integration
+   */
+  async switchEnvironment(
+    projectId: string,
+    integrationId: string,
+    environment: 'sandbox' | 'production',
+  ): Promise<IntegrationInfo> {
+    const allIntegrations = await this.getAllStoredIntegrations(projectId);
+    const stored = allIntegrations[integrationId];
+    if (!stored?.enabled) {
+      throw new NotFoundException(`Integration '${integrationId}' is not enabled`);
+    }
+
+    stored.activeEnvironment = environment;
+    allIntegrations[integrationId] = stored;
+    await this.saveAllIntegrations(projectId, allIntegrations);
+
+    return this.getIntegration(projectId, integrationId);
+  }
+
+  /**
+   * Update webhook pipeline mappings for an integration
+   */
+  async setWebhookPipelines(
+    projectId: string,
+    integrationId: string,
+    webhookPipelines: Array<{ eventType: string; pipelinePath: string }>,
+  ): Promise<IntegrationInfo> {
+    const allIntegrations = await this.getAllStoredIntegrations(projectId);
+    const stored = allIntegrations[integrationId];
+    if (!stored?.enabled) {
+      throw new NotFoundException(`Integration '${integrationId}' is not enabled`);
+    }
+
+    stored.webhookPipelines = webhookPipelines;
+    allIntegrations[integrationId] = stored;
+    await this.saveAllIntegrations(projectId, allIntegrations);
+
+    return this.getIntegration(projectId, integrationId);
+  }
+
+  /**
+   * Delete an integration (remove all config)
+   */
+  async deleteIntegration(projectId: string, integrationId: string): Promise<void> {
+    const allIntegrations = await this.getAllStoredIntegrations(projectId);
+    delete allIntegrations[integrationId];
+    await this.saveAllIntegrations(projectId, allIntegrations);
+
+    this.logger.log(`Deleted integration '${integrationId}' from project ${projectId}`);
+  }
+
+  /**
+   * Get decrypted config for the active environment.
+   * Used by step handlers and webhook controller at runtime.
+   */
+  async getActiveConfig(
+    projectId: string,
+    integrationId: string,
+  ): Promise<Record<string, unknown> | null> {
+    const stored = await this.getStoredIntegration(projectId, integrationId);
+    if (!stored?.enabled) return null;
+
+    const envConfig = stored[stored.activeEnvironment];
+    if (!envConfig?.config) return null;
+
+    try {
+      return JSON.parse(this.decryptData(envConfig.config));
+    } catch {
+      this.logger.warn(`Failed to decrypt ${stored.activeEnvironment} config for '${integrationId}'`);
+      return null;
+    }
+  }
+
+  /**
+   * Get the stored integration config (for webhook pipeline lookups)
+   */
+  async getStoredIntegration(
+    projectId: string,
+    integrationId: string,
+  ): Promise<StoredIntegrationConfig | null> {
+    const all = await this.getAllStoredIntegrations(projectId);
+    return all[integrationId] ?? null;
+  }
+
+  /**
+   * Test connection by attempting to list Stripe products with the given keys
+   */
+  async testConnection(
+    projectId: string,
+    integrationId: string,
+    environment?: 'sandbox' | 'production',
+  ): Promise<{ success: boolean; error?: string }> {
+    const stored = await this.getStoredIntegration(projectId, integrationId);
+    if (!stored?.enabled) {
+      return { success: false, error: 'Integration not enabled' };
+    }
+
+    const env = environment || stored.activeEnvironment;
+    const envConfig = stored[env];
+    if (!envConfig?.config) {
+      return { success: false, error: `No ${env} configuration found` };
+    }
+
+    try {
+      const config = JSON.parse(this.decryptData(envConfig.config)) as StripeIntegrationKeys;
+
+      // Dynamically import stripe to test connection
+      const Stripe = (await import('stripe')).default;
+      const stripe = new Stripe(config.secretKey);
+
+      // Simple API call to verify the key works
+      await stripe.products.list({ limit: 1 });
+
+      return { success: true };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message || 'Failed to connect to Stripe',
+      };
+    }
+  }
+
+  // ===== Private helpers =====
+
+  private async getAllStoredIntegrations(
+    projectId: string,
+  ): Promise<Record<string, StoredIntegrationConfig>> {
+    const [project] = await db
+      .select({ settings: projects.settings })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1);
+
+    if (!project?.settings) return {};
+
+    const settings = project.settings as Record<string, unknown>;
+    return (settings.integrations as Record<string, StoredIntegrationConfig>) ?? {};
+  }
+
+  private async saveAllIntegrations(
+    projectId: string,
+    integrations: Record<string, StoredIntegrationConfig>,
+  ): Promise<void> {
+    const [project] = await db
+      .select({ settings: projects.settings })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1);
+
+    if (!project) {
+      throw new NotFoundException('Project not found');
+    }
+
+    const settings = (project.settings || {}) as Record<string, unknown>;
+    settings.integrations = integrations;
+
+    await db
+      .update(projects)
+      .set({ settings, updatedAt: new Date() })
+      .where(eq(projects.id, projectId));
+  }
+
+  private encryptData(data: string): string {
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv(this.ENCRYPTION_ALGORITHM, this.ENCRYPTION_KEY, iv);
+
+    let encrypted = cipher.update(data, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+
+    const authTag = cipher.getAuthTag();
+    return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
+  }
+
+  private decryptData(encryptedData: string): string {
+    const [ivHex, authTagHex, encrypted] = encryptedData.split(':');
+
+    const iv = Buffer.from(ivHex, 'hex');
+    const authTag = Buffer.from(authTagHex, 'hex');
+
+    const decipher = crypto.createDecipheriv(this.ENCRYPTION_ALGORITHM, this.ENCRYPTION_KEY, iv);
+    decipher.setAuthTag(authTag);
+
+    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+
+    return decrypted;
+  }
+}

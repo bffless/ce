@@ -83,6 +83,7 @@
     "reflect-metadata": "^0.2.1",
     "rxjs": "^7.8.1",
     "sharp": "^0.34.5",
+    "stripe": "^20.4.1",
     "supertokens-auth-react": "^0.39.0",
     "supertokens-node": "^17.0.0",
     "uuid": "^9.0.1",

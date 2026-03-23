@@ -17,6 +17,8 @@ import { ReplicateHandlerConfig } from './ReplicateHandlerConfig';
 import { EmbedStoreConfig } from './EmbedStoreConfig';
 import { VectorSearchConfig } from './VectorSearchConfig';
 import { HttpRequestConfig } from './HttpRequestConfig';
+import { StripeCheckoutConfig } from './StripeCheckoutConfig';
+import { StripeWebhookConfig } from './StripeWebhookConfig';
 import { AvailableVariables, type PreviousStep } from './AvailableVariables';
 import type { HandlerConfig } from './types';
 
@@ -274,6 +276,26 @@ export function HandlerConfigWrapper({
         </>
       );
 
+    case 'stripe_checkout':
+      return (
+        <>
+          {renderVariablesPanel()}
+          <StripeCheckoutConfig
+            config={config}
+            onChange={handleChange}
+            previousSteps={previousSteps}
+          />
+        </>
+      );
+
+    case 'stripe_webhook':
+      return (
+        <StripeWebhookConfig
+          config={config}
+          onChange={handleChange}
+        />
+      );
+
     default:
       return (
         <div className="text-sm text-destructive p-4 bg-destructive/10 rounded-md">
@@ -306,6 +328,8 @@ export function getHandlerDisplayName(type: HandlerType): string {
     embed_store: 'Store Embedding',
     vector_search: 'Vector Search',
     http_request: 'HTTP Request',
+    stripe_checkout: 'Stripe Checkout',
+    stripe_webhook: 'Stripe Webhook',
   };
   return names[type] || type;
 }
@@ -333,6 +357,8 @@ export function getHandlerDescription(type: HandlerType): string {
     embed_store: 'Store embedding vectors in pgvector for similarity search',
     vector_search: 'Search stored embeddings by cosine similarity',
     http_request: 'Make an outbound HTTP request to an external URL',
+    stripe_checkout: 'Create a Stripe Checkout Session and return the payment URL',
+    stripe_webhook: 'Verify Stripe webhook signature and parse the event',
   };
   return descriptions[type] || '';
 }

@@ -35,7 +35,10 @@ import {
   VectorSearchHandler,
   ImageConvertHandler,
   HttpRequestHandler,
+  StripeCheckoutHandler,
+  StripeWebhookHandler,
 } from './handlers';
+import { IntegrationsModule } from '../integrations/integrations.module';
 // Embeddings service
 import { PipelineEmbeddingsService } from './pipeline-embeddings.service';
 // Execution logging
@@ -57,7 +60,7 @@ import {
 } from './ai-plugins';
 
 @Module({
-  imports: [PermissionsModule, SettingsModule, forwardRef(() => ProjectsModule), CacheRulesModule],
+  imports: [PermissionsModule, SettingsModule, forwardRef(() => ProjectsModule), CacheRulesModule, forwardRef(() => IntegrationsModule)],
   controllers: [
     PipelineSchemasController,
     PipelineDataController,
@@ -101,6 +104,8 @@ import {
     VectorSearchHandler,
     ImageConvertHandler,
     HttpRequestHandler,
+    StripeCheckoutHandler,
+    StripeWebhookHandler,
     // Validators (auto-register on construction)
     AuthRequiredValidator,
     RateLimitValidator,
