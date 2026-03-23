@@ -123,6 +123,25 @@ function GoogleCalendarOptions({
           </p>
         </div>
       </div>
+      <div className="space-y-1">
+        <Label className="text-xs">Additional attendees</Label>
+        <Input
+          type="text"
+          className="h-8 text-xs"
+          placeholder="email1@example.com, email2@example.com"
+          value={((options.additionalAttendees as string[]) || []).join(', ')}
+          onChange={(e) => {
+            const emails = e.target.value
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean);
+            onChange({ ...options, additionalAttendees: emails.length ? emails : undefined });
+          }}
+        />
+        <p className="text-xs text-muted-foreground">
+          Comma-separated emails to always include on created events
+        </p>
+      </div>
     </div>
   );
 }

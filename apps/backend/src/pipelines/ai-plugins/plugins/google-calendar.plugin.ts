@@ -45,6 +45,10 @@ export class GoogleCalendarPlugin implements AIToolPlugin {
         .boolean()
         .optional()
         .describe('Automatically add a Google Meet video conference link to created events'),
+      additionalAttendees: z
+        .array(z.string().email())
+        .optional()
+        .describe('Additional email addresses to always include as attendees on created events'),
     }),
   };
 
@@ -228,8 +232,14 @@ export class GoogleCalendarPlugin implements AIToolPlugin {
         eventBody.description = args.description;
       }
 
-      if (args.attendees?.length) {
-        eventBody.attendees = args.attendees.map((email) => ({ email }));
+      const additionalAttendees =
+        (context.pipelineOptions?.additionalAttendees as string[] | undefined) || [];
+      const allAttendees = [
+        ...(args.attendees || []),
+        ...additionalAttendees.filter((email) => !args.attendees?.includes(email)),
+      ];
+      if (allAttendees.length) {
+        eventBody.attendees = allAttendees.map((email) => ({ email }));
       }
 
       if (addGoogleMeet) {
