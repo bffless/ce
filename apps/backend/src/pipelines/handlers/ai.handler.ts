@@ -565,6 +565,7 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
           totalTokens: finishData.usage?.totalTokens || 0,
         },
         finishReason: finishData.finishReason,
+        resolvedMessages: messages.map((m) => ({ role: m.role, content: m.content })),
       },
       terminates: true, // Pipeline should not continue, response already sent
     };
@@ -655,6 +656,7 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
         // Include tool call info if any tools were called
         ...(toolCalls?.length && { toolCalls }),
         ...(toolResults?.length && { toolResults }),
+        resolvedMessages: messages.map((m) => ({ role: m.role, content: m.content })),
       },
     };
   }
