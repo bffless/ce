@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.167](https://github.com/bffless/ce/compare/v0.0.166...v0.0.167) (2026-03-23)
+
+
+### Features
+
+* add pipeline execution logging for debugging production pipeline runs ([9909ab8](https://github.com/bffless/ce/commit/9909ab87f3b977bfaa5941d19501a8255bbbc5d8))
+
 ## [0.0.166](https://github.com/bffless/ce/compare/v0.0.165...v0.0.166) (2026-03-23)
 
 
