@@ -116,6 +116,51 @@ export class PipelineTools {
   }
 
   @Tool({
+    name: 'update_pipeline_schema',
+    description:
+      'Update an existing pipeline schema. Can rename the schema and/or modify its fields. Version is auto-incremented when fields change.',
+    parameters: z.object({
+      id: z.string().describe('Schema ID to update'),
+      name: z.string().optional().describe('New schema name (must be unique within project)'),
+      fields: z
+        .array(
+          z.object({
+            name: z.string(),
+            type: z
+              .enum(['string', 'number', 'boolean', 'email', 'text', 'datetime', 'json'])
+              .describe('Field type'),
+            required: z.boolean().optional(),
+            description: z.string().optional(),
+          }),
+        )
+        .optional()
+        .describe('Updated field definitions (replaces all existing fields)'),
+    }),
+  })
+  async updateSchema(
+    args: {
+      id: string;
+      name?: string;
+      fields?: Array<{
+        name: string;
+        type: SchemaFieldType;
+        required?: boolean;
+        description?: string;
+      }>;
+    },
+    _context: Context,
+    request: Request,
+  ) {
+    const user = await getUserContext(request, this.authService);
+    const { id, ...dto } = args;
+    const updateDto: { name?: string; fields?: Array<{ name: string; type: SchemaFieldType; required?: boolean }> } = {};
+    if (dto.name) updateDto.name = dto.name;
+    if (dto.fields) updateDto.fields = dto.fields.map((f) => ({ name: f.name, type: f.type, required: f.required }));
+    const result = await this.schemasService.update(id, updateDto, user.id, user.role);
+    return JSON.stringify(result);
+  }
+
+  @Tool({
     name: 'generate_upload_schema',
     description:
       'Generate an upload schema with POST (upload) and GET (serve) pipelines. This is the recommended way to set up file uploads — it creates the schema with proper upload metadata fields (filename, storage_path, url, etc.), a POST pipeline with file_upload_handler, and a GET pipeline with file_serve_handler. Files uploaded through this schema appear in the Uploads tab in the admin UI. Use this instead of manually creating schemas + proxy rules for file uploads.',
