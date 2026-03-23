@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.168](https://github.com/bffless/ce/compare/v0.0.167...v0.0.168) (2026-03-23)
+
+
+### Features
+
+* capture post-processing steps debug info in pipeline execution logs ([38828da](https://github.com/bffless/ce/commit/38828da0c80cb38446750d258d5b5a5f1baf064a))
+* include resolved system prompt and user message in AI handler debug output ([3d225b0](https://github.com/bffless/ce/commit/3d225b01a3e939981a6b84a511574d9c3378b47b))
+
 ## [0.0.167](https://github.com/bffless/ce/compare/v0.0.166...v0.0.167) (2026-03-23)
 
 
