@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.170](https://github.com/bffless/ce/compare/v0.0.169...v0.0.170) (2026-03-23)
+
+
+### Features
+
+* add Stripe payments integration with checkout and webhook pipeline handlers ([7822797](https://github.com/bffless/ce/commit/78227976fd747a510350b7f5d9541e4b90de3623))
+* Stripe payments integration ([f69ca59](https://github.com/bffless/ce/commit/f69ca59fb4d2b6108153d162dddfe5bdf023d6bb))
+
 ## [0.0.169](https://github.com/bffless/ce/compare/v0.0.168...v0.0.169) (2026-03-23)
 
 
