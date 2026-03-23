@@ -25,6 +25,7 @@ export function StripeCheckoutConfig({ config, onChange, previousSteps = [] }: S
   const [customerEmail, setCustomerEmail] = useState(config.customerEmail || '');
   const [clientReferenceId, setClientReferenceId] = useState(config.clientReferenceId || '');
   const [quantity, setQuantity] = useState(config.quantity || '1');
+  const [environment, setEnvironment] = useState<'sandbox' | 'production' | ''>(config.environment || '');
 
   useEffect(() => {
     onChange({
@@ -35,11 +36,29 @@ export function StripeCheckoutConfig({ config, onChange, previousSteps = [] }: S
       ...(customerEmail ? { customerEmail } : {}),
       ...(clientReferenceId ? { clientReferenceId } : {}),
       ...(quantity !== '1' ? { quantity } : {}),
+      ...(environment ? { environment } : {}),
     });
-  }, [priceId, mode, successUrl, cancelUrl, customerEmail, clientReferenceId, quantity]);
+  }, [priceId, mode, successUrl, cancelUrl, customerEmail, clientReferenceId, quantity, environment]);
 
   return (
     <div className="space-y-4">
+      <div className="space-y-2">
+        <Label>Stripe Environment</Label>
+        <Select value={environment || 'default'} onValueChange={(v) => setEnvironment(v === 'default' ? '' : v as 'sandbox' | 'production')}>
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="default">Use project default</SelectItem>
+            <SelectItem value="sandbox">Sandbox</SelectItem>
+            <SelectItem value="production">Production</SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          Override the project's active Stripe environment for this step
+        </p>
+      </div>
+
       <div className="space-y-2">
         <Label>Price ID *</Label>
         <ExpressionInput

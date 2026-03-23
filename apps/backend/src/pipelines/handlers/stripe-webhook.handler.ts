@@ -16,6 +16,8 @@ export interface StripeWebhookHandlerConfig extends BaseHandlerConfig {
    * If omitted, all event types are accepted.
    */
   allowedEventTypes?: string[];
+  /** Override the project's active Stripe environment for this step */
+  environment?: 'sandbox' | 'production';
 }
 
 /**
@@ -90,6 +92,7 @@ export class StripeWebhookHandler implements StepHandler<StripeWebhookHandlerCon
     const stripeConfig = await this.integrationsService.getActiveConfig(
       context.projectId,
       'stripe',
+      config.environment,
     );
 
     if (!stripeConfig?.secretKey || !stripeConfig?.webhookSecret) {

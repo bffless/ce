@@ -327,8 +327,10 @@ export interface StripeCheckoutHandlerConfig extends BaseHandlerConfig {
   clientReferenceId?: string;
   quantity?: string;
   metadata?: Record<string, string>;
+  environment?: 'sandbox' | 'production';
 }
 
 export interface StripeWebhookHandlerConfig extends BaseHandlerConfig {
   allowedEventTypes?: string[];
+  environment?: 'sandbox' | 'production';
 }

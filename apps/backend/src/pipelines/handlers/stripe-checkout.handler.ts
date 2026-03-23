@@ -27,6 +27,8 @@ export interface StripeCheckoutHandlerConfig extends BaseHandlerConfig {
   metadata?: Record<string, string>;
   /** Quantity (expression, default "1") */
   quantity?: string;
+  /** Override the project's active Stripe environment for this step */
+  environment?: 'sandbox' | 'production';
 }
 
 /**
@@ -75,6 +77,7 @@ export class StripeCheckoutHandler implements StepHandler<StripeCheckoutHandlerC
     const stripeConfig = await this.integrationsService.getActiveConfig(
       context.projectId,
       'stripe',
+      config.environment,
     );
 
     if (!stripeConfig?.secretKey) {

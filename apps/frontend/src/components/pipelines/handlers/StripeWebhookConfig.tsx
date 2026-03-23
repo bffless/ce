@@ -4,6 +4,13 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Plus, Trash2 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Info } from 'lucide-react';
 import type { StripeWebhookHandlerConfig } from './types';
 
@@ -14,12 +21,14 @@ interface StripeWebhookConfigProps {
 
 export function StripeWebhookConfig({ config, onChange }: StripeWebhookConfigProps) {
   const [eventTypes, setEventTypes] = useState<string[]>(config.allowedEventTypes || []);
+  const [environment, setEnvironment] = useState<'sandbox' | 'production' | ''>(config.environment || '');
 
   useEffect(() => {
     onChange({
       ...(eventTypes.length > 0 ? { allowedEventTypes: eventTypes } : {}),
+      ...(environment ? { environment } : {}),
     });
-  }, [eventTypes]);
+  }, [eventTypes, environment]);
 
   const addEventType = () => {
     setEventTypes([...eventTypes, 'checkout.session.completed']);
@@ -37,6 +46,23 @@ export function StripeWebhookConfig({ config, onChange }: StripeWebhookConfigPro
 
   return (
     <div className="space-y-4">
+      <div className="space-y-2">
+        <Label>Stripe Environment</Label>
+        <Select value={environment || 'default'} onValueChange={(v) => setEnvironment(v === 'default' ? '' : v as 'sandbox' | 'production')}>
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="default">Use project default</SelectItem>
+            <SelectItem value="sandbox">Sandbox</SelectItem>
+            <SelectItem value="production">Production</SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          Override the project's active Stripe environment for this step
+        </p>
+      </div>
+
       <Alert>
         <Info className="h-4 w-4" />
         <AlertDescription>
