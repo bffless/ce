@@ -239,6 +239,11 @@ export interface PipelineDebugInfo {
   steps: StepDebugInfo[];
 
   /**
+   * Post-processing step execution results (async, runs after response is sent)
+   */
+  postSteps?: StepDebugInfo[];
+
+  /**
    * Total execution time in milliseconds
    */
   totalDurationMs: number;
@@ -296,4 +301,10 @@ export interface PipelineDebugResult extends PipelineResult {
    * Debug information (present when debug mode is enabled)
    */
   debug?: PipelineDebugInfo;
+
+  /**
+   * Promise that resolves with post-step debug info after async post-steps complete.
+   * Only present when the pipeline has post-steps.
+   */
+  postStepsPromise?: Promise<StepDebugInfo[]>;
 }

@@ -1042,16 +1042,28 @@ export class ProxyMiddleware implements NestMiddleware {
       }
 
       // Fire-and-forget: persist execution log if debug is enabled
+      // Wait for post-steps to complete so their debug info is included
       if (rule.debugEnabled) {
-        this.executionLogService
-          .log(rule.id, projectId, result, {
+        const persistLog = async () => {
+          if (result.postStepsPromise) {
+            try {
+              const postStepsDebug = await result.postStepsPromise;
+              if (result.debug && postStepsDebug.length > 0) {
+                result.debug.postSteps = postStepsDebug;
+              }
+            } catch (err) {
+              this.logger.error('Failed to capture post-steps debug info', err);
+            }
+          }
+          await this.executionLogService.log(rule.id, projectId, result, {
             ip: req.ip,
             userAgent: req.headers['user-agent'],
             userId: user?.id,
-          }, req.method, req.path)
-          .catch((err) =>
-            this.logger.error('Failed to persist pipeline execution log', err),
-          );
+          }, req.method, req.path);
+        };
+        persistLog().catch((err) =>
+          this.logger.error('Failed to persist pipeline execution log', err),
+        );
       }
     } catch (error) {
       this.logger.error(

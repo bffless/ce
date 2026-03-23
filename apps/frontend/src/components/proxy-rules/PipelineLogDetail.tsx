@@ -2,10 +2,103 @@ import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
-import { useGetLogDetailQuery } from '@/services/proxyRulesApi';
+import { useGetLogDetailQuery, type PipelineExecutionLog } from '@/services/proxyRulesApi';
 
 interface PipelineLogDetailProps {
   logId: string;
+}
+
+type StepDebug = PipelineExecutionLog['debug']['steps'][number];
+
+function StepRow({
+  step,
+  isExpanded,
+  onToggle,
+}: {
+  step: StepDebug;
+  isExpanded: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div>
+      <div
+        onClick={onToggle}
+        className="flex items-center gap-2 text-xs p-2 rounded hover:bg-accent cursor-pointer"
+      >
+        {isExpanded ? (
+          <ChevronDown className="h-3 w-3 flex-shrink-0" />
+        ) : (
+          <ChevronRight className="h-3 w-3 flex-shrink-0" />
+        )}
+        <div
+          className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+            step.status === 'success'
+              ? 'bg-green-500'
+              : step.status === 'failed'
+                ? 'bg-red-500'
+                : 'bg-gray-400'
+          }`}
+        />
+        <span className="font-medium">{step.stepName || step.stepId}</span>
+        <Badge variant="outline" className="text-[10px] px-1 py-0">
+          {step.handlerType}
+        </Badge>
+        <span className="text-muted-foreground">{step.durationMs}ms</span>
+        {step.warning && (
+          <AlertTriangle className="h-3 w-3 text-yellow-500 flex-shrink-0" />
+        )}
+        {step.error && (
+          <span className="text-red-500 truncate ml-auto">
+            {step.error.message}
+          </span>
+        )}
+      </div>
+      {isExpanded && (
+        <div className="ml-7 pl-3 border-l space-y-2 pb-2">
+          {step.condition && (
+            <div className="text-xs">
+              <span className="text-muted-foreground">Condition: </span>
+              <code className="bg-muted px-1 rounded">{step.condition}</code>
+              {step.conditionResult !== undefined && (
+                <span className={step.conditionResult ? 'text-green-600' : 'text-red-500'}>
+                  {' '}({step.conditionResult ? 'met' : 'not met'})
+                </span>
+              )}
+            </div>
+          )}
+          {step.warning && (
+            <div className="text-xs text-yellow-600 bg-yellow-50 dark:bg-yellow-950 p-2 rounded">
+              {step.warning}
+            </div>
+          )}
+          {step.error && (
+            <div className="text-xs text-red-600 bg-red-50 dark:bg-red-950 p-2 rounded">
+              <div className="font-medium">{step.error.code}: {step.error.message}</div>
+              {step.error.details != null && (
+                <pre className="mt-1 text-[10px] overflow-auto max-h-32">
+                  {String(JSON.stringify(step.error.details, null, 2))}
+                </pre>
+              )}
+            </div>
+          )}
+          <div className="text-xs">
+            <span className="text-muted-foreground">Input:</span>
+            <pre className="mt-1 bg-muted p-2 rounded text-[10px] overflow-auto max-h-48">
+              {JSON.stringify(step.input, null, 2)}
+            </pre>
+          </div>
+          {step.output !== undefined && (
+            <div className="text-xs">
+              <span className="text-muted-foreground">Output:</span>
+              <pre className="mt-1 bg-muted p-2 rounded text-[10px] overflow-auto max-h-48">
+                {JSON.stringify(step.output, null, 2)}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function PipelineLogDetail({ logId }: PipelineLogDetailProps) {
@@ -80,91 +173,36 @@ export function PipelineLogDetail({ logId }: PipelineLogDetailProps) {
       <div>
         <h4 className="text-xs font-medium text-muted-foreground mb-1">Steps</h4>
         <div className="space-y-1">
-          {debug.steps.map((step) => {
-            const isExpanded = expandedSteps.has(step.stepId);
-            return (
-              <div key={step.stepId}>
-                <div
-                  onClick={() => toggleStep(step.stepId)}
-                  className="flex items-center gap-2 text-xs p-2 rounded hover:bg-accent cursor-pointer"
-                >
-                  {isExpanded ? (
-                    <ChevronDown className="h-3 w-3 flex-shrink-0" />
-                  ) : (
-                    <ChevronRight className="h-3 w-3 flex-shrink-0" />
-                  )}
-                  <div
-                    className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                      step.status === 'success'
-                        ? 'bg-green-500'
-                        : step.status === 'failed'
-                          ? 'bg-red-500'
-                          : 'bg-gray-400'
-                    }`}
-                  />
-                  <span className="font-medium">{step.stepName || step.stepId}</span>
-                  <Badge variant="outline" className="text-[10px] px-1 py-0">
-                    {step.handlerType}
-                  </Badge>
-                  <span className="text-muted-foreground">{step.durationMs}ms</span>
-                  {step.warning && (
-                    <AlertTriangle className="h-3 w-3 text-yellow-500 flex-shrink-0" />
-                  )}
-                  {step.error && (
-                    <span className="text-red-500 truncate ml-auto">
-                      {step.error.message}
-                    </span>
-                  )}
-                </div>
-                {isExpanded && (
-                  <div className="ml-7 pl-3 border-l space-y-2 pb-2">
-                    {step.condition && (
-                      <div className="text-xs">
-                        <span className="text-muted-foreground">Condition: </span>
-                        <code className="bg-muted px-1 rounded">{step.condition}</code>
-                        {step.conditionResult !== undefined && (
-                          <span className={step.conditionResult ? 'text-green-600' : 'text-red-500'}>
-                            {' '}({step.conditionResult ? 'met' : 'not met'})
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    {step.warning && (
-                      <div className="text-xs text-yellow-600 bg-yellow-50 dark:bg-yellow-950 p-2 rounded">
-                        {step.warning}
-                      </div>
-                    )}
-                    {step.error && (
-                      <div className="text-xs text-red-600 bg-red-50 dark:bg-red-950 p-2 rounded">
-                        <div className="font-medium">{step.error.code}: {step.error.message}</div>
-                        {step.error.details != null && (
-                          <pre className="mt-1 text-[10px] overflow-auto max-h-32">
-                            {String(JSON.stringify(step.error.details, null, 2))}
-                          </pre>
-                        )}
-                      </div>
-                    )}
-                    <div className="text-xs">
-                      <span className="text-muted-foreground">Input:</span>
-                      <pre className="mt-1 bg-muted p-2 rounded text-[10px] overflow-auto max-h-48">
-                        {JSON.stringify(step.input, null, 2)}
-                      </pre>
-                    </div>
-                    {step.output !== undefined && (
-                      <div className="text-xs">
-                        <span className="text-muted-foreground">Output:</span>
-                        <pre className="mt-1 bg-muted p-2 rounded text-[10px] overflow-auto max-h-48">
-                          {JSON.stringify(step.output, null, 2)}
-                        </pre>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          {debug.steps.map((step) => (
+            <StepRow
+              key={step.stepId}
+              step={step}
+              isExpanded={expandedSteps.has(step.stepId)}
+              onToggle={() => toggleStep(step.stepId)}
+            />
+          ))}
         </div>
       </div>
+
+      {/* Post-Processing Steps */}
+      {debug.postSteps && debug.postSteps.length > 0 && (
+        <div>
+          <h4 className="text-xs font-medium text-muted-foreground mb-1">
+            Post-Processing Steps
+            <span className="ml-1 text-[10px] font-normal">(async)</span>
+          </h4>
+          <div className="space-y-1">
+            {debug.postSteps.map((step) => (
+              <StepRow
+                key={`post-${step.stepId}`}
+                step={step}
+                isExpanded={expandedSteps.has(`post-${step.stepId}`)}
+                onToggle={() => toggleStep(`post-${step.stepId}`)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

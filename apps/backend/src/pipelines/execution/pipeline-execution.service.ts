@@ -143,12 +143,13 @@ export class PipelineExecutionService {
           const response = this.buildResponse(lastStepResult, context);
 
           // Fire-and-forget post-processing steps
-          this.firePostSteps(pipeline, context);
+          const postStepsPromise = this.firePostSteps(pipeline, context);
 
           return {
             success: true,
             response,
             stepOutputs: context.stepOutputs,
+            postStepsPromise,
             debug: {
               validators: validatorDebugInfo,
               steps: stepDebugInfo,
@@ -167,12 +168,13 @@ export class PipelineExecutionService {
       const response = this.buildResponse(lastStepResult, context);
 
       // Fire-and-forget post-processing steps
-      this.firePostSteps(pipeline, context);
+      const postStepsPromise = this.firePostSteps(pipeline, context);
 
       return {
         success: true,
         response,
         stepOutputs: context.stepOutputs,
+        postStepsPromise,
         debug: {
           validators: validatorDebugInfo,
           steps: stepDebugInfo,
@@ -428,34 +430,50 @@ export class PipelineExecutionService {
 
   /**
    * Fire post-processing steps as fire-and-forget if the pipeline has any.
+   * Returns a promise that resolves with debug info for all post-steps.
    */
-  private firePostSteps(pipeline: Pipeline, context: PipelineContext): void {
+  private firePostSteps(pipeline: Pipeline, context: PipelineContext): Promise<StepDebugInfo[]> | undefined {
     if (pipeline.postSteps && pipeline.postSteps.length > 0) {
       const enabledPostSteps = pipeline.postSteps.filter((s) => s.isEnabled);
       if (enabledPostSteps.length > 0) {
         this.logger.log(
           `Running ${enabledPostSteps.length} post-processing step(s) for pipeline '${pipeline.name}'`,
         );
-        this.runPostSteps(enabledPostSteps, context).catch((err) =>
+        const promise = this.runPostSteps(enabledPostSteps, context);
+        // Still catch to prevent unhandled rejection
+        promise.catch((err) =>
           this.logger.error(
             `Post-processing steps failed for pipeline '${pipeline.name}': ${err.message}`,
             err.stack,
           ),
         );
+        return promise;
       }
     }
+    return undefined;
   }
 
   /**
-   * Run post-processing steps sequentially. Errors are logged per-step
-   * but don't stop subsequent steps from running.
+   * Run post-processing steps sequentially with debug capture.
+   * Errors are logged per-step but don't stop subsequent steps from running.
    */
   private async runPostSteps(
     postSteps: PipelineStep[],
     context: PipelineContext,
-  ): Promise<void> {
+  ): Promise<StepDebugInfo[]> {
+    const debugInfo: StepDebugInfo[] = [];
+
     for (const step of postSteps) {
       const stepName = step.name || step.id;
+      const startTime = Date.now();
+      const startTimeIso = new Date(startTime).toISOString();
+
+      // Capture input snapshot
+      const inputSnapshot = {
+        requestBody: { ...(context.metadata.body || {}) },
+        previousStepOutputs: { ...context.stepOutputs },
+      };
+
       try {
         const handler = this.handlerRegistry.get(step.handlerType as HandlerType, stepName);
         await handler.validateConfig(step.config);
@@ -470,16 +488,44 @@ export class PipelineExecutionService {
             stepName,
           );
           if (!conditionMet) {
+            const endTime = Date.now();
             this.logger.debug(`Skipping post-processing step '${stepName}' - condition not met`);
+            debugInfo.push({
+              stepId: step.id,
+              stepName: step.name || undefined,
+              handlerType: step.handlerType,
+              startTime: startTimeIso,
+              endTime: new Date(endTime).toISOString(),
+              durationMs: endTime - startTime,
+              status: 'skipped',
+              input: inputSnapshot,
+              condition: config.condition,
+              conditionResult: false,
+            });
             continue;
           }
         }
 
         const result = await handler.execute(context, step);
+        const endTime = Date.now();
 
         if (result.success && step.name && result.output !== undefined) {
           context.stepOutputs[step.name] = result.output;
         }
+
+        debugInfo.push({
+          stepId: step.id,
+          stepName: step.name || undefined,
+          handlerType: step.handlerType,
+          startTime: startTimeIso,
+          endTime: new Date(endTime).toISOString(),
+          durationMs: endTime - startTime,
+          status: result.success ? 'success' : 'failed',
+          input: inputSnapshot,
+          output: result.output,
+          error: result.error,
+          warning: result.warning,
+        });
 
         if (!result.success) {
           this.logger.warn(
@@ -489,12 +535,34 @@ export class PipelineExecutionService {
           this.logger.debug(`Post-processing step '${stepName}' completed successfully`);
         }
       } catch (error) {
+        const endTime = Date.now();
+        const errorInfo = error instanceof PipelineError
+          ? error.toResponse()
+          : {
+              code: 'STEP_EXECUTION_ERROR',
+              message: error instanceof Error ? error.message : 'Unknown error',
+            };
+
+        debugInfo.push({
+          stepId: step.id,
+          stepName: step.name || undefined,
+          handlerType: step.handlerType,
+          startTime: startTimeIso,
+          endTime: new Date(endTime).toISOString(),
+          durationMs: endTime - startTime,
+          status: 'failed',
+          input: inputSnapshot,
+          error: errorInfo,
+        });
+
         this.logger.error(
           `Post-processing step '${stepName}' threw an error: ${error instanceof Error ? error.message : String(error)}`,
           error instanceof Error ? error.stack : undefined,
         );
       }
     }
+
+    return debugInfo;
   }
 
   /**

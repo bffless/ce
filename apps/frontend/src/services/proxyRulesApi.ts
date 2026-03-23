@@ -187,6 +187,21 @@ export interface PipelineExecutionLog extends PipelineExecutionLogSummary {
       condition?: string;
       conditionResult?: boolean;
     }>;
+    postSteps?: Array<{
+      stepId: string;
+      stepName?: string;
+      handlerType: string;
+      startTime: string;
+      endTime: string;
+      durationMs: number;
+      status: 'success' | 'failed' | 'skipped';
+      input: { requestBody: Record<string, unknown>; previousStepOutputs: Record<string, unknown> };
+      output?: unknown;
+      error?: { code: string; message: string; details?: unknown };
+      warning?: string;
+      condition?: string;
+      conditionResult?: boolean;
+    }>;
     totalDurationMs: number;
     startTime: string;
     endTime: string;
