@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.176](https://github.com/bffless/ce/compare/v0.0.175...v0.0.176) (2026-03-24)
+
+
+### Bug Fixes
+
+* repo feed shows only member repos, preserve redirect through email verification ([5297adc](https://github.com/bffless/ce/commit/5297adc445da7d1234689745459b54c7497e80a4))
+
 ## [0.0.175](https://github.com/bffless/ce/compare/v0.0.174...v0.0.175) (2026-03-24)
 
 
