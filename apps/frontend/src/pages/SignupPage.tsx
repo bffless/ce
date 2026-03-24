@@ -82,6 +82,15 @@ export function SignupPage() {
 
   // Validate redirect URL to prevent open redirect attacks
   const redirectTo = validateRedirectUrl(searchParams.get('redirect'));
+  const isExternalRedirect = redirectTo.startsWith('http');
+
+  const doRedirect = useCallback(() => {
+    if (isExternalRedirect) {
+      window.location.href = redirectTo;
+    } else {
+      navigate(redirectTo);
+    }
+  }, [isExternalRedirect, redirectTo, navigate]);
 
   // Extract invite token from redirect URL if present (e.g., /invite/{token})
   const inviteToken = useMemo(() => {
@@ -123,9 +132,9 @@ export function SignupPage() {
   // Redirect if already logged in
   useEffect(() => {
     if (!isLoadingSession && sessionData?.user) {
-      navigate(redirectTo);
+      doRedirect();
     }
-  }, [isLoadingSession, sessionData, navigate, redirectTo]);
+  }, [isLoadingSession, sessionData, doRedirect]);
 
   // Pre-fill email when user has a valid invitation
   useEffect(() => {
@@ -227,13 +236,13 @@ export function SignupPage() {
           title: 'Welcome back!',
           description: 'You have been signed in successfully.',
         });
-        navigate(redirectTo);
+        doRedirect();
       } else {
         toast({
           title: 'Account created!',
           description: 'Your account has been successfully created.',
         });
-        navigate(redirectTo);
+        doRedirect();
       }
     } catch (error: any) {
       let errorMessage = authMode === 'signin'

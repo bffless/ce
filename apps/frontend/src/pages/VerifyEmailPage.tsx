@@ -17,6 +17,15 @@ export function VerifyEmailPage() {
   const token = searchParams.get('token');
   const redirectParam = searchParams.get('redirect');
   const redirectTo = redirectParam || '/';
+  const isExternalRedirect = redirectTo.startsWith('http');
+
+  const doRedirect = useCallback(() => {
+    if (isExternalRedirect) {
+      window.location.href = redirectTo;
+    } else {
+      doRedirect();
+    }
+  }, [isExternalRedirect, redirectTo, navigate]);
 
   const { data: sessionData, isLoading: isLoadingSession } = useGetSessionQuery();
   const [signOut] = useSignOutMutation();
@@ -31,7 +40,7 @@ export function VerifyEmailPage() {
   // If already verified, redirect to destination
   useEffect(() => {
     if (!isLoadingSession && sessionData?.emailVerified && sessionData?.emailVerificationRequired) {
-      navigate(redirectTo, { replace: true });
+      doRedirect();
     }
   }, [isLoadingSession, sessionData, navigate, redirectTo]);
 
@@ -52,7 +61,7 @@ export function VerifyEmailPage() {
           setVerifyState('success');
           // Auto-redirect after 3 seconds
           setTimeout(() => {
-            navigate(redirectTo, { replace: true });
+            doRedirect();
           }, 3000);
         })
         .catch((error: any) => {
@@ -77,7 +86,7 @@ export function VerifyEmailPage() {
       setResendSuccess(false);
       const result = await sendVerificationEmail().unwrap();
       if (result.alreadyVerified) {
-        navigate(redirectTo, { replace: true });
+        doRedirect();
         return;
       }
       setResendSuccess(true);
