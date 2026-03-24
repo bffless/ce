@@ -207,9 +207,10 @@ export class FileUploadHandler implements StepHandler<FileUploadHandlerConfig> {
     const sanitizedFilename = originalName.replace(/[^a-zA-Z0-9._-]/g, '_');
     let storageKey = `${owner}/${repo}/uploads/${config.subDir}`;
 
+    let dateBucketSegment = '';
     if (config.dateBucket) {
-      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-      storageKey += `/${today}`;
+      dateBucketSegment = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+      storageKey += `/${dateBucketSegment}`;
     }
 
     const storedFilename = `${uuid}-${sanitizedFilename}`;
@@ -220,8 +221,11 @@ export class FileUploadHandler implements StepHandler<FileUploadHandlerConfig> {
       mimeType,
     });
 
-    // Build the public URL path
-    const publicPath = `/api/uploads/${config.subDir}/${storedFilename}`;
+    // Build the public URL path (include date bucket if enabled)
+    const subDirPath = dateBucketSegment
+      ? `${config.subDir}/${dateBucketSegment}`
+      : config.subDir;
+    const publicPath = `/api/uploads/${subDirPath}/${storedFilename}`;
 
     // Compute content hash
     const contentHash = createHash('md5').update(fileBuffer).digest('hex');
