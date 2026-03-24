@@ -29,6 +29,8 @@ const pipelineStepSchema = z.object({
       'vector_search',
       'image_convert_handler',
       'http_request',
+      'stripe_checkout',
+      'stripe_webhook',
     ])
     .describe(
       'IMPORTANT: Use exact handler type strings. Some have _handler suffix, some do not. The enum values are the only valid options.',
@@ -52,6 +54,8 @@ const pipelineStepSchema = z.object({
 - function_handler: { code: "function handler({ input, user, request, steps }) { return {}; }" }
 - file_serve_handler: { path: "expression" }
 - http_request: { url: "target URL (expression)", method?: "GET"|"POST"|"PUT"|"PATCH"|"DELETE", forwardAuth?: boolean (forwards cookies + authorization header from original request), body?: "expression" or { field: "expression" } (for POST/PUT/PATCH), headers?: { "Header-Name": "expression or static value" }, forwardHeaders?: ["header-name"] (forward specific headers from original request), timeout?: number (ms, default 30000) }
+- stripe_checkout: { priceId: "expression (e.g. steps.myStep.priceId)", mode?: "payment"|"subscription" (default "payment"), successUrl: "URL with optional {CHECKOUT_SESSION_ID} template", cancelUrl: "URL", customerEmail?: "expression (e.g. user.email)", clientReferenceId?: "expression (e.g. user.id)", metadata?: { key: "expression" }, quantity?: "expression (default 1)", environment?: "sandbox"|"production" }. Creates a Stripe Checkout Session. Output: { sessionId, url } — redirect user to url. Requires Stripe integration configured in project settings.
+- stripe_webhook: { allowedEventTypes?: ["checkout.session.completed", ...], environment?: "sandbox"|"production" }. Verifies Stripe webhook signature and parses event. Output is the full Stripe event object. Access via: steps.stripe_webhook.type (event type), steps.stripe_webhook.data.object (the Stripe object e.g. Session), steps.stripe_webhook.data.object.client_reference_id (user ID from checkout), steps.stripe_webhook.data.object.amount_total (cents). If allowedEventTypes is set, non-matching events are ignored (pipeline terminates with success). Requires Stripe integration with webhook secret configured.
 
 All configs support: condition?: "expression" (skip step if falsy), timeout?: number (ms).
 Expressions reference prior steps by step NAME (not id): "steps.stepName.field" or request data: "request.body.field". Use bracket notation for names with spaces: "steps['Step Name'].field". Use simple names without spaces to keep expressions clean.`,
