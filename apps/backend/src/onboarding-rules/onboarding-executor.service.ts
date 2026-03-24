@@ -23,6 +23,7 @@ import { projects, projectPermissions, users, userGroupMembers, proxyRules, prox
 import { PipelineConfig } from '../db/schema/proxy-rules.schema';
 import { OnboardingRulesService } from './onboarding-rules.service';
 import { PipelineExecutionService } from '../pipelines/execution/pipeline-execution.service';
+import { PipelineExecutionLogService } from '../pipelines/pipeline-execution-log.service';
 import { Pipeline, PipelineStep } from '../pipelines/types';
 
 /**
@@ -40,6 +41,7 @@ export interface OnboardingContext {
 export class OnboardingExecutorService implements OnModuleInit {
   private readonly logger = new Logger(OnboardingExecutorService.name);
   private pipelineExecutionService: PipelineExecutionService;
+  private executionLogService: PipelineExecutionLogService;
 
   constructor(
     private readonly rulesService: OnboardingRulesService,
@@ -48,6 +50,7 @@ export class OnboardingExecutorService implements OnModuleInit {
 
   onModuleInit() {
     this.pipelineExecutionService = this.moduleRef.get(PipelineExecutionService, { strict: false });
+    this.executionLogService = this.moduleRef.get(PipelineExecutionLogService, { strict: false });
   }
 
   /**
@@ -463,6 +466,17 @@ export class OnboardingExecutorService implements OnModuleInit {
       syntheticReq,
       user,
     );
+
+    // Persist execution log (fire-and-forget, same as proxy middleware)
+    if (rule.debugEnabled) {
+      this.executionLogService.log(rule.id, projectId, result, {
+        ip: '127.0.0.1',
+        userAgent: 'onboarding-executor',
+        userId,
+      }, 'POST', '/internal/onboarding-pipeline').catch((err) =>
+        this.logger.error('Failed to persist pipeline execution log', err),
+      );
+    }
 
     if (result.success) {
       this.logger.log(`Pipeline ${pipelineConfig.name} executed successfully for user ${userId}`);

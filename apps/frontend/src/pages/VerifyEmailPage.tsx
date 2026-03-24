@@ -15,6 +15,8 @@ export function VerifyEmailPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
+  const redirectParam = searchParams.get('redirect');
+  const redirectTo = redirectParam || '/';
 
   const { data: sessionData, isLoading: isLoadingSession } = useGetSessionQuery();
   const [signOut] = useSignOutMutation();
@@ -26,12 +28,12 @@ export function VerifyEmailPage() {
   const [verifyError, setVerifyError] = useState('');
   const [resendSuccess, setResendSuccess] = useState(false);
 
-  // If already verified, redirect to home
+  // If already verified, redirect to destination
   useEffect(() => {
     if (!isLoadingSession && sessionData?.emailVerified && sessionData?.emailVerificationRequired) {
-      navigate('/', { replace: true });
+      navigate(redirectTo, { replace: true });
     }
-  }, [isLoadingSession, sessionData, navigate]);
+  }, [isLoadingSession, sessionData, navigate, redirectTo]);
 
   // If not authenticated at all, redirect to login
   useEffect(() => {
@@ -50,7 +52,7 @@ export function VerifyEmailPage() {
           setVerifyState('success');
           // Auto-redirect after 3 seconds
           setTimeout(() => {
-            navigate('/', { replace: true });
+            navigate(redirectTo, { replace: true });
           }, 3000);
         })
         .catch((error: any) => {
@@ -75,7 +77,7 @@ export function VerifyEmailPage() {
       setResendSuccess(false);
       const result = await sendVerificationEmail().unwrap();
       if (result.alreadyVerified) {
-        navigate('/', { replace: true });
+        navigate(redirectTo, { replace: true });
         return;
       }
       setResendSuccess(true);
@@ -139,8 +141,8 @@ export function VerifyEmailPage() {
                   <p className="text-sm text-muted-foreground">
                     Redirecting to dashboard in 3 seconds...
                   </p>
-                  <Button className="w-full" onClick={() => navigate('/', { replace: true })}>
-                    Go to Dashboard
+                  <Button className="w-full" onClick={() => navigate(redirectTo, { replace: true })}>
+                    Continue
                   </Button>
                 </div>
               )}

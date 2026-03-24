@@ -445,7 +445,8 @@ export class ProjectsService {
 
   /**
    * Get repository feed with search and pagination
-   * Returns all accessible repos (owned + direct + group + public) with stats
+   * Authenticated users: repos they have explicit access to (owned + direct + group)
+   * Anonymous users: only public repos
    */
   async getRepositoryFeed(
     userId: string | null,
@@ -504,7 +505,7 @@ export class ProjectsService {
     let accessibleReposQuery;
 
     if (userId) {
-      // Authenticated user - include owned, direct, group, and public repos
+      // Authenticated user - only repos they have explicit access to (owned, direct, group)
       accessibleReposQuery = sql`
         WITH all_repos AS (
           -- Owned repositories
@@ -534,24 +535,6 @@ export class ProjectsService {
           INNER JOIN project_group_permissions pgp ON p.id = pgp.project_id
           INNER JOIN user_group_members ugm ON pgp.group_id = ugm.group_id
           WHERE ugm.user_id = ${userId}
-
-          UNION
-
-          -- Public repositories (not already included)
-          SELECT p.id, p.owner, p.name, p.display_name, p.description, p.is_public,
-                 'public' as permission_type, NULL as role, 4 as priority,
-                 p.created_at, p.updated_at
-          FROM projects p
-          WHERE p.is_public = true
-            AND p.id NOT IN (
-              SELECT project_id FROM project_permissions WHERE user_id = ${userId}
-              UNION
-              SELECT pgp.project_id FROM project_group_permissions pgp
-              INNER JOIN user_group_members ugm ON pgp.group_id = ugm.group_id
-              WHERE ugm.user_id = ${userId}
-              UNION
-              SELECT id FROM projects WHERE created_by = ${userId}
-            )
         ),
         deduplicated AS (
           SELECT DISTINCT ON (id)
@@ -611,18 +594,6 @@ export class ProjectsService {
           INNER JOIN project_group_permissions pgp ON p.id = pgp.project_id
           INNER JOIN user_group_members ugm ON pgp.group_id = ugm.group_id
           WHERE ugm.user_id = ${userId}
-          UNION
-          SELECT p.id FROM projects p
-          WHERE p.is_public = true
-            AND p.id NOT IN (
-              SELECT project_id FROM project_permissions WHERE user_id = ${userId}
-              UNION
-              SELECT pgp.project_id FROM project_group_permissions pgp
-              INNER JOIN user_group_members ugm ON pgp.group_id = ugm.group_id
-              WHERE ugm.user_id = ${userId}
-              UNION
-              SELECT id FROM projects WHERE created_by = ${userId}
-            )
         )
         SELECT COUNT(DISTINCT id)::int as total FROM all_repos
       `;

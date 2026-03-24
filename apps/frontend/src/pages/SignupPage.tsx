@@ -206,7 +206,7 @@ export function SignupPage() {
           title: 'Account created!',
           description: 'Please check your email to verify your account.',
         });
-        navigate('/verify-email');
+        navigate(`/verify-email${redirectTo !== '/' ? `?redirect=${encodeURIComponent(redirectTo)}` : ''}`);
         return;
       }
 
