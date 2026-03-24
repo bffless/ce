@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.173](https://github.com/bffless/ce/compare/v0.0.172...v0.0.173) (2026-03-24)
+
+
+### Bug Fixes
+
+* adds stripe metadata ([2d5e06c](https://github.com/bffless/ce/commit/2d5e06c07ca475a9e1e65f5914d9b690733bc609))
+
 ## [0.0.172](https://github.com/bffless/ce/compare/v0.0.171...v0.0.172) (2026-03-24)
 
 
