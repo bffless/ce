@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.179](https://github.com/bffless/ce/compare/v0.0.178...v0.0.179) (2026-03-24)
+
+
+### Bug Fixes
+
+* date bucket not included in url for file upload ([67e6d63](https://github.com/bffless/ce/commit/67e6d63c5a1f2167b3795322141b5af7aacf50c6))
+
 ## [0.0.178](https://github.com/bffless/ce/compare/v0.0.177...v0.0.178) (2026-03-24)
 
 
