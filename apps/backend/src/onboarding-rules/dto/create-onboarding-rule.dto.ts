@@ -21,11 +21,11 @@ import {
 export class OnboardingActionDto {
   @ApiProperty({
     description: 'Type of action to execute',
-    enum: ['grant_repo_access', 'assign_role', 'add_to_group'],
+    enum: ['grant_repo_access', 'assign_role', 'add_to_group', 'run_pipeline'],
     example: 'grant_repo_access',
   })
   @IsString()
-  @IsIn(['grant_repo_access', 'assign_role', 'add_to_group'])
+  @IsIn(['grant_repo_access', 'assign_role', 'add_to_group', 'run_pipeline'])
   type: OnboardingActionType;
 
   @ApiProperty({

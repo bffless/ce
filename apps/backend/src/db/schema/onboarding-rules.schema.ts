@@ -14,7 +14,7 @@ import { users } from './users.schema';
 /**
  * Action types for onboarding rules
  */
-export type OnboardingActionType = 'grant_repo_access' | 'assign_role' | 'add_to_group';
+export type OnboardingActionType = 'grant_repo_access' | 'assign_role' | 'add_to_group' | 'run_pipeline';
 
 /**
  * Parameters for grant_repo_access action
@@ -43,9 +43,17 @@ export interface AddToGroupParams {
 }
 
 /**
+ * Parameters for run_pipeline action
+ */
+export interface RunPipelineParams {
+  /** ID of the proxy rule containing the pipeline config */
+  proxyRuleId: string;
+}
+
+/**
  * Union type for action parameters
  */
-export type OnboardingActionParams = GrantRepoAccessParams | AssignRoleParams | AddToGroupParams;
+export type OnboardingActionParams = GrantRepoAccessParams | AssignRoleParams | AddToGroupParams | RunPipelineParams;
 
 /**
  * An onboarding action to execute

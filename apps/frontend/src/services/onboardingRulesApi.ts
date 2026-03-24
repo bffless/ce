@@ -5,7 +5,7 @@ import { api } from './api';
 // ============================================================================
 
 export type OnboardingTrigger = 'user_signup' | 'invite_accepted';
-export type OnboardingActionType = 'grant_repo_access' | 'assign_role' | 'add_to_group';
+export type OnboardingActionType = 'grant_repo_access' | 'assign_role' | 'add_to_group' | 'run_pipeline';
 
 export interface OnboardingAction {
   type: OnboardingActionType;
@@ -76,6 +76,18 @@ export interface ListOnboardingRulesResponse {
   rules: OnboardingRule[];
 }
 
+export interface PipelineRuleOption {
+  id: string;
+  name: string;
+  projectOwner: string;
+  projectName: string;
+  pathPattern: string;
+}
+
+export interface ListPipelineRulesResponse {
+  rules: PipelineRuleOption[];
+}
+
 export interface ListExecutionsResponse {
   executions: OnboardingRuleExecution[];
 }
@@ -130,6 +142,12 @@ export const onboardingRulesApi = api.injectEndpoints({
       invalidatesTags: ['OnboardingRule'],
     }),
 
+    // List all pipeline-type proxy rules (for run_pipeline action picker)
+    getPipelineRules: builder.query<ListPipelineRulesResponse, void>({
+      query: () => '/api/onboarding-rules/pipeline-rules',
+      providesTags: ['OnboardingRule'],
+    }),
+
     // Get recent rule executions (audit log)
     getRecentExecutions: builder.query<ListExecutionsResponse, number | void>({
       query: (limit = 50) => `/api/onboarding-rules/executions/recent?limit=${limit}`,
@@ -144,5 +162,6 @@ export const {
   useCreateOnboardingRuleMutation,
   useUpdateOnboardingRuleMutation,
   useDeleteOnboardingRuleMutation,
+  useGetPipelineRulesQuery,
   useGetRecentExecutionsQuery,
 } = onboardingRulesApi;

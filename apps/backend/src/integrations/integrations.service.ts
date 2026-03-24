@@ -114,8 +114,26 @@ export class IntegrationsService {
     };
 
     stored.enabled = true;
+
+    // Merge with existing config: only overwrite fields that have non-empty values
+    // This allows saving just the webhook secret without wiping the secret key, etc.
+    let mergedConfig = config;
+    if (stored[environment]?.config) {
+      try {
+        const existing = JSON.parse(this.decryptData(stored[environment]!.config));
+        mergedConfig = { ...existing };
+        for (const [key, value] of Object.entries(config)) {
+          if (value !== undefined && value !== null && value !== '') {
+            mergedConfig[key] = value;
+          }
+        }
+      } catch {
+        // If decryption fails, use new config as-is
+      }
+    }
+
     stored[environment] = {
-      config: this.encryptData(JSON.stringify(config)),
+      config: this.encryptData(JSON.stringify(mergedConfig)),
     };
 
     allIntegrations[integrationId] = stored;

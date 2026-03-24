@@ -209,7 +209,7 @@ export function StripeIntegrationDialog({
         <div className="flex gap-2">
           <Button
             onClick={() => handleSaveEnvironment(environment)}
-            disabled={isSaving || !secretKey}
+            disabled={isSaving || (!hasConfig && !secretKey) || (hasConfig && !publishableKey && !secretKey && !webhookSecret)}
           >
             {isSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
             Save {environment === 'sandbox' ? 'Sandbox' : 'Production'} Keys

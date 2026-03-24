@@ -1,5 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { eq, and } from 'drizzle-orm';
+import { Request } from 'express';
 import { db } from '../db/client';
 import {
   OnboardingRule,
@@ -9,6 +11,7 @@ import {
   GrantRepoAccessParams,
   AssignRoleParams,
   AddToGroupParams,
+  RunPipelineParams,
 } from '../db/schema/onboarding-rules.schema';
 import {
   onboardingRuleExecutions,
@@ -16,8 +19,11 @@ import {
   ExecutionStatus,
   NewOnboardingRuleExecution,
 } from '../db/schema/onboarding-rule-executions.schema';
-import { projects, projectPermissions, users, userGroupMembers } from '../db/schema';
+import { projects, projectPermissions, users, userGroupMembers, proxyRules } from '../db/schema';
+import { PipelineConfig } from '../db/schema/proxy-rules.schema';
 import { OnboardingRulesService } from './onboarding-rules.service';
+import { PipelineExecutionService } from '../pipelines/execution/pipeline-execution.service';
+import { Pipeline, PipelineStep } from '../pipelines/types';
 
 /**
  * Context for executing onboarding rules
@@ -31,10 +37,18 @@ export interface OnboardingContext {
 }
 
 @Injectable()
-export class OnboardingExecutorService {
+export class OnboardingExecutorService implements OnModuleInit {
   private readonly logger = new Logger(OnboardingExecutorService.name);
+  private pipelineExecutionService: PipelineExecutionService;
 
-  constructor(private readonly rulesService: OnboardingRulesService) {}
+  constructor(
+    private readonly rulesService: OnboardingRulesService,
+    private readonly moduleRef: ModuleRef,
+  ) {}
+
+  onModuleInit() {
+    this.pipelineExecutionService = this.moduleRef.get(PipelineExecutionService, { strict: false });
+  }
 
   /**
    * Execute all matching onboarding rules for a user event
@@ -176,6 +190,11 @@ export class OnboardingExecutorService {
         case 'add_to_group':
           return await this.executeAddToGroup(
             action.params as AddToGroupParams,
+            context,
+          );
+        case 'run_pipeline':
+          return await this.executeRunPipeline(
+            action.params as RunPipelineParams,
             context,
           );
         default:
@@ -347,6 +366,112 @@ export class OnboardingExecutorService {
       action: { type: 'add_to_group', params },
       success: true,
       message: `Added to group ${groupId}`,
+    };
+  }
+
+  /**
+   * Execute run_pipeline action
+   */
+  private async executeRunPipeline(
+    params: RunPipelineParams,
+    context: OnboardingContext,
+  ): Promise<ActionExecutionResult> {
+    const { proxyRuleId } = params;
+    const { userId, userEmail, trigger } = context;
+
+    // Fetch the proxy rule
+    const [rule] = await db
+      .select()
+      .from(proxyRules)
+      .where(eq(proxyRules.id, proxyRuleId))
+      .limit(1);
+
+    if (!rule) {
+      return {
+        action: { type: 'run_pipeline', params },
+        success: false,
+        error: `Proxy rule not found: ${proxyRuleId}`,
+      };
+    }
+
+    const pipelineConfig = rule.pipelineConfig as PipelineConfig | null;
+    if (!pipelineConfig || !pipelineConfig.steps || pipelineConfig.steps.length === 0) {
+      return {
+        action: { type: 'run_pipeline', params },
+        success: false,
+        error: `Proxy rule ${proxyRuleId} has no pipeline configuration`,
+      };
+    }
+
+    // Build Pipeline object from proxy rule config (same pattern as proxy.middleware.ts)
+    const pipeline: Pipeline & { steps: PipelineStep[] } = {
+      id: rule.id,
+      projectId: rule.ruleSetId,
+      name: pipelineConfig.name || `Onboarding pipeline`,
+      validators: pipelineConfig.validators || [],
+      steps: pipelineConfig.steps.map((step, index) => ({
+        id: step.id || `step-${index}`,
+        pipelineId: rule.id,
+        name: step.name || `step_${index + 1}`,
+        handlerType: step.handlerType,
+        config: step.config,
+        order: index,
+        isEnabled: step.isEnabled !== false,
+      })),
+      postSteps: pipelineConfig.postSteps?.map((step, index) => ({
+        id: step.id || `post-step-${index}`,
+        pipelineId: rule.id,
+        name: step.name || `post_step_${index + 1}`,
+        handlerType: step.handlerType,
+        config: step.config,
+        order: index,
+        isEnabled: step.isEnabled !== false,
+      })),
+    };
+
+    // Build a synthetic request with user context in the body
+    const syntheticReq = {
+      path: '/internal/onboarding-pipeline',
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: {
+        userId,
+        email: userEmail,
+        trigger,
+        invitationRole: context.invitationRole,
+      },
+      query: {},
+      get: (key: string) => {
+        const headers: Record<string, string> = { 'content-type': 'application/json' };
+        return headers[key.toLowerCase()];
+      },
+      ip: '127.0.0.1',
+      socket: { remoteAddress: '127.0.0.1' },
+    } as unknown as Request;
+
+    const user = { id: userId, email: userEmail };
+
+    const result = await this.pipelineExecutionService.executePipelineWithDebug(
+      pipeline,
+      syntheticReq,
+      user,
+    );
+
+    if (result.success) {
+      this.logger.log(`Pipeline ${pipelineConfig.name} executed successfully for user ${userId}`);
+      return {
+        action: { type: 'run_pipeline', params },
+        success: true,
+        message: `Pipeline "${pipelineConfig.name}" executed successfully`,
+      };
+    }
+
+    const errorMsg = result.error || 'Pipeline execution failed';
+    this.logger.error(`Pipeline ${pipelineConfig.name} failed for user ${userId}: ${errorMsg}`);
+    return {
+      action: { type: 'run_pipeline', params },
+      success: false,
+      error: `Pipeline "${pipelineConfig.name}" failed: ${errorMsg}`,
     };
   }
 

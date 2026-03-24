@@ -21,6 +21,7 @@ import {
   ApiQuery,
   ApiBearerAuth,
 } from '@nestjs/swagger';
+import { eq } from 'drizzle-orm';
 import { OnboardingRulesService } from './onboarding-rules.service';
 import {
   CreateOnboardingRuleDto,
@@ -32,6 +33,8 @@ import { ApiKeyGuard } from '../auth/api-key.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { CurrentUser, CurrentUserData } from '../auth/decorators/current-user.decorator';
+import { db } from '../db/client';
+import { proxyRules, proxyRuleSets, projects } from '../db/schema';
 
 @ApiTags('Onboarding Rules')
 @ApiBearerAuth()
@@ -54,6 +57,39 @@ export class OnboardingRulesController {
   async getAllRules(): Promise<{ rules: OnboardingRuleResponseDto[] }> {
     const rules = await this.onboardingRulesService.getAllRules();
     return { rules: rules as OnboardingRuleResponseDto[] };
+  }
+
+  /**
+   * List all pipeline-type proxy rules (for run_pipeline action picker)
+   */
+  @Get('pipeline-rules')
+  @ApiOperation({ summary: 'List all pipeline-type proxy rules for use in onboarding actions' })
+  @ApiResponse({ status: 200, description: 'List of pipeline proxy rules' })
+  async getPipelineRules(): Promise<{ rules: { id: string; name: string; projectOwner: string; projectName: string; pathPattern: string }[] }> {
+    const results = await db
+      .select({
+        id: proxyRules.id,
+        pathPattern: proxyRules.pathPattern,
+        pipelineConfig: proxyRules.pipelineConfig,
+        ruleSetId: proxyRules.ruleSetId,
+        projectId: proxyRuleSets.projectId,
+        projectOwner: projects.owner,
+        projectName: projects.name,
+      })
+      .from(proxyRules)
+      .innerJoin(proxyRuleSets, eq(proxyRules.ruleSetId, proxyRuleSets.id))
+      .innerJoin(projects, eq(proxyRuleSets.projectId, projects.id))
+      .where(eq(proxyRules.proxyType, 'pipeline'));
+
+    return {
+      rules: results.map((r) => ({
+        id: r.id,
+        name: (r.pipelineConfig as any)?.name || r.pathPattern,
+        projectOwner: r.projectOwner,
+        projectName: r.projectName,
+        pathPattern: r.pathPattern,
+      })),
+    };
   }
 
   /**

@@ -8,6 +8,7 @@ import {
   useUpdateOnboardingRuleMutation,
   useDeleteOnboardingRuleMutation,
   useGetRecentExecutionsQuery,
+  useGetPipelineRulesQuery,
   OnboardingRule,
   OnboardingAction,
   OnboardingTrigger,
@@ -23,7 +24,9 @@ import { Switch } from '@/components/ui/switch';
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -80,6 +83,7 @@ import {
   AlertTriangle,
   GitBranch,
   History,
+  Play,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -87,9 +91,22 @@ const ruleSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100),
   description: z.string().max(500).optional(),
   trigger: z.enum(['user_signup', 'invite_accepted']),
-  repository: z.string().min(1, 'Repository is required'),
-  role: z.enum(['viewer', 'contributor', 'admin']),
+  actionType: z.enum(['grant_repo_access', 'run_pipeline']),
+  repository: z.string().optional(),
+  role: z.enum(['viewer', 'contributor', 'admin']).optional(),
+  proxyRuleId: z.string().optional(),
   priority: z.coerce.number().min(0).default(100),
+}).refine((data) => {
+  if (data.actionType === 'grant_repo_access') {
+    return !!data.repository;
+  }
+  if (data.actionType === 'run_pipeline') {
+    return !!data.proxyRuleId;
+  }
+  return true;
+}, {
+  message: 'Required field missing for selected action type',
+  path: ['repository'],
 });
 
 type RuleFormValues = z.infer<typeof ruleSchema>;
@@ -98,6 +115,7 @@ export function OnboardingRulesSettings() {
   const { toast } = useToast();
   const { data: rulesData, isLoading: rulesLoading, error: rulesError } = useGetOnboardingRulesQuery();
   const { data: projects } = useListUserProjectsQuery();
+  const { data: pipelineRulesData } = useGetPipelineRulesQuery();
   const { data: executionsData } = useGetRecentExecutionsQuery(20);
   const [createRule, { isLoading: isCreating }] = useCreateOnboardingRuleMutation();
   const [updateRule] = useUpdateOnboardingRuleMutation();
@@ -114,19 +132,25 @@ export function OnboardingRulesSettings() {
       name: '',
       description: '',
       trigger: 'user_signup',
+      actionType: 'grant_repo_access',
       repository: '',
       role: 'viewer',
+      proxyRuleId: '',
       priority: 100,
     },
   });
+
+  const watchActionType = form.watch('actionType');
 
   const openCreateForm = () => {
     form.reset({
       name: '',
       description: '',
       trigger: 'user_signup',
+      actionType: 'grant_repo_access',
       repository: '',
       role: 'viewer',
+      proxyRuleId: '',
       priority: 100,
     });
     setEditingRule(null);
@@ -134,21 +158,27 @@ export function OnboardingRulesSettings() {
   };
 
   const openEditForm = (rule: OnboardingRule) => {
-    // Extract repository and role from first action
     const firstAction = rule.actions[0];
+    const actionType = (firstAction?.type || 'grant_repo_access') as 'grant_repo_access' | 'run_pipeline';
+
     const repository = firstAction?.type === 'grant_repo_access'
       ? (firstAction.params as { repository: string }).repository
       : '';
     const role = firstAction?.type === 'grant_repo_access'
       ? (firstAction.params as { role: string }).role as 'viewer' | 'contributor' | 'admin'
       : 'viewer';
+    const proxyRuleId = firstAction?.type === 'run_pipeline'
+      ? (firstAction.params as { proxyRuleId: string }).proxyRuleId
+      : '';
 
     form.reset({
       name: rule.name,
       description: rule.description || '',
       trigger: rule.trigger,
+      actionType,
       repository,
       role,
+      proxyRuleId,
       priority: rule.priority,
     });
     setEditingRule(rule);
@@ -156,15 +186,9 @@ export function OnboardingRulesSettings() {
   };
 
   const onSubmit = async (data: RuleFormValues) => {
-    const actions: OnboardingAction[] = [
-      {
-        type: 'grant_repo_access',
-        params: {
-          repository: data.repository,
-          role: data.role,
-        },
-      },
-    ];
+    const actions: OnboardingAction[] = data.actionType === 'run_pipeline'
+      ? [{ type: 'run_pipeline', params: { proxyRuleId: data.proxyRuleId! } }]
+      : [{ type: 'grant_repo_access', params: { repository: data.repository!, role: data.role! } }];
 
     try {
       if (editingRule) {
@@ -304,6 +328,8 @@ export function OnboardingRulesSettings() {
     }
   };
 
+  const pipelineRules = pipelineRulesData?.rules || [];
+
   const getActionDescription = (action: OnboardingAction) => {
     if (action.type === 'grant_repo_access') {
       const params = action.params as { repository: string; role: string };
@@ -316,6 +342,13 @@ export function OnboardingRulesSettings() {
     if (action.type === 'add_to_group') {
       const params = action.params as { groupId: string };
       return `Add to group: ${params.groupId}`;
+    }
+    if (action.type === 'run_pipeline') {
+      const params = action.params as { proxyRuleId: string };
+      const pipelineRule = pipelineRules.find((r) => r.id === params.proxyRuleId);
+      return pipelineRule
+        ? `Run pipeline: ${pipelineRule.name} (${pipelineRule.projectOwner}/${pipelineRule.projectName})`
+        : `Run pipeline: ${params.proxyRuleId}`;
     }
     return action.type;
   };
@@ -399,7 +432,11 @@ export function OnboardingRulesSettings() {
                       <div className="space-y-1">
                         {rule.actions.map((action, idx) => (
                           <div key={idx} className="flex items-center gap-1 text-sm">
-                            <GitBranch className="h-3 w-3" />
+                            {action.type === 'run_pipeline' ? (
+                              <Play className="h-3 w-3" />
+                            ) : (
+                              <GitBranch className="h-3 w-3" />
+                            )}
                             <span>{getActionDescription(action)}</span>
                           </div>
                         ))}
@@ -574,60 +611,130 @@ export function OnboardingRulesSettings() {
 
                 <FormField
                   control={form.control}
-                  name="repository"
+                  name="actionType"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Repository</FormLabel>
+                      <FormLabel>Action Type</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Select repository" />
+                            <SelectValue placeholder="Select action type" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {projects?.map((project: Project) => (
-                            <SelectItem
-                              key={project.id}
-                              value={`${project.owner}/${project.name}`}
-                            >
-                              {project.owner}/{project.name}
-                            </SelectItem>
-                          ))}
+                          <SelectItem value="grant_repo_access">Grant Repository Access</SelectItem>
+                          <SelectItem value="run_pipeline">Run Pipeline</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormDescription>
-                        Grant access to this repository
+                        What should happen when this rule triggers?
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
 
-                <FormField
-                  control={form.control}
-                  name="role"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Role</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select role" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="viewer">Viewer (read-only)</SelectItem>
-                          <SelectItem value="contributor">Contributor (read/write)</SelectItem>
-                          <SelectItem value="admin">Admin (full access)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormDescription>
-                        Permission level to grant
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                {watchActionType === 'grant_repo_access' && (
+                  <>
+                    <FormField
+                      control={form.control}
+                      name="repository"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Repository</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select repository" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {projects?.map((project: Project) => (
+                                <SelectItem
+                                  key={project.id}
+                                  value={`${project.owner}/${project.name}`}
+                                >
+                                  {project.owner}/{project.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormDescription>
+                            Grant access to this repository
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="role"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Role</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select role" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="viewer">Viewer (read-only)</SelectItem>
+                              <SelectItem value="contributor">Contributor (read/write)</SelectItem>
+                              <SelectItem value="admin">Admin (full access)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormDescription>
+                            Permission level to grant
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </>
+                )}
+
+                {watchActionType === 'run_pipeline' && (
+                  <FormField
+                    control={form.control}
+                    name="proxyRuleId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Pipeline</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select a pipeline" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {Object.entries(
+                              pipelineRules.reduce<Record<string, typeof pipelineRules>>((groups, rule) => {
+                                const key = `${rule.projectOwner}/${rule.projectName}`;
+                                (groups[key] ??= []).push(rule);
+                                return groups;
+                              }, {}),
+                            ).map(([repo, rules]) => (
+                              <SelectGroup key={repo}>
+                                <SelectLabel>{repo}</SelectLabel>
+                                {rules.map((rule) => (
+                                  <SelectItem key={rule.id} value={rule.id}>
+                                    {rule.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectGroup>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormDescription>
+                          Pipeline to execute when this rule triggers. The pipeline receives the new user's email, ID, and trigger type in the request body.
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
 
                 <FormField
                   control={form.control}
