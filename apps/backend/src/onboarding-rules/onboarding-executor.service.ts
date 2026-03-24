@@ -19,7 +19,7 @@ import {
   ExecutionStatus,
   NewOnboardingRuleExecution,
 } from '../db/schema/onboarding-rule-executions.schema';
-import { projects, projectPermissions, users, userGroupMembers, proxyRules } from '../db/schema';
+import { projects, projectPermissions, users, userGroupMembers, proxyRules, proxyRuleSets } from '../db/schema';
 import { PipelineConfig } from '../db/schema/proxy-rules.schema';
 import { OnboardingRulesService } from './onboarding-rules.service';
 import { PipelineExecutionService } from '../pipelines/execution/pipeline-execution.service';
@@ -379,20 +379,27 @@ export class OnboardingExecutorService implements OnModuleInit {
     const { proxyRuleId } = params;
     const { userId, userEmail, trigger } = context;
 
-    // Fetch the proxy rule
-    const [rule] = await db
-      .select()
+    // Fetch the proxy rule with its project ID
+    const [ruleWithProject] = await db
+      .select({
+        rule: proxyRules,
+        projectId: proxyRuleSets.projectId,
+      })
       .from(proxyRules)
+      .innerJoin(proxyRuleSets, eq(proxyRules.ruleSetId, proxyRuleSets.id))
       .where(eq(proxyRules.id, proxyRuleId))
       .limit(1);
 
-    if (!rule) {
+    if (!ruleWithProject) {
       return {
         action: { type: 'run_pipeline', params },
         success: false,
         error: `Proxy rule not found: ${proxyRuleId}`,
       };
     }
+
+    const rule = ruleWithProject.rule;
+    const projectId = ruleWithProject.projectId;
 
     const pipelineConfig = rule.pipelineConfig as PipelineConfig | null;
     if (!pipelineConfig || !pipelineConfig.steps || pipelineConfig.steps.length === 0) {
@@ -406,7 +413,7 @@ export class OnboardingExecutorService implements OnModuleInit {
     // Build Pipeline object from proxy rule config (same pattern as proxy.middleware.ts)
     const pipeline: Pipeline & { steps: PipelineStep[] } = {
       id: rule.id,
-      projectId: rule.ruleSetId,
+      projectId,
       name: pipelineConfig.name || `Onboarding pipeline`,
       validators: pipelineConfig.validators || [],
       steps: pipelineConfig.steps.map((step, index) => ({

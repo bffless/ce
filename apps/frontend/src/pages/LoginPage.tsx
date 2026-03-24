@@ -46,6 +46,7 @@ export function LoginPage() {
 
   // Validate redirect URL to prevent open redirect attacks
   const redirectTo = validateRedirectUrl(searchParams.get('redirect'));
+  const isExternalRedirect = redirectTo.startsWith('http');
   const shouldTryRefresh = searchParams.get('tryRefresh') === 'true';
 
   // Custom domain relay params (for authenticating on custom domains)
@@ -125,19 +126,19 @@ export function LoginPage() {
               // Domain token request failed, fall back to normal redirect
               console.error('Failed to get domain token');
               setIsRelaying(false);
-              navigate(redirectTo);
+              isExternalRedirect ? (window.location.href = redirectTo) : navigate(redirectTo);
             }
           })
           .catch((error) => {
             console.error('Domain relay error:', error);
             setIsRelaying(false);
-            navigate(redirectTo);
+            isExternalRedirect ? (window.location.href = redirectTo) : navigate(redirectTo);
           });
         return;
       }
-      navigate(redirectTo);
+      isExternalRedirect ? (window.location.href = redirectTo) : navigate(redirectTo);
     }
-  }, [isLoadingSession, sessionData, navigate, redirectTo, customDomainRelay, targetDomain, searchParams]);
+  }, [isLoadingSession, sessionData, navigate, redirectTo, isExternalRedirect, customDomainRelay, targetDomain, searchParams]);
 
   // Redirect to setup if not complete
   if (!isLoadingSetup && setupStatus && !setupStatus.isSetupComplete) {
@@ -195,7 +196,7 @@ export function LoginPage() {
         setIsRelaying(false);
       }
 
-      navigate(redirectTo);
+      isExternalRedirect ? (window.location.href = redirectTo) : navigate(redirectTo);
     } catch (error: any) {
       const errorMessage = error?.data?.message || 'Invalid email or password. Please try again.';
 

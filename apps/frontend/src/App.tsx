@@ -24,6 +24,7 @@ import { AdminSettingsPage } from '@/pages/AdminSettingsPage';
 import { DomainsPage } from '@/pages/DomainsPage';
 import { HomePage } from '@/pages/HomePage';
 import { LoginPage } from '@/pages/LoginPage';
+import { LogoutPage } from '@/pages/LogoutPage';
 import { SignupPage } from '@/pages/SignupPage';
 import { ForgotPasswordPage } from '@/pages/ForgotPasswordPage';
 import { ResetPasswordPage } from '@/pages/ResetPasswordPage';
@@ -53,6 +54,7 @@ function App() {
 
         {/* Authentication routes (public) */}
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/logout" element={<LogoutPage />} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
