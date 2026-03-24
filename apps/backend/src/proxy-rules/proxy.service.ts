@@ -319,8 +319,16 @@ export class ProxyService {
       'upgrade',
     ]);
 
+    // Handle Set-Cookie separately — Headers.forEach() combines multiple
+    // Set-Cookie values with ", " per the Fetch spec, which breaks cookie parsing.
+    // Use getSetCookie() to get each Set-Cookie header individually.
+    const setCookies = response.headers.getSetCookie?.();
+    if (setCookies && setCookies.length > 0) {
+      res.setHeader('set-cookie', setCookies);
+    }
+
     response.headers.forEach((value, key) => {
-      if (!skipHeaders.has(key.toLowerCase())) {
+      if (!skipHeaders.has(key.toLowerCase()) && key.toLowerCase() !== 'set-cookie') {
         res.setHeader(key, value);
       }
     });
