@@ -186,17 +186,19 @@ export class IntegrationsService {
   async getActiveConfig(
     projectId: string,
     integrationId: string,
+    environmentOverride?: 'sandbox' | 'production',
   ): Promise<Record<string, unknown> | null> {
     const stored = await this.getStoredIntegration(projectId, integrationId);
     if (!stored?.enabled) return null;
 
-    const envConfig = stored[stored.activeEnvironment];
+    const env = environmentOverride || stored.activeEnvironment;
+    const envConfig = stored[env];
     if (!envConfig?.config) return null;
 
     try {
       return JSON.parse(this.decryptData(envConfig.config));
     } catch {
-      this.logger.warn(`Failed to decrypt ${stored.activeEnvironment} config for '${integrationId}'`);
+      this.logger.warn(`Failed to decrypt ${env} config for '${integrationId}'`);
       return null;
     }
   }
