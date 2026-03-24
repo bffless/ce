@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.171](https://github.com/bffless/ce/compare/v0.0.170...v0.0.171) (2026-03-24)
+
+
+### Features
+
+* add per-step Stripe environment override (sandbox/production) ([6b59d7b](https://github.com/bffless/ce/commit/6b59d7baccadcc94d5e12c90fb159e8201cb594b))
+* per-step Stripe environment override ([08fa42d](https://github.com/bffless/ce/commit/08fa42d989205a1b83728a9f908de405bfa7b42d))
+
 ## [0.0.170](https://github.com/bffless/ce/compare/v0.0.169...v0.0.170) (2026-03-23)
 
 
