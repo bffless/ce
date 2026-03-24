@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.174](https://github.com/bffless/ce/compare/v0.0.173...v0.0.174) (2026-03-24)
+
+
+### Features
+
+* add run_pipeline onboarding action and fix Stripe integration config merging ([1447e12](https://github.com/bffless/ce/commit/1447e12c98f8bffdbfd35d103e44a479648fb82b))
+
 ## [0.0.173](https://github.com/bffless/ce/compare/v0.0.172...v0.0.173) (2026-03-24)
 
 
