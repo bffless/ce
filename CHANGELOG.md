@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.178](https://github.com/bffless/ce/compare/v0.0.177...v0.0.178) (2026-03-24)
+
+
+### Bug Fixes
+
+* forward multiple Set-Cookie headers correctly through proxy rules ([ebe3d65](https://github.com/bffless/ce/commit/ebe3d657b05cbccd8a90cc2f2d73914782d39742))
+
 ## [0.0.177](https://github.com/bffless/ce/compare/v0.0.176...v0.0.177) (2026-03-24)
 
 
