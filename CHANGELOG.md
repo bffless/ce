@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.172](https://github.com/bffless/ce/compare/v0.0.171...v0.0.172) (2026-03-24)
+
+
+### Bug Fixes
+
+* adds mcp for stripe ([4e4c55b](https://github.com/bffless/ce/commit/4e4c55b087224686ac97f18936c29cc93790ea65))
+
 ## [0.0.171](https://github.com/bffless/ce/compare/v0.0.170...v0.0.171) (2026-03-24)
 
 
