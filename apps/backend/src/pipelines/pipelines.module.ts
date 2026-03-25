@@ -57,6 +57,7 @@ import {
   CalculatorPlugin,
   WebSearchPlugin,
   GoogleCalendarPlugin,
+  RagSearchPlugin,
 } from './ai-plugins';
 
 @Module({
@@ -118,6 +119,7 @@ import {
     CalculatorPlugin,
     WebSearchPlugin,
     GoogleCalendarPlugin,
+    RagSearchPlugin,
   ],
   exports: [
     PipelineExecutionService,
