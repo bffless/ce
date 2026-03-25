@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.180](https://github.com/bffless/ce/compare/v0.0.179...v0.0.180) (2026-03-25)
+
+
+### Features
+
+* stream files from storage to avoid OOM on large file serving ([bbcf2d7](https://github.com/bffless/ce/commit/bbcf2d7826339e1029bedc6431742d469cf6a1f8))
+
 ## [0.0.179](https://github.com/bffless/ce/compare/v0.0.178...v0.0.179) (2026-03-24)
 
 
