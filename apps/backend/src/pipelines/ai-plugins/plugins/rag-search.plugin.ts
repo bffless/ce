@@ -47,6 +47,18 @@ export class RagSearchPlugin implements AIToolPlugin {
         .describe(
           'Replicate embedding model (e.g., beautyyuyanli/multilingual-e5-large)',
         ),
+      embeddingInputField: z
+        .string()
+        .optional()
+        .describe(
+          'Input field name for the embedding model (default: "text"). Some models use "texts", "input", "prompt", etc.',
+        ),
+      embeddingInputTemplate: z
+        .string()
+        .optional()
+        .describe(
+          'Value template with {{query}} placeholder (default: "{{query}}"). For models expecting a JSON array string, use: ["{{query}}"]',
+        ),
       schemaId: z.string().min(1).describe('Pipeline schema to search'),
       fieldName: z
         .string()
@@ -163,10 +175,14 @@ export class RagSearchPlugin implements AIToolPlugin {
 
     try {
       // Step 1: Generate embedding for the query text via Replicate
+      const inputField = (pipelineOptions?.embeddingInputField as string) || 'text';
+      const inputTemplate = (pipelineOptions?.embeddingInputTemplate as string) || '{{query}}';
       const queryVector = await this.generateEmbedding(
         query,
         embeddingModel,
         projectId,
+        inputField,
+        inputTemplate,
       );
 
       if (!queryVector) {
@@ -246,10 +262,14 @@ export class RagSearchPlugin implements AIToolPlugin {
       );
 
       // Step 2: Generate embedding
+      const inputField = (pipelineOptions?.embeddingInputField as string) || 'text';
+      const inputTemplate = (pipelineOptions?.embeddingInputTemplate as string) || '{{query}}';
       const embedding = await this.generateEmbedding(
         textToEmbed,
         embeddingModel,
         projectId,
+        inputField,
+        inputTemplate,
       );
 
       if (!embedding) {
@@ -289,6 +309,8 @@ export class RagSearchPlugin implements AIToolPlugin {
     text: string,
     model: string,
     projectId: string,
+    inputField: string = 'text',
+    inputTemplate: string = '{{query}}',
   ): Promise<number[] | null> {
     // Get Replicate API token from project settings
     const serviceConfig =
@@ -311,6 +333,10 @@ export class RagSearchPlugin implements AIToolPlugin {
         serviceConfig.apiToken,
       );
 
+      // Build input — replace {{query}} placeholder in the template
+      const inputValue = inputTemplate.replace(/\{\{query\}\}/g, text);
+      const input = { [inputField]: inputValue };
+
       // Create prediction
       const response = await fetch(`${REPLICATE_API_BASE}/predictions`, {
         method: 'POST',
@@ -321,7 +347,7 @@ export class RagSearchPlugin implements AIToolPlugin {
         },
         body: JSON.stringify({
           version,
-          input: { text },
+          input,
         }),
       });
 

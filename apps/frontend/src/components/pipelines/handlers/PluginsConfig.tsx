@@ -183,6 +183,32 @@ function RagSearchOptions({
         </p>
       </div>
       <div className="space-y-1">
+        <Label className="text-xs">Input Field Name</Label>
+        <Input
+          type="text"
+          className="h-8 text-xs w-40"
+          placeholder="text"
+          value={(options.embeddingInputField as string) || ''}
+          onChange={(e) => onChange({ ...options, embeddingInputField: e.target.value || undefined })}
+        />
+        <p className="text-xs text-muted-foreground">
+          The model&apos;s input parameter name (default: &quot;text&quot;). Some models use &quot;texts&quot;, &quot;input&quot;, &quot;prompt&quot;, etc.
+        </p>
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs">Input Value Template</Label>
+        <Input
+          type="text"
+          className="h-8 text-xs"
+          placeholder="{{query}}"
+          value={(options.embeddingInputTemplate as string) || ''}
+          onChange={(e) => onChange({ ...options, embeddingInputTemplate: e.target.value || undefined })}
+        />
+        <p className="text-xs text-muted-foreground">
+          Use {'{{query}}'} as the placeholder for the search text. Default: {'{{query}}'}. For multilingual-e5-large use: [&quot;{'{{query}}'}&quot;]
+        </p>
+      </div>
+      <div className="space-y-1">
         <Label className="text-xs">Schema</Label>
         {isLoading ? (
           <Skeleton className="h-8 w-full" />
