@@ -63,6 +63,18 @@ export interface AIToolPlugin {
    * Called when a user enables the plugin or updates its config.
    */
   validateConfig?(config: Record<string, unknown>): Promise<{ valid: boolean; error?: string }>;
+
+  /**
+   * Optional: return tools that depend on per-pipeline options (e.g., dynamic tools per source).
+   * When implemented, this is called instead of getTools() during tool building.
+   */
+  getToolsWithOptions?(config: Record<string, unknown>, pipelineOptions?: Record<string, unknown>): AIToolDefinition[];
+
+  /**
+   * Optional: return instructions to append to the AI system prompt.
+   * Called with the pipeline options so plugins can provide context-aware guidance.
+   */
+  getSystemPromptInstructions?(pipelineOptions?: Record<string, unknown>): string | null;
 }
 
 /**

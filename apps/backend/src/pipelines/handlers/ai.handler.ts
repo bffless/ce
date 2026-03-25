@@ -345,6 +345,19 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
             messages.unshift({ role: 'system', content: pluginPromptSection });
           }
 
+          // Append plugin-specific instructions (e.g., RAG Search usage guidance)
+          const pluginInstructions = await this.pluginService.getPluginPromptInstructions(
+            context.projectId,
+            config.plugins.options,
+          );
+          if (pluginInstructions.length > 0) {
+            const instructionsText = pluginInstructions.join('\n\n');
+            const sysIdx = messages.findIndex((m) => m.role === 'system');
+            if (sysIdx >= 0) {
+              messages[sysIdx].content += `\n\n${instructionsText}`;
+            }
+          }
+
           this.logger.debug(
             `Injected ${pluginToolNames.length} plugin tools: ${pluginToolNames.join(', ')}`,
           );

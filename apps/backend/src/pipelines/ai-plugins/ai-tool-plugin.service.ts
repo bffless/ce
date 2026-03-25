@@ -221,11 +221,18 @@ export class AIToolPluginService {
           ? JSON.parse(this.decryptData(stored.config))
           : {};
 
-        const pluginTools = plugin.getTools(decryptedConfig);
+        const pipelineOptions = pipelinePluginOptions?.[pluginId];
+
+        // Use getToolsWithOptions if available (for plugins with dynamic tools like RAG Search),
+        // otherwise fall back to standard getTools
+        const pluginTools = plugin.getToolsWithOptions
+          ? plugin.getToolsWithOptions(decryptedConfig, pipelineOptions)
+          : plugin.getTools(decryptedConfig);
+
         const context: AIToolContext = {
           projectId,
           pluginConfig: decryptedConfig,
-          pipelineOptions: pipelinePluginOptions?.[pluginId],
+          pipelineOptions,
         };
 
         for (const toolDef of pluginTools) {
@@ -247,6 +254,37 @@ export class AIToolPluginService {
     }
 
     return tools;
+  }
+
+  /**
+   * Collect system prompt instructions from all enabled plugins.
+   * Plugins can optionally provide context-aware instructions based on pipeline options.
+   */
+  async getPluginPromptInstructions(
+    projectId: string,
+    pipelinePluginOptions?: Record<string, Record<string, unknown>>,
+  ): Promise<string[]> {
+    const storedPlugins = await this.getStoredPlugins(projectId);
+    const instructions: string[] = [];
+
+    for (const [pluginId, stored] of Object.entries(storedPlugins)) {
+      if (!stored.enabled) continue;
+
+      const plugin = this.registry.get(pluginId);
+      if (!plugin?.getSystemPromptInstructions) continue;
+
+      try {
+        const pipelineOptions = pipelinePluginOptions?.[pluginId];
+        const instruction = plugin.getSystemPromptInstructions(pipelineOptions);
+        if (instruction) {
+          instructions.push(instruction);
+        }
+      } catch (error) {
+        this.logger.warn(`Failed to get prompt instructions for plugin '${pluginId}': ${error.message}`);
+      }
+    }
+
+    return instructions;
   }
 
   // ===== Private helpers =====

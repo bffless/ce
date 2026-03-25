@@ -1,5 +1,6 @@
 import { useListProjectPluginsQuery, useListPluginCalendarsQuery } from '@/services/projectsApi';
 import { useGetProjectSchemasQuery } from '@/services/pipelineSchemasApi';
+import { useSchemaFields } from './SchemaFieldPicker';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -12,7 +13,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
-import { Info } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Info, Search, Database } from 'lucide-react';
 
 export interface PluginsConfigValue {
   mode: 'none' | 'all' | 'selected';
@@ -147,6 +149,355 @@ function GoogleCalendarOptions({
   );
 }
 
+interface SourceConfig {
+  type: 'vector_search' | 'data_query';
+  toolName: string;
+  toolDescription?: string;
+  schemaId: string;
+  limit?: number;
+  enableSaveNote?: boolean;
+  instructions?: string;
+  // Vector search fields
+  embeddingModel?: string;
+  embeddingInputField?: string;
+  embeddingInputTemplate?: string;
+  fieldName?: string;
+  threshold?: number;
+  // Data query fields
+  filterField?: string;
+  filterSource?: 'user_id' | 'tool_input';
+  filterInputLabel?: string;
+  filterInputDescription?: string;
+  sortField?: string;
+  sortDirection?: 'asc' | 'desc';
+}
+
+function SchemaFieldSelect({
+  schemaId,
+  value,
+  onChange,
+  placeholder,
+  allowNone,
+}: {
+  schemaId: string;
+  value: string | undefined;
+  onChange: (v: string | undefined) => void;
+  placeholder: string;
+  allowNone?: boolean;
+}) {
+  const fields = useSchemaFields(schemaId);
+
+  if (!schemaId || fields.length === 0) {
+    return (
+      <Input
+        type="text"
+        className="h-8 text-xs"
+        placeholder={placeholder}
+        value={value || ''}
+        onChange={(e) => onChange(e.target.value || undefined)}
+      />
+    );
+  }
+
+  return (
+    <Select value={value || ''} onValueChange={(v) => onChange(v === '__none__' ? undefined : v)}>
+      <SelectTrigger className="h-8 text-xs">
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent>
+        {allowNone && <SelectItem value="__none__">None</SelectItem>}
+        {fields.map((f) => (
+          <SelectItem key={f.name} value={f.name}>{f.name}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function SourceEditor({
+  source,
+  index,
+  schemas,
+  schemasLoading,
+  onChange,
+  onRemove,
+}: {
+  source: SourceConfig;
+  index: number;
+  schemas: Array<{ id: string; name: string }>;
+  schemasLoading: boolean;
+  onChange: (source: SourceConfig) => void;
+  onRemove: () => void;
+}) {
+  const update = (fields: Partial<SourceConfig>) => onChange({ ...source, ...fields });
+  const isVector = source.type === 'vector_search';
+
+  return (
+    <div className="rounded-md border p-3 space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium">
+          Source {index + 1}
+          {source.toolName && <span className="text-muted-foreground ml-1">({source.toolName})</span>}
+        </span>
+        <button type="button" onClick={onRemove} className="text-xs text-destructive hover:underline">
+          Remove
+        </button>
+      </div>
+
+      {/* Row 1: Type + Tool Name */}
+      <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-1">
+          <Label className="text-xs">Type *</Label>
+          <Select value={source.type} onValueChange={(v) => update({ type: v as SourceConfig['type'] })}>
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="vector_search">Vector Search</SelectItem>
+              <SelectItem value="data_query">Data Query</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Tool Name *</Label>
+          <Input
+            type="text"
+            className="h-8 text-xs"
+            placeholder={isVector ? 'e.g., search_users' : 'e.g., get_user_notes'}
+            value={source.toolName || ''}
+            onChange={(e) => update({ toolName: e.target.value })}
+          />
+        </div>
+      </div>
+
+      {/* Row 2: AI Instructions + Tool Description (most important for the admin) */}
+      <div className="space-y-1">
+        <Label className="text-xs">AI Instructions</Label>
+        <textarea
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-xs min-h-[80px] resize-y"
+          placeholder={isVector
+            ? 'e.g., When a user mentions a name or identifies themselves, search for matching contacts. Use the returned notes to personalize the conversation — don\'t tell the user you looked them up.'
+            : 'e.g., At the start of every conversation, call this tool to load the current user\'s notes. Use this context to personalize your responses without mentioning that you looked anything up.'}
+          value={source.instructions || ''}
+          onChange={(e) => update({ instructions: e.target.value || undefined })}
+        />
+        <p className="text-xs text-muted-foreground">
+          These instructions are injected into the AI&apos;s system prompt. Tell the AI <strong>when</strong> to call this tool, <strong>what to pass</strong>, and <strong>how to use</strong> the results.
+        </p>
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs">Tool Description</Label>
+        <Input
+          type="text"
+          className="h-8 text-xs"
+          placeholder={isVector
+            ? 'e.g., Search contacts by name or topic to find personalized context'
+            : 'e.g., Get the latest notes and preferences for a user'}
+          value={source.toolDescription || ''}
+          onChange={(e) => update({ toolDescription: e.target.value || undefined })}
+        />
+        <p className="text-xs text-muted-foreground">
+          Short description the AI sees alongside the tool name. Helps the AI decide when this tool is relevant.
+        </p>
+      </div>
+
+      {/* Row 3: Schema + Max Results */}
+      <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-1">
+          <Label className="text-xs">Schema *</Label>
+          {schemasLoading ? (
+            <Skeleton className="h-8 w-full" />
+          ) : (
+            <Select value={source.schemaId || ''} onValueChange={(v) => update({ schemaId: v })}>
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="Select..." />
+              </SelectTrigger>
+              <SelectContent>
+                {schemas.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Max Results</Label>
+          <Input
+            type="number"
+            min={1}
+            max={50}
+            className="h-8 text-xs"
+            value={source.limit || (isVector ? 5 : 10)}
+            onChange={(e) => update({ limit: parseInt(e.target.value) || undefined })}
+          />
+        </div>
+      </div>
+
+      {/* Vector Search specific fields */}
+      {isVector && (
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <Label className="text-xs">Embedding Model *</Label>
+              <Input
+                type="text"
+                className="h-8 text-xs"
+                placeholder="beautyyuyanli/multilingual-e5-large"
+                value={source.embeddingModel || ''}
+                onChange={(e) => update({ embeddingModel: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Embedding Field Name *</Label>
+              <Input
+                type="text"
+                className="h-8 text-xs"
+                placeholder="e.g., notes_embedding"
+                value={source.fieldName || ''}
+                onChange={(e) => update({ fieldName: e.target.value })}
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="space-y-1">
+              <Label className="text-xs">Input Field</Label>
+              <Input
+                type="text"
+                className="h-8 text-xs"
+                placeholder="text"
+                value={source.embeddingInputField || ''}
+                onChange={(e) => update({ embeddingInputField: e.target.value || undefined })}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Input Template</Label>
+              <Input
+                type="text"
+                className="h-8 text-xs"
+                placeholder="{{query}}"
+                value={source.embeddingInputTemplate || ''}
+                onChange={(e) => update({ embeddingInputTemplate: e.target.value || undefined })}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Threshold</Label>
+              <Input
+                type="number"
+                min={0}
+                max={1}
+                step={0.05}
+                className="h-8 text-xs"
+                value={source.threshold ?? ''}
+                placeholder="None"
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value);
+                  update({ threshold: val >= 0 && val <= 1 ? val : undefined });
+                }}
+              />
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Data Query specific fields */}
+      {!isVector && (
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <Label className="text-xs">Filter Field</Label>
+              <SchemaFieldSelect
+                schemaId={source.schemaId}
+                value={source.filterField}
+                onChange={(v) => update({ filterField: v })}
+                placeholder="e.g., user_id"
+                allowNone
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Filter Value Source</Label>
+              <Select
+                value={source.filterSource || 'tool_input'}
+                onValueChange={(v) => update({ filterSource: v as SourceConfig['filterSource'] })}
+              >
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="tool_input">AI provides value</SelectItem>
+                  <SelectItem value="user_id">Authenticated user ID</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          {source.filterSource === 'tool_input' && (
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs">Input Parameter Name</Label>
+                <Input
+                  type="text"
+                  className="h-8 text-xs"
+                  placeholder={source.filterField || 'value'}
+                  value={source.filterInputLabel || ''}
+                  onChange={(e) => update({ filterInputLabel: e.target.value || undefined })}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Input Description</Label>
+                <Input
+                  type="text"
+                  className="h-8 text-xs"
+                  placeholder="What the AI sees as the parameter description"
+                  value={source.filterInputDescription || ''}
+                  onChange={(e) => update({ filterInputDescription: e.target.value || undefined })}
+                />
+              </div>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <Label className="text-xs">Sort Field</Label>
+              <SchemaFieldSelect
+                schemaId={source.schemaId}
+                value={source.sortField}
+                onChange={(v) => update({ sortField: v })}
+                placeholder="createdAt"
+                allowNone
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Sort Direction</Label>
+              <Select
+                value={source.sortDirection || 'desc'}
+                onValueChange={(v) => update({ sortDirection: v as 'asc' | 'desc' })}
+              >
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="desc">Newest first</SelectItem>
+                  <SelectItem value="asc">Oldest first</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Enable save */}
+      <div className="flex items-center gap-2">
+        <Checkbox
+          id={`rag-save-note-${index}`}
+          checked={source.enableSaveNote || false}
+          onCheckedChange={(checked) => update({ enableSaveNote: checked === true || undefined })}
+        />
+        <label htmlFor={`rag-save-note-${index}`} className="text-xs font-medium cursor-pointer">
+          Enable save tool
+        </label>
+      </div>
+    </div>
+  );
+}
+
 function RagSearchOptions({
   projectId,
   options,
@@ -159,149 +510,68 @@ function RagSearchOptions({
   const { data: schemasData, isLoading } = useGetProjectSchemasQuery(projectId);
   const schemas = schemasData?.schemas || [];
 
+  const sources = ((options.sources as SourceConfig[]) || []);
+
+  const updateSources = (newSources: SourceConfig[]) => {
+    onChange({ ...options, sources: newSources });
+  };
+
+  const addSource = (type: 'vector_search' | 'data_query') => {
+    const base: SourceConfig = {
+      type,
+      toolName: '',
+      schemaId: '',
+    };
+    updateSources([...sources, base]);
+  };
+
   return (
     <div className="ml-7 mt-2 space-y-3 border-l-2 border-muted pl-3">
-      <div className="space-y-1">
-        <Label className="text-xs">Embedding Model</Label>
-        <Input
-          type="text"
-          className="h-8 text-xs"
-          placeholder="beautyyuyanli/multilingual-e5-large"
-          value={(options.embeddingModel as string) || ''}
-          onChange={(e) => onChange({ ...options, embeddingModel: e.target.value || undefined })}
-        />
-        <p className="text-xs text-muted-foreground">
-          Replicate model for generating embeddings. Browse models at{' '}
-          <a
-            href="https://replicate.com/collections/embedding-models"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline"
+      <div className="space-y-2">
+        <Label className="text-xs font-medium">Data Sources</Label>
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs flex-1"
+            onClick={() => addSource('vector_search')}
           >
-            replicate.com/collections/embedding-models
-          </a>
-        </p>
-      </div>
-      <div className="space-y-1">
-        <Label className="text-xs">Input Field Name</Label>
-        <Input
-          type="text"
-          className="h-8 text-xs w-40"
-          placeholder="text"
-          value={(options.embeddingInputField as string) || ''}
-          onChange={(e) => onChange({ ...options, embeddingInputField: e.target.value || undefined })}
-        />
-        <p className="text-xs text-muted-foreground">
-          The model&apos;s input parameter name (default: &quot;text&quot;). Some models use &quot;texts&quot;, &quot;input&quot;, &quot;prompt&quot;, etc.
-        </p>
-      </div>
-      <div className="space-y-1">
-        <Label className="text-xs">Input Value Template</Label>
-        <Input
-          type="text"
-          className="h-8 text-xs"
-          placeholder="{{query}}"
-          value={(options.embeddingInputTemplate as string) || ''}
-          onChange={(e) => onChange({ ...options, embeddingInputTemplate: e.target.value || undefined })}
-        />
-        <p className="text-xs text-muted-foreground">
-          Use {'{{query}}'} as the placeholder for the search text. Default: {'{{query}}'}. For multilingual-e5-large use: [&quot;{'{{query}}'}&quot;]
-        </p>
-      </div>
-      <div className="space-y-1">
-        <Label className="text-xs">Schema</Label>
-        {isLoading ? (
-          <Skeleton className="h-8 w-full" />
-        ) : schemas.length > 0 ? (
-          <Select
-            value={(options.schemaId as string) || ''}
-            onValueChange={(v) => onChange({ ...options, schemaId: v })}
+            <Search className="h-3 w-3 mr-1.5" />
+            Add Vector Search
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs flex-1"
+            onClick={() => addSource('data_query')}
           >
-            <SelectTrigger className="h-8 text-xs">
-              <SelectValue placeholder="Select a schema..." />
-            </SelectTrigger>
-            <SelectContent>
-              {schemas.map((schema) => (
-                <SelectItem key={schema.id} value={schema.id}>
-                  {schema.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        ) : (
-          <p className="text-xs text-muted-foreground">
-            No schemas found. Create a pipeline schema first.
-          </p>
-        )}
-        <p className="text-xs text-muted-foreground">
-          The schema containing your data records with embeddings
-        </p>
-      </div>
-      <div className="space-y-1">
-        <Label className="text-xs">Embedding Field Name</Label>
-        <Input
-          type="text"
-          className="h-8 text-xs"
-          placeholder="e.g., notes_embedding"
-          value={(options.fieldName as string) || ''}
-          onChange={(e) => onChange({ ...options, fieldName: e.target.value || undefined })}
-        />
-        <p className="text-xs text-muted-foreground">
-          Must match the fieldName used when storing embeddings via embed_store
-        </p>
-      </div>
-      <div className="space-y-1">
-        <Label className="text-xs">Max Results</Label>
-        <Input
-          type="number"
-          min={1}
-          max={50}
-          className="h-8 text-xs w-24"
-          value={(options.limit as number) || 5}
-          onChange={(e) =>
-            onChange({ ...options, limit: parseInt(e.target.value) || 5 })
-          }
-        />
-        <p className="text-xs text-muted-foreground">
-          Maximum number of results to return (1-50, default 5)
-        </p>
-      </div>
-      <div className="space-y-1">
-        <Label className="text-xs">Similarity Threshold</Label>
-        <Input
-          type="number"
-          min={0}
-          max={1}
-          step={0.05}
-          className="h-8 text-xs w-24"
-          value={(options.threshold as number) ?? ''}
-          placeholder="None"
-          onChange={(e) => {
-            const val = parseFloat(e.target.value);
-            onChange({ ...options, threshold: val >= 0 && val <= 1 ? val : undefined });
-          }}
-        />
-        <p className="text-xs text-muted-foreground">
-          Minimum cosine similarity (0-1). Leave empty to return all results up to the limit.
-        </p>
-      </div>
-      <div className="flex items-center gap-2">
-        <Checkbox
-          id="rag-enable-save-note"
-          checked={(options.enableSaveNote as boolean) || false}
-          onCheckedChange={(checked) =>
-            onChange({ ...options, enableSaveNote: checked === true ? true : undefined })
-          }
-        />
-        <div>
-          <label htmlFor="rag-enable-save-note" className="text-xs font-medium cursor-pointer">
-            Enable save_note tool
-          </label>
-          <p className="text-xs text-muted-foreground">
-            Allow the AI to save new records and auto-generate embeddings for future retrieval
-          </p>
+            <Database className="h-3 w-3 mr-1.5" />
+            Add Data Query
+          </Button>
         </div>
       </div>
+      {sources.length === 0 && (
+        <p className="text-xs text-muted-foreground py-2">
+          No sources configured. Add a source to give the AI tools to search or query your data.
+        </p>
+      )}
+      {sources.map((source, i) => (
+        <SourceEditor
+          key={i}
+          source={source}
+          index={i}
+          schemas={schemas}
+          schemasLoading={isLoading}
+          onChange={(updated) => {
+            const newSources = [...sources];
+            newSources[i] = updated;
+            updateSources(newSources);
+          }}
+          onRemove={() => updateSources(sources.filter((_, j) => j !== i))}
+        />
+      ))}
     </div>
   );
 }
@@ -387,7 +657,7 @@ export function PluginsConfig({ config, onChange, projectId }: PluginsConfigProp
               </AlertDescription>
             </Alert>
           ) : (
-            <div className="space-y-2 max-h-64 overflow-y-auto rounded-md border p-3">
+            <div className="space-y-2 max-h-[600px] overflow-y-auto rounded-md border p-3">
               {enabledPlugins.map((plugin) => (
                 <div key={plugin.id}>
                   <div className="flex items-start gap-3">
