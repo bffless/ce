@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.181](https://github.com/bffless/ce/compare/v0.0.180...v0.0.181) (2026-03-25)
+
+
+### Features
+
+* add configurable input mapping for RAG Search embedding models ([45c5d9b](https://github.com/bffless/ce/commit/45c5d9b95689dc6ded74a07ab7ff7a872f138637))
+* add RAG Search AI plugin for semantic search and write-back ([5e5b511](https://github.com/bffless/ce/commit/5e5b5117bf553ab79c03bd6da82ba9a7fb3791d8))
+* RAG Search AI plugin ([f00bb79](https://github.com/bffless/ce/commit/f00bb79e196e2ecfcd876a690b10b2d1d76ee981))
+
 ## [0.0.180](https://github.com/bffless/ce/compare/v0.0.179...v0.0.180) (2026-03-25)
 
 
