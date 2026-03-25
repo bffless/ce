@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.182](https://github.com/bffless/ce/compare/v0.0.181...v0.0.182) (2026-03-25)
+
+
+### Features
+
+* evolve RAG Search into AI Data Tools with multi-source support ([41bfedf](https://github.com/bffless/ce/commit/41bfedffe4e523f0310a1dc882ce05fe2768aa1b))
+
 ## [0.0.181](https://github.com/bffless/ce/compare/v0.0.180...v0.0.181) (2026-03-25)
 
 
