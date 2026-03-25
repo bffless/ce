@@ -25,6 +25,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { ChevronDown, ChevronRight, ChevronUp, GripVertical, Plus, Trash2, Send, Info, Filter } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import type { HandlerType, ValidatorConfig } from '@/services/pipelinesApi';
 import type {
   PipelineStepConfig,
@@ -474,7 +475,7 @@ export function PipelineConfig({
                 config: s.config,
               }));
               return (
-                <Card key={step.id} className={!step.isEnabled ? 'opacity-60' : ''}>
+                <Card key={step.id} className={step.isEnabled === false ? 'opacity-60' : ''}>
                   <CardHeader className="py-3">
                     <div className="flex items-center gap-2">
                       {/* Drag handle placeholder */}
@@ -527,6 +528,12 @@ export function PipelineConfig({
                           <ChevronDown className="h-4 w-4" />
                         </Button>
                       </div>
+
+                      {/* Enable/disable toggle */}
+                      <Switch
+                        checked={step.isEnabled !== false}
+                        onCheckedChange={(checked) => updateStep(step.id, { isEnabled: checked })}
+                      />
 
                       {/* Delete button */}
                       <Button
@@ -850,7 +857,7 @@ data: {"type":"text-delta","value":" world"}
                 })),
               ];
               return (
-                <Card key={step.id} className={`border-amber-500/20 ${!step.isEnabled ? 'opacity-60' : ''}`}>
+                <Card key={step.id} className={`border-amber-500/20 ${step.isEnabled === false ? 'opacity-60' : ''}`}>
                   <CardHeader className="py-3">
                     <div className="flex items-center gap-2">
                       <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab" />
@@ -896,6 +903,10 @@ data: {"type":"text-delta","value":" world"}
                           <ChevronDown className="h-4 w-4" />
                         </Button>
                       </div>
+                      <Switch
+                        checked={step.isEnabled !== false}
+                        onCheckedChange={(checked) => updatePostStep(step.id, { isEnabled: checked })}
+                      />
                       <Button
                         type="button"
                         variant="ghost"

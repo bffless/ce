@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Storage, Bucket, GetSignedUrlConfig } from '@google-cloud/storage';
-import { IStorageAdapter, FileMetadata } from './storage.interface';
+import { IStorageAdapter, FileMetadata, StreamDownloadResult } from './storage.interface';
 import { GcsStorageConfig, validateGcsConfig } from './gcs.config';
 
 /**
@@ -113,6 +113,34 @@ export class GcsStorageAdapter implements IStorageAdapter {
       }
       this.logger.error(`Failed to download file from GCS: ${storageKey}`, error);
       throw new Error(`GCS download failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Download a file as a stream without buffering into memory
+   */
+  async downloadStream(key: string): Promise<StreamDownloadResult> {
+    const sanitizedKey = this.sanitizeKey(key);
+    const storageKey = this.prefixKey(sanitizedKey);
+    const blob = this.bucket.file(storageKey);
+
+    try {
+      const [metadata] = await blob.getMetadata();
+      const stream = blob.createReadStream();
+
+      return {
+        stream,
+        size: Number(metadata.size) || 0,
+        etag: metadata.etag || undefined,
+        mimeType: metadata.contentType || undefined,
+        lastModified: metadata.updated ? new Date(metadata.updated) : undefined,
+      };
+    } catch (error: any) {
+      if (error.code === 404) {
+        throw new Error(`File not found: ${key}`);
+      }
+      this.logger.error(`Failed to stream file from GCS: ${storageKey}`, error);
+      throw new Error(`GCS stream failed: ${error.message}`);
     }
   }
 

@@ -29,6 +29,8 @@ const MIME_TYPES: Record<string, string> = {
   '.mp4': 'video/mp4',
   '.webm': 'video/webm',
   '.mp3': 'audio/mpeg',
+  '.ogg': 'audio/ogg',
+  '.wav': 'audio/wav',
   '.woff': 'font/woff',
   '.woff2': 'font/woff2',
   '.ttf': 'font/ttf',
@@ -40,7 +42,8 @@ const MIME_TYPES: Record<string, string> = {
 /**
  * File Serve Handler
  *
- * Serves files from storage through a pipeline.
+ * Serves files from storage through a pipeline using streaming.
+ * Supports HTTP Range requests for efficient video/audio playback.
  * Access control is handled by pipeline validators, not this handler.
  */
 @Injectable()
@@ -87,7 +90,6 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
     }
 
     // Extract the file path from the request URL
-    // The wildcard portion comes after /api/uploads/{subDir}/
     const requestPath = context.metadata.path;
     const prefix = `/api/uploads/${config.subDir}/`;
     let filePath = '';
@@ -95,8 +97,6 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
     if (requestPath.startsWith(prefix)) {
       filePath = requestPath.slice(prefix.length);
     } else {
-      // Try to extract from X-Original-URI if available
-      // Strip query string first since $request_uri includes it
       const rawOriginalUri = context.metadata.headers['x-original-uri'] as string | undefined;
       const originalUri = rawOriginalUri?.split('?')[0];
       if (originalUri && originalUri.includes(prefix)) {
@@ -118,74 +118,52 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
     const sanitized = filePath.replace(/\.\./g, '').replace(/\/\//g, '/');
     const storageKey = `${owner}/${repo}/uploads/${config.subDir}/${sanitized}`;
 
-    try {
-      // Check if storage adapter supports downloadWithCacheInfo
-      let data: Buffer;
-      let etag: string | undefined;
+    // Determine content type from file extension
+    const ext = path.extname(sanitized).toLowerCase();
+    const contentType = MIME_TYPES[ext] || 'application/octet-stream';
 
-      if (this.storageAdapter.downloadWithCacheInfo) {
-        const result = await this.storageAdapter.downloadWithCacheInfo(storageKey);
-        data = result.data;
-      } else {
-        data = await this.storageAdapter.download(storageKey);
-      }
+    // Resolve cache headers: check cache rules first, fall back to config/default
+    let cacheControlHeader: string;
+    const cacheConfig = await this.cacheConfigService.getCacheConfig(
+      context.projectId,
+      requestPath,
+      false,
+    );
+    if (cacheConfig.source === 'rule') {
+      cacheControlHeader = this.cacheConfigService.buildCacheControlHeader(cacheConfig, true);
+    } else {
+      const cacheMaxAge = config.cacheMaxAge ?? 3600;
+      cacheControlHeader = `public, max-age=${cacheMaxAge}`;
+    }
 
-      // Try to get metadata for ETag
-      try {
-        const metadata = await this.storageAdapter.getMetadata(storageKey);
-        etag = metadata.etag;
-      } catch {
-        // Non-fatal
-      }
-
-      // Determine content type from file extension
-      const ext = path.extname(sanitized).toLowerCase();
-      const contentType = MIME_TYPES[ext] || 'application/octet-stream';
-
-      // Resolve cache headers: check cache rules first, fall back to config/default
-      let cacheControlHeader: string;
-      const cacheConfig = await this.cacheConfigService.getCacheConfig(
-        context.projectId,
-        requestPath,
-        false,
-      );
-      if (cacheConfig.source === 'rule') {
-        cacheControlHeader = this.cacheConfigService.buildCacheControlHeader(cacheConfig, true);
-      } else {
-        // No cache rule matched — use handler config default or 3600s
-        const cacheMaxAge = config.cacheMaxAge ?? 3600;
-        cacheControlHeader = `public, max-age=${cacheMaxAge}`;
-      }
-
-      // Set response headers and stream content
-      const res = context.request.res;
-      if (!res) {
-        return {
-          success: false,
-          error: {
-            code: 'NO_RESPONSE',
-            message: 'Response object not available',
-          },
-        };
-      }
-
-      res.setHeader('Content-Type', contentType);
-      res.setHeader('Content-Length', data.length);
-      res.setHeader('Cache-Control', cacheControlHeader);
-      if (etag) {
-        res.setHeader('ETag', etag);
-      }
-
-      res.status(200).end(data);
-
+    const res = context.request.res;
+    if (!res) {
       return {
-        success: true,
-        terminates: true, // Signal that response was already sent
+        success: false,
+        error: {
+          code: 'NO_RESPONSE',
+          message: 'Response object not available',
+        },
       };
+    }
+
+    try {
+      // Try streaming path first (avoids buffering entire file in memory)
+      if (this.storageAdapter.downloadStream) {
+        return await this.serveWithStream(
+          storageKey,
+          contentType,
+          cacheControlHeader,
+          context,
+          res,
+        );
+      }
+
+      // Fallback: buffer-based serving for adapters without stream support
+      return await this.serveWithBuffer(storageKey, contentType, cacheControlHeader, res);
     } catch (error) {
       this.logger.debug(`File not found: ${storageKey}`);
-      const res = context.request.res;
-      if (res && !res.headersSent) {
+      if (!res.headersSent) {
         res.status(404).json({
           error: 'File not found',
           code: 'FILE_NOT_FOUND',
@@ -196,5 +174,166 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
         terminates: true,
       };
     }
+  }
+
+  /**
+   * Stream file directly from storage to response.
+   * Supports HTTP Range requests for video/audio seeking.
+   */
+  private async serveWithStream(
+    storageKey: string,
+    contentType: string,
+    cacheControlHeader: string,
+    context: PipelineContext,
+    res: any,
+  ): Promise<StepResult> {
+    const result = await this.storageAdapter.downloadStream!(storageKey);
+    const fileSize = result.size;
+    const rangeHeader = context.metadata.headers['range'] as string | undefined;
+
+    // Common headers for all responses
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Cache-Control', cacheControlHeader);
+    if (result.etag) {
+      res.setHeader('ETag', result.etag);
+    }
+
+    if (rangeHeader) {
+      // Parse Range header (e.g., "bytes=0-1023")
+      const match = rangeHeader.match(/bytes=(\d*)-(\d*)/);
+      if (!match) {
+        res.status(416).setHeader('Content-Range', `bytes */${fileSize}`);
+        res.end();
+        // Destroy the unused stream to prevent resource leaks
+        if (typeof (result.stream as any).destroy === 'function') {
+          (result.stream as any).destroy();
+        }
+        return { success: true, terminates: true };
+      }
+
+      const start = match[1] ? parseInt(match[1], 10) : 0;
+      const end = match[2] ? parseInt(match[2], 10) : fileSize - 1;
+
+      if (start >= fileSize || end >= fileSize || start > end) {
+        res.status(416).setHeader('Content-Range', `bytes */${fileSize}`);
+        res.end();
+        if (typeof (result.stream as any).destroy === 'function') {
+          (result.stream as any).destroy();
+        }
+        return { success: true, terminates: true };
+      }
+
+      const chunkSize = end - start + 1;
+
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Length', chunkSize);
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
+      res.status(206);
+
+      // For range requests, we need to slice the stream
+      // Pipe through and track bytes to only send the requested range
+      let bytesRead = 0;
+      const stream = result.stream;
+
+      stream.on('data', (chunk: Buffer) => {
+        const chunkStart = bytesRead;
+        const chunkEnd = bytesRead + chunk.length;
+        bytesRead += chunk.length;
+
+        // Calculate overlap between this chunk and the requested range
+        const overlapStart = Math.max(chunkStart, start);
+        const overlapEnd = Math.min(chunkEnd, end + 1);
+
+        if (overlapStart < overlapEnd) {
+          const slice = chunk.slice(overlapStart - chunkStart, overlapEnd - chunkStart);
+          res.write(slice);
+        }
+
+        // If we've read past the end, we can stop
+        if (bytesRead > end) {
+          if (typeof (stream as any).destroy === 'function') {
+            (stream as any).destroy();
+          }
+          res.end();
+        }
+      });
+
+      stream.on('end', () => {
+        if (!res.writableEnded) {
+          res.end();
+        }
+      });
+
+      stream.on('error', (err: Error) => {
+        this.logger.error(`Stream error during range serve: ${err.message}`);
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Stream error' });
+        } else if (!res.writableEnded) {
+          res.end();
+        }
+      });
+    } else {
+      // Full file response — stream directly
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Length', fileSize);
+      res.status(200);
+
+      const stream = result.stream;
+      stream.pipe(res);
+
+      stream.on('error', (err: Error) => {
+        this.logger.error(`Stream error during full serve: ${err.message}`);
+        if (!res.writableEnded) {
+          res.end();
+        }
+      });
+    }
+
+    return {
+      success: true,
+      terminates: true,
+    };
+  }
+
+  /**
+   * Fallback: buffer-based serving for adapters without stream support
+   */
+  private async serveWithBuffer(
+    storageKey: string,
+    contentType: string,
+    cacheControlHeader: string,
+    res: any,
+  ): Promise<StepResult> {
+    let data: Buffer;
+
+    if (this.storageAdapter.downloadWithCacheInfo) {
+      const result = await this.storageAdapter.downloadWithCacheInfo(storageKey);
+      data = result.data;
+    } else {
+      data = await this.storageAdapter.download(storageKey);
+    }
+
+    let etag: string | undefined;
+    try {
+      const metadata = await this.storageAdapter.getMetadata(storageKey);
+      etag = metadata.etag;
+    } catch {
+      // Non-fatal
+    }
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Length', data.length);
+    res.setHeader('Cache-Control', cacheControlHeader);
+    res.setHeader('Accept-Ranges', 'bytes');
+    if (etag) {
+      res.setHeader('ETag', etag);
+    }
+
+    res.status(200).end(data);
+
+    return {
+      success: true,
+      terminates: true,
+    };
   }
 }

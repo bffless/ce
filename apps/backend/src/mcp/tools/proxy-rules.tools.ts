@@ -43,15 +43,15 @@ const pipelineStepSchema = z.object({
 - form_handler: { fields: { fieldName: { type: "string"|"number"|"email"|"boolean", required?: bool } } }
 - response_handler: { body: "Handlebars template string producing valid JSON. Use \\"key\\": \\"{{expr}}\\" for strings, \\"key\\": {{expr}} for numbers, \\"key\\": {{{expr}}} for raw JSON objects. Keys must always be quoted.", status?: number, headers?: {}, contentType?: string }
 - data_create: { schemaId: "uuid", fields: { schemaField: "expression" } }
-- data_query: { schemaId: "uuid", filters?: {}, pageSize?: number }
+- data_query: { schemaId: "uuid", recordId?: "expression" (returns single flat object, ignores filters), filters?: {}, pageSize?: number }. IMPORTANT: Results have data fields FLATTENED to top level (NO .data wrapper). Access as steps.stepName[i].fieldName or steps.stepName.fieldName (with recordId).
 - data_update: { schemaId: "uuid", recordId: "expression", fields: { schemaField: "expression" } }
 - data_delete: { schemaId: "uuid", recordId: "expression" }
 - replicate: { model: "owner/name" (JUST the model, e.g. "stability-ai/sdxl"), version?: "64-char hash" (SEPARATE field), input: { inputName: "expression or literal" } (strings for expressions e.g. "request.body.prompt", numbers for literals e.g. 1024), outputField?: "key" }
 - file_upload_handler: { schemaId: "uuid", subDir: "folder", sourceUrl?: "expression" (e.g. "steps.generate.output[0]"), extraFields?: { field: "expression" }, filename?: "expression to override stored filename", convertTo?: "png"|"jpeg"|"webp" }. NOTE: file_upload_handler automatically creates a record in the schema with built-in fields (filename, storage_path, mime_type, size, url). Use extraFields to add custom data (e.g. "prompt": "request.body.prompt"). Do NOT add a separate data_create step — it creates duplicate records. IMPORTANT: Use generate_upload_schema MCP tool to create the schema first so files appear in the Uploads tab. The record's "url" field (e.g. "/api/uploads/generations/uuid-file.png") is the public serve URL — use it directly in responses. When using sourceUrl with AI models, set filename to override the generic output name (e.g. filename: "request.body.prompt" to name the file after the prompt instead of "out-0.png").
-- ai_handler: { provider: "anthropic"|"openai", model: "model-id", systemPrompt?: "text", userPrompt: "expression", temperature?: number }
+- ai_handler: { provider: "anthropic"|"openai", model: "model-id (MUST be literal string, does NOT support expressions)", systemPrompt?: "text", messageField: "expression for user message content (e.g. request.body.prompt, steps.prep.message)" (NOT userPrompt), temperature?: number }. OUTPUT: access AI response via steps.stepName.content (NOT .messageField). Available models: claude-haiku-4-5, claude-sonnet-4-6, claude-opus-4-6. Conditions on ai_handler steps cannot use inline === comparisons — compute booleans in a prior function_handler and reference them.
 - email_handler: { to: "expression", subject: "expression", body: "expression" }
 - db_aggregate: { schemaId: "uuid", operation: "sum"|"count"|"avg"|"min"|"max", field?: "name", filters?: {} }
-- function_handler: { code: "function handler({ input, user, request, steps }) { return {}; }" }
+- function_handler: { code: "function handler({ input, user, request, steps }) { return {}; }" }. IMPORTANT: Runs in sandboxed VM — NO access to crypto, Buffer, require, process, fetch. Use Math.random() for randomness. Use for loops instead of .map()/.sort() on data_query results (arrays may be frozen). Use var instead of const/let for safety.
 - file_serve_handler: { path: "expression" }
 - http_request: { url: "target URL (expression)", method?: "GET"|"POST"|"PUT"|"PATCH"|"DELETE", forwardAuth?: boolean (forwards cookies + authorization header from original request), body?: "expression" or { field: "expression" } (for POST/PUT/PATCH), headers?: { "Header-Name": "expression or static value" }, forwardHeaders?: ["header-name"] (forward specific headers from original request), timeout?: number (ms, default 30000) }
 - stripe_checkout: { priceId: "expression (e.g. steps.myStep.priceId)", mode?: "payment"|"subscription" (default "payment"), successUrl: "URL with optional {CHECKOUT_SESSION_ID} template", cancelUrl: "URL", customerEmail?: "expression (e.g. user.email)", clientReferenceId?: "expression (e.g. user.id)", metadata?: { key: "expression" }, quantity?: "expression (default 1)", environment?: "sandbox"|"production" }. Creates a Stripe Checkout Session. Output: { sessionId, url } — redirect user to url. Requires Stripe integration configured in project settings.
@@ -105,7 +105,7 @@ export class ProxyRulesTools {
 
   @Tool({
     name: 'create_proxy_rule_set',
-    description: 'Create a new proxy rule set for a project.',
+    description: 'Create a new proxy rule set for a project. IMPORTANT: After creating rules in this set, you must assign it to a deployment alias via update_alias(proxyRuleSetId) for the rules to take effect. Rules will not be active until the rule set is linked to an alias.',
     parameters: z.object({
       projectId: z.string().describe('Project ID'),
       name: z.string().describe('Rule set name'),

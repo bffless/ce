@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { IStorageAdapter, FileMetadata } from './storage.interface';
+import { IStorageAdapter, FileMetadata, StreamDownloadResult } from './storage.interface';
 import * as Minio from 'minio';
 
 export interface MinioConfig {
@@ -126,6 +126,33 @@ export class MinioStorageAdapter implements IStorageAdapter {
       }
       this.logger.error(`Failed to download file from MinIO: ${storageKey}`, error);
       throw new Error(`MinIO download failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Download a file as a stream without buffering into memory
+   */
+  async downloadStream(key: string): Promise<StreamDownloadResult> {
+    const sanitizedKey = this.sanitizeKey(key);
+    const storageKey = this.prefixKey(sanitizedKey);
+
+    try {
+      const stat = await this.client.statObject(this.bucket, storageKey);
+      const stream = await this.client.getObject(this.bucket, storageKey);
+
+      return {
+        stream,
+        size: stat.size,
+        etag: stat.etag,
+        mimeType: stat.metaData?.['content-type'],
+        lastModified: stat.lastModified,
+      };
+    } catch (error) {
+      if (error.code === 'NoSuchKey' || error.code === 'NotFound') {
+        throw new Error(`File not found: ${key}`);
+      }
+      this.logger.error(`Failed to stream file from MinIO: ${storageKey}`, error);
+      throw new Error(`MinIO stream failed: ${error.message}`);
     }
   }
 

@@ -593,7 +593,9 @@ export class PublicController {
   }
 
   /**
-   * Serve file with appropriate headers
+   * Serve file with appropriate headers.
+   * Uses streaming for large files (video/audio) to avoid buffering in memory.
+   * Uses buffered download for small files to benefit from caching + ETag.
    */
   private async serveFile(
     asset: typeof assets.$inferSelect,
@@ -603,6 +605,8 @@ export class PublicController {
     const { immutable, statusCode = 200, isPublic, projectId, filePath } = options;
 
     try {
+      const mimeType = asset.mimeType || this.getMimeType(asset.fileName);
+
       // Get cache configuration from rules (or defaults) BEFORE download
       // so we can pass TTL hint to Redis caching
       const cacheConfig = await this.cacheConfigService.getCacheConfig(
@@ -610,6 +614,25 @@ export class PublicController {
         filePath,
         immutable,
       );
+
+      // Build common headers
+      const cacheControlHeader = this.cacheConfigService.buildCacheControlHeader(
+        cacheConfig,
+        isPublic,
+      );
+
+      // Use streaming for large media files to avoid OOM
+      const isStreamable = mimeType.startsWith('video/') || mimeType.startsWith('audio/');
+      if (isStreamable && this.storageAdapter.downloadStream) {
+        return await this.serveFileStreaming(asset, res, {
+          mimeType,
+          cacheControlHeader,
+          isPublic,
+          projectId,
+          filePath,
+          cacheConfig,
+        });
+      }
 
       // Calculate Redis TTL from cache config
       const redisTtl = this.cacheConfigService.calculateRedisTtl(cacheConfig);
@@ -626,9 +649,6 @@ export class PublicController {
         fileBuffer = await this.storageAdapter.download(asset.storageKey);
       }
 
-      // Set content type
-      const mimeType = asset.mimeType || this.getMimeType(asset.fileName);
-
       // Generate ETag - use pre-computed contentHash if available, otherwise compute MD5
       // (backwards compatibility for old assets without contentHash)
       const etag = asset.contentHash ? `"${asset.contentHash}"` : this.generateETag(fileBuffer);
@@ -641,27 +661,16 @@ export class PublicController {
       }
 
       res.setHeader('Content-Type', mimeType);
-
-      // Set content length
       res.setHeader('Content-Length', fileBuffer.length);
-
-      // Set ETag
       res.setHeader('ETag', etag);
-
-      // Build and set Cache-Control header
-      const cacheControlHeader = this.cacheConfigService.buildCacheControlHeader(
-        cacheConfig,
-        isPublic,
-      );
       res.setHeader('Cache-Control', cacheControlHeader);
 
       // For private content, add Vary: Cookie so caches differentiate by auth state
-      // This prevents cached private content from being served to unauthenticated users
       if (!isPublic) {
         res.setHeader('Vary', 'Cookie');
       }
 
-      // Add debug headers for cache rule matching
+      // Debug headers for cache rule matching
       res.setHeader('X-Cache-Path', filePath);
       res.setHeader('X-Cache-Project', projectId);
       res.setHeader('X-Cache-Source', cacheConfig.source);
@@ -669,16 +678,138 @@ export class PublicController {
         res.setHeader('X-Cache-Rule', cacheConfig.matchedRule.pathPattern);
       }
 
-      // Security headers
       res.setHeader('X-Content-Type-Options', 'nosniff');
-
-      // Analytics header for cache tracking
       res.setHeader('X-Cache-Hit', cacheHit);
 
-      // Send the file
       res.status(statusCode).send(fileBuffer);
     } catch (error) {
       this.logger.error(`Failed to download from storage: ${asset.storageKey}`, error);
+      return this.serve404Page(res, `File not found: ${asset.fileName}`);
+    }
+  }
+
+  /**
+   * Stream large files (video/audio) directly from storage to response.
+   * Supports HTTP Range requests for seeking.
+   */
+  private async serveFileStreaming(
+    asset: typeof assets.$inferSelect,
+    res: Response,
+    options: {
+      mimeType: string;
+      cacheControlHeader: string;
+      isPublic: boolean;
+      projectId: string;
+      filePath: string;
+      cacheConfig: any;
+    },
+  ): Promise<void> {
+    const { mimeType, cacheControlHeader, isPublic, projectId, filePath, cacheConfig } = options;
+
+    try {
+      const result = await this.storageAdapter.downloadStream!(asset.storageKey);
+      const fileSize = result.size;
+
+      // Common headers
+      res.setHeader('Accept-Ranges', 'bytes');
+      res.setHeader('Content-Type', mimeType);
+      res.setHeader('Cache-Control', cacheControlHeader);
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('X-Cache-Path', filePath);
+      res.setHeader('X-Cache-Project', projectId);
+      res.setHeader('X-Cache-Source', cacheConfig.source);
+      if (cacheConfig.source === 'rule' && cacheConfig.matchedRule) {
+        res.setHeader('X-Cache-Rule', cacheConfig.matchedRule.pathPattern);
+      }
+      if (result.etag) {
+        res.setHeader('ETag', result.etag);
+      }
+      if (!isPublic) {
+        res.setHeader('Vary', 'Cookie');
+      }
+
+      const rangeHeader = res.req.headers['range'];
+
+      if (rangeHeader) {
+        const match = rangeHeader.match(/bytes=(\d*)-(\d*)/);
+        if (!match) {
+          res.setHeader('Content-Range', `bytes */${fileSize}`);
+          res.status(416).end();
+          if (typeof (result.stream as any).destroy === 'function') {
+            (result.stream as any).destroy();
+          }
+          return;
+        }
+
+        const start = match[1] ? parseInt(match[1], 10) : 0;
+        const end = match[2] ? parseInt(match[2], 10) : fileSize - 1;
+
+        if (start >= fileSize || end >= fileSize || start > end) {
+          res.setHeader('Content-Range', `bytes */${fileSize}`);
+          res.status(416).end();
+          if (typeof (result.stream as any).destroy === 'function') {
+            (result.stream as any).destroy();
+          }
+          return;
+        }
+
+        const chunkSize = end - start + 1;
+        res.setHeader('Content-Length', chunkSize);
+        res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
+        res.status(206);
+
+        // Slice the stream to only send the requested range
+        let bytesRead = 0;
+        const stream = result.stream;
+
+        stream.on('data', (chunk: Buffer) => {
+          const chunkStart = bytesRead;
+          const chunkEnd = bytesRead + chunk.length;
+          bytesRead += chunk.length;
+
+          const overlapStart = Math.max(chunkStart, start);
+          const overlapEnd = Math.min(chunkEnd, end + 1);
+
+          if (overlapStart < overlapEnd) {
+            const slice = chunk.slice(overlapStart - chunkStart, overlapEnd - chunkStart);
+            res.write(slice);
+          }
+
+          if (bytesRead > end) {
+            if (typeof (stream as any).destroy === 'function') {
+              (stream as any).destroy();
+            }
+            res.end();
+          }
+        });
+
+        stream.on('end', () => {
+          if (!res.writableEnded) {
+            res.end();
+          }
+        });
+
+        stream.on('error', (err: Error) => {
+          this.logger.error(`Stream error during range serve: ${err.message}`);
+          if (!res.writableEnded) {
+            res.end();
+          }
+        });
+      } else {
+        // Full file — stream directly
+        res.setHeader('Content-Length', fileSize);
+        res.status(200);
+        result.stream.pipe(res);
+
+        result.stream.on('error', (err: Error) => {
+          this.logger.error(`Stream error during full serve: ${err.message}`);
+          if (!res.writableEnded) {
+            res.end();
+          }
+        });
+      }
+    } catch (error) {
+      this.logger.error(`Failed to stream from storage: ${asset.storageKey}`, error);
       return this.serve404Page(res, `File not found: ${asset.fileName}`);
     }
   }

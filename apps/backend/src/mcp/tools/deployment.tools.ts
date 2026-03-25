@@ -115,7 +115,7 @@ export class DeploymentTools {
 
   @Tool({
     name: 'create_alias',
-    description: 'Create or update a deployment alias (e.g. "production", "staging").',
+    description: 'Create or update a deployment alias (e.g. "production", "staging"). NOTE: If the project has proxy rules, assign the rule set to this alias via update_alias(proxyRuleSetId) after creation.',
     parameters: z.object({
       deploymentId: z.string().describe('Deployment ID to alias'),
       alias: z.string().describe('Alias name (e.g. "production")'),

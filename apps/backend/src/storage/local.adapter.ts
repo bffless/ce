@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { IStorageAdapter, FileMetadata } from './storage.interface';
+import { IStorageAdapter, FileMetadata, StreamDownloadResult } from './storage.interface';
 import * as fs from 'fs/promises';
+import * as fsSync from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 
@@ -81,6 +82,33 @@ export class LocalStorageAdapter implements IStorageAdapter {
     try {
       const buffer = await fs.readFile(fullPath);
       return buffer;
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        throw new Error(`File not found: ${key}`);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Download a file as a stream without buffering into memory
+   */
+  async downloadStream(key: string): Promise<StreamDownloadResult> {
+    const sanitizedKey = this.sanitizeKey(key);
+    const storageKey = this.prefixKey(sanitizedKey);
+    const fullPath = path.join(this.basePath, storageKey);
+
+    try {
+      const stats = await fs.stat(fullPath);
+      const stream = fsSync.createReadStream(fullPath);
+      const mimeType = this.guessMimeType(sanitizedKey);
+
+      return {
+        stream,
+        size: stats.size,
+        mimeType,
+        lastModified: stats.mtime,
+      };
     } catch (error) {
       if (error.code === 'ENOENT') {
         throw new Error(`File not found: ${key}`);

@@ -54,6 +54,17 @@ export interface DownloadResult {
   cacheHit: 'memory' | 'redis' | 'miss' | 'none';
 }
 
+/**
+ * Result from downloadStream for streaming file access
+ */
+export interface StreamDownloadResult {
+  stream: NodeJS.ReadableStream;
+  size: number;
+  etag?: string;
+  mimeType?: string;
+  lastModified?: Date;
+}
+
 export interface IStorageAdapter {
   /**
    * Upload a file to storage
@@ -145,4 +156,13 @@ export interface IStorageAdapter {
    * @returns Presigned URL for PUT operation
    */
   getPresignedUploadUrl?(key: string, expiresIn?: number): Promise<string>;
+
+  /**
+   * Download a file as a stream instead of buffering into memory.
+   * Returns the stream along with metadata (size, etag, etc.)
+   * Essential for serving large files (videos, images) without OOM.
+   * @param key - Storage key/path
+   * @returns Stream and metadata
+   */
+  downloadStream?(key: string): Promise<StreamDownloadResult>;
 }

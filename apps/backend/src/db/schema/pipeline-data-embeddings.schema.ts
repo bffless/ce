@@ -27,10 +27,7 @@ const vector = customType<{ data: number[]; driverData: string }>({
   },
   fromDriver(value: string): number[] {
     // pgvector returns '[1,2,3]' format
-    return value
-      .slice(1, -1)
-      .split(',')
-      .map(Number);
+    return value.slice(1, -1).split(',').map(Number);
   },
 });
 

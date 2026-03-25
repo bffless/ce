@@ -59,7 +59,7 @@ export class DomainTools {
   @Tool({
     name: 'create_domain',
     description:
-      'Create a new domain mapping (subdomain, custom domain, or redirect). Requires admin role.',
+      'Create a new domain mapping (subdomain, custom domain, or redirect). Requires admin role. NOTE: The domain serves content from a deployment alias. For proxy rules (API endpoints) to work, the alias must have a proxy rule set assigned via update_alias(proxyRuleSetId).',
     parameters: z.object({
       domain: z.string().describe('The domain name (e.g. "app.example.com")'),
       domainType: z

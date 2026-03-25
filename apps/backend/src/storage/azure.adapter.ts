@@ -8,7 +8,7 @@ import {
   SASProtocol,
 } from '@azure/storage-blob';
 import { DefaultAzureCredential, ManagedIdentityCredential } from '@azure/identity';
-import { IStorageAdapter, FileMetadata } from './storage.interface';
+import { IStorageAdapter, FileMetadata, StreamDownloadResult } from './storage.interface';
 import { AzureBlobStorageConfig, validateAzureConfig } from './azure.config';
 
 /**
@@ -143,6 +143,38 @@ export class AzureBlobStorageAdapter implements IStorageAdapter {
       }
       this.logger.error(`Failed to download file from Azure Blob: ${storageKey}`, error);
       throw new Error(`Azure Blob download failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Download a file as a stream without buffering into memory
+   */
+  async downloadStream(key: string): Promise<StreamDownloadResult> {
+    const sanitizedKey = this.sanitizeKey(key);
+    const storageKey = this.prefixKey(sanitizedKey);
+    const blockBlobClient = this.containerClient.getBlockBlobClient(storageKey);
+
+    try {
+      const properties = await blockBlobClient.getProperties();
+      const downloadResponse = await blockBlobClient.download(0);
+
+      if (!downloadResponse.readableStreamBody) {
+        throw new Error('Empty response body');
+      }
+
+      return {
+        stream: downloadResponse.readableStreamBody,
+        size: properties.contentLength || 0,
+        etag: properties.etag || undefined,
+        mimeType: properties.contentType || undefined,
+        lastModified: properties.lastModified || undefined,
+      };
+    } catch (error: any) {
+      if (error.statusCode === 404) {
+        throw new Error(`File not found: ${key}`);
+      }
+      this.logger.error(`Failed to stream file from Azure Blob: ${storageKey}`, error);
+      throw new Error(`Azure Blob stream failed: ${error.message}`);
     }
   }
 
