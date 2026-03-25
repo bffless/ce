@@ -29,6 +29,7 @@ import {
   Calculator,
   Search,
   Calendar,
+  Database,
   Settings2,
   ExternalLink,
   Unplug,
@@ -42,6 +43,7 @@ const PLUGIN_ICONS: Record<string, React.ElementType> = {
   calculator: Calculator,
   search: Search,
   calendar: Calendar,
+  database: Database,
 };
 
 // Category display config

@@ -1,4 +1,5 @@
 import { useListProjectPluginsQuery, useListPluginCalendarsQuery } from '@/services/projectsApi';
+import { useGetProjectSchemasQuery } from '@/services/pipelineSchemasApi';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -146,6 +147,139 @@ function GoogleCalendarOptions({
   );
 }
 
+function RagSearchOptions({
+  projectId,
+  options,
+  onChange,
+}: {
+  projectId: string;
+  options: Record<string, unknown>;
+  onChange: (opts: Record<string, unknown>) => void;
+}) {
+  const { data: schemasData, isLoading } = useGetProjectSchemasQuery(projectId);
+  const schemas = schemasData?.schemas || [];
+
+  return (
+    <div className="ml-7 mt-2 space-y-3 border-l-2 border-muted pl-3">
+      <div className="space-y-1">
+        <Label className="text-xs">Embedding Model</Label>
+        <Input
+          type="text"
+          className="h-8 text-xs"
+          placeholder="beautyyuyanli/multilingual-e5-large"
+          value={(options.embeddingModel as string) || ''}
+          onChange={(e) => onChange({ ...options, embeddingModel: e.target.value || undefined })}
+        />
+        <p className="text-xs text-muted-foreground">
+          Replicate model for generating embeddings. Browse models at{' '}
+          <a
+            href="https://replicate.com/collections/embedding-models"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline"
+          >
+            replicate.com/collections/embedding-models
+          </a>
+        </p>
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs">Schema</Label>
+        {isLoading ? (
+          <Skeleton className="h-8 w-full" />
+        ) : schemas.length > 0 ? (
+          <Select
+            value={(options.schemaId as string) || ''}
+            onValueChange={(v) => onChange({ ...options, schemaId: v })}
+          >
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue placeholder="Select a schema..." />
+            </SelectTrigger>
+            <SelectContent>
+              {schemas.map((schema) => (
+                <SelectItem key={schema.id} value={schema.id}>
+                  {schema.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            No schemas found. Create a pipeline schema first.
+          </p>
+        )}
+        <p className="text-xs text-muted-foreground">
+          The schema containing your data records with embeddings
+        </p>
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs">Embedding Field Name</Label>
+        <Input
+          type="text"
+          className="h-8 text-xs"
+          placeholder="e.g., notes_embedding"
+          value={(options.fieldName as string) || ''}
+          onChange={(e) => onChange({ ...options, fieldName: e.target.value || undefined })}
+        />
+        <p className="text-xs text-muted-foreground">
+          Must match the fieldName used when storing embeddings via embed_store
+        </p>
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs">Max Results</Label>
+        <Input
+          type="number"
+          min={1}
+          max={50}
+          className="h-8 text-xs w-24"
+          value={(options.limit as number) || 5}
+          onChange={(e) =>
+            onChange({ ...options, limit: parseInt(e.target.value) || 5 })
+          }
+        />
+        <p className="text-xs text-muted-foreground">
+          Maximum number of results to return (1-50, default 5)
+        </p>
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs">Similarity Threshold</Label>
+        <Input
+          type="number"
+          min={0}
+          max={1}
+          step={0.05}
+          className="h-8 text-xs w-24"
+          value={(options.threshold as number) ?? ''}
+          placeholder="None"
+          onChange={(e) => {
+            const val = parseFloat(e.target.value);
+            onChange({ ...options, threshold: val >= 0 && val <= 1 ? val : undefined });
+          }}
+        />
+        <p className="text-xs text-muted-foreground">
+          Minimum cosine similarity (0-1). Leave empty to return all results up to the limit.
+        </p>
+      </div>
+      <div className="flex items-center gap-2">
+        <Checkbox
+          id="rag-enable-save-note"
+          checked={(options.enableSaveNote as boolean) || false}
+          onCheckedChange={(checked) =>
+            onChange({ ...options, enableSaveNote: checked === true ? true : undefined })
+          }
+        />
+        <div>
+          <label htmlFor="rag-enable-save-note" className="text-xs font-medium cursor-pointer">
+            Enable save_note tool
+          </label>
+          <p className="text-xs text-muted-foreground">
+            Allow the AI to save new records and auto-generate embeddings for future retrieval
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function PluginsConfig({ config, onChange, projectId }: PluginsConfigProps) {
   const { data: plugins, isLoading } = useListProjectPluginsQuery(projectId);
   // Only show plugins that are enabled at the project level
@@ -161,6 +295,31 @@ export function PluginsConfig({ config, onChange, projectId }: PluginsConfigProp
       options: { ...(config.options || {}), [pluginId]: opts },
     });
   };
+
+  const renderPluginOptions = (pluginId: string) => {
+    if (pluginId === 'google-calendar') {
+      return (
+        <GoogleCalendarOptions
+          projectId={projectId}
+          options={getPluginOptions(pluginId)}
+          onChange={(opts) => setPluginOptions(pluginId, opts)}
+        />
+      );
+    }
+    if (pluginId === 'rag-search') {
+      return (
+        <RagSearchOptions
+          projectId={projectId}
+          options={getPluginOptions(pluginId)}
+          onChange={(opts) => setPluginOptions(pluginId, opts)}
+        />
+      );
+    }
+    return null;
+  };
+
+  // Plugins that have per-pipeline options
+  const pluginsWithOptions = ['google-calendar', 'rag-search'];
 
   return (
     <div className="space-y-4">
@@ -231,15 +390,8 @@ export function PluginsConfig({ config, onChange, projectId }: PluginsConfigProp
                       </p>
                     </div>
                   </div>
-                  {/* Per-plugin options for Google Calendar */}
-                  {plugin.id === 'google-calendar' &&
-                    config.enabled?.includes(plugin.id) && (
-                      <GoogleCalendarOptions
-                        projectId={projectId}
-                        options={getPluginOptions(plugin.id)}
-                        onChange={(opts) => setPluginOptions(plugin.id, opts)}
-                      />
-                    )}
+                  {/* Per-plugin options when selected */}
+                  {config.enabled?.includes(plugin.id) && renderPluginOptions(plugin.id)}
                 </div>
               ))}
             </div>
@@ -248,16 +400,14 @@ export function PluginsConfig({ config, onChange, projectId }: PluginsConfigProp
       )}
 
       {/* Show per-plugin options for "all" mode too */}
-      {config.mode === 'all' && !isLoading && enabledPlugins.some((p) => p.id === 'google-calendar') && (
-        <div className="space-y-2">
-          <Label>Google Calendar Options</Label>
-          <GoogleCalendarOptions
-            projectId={projectId}
-            options={getPluginOptions('google-calendar')}
-            onChange={(opts) => setPluginOptions('google-calendar', opts)}
-          />
-        </div>
-      )}
+      {config.mode === 'all' && !isLoading && enabledPlugins
+        .filter((p) => pluginsWithOptions.includes(p.id))
+        .map((plugin) => (
+          <div key={plugin.id} className="space-y-2">
+            <Label>{plugin.name} Options</Label>
+            {renderPluginOptions(plugin.id)}
+          </div>
+        ))}
 
       {config.mode !== 'none' && (
         <Alert className="border-blue-500/30 bg-blue-500/5">
