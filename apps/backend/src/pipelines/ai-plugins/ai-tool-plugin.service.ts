@@ -203,6 +203,7 @@ export class AIToolPluginService {
   async buildToolsForProject(
     projectId: string,
     pipelinePluginOptions?: Record<string, Record<string, unknown>>,
+    userId?: string,
   ): Promise<Record<string, any>> {
     const storedPlugins = await this.getStoredPlugins(projectId);
     const tools: Record<string, any> = {};
@@ -231,6 +232,7 @@ export class AIToolPluginService {
 
         const context: AIToolContext = {
           projectId,
+          userId,
           pluginConfig: decryptedConfig,
           pipelineOptions,
         };

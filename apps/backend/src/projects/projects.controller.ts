@@ -205,6 +205,31 @@ export class ProjectsController {
     return { skills };
   }
 
+  @Get(':id/ai/skills-path')
+  @UseGuards(ApiKeyGuard, ProjectPermissionGuard)
+  @RequireProjectRole('admin')
+  @ApiOperation({ summary: 'Get the skills path for a project' })
+  @ApiResponse({ status: 200, description: 'Skills path configuration' })
+  async getSkillsPath(
+    @Param('id') projectId: string,
+  ): Promise<{ skillsPath: string }> {
+    const skillsPath = await this.aiSettingsService.getSkillsPath(projectId);
+    return { skillsPath };
+  }
+
+  @Put(':id/ai/skills-path')
+  @UseGuards(ApiKeyGuard, ProjectPermissionGuard)
+  @RequireProjectRole('admin')
+  @ApiOperation({ summary: 'Set the skills path for a project' })
+  @ApiResponse({ status: 200, description: 'Skills path updated' })
+  async setSkillsPath(
+    @Param('id') projectId: string,
+    @Body() body: { skillsPath: string },
+  ): Promise<{ skillsPath: string }> {
+    await this.aiSettingsService.setSkillsPath(projectId, body.skillsPath);
+    return { skillsPath: body.skillsPath };
+  }
+
   // ==========================================================================
   // AI Services Endpoints (Replicate, etc.)
   // NOTE: These MUST be defined BEFORE :owner/:name to avoid route conflicts

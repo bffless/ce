@@ -413,6 +413,30 @@ export const projectsApi = api.injectEndpoints({
         { type: 'ProjectAI' as const, id: `${projectId}-skills` },
       ],
     }),
+    // Skills path
+    getProjectSkillsPath: builder.query<
+      { skillsPath: string },
+      { projectId: string }
+    >({
+      query: ({ projectId }) => `/api/projects/${projectId}/ai/skills-path`,
+      providesTags: (_result, _error, { projectId }) => [
+        { type: 'ProjectAI' as const, id: `${projectId}-skills-path` },
+      ],
+    }),
+    setProjectSkillsPath: builder.mutation<
+      { skillsPath: string },
+      { projectId: string; skillsPath: string }
+    >({
+      query: ({ projectId, skillsPath }) => ({
+        url: `/api/projects/${projectId}/ai/skills-path`,
+        method: 'PUT',
+        body: { skillsPath },
+      }),
+      invalidatesTags: (_result, _error, { projectId }) => [
+        { type: 'ProjectAI' as const, id: `${projectId}-skills-path` },
+        { type: 'ProjectAI' as const, id: `${projectId}-skills` },
+      ],
+    }),
   }),
 });
 
@@ -447,4 +471,6 @@ export const {
   useTestProjectAIServiceMutation,
   // Skills
   useListProjectSkillsQuery,
+  useGetProjectSkillsPathQuery,
+  useSetProjectSkillsPathMutation,
 } = projectsApi;

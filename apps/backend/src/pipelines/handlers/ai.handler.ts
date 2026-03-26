@@ -328,6 +328,7 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
         const allPluginTools = await this.pluginService.buildToolsForProject(
           context.projectId,
           config.plugins.options,
+          context.user?.id,
         );
         const filteredPluginTools = this.filterPluginTools(allPluginTools, config.plugins);
         const pluginToolNames = Object.keys(filteredPluginTools);

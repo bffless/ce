@@ -1,5 +1,8 @@
-import { useListProjectSkillsQuery } from '@/services/projectsApi';
+import { useState, useEffect } from 'react';
+import { useListProjectSkillsQuery, useGetProjectSkillsPathQuery, useSetProjectSkillsPathMutation } from '@/services/projectsApi';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import {
   Select,
   SelectContent,
@@ -10,7 +13,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Info } from 'lucide-react';
+import { Info, Check } from 'lucide-react';
 
 export interface SkillsConfigValue {
   mode: 'none' | 'all' | 'selected';
@@ -25,7 +28,26 @@ interface SkillsConfigProps {
 
 export function SkillsConfig({ config, onChange, projectId }: SkillsConfigProps) {
   const { data, isLoading } = useListProjectSkillsQuery({ projectId });
+  const { data: pathData } = useGetProjectSkillsPathQuery({ projectId });
+  const [setSkillsPath, { isLoading: isSaving }] = useSetProjectSkillsPathMutation();
+  const [localPath, setLocalPath] = useState('');
+  const [saved, setSaved] = useState(false);
   const skills = data?.skills ?? [];
+
+  useEffect(() => {
+    if (pathData?.skillsPath) {
+      setLocalPath(pathData.skillsPath);
+    }
+  }, [pathData?.skillsPath]);
+
+  const handleSavePath = async () => {
+    if (!localPath.trim()) return;
+    await setSkillsPath({ projectId, skillsPath: localPath.trim() });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  const isDirty = pathData?.skillsPath !== localPath;
 
   return (
     <div className="space-y-4">
@@ -53,6 +75,32 @@ export function SkillsConfig({ config, onChange, projectId }: SkillsConfigProps)
         </p>
       </div>
 
+      {config.mode !== 'none' && (
+        <div className="space-y-2">
+          <Label>Skills Path</Label>
+          <div className="flex gap-2">
+            <Input
+              value={localPath}
+              onChange={(e) => { setLocalPath(e.target.value); setSaved(false); }}
+              placeholder=".bffless/skills"
+              className="font-mono text-sm"
+            />
+            <Button
+              size="sm"
+              variant={saved ? 'default' : 'outline'}
+              onClick={handleSavePath}
+              disabled={!isDirty || isSaving}
+            >
+              {saved ? <Check className="h-4 w-4" /> : 'Save'}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Path within the deployment where <code className="bg-muted px-1 rounded">SKILL.md</code> files
+            are located. Useful for monorepos where skills aren't at the root.
+          </p>
+        </div>
+      )}
+
       {config.mode === 'selected' && (
         <div className="space-y-2">
           <Label>Enabled Skills</Label>
@@ -63,7 +111,7 @@ export function SkillsConfig({ config, onChange, projectId }: SkillsConfigProps)
               <Info className="h-4 w-4" />
               <AlertDescription>
                 No skills found. Add <code className="bg-muted px-1 rounded">SKILL.md</code> files
-                to <code className="bg-muted px-1 rounded">.bffless/skills/</code> in your deployment.
+                to <code className="bg-muted px-1 rounded">{localPath || '.bffless/skills/'}</code> in your deployment.
               </AlertDescription>
             </Alert>
           ) : (
