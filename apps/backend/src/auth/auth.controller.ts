@@ -1346,8 +1346,14 @@ export class AuthController {
         }
       }
 
-      // Create session
-      const session = await Session.createNewSession(req, res, tenantId, recipeUserId);
+      // Create session using the app DB user's ID as the recipeUserId.
+      // When an existing email/password user signs in via Google, SuperTokens creates
+      // a new ThirdParty recipe user with a different ID. Using that ID would cause
+      // session.getUserId() to return an ID that doesn't match the app DB user.
+      // By using the original app DB user ID (which matches the EmailPassword recipeUserId),
+      // all downstream lookups via session.getUserId() find the correct user.
+      const sessionRecipeUserId = new RecipeUserId(dbUser.id);
+      const session = await Session.createNewSession(req, res, tenantId, sessionRecipeUserId);
 
       // Add role to JWT
       await session.mergeIntoAccessTokenPayload({
