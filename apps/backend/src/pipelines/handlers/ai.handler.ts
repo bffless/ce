@@ -505,7 +505,7 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
         // Save AI response after streaming completes if persistence is enabled
         if (config.persistMessages && config.persistMessagesSchemaId) {
           try {
-            await this.saveAIResponse(context, stepName, config, text, usage, finishReason);
+            await this.saveAIResponse(context, stepName, config, text, usage, finishReason, finishSteps);
           } catch (error) {
             this.logger.error(`Failed to save AI response: ${error.message}`, error.stack);
             // Don't throw - response has already been sent to client
@@ -772,6 +772,79 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
   }
 
   /**
+   * Build metadata object with tool calls, token breakdown, and finish reason
+   */
+  private buildResponseMetadata(
+    usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | undefined,
+    finishReason: string,
+    steps?: any[],
+  ): Record<string, unknown> {
+    const metadata: Record<string, unknown> = {
+      finish_reason: finishReason,
+      input_tokens: usage?.inputTokens || 0,
+      output_tokens: usage?.outputTokens || 0,
+    };
+
+    // Extract tool calls from steps
+    if (steps) {
+      const toolCalls: Array<{
+        tool_name: string;
+        input: unknown;
+        output?: unknown;
+        step: number;
+      }> = [];
+      const skillsLoaded: string[] = [];
+
+      for (let i = 0; i < steps.length; i++) {
+        const step = steps[i];
+        if (step.toolCalls?.length) {
+          for (const tc of step.toolCalls) {
+            const toolCall: {
+              tool_name: string;
+              input: unknown;
+              output?: unknown;
+              step: number;
+            } = {
+              tool_name: tc.toolName,
+              input: tc.args || tc.input,
+              step: i,
+            };
+            // Find matching tool result
+            const matchingResult = step.toolResults?.find(
+              (tr: any) => tr.toolCallId === tc.toolCallId,
+            );
+            if (matchingResult) {
+              toolCall.output = matchingResult.result || matchingResult.output;
+            }
+            toolCalls.push(toolCall);
+
+            // Track skill loads separately for easy querying
+            if (tc.toolName === 'load_skill') {
+              const skillName = tc.args?.skillName || tc.input?.skillName;
+              if (skillName) {
+                skillsLoaded.push(skillName);
+              }
+            }
+          }
+        }
+      }
+
+      if (toolCalls.length > 0) {
+        metadata.tool_calls = toolCalls;
+        metadata.tool_call_count = toolCalls.length;
+      }
+      if (skillsLoaded.length > 0) {
+        metadata.skills_loaded = skillsLoaded;
+      }
+      if (steps.length > 1) {
+        metadata.step_count = steps.length;
+      }
+    }
+
+    return metadata;
+  }
+
+  /**
    * Save AI response to the specified schema
    */
   private async saveAIResponse(
@@ -779,8 +852,9 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
     stepName: string,
     config: AIHandlerConfig,
     aiContent: string,
-    usage: { totalTokens?: number } | undefined,
+    usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | undefined,
     finishReason: string,
+    steps?: any[],
   ): Promise<void> {
     if (!config.persistMessagesSchemaId) {
       return;
@@ -794,6 +868,9 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
     ) as string;
 
     const tokensUsed = usage?.totalTokens || 0;
+
+    // Build metadata with tool call details and token breakdown
+    const metadata = this.buildResponseMetadata(usage, finishReason, steps);
 
     // Save AI message
     let data: Record<string, unknown>;
@@ -811,6 +888,7 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
         role: 'assistant',
         content: aiContent,
         tokens_used: tokensUsed,
+        metadata,
       };
     }
 
