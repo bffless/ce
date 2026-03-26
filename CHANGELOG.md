@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.185](https://github.com/bffless/ce/compare/v0.0.184...v0.0.185) (2026-03-26)
+
+
+### Bug Fixes
+
+* slim down chunked vector search results to avoid redundant data ([0d800f0](https://github.com/bffless/ce/commit/0d800f0050821c0464d449e5145d6e64be0f8977))
+
 ## [0.0.184](https://github.com/bffless/ce/compare/v0.0.183...v0.0.184) (2026-03-26)
 
 
