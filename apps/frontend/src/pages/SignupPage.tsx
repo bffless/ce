@@ -208,6 +208,7 @@ export function SignupPage() {
       const result = await signUp({
         email: data.email,
         password: data.password,
+        redirect: redirectTo !== '/' ? redirectTo : undefined,
       }).unwrap();
 
       // If email verification is required, redirect to verify-email page

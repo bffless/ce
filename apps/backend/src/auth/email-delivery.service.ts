@@ -106,6 +106,14 @@ export function createEmailDeliveryConfig(): EmailDeliveryTypeInput<any> | undef
             input.emailVerifyLink = `${adminUrl}${verifyUrl.pathname}${verifyUrl.search}`;
             console.log(`[Email Delivery] Rewrote verify link to admin URL: ${adminUrl}`);
           }
+
+          // Append redirect URL so the user is sent back to the original location after verification
+          const redirectUrl = input.userContext?.redirectUrl;
+          if (redirectUrl) {
+            const separator = input.emailVerifyLink.includes('?') ? '&' : '?';
+            input.emailVerifyLink = `${input.emailVerifyLink}${separator}redirect=${encodeURIComponent(redirectUrl)}`;
+            console.log(`[Email Delivery] Added redirect to verify link: ${redirectUrl}`);
+          }
         }
 
         const userEmail = input.user?.email || input.userContext?.email;

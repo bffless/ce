@@ -35,6 +35,7 @@ import { getUser, listUsersByAccountInfo } from 'supertokens-node';
 interface SignUpDto {
   email: string;
   password: string;
+  redirect?: string;
 }
 
 interface SignInDto {
@@ -93,6 +94,7 @@ export class AuthController {
       properties: {
         email: { type: 'string', format: 'email', example: 'user@example.com' },
         password: { type: 'string', minLength: 8, example: 'SecurePassword123!' },
+        redirect: { type: 'string', example: 'https://example.com/', description: 'URL to redirect to after email verification' },
       },
       required: ['email', 'password'],
     },
@@ -105,7 +107,7 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const { email, password } = body;
+    const { email, password, redirect } = body;
 
     if (!email || !password) {
       throw new BadRequestException('Email and password are required');
@@ -286,7 +288,7 @@ export class AuthController {
             userId,
             signUpResponse.recipeUserId,
             email,
-            { requestOrigin: origin },
+            { requestOrigin: origin, redirectUrl: redirect },
           );
           console.log('[Signup] Verification email sent for:', email);
         }
@@ -722,7 +724,10 @@ export class AuthController {
   })
   @ApiResponse({ status: 200, description: 'Verification email sent' })
   @ApiResponse({ status: 401, description: 'Not authenticated' })
-  async sendVerificationEmail(@Req() req: Request & { session?: SessionContainer }) {
+  async sendVerificationEmail(
+    @Body() body: { redirect?: string },
+    @Req() req: Request & { session?: SessionContainer },
+  ) {
     if (!req.session) {
       throw new UnauthorizedException('No active session');
     }
@@ -748,6 +753,7 @@ export class AuthController {
 
     await EmailVerification.sendEmailVerificationEmail(tenantId, userId, recipeUserId, email, {
       requestOrigin: origin,
+      redirectUrl: body?.redirect,
     });
 
     return { message: 'Verification email sent' };

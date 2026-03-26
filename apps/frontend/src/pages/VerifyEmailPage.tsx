@@ -23,7 +23,7 @@ export function VerifyEmailPage() {
     if (isExternalRedirect) {
       window.location.href = redirectTo;
     } else {
-      doRedirect();
+      navigate(redirectTo, { replace: true });
     }
   }, [isExternalRedirect, redirectTo, navigate]);
 
@@ -84,7 +84,9 @@ export function VerifyEmailPage() {
   const handleResend = useCallback(async () => {
     try {
       setResendSuccess(false);
-      const result = await sendVerificationEmail().unwrap();
+      const result = await sendVerificationEmail(
+        redirectTo !== '/' ? { redirect: redirectTo } : undefined,
+      ).unwrap();
       if (result.alreadyVerified) {
         doRedirect();
         return;
@@ -94,7 +96,7 @@ export function VerifyEmailPage() {
     } catch {
       // Error handled by RTK Query
     }
-  }, [sendVerificationEmail, navigate]);
+  }, [sendVerificationEmail, doRedirect, redirectTo]);
 
   const handleSignOut = useCallback(async () => {
     await signOut();
@@ -150,7 +152,7 @@ export function VerifyEmailPage() {
                   <p className="text-sm text-muted-foreground">
                     Redirecting to dashboard in 3 seconds...
                   </p>
-                  <Button className="w-full" onClick={() => navigate(redirectTo, { replace: true })}>
+                  <Button className="w-full" onClick={doRedirect}>
                     Continue
                   </Button>
                 </div>

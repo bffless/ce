@@ -24,6 +24,7 @@ export interface SignInDto {
 export interface SignUpDto {
   email: string;
   password: string;
+  redirect?: string;
 }
 
 export interface SignInResponse {
@@ -172,10 +173,11 @@ export const authApi = api.injectEndpoints({
       query: () => '/api/auth/registration-status',
     }),
 
-    sendVerificationEmail: builder.mutation<SendVerificationEmailResponse, void>({
-      query: () => ({
+    sendVerificationEmail: builder.mutation<SendVerificationEmailResponse, { redirect?: string } | void>({
+      query: (data) => ({
         url: '/api/auth/send-verification-email',
         method: 'POST',
+        body: data || {},
       }),
     }),
 
