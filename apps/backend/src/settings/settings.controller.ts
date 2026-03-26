@@ -11,10 +11,13 @@ import {
   UploadedFile,
   Res,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiConsumes } from '@nestjs/swagger';
 import { Response } from 'express';
+import ThirdParty from 'supertokens-node/recipe/thirdparty';
+import Multitenancy from 'supertokens-node/recipe/multitenancy';
 import { PrimaryContentService, PrimaryContentConfig } from './primary-content.service';
 import { SmtpService } from './smtp.service';
 import { EmailSettingsService } from './email-settings.service';
@@ -29,17 +32,28 @@ import {
   SendTestEmailResponseDto,
 } from './dto/email-settings.dto';
 import { ApiKeyGuard, RolesGuard, Roles, CurrentUser } from '../auth';
+import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 
 @ApiTags('Settings')
 @Controller('api/settings')
 @UseGuards(ApiKeyGuard, RolesGuard)
 export class SettingsController {
+  private readonly logger = new Logger(SettingsController.name);
+
   constructor(
     private readonly primaryContentService: PrimaryContentService,
     private readonly smtpService: SmtpService,
     private readonly emailSettingsService: EmailSettingsService,
     private readonly brandingService: BrandingService,
+    private readonly featureFlagsService: FeatureFlagsService,
   ) {}
+
+  private getTenantId(): string {
+    const isMultiTenant = process.env.SUPERTOKENS_MULTI_TENANT === 'true';
+    return isMultiTenant
+      ? process.env.ORGANIZATION_ID || process.env.TENANT_ID || 'public'
+      : 'public';
+  }
 
   @Get('primary-content')
   @ApiOperation({ summary: 'Get primary content configuration' })
@@ -207,5 +221,108 @@ export class SettingsController {
   ): Promise<{ success: boolean; config: BrandingConfig }> {
     const config = await this.brandingService.deleteLogo(type);
     return { success: true, config };
+  }
+
+  // ==========================================================================
+  // OAuth Settings Endpoints
+  // ==========================================================================
+
+  @Get('oauth')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Get OAuth provider configuration' })
+  @ApiResponse({ status: 200, description: 'OAuth configuration status' })
+  async getOAuthSettings(): Promise<{
+    google: { enabled: boolean; clientId?: string };
+  }> {
+    const tenantId = this.getTenantId();
+    let googleEnabled = false;
+    let googleClientId: string | undefined;
+
+    try {
+      const tenantInfo = await Multitenancy.getTenant(tenantId);
+      if (tenantInfo) {
+        const googleConfig = tenantInfo.thirdParty?.providers?.find(
+          (p: { thirdPartyId: string }) => p.thirdPartyId === 'google',
+        );
+        if (googleConfig) {
+          googleEnabled = true;
+          googleClientId = googleConfig.clients?.[0]?.clientId;
+        }
+      }
+    } catch (error) {
+      this.logger.error('[OAuth Settings] Failed to get tenant info:', error);
+    }
+
+    return {
+      google: { enabled: googleEnabled, clientId: googleClientId },
+    };
+  }
+
+  @Patch('oauth/google')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Configure or disable Google OAuth' })
+  @ApiResponse({ status: 200, description: 'Google OAuth configuration updated' })
+  async updateGoogleOAuth(
+    @Body() body: { clientId?: string; clientSecret?: string; enabled?: boolean },
+  ): Promise<{ success: boolean; google: { enabled: boolean; clientId?: string } }> {
+    const tenantId = this.getTenantId();
+
+    if (body.enabled === false) {
+      // Disable Google OAuth
+      try {
+        await Multitenancy.deleteThirdPartyConfig(tenantId, 'google');
+      } catch (error) {
+        this.logger.warn('[OAuth Settings] Failed to delete Google config (may not exist):', error);
+      }
+
+      // Disable the feature flag
+      await this.featureFlagsService.setFlag('ENABLE_GOOGLE_OAUTH', false);
+
+      return { success: true, google: { enabled: false } };
+    }
+
+    // Enable/update Google OAuth
+    if (!body.clientId || !body.clientSecret) {
+      throw new BadRequestException('clientId and clientSecret are required to enable Google OAuth');
+    }
+
+    await Multitenancy.createOrUpdateThirdPartyConfig(tenantId, {
+      thirdPartyId: 'google',
+      clients: [
+        {
+          clientId: body.clientId,
+          clientSecret: body.clientSecret,
+        },
+      ],
+    });
+
+    // Enable the feature flag
+    await this.featureFlagsService.setFlag('ENABLE_GOOGLE_OAUTH', true);
+
+    return {
+      success: true,
+      google: { enabled: true, clientId: body.clientId },
+    };
+  }
+
+  @Post('oauth/google/test')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Test Google OAuth configuration' })
+  @ApiResponse({ status: 200, description: 'Google OAuth test result' })
+  async testGoogleOAuth(): Promise<{ success: boolean; message: string }> {
+    const tenantId = this.getTenantId();
+
+    try {
+      const provider = await ThirdParty.getProvider(tenantId, 'google', undefined);
+      if (!provider) {
+        return { success: false, message: 'Google OAuth provider is not configured' };
+      }
+      return { success: true, message: 'Google OAuth provider is configured and available' };
+    } catch (error) {
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to validate Google OAuth configuration',
+      };
+    }
   }
 }

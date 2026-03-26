@@ -21,6 +21,10 @@ import { GroupDetailPage } from '@/pages/GroupDetailPage';
 import { UsersPage } from '@/pages/UsersPage';
 import { UserSettingsPage } from '@/pages/UserSettingsPage';
 import { AdminSettingsPage } from '@/pages/AdminSettingsPage';
+import { GeneralTab } from '@/pages/admin-settings/GeneralTab';
+import { AuthTab } from '@/pages/admin-settings/AuthTab';
+import { EmailTab } from '@/pages/admin-settings/EmailTab';
+import { InfrastructureTab } from '@/pages/admin-settings/InfrastructureTab';
 import { DomainsPage } from '@/pages/DomainsPage';
 import { HomePage } from '@/pages/HomePage';
 import { LoginPage } from '@/pages/LoginPage';
@@ -32,6 +36,7 @@ import { VerifyEmailPage } from '@/pages/VerifyEmailPage';
 import { SetupPage } from '@/pages/SetupPage';
 import { InvitationAcceptPage } from '@/pages/InvitationAcceptPage';
 import { OAuthCallbackPage } from '@/pages/OAuthCallbackPage';
+import { OAuthSignInCallbackPage } from '@/pages/OAuthSignInCallbackPage';
 import { Toaster } from '@/components/ui/toaster';
 import { Header } from '@/components/layout/Header';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
@@ -61,14 +66,22 @@ function App() {
         <Route path="/verify-email" element={<VerifyEmailPage />} />
         <Route path="/invite/:token" element={<InvitationAcceptPage />} />
 
+        {/* OAuth sign-in callback (Google OAuth redirect) */}
+        <Route path="/oauth/signin/callback" element={<OAuthSignInCallbackPage />} />
+
         {/* OAuth callback (handles plugin OAuth redirects) */}
         <Route path="/oauth/callback" element={<ProtectedRoute><OAuthCallbackPage /></ProtectedRoute>} />
 
         {/* User Settings route (requires auth) */}
         <Route path="/settings" element={<ProtectedRoute><UserSettingsPage /></ProtectedRoute>} />
 
-        {/* Admin Settings route (requires admin) */}
-        <Route path="/admin/settings" element={<ProtectedRoute requireAdmin><AdminSettingsPage /></ProtectedRoute>} />
+        {/* Admin Settings routes (requires admin, tabbed layout) */}
+        <Route path="/admin/settings" element={<ProtectedRoute requireAdmin><AdminSettingsPage /></ProtectedRoute>}>
+          <Route index element={<GeneralTab />} />
+          <Route path="auth" element={<AuthTab />} />
+          <Route path="email" element={<EmailTab />} />
+          <Route path="infrastructure" element={<InfrastructureTab />} />
+        </Route>
 
         {/* Repository list */}
         <Route path="/repo" element={<ProtectedRoute><RepositoriesPage /></ProtectedRoute>} />

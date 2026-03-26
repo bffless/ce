@@ -27,10 +27,13 @@ import { workspaceInvitations, domainMappings } from '../db/schema';
 import { eq, and, isNull, gt } from 'drizzle-orm';
 import EmailPassword from 'supertokens-node/recipe/emailpassword';
 import EmailVerification from 'supertokens-node/recipe/emailverification';
+import ThirdParty from 'supertokens-node/recipe/thirdparty';
+import Multitenancy from 'supertokens-node/recipe/multitenancy';
 import Session from 'supertokens-node/recipe/session';
 import { SessionContainer } from 'supertokens-node/recipe/session';
 import { RecipeUserId } from 'supertokens-node';
 import { getUser, listUsersByAccountInfo } from 'supertokens-node';
+import { getUserContext } from 'supertokens-node/lib/build/utils';
 
 interface SignUpDto {
   email: string;
@@ -1024,7 +1027,11 @@ export class AuthController {
       (method) => method.recipeId === 'emailpassword',
     );
 
-    return { hasPassword };
+    const hasGoogle = stUser.loginMethods.some(
+      (method) => method.recipeId === 'thirdparty' && method.thirdParty?.id === 'google',
+    );
+
+    return { hasPassword, hasGoogle };
   }
 
   @Post('change-password')
@@ -1118,5 +1125,252 @@ export class AuthController {
     }
 
     return { message: 'Password updated successfully' };
+  }
+
+  // ==========================================================================
+  // OAuth / Third-Party Sign-In
+  // ==========================================================================
+
+  @Get('oauth/providers')
+  @ApiOperation({
+    summary: 'Get available OAuth providers',
+    description: 'Public endpoint. Returns which OAuth providers are configured and enabled.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Available OAuth providers',
+    schema: {
+      type: 'object',
+      properties: {
+        google: {
+          type: 'object',
+          properties: {
+            enabled: { type: 'boolean' },
+          },
+        },
+      },
+    },
+  })
+  async getOAuthProviders(): Promise<{ google: { enabled: boolean } }> {
+    let googleEnabled = false;
+    try {
+      const flagEnabled = await this.featureFlagsService.isEnabled('ENABLE_GOOGLE_OAUTH');
+      if (flagEnabled) {
+        const tenantId = this.getTenantId();
+        const provider = await ThirdParty.getProvider(tenantId, 'google', undefined);
+        googleEnabled = !!provider;
+      }
+    } catch {
+      googleEnabled = false;
+    }
+    return { google: { enabled: googleEnabled } };
+  }
+
+  @Get('oauth/google/url')
+  @ApiOperation({
+    summary: 'Get Google OAuth authorization URL',
+    description: 'Public endpoint. Returns the URL to redirect the user to for Google sign-in.',
+  })
+  @ApiQuery({ name: 'redirectUrl', required: true, description: 'OAuth redirect URI (callback URL)' })
+  @ApiResponse({ status: 200, description: 'Google authorization URL' })
+  @ApiResponse({ status: 400, description: 'Google OAuth not configured or not enabled' })
+  async getGoogleAuthUrl(
+    @Query('redirectUrl') redirectUrl: string,
+  ): Promise<{ url: string; pkceCodeVerifier?: string }> {
+    if (!redirectUrl) {
+      throw new BadRequestException('redirectUrl is required');
+    }
+
+    const flagEnabled = await this.featureFlagsService.isEnabled('ENABLE_GOOGLE_OAUTH');
+    if (!flagEnabled) {
+      throw new BadRequestException('Google OAuth is not enabled');
+    }
+
+    const tenantId = this.getTenantId();
+    const provider = await ThirdParty.getProvider(tenantId, 'google', undefined);
+    if (!provider) {
+      throw new BadRequestException('Google OAuth is not configured');
+    }
+
+    const result = await provider.getAuthorisationRedirectURL({
+      redirectURIOnProviderDashboard: redirectUrl,
+      userContext: getUserContext(),
+    });
+
+    return {
+      url: result.urlWithQueryParams,
+      pkceCodeVerifier: result.pkceCodeVerifier,
+    };
+  }
+
+  @Post('oauth/google/callback')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Complete Google OAuth sign-in',
+    description: 'Exchanges OAuth code for tokens, creates/links user, and creates session.',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        code: { type: 'string' },
+        redirectUrl: { type: 'string', description: 'The redirect URI used in the authorization request' },
+        pkceCodeVerifier: { type: 'string' },
+      },
+      required: ['code', 'redirectUrl'],
+    },
+  })
+  @ApiResponse({ status: 200, description: 'User signed in via Google' })
+  @ApiResponse({ status: 400, description: 'OAuth flow failed' })
+  async googleOAuthCallback(
+    @Body() body: { code: string; redirectUrl: string; pkceCodeVerifier?: string },
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { code, redirectUrl, pkceCodeVerifier } = body;
+
+    if (!code || !redirectUrl) {
+      throw new BadRequestException('code and redirectUrl are required');
+    }
+
+    const flagEnabled = await this.featureFlagsService.isEnabled('ENABLE_GOOGLE_OAUTH');
+    if (!flagEnabled) {
+      throw new BadRequestException('Google OAuth is not enabled');
+    }
+
+    const tenantId = this.getTenantId();
+
+    try {
+      const provider = await ThirdParty.getProvider(tenantId, 'google', undefined);
+      if (!provider) {
+        throw new BadRequestException('Google OAuth is not configured');
+      }
+
+      // Exchange authorization code for tokens
+      const oAuthTokens = await provider.exchangeAuthCodeForOAuthTokens({
+        redirectURIInfo: {
+          redirectURIOnProviderDashboard: redirectUrl,
+          redirectURIQueryParams: { code },
+          pkceCodeVerifier,
+        },
+        userContext: getUserContext(),
+      });
+
+      // Get user info from Google
+      const userInfo = await provider.getUserInfo({
+        oAuthTokens,
+        userContext: getUserContext(),
+      });
+
+      if (!userInfo.email?.id) {
+        throw new BadRequestException('Could not get email from Google account');
+      }
+
+      const email = userInfo.email.id;
+      const thirdPartyUserId = userInfo.thirdPartyUserId;
+
+      // Create or update user in SuperTokens via ThirdParty recipe
+      const signInUpResponse = await ThirdParty.manuallyCreateOrUpdateUser(
+        tenantId,
+        'google',
+        thirdPartyUserId,
+        email,
+        true, // isVerified - Google verifies emails
+      );
+
+      if (signInUpResponse.status !== 'OK') {
+        this.logger.error('[Google OAuth] manuallyCreateOrUpdateUser failed:', signInUpResponse);
+        throw new BadRequestException('Failed to create or link Google user');
+      }
+
+      const recipeUserId = signInUpResponse.recipeUserId;
+      const userId = signInUpResponse.user.id;
+
+      // Check if app DB user exists
+      let dbUser = await this.authService.getUserByEmail(email);
+
+      if (!dbUser) {
+        // New user - create in app database
+        // Check for invitation to determine role
+        const [invitation] = await db
+          .select()
+          .from(workspaceInvitations)
+          .where(
+            and(
+              eq(workspaceInvitations.email, email.toLowerCase()),
+              isNull(workspaceInvitations.acceptedAt),
+              gt(workspaceInvitations.expiresAt, new Date()),
+            ),
+          )
+          .limit(1);
+
+        let role: 'admin' | 'user' | 'member' = 'member';
+        if (email === process.env.ADMIN_EMAIL) {
+          role = 'admin';
+        } else if (invitation) {
+          role = invitation.role as 'admin' | 'user' | 'member';
+        }
+
+        // Check registration settings for new users (invited users always allowed)
+        if (!invitation) {
+          const registrationEnabled = await this.setupService.isRegistrationFeatureEnabled();
+          const canPublicSignup = await this.setupService.canPublicSignup();
+          if (!registrationEnabled || !canPublicSignup) {
+            throw new BadRequestException(
+              'Public registration is not available. Please contact an administrator for an invitation.',
+            );
+          }
+        }
+
+        dbUser = await this.authService.createUser(email, role, userId);
+
+        // Accept invitation if present
+        if (invitation) {
+          await db
+            .update(workspaceInvitations)
+            .set({ acceptedAt: new Date(), acceptedUserId: dbUser.id })
+            .where(eq(workspaceInvitations.id, invitation.id));
+        }
+
+        // Execute onboarding rules
+        try {
+          const trigger = invitation ? 'invite_accepted' : 'user_signup';
+          await this.onboardingExecutorService.executeRulesForUser({
+            userId: dbUser.id,
+            userEmail: email,
+            trigger,
+            invitationRole: invitation?.role,
+          });
+        } catch (onboardingError) {
+          this.logger.error('[Google OAuth] Onboarding rules failed:', onboardingError);
+        }
+      }
+
+      // Create session
+      const session = await Session.createNewSession(req, res, tenantId, recipeUserId);
+
+      // Add role to JWT
+      await session.mergeIntoAccessTokenPayload({
+        role: dbUser.role,
+      });
+
+      return {
+        message: signInUpResponse.createdNewRecipeUser ? 'Account created via Google' : 'Signed in via Google',
+        user: {
+          id: dbUser.id,
+          email: dbUser.email,
+          role: dbUser.role,
+        },
+        createdNewUser: signInUpResponse.createdNewRecipeUser,
+      };
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      this.logger.error('[Google OAuth] Callback error:', error);
+      throw new BadRequestException(
+        error instanceof Error ? error.message : 'Google sign-in failed',
+      );
+    }
   }
 }

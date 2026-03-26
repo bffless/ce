@@ -128,6 +128,30 @@ export interface UpdateBrandingDto {
   siteName?: string;
 }
 
+// =============================================================================
+// OAuth Settings Types
+// =============================================================================
+
+export interface OAuthSettingsResponse {
+  google: { enabled: boolean; clientId?: string };
+}
+
+export interface UpdateGoogleOAuthDto {
+  clientId?: string;
+  clientSecret?: string;
+  enabled?: boolean;
+}
+
+export interface UpdateGoogleOAuthResponse {
+  success: boolean;
+  google: { enabled: boolean; clientId?: string };
+}
+
+export interface TestGoogleOAuthResponse {
+  success: boolean;
+  message: string;
+}
+
 export interface UpdateBrandingResponse {
   success: boolean;
   config: BrandingConfig;
@@ -274,6 +298,31 @@ export const settingsApi = api.injectEndpoints({
       }),
       invalidatesTags: ['Branding'],
     }),
+
+    // ==========================================================================
+    // OAuth Settings Endpoints
+    // ==========================================================================
+
+    getOAuthSettings: builder.query<OAuthSettingsResponse, void>({
+      query: () => '/api/settings/oauth',
+      providesTags: ['OAuthSettings'],
+    }),
+
+    updateGoogleOAuth: builder.mutation<UpdateGoogleOAuthResponse, UpdateGoogleOAuthDto>({
+      query: (body) => ({
+        url: '/api/settings/oauth/google',
+        method: 'PATCH',
+        body,
+      }),
+      invalidatesTags: ['OAuthSettings', 'FeatureFlags'],
+    }),
+
+    testGoogleOAuth: builder.mutation<TestGoogleOAuthResponse, void>({
+      query: () => ({
+        url: '/api/settings/oauth/google/test',
+        method: 'POST',
+      }),
+    }),
   }),
 });
 
@@ -296,4 +345,8 @@ export const {
   useUpdateBrandingMutation,
   useUploadBrandingLogoMutation,
   useDeleteBrandingLogoMutation,
+  // OAuth settings hooks
+  useGetOAuthSettingsQuery,
+  useUpdateGoogleOAuthMutation,
+  useTestGoogleOAuthMutation,
 } = settingsApi;

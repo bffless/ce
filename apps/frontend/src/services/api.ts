@@ -17,6 +17,8 @@ function isPublicRoute(pathname: string): boolean {
   if (pathname === '/verify-email') return true;
   // Setup page (pre-auth)
   if (pathname === '/setup') return true;
+  // OAuth callback page (mid-auth flow)
+  if (pathname === '/oauth/signin/callback') return true;
   // Invitation accept page (pre-auth for validation)
   if (pathname.startsWith('/invite/')) return true;
 
@@ -203,6 +205,7 @@ export const api = createApi({
     'PipelineLog',
     'Integration',
     'Branding',
+    'OAuthSettings',
   ],
   endpoints: () => ({}),
 });

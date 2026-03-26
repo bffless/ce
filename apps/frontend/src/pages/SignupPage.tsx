@@ -4,9 +4,10 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Eye, EyeOff, Mail, CheckCircle, Info } from 'lucide-react';
-import { useSignUpMutation, useCheckEmailMutation, useGetSessionQuery, useGetRegistrationStatusQuery } from '@/services/authApi';
+import { useSignUpMutation, useCheckEmailMutation, useGetSessionQuery, useGetRegistrationStatusQuery, useGetOAuthProvidersQuery } from '@/services/authApi';
 import { useBranding } from '@/hooks/useBranding';
 import { useValidateInvitationTokenQuery } from '@/services/invitationsApi';
+import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
 import { useToast } from '@/hooks/use-toast';
 import { validateRedirectUrl } from '@/lib/validateRedirectUrl';
 import { Button } from '@/components/ui/button';
@@ -73,7 +74,9 @@ export function SignupPage() {
   const [checkEmail] = useCheckEmailMutation();
   const { data: sessionData, isLoading: isLoadingSession } = useGetSessionQuery();
   const { data: registrationStatus, isLoading: isLoadingRegistration } = useGetRegistrationStatusQuery();
+  const { data: oauthProviders } = useGetOAuthProvidersQuery();
   const { siteName, authLogoUrl } = useBranding();
+  const googleEnabled = oauthProviders?.google?.enabled ?? false;
   const requireTos = registrationStatus?.requireTosAcceptance ?? false;
   const tosUrl = registrationStatus?.tosUrl ?? '';
   const [showPassword, setShowPassword] = useState(false);
@@ -522,6 +525,23 @@ export function SignupPage() {
                     ? (authMode === 'signin' ? 'Signing in...' : 'Creating account...')
                     : (authMode === 'signin' ? 'Sign In' : 'Create Account')}
                 </Button>
+
+                {googleEnabled && (
+                  <>
+                    <div className="relative">
+                      <div className="absolute inset-0 flex items-center">
+                        <span className="w-full border-t" />
+                      </div>
+                      <div className="relative flex justify-center text-xs uppercase">
+                        <span className="bg-card px-2 text-muted-foreground">Or</span>
+                      </div>
+                    </div>
+                    <GoogleSignInButton
+                      redirectTo={redirectTo}
+                      label={authMode === 'signin' ? 'Sign in with Google' : 'Sign up with Google'}
+                    />
+                  </>
+                )}
 
                 <div className="text-center text-sm">
                   {authMode === 'signin' ? (

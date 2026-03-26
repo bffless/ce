@@ -1,36 +1,40 @@
-import { useNavigate } from 'react-router-dom';
-import { BrandingSettings } from '@/components/settings/BrandingSettings';
-import { PrimaryContentSettings } from '@/components/settings/PrimaryContentSettings';
-import { EmailSettings } from '@/components/settings/EmailSettings';
-import { InvitationsSettings } from '@/components/settings/InvitationsSettings';
-import { RegistrationSettings } from '@/components/settings/RegistrationSettings';
-import { OnboardingRulesSettings } from '@/components/settings/OnboardingRulesSettings';
-import { SslSettings } from '@/components/settings/SslSettings';
-import { CacheSettings } from '@/components/settings/CacheSettings';
-import { StorageSettings } from '@/components/settings/StorageSettings';
-import { StorageUsageCard } from '@/components/storage/StorageUsageCard';
+import { useNavigate, Link, Outlet, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Settings } from 'lucide-react';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ArrowLeft, Settings, Paintbrush, Shield, Mail, Server } from 'lucide-react';
+
+const TABS = [
+  { value: 'general', path: '/admin/settings', label: 'General', icon: Paintbrush },
+  { value: 'auth', path: '/admin/settings/auth', label: 'Authentication', icon: Shield },
+  { value: 'email', path: '/admin/settings/email', label: 'Email', icon: Mail },
+  { value: 'infrastructure', path: '/admin/settings/infrastructure', label: 'Infrastructure', icon: Server },
+] as const;
 
 /**
  * AdminSettingsPage - Global platform settings (admin only)
- * Route: /admin/settings
+ * Route: /admin/settings/*
  * Requires: Admin role (enforced by ProtectedRoute in App.tsx)
  */
 export function AdminSettingsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
 
-  // Handler for back navigation
-  const handleBack = () => {
-    navigate('/');
-  };
+  // Determine current tab from pathname
+  const pathAfterSettings = location.pathname.replace('/admin/settings', '');
+  const currentTab = pathAfterSettings.startsWith('/infrastructure')
+    ? 'infrastructure'
+    : pathAfterSettings.startsWith('/email')
+      ? 'email'
+      : pathAfterSettings.startsWith('/auth')
+        ? 'auth'
+        : 'general';
 
   return (
     <div className="max-w-5xl mx-auto p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={handleBack}>
+          <Button variant="ghost" size="sm" onClick={() => navigate('/')}>
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back
           </Button>
@@ -46,55 +50,24 @@ export function AdminSettingsPage() {
         </div>
       </div>
 
-      {/* Branding */}
-      <section>
-        <BrandingSettings />
-      </section>
+      {/* Tabs Navigation */}
+      <Tabs value={currentTab} className="w-full">
+        <TabsList>
+          {TABS.map(({ value, path, label, icon: Icon }) => (
+            <TabsTrigger key={value} value={value} asChild>
+              <Link to={path} className="gap-1.5">
+                <Icon className="h-4 w-4" />
+                {label}
+              </Link>
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
-      {/* Primary Domain Content */}
-      <section>
-        <PrimaryContentSettings />
-      </section>
-
-      {/* Email Settings */}
-      <section>
-        <EmailSettings />
-      </section>
-
-      {/* Registration Settings */}
-      <section>
-        <RegistrationSettings />
-      </section>
-
-      {/* User Invitations */}
-      <section>
-        <InvitationsSettings />
-      </section>
-
-      {/* User Onboarding Rules */}
-      <section>
-        <OnboardingRulesSettings />
-      </section>
-
-      {/* SSL Certificate Settings */}
-      <section>
-        <SslSettings />
-      </section>
-
-      {/* Cache Settings */}
-      <section>
-        <CacheSettings />
-      </section>
-
-      {/* Storage Usage */}
-      <section>
-        <StorageUsageCard />
-      </section>
-
-      {/* Storage Settings */}
-      <section>
-        <StorageSettings />
-      </section>
+      {/* Tab Content - rendered via Outlet */}
+      <div>
+        <Outlet />
+      </div>
     </div>
   );
 }

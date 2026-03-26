@@ -4,9 +4,10 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Eye, EyeOff } from 'lucide-react';
-import { useSignInMutation, useGetSessionQuery } from '@/services/authApi';
+import { useSignInMutation, useGetSessionQuery, useGetOAuthProvidersQuery } from '@/services/authApi';
 import { useBranding } from '@/hooks/useBranding';
 import { useGetSetupStatusQuery } from '@/services/setupApi';
+import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
 import { useToast } from '@/hooks/use-toast';
 import { validateRedirectUrl } from '@/lib/validateRedirectUrl';
 import { Button } from '@/components/ui/button';
@@ -40,7 +41,9 @@ export function LoginPage() {
   const [signIn, { isLoading }] = useSignInMutation();
   const { data: sessionData, isLoading: isLoadingSession } = useGetSessionQuery();
   const { data: setupStatus, isLoading: isLoadingSetup } = useGetSetupStatusQuery();
+  const { data: oauthProviders } = useGetOAuthProvidersQuery();
   const { siteName, authLogoUrl } = useBranding();
+  const googleEnabled = oauthProviders?.google?.enabled ?? false;
   const [showPassword, setShowPassword] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const refreshAttemptedRef = useRef(false);
@@ -324,6 +327,20 @@ export function LoginPage() {
                 <Button type="submit" className="w-full" disabled={isLoading}>
                   {isLoading ? 'Signing in...' : 'Sign In'}
                 </Button>
+
+                {googleEnabled && (
+                  <>
+                    <div className="relative">
+                      <div className="absolute inset-0 flex items-center">
+                        <span className="w-full border-t" />
+                      </div>
+                      <div className="relative flex justify-center text-xs uppercase">
+                        <span className="bg-card px-2 text-muted-foreground">Or</span>
+                      </div>
+                    </div>
+                    <GoogleSignInButton redirectTo={redirectTo} />
+                  </>
+                )}
 
                 <div className="text-center text-sm">
                   Don't have an account?{' '}

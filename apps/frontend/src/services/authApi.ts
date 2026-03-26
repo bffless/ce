@@ -85,6 +85,7 @@ export interface VerifyEmailResponse {
 
 export interface LoginMethodsResponse {
   hasPassword: boolean;
+  hasGoogle?: boolean;
 }
 
 export interface ChangePasswordDto {
@@ -94,6 +95,27 @@ export interface ChangePasswordDto {
 
 export interface ChangePasswordResponse {
   message: string;
+}
+
+export interface OAuthProvidersResponse {
+  google: { enabled: boolean };
+}
+
+export interface GoogleAuthUrlResponse {
+  url: string;
+  pkceCodeVerifier?: string;
+}
+
+export interface GoogleOAuthCallbackDto {
+  code: string;
+  redirectUrl: string;
+  pkceCodeVerifier?: string;
+}
+
+export interface GoogleOAuthCallbackResponse {
+  message: string;
+  user: User;
+  createdNewUser: boolean;
 }
 
 export const authApi = api.injectEndpoints({
@@ -201,6 +223,23 @@ export const authApi = api.injectEndpoints({
         body: data,
       }),
     }),
+
+    getOAuthProviders: builder.query<OAuthProvidersResponse, void>({
+      query: () => '/api/auth/oauth/providers',
+    }),
+
+    getGoogleAuthUrl: builder.query<GoogleAuthUrlResponse, { redirectUrl: string }>({
+      query: ({ redirectUrl }) => `/api/auth/oauth/google/url?redirectUrl=${encodeURIComponent(redirectUrl)}`,
+    }),
+
+    googleOAuthCallback: builder.mutation<GoogleOAuthCallbackResponse, GoogleOAuthCallbackDto>({
+      query: (data) => ({
+        url: '/api/auth/oauth/google/callback',
+        method: 'POST',
+        body: data,
+      }),
+      invalidatesTags: ['User'],
+    }),
   }),
 });
 
@@ -217,4 +256,7 @@ export const {
   useVerifyEmailMutation,
   useGetLoginMethodsQuery,
   useChangePasswordMutation,
+  useGetOAuthProvidersQuery,
+  useLazyGetGoogleAuthUrlQuery,
+  useGoogleOAuthCallbackMutation,
 } = authApi;

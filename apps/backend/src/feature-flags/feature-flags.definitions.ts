@@ -250,6 +250,15 @@ export const FLAG_DEFINITIONS: Record<string, FlagDefinition> = {
   // Feature Toggles
   // ==========================================================================
 
+  ENABLE_GOOGLE_OAUTH: {
+    envKey: 'FEATURE_GOOGLE_OAUTH',
+    defaultValue: false,
+    type: 'boolean',
+    description: 'Enable Sign in with Google on login and signup pages',
+    category: 'features',
+    exposeToClient: true,
+  },
+
   ENABLE_CUSTOM_DOMAINS: {
     envKey: 'FEATURE_CUSTOM_DOMAINS',
     defaultValue: true,

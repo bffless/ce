@@ -2,6 +2,7 @@ import supertokens from 'supertokens-node';
 import Session from 'supertokens-node/recipe/session';
 import EmailPassword from 'supertokens-node/recipe/emailpassword';
 import EmailVerification from 'supertokens-node/recipe/emailverification';
+import ThirdParty from 'supertokens-node/recipe/thirdparty';
 import Multitenancy from 'supertokens-node/recipe/multitenancy';
 import { createEmailDeliveryConfig } from './email-delivery.service';
 
@@ -44,6 +45,21 @@ export function initSuperTokens() {
       // Only include Multitenancy recipe when multi-tenant mode is explicitly enabled
       // This requires SUPERTOKENS_MULTI_TENANT=true AND a valid license key
       ...(isMultiTenant ? [Multitenancy.init()] : []),
+
+      ThirdParty.init({
+        signInAndUpFeature: {
+          providers: [], // Configured dynamically via Multitenancy core
+        },
+        override: {
+          apis: (originalImplementation) => ({
+            ...originalImplementation,
+            // Disable native endpoints - use custom NestJS controller instead
+            signInUpPOST: undefined,
+            authorisationUrlGET: undefined,
+            appleRedirectHandlerPOST: undefined,
+          }),
+        },
+      }),
 
       EmailPassword.init({
         emailDelivery: createEmailDeliveryConfig(),
