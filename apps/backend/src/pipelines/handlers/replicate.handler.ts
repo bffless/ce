@@ -9,8 +9,8 @@ import { IStorageAdapter, STORAGE_ADAPTER } from '../../storage/storage.interfac
 import { ConfigurationError } from '../errors';
 
 const REPLICATE_API_BASE = 'https://api.replicate.com/v1';
-const MAX_POLL_ATTEMPTS = 60;
-const POLL_INTERVAL_MS = 1000;
+const DEFAULT_MAX_POLL_ATTEMPTS = 60;
+const POLL_INTERVAL_MS = 5000;
 
 /**
  * Threshold for using Replicate Files API vs base64 data URI.
@@ -135,9 +135,12 @@ export class ReplicateHandler implements StepHandler<ReplicateHandlerConfig> {
 
       // If not completed yet, poll until succeeded/failed
       if (prediction.status !== 'succeeded' && prediction.status !== 'failed' && prediction.status !== 'canceled') {
+        const timeoutMs = config.timeout || DEFAULT_MAX_POLL_ATTEMPTS * POLL_INTERVAL_MS;
+        const maxAttempts = Math.ceil(timeoutMs / POLL_INTERVAL_MS);
         prediction = await this.pollPrediction(
           prediction.id as string,
           serviceConfig.apiToken,
+          maxAttempts,
         );
       }
 
@@ -396,8 +399,9 @@ export class ReplicateHandler implements StepHandler<ReplicateHandlerConfig> {
   private async pollPrediction(
     predictionId: string,
     apiToken: string,
+    maxAttempts: number = DEFAULT_MAX_POLL_ATTEMPTS,
   ): Promise<Record<string, unknown>> {
-    for (let i = 0; i < MAX_POLL_ATTEMPTS; i++) {
+    for (let i = 0; i < maxAttempts; i++) {
       await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
 
       const response = await fetch(
@@ -424,6 +428,6 @@ export class ReplicateHandler implements StepHandler<ReplicateHandlerConfig> {
       }
     }
 
-    throw new Error(`Prediction ${predictionId} timed out after ${MAX_POLL_ATTEMPTS} attempts`);
+    throw new Error(`Prediction ${predictionId} timed out after ${maxAttempts} attempts`);
   }
 }
