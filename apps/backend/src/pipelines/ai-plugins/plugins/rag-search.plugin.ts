@@ -263,11 +263,27 @@ export class RagSearchPlugin implements AIToolPlugin {
 
       const formatted = results.map((r) => {
         const dataFields = (r.data ?? {}) as Record<string, unknown>;
+        // For chunked results, only include chunkText to avoid sending
+        // the full parent record (e.g., entire document) for every chunk
+        if (r.chunkText != null) {
+          // Include small metadata fields but skip large text fields
+          const metadata: Record<string, unknown> = {};
+          for (const [key, value] of Object.entries(dataFields)) {
+            if (typeof value === 'string' && value.length > 200) continue;
+            metadata[key] = value;
+          }
+          return {
+            id: r.pipelineDataId,
+            similarity: Math.round(r.similarity * 1000) / 1000,
+            chunkText: r.chunkText,
+            chunkIndex: r.chunkIndex,
+            ...metadata,
+          };
+        }
+        // Non-chunked: include all fields as before
         return {
           id: r.pipelineDataId,
           similarity: Math.round(r.similarity * 1000) / 1000,
-          ...(r.chunkText != null ? { chunkText: r.chunkText } : {}),
-          ...(r.chunkIndex != null ? { chunkIndex: r.chunkIndex } : {}),
           ...dataFields,
         };
       });
