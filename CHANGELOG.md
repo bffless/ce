@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.187](https://github.com/bffless/ce/compare/v0.0.186...v0.0.187) (2026-03-26)
+
+
+### Bug Fixes
+
+* persist redirect URL through email verification flow ([d549975](https://github.com/bffless/ce/commit/d549975fe7cba5a880ae35d303b8027d2468684c))
+
 ## [0.0.186](https://github.com/bffless/ce/compare/v0.0.185...v0.0.186) (2026-03-26)
 
 
