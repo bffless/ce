@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.184](https://github.com/bffless/ce/compare/v0.0.183...v0.0.184) (2026-03-26)
+
+
+### Features
+
+* adds branding ([a2ffe06](https://github.com/bffless/ce/commit/a2ffe06e695d47daa7909cbcd508475148484b8c))
+
+
+### Bug Fixes
+
+* chat metadata ([322a0e2](https://github.com/bffless/ce/commit/322a0e27d117c7398853bd81cca0c5baea6c60a4))
+
 ## [0.0.183](https://github.com/bffless/ce/compare/v0.0.182...v0.0.183) (2026-03-26)
 
 
