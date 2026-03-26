@@ -5,6 +5,7 @@ import { PrimaryContentService } from './primary-content.service';
 import { SmtpService } from './smtp.service';
 import { EmailSettingsService } from './email-settings.service';
 import { EmailInitService } from './email-init.service';
+import { BrandingService } from './branding.service';
 import { DomainsModule } from '../domains/domains.module';
 import { EmailModule } from '../email/email.module';
 
@@ -17,7 +18,8 @@ import { EmailModule } from '../email/email.module';
     SmtpService,
     EmailSettingsService,
     EmailInitService,
+    BrandingService,
   ],
-  exports: [PrimaryContentService, SmtpService, EmailSettingsService],
+  exports: [PrimaryContentService, SmtpService, EmailSettingsService, BrandingService],
 })
 export class SettingsModule {}

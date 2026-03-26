@@ -1,8 +1,24 @@
-import { Controller, Get, Patch, Post, Body, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Patch,
+  Post,
+  Delete,
+  Body,
+  Param,
+  UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  Res,
+  BadRequestException,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiTags, ApiOperation, ApiResponse, ApiConsumes } from '@nestjs/swagger';
+import { Response } from 'express';
 import { PrimaryContentService, PrimaryContentConfig } from './primary-content.service';
 import { SmtpService } from './smtp.service';
 import { EmailSettingsService } from './email-settings.service';
+import { BrandingService, BrandingConfig } from './branding.service';
 import { UpdatePrimaryContentDto } from './dto/update-primary-content.dto';
 import { UpdateSmtpDto, SmtpStatusResponseDto, TestSmtpResponseDto } from './dto/update-smtp.dto';
 import {
@@ -22,6 +38,7 @@ export class SettingsController {
     private readonly primaryContentService: PrimaryContentService,
     private readonly smtpService: SmtpService,
     private readonly emailSettingsService: EmailSettingsService,
+    private readonly brandingService: BrandingService,
   ) {}
 
   @Get('primary-content')
@@ -139,5 +156,56 @@ export class SettingsController {
   })
   async sendTestEmail(@Body() dto: SendTestEmailDto): Promise<SendTestEmailResponseDto> {
     return this.emailSettingsService.sendTestEmail(dto.to);
+  }
+
+  // ==========================================================================
+  // Branding Settings Endpoints
+  // ==========================================================================
+
+  @Get('branding')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Get branding configuration' })
+  @ApiResponse({ status: 200, description: 'Branding configuration' })
+  async getBranding(): Promise<BrandingConfig> {
+    return this.brandingService.getBrandingConfig();
+  }
+
+  @Patch('branding')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Update branding configuration' })
+  @ApiResponse({ status: 200, description: 'Updated branding configuration' })
+  async updateBranding(
+    @Body() dto: { siteName?: string },
+  ): Promise<{ success: boolean; config: BrandingConfig }> {
+    const config = await this.brandingService.updateBranding(dto);
+    return { success: true, config };
+  }
+
+  @Post('branding/logo/:type')
+  @Roles('admin')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload a branding logo (header or auth)' })
+  @ApiResponse({ status: 200, description: 'Logo uploaded successfully' })
+  async uploadLogo(
+    @Param('type') type: string,
+    @UploadedFile() file: Express.Multer.File,
+  ): Promise<{ success: boolean; config: BrandingConfig }> {
+    if (!file) {
+      throw new BadRequestException('No file uploaded');
+    }
+    const config = await this.brandingService.uploadLogo(type, file.buffer, file.mimetype);
+    return { success: true, config };
+  }
+
+  @Delete('branding/logo/:type')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Delete a branding logo' })
+  @ApiResponse({ status: 200, description: 'Logo deleted successfully' })
+  async deleteLogo(
+    @Param('type') type: string,
+  ): Promise<{ success: boolean; config: BrandingConfig }> {
+    const config = await this.brandingService.deleteLogo(type);
+    return { success: true, config };
   }
 }

@@ -108,6 +108,31 @@ export interface SendTestEmailResponse {
   messageId?: string;
 }
 
+// =============================================================================
+// Branding Types
+// =============================================================================
+
+export interface BrandingConfig {
+  siteName: string;
+  headerLogoKey: string | null;
+  authLogoKey: string | null;
+}
+
+export interface PublicBrandingConfig {
+  siteName: string;
+  hasHeaderLogo: boolean;
+  hasAuthLogo: boolean;
+}
+
+export interface UpdateBrandingDto {
+  siteName?: string;
+}
+
+export interface UpdateBrandingResponse {
+  success: boolean;
+  config: BrandingConfig;
+}
+
 export const settingsApi = api.injectEndpoints({
   endpoints: (builder) => ({
     // Get primary content configuration
@@ -200,6 +225,55 @@ export const settingsApi = api.injectEndpoints({
         body,
       }),
     }),
+
+    // ==========================================================================
+    // Branding Settings Endpoints
+    // ==========================================================================
+
+    // Get public branding (no auth required)
+    getPublicBranding: builder.query<PublicBrandingConfig, void>({
+      query: () => '/api/settings/branding/public',
+      providesTags: ['Branding'],
+    }),
+
+    // Get full branding config (admin only)
+    getBranding: builder.query<BrandingConfig, void>({
+      query: () => '/api/settings/branding',
+      providesTags: ['Branding'],
+    }),
+
+    // Update branding config (admin only)
+    updateBranding: builder.mutation<UpdateBrandingResponse, UpdateBrandingDto>({
+      query: (body) => ({
+        url: '/api/settings/branding',
+        method: 'PATCH',
+        body,
+      }),
+      invalidatesTags: ['Branding'],
+    }),
+
+    // Upload branding logo (admin only)
+    uploadBrandingLogo: builder.mutation<UpdateBrandingResponse, { type: string; file: File }>({
+      query: ({ type, file }) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        return {
+          url: `/api/settings/branding/logo/${type}`,
+          method: 'POST',
+          body: formData,
+        };
+      },
+      invalidatesTags: ['Branding'],
+    }),
+
+    // Delete branding logo (admin only)
+    deleteBrandingLogo: builder.mutation<UpdateBrandingResponse, { type: string }>({
+      query: ({ type }) => ({
+        url: `/api/settings/branding/logo/${type}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['Branding'],
+    }),
   }),
 });
 
@@ -216,4 +290,10 @@ export const {
   useUpdateEmailSettingsMutation,
   useTestEmailSettingsMutation,
   useSendTestEmailMutation,
+  // Branding hooks
+  useGetPublicBrandingQuery,
+  useGetBrandingQuery,
+  useUpdateBrandingMutation,
+  useUploadBrandingLogoMutation,
+  useDeleteBrandingLogoMutation,
 } = settingsApi;

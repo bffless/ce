@@ -6,6 +6,7 @@ import * as z from 'zod';
 import { Home, ArrowLeft, Mail } from 'lucide-react';
 import { useForgotPasswordMutation } from '@/services/authApi';
 import { useToast } from '@/hooks/use-toast';
+import { useBranding } from '@/hooks/useBranding';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -29,6 +30,7 @@ export function ForgotPasswordPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [forgotPassword, { isLoading }] = useForgotPasswordMutation();
+  const { siteName, headerLogoUrl } = useBranding();
   const [emailSent, setEmailSent] = useState(false);
 
   const form = useForm<ForgotPasswordFormValues>({
@@ -69,7 +71,8 @@ export function ForgotPasswordPage() {
             className="mb-4 gap-2"
           >
             <Home className="h-4 w-4" />
-            <span className="font-semibold">Asset Host</span>
+            <img src={headerLogoUrl} alt={siteName} className="h-4 w-4" />
+            <span className="font-semibold">{siteName}</span>
           </Button>
         </div>
 

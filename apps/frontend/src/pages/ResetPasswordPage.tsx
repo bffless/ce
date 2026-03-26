@@ -6,6 +6,7 @@ import * as z from 'zod';
 import { Eye, EyeOff, Home, CheckCircle2 } from 'lucide-react';
 import { useResetPasswordMutation } from '@/services/authApi';
 import { useToast } from '@/hooks/use-toast';
+import { useBranding } from '@/hooks/useBranding';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -63,6 +64,7 @@ export function ResetPasswordPage() {
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const [resetPassword, { isLoading }] = useResetPasswordMutation();
+  const { siteName, headerLogoUrl } = useBranding();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [resetSuccess, setResetSuccess] = useState(false);
@@ -143,7 +145,8 @@ export function ResetPasswordPage() {
           <div className="mb-8 text-center">
             <Button variant="ghost" onClick={() => navigate('/')} className="mb-4 gap-2">
               <Home className="h-4 w-4" />
-              <span className="font-semibold">Asset Host</span>
+              <img src={headerLogoUrl} alt={siteName} className="h-4 w-4" />
+            <span className="font-semibold">{siteName}</span>
             </Button>
           </div>
 
@@ -181,7 +184,8 @@ export function ResetPasswordPage() {
         <div className="mb-8 text-center">
           <Button variant="ghost" onClick={() => navigate('/')} className="mb-4 gap-2">
             <Home className="h-4 w-4" />
-            <span className="font-semibold">Asset Host</span>
+            <img src={headerLogoUrl} alt={siteName} className="h-4 w-4" />
+            <span className="font-semibold">{siteName}</span>
           </Button>
         </div>
 

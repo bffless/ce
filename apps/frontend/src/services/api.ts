@@ -202,6 +202,7 @@ export const api = createApi({
     'ProjectPlugin',
     'PipelineLog',
     'Integration',
+    'Branding',
   ],
   endpoints: () => ({}),
 });

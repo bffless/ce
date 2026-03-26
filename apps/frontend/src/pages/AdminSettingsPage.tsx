@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { BrandingSettings } from '@/components/settings/BrandingSettings';
 import { PrimaryContentSettings } from '@/components/settings/PrimaryContentSettings';
 import { EmailSettings } from '@/components/settings/EmailSettings';
 import { InvitationsSettings } from '@/components/settings/InvitationsSettings';
@@ -44,6 +45,11 @@ export function AdminSettingsPage() {
           </div>
         </div>
       </div>
+
+      {/* Branding */}
+      <section>
+        <BrandingSettings />
+      </section>
 
       {/* Primary Domain Content */}
       <section>

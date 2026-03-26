@@ -11,13 +11,14 @@ import { ThemeToggle } from '@/components/common/ThemeToggle';
 import { useGetSessionQuery, useSignOutMutation } from '@/services/authApi';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
-import logoSvg from '@/assets/logo.svg';
+import { useBranding } from '@/hooks/useBranding';
 
 export function Header() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { data: sessionData, isLoading } = useGetSessionQuery();
   const [signOut] = useSignOutMutation();
+  const { siteName, headerLogoUrl } = useBranding();
 
   const isAuthenticated = Boolean(sessionData?.user);
   const user = sessionData?.user;
@@ -65,8 +66,8 @@ export function Header() {
             onClick={handleHome}
             className="flex items-center gap-2"
           >
-            <img src={logoSvg} alt="BFFLESS" className="h-5 w-5" />
-            <span className="font-semibold">BFFLESS</span>
+            <img src={headerLogoUrl} alt={siteName} className="h-5 w-5" />
+            <span className="font-semibold">{siteName}</span>
           </Button>
         </div>
 

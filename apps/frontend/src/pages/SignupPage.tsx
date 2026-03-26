@@ -4,8 +4,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Eye, EyeOff, Mail, CheckCircle, Info } from 'lucide-react';
-import logoSvg from '@/assets/logo-circle-wire-text.svg';
 import { useSignUpMutation, useCheckEmailMutation, useGetSessionQuery, useGetRegistrationStatusQuery } from '@/services/authApi';
+import { useBranding } from '@/hooks/useBranding';
 import { useValidateInvitationTokenQuery } from '@/services/invitationsApi';
 import { useToast } from '@/hooks/use-toast';
 import { validateRedirectUrl } from '@/lib/validateRedirectUrl';
@@ -73,6 +73,7 @@ export function SignupPage() {
   const [checkEmail] = useCheckEmailMutation();
   const { data: sessionData, isLoading: isLoadingSession } = useGetSessionQuery();
   const { data: registrationStatus, isLoading: isLoadingRegistration } = useGetRegistrationStatusQuery();
+  const { siteName, authLogoUrl } = useBranding();
   const requireTos = registrationStatus?.requireTosAcceptance ?? false;
   const tosUrl = registrationStatus?.tosUrl ?? '';
   const [showPassword, setShowPassword] = useState(false);
@@ -280,7 +281,7 @@ export function SignupPage() {
               onClick={() => navigate('/')}
               className="focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 rounded-full"
             >
-              <img src={logoSvg} alt="BFFLESS" className="w-48 h-48" />
+              <img src={authLogoUrl} alt={siteName} className="w-48 h-48" />
             </button>
           </div>
 
@@ -328,7 +329,7 @@ export function SignupPage() {
             onClick={() => navigate('/')}
             className="focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 rounded-full"
           >
-            <img src={logoSvg} alt="BFFLESS" className="w-48 h-48" />
+            <img src={authLogoUrl} alt={siteName} className="w-48 h-48" />
           </button>
         </div>
 

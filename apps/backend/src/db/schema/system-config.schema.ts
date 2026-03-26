@@ -28,6 +28,9 @@ export const systemConfig = pgTable('system_config', {
   // Registration Settings
   allowPublicSignups: boolean('allow_public_signups').default(false).notNull(),
 
+  // Branding Configuration (not encrypted - not sensitive)
+  brandingConfig: text('branding_config'), // JSON: { siteName, headerLogoKey, authLogoKey }
+
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

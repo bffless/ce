@@ -11,7 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { OnboardingModal } from '@/components/setup/onboarding/OnboardingModal';
 import { FolderGit2, Settings, Users, UserCog, ShieldAlert, X, ArrowRight } from 'lucide-react';
-import logoSvg from '@/assets/logo-circle-wire-text.svg';
+import { useBranding } from '@/hooks/useBranding';
 
 /**
  * HomePage - Welcome page for the admin control panel
@@ -25,6 +25,7 @@ export function HomePage() {
   const { data: setupStatus, isLoading: isSetupLoading } = useGetSetupStatusQuery();
   // Session data is guaranteed by ProtectedRoute, but we still need it for user info
   const { data: sessionData } = useGetSessionQuery();
+  const { authLogoUrl, siteName } = useBranding();
   const { hasCompletedOnboarding } = useSelector((state: RootState) => state.setup.onboarding);
   const [showOnboarding, setShowOnboarding] = useState(false);
 
@@ -92,8 +93,8 @@ export function HomePage() {
           <div className="flex flex-col md:flex-row items-center gap-8">
             <div className="flex-shrink-0">
               <img
-                src={logoSvg}
-                alt="BFF Less Logo"
+                src={authLogoUrl}
+                alt={siteName}
                 className="w-28 h-28 md:w-36 md:h-36"
               />
             </div>

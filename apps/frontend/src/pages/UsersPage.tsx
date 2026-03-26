@@ -477,6 +477,7 @@ export function UsersPage() {
                       <TableHeader>
                         <TableRow>
                           <TableHead>Email</TableHead>
+                          <TableHead>User ID</TableHead>
                           <TableHead>Role</TableHead>
                           <TableHead>Status</TableHead>
                           <TableHead>Created</TableHead>
@@ -499,6 +500,25 @@ export function UsersPage() {
                                       You
                                     </Badge>
                                   )}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-1">
+                                  <code className="text-xs text-muted-foreground" title={user.id}>
+                                    {user.id.slice(0, 8)}...
+                                  </code>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 w-6 p-0"
+                                    onClick={async () => {
+                                      await navigator.clipboard.writeText(user.id);
+                                      toast({ title: 'Copied', description: 'User ID copied to clipboard' });
+                                    }}
+                                    title="Copy full User ID"
+                                  >
+                                    <Copy className="h-3 w-3" />
+                                  </Button>
                                 </div>
                               </TableCell>
                               <TableCell>

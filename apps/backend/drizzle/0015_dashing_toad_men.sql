@@ -1,0 +1,1 @@
+ALTER TABLE "system_config" ADD COLUMN "branding_config" text;
