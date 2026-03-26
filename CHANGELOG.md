@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.186](https://github.com/bffless/ce/compare/v0.0.185...v0.0.186) (2026-03-26)
+
+
+### Bug Fixes
+
+* increase replicate poll interval and respect step timeout config ([26e28d4](https://github.com/bffless/ce/commit/26e28d488c9a3529038f772d1468722be45731c3))
+
 ## [0.0.185](https://github.com/bffless/ce/compare/v0.0.184...v0.0.185) (2026-03-26)
 
 
