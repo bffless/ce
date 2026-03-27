@@ -10,7 +10,7 @@ import {
   AIToolContext,
 } from '../ai-tool-plugin.interface';
 import { AIToolPluginRegistry } from '../ai-tool-plugin.registry';
-import { PipelineEmbeddingsService } from '../../pipeline-embeddings.service';
+import { PipelineEmbeddingsService, VectorSearchResult } from '../../pipeline-embeddings.service';
 import { PipelineSchemasService } from '../../pipeline-schemas.service';
 import { PipelineDataService } from '../../pipeline-data.service';
 import { ProjectAISettingsService } from '../../../projects/project-ai-settings.service';
@@ -18,6 +18,27 @@ import { ProjectAISettingsService } from '../../../projects/project-ai-settings.
 const REPLICATE_API_BASE = 'https://api.replicate.com/v1';
 const MAX_POLL_ATTEMPTS = 60;
 const POLL_INTERVAL_MS = 1000;
+
+/**
+ * Minimum chunk text length (after stripping prefixes) to be considered useful.
+ * Chunks shorter than this are typically cover pages, image alt text, or headings
+ * that match broadly to any query and pollute results.
+ */
+const MIN_CHUNK_TEXT_LENGTH = 80;
+
+/**
+ * Maximum number of chunks to return per source document.
+ * Prevents a single document from dominating all result slots.
+ */
+const MAX_CHUNKS_PER_DOCUMENT = 3;
+
+/**
+ * Known embedding model prefixes that should be stripped from chunk text
+ * before returning results to the AI. These are model-specific artifacts
+ * (e.g., e5 models require "passage:" / "query:" prefixes) that shouldn't
+ * leak into the content the AI sees.
+ */
+const EMBEDDING_PREFIXES = ['passage: ', 'query: ', 'search_document: ', 'search_query: '];
 
 /**
  * Base source config shared by all source types.
@@ -252,43 +273,24 @@ export class RagSearchPlugin implements AIToolPlugin {
         return { error: 'Failed to generate embedding. Check Replicate API configuration.' };
       }
 
+      // Fetch extra results so we can filter low-quality chunks and still
+      // return the requested number after post-processing.
+      const requestedLimit = source.limit ?? 5;
+      const fetchLimit = requestedLimit * 3;
+
       const results = await this.embeddingsService.vectorSearch({
         schemaId: source.schemaId,
         fieldName: source.fieldName,
         queryVector,
-        limit: source.limit ?? 5,
+        limit: fetchLimit,
         threshold: source.threshold,
         projectId,
       });
 
-      const formatted = results.map((r) => {
-        const dataFields = (r.data ?? {}) as Record<string, unknown>;
-        // For chunked results, only include chunkText to avoid sending
-        // the full parent record (e.g., entire document) for every chunk
-        if (r.chunkText != null) {
-          // Include small metadata fields but skip large text fields
-          const metadata: Record<string, unknown> = {};
-          for (const [key, value] of Object.entries(dataFields)) {
-            if (typeof value === 'string' && value.length > 200) continue;
-            metadata[key] = value;
-          }
-          return {
-            id: r.pipelineDataId,
-            similarity: Math.round(r.similarity * 1000) / 1000,
-            chunkText: r.chunkText,
-            chunkIndex: r.chunkIndex,
-            ...metadata,
-          };
-        }
-        // Non-chunked: include all fields as before
-        return {
-          id: r.pipelineDataId,
-          similarity: Math.round(r.similarity * 1000) / 1000,
-          ...dataFields,
-        };
-      });
+      // Post-process: filter, deduplicate, and diversify results
+      const formatted = this.formatAndDiversifyResults(results, requestedLimit);
 
-      this.logger.debug(`Vector search [${source.toolName}] for "${query}" returned ${formatted.length} results`);
+      this.logger.debug(`Vector search [${source.toolName}] for "${query}" returned ${formatted.length} results (from ${results.length} raw)`);
       return { results: formatted };
     } catch (error) {
       this.logger.error(`Vector search failed: ${(error as Error).message}`);
@@ -331,6 +333,86 @@ export class RagSearchPlugin implements AIToolPlugin {
     } catch (error) {
       return { success: false, error: `Failed to save: ${(error as Error).message}` };
     }
+  }
+
+  // ===== Result Post-Processing =====
+
+  /**
+   * Format, filter, and diversify vector search results before returning to the AI.
+   *
+   * 1. Strip embedding model prefixes from chunkText (e.g., "passage: ")
+   * 2. Filter out low-content chunks (cover pages, image descriptions, TOCs)
+   * 3. Limit chunks per document to ensure diversity across sources
+   * 4. Trim to the requested limit
+   */
+  private formatAndDiversifyResults(
+    results: VectorSearchResult[],
+    limit: number,
+  ): Array<Record<string, unknown>> {
+    const documentChunkCounts = new Map<string, number>();
+    const formatted: Array<Record<string, unknown>> = [];
+
+    for (const r of results) {
+      if (formatted.length >= limit) break;
+
+      const dataFields = (r.data ?? {}) as Record<string, unknown>;
+
+      if (r.chunkText != null) {
+        // Strip embedding model prefixes from chunk text
+        const cleanText = this.stripEmbeddingPrefixes(r.chunkText);
+
+        // Skip chunks that are too short to be useful content
+        if (cleanText.length < MIN_CHUNK_TEXT_LENGTH) {
+          continue;
+        }
+
+        // Enforce per-document diversity
+        const docId = r.pipelineDataId;
+        const docCount = documentChunkCounts.get(docId) ?? 0;
+        if (docCount >= MAX_CHUNKS_PER_DOCUMENT) {
+          continue;
+        }
+        documentChunkCounts.set(docId, docCount + 1);
+
+        // Include small metadata fields but skip large text fields
+        const metadata: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(dataFields)) {
+          if (typeof value === 'string' && value.length > 200) continue;
+          metadata[key] = value;
+        }
+
+        formatted.push({
+          id: r.pipelineDataId,
+          similarity: Math.round(r.similarity * 1000) / 1000,
+          chunkText: cleanText,
+          chunkIndex: r.chunkIndex,
+          ...metadata,
+        });
+      } else {
+        // Non-chunked: include all fields as before
+        formatted.push({
+          id: r.pipelineDataId,
+          similarity: Math.round(r.similarity * 1000) / 1000,
+          ...dataFields,
+        });
+      }
+    }
+
+    return formatted;
+  }
+
+  /**
+   * Strip known embedding model prefixes from chunk text.
+   * Models like e5 require "passage:" / "query:" prefixes for proper similarity,
+   * but these should not appear in the text shown to the AI.
+   */
+  private stripEmbeddingPrefixes(text: string): string {
+    for (const prefix of EMBEDDING_PREFIXES) {
+      if (text.startsWith(prefix)) {
+        return text.slice(prefix.length);
+      }
+    }
+    return text;
   }
 
   // ===== Data Query Operations =====
