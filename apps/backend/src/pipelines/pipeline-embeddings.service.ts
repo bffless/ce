@@ -80,7 +80,9 @@ export class PipelineEmbeddingsService {
   }
 
   /**
-   * Search embeddings by cosine similarity, joining to pipeline_data for full records
+   * Search embeddings by cosine similarity.
+   * Joins pipeline_data for metadata but filters out string fields > 200 chars
+   * at the SQL level to avoid transferring large text blobs (e.g., full documents).
    */
   async vectorSearch(params: VectorSearchParams): Promise<VectorSearchResult[]> {
     const { schemaId, fieldName, queryVector, limit = 10, threshold, projectId } = params;
@@ -98,7 +100,11 @@ export class PipelineEmbeddingsService {
         e.chunk_index AS "chunkIndex",
         e.chunk_text AS "chunkText",
         e.metadata,
-        pd.data
+        (SELECT jsonb_object_agg(kv.key, kv.value)
+         FROM jsonb_each(pd.data) AS kv
+         WHERE jsonb_typeof(kv.value) != 'string'
+            OR length(kv.value #>> '{}') <= 200
+        ) AS data
       FROM pipeline_data_embeddings e
       JOIN pipeline_data pd ON pd.id = e.pipeline_data_id
       WHERE e.schema_id = ${schemaId}
