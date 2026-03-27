@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.190](https://github.com/bffless/ce/compare/v0.0.189...v0.0.190) (2026-03-27)
+
+
+### Bug Fixes
+
+* improve RAG vector search result quality with filtering and diversity ([5f9e323](https://github.com/bffless/ce/commit/5f9e323a7d404943d24b807f360a1fbcb235147a))
+
 ## [0.0.189](https://github.com/bffless/ce/compare/v0.0.188...v0.0.189) (2026-03-26)
 
 
