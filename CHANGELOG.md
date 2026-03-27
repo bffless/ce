@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.191](https://github.com/bffless/ce/compare/v0.0.190...v0.0.191) (2026-03-27)
+
+
+### Performance Improvements
+
+* filter large text fields at SQL level in vector search ([08fd265](https://github.com/bffless/ce/commit/08fd2658528726396712b419393ff186841544cc))
+
 ## [0.0.190](https://github.com/bffless/ce/compare/v0.0.189...v0.0.190) (2026-03-27)
 
 
