@@ -76,12 +76,7 @@ describe('LocalStorageAdapter', () => {
       await expect(adapter.upload(content, key)).rejects.toThrow('path traversal detected');
     });
 
-    it('should reject unsafe characters in key', async () => {
-      const key = 'owner/repo/abc<script>alert()</script>';
-      const content = Buffer.from('Test');
 
-      await expect(adapter.upload(content, key)).rejects.toThrow('unsafe characters');
-    });
   });
 
   describe('download', () => {

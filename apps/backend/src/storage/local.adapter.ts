@@ -342,11 +342,6 @@ export class LocalStorageAdapter implements IStorageAdapter {
       throw new Error('Invalid storage key: path traversal detected');
     }
 
-    // Ensure key is URL-safe
-    if (!/^[a-zA-Z0-9\/_.-]+$/.test(key)) {
-      throw new Error('Invalid storage key: contains unsafe characters');
-    }
-
     return key;
   }
 

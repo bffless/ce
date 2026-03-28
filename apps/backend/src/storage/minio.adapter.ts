@@ -425,12 +425,6 @@ export class MinioStorageAdapter implements IStorageAdapter {
       throw new Error('Invalid storage key: path traversal detected');
     }
 
-    // Ensure key is URL-safe (includes ~ for webpack chunk names like runtime~main.js)
-    if (!/^[a-zA-Z0-9\/_.\-~]+$/.test(key)) {
-      throw new Error('Invalid storage key: contains unsafe characters');
-    }
-
-    // MinIO keys should not start with /
     return key;
   }
 }

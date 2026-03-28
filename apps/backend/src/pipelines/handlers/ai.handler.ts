@@ -753,6 +753,7 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
         conversation_id: chatId,
         role: 'user',
         content: userContent,
+        created_at: Date.now(),
       };
     }
 
@@ -889,6 +890,7 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
         content: aiContent,
         tokens_used: tokensUsed,
         metadata,
+        created_at: Date.now(),
       };
     }
 

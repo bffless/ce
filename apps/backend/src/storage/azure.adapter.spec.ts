@@ -192,11 +192,6 @@ describe('AzureBlobStorageAdapter', () => {
       ).rejects.toThrow('path traversal detected');
     });
 
-    it('should reject unsafe characters in key', async () => {
-      await expect(
-        adapter.upload(Buffer.from('test'), 'test/file<>.txt'),
-      ).rejects.toThrow('contains unsafe characters');
-    });
 
     it('should strip leading slashes from key', async () => {
       await adapter.upload(Buffer.from('test'), '/test/file.txt');

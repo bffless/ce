@@ -158,9 +158,27 @@ export class ChatSchemaGeneratorService {
       this.logger.log(`Created rule set '${ruleSet.name}' (${ruleSet.id})`);
     }
 
-    // Create the single /api/chat pipeline
+    // Create /api/chat pipelines (GET + POST)
     const pipelines: { id: string; path: string; method: string }[] = [];
     const chatPath = `/api/chat`;
+
+    // GET /api/chat?conversationId=xxx - Retrieve messages for a conversation
+    const getChatConfig = this.createGetChatPipeline(dto.name, messagesSchema.id);
+    const [getChatRule] = await db
+      .insert(proxyRules)
+      .values({
+        ruleSetId: ruleSet.id,
+        pathPattern: chatPath,
+        method: 'GET',
+        targetUrl: 'http://internal/pipeline',
+        proxyType: 'pipeline',
+        pipelineConfig: getChatConfig,
+        order: 0,
+        isEnabled: true,
+        description: `${dto.name} get chat messages`,
+      })
+      .returning();
+    pipelines.push({ id: getChatRule.id, path: chatPath, method: 'GET' });
 
     // POST /api/chat - AI chat handler with auto-persistence
     const chatConfig = this.createChatPipeline(
@@ -180,14 +198,14 @@ export class ChatSchemaGeneratorService {
         targetUrl: 'http://internal/pipeline',
         proxyType: 'pipeline',
         pipelineConfig: chatConfig,
-        order: 0,
+        order: 1,
         isEnabled: true,
         description: `${dto.name} AI chat handler`,
       })
       .returning();
     pipelines.push({ id: chatRule.id, path: chatPath, method: 'POST' });
 
-    this.logger.log(`Created chat pipeline for '${dto.name}'`);
+    this.logger.log(`Created chat pipelines for '${dto.name}'`);
 
     return {
       conversationsSchema: {
@@ -252,7 +270,42 @@ export class ChatSchemaGeneratorService {
       { name: 'content', type: 'text', required: true },
       { name: 'tokens_used', type: 'number', required: false, default: 0 },
       { name: 'metadata', type: 'json', required: false },
+      { name: 'created_at', type: 'number', required: false, default: 0 },
     ];
+  }
+
+  /**
+   * Create GET pipeline to retrieve messages for a conversation.
+   * Queries by conversationId query param, ordered by created_at ascending.
+   */
+  private createGetChatPipeline(
+    name: string,
+    messagesSchemaId: string,
+  ): PipelineConfig {
+    const stepId = `step_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+    const steps: PipelineStepConfig[] = [
+      {
+        id: stepId,
+        name: 'query_messages',
+        handlerType: 'data_query',
+        config: {
+          schemaId: messagesSchemaId,
+          filters: {
+            conversation_id: { op: 'eq', value: 'request.query.conversationId' },
+          },
+          orderBy: { field: 'created_at', direction: 'asc' },
+          limit: 100,
+        },
+        isEnabled: true,
+      },
+    ];
+
+    return {
+      name: `${name} get messages`,
+      description: `Retrieve chat messages for ${name} by conversation ID`,
+      steps,
+    };
   }
 
   /**
