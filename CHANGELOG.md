@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.192](https://github.com/bffless/ce/compare/v0.0.191...v0.0.192) (2026-03-28)
+
+
+### Bug Fixes
+
+* helmet ([241cf8b](https://github.com/bffless/ce/commit/241cf8b97ba47da965762e87f56b39dd1a6e54d9))
+
 ## [0.0.191](https://github.com/bffless/ce/compare/v0.0.190...v0.0.191) (2026-03-27)
 
 
