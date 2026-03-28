@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.195](https://github.com/bffless/ce/compare/v0.0.194...v0.0.195) (2026-03-28)
+
+
+### Bug Fixes
+
+* swap nginx-baked path prefix when traffic variant has path override ([8a191e5](https://github.com/bffless/ce/commit/8a191e5325466700f00c10cd6fd80723719633df))
+
 ## [0.0.194](https://github.com/bffless/ce/compare/v0.0.193...v0.0.194) (2026-03-28)
 
 
