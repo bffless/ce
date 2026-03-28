@@ -50,11 +50,14 @@ async function bootstrap() {
         },
         // Disable X-Frame-Options since we're using CSP frame-ancestors
         frameguard: false,
+        // Allow cross-origin embedding of served assets (images, fonts, etc.)
+        crossOriginResourcePolicy: { policy: 'cross-origin' },
+        // Not needed - backend doesn't serve HTML pages directly
+        crossOriginOpenerPolicy: false,
       }),
     );
 
     // Remove CSP for public routes - hosted sites should control their own security policy.
-    // Other Helmet headers (HSTS, X-Content-Type-Options, etc.) are kept.
     // Nginx still sets frame-ancestors CSP for wildcard subdomain iframing.
     app.use('/public', (req, res, next) => {
       res.removeHeader('Content-Security-Policy');
