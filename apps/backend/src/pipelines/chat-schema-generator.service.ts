@@ -245,6 +245,7 @@ export class ChatSchemaGeneratorService {
       { name: 'title', type: 'string', required: false },
       { name: 'model', type: 'string', required: true },
       { name: 'system_prompt', type: 'text', required: false },
+      { name: 'ip_address', type: 'string', required: false },
       { name: 'message_count', type: 'number', required: true, default: 0 },
       { name: 'total_tokens', type: 'number', required: true, default: 0 },
       { name: 'metadata', type: 'json', required: false },

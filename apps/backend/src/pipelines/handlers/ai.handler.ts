@@ -938,9 +938,16 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
 
     if (result.total === 0) {
       // Create new conversation
+      // Extract client IP from request headers (behind proxy) or direct connection
+      const forwardedFor = context.request?.headers?.['x-forwarded-for'];
+      const ipAddress = typeof forwardedFor === 'string'
+        ? forwardedFor.split(',')[0].trim()
+        : context.request?.ip || context.request?.socket?.remoteAddress || null;
+
       const conversationData: Record<string, unknown> = {
         chat_id: chatId,
         user_id: context.user?.id || null,
+        ip_address: ipAddress,
         model: config.model || 'unknown',
         message_count: 0,
         total_tokens: 0,
