@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.194](https://github.com/bffless/ce/compare/v0.0.193...v0.0.194) (2026-03-28)
+
+
+### Features
+
+* add per-variant path override for traffic splitting ([8fa91af](https://github.com/bffless/ce/commit/8fa91af90c3fd5418c0237024524ad9c8e4b74b9))
+
 ## [0.0.193](https://github.com/bffless/ce/compare/v0.0.192...v0.0.193) (2026-03-28)
 
 
