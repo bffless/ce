@@ -394,14 +394,14 @@ export class PublicController {
       res.setHeader('X-Variant', variantSelection.selectedAlias);
     }
 
-    // Apply path prefix from domain mapping ONLY for internal rewrites
-    // Internal rewrites specify paths relative to the domain's path context
-    // Regular requests already have the full path from nginx
+    // Path handling for traffic splitting with per-variant path overrides.
+    // Nginx bakes the domain mapping's path into the rewritten URL (e.g., /site/dist/index.html).
+    // When a traffic variant has a different path (e.g., /site-v0/dist), we need to replace
+    // the original path prefix in filePath with the variant's path.
     let fullPath = filePath;
     const isInternalRewrite = (req as any).__internalRewrite === true;
     if (isInternalRewrite && forwardedHost) {
       const mapping = await this.getDomainMappingByHost(forwardedHost);
-      // Use variant's path override if available, otherwise fall back to domain mapping path
       const effectivePath = variantSelection?.selectedPath ?? mapping?.path;
       if (effectivePath) {
         const pathPrefix = effectivePath.replace(/^\/+/, '').replace(/\/+$/, '');
@@ -409,6 +409,20 @@ export class PublicController {
           fullPath = `${pathPrefix}/${filePath || ''}`.replace(/\/+/g, '/');
           this.logger.debug(
             `[serveAliasAsset] Applied path prefix for internal rewrite: ${pathPrefix}, fullPath=${fullPath}`,
+          );
+        }
+      }
+    } else if (variantSelection?.selectedPath && forwardedHost) {
+      // Non-internal-rewrite: nginx already baked the domain mapping's path into filePath.
+      // If the variant has a different path override, swap the domain's path prefix for the variant's.
+      const mapping = await this.getDomainMappingByHost(forwardedHost);
+      if (mapping?.path) {
+        const originalPrefix = mapping.path.replace(/^\/+/, '').replace(/\/+$/, '');
+        const variantPrefix = variantSelection.selectedPath.replace(/^\/+/, '').replace(/\/+$/, '');
+        if (originalPrefix && variantPrefix && originalPrefix !== variantPrefix && fullPath.startsWith(originalPrefix)) {
+          fullPath = variantPrefix + fullPath.slice(originalPrefix.length);
+          this.logger.debug(
+            `[serveAliasAsset] Swapped path prefix for traffic variant: ${originalPrefix} -> ${variantPrefix}, fullPath=${fullPath}`,
           );
         }
       }
