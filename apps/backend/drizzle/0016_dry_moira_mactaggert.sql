@@ -1,0 +1,1 @@
+ALTER TABLE "domain_traffic_weights" ADD COLUMN "path" varchar(1024);

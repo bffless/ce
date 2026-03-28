@@ -24,7 +24,7 @@ import { DeploymentsService } from './deployments.service';
 import { ProjectsService } from '../projects/projects.service';
 import { OptionalAuthGuard } from '../auth/optional-auth.guard';
 import { VisibilityService, AccessControlInfo } from '../domains/visibility.service';
-import { TrafficRoutingService } from '../domains/traffic-routing.service';
+import { TrafficRoutingService, VariantSelectionResult } from '../domains/traffic-routing.service';
 import { PermissionsService, ProjectRole } from '../permissions/permissions.service';
 import { ConfigService } from '@nestjs/config';
 import { CacheConfigService } from '../cache-rules/cache-config.service';
@@ -348,11 +348,7 @@ export class PublicController {
 
     // Phase C: Check for multivariant traffic routing
     let effectiveAlias = aliasName;
-    let variantSelection: {
-      selectedAlias: string;
-      isNewSelection: boolean;
-      stickySessionDuration: number;
-    } | null = null;
+    let variantSelection: VariantSelectionResult | null = null;
 
     const forwardedHost = req.headers['x-forwarded-host'] as string | undefined;
     if (forwardedHost) {
@@ -405,12 +401,14 @@ export class PublicController {
     const isInternalRewrite = (req as any).__internalRewrite === true;
     if (isInternalRewrite && forwardedHost) {
       const mapping = await this.getDomainMappingByHost(forwardedHost);
-      if (mapping?.path) {
-        const pathPrefix = mapping.path.replace(/^\/+/, '').replace(/\/+$/, '');
+      // Use variant's path override if available, otherwise fall back to domain mapping path
+      const effectivePath = variantSelection?.selectedPath ?? mapping?.path;
+      if (effectivePath) {
+        const pathPrefix = effectivePath.replace(/^\/+/, '').replace(/\/+$/, '');
         if (pathPrefix) {
           fullPath = `${pathPrefix}/${filePath || ''}`.replace(/\/+/g, '/');
           this.logger.debug(
-            `[serveAliasAsset] Applied domain path prefix for internal rewrite: ${pathPrefix}, fullPath=${fullPath}`,
+            `[serveAliasAsset] Applied path prefix for internal rewrite: ${pathPrefix}, fullPath=${fullPath}`,
           );
         }
       }
@@ -996,11 +994,7 @@ export class PublicController {
 
     // Check for multivariant traffic routing
     let effectiveAlias = mapping.alias;
-    let variantSelection: {
-      selectedAlias: string;
-      isNewSelection: boolean;
-      stickySessionDuration: number;
-    } | null = null;
+    let variantSelection: VariantSelectionResult | null = null;
 
     const variantCookie = req.cookies?.[TrafficRoutingService.VARIANT_COOKIE_NAME];
     variantSelection = await this.trafficRoutingService.selectVariant(
@@ -1043,13 +1037,13 @@ export class PublicController {
       res.setHeader('X-Variant', variantSelection.selectedAlias);
     }
 
-    // Apply path prefix from domain mapping
-    // For internal rewrites, the target path is relative to the domain's path context
-    const pathPrefix = mapping.path ? mapping.path.replace(/^\/+/, '').replace(/\/+$/, '') : '';
+    // Apply path prefix — use variant's path override if available, otherwise domain mapping path
+    const effectivePath = variantSelection?.selectedPath ?? mapping.path;
+    const pathPrefix = effectivePath ? effectivePath.replace(/^\/+/, '').replace(/\/+$/, '') : '';
     const fullPath = pathPrefix ? `${pathPrefix}/${filePath || ''}` : filePath || '';
 
     this.logger.debug(
-      `[serveDomainMappingFallback] Path resolution: mapping.path=${mapping.path}, pathPrefix=${pathPrefix}, filePath=${filePath}, fullPath=${fullPath}`,
+      `[serveDomainMappingFallback] Path resolution: mapping.path=${mapping.path}, variantPath=${variantSelection?.selectedPath ?? 'none'}, pathPrefix=${pathPrefix}, filePath=${filePath}, fullPath=${fullPath}`,
     );
 
     await this.serveAssetInternal(

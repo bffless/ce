@@ -7,6 +7,7 @@ import { TrafficRulesService } from './traffic-rules.service';
 
 export interface VariantSelectionResult {
   selectedAlias: string;
+  selectedPath: string | null;
   isNewSelection: boolean;
   stickySessionDuration: number;
 }
@@ -96,6 +97,7 @@ export class TrafficRoutingService {
           domainId,
           alias: w.alias,
           weight: w.weight,
+          path: w.path || null,
         })),
       );
     }
@@ -171,6 +173,12 @@ export class TrafficRoutingService {
       return null;
     }
 
+    // Helper to find the path override for a given alias from the weights
+    const getPathForAlias = (alias: string): string | null => {
+      const weight = weights.find((w) => w.alias === alias);
+      return weight?.path ?? null;
+    };
+
     // Evaluate traffic rules — rules override sticky sessions and weighted selection.
     // Rule aliases don't need to be in the weights list — they can route to any
     // valid deployment alias (e.g., a share link forcing alias "netflix" while
@@ -185,6 +193,7 @@ export class TrafficRoutingService {
       if (ruleMatch) {
         return {
           selectedAlias: ruleMatch,
+          selectedPath: getPathForAlias(ruleMatch),
           isNewSelection: true,
           stickySessionDuration: domain.stickySessionDuration,
         };
@@ -204,6 +213,7 @@ export class TrafficRoutingService {
       if (inWeights || inRules) {
         return {
           selectedAlias: existingVariantCookie,
+          selectedPath: getPathForAlias(existingVariantCookie),
           isNewSelection: false,
           stickySessionDuration: domain.stickySessionDuration,
         };
@@ -215,6 +225,7 @@ export class TrafficRoutingService {
 
     return {
       selectedAlias,
+      selectedPath: getPathForAlias(selectedAlias),
       isNewSelection: true,
       stickySessionDuration: domain.stickySessionDuration,
     };

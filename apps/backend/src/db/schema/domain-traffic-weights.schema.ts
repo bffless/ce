@@ -20,6 +20,7 @@ export const domainTrafficWeights = pgTable(
       .references(() => domainMappings.id, { onDelete: 'cascade' }),
     alias: varchar('alias', { length: 255 }).notNull(),
     weight: integer('weight').notNull(), // 0-100, percentage
+    path: varchar('path', { length: 1024 }), // Optional path override (e.g., /site-v0/dist)
     isActive: boolean('is_active').notNull().default(true),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),

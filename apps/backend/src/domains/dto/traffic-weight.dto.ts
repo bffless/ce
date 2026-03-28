@@ -12,6 +12,11 @@ export class TrafficWeightItemDto {
   @Min(0)
   @Max(100)
   weight: number;
+
+  @ApiPropertyOptional({ description: 'Optional path override within the deployment (e.g., /site-v0/dist)' })
+  @IsOptional()
+  @IsString()
+  path?: string;
 }
 
 export class SetTrafficWeightsDto {
@@ -49,6 +54,9 @@ export class TrafficWeightResponseDto {
 
   @ApiProperty()
   isActive: boolean;
+
+  @ApiProperty({ required: false, nullable: true })
+  path: string | null;
 
   @ApiProperty()
   createdAt: Date;

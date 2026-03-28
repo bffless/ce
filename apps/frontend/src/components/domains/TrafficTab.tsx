@@ -32,6 +32,7 @@ interface TrafficTabProps {
 interface WeightEntry {
   alias: string;
   weight: number;
+  path?: string;
 }
 
 export function TrafficTab({ domainId }: TrafficTabProps) {
@@ -49,7 +50,7 @@ export function TrafficTab({ domainId }: TrafficTabProps) {
   // Initialize from config
   useEffect(() => {
     if (config) {
-      setWeights(config.weights.map((w) => ({ alias: w.alias, weight: w.weight })));
+      setWeights(config.weights.map((w) => ({ alias: w.alias, weight: w.weight, path: w.path || undefined })));
       setStickySessionsEnabled(config.stickySessionsEnabled);
       setStickySessionDuration(config.stickySessionDuration);
       setHasChanges(false);
@@ -87,6 +88,13 @@ export function TrafficTab({ domainId }: TrafficTabProps) {
   const handleAliasChange = (index: number, alias: string) => {
     const newWeights = [...weights];
     newWeights[index].alias = alias;
+    setWeights(newWeights);
+    setHasChanges(true);
+  };
+
+  const handlePathChange = (index: number, path: string) => {
+    const newWeights = [...weights];
+    newWeights[index].path = path || undefined;
     setWeights(newWeights);
     setHasChanges(true);
   };
@@ -208,53 +216,62 @@ export function TrafficTab({ domainId }: TrafficTabProps) {
           weights.map((entry, index) => (
             <div
               key={index}
-              className="flex items-center gap-2 p-2 border rounded-md bg-background"
+              className="flex flex-col gap-1.5 p-2 border rounded-md bg-background"
             >
-              <Select value={entry.alias} onValueChange={(v) => handleAliasChange(index, v)}>
-                <SelectTrigger className="w-[140px]">
-                  <SelectValue placeholder="Select alias" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableAliases.map((alias) => (
-                    <SelectItem
-                      key={alias}
-                      value={alias}
-                      disabled={weights.some((w, i) => w.alias === alias && i !== index)}
-                    >
-                      {alias}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex items-center gap-2">
+                <Select value={entry.alias} onValueChange={(v) => handleAliasChange(index, v)}>
+                  <SelectTrigger className="w-[140px]">
+                    <SelectValue placeholder="Select alias" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableAliases.map((alias) => (
+                      <SelectItem
+                        key={alias}
+                        value={alias}
+                        disabled={weights.some((w, i) => w.alias === alias && i !== index)}
+                      >
+                        {alias}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
 
-              <div className="flex items-center gap-1">
-                <Input
-                  type="number"
-                  value={entry.weight}
-                  onChange={(e) => handleWeightChange(index, parseInt(e.target.value) || 0)}
-                  className="w-[70px] text-center"
-                  min={0}
-                  max={100}
-                />
-                <span className="text-sm text-muted-foreground">%</span>
+                <div className="flex items-center gap-1">
+                  <Input
+                    type="number"
+                    value={entry.weight}
+                    onChange={(e) => handleWeightChange(index, parseInt(e.target.value) || 0)}
+                    className="w-[70px] text-center"
+                    min={0}
+                    max={100}
+                  />
+                  <span className="text-sm text-muted-foreground">%</span>
+                </div>
+
+                {/* Visual bar */}
+                <div className="flex-1 h-6 bg-muted rounded overflow-hidden min-w-[60px]">
+                  <div
+                    className="h-full bg-primary/70 transition-all duration-200"
+                    style={{ width: `${entry.weight}%` }}
+                  />
+                </div>
+
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0"
+                  onClick={() => handleRemoveWeight(index)}
+                >
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
               </div>
-
-              {/* Visual bar */}
-              <div className="flex-1 h-6 bg-muted rounded overflow-hidden min-w-[60px]">
-                <div
-                  className="h-full bg-primary/70 transition-all duration-200"
-                  style={{ width: `${entry.weight}%` }}
-                />
-              </div>
-
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 shrink-0"
-                onClick={() => handleRemoveWeight(index)}
-              >
-                <Trash2 className="h-4 w-4 text-destructive" />
-              </Button>
+              <Input
+                type="text"
+                value={entry.path || ''}
+                onChange={(e) => handlePathChange(index, e.target.value)}
+                className="h-7 text-xs text-muted-foreground"
+                placeholder="Path override (optional, e.g. /site-v0/dist)"
+              />
             </div>
           ))
         )}

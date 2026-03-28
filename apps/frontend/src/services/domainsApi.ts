@@ -292,6 +292,7 @@ export interface TrafficWeight {
   domainId: string;
   alias: string;
   weight: number;
+  path: string | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -304,7 +305,7 @@ export interface TrafficConfig {
 }
 
 export interface SetTrafficWeightsRequest {
-  weights: { alias: string; weight: number }[];
+  weights: { alias: string; weight: number; path?: string }[];
   stickySessionsEnabled?: boolean;
   stickySessionDuration?: number;
 }
