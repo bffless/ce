@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.196](https://github.com/bffless/ce/compare/v0.0.195...v0.0.196) (2026-03-28)
+
+
+### Bug Fixes
+
+* add /mcp proxy route to Umbrel nginx config ([4a20308](https://github.com/bffless/ce/commit/4a2030801a63c8316b0eb481b1342dab658159e9))
+
 ## [0.0.195](https://github.com/bffless/ce/compare/v0.0.194...v0.0.195) (2026-03-28)
 
 
