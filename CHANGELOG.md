@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.197](https://github.com/bffless/ce/compare/v0.0.196...v0.0.197) (2026-03-28)
+
+
+### Features
+
+* capture client IP address in chat conversations ([9482139](https://github.com/bffless/ce/commit/9482139c162e3fc7f4783d522e354aecab78d919))
+
 ## [0.0.196](https://github.com/bffless/ce/compare/v0.0.195...v0.0.196) (2026-03-28)
 
 
