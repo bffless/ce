@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.198](https://github.com/bffless/ce/compare/v0.0.197...v0.0.198) (2026-03-29)
+
+
+### Features
+
+* adds deployment alias to pipeline ([75d999e](https://github.com/bffless/ce/commit/75d999ebce59e1a9297af2547f7cf69fb56c503a))
+
 ## [0.0.197](https://github.com/bffless/ce/compare/v0.0.196...v0.0.197) (2026-03-28)
 
 
