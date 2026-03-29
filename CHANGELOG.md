@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.200](https://github.com/bffless/ce/compare/v0.0.199...v0.0.200) (2026-03-29)
+
+
+### Features
+
+* add extra fields support for ai_handler message persistence ([6505810](https://github.com/bffless/ce/commit/6505810676c3e89b5559e5494aac3d447b8b19e8))
+
 ## [0.0.199](https://github.com/bffless/ce/compare/v0.0.198...v0.0.199) (2026-03-29)
 
 
