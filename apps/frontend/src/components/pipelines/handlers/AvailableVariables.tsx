@@ -96,6 +96,22 @@ export function AvailableVariables({
             </div>
           </div>
 
+          {/* Deployment */}
+          <div>
+            <div className="font-medium text-muted-foreground mb-1">Deployment Context</div>
+            <div className="space-y-0.5">
+              <code className="block bg-muted px-2 py-1 rounded text-[11px]">
+                {formatVar('deployment.alias')} <span className="text-muted-foreground">- Current alias name</span>
+              </code>
+              <code className="block bg-muted px-2 py-1 rounded text-[11px]">
+                {formatVar('deployment.owner')} <span className="text-muted-foreground">- Project owner</span>
+              </code>
+              <code className="block bg-muted px-2 py-1 rounded text-[11px]">
+                {formatVar('deployment.repo')} <span className="text-muted-foreground">- Project name</span>
+              </code>
+            </div>
+          </div>
+
           {/* Request */}
           <div>
             <div className="font-medium text-muted-foreground mb-1">Request Info</div>

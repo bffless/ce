@@ -11,6 +11,7 @@ import { v4 as uuidv4 } from 'uuid';
  * - request.query.paramName - Query parameters
  * - user.id, user.email - Current user
  * - steps.stepName.fieldName - Previous step output
+ * - deployment.alias - Current deployment alias
  * - now() - Current timestamp
  * - uuid() - Generate UUID
  *
@@ -59,7 +60,7 @@ export class ExpressionEvaluator {
 
     // Check if this looks like a valid expression path (must start with a known root)
     // This allows literal values like email addresses to pass through unchanged
-    const validRoots = ['user', 'steps', 'metadata', 'request'];
+    const validRoots = ['user', 'steps', 'metadata', 'request', 'deployment'];
     // Extract first part before '.' or '[' for root check
     const firstPartMatch = trimmed.match(/^([a-zA-Z_][a-zA-Z0-9_]*)/);
     const firstPart = firstPartMatch ? firstPartMatch[1] : '';
@@ -156,10 +157,25 @@ export class ExpressionEvaluator {
           );
         }
         break;
+      case 'deployment':
+        if (!context.deployment) {
+          return null; // No deployment context available
+        }
+        if (parts.length === 1) {
+          value = context.deployment;
+        } else {
+          value = this.getNestedValue(
+            context.deployment as unknown as Record<string, unknown>,
+            parts.slice(1),
+            expression,
+            stepName,
+          );
+        }
+        break;
       default:
         throw new ExpressionError(
           expression,
-          `Unknown root '${root}'. Valid roots: user, steps, metadata, request`,
+          `Unknown root '${root}'. Valid roots: user, steps, metadata, request, deployment`,
           stepName,
         );
     }
