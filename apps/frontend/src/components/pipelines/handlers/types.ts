@@ -205,6 +205,10 @@ export interface AIHandlerConfig extends BaseHandlerConfig {
    * Special variables: __aiContent, __tokensUsed, __finishReason, __conversationId
    */
   aiResponseFields?: Record<string, string>;
+  /** Extra fields merged into every saved message record. { schemaField: "expression" } */
+  extraMessageFields?: Record<string, string>;
+  /** Extra fields merged into conversation record on creation. { schemaField: "expression" } */
+  extraConversationFields?: Record<string, string>;
 }
 
 // Backwards compatibility alias

@@ -45,6 +45,8 @@ import {
   Database,
   BookOpen,
   Puzzle,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 import {
   Tooltip,
@@ -58,6 +60,7 @@ import type { AIHandlerConfig as AIHandlerConfigType, ModelTier, ModelInfo } fro
 import type { PreviousStep } from './AvailableVariables';
 import { ExpressionInput } from './ExpressionInput';
 import { SchemaPicker } from './SchemaPicker';
+import { SchemaFieldPicker } from './SchemaFieldPicker';
 import { SkillsConfig, SkillsConfigValue } from './SkillsConfig';
 import { PluginsConfig, PluginsConfigValue } from './PluginsConfig';
 import { cn } from '@/lib/utils';
@@ -83,6 +86,19 @@ function TierBadge({ tier }: { tier: ModelTier }) {
       {config.label}
     </Badge>
   );
+}
+
+// Built-in fields auto-populated by the handler
+const BUILT_IN_MESSAGE_FIELDS = new Set([
+  'conversation_id', 'role', 'content', 'tokens_used', 'metadata', 'created_at',
+]);
+const BUILT_IN_CONVERSATION_FIELDS = new Set([
+  'chat_id', 'user_id', 'ip_address', 'model', 'message_count', 'total_tokens',
+]);
+
+interface FieldMapping {
+  schemaField: string;
+  expression: string;
 }
 
 interface AIHandlerConfigProps {
@@ -125,6 +141,22 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
   const [persistConversationsSchemaId, setPersistConversationsSchemaId] = useState(config.persistConversationsSchemaId || '');
   const [conversationIdField, setConversationIdField] = useState(config.conversationIdField || 'request.body.id');
   const [showPersistence, setShowPersistence] = useState(config.persistMessages ?? false);
+
+  // Extra fields state
+  const [extraMessageFields, setExtraMessageFields] = useState<FieldMapping[]>(() => {
+    const existing = config.extraMessageFields || {};
+    const entries = Object.entries(existing);
+    return entries.length > 0
+      ? entries.map(([schemaField, expression]) => ({ schemaField, expression }))
+      : [];
+  });
+  const [extraConversationFields, setExtraConversationFields] = useState<FieldMapping[]>(() => {
+    const existing = config.extraConversationFields || {};
+    const entries = Object.entries(existing);
+    return entries.length > 0
+      ? entries.map(([schemaField, expression]) => ({ schemaField, expression }))
+      : [];
+  });
 
   // Skills state
   const [skills, setSkills] = useState<SkillsConfigValue>(
@@ -176,9 +208,49 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
     return groups;
   }, [suggestedModels]);
 
+  const usedMessageFields = useMemo(
+    () => [
+      ...Array.from(BUILT_IN_MESSAGE_FIELDS),
+      ...extraMessageFields.map((m) => m.schemaField).filter(Boolean),
+    ],
+    [extraMessageFields],
+  );
+
+  const usedConversationFields = useMemo(
+    () => [
+      ...Array.from(BUILT_IN_CONVERSATION_FIELDS),
+      ...extraConversationFields.map((m) => m.schemaField).filter(Boolean),
+    ],
+    [extraConversationFields],
+  );
+
+  // Extra field handlers
+  const handleAddMessageField = () => setExtraMessageFields([...extraMessageFields, { schemaField: '', expression: '' }]);
+  const handleRemoveMessageField = (index: number) => setExtraMessageFields(extraMessageFields.filter((_, i) => i !== index));
+  const handleMessageFieldChange = (index: number, updates: Partial<FieldMapping>) => {
+    setExtraMessageFields(extraMessageFields.map((m, i) => (i === index ? { ...m, ...updates } : m)));
+  };
+
+  const handleAddConversationField = () => setExtraConversationFields([...extraConversationFields, { schemaField: '', expression: '' }]);
+  const handleRemoveConversationField = (index: number) => setExtraConversationFields(extraConversationFields.filter((_, i) => i !== index));
+  const handleConversationFieldChange = (index: number, updates: Partial<FieldMapping>) => {
+    setExtraConversationFields(extraConversationFields.map((m, i) => (i === index ? { ...m, ...updates } : m)));
+  };
+
   // Update parent when values change
   useEffect(() => {
     const shouldPersist = persistMessages && mode === 'chat' && responseMode === 'stream';
+
+    // Convert extra field arrays to config objects
+    const extraMsgObj: Record<string, string> = {};
+    for (const m of extraMessageFields) {
+      if (m.schemaField.trim()) extraMsgObj[m.schemaField.trim()] = m.expression;
+    }
+    const extraConvObj: Record<string, string> = {};
+    for (const m of extraConversationFields) {
+      if (m.schemaField.trim()) extraConvObj[m.schemaField.trim()] = m.expression;
+    }
+
     onChangeRef.current({
       mode,
       provider: provider as 'openai' | 'anthropic' | 'google' | undefined,
@@ -195,12 +267,15 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
       persistMessagesSchemaId: shouldPersist && persistMessagesSchemaId ? persistMessagesSchemaId : undefined,
       persistConversationsSchemaId: shouldPersist && persistConversationsSchemaId ? persistConversationsSchemaId : undefined,
       conversationIdField: shouldPersist && conversationIdField !== 'request.body.id' ? conversationIdField : undefined,
+      // Extra fields for persistence
+      extraMessageFields: shouldPersist && Object.keys(extraMsgObj).length > 0 ? extraMsgObj : undefined,
+      extraConversationFields: shouldPersist && Object.keys(extraConvObj).length > 0 ? extraConvObj : undefined,
       // Skills
       skills: skills.mode !== 'none' ? skills : undefined,
       // Plugins
       plugins: plugins.mode !== 'none' ? plugins : undefined,
     });
-  }, [mode, provider, model, responseMode, systemPrompt, messageField, messagesField, maxHistoryMessages, maxTokens, temperature, persistMessages, persistMessagesSchemaId, persistConversationsSchemaId, conversationIdField, skills, plugins]);
+  }, [mode, provider, model, responseMode, systemPrompt, messageField, messagesField, maxHistoryMessages, maxTokens, temperature, persistMessages, persistMessagesSchemaId, persistConversationsSchemaId, conversationIdField, extraMessageFields, extraConversationFields, skills, plugins]);
 
   // Find selected model info
   const selectedModelInfo = suggestedModels.find(m => m.id === model);
@@ -646,6 +721,124 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
                       previousSteps={previousSteps}
                     />
                   </div>
+
+                  {/* Extra Message Fields */}
+                  {persistMessagesSchemaId && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Label>Extra Message Fields</Label>
+                          <p className="text-xs text-muted-foreground">
+                            Populate additional fields on every saved message. Built-in fields are always included.
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={handleAddMessageField}
+                        >
+                          <Plus className="h-4 w-4 mr-1" />
+                          Add Field
+                        </Button>
+                      </div>
+
+                      {extraMessageFields.length > 0 && (
+                        <div className="space-y-2">
+                          {extraMessageFields.map((mapping, index) => (
+                            <div key={index} className="flex items-center gap-2">
+                              <div className="flex-1">
+                                <SchemaFieldPicker
+                                  schemaId={persistMessagesSchemaId}
+                                  value={mapping.schemaField}
+                                  onChange={(value) => handleMessageFieldChange(index, { schemaField: value })}
+                                  usedFields={usedMessageFields}
+                                  placeholder="Select field"
+                                />
+                              </div>
+                              <span className="text-muted-foreground">=</span>
+                              <div className="flex-1">
+                                <ExpressionInput
+                                  value={mapping.expression}
+                                  onChange={(value) => handleMessageFieldChange(index, { expression: value })}
+                                  placeholder="'static value' or request.body.field"
+                                  previousSteps={previousSteps}
+                                />
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleRemoveMessageField(index)}
+                                className="text-muted-foreground hover:text-destructive shrink-0"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Extra Conversation Fields */}
+                  {persistConversationsSchemaId && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Label>Extra Conversation Fields</Label>
+                          <p className="text-xs text-muted-foreground">
+                            Populate additional fields when a conversation is created.
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={handleAddConversationField}
+                        >
+                          <Plus className="h-4 w-4 mr-1" />
+                          Add Field
+                        </Button>
+                      </div>
+
+                      {extraConversationFields.length > 0 && (
+                        <div className="space-y-2">
+                          {extraConversationFields.map((mapping, index) => (
+                            <div key={index} className="flex items-center gap-2">
+                              <div className="flex-1">
+                                <SchemaFieldPicker
+                                  schemaId={persistConversationsSchemaId}
+                                  value={mapping.schemaField}
+                                  onChange={(value) => handleConversationFieldChange(index, { schemaField: value })}
+                                  usedFields={usedConversationFields}
+                                  placeholder="Select field"
+                                />
+                              </div>
+                              <span className="text-muted-foreground">=</span>
+                              <div className="flex-1">
+                                <ExpressionInput
+                                  value={mapping.expression}
+                                  onChange={(value) => handleConversationFieldChange(index, { expression: value })}
+                                  placeholder="'static value' or request.body.field"
+                                  previousSteps={previousSteps}
+                                />
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleRemoveConversationField(index)}
+                                className="text-muted-foreground hover:text-destructive shrink-0"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Info about auto-behavior and required fields */}
                   <Alert className="border-blue-500/30 bg-blue-500/5">

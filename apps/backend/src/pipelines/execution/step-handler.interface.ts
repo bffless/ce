@@ -512,6 +512,20 @@ export interface AIHandlerConfig extends BaseHandlerConfig {
    * - __finishReason: Why generation stopped ('stop', 'length', etc.)
    */
   aiResponseFields?: Record<string, string>;
+
+  /**
+   * Extra fields to merge into every saved message record (both user and AI).
+   * { schemaFieldName: "expression" }
+   * Evaluated against the pipeline context. Merged after default/custom field mappings.
+   */
+  extraMessageFields?: Record<string, string>;
+
+  /**
+   * Extra fields to merge into the conversation record on creation.
+   * { schemaFieldName: "expression" }
+   * Evaluated against the pipeline context. Merged after default conversation fields.
+   */
+  extraConversationFields?: Record<string, string>;
 }
 
 /**

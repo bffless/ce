@@ -757,6 +757,15 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
       };
     }
 
+    // Merge extra message fields
+    if (config.extraMessageFields && Object.keys(config.extraMessageFields).length > 0) {
+      const extraData = this.evaluateFieldMappings(config.extraMessageFields, context, stepName, {
+        __userContent: userContent,
+        __conversationId: chatId,
+      });
+      Object.assign(data, extraData);
+    }
+
     await this.dataService.create(
       config.persistMessagesSchemaId,
       context.projectId,
@@ -894,6 +903,17 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
       };
     }
 
+    // Merge extra message fields
+    if (config.extraMessageFields && Object.keys(config.extraMessageFields).length > 0) {
+      const extraData = this.evaluateFieldMappings(config.extraMessageFields, context, stepName, {
+        __aiContent: aiContent,
+        __tokensUsed: tokensUsed,
+        __finishReason: finishReason,
+        __conversationId: chatId,
+      });
+      Object.assign(data, extraData);
+    }
+
     await this.dataService.create(
       config.persistMessagesSchemaId,
       context.projectId,
@@ -952,6 +972,14 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
         message_count: 0,
         total_tokens: 0,
       };
+
+      // Merge extra conversation fields
+      if (config.extraConversationFields && Object.keys(config.extraConversationFields).length > 0) {
+        const extraData = this.evaluateFieldMappings(config.extraConversationFields, context, stepName, {
+          __conversationId: chatId,
+        });
+        Object.assign(conversationData, extraData);
+      }
 
       await this.dataService.create(
         config.persistConversationsSchemaId,
