@@ -59,6 +59,13 @@ export function ExpressionInput({
       { value: 'user.role', description: 'User role', category: 'User' },
     );
 
+    // Deployment context
+    suggestions.push(
+      { value: 'deployment.alias', description: 'Current alias name', category: 'Deployment' },
+      { value: 'deployment.owner', description: 'Project owner', category: 'Deployment' },
+      { value: 'deployment.repo', description: 'Project name', category: 'Deployment' },
+    );
+
     // Previous steps
     for (const step of previousSteps) {
       const stepName = step.name;
