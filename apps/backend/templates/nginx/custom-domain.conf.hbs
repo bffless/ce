@@ -19,11 +19,7 @@ server {
 
     server_name {{domain}};
 
-    # Security headers
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    # Security headers are set by the NestJS backend (SecurityHeadersMiddleware)
 
     # Block vulnerability scanners (drop connection silently)
     if ($block_scanner) {
@@ -133,11 +129,7 @@ server {
         root /var/www/certbot;
     }
 
-    # Security headers
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    # Security headers are set by the NestJS backend (SecurityHeadersMiddleware)
 
     # Block vulnerability scanners (drop connection silently)
     if ($block_scanner) {

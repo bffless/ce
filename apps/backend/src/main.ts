@@ -1,7 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, LogLevel } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 
@@ -10,60 +9,6 @@ async function bootstrap() {
     logger: (process.env.LOG_LEVEL?.split(',') as LogLevel[]) || ['error', 'warn', 'log'],
     rawBody: true, // Needed for Stripe webhook signature verification
   });
-
-  // Security headers (production only)
-  // In local dev, helmet's CSP causes issues with iframe previews due to port handling
-  const isProduction = process.env.NODE_ENV === 'production';
-  const frontendUrl = process.env.FRONTEND_URL;
-  const adminDomain = process.env.ADMIN_DOMAIN;
-
-  // Skip helmet for localhost (CSP frame-ancestors doesn't work with ports)
-  const isLocalDev = frontendUrl?.includes('localhost') || frontendUrl?.includes('127.0.0.1');
-
-  if ((isProduction || frontendUrl || adminDomain) && !isLocalDev) {
-    // Build frame ancestors for CSP (allows preview iframes)
-    const frameAncestors: string[] = ["'self'"];
-    if (frontendUrl) {
-      frameAncestors.push(frontendUrl);
-    }
-    if (adminDomain) {
-      // Support both http and https for the admin domain
-      if (!adminDomain.startsWith('http')) {
-        frameAncestors.push(`https://${adminDomain}`, `http://${adminDomain}`);
-      } else {
-        frameAncestors.push(adminDomain);
-      }
-    }
-
-    app.use(
-      helmet({
-        contentSecurityPolicy: {
-          directives: {
-            defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"], // Swagger UI needs these
-            styleSrc: ["'self'", "'unsafe-inline'"], // Swagger UI uses inline styles
-            imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
-            fontSrc: ["'self'", 'data:'],
-            connectSrc: ["'self'"],
-            frameAncestors,
-          },
-        },
-        // Disable X-Frame-Options since we're using CSP frame-ancestors
-        frameguard: false,
-        // Allow cross-origin embedding of served assets (images, fonts, etc.)
-        crossOriginResourcePolicy: { policy: 'cross-origin' },
-        // Not needed - backend doesn't serve HTML pages directly
-        crossOriginOpenerPolicy: false,
-      }),
-    );
-
-    // Remove CSP for public routes - hosted sites should control their own security policy.
-    // Nginx still sets frame-ancestors CSP for wildcard subdomain iframing.
-    app.use('/public', (req, res, next) => {
-      res.removeHeader('Content-Security-Policy');
-      next();
-    });
-  }
 
   // Parse cookies (populates req.cookies)
   app.use(cookieParser());

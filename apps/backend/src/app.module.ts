@@ -27,6 +27,7 @@ import { FeatureFlagsModule } from './feature-flags/feature-flags.module';
 import { InternalModule } from './internal/internal.module';
 import { TenantMiddleware } from './auth/tenant.middleware';
 import { PlatformAliasCookieMiddleware } from './auth/platform-alias-cookie.middleware';
+import { SecurityHeadersMiddleware } from './common/security-headers.middleware';
 import { InvitationsModule } from './invitations/invitations.module';
 import { RetentionModule } from './retention/retention.module';
 import { CacheRulesModule } from './cache-rules/cache-rules.module';
@@ -180,6 +181,11 @@ import { McpToolsModule } from './mcp/mcp-tools.module';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
+    // SecurityHeadersMiddleware must run first to set default security headers
+    consumer
+      .apply(SecurityHeadersMiddleware)
+      .forRoutes('*');
+
     // Apply middleware chain to all routes
     // Order matters: PlatformAliasCookieMiddleware must run before TenantMiddleware
     // to intercept Set-Cookie headers before auth runs

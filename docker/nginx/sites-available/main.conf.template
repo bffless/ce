@@ -29,12 +29,7 @@ server {
     ssl_ciphers HIGH:!aNULL:!MD5;
     ssl_prefer_server_ciphers on;
 
-    # Security headers
-    # Use CSP frame-ancestors instead of X-Frame-Options to allow cross-subdomain iframing
-    # This enables admin.${PRIMARY_DOMAIN} to iframe preview subdomains like *.${PRIMARY_DOMAIN}
-    add_header Content-Security-Policy "frame-ancestors 'self' https://*.${PRIMARY_DOMAIN} https://${PRIMARY_DOMAIN}" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
+    # Security headers are set by the NestJS backend (SecurityHeadersMiddleware)
 
     # Block vulnerability scanners (drop connection silently)
     if ($block_scanner) {
