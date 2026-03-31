@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.204](https://github.com/bffless/ce/compare/v0.0.203...v0.0.204) (2026-03-31)
+
+
+### Features
+
+* add response header rules for per-project iframe embedding control ([016ad1e](https://github.com/bffless/ce/commit/016ad1e69fb3dfe38b9323e1912b6caa6dcb5d77))
+
 ## [0.0.203](https://github.com/bffless/ce/compare/v0.0.202...v0.0.203) (2026-03-31)
 
 
