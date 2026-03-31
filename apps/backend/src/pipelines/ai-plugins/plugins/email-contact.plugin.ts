@@ -82,10 +82,16 @@ export class EmailContactPlugin implements AIToolPlugin {
     if (requirePhone) requiredFields.push('phone');
     if (requireReason) requiredFields.push('reason for contact');
 
-    const requiredDesc =
-      requiredFields.length > 0
-        ? ` You MUST collect the following before calling this tool: ${requiredFields.join(', ')}.`
-        : '';
+    // If neither email nor phone is explicitly required, the AI must still collect at least one
+    const needsContactMethodReminder = !requireEmail && !requirePhone;
+
+    let requiredDesc = '';
+    if (requiredFields.length > 0) {
+      requiredDesc = ` You MUST collect the following before calling this tool: ${requiredFields.join(', ')}.`;
+    }
+    if (needsContactMethodReminder) {
+      requiredDesc += ' You MUST also collect at least one contact method (email or phone) so the visitor can be reached.';
+    }
 
     // Build input schema dynamically based on required field settings
     const contactName = requireName
@@ -175,10 +181,16 @@ export class EmailContactPlugin implements AIToolPlugin {
     if (requireReason) requiredItems.push('the reason for their inquiry');
     else optionalItems.push('the reason for their inquiry');
 
-    const requiredLine =
+    // If neither email nor phone is explicitly required, remind the AI it still needs one
+    const needsContactMethodReminder = !requireEmail && !requirePhone;
+
+    let requiredLine =
       requiredItems.length > 0
         ? `You MUST collect the following before sending: ${requiredItems.join(', ')}.`
         : '';
+    if (needsContactMethodReminder) {
+      requiredLine += ' You MUST also collect at least one contact method (email address or phone number) so the visitor can be reached.';
+    }
     const optionalLine =
       optionalItems.length > 0
         ? `If possible, also try to collect: ${optionalItems.join(', ')}.`
