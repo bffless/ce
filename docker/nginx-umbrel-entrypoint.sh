@@ -16,6 +16,11 @@ else
     echo "📍 No domain configured - using localhost"
 fi
 
+# Replace device hostname placeholder in setup page
+DEVICE_HOST="${DEVICE_DOMAIN_NAME:-umbrel.local}"
+echo "📍 Device hostname: $DEVICE_HOST"
+sed -i "s/__DEVICE_HOSTNAME__/$DEVICE_HOST/g" /usr/share/nginx/html/setup/domain-not-configured.html
+
 # Generate nginx config from template using envsubst
 echo "📝 Generating nginx config for domain: $PRIMARY_DOMAIN"
 envsubst '$PRIMARY_DOMAIN' < /etc/nginx/nginx.conf.template > /etc/nginx/conf.d/default.conf
