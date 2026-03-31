@@ -701,7 +701,7 @@ export class PublicController {
         filePath,
       );
       if (headerConfig) {
-        this.responseHeaderConfigService.applyHeaders(res, headerConfig, []);
+        this.responseHeaderConfigService.applyHeaders(res, headerConfig);
         if (headerConfig.matchedRule) {
           res.setHeader('X-Header-Rule', headerConfig.matchedRule.pathPattern);
         }
@@ -760,7 +760,7 @@ export class PublicController {
         filePath,
       );
       if (headerConfig) {
-        this.responseHeaderConfigService.applyHeaders(res, headerConfig, []);
+        this.responseHeaderConfigService.applyHeaders(res, headerConfig);
       }
 
       const rangeHeader = res.req.headers['range'];

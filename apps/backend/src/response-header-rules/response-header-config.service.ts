@@ -1,4 +1,5 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import picomatch from 'picomatch';
 import { ResponseHeaderRulesService } from './response-header-rules.service';
 import { ResponseHeaderRule } from '../db/schema';
@@ -32,11 +33,32 @@ const RULE_CACHE_TTL_MS = 5 * 60 * 1000;
 export class ResponseHeaderConfigService {
   private readonly logger = new Logger(ResponseHeaderConfigService.name);
   private ruleCache = new Map<string, CachedRules>();
+  private readonly defaultFrameAncestors: string[];
 
   constructor(
     @Inject(forwardRef(() => ResponseHeaderRulesService))
     private readonly responseHeaderRulesService: ResponseHeaderRulesService,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    // Build default frame ancestors from env (same as SecurityHeadersMiddleware)
+    const ancestors: string[] = ["'self'"];
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || '';
+    const adminDomain = this.configService.get<string>('ADMIN_DOMAIN') || '';
+    const primaryDomain = this.configService.get<string>('PRIMARY_DOMAIN') || '';
+
+    if (frontendUrl) ancestors.push(frontendUrl);
+    if (adminDomain) {
+      if (!adminDomain.startsWith('http')) {
+        ancestors.push(`https://${adminDomain}`, `http://${adminDomain}`);
+      } else {
+        ancestors.push(adminDomain);
+      }
+    }
+    if (primaryDomain) {
+      ancestors.push(`https://*.${primaryDomain}`, `https://${primaryDomain}`);
+    }
+    this.defaultFrameAncestors = ancestors;
+  }
 
   /**
    * Get response header configuration for a specific file path.
@@ -86,15 +108,18 @@ export class ResponseHeaderConfigService {
   applyHeaders(
     res: { setHeader: (name: string, value: string) => void; removeHeader: (name: string) => void },
     config: ResponseHeaderConfig,
-    defaultFrameAncestors: string[],
   ): void {
     // Apply frame policy
     switch (config.framePolicy) {
       case 'allow': {
-        const ancestors = ["'self'", ...config.allowedOrigins];
+        // Merge custom allowed origins with default ancestors (admin panel, etc.)
+        const allOrigins = new Set([
+          ...this.defaultFrameAncestors,
+          ...config.allowedOrigins,
+        ]);
         res.setHeader(
           'Content-Security-Policy',
-          `frame-ancestors ${ancestors.join(' ')}`,
+          `frame-ancestors ${[...allOrigins].join(' ')}`,
         );
         // Remove X-Frame-Options since CSP frame-ancestors takes precedence
         res.removeHeader('X-Frame-Options');
@@ -107,14 +132,10 @@ export class ResponseHeaderConfigService {
       case 'sameorigin':
       default:
         // Use default frame-ancestors (includes admin panel origins)
-        if (defaultFrameAncestors.length > 0) {
-          res.setHeader(
-            'Content-Security-Policy',
-            `frame-ancestors ${defaultFrameAncestors.join(' ')}`,
-          );
-        } else {
-          res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-        }
+        res.setHeader(
+          'Content-Security-Policy',
+          `frame-ancestors ${this.defaultFrameAncestors.join(' ')}`,
+        );
         break;
     }
 
