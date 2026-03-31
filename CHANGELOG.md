@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.205](https://github.com/bffless/ce/compare/v0.0.204...v0.0.205) (2026-03-31)
+
+
+### Bug Fixes
+
+* merge default frame ancestors with custom allowed origins ([552043f](https://github.com/bffless/ce/commit/552043fce386e5efbb083b1ed5e11320cc75d7e3))
+
 ## [0.0.204](https://github.com/bffless/ce/compare/v0.0.203...v0.0.204) (2026-03-31)
 
 
