@@ -498,6 +498,114 @@ function SourceEditor({
   );
 }
 
+function EmailContactOptions({
+  options,
+  onChange,
+}: {
+  options: Record<string, unknown>;
+  onChange: (opts: Record<string, unknown>) => void;
+}) {
+  return (
+    <div className="ml-7 mt-2 space-y-3 border-l-2 border-muted pl-3">
+      <div className="space-y-1">
+        <Label className="text-xs">Recipient Email *</Label>
+        <Input
+          type="email"
+          className="h-8 text-xs"
+          placeholder="you@example.com"
+          value={(options.recipientEmail as string) || ''}
+          onChange={(e) => onChange({ ...options, recipientEmail: e.target.value || undefined })}
+        />
+        <p className="text-xs text-muted-foreground">
+          The email address where contact submissions will be sent
+        </p>
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs">Your Name</Label>
+        <Input
+          type="text"
+          className="h-8 text-xs"
+          placeholder="e.g., Sarah"
+          value={(options.recipientName as string) || ''}
+          onChange={(e) => onChange({ ...options, recipientName: e.target.value || undefined })}
+        />
+        <p className="text-xs text-muted-foreground">
+          Used in conversation, e.g. &quot;I can have <strong>Sarah</strong> reach out to you&quot;
+        </p>
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs">Email Subject Prefix</Label>
+        <Input
+          type="text"
+          className="h-8 text-xs"
+          placeholder="New Contact"
+          value={(options.emailSubjectPrefix as string) || ''}
+          onChange={(e) => onChange({ ...options, emailSubjectPrefix: e.target.value || undefined })}
+        />
+        <p className="text-xs text-muted-foreground">
+          Prefix for email subject lines (default: &quot;New Contact&quot;)
+        </p>
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs font-medium">Required Fields</Label>
+        <p className="text-xs text-muted-foreground mb-2">
+          The AI will not send the email until these fields are collected from the visitor.
+        </p>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="ec-require-name"
+              checked={options.requireName !== false}
+              onCheckedChange={(checked) =>
+                onChange({ ...options, requireName: checked === true ? undefined : false })
+              }
+            />
+            <label htmlFor="ec-require-name" className="text-xs cursor-pointer">
+              Name
+            </label>
+          </div>
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="ec-require-email"
+              checked={(options.requireEmail as boolean) || false}
+              onCheckedChange={(checked) =>
+                onChange({ ...options, requireEmail: checked === true ? true : undefined })
+              }
+            />
+            <label htmlFor="ec-require-email" className="text-xs cursor-pointer">
+              Email address
+            </label>
+          </div>
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="ec-require-phone"
+              checked={(options.requirePhone as boolean) || false}
+              onCheckedChange={(checked) =>
+                onChange({ ...options, requirePhone: checked === true ? true : undefined })
+              }
+            />
+            <label htmlFor="ec-require-phone" className="text-xs cursor-pointer">
+              Phone number
+            </label>
+          </div>
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="ec-require-reason"
+              checked={options.requireReason !== false}
+              onCheckedChange={(checked) =>
+                onChange({ ...options, requireReason: checked === true ? undefined : false })
+              }
+            />
+            <label htmlFor="ec-require-reason" className="text-xs cursor-pointer">
+              Reason for contact
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RagSearchOptions({
   projectId,
   options,
@@ -611,11 +719,19 @@ export function PluginsConfig({ config, onChange, projectId }: PluginsConfigProp
         />
       );
     }
+    if (pluginId === 'email-contact') {
+      return (
+        <EmailContactOptions
+          options={getPluginOptions(pluginId)}
+          onChange={(opts) => setPluginOptions(pluginId, opts)}
+        />
+      );
+    }
     return null;
   };
 
   // Plugins that have per-pipeline options
-  const pluginsWithOptions = ['google-calendar', 'rag-search'];
+  const pluginsWithOptions = ['google-calendar', 'rag-search', 'email-contact'];
 
   return (
     <div className="space-y-4">

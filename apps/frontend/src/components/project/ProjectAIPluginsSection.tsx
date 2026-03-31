@@ -33,6 +33,7 @@ import {
   Settings2,
   ExternalLink,
   Unplug,
+  Mail,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
@@ -44,6 +45,7 @@ const PLUGIN_ICONS: Record<string, React.ElementType> = {
   search: Search,
   calendar: Calendar,
   database: Database,
+  mail: Mail,
 };
 
 // Category display config
