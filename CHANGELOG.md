@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.201](https://github.com/bffless/ce/compare/v0.0.200...v0.0.201) (2026-03-31)
+
+
+### Features
+
+* add Email Contact chat plugin ([74ae23d](https://github.com/bffless/ce/commit/74ae23d06645dcc390c113b1f5f7190d739476a5))
+
+
+### Bug Fixes
+
+* ensure AI collects at least one contact method (email or phone) ([1aa45b9](https://github.com/bffless/ce/commit/1aa45b9f7ed0e26741a3fbc647bd2ac30c0423dd))
+
 ## [0.0.200](https://github.com/bffless/ce/compare/v0.0.199...v0.0.200) (2026-03-29)
 
 
