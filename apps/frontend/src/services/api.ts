@@ -190,6 +190,7 @@ export const api = createApi({
     'RetentionLog',
     'StorageOverview',
     'CacheRule',
+    'ResponseHeaderRule',
     'StorageUsage',
     'PathRedirects',
     'ShareLink',

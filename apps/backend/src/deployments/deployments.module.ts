@@ -8,6 +8,7 @@ import { ProjectsModule } from '../projects/projects.module';
 import { PermissionsModule } from '../permissions/permissions.module';
 import { DomainsModule } from '../domains/domains.module';
 import { CacheRulesModule } from '../cache-rules/cache-rules.module';
+import { ResponseHeaderRulesModule } from '../response-header-rules/response-header-rules.module';
 import { ShareLinksModule } from '../share-links/share-links.module';
 import { PlatformModule } from '../platform/platform.module';
 
@@ -17,6 +18,7 @@ import { PlatformModule } from '../platform/platform.module';
     PermissionsModule,
     forwardRef(() => DomainsModule),
     CacheRulesModule,
+    ResponseHeaderRulesModule,
     ShareLinksModule,
     PlatformModule,
   ],

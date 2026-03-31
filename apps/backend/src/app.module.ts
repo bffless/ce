@@ -28,6 +28,7 @@ import { InternalModule } from './internal/internal.module';
 import { TenantMiddleware } from './auth/tenant.middleware';
 import { PlatformAliasCookieMiddleware } from './auth/platform-alias-cookie.middleware';
 import { SecurityHeadersMiddleware } from './common/security-headers.middleware';
+import { ResponseHeaderRulesModule } from './response-header-rules/response-header-rules.module';
 import { InvitationsModule } from './invitations/invitations.module';
 import { RetentionModule } from './retention/retention.module';
 import { CacheRulesModule } from './cache-rules/cache-rules.module';
@@ -152,6 +153,7 @@ import { McpToolsModule } from './mcp/mcp-tools.module';
     CacheRulesModule,
     ShareLinksModule,    // Must come BEFORE ProjectsModule (route ordering)
     PipelinesModule,     // Must come BEFORE ProjectsModule (route ordering)
+    ResponseHeaderRulesModule, // Must come BEFORE ProjectsModule (route ordering)
     ProjectsModule,
     UserGroupsModule,
     PermissionsModule,

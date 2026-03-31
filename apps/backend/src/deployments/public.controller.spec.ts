@@ -10,6 +10,7 @@ import { TrafficRoutingService } from '../domains/traffic-routing.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { CacheConfigService, CacheConfig } from '../cache-rules/cache-config.service';
 import { ShareLinksService } from '../share-links/share-links.service';
+import { ResponseHeaderConfigService } from '../response-header-rules/response-header-config.service';
 import { STORAGE_ADAPTER } from '../storage/storage.module';
 import { IStorageAdapter } from '../storage/storage.interface';
 
@@ -42,6 +43,7 @@ describe('PublicController', () => {
   let mockPermissionsService: jest.Mocked<PermissionsService>;
   let mockConfigService: jest.Mocked<ConfigService>;
   let mockCacheConfigService: jest.Mocked<CacheConfigService>;
+  let mockResponseHeaderConfigService: jest.Mocked<ResponseHeaderConfigService>;
   let mockShareLinksService: jest.Mocked<ShareLinksService>;
 
   const mockOwner = 'owner';
@@ -235,6 +237,13 @@ describe('PublicController', () => {
       clearAllCache: jest.fn(),
     } as any;
 
+    mockResponseHeaderConfigService = {
+      getHeaderConfig: jest.fn().mockResolvedValue(null),
+      applyHeaders: jest.fn(),
+      invalidateProjectCache: jest.fn(),
+      clearAllCache: jest.fn(),
+    } as any;
+
     mockShareLinksService = {
       validateToken: jest.fn().mockResolvedValue(null),
       create: jest.fn(),
@@ -280,6 +289,10 @@ describe('PublicController', () => {
         {
           provide: CacheConfigService,
           useValue: mockCacheConfigService,
+        },
+        {
+          provide: ResponseHeaderConfigService,
+          useValue: mockResponseHeaderConfigService,
         },
         {
           provide: ShareLinksService,

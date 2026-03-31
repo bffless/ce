@@ -27,12 +27,13 @@ import { ProjectApiKeysTab } from '@/components/project/ProjectApiKeysTab';
 import { ProjectProxyRulesTab } from '@/components/project/ProjectProxyRulesTab';
 import { ProjectStorageRetentionTab } from '@/components/project/ProjectStorageRetentionTab';
 import { ProjectCacheRulesTab } from '@/components/project/ProjectCacheRulesTab';
+import { ProjectResponseHeaderRulesTab } from '@/components/project/ProjectResponseHeaderRulesTab';
 import { ProjectShareLinksTab } from '@/components/project/ProjectShareLinksTab';
 import { ProjectAISettingsTab } from '@/components/project/ProjectAISettingsTab';
 import { ProjectIntegrationsTab } from '@/components/project/ProjectIntegrationsTab';
 import { RepoBreadcrumb } from '@/components/repo/RepoBreadcrumb';
 
-type TabValue = 'general' | 'members' | 'groups' | 'api-keys' | 'proxy-rules' | 'storage' | 'cache-rules' | 'share-links' | 'ai' | 'integrations';
+type TabValue = 'general' | 'members' | 'groups' | 'api-keys' | 'proxy-rules' | 'storage' | 'cache-rules' | 'response-headers' | 'share-links' | 'ai' | 'integrations';
 
 /**
  * ProjectSettingsPage - Project settings and permissions management
@@ -51,7 +52,7 @@ export function ProjectSettingsPage() {
   // Get tab from query params, default to 'general'
   const tabParam = searchParams.get('tab');
   const currentTab: TabValue =
-    tabParam === 'members' || tabParam === 'groups' || tabParam === 'api-keys' || tabParam === 'proxy-rules' || tabParam === 'storage' || tabParam === 'cache-rules' || tabParam === 'share-links' || tabParam === 'ai' || tabParam === 'integrations'
+    tabParam === 'members' || tabParam === 'groups' || tabParam === 'api-keys' || tabParam === 'proxy-rules' || tabParam === 'storage' || tabParam === 'cache-rules' || tabParam === 'response-headers' || tabParam === 'share-links' || tabParam === 'ai' || tabParam === 'integrations'
       ? tabParam
       : 'general';
 
@@ -276,6 +277,7 @@ export function ProjectSettingsPage() {
             <TabsTrigger value="proxy-rules">Proxy Rules</TabsTrigger>
             <TabsTrigger value="storage">Storage</TabsTrigger>
             <TabsTrigger value="cache-rules">Cache Rules</TabsTrigger>
+            <TabsTrigger value="response-headers">Response Headers</TabsTrigger>
             <TabsTrigger value="share-links">Share Links</TabsTrigger>
             <TabsTrigger value="ai">AI</TabsTrigger>
             <TabsTrigger value="integrations">Integrations</TabsTrigger>
@@ -491,6 +493,11 @@ export function ProjectSettingsPage() {
           {/* Cache Rules Tab */}
           <TabsContent value="cache-rules" className="mt-6">
             {project && <ProjectCacheRulesTab project={project} />}
+          </TabsContent>
+
+          {/* Response Header Rules Tab */}
+          <TabsContent value="response-headers" className="mt-6">
+            {project && <ProjectResponseHeaderRulesTab project={project} />}
           </TabsContent>
 
           {/* Share Links Tab */}

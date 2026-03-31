@@ -30,6 +30,7 @@ import { ConfigService } from '@nestjs/config';
 import { CacheConfigService } from '../cache-rules/cache-config.service';
 import { MetadataCacheService } from '../storage/cache/metadata-cache.service';
 import { ShareLinksService } from '../share-links/share-links.service';
+import { ResponseHeaderConfigService } from '../response-header-rules/response-header-config.service';
 
 /**
  * Options for serving files with appropriate cache headers
@@ -99,6 +100,7 @@ export class PublicController {
     private readonly configService: ConfigService,
     private readonly cacheConfigService: CacheConfigService,
     private readonly shareLinksService: ShareLinksService,
+    private readonly responseHeaderConfigService: ResponseHeaderConfigService,
     @Optional() private readonly metadataCache?: MetadataCacheService,
   ) {
     // Cache SVG assets at startup
@@ -693,6 +695,18 @@ export class PublicController {
       res.setHeader('X-Content-Type-Options', 'nosniff');
       res.setHeader('X-Cache-Hit', cacheHit);
 
+      // Apply response header rules (e.g., frame embedding overrides)
+      const headerConfig = await this.responseHeaderConfigService.getHeaderConfig(
+        projectId,
+        filePath,
+      );
+      if (headerConfig) {
+        this.responseHeaderConfigService.applyHeaders(res, headerConfig, []);
+        if (headerConfig.matchedRule) {
+          res.setHeader('X-Header-Rule', headerConfig.matchedRule.pathPattern);
+        }
+      }
+
       res.status(statusCode).send(fileBuffer);
     } catch (error) {
       this.logger.error(`Failed to download from storage: ${asset.storageKey}`, error);
@@ -738,6 +752,15 @@ export class PublicController {
       }
       if (!isPublic) {
         res.setHeader('Vary', 'Cookie');
+      }
+
+      // Apply response header rules (e.g., frame embedding overrides)
+      const headerConfig = await this.responseHeaderConfigService.getHeaderConfig(
+        projectId,
+        filePath,
+      );
+      if (headerConfig) {
+        this.responseHeaderConfigService.applyHeaders(res, headerConfig, []);
       }
 
       const rangeHeader = res.req.headers['range'];
