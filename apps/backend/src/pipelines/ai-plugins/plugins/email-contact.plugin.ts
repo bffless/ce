@@ -15,7 +15,7 @@ export class EmailContactPlugin implements AIToolPlugin {
     id: 'email-contact',
     name: 'Email Contact',
     description:
-      'Collect visitor contact information through chat and send it via email. Works like a conversational contact form.',
+      'Collect visitor contact information through chat and send it via email. Works like a conversational contact form',
     category: 'communication',
     icon: 'mail',
     pipelineOptionsSchema: z.object({
