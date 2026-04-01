@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { z } from 'zod';
 import {
   AIToolPlugin,
@@ -11,6 +11,8 @@ import { EmailService } from '../../../email/email.service';
 
 @Injectable()
 export class EmailContactPlugin implements AIToolPlugin {
+  private readonly logger = new Logger(EmailContactPlugin.name);
+
   readonly metadata: AIToolPluginMetadata = {
     id: 'email-contact',
     name: 'Email Contact',
@@ -292,30 +294,23 @@ Conversation History
 ${args.conversationTranscript}
 `;
 
-    try {
-      const result = await this.emailService.sendEmail({
+    // Fire-and-forget: send email in background so the chat response isn't delayed
+    this.emailService
+      .sendEmail({
         to: recipientEmail,
         subject,
         html,
         text,
         replyTo: args.contactEmail,
+      })
+      .catch((error) => {
+        this.logger.error(`Failed to send contact email: ${(error as Error).message}`);
       });
 
-      if (!result.success) {
-        return {
-          error: result.error || 'Failed to send email',
-        };
-      }
-
-      return {
-        success: true,
-        message: `Contact information for ${displayName} has been sent to the team.`,
-      };
-    } catch (error) {
-      return {
-        error: `Failed to send contact email: ${(error as Error).message}`,
-      };
-    }
+    return {
+      success: true,
+      message: `Contact information for ${displayName} has been sent to the team.`,
+    };
   }
 
   private escapeHtml(str: string): string {
