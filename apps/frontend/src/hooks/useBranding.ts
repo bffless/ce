@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useGetPublicBrandingQuery } from '@/services/settingsApi';
 import defaultLogoSvg from '@/assets/logo.svg';
 import defaultAuthLogoSvg from '@/assets/logo-circle-wire-text.svg';
@@ -8,6 +9,10 @@ export function useBranding() {
   const { data, isLoading } = useGetPublicBrandingQuery();
 
   const siteName = data?.siteName || DEFAULT_SITE_NAME;
+
+  useEffect(() => {
+    document.title = siteName;
+  }, [siteName]);
   const hasHeaderLogo = data?.hasHeaderLogo ?? false;
   const hasAuthLogo = data?.hasAuthLogo ?? false;
 
