@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.209](https://github.com/bffless/ce/compare/v0.0.208...v0.0.209) (2026-04-01)
+
+
+### Bug Fixes
+
+* branding ([d9bdac5](https://github.com/bffless/ce/commit/d9bdac57f1bf4f4791b2e97a416eeae868e29f68))
+* email send, dont await ([e18170c](https://github.com/bffless/ce/commit/e18170c0a022166e540bf71bf6adeed162ca72db))
+
 ## [0.0.208](https://github.com/bffless/ce/compare/v0.0.207...v0.0.208) (2026-04-01)
 
 
