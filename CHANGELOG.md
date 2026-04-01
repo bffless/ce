@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.208](https://github.com/bffless/ce/compare/v0.0.207...v0.0.208) (2026-04-01)
+
+
+### Bug Fixes
+
+* revert full conversation messages in email-contact plugin ([c71cb90](https://github.com/bffless/ce/commit/c71cb90b4d6eb224580d0ba57c7cafe0bc4b828c))
+
 ## [0.0.207](https://github.com/bffless/ce/compare/v0.0.206...v0.0.207) (2026-04-01)
 
 
