@@ -329,6 +329,10 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
           context.projectId,
           config.plugins.options,
           context.user?.id,
+          messages.filter((m) => m.role === 'user' || m.role === 'assistant').map((m) => ({
+            role: m.role as string,
+            content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+          })),
         );
         const filteredPluginTools = this.filterPluginTools(allPluginTools, config.plugins);
         const pluginToolNames = Object.keys(filteredPluginTools);

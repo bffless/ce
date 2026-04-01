@@ -9,6 +9,8 @@ export interface AIToolContext {
   pluginConfig: Record<string, unknown>;
   /** Per-pipeline options set in the pipeline editor (e.g., calendarId) */
   pipelineOptions?: Record<string, unknown>;
+  /** Conversation messages available to the tool (set at execution time, not build time) */
+  messages?: Array<{ role: string; content: string }>;
 }
 
 /**

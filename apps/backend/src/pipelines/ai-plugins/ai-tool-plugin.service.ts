@@ -204,6 +204,7 @@ export class AIToolPluginService {
     projectId: string,
     pipelinePluginOptions?: Record<string, Record<string, unknown>>,
     userId?: string,
+    messages?: Array<{ role: string; content: string }>,
   ): Promise<Record<string, any>> {
     const storedPlugins = await this.getStoredPlugins(projectId);
     const tools: Record<string, any> = {};
@@ -235,6 +236,7 @@ export class AIToolPluginService {
           userId,
           pluginConfig: decryptedConfig,
           pipelineOptions,
+          messages,
         };
 
         for (const toolDef of pluginTools) {

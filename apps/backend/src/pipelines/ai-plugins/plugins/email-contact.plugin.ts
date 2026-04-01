@@ -90,7 +90,8 @@ export class EmailContactPlugin implements AIToolPlugin {
       requiredDesc = ` You MUST collect the following before calling this tool: ${requiredFields.join(', ')}.`;
     }
     if (needsContactMethodReminder) {
-      requiredDesc += ' You MUST also collect at least one contact method (email or phone) so the visitor can be reached.';
+      requiredDesc +=
+        ' You MUST also collect at least one contact method (email or phone) so the visitor can be reached.';
     }
 
     // Build input schema dynamically based on required field settings
@@ -189,7 +190,8 @@ export class EmailContactPlugin implements AIToolPlugin {
         ? `You MUST collect the following before sending: ${requiredItems.join(', ')}.`
         : '';
     if (needsContactMethodReminder) {
-      requiredLine += ' You MUST also collect at least one contact method (email address or phone number) so the visitor can be reached.';
+      requiredLine +=
+        ' You MUST also collect at least one contact method (email address or phone number) so the visitor can be reached.';
     }
     const optionalLine =
       optionalItems.length > 0
@@ -204,6 +206,17 @@ export class EmailContactPlugin implements AIToolPlugin {
 4. After sending, confirm to the visitor that their information has been sent and ${nameRef} will follow up.
 
 Be conversational and helpful — don't make it feel like a form. Gather information naturally through dialogue.`;
+  }
+
+  private formatMessagesAsTranscript(
+    messages: Array<{ role: string; content: string }>,
+  ): string {
+    return messages
+      .map((m) => {
+        const label = m.role === 'user' ? 'Visitor' : 'Assistant';
+        return `${label}: ${m.content}`;
+      })
+      .join('\n\n');
   }
 
   private async sendContactEmail(
@@ -238,6 +251,12 @@ Be conversational and helpful — don't make it feel like a form. Gather informa
     const displayReason = args.reason || 'General inquiry';
     const subject = `${subjectPrefix}: ${displayName} - ${displayReason}`;
 
+    // Use actual conversation messages from context if available, fall back to LLM-provided transcript
+    const transcript =
+      context.messages && context.messages.length > 0
+        ? this.formatMessagesAsTranscript(context.messages)
+        : args.conversationTranscript;
+
     const contactMethodLine = args.preferredContactMethod
       ? `<strong>Preferred Contact:</strong> ${args.preferredContactMethod}`
       : '';
@@ -267,7 +286,7 @@ Be conversational and helpful — don't make it feel like a form. Gather informa
 
     <h3 style="margin-top: 24px; color: #495057;">Conversation History</h3>
     <div style="background: #f8f9fa; padding: 16px; border-radius: 6px; border: 1px solid #e9ecef; white-space: pre-wrap; font-size: 14px; line-height: 1.6;">
-${this.escapeHtml(args.conversationTranscript)}
+${this.escapeHtml(transcript)}
     </div>
   </div>
 
@@ -289,7 +308,7 @@ Reason: ${displayReason}
 
 Conversation History
 --------------------
-${args.conversationTranscript}
+${transcript}
 `;
 
     try {
