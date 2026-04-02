@@ -16,6 +16,7 @@ jest.mock('../db/client', () => ({
     select: jest.fn().mockReturnThis(),
     from: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
+    orderBy: jest.fn().mockResolvedValue([]),
     limit: jest.fn().mockResolvedValue([]),
   },
 }));
@@ -36,6 +37,7 @@ describe('ProxyMiddleware', () => {
   beforeEach(() => {
     mockProxyRulesService = {
       getEffectiveRulesForRuleSet: jest.fn().mockResolvedValue([]),
+      getEffectiveRulesForMultipleRuleSets: jest.fn().mockResolvedValue([]),
     } as any;
 
     mockProxyService = {
