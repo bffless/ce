@@ -319,8 +319,16 @@ export type HandlerConfig =
   | EmbedStoreHandlerConfig
   | VectorSearchHandlerConfig
   | HttpRequestHandlerConfig
+  | SignedUrlHandlerConfig
   | StripeCheckoutHandlerConfig
   | StripeWebhookHandlerConfig;
+
+export interface SignedUrlHandlerConfig extends BaseHandlerConfig {
+  /** Storage key / path (supports expressions, e.g. "steps.upload.storage_path") */
+  path: string;
+  /** URL expiration in seconds. Default: 3600 */
+  expiresIn?: number;
+}
 
 export interface StripeCheckoutHandlerConfig extends BaseHandlerConfig {
   priceId: string;

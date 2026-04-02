@@ -737,5 +737,8 @@ export interface ReplicateHandlerConfig extends BaseHandlerConfig {
   outputField?: string;
 }
 
+// SignedUrlHandlerConfig is defined in handlers/signed-url.handler.ts
+export type { SignedUrlHandlerConfig } from '../handlers/signed-url.handler';
+
 // HttpRequestHandlerConfig is defined in handlers/http-request.handler.ts
 export type { HttpRequestHandlerConfig } from '../handlers/http-request.handler';

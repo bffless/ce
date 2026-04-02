@@ -49,7 +49,8 @@ export type HandlerType =
   | 'vector_search'
   | 'http_request'
   | 'stripe_checkout'
-  | 'stripe_webhook';
+  | 'stripe_webhook'
+  | 'signed_url';
 
 export interface Pipeline {
   id: string;
