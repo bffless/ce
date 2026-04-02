@@ -201,12 +201,12 @@ export class ExpressionEvaluator {
       if (value === null || value === undefined) {
         return 'null';
       }
-      // For triple braces, always output as JSON (raw, no escaping)
+      // For triple braces, output raw (no HTML escaping)
       if (typeof value === 'object') {
         return JSON.stringify(value);
       }
-      // Primitives also get JSON serialization for consistency
-      return JSON.stringify(value);
+      // Primitives: output as-is without JSON quotes
+      return String(value);
     });
 
     // Then, handle double braces {{expr}} for string interpolation
