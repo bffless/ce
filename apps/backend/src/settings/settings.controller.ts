@@ -16,7 +16,6 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiConsumes } from '@nestjs/swagger';
 import { Response } from 'express';
-import ThirdParty from 'supertokens-node/recipe/thirdparty';
 import Multitenancy from 'supertokens-node/recipe/multitenancy';
 import { PrimaryContentService, PrimaryContentConfig } from './primary-content.service';
 import { SmtpService } from './smtp.service';
@@ -232,11 +231,11 @@ export class SettingsController {
   @ApiOperation({ summary: 'Get OAuth provider configuration' })
   @ApiResponse({ status: 200, description: 'OAuth configuration status' })
   async getOAuthSettings(): Promise<{
-    google: { enabled: boolean; clientId?: string };
+    google: { enabled: boolean; configured: boolean };
   }> {
     const tenantId = this.getTenantId();
+    let googleConfigured = false;
     let googleEnabled = false;
-    let googleClientId: string | undefined;
 
     try {
       const tenantInfo = await Multitenancy.getTenant(tenantId);
@@ -244,85 +243,36 @@ export class SettingsController {
         const googleConfig = tenantInfo.thirdParty?.providers?.find(
           (p: { thirdPartyId: string }) => p.thirdPartyId === 'google',
         );
-        if (googleConfig) {
-          googleEnabled = true;
-          googleClientId = googleConfig.clients?.[0]?.clientId;
-        }
+        googleConfigured = !!googleConfig;
       }
     } catch (error) {
       this.logger.error('[OAuth Settings] Failed to get tenant info:', error);
     }
 
+    // Google OAuth is enabled if credentials are configured at the platform level
+    // AND this workspace hasn't explicitly disabled it via the feature flag
+    if (googleConfigured) {
+      googleEnabled = await this.featureFlagsService.isEnabled('ENABLE_GOOGLE_OAUTH');
+    }
+
     return {
-      google: { enabled: googleEnabled, clientId: googleClientId },
+      google: { enabled: googleEnabled, configured: googleConfigured },
     };
   }
 
   @Patch('oauth/google')
   @Roles('admin')
-  @ApiOperation({ summary: 'Configure or disable Google OAuth' })
-  @ApiResponse({ status: 200, description: 'Google OAuth configuration updated' })
+  @ApiOperation({ summary: 'Enable or disable Google OAuth for this workspace' })
+  @ApiResponse({ status: 200, description: 'Google OAuth setting updated' })
   async updateGoogleOAuth(
-    @Body() body: { clientId?: string; clientSecret?: string; enabled?: boolean },
-  ): Promise<{ success: boolean; google: { enabled: boolean; clientId?: string } }> {
-    const tenantId = this.getTenantId();
-
-    if (body.enabled === false) {
-      // Disable Google OAuth
-      try {
-        await Multitenancy.deleteThirdPartyConfig(tenantId, 'google');
-      } catch (error) {
-        this.logger.warn('[OAuth Settings] Failed to delete Google config (may not exist):', error);
-      }
-
-      // Disable the feature flag
-      await this.featureFlagsService.setFlag('ENABLE_GOOGLE_OAUTH', false);
-
-      return { success: true, google: { enabled: false } };
-    }
-
-    // Enable/update Google OAuth
-    if (!body.clientId || !body.clientSecret) {
-      throw new BadRequestException('clientId and clientSecret are required to enable Google OAuth');
-    }
-
-    await Multitenancy.createOrUpdateThirdPartyConfig(tenantId, {
-      thirdPartyId: 'google',
-      clients: [
-        {
-          clientId: body.clientId,
-          clientSecret: body.clientSecret,
-        },
-      ],
-    });
-
-    // Enable the feature flag
-    await this.featureFlagsService.setFlag('ENABLE_GOOGLE_OAUTH', true);
+    @Body() body: { enabled: boolean },
+  ): Promise<{ success: boolean; google: { enabled: boolean } }> {
+    // Only toggle the feature flag — credentials are managed at the platform level
+    await this.featureFlagsService.setFlag('ENABLE_GOOGLE_OAUTH', body.enabled);
 
     return {
       success: true,
-      google: { enabled: true, clientId: body.clientId },
+      google: { enabled: body.enabled },
     };
-  }
-
-  @Post('oauth/google/test')
-  @Roles('admin')
-  @ApiOperation({ summary: 'Test Google OAuth configuration' })
-  @ApiResponse({ status: 200, description: 'Google OAuth test result' })
-  async testGoogleOAuth(): Promise<{ success: boolean; message: string }> {
-    const tenantId = this.getTenantId();
-
-    try {
-      const provider = await ThirdParty.getProvider(tenantId, 'google', undefined);
-      if (!provider) {
-        return { success: false, message: 'Google OAuth provider is not configured' };
-      }
-      return { success: true, message: 'Google OAuth provider is configured and available' };
-    } catch (error) {
-      return {
-        success: false,
-        message: error instanceof Error ? error.message : 'Failed to validate Google OAuth configuration',
-      };
-    }
   }
 }

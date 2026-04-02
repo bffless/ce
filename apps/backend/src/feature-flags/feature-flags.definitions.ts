@@ -252,9 +252,9 @@ export const FLAG_DEFINITIONS: Record<string, FlagDefinition> = {
 
   ENABLE_GOOGLE_OAUTH: {
     envKey: 'FEATURE_GOOGLE_OAUTH',
-    defaultValue: false,
+    defaultValue: true,
     type: 'boolean',
-    description: 'Enable Sign in with Google on login and signup pages',
+    description: 'Enable Sign in with Google on login and signup pages (requires Google OAuth credentials in SuperTokens). Workspace admins can disable per-workspace.',
     category: 'features',
     exposeToClient: true,
   },
