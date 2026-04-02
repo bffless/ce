@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.210](https://github.com/bffless/ce/compare/v0.0.209...v0.0.210) (2026-04-02)
+
+
+### Bug Fixes
+
+* pass deployment context to pipeline function handler sandbox ([cd9b435](https://github.com/bffless/ce/commit/cd9b4350c4459f2db719135534373651ffe96b33))
+* reverts member view ([090277c](https://github.com/bffless/ce/commit/090277cbea23c59db056cfff0b2d67883e35af7b))
+
 ## [0.0.209](https://github.com/bffless/ce/compare/v0.0.208...v0.0.209) (2026-04-01)
 
 
