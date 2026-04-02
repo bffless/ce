@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.211](https://github.com/bffless/ce/compare/v0.0.210...v0.0.211) (2026-04-02)
+
+
+### Features
+
+* add signed_url pipeline handler for presigned storage URLs ([d9f17b6](https://github.com/bffless/ce/commit/d9f17b6a388fc4290bdac35891e34da577f43ec5))
+
+
+### Bug Fixes
+
+* triple-brace template expressions should not JSON-quote string primitives ([7d14a71](https://github.com/bffless/ce/commit/7d14a71fe784749466f73cf9c9a7cad11d3a3dfd))
+
 ## [0.0.210](https://github.com/bffless/ce/compare/v0.0.209...v0.0.210) (2026-04-02)
 
 
