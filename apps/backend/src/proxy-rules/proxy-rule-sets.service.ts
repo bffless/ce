@@ -4,11 +4,14 @@ import {
   ConflictException,
   ForbiddenException,
   Logger,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { db } from '../db/client';
-import { proxyRuleSets, proxyRules, projects } from '../db/schema';
+import { proxyRuleSets, proxyRules, projects, aliasProxyRuleSets, deploymentAliases } from '../db/schema';
 import { PermissionsService } from '../permissions/permissions.service';
+import { NginxRegenerationService } from '../domains/nginx-regeneration.service';
 import {
   CreateProxyRuleSetDto,
   UpdateProxyRuleSetDto,
@@ -24,6 +27,8 @@ export class ProxyRuleSetsService {
   constructor(
     private readonly permissionsService: PermissionsService,
     private readonly proxyRulesService: ProxyRulesService,
+    @Inject(forwardRef(() => NginxRegenerationService))
+    private readonly nginxRegenerationService: NginxRegenerationService,
   ) {}
 
   /**
@@ -222,7 +227,7 @@ export class ProxyRuleSetsService {
   }
 
   /**
-   * Delete a rule set (cascades to rules)
+   * Delete a rule set (cascades to rules and join table rows)
    */
   async delete(id: string, userId: string, userRole: string): Promise<void> {
     const existing = await this.findById(id);
@@ -247,10 +252,51 @@ export class ProxyRuleSetsService {
       );
     }
 
-    // Rules are deleted by cascade (onDelete: 'cascade')
+    // Find aliases that use this rule set (via join table) so we can regenerate nginx after
+    const affectedJoinRows = await db
+      .select({ aliasId: aliasProxyRuleSets.aliasId })
+      .from(aliasProxyRuleSets)
+      .where(eq(aliasProxyRuleSets.proxyRuleSetId, id));
+
+    // Also find aliases using the legacy column
+    const affectedLegacyAliases = await db
+      .select({ id: deploymentAliases.id, projectId: deploymentAliases.projectId, alias: deploymentAliases.alias })
+      .from(deploymentAliases)
+      .where(eq(deploymentAliases.proxyRuleSetId, id));
+
+    // Collect unique alias info for nginx regeneration
+    const aliasIdsFromJoin = affectedJoinRows.map((r) => r.aliasId);
+    const affectedAliases: { projectId: string; alias: string }[] = [...affectedLegacyAliases];
+
+    if (aliasIdsFromJoin.length > 0) {
+      const joinAliases = await db
+        .select({ projectId: deploymentAliases.projectId, alias: deploymentAliases.alias })
+        .from(deploymentAliases)
+        .where(
+          inArray(deploymentAliases.id, aliasIdsFromJoin),
+        );
+      affectedAliases.push(...joinAliases);
+    }
+
+    // Deduplicate by projectId+alias
+    const uniqueAliases = Array.from(
+      new Map(affectedAliases.map((a) => [`${a.projectId}:${a.alias}`, a])).values(),
+    );
+
+    // Delete rule set — cascades to proxy_rules and alias_proxy_rule_sets rows
+    // Also clear legacy column on affected aliases (set null since ON DELETE SET NULL handles this)
     await db.delete(proxyRuleSets).where(eq(proxyRuleSets.id, id));
 
-    this.logger.log(`Deleted proxy rule set ${id}`);
+    // Regenerate nginx for affected aliases
+    for (const alias of uniqueAliases) {
+      try {
+        await this.nginxRegenerationService.regenerateForAlias(alias.projectId, alias.alias);
+      } catch (error) {
+        this.logger.warn(`Failed to regenerate nginx for alias ${alias.alias}: ${error.message}`);
+      }
+    }
+
+    this.logger.log(`Deleted proxy rule set ${id}, regenerated nginx for ${uniqueAliases.length} aliases`);
   }
 
   // ==================== Helper Methods ====================

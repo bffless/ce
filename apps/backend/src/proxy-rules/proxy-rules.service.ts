@@ -9,7 +9,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { eq, asc } from 'drizzle-orm';
+import { eq, asc, inArray } from 'drizzle-orm';
 import * as crypto from 'crypto';
 import { db } from '../db/client';
 import { proxyRules, proxyRuleSets } from '../db/schema';
@@ -104,6 +104,55 @@ export class ProxyRulesService {
 
     // Filter to only enabled rules and decrypt
     return rules.filter((r) => r.isEnabled).map((rule) => this.decryptHeaderConfig(rule));
+  }
+
+  /**
+   * Get effective rules from multiple rule sets, merged by set order then rule order.
+   * If two rule sets define the same path+method, the lower-ordered set's rule wins.
+   *
+   * @param ruleSetIds - Ordered array of rule set IDs (lower index = higher priority)
+   */
+  async getEffectiveRulesForMultipleRuleSets(
+    ruleSetIds: string[],
+  ): Promise<(typeof proxyRules.$inferSelect)[]> {
+    if (ruleSetIds.length === 0) {
+      return [];
+    }
+
+    // Single rule set — use the existing method
+    if (ruleSetIds.length === 1) {
+      return this.getEffectiveRulesForRuleSet(ruleSetIds[0]);
+    }
+
+    // Fetch all rules from all sets in one query
+    const allRules = await db
+      .select()
+      .from(proxyRules)
+      .where(inArray(proxyRules.ruleSetId, ruleSetIds))
+      .orderBy(asc(proxyRules.order));
+
+    // Filter enabled and decrypt
+    const enabledRules = allRules
+      .filter((r) => r.isEnabled)
+      .map((rule) => this.decryptHeaderConfig(rule));
+
+    // Sort by rule set order (priority), then by rule order within set
+    const setOrderMap = new Map(ruleSetIds.map((id, index) => [id, index]));
+    enabledRules.sort((a, b) => {
+      const setOrderA = setOrderMap.get(a.ruleSetId) ?? Infinity;
+      const setOrderB = setOrderMap.get(b.ruleSetId) ?? Infinity;
+      if (setOrderA !== setOrderB) return setOrderA - setOrderB;
+      return a.order - b.order;
+    });
+
+    // Deduplicate by path+method — first wins (higher priority set)
+    const seen = new Set<string>();
+    return enabledRules.filter((rule) => {
+      const key = `${rule.pathPattern}:${rule.method ?? ''}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }
 
   /**

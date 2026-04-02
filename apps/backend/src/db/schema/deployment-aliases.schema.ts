@@ -10,6 +10,7 @@ import {
 import { relations } from 'drizzle-orm';
 import { projects } from './projects.schema';
 import { proxyRuleSets } from './proxy-rule-sets.schema';
+import { aliasProxyRuleSets } from './alias-proxy-rule-sets.schema';
 
 export const deploymentAliases = pgTable(
   'deployment_aliases',
@@ -82,16 +83,18 @@ export const deploymentAliases = pgTable(
 /**
  * Relations for deployment aliases
  */
-export const deploymentAliasesRelations = relations(deploymentAliases, ({ one }) => ({
+export const deploymentAliasesRelations = relations(deploymentAliases, ({ one, many }) => ({
   project: one(projects, {
     fields: [deploymentAliases.projectId],
     references: [projects.id],
   }),
-  // Proxy rule set for this alias (overrides project default)
+  // Legacy: single proxy rule set for this alias (overrides project default)
   proxyRuleSet: one(proxyRuleSets, {
     fields: [deploymentAliases.proxyRuleSetId],
     references: [proxyRuleSets.id],
   }),
+  // New: multiple proxy rule sets via join table
+  aliasProxyRuleSets: many(aliasProxyRuleSets),
 }));
 
 export type DeploymentAlias = typeof deploymentAliases.$inferSelect;

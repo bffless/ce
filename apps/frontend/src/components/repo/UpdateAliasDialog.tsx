@@ -17,6 +17,13 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Badge } from '@/components/ui/badge';
+import {
   useUpdateAliasMutation,
   useGetDeploymentsQuery,
   useGetAliasVisibilityQuery,
@@ -26,7 +33,7 @@ import {
 } from '@/services/repoApi';
 import { useGetProjectRuleSetsQuery } from '@/services/proxyRulesApi';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Globe, Lock, ArrowDown, Shield } from 'lucide-react';
+import { Loader2, Globe, Lock, ArrowDown, Shield, ChevronDown, X } from 'lucide-react';
 
 interface UpdateAliasDialogProps {
   owner: string;
@@ -35,7 +42,7 @@ interface UpdateAliasDialogProps {
   aliasName: string;
   currentCommitSha: string;
   currentBranch: string;
-  currentProxyRuleSetId?: string | null;
+  currentProxyRuleSetIds?: string[];
   currentIsPublic?: boolean | null;
   currentUnauthorizedBehavior?: UnauthorizedBehavior | null;
   currentRequiredRole?: RequiredRole | null;
@@ -54,7 +61,7 @@ export function UpdateAliasDialog({
   aliasName,
   currentCommitSha,
   currentBranch,
-  currentProxyRuleSetId,
+  currentProxyRuleSetIds,
   currentIsPublic,
   currentUnauthorizedBehavior,
   currentRequiredRole,
@@ -62,8 +69,8 @@ export function UpdateAliasDialog({
   onOpenChange,
 }: UpdateAliasDialogProps) {
   const [selectedCommitSha, setSelectedCommitSha] = useState(currentCommitSha);
-  const [selectedRuleSetId, setSelectedRuleSetId] = useState<string | null | undefined>(
-    currentProxyRuleSetId
+  const [selectedRuleSetIds, setSelectedRuleSetIds] = useState<string[]>(
+    currentProxyRuleSetIds ?? []
   );
   // Visibility and access control state ('inherit' means null)
   const [visibility, setVisibility] = useState<'inherit' | 'public' | 'private'>('inherit');
@@ -106,11 +113,16 @@ export function UpdateAliasDialog({
     return acc;
   }, [] as typeof deploymentsData.deployments) || [];
 
+  // Create a map of rule set ID to name for display
+  const ruleSetNameMap = new Map(
+    ruleSetsData?.ruleSets.map((rs) => [rs.id, rs]) || []
+  );
+
   // Reset selected values when dialog opens or current values change
   useEffect(() => {
     if (open) {
       setSelectedCommitSha(currentCommitSha);
-      setSelectedRuleSetId(currentProxyRuleSetId);
+      setSelectedRuleSetIds(currentProxyRuleSetIds ?? []);
       // Initialize visibility from current value
       if (currentIsPublic === null || currentIsPublic === undefined) {
         setVisibility('inherit');
@@ -123,14 +135,29 @@ export function UpdateAliasDialog({
       setUnauthorizedBehavior(currentUnauthorizedBehavior ?? 'inherit');
       setRequiredRole(currentRequiredRole ?? 'inherit');
     }
-  }, [open, currentCommitSha, currentProxyRuleSetId, currentIsPublic, currentUnauthorizedBehavior, currentRequiredRole]);
+  }, [open, currentCommitSha, currentProxyRuleSetIds, currentIsPublic, currentUnauthorizedBehavior, currentRequiredRole]);
+
+  // Toggle a rule set in the selection
+  const toggleRuleSet = (id: string) => {
+    setSelectedRuleSetIds((prev) =>
+      prev.includes(id) ? prev.filter((rid) => rid !== id) : [...prev, id]
+    );
+  };
+
+  // Remove a rule set from the selection
+  const removeRuleSet = (id: string) => {
+    setSelectedRuleSetIds((prev) => prev.filter((rid) => rid !== id));
+  };
 
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const commitChanged = selectedCommitSha !== currentCommitSha;
-    const ruleSetChanged = selectedRuleSetId !== currentProxyRuleSetId;
+    const currentIds = currentProxyRuleSetIds ?? [];
+    const ruleSetChanged =
+      selectedRuleSetIds.length !== currentIds.length ||
+      selectedRuleSetIds.some((id, i) => id !== currentIds[i]);
 
     // Check visibility changes
     const getIsPublicValue = (): boolean | null => {
@@ -166,12 +193,12 @@ export function UpdateAliasDialog({
     try {
       // Update commit/proxy rules if changed
       if (commitChanged || ruleSetChanged) {
-        const updateData: { commitSha?: string; proxyRuleSetId?: string | null } = {};
+        const updateData: { commitSha?: string; proxyRuleSetIds?: string[] } = {};
         if (commitChanged && selectedCommitSha) {
           updateData.commitSha = selectedCommitSha;
         }
         if (ruleSetChanged) {
-          updateData.proxyRuleSetId = selectedRuleSetId;
+          updateData.proxyRuleSetIds = selectedRuleSetIds;
         }
 
         await updateAlias({
@@ -220,7 +247,7 @@ export function UpdateAliasDialog({
     if (!newOpen) {
       // Reset form when closing
       setSelectedCommitSha(currentCommitSha);
-      setSelectedRuleSetId(currentProxyRuleSetId);
+      setSelectedRuleSetIds(currentProxyRuleSetIds ?? []);
       // Reset visibility and access control
       if (currentIsPublic === null || currentIsPublic === undefined) {
         setVisibility('inherit');
@@ -281,33 +308,62 @@ export function UpdateAliasDialog({
               </p>
             </div>
 
-            {/* Proxy Rule Set Selection */}
+            {/* Proxy Rule Sets Selection (Multi-select) */}
             {ruleSetsData && ruleSetsData.ruleSets.length > 0 && (
               <div className="grid gap-2">
-                <Label htmlFor="ruleset-select">Proxy Rule Set</Label>
-                <Select
-                  value={selectedRuleSetId || 'none'}
-                  onValueChange={(value) => setSelectedRuleSetId(value === 'none' ? null : value)}
-                >
-                  <SelectTrigger id="ruleset-select">
-                    <SelectValue placeholder="Select a rule set" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">
-                      <span className="text-muted-foreground">None (use project default)</span>
-                    </SelectItem>
+                <Label>Proxy Rule Sets</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="justify-between w-full">
+                      <span className="text-sm truncate">
+                        {selectedRuleSetIds.length === 0
+                          ? 'None (use project default)'
+                          : `${selectedRuleSetIds.length} rule set${selectedRuleSetIds.length !== 1 ? 's' : ''} selected`}
+                      </span>
+                      <ChevronDown className="h-4 w-4 ml-2 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-2" align="start">
                     {ruleSetsData.ruleSets.map((ruleSet) => (
-                      <SelectItem key={ruleSet.id} value={ruleSet.id}>
-                        {ruleSet.name}
+                      <label
+                        key={ruleSet.id}
+                        className="flex items-center gap-2 p-2 rounded hover:bg-accent cursor-pointer"
+                      >
+                        <Checkbox
+                          checked={selectedRuleSetIds.includes(ruleSet.id)}
+                          onCheckedChange={() => toggleRuleSet(ruleSet.id)}
+                        />
+                        <span className="text-sm">{ruleSet.name}</span>
                         {ruleSet.environment && (
-                          <span className="text-muted-foreground ml-2">({ruleSet.environment})</span>
+                          <span className="text-xs text-muted-foreground">({ruleSet.environment})</span>
                         )}
-                      </SelectItem>
+                      </label>
                     ))}
-                  </SelectContent>
-                </Select>
+                  </PopoverContent>
+                </Popover>
+                {/* Show selected rule sets as ordered removable badges */}
+                {selectedRuleSetIds.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {selectedRuleSetIds.map((id, index) => {
+                      const rs = ruleSetNameMap.get(id);
+                      return (
+                        <Badge key={id} variant="secondary" className="gap-1 pr-1">
+                          <span className="text-xs text-muted-foreground mr-0.5">{index + 1}.</span>
+                          {rs?.name ?? id.substring(0, 8)}
+                          <button
+                            type="button"
+                            className="ml-0.5 rounded-sm hover:bg-muted-foreground/20 p-0.5"
+                            onClick={() => removeRuleSet(id)}
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </Badge>
+                      );
+                    })}
+                  </div>
+                )}
                 <p className="text-xs text-muted-foreground">
-                  Apply proxy rules to forward requests to external backends
+                  Rules merge in order — first rule set's rules take priority
                 </p>
               </div>
             )}

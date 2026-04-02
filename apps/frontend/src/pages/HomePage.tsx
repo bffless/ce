@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { OnboardingModal } from '@/components/setup/onboarding/OnboardingModal';
-import { FolderGit2, Settings, Users, UserCog, ShieldAlert, X, ArrowRight } from 'lucide-react';
+import { FolderGit2, Settings, Users, UserCog, ShieldAlert, X, ArrowRight, ExternalLink } from 'lucide-react';
 import { useBranding } from '@/hooks/useBranding';
 
 /**
@@ -105,6 +105,17 @@ export function HomePage() {
               <p className="mt-2 text-lg text-[#4a4a4a] dark:text-muted-foreground">
                 Admin Control Panel
               </p>
+              {window.location.hostname.startsWith('admin.') && (
+                <a
+                  href={`${window.location.protocol}//${window.location.hostname.replace(/^admin\./, '')}${window.location.port ? `:${window.location.port}` : ''}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-3 inline-flex items-center gap-2 rounded-md bg-[#d96459] px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#c4574d] transition-colors"
+                >
+                  Visit Site
+                  <ExternalLink className="h-4 w-4" />
+                </a>
+              )}
             </div>
           </div>
         </div>

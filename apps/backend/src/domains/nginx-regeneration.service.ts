@@ -1,7 +1,7 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { db } from '../db/client';
-import { domainMappings, deploymentAliases, projects, pathRedirects } from '../db/schema';
-import { eq, and } from 'drizzle-orm';
+import { domainMappings, deploymentAliases, projects, pathRedirects, aliasProxyRuleSets } from '../db/schema';
+import { eq, and, inArray } from 'drizzle-orm';
 import { NginxConfigService, NginxProxyRule, NginxPathRedirect } from './nginx-config.service';
 import { NginxReloadService } from './nginx-reload.service';
 import { ProjectsService } from '../projects/projects.service';
@@ -37,24 +37,47 @@ export class NginxRegenerationService {
   async regenerateForRuleSet(ruleSetId: string): Promise<void> {
     this.logger.log(`Regenerating nginx configs for rule set ${ruleSetId}`);
 
-    // Find all aliases using this rule set
-    const aliases = await db
+    // Find aliases using this rule set via join table
+    const joinRows = await db
+      .select({ aliasId: aliasProxyRuleSets.aliasId })
+      .from(aliasProxyRuleSets)
+      .where(eq(aliasProxyRuleSets.proxyRuleSetId, ruleSetId));
+
+    // Also find aliases using the legacy column
+    const legacyAliases = await db
       .select()
       .from(deploymentAliases)
       .where(eq(deploymentAliases.proxyRuleSetId, ruleSetId));
 
-    if (aliases.length === 0) {
+    // Resolve join table alias IDs to full alias records
+    const joinAliasIds = joinRows.map((r) => r.aliasId);
+    let joinAliases: (typeof deploymentAliases.$inferSelect)[] = [];
+    if (joinAliasIds.length > 0) {
+      joinAliases = await db
+        .select()
+        .from(deploymentAliases)
+        .where(inArray(deploymentAliases.id, joinAliasIds));
+    }
+
+    // Deduplicate by ID
+    const allAliasMap = new Map<string, typeof deploymentAliases.$inferSelect>();
+    for (const alias of [...legacyAliases, ...joinAliases]) {
+      allAliasMap.set(alias.id, alias);
+    }
+    const allAliases = Array.from(allAliasMap.values());
+
+    if (allAliases.length === 0) {
       this.logger.debug(`No aliases using rule set ${ruleSetId}, skipping regeneration`);
       return;
     }
 
     // Regenerate nginx config for each alias
-    for (const alias of aliases) {
+    for (const alias of allAliases) {
       await this.regenerateForAlias(alias.projectId, alias.alias);
     }
 
     this.logger.log(
-      `Regenerated nginx configs for ${aliases.length} aliases using rule set ${ruleSetId}`,
+      `Regenerated nginx configs for ${allAliases.length} aliases using rule set ${ruleSetId}`,
     );
   }
 

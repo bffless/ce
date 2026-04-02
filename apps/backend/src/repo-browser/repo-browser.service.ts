@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { eq, and, desc, asc, sql, count } from 'drizzle-orm';
 import { db } from '../db/client';
-import { assets, deploymentAliases, proxyRuleSets } from '../db/schema';
+import { assets, deploymentAliases, proxyRuleSets, aliasProxyRuleSets } from '../db/schema';
 import {
   GetFileTreeResponseDto,
   GetRepositoryRefsResponseDto,
@@ -535,7 +535,7 @@ export class RepoBrowserService {
       .where(and(...conditions))
       .orderBy(desc(deploymentAliases.updatedAt));
 
-    // Get branch information for each alias by joining with assets
+    // Get branch information and join-table rule set IDs for each alias
     const aliasesWithDetails = await Promise.all(
       aliasesData.map(async (alias) => {
         const [asset] = await db
@@ -543,6 +543,17 @@ export class RepoBrowserService {
           .from(assets)
           .where(and(eq(assets.projectId, project.id), eq(assets.commitSha, alias.commitSha)))
           .limit(1);
+
+        // Get rule set IDs from join table
+        const joinRows = await db
+          .select({ proxyRuleSetId: aliasProxyRuleSets.proxyRuleSetId })
+          .from(aliasProxyRuleSets)
+          .where(eq(aliasProxyRuleSets.aliasId, alias.id))
+          .orderBy(asc(aliasProxyRuleSets.order));
+
+        const proxyRuleSetIds = joinRows.length > 0
+          ? joinRows.map((r) => r.proxyRuleSetId)
+          : alias.proxyRuleSetId ? [alias.proxyRuleSetId] : [];
 
         return {
           id: alias.id,
@@ -556,6 +567,7 @@ export class RepoBrowserService {
           isAutoPreview: alias.isAutoPreview,
           basePath: alias.basePath ?? undefined,
           proxyRuleSetId: alias.proxyRuleSetId ?? null,
+          proxyRuleSetIds,
         };
       }),
     );
@@ -636,7 +648,7 @@ export class RepoBrowserService {
     const aliasResponse = await this.deploymentsService.updateAlias(
       repository,
       aliasName,
-      { commitSha: dto.commitSha, proxyRuleSetId: dto.proxyRuleSetId },
+      { commitSha: dto.commitSha, proxyRuleSetId: dto.proxyRuleSetId, proxyRuleSetIds: dto.proxyRuleSetIds },
       userId,
       userRole,
     );

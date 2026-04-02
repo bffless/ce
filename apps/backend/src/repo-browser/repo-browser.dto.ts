@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsInt, Min, Max, IsEnum, Matches, IsBoolean, IsUUID } from 'class-validator';
+import { IsString, IsOptional, IsInt, Min, Max, IsEnum, Matches, IsBoolean, IsUUID, IsArray } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 // Response DTOs for GET /api/repo/:owner/:repo/:commitSha/files
@@ -324,11 +324,17 @@ export class AliasDetailDto {
   basePath?: string;
 
   @ApiPropertyOptional({
-    description: 'Proxy rule set ID assigned to this alias',
+    description: 'Proxy rule set ID assigned to this alias (legacy — use proxyRuleSetIds)',
     example: '550e8400-e29b-41d4-a716-446655440000',
     nullable: true,
   })
   proxyRuleSetId?: string | null;
+
+  @ApiPropertyOptional({
+    description: 'Ordered array of proxy rule set IDs assigned to this alias',
+    type: [String],
+  })
+  proxyRuleSetIds?: string[];
 }
 
 export class GetAliasesResponseDto {
@@ -379,6 +385,15 @@ export class UpdateAliasRequestDto {
   @IsOptional()
   @IsUUID()
   proxyRuleSetId?: string | null;
+
+  @ApiPropertyOptional({
+    description: 'Ordered array of proxy rule set IDs to apply to this alias. Overrides proxyRuleSetId if both are provided.',
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  proxyRuleSetIds?: string[];
 }
 
 export class AliasCreatedResponseDto {
