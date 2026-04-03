@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.215](https://github.com/bffless/ce/compare/v0.0.214...v0.0.215) (2026-04-03)
+
+
+### Features
+
+* support multiple default proxy rule sets per project ([f34c043](https://github.com/bffless/ce/commit/f34c043748b394a4a93149c3b104031bbd043769))
+
 ## [0.0.214](https://github.com/bffless/ce/compare/v0.0.213...v0.0.214) (2026-04-02)
 
 
