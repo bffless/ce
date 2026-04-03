@@ -52,9 +52,10 @@ export const deploymentAliases = pgTable(
     basePath: varchar('base_path', { length: 512 }),
 
     /**
-     * Proxy rule set for this alias.
-     * Overrides the project's defaultProxyRuleSetId if set.
-     * NULL means use project default (or no proxy rules if project default is also NULL).
+     * @deprecated Use alias_proxy_rule_sets join table instead.
+     * Kept for backwards compatibility — the system reads from the join table first,
+     * falling back to this column if the join table is empty.
+     * When writing, both this column and the join table are updated.
      */
     proxyRuleSetId: uuid('proxy_rule_set_id').references(() => proxyRuleSets.id, {
       onDelete: 'set null',

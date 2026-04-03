@@ -5,7 +5,7 @@ import { getSession } from 'supertokens-node/recipe/session';
 import * as jwt from 'jsonwebtoken';
 import { asc } from 'drizzle-orm';
 import { db } from '../db/client';
-import { projects, deploymentAliases, domainMappings, users, aliasProxyRuleSets } from '../db/schema';
+import { projects, deploymentAliases, domainMappings, users, aliasProxyRuleSets, projectDefaultProxyRuleSets } from '../db/schema';
 import { ProxyRulesService } from './proxy-rules.service';
 import { ProxyService } from './proxy.service';
 import { EmailFormHandlerService } from './email-form-handler.service';
@@ -126,9 +126,9 @@ export class ProxyMiddleware implements NestMiddleware {
         }
       }
 
-      // Fall back to project default if no rule sets resolved
-      if (effectiveRuleSetIds.length === 0 && project.defaultProxyRuleSetId) {
-        effectiveRuleSetIds = [project.defaultProxyRuleSetId];
+      // Fall back to project defaults if no rule sets resolved
+      if (effectiveRuleSetIds.length === 0) {
+        effectiveRuleSetIds = await this.resolveProjectDefaultRuleSetIds(project.id, project.defaultProxyRuleSetId);
       }
 
       // Apply traffic splitting: check traffic rules and variant cookie
@@ -396,8 +396,8 @@ export class ProxyMiddleware implements NestMiddleware {
       }
     }
 
-    if (effectiveRuleSetIds.length === 0 && project.defaultProxyRuleSetId) {
-      effectiveRuleSetIds = [project.defaultProxyRuleSetId];
+    if (effectiveRuleSetIds.length === 0) {
+      effectiveRuleSetIds = await this.resolveProjectDefaultRuleSetIds(project.id, project.defaultProxyRuleSetId);
     }
 
     // Get effective rules from the resolved rule sets
@@ -918,6 +918,33 @@ export class ProxyMiddleware implements NestMiddleware {
     // Fall back to legacy column
     if (legacyProxyRuleSetId) {
       return [legacyProxyRuleSetId];
+    }
+
+    return [];
+  }
+
+  /**
+   * Resolve default rule set IDs for a project.
+   * Checks join table first, falls back to legacy defaultProxyRuleSetId column.
+   */
+  private async resolveProjectDefaultRuleSetIds(
+    projectId: string,
+    legacyDefaultProxyRuleSetId: string | null,
+  ): Promise<string[]> {
+    // Check join table first
+    const joinRows = await db
+      .select({ proxyRuleSetId: projectDefaultProxyRuleSets.proxyRuleSetId })
+      .from(projectDefaultProxyRuleSets)
+      .where(eq(projectDefaultProxyRuleSets.projectId, projectId))
+      .orderBy(asc(projectDefaultProxyRuleSets.order));
+
+    if (joinRows.length > 0) {
+      return joinRows.map((r) => r.proxyRuleSetId);
+    }
+
+    // Fall back to legacy column
+    if (legacyDefaultProxyRuleSetId) {
+      return [legacyDefaultProxyRuleSetId];
     }
 
     return [];

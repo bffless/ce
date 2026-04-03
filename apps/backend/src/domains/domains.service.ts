@@ -11,7 +11,7 @@ import { eq, and, SQL, asc } from 'drizzle-orm';
 import { promises as dns } from 'dns';
 import { join } from 'path';
 import { db } from '../db/client';
-import { domainMappings, deploymentAliases, projects, aliasProxyRuleSets } from '../db/schema';
+import { domainMappings, deploymentAliases, projects, aliasProxyRuleSets, projectDefaultProxyRuleSets } from '../db/schema';
 import { CreateDomainDto } from './dto/create-domain.dto';
 import { UpdateDomainDto } from './dto/update-domain.dto';
 import { NginxConfigService, NginxProxyRule } from './nginx-config.service';
@@ -220,15 +220,25 @@ export class DomainsService {
       }
 
       if (ruleSetIds.length === 0) {
-        // Try project default
-        const project = await db
-          .select({ defaultProxyRuleSetId: projects.defaultProxyRuleSetId })
-          .from(projects)
-          .where(eq(projects.id, projectId))
-          .limit(1);
+        // Try project default: join table first, then legacy column
+        const projectDefaultJoinRows = await db
+          .select({ proxyRuleSetId: projectDefaultProxyRuleSets.proxyRuleSetId })
+          .from(projectDefaultProxyRuleSets)
+          .where(eq(projectDefaultProxyRuleSets.projectId, projectId))
+          .orderBy(asc(projectDefaultProxyRuleSets.order));
 
-        if (project.length > 0 && project[0].defaultProxyRuleSetId) {
-          ruleSetIds = [project[0].defaultProxyRuleSetId];
+        if (projectDefaultJoinRows.length > 0) {
+          ruleSetIds = projectDefaultJoinRows.map((r) => r.proxyRuleSetId);
+        } else {
+          const project = await db
+            .select({ defaultProxyRuleSetId: projects.defaultProxyRuleSetId })
+            .from(projects)
+            .where(eq(projects.id, projectId))
+            .limit(1);
+
+          if (project.length > 0 && project[0].defaultProxyRuleSetId) {
+            ruleSetIds = [project[0].defaultProxyRuleSetId];
+          }
         }
       }
 

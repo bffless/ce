@@ -11,6 +11,7 @@ import {
   assets,
   deploymentAliases,
   apiKeys,
+  projectDefaultProxyRuleSets,
 } from '../db/schema';
 import { MetadataCacheService } from '../storage/cache/metadata-cache.service';
 import { STORAGE_ADAPTER, IStorageAdapter } from '../storage/storage.interface';
@@ -153,8 +154,10 @@ export class ProjectsService {
    */
   async updateProject(
     id: string,
-    updates: Partial<Omit<Project, 'id' | 'owner' | 'name' | 'createdBy' | 'createdAt'>>,
-  ): Promise<Project> {
+    updates: Partial<Omit<Project, 'id' | 'owner' | 'name' | 'createdBy' | 'createdAt'>> & {
+      defaultProxyRuleSetIds?: string[];
+    },
+  ): Promise<Project & { defaultProxyRuleSetIds?: string[] }> {
     // Check if project exists
     const [existingProject] = await db.select().from(projects).where(eq(projects.id, id)).limit(1);
 
@@ -162,15 +165,29 @@ export class ProjectsService {
       throw new NotFoundException(`Project not found: ${id}`);
     }
 
+    // Extract defaultProxyRuleSetIds before passing to DB update
+    const { defaultProxyRuleSetIds, ...dbUpdates } = updates;
+
+    // If defaultProxyRuleSetIds is provided, sync legacy column too
+    if (defaultProxyRuleSetIds !== undefined) {
+      (dbUpdates as any).defaultProxyRuleSetId =
+        defaultProxyRuleSetIds.length > 0 ? defaultProxyRuleSetIds[0] : null;
+    }
+
     // Update the project
     const [updatedProject] = await db
       .update(projects)
       .set({
-        ...updates,
+        ...dbUpdates,
         updatedAt: new Date(),
       })
       .where(eq(projects.id, id))
       .returning();
+
+    // Sync join table if defaultProxyRuleSetIds provided
+    if (defaultProxyRuleSetIds !== undefined) {
+      await this.syncProjectDefaultProxyRuleSets(id, defaultProxyRuleSetIds);
+    }
 
     // Invalidate cache
     if (this.metadataCache) {
@@ -181,7 +198,39 @@ export class ProjectsService {
       );
     }
 
-    return updatedProject;
+    // Return with join table IDs
+    const ruleSetIds = await this.getProjectDefaultProxyRuleSetIds(id);
+    return { ...updatedProject, defaultProxyRuleSetIds: ruleSetIds };
+  }
+
+  /**
+   * Sync the join table entries for a project's default proxy rule sets.
+   */
+  private async syncProjectDefaultProxyRuleSets(projectId: string, ruleSetIds: string[]): Promise<void> {
+    await db.delete(projectDefaultProxyRuleSets).where(eq(projectDefaultProxyRuleSets.projectId, projectId));
+
+    if (ruleSetIds.length > 0) {
+      await db.insert(projectDefaultProxyRuleSets).values(
+        ruleSetIds.map((ruleSetId, index) => ({
+          projectId,
+          proxyRuleSetId: ruleSetId,
+          order: index,
+        })),
+      );
+    }
+  }
+
+  /**
+   * Get the default proxy rule set IDs for a project from the join table.
+   */
+  async getProjectDefaultProxyRuleSetIds(projectId: string): Promise<string[]> {
+    const rows = await db
+      .select({ proxyRuleSetId: projectDefaultProxyRuleSets.proxyRuleSetId })
+      .from(projectDefaultProxyRuleSets)
+      .where(eq(projectDefaultProxyRuleSets.projectId, projectId))
+      .orderBy(asc(projectDefaultProxyRuleSets.order));
+
+    return rows.map((r) => r.proxyRuleSetId);
   }
 
   /**

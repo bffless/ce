@@ -426,7 +426,7 @@ export class ProjectsController {
     @Param('name') name: string,
   ): Promise<ProjectResponseDto> {
     const project = await this.projectsService.getProjectByOwnerName(owner, name);
-    return this.toResponseDto(project);
+    return this.toResponseDtoWithRuleSets(project);
   }
 
   @Get(':id')
@@ -438,7 +438,7 @@ export class ProjectsController {
   @ApiResponse({ status: 404, description: 'Project not found' })
   async getProjectById(@Param('id') id: string): Promise<ProjectResponseDto> {
     const project = await this.projectsService.getProjectById(id);
-    return this.toResponseDto(project);
+    return this.toResponseDtoWithRuleSets(project);
   }
 
   @Post()
@@ -469,7 +469,7 @@ export class ProjectsController {
     @Body() dto: UpdateProjectDto,
   ): Promise<ProjectResponseDto> {
     const project = await this.projectsService.updateProject(id, dto);
-    return this.toResponseDto(project);
+    return this.toResponseDtoWithRuleSets(project);
   }
 
   @Delete(':id')
@@ -500,5 +500,21 @@ export class ProjectsController {
           ? project.updatedAt.toISOString()
           : project.updatedAt,
     };
+  }
+
+  /**
+   * Transform database model to DTO with defaultProxyRuleSetIds from join table
+   */
+  private async toResponseDtoWithRuleSets(project: any): Promise<ProjectResponseDto> {
+    const dto = this.toResponseDto(project);
+    // If already provided (e.g. from updateProject), use it
+    if (!dto.defaultProxyRuleSetIds) {
+      const ids = await this.projectsService.getProjectDefaultProxyRuleSetIds(project.id);
+      // Fall back to legacy column if join table is empty
+      dto.defaultProxyRuleSetIds = ids.length > 0
+        ? ids
+        : project.defaultProxyRuleSetId ? [project.defaultProxyRuleSetId] : [];
+    }
+    return dto;
   }
 }

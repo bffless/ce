@@ -107,6 +107,7 @@ export interface Project {
   requiredRole: RequiredRole;
   settings: Record<string, any> | null;
   defaultProxyRuleSetId: string | null;
+  defaultProxyRuleSetIds?: string[];
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -129,6 +130,7 @@ export interface UpdateProjectDto {
   requiredRole?: RequiredRole;
   settings?: Record<string, any>;
   defaultProxyRuleSetId?: string | null;
+  defaultProxyRuleSetIds?: string[];
 }
 
 export const projectsApi = api.injectEndpoints({

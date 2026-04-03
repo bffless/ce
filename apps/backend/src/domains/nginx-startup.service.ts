@@ -7,6 +7,7 @@ import {
   deploymentAliases,
   pathRedirects,
   aliasProxyRuleSets,
+  projectDefaultProxyRuleSets,
 } from '../db/schema';
 import { eq, and, asc } from 'drizzle-orm';
 import { NginxConfigService, NginxProxyRule, NginxPathRedirect } from './nginx-config.service';
@@ -239,15 +240,25 @@ export class NginxStartupService implements OnModuleInit {
       }
 
       if (ruleSetIds.length === 0) {
-        // Try project default
-        const project = await db
-          .select({ defaultProxyRuleSetId: projects.defaultProxyRuleSetId })
-          .from(projects)
-          .where(eq(projects.id, projectId))
-          .limit(1);
+        // Try project default: join table first, then legacy column
+        const projectDefaultJoinRows = await db
+          .select({ proxyRuleSetId: projectDefaultProxyRuleSets.proxyRuleSetId })
+          .from(projectDefaultProxyRuleSets)
+          .where(eq(projectDefaultProxyRuleSets.projectId, projectId))
+          .orderBy(asc(projectDefaultProxyRuleSets.order));
 
-        if (project.length > 0 && project[0].defaultProxyRuleSetId) {
-          ruleSetIds = [project[0].defaultProxyRuleSetId];
+        if (projectDefaultJoinRows.length > 0) {
+          ruleSetIds = projectDefaultJoinRows.map((r) => r.proxyRuleSetId);
+        } else {
+          const project = await db
+            .select({ defaultProxyRuleSetId: projects.defaultProxyRuleSetId })
+            .from(projects)
+            .where(eq(projects.id, projectId))
+            .limit(1);
+
+          if (project.length > 0 && project[0].defaultProxyRuleSetId) {
+            ruleSetIds = [project[0].defaultProxyRuleSetId];
+          }
         }
       }
 

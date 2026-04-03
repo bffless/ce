@@ -3,14 +3,13 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle, Save, Layers } from 'lucide-react';
+import { AlertCircle, Save, Layers, ChevronDown, X } from 'lucide-react';
 import { useGetProjectRuleSetsQuery } from '@/services/proxyRulesApi';
 import { useUpdateProjectMutation, type Project } from '@/services/projectsApi';
 import { useToast } from '@/hooks/use-toast';
@@ -21,19 +20,26 @@ interface ProjectProxyRulesTabProps {
 }
 
 /**
- * ProjectProxyRulesTab - Allows selecting a default proxy rule set for the project
+ * ProjectProxyRulesTab - Allows selecting default proxy rule sets for the project
  * Proxy rules are now managed via rule sets in the repository "Proxy Rules" tab
  */
 export function ProjectProxyRulesTab({ project }: ProjectProxyRulesTabProps) {
   const { toast } = useToast();
-  const [selectedRuleSetId, setSelectedRuleSetId] = useState<string | null>(
-    project.defaultProxyRuleSetId,
-  );
+
+  // Initialize from defaultProxyRuleSetIds (join table), fallback to legacy singular
+  const initialIds = project.defaultProxyRuleSetIds?.length
+    ? project.defaultProxyRuleSetIds
+    : project.defaultProxyRuleSetId ? [project.defaultProxyRuleSetId] : [];
+
+  const [selectedRuleSetIds, setSelectedRuleSetIds] = useState<string[]>(initialIds);
 
   // Sync state when project changes
   useEffect(() => {
-    setSelectedRuleSetId(project.defaultProxyRuleSetId);
-  }, [project.defaultProxyRuleSetId]);
+    const ids = project.defaultProxyRuleSetIds?.length
+      ? project.defaultProxyRuleSetIds
+      : project.defaultProxyRuleSetId ? [project.defaultProxyRuleSetId] : [];
+    setSelectedRuleSetIds(ids);
+  }, [project.defaultProxyRuleSetIds, project.defaultProxyRuleSetId]);
 
   // Fetch rule sets for this project
   const {
@@ -45,27 +51,48 @@ export function ProjectProxyRulesTab({ project }: ProjectProxyRulesTabProps) {
   // Update project mutation
   const [updateProject, { isLoading: isUpdating }] = useUpdateProjectMutation();
 
-  const hasChanges = selectedRuleSetId !== project.defaultProxyRuleSetId;
+  // Create a map of rule set ID to rule set
+  const ruleSetMap = new Map(
+    ruleSetsData?.ruleSets.map((rs) => [rs.id, rs]) || []
+  );
+
+  const currentIds = project.defaultProxyRuleSetIds?.length
+    ? project.defaultProxyRuleSetIds
+    : project.defaultProxyRuleSetId ? [project.defaultProxyRuleSetId] : [];
+
+  const hasChanges =
+    selectedRuleSetIds.length !== currentIds.length ||
+    selectedRuleSetIds.some((id, i) => id !== currentIds[i]);
+
+  const toggleRuleSet = (id: string) => {
+    setSelectedRuleSetIds((prev) =>
+      prev.includes(id) ? prev.filter((rid) => rid !== id) : [...prev, id]
+    );
+  };
+
+  const removeRuleSet = (id: string) => {
+    setSelectedRuleSetIds((prev) => prev.filter((rid) => rid !== id));
+  };
 
   const handleSave = async () => {
     try {
       await updateProject({
         id: project.id,
         updates: {
-          defaultProxyRuleSetId: selectedRuleSetId,
+          defaultProxyRuleSetIds: selectedRuleSetIds,
         },
       }).unwrap();
 
       toast({
-        title: 'Default rule set updated',
-        description: selectedRuleSetId
-          ? 'The default proxy rule set has been updated.'
-          : 'Default proxy rule set has been cleared.',
+        title: 'Default rule sets updated',
+        description: selectedRuleSetIds.length > 0
+          ? `${selectedRuleSetIds.length} default proxy rule set${selectedRuleSetIds.length !== 1 ? 's' : ''} configured.`
+          : 'Default proxy rule sets have been cleared.',
       });
     } catch (err: unknown) {
       const errorMessage =
         (err as { data?: { message?: string } })?.data?.message ||
-        'Failed to update default rule set';
+        'Failed to update default rule sets';
       toast({
         title: 'Error',
         description: errorMessage,
@@ -79,7 +106,7 @@ export function ProjectProxyRulesTab({ project }: ProjectProxyRulesTabProps) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Default Proxy Rule Set</CardTitle>
+          <CardTitle>Default Proxy Rule Sets</CardTitle>
           <CardDescription>Loading proxy rule sets...</CardDescription>
         </CardHeader>
         <CardContent>
@@ -94,7 +121,7 @@ export function ProjectProxyRulesTab({ project }: ProjectProxyRulesTabProps) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Default Proxy Rule Set</CardTitle>
+          <CardTitle>Default Proxy Rule Sets</CardTitle>
         </CardHeader>
         <CardContent>
           <Alert variant="destructive">
@@ -114,10 +141,10 @@ export function ProjectProxyRulesTab({ project }: ProjectProxyRulesTabProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Default Proxy Rule Set</CardTitle>
+        <CardTitle>Default Proxy Rule Sets</CardTitle>
         <CardDescription>
-          Select a default proxy rule set for this project. This will be used for all deployments
-          unless an alias specifies a different rule set.
+          Select default proxy rule sets for this project. These will be used for all deployments
+          unless an alias specifies its own rule sets.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -132,34 +159,61 @@ export function ProjectProxyRulesTab({ project }: ProjectProxyRulesTabProps) {
         ) : (
           <>
             <div className="space-y-2">
-              <Select
-                value={selectedRuleSetId || 'none'}
-                onValueChange={(value) => setSelectedRuleSetId(value === 'none' ? null : value)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a rule set..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">
-                    <span className="text-muted-foreground">None (no proxy rules)</span>
-                  </SelectItem>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="justify-between w-full">
+                    <span className="text-sm truncate">
+                      {selectedRuleSetIds.length === 0
+                        ? 'None (no default proxy rules)'
+                        : `${selectedRuleSetIds.length} rule set${selectedRuleSetIds.length !== 1 ? 's' : ''} selected`}
+                    </span>
+                    <ChevronDown className="h-4 w-4 ml-2 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-2" align="start">
                   {ruleSets.map((ruleSet) => (
-                    <SelectItem key={ruleSet.id} value={ruleSet.id}>
-                      <div className="flex items-center gap-2">
-                        <span>{ruleSet.name}</span>
-                        {ruleSet.environment && (
-                          <Badge variant="outline" className="text-xs">
-                            {ruleSet.environment}
-                          </Badge>
-                        )}
-                      </div>
-                    </SelectItem>
+                    <label
+                      key={ruleSet.id}
+                      className="flex items-center gap-2 p-2 rounded hover:bg-accent cursor-pointer"
+                    >
+                      <Checkbox
+                        checked={selectedRuleSetIds.includes(ruleSet.id)}
+                        onCheckedChange={() => toggleRuleSet(ruleSet.id)}
+                      />
+                      <span className="text-sm">{ruleSet.name}</span>
+                      {ruleSet.environment && (
+                        <Badge variant="outline" className="text-xs">
+                          {ruleSet.environment}
+                        </Badge>
+                      )}
+                    </label>
                   ))}
-                </SelectContent>
-              </Select>
+                </PopoverContent>
+              </Popover>
+              {/* Show selected rule sets as ordered removable badges */}
+              {selectedRuleSetIds.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {selectedRuleSetIds.map((id, index) => {
+                    const rs = ruleSetMap.get(id);
+                    return (
+                      <Badge key={id} variant="secondary" className="gap-1 pr-1">
+                        <span className="text-xs text-muted-foreground mr-0.5">{index + 1}.</span>
+                        {rs?.name ?? id.substring(0, 8)}
+                        <button
+                          type="button"
+                          className="ml-0.5 rounded-sm hover:bg-muted-foreground/20 p-0.5"
+                          onClick={() => removeRuleSet(id)}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    );
+                  })}
+                </div>
+              )}
               <p className="text-xs text-muted-foreground">
-                The selected rule set will be applied to all SHA deployments and any aliases that
-                don't have their own rule set specified.
+                The selected rule sets will be applied to all SHA deployments and any aliases that
+                don't have their own rule sets specified. Rules merge in order — first set has highest priority.
               </p>
             </div>
 

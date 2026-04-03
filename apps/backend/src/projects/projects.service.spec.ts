@@ -14,7 +14,7 @@ jest.mock('../db/client', () => ({
     from: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
     limit: jest.fn().mockReturnThis(),
-    orderBy: jest.fn(),
+    orderBy: jest.fn().mockResolvedValue([]),
     update: jest.fn().mockReturnThis(),
     set: jest.fn().mockReturnThis(),
     delete: jest.fn().mockReturnThis(),
