@@ -168,11 +168,14 @@ export class RepoBrowserService {
     // Check project-level permission (viewer role required for read access)
     await this.checkProjectAccess(project.id, userId, userRole, 'viewer');
 
-    // Phase 3H: Get all aliases using projectId
+    // Phase 3H: Get all manual aliases using projectId (exclude auto-preview aliases)
     const aliasesData = await db
       .select()
       .from(deploymentAliases)
-      .where(eq(deploymentAliases.projectId, project.id))
+      .where(and(
+        eq(deploymentAliases.projectId, project.id),
+        eq(deploymentAliases.isAutoPreview, false),
+      ))
       .orderBy(desc(deploymentAliases.updatedAt));
 
     const aliases: AliasRefDto[] = aliasesData.map((alias) => ({
