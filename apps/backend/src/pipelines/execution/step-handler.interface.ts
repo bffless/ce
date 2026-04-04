@@ -285,6 +285,12 @@ export interface DbAggregateHandlerConfig extends BaseHandlerConfig {
    * @default 'and'
    */
   filterLogic?: 'and' | 'or';
+
+  /**
+   * Optional JSONB field to group results by.
+   * When set, returns an array of { key, value } pairs instead of a single result.
+   */
+  groupBy?: string;
 }
 
 /**

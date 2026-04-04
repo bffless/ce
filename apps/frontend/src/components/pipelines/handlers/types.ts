@@ -110,6 +110,7 @@ export interface DbAggregateHandlerConfig extends BaseHandlerConfig {
   field?: string;
   filters?: Record<string, FilterConfig>;
   filterLogic?: 'and' | 'or';
+  groupBy?: string;
 }
 
 export interface FunctionHandlerConfig extends BaseHandlerConfig {

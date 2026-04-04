@@ -66,6 +66,7 @@ export function DbAggregateConfig({ config, onChange, projectId, previousSteps =
       : [];
   });
   const [filterLogic, setFilterLogic] = useState<'and' | 'or'>(config.filterLogic || 'and');
+  const [groupBy, setGroupBy] = useState(config.groupBy || '');
 
   const selectedOp = OPERATIONS.find((op) => op.value === operation);
   const requiresField = selectedOp?.requiresField ?? false;
@@ -86,8 +87,9 @@ export function DbAggregateConfig({ config, onChange, projectId, previousSteps =
       field: requiresField ? field : undefined,
       filters: Object.keys(filtersRecord).length > 0 ? filtersRecord : undefined,
       filterLogic: hasMultipleFilters ? filterLogic : undefined,
+      groupBy: groupBy || undefined,
     });
-  }, [schemaId, operation, field, requiresField, filters, filterLogic, onChange]);
+  }, [schemaId, operation, field, requiresField, filters, filterLogic, groupBy, onChange]);
 
   const handleAddFilter = () => {
     setFilters([...filters, { field: '', op: 'eq', value: '' }]);
@@ -151,6 +153,19 @@ export function DbAggregateConfig({ config, onChange, projectId, previousSteps =
           </p>
         </div>
       )}
+
+      <div className="space-y-2">
+        <Label>Group By (optional)</Label>
+        <SchemaFieldPicker
+          schemaId={schemaId}
+          value={groupBy}
+          onChange={setGroupBy}
+          placeholder="No grouping"
+        />
+        <p className="text-xs text-muted-foreground">
+          Group results by a field. Returns an array of {'{'} key, value {'}'} pairs instead of a single result.
+        </p>
+      </div>
 
       <div className="space-y-2">
         <div className="flex items-center justify-between">
@@ -246,10 +261,14 @@ export function DbAggregateConfig({ config, onChange, projectId, previousSteps =
 
       <div className="p-3 bg-muted/50 rounded-md text-sm">
         <p className="font-medium mb-1">Output:</p>
-        <code className="text-xs">
-          {operation === 'count'
-            ? '{ operation: "count", result: <number> }'
-            : `{ operation: "${operation}", field: "${field || '<field>'}", result: <number> }`}
+        <code className="text-xs whitespace-pre-wrap">
+          {groupBy
+            ? operation === 'count'
+              ? `{ operation: "count", groupBy: "${groupBy}", results: [{ key: "<value>", value: <number> }, ...] }`
+              : `{ operation: "${operation}", field: "${field || '<field>'}", groupBy: "${groupBy}", results: [{ key: "<value>", value: <number> }, ...] }`
+            : operation === 'count'
+              ? '{ operation: "count", result: <number> }'
+              : `{ operation: "${operation}", field: "${field || '<field>'}", result: <number> }`}
         </code>
       </div>
     </div>
