@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.218](https://github.com/bffless/ce/compare/v0.0.217...v0.0.218) (2026-04-04)
+
+
+### Bug Fixes
+
+* exclude auto-preview aliases from refs endpoint ([96a9fb6](https://github.com/bffless/ce/commit/96a9fb60aa087a2c1a0635532c92e508fcc4b8eb))
+
 ## [0.0.217](https://github.com/bffless/ce/compare/v0.0.216...v0.0.217) (2026-04-04)
 
 
