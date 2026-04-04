@@ -31,6 +31,7 @@ const pipelineStepSchema = z.object({
       'http_request',
       'stripe_checkout',
       'stripe_webhook',
+      'signed_url',
     ])
     .describe(
       'IMPORTANT: Use exact handler type strings. Some have _handler suffix, some do not. The enum values are the only valid options.',
