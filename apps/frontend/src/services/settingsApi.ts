@@ -133,23 +133,16 @@ export interface UpdateBrandingDto {
 // =============================================================================
 
 export interface OAuthSettingsResponse {
-  google: { enabled: boolean; clientId?: string };
+  google: { enabled: boolean; configured: boolean };
 }
 
 export interface UpdateGoogleOAuthDto {
-  clientId?: string;
-  clientSecret?: string;
-  enabled?: boolean;
+  enabled: boolean;
 }
 
 export interface UpdateGoogleOAuthResponse {
   success: boolean;
-  google: { enabled: boolean; clientId?: string };
-}
-
-export interface TestGoogleOAuthResponse {
-  success: boolean;
-  message: string;
+  google: { enabled: boolean };
 }
 
 export interface UpdateBrandingResponse {
@@ -316,13 +309,6 @@ export const settingsApi = api.injectEndpoints({
       }),
       invalidatesTags: ['OAuthSettings', 'FeatureFlags'],
     }),
-
-    testGoogleOAuth: builder.mutation<TestGoogleOAuthResponse, void>({
-      query: () => ({
-        url: '/api/settings/oauth/google/test',
-        method: 'POST',
-      }),
-    }),
   }),
 });
 
@@ -348,5 +334,4 @@ export const {
   // OAuth settings hooks
   useGetOAuthSettingsQuery,
   useUpdateGoogleOAuthMutation,
-  useTestGoogleOAuthMutation,
 } = settingsApi;
