@@ -147,4 +147,30 @@ export function initSuperTokens() {
   });
 }
 
+/**
+ * Register Google OAuth provider with SuperTokens if env vars are set.
+ * This enables CE self-hosted users to configure Google OAuth via .env
+ * without needing direct SuperTokens API access.
+ */
+export async function registerGoogleOAuthFromEnv(): Promise<void> {
+  const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+
+  if (!clientId || !clientSecret) {
+    return;
+  }
+
+  const tenantId = isMultiTenant ? organizationId : 'public';
+
+  try {
+    await Multitenancy.createOrUpdateThirdPartyConfig(tenantId, {
+      thirdPartyId: 'google',
+      clients: [{ clientId, clientSecret }],
+    });
+    console.log(`[Auth] Google OAuth provider registered for tenant '${tenantId}'`);
+  } catch (error) {
+    console.error('[Auth] Failed to register Google OAuth provider:', error);
+  }
+}
+
 export { supertokens };
