@@ -150,8 +150,17 @@ export function AuthenticationSettings() {
             <Alert>
               <Info className="h-4 w-4" />
               <AlertDescription className="text-sm">
-                Google OAuth credentials are configured at the platform level.
-                Contact your platform administrator to enable Google sign-in.
+                Google OAuth requires credentials to be configured in SuperTokens.
+                See the{' '}
+                <a
+                  href="https://docs.bffless.app/configuration/authentication/#google-oauth"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline font-medium"
+                >
+                  authentication docs
+                </a>
+                {' '}for setup instructions.
               </AlertDescription>
             </Alert>
           )}

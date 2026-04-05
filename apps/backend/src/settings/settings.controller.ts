@@ -267,6 +267,30 @@ export class SettingsController {
   async updateGoogleOAuth(
     @Body() body: { enabled: boolean },
   ): Promise<{ success: boolean; google: { enabled: boolean } }> {
+    // When enabling, verify that Google OAuth credentials are actually configured
+    if (body.enabled) {
+      const tenantId = this.getTenantId();
+      let googleConfigured = false;
+      try {
+        const tenantInfo = await Multitenancy.getTenant(tenantId);
+        if (tenantInfo) {
+          const googleConfig = tenantInfo.thirdParty?.providers?.find(
+            (p: { thirdPartyId: string }) => p.thirdPartyId === 'google',
+          );
+          googleConfigured = !!googleConfig;
+        }
+      } catch (error) {
+        this.logger.error('[OAuth Settings] Failed to check Google config:', error);
+      }
+
+      if (!googleConfigured) {
+        throw new BadRequestException(
+          'Cannot enable Google OAuth: credentials are not configured. ' +
+          'Google OAuth credentials must be configured at the platform level in SuperTokens.',
+        );
+      }
+    }
+
     // Only toggle the feature flag — credentials are managed at the platform level
     await this.featureFlagsService.setFlag('ENABLE_GOOGLE_OAUTH', body.enabled);
 
