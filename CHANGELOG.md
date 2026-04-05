@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.220](https://github.com/bffless/ce/compare/v0.0.219...v0.0.220) (2026-04-05)
+
+
+### Features
+
+* google auth for self hosted ([7d189c2](https://github.com/bffless/ce/commit/7d189c25432d7ec4bf61873e59f1f9b771507c3c))
+* google auth for self hosted ([8ca7a87](https://github.com/bffless/ce/commit/8ca7a87e71fb38bf698a3933197a7e354aeec517))
+
 ## [0.0.219](https://github.com/bffless/ce/compare/v0.0.218...v0.0.219) (2026-04-05)
 
 
