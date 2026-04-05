@@ -19,6 +19,7 @@ import { VectorSearchConfig } from './VectorSearchConfig';
 import { HttpRequestConfig } from './HttpRequestConfig';
 import { StripeCheckoutConfig } from './StripeCheckoutConfig';
 import { StripeWebhookConfig } from './StripeWebhookConfig';
+import { SignedUrlHandlerConfig } from './SignedUrlHandlerConfig';
 import { AvailableVariables, type PreviousStep } from './AvailableVariables';
 import type { HandlerConfig } from './types';
 
@@ -296,6 +297,18 @@ export function HandlerConfigWrapper({
         />
       );
 
+    case 'signed_url':
+      return (
+        <>
+          {renderVariablesPanel()}
+          <SignedUrlHandlerConfig
+            config={config}
+            onChange={handleChange}
+            previousSteps={previousSteps}
+          />
+        </>
+      );
+
     default:
       return (
         <div className="text-sm text-destructive p-4 bg-destructive/10 rounded-md">
@@ -330,6 +343,7 @@ export function getHandlerDisplayName(type: HandlerType): string {
     http_request: 'HTTP Request',
     stripe_checkout: 'Stripe Checkout',
     stripe_webhook: 'Stripe Webhook',
+    signed_url: 'Signed URL',
   };
   return names[type] || type;
 }
@@ -359,6 +373,7 @@ export function getHandlerDescription(type: HandlerType): string {
     http_request: 'Make an outbound HTTP request to an external URL',
     stripe_checkout: 'Create a Stripe Checkout Session and return the payment URL',
     stripe_webhook: 'Verify Stripe webhook signature and parse the event',
+    signed_url: 'Generate a time-limited presigned URL for a file in storage',
   };
   return descriptions[type] || '';
 }

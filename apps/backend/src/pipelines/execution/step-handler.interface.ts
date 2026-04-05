@@ -285,6 +285,12 @@ export interface DbAggregateHandlerConfig extends BaseHandlerConfig {
    * @default 'and'
    */
   filterLogic?: 'and' | 'or';
+
+  /**
+   * Optional JSONB field to group results by.
+   * When set, returns an array of { key, value } pairs instead of a single result.
+   */
+  groupBy?: string;
 }
 
 /**
@@ -736,6 +742,9 @@ export interface ReplicateHandlerConfig extends BaseHandlerConfig {
    */
   outputField?: string;
 }
+
+// SignedUrlHandlerConfig is defined in handlers/signed-url.handler.ts
+export type { SignedUrlHandlerConfig } from '../handlers/signed-url.handler';
 
 // HttpRequestHandlerConfig is defined in handlers/http-request.handler.ts
 export type { HttpRequestHandlerConfig } from '../handlers/http-request.handler';

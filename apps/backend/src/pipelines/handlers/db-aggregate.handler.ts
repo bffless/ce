@@ -138,10 +138,66 @@ export class DbAggregateHandler implements StepHandler<DbAggregateHandlerConfig>
     }
 
     const whereClause = and(...baseConditions);
-    const { operation, field } = config;
+    const { operation, field, groupBy } = config;
 
-    this.logger.debug(`Running ${operation} aggregation${field ? ` on field '${field}'` : ''}`);
+    this.logger.debug(`Running ${operation} aggregation${field ? ` on field '${field}'` : ''}${groupBy ? ` grouped by '${groupBy}'` : ''}`);
 
+    // When groupBy is set, we SELECT the group key + aggregate, with GROUP BY
+    if (groupBy) {
+      const groupKeyExpr = sql`${pipelineData.data}->>${sql.raw(`'${groupBy}'`)}`;
+
+      let aggExpr: ReturnType<typeof sql>;
+      switch (operation) {
+        case 'count':
+          aggExpr = sql<string>`COUNT(*)`;
+          break;
+        case 'sum':
+          aggExpr = sql<string>`COALESCE(SUM((${pipelineData.data}->>${sql.raw(`'${field!}'`)})::numeric), 0)`;
+          break;
+        case 'avg':
+          aggExpr = sql<string>`AVG((${pipelineData.data}->>${sql.raw(`'${field!}'`)})::numeric)`;
+          break;
+        case 'min':
+          aggExpr = sql<string>`MIN((${pipelineData.data}->>${sql.raw(`'${field!}'`)})::numeric)`;
+          break;
+        case 'max':
+          aggExpr = sql<string>`MAX((${pipelineData.data}->>${sql.raw(`'${field!}'`)})::numeric)`;
+          break;
+        case 'array_length':
+          aggExpr = sql<string>`COALESCE(SUM(jsonb_array_length(${pipelineData.data}->${sql.raw(`'${field!}'`)})), 0)`;
+          break;
+        default:
+          aggExpr = sql<string>`COUNT(*)`;
+      }
+
+      const rows = await db
+        .select({
+          key: sql<string>`${groupKeyExpr}`,
+          value: aggExpr,
+        })
+        .from(pipelineData)
+        .where(whereClause)
+        .groupBy(groupKeyExpr);
+
+      const results = rows.map((row) => ({
+        key: row.key,
+        value: row.value != null ? Number(row.value) : null,
+      }));
+
+      this.logger.debug(`Grouped aggregation returned ${results.length} groups`);
+
+      return {
+        success: true,
+        output: {
+          operation,
+          ...(operation !== 'count' && field ? { field } : {}),
+          groupBy,
+          results,
+        },
+      };
+    }
+
+    // Non-grouped aggregation (original behavior)
     let result: number | null;
 
     switch (operation) {

@@ -12,6 +12,7 @@ import {
 import { relations } from 'drizzle-orm';
 import { users } from './users.schema';
 import { proxyRuleSets } from './proxy-rule-sets.schema';
+import { projectDefaultProxyRuleSets } from './project-default-proxy-rule-sets.schema';
 
 export const projects = pgTable(
   'projects',
@@ -55,9 +56,10 @@ export const projects = pgTable(
     aiServices: text('ai_services'),
 
     /**
-     * Default proxy rule set for this project.
-     * Used as fallback when an alias doesn't have its own proxyRuleSetId.
-     * NULL means no default proxy rules.
+     * @deprecated Use project_default_proxy_rule_sets join table instead.
+     * Kept for backwards compatibility — the system reads from the join table first,
+     * falling back to this column if the join table is empty.
+     * When writing, both this column and the join table are updated.
      */
     defaultProxyRuleSetId: uuid('default_proxy_rule_set_id'),
     // Note: Can't add .references() here due to circular dependency
@@ -88,11 +90,13 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
   }),
   // Proxy rule sets belonging to this project
   proxyRuleSets: many(proxyRuleSets),
-  // Default proxy rule set for this project
+  // Legacy: single default proxy rule set for this project
   defaultProxyRuleSet: one(proxyRuleSets, {
     fields: [projects.defaultProxyRuleSetId],
     references: [proxyRuleSets.id],
   }),
+  // New: multiple default proxy rule sets via join table
+  defaultProxyRuleSets: many(projectDefaultProxyRuleSets),
 }));
 
 export type Project = typeof projects.$inferSelect;

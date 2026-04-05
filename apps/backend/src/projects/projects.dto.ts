@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsBoolean, IsOptional, IsObject, IsNumber, Min, Max, IsIn, IsUUID } from 'class-validator';
+import { IsString, IsBoolean, IsOptional, IsObject, IsNumber, Min, Max, IsIn, IsUUID, IsArray } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateProjectDto {
@@ -87,10 +87,19 @@ export class UpdateProjectDto {
   @IsOptional()
   settings?: Record<string, any>;
 
-  @ApiPropertyOptional({ description: 'Default proxy rule set ID for this project' })
+  @ApiPropertyOptional({ description: 'Default proxy rule set ID for this project (legacy — prefer defaultProxyRuleSetIds)' })
   @IsUUID()
   @IsOptional()
   defaultProxyRuleSetId?: string | null;
+
+  @ApiPropertyOptional({
+    description: 'Ordered array of default proxy rule set IDs. Rules merge in order. Overrides defaultProxyRuleSetId if both provided.',
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  defaultProxyRuleSetIds?: string[];
 }
 
 export class ProjectResponseDto {
@@ -121,8 +130,11 @@ export class ProjectResponseDto {
   @ApiProperty({ nullable: true })
   settings: Record<string, any> | null;
 
-  @ApiProperty({ nullable: true, description: 'Default proxy rule set ID for this project' })
+  @ApiProperty({ nullable: true, description: 'Default proxy rule set ID for this project (legacy)' })
   defaultProxyRuleSetId: string | null;
+
+  @ApiPropertyOptional({ description: 'Ordered array of default proxy rule set IDs', type: [String] })
+  defaultProxyRuleSetIds?: string[];
 
   @ApiProperty()
   createdBy: string;

@@ -34,7 +34,7 @@ interface AliasesTabProps {
 interface AliasRowProps {
   alias: AliasDetail;
   projectId: string;
-  proxyRuleSetName?: string;
+  proxyRuleSetNames: string[];
   canEdit: boolean;
   onView: () => void;
   onEdit: () => void;
@@ -45,7 +45,7 @@ interface AliasRowProps {
 function AliasRow({
   alias,
   projectId,
-  proxyRuleSetName,
+  proxyRuleSetNames,
   canEdit,
   onView,
   onEdit,
@@ -187,11 +187,13 @@ function AliasRow({
       </div>
 
       {/* Proxy Rules */}
-      <div className="flex items-center">
-        {proxyRuleSetName ? (
-          <Badge variant="outline" className="text-xs truncate">
-            {proxyRuleSetName}
-          </Badge>
+      <div className="flex items-center gap-1 flex-wrap">
+        {proxyRuleSetNames.length > 0 ? (
+          proxyRuleSetNames.map((name, i) => (
+            <Badge key={i} variant="outline" className="text-xs truncate">
+              {name}
+            </Badge>
+          ))
         ) : (
           <span className="text-xs text-muted-foreground">—</span>
         )}
@@ -236,13 +238,13 @@ export function AliasesTab({ owner, repo }: AliasesTabProps) {
     aliasName: string;
     commitSha: string;
     branch: string;
-    proxyRuleSetId: string | null | undefined;
+    proxyRuleSetIds: string[];
   }>({
     open: false,
     aliasName: '',
     commitSha: '',
     branch: '',
-    proxyRuleSetId: undefined,
+    proxyRuleSetIds: [],
   });
   const [deleteDialogState, setDeleteDialogState] = useState<{
     open: boolean;
@@ -398,32 +400,42 @@ export function AliasesTab({ owner, repo }: AliasesTabProps) {
           </div>
 
           {/* Alias Rows */}
-          {aliasesData.aliases.map((alias) => (
-            <AliasRow
-              key={alias.id}
-              alias={alias}
-              projectId={project?.id || ''}
-              proxyRuleSetName={alias.proxyRuleSetId ? ruleSetNameMap.get(alias.proxyRuleSetId) : undefined}
-              canEdit={canEdit}
-              formatDate={formatDate}
-              onView={() => navigate(`/repo/${owner}/${repo}/${alias.commitSha}`)}
-              onEdit={() =>
-                setUpdateDialogState({
-                  open: true,
-                  aliasName: alias.name,
-                  commitSha: alias.commitSha,
-                  branch: alias.branch,
-                  proxyRuleSetId: alias.proxyRuleSetId,
-                })
-              }
-              onDelete={() =>
-                setDeleteDialogState({
-                  open: true,
-                  aliasName: alias.name,
-                })
-              }
-            />
-          ))}
+          {aliasesData.aliases.map((alias) => {
+            // Resolve rule set IDs: prefer proxyRuleSetIds, fall back to legacy proxyRuleSetId
+            const ruleSetIds = alias.proxyRuleSetIds?.length
+              ? alias.proxyRuleSetIds
+              : alias.proxyRuleSetId ? [alias.proxyRuleSetId] : [];
+            const ruleSetNames = ruleSetIds
+              .map((id) => ruleSetNameMap.get(id))
+              .filter((name): name is string => !!name);
+
+            return (
+              <AliasRow
+                key={alias.id}
+                alias={alias}
+                projectId={project?.id || ''}
+                proxyRuleSetNames={ruleSetNames}
+                canEdit={canEdit}
+                formatDate={formatDate}
+                onView={() => navigate(`/repo/${owner}/${repo}/${alias.commitSha}`)}
+                onEdit={() =>
+                  setUpdateDialogState({
+                    open: true,
+                    aliasName: alias.name,
+                    commitSha: alias.commitSha,
+                    branch: alias.branch,
+                    proxyRuleSetIds: ruleSetIds,
+                  })
+                }
+                onDelete={() =>
+                  setDeleteDialogState({
+                    open: true,
+                    aliasName: alias.name,
+                  })
+                }
+              />
+            );
+          })}
         </div>
       </CardContent>
     </Card>
@@ -445,7 +457,7 @@ export function AliasesTab({ owner, repo }: AliasesTabProps) {
           aliasName={updateDialogState.aliasName}
           currentCommitSha={updateDialogState.commitSha}
           currentBranch={updateDialogState.branch}
-          currentProxyRuleSetId={updateDialogState.proxyRuleSetId}
+          currentProxyRuleSetIds={updateDialogState.proxyRuleSetIds}
           open={updateDialogState.open}
           onOpenChange={(open) =>
             setUpdateDialogState({

@@ -84,6 +84,14 @@ export class FunctionHandler implements StepHandler<FunctionHandlerConfig> {
         userAgent: context.metadata.userAgent,
       },
       steps: context.stepOutputs,
+      deployment: context.deployment
+        ? {
+            owner: context.deployment.owner,
+            repo: context.deployment.repo,
+            commitSha: context.deployment.commitSha,
+            alias: context.deployment.alias,
+          }
+        : undefined,
     };
 
     // Execute the code

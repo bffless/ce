@@ -7,13 +7,13 @@ import {
   ConflictException,
   Logger,
 } from '@nestjs/common';
-import { eq, and, desc, like, SQL } from 'drizzle-orm';
+import { eq, and, desc, like, asc, SQL } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { unzip } from 'fflate';
 import * as mimeTypes from 'mime-types';
 import * as crypto from 'crypto';
 import { db } from '../db/client';
-import { assets, Asset, deploymentAliases, projects, proxyRuleSets } from '../db/schema';
+import { assets, Asset, deploymentAliases, projects, proxyRuleSets, aliasProxyRuleSets } from '../db/schema';
 import { IStorageAdapter, STORAGE_ADAPTER } from '../storage/storage.interface';
 import { AssetType } from '../types/asset-type.enum';
 import { ProjectsService } from '../projects/projects.service';
@@ -1100,7 +1100,7 @@ export class DeploymentsService {
     alias: string,
     commitSha: string,
     deploymentId: string,
-    options?: { isAutoPreview?: boolean; basePath?: string; proxyRuleSetId?: string },
+    options?: { isAutoPreview?: boolean; basePath?: string; proxyRuleSetId?: string; proxyRuleSetIds?: string[] },
   ): Promise<AliasResponseDto> {
     // Phase 3H: Convert repository string to projectId
     const [owner, name] = repository.split('/');
@@ -1116,20 +1116,21 @@ export class DeploymentsService {
       .where(and(eq(deploymentAliases.projectId, project.id), eq(deploymentAliases.alias, alias)))
       .limit(1);
 
+    // Determine the rule set IDs to write
+    const ruleSetIds = options?.proxyRuleSetIds ?? (options?.proxyRuleSetId ? [options.proxyRuleSetId] : undefined);
+    const ruleSetChanged = ruleSetIds !== undefined;
+
     if (existingAlias) {
       // Update existing alias
-      // Build update data - only include proxyRuleSetId if explicitly provided
       const updateData: Record<string, unknown> = {
         commitSha,
         deploymentId,
         updatedAt: new Date(),
       };
 
-      // Only update proxyRuleSetId if explicitly provided in options
-      // This allows CI/CD to update the rule set while preserving existing if not specified
-      const proxyRuleSetIdChanged = options?.proxyRuleSetId !== undefined;
-      if (proxyRuleSetIdChanged) {
-        updateData.proxyRuleSetId = options.proxyRuleSetId;
+      // Update legacy column for backwards compat
+      if (ruleSetChanged) {
+        updateData.proxyRuleSetId = ruleSetIds.length > 0 ? ruleSetIds[0] : null;
       }
 
       const [updated] = await db
@@ -1138,16 +1139,26 @@ export class DeploymentsService {
         .where(eq(deploymentAliases.id, existingAlias.id))
         .returning();
 
-      // Regenerate nginx configs if proxyRuleSetId changed
-      if (proxyRuleSetIdChanged) {
+      // Update join table if rule sets changed
+      if (ruleSetChanged) {
+        await this.syncAliasProxyRuleSets(existingAlias.id, ruleSetIds);
+      }
+
+      // Regenerate nginx configs if rule sets changed
+      if (ruleSetChanged) {
         try {
           await this.nginxRegenerationService.regenerateForAlias(project.id, alias);
         } catch (error) {
-          // Rollback the proxyRuleSetId change
+          // Rollback
           await db
             .update(deploymentAliases)
             .set({ proxyRuleSetId: existingAlias.proxyRuleSetId })
             .where(eq(deploymentAliases.id, existingAlias.id));
+          // Restore old join table entries
+          const oldIds = await this.getAliasProxyRuleSetIds(existingAlias.id);
+          if (oldIds.length === 0 && existingAlias.proxyRuleSetId) {
+            await this.syncAliasProxyRuleSets(existingAlias.id, [existingAlias.proxyRuleSetId]);
+          }
           throw new ConflictException(`Failed to regenerate nginx config: ${error.message}`);
         }
       }
@@ -1159,25 +1170,29 @@ export class DeploymentsService {
     const [newAlias] = await db
       .insert(deploymentAliases)
       .values({
-        projectId: project.id, // Phase 3H: Use projectId
-        repository, // DEPRECATED - kept for migration
+        projectId: project.id,
+        repository,
         alias,
         commitSha,
         deploymentId,
         isAutoPreview: options?.isAutoPreview ?? false,
         basePath: options?.basePath,
-        proxyRuleSetId: options?.proxyRuleSetId,
+        proxyRuleSetId: ruleSetIds && ruleSetIds.length > 0 ? ruleSetIds[0] : undefined,
       })
       .returning();
 
+    // Write join table entries for new alias
+    if (ruleSetIds && ruleSetIds.length > 0) {
+      await this.syncAliasProxyRuleSets(newAlias.id, ruleSetIds);
+    }
+
     // Regenerate nginx configs if alias has proxy rules (explicit or inherited from project default)
-    const hasProxyRules =
-      options?.proxyRuleSetId !== undefined || project.defaultProxyRuleSetId !== null;
+    const hasProxyRules = ruleSetChanged || project.defaultProxyRuleSetId !== null;
     if (hasProxyRules) {
       try {
         await this.nginxRegenerationService.regenerateForAlias(project.id, alias);
       } catch (error) {
-        // Rollback by deleting the newly created alias
+        // Rollback by deleting the newly created alias (cascades join table)
         await db.delete(deploymentAliases).where(eq(deploymentAliases.id, newAlias.id));
         throw new ConflictException(`Failed to regenerate nginx config: ${error.message}`);
       }
@@ -1288,10 +1303,19 @@ export class DeploymentsService {
       updateData.deploymentId = targetAsset.deploymentId;
     }
 
-    // Handle proxyRuleSetId update if provided (including null to clear)
-    const proxyRuleSetIdChanged = dto.proxyRuleSetId !== undefined;
-    if (proxyRuleSetIdChanged) {
-      updateData.proxyRuleSetId = dto.proxyRuleSetId;
+    // Determine rule set IDs: prefer proxyRuleSetIds (array) over proxyRuleSetId (singular)
+    let ruleSetIds: string[] | undefined;
+    if (dto.proxyRuleSetIds !== undefined) {
+      ruleSetIds = dto.proxyRuleSetIds;
+    } else if (dto.proxyRuleSetId !== undefined) {
+      ruleSetIds = dto.proxyRuleSetId ? [dto.proxyRuleSetId] : [];
+    }
+
+    const ruleSetChanged = ruleSetIds !== undefined;
+
+    // Update legacy column for backwards compat
+    if (ruleSetChanged && ruleSetIds) {
+      updateData.proxyRuleSetId = ruleSetIds.length > 0 ? ruleSetIds[0] : null;
     }
 
     // Update alias
@@ -1301,16 +1325,24 @@ export class DeploymentsService {
       .where(eq(deploymentAliases.id, existingAlias.id))
       .returning();
 
-    // Regenerate nginx configs if proxyRuleSetId changed
-    if (proxyRuleSetIdChanged) {
+    // Update join table if rule sets changed
+    if (ruleSetChanged && ruleSetIds) {
+      await this.syncAliasProxyRuleSets(existingAlias.id, ruleSetIds);
+    }
+
+    // Regenerate nginx configs if rule sets changed
+    if (ruleSetChanged) {
       try {
         await this.nginxRegenerationService.regenerateForAlias(project.id, alias);
       } catch (error) {
-        // Rollback the proxyRuleSetId change
+        // Rollback
         await db
           .update(deploymentAliases)
           .set({ proxyRuleSetId: existingAlias.proxyRuleSetId })
           .where(eq(deploymentAliases.id, existingAlias.id));
+        // Restore previous join table state
+        const prevIds = existingAlias.proxyRuleSetId ? [existingAlias.proxyRuleSetId] : [];
+        await this.syncAliasProxyRuleSets(existingAlias.id, prevIds);
         throw new ConflictException(`Failed to regenerate nginx config: ${error.message}`);
       }
     }
@@ -1523,6 +1555,39 @@ export class DeploymentsService {
     // Format: owner/repo/commits/commitSha/path
     const cleanPath = publicPath.startsWith('/') ? publicPath.slice(1) : publicPath;
     return `${repository}/commits/${commitSha}/${cleanPath}`;
+  }
+
+  /**
+   * Sync the join table entries for an alias's proxy rule sets.
+   * Replaces all existing entries with the provided rule set IDs in order.
+   */
+  private async syncAliasProxyRuleSets(aliasId: string, ruleSetIds: string[]): Promise<void> {
+    // Delete existing entries
+    await db.delete(aliasProxyRuleSets).where(eq(aliasProxyRuleSets.aliasId, aliasId));
+
+    // Insert new entries with order
+    if (ruleSetIds.length > 0) {
+      await db.insert(aliasProxyRuleSets).values(
+        ruleSetIds.map((ruleSetId, index) => ({
+          aliasId,
+          proxyRuleSetId: ruleSetId,
+          order: index,
+        })),
+      );
+    }
+  }
+
+  /**
+   * Get the proxy rule set IDs for an alias from the join table.
+   */
+  private async getAliasProxyRuleSetIds(aliasId: string): Promise<string[]> {
+    const rows = await db
+      .select({ proxyRuleSetId: aliasProxyRuleSets.proxyRuleSetId })
+      .from(aliasProxyRuleSets)
+      .where(eq(aliasProxyRuleSets.aliasId, aliasId))
+      .orderBy(asc(aliasProxyRuleSets.order));
+
+    return rows.map((r) => r.proxyRuleSetId);
   }
 
   private toAliasResponse(alias: typeof deploymentAliases.$inferSelect): AliasResponseDto {

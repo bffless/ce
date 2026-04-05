@@ -18,6 +18,7 @@ import { UserTools } from './tools/user.tools';
 import { ApiKeyTools } from './tools/api-key.tools';
 import { ProxyRulesTools } from './tools/proxy-rules.tools';
 import { CacheRulesTools } from './tools/cache-rules.tools';
+import { StorageTools } from './tools/storage.tools';
 
 const ALL_TOOLS = [
   ProjectTools,
@@ -29,6 +30,7 @@ const ALL_TOOLS = [
   ApiKeyTools,
   ProxyRulesTools,
   CacheRulesTools,
+  StorageTools,
 ];
 
 @Module({

@@ -5,6 +5,68 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.217](https://github.com/bffless/ce/compare/v0.0.216...v0.0.217) (2026-04-04)
+
+
+### Bug Fixes
+
+* signed url to mcp server ([d53a043](https://github.com/bffless/ce/commit/d53a0435f44a9571ff672888bd97eae0476168e4))
+
+## [0.0.216](https://github.com/bffless/ce/compare/v0.0.215...v0.0.216) (2026-04-04)
+
+
+### Features
+
+* add groupBy support to db_aggregate pipeline handler ([d1144c4](https://github.com/bffless/ce/commit/d1144c46c74cac00368d9dbd88c92d922c7bfc25))
+
+## [0.0.215](https://github.com/bffless/ce/compare/v0.0.214...v0.0.215) (2026-04-03)
+
+
+### Features
+
+* support multiple default proxy rule sets per project ([f34c043](https://github.com/bffless/ce/commit/f34c043748b394a4a93149c3b104031bbd043769))
+
+## [0.0.214](https://github.com/bffless/ce/compare/v0.0.213...v0.0.214) (2026-04-02)
+
+
+### Features
+
+* add create_signed_url MCP tool for downloading storage files ([94f47aa](https://github.com/bffless/ce/commit/94f47aab43413b3fa3191c01fa93d0ab213f521c))
+
+## [0.0.213](https://github.com/bffless/ce/compare/v0.0.212...v0.0.213) (2026-04-02)
+
+
+### Bug Fixes
+
+* tests ([2ed83c4](https://github.com/bffless/ce/commit/2ed83c415863592f0de175215bb6043dafec5016))
+
+## [0.0.212](https://github.com/bffless/ce/compare/v0.0.211...v0.0.212) (2026-04-02)
+
+
+### Features
+
+* add alias-level proxy rule set assignments ([10e1988](https://github.com/bffless/ce/commit/10e1988f11c50ae311568183fdbd4f0d79a0de2e))
+
+## [0.0.211](https://github.com/bffless/ce/compare/v0.0.210...v0.0.211) (2026-04-02)
+
+
+### Features
+
+* add signed_url pipeline handler for presigned storage URLs ([d9f17b6](https://github.com/bffless/ce/commit/d9f17b6a388fc4290bdac35891e34da577f43ec5))
+
+
+### Bug Fixes
+
+* triple-brace template expressions should not JSON-quote string primitives ([7d14a71](https://github.com/bffless/ce/commit/7d14a71fe784749466f73cf9c9a7cad11d3a3dfd))
+
+## [0.0.210](https://github.com/bffless/ce/compare/v0.0.209...v0.0.210) (2026-04-02)
+
+
+### Bug Fixes
+
+* pass deployment context to pipeline function handler sandbox ([cd9b435](https://github.com/bffless/ce/commit/cd9b4350c4459f2db719135534373651ffe96b33))
+* reverts member view ([090277c](https://github.com/bffless/ce/commit/090277cbea23c59db056cfff0b2d67883e35af7b))
+
 ## [0.0.209](https://github.com/bffless/ce/compare/v0.0.208...v0.0.209) (2026-04-01)
 
 

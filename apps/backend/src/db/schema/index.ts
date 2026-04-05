@@ -5,6 +5,8 @@ export * from './api-keys.schema';
 export * from './system-config.schema';
 export * from './proxy-rule-sets.schema'; // Must be before deployment-aliases and projects
 export * from './deployment-aliases.schema';
+export * from './alias-proxy-rule-sets.schema';
+export * from './project-default-proxy-rule-sets.schema';
 export * from './projects.schema';
 export * from './user-groups.schema';
 export * from './project-permissions.schema';

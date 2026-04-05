@@ -17,3 +17,4 @@ export * from './image-convert.handler';
 export * from './http-request.handler';
 export * from './stripe-checkout.handler';
 export * from './stripe-webhook.handler';
+export * from './signed-url.handler';

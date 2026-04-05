@@ -3,8 +3,9 @@ import { Request, Response, NextFunction } from 'express';
 import { eq, and, or } from 'drizzle-orm';
 import { getSession } from 'supertokens-node/recipe/session';
 import * as jwt from 'jsonwebtoken';
+import { asc } from 'drizzle-orm';
 import { db } from '../db/client';
-import { projects, deploymentAliases, domainMappings, users } from '../db/schema';
+import { projects, deploymentAliases, domainMappings, users, aliasProxyRuleSets, projectDefaultProxyRuleSets } from '../db/schema';
 import { ProxyRulesService } from './proxy-rules.service';
 import { ProxyService } from './proxy.service';
 import { EmailFormHandlerService } from './email-form-handler.service';
@@ -108,22 +109,26 @@ export class ProxyMiddleware implements NestMiddleware {
 
       // Determine if ref is alias or SHA (40 hex chars = SHA)
       const isSha = /^[a-f0-9]{40}$/i.test(ref);
-      let effectiveRuleSetId: string | null = project.defaultProxyRuleSetId;
+      let effectiveRuleSetIds: string[] = [];
       let aliasName: string | null = null;
       let resolvedCommitSha: string | null = isSha ? ref : null;
 
       if (!isSha) {
         aliasName = ref;
-        // Look up alias to get its proxyRuleSetId and commitSha
+        // Look up alias to get its proxy rule sets and commitSha
         const alias = await this.getAliasByName(project.id, ref);
-        if (alias?.proxyRuleSetId) {
-          // Alias has its own rule set - use it (overrides project default)
-          effectiveRuleSetId = alias.proxyRuleSetId;
+        if (alias) {
+          if (alias.commitSha) {
+            resolvedCommitSha = alias.commitSha;
+          }
+          // Resolve rule set IDs: join table → legacy column → project default
+          effectiveRuleSetIds = await this.resolveRuleSetIdsForAlias(alias.id, alias.proxyRuleSetId);
         }
-        if (alias?.commitSha) {
-          resolvedCommitSha = alias.commitSha;
-        }
-        // If alias doesn't have a rule set, fall through to project default
+      }
+
+      // Fall back to project defaults if no rule sets resolved
+      if (effectiveRuleSetIds.length === 0) {
+        effectiveRuleSetIds = await this.resolveProjectDefaultRuleSetIds(project.id, project.defaultProxyRuleSetId);
       }
 
       // Apply traffic splitting: check traffic rules and variant cookie
@@ -151,9 +156,10 @@ export class ProxyMiddleware implements NestMiddleware {
               `Traffic splitting: selected variant "${variantSelection.selectedAlias}" overriding URL alias "${aliasName}"`,
             );
             resolvedCommitSha = variantAlias.commitSha;
-            // Update effectiveRuleSetId if variant alias has its own rules
-            if (variantAlias.proxyRuleSetId) {
-              effectiveRuleSetId = variantAlias.proxyRuleSetId;
+            // Update effectiveRuleSetIds if variant alias has its own rules
+            const variantRuleSetIds = await this.resolveRuleSetIdsForAlias(variantAlias.id, variantAlias.proxyRuleSetId);
+            if (variantRuleSetIds.length > 0) {
+              effectiveRuleSetIds = variantRuleSetIds;
             }
             aliasName = variantSelection.selectedAlias;
 
@@ -178,10 +184,10 @@ export class ProxyMiddleware implements NestMiddleware {
         }
       }
 
-      // Get effective rules from the resolved rule set
-      const rules = await this.getCachedRules(effectiveRuleSetId);
+      // Get effective rules from the resolved rule sets
+      const rules = await this.getCachedRulesMulti(effectiveRuleSetIds);
       this.logger.debug(
-        `Proxy middleware: path=${subpathForMatching}, ruleSetId=${effectiveRuleSetId}, rulesCount=${rules.length}`,
+        `Proxy middleware: path=${subpathForMatching}, ruleSetIds=${JSON.stringify(effectiveRuleSetIds)}, rulesCount=${rules.length}`,
       );
       if (rules.length === 0) {
         return next();
@@ -369,28 +375,35 @@ export class ProxyMiddleware implements NestMiddleware {
       }
     }
 
-    // Determine effective rule set:
-    // 1. Alias's own proxyRuleSetId (if set)
+    // Determine effective rule sets:
+    // 1. Alias's own rule sets (join table, then legacy column)
     // 2. For preview aliases without rules, check manual aliases with same commit SHA
     // 3. Fall back to project default
-    let effectiveRuleSetId = alias?.proxyRuleSetId ?? null;
+    let effectiveRuleSetIds: string[] = [];
 
-    if (!effectiveRuleSetId && alias?.isAutoPreview) {
-      // Try to inherit from a manual alias pointing to the same commit
-      effectiveRuleSetId = await this.findProxyRuleSetFromCommitAliases(
-        alias.projectId,
-        alias.commitSha,
-      );
+    if (alias) {
+      effectiveRuleSetIds = await this.resolveRuleSetIdsForAlias(alias.id, alias.proxyRuleSetId);
+
+      if (effectiveRuleSetIds.length === 0 && alias.isAutoPreview) {
+        // Try to inherit from a manual alias pointing to the same commit
+        const inheritedId = await this.findProxyRuleSetFromCommitAliases(
+          alias.projectId,
+          alias.commitSha,
+        );
+        if (inheritedId) {
+          effectiveRuleSetIds = [inheritedId];
+        }
+      }
     }
 
-    if (!effectiveRuleSetId) {
-      effectiveRuleSetId = project.defaultProxyRuleSetId;
+    if (effectiveRuleSetIds.length === 0) {
+      effectiveRuleSetIds = await this.resolveProjectDefaultRuleSetIds(project.id, project.defaultProxyRuleSetId);
     }
 
-    // Get effective rules from the resolved rule set
-    const rules = await this.getCachedRules(effectiveRuleSetId);
+    // Get effective rules from the resolved rule sets
+    const rules = await this.getCachedRulesMulti(effectiveRuleSetIds);
     this.logger.debug(
-      `Subdomain proxy middleware: path=${subpathForMatching}, alias=${resolvedAliasName}, ruleSetId=${effectiveRuleSetId}, rulesCount=${rules.length}`,
+      `Subdomain proxy middleware: path=${subpathForMatching}, alias=${resolvedAliasName}, ruleSetIds=${JSON.stringify(effectiveRuleSetIds)}, rulesCount=${rules.length}`,
     );
     if (rules.length === 0) {
       return next();
@@ -884,12 +897,63 @@ export class ProxyMiddleware implements NestMiddleware {
   }
 
   /**
+   * Resolve rule set IDs for an alias.
+   * Checks join table first, falls back to legacy proxyRuleSetId column.
+   */
+  private async resolveRuleSetIdsForAlias(
+    aliasId: string,
+    legacyProxyRuleSetId: string | null,
+  ): Promise<string[]> {
+    // Check join table first
+    const joinRows = await db
+      .select({ proxyRuleSetId: aliasProxyRuleSets.proxyRuleSetId })
+      .from(aliasProxyRuleSets)
+      .where(eq(aliasProxyRuleSets.aliasId, aliasId))
+      .orderBy(asc(aliasProxyRuleSets.order));
+
+    if (joinRows.length > 0) {
+      return joinRows.map((r) => r.proxyRuleSetId);
+    }
+
+    // Fall back to legacy column
+    if (legacyProxyRuleSetId) {
+      return [legacyProxyRuleSetId];
+    }
+
+    return [];
+  }
+
+  /**
+   * Resolve default rule set IDs for a project.
+   * Checks join table first, falls back to legacy defaultProxyRuleSetId column.
+   */
+  private async resolveProjectDefaultRuleSetIds(
+    projectId: string,
+    legacyDefaultProxyRuleSetId: string | null,
+  ): Promise<string[]> {
+    // Check join table first
+    const joinRows = await db
+      .select({ proxyRuleSetId: projectDefaultProxyRuleSets.proxyRuleSetId })
+      .from(projectDefaultProxyRuleSets)
+      .where(eq(projectDefaultProxyRuleSets.projectId, projectId))
+      .orderBy(asc(projectDefaultProxyRuleSets.order));
+
+    if (joinRows.length > 0) {
+      return joinRows.map((r) => r.proxyRuleSetId);
+    }
+
+    // Fall back to legacy column
+    if (legacyDefaultProxyRuleSetId) {
+      return [legacyDefaultProxyRuleSetId];
+    }
+
+    return [];
+  }
+
+  /**
    * Get rules with caching based on rule set ID
    *
-   * Resolution order:
-   *   1. If alias has a proxyRuleSetId -> use that rule set
-   *   2. Else if project has a defaultProxyRuleSetId -> use that rule set
-   *   3. Else -> no proxy rules
+   * @deprecated Use getCachedRulesMulti instead
    */
   private async getCachedRules(ruleSetId: string | null): Promise<ProxyRule[]> {
     if (!ruleSetId) {
@@ -904,6 +968,33 @@ export class ProxyMiddleware implements NestMiddleware {
     }
 
     const rules = await this.proxyRulesService.getEffectiveRulesForRuleSet(ruleSetId);
+    this.ruleCache.set(cacheKey, { rules, expiry: Date.now() + this.CACHE_TTL });
+    return rules;
+  }
+
+  /**
+   * Get rules with caching based on multiple rule set IDs.
+   * Merges rules from all sets with deduplication.
+   */
+  private async getCachedRulesMulti(ruleSetIds: string[]): Promise<ProxyRule[]> {
+    if (ruleSetIds.length === 0) {
+      return [];
+    }
+
+    // For single rule set, use the existing cache path
+    if (ruleSetIds.length === 1) {
+      return this.getCachedRules(ruleSetIds[0]);
+    }
+
+    // Cache key based on sorted IDs for consistency
+    const cacheKey = `rulesets:${ruleSetIds.join(',')}`;
+    const cached = this.ruleCache.get(cacheKey);
+
+    if (cached && cached.expiry > Date.now()) {
+      return cached.rules;
+    }
+
+    const rules = await this.proxyRulesService.getEffectiveRulesForMultipleRuleSets(ruleSetIds);
     this.ruleCache.set(cacheKey, { rules, expiry: Date.now() + this.CACHE_TTL });
     return rules;
   }

@@ -116,6 +116,7 @@ export interface AliasDetail {
   basePath?: string;
   // Proxy rule set assignment
   proxyRuleSetId?: string | null;
+  proxyRuleSetIds?: string[];
 }
 
 // Phase B5: Alias visibility types
@@ -146,11 +147,13 @@ export interface CreateAliasRequest {
   name: string;
   commitSha: string;
   proxyRuleSetId?: string;
+  proxyRuleSetIds?: string[];
 }
 
 export interface UpdateAliasRequest {
   commitSha?: string;
   proxyRuleSetId?: string | null;
+  proxyRuleSetIds?: string[];
 }
 
 // Commit details types

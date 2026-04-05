@@ -9,6 +9,7 @@ import {
   index,
 } from 'drizzle-orm/pg-core';
 import { projects } from './projects.schema';
+import { aliasProxyRuleSets } from './alias-proxy-rule-sets.schema';
 
 /**
  * Proxy Rule Sets - Reusable groups of proxy rules.
@@ -89,11 +90,13 @@ export const proxyRuleSets = pgTable(
 /**
  * Relations for proxy rule sets
  */
-export const proxyRuleSetsRelations = relations(proxyRuleSets, ({ one }) => ({
+export const proxyRuleSetsRelations = relations(proxyRuleSets, ({ one, many }) => ({
   project: one(projects, {
     fields: [proxyRuleSets.projectId],
     references: [projects.id],
   }),
+  // Aliases using this rule set (via join table)
+  aliasProxyRuleSets: many(aliasProxyRuleSets),
 }));
 
 // Type exports

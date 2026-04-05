@@ -11,7 +11,7 @@ import { eq, and, SQL, asc } from 'drizzle-orm';
 import { promises as dns } from 'dns';
 import { join } from 'path';
 import { db } from '../db/client';
-import { domainMappings, deploymentAliases, projects } from '../db/schema';
+import { domainMappings, deploymentAliases, projects, aliasProxyRuleSets, projectDefaultProxyRuleSets } from '../db/schema';
 import { CreateDomainDto } from './dto/create-domain.dto';
 import { UpdateDomainDto } from './dto/update-domain.dto';
 import { NginxConfigService, NginxProxyRule } from './nginx-config.service';
@@ -191,39 +191,63 @@ export class DomainsService {
         return [];
       }
 
-      // Get the rule set ID (alias override or inherited from commit aliases or project default)
-      let ruleSetId = alias[0].proxyRuleSetId;
+      // Resolve rule set IDs: join table → legacy column → commit aliases → project default
+      let ruleSetIds: string[] = [];
 
-      // For preview aliases without a rule set, check manual aliases with same commit
-      if (!ruleSetId && alias[0].isAutoPreview) {
+      // Check join table first
+      const joinRows = await db
+        .select({ proxyRuleSetId: aliasProxyRuleSets.proxyRuleSetId })
+        .from(aliasProxyRuleSets)
+        .where(eq(aliasProxyRuleSets.aliasId, alias[0].id))
+        .orderBy(asc(aliasProxyRuleSets.order));
+
+      if (joinRows.length > 0) {
+        ruleSetIds = joinRows.map((r) => r.proxyRuleSetId);
+      } else if (alias[0].proxyRuleSetId) {
+        // Fall back to legacy column
+        ruleSetIds = [alias[0].proxyRuleSetId];
+      }
+
+      // For preview aliases without rule sets, check manual aliases with same commit
+      if (ruleSetIds.length === 0 && alias[0].isAutoPreview) {
         const commitAliasRuleSet = await this.findProxyRuleSetFromCommitAliases(
           projectId,
           alias[0].commitSha,
         );
         if (commitAliasRuleSet) {
-          ruleSetId = commitAliasRuleSet;
+          ruleSetIds = [commitAliasRuleSet];
         }
       }
 
-      if (!ruleSetId) {
-        // Try project default
-        const project = await db
-          .select({ defaultProxyRuleSetId: projects.defaultProxyRuleSetId })
-          .from(projects)
-          .where(eq(projects.id, projectId))
-          .limit(1);
+      if (ruleSetIds.length === 0) {
+        // Try project default: join table first, then legacy column
+        const projectDefaultJoinRows = await db
+          .select({ proxyRuleSetId: projectDefaultProxyRuleSets.proxyRuleSetId })
+          .from(projectDefaultProxyRuleSets)
+          .where(eq(projectDefaultProxyRuleSets.projectId, projectId))
+          .orderBy(asc(projectDefaultProxyRuleSets.order));
 
-        if (project.length > 0) {
-          ruleSetId = project[0].defaultProxyRuleSetId;
+        if (projectDefaultJoinRows.length > 0) {
+          ruleSetIds = projectDefaultJoinRows.map((r) => r.proxyRuleSetId);
+        } else {
+          const project = await db
+            .select({ defaultProxyRuleSetId: projects.defaultProxyRuleSetId })
+            .from(projects)
+            .where(eq(projects.id, projectId))
+            .limit(1);
+
+          if (project.length > 0 && project[0].defaultProxyRuleSetId) {
+            ruleSetIds = [project[0].defaultProxyRuleSetId];
+          }
         }
       }
 
-      if (!ruleSetId) {
+      if (ruleSetIds.length === 0) {
         return [];
       }
 
-      // Get all enabled rules from the rule set
-      const rules = await this.proxyRulesService.getEffectiveRulesForRuleSet(ruleSetId);
+      // Get all enabled rules from the rule sets (merged)
+      const rules = await this.proxyRulesService.getEffectiveRulesForMultipleRuleSets(ruleSetIds);
 
       // Filter for rules with authTransform set and map to NginxProxyRule interface
       return rules
