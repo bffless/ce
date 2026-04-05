@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.219](https://github.com/bffless/ce/compare/v0.0.218...v0.0.219) (2026-04-05)
+
+
+### Bug Fixes
+
+* default Google OAuth to false for CE, add enable validation ([eb908d2](https://github.com/bffless/ce/commit/eb908d26221b6d3fe7bd5d8e08544b9f30e22013))
+
 ## [0.0.218](https://github.com/bffless/ce/compare/v0.0.217...v0.0.218) (2026-04-04)
 
 
