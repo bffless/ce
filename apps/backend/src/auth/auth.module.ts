@@ -11,7 +11,7 @@ import { ApiKeyGuard } from './api-key.guard';
 import { OptionalAuthGuard } from './optional-auth.guard';
 import { RolesGuard } from './roles.guard';
 import { EmailVerificationGuard } from './email-verification.guard';
-import { initSuperTokens } from './supertokens.config';
+import { initSuperTokens, registerGoogleOAuthFromEnv } from './supertokens.config';
 import { SetupModule } from '../setup/setup.module';
 import { OnboardingRulesModule } from '../onboarding-rules/onboarding-rules.module';
 import { DomainsModule } from '../domains/domains.module';
@@ -22,6 +22,10 @@ import { VisibilityService } from '../domains/visibility.service';
   providers: [VisibilityService],
 })
 export class AuthModule implements NestModule {
+  async onModuleInit() {
+    await registerGoogleOAuthFromEnv();
+  }
+
   static forRoot(): DynamicModule {
     // Initialize SuperTokens
     initSuperTokens();
