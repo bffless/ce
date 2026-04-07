@@ -141,6 +141,13 @@
       "when": 1775219894767,
       "tag": "0019_bumpy_jack_power",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1775604666781,
+      "tag": "0020_parallel_bill_hollister",
+      "breakpoints": true
     }
   ]
 }

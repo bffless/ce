@@ -53,7 +53,7 @@ export class ProjectsService {
         name,
         displayName: name,
         description: null,
-        isPublic: false, // Default to private
+        isPublic: true, // Default to public
         settings: {},
         createdBy,
       })
@@ -312,7 +312,7 @@ export class ProjectsService {
       .insert(projects)
       .values({
         ...data,
-        isPublic: data.isPublic ?? false,
+        isPublic: data.isPublic ?? true,
         settings: data.settings ?? {},
       })
       .returning();

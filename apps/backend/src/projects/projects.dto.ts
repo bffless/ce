@@ -21,7 +21,7 @@ export class CreateProjectDto {
   @IsOptional()
   description?: string;
 
-  @ApiPropertyOptional({ description: 'Whether the project is public', default: false })
+  @ApiPropertyOptional({ description: 'Whether the project is public', default: true })
   @IsBoolean()
   @IsOptional()
   isPublic?: boolean;

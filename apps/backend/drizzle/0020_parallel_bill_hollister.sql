@@ -1,0 +1,1 @@
+ALTER TABLE "projects" ALTER COLUMN "is_public" SET DEFAULT true;

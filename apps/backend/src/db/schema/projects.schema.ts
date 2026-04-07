@@ -22,7 +22,7 @@ export const projects = pgTable(
     name: varchar('name', { length: 255 }).notNull(), // e.g., "ce"
     displayName: varchar('display_name', { length: 255 }), // Optional friendly name
     description: text('description'),
-    isPublic: boolean('is_public').default(false).notNull(),
+    isPublic: boolean('is_public').default(true).notNull(),
     /**
      * Behavior when unauthenticated user accesses private content.
      * - 'not_found': Return 404 (default, hides existence)
