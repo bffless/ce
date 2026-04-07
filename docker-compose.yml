@@ -235,7 +235,8 @@ services:
       test: ['CMD', 'curl', '-f', 'http://localhost:3567/hello']
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 12
+      start_period: 30s
     networks:
       - assethost-network
     restart: unless-stopped

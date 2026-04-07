@@ -32,6 +32,41 @@ else
     echo -e "${YELLOW}Warning: .env file not found, using defaults${NC}"
 fi
 
+# Detect system memory and warn/auto-configure for low-memory systems
+detect_memory() {
+    local total_mb=0
+    if [ -f /proc/meminfo ]; then
+        total_mb=$(awk '/MemTotal/ {printf "%d", $2/1024}' /proc/meminfo)
+    elif command -v sysctl >/dev/null 2>&1; then
+        total_mb=$(sysctl -n hw.memsize 2>/dev/null | awk '{printf "%d", $1/1024/1024}')
+    fi
+    echo "$total_mb"
+}
+
+TOTAL_RAM_MB=$(detect_memory)
+
+if [ "$TOTAL_RAM_MB" -gt 0 ] 2>/dev/null && [ "$TOTAL_RAM_MB" -le 1200 ]; then
+    # Only warn if MinIO or Redis are still enabled
+    if [ "${ENABLE_MINIO:-true}" = "true" ] || [ "${ENABLE_REDIS:-true}" = "true" ]; then
+        echo -e "${YELLOW}╔══════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${YELLOW}║  ⚠  Low Memory Detected: ${TOTAL_RAM_MB}MB RAM                            ${NC}"
+        echo -e "${YELLOW}║                                                              ${NC}"
+        echo -e "${YELLOW}║  1GB servers should disable MinIO and Redis to avoid OOM.    ${NC}"
+        echo -e "${YELLOW}║  Add these lines to your .env file:                          ${NC}"
+        echo -e "${YELLOW}║                                                              ${NC}"
+        echo -e "${YELLOW}║    ENABLE_MINIO=false                                        ${NC}"
+        echo -e "${YELLOW}║    ENABLE_REDIS=false                                        ${NC}"
+        echo -e "${YELLOW}║                                                              ${NC}"
+        echo -e "${YELLOW}║  Then restart with: ./stop.sh && ./start.sh                  ${NC}"
+        echo -e "${YELLOW}║                                                              ${NC}"
+        echo -e "${YELLOW}║  Storage will use local filesystem instead of MinIO.         ${NC}"
+        echo -e "${YELLOW}║  Caching will use in-memory instead of Redis.                ${NC}"
+        echo -e "${YELLOW}║  No functionality is lost.                                   ${NC}"
+        echo -e "${YELLOW}╚══════════════════════════════════════════════════════════════╝${NC}"
+        echo ""
+    fi
+fi
+
 # Parse command line arguments
 FORCE_ALL=false
 FORCE_MINIMAL=false
