@@ -184,8 +184,32 @@ uncomment_and_set() {
 # Prerequisite Installation (Debian/Ubuntu)
 # =============================================================================
 
+# Wait for apt/dpkg locks to be released (common on fresh cloud VMs where
+# unattended-upgrades runs on first boot)
+wait_for_apt_lock() {
+    local max_wait=120
+    local waited=0
+    while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/apt/lists/lock >/dev/null 2>&1; do
+        if [ $waited -eq 0 ]; then
+            print_info "Waiting for other package manager to finish..."
+        fi
+        sleep 5
+        waited=$((waited + 5))
+        if [ $waited -ge $max_wait ]; then
+            print_error "Timed out waiting for package manager lock after ${max_wait}s"
+            print_info "Try running: sudo kill \$(sudo lsof -t /var/lib/dpkg/lock-frontend) && sudo dpkg --configure -a"
+            exit 1
+        fi
+    done
+    if [ $waited -gt 0 ]; then
+        print_success "Package manager is now available (waited ${waited}s)"
+    fi
+}
+
 install_docker() {
     print_info "Installing Docker..."
+
+    wait_for_apt_lock
 
     # Remove old versions
     apt-get remove -y docker docker-engine docker.io containerd runc 2>/dev/null || true
@@ -215,6 +239,7 @@ install_docker() {
 
 install_certbot() {
     print_info "Installing Certbot..."
+    wait_for_apt_lock
     apt-get update
     apt-get install -y certbot
     print_success "Certbot installed successfully"
@@ -222,6 +247,7 @@ install_certbot() {
 
 install_openssl() {
     print_info "Installing OpenSSL..."
+    wait_for_apt_lock
     apt-get update
     apt-get install -y openssl
     print_success "OpenSSL installed successfully"
