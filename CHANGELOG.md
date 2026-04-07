@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.223](https://github.com/bffless/ce/compare/v0.0.222...v0.0.223) (2026-04-07)
+
+
+### Features
+
+* default ENABLE_MINIO and ENABLE_REDIS to false ([295bb46](https://github.com/bffless/ce/commit/295bb4616e809244ee71bd58c13eab3d6d882f41))
+
 ## [0.0.222](https://github.com/bffless/ce/compare/v0.0.221...v0.0.222) (2026-04-07)
 
 
