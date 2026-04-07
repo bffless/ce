@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.222](https://github.com/bffless/ce/compare/v0.0.221...v0.0.222) (2026-04-07)
+
+
+### Bug Fixes
+
+* warn on low-memory systems and increase SuperTokens healthcheck timeout ([6b6614e](https://github.com/bffless/ce/commit/6b6614ebe8a0a3d4fc1419ee91eb30dfc6a94519))
+
 ## [0.0.221](https://github.com/bffless/ce/compare/v0.0.220...v0.0.221) (2026-04-07)
 
 
