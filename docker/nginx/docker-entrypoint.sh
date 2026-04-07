@@ -166,7 +166,7 @@ echo "📝 Generating base nginx configuration..."
 envsubst '${PRIMARY_DOMAIN} ${WILDCARD_CERT} ${WILDCARD_KEY} ${PORT80_ACTION}' < /etc/nginx/sites-available/main.conf.template > /etc/nginx/sites-available/main.conf
 
 # Conditionally generate MinIO configuration
-if [ "${ENABLE_MINIO:-true}" = "true" ]; then
+if [ "${ENABLE_MINIO:-false}" = "true" ]; then
     echo "✅ MinIO enabled - generating minio proxy config"
     envsubst '${PRIMARY_DOMAIN}' < /etc/nginx/sites-available/minio.conf.template > /etc/nginx/sites-available/minio.conf
 else

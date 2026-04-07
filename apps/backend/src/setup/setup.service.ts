@@ -197,8 +197,8 @@ export class SetupService {
    * - Frontend disables Redis option in cache selection
    */
   getServiceConstraints(): ServiceConstraints {
-    const enableMinio = this.configService.get('ENABLE_MINIO', 'true') === 'true';
-    const enableRedis = this.configService.get('ENABLE_REDIS', 'true') === 'true';
+    const enableMinio = this.configService.get('ENABLE_MINIO', 'false') === 'true';
+    const enableRedis = this.configService.get('ENABLE_REDIS', 'false') === 'true';
 
     return {
       minio: {

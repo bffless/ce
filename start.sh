@@ -46,22 +46,18 @@ detect_memory() {
 TOTAL_RAM_MB=$(detect_memory)
 
 if [ "$TOTAL_RAM_MB" -gt 0 ] 2>/dev/null && [ "$TOTAL_RAM_MB" -le 1200 ]; then
-    # Only warn if MinIO or Redis are still enabled
-    if [ "${ENABLE_MINIO:-true}" = "true" ] || [ "${ENABLE_REDIS:-true}" = "true" ]; then
+    # Warn if MinIO or Redis are explicitly enabled on a low-memory system
+    if [ "${ENABLE_MINIO:-false}" = "true" ] || [ "${ENABLE_REDIS:-false}" = "true" ]; then
         echo -e "${YELLOW}╔══════════════════════════════════════════════════════════════╗${NC}"
         echo -e "${YELLOW}║  ⚠  Low Memory Detected: ${TOTAL_RAM_MB}MB RAM                            ${NC}"
         echo -e "${YELLOW}║                                                              ${NC}"
-        echo -e "${YELLOW}║  1GB servers should disable MinIO and Redis to avoid OOM.    ${NC}"
-        echo -e "${YELLOW}║  Add these lines to your .env file:                          ${NC}"
+        echo -e "${YELLOW}║  MinIO and/or Redis are enabled but this server may not      ${NC}"
+        echo -e "${YELLOW}║  have enough memory. Consider disabling them in .env:        ${NC}"
         echo -e "${YELLOW}║                                                              ${NC}"
         echo -e "${YELLOW}║    ENABLE_MINIO=false                                        ${NC}"
         echo -e "${YELLOW}║    ENABLE_REDIS=false                                        ${NC}"
         echo -e "${YELLOW}║                                                              ${NC}"
         echo -e "${YELLOW}║  Then restart with: ./stop.sh && ./start.sh                  ${NC}"
-        echo -e "${YELLOW}║                                                              ${NC}"
-        echo -e "${YELLOW}║  Storage will use local filesystem instead of MinIO.         ${NC}"
-        echo -e "${YELLOW}║  Caching will use in-memory instead of Redis.                ${NC}"
-        echo -e "${YELLOW}║  No functionality is lost.                                   ${NC}"
         echo -e "${YELLOW}╚══════════════════════════════════════════════════════════════╝${NC}"
         echo ""
     fi
@@ -89,8 +85,8 @@ while [[ "$#" -gt 0 ]]; do
             echo ""
             echo "Without options, reads from .env:"
             echo "  ENABLE_POSTGRES    - Enable local PostgreSQL container (default: true)"
-            echo "  ENABLE_MINIO       - Enable local MinIO container (default: true)"
-            echo "  ENABLE_REDIS       - Enable local Redis container (default: true)"
+            echo "  ENABLE_MINIO       - Enable local MinIO container (default: false)"
+            echo "  ENABLE_REDIS       - Enable local Redis container (default: false)"
             echo "  SUPERTOKENS_MODE   - 'local' for local container, 'platform' for external (default: local)"
             exit 0
             ;;
@@ -127,7 +123,7 @@ elif [ "$FORCE_MINIMAL" = true ]; then
     PROFILES=""
     echo -e "Mode: ${YELLOW}Minimal${NC} (--minimal flag)"
 else
-    # Read from environment (default to true for first-time users)
+    # Read from environment
 
     # PostgreSQL: Default to running Docker postgres
     if [ "${ENABLE_POSTGRES:-true}" = "true" ]; then
@@ -145,18 +141,18 @@ else
         echo -e "PostgreSQL: ${YELLOW}Disabled${NC} (using external: ${MASKED_URL})"
     fi
 
-    if [ "${ENABLE_MINIO:-true}" = "true" ]; then
+    if [ "${ENABLE_MINIO:-false}" = "true" ]; then
         PROFILES="$PROFILES --profile minio"
         echo -e "MinIO: ${GREEN}Enabled${NC}"
     else
-        echo -e "MinIO: ${YELLOW}Disabled${NC} (ENABLE_MINIO=false)"
+        echo -e "MinIO: ${YELLOW}Disabled${NC} (using local filesystem storage)"
     fi
 
-    if [ "${ENABLE_REDIS:-true}" = "true" ]; then
+    if [ "${ENABLE_REDIS:-false}" = "true" ]; then
         PROFILES="$PROFILES --profile redis"
         echo -e "Redis: ${GREEN}Enabled${NC}"
     else
-        echo -e "Redis: ${YELLOW}Disabled${NC} (ENABLE_REDIS=false)"
+        echo -e "Redis: ${YELLOW}Disabled${NC} (using in-memory cache)"
     fi
 
     # SuperTokens: Include local container unless in platform mode

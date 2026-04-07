@@ -30,8 +30,8 @@
 # External Services (advanced):
 #   ENABLE_POSTGRES     - Set to 'false' to use external PostgreSQL (default: true)
 #   DATABASE_URL        - External PostgreSQL connection string (required if ENABLE_POSTGRES=false)
-#   ENABLE_MINIO        - Set to 'false' to skip MinIO container (default: true)
-#   ENABLE_REDIS        - Set to 'false' to skip Redis container (default: true)
+#   ENABLE_MINIO        - Set to 'true' to enable MinIO container (default: false)
+#   ENABLE_REDIS        - Set to 'true' to enable Redis container (default: false)
 
 set -e
 
@@ -1594,8 +1594,8 @@ print_help() {
     echo "External services (advanced - edit .env after setup):"
     echo "  ENABLE_POSTGRES     Set to 'false' to use external PostgreSQL"
     echo "  DATABASE_URL        External PostgreSQL connection string"
-    echo "  ENABLE_MINIO        Set to 'false' to skip MinIO container"
-    echo "  ENABLE_REDIS        Set to 'false' to skip Redis container"
+    echo "  ENABLE_MINIO        Set to 'true' to enable MinIO container (default: false)"
+    echo "  ENABLE_REDIS        Set to 'true' to enable Redis container (default: false)"
     echo ""
     echo "Examples:"
     echo "  # Interactive setup"

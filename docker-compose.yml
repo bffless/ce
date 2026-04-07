@@ -95,7 +95,7 @@ services:
       - acme-webroot:/var/www/certbot:ro # ACME challenges (read-only)
     environment:
       - PRIMARY_DOMAIN=${PRIMARY_DOMAIN:-yourdomain.com}
-      - ENABLE_MINIO=${ENABLE_MINIO:-true} # For conditional nginx config
+      - ENABLE_MINIO=${ENABLE_MINIO:-false} # For conditional nginx config
       - PROXY_MODE=${PROXY_MODE:-none} # none (default) or cloudflare
     depends_on:
       frontend:
@@ -377,8 +377,8 @@ services:
       REDIS_DB: 0
 
       # Optional Services Configuration
-      ENABLE_MINIO: ${ENABLE_MINIO:-true}
-      ENABLE_REDIS: ${ENABLE_REDIS:-true}
+      ENABLE_MINIO: ${ENABLE_MINIO:-false}
+      ENABLE_REDIS: ${ENABLE_REDIS:-false}
 
       # Proxy/CDN Mode (cloudflare or none)
       PROXY_MODE: ${PROXY_MODE:-none}

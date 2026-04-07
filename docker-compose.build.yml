@@ -33,7 +33,7 @@ services:
       - acme-webroot:/var/www/certbot:ro # ACME challenges (read-only)
     environment:
       - PRIMARY_DOMAIN=${PRIMARY_DOMAIN:-localhost}
-      - ENABLE_MINIO=${ENABLE_MINIO:-true} # For conditional nginx config
+      - ENABLE_MINIO=${ENABLE_MINIO:-false} # For conditional nginx config
     depends_on:
       frontend:
         condition: service_started
