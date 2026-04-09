@@ -303,6 +303,25 @@ export class CreateAliasDto {
   @IsString()
   @Matches(/^[a-f0-9]{7,40}$/i, { message: 'Invalid commit SHA format' })
   commitSha: string;
+
+  @ApiPropertyOptional({
+    description: 'Proxy rule set ID to apply to this alias. Legacy — prefer proxyRuleSetIds.',
+    example: '550e8400-e29b-41d4-a716-446655440000',
+    nullable: true,
+  })
+  @IsOptional()
+  @IsUUID()
+  proxyRuleSetId?: string | null;
+
+  @ApiPropertyOptional({
+    description: 'Ordered array of proxy rule set IDs to apply to this alias. Rules merge in order (first set has highest priority). Overrides proxyRuleSetId if both are provided.',
+    example: ['550e8400-e29b-41d4-a716-446655440000'],
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  proxyRuleSetIds?: string[];
 }
 
 export class UpdateAliasDto {

@@ -1246,7 +1246,10 @@ export class DeploymentsService {
     // Phase 3H.7: Derive repository from project
     const repository = project ? `${project.owner}/${project.name}` : '';
 
-    return this.createOrUpdateAlias(repository, dto.alias, dto.commitSha, deploymentId);
+    return this.createOrUpdateAlias(repository, dto.alias, dto.commitSha, deploymentId, {
+      proxyRuleSetId: dto.proxyRuleSetId ?? undefined,
+      proxyRuleSetIds: dto.proxyRuleSetIds,
+    });
   }
 
   /**
