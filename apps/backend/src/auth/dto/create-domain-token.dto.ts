@@ -24,4 +24,12 @@ export class CreateDomainTokenDto {
   @IsString()
   @IsOptional()
   redirectPath?: string;
+
+  @ApiPropertyOptional({
+    description: 'Full origin (protocol + host + port) for the callback URL. Used for localhost development where the default https://{domain} does not work.',
+    example: 'http://localhost:4321',
+  })
+  @IsString()
+  @IsOptional()
+  targetOrigin?: string;
 }

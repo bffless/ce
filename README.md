@@ -49,6 +49,28 @@ Upload artifacts from your CI/CD pipeline:
 
 Only 3 required inputs - repository, commit SHA, and branch are auto-detected from GitHub context.
 
+## Claude Code Skills
+
+Install the BFFless plugin for [Claude Code](https://claude.ai/code) to get AI-assisted development with platform knowledge built in.
+
+```bash
+# Add the BFFless plugin marketplace
+/plugin marketplace add bffless/claude-skills
+
+# Install the plugin
+/plugin install bffless
+```
+
+Once installed, Claude Code understands BFFless features — pipelines, proxy rules, chat, deployments, traffic splitting, and more. Just ask naturally:
+
+- "Set up a proxy rule to forward /api requests to my backend"
+- "Add AI chat to my site with streaming"
+- "Configure traffic splitting for a canary deployment"
+
+Available skills: `bffless`, `pipelines`, `chat`, `proxy-rules`, `traffic-splitting`, `authorization`, `repository`, `share-links`, `upload-artifact`
+
+See the [claude-skills repo](https://github.com/bffless/claude-skills) for full documentation.
+
 ## Community
 
 Join our [Discord](https://discord.gg/BAYKm5Kv) for support, feature discussions, and updates.

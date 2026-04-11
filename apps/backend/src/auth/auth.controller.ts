@@ -935,7 +935,7 @@ export class AuthController {
     @Body() body: CreateDomainTokenDto,
     @Req() req: Request & { user?: { id: string; email: string; role: string } },
   ): Promise<{ token: string; redirectUrl: string }> {
-    const { targetDomain, redirectPath } = body;
+    const { targetDomain, redirectPath, targetOrigin } = body;
 
     // Validate that the target domain belongs to this workspace.
     // Check registered domain mappings (custom or subdomain types),
@@ -979,12 +979,12 @@ export class AuthController {
     );
 
     // Build the callback URL
-    // Always use HTTPS for custom domain callbacks in production
-    // Custom domains should always be accessed via HTTPS
-    const protocol = 'https';
     const callbackPath = '/_bffless/auth/callback';
     const redirectParam = redirectPath ? `&redirect=${encodeURIComponent(redirectPath)}` : '';
-    const redirectUrl = `${protocol}://${targetDomain}${callbackPath}?token=${encodeURIComponent(token)}${redirectParam}`;
+    // Only allow targetOrigin override for localhost development
+    const isLocalhostDev = targetOrigin && (targetDomain === 'localhost' || targetDomain === '127.0.0.1');
+    const origin = isLocalhostDev ? targetOrigin : `https://${targetDomain}`;
+    const redirectUrl = `${origin}${callbackPath}?token=${encodeURIComponent(token)}${redirectParam}`;
 
     this.logger.log(
       `Created domain token for user ${user.id} targeting ${targetDomain}`,

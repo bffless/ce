@@ -56,6 +56,7 @@ export function LoginPage() {
   // Custom domain relay params (for authenticating on custom domains)
   const customDomainRelay = searchParams.get('customDomainRelay') === 'true';
   const targetDomain = searchParams.get('targetDomain');
+  const targetOrigin = searchParams.get('targetOrigin');
   const [isRelaying, setIsRelaying] = useState(false);
 
   // Attempt session refresh when redirected from a private deployment
@@ -120,6 +121,7 @@ export function LoginPage() {
           body: JSON.stringify({
             targetDomain,
             redirectPath: searchParams.get('redirect'),
+            ...(targetOrigin && { targetOrigin }),
           }),
         })
           .then(async (response) => {
