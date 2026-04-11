@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.228](https://github.com/bffless/ce/compare/v0.0.227...v0.0.228) (2026-04-11)
+
+
+### Bug Fixes
+
+* skip domain validation on session and refresh endpoints for localhost ([82b005a](https://github.com/bffless/ce/commit/82b005a42eb0e388e9f9109e362dd7bd7a226598))
+
 ## [0.0.227](https://github.com/bffless/ce/compare/v0.0.226...v0.0.227) (2026-04-11)
 
 
