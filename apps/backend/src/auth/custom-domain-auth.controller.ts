@@ -89,14 +89,18 @@ export class CustomDomainAuthController {
     }
 
     // Verify the target domain matches the current request host
-    const host = req.headers['x-forwarded-host'] as string || req.headers.host;
-    const requestDomain = host?.split(':')[0]; // Remove port if present
+    // Skip check for localhost tokens (proxied from local dev servers)
+    const isLocalhostToken = payload.targetDomain === 'localhost' || payload.targetDomain === '127.0.0.1';
+    if (!isLocalhostToken) {
+      const host = req.headers['x-forwarded-host'] as string || req.headers.host;
+      const requestDomain = host?.split(':')[0]; // Remove port if present
 
-    if (requestDomain !== payload.targetDomain) {
-      this.logger.warn(
-        `Domain mismatch: token for ${payload.targetDomain}, request from ${requestDomain}`,
-      );
-      throw new UnauthorizedException('Token not valid for this domain');
+      if (requestDomain !== payload.targetDomain) {
+        this.logger.warn(
+          `Domain mismatch: token for ${payload.targetDomain}, request from ${requestDomain}`,
+        );
+        throw new UnauthorizedException('Token not valid for this domain');
+      }
     }
 
     // Verify user still exists in the database
@@ -125,9 +129,9 @@ export class CustomDomainAuthController {
       payload.targetDomain,
     );
 
-    // Always use secure cookies for custom domains (they should always be HTTPS)
-    // The x-forwarded-proto may be 'http' due to internal proxy, but client is on HTTPS
-    const secure = true;
+    // Use secure cookies for custom domains (they should always be HTTPS)
+    // Skip Secure flag for localhost dev (http)
+    const secure = !isLocalhostToken;
 
     // Set auth cookies
     this.customDomainAuthService.setAuthCookies(res, accessToken, refreshToken, secure);
