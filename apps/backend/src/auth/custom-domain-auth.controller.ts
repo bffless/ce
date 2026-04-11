@@ -175,14 +175,18 @@ export class CustomDomainAuthController {
     }
 
     // Verify the domain matches
-    const host = req.headers['x-forwarded-host'] as string || req.headers.host;
-    const requestDomain = host?.split(':')[0];
+    // Skip for localhost tokens (proxied from local dev servers)
+    const isLocalhostDomain = payload.domain === 'localhost' || payload.domain === '127.0.0.1';
+    if (!isLocalhostDomain) {
+      const host = req.headers['x-forwarded-host'] as string || req.headers.host;
+      const requestDomain = host?.split(':')[0];
 
-    if (requestDomain !== payload.domain) {
-      this.logger.warn(
-        `Domain mismatch on refresh: token for ${payload.domain}, request from ${requestDomain}`,
-      );
-      throw new UnauthorizedException('Refresh token not valid for this domain');
+      if (requestDomain !== payload.domain) {
+        this.logger.warn(
+          `Domain mismatch on refresh: token for ${payload.domain}, request from ${requestDomain}`,
+        );
+        throw new UnauthorizedException('Refresh token not valid for this domain');
+      }
     }
 
     // Verify user still exists and is authorized
@@ -210,11 +214,11 @@ export class CustomDomainAuthController {
       payload.domain,
     );
 
-    // Set the new access cookie (always secure for custom domains)
+    // Set the new access cookie (skip Secure for localhost dev)
     res.cookie(CustomDomainAuthService.ACCESS_COOKIE_NAME, accessToken, {
       maxAge: this.customDomainAuthService.getAccessTokenExpiry() * 1000,
       httpOnly: true,
-      secure: true,
+      secure: !isLocalhostDomain,
       sameSite: 'lax',
       path: '/',
     });
@@ -297,14 +301,18 @@ export class CustomDomainAuthController {
     }
 
     // Verify the domain matches the current request
-    const host = (req.headers['x-forwarded-host'] as string) || req.headers.host;
-    const requestDomain = host?.split(':')[0];
+    // Skip for localhost tokens (proxied from local dev servers)
+    const isLocalhostDomain = payload.domain === 'localhost' || payload.domain === '127.0.0.1';
+    if (!isLocalhostDomain) {
+      const host = (req.headers['x-forwarded-host'] as string) || req.headers.host;
+      const requestDomain = host?.split(':')[0];
 
-    if (requestDomain !== payload.domain) {
-      this.logger.warn(
-        `Domain mismatch on session: token for ${payload.domain}, request from ${requestDomain}`,
-      );
-      return { authenticated: false, user: null };
+      if (requestDomain !== payload.domain) {
+        this.logger.warn(
+          `Domain mismatch on session: token for ${payload.domain}, request from ${requestDomain}`,
+        );
+        return { authenticated: false, user: null };
+      }
     }
 
     return {
