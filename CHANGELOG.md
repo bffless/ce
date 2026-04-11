@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.227](https://github.com/bffless/ce/compare/v0.0.226...v0.0.227) (2026-04-11)
+
+
+### Bug Fixes
+
+* skip domain mismatch check and secure cookies for localhost tokens ([a18097d](https://github.com/bffless/ce/commit/a18097d4c1ca6757507c93f663545e1d1666f6bf))
+
 ## [0.0.226](https://github.com/bffless/ce/compare/v0.0.225...v0.0.226) (2026-04-11)
 
 
