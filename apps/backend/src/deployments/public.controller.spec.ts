@@ -506,9 +506,13 @@ describe('PublicController', () => {
       const fileBuffer = Buffer.from('<html></html>');
       mockStorageAdapter.download.mockResolvedValue(fileBuffer);
 
-      // Calculate the expected ETag
+      // Calculate the expected ETag (content hash + cache-control header)
       const { createHash } = await import('crypto');
-      const expectedEtag = `"${createHash('md5').update(fileBuffer).digest('hex')}"`;
+      const contentHash = createHash('md5').update(fileBuffer).digest('hex');
+      // Immutable SHA-based URL with public project → "public, max-age=31536000, immutable"
+      const cacheControlHeader = 'public, max-age=31536000, immutable';
+      const combined = createHash('md5').update(`${contentHash}:${cacheControlHeader}`).digest('hex');
+      const expectedEtag = `"${combined}"`;
       res.req.headers['if-none-match'] = expectedEtag;
 
       await controller.serveCommitAsset(

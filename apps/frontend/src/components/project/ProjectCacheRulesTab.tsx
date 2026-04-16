@@ -66,6 +66,117 @@ function formatDuration(seconds: number): string {
   return `${Math.floor(seconds / 31536000)}y`;
 }
 
+// Common duration presets in seconds
+const DURATION_PRESETS = [
+  { label: 'No cache', value: 0 },
+  { label: '1 minute', value: 60 },
+  { label: '5 minutes', value: 300 },
+  { label: '15 minutes', value: 900 },
+  { label: '1 hour', value: 3600 },
+  { label: '4 hours', value: 14400 },
+  { label: '1 day', value: 86400 },
+  { label: '1 week', value: 604800 },
+  { label: '1 month', value: 2592000 },
+  { label: '1 year', value: 31536000 },
+] as const;
+
+const SWR_PRESETS = [
+  { label: '1 minute', value: 60 },
+  { label: '5 minutes', value: 300 },
+  { label: '15 minutes', value: 900 },
+  { label: '1 hour', value: 3600 },
+  { label: '4 hours', value: 14400 },
+  { label: '1 day', value: 86400 },
+] as const;
+
+function DurationPicker({
+  label,
+  value,
+  onChange,
+  max,
+  nullable,
+  nullLabel,
+  presets = DURATION_PRESETS,
+  description,
+}: {
+  label: string;
+  value: number | null | undefined;
+  onChange: (value: number | undefined) => void;
+  max: number;
+  nullable?: boolean;
+  nullLabel?: string;
+  presets?: ReadonlyArray<{ label: string; value: number }>;
+  description?: string;
+}) {
+  const isCustom =
+    value != null &&
+    !presets.some((p) => p.value === value);
+
+  const selectValue =
+    value == null
+      ? 'null'
+      : isCustom
+        ? 'custom'
+        : String(value);
+
+  return (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      <Select
+        value={selectValue}
+        onValueChange={(v) => {
+          if (v === 'null') {
+            onChange(undefined);
+          } else if (v === 'custom') {
+            onChange(value ?? 300);
+          } else {
+            onChange(parseInt(v));
+          }
+        }}
+      >
+        <SelectTrigger>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {nullable && (
+            <SelectItem value="null">{nullLabel || 'Not set'}</SelectItem>
+          )}
+          {presets
+            .filter((p) => p.value <= max)
+            .map((p) => (
+              <SelectItem key={p.value} value={String(p.value)}>
+                {p.label} ({p.value.toLocaleString()}s)
+              </SelectItem>
+            ))}
+          <SelectItem value="custom">Custom...</SelectItem>
+        </SelectContent>
+      </Select>
+      {isCustom && (
+        <div className="flex items-center gap-2">
+          <Input
+            type="number"
+            min="0"
+            max={max}
+            value={value ?? ''}
+            onChange={(e) => {
+              const v = parseInt(e.target.value);
+              onChange(isNaN(v) ? undefined : Math.min(v, max));
+            }}
+            className="font-mono"
+            placeholder="Seconds"
+          />
+          <span className="text-xs text-muted-foreground whitespace-nowrap">
+            = {formatDuration(value || 0)}
+          </span>
+        </div>
+      )}
+      {description && (
+        <p className="text-xs text-muted-foreground">{description}</p>
+      )}
+    </div>
+  );
+}
+
 // Default form state for creating a new rule
 const defaultRuleForm: CreateCacheRuleDto = {
   pathPattern: '',
@@ -451,70 +562,35 @@ export function ProjectCacheRulesTab({ project }: ProjectCacheRulesTabProps) {
 
             {/* Browser Max Age */}
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="browserMaxAge">Browser TTL (seconds)</Label>
-                <Input
-                  id="browserMaxAge"
-                  type="number"
-                  min="0"
-                  max="31536000"
-                  value={ruleForm.browserMaxAge}
-                  onChange={(e) =>
-                    setRuleForm({ ...ruleForm, browserMaxAge: parseInt(e.target.value) || 0 })
-                  }
-                />
-                <p className="text-xs text-muted-foreground">
-                  max-age: {formatDuration(ruleForm.browserMaxAge || 0)}
-                </p>
-              </div>
+              <DurationPicker
+                label="Browser TTL"
+                value={ruleForm.browserMaxAge}
+                onChange={(v) => setRuleForm({ ...ruleForm, browserMaxAge: v ?? 0 })}
+                max={31536000}
+              />
 
               {/* CDN Max Age */}
-              <div className="space-y-2">
-                <Label htmlFor="cdnMaxAge">CDN TTL (seconds)</Label>
-                <Input
-                  id="cdnMaxAge"
-                  type="number"
-                  min="0"
-                  max="31536000"
-                  value={ruleForm.cdnMaxAge ?? ''}
-                  onChange={(e) =>
-                    setRuleForm({
-                      ...ruleForm,
-                      cdnMaxAge: e.target.value ? parseInt(e.target.value) : undefined,
-                    })
-                  }
-                  placeholder="Same as browser"
-                />
-                <p className="text-xs text-muted-foreground">
-                  s-maxage:{' '}
-                  {ruleForm.cdnMaxAge != null
-                    ? formatDuration(ruleForm.cdnMaxAge)
-                    : 'inherit'}
-                </p>
-              </div>
+              <DurationPicker
+                label="CDN TTL"
+                value={ruleForm.cdnMaxAge}
+                onChange={(v) => setRuleForm({ ...ruleForm, cdnMaxAge: v ?? null })}
+                max={31536000}
+                nullable
+                nullLabel="Same as browser"
+              />
             </div>
 
             {/* Stale While Revalidate */}
-            <div className="space-y-2">
-              <Label htmlFor="staleWhileRevalidate">Stale-While-Revalidate (seconds)</Label>
-              <Input
-                id="staleWhileRevalidate"
-                type="number"
-                min="0"
-                max="86400"
-                value={ruleForm.staleWhileRevalidate ?? ''}
-                onChange={(e) =>
-                  setRuleForm({
-                    ...ruleForm,
-                    staleWhileRevalidate: e.target.value ? parseInt(e.target.value) : undefined,
-                  })
-                }
-                placeholder="Not set"
-              />
-              <p className="text-xs text-muted-foreground">
-                CDN serves stale content while fetching fresh in background.
-              </p>
-            </div>
+            <DurationPicker
+              label="Stale-While-Revalidate"
+              value={ruleForm.staleWhileRevalidate}
+              onChange={(v) => setRuleForm({ ...ruleForm, staleWhileRevalidate: v ?? null })}
+              max={86400}
+              nullable
+              nullLabel="Not set"
+              presets={SWR_PRESETS}
+              description="CDN serves stale content while fetching fresh in background."
+            />
 
             {/* Immutable */}
             <div className="flex items-center justify-between">

@@ -664,8 +664,10 @@ export class PublicController {
       }
 
       // Generate ETag - use pre-computed contentHash if available, otherwise compute MD5
-      // (backwards compatibility for old assets without contentHash)
-      const etag = asset.contentHash ? `"${asset.contentHash}"` : this.generateETag(fileBuffer);
+      // Include cache-control header in ETag so CDN refetches when cache rules change
+      // (without this, CDN revalidation returns 304 and keeps stale headers)
+      const contentHash = asset.contentHash ?? crypto.createHash('md5').update(fileBuffer).digest('hex');
+      const etag = this.generateETag(contentHash, cacheControlHeader);
 
       // Check If-None-Match header for 304 response
       const clientEtag = res.req.headers['if-none-match'];
@@ -748,7 +750,9 @@ export class PublicController {
         res.setHeader('X-Cache-Rule', cacheConfig.matchedRule.pathPattern);
       }
       if (result.etag) {
-        res.setHeader('ETag', result.etag);
+        // Mix in cache-control header so CDN refetches when cache rules change
+        const streamEtag = this.generateETag(result.etag.replace(/"/g, ''), cacheControlHeader);
+        res.setHeader('ETag', streamEtag);
       }
       if (!isPublic) {
         res.setHeader('Vary', 'Cookie');
@@ -1185,11 +1189,13 @@ export class PublicController {
   }
 
   /**
-   * Generate ETag from file content
+   * Generate ETag from content hash and cache-control header.
+   * Including cache-control ensures CDN cache invalidation when cache rules change —
+   * otherwise CDN revalidation returns 304 and keeps serving stale response headers.
    */
-  private generateETag(buffer: Buffer): string {
-    const hash = crypto.createHash('md5').update(buffer).digest('hex');
-    return `"${hash}"`;
+  private generateETag(contentHash: string, cacheControlHeader: string): string {
+    const combined = crypto.createHash('md5').update(`${contentHash}:${cacheControlHeader}`).digest('hex');
+    return `"${combined}"`;
   }
 
   /**

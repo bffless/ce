@@ -10,6 +10,7 @@ import { db } from '../../db/client';
 import { projects } from '../../db/schema';
 import { eq } from 'drizzle-orm';
 import * as path from 'path';
+import crypto from 'crypto';
 
 // Common MIME type lookup
 const MIME_TYPES: Record<string, string> = {
@@ -195,7 +196,9 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
     res.setHeader('Accept-Ranges', 'bytes');
     res.setHeader('Cache-Control', cacheControlHeader);
     if (result.etag) {
-      res.setHeader('ETag', result.etag);
+      // Mix cache-control into ETag so CDN refetches when cache rules change
+      const combined = crypto.createHash('md5').update(`${result.etag.replace(/"/g, '')}:${cacheControlHeader}`).digest('hex');
+      res.setHeader('ETag', `"${combined}"`);
     }
 
     if (rangeHeader) {
@@ -326,7 +329,9 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
     res.setHeader('Cache-Control', cacheControlHeader);
     res.setHeader('Accept-Ranges', 'bytes');
     if (etag) {
-      res.setHeader('ETag', etag);
+      // Mix cache-control into ETag so CDN refetches when cache rules change
+      const combined = crypto.createHash('md5').update(`${etag.replace(/"/g, '')}:${cacheControlHeader}`).digest('hex');
+      res.setHeader('ETag', `"${combined}"`);
     }
 
     res.status(200).end(data);
