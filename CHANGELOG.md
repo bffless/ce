@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.229](https://github.com/bffless/ce/compare/v0.0.228...v0.0.229) (2026-04-16)
+
+
+### Bug Fixes
+
+* include cache-control header in ETag to invalidate CDN on rule changes ([8fb5798](https://github.com/bffless/ce/commit/8fb5798506b1f3d1be091627569f8e83011c32b1))
+
 ## [0.0.228](https://github.com/bffless/ce/compare/v0.0.227...v0.0.228) (2026-04-11)
 
 
