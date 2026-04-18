@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.234](https://github.com/bffless/ce/compare/v0.0.233...v0.0.234) (2026-04-18)
+
+
+### Features
+
+* add github_api handler to pipeline UI with config form ([5abc6bc](https://github.com/bffless/ce/commit/5abc6bc7a978a92d5f0c1791c8ff3437ae1a7306))
+
 ## [0.0.233](https://github.com/bffless/ce/compare/v0.0.232...v0.0.233) (2026-04-18)
 
 
