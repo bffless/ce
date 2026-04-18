@@ -109,7 +109,8 @@ export class IntegrationsService {
     // Extract non-sensitive fields from the active config
     const publicFields = IntegrationsService.PUBLIC_CONFIG_FIELDS[id];
     if (publicFields && stored?.enabled) {
-      const env = stored.activeEnvironment ?? 'production';
+      // For single-environment integrations (e.g. github), prefer production slot
+      const env = stored.production?.config ? 'production' : (stored.activeEnvironment ?? 'production');
       const envConfig = stored[env];
       if (envConfig?.config) {
         try {
