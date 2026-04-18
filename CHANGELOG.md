@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.233](https://github.com/bffless/ce/compare/v0.0.232...v0.0.233) (2026-04-18)
+
+
+### Bug Fixes
+
+* read publicConfig from production slot for single-env integrations ([9958e89](https://github.com/bffless/ce/commit/9958e893a0ffe6a2f55d1504c8a236ef140db1d0))
+
 ## [0.0.232](https://github.com/bffless/ce/compare/v0.0.231...v0.0.232) (2026-04-18)
 
 
