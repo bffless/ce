@@ -59,7 +59,7 @@ export class CacheConfigService {
 
     if (!cached || now - cached.cachedAt > RULE_CACHE_TTL_MS) {
       const rules = await this.cacheRulesService.getEnabledRulesByProjectId(projectId);
-      const matchers = rules.map((r) => picomatch(r.pathPattern));
+      const matchers = rules.map((r) => picomatch(r.pathPattern.trim()));
       cached = { rules, matchers, cachedAt: now };
       this.ruleCache.set(projectId, cached);
     }

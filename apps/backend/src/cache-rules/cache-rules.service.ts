@@ -75,7 +75,7 @@ export class CacheRulesService {
     await this.checkProjectAccess(projectId, userId, userRole, 'contributor');
 
     // Check for duplicate path pattern within the project
-    const existingRule = await this.findRuleByPattern(projectId, dto.pathPattern);
+    const existingRule = await this.findRuleByPattern(projectId, dto.pathPattern.trim());
     if (existingRule) {
       throw new ConflictException(`A rule with path pattern "${dto.pathPattern}" already exists`);
     }
@@ -87,7 +87,7 @@ export class CacheRulesService {
       .insert(cacheRules)
       .values({
         projectId,
-        pathPattern: dto.pathPattern,
+        pathPattern: dto.pathPattern.trim(),
         browserMaxAge: dto.browserMaxAge ?? 300,
         cdnMaxAge: dto.cdnMaxAge ?? null,
         staleWhileRevalidate: dto.staleWhileRevalidate ?? null,
@@ -141,7 +141,7 @@ export class CacheRulesService {
     };
 
     // Use 'in' operator to check if field was sent (including null values)
-    if ('pathPattern' in dto) updateData.pathPattern = dto.pathPattern;
+    if ('pathPattern' in dto) updateData.pathPattern = dto.pathPattern?.trim();
     if ('browserMaxAge' in dto) updateData.browserMaxAge = dto.browserMaxAge;
     if ('cdnMaxAge' in dto) updateData.cdnMaxAge = dto.cdnMaxAge;
     if ('staleWhileRevalidate' in dto) updateData.staleWhileRevalidate = dto.staleWhileRevalidate;
