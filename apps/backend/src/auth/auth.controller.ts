@@ -286,12 +286,16 @@ export class AuthController {
         emailVerificationRequired = await this.isEmailVerificationRequired();
         if (emailVerificationRequired) {
           const origin = req.headers.origin || req.headers.referer;
+          // If invitation was already accepted during signup, don't redirect back to
+          // /invite/{token} after verification — it would show "already accepted" error.
+          // Redirect to home instead.
+          const verifyRedirect = invitation ? undefined : redirect;
           await EmailVerification.sendEmailVerificationEmail(
             tenantId,
             userId,
             signUpResponse.recipeUserId,
             email,
-            { requestOrigin: origin, redirectUrl: redirect },
+            { requestOrigin: origin, redirectUrl: verifyRedirect },
           );
           console.log('[Signup] Verification email sent for:', email);
         }

@@ -92,6 +92,24 @@ export function InvitationAcceptPage() {
     }
   }, [token, validation, session, acceptInvitation, navigate, toast]);
 
+  // If user is logged in and invitation was already accepted (e.g., auto-accepted during signup),
+  // redirect home instead of showing an error
+  useEffect(() => {
+    if (
+      !isValidating &&
+      !isLoadingSession &&
+      session?.user &&
+      !validation?.valid &&
+      validation?.error?.toLowerCase().includes('already been accepted')
+    ) {
+      toast({
+        title: 'Welcome!',
+        description: 'You are now a member of this workspace.',
+      });
+      navigate('/');
+    }
+  }, [isValidating, isLoadingSession, session, validation, navigate, toast]);
+
   // Loading state
   if (isValidating || isLoadingSession) {
     return (
@@ -99,6 +117,22 @@ export function InvitationAcceptPage() {
         <div className="flex items-center gap-2 text-muted-foreground">
           <Loader2 className="h-5 w-5 animate-spin" />
           <span>Validating invitation...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // If logged in and invitation already accepted, show loading while the redirect useEffect fires
+  if (
+    session?.user &&
+    !validation?.valid &&
+    validation?.error?.toLowerCase().includes('already been accepted')
+  ) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          <span>Joining workspace...</span>
         </div>
       </div>
     );
