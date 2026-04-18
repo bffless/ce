@@ -17,7 +17,7 @@ export function ActivityFeed() {
   );
 
   const { data: sessionData } = useGetSessionQuery();
-  const canCreateRepo = sessionData?.user?.role !== 'member';
+  const canCreateRepo = sessionData?.user?.role === 'admin';
 
   const { data, isLoading, error, refetch } = useGetRepositoryFeedQuery({
     page: currentPage,

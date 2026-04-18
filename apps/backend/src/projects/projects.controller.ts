@@ -443,7 +443,7 @@ export class ProjectsController {
 
   @Post()
   @UseGuards(ApiKeyGuard, RolesGuard)
-  @Roles('admin', 'user')
+  @Roles('admin')
   @ApiOperation({ summary: 'Create a new project' })
   @ApiResponse({ status: 201, description: 'Project created', type: ProjectResponseDto })
   @ApiResponse({ status: 403, description: 'Members cannot create projects' })

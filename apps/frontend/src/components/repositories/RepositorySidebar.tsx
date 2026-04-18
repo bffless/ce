@@ -19,7 +19,7 @@ export function RepositorySidebar() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   const { data: sessionData } = useGetSessionQuery();
-  const canCreateRepo = sessionData?.user?.role !== 'member';
+  const canCreateRepo = sessionData?.user?.role === 'admin';
 
   const { data, isLoading, error } = useGetMyRepositoriesQuery();
 
