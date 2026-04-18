@@ -112,7 +112,7 @@ export function ProjectIntegrationsTab({ project }: ProjectIntegrationsTabProps)
                     <div>
                       <div className="flex items-center gap-2">
                         <h4 className="font-medium">{meta.name}</h4>
-                        {integration.enabled && (
+                        {integration.enabled && integration.id !== 'github' && (
                           <Badge
                             variant={
                               integration.activeEnvironment === 'production'

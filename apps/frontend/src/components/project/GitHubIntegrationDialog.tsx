@@ -35,7 +35,9 @@ export function GitHubIntegrationDialog({
   const { toast } = useToast();
 
   const [personalAccessToken, setPersonalAccessToken] = useState('');
-  const [defaultOrg, setDefaultOrg] = useState('');
+  const [defaultOrg, setDefaultOrg] = useState(
+    (integration.publicConfig?.defaultOrg as string) || '',
+  );
 
   const [testResult, setTestResult] = useState<{
     success: boolean;
@@ -75,7 +77,6 @@ export function GitHubIntegrationDialog({
       });
 
       setPersonalAccessToken('');
-      setDefaultOrg('');
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -142,7 +143,7 @@ export function GitHubIntegrationDialog({
             <Label>Default Organization</Label>
             <Input
               type="text"
-              placeholder={hasConfig ? '(unchanged)' : 'my-org'}
+              placeholder="my-org"
               value={defaultOrg}
               onChange={(e) => setDefaultOrg(e.target.value)}
             />

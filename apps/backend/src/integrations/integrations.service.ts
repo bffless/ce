@@ -45,6 +45,8 @@ export interface IntegrationInfo {
   activeEnvironment: 'sandbox' | 'production';
   hasSandboxConfig: boolean;
   hasProductionConfig: boolean;
+  /** Non-sensitive config values exposed to the UI */
+  publicConfig?: Record<string, unknown>;
   webhookPipelines: Array<{
     eventType: string;
     pipelinePath: string;
@@ -71,19 +73,17 @@ export class IntegrationsService {
     }
   }
 
+  /** Fields that are safe to expose in the API response (per integration) */
+  private static readonly PUBLIC_CONFIG_FIELDS: Record<string, string[]> = {
+    github: ['defaultOrg'],
+  };
+
   /**
    * Get integration info for a project (no secrets exposed)
    */
   async getIntegration(projectId: string, integrationId: string): Promise<IntegrationInfo> {
     const stored = await this.getStoredIntegration(projectId, integrationId);
-    return {
-      id: integrationId,
-      enabled: stored?.enabled ?? false,
-      activeEnvironment: stored?.activeEnvironment ?? 'sandbox',
-      hasSandboxConfig: !!stored?.sandbox?.config,
-      hasProductionConfig: !!stored?.production?.config,
-      webhookPipelines: stored?.webhookPipelines ?? [],
-    };
+    return this.toIntegrationInfo(integrationId, stored);
   }
 
   /**
@@ -93,17 +93,43 @@ export class IntegrationsService {
     const allIntegrations = await this.getAllStoredIntegrations(projectId);
     const supported = ['stripe', 'github'];
 
-    return supported.map((id) => {
-      const stored = allIntegrations[id];
-      return {
-        id,
-        enabled: stored?.enabled ?? false,
-        activeEnvironment: stored?.activeEnvironment ?? 'sandbox',
-        hasSandboxConfig: !!stored?.sandbox?.config,
-        hasProductionConfig: !!stored?.production?.config,
-        webhookPipelines: stored?.webhookPipelines ?? [],
-      };
-    });
+    return supported.map((id) => this.toIntegrationInfo(id, allIntegrations[id]));
+  }
+
+  private toIntegrationInfo(id: string, stored?: StoredIntegrationConfig | null): IntegrationInfo {
+    const info: IntegrationInfo = {
+      id,
+      enabled: stored?.enabled ?? false,
+      activeEnvironment: stored?.activeEnvironment ?? 'sandbox',
+      hasSandboxConfig: !!stored?.sandbox?.config,
+      hasProductionConfig: !!stored?.production?.config,
+      webhookPipelines: stored?.webhookPipelines ?? [],
+    };
+
+    // Extract non-sensitive fields from the active config
+    const publicFields = IntegrationsService.PUBLIC_CONFIG_FIELDS[id];
+    if (publicFields && stored?.enabled) {
+      const env = stored.activeEnvironment ?? 'production';
+      const envConfig = stored[env];
+      if (envConfig?.config) {
+        try {
+          const decrypted = JSON.parse(this.decryptData(envConfig.config));
+          const publicConfig: Record<string, unknown> = {};
+          for (const field of publicFields) {
+            if (decrypted[field] !== undefined) {
+              publicConfig[field] = decrypted[field];
+            }
+          }
+          if (Object.keys(publicConfig).length > 0) {
+            info.publicConfig = publicConfig;
+          }
+        } catch {
+          // Ignore decryption errors
+        }
+      }
+    }
+
+    return info;
   }
 
   /**
@@ -118,7 +144,7 @@ export class IntegrationsService {
     const allIntegrations = await this.getAllStoredIntegrations(projectId);
     const stored: StoredIntegrationConfig = allIntegrations[integrationId] || {
       enabled: true,
-      activeEnvironment: 'sandbox',
+      activeEnvironment: environment,
     };
 
     stored.enabled = true;

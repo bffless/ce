@@ -6,6 +6,7 @@ export interface IntegrationInfo {
   activeEnvironment: 'sandbox' | 'production';
   hasSandboxConfig: boolean;
   hasProductionConfig: boolean;
+  publicConfig?: Record<string, unknown>;
 }
 
 export const integrationsApi = api.injectEndpoints({
