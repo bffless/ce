@@ -76,7 +76,8 @@ export type HandlerType =
   | 'http_request'
   | 'stripe_checkout'
   | 'stripe_webhook'
-  | 'signed_url';
+  | 'signed_url'
+  | 'github_api';
 
 /**
  * Pipeline step definition for execution.

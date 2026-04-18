@@ -29,6 +29,14 @@ export interface StripeIntegrationKeys {
 }
 
 /**
+ * Decrypted GitHub config
+ */
+export interface GitHubIntegrationKeys {
+  personalAccessToken: string;
+  defaultOrg?: string;
+}
+
+/**
  * Public-facing integration info (no secrets exposed)
  */
 export interface IntegrationInfo {
@@ -83,7 +91,7 @@ export class IntegrationsService {
    */
   async listIntegrations(projectId: string): Promise<IntegrationInfo[]> {
     const allIntegrations = await this.getAllStoredIntegrations(projectId);
-    const supported = ['stripe'];
+    const supported = ['stripe', 'github'];
 
     return supported.map((id) => {
       const stored = allIntegrations[id];
@@ -252,6 +260,25 @@ export class IntegrationsService {
     }
 
     try {
+      if (integrationId === 'github') {
+        const config = JSON.parse(this.decryptData(envConfig.config)) as GitHubIntegrationKeys;
+
+        const response = await fetch('https://api.github.com/user', {
+          headers: {
+            Authorization: `Bearer ${config.personalAccessToken}`,
+            Accept: 'application/vnd.github+json',
+            'X-GitHub-Api-Version': '2022-11-28',
+          },
+        });
+
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          return { success: false, error: body.message || `HTTP ${response.status}` };
+        }
+
+        return { success: true };
+      }
+
       const config = JSON.parse(this.decryptData(envConfig.config)) as StripeIntegrationKeys;
 
       // Dynamically import stripe to test connection
@@ -265,7 +292,7 @@ export class IntegrationsService {
     } catch (error: any) {
       return {
         success: false,
-        error: error.message || 'Failed to connect to Stripe',
+        error: error.message || 'Failed to connect',
       };
     }
   }

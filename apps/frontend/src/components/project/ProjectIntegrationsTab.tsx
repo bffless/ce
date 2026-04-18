@@ -9,7 +9,8 @@ import {
 } from '@/services/integrationsApi';
 import { useToast } from '@/hooks/use-toast';
 import { StripeIntegrationDialog } from './StripeIntegrationDialog';
-import { Settings, Trash2, CreditCard } from 'lucide-react';
+import { GitHubIntegrationDialog } from './GitHubIntegrationDialog';
+import { Settings, Trash2, CreditCard, Github } from 'lucide-react';
 
 interface Project {
   id: string;
@@ -29,6 +30,11 @@ const INTEGRATION_META: Record<
     name: 'Stripe',
     description: 'Accept payments via Stripe Checkout. Create checkout sessions from pipeline steps and handle webhooks.',
     icon: CreditCard,
+  },
+  github: {
+    name: 'GitHub',
+    description: 'Create repositories from templates and interact with the GitHub API from pipeline steps.',
+    icon: Github,
   },
 };
 
@@ -167,6 +173,18 @@ export function ProjectIntegrationsTab({ project }: ProjectIntegrationsTabProps)
       {/* Stripe Dialog */}
       {configDialogId === 'stripe' && configIntegration && (
         <StripeIntegrationDialog
+          open={true}
+          onOpenChange={(open) => {
+            if (!open) setConfigDialogId(null);
+          }}
+          projectId={project.id}
+          integration={configIntegration}
+        />
+      )}
+
+      {/* GitHub Dialog */}
+      {configDialogId === 'github' && configIntegration && (
+        <GitHubIntegrationDialog
           open={true}
           onOpenChange={(open) => {
             if (!open) setConfigDialogId(null);

@@ -38,6 +38,7 @@ import {
   StripeCheckoutHandler,
   StripeWebhookHandler,
   SignedUrlHandler,
+  GitHubApiHandler,
 } from './handlers';
 import { IntegrationsModule } from '../integrations/integrations.module';
 // Embeddings service
@@ -110,6 +111,7 @@ import {
     StripeCheckoutHandler,
     StripeWebhookHandler,
     SignedUrlHandler,
+    GitHubApiHandler,
     // Validators (auto-register on construction)
     AuthRequiredValidator,
     RateLimitValidator,
