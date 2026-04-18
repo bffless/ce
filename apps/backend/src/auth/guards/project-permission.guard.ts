@@ -91,6 +91,7 @@ export class ProjectPermissionGuard implements CanActivate {
       admin: 3,
       contributor: 2,
       viewer: 1,
+      guest: 0,
     };
 
     const requiredLevel = roleHierarchy[requiredRole] || 0;

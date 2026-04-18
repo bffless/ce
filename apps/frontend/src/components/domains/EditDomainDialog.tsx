@@ -431,6 +431,7 @@ export function EditDomainDialog({ domain, open, onOpenChange }: EditDomainDialo
                           </div>
                         </SelectItem>
                         <SelectItem value="authenticated">Any authenticated user</SelectItem>
+                        <SelectItem value="guest">Guest or higher (site access only)</SelectItem>
                         <SelectItem value="viewer">Viewer or higher</SelectItem>
                         <SelectItem value="contributor">Contributor or higher</SelectItem>
                         <SelectItem value="admin">Admin or higher</SelectItem>

@@ -15,6 +15,7 @@ import {
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
 import { ApiKeyGuard } from '../auth/api-key.guard';
 import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser, CurrentUserData } from '../auth/decorators/current-user.decorator';
 import { ApiKeysService } from './api-keys.service';
 import {
@@ -32,6 +33,7 @@ import {
 @ApiBearerAuth()
 @Controller('api/api-keys')
 @UseGuards(ApiKeyGuard, RolesGuard)
+@Roles('admin')
 export class ApiKeysController {
   constructor(private readonly apiKeysService: ApiKeysService) {}
 

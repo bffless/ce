@@ -1,7 +1,7 @@
 import { api } from './api';
 
-export type ProjectRole = 'owner' | 'admin' | 'contributor' | 'viewer';
-export type ProjectGroupRole = 'admin' | 'contributor' | 'viewer';
+export type ProjectRole = 'owner' | 'admin' | 'contributor' | 'viewer' | 'guest';
+export type ProjectGroupRole = 'admin' | 'contributor' | 'viewer' | 'guest';
 
 export interface UserPermission {
   id: string;

@@ -10,7 +10,7 @@ import {
 } from '../db/schema';
 import { RequiredRole } from '../domains/visibility.service';
 
-export type ProjectRole = 'owner' | 'admin' | 'contributor' | 'viewer';
+export type ProjectRole = 'owner' | 'admin' | 'contributor' | 'viewer' | 'guest';
 
 @Injectable()
 export class PermissionsService {
@@ -51,6 +51,7 @@ export class PermissionsService {
     if (roles.includes('admin')) return 'admin';
     if (roles.includes('contributor')) return 'contributor';
     if (roles.includes('viewer')) return 'viewer';
+    if (roles.includes('guest')) return 'guest';
 
     return null;
   }
@@ -71,6 +72,7 @@ export class PermissionsService {
       admin: 3,
       contributor: 2,
       viewer: 1,
+      guest: 0,
     };
 
     return roleHierarchy[userRole] >= roleHierarchy[requiredRole];
@@ -99,6 +101,7 @@ export class PermissionsService {
     }
 
     const roleHierarchy: Record<string, number> = {
+      guest: 0,
       viewer: 1,
       contributor: 2,
       admin: 3,

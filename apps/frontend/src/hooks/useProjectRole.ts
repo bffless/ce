@@ -7,6 +7,7 @@ interface UseProjectRoleResult {
   canEdit: boolean; // contributor, admin, or owner
   canAdmin: boolean; // admin or owner
   isOwner: boolean;
+  isGuest: boolean; // guest role (site access only, no admin backend)
 }
 
 /**
@@ -39,5 +40,6 @@ export function useProjectRole(owner: string, repo: string): UseProjectRoleResul
     canEdit: role ? ['owner', 'admin', 'contributor'].includes(role) : false,
     canAdmin: role ? ['owner', 'admin'].includes(role) : false,
     isOwner: role === 'owner',
+    isGuest: role === 'guest',
   };
 }

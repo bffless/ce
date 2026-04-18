@@ -117,7 +117,7 @@ export function ProjectSettingsPage() {
   const [displayName, setDisplayName] = useState('');
   const [description, setDescription] = useState('');
   const [unauthorizedBehavior, setUnauthorizedBehavior] = useState<'not_found' | 'redirect_login'>('not_found');
-  const [requiredRole, setRequiredRole] = useState<'authenticated' | 'viewer' | 'contributor' | 'admin' | 'owner'>('authenticated');
+  const [requiredRole, setRequiredRole] = useState<'authenticated' | 'guest' | 'viewer' | 'contributor' | 'admin' | 'owner'>('authenticated');
   const [hasChanges, setHasChanges] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
@@ -396,13 +396,14 @@ export function ProjectSettingsPage() {
                     <Label htmlFor="requiredRole">Required Role</Label>
                     <Select
                       value={requiredRole}
-                      onValueChange={(value: 'authenticated' | 'viewer' | 'contributor' | 'admin' | 'owner') => setRequiredRole(value)}
+                      onValueChange={(value: 'authenticated' | 'guest' | 'viewer' | 'contributor' | 'admin' | 'owner') => setRequiredRole(value)}
                     >
                       <SelectTrigger id="requiredRole">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="authenticated">Any authenticated user</SelectItem>
+                        <SelectItem value="guest">Guest or higher (site access only)</SelectItem>
                         <SelectItem value="viewer">Viewer or higher</SelectItem>
                         <SelectItem value="contributor">Contributor or higher</SelectItem>
                         <SelectItem value="admin">Admin or higher</SelectItem>

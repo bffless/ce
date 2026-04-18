@@ -470,8 +470,9 @@ export class ProjectsService {
     }> = [];
 
     // Priority: owned > direct > group
+    // Filter out guest-only permissions (guests should not see repos in admin backend)
     for (const repo of [...ownedRepos, ...directRepos, ...groupRepos]) {
-      if (!seenIds.has(repo.id)) {
+      if (!seenIds.has(repo.id) && repo.role !== 'guest') {
         seenIds.add(repo.id);
         repositories.push({
           id: repo.id,
@@ -590,6 +591,7 @@ export class ProjectsService {
             id, owner, name, display_name, description, is_public,
             permission_type, role, priority, created_at, updated_at
           FROM all_repos
+          WHERE role != 'guest'
           ORDER BY id, priority ASC
         )
         SELECT
@@ -637,12 +639,12 @@ export class ProjectsService {
           UNION
           SELECT p.id FROM projects p
           INNER JOIN project_permissions pp ON p.id = pp.project_id
-          WHERE pp.user_id = ${userId}
+          WHERE pp.user_id = ${userId} AND pp.role != 'guest'
           UNION
           SELECT p.id FROM projects p
           INNER JOIN project_group_permissions pgp ON p.id = pgp.project_id
           INNER JOIN user_group_members ugm ON pgp.group_id = ugm.group_id
-          WHERE ugm.user_id = ${userId}
+          WHERE ugm.user_id = ${userId} AND pgp.role != 'guest'
         )
         SELECT COUNT(DISTINCT id)::int as total FROM all_repos
       `;

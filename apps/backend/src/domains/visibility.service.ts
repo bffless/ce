@@ -7,7 +7,7 @@ import { domainMappings, deploymentAliases, projects, DomainMapping } from '../d
  * Access control types for private content
  */
 export type UnauthorizedBehavior = 'not_found' | 'redirect_login';
-export type RequiredRole = 'authenticated' | 'viewer' | 'contributor' | 'admin' | 'owner';
+export type RequiredRole = 'authenticated' | 'guest' | 'viewer' | 'contributor' | 'admin' | 'owner';
 
 /**
  * Full access control information resolved from cascade

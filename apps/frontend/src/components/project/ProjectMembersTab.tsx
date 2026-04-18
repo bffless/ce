@@ -59,6 +59,7 @@ const roleColors: Record<ProjectRole, string> = {
   admin: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
   contributor: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
   viewer: 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300',
+  guest: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
 };
 
 export function ProjectMembersTab({ owner, repo }: ProjectMembersTabProps) {
@@ -69,7 +70,7 @@ export function ProjectMembersTab({ owner, repo }: ProjectMembersTabProps) {
 
   // Form state
   const [newUserEmail, setNewUserEmail] = useState('');
-  const [newUserRole, setNewUserRole] = useState<ProjectRole>('viewer');
+  const [newUserRole, setNewUserRole] = useState<ProjectRole>('guest');
   const [editRole, setEditRole] = useState<ProjectRole>('viewer');
 
   // Fetch permissions
@@ -106,7 +107,7 @@ export function ProjectMembersTab({ owner, repo }: ProjectMembersTabProps) {
 
       setAddDialogOpen(false);
       setNewUserEmail('');
-      setNewUserRole('viewer');
+      setNewUserRole('guest');
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -229,7 +230,8 @@ export function ProjectMembersTab({ owner, repo }: ProjectMembersTabProps) {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="viewer">Viewer - Read only</SelectItem>
+                      <SelectItem value="guest">Guest - Site access only</SelectItem>
+                      <SelectItem value="viewer">Viewer - Read only admin</SelectItem>
                       <SelectItem value="contributor">Contributor - Can deploy</SelectItem>
                       <SelectItem value="admin">Admin - Can manage settings</SelectItem>
                     </SelectContent>

@@ -58,6 +58,7 @@ const roleColors: Record<ProjectGroupRole, string> = {
   admin: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
   contributor: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
   viewer: 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300',
+  guest: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
 };
 
 export function ProjectGroupsTab({ owner, repo }: ProjectGroupsTabProps) {
@@ -247,7 +248,8 @@ export function ProjectGroupsTab({ owner, repo }: ProjectGroupsTabProps) {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="viewer">Viewer - Read only</SelectItem>
+                      <SelectItem value="guest">Guest - Site access only</SelectItem>
+                      <SelectItem value="viewer">Viewer - Read only admin</SelectItem>
                       <SelectItem value="contributor">Contributor - Can deploy</SelectItem>
                       <SelectItem value="admin">Admin - Can manage settings</SelectItem>
                     </SelectContent>
@@ -337,7 +339,8 @@ export function ProjectGroupsTab({ owner, repo }: ProjectGroupsTabProps) {
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="viewer">Viewer - Read only</SelectItem>
+                                  <SelectItem value="guest">Guest - Site access only</SelectItem>
+                                  <SelectItem value="viewer">Viewer - Read only admin</SelectItem>
                                   <SelectItem value="contributor">
                                     Contributor - Can deploy
                                   </SelectItem>

@@ -1,7 +1,7 @@
 import { api } from './api';
 
 export type UnauthorizedBehavior = 'not_found' | 'redirect_login';
-export type RequiredRole = 'authenticated' | 'viewer' | 'contributor' | 'admin' | 'owner';
+export type RequiredRole = 'authenticated' | 'guest' | 'viewer' | 'contributor' | 'admin' | 'owner';
 
 // WWW behavior for domain redirects
 export type WwwBehavior = 'redirect-to-www' | 'redirect-to-root' | 'serve-both';

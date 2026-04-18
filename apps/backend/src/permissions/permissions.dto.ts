@@ -6,12 +6,14 @@ export enum ProjectRole {
   ADMIN = 'admin',
   CONTRIBUTOR = 'contributor',
   VIEWER = 'viewer',
+  GUEST = 'guest',
 }
 
 export enum ProjectGroupRole {
   ADMIN = 'admin',
   CONTRIBUTOR = 'contributor',
   VIEWER = 'viewer',
+  GUEST = 'guest',
 }
 
 export class GrantPermissionDto {
