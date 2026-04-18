@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.231](https://github.com/bffless/ce/compare/v0.0.230...v0.0.231) (2026-04-18)
+
+
+### Bug Fixes
+
+* GitHub integration UI polish — persist defaultOrg, hide sandbox badge ([89e64c4](https://github.com/bffless/ce/commit/89e64c434e2c51bdd08227e0c1e080d72f566b44))
+
 ## [0.0.230](https://github.com/bffless/ce/compare/v0.0.229...v0.0.230) (2026-04-18)
 
 
