@@ -26,9 +26,60 @@ export function GitHubApiConfig({ config, onChange, previousSteps }: GitHubApiCo
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="create_repo_from_template">Create Repo from Template</SelectItem>
+            <SelectItem value="set_repo_variable">Set Repo Variable</SelectItem>
           </SelectContent>
         </Select>
       </div>
+
+      {action === 'set_repo_variable' && (
+        <>
+          <div className="space-y-2">
+            <Label>Owner *</Label>
+            <ExpressionInput
+              value={(config.owner as string) || ''}
+              onChange={(value) => onChange({ ...config, owner: value })}
+              placeholder="bffless-sites"
+              previousSteps={previousSteps}
+            />
+            <p className="text-xs text-muted-foreground">
+              Repository owner (org or user)
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Repo *</Label>
+            <ExpressionInput
+              value={(config.repo as string) || ''}
+              onChange={(value) => onChange({ ...config, repo: value })}
+              placeholder="steps.create_repo.name"
+              previousSteps={previousSteps}
+            />
+            <p className="text-xs text-muted-foreground">
+              Repository name
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Variable Name *</Label>
+            <ExpressionInput
+              value={(config.variableName as string) || ''}
+              onChange={(value) => onChange({ ...config, variableName: value })}
+              placeholder="SITE_DOMAIN"
+              previousSteps={previousSteps}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Variable Value *</Label>
+            <ExpressionInput
+              value={(config.variableValue as string) || ''}
+              onChange={(value) => onChange({ ...config, variableValue: value })}
+              placeholder="steps.build_name.siteUrl"
+              previousSteps={previousSteps}
+            />
+          </div>
+        </>
+      )}
 
       {action === 'create_repo_from_template' && (
         <>
