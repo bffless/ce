@@ -20,6 +20,7 @@ import { HttpRequestConfig } from './HttpRequestConfig';
 import { StripeCheckoutConfig } from './StripeCheckoutConfig';
 import { StripeWebhookConfig } from './StripeWebhookConfig';
 import { SignedUrlHandlerConfig } from './SignedUrlHandlerConfig';
+import { GitHubApiConfig } from './GitHubApiConfig';
 import { AvailableVariables, type PreviousStep } from './AvailableVariables';
 import type { HandlerConfig } from './types';
 
@@ -309,6 +310,18 @@ export function HandlerConfigWrapper({
         </>
       );
 
+    case 'github_api':
+      return (
+        <>
+          {renderVariablesPanel()}
+          <GitHubApiConfig
+            config={config}
+            onChange={handleChange}
+            previousSteps={previousSteps}
+          />
+        </>
+      );
+
     default:
       return (
         <div className="text-sm text-destructive p-4 bg-destructive/10 rounded-md">
@@ -344,6 +357,7 @@ export function getHandlerDisplayName(type: HandlerType): string {
     stripe_checkout: 'Stripe Checkout',
     stripe_webhook: 'Stripe Webhook',
     signed_url: 'Signed URL',
+    github_api: 'GitHub API',
   };
   return names[type] || type;
 }
@@ -374,6 +388,7 @@ export function getHandlerDescription(type: HandlerType): string {
     stripe_checkout: 'Create a Stripe Checkout Session and return the payment URL',
     stripe_webhook: 'Verify Stripe webhook signature and parse the event',
     signed_url: 'Generate a time-limited presigned URL for a file in storage',
+    github_api: 'Create repositories from templates and call the GitHub API',
   };
   return descriptions[type] || '';
 }

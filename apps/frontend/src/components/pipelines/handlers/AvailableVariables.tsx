@@ -200,6 +200,7 @@ function getStepOutputDescription(handlerType: string, config?: Record<string, u
     replicate: 'Replicate prediction result with model output',
     stripe_checkout: 'Stripe Checkout Session with payment URL',
     stripe_webhook: 'Verified Stripe event object',
+    github_api: 'GitHub API response (repo details for create_repo_from_template)',
   };
   return descriptions[handlerType] || 'Step output data';
 }
@@ -307,6 +308,13 @@ function getStepOutputExamples(
       `${fmt(`${stepPath}.data.object.client_reference_id`)} — your reference ID from checkout`,
       `${fmt(`${stepPath}.data.object.amount_total`)} — payment amount in cents`,
       `${fmt(`${stepPath}.data.object.customer_email`)} — customer email`,
+    ],
+    github_api: [
+      `${fmt(`${stepPath}.name`)} — repository name`,
+      `${fmt(`${stepPath}.full_name`)} — full name (org/repo)`,
+      `${fmt(`${stepPath}.html_url`)} — GitHub URL`,
+      `${fmt(`${stepPath}.clone_url`)} — clone URL`,
+      `${fmt(`${stepPath}.default_branch`)} — default branch name`,
     ],
   };
 
