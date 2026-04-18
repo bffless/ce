@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.239](https://github.com/bffless/ce/compare/v0.0.238...v0.0.239) (2026-04-18)
+
+
+### Bug Fixes
+
+* add guest role to change member role dialog ([c974716](https://github.com/bffless/ce/commit/c9747168ec34d2dc9750fb82552d79027b41d38d))
+
 ## [0.0.238](https://github.com/bffless/ce/compare/v0.0.237...v0.0.238) (2026-04-18)
 
 
