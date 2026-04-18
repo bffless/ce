@@ -324,7 +324,8 @@ export function ProjectMembersTab({ owner, repo }: ProjectMembersTabProps) {
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      <SelectItem value="viewer">Viewer - Read only</SelectItem>
+                                      <SelectItem value="guest">Guest - Site access only</SelectItem>
+                                      <SelectItem value="viewer">Viewer - Read only admin</SelectItem>
                                       <SelectItem value="contributor">
                                         Contributor - Can deploy
                                       </SelectItem>
