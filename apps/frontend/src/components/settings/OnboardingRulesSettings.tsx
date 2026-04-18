@@ -541,7 +541,7 @@ export function OnboardingRulesSettings() {
 
         {/* Rule Form Dialog */}
         <Dialog open={showRuleForm} onOpenChange={setShowRuleForm}>
-          <DialogContent className="sm:max-w-[500px]">
+          <DialogContent className="sm:max-w-[500px] max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>
                 {editingRule ? 'Edit Onboarding Rule' : 'Create Onboarding Rule'}
@@ -680,6 +680,7 @@ export function OnboardingRulesSettings() {
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
+                              <SelectItem value="guest">Guest (site access only)</SelectItem>
                               <SelectItem value="viewer">Viewer (read-only)</SelectItem>
                               <SelectItem value="contributor">Contributor (read/write)</SelectItem>
                               <SelectItem value="admin">Admin (full access)</SelectItem>
