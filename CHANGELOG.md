@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.238](https://github.com/bffless/ce/compare/v0.0.237...v0.0.238) (2026-04-18)
+
+
+### Features
+
+* add guest project role and restrict API keys to admins ([4cd00c8](https://github.com/bffless/ce/commit/4cd00c8cb1dbc1f4f44642d57d908338d031e174))
+
+
+### Bug Fixes
+
+* onboarding ([380ab5f](https://github.com/bffless/ce/commit/380ab5f79283003b7bbce6eafddc9b50e5092998))
+
 ## [0.0.237](https://github.com/bffless/ce/compare/v0.0.236...v0.0.237) (2026-04-18)
 
 
