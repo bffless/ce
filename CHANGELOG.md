@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.235](https://github.com/bffless/ce/compare/v0.0.234...v0.0.235) (2026-04-18)
+
+
+### Features
+
+* add github_api handler to MCP proxy rules tool schema ([36e0f91](https://github.com/bffless/ce/commit/36e0f91e12772a901764538c3447260065ee2952))
+
 ## [0.0.234](https://github.com/bffless/ce/compare/v0.0.233...v0.0.234) (2026-04-18)
 
 
