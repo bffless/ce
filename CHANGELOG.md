@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.230](https://github.com/bffless/ce/compare/v0.0.229...v0.0.230) (2026-04-18)
+
+
+### Features
+
+* add GitHub integration and github_api pipeline handler ([0147b7e](https://github.com/bffless/ce/commit/0147b7ecd8adbce7b978dbd7f677f6449038e786))
+
+
+### Bug Fixes
+
+* trim whitespace from cache rule path patterns ([a0c54e8](https://github.com/bffless/ce/commit/a0c54e82491df3fa831b6ecfcb9c1f118de59141))
+
 ## [0.0.229](https://github.com/bffless/ce/compare/v0.0.228...v0.0.229) (2026-04-16)
 
 
