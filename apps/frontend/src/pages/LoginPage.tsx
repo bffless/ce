@@ -3,8 +3,9 @@ import { useNavigate, useSearchParams, Link, Navigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, CheckCircle } from 'lucide-react';
 import { useSignInMutation, useGetSessionQuery, useGetOAuthProvidersQuery } from '@/services/authApi';
+import { useValidateProjectInviteTokenQuery } from '@/services/projectInviteLinksApi';
 import { useBranding } from '@/hooks/useBranding';
 import { useGetSetupStatusQuery } from '@/services/setupApi';
 import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
@@ -13,6 +14,7 @@ import { validateRedirectUrl } from '@/lib/validateRedirectUrl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Form,
@@ -47,6 +49,13 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const refreshAttemptedRef = useRef(false);
+
+  // Project invite token
+  const projectInviteToken = searchParams.get('projectInvite') || null;
+  const { data: projectInviteData } = useValidateProjectInviteTokenQuery(
+    projectInviteToken || '',
+    { skip: !projectInviteToken }
+  );
 
   // Validate redirect URL to prevent open redirect attacks
   const redirectTo = validateRedirectUrl(searchParams.get('redirect'));
@@ -248,6 +257,15 @@ export function LoginPage() {
             <CardDescription>Sign in to your account</CardDescription>
           </CardHeader>
           <CardContent>
+            {projectInviteData?.valid && (
+              <Alert className="mb-4 border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
+                <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
+                <AlertTitle className="text-green-800 dark:text-green-200">Project Invitation</AlertTitle>
+                <AlertDescription className="text-green-700 dark:text-green-300">
+                  Sign in to join <span className="font-medium">{projectInviteData.projectOwner}/{projectInviteData.projectName}</span> as <span className="font-medium">{projectInviteData.role}</span>.
+                </AlertDescription>
+              </Alert>
+            )}
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                 <FormField
@@ -349,7 +367,13 @@ export function LoginPage() {
                 <div className="text-center text-sm">
                   Don't have an account?{' '}
                   <Link
-                    to={`/signup${searchParams.get('redirect') ? `?redirect=${searchParams.get('redirect')}` : ''}`}
+                    to={`/signup${(() => {
+                      const params = new URLSearchParams();
+                      if (searchParams.get('redirect')) params.set('redirect', searchParams.get('redirect')!);
+                      if (searchParams.get('projectInvite')) params.set('projectInvite', searchParams.get('projectInvite')!);
+                      const qs = params.toString();
+                      return qs ? `?${qs}` : '';
+                    })()}`}
                     className="text-primary hover:underline font-medium"
                   >
                     Sign up

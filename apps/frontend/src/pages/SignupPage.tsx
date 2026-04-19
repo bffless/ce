@@ -584,7 +584,13 @@ export function SignupPage() {
                     <>
                       Already have an account?{' '}
                       <Link
-                        to={`/login${searchParams.get('redirect') ? `?redirect=${searchParams.get('redirect')}` : ''}`}
+                        to={`/login${(() => {
+                          const params = new URLSearchParams();
+                          if (searchParams.get('redirect')) params.set('redirect', searchParams.get('redirect')!);
+                          if (projectInviteToken) params.set('projectInvite', projectInviteToken);
+                          const qs = params.toString();
+                          return qs ? `?${qs}` : '';
+                        })()}`}
                         className="text-primary hover:underline font-medium"
                       >
                         Sign in
