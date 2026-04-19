@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.245](https://github.com/bffless/ce/compare/v0.0.244...v0.0.245) (2026-04-19)
+
+
+### Bug Fixes
+
+* prioritize owner/repo over :id in project permission guard ([7b52109](https://github.com/bffless/ce/commit/7b52109154d887750afcd8309492f81e8cb14cc2))
+
 ## [0.0.244](https://github.com/bffless/ce/compare/v0.0.243...v0.0.244) (2026-04-19)
 
 
