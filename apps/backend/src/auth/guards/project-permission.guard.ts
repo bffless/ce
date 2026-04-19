@@ -46,13 +46,14 @@ export class ProjectPermissionGuard implements CanActivate {
     let project: Project;
 
     try {
-      if (projectId || id) {
-        // Direct project ID lookup (supports both :projectId and :id param names)
-        project = await this.projectsService.getProjectById(projectId || id);
-      } else if (owner && (repo || name)) {
-        // Lookup by owner/repo or owner/name
+      if (owner && (repo || name)) {
+        // Lookup by owner/repo or owner/name (prioritize over :id to avoid
+        // confusing sub-resource :id params with project IDs)
         const repoName = repo || name;
         project = await this.projectsService.getProjectByOwnerName(owner, repoName);
+      } else if (projectId || id) {
+        // Direct project ID lookup (supports both :projectId and :id param names)
+        project = await this.projectsService.getProjectById(projectId || id);
       } else {
         throw new BadRequestException('Project identifier not found in request');
       }
