@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.246](https://github.com/bffless/ce/compare/v0.0.245...v0.0.246) (2026-04-19)
+
+
+### Features
+
+* adds create issue handler ([318d76a](https://github.com/bffless/ce/commit/318d76abc253e3154bd5619bb755905650a66306))
+
 ## [0.0.245](https://github.com/bffless/ce/compare/v0.0.244...v0.0.245) (2026-04-19)
 
 
