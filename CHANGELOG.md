@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.244](https://github.com/bffless/ce/compare/v0.0.243...v0.0.244) (2026-04-19)
+
+
+### Features
+
+* add redirect URL to invite links and use project display name ([63bee45](https://github.com/bffless/ce/commit/63bee45a01e7118aba8401dbc72f073e7039c497))
+
 ## [0.0.243](https://github.com/bffless/ce/compare/v0.0.242...v0.0.243) (2026-04-19)
 
 
