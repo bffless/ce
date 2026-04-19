@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.247](https://github.com/bffless/ce/compare/v0.0.246...v0.0.247) (2026-04-19)
+
+
+### Features
+
+* API key auth for pipelines + validator type validation ([bf5f153](https://github.com/bffless/ce/commit/bf5f153616c0a1ab3640b3806c4b168eb7c2c9f1))
+
 ## [0.0.246](https://github.com/bffless/ce/compare/v0.0.245...v0.0.246) (2026-04-19)
 
 
