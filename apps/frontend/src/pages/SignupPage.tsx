@@ -7,6 +7,7 @@ import { Eye, EyeOff, Mail, CheckCircle, Info } from 'lucide-react';
 import { useSignUpMutation, useCheckEmailMutation, useGetSessionQuery, useGetRegistrationStatusQuery, useGetOAuthProvidersQuery } from '@/services/authApi';
 import { useBranding } from '@/hooks/useBranding';
 import { useValidateInvitationTokenQuery } from '@/services/invitationsApi';
+import { useValidateProjectInviteTokenQuery } from '@/services/projectInviteLinksApi';
 import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
 import { useToast } from '@/hooks/use-toast';
 import { validateRedirectUrl } from '@/lib/validateRedirectUrl';
@@ -108,6 +109,15 @@ export function SignupPage() {
   const { data: invitationData, isLoading: isLoadingInvitation } = useValidateInvitationTokenQuery(
     inviteToken || '',
     { skip: !inviteToken }
+  );
+
+  // Extract project invite token from query params
+  const projectInviteToken = searchParams.get('projectInvite') || null;
+
+  // Validate project invite token if present
+  const { data: projectInviteData } = useValidateProjectInviteTokenQuery(
+    projectInviteToken || '',
+    { skip: !projectInviteToken }
   );
 
   // Check if signups are allowed - either public signups OR valid invitation
@@ -212,6 +222,7 @@ export function SignupPage() {
         email: data.email,
         password: data.password,
         redirect: redirectTo !== '/' ? redirectTo : undefined,
+        projectInviteToken: projectInviteToken || undefined,
       }).unwrap();
 
       // If email verification is required, redirect to verify-email page
@@ -355,6 +366,15 @@ export function SignupPage() {
                 <AlertTitle className="text-green-800 dark:text-green-200">Invitation Accepted</AlertTitle>
                 <AlertDescription className="text-green-700 dark:text-green-300">
                   You've been invited as <span className="font-medium">{invitationData?.role}</span>. Complete registration to join.
+                </AlertDescription>
+              </Alert>
+            )}
+            {projectInviteData?.valid && (
+              <Alert className="mb-4 border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
+                <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
+                <AlertTitle className="text-green-800 dark:text-green-200">Project Invitation</AlertTitle>
+                <AlertDescription className="text-green-700 dark:text-green-300">
+                  You've been invited as <span className="font-medium">{projectInviteData.role}</span> to <span className="font-medium">{projectInviteData.projectOwner}/{projectInviteData.projectName}</span>. {authMode === 'create' ? 'Create an account' : 'Sign in'} to join.
                 </AlertDescription>
               </Alert>
             )}

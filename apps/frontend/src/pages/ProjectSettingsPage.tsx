@@ -22,6 +22,7 @@ import { AlertCircle, ArrowLeft, Save, Lock, Shield, Trash2 } from 'lucide-react
 import { useToast } from '@/hooks/use-toast';
 import { DeleteProjectDialog } from '@/components/project/DeleteProjectDialog';
 import { ProjectMembersTab } from '@/components/project/ProjectMembersTab';
+import { ProjectInviteLinksTab } from '@/components/project/ProjectInviteLinksTab';
 import { ProjectGroupsTab } from '@/components/project/ProjectGroupsTab';
 import { ProjectApiKeysTab } from '@/components/project/ProjectApiKeysTab';
 import { ProjectProxyRulesTab } from '@/components/project/ProjectProxyRulesTab';
@@ -33,7 +34,7 @@ import { ProjectAISettingsTab } from '@/components/project/ProjectAISettingsTab'
 import { ProjectIntegrationsTab } from '@/components/project/ProjectIntegrationsTab';
 import { RepoBreadcrumb } from '@/components/repo/RepoBreadcrumb';
 
-type TabValue = 'general' | 'members' | 'groups' | 'api-keys' | 'proxy-rules' | 'storage' | 'cache-rules' | 'response-headers' | 'share-links' | 'ai' | 'integrations';
+type TabValue = 'general' | 'members' | 'invite-links' | 'groups' | 'api-keys' | 'proxy-rules' | 'storage' | 'cache-rules' | 'response-headers' | 'share-links' | 'ai' | 'integrations';
 
 /**
  * ProjectSettingsPage - Project settings and permissions management
@@ -52,7 +53,7 @@ export function ProjectSettingsPage() {
   // Get tab from query params, default to 'general'
   const tabParam = searchParams.get('tab');
   const currentTab: TabValue =
-    tabParam === 'members' || tabParam === 'groups' || tabParam === 'api-keys' || tabParam === 'proxy-rules' || tabParam === 'storage' || tabParam === 'cache-rules' || tabParam === 'response-headers' || tabParam === 'share-links' || tabParam === 'ai' || tabParam === 'integrations'
+    tabParam === 'members' || tabParam === 'invite-links' || tabParam === 'groups' || tabParam === 'api-keys' || tabParam === 'proxy-rules' || tabParam === 'storage' || tabParam === 'cache-rules' || tabParam === 'response-headers' || tabParam === 'share-links' || tabParam === 'ai' || tabParam === 'integrations'
       ? tabParam
       : 'general';
 
@@ -272,6 +273,7 @@ export function ProjectSettingsPage() {
           <TabsList>
             <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger value="members">Members</TabsTrigger>
+            <TabsTrigger value="invite-links">Invite Links</TabsTrigger>
             <TabsTrigger value="groups">Groups</TabsTrigger>
             <TabsTrigger value="api-keys">API Keys</TabsTrigger>
             <TabsTrigger value="proxy-rules">Proxy Rules</TabsTrigger>
@@ -469,6 +471,11 @@ export function ProjectSettingsPage() {
           {/* Members Tab */}
           <TabsContent value="members" className="mt-6">
             {project && <ProjectMembersTab owner={owner!} repo={repo!} />}
+          </TabsContent>
+
+          {/* Invite Links Tab */}
+          <TabsContent value="invite-links" className="mt-6">
+            {project && <ProjectInviteLinksTab owner={owner!} repo={repo!} />}
           </TabsContent>
 
           {/* Groups Tab */}

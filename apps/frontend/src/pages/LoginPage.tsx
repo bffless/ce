@@ -153,9 +153,11 @@ export function LoginPage() {
 
   const onSubmit = async (data: LoginFormValues) => {
     try {
+      const projectInviteToken = searchParams.get('projectInvite') || undefined;
       await signIn({
         email: data.email,
         password: data.password,
+        projectInviteToken,
       }).unwrap();
 
       toast({

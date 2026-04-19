@@ -19,12 +19,14 @@ export interface SessionInfo {
 export interface SignInDto {
   email: string;
   password: string;
+  projectInviteToken?: string;
 }
 
 export interface SignUpDto {
   email: string;
   password: string;
   redirect?: string;
+  projectInviteToken?: string;
 }
 
 export interface SignInResponse {

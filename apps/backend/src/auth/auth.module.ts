@@ -14,6 +14,7 @@ import { EmailVerificationGuard } from './email-verification.guard';
 import { initSuperTokens, registerGoogleOAuthFromEnv } from './supertokens.config';
 import { SetupModule } from '../setup/setup.module';
 import { OnboardingRulesModule } from '../onboarding-rules/onboarding-rules.module';
+import { ProjectInviteLinksModule } from '../project-invite-links/project-invite-links.module';
 import { DomainsModule } from '../domains/domains.module';
 import { VisibilityService } from '../domains/visibility.service';
 
@@ -36,6 +37,7 @@ export class AuthModule implements NestModule {
       imports: [
         forwardRef(() => SetupModule),
         forwardRef(() => OnboardingRulesModule),
+        forwardRef(() => ProjectInviteLinksModule),
         forwardRef(() => DomainsModule),
       ],
       controllers: [AuthController, CustomDomainAuthController],

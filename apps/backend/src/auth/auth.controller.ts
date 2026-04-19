@@ -21,6 +21,7 @@ import { SetupService } from '../setup/setup.service';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 import { OnboardingExecutorService } from '../onboarding-rules/onboarding-executor.service';
 import { DomainTokenService } from './domain-token.service';
+import { ProjectInviteLinksService } from '../project-invite-links/project-invite-links.service';
 import { CreateDomainTokenDto } from './dto/create-domain-token.dto';
 import { db } from '../db/client';
 import { workspaceInvitations, domainMappings } from '../db/schema';
@@ -39,11 +40,13 @@ interface SignUpDto {
   email: string;
   password: string;
   redirect?: string;
+  projectInviteToken?: string;
 }
 
 interface SignInDto {
   email: string;
   password: string;
+  projectInviteToken?: string;
 }
 
 interface CheckEmailDto {
@@ -75,6 +78,7 @@ export class AuthController {
     private readonly featureFlagsService: FeatureFlagsService,
     private readonly onboardingExecutorService: OnboardingExecutorService,
     private readonly domainTokenService: DomainTokenService,
+    private readonly projectInviteLinksService: ProjectInviteLinksService,
   ) {}
 
   private getTenantId(): string {
@@ -207,6 +211,15 @@ export class AuthController {
           this.logger.error('[Signup] Onboarding rules failed:', onboardingError);
         }
 
+        // Process project invite link if present
+        if (body.projectInviteToken) {
+          try {
+            await this.projectInviteLinksService.redeemForUser(body.projectInviteToken, dbUser.id);
+          } catch (inviteError) {
+            this.logger.error('[Signup] Project invite link redemption failed:', inviteError);
+          }
+        }
+
         await Session.createNewSession(req, res, tenantId, signInResponse.recipeUserId);
 
         let emailVerificationRequired = false;
@@ -275,6 +288,15 @@ export class AuthController {
       } catch (onboardingError) {
         // Log but don't fail signup if onboarding rules fail
         this.logger.error('[Signup] Onboarding rules failed:', onboardingError);
+      }
+
+      // Process project invite link if present
+      if (body.projectInviteToken) {
+        try {
+          await this.projectInviteLinksService.redeemForUser(body.projectInviteToken, dbUser.id);
+        } catch (inviteError) {
+          this.logger.error('[Signup] Project invite link redemption failed:', inviteError);
+        }
       }
 
       // Create session so user is immediately logged in
@@ -420,6 +442,15 @@ export class AuthController {
       await session.mergeIntoAccessTokenPayload({
         role: user.role,
       });
+
+      // Process project invite link if present
+      if (body.projectInviteToken) {
+        try {
+          await this.projectInviteLinksService.redeemForUser(body.projectInviteToken, user.id);
+        } catch (inviteError) {
+          this.logger.error('[Signin] Project invite link redemption failed:', inviteError);
+        }
+      }
 
       return {
         message: 'Signed in successfully',
@@ -1227,7 +1258,7 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'User signed in via Google' })
   @ApiResponse({ status: 400, description: 'OAuth flow failed' })
   async googleOAuthCallback(
-    @Body() body: { code: string; redirectUrl: string; pkceCodeVerifier?: string },
+    @Body() body: { code: string; redirectUrl: string; pkceCodeVerifier?: string; projectInviteToken?: string },
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
@@ -1347,6 +1378,15 @@ export class AuthController {
           });
         } catch (onboardingError) {
           this.logger.error('[Google OAuth] Onboarding rules failed:', onboardingError);
+        }
+      }
+
+      // Process project invite link if present
+      if (body.projectInviteToken && dbUser) {
+        try {
+          await this.projectInviteLinksService.redeemForUser(body.projectInviteToken, dbUser.id);
+        } catch (inviteError) {
+          this.logger.error('[Google OAuth] Project invite link redemption failed:', inviteError);
         }
       }
 

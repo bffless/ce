@@ -33,6 +33,7 @@ import { InvitationsModule } from './invitations/invitations.module';
 import { RetentionModule } from './retention/retention.module';
 import { CacheRulesModule } from './cache-rules/cache-rules.module';
 import { ShareLinksModule } from './share-links/share-links.module';
+import { ProjectInviteLinksModule } from './project-invite-links/project-invite-links.module';
 import { PlatformModule } from './platform/platform.module';
 import { StorageUsageModule } from './storage/storage-usage.module';
 import { OnboardingRulesModule } from './onboarding-rules/onboarding-rules.module';
@@ -152,6 +153,7 @@ import { McpToolsModule } from './mcp/mcp-tools.module';
     RetentionModule,
     CacheRulesModule,
     ShareLinksModule,    // Must come BEFORE ProjectsModule (route ordering)
+    ProjectInviteLinksModule, // Must come BEFORE ProjectsModule (route ordering)
     PipelinesModule,     // Must come BEFORE ProjectsModule (route ordering)
     ResponseHeaderRulesModule, // Must come BEFORE ProjectsModule (route ordering)
     ProjectsModule,
