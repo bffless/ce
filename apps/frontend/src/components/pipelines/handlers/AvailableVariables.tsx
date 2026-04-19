@@ -200,7 +200,7 @@ function getStepOutputDescription(handlerType: string, config?: Record<string, u
     replicate: 'Replicate prediction result with model output',
     stripe_checkout: 'Stripe Checkout Session with payment URL',
     stripe_webhook: 'Verified Stripe event object',
-    github_api: 'GitHub API response (repo details for create_repo_from_template)',
+    github_api: 'GitHub API response (repo details, variable info, or issue details)',
   };
   return descriptions[handlerType] || 'Step output data';
 }
@@ -309,7 +309,17 @@ function getStepOutputExamples(
       `${fmt(`${stepPath}.data.object.amount_total`)} — payment amount in cents`,
       `${fmt(`${stepPath}.data.object.customer_email`)} — customer email`,
     ],
-    github_api: [
+    github_api: config?.action === 'create_issue' ? [
+      `${fmt(`${stepPath}.number`)} — issue number`,
+      `${fmt(`${stepPath}.html_url`)} — issue URL`,
+      `${fmt(`${stepPath}.title`)} — issue title`,
+      `${fmt(`${stepPath}.id`)} — issue ID`,
+    ] : config?.action === 'set_repo_variable' ? [
+      `${fmt(`${stepPath}.owner`)} — repository owner`,
+      `${fmt(`${stepPath}.repo`)} — repository name`,
+      `${fmt(`${stepPath}.variableName`)} — variable name`,
+      `${fmt(`${stepPath}.variableValue`)} — variable value`,
+    ] : [
       `${fmt(`${stepPath}.name`)} — repository name`,
       `${fmt(`${stepPath}.full_name`)} — full name (org/repo)`,
       `${fmt(`${stepPath}.html_url`)} — GitHub URL`,

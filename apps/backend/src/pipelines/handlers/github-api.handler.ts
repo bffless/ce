@@ -12,7 +12,7 @@ import { IntegrationsService } from '../../integrations/integrations.service';
  */
 export interface GitHubApiHandlerConfig extends BaseHandlerConfig {
   /** The GitHub API action to perform */
-  action: 'create_repo_from_template' | 'set_repo_variable';
+  action: 'create_repo_from_template' | 'set_repo_variable' | 'create_issue';
 
   // --- create_repo_from_template fields ---
 
@@ -50,6 +50,17 @@ export interface GitHubApiHandlerConfig extends BaseHandlerConfig {
 
   /** Variable value (expression) */
   variableValue?: string;
+
+  // --- create_issue fields ---
+
+  /** Issue title (expression) */
+  title?: string;
+
+  /** Issue body (expression) */
+  body?: string;
+
+  /** Labels to apply (array of strings) */
+  labels?: string[];
 }
 
 const GITHUB_API_BASE = 'https://api.github.com';
@@ -106,9 +117,22 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
       if (!config.variableValue) {
         throw new ConfigurationError('variableValue is required for set_repo_variable', 'github_api');
       }
+    } else if (config.action === 'create_issue') {
+      if (!config.owner) {
+        throw new ConfigurationError('owner is required for create_issue', 'github_api');
+      }
+      if (!config.repo) {
+        throw new ConfigurationError('repo is required for create_issue', 'github_api');
+      }
+      if (!config.title) {
+        throw new ConfigurationError('title is required for create_issue', 'github_api');
+      }
+      if (!config.body) {
+        throw new ConfigurationError('body is required for create_issue', 'github_api');
+      }
     } else {
       throw new ConfigurationError(
-        `Unknown action '${config.action}'. Supported: create_repo_from_template, set_repo_variable`,
+        `Unknown action '${config.action}'. Supported: create_repo_from_template, set_repo_variable, create_issue`,
         'github_api',
       );
     }
@@ -141,6 +165,10 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
 
     if (config.action === 'set_repo_variable') {
       return this.setRepoVariable(config, context, step, token);
+    }
+
+    if (config.action === 'create_issue') {
+      return this.createIssue(config, context, step, token);
     }
 
     return {
@@ -332,6 +360,103 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
           repo,
           variableName,
           variableValue,
+        },
+      };
+    } catch (error: any) {
+      this.logger.error(`GitHub API request failed for step '${step.name}': ${error.message}`);
+
+      return {
+        success: false,
+        error: {
+          code: 'GITHUB_API_ERROR',
+          message: `GitHub API request failed: ${error.message}`,
+        },
+      };
+    }
+  }
+
+  private async createIssue(
+    config: GitHubApiHandlerConfig,
+    context: PipelineContext,
+    step: PipelineStep,
+    token: string,
+  ): Promise<StepResult> {
+    const owner = String(
+      this.expressionEvaluator.evaluateExpression(config.owner!, context, step.name),
+    );
+    const repo = String(
+      this.expressionEvaluator.evaluateExpression(config.repo!, context, step.name),
+    );
+    const title = String(
+      this.expressionEvaluator.evaluateExpression(config.title!, context, step.name),
+    );
+    const body = String(
+      this.expressionEvaluator.evaluateExpression(config.body!, context, step.name),
+    );
+
+    const labels: string[] = [];
+    if (config.labels && Array.isArray(config.labels)) {
+      for (const label of config.labels) {
+        const resolved = this.expressionEvaluator.evaluateExpression(label, context, step.name);
+        if (resolved) {
+          labels.push(String(resolved));
+        }
+      }
+    }
+
+    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/issues`;
+
+    this.logger.debug(`Creating issue on '${owner}/${repo}': ${title}`);
+
+    try {
+      const requestBody: Record<string, unknown> = { title, body };
+      if (labels.length > 0) {
+        requestBody.labels = labels;
+      }
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        const message = (errorBody as any).message || `HTTP ${response.status}`;
+
+        this.logger.error(
+          `GitHub API error for step '${step.name}': ${response.status} - ${message}`,
+        );
+
+        return {
+          success: false,
+          error: {
+            code: 'GITHUB_API_ERROR',
+            message: `GitHub API error: ${message}`,
+            details: {
+              status: response.status,
+              errors: (errorBody as any).errors,
+            },
+          },
+        };
+      }
+
+      const issue = await response.json();
+
+      this.logger.log(`Created issue #${issue.number} on '${owner}/${repo}'`);
+
+      return {
+        success: true,
+        output: {
+          id: issue.id,
+          number: issue.number,
+          title: issue.title,
+          html_url: issue.html_url,
+          state: issue.state,
         },
       };
     } catch (error: any) {

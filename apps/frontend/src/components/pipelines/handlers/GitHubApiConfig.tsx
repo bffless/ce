@@ -27,6 +27,7 @@ export function GitHubApiConfig({ config, onChange, previousSteps }: GitHubApiCo
           <SelectContent>
             <SelectItem value="create_repo_from_template">Create Repo from Template</SelectItem>
             <SelectItem value="set_repo_variable">Set Repo Variable</SelectItem>
+            <SelectItem value="create_issue">Create Issue</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -77,6 +78,69 @@ export function GitHubApiConfig({ config, onChange, previousSteps }: GitHubApiCo
               placeholder="steps.build_name.siteUrl"
               previousSteps={previousSteps}
             />
+          </div>
+        </>
+      )}
+
+      {action === 'create_issue' && (
+        <>
+          <div className="space-y-2">
+            <Label>Owner *</Label>
+            <ExpressionInput
+              value={(config.owner as string) || ''}
+              onChange={(value) => onChange({ ...config, owner: value })}
+              placeholder="bffless-sites"
+              previousSteps={previousSteps}
+            />
+            <p className="text-xs text-muted-foreground">
+              Repository owner (org or user)
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Repo *</Label>
+            <ExpressionInput
+              value={(config.repo as string) || ''}
+              onChange={(value) => onChange({ ...config, repo: value })}
+              placeholder="steps.validate.repoName"
+              previousSteps={previousSteps}
+            />
+            <p className="text-xs text-muted-foreground">
+              Repository name
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Title *</Label>
+            <ExpressionInput
+              value={(config.title as string) || ''}
+              onChange={(value) => onChange({ ...config, title: value })}
+              placeholder="steps.validate.title"
+              previousSteps={previousSteps}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Body *</Label>
+            <ExpressionInput
+              value={(config.body as string) || ''}
+              onChange={(value) => onChange({ ...config, body: value })}
+              placeholder="steps.validate.body"
+              previousSteps={previousSteps}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Labels</Label>
+            <ExpressionInput
+              value={Array.isArray(config.labels) ? (config.labels as string[]).join(', ') : (config.labels as string) || ''}
+              onChange={(value) => onChange({ ...config, labels: value.split(',').map((l: string) => l.trim()).filter(Boolean) })}
+              placeholder="customization, enhancement"
+              previousSteps={previousSteps}
+            />
+            <p className="text-xs text-muted-foreground">
+              Comma-separated list of labels to apply
+            </p>
           </div>
         </>
       )}
