@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.242](https://github.com/bffless/ce/compare/v0.0.241...v0.0.242) (2026-04-19)
+
+
+### Features
+
+* add project invite links for auto-granting project roles on signup ([c63e3af](https://github.com/bffless/ce/commit/c63e3af59b01e3591380e67898736b23aa2bc4e9))
+
+
+### Bug Fixes
+
+* add guest role to onboarding rules and make dialog scrollable ([2bc5983](https://github.com/bffless/ce/commit/2bc5983cc696cbb0b12e909b7126fcbecd54bf31))
+
 ## [0.0.241](https://github.com/bffless/ce/compare/v0.0.240...v0.0.241) (2026-04-18)
 
 
