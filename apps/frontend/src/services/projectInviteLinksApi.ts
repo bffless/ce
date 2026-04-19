@@ -9,6 +9,7 @@ export interface ProjectInviteLink {
   isActive: boolean;
   expiresAt: string | null;
   maxUses: number | null;
+  redirectUrl: string | null;
   useCount: number;
   lastUsedAt: string | null;
   createdBy: string;
@@ -28,6 +29,7 @@ export interface CreateProjectInviteLinkDto {
   label?: string;
   expiresAt?: string;
   maxUses?: number;
+  redirectUrl?: string;
 }
 
 export interface UpdateProjectInviteLinkDto {

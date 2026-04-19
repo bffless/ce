@@ -52,6 +52,7 @@ export class ProjectInviteLinksController {
       label?: string;
       expiresAt?: string;
       maxUses?: number;
+      redirectUrl?: string;
     },
   ) {
     const project = await this.projectsService.getProjectByOwnerName(owner, repo);
@@ -69,6 +70,7 @@ export class ProjectInviteLinksController {
       body.label,
       body.expiresAt ? new Date(body.expiresAt) : undefined,
       body.maxUses,
+      body.redirectUrl,
     );
   }
 

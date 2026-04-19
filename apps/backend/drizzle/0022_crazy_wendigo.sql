@@ -1,0 +1,1 @@
+ALTER TABLE "project_invite_links" ADD COLUMN "redirect_url" varchar(2048);

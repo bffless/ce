@@ -72,20 +72,24 @@ export function ProjectInviteLinksTab({ owner, repo }: ProjectInviteLinksTabProp
   const [newRole, setNewRole] = useState('guest');
   const [newLabel, setNewLabel] = useState('');
   const [newMaxUses, setNewMaxUses] = useState('');
+  const [newRedirectUrl, setNewRedirectUrl] = useState('');
 
   const { data: links, isLoading, error } = useGetProjectInviteLinksQuery({ owner, repo });
   const [createLink, { isLoading: isCreating }] = useCreateProjectInviteLinkMutation();
   const [updateLink] = useUpdateProjectInviteLinkMutation();
   const [deleteLink, { isLoading: isDeleting }] = useDeleteProjectInviteLinkMutation();
 
-  const getInviteUrl = (token: string) => {
+  const getInviteUrl = (token: string, redirectUrl?: string | null) => {
     const base = window.location.origin;
-    return `${base}/signup?projectInvite=${token}`;
+    const params = new URLSearchParams();
+    params.set('projectInvite', token);
+    if (redirectUrl) params.set('redirect', redirectUrl);
+    return `${base}/signup?${params.toString()}`;
   };
 
-  const handleCopy = async (token: string, id: string) => {
+  const handleCopy = async (token: string, id: string, redirectUrl?: string | null) => {
     try {
-      await navigator.clipboard.writeText(getInviteUrl(token));
+      await navigator.clipboard.writeText(getInviteUrl(token, redirectUrl));
       setCopiedId(id);
       setTimeout(() => setCopiedId(null), 2000);
       toast({ title: 'Copied', description: 'Invite link copied to clipboard' });
@@ -103,6 +107,7 @@ export function ProjectInviteLinksTab({ owner, repo }: ProjectInviteLinksTabProp
           role: newRole,
           label: newLabel || undefined,
           maxUses: newMaxUses ? parseInt(newMaxUses, 10) : undefined,
+          redirectUrl: newRedirectUrl || undefined,
         },
       }).unwrap();
 
@@ -111,6 +116,7 @@ export function ProjectInviteLinksTab({ owner, repo }: ProjectInviteLinksTabProp
       setNewRole('guest');
       setNewLabel('');
       setNewMaxUses('');
+      setNewRedirectUrl('');
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -236,6 +242,19 @@ export function ProjectInviteLinksTab({ owner, repo }: ProjectInviteLinksTabProp
                     Leave empty for unlimited uses
                   </p>
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="redirectUrl">Redirect URL (optional)</Label>
+                  <Input
+                    id="redirectUrl"
+                    type="url"
+                    placeholder="https://graduation.example.com"
+                    value={newRedirectUrl}
+                    onChange={(e) => setNewRedirectUrl(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Where to redirect users after signup/login
+                  </p>
+                </div>
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
@@ -300,7 +319,7 @@ export function ProjectInviteLinksTab({ owner, repo }: ProjectInviteLinksTabProp
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleCopy(link.token, link.id)}
+                          onClick={() => handleCopy(link.token, link.id, link.redirectUrl)}
                         >
                           {copiedId === link.id ? (
                             <Check className="h-4 w-4 text-green-600" />

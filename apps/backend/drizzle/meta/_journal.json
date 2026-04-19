@@ -155,6 +155,13 @@
       "when": 1776556732186,
       "tag": "0021_boring_union_jack",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1776559499009,
+      "tag": "0022_crazy_wendigo",
+      "breakpoints": true
     }
   ]
 }

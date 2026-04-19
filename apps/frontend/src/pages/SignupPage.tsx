@@ -374,7 +374,7 @@ export function SignupPage() {
                 <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
                 <AlertTitle className="text-green-800 dark:text-green-200">Project Invitation</AlertTitle>
                 <AlertDescription className="text-green-700 dark:text-green-300">
-                  You've been invited as <span className="font-medium">{projectInviteData.role}</span> to <span className="font-medium">{projectInviteData.projectOwner}/{projectInviteData.projectName}</span>. {authMode === 'create' ? 'Create an account' : 'Sign in'} to join.
+                  You've been invited as <span className="font-medium">{projectInviteData.role}</span> to <span className="font-medium">{projectInviteData.projectName}</span>. {authMode === 'create' ? 'Create an account' : 'Sign in'} to join.
                 </AlertDescription>
               </Alert>
             )}

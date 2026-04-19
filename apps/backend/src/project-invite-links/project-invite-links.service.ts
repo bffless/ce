@@ -19,6 +19,7 @@ export class ProjectInviteLinksService {
     label?: string,
     expiresAt?: Date,
     maxUses?: number,
+    redirectUrl?: string,
   ) {
     const token = this.generateToken();
 
@@ -29,6 +30,7 @@ export class ProjectInviteLinksService {
         token,
         role,
         label: label || null,
+        redirectUrl: redirectUrl || null,
         expiresAt: expiresAt || null,
         maxUses: maxUses || null,
         createdBy,
@@ -105,6 +107,7 @@ export class ProjectInviteLinksService {
         maxUses: projectInviteLinks.maxUses,
         useCount: projectInviteLinks.useCount,
         projectName: projects.name,
+        projectDisplayName: projects.displayName,
         projectOwner: projects.owner,
       })
       .from(projectInviteLinks)
@@ -130,7 +133,7 @@ export class ProjectInviteLinksService {
 
     return {
       valid: true,
-      projectName: link.projectName,
+      projectName: link.projectDisplayName || `${link.projectOwner}/${link.projectName}`,
       projectOwner: link.projectOwner,
       role: link.role,
     };

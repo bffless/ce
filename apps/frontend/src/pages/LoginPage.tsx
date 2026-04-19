@@ -262,7 +262,7 @@ export function LoginPage() {
                 <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
                 <AlertTitle className="text-green-800 dark:text-green-200">Project Invitation</AlertTitle>
                 <AlertDescription className="text-green-700 dark:text-green-300">
-                  Sign in to join <span className="font-medium">{projectInviteData.projectOwner}/{projectInviteData.projectName}</span> as <span className="font-medium">{projectInviteData.role}</span>.
+                  Sign in to join <span className="font-medium">{projectInviteData.projectName}</span> as <span className="font-medium">{projectInviteData.role}</span>.
                 </AlertDescription>
               </Alert>
             )}

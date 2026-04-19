@@ -22,6 +22,7 @@ export const projectInviteLinks = pgTable(
     token: varchar('token', { length: 64 }).notNull().unique(),
     role: varchar('role', { length: 50 }).notNull().default('guest'),
     label: varchar('label', { length: 255 }),
+    redirectUrl: varchar('redirect_url', { length: 2048 }),
     isActive: boolean('is_active').notNull().default(true),
     expiresAt: timestamp('expires_at'),
     maxUses: integer('max_uses'),
