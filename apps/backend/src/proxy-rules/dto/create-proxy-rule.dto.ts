@@ -268,7 +268,24 @@ export class PipelineConfigDto {
   })
   @IsOptional()
   @IsArray()
-  validators?: Array<{ type: string; config: Record<string, unknown> }>;
+  @ValidateNested({ each: true })
+  @Type(() => PipelineValidatorDto)
+  validators?: PipelineValidatorDto[];
+}
+
+const VALID_VALIDATOR_TYPES = ['auth_required', 'rate_limit'] as const;
+
+export class PipelineValidatorDto {
+  @ApiProperty({ description: 'Validator type', enum: VALID_VALIDATOR_TYPES })
+  @IsString()
+  @IsIn(VALID_VALIDATOR_TYPES as unknown as string[], {
+    message: `Invalid validator type. Must be one of: ${VALID_VALIDATOR_TYPES.join(', ')}`,
+  })
+  type!: string;
+
+  @ApiProperty({ description: 'Validator configuration' })
+  @IsObject()
+  config!: Record<string, unknown>;
 }
 
 /**

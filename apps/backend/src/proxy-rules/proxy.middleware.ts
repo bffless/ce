@@ -3,9 +3,10 @@ import { Request, Response, NextFunction } from 'express';
 import { eq, and, or } from 'drizzle-orm';
 import { getSession } from 'supertokens-node/recipe/session';
 import * as jwt from 'jsonwebtoken';
+import * as bcrypt from 'bcrypt';
 import { asc } from 'drizzle-orm';
 import { db } from '../db/client';
-import { projects, deploymentAliases, domainMappings, users, aliasProxyRuleSets, projectDefaultProxyRuleSets } from '../db/schema';
+import { projects, deploymentAliases, domainMappings, users, apiKeys, aliasProxyRuleSets, projectDefaultProxyRuleSets } from '../db/schema';
 import { ProxyRulesService } from './proxy-rules.service';
 import { ProxyService } from './proxy.service';
 import { EmailFormHandlerService } from './email-form-handler.service';
@@ -1225,7 +1226,13 @@ export class ProxyMiddleware implements NestMiddleware {
         return customDomainUser;
       }
 
-      this.logger.debug('No session or custom domain auth found');
+      // Try API key authentication (X-API-Key header)
+      const apiKeyUser = await this.tryApiKeyAuth(req);
+      if (apiKeyUser) {
+        return apiKeyUser;
+      }
+
+      this.logger.debug('No session, custom domain auth, or API key found');
       return undefined;
     } catch (error) {
       // Silently fail - this is optional auth
@@ -1301,6 +1308,54 @@ export class ProxyMiddleware implements NestMiddleware {
       } else {
         this.logger.debug(`Custom domain auth failed: ${error}`);
       }
+      return undefined;
+    }
+  }
+
+  /**
+   * Try to authenticate via API key (X-API-Key header).
+   * Uses the same validation logic as ApiKeyGuard.
+   */
+  private async tryApiKeyAuth(
+    req: Request,
+  ): Promise<{ id: string; email?: string; role?: string } | undefined> {
+    try {
+      const apiKey = req.headers['x-api-key'];
+      if (!apiKey || typeof apiKey !== 'string') {
+        return undefined;
+      }
+
+      const allKeys = await db.select().from(apiKeys);
+
+      let matchedKey: (typeof allKeys)[0] | null = null;
+      for (const keyRecord of allKeys) {
+        const isMatch = await bcrypt.compare(apiKey, keyRecord.key);
+        if (isMatch) {
+          matchedKey = keyRecord;
+          break;
+        }
+      }
+
+      if (!matchedKey) {
+        this.logger.debug('API key provided but no match found');
+        return undefined;
+      }
+
+      if (matchedKey.expiresAt && new Date() > new Date(matchedKey.expiresAt)) {
+        this.logger.debug('API key has expired');
+        return undefined;
+      }
+
+      // Update last used timestamp
+      await db.update(apiKeys).set({ lastUsedAt: new Date() }).where(eq(apiKeys.id, matchedKey.id));
+
+      this.logger.debug(`User authenticated via API key: ${matchedKey.userId}`);
+      return {
+        id: matchedKey.userId,
+        role: 'user',
+      };
+    } catch (error) {
+      this.logger.debug(`API key auth failed: ${error}`);
       return undefined;
     }
   }
