@@ -12,7 +12,7 @@ import { IntegrationsService } from '../../integrations/integrations.service';
  */
 export interface GitHubApiHandlerConfig extends BaseHandlerConfig {
   /** The GitHub API action to perform */
-  action: 'create_repo_from_template' | 'set_repo_variable' | 'create_issue';
+  action: 'create_repo_from_template' | 'set_repo_variable' | 'create_issue' | 'close_issue' | 'close_pull_request' | 'merge_pull_request' | 'list_pull_requests';
 
   // --- create_repo_from_template fields ---
 
@@ -61,6 +61,21 @@ export interface GitHubApiHandlerConfig extends BaseHandlerConfig {
 
   /** Labels to apply (array of strings) */
   labels?: string[];
+
+  // --- close_issue / close_pull_request / merge_pull_request fields ---
+
+  /** Issue or PR number (expression) */
+  issueNumber?: string;
+
+  // --- merge_pull_request fields ---
+
+  /** Merge method (expression, default: merge) */
+  mergeMethod?: string;
+
+  // --- list_pull_requests fields ---
+
+  /** PR state filter (expression, default: open) */
+  state?: string;
 }
 
 const GITHUB_API_BASE = 'https://api.github.com';
@@ -130,9 +145,36 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
       if (!config.body) {
         throw new ConfigurationError('body is required for create_issue', 'github_api');
       }
+    } else if (config.action === 'close_issue' || config.action === 'close_pull_request') {
+      if (!config.owner) {
+        throw new ConfigurationError(`owner is required for ${config.action}`, 'github_api');
+      }
+      if (!config.repo) {
+        throw new ConfigurationError(`repo is required for ${config.action}`, 'github_api');
+      }
+      if (!config.issueNumber) {
+        throw new ConfigurationError(`issueNumber is required for ${config.action}`, 'github_api');
+      }
+    } else if (config.action === 'merge_pull_request') {
+      if (!config.owner) {
+        throw new ConfigurationError('owner is required for merge_pull_request', 'github_api');
+      }
+      if (!config.repo) {
+        throw new ConfigurationError('repo is required for merge_pull_request', 'github_api');
+      }
+      if (!config.issueNumber) {
+        throw new ConfigurationError('issueNumber (PR number) is required for merge_pull_request', 'github_api');
+      }
+    } else if (config.action === 'list_pull_requests') {
+      if (!config.owner) {
+        throw new ConfigurationError('owner is required for list_pull_requests', 'github_api');
+      }
+      if (!config.repo) {
+        throw new ConfigurationError('repo is required for list_pull_requests', 'github_api');
+      }
     } else {
       throw new ConfigurationError(
-        `Unknown action '${config.action}'. Supported: create_repo_from_template, set_repo_variable, create_issue`,
+        `Unknown action '${config.action}'. Supported: create_repo_from_template, set_repo_variable, create_issue, close_issue, close_pull_request, merge_pull_request, list_pull_requests`,
         'github_api',
       );
     }
@@ -169,6 +211,22 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
 
     if (config.action === 'create_issue') {
       return this.createIssue(config, context, step, token);
+    }
+
+    if (config.action === 'close_issue') {
+      return this.closeIssue(config, context, step, token);
+    }
+
+    if (config.action === 'close_pull_request') {
+      return this.closePullRequest(config, context, step, token);
+    }
+
+    if (config.action === 'merge_pull_request') {
+      return this.mergePullRequest(config, context, step, token);
+    }
+
+    if (config.action === 'list_pull_requests') {
+      return this.listPullRequests(config, context, step, token);
     }
 
     return {
@@ -469,6 +527,184 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
           message: `GitHub API request failed: ${error.message}`,
         },
       };
+    }
+  }
+
+  private async closeIssue(
+    config: GitHubApiHandlerConfig,
+    context: PipelineContext,
+    step: PipelineStep,
+    token: string,
+  ): Promise<StepResult> {
+    const owner = String(this.expressionEvaluator.evaluateExpression(config.owner!, context, step.name));
+    const repo = String(this.expressionEvaluator.evaluateExpression(config.repo!, context, step.name));
+    const issueNumber = String(this.expressionEvaluator.evaluateExpression(config.issueNumber!, context, step.name));
+
+    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/issues/${issueNumber}`;
+    this.logger.debug(`Closing issue #${issueNumber} on '${owner}/${repo}'`);
+
+    try {
+      const response = await fetch(url, {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+        },
+        body: JSON.stringify({ state: 'closed' }),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        return {
+          success: false,
+          error: { code: 'GITHUB_API_ERROR', message: `GitHub API error: ${(errorBody as any).message || response.status}` },
+        };
+      }
+
+      const issue = await response.json();
+      this.logger.log(`Closed issue #${issueNumber} on '${owner}/${repo}'`);
+      return { success: true, output: { number: issue.number, state: issue.state, html_url: issue.html_url } };
+    } catch (error: any) {
+      return { success: false, error: { code: 'GITHUB_API_ERROR', message: `GitHub API request failed: ${error.message}` } };
+    }
+  }
+
+  private async closePullRequest(
+    config: GitHubApiHandlerConfig,
+    context: PipelineContext,
+    step: PipelineStep,
+    token: string,
+  ): Promise<StepResult> {
+    const owner = String(this.expressionEvaluator.evaluateExpression(config.owner!, context, step.name));
+    const repo = String(this.expressionEvaluator.evaluateExpression(config.repo!, context, step.name));
+    const prNumber = String(this.expressionEvaluator.evaluateExpression(config.issueNumber!, context, step.name));
+
+    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/pulls/${prNumber}`;
+    this.logger.debug(`Closing PR #${prNumber} on '${owner}/${repo}'`);
+
+    try {
+      const response = await fetch(url, {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+        },
+        body: JSON.stringify({ state: 'closed' }),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        return {
+          success: false,
+          error: { code: 'GITHUB_API_ERROR', message: `GitHub API error: ${(errorBody as any).message || response.status}` },
+        };
+      }
+
+      const pr = await response.json();
+      this.logger.log(`Closed PR #${prNumber} on '${owner}/${repo}'`);
+      return { success: true, output: { number: pr.number, state: pr.state, html_url: pr.html_url } };
+    } catch (error: any) {
+      return { success: false, error: { code: 'GITHUB_API_ERROR', message: `GitHub API request failed: ${error.message}` } };
+    }
+  }
+
+  private async mergePullRequest(
+    config: GitHubApiHandlerConfig,
+    context: PipelineContext,
+    step: PipelineStep,
+    token: string,
+  ): Promise<StepResult> {
+    const owner = String(this.expressionEvaluator.evaluateExpression(config.owner!, context, step.name));
+    const repo = String(this.expressionEvaluator.evaluateExpression(config.repo!, context, step.name));
+    const prNumber = String(this.expressionEvaluator.evaluateExpression(config.issueNumber!, context, step.name));
+
+    let mergeMethod = 'merge';
+    if (config.mergeMethod) {
+      mergeMethod = String(this.expressionEvaluator.evaluateExpression(config.mergeMethod, context, step.name));
+    }
+
+    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/pulls/${prNumber}/merge`;
+    this.logger.debug(`Merging PR #${prNumber} on '${owner}/${repo}' with method '${mergeMethod}'`);
+
+    try {
+      const response = await fetch(url, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+        },
+        body: JSON.stringify({ merge_method: mergeMethod }),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        return {
+          success: false,
+          error: { code: 'GITHUB_API_ERROR', message: `GitHub API error: ${(errorBody as any).message || response.status}` },
+        };
+      }
+
+      const result = await response.json();
+      this.logger.log(`Merged PR #${prNumber} on '${owner}/${repo}'`);
+      return { success: true, output: { sha: result.sha, merged: result.merged, message: result.message } };
+    } catch (error: any) {
+      return { success: false, error: { code: 'GITHUB_API_ERROR', message: `GitHub API request failed: ${error.message}` } };
+    }
+  }
+
+  private async listPullRequests(
+    config: GitHubApiHandlerConfig,
+    context: PipelineContext,
+    step: PipelineStep,
+    token: string,
+  ): Promise<StepResult> {
+    const owner = String(this.expressionEvaluator.evaluateExpression(config.owner!, context, step.name));
+    const repo = String(this.expressionEvaluator.evaluateExpression(config.repo!, context, step.name));
+
+    let state = 'open';
+    if (config.state) {
+      state = String(this.expressionEvaluator.evaluateExpression(config.state, context, step.name));
+    }
+
+    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/pulls?state=${state}&per_page=100`;
+    this.logger.debug(`Listing PRs on '${owner}/${repo}' with state '${state}'`);
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+        },
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        return {
+          success: false,
+          error: { code: 'GITHUB_API_ERROR', message: `GitHub API error: ${(errorBody as any).message || response.status}` },
+        };
+      }
+
+      const prs = await response.json();
+      this.logger.log(`Found ${prs.length} PRs on '${owner}/${repo}'`);
+      return {
+        success: true,
+        output: prs.map((pr: any) => ({
+          number: pr.number,
+          title: pr.title,
+          state: pr.state,
+          html_url: pr.html_url,
+          head_ref: pr.head?.ref,
+          body: pr.body,
+        })),
+      };
+    } catch (error: any) {
+      return { success: false, error: { code: 'GITHUB_API_ERROR', message: `GitHub API request failed: ${error.message}` } };
     }
   }
 }

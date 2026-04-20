@@ -28,6 +28,10 @@ export function GitHubApiConfig({ config, onChange, previousSteps }: GitHubApiCo
             <SelectItem value="create_repo_from_template">Create Repo from Template</SelectItem>
             <SelectItem value="set_repo_variable">Set Repo Variable</SelectItem>
             <SelectItem value="create_issue">Create Issue</SelectItem>
+            <SelectItem value="close_issue">Close Issue</SelectItem>
+            <SelectItem value="close_pull_request">Close Pull Request</SelectItem>
+            <SelectItem value="merge_pull_request">Merge Pull Request</SelectItem>
+            <SelectItem value="list_pull_requests">List Pull Requests</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -141,6 +145,81 @@ export function GitHubApiConfig({ config, onChange, previousSteps }: GitHubApiCo
             <p className="text-xs text-muted-foreground">
               Comma-separated list of labels to apply
             </p>
+          </div>
+        </>
+      )}
+
+      {(action === 'close_issue' || action === 'close_pull_request' || action === 'merge_pull_request') && (
+        <>
+          <div className="space-y-2">
+            <Label>Owner *</Label>
+            <ExpressionInput
+              value={(config.owner as string) || ''}
+              onChange={(value) => onChange({ ...config, owner: value })}
+              placeholder="bffless-sites"
+              previousSteps={previousSteps}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Repo *</Label>
+            <ExpressionInput
+              value={(config.repo as string) || ''}
+              onChange={(value) => onChange({ ...config, repo: value })}
+              placeholder="steps.validate.repoName"
+              previousSteps={previousSteps}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>{action === 'close_issue' ? 'Issue Number *' : 'PR Number *'}</Label>
+            <ExpressionInput
+              value={(config.issueNumber as string) || ''}
+              onChange={(value) => onChange({ ...config, issueNumber: value })}
+              placeholder="steps.lookup.issue_number"
+              previousSteps={previousSteps}
+            />
+          </div>
+          {action === 'merge_pull_request' && (
+            <div className="space-y-2">
+              <Label>Merge Method</Label>
+              <ExpressionInput
+                value={(config.mergeMethod as string) || ''}
+                onChange={(value) => onChange({ ...config, mergeMethod: value })}
+                placeholder="merge, squash, or rebase (default: merge)"
+                previousSteps={previousSteps}
+              />
+            </div>
+          )}
+        </>
+      )}
+
+      {action === 'list_pull_requests' && (
+        <>
+          <div className="space-y-2">
+            <Label>Owner *</Label>
+            <ExpressionInput
+              value={(config.owner as string) || ''}
+              onChange={(value) => onChange({ ...config, owner: value })}
+              placeholder="bffless-sites"
+              previousSteps={previousSteps}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Repo *</Label>
+            <ExpressionInput
+              value={(config.repo as string) || ''}
+              onChange={(value) => onChange({ ...config, repo: value })}
+              placeholder="steps.validate.repoName"
+              previousSteps={previousSteps}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>State</Label>
+            <ExpressionInput
+              value={(config.state as string) || ''}
+              onChange={(value) => onChange({ ...config, state: value })}
+              placeholder="open, closed, or all (default: open)"
+              previousSteps={previousSteps}
+            />
           </div>
         </>
       )}
