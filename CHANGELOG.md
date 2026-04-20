@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.248](https://github.com/bffless/ce/compare/v0.0.247...v0.0.248) (2026-04-20)
+
+
+### Features
+
+* add close_issue, close_pull_request, merge_pull_request, list_pull_requests actions ([395fcd7](https://github.com/bffless/ce/commit/395fcd71aefe72ef7ec7779a5d6ba2351e78224e))
+
 ## [0.0.247](https://github.com/bffless/ce/compare/v0.0.246...v0.0.247) (2026-04-19)
 
 
