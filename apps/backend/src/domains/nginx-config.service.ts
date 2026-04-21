@@ -1054,6 +1054,8 @@ server {
     server_name ${baseDomain};
 ${scannerBlock}
 
+    add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+    add_header Pragma "no-cache" always;
     return 301 https://www.${baseDomain}$request_uri;
 }
 `;
@@ -1075,6 +1077,8 @@ server {
     server_name www.${baseDomain};
 ${scannerBlock}
 
+    add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+    add_header Pragma "no-cache" always;
     return 301 https://${baseDomain}$request_uri;
 }
 `;
@@ -1237,6 +1241,8 @@ server {
 ${sslSettings}
 ${scannerBlock}
 
+    add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+    add_header Pragma "no-cache" always;
     return 301 https://www.${baseDomain}$request_uri;
 }
 `;
@@ -1262,6 +1268,8 @@ server {
 ${sslSettings}
 ${scannerBlock}
 
+    add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+    add_header Pragma "no-cache" always;
     return 301 https://${baseDomain}$request_uri;
 }
 `;
@@ -1467,6 +1475,8 @@ server {
         return 444;
     }
 
+    add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+    add_header Pragma "no-cache" always;
     return 301 https://www.${baseDomain}$request_uri;
 }
 

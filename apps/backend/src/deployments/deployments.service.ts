@@ -1117,8 +1117,31 @@ export class DeploymentsService {
       .limit(1);
 
     // Determine the rule set IDs to write
-    const ruleSetIds = options?.proxyRuleSetIds ?? (options?.proxyRuleSetId ? [options.proxyRuleSetId] : undefined);
-    const ruleSetChanged = ruleSetIds !== undefined;
+    // When proxyRuleSetIds (array) is provided, it's an explicit full replacement (e.g. from update_alias API).
+    // When only proxyRuleSetId (singular) is provided, merge it into existing rule sets (e.g. from deploy).
+    // This prevents deploys from overwriting rule sets that were added separately (admin-toolbar, uploads, etc.).
+    let ruleSetIds: string[] | undefined;
+    let ruleSetChanged = false;
+
+    if (options?.proxyRuleSetIds !== undefined) {
+      // Explicit array = full replacement
+      ruleSetIds = options.proxyRuleSetIds;
+      ruleSetChanged = true;
+    } else if (options?.proxyRuleSetId) {
+      // Single ID = merge with existing (for deploys)
+      if (existingAlias) {
+        const existingIds = await this.getAliasProxyRuleSetIds(existingAlias.id);
+        if (!existingIds.includes(options.proxyRuleSetId)) {
+          ruleSetIds = [...existingIds, options.proxyRuleSetId];
+          ruleSetChanged = true;
+        }
+        // If already present, no change needed
+      } else {
+        // New alias — just set the single ID
+        ruleSetIds = [options.proxyRuleSetId];
+        ruleSetChanged = true;
+      }
+    }
 
     if (existingAlias) {
       // Update existing alias
@@ -1129,7 +1152,7 @@ export class DeploymentsService {
       };
 
       // Update legacy column for backwards compat
-      if (ruleSetChanged) {
+      if (ruleSetChanged && ruleSetIds) {
         updateData.proxyRuleSetId = ruleSetIds.length > 0 ? ruleSetIds[0] : null;
       }
 
@@ -1140,7 +1163,7 @@ export class DeploymentsService {
         .returning();
 
       // Update join table if rule sets changed
-      if (ruleSetChanged) {
+      if (ruleSetChanged && ruleSetIds) {
         await this.syncAliasProxyRuleSets(existingAlias.id, ruleSetIds);
       }
 
