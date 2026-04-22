@@ -198,7 +198,7 @@ export class ProxyRulesTools {
       isEnabled: z.boolean().optional().describe('Whether rule is active (default true)'),
       order: z.number().optional().describe('Evaluation order (auto-assigned if omitted)'),
       stripPrefix: z.boolean().optional().describe('Remove matched prefix before forwarding (default true)'),
-      timeout: z.number().optional().describe('Request timeout in ms (default 30000, range 1000-60000)'),
+      timeout: z.number().optional().describe('Request timeout in ms (default 30000, range 1000-120000)'),
       preserveHost: z.boolean().optional().describe('Preserve original Host header'),
       forwardCookies: z.boolean().optional().describe('Forward cookies to target'),
       headerConfig: z

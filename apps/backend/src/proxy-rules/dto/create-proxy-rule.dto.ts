@@ -415,14 +415,14 @@ export class CreateProxyRuleDto {
   order?: number;
 
   @ApiPropertyOptional({
-    description: 'Request timeout in milliseconds (1000-60000)',
+    description: 'Request timeout in milliseconds (1000-120000)',
     default: 30000,
     example: 30000,
   })
   @IsOptional()
   @IsInt()
   @Min(1000)
-  @Max(60000)
+  @Max(120000)
   timeout?: number;
 
   @ApiPropertyOptional({

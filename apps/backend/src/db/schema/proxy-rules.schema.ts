@@ -225,7 +225,7 @@ export const proxyRules = pgTable(
     /**
      * Request timeout in milliseconds.
      *
-     * Range: 1000-60000 (1-60 seconds)
+     * Range: 1000-120000 (1-120 seconds)
      * Default: 30000 (30 seconds)
      */
     timeout: integer('timeout').notNull().default(30000),

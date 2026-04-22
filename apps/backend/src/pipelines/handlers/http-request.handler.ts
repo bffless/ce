@@ -62,7 +62,7 @@ export interface HttpRequestHandlerConfig {
 }
 
 const DEFAULT_TIMEOUT = 30000;
-const MAX_TIMEOUT = 60000;
+const MAX_TIMEOUT = 120000;
 
 /**
  * HTTP Request Handler
