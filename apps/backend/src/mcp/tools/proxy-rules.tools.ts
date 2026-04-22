@@ -61,6 +61,12 @@ const pipelineStepSchema = z.object({
 - github_api: Supports multiple actions via the "action" field. Requires GitHub integration configured in project settings.
   - action "create_repo_from_template": { action: "create_repo_from_template", templateOwner: "expression", templateRepo: "expression", targetOrg: "expression", repoName: "expression", private?: boolean (default true), description?: "expression", includeAllBranches?: boolean (default false) }. Output: { name, full_name, html_url, clone_url, default_branch }.
   - action "set_repo_variable": { action: "set_repo_variable", owner: "expression", repo: "expression", variableName: "expression", variableValue: "expression" }. Sets a GitHub Actions variable on a repo. Output: { owner, repo, variableName, variableValue }.
+  - action "create_issue": { action: "create_issue", owner: "expression", repo: "expression", title: "expression", body: "expression", labels?: ["label1", "label2"] }. Creates a GitHub issue. Output: { id, number, title, html_url, state }.
+  - action "add_issue_comment": { action: "add_issue_comment", owner: "expression", repo: "expression", issueNumber: "expression", body: "expression" }. Adds a comment to an existing issue. Output: { id, html_url }.
+  - action "close_issue": { action: "close_issue", owner: "expression", repo: "expression", issueNumber: "expression" }. Closes an issue. Output: { number, state, html_url }.
+  - action "close_pull_request": { action: "close_pull_request", owner: "expression", repo: "expression", issueNumber: "expression" }. Closes a PR. Output: { number, state, html_url }.
+  - action "merge_pull_request": { action: "merge_pull_request", owner: "expression", repo: "expression", issueNumber: "expression", mergeMethod?: "expression" (default "merge") }. Merges a PR. Output: { sha, merged, message }.
+  - action "list_pull_requests": { action: "list_pull_requests", owner: "expression", repo: "expression", state?: "expression" (default "open") }. Lists PRs. Output: [{ number, title, state, html_url, head_ref, body }].
 
 All configs support: condition?: "expression" (skip step if falsy), timeout?: number (ms).
 Expressions reference prior steps by step NAME (not id): "steps.stepName.field" or request data: "request.body.field". Use bracket notation for names with spaces: "steps['Step Name'].field". Use simple names without spaces to keep expressions clean.`,

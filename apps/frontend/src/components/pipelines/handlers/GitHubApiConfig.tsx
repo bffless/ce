@@ -28,6 +28,7 @@ export function GitHubApiConfig({ config, onChange, previousSteps }: GitHubApiCo
             <SelectItem value="create_repo_from_template">Create Repo from Template</SelectItem>
             <SelectItem value="set_repo_variable">Set Repo Variable</SelectItem>
             <SelectItem value="create_issue">Create Issue</SelectItem>
+            <SelectItem value="add_issue_comment">Add Issue Comment</SelectItem>
             <SelectItem value="close_issue">Close Issue</SelectItem>
             <SelectItem value="close_pull_request">Close Pull Request</SelectItem>
             <SelectItem value="merge_pull_request">Merge Pull Request</SelectItem>
@@ -144,6 +145,59 @@ export function GitHubApiConfig({ config, onChange, previousSteps }: GitHubApiCo
             />
             <p className="text-xs text-muted-foreground">
               Comma-separated list of labels to apply
+            </p>
+          </div>
+        </>
+      )}
+
+      {action === 'add_issue_comment' && (
+        <>
+          <div className="space-y-2">
+            <Label>Owner *</Label>
+            <ExpressionInput
+              value={(config.owner as string) || ''}
+              onChange={(value) => onChange({ ...config, owner: value })}
+              placeholder="bffless-sites"
+              previousSteps={previousSteps}
+            />
+            <p className="text-xs text-muted-foreground">
+              Repository owner (org or user)
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Repo *</Label>
+            <ExpressionInput
+              value={(config.repo as string) || ''}
+              onChange={(value) => onChange({ ...config, repo: value })}
+              placeholder="steps.validate.repoName"
+              previousSteps={previousSteps}
+            />
+            <p className="text-xs text-muted-foreground">
+              Repository name
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Issue Number *</Label>
+            <ExpressionInput
+              value={(config.issueNumber as string) || ''}
+              onChange={(value) => onChange({ ...config, issueNumber: value })}
+              placeholder="steps.lookup.issue_number"
+              previousSteps={previousSteps}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Body *</Label>
+            <ExpressionInput
+              value={(config.body as string) || ''}
+              onChange={(value) => onChange({ ...config, body: value })}
+              placeholder="steps.build_comment.body"
+              previousSteps={previousSteps}
+            />
+            <p className="text-xs text-muted-foreground">
+              Comment body (supports markdown)
             </p>
           </div>
         </>

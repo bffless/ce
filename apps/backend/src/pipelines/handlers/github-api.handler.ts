@@ -12,7 +12,7 @@ import { IntegrationsService } from '../../integrations/integrations.service';
  */
 export interface GitHubApiHandlerConfig extends BaseHandlerConfig {
   /** The GitHub API action to perform */
-  action: 'create_repo_from_template' | 'set_repo_variable' | 'create_issue' | 'close_issue' | 'close_pull_request' | 'merge_pull_request' | 'list_pull_requests';
+  action: 'create_repo_from_template' | 'set_repo_variable' | 'create_issue' | 'add_issue_comment' | 'close_issue' | 'close_pull_request' | 'merge_pull_request' | 'list_pull_requests';
 
   // --- create_repo_from_template fields ---
 
@@ -145,6 +145,19 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
       if (!config.body) {
         throw new ConfigurationError('body is required for create_issue', 'github_api');
       }
+    } else if (config.action === 'add_issue_comment') {
+      if (!config.owner) {
+        throw new ConfigurationError('owner is required for add_issue_comment', 'github_api');
+      }
+      if (!config.repo) {
+        throw new ConfigurationError('repo is required for add_issue_comment', 'github_api');
+      }
+      if (!config.issueNumber) {
+        throw new ConfigurationError('issueNumber is required for add_issue_comment', 'github_api');
+      }
+      if (!config.body) {
+        throw new ConfigurationError('body is required for add_issue_comment', 'github_api');
+      }
     } else if (config.action === 'close_issue' || config.action === 'close_pull_request') {
       if (!config.owner) {
         throw new ConfigurationError(`owner is required for ${config.action}`, 'github_api');
@@ -174,7 +187,7 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
       }
     } else {
       throw new ConfigurationError(
-        `Unknown action '${config.action}'. Supported: create_repo_from_template, set_repo_variable, create_issue, close_issue, close_pull_request, merge_pull_request, list_pull_requests`,
+        `Unknown action '${config.action}'. Supported: create_repo_from_template, set_repo_variable, create_issue, add_issue_comment, close_issue, close_pull_request, merge_pull_request, list_pull_requests`,
         'github_api',
       );
     }
@@ -211,6 +224,10 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
 
     if (config.action === 'create_issue') {
       return this.createIssue(config, context, step, token);
+    }
+
+    if (config.action === 'add_issue_comment') {
+      return this.addIssueComment(config, context, step, token);
     }
 
     if (config.action === 'close_issue') {
@@ -515,6 +532,85 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
           title: issue.title,
           html_url: issue.html_url,
           state: issue.state,
+        },
+      };
+    } catch (error: any) {
+      this.logger.error(`GitHub API request failed for step '${step.name}': ${error.message}`);
+
+      return {
+        success: false,
+        error: {
+          code: 'GITHUB_API_ERROR',
+          message: `GitHub API request failed: ${error.message}`,
+        },
+      };
+    }
+  }
+
+  private async addIssueComment(
+    config: GitHubApiHandlerConfig,
+    context: PipelineContext,
+    step: PipelineStep,
+    token: string,
+  ): Promise<StepResult> {
+    const owner = String(
+      this.expressionEvaluator.evaluateExpression(config.owner!, context, step.name),
+    );
+    const repo = String(
+      this.expressionEvaluator.evaluateExpression(config.repo!, context, step.name),
+    );
+    const issueNumber = String(
+      this.expressionEvaluator.evaluateExpression(config.issueNumber!, context, step.name),
+    );
+    const body = String(
+      this.expressionEvaluator.evaluateExpression(config.body!, context, step.name),
+    );
+
+    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/issues/${issueNumber}/comments`;
+
+    this.logger.debug(`Adding comment to issue #${issueNumber} on '${owner}/${repo}'`);
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+        },
+        body: JSON.stringify({ body }),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        const message = (errorBody as any).message || `HTTP ${response.status}`;
+
+        this.logger.error(
+          `GitHub API error for step '${step.name}': ${response.status} - ${message}`,
+        );
+
+        return {
+          success: false,
+          error: {
+            code: 'GITHUB_API_ERROR',
+            message: `GitHub API error: ${message}`,
+            details: {
+              status: response.status,
+              errors: (errorBody as any).errors,
+            },
+          },
+        };
+      }
+
+      const comment = await response.json();
+
+      this.logger.log(`Added comment ${comment.id} to issue #${issueNumber} on '${owner}/${repo}'`);
+
+      return {
+        success: true,
+        output: {
+          id: comment.id,
+          html_url: comment.html_url,
         },
       };
     } catch (error: any) {
