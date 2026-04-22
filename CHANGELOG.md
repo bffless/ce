@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1](https://github.com/bffless/ce/compare/v0.1.0...v0.1.1) (2026-04-22)
+
+
+### Bug Fixes
+
+* increase proxy rule timeout max from 60s to 120s ([6488549](https://github.com/bffless/ce/commit/6488549415ace7613e8d8d176bec4357b8086e92))
+
 ## [0.0.249](https://github.com/bffless/ce/compare/v0.0.248...v0.0.249) (2026-04-21)
 
 
