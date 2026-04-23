@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3](https://github.com/bffless/ce/compare/v0.1.2...v0.1.3) (2026-04-23)
+
+
+### Bug Fixes
+
+* proxy rule pattern matching supports middle wildcards ([a9c8060](https://github.com/bffless/ce/commit/a9c8060d3fd3de43d6decb1b00ad33dd8c561bc7))
+
 ## [0.1.2](https://github.com/bffless/ce/compare/v0.1.1...v0.1.2) (2026-04-22)
 
 
