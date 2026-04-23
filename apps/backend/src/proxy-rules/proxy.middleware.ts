@@ -1403,28 +1403,29 @@ export class ProxyMiddleware implements NestMiddleware {
   }
 
   /**
-   * Check if a path matches a pattern
+   * Check if a path matches a pattern. `*` is a wildcard that matches any
+   * sequence of characters (including slashes). Supports wildcards at any
+   * position.
    *
-   * Supported patterns:
-   * - Exact: '/graphql' matches only '/graphql'
-   * - Prefix wildcard: '/api/*' matches '/api/', '/api/users', '/api/posts/1'
-   * - Suffix wildcard: '*.json' matches '/config.json', '/data.json'
+   * Examples:
+   * - Exact:   '/graphql' matches only '/graphql'
+   * - Prefix:  '/api/*' matches '/api', '/api/', '/api/users', '/api/posts/1'
+   * - Suffix:  '*.json' matches '/config.json', '/data.json'
+   * - Middle:  '/api/uploads/feedback-*' matches '/api/uploads/feedback-screenshots'
    */
   private matchesPattern(pattern: string, path: string): boolean {
-    // Prefix wildcard: /api/*
-    if (pattern.endsWith('/*')) {
-      const prefix = pattern.slice(0, -2);
-      // Match if path starts with prefix + '/' OR path equals prefix exactly
-      return path.startsWith(prefix + '/') || path === prefix;
-    }
+    if (pattern === path) return true;
+    if (!pattern.includes('*')) return false;
 
-    // Suffix wildcard: *.json
-    if (pattern.startsWith('*')) {
-      const suffix = pattern.slice(1);
-      return path.endsWith(suffix);
-    }
+    // Backward-compat: '/prefix/*' also matches the bare '/prefix' (no trailing slash).
+    if (pattern.endsWith('/*') && path === pattern.slice(0, -2)) return true;
 
-    // Exact match
-    return path === pattern;
+    // Glob → regex: escape regex metacharacters (but not '*'), then replace
+    // '*' with '.*' and anchor. Handles trailing, leading, and middle wildcards.
+    const regexSource =
+      '^' +
+      pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') +
+      '$';
+    return new RegExp(regexSource).test(path);
   }
 }
