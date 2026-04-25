@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { db } from '../db/client';
 import {
   domainMappings,
@@ -122,6 +123,88 @@ export class NginxStartupService implements OnModuleInit {
     } catch (error) {
       this.logger.warn(`Failed to cleanup configs: ${error}`);
     }
+  }
+
+  /**
+   * Runtime sweep that prunes orphan nginx config files — files on disk
+   * whose UUID has no corresponding row in `domain_mappings` / `domain_redirects`.
+   *
+   * Different from `cleanupOrphanedConfigs` (startup): that one nukes every
+   * domain-*.conf because regeneration immediately rewrites them. At runtime
+   * that would 404 every live site for 2-5s, so this sweep is *selective* —
+   * it only removes truly orphaned files. Safe to run on a live cluster.
+   *
+   * Triggered by:
+   * - Hourly cron (defense-in-depth against any future leak)
+   * - Manual call from project/domain delete paths once they exist
+   */
+  @Cron(CronExpression.EVERY_HOUR)
+  async pruneOrphanNginxConfigs(): Promise<{ pruned: number; kept: number }> {
+    if (process.env.NODE_ENV === 'test') {
+      return { pruned: 0, kept: 0 };
+    }
+
+    const sitesPath = this.nginxConfigService.getNginxSitesPath();
+    const { readdir, unlink } = await import('fs/promises');
+    const { join } = await import('path');
+
+    let files: string[];
+    try {
+      files = await readdir(sitesPath);
+    } catch (error) {
+      this.logger.warn(`pruneOrphanNginxConfigs: cannot read ${sitesPath}: ${error}`);
+      return { pruned: 0, kept: 0 };
+    }
+
+    const domainRe = /^domain-([a-f0-9-]+)\.conf$/;
+    const redirectRe = /^redirect-([a-f0-9-]+)\.conf$/;
+
+    const fileEntries: Array<{ file: string; id: string; kind: 'domain' | 'redirect' }> = [];
+    for (const file of files) {
+      const dm = file.match(domainRe);
+      if (dm) {
+        fileEntries.push({ file, id: dm[1], kind: 'domain' });
+        continue;
+      }
+      const rm = file.match(redirectRe);
+      if (rm) {
+        fileEntries.push({ file, id: rm[1], kind: 'redirect' });
+      }
+    }
+
+    if (fileEntries.length === 0) {
+      return { pruned: 0, kept: 0 };
+    }
+
+    const validDomainIds = new Set(
+      (await db.select({ id: domainMappings.id }).from(domainMappings)).map((r) => r.id),
+    );
+    const validRedirectIds = new Set(
+      (await db.select({ id: domainRedirects.id }).from(domainRedirects)).map((r) => r.id),
+    );
+
+    let pruned = 0;
+    let kept = 0;
+    for (const entry of fileEntries) {
+      const valid = entry.kind === 'domain' ? validDomainIds : validRedirectIds;
+      if (valid.has(entry.id)) {
+        kept++;
+        continue;
+      }
+      try {
+        await unlink(join(sitesPath, entry.file));
+        this.logger.warn(`Pruned orphan nginx config: ${entry.file}`);
+        pruned++;
+      } catch (error) {
+        this.logger.warn(`Failed to prune ${entry.file}: ${error}`);
+      }
+    }
+
+    if (pruned > 0) {
+      this.logger.log(`Pruned ${pruned} orphan nginx config file(s); ${kept} kept`);
+    }
+
+    return { pruned, kept };
   }
 
   /**
