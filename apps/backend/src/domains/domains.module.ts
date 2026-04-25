@@ -17,6 +17,7 @@ import { VisibilityService } from './visibility.service';
 import { ProjectsModule } from '../projects/projects.module';
 import { FeatureFlagsModule } from '../feature-flags/feature-flags.module';
 import { ProxyRulesModule } from '../proxy-rules/proxy-rules.module';
+import { PermissionsModule } from '../permissions/permissions.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { ProxyRulesModule } from '../proxy-rules/proxy-rules.module';
     ScheduleModule.forRoot(),
     FeatureFlagsModule,
     forwardRef(() => ProxyRulesModule),
+    PermissionsModule,
   ],
   controllers: [DomainsController],
   providers: [
