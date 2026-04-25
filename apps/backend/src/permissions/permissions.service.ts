@@ -79,6 +79,75 @@ export class PermissionsService {
   }
 
   /**
+   * Enforce only the api-key project scope (no role check). Use this on paths
+   * where role authorization is already handled elsewhere (e.g. controller-level
+   * @Roles('admin')) and we just need to make sure a project-scoped api-key can
+   * only operate on its declared project.
+   *
+   * Throws ForbiddenException when the api-key is scoped to a different project.
+   * No-op for session auth (`undefined`) and global api-keys (`null`).
+   */
+  enforceApiKeyProjectScope(
+    apiKeyProjectId: string | null | undefined,
+    projectId: string,
+  ): void {
+    if (apiKeyProjectId !== undefined && apiKeyProjectId !== null && apiKeyProjectId !== projectId) {
+      throw new ForbiddenException('API key is not authorized for this project');
+    }
+  }
+
+  /**
+   * Authorize a request to operate on `projectId`. Throws ForbiddenException on denial.
+   *
+   * Resolution order is load-bearing:
+   *   1. Project-scoped API keys are enforced first, before any role shortcut. A
+   *      super-admin user whose API key was minted with `projectId = X` cannot
+   *      reach project Y through that key.
+   *   2. System admins bypass per-project role checks (only after the api-key
+   *      scope check above has passed).
+   *   3. Otherwise, look up the user's effective project role and compare to
+   *      the required role.
+   *
+   * @param apiKeyProjectId — `undefined` means session auth (no api-key context),
+   *   `null` means a global (unscoped) api-key, a string means a project-scoped key.
+   */
+  async requireProjectAccess(
+    projectId: string,
+    userId: string,
+    userRole: string | undefined,
+    requiredRole: Exclude<ProjectRole, 'guest'> = 'contributor',
+    apiKeyProjectId?: string | null,
+  ): Promise<void> {
+    if (apiKeyProjectId !== undefined && apiKeyProjectId !== null) {
+      if (apiKeyProjectId !== projectId) {
+        throw new ForbiddenException('API key is not authorized for this project');
+      }
+      return;
+    }
+
+    if (userRole === 'admin') {
+      return;
+    }
+
+    const role = await this.getUserProjectRole(userId, projectId);
+    if (!role) {
+      throw new ForbiddenException('You do not have access to this project');
+    }
+
+    const roleHierarchy: Record<ProjectRole, number> = {
+      owner: 4,
+      admin: 3,
+      contributor: 2,
+      viewer: 1,
+      guest: 0,
+    };
+
+    if (roleHierarchy[role] < roleHierarchy[requiredRole]) {
+      throw new ForbiddenException(`This action requires ${requiredRole} role or higher`);
+    }
+  }
+
+  /**
    * Check if a user's project role meets the required access control role
    * Used for private content access control (different from project permission checks)
    *

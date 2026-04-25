@@ -10,6 +10,7 @@ import { SslInfoService } from './ssl-info.service';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 import { ProxyRulesService } from '../proxy-rules/proxy-rules.service';
 import { VisibilityService } from './visibility.service';
+import { PermissionsService } from '../permissions/permissions.service';
 
 // Mock the database client
 jest.mock('../db/client', () => ({
@@ -168,6 +169,14 @@ describe('DomainsService', () => {
         { provide: FeatureFlagsService, useValue: mockFeatureFlagsService },
         { provide: ProxyRulesService, useValue: mockProxyRulesService },
         { provide: VisibilityService, useValue: mockVisibilityService },
+        {
+          provide: PermissionsService,
+          useValue: {
+            enforceApiKeyProjectScope: jest.fn(),
+            requireProjectAccess: jest.fn().mockResolvedValue(undefined),
+            getUserProjectRole: jest.fn(),
+          },
+        },
       ],
     }).compile();
 

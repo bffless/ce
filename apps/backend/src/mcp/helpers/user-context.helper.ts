@@ -4,6 +4,13 @@ import { AuthService } from '../../auth/auth.service';
 export interface McpUserContext {
   id: string;
   role: string;
+  /**
+   * Project scope from the authenticating API key.
+   * - `undefined`: session auth, no api-key context
+   * - `null`: global (unscoped) api-key
+   * - string: api-key restricted to this project id
+   */
+  apiKeyProjectId?: string | null;
 }
 
 /**
@@ -29,5 +36,6 @@ export async function getUserContext(
   return {
     id: dbUser.id,
     role: dbUser.role,
+    apiKeyProjectId: user.apiKeyProjectId,
   };
 }

@@ -86,6 +86,7 @@ export class ProxyRulesController {
       dto,
       user.id,
       user.role || 'user',
+      user.apiKeyProjectId,
     ) as Promise<ProxyRuleResponseDto>;
   }
 
@@ -99,7 +100,7 @@ export class ProxyRulesController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: CurrentUserData,
   ): Promise<{ success: boolean }> {
-    await this.proxyRulesService.delete(id, user.id, user.role || 'user');
+    await this.proxyRulesService.delete(id, user.id, user.role || 'user', user.apiKeyProjectId);
     return { success: true };
   }
 

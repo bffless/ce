@@ -22,6 +22,7 @@ import { SslInfoService, DomainSslInfo } from './ssl-info.service';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 import { ProxyRulesService } from '../proxy-rules/proxy-rules.service';
 import { VisibilityService } from './visibility.service';
+import { PermissionsService } from '../permissions/permissions.service';
 
 const RESERVED_SUBDOMAINS = [
   'www',
@@ -94,6 +95,7 @@ export class DomainsService {
     private readonly featureFlagsService: FeatureFlagsService,
     private readonly proxyRulesService: ProxyRulesService,
     private readonly visibilityService: VisibilityService,
+    private readonly permissionsService: PermissionsService,
   ) {}
 
   /**
@@ -520,7 +522,22 @@ export class DomainsService {
     }
   }
 
-  async create(createDomainDto: CreateDomainDto, userId: string, authToken?: string) {
+  async create(
+    createDomainDto: CreateDomainDto,
+    userId: string,
+    authToken?: string,
+    apiKeyProjectId?: string | null,
+  ) {
+    if (createDomainDto.projectId) {
+      this.permissionsService.enforceApiKeyProjectScope(
+        apiKeyProjectId,
+        createDomainDto.projectId,
+      );
+    } else if (apiKeyProjectId !== undefined && apiKeyProjectId !== null) {
+      // Project-scoped key trying to create a domain with no project (e.g. redirect):
+      // forbid — a scoped key shouldn't create cross-project resources.
+      throw new ForbiddenException('API key is not authorized to create unscoped domains');
+    }
     const baseDomain = process.env.PRIMARY_DOMAIN || 'localhost';
 
     // Validate redirect domains have a target
@@ -785,9 +802,17 @@ export class DomainsService {
       domainType?: string;
       isActive?: boolean;
     },
+    apiKeyProjectId?: string | null,
   ) {
-    // Get user's accessible projects (owned + shared)
-    // For now, return all (will add permission filtering later)
+    // For a project-scoped api-key, narrow results to its project. If the caller
+    // also passed a projectId filter, both must match.
+    let effectiveProjectIdFilter = filters?.projectId;
+    if (apiKeyProjectId !== undefined && apiKeyProjectId !== null) {
+      if (effectiveProjectIdFilter && effectiveProjectIdFilter !== apiKeyProjectId) {
+        throw new ForbiddenException('API key is not authorized for this project');
+      }
+      effectiveProjectIdFilter = apiKeyProjectId;
+    }
 
     const query = db.select().from(domainMappings);
 
@@ -796,8 +821,8 @@ export class DomainsService {
     // Always exclude primary domains from the list - they're managed via Settings
     conditions.push(eq(domainMappings.isPrimary, false));
 
-    if (filters?.projectId) {
-      conditions.push(eq(domainMappings.projectId, filters.projectId));
+    if (effectiveProjectIdFilter) {
+      conditions.push(eq(domainMappings.projectId, effectiveProjectIdFilter));
     }
 
     if (filters?.domainType) {
@@ -822,7 +847,7 @@ export class DomainsService {
     return results;
   }
 
-  async findOne(id: string, _userId: string) {
+  async findOne(id: string, _userId: string, apiKeyProjectId?: string | null) {
     const [domainMapping] = await db
       .select()
       .from(domainMappings)
@@ -833,7 +858,11 @@ export class DomainsService {
       throw new NotFoundException(`Domain mapping with ID ${id} not found`);
     }
 
-    // TODO: Check user has permission to view this domain's project
+    if (domainMapping.projectId) {
+      this.permissionsService.enforceApiKeyProjectScope(apiKeyProjectId, domainMapping.projectId);
+    } else if (apiKeyProjectId !== undefined && apiKeyProjectId !== null) {
+      throw new ForbiddenException('API key is not authorized for this domain');
+    }
 
     // In platform mode, SSL is managed externally for subdomains — report as enabled
     if (this.isPlatformMode() && domainMapping.domainType === 'subdomain') {
@@ -843,9 +872,20 @@ export class DomainsService {
     return domainMapping;
   }
 
-  async update(id: string, updateDomainDto: UpdateDomainDto, userId: string) {
+  async update(
+    id: string,
+    updateDomainDto: UpdateDomainDto,
+    userId: string,
+    apiKeyProjectId?: string | null,
+  ) {
     // Check domain exists and get current data
     const existing = await this.findOne(id, userId);
+
+    if (existing.projectId) {
+      this.permissionsService.enforceApiKeyProjectScope(apiKeyProjectId, existing.projectId);
+    } else if (apiKeyProjectId !== undefined && apiKeyProjectId !== null) {
+      throw new ForbiddenException('API key is not authorized for this domain');
+    }
 
     // Validate path if provided (not applicable for redirect domains)
     if (updateDomainDto.path && existing.domainType !== 'redirect') {
@@ -1058,8 +1098,19 @@ export class DomainsService {
     return updated;
   }
 
-  async remove(id: string, userId: string, authToken?: string) {
+  async remove(
+    id: string,
+    userId: string,
+    authToken?: string,
+    apiKeyProjectId?: string | null,
+  ) {
     const existing = await this.findOne(id, userId);
+
+    if (existing.projectId) {
+      this.permissionsService.enforceApiKeyProjectScope(apiKeyProjectId, existing.projectId);
+    } else if (apiKeyProjectId !== undefined && apiKeyProjectId !== null) {
+      throw new ForbiddenException('API key is not authorized for this domain');
+    }
 
     // Delete from database
     await db.delete(domainMappings).where(eq(domainMappings.id, id));

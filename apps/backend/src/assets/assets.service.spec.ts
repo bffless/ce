@@ -99,12 +99,49 @@ describe('AssetsService', () => {
       getProjectByOwnerName: jest.fn(),
     };
 
+    const fakeRoleHierarchy: Record<string, number> = {
+      owner: 4,
+      admin: 3,
+      contributor: 2,
+      viewer: 1,
+      guest: 0,
+    };
     mockPermissionsService = {
       getUserProjectRole: jest.fn().mockResolvedValue('contributor'),
       addUserToProject: jest.fn(),
       removeUserFromProject: jest.fn(),
       updateUserProjectRole: jest.fn(),
       getProjectMembers: jest.fn(),
+      requireProjectAccess: jest.fn(
+        async (
+          projectId: string,
+          userId: string,
+          userRole: string | undefined,
+          requiredRole: string = 'contributor',
+          apiKeyProjectId?: string | null,
+        ) => {
+          if (apiKeyProjectId !== undefined && apiKeyProjectId !== null) {
+            if (apiKeyProjectId !== projectId) {
+              throw new (require('@nestjs/common').ForbiddenException)(
+                'API key is not authorized for this project',
+              );
+            }
+            return;
+          }
+          if (userRole === 'admin') return;
+          const role = await mockPermissionsService.getUserProjectRole(userId, projectId);
+          if (!role) {
+            throw new (require('@nestjs/common').ForbiddenException)(
+              'You do not have access to this project',
+            );
+          }
+          if (fakeRoleHierarchy[role] < fakeRoleHierarchy[requiredRole]) {
+            throw new (require('@nestjs/common').ForbiddenException)(
+              `This action requires ${requiredRole} role or higher`,
+            );
+          }
+        },
+      ),
     };
 
     const mockUsageReporterService = {

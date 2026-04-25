@@ -1,9 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-  ForbiddenException,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { eq, and, desc, asc, count, inArray, gte, lte, or, sql, SQL } from 'drizzle-orm';
 import { db } from '../db/client';
 import { pipelineSchemas, pipelineData, PipelineData, NewPipelineData } from '../db/schema';
@@ -44,6 +39,7 @@ export class PipelineDataService {
     userId: string,
     userRole: string,
     filterOptions?: DataFilterOptions,
+    apiKeyProjectId?: string | null,
   ): Promise<PaginatedDataResult> {
     // Get schema for project ID and access check
     const [schema] = await db
@@ -56,7 +52,13 @@ export class PipelineDataService {
       throw new NotFoundException(`Schema ${schemaId} not found`);
     }
 
-    await this.checkProjectAccess(schema.projectId, userId, userRole, 'viewer');
+    await this.permissionsService.requireProjectAccess(
+      schema.projectId,
+      userId,
+      userRole,
+      'viewer',
+      apiKeyProjectId,
+    );
 
     // Build filter conditions
     const conditions: SQL[] = [eq(pipelineData.schemaId, schemaId)];
@@ -225,6 +227,7 @@ export class PipelineDataService {
     data: Record<string, unknown>,
     userId: string,
     userRole: string,
+    apiKeyProjectId?: string | null,
   ): Promise<PipelineData> {
     // Get schema for project ID and access check
     const [schema] = await db
@@ -237,7 +240,13 @@ export class PipelineDataService {
       throw new NotFoundException(`Schema ${schemaId} not found`);
     }
 
-    await this.checkProjectAccess(schema.projectId, userId, userRole, 'contributor');
+    await this.permissionsService.requireProjectAccess(
+      schema.projectId,
+      userId,
+      userRole,
+      'contributor',
+      apiKeyProjectId,
+    );
 
     return this.create(schemaId, schema.projectId, data, userId, null, schema.version);
   }
@@ -250,13 +259,20 @@ export class PipelineDataService {
     data: Record<string, unknown>,
     userId: string,
     userRole: string,
+    apiKeyProjectId?: string | null,
   ): Promise<PipelineData> {
     const record = await this.getById(id);
     if (!record) {
       throw new NotFoundException(`Record ${id} not found`);
     }
 
-    await this.checkProjectAccess(record.projectId, userId, userRole, 'contributor');
+    await this.permissionsService.requireProjectAccess(
+      record.projectId,
+      userId,
+      userRole,
+      'contributor',
+      apiKeyProjectId,
+    );
 
     const [updated] = await db
       .update(pipelineData)
@@ -279,13 +295,20 @@ export class PipelineDataService {
     id: string,
     userId: string,
     userRole: string,
+    apiKeyProjectId?: string | null,
   ): Promise<PipelineData> {
     const record = await this.getById(id);
     if (!record) {
       throw new NotFoundException(`Record ${id} not found`);
     }
 
-    await this.checkProjectAccess(record.projectId, userId, userRole, 'viewer');
+    await this.permissionsService.requireProjectAccess(
+      record.projectId,
+      userId,
+      userRole,
+      'viewer',
+      apiKeyProjectId,
+    );
 
     return record;
   }
@@ -293,13 +316,24 @@ export class PipelineDataService {
   /**
    * Delete a data record
    */
-  async delete(id: string, userId: string, userRole: string): Promise<void> {
+  async delete(
+    id: string,
+    userId: string,
+    userRole: string,
+    apiKeyProjectId?: string | null,
+  ): Promise<void> {
     const record = await this.getById(id);
     if (!record) {
       throw new NotFoundException(`Record ${id} not found`);
     }
 
-    await this.checkProjectAccess(record.projectId, userId, userRole, 'contributor');
+    await this.permissionsService.requireProjectAccess(
+      record.projectId,
+      userId,
+      userRole,
+      'contributor',
+      apiKeyProjectId,
+    );
 
     await db.delete(pipelineData).where(eq(pipelineData.id, id));
 
@@ -309,7 +343,12 @@ export class PipelineDataService {
   /**
    * Delete multiple data records
    */
-  async deleteMany(ids: string[], userId: string, userRole: string): Promise<number> {
+  async deleteMany(
+    ids: string[],
+    userId: string,
+    userRole: string,
+    apiKeyProjectId?: string | null,
+  ): Promise<number> {
     if (ids.length === 0) {
       return 0;
     }
@@ -325,7 +364,13 @@ export class PipelineDataService {
       throw new NotFoundException(`Record ${ids[0]} not found`);
     }
 
-    await this.checkProjectAccess(record.projectId, userId, userRole, 'contributor');
+    await this.permissionsService.requireProjectAccess(
+      record.projectId,
+      userId,
+      userRole,
+      'contributor',
+      apiKeyProjectId,
+    );
 
     // Delete all records that belong to the same project
     const result = await db
@@ -348,6 +393,7 @@ export class PipelineDataService {
     format: 'json' | 'csv',
     userId: string,
     userRole: string,
+    apiKeyProjectId?: string | null,
   ): Promise<string> {
     // Get schema for project ID and access check
     const [schema] = await db
@@ -360,7 +406,13 @@ export class PipelineDataService {
       throw new NotFoundException(`Schema ${schemaId} not found`);
     }
 
-    await this.checkProjectAccess(schema.projectId, userId, userRole, 'viewer');
+    await this.permissionsService.requireProjectAccess(
+      schema.projectId,
+      userId,
+      userRole,
+      'viewer',
+      apiKeyProjectId,
+    );
 
     // Get all records
     const records = await db
@@ -412,31 +464,6 @@ export class PipelineDataService {
   }
 
   // ==================== Helper Methods ====================
-
-  private async checkProjectAccess(
-    projectId: string,
-    userId: string,
-    userRole: string,
-    requiredRole: 'viewer' | 'contributor' | 'admin' | 'owner' = 'viewer',
-  ): Promise<void> {
-    if (userRole === 'admin') {
-      return;
-    }
-
-    const role = await this.permissionsService.getUserProjectRole(userId, projectId);
-
-    if (!role) {
-      throw new ForbiddenException('You do not have access to this project');
-    }
-
-    const roleHierarchy = { viewer: 1, contributor: 2, admin: 3, owner: 4 };
-    const userLevel = roleHierarchy[role] || 0;
-    const requiredLevel = roleHierarchy[requiredRole] || 0;
-
-    if (userLevel < requiredLevel) {
-      throw new ForbiddenException(`This action requires ${requiredRole} role or higher`);
-    }
-  }
 
   private escapeCSV(value: string): string {
     if (value.includes(',') || value.includes('"') || value.includes('\n')) {

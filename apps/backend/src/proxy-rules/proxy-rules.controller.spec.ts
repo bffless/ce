@@ -123,6 +123,7 @@ describe('ProxyRulesController', () => {
         { targetUrl: 'https://new-api.example.com' },
         'user-1',
         'admin',
+        undefined,
       );
     });
   });
@@ -134,7 +135,12 @@ describe('ProxyRulesController', () => {
       const result = await controller.deleteRule('rule-1', mockUser);
 
       expect(result).toEqual({ success: true });
-      expect(mockProxyRulesService.delete).toHaveBeenCalledWith('rule-1', 'user-1', 'admin');
+      expect(mockProxyRulesService.delete).toHaveBeenCalledWith(
+        'rule-1',
+        'user-1',
+        'admin',
+        undefined,
+      );
     });
   });
 
@@ -156,6 +162,7 @@ describe('ProxyRulesController', () => {
         { isEnabled: false },
         'user-1',
         'user',
+        undefined,
       );
     });
   });

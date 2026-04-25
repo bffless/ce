@@ -138,6 +138,98 @@ describe('PermissionsService', () => {
     });
   });
 
+  describe('enforceApiKeyProjectScope', () => {
+    const projectA = 'project-A';
+    const projectB = 'project-B';
+
+    it('is a no-op for session auth (apiKeyProjectId === undefined)', () => {
+      expect(() => service.enforceApiKeyProjectScope(undefined, projectA)).not.toThrow();
+    });
+
+    it('is a no-op for global api-keys (apiKeyProjectId === null)', () => {
+      expect(() => service.enforceApiKeyProjectScope(null, projectA)).not.toThrow();
+    });
+
+    it('allows when api-key scope matches the target project', () => {
+      expect(() => service.enforceApiKeyProjectScope(projectA, projectA)).not.toThrow();
+    });
+
+    it('throws ForbiddenException when api-key scope does not match', () => {
+      expect(() => service.enforceApiKeyProjectScope(projectA, projectB)).toThrow(
+        ForbiddenException,
+      );
+    });
+  });
+
+  describe('requireProjectAccess', () => {
+    const targetProject = mockProjectId;
+    const otherProject = 'other-project-999';
+
+    it('blocks an admin user when their api-key scope does not match (no admin shortcut on api-keys)', async () => {
+      const spy = jest.spyOn(service, 'getUserProjectRole');
+
+      await expect(
+        service.requireProjectAccess(targetProject, mockUserId, 'admin', 'contributor', otherProject),
+      ).rejects.toThrow(ForbiddenException);
+
+      // Important: scope check must reject before consulting role hierarchy.
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('allows when api-key scope matches the target project, regardless of role', async () => {
+      const spy = jest.spyOn(service, 'getUserProjectRole');
+
+      await expect(
+        service.requireProjectAccess(targetProject, mockUserId, 'user', 'contributor', targetProject),
+      ).resolves.toBeUndefined();
+
+      // Scope match short-circuits — no need to look up the user role.
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('falls through to role check for global api-keys (apiKeyProjectId === null)', async () => {
+      jest.spyOn(service, 'getUserProjectRole').mockResolvedValue('contributor');
+
+      await expect(
+        service.requireProjectAccess(targetProject, mockUserId, 'user', 'contributor', null),
+      ).resolves.toBeUndefined();
+    });
+
+    it('falls through to role check for session auth (apiKeyProjectId undefined)', async () => {
+      jest.spyOn(service, 'getUserProjectRole').mockResolvedValue('contributor');
+
+      await expect(
+        service.requireProjectAccess(targetProject, mockUserId, 'user', 'contributor'),
+      ).resolves.toBeUndefined();
+    });
+
+    it('grants system admins access without looking up project role (when no api-key context)', async () => {
+      const spy = jest.spyOn(service, 'getUserProjectRole');
+
+      await expect(
+        service.requireProjectAccess(targetProject, mockUserId, 'admin', 'contributor'),
+      ).resolves.toBeUndefined();
+
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('rejects when user has no role on the project', async () => {
+      jest.spyOn(service, 'getUserProjectRole').mockResolvedValue(null);
+
+      await expect(
+        service.requireProjectAccess(targetProject, mockUserId, 'user', 'viewer'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('rejects when user role is below required role', async () => {
+      jest.spyOn(service, 'getUserProjectRole').mockResolvedValue('viewer');
+
+      await expect(
+        service.requireProjectAccess(targetProject, mockUserId, 'user', 'admin'),
+      ).rejects.toThrow(/admin role or higher/);
+    });
+  });
+
   describe('listUserProjects', () => {
     it('should return unique project IDs from direct and group permissions', async () => {
       const mockDirectPerms = [

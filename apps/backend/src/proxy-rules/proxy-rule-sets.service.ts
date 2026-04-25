@@ -2,7 +2,6 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
-  ForbiddenException,
   Logger,
   Inject,
   forwardRef,
@@ -34,7 +33,11 @@ export class ProxyRuleSetsService {
   /**
    * List all rule sets for a project
    */
-  async listByProject(projectId: string): Promise<ProxyRuleSetResponseDto[]> {
+  async listByProject(
+    projectId: string,
+    apiKeyProjectId?: string | null,
+  ): Promise<ProxyRuleSetResponseDto[]> {
+    this.permissionsService.enforceApiKeyProjectScope(apiKeyProjectId, projectId);
     const ruleSets = await db
       .select()
       .from(proxyRuleSets)
@@ -46,7 +49,10 @@ export class ProxyRuleSetsService {
   /**
    * Get a rule set by ID with its rules
    */
-  async getById(id: string): Promise<ProxyRuleSetWithRulesResponseDto | null> {
+  async getById(
+    id: string,
+    apiKeyProjectId?: string | null,
+  ): Promise<ProxyRuleSetWithRulesResponseDto | null> {
     const [ruleSet] = await db
       .select()
       .from(proxyRuleSets)
@@ -54,6 +60,8 @@ export class ProxyRuleSetsService {
       .limit(1);
 
     if (!ruleSet) return null;
+
+    this.permissionsService.enforceApiKeyProjectScope(apiKeyProjectId, ruleSet.projectId);
 
     const rules = await this.proxyRulesService.getRulesByRuleSetId(id);
 
@@ -71,6 +79,7 @@ export class ProxyRuleSetsService {
     dto: CreateProxyRuleSetDto,
     userId: string,
     userRole: string,
+    apiKeyProjectId?: string | null,
   ): Promise<ProxyRuleSetResponseDto> {
     // Verify project exists
     const [project] = await db
@@ -83,8 +92,13 @@ export class ProxyRuleSetsService {
       throw new NotFoundException(`Project ${projectId} not found`);
     }
 
-    // Check project access (need contributor or higher)
-    await this.checkProjectAccess(projectId, userId, userRole, 'contributor');
+    await this.permissionsService.requireProjectAccess(
+      projectId,
+      userId,
+      userRole,
+      'contributor',
+      apiKeyProjectId,
+    );
 
     // Check for duplicate name within project
     const existing = await this.findByName(projectId, dto.name);
@@ -115,14 +129,20 @@ export class ProxyRuleSetsService {
     dto: UpdateProxyRuleSetDto,
     userId: string,
     userRole: string,
+    apiKeyProjectId?: string | null,
   ): Promise<ProxyRuleSetResponseDto> {
     const existing = await this.findById(id);
     if (!existing) {
       throw new NotFoundException(`Rule set ${id} not found`);
     }
 
-    // Check project access
-    await this.checkProjectAccess(existing.projectId, userId, userRole, 'contributor');
+    await this.permissionsService.requireProjectAccess(
+      existing.projectId,
+      userId,
+      userRole,
+      'contributor',
+      apiKeyProjectId,
+    );
 
     // Check for duplicate name if changing
     if (dto.name && dto.name !== existing.name) {
@@ -158,6 +178,7 @@ export class ProxyRuleSetsService {
     id: string,
     userId: string,
     userRole: string,
+    apiKeyProjectId?: string | null,
   ): Promise<ProxyRuleSetWithRulesResponseDto> {
     // Get the existing rule set
     const existingRuleSet = await this.findById(id);
@@ -165,8 +186,13 @@ export class ProxyRuleSetsService {
       throw new NotFoundException(`Rule set ${id} not found`);
     }
 
-    // Check project access (need contributor or higher)
-    await this.checkProjectAccess(existingRuleSet.projectId, userId, userRole, 'contributor');
+    await this.permissionsService.requireProjectAccess(
+      existingRuleSet.projectId,
+      userId,
+      userRole,
+      'contributor',
+      apiKeyProjectId,
+    );
 
     // Get the rules directly from database (with full schema type)
     const existingRules = await this.proxyRulesService.getRulesByRuleSetId(id);
@@ -229,14 +255,24 @@ export class ProxyRuleSetsService {
   /**
    * Delete a rule set (cascades to rules and join table rows)
    */
-  async delete(id: string, userId: string, userRole: string): Promise<void> {
+  async delete(
+    id: string,
+    userId: string,
+    userRole: string,
+    apiKeyProjectId?: string | null,
+  ): Promise<void> {
     const existing = await this.findById(id);
     if (!existing) {
       throw new NotFoundException(`Rule set ${id} not found`);
     }
 
-    // Check project access
-    await this.checkProjectAccess(existing.projectId, userId, userRole, 'contributor');
+    await this.permissionsService.requireProjectAccess(
+      existing.projectId,
+      userId,
+      userRole,
+      'contributor',
+      apiKeyProjectId,
+    );
 
     // Check if this rule set is being used as a default
     const [projectUsingDefault] = await db
@@ -300,34 +336,6 @@ export class ProxyRuleSetsService {
   }
 
   // ==================== Helper Methods ====================
-
-  private async checkProjectAccess(
-    projectId: string,
-    userId: string,
-    userRole: string,
-    requiredRole: 'viewer' | 'contributor' | 'admin' | 'owner' = 'contributor',
-  ): Promise<void> {
-    // Admin users have access to all projects
-    if (userRole === 'admin') {
-      return;
-    }
-
-    // Check project permissions
-    const role = await this.permissionsService.getUserProjectRole(userId, projectId);
-
-    if (!role) {
-      throw new ForbiddenException('You do not have access to this project');
-    }
-
-    // Check if user has required role level
-    const roleHierarchy = { viewer: 1, contributor: 2, admin: 3, owner: 4 };
-    const userLevel = roleHierarchy[role] || 0;
-    const requiredLevel = roleHierarchy[requiredRole] || 0;
-
-    if (userLevel < requiredLevel) {
-      throw new ForbiddenException(`This action requires ${requiredRole} role or higher`);
-    }
-  }
 
   private async findById(id: string) {
     const [ruleSet] = await db

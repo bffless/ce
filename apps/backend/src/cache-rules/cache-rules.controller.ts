@@ -50,8 +50,12 @@ export class CacheRulesController {
   })
   async getProjectRules(
     @Param('projectId', ParseUUIDPipe) projectId: string,
+    @CurrentUser() user: CurrentUserData,
   ): Promise<{ rules: CacheRuleResponseDto[] }> {
-    const rules = await this.cacheRulesService.getRulesByProjectId(projectId);
+    const rules = await this.cacheRulesService.getRulesByProjectId(
+      projectId,
+      user.apiKeyProjectId,
+    );
     return { rules: rules as CacheRuleResponseDto[] };
   }
 
@@ -80,6 +84,7 @@ export class CacheRulesController {
       dto,
       user.id,
       user.role || 'user',
+      user.apiKeyProjectId,
     ) as Promise<CacheRuleResponseDto>;
   }
 
@@ -107,6 +112,7 @@ export class CacheRulesController {
       dto,
       user.id,
       user.role || 'user',
+      user.apiKeyProjectId,
     );
     return { rules: rules as CacheRuleResponseDto[] };
   }
@@ -148,6 +154,7 @@ export class CacheRulesController {
       dto,
       user.id,
       user.role || 'user',
+      user.apiKeyProjectId,
     ) as Promise<CacheRuleResponseDto>;
   }
 
@@ -164,7 +171,7 @@ export class CacheRulesController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: CurrentUserData,
   ): Promise<{ success: boolean }> {
-    await this.cacheRulesService.delete(id, user.id, user.role || 'user');
+    await this.cacheRulesService.delete(id, user.id, user.role || 'user', user.apiKeyProjectId);
     return { success: true };
   }
 }
