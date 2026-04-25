@@ -36,9 +36,10 @@ export class PipelineTools {
   async listSchemas(
     { projectId }: { projectId: string },
     _context: Context,
-    _request: Request,
+    request: Request,
   ) {
-    const result = await this.schemasService.getByProjectId(projectId);
+    const apiKeyProjectId = (request as any)?.user?.apiKeyProjectId;
+    const result = await this.schemasService.getByProjectId(projectId, apiKeyProjectId);
     return JSON.stringify(result);
   }
 
@@ -49,8 +50,9 @@ export class PipelineTools {
       id: z.string().describe('Schema ID'),
     }),
   })
-  async getSchema({ id }: { id: string }, _context: Context, _request: Request) {
-    const result = await this.schemasService.getByIdWithCount(id);
+  async getSchema({ id }: { id: string }, _context: Context, request: Request) {
+    const apiKeyProjectId = (request as any)?.user?.apiKeyProjectId;
+    const result = await this.schemasService.getByIdWithCount(id, apiKeyProjectId);
     return JSON.stringify(result);
   }
 
@@ -97,6 +99,7 @@ export class PipelineTools {
       },
       user.id,
       user.role,
+      user.apiKeyProjectId,
     );
     return JSON.stringify(result);
   }
@@ -115,7 +118,7 @@ export class PipelineTools {
     request: Request,
   ) {
     const user = await getUserContext(request, this.authService);
-    await this.schemasService.delete(id, user.id, user.role);
+    await this.schemasService.delete(id, user.id, user.role, user.apiKeyProjectId);
     return JSON.stringify({ success: true, id });
   }
 
@@ -160,7 +163,13 @@ export class PipelineTools {
     const updateDto: { name?: string; fields?: Array<{ name: string; type: SchemaFieldType; required?: boolean }> } = {};
     if (dto.name) updateDto.name = dto.name;
     if (dto.fields) updateDto.fields = dto.fields.map((f) => ({ name: f.name, type: f.type, required: f.required }));
-    const result = await this.schemasService.update(id, updateDto, user.id, user.role);
+    const result = await this.schemasService.update(
+      id,
+      updateDto,
+      user.id,
+      user.role,
+      user.apiKeyProjectId,
+    );
     return JSON.stringify(result);
   }
 
@@ -219,6 +228,7 @@ export class PipelineTools {
       args,
       user.id,
       user.role,
+      user.apiKeyProjectId,
     );
     return JSON.stringify(result);
   }
@@ -264,6 +274,7 @@ export class PipelineTools {
         sortBy: args.sortBy,
         sortOrder: args.sortOrder,
       },
+      user.apiKeyProjectId,
     );
     return JSON.stringify(result);
   }
@@ -281,7 +292,12 @@ export class PipelineTools {
     request: Request,
   ) {
     const user = await getUserContext(request, this.authService);
-    const result = await this.dataService.getByIdWithAccess(id, user.id, user.role);
+    const result = await this.dataService.getByIdWithAccess(
+      id,
+      user.id,
+      user.role,
+      user.apiKeyProjectId,
+    );
     return JSON.stringify(result);
   }
 
@@ -304,6 +320,7 @@ export class PipelineTools {
       args.data,
       user.id,
       user.role,
+      user.apiKeyProjectId,
     );
     return JSON.stringify(result);
   }
@@ -322,7 +339,13 @@ export class PipelineTools {
     request: Request,
   ) {
     const user = await getUserContext(request, this.authService);
-    const result = await this.dataService.update(args.id, args.data, user.id, user.role);
+    const result = await this.dataService.update(
+      args.id,
+      args.data,
+      user.id,
+      user.role,
+      user.apiKeyProjectId,
+    );
     return JSON.stringify(result);
   }
 
@@ -340,7 +363,7 @@ export class PipelineTools {
     request: Request,
   ) {
     const user = await getUserContext(request, this.authService);
-    await this.dataService.delete(id, user.id, user.role);
+    await this.dataService.delete(id, user.id, user.role, user.apiKeyProjectId);
     return JSON.stringify({ success: true, id });
   }
 

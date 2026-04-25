@@ -69,6 +69,8 @@ describe('ProxyRulesService', () => {
 
   const mockPermissionsService = {
     getUserProjectRole: jest.fn(),
+    requireProjectAccess: jest.fn().mockResolvedValue(undefined),
+    enforceApiKeyProjectScope: jest.fn(),
   };
 
   const mockNginxRegenerationService = {
@@ -283,45 +285,8 @@ describe('ProxyRulesService', () => {
     });
   });
 
-  describe('checkProjectAccess', () => {
-    it('should allow admin users access to any project', async () => {
-      const result = await service['checkProjectAccess'](
-        'any-project',
-        'any-user',
-        'admin',
-        'admin',
-      );
-      expect(result).toBeUndefined();
-    });
-
-    it('should deny access for users without project role', async () => {
-      mockPermissionsService.getUserProjectRole.mockResolvedValue(null);
-
-      await expect(
-        service['checkProjectAccess']('project-id', 'user-id', 'user', 'contributor'),
-      ).rejects.toThrow(ForbiddenException);
-    });
-
-    it('should deny access for users with insufficient role', async () => {
-      mockPermissionsService.getUserProjectRole.mockResolvedValue('viewer');
-
-      await expect(
-        service['checkProjectAccess']('project-id', 'user-id', 'user', 'contributor'),
-      ).rejects.toThrow(ForbiddenException);
-    });
-
-    it('should allow access for users with sufficient role', async () => {
-      mockPermissionsService.getUserProjectRole.mockResolvedValue('contributor');
-
-      const result = await service['checkProjectAccess'](
-        'project-id',
-        'user-id',
-        'user',
-        'contributor',
-      );
-      expect(result).toBeUndefined();
-    });
-  });
+  // (Project access enforcement now lives in PermissionsService.requireProjectAccess
+  // and is covered by permissions.service.spec.ts.)
 
   describe('encryption', () => {
     it('should encrypt and decrypt header values correctly', () => {

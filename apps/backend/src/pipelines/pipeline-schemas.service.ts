@@ -1,10 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-  ConflictException,
-  ForbiddenException,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
 import { eq, and, count } from 'drizzle-orm';
 import { db } from '../db/client';
 import { pipelineSchemas, pipelineData, PipelineSchema, NewPipelineSchema } from '../db/schema';
@@ -24,7 +18,11 @@ export class PipelineSchemasService {
   /**
    * Get all schemas for a project with record counts
    */
-  async getByProjectId(projectId: string): Promise<SchemaWithCount[]> {
+  async getByProjectId(
+    projectId: string,
+    apiKeyProjectId?: string | null,
+  ): Promise<SchemaWithCount[]> {
+    this.permissionsService.enforceApiKeyProjectScope(apiKeyProjectId, projectId);
     const schemas = await db
       .select()
       .from(pipelineSchemas)
@@ -58,9 +56,14 @@ export class PipelineSchemasService {
   /**
    * Get a schema by ID with record count
    */
-  async getByIdWithCount(id: string): Promise<SchemaWithCount | null> {
+  async getByIdWithCount(
+    id: string,
+    apiKeyProjectId?: string | null,
+  ): Promise<SchemaWithCount | null> {
     const schema = await this.getById(id);
     if (!schema) return null;
+
+    this.permissionsService.enforceApiKeyProjectScope(apiKeyProjectId, schema.projectId);
 
     const [countResult] = await db
       .select({ count: count() })
@@ -80,9 +83,15 @@ export class PipelineSchemasService {
     dto: CreatePipelineSchemaDto,
     userId: string,
     userRole: string,
+    apiKeyProjectId?: string | null,
   ): Promise<PipelineSchema> {
-    // Check project access
-    await this.checkProjectAccess(dto.projectId, userId, userRole, 'contributor');
+    await this.permissionsService.requireProjectAccess(
+      dto.projectId,
+      userId,
+      userRole,
+      'contributor',
+      apiKeyProjectId,
+    );
 
     // Check for duplicate name
     const existing = await this.findByName(dto.projectId, dto.name);
@@ -115,14 +124,20 @@ export class PipelineSchemasService {
     dto: UpdatePipelineSchemaDto,
     userId: string,
     userRole: string,
+    apiKeyProjectId?: string | null,
   ): Promise<PipelineSchema> {
     const existing = await this.getById(id);
     if (!existing) {
       throw new NotFoundException(`Schema ${id} not found`);
     }
 
-    // Check project access
-    await this.checkProjectAccess(existing.projectId, userId, userRole, 'contributor');
+    await this.permissionsService.requireProjectAccess(
+      existing.projectId,
+      userId,
+      userRole,
+      'contributor',
+      apiKeyProjectId,
+    );
 
     // Check for duplicate name if changing
     if (dto.name && dto.name !== existing.name) {
@@ -164,14 +179,24 @@ export class PipelineSchemasService {
   /**
    * Delete a schema (cascades to data records)
    */
-  async delete(id: string, userId: string, userRole: string): Promise<void> {
+  async delete(
+    id: string,
+    userId: string,
+    userRole: string,
+    apiKeyProjectId?: string | null,
+  ): Promise<void> {
     const existing = await this.getById(id);
     if (!existing) {
       throw new NotFoundException(`Schema ${id} not found`);
     }
 
-    // Check project access
-    await this.checkProjectAccess(existing.projectId, userId, userRole, 'admin');
+    await this.permissionsService.requireProjectAccess(
+      existing.projectId,
+      userId,
+      userRole,
+      'admin',
+      apiKeyProjectId,
+    );
 
     await db.delete(pipelineSchemas).where(eq(pipelineSchemas.id, id));
 
@@ -179,31 +204,6 @@ export class PipelineSchemasService {
   }
 
   // ==================== Helper Methods ====================
-
-  private async checkProjectAccess(
-    projectId: string,
-    userId: string,
-    userRole: string,
-    requiredRole: 'viewer' | 'contributor' | 'admin' | 'owner' = 'contributor',
-  ): Promise<void> {
-    if (userRole === 'admin') {
-      return;
-    }
-
-    const role = await this.permissionsService.getUserProjectRole(userId, projectId);
-
-    if (!role) {
-      throw new ForbiddenException('You do not have access to this project');
-    }
-
-    const roleHierarchy = { viewer: 1, contributor: 2, admin: 3, owner: 4 };
-    const userLevel = roleHierarchy[role] || 0;
-    const requiredLevel = roleHierarchy[requiredRole] || 0;
-
-    if (userLevel < requiredLevel) {
-      throw new ForbiddenException(`This action requires ${requiredRole} role or higher`);
-    }
-  }
 
   private async findByName(projectId: string, name: string): Promise<PipelineSchema | null> {
     const [schema] = await db

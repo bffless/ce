@@ -92,35 +92,13 @@ export class AssetsService implements OnModuleInit {
     requiredRole: 'viewer' | 'contributor' | 'admin' | 'owner' = 'contributor',
     apiKeyProjectId?: string | null,
   ): Promise<void> {
-    // Admin users have access to all projects
-    if (userRole === 'admin') {
-      return;
-    }
-
-    // API key with specific projectId - must match target project
-    if (apiKeyProjectId !== undefined && apiKeyProjectId !== null) {
-      if (apiKeyProjectId !== projectId) {
-        throw new ForbiddenException('API key is not authorized for this project');
-      }
-      // API key matches project - authorized
-      return;
-    }
-
-    // Global API key (projectId = null) or session auth - check user's project permissions
-    const role = await this.permissionsService.getUserProjectRole(userId, projectId);
-
-    if (!role) {
-      throw new ForbiddenException('You do not have access to this project');
-    }
-
-    // Check if user has required role level
-    const roleHierarchy = { viewer: 1, contributor: 2, admin: 3, owner: 4 };
-    const userLevel = roleHierarchy[role] || 0;
-    const requiredLevel = roleHierarchy[requiredRole] || 0;
-
-    if (userLevel < requiredLevel) {
-      throw new ForbiddenException(`This action requires ${requiredRole} role or higher`);
-    }
+    await this.permissionsService.requireProjectAccess(
+      projectId,
+      userId,
+      userRole,
+      requiredRole,
+      apiKeyProjectId,
+    );
   }
 
   /**

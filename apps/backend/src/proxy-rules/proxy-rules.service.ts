@@ -3,7 +3,6 @@ import {
   BadRequestException,
   NotFoundException,
   ConflictException,
-  ForbiddenException,
   Logger,
   Inject,
   forwardRef,
@@ -184,6 +183,7 @@ export class ProxyRulesService {
     dto: CreateProxyRuleDto,
     userId: string,
     userRole: string,
+    apiKeyProjectId?: string | null,
   ): Promise<typeof proxyRules.$inferSelect> {
     // Get the rule set to find the project ID for permission checks
     const [ruleSet] = await db
@@ -196,8 +196,13 @@ export class ProxyRulesService {
       throw new NotFoundException(`Rule set ${dto.ruleSetId} not found`);
     }
 
-    // Check project access (need contributor or higher)
-    await this.checkProjectAccess(ruleSet.projectId, userId, userRole, 'contributor');
+    await this.permissionsService.requireProjectAccess(
+      ruleSet.projectId,
+      userId,
+      userRole,
+      'contributor',
+      apiKeyProjectId,
+    );
 
     // Validate email form handler configuration
     if (dto.proxyType === 'email_form_handler') {
@@ -283,6 +288,7 @@ export class ProxyRulesService {
     dto: UpdateProxyRuleDto,
     userId: string,
     userRole: string,
+    apiKeyProjectId?: string | null,
   ): Promise<typeof proxyRules.$inferSelect> {
     const existing = await this.findById(id);
     if (!existing) {
@@ -300,8 +306,13 @@ export class ProxyRulesService {
       throw new NotFoundException(`Rule set ${existing.ruleSetId} not found`);
     }
 
-    // Check project access
-    await this.checkProjectAccess(ruleSet.projectId, userId, userRole, 'contributor');
+    await this.permissionsService.requireProjectAccess(
+      ruleSet.projectId,
+      userId,
+      userRole,
+      'contributor',
+      apiKeyProjectId,
+    );
 
     // Determine effective proxy type after update
     const effectiveProxyType = dto.proxyType ?? existing.proxyType ?? 'external_proxy';
@@ -420,7 +431,12 @@ export class ProxyRulesService {
   /**
    * Delete a proxy rule
    */
-  async delete(id: string, userId: string, userRole: string): Promise<void> {
+  async delete(
+    id: string,
+    userId: string,
+    userRole: string,
+    apiKeyProjectId?: string | null,
+  ): Promise<void> {
     const existing = await this.findById(id);
     if (!existing) {
       throw new NotFoundException(`Proxy rule ${id} not found`);
@@ -437,8 +453,13 @@ export class ProxyRulesService {
       throw new NotFoundException(`Rule set ${existing.ruleSetId} not found`);
     }
 
-    // Check project access
-    await this.checkProjectAccess(ruleSet.projectId, userId, userRole, 'contributor');
+    await this.permissionsService.requireProjectAccess(
+      ruleSet.projectId,
+      userId,
+      userRole,
+      'contributor',
+      apiKeyProjectId,
+    );
 
     // Store ruleSetId before deletion for regeneration
     const ruleSetId = existing.ruleSetId;
@@ -486,6 +507,7 @@ export class ProxyRulesService {
     dto: ReorderProxyRulesDto,
     userId: string,
     userRole: string,
+    apiKeyProjectId?: string | null,
   ): Promise<(typeof proxyRules.$inferSelect)[]> {
     // Get rule set for permission check
     const [ruleSet] = await db
@@ -498,8 +520,13 @@ export class ProxyRulesService {
       throw new NotFoundException(`Rule set ${ruleSetId} not found`);
     }
 
-    // Check project access
-    await this.checkProjectAccess(ruleSet.projectId, userId, userRole, 'contributor');
+    await this.permissionsService.requireProjectAccess(
+      ruleSet.projectId,
+      userId,
+      userRole,
+      'contributor',
+      apiKeyProjectId,
+    );
 
     // Verify all rules belong to the rule set
     const existingRules = await db
@@ -547,34 +574,6 @@ export class ProxyRulesService {
   }
 
   // ==================== Helper Methods ====================
-
-  private async checkProjectAccess(
-    projectId: string,
-    userId: string,
-    userRole: string,
-    requiredRole: 'viewer' | 'contributor' | 'admin' | 'owner' = 'contributor',
-  ): Promise<void> {
-    // Admin users have access to all projects
-    if (userRole === 'admin') {
-      return;
-    }
-
-    // Check project permissions
-    const role = await this.permissionsService.getUserProjectRole(userId, projectId);
-
-    if (!role) {
-      throw new ForbiddenException('You do not have access to this project');
-    }
-
-    // Check if user has required role level
-    const roleHierarchy = { viewer: 1, contributor: 2, admin: 3, owner: 4 };
-    const userLevel = roleHierarchy[role] || 0;
-    const requiredLevel = roleHierarchy[requiredRole] || 0;
-
-    if (userLevel < requiredLevel) {
-      throw new ForbiddenException(`This action requires ${requiredRole} role or higher`);
-    }
-  }
 
   private async findById(id: string) {
     const [rule] = await db.select().from(proxyRules).where(eq(proxyRules.id, id)).limit(1);

@@ -99,6 +99,7 @@ export class PipelineDataController {
         sortBy,
         sortOrder,
       },
+      user.apiKeyProjectId,
     );
   }
 
@@ -113,7 +114,13 @@ export class PipelineDataController {
     @Body() dto: CreatePipelineDataDto,
     @CurrentUser() user: CurrentUserData,
   ): Promise<PipelineDataResponseDto> {
-    return this.dataService.createWithAccess(schemaId, dto.data, user.id, user.role || 'user');
+    return this.dataService.createWithAccess(
+      schemaId,
+      dto.data,
+      user.id,
+      user.role || 'user',
+      user.apiKeyProjectId,
+    );
   }
 
   // Static routes MUST come before dynamic :recordId routes
@@ -129,7 +136,13 @@ export class PipelineDataController {
     @CurrentUser() user: CurrentUserData,
     @Res() res: Response,
   ): Promise<void> {
-    const data = await this.dataService.exportBySchemaId(schemaId, format, user.id, user.role || 'user');
+    const data = await this.dataService.exportBySchemaId(
+      schemaId,
+      format,
+      user.id,
+      user.role || 'user',
+      user.apiKeyProjectId,
+    );
 
     const contentType = format === 'csv' ? 'text/csv' : 'application/json';
     const extension = format === 'csv' ? 'csv' : 'json';
@@ -148,7 +161,12 @@ export class PipelineDataController {
     @Body() body: { ids: string[] },
     @CurrentUser() user: CurrentUserData,
   ): Promise<{ success: boolean; deleted: number }> {
-    const deleted = await this.dataService.deleteMany(body.ids, user.id, user.role || 'user');
+    const deleted = await this.dataService.deleteMany(
+      body.ids,
+      user.id,
+      user.role || 'user',
+      user.apiKeyProjectId,
+    );
     return { success: true, deleted };
   }
 
@@ -163,7 +181,12 @@ export class PipelineDataController {
     @Param('recordId', ParseUUIDPipe) recordId: string,
     @CurrentUser() user: CurrentUserData,
   ): Promise<PipelineDataResponseDto> {
-    return this.dataService.getByIdWithAccess(recordId, user.id, user.role || 'user');
+    return this.dataService.getByIdWithAccess(
+      recordId,
+      user.id,
+      user.role || 'user',
+      user.apiKeyProjectId,
+    );
   }
 
   @Put(':recordId')
@@ -178,7 +201,13 @@ export class PipelineDataController {
     @Body() dto: UpdatePipelineDataDto,
     @CurrentUser() user: CurrentUserData,
   ): Promise<PipelineDataResponseDto> {
-    return this.dataService.update(recordId, dto.data, user.id, user.role || 'user');
+    return this.dataService.update(
+      recordId,
+      dto.data,
+      user.id,
+      user.role || 'user',
+      user.apiKeyProjectId,
+    );
   }
 
   @Delete(':recordId')
@@ -192,7 +221,12 @@ export class PipelineDataController {
     @Param('recordId', ParseUUIDPipe) recordId: string,
     @CurrentUser() user: CurrentUserData,
   ): Promise<{ success: boolean }> {
-    await this.dataService.delete(recordId, user.id, user.role || 'user');
+    await this.dataService.delete(
+      recordId,
+      user.id,
+      user.role || 'user',
+      user.apiKeyProjectId,
+    );
     return { success: true };
   }
 }

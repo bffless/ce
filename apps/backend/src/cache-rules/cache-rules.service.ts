@@ -3,7 +3,6 @@ import {
   BadRequestException,
   NotFoundException,
   ConflictException,
-  ForbiddenException,
   Logger,
   Inject,
   forwardRef,
@@ -28,7 +27,11 @@ export class CacheRulesService {
   /**
    * Get all cache rules for a project, ordered by priority
    */
-  async getRulesByProjectId(projectId: string): Promise<CacheRule[]> {
+  async getRulesByProjectId(
+    projectId: string,
+    apiKeyProjectId?: string | null,
+  ): Promise<CacheRule[]> {
+    this.permissionsService.enforceApiKeyProjectScope(apiKeyProjectId, projectId);
     return db
       .select()
       .from(cacheRules)
@@ -64,6 +67,7 @@ export class CacheRulesService {
     dto: CreateCacheRuleDto,
     userId: string,
     userRole: string,
+    apiKeyProjectId?: string | null,
   ): Promise<CacheRule> {
     // Verify project exists
     const [project] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
@@ -71,8 +75,13 @@ export class CacheRulesService {
       throw new NotFoundException(`Project ${projectId} not found`);
     }
 
-    // Check project access (need contributor or higher)
-    await this.checkProjectAccess(projectId, userId, userRole, 'contributor');
+    await this.permissionsService.requireProjectAccess(
+      projectId,
+      userId,
+      userRole,
+      'contributor',
+      apiKeyProjectId,
+    );
 
     // Check for duplicate path pattern within the project
     const existingRule = await this.findRuleByPattern(projectId, dto.pathPattern.trim());
@@ -118,14 +127,20 @@ export class CacheRulesService {
     dto: UpdateCacheRuleDto,
     userId: string,
     userRole: string,
+    apiKeyProjectId?: string | null,
   ): Promise<CacheRule> {
     const existing = await this.getRuleById(id);
     if (!existing) {
       throw new NotFoundException(`Cache rule ${id} not found`);
     }
 
-    // Check project access
-    await this.checkProjectAccess(existing.projectId, userId, userRole, 'contributor');
+    await this.permissionsService.requireProjectAccess(
+      existing.projectId,
+      userId,
+      userRole,
+      'contributor',
+      apiKeyProjectId,
+    );
 
     // Check for duplicate path pattern if changing
     if (dto.pathPattern && dto.pathPattern !== existing.pathPattern) {
@@ -169,14 +184,24 @@ export class CacheRulesService {
   /**
    * Delete a cache rule
    */
-  async delete(id: string, userId: string, userRole: string): Promise<void> {
+  async delete(
+    id: string,
+    userId: string,
+    userRole: string,
+    apiKeyProjectId?: string | null,
+  ): Promise<void> {
     const existing = await this.getRuleById(id);
     if (!existing) {
       throw new NotFoundException(`Cache rule ${id} not found`);
     }
 
-    // Check project access
-    await this.checkProjectAccess(existing.projectId, userId, userRole, 'contributor');
+    await this.permissionsService.requireProjectAccess(
+      existing.projectId,
+      userId,
+      userRole,
+      'contributor',
+      apiKeyProjectId,
+    );
 
     const projectId = existing.projectId;
 
@@ -196,6 +221,7 @@ export class CacheRulesService {
     dto: ReorderCacheRulesDto,
     userId: string,
     userRole: string,
+    apiKeyProjectId?: string | null,
   ): Promise<CacheRule[]> {
     // Verify project exists
     const [project] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
@@ -203,8 +229,13 @@ export class CacheRulesService {
       throw new NotFoundException(`Project ${projectId} not found`);
     }
 
-    // Check project access
-    await this.checkProjectAccess(projectId, userId, userRole, 'contributor');
+    await this.permissionsService.requireProjectAccess(
+      projectId,
+      userId,
+      userRole,
+      'contributor',
+      apiKeyProjectId,
+    );
 
     // Verify all rules belong to the project
     const existingRules = await db
@@ -235,34 +266,6 @@ export class CacheRulesService {
   }
 
   // ==================== Helper Methods ====================
-
-  private async checkProjectAccess(
-    projectId: string,
-    userId: string,
-    userRole: string,
-    requiredRole: 'viewer' | 'contributor' | 'admin' | 'owner' = 'contributor',
-  ): Promise<void> {
-    // Admin users have access to all projects
-    if (userRole === 'admin') {
-      return;
-    }
-
-    // Check project permissions
-    const role = await this.permissionsService.getUserProjectRole(userId, projectId);
-
-    if (!role) {
-      throw new ForbiddenException('You do not have access to this project');
-    }
-
-    // Check if user has required role level
-    const roleHierarchy = { viewer: 1, contributor: 2, admin: 3, owner: 4 };
-    const userLevel = roleHierarchy[role] || 0;
-    const requiredLevel = roleHierarchy[requiredRole] || 0;
-
-    if (userLevel < requiredLevel) {
-      throw new ForbiddenException(`This action requires ${requiredRole} role or higher`);
-    }
-  }
 
   private async findRuleByPattern(projectId: string, pattern: string): Promise<CacheRule | null> {
     const [rule] = await db

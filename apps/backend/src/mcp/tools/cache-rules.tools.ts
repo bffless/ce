@@ -23,9 +23,10 @@ export class CacheRulesTools {
   async listRules(
     { projectId }: { projectId: string },
     _context: Context,
-    _request: Request,
+    request: Request,
   ) {
-    const result = await this.cacheRulesService.getRulesByProjectId(projectId);
+    const apiKeyProjectId = (request as any)?.user?.apiKeyProjectId;
+    const result = await this.cacheRulesService.getRulesByProjectId(projectId, apiKeyProjectId);
     return JSON.stringify(result);
   }
 
@@ -36,8 +37,18 @@ export class CacheRulesTools {
       id: z.string().describe('Cache rule ID'),
     }),
   })
-  async getRule({ id }: { id: string }, _context: Context, _request: Request) {
+  async getRule({ id }: { id: string }, _context: Context, request: Request) {
+    const apiKeyProjectId = (request as any)?.user?.apiKeyProjectId;
     const result = await this.cacheRulesService.getRuleById(id);
+    if (
+      result &&
+      apiKeyProjectId !== undefined &&
+      apiKeyProjectId !== null &&
+      apiKeyProjectId !== result.projectId
+    ) {
+      // Don't leak existence — return null as if not found.
+      return JSON.stringify(null);
+    }
     return JSON.stringify(result);
   }
 
@@ -78,7 +89,13 @@ export class CacheRulesTools {
   ) {
     const user = await getUserContext(request, this.authService);
     const { projectId, ...dto } = args;
-    const result = await this.cacheRulesService.create(projectId, dto, user.id, user.role);
+    const result = await this.cacheRulesService.create(
+      projectId,
+      dto,
+      user.id,
+      user.role,
+      user.apiKeyProjectId,
+    );
     return JSON.stringify(result);
   }
 
@@ -96,7 +113,7 @@ export class CacheRulesTools {
     request: Request,
   ) {
     const user = await getUserContext(request, this.authService);
-    await this.cacheRulesService.delete(id, user.id, user.role);
+    await this.cacheRulesService.delete(id, user.id, user.role, user.apiKeyProjectId);
     return JSON.stringify({ success: true, id });
   }
 }

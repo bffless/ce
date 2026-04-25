@@ -31,11 +31,15 @@ export class DomainTools {
     request: Request,
   ) {
     const user = await getUserContext(request, this.authService);
-    const result = await this.domainsService.findAll(user.id, {
-      projectId: args.projectId,
-      domainType: args.domainType,
-      isActive: args.isActive,
-    });
+    const result = await this.domainsService.findAll(
+      user.id,
+      {
+        projectId: args.projectId,
+        domainType: args.domainType,
+        isActive: args.isActive,
+      },
+      user.apiKeyProjectId,
+    );
     return JSON.stringify(result);
   }
 
@@ -52,7 +56,7 @@ export class DomainTools {
     request: Request,
   ) {
     const user = await getUserContext(request, this.authService);
-    const result = await this.domainsService.findOne(id, user.id);
+    const result = await this.domainsService.findOne(id, user.id, user.apiKeyProjectId);
     return JSON.stringify(result);
   }
 
@@ -108,6 +112,8 @@ export class DomainTools {
         redirectTarget: args.redirectTarget,
       },
       user.id,
+      undefined,
+      user.apiKeyProjectId,
     );
     return JSON.stringify(result);
   }
@@ -155,7 +161,7 @@ export class DomainTools {
   ) {
     const user = await getUserContext(request, this.authService);
     const { id, ...dto } = args;
-    const result = await this.domainsService.update(id, dto, user.id);
+    const result = await this.domainsService.update(id, dto, user.id, user.apiKeyProjectId);
     return JSON.stringify(result);
   }
 
@@ -174,7 +180,7 @@ export class DomainTools {
     request: Request,
   ) {
     const user = await getUserContext(request, this.authService);
-    const result = await this.domainsService.remove(id, user.id);
+    const result = await this.domainsService.remove(id, user.id, undefined, user.apiKeyProjectId);
     return JSON.stringify(result);
   }
 }

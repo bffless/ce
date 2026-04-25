@@ -39,9 +39,15 @@ export class ChatSchemaGeneratorService {
     dto: GenerateChatSchemaDto,
     userId: string,
     userRole: string,
+    apiKeyProjectId?: string | null,
   ): Promise<GenerateChatSchemaResponseDto> {
-    // Check project access
-    await this.checkProjectAccess(dto.projectId, userId, userRole, 'contributor');
+    await this.permissionsService.requireProjectAccess(
+      dto.projectId,
+      userId,
+      userRole,
+      'contributor',
+      apiKeyProjectId,
+    );
 
     // Get AI config from project settings to validate and get defaults
     const aiConfig = await this.projectAISettingsService.getProviderConfig(
@@ -356,31 +362,4 @@ export class ChatSchemaGeneratorService {
     };
   }
 
-  /**
-   * Check project access
-   */
-  private async checkProjectAccess(
-    projectId: string,
-    userId: string,
-    userRole: string,
-    requiredRole: 'viewer' | 'contributor' | 'admin' | 'owner' = 'contributor',
-  ): Promise<void> {
-    if (userRole === 'admin') {
-      return;
-    }
-
-    const role = await this.permissionsService.getUserProjectRole(userId, projectId);
-
-    if (!role) {
-      throw new Error('You do not have access to this project');
-    }
-
-    const roleHierarchy = { viewer: 1, contributor: 2, admin: 3, owner: 4 };
-    const userLevel = roleHierarchy[role] || 0;
-    const requiredLevel = roleHierarchy[requiredRole] || 0;
-
-    if (userLevel < requiredLevel) {
-      throw new Error(`This action requires ${requiredRole} role or higher`);
-    }
-  }
 }

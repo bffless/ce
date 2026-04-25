@@ -68,8 +68,9 @@ export class PipelineSchemasController {
   @ApiResponse({ status: 200, description: 'List of schemas', type: SchemasListResponseDto })
   async listByProject(
     @Param('projectId', ParseUUIDPipe) projectId: string,
+    @CurrentUser() user: CurrentUserData,
   ): Promise<SchemasListResponseDto> {
-    const schemas = await this.schemasService.getByProjectId(projectId);
+    const schemas = await this.schemasService.getByProjectId(projectId, user.apiKeyProjectId);
     return { schemas };
   }
 
@@ -83,7 +84,7 @@ export class PipelineSchemasController {
     @Body() dto: CreatePipelineSchemaDto,
     @CurrentUser() user: CurrentUserData,
   ): Promise<PipelineSchemaResponseDto> {
-    return this.schemasService.create(dto, user.id, user.role || 'user');
+    return this.schemasService.create(dto, user.id, user.role || 'user', user.apiKeyProjectId);
   }
 
   @Post('generate-state')
@@ -109,6 +110,7 @@ export class PipelineSchemasController {
       dto,
       user.id,
       user.role || 'user',
+      user.apiKeyProjectId,
     );
   }
 
@@ -135,6 +137,7 @@ export class PipelineSchemasController {
       dto,
       user.id,
       user.role || 'user',
+      user.apiKeyProjectId,
     );
   }
 
@@ -161,6 +164,7 @@ export class PipelineSchemasController {
       dto,
       user.id,
       user.role || 'user',
+      user.apiKeyProjectId,
     );
   }
 
@@ -171,8 +175,9 @@ export class PipelineSchemasController {
   @ApiResponse({ status: 404, description: 'Schema not found' })
   async getById(
     @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: CurrentUserData,
   ): Promise<PipelineSchemaWithCountDto> {
-    const schema = await this.schemasService.getByIdWithCount(id);
+    const schema = await this.schemasService.getByIdWithCount(id, user.apiKeyProjectId);
     if (!schema) {
       throw new NotFoundException(`Schema ${id} not found`);
     }
@@ -192,7 +197,7 @@ export class PipelineSchemasController {
     @Body() dto: UpdatePipelineSchemaDto,
     @CurrentUser() user: CurrentUserData,
   ): Promise<PipelineSchemaResponseDto> {
-    return this.schemasService.update(id, dto, user.id, user.role || 'user');
+    return this.schemasService.update(id, dto, user.id, user.role || 'user', user.apiKeyProjectId);
   }
 
   @Delete(':id')
@@ -205,7 +210,7 @@ export class PipelineSchemasController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: CurrentUserData,
   ): Promise<{ success: boolean }> {
-    await this.schemasService.delete(id, user.id, user.role || 'user');
+    await this.schemasService.delete(id, user.id, user.role || 'user', user.apiKeyProjectId);
     return { success: true };
   }
 

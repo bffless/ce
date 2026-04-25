@@ -96,9 +96,10 @@ export class ProxyRulesTools {
   async listRuleSets(
     { projectId }: { projectId: string },
     _context: Context,
-    _request: Request,
+    request: Request,
   ) {
-    const result = await this.proxyRuleSetsService.listByProject(projectId);
+    const apiKeyProjectId = (request as any)?.user?.apiKeyProjectId;
+    const result = await this.proxyRuleSetsService.listByProject(projectId, apiKeyProjectId);
     return JSON.stringify(result);
   }
 
@@ -109,8 +110,9 @@ export class ProxyRulesTools {
       id: z.string().describe('Rule set ID'),
     }),
   })
-  async getRuleSet({ id }: { id: string }, _context: Context, _request: Request) {
-    const result = await this.proxyRuleSetsService.getById(id);
+  async getRuleSet({ id }: { id: string }, _context: Context, request: Request) {
+    const apiKeyProjectId = (request as any)?.user?.apiKeyProjectId;
+    const result = await this.proxyRuleSetsService.getById(id, apiKeyProjectId);
     return JSON.stringify(result);
   }
 
@@ -140,6 +142,7 @@ export class ProxyRulesTools {
       { name: args.name, description: args.description, environment: args.environment },
       user.id,
       user.role,
+      user.apiKeyProjectId,
     );
     return JSON.stringify(result);
   }
@@ -158,7 +161,7 @@ export class ProxyRulesTools {
     request: Request,
   ) {
     const user = await getUserContext(request, this.authService);
-    await this.proxyRuleSetsService.delete(id, user.id, user.role);
+    await this.proxyRuleSetsService.delete(id, user.id, user.role, user.apiKeyProjectId);
     return JSON.stringify({ success: true, id });
   }
 
@@ -173,8 +176,17 @@ export class ProxyRulesTools {
       id: z.string().describe('Proxy rule ID'),
     }),
   })
-  async getRule({ id }: { id: string }, _context: Context, _request: Request) {
+  async getRule({ id }: { id: string }, _context: Context, request: Request) {
+    const apiKeyProjectId = (request as any)?.user?.apiKeyProjectId;
     const result = await this.proxyRulesService.getRuleById(id);
+    if (result && apiKeyProjectId !== undefined && apiKeyProjectId !== null) {
+      // Resolve owning project via the rule's rule set, then enforce scope
+      const ruleSet = await this.proxyRulesService.getRuleSetById(result.ruleSetId);
+      if (ruleSet) {
+        // throws if mismatch
+        await this.proxyRuleSetsService.getById(ruleSet.id, apiKeyProjectId);
+      }
+    }
     return JSON.stringify(result);
   }
 
@@ -256,7 +268,12 @@ export class ProxyRulesTools {
     request: Request,
   ) {
     const user = await getUserContext(request, this.authService);
-    const result = await this.proxyRulesService.create(args as any, user.id, user.role);
+    const result = await this.proxyRulesService.create(
+      args as any,
+      user.id,
+      user.role,
+      user.apiKeyProjectId,
+    );
     return JSON.stringify(result);
   }
 
@@ -319,7 +336,13 @@ export class ProxyRulesTools {
   ) {
     const user = await getUserContext(request, this.authService);
     const { id, ...dto } = args;
-    const result = await this.proxyRulesService.update(id as string, dto as any, user.id, user.role);
+    const result = await this.proxyRulesService.update(
+      id as string,
+      dto as any,
+      user.id,
+      user.role,
+      user.apiKeyProjectId,
+    );
     return JSON.stringify(result);
   }
 
@@ -337,7 +360,7 @@ export class ProxyRulesTools {
     request: Request,
   ) {
     const user = await getUserContext(request, this.authService);
-    await this.proxyRulesService.delete(id, user.id, user.role);
+    await this.proxyRulesService.delete(id, user.id, user.role, user.apiKeyProjectId);
     return JSON.stringify({ success: true, id });
   }
 }

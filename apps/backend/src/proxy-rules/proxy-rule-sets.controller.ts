@@ -59,8 +59,12 @@ export class ProxyRuleSetsController {
   @ApiResponse({ status: 200, description: 'List of rule sets', type: ProxyRuleSetsListResponseDto })
   async listByProject(
     @Param('projectId', ParseUUIDPipe) projectId: string,
+    @CurrentUser() user: CurrentUserData,
   ): Promise<ProxyRuleSetsListResponseDto> {
-    const ruleSets = await this.proxyRuleSetsService.listByProject(projectId);
+    const ruleSets = await this.proxyRuleSetsService.listByProject(
+      projectId,
+      user.apiKeyProjectId,
+    );
     return { ruleSets };
   }
 
@@ -76,7 +80,13 @@ export class ProxyRuleSetsController {
     @Body() dto: CreateProxyRuleSetDto,
     @CurrentUser() user: CurrentUserData,
   ): Promise<ProxyRuleSetResponseDto> {
-    return this.proxyRuleSetsService.create(projectId, dto, user.id, user.role || 'user');
+    return this.proxyRuleSetsService.create(
+      projectId,
+      dto,
+      user.id,
+      user.role || 'user',
+      user.apiKeyProjectId,
+    );
   }
 
   @Get(':id')
@@ -86,8 +96,9 @@ export class ProxyRuleSetsController {
   @ApiResponse({ status: 404, description: 'Rule set not found' })
   async getById(
     @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: CurrentUserData,
   ): Promise<ProxyRuleSetWithRulesResponseDto> {
-    const ruleSet = await this.proxyRuleSetsService.getById(id);
+    const ruleSet = await this.proxyRuleSetsService.getById(id, user.apiKeyProjectId);
     if (!ruleSet) {
       throw new NotFoundException(`Rule set ${id} not found`);
     }
@@ -107,7 +118,13 @@ export class ProxyRuleSetsController {
     @Body() dto: UpdateProxyRuleSetDto,
     @CurrentUser() user: CurrentUserData,
   ): Promise<ProxyRuleSetResponseDto> {
-    return this.proxyRuleSetsService.update(id, dto, user.id, user.role || 'user');
+    return this.proxyRuleSetsService.update(
+      id,
+      dto,
+      user.id,
+      user.role || 'user',
+      user.apiKeyProjectId,
+    );
   }
 
   @Delete(':id')
@@ -121,7 +138,7 @@ export class ProxyRuleSetsController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: CurrentUserData,
   ): Promise<{ success: boolean }> {
-    await this.proxyRuleSetsService.delete(id, user.id, user.role || 'user');
+    await this.proxyRuleSetsService.delete(id, user.id, user.role || 'user', user.apiKeyProjectId);
     return { success: true };
   }
 
@@ -135,7 +152,7 @@ export class ProxyRuleSetsController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: CurrentUserData,
   ): Promise<ProxyRuleSetWithRulesResponseDto> {
-    return this.proxyRuleSetsService.copy(id, user.id, user.role || 'user');
+    return this.proxyRuleSetsService.copy(id, user.id, user.role || 'user', user.apiKeyProjectId);
   }
 
   // ==================== Rules within a Rule Set ====================
@@ -169,6 +186,7 @@ export class ProxyRuleSetsController {
       { ...dto, ruleSetId: id },
       user.id,
       user.role || 'user',
+      user.apiKeyProjectId,
     ) as Promise<ProxyRuleResponseDto>;
   }
 
@@ -184,7 +202,13 @@ export class ProxyRuleSetsController {
     @Body() dto: ReorderProxyRulesDto,
     @CurrentUser() user: CurrentUserData,
   ): Promise<ProxyRulesListResponseDto> {
-    const rules = await this.proxyRulesService.reorder(id, dto, user.id, user.role || 'user');
+    const rules = await this.proxyRulesService.reorder(
+      id,
+      dto,
+      user.id,
+      user.role || 'user',
+      user.apiKeyProjectId,
+    );
     return { rules: rules as ProxyRuleResponseDto[] };
   }
 }

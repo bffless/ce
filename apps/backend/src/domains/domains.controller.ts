@@ -543,11 +543,17 @@ export class DomainsController {
   async create(
     @Body() createDomainDto: CreateDomainDto,
     @CurrentUser('id') userId: string,
+    @CurrentUser('apiKeyProjectId') apiKeyProjectId: string | null | undefined,
     @Req() request: Request,
   ): Promise<DomainResponseDto> {
     // Extract JWT from SuperTokens cookie for Control Plane auth
     const authToken = (request.cookies as Record<string, string>)?.sAccessToken;
-    const domain = await this.domainsService.create(createDomainDto, userId, authToken);
+    const domain = await this.domainsService.create(
+      createDomainDto,
+      userId,
+      authToken,
+      apiKeyProjectId,
+    );
     return this.toResponseDto(domain);
   }
 
@@ -556,15 +562,20 @@ export class DomainsController {
   @ApiResponse({ status: 200, type: [DomainResponseDto] })
   async findAll(
     @CurrentUser('id') userId: string,
+    @CurrentUser('apiKeyProjectId') apiKeyProjectId: string | null | undefined,
     @Query('projectId') projectId?: string,
     @Query('domainType') domainType?: string,
     @Query('isActive') isActive?: string,
   ): Promise<DomainResponseDto[]> {
-    const domains = await this.domainsService.findAll(userId, {
-      projectId,
-      domainType,
-      isActive: isActive ? isActive === 'true' : undefined,
-    });
+    const domains = await this.domainsService.findAll(
+      userId,
+      {
+        projectId,
+        domainType,
+        isActive: isActive ? isActive === 'true' : undefined,
+      },
+      apiKeyProjectId,
+    );
     return domains.map((d) => this.toResponseDto(d));
   }
 
@@ -574,8 +585,9 @@ export class DomainsController {
   async findOne(
     @Param('id') id: string,
     @CurrentUser('id') userId: string,
+    @CurrentUser('apiKeyProjectId') apiKeyProjectId: string | null | undefined,
   ): Promise<DomainResponseDto> {
-    const domain = await this.domainsService.findOne(id, userId);
+    const domain = await this.domainsService.findOne(id, userId, apiKeyProjectId);
     return this.toResponseDto(domain);
   }
 
@@ -586,8 +598,14 @@ export class DomainsController {
     @Param('id') id: string,
     @Body() updateDomainDto: UpdateDomainDto,
     @CurrentUser('id') userId: string,
+    @CurrentUser('apiKeyProjectId') apiKeyProjectId: string | null | undefined,
   ): Promise<DomainResponseDto> {
-    const domain = await this.domainsService.update(id, updateDomainDto, userId);
+    const domain = await this.domainsService.update(
+      id,
+      updateDomainDto,
+      userId,
+      apiKeyProjectId,
+    );
     return this.toResponseDto(domain);
   }
 
@@ -597,11 +615,12 @@ export class DomainsController {
   async remove(
     @Param('id') id: string,
     @CurrentUser('id') userId: string,
+    @CurrentUser('apiKeyProjectId') apiKeyProjectId: string | null | undefined,
     @Req() request: Request,
   ) {
     // Extract JWT from SuperTokens cookie for Control Plane auth
     const authToken = (request.cookies as Record<string, string>)?.sAccessToken;
-    return this.domainsService.remove(id, userId, authToken);
+    return this.domainsService.remove(id, userId, authToken, apiKeyProjectId);
   }
 
   /**
