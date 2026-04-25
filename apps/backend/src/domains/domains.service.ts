@@ -208,14 +208,14 @@ export class DomainsService {
         ruleSetIds = [alias[0].proxyRuleSetId];
       }
 
-      // For preview aliases without rule sets, check manual aliases with same commit
+      // For preview aliases without rule sets, inherit ALL rule sets from manual aliases at same commit
       if (ruleSetIds.length === 0 && alias[0].isAutoPreview) {
-        const commitAliasRuleSet = await this.findProxyRuleSetFromCommitAliases(
+        const inheritedIds = await this.findProxyRuleSetsFromCommitAliases(
           projectId,
           alias[0].commitSha,
         );
-        if (commitAliasRuleSet) {
-          ruleSetIds = [commitAliasRuleSet];
+        if (inheritedIds.length > 0) {
+          ruleSetIds = inheritedIds;
         }
       }
 
@@ -267,19 +267,19 @@ export class DomainsService {
   }
 
   /**
-   * Find a proxy rule set ID from manual aliases that point to the same commit.
-   * This allows preview aliases to inherit proxy rules from manual aliases
-   * (like "production") that point to the same commit SHA.
+   * Find proxy rule set IDs from manual aliases that point to the same commit.
+   * This allows auto-preview aliases to inherit proxy rules from manual aliases
+   * (like "production" or "preview") that point to the same commit SHA.
    *
-   * @returns The proxyRuleSetId from a manual alias with the same commit, or null
+   * Reads the join table first (modern multi-rule-set attachment), then falls
+   * back to the legacy single-id column. Returns ALL inherited rule set IDs.
    */
-  private async findProxyRuleSetFromCommitAliases(
+  private async findProxyRuleSetsFromCommitAliases(
     projectId: string,
     commitSha: string,
-  ): Promise<string | null> {
-    // Find manual aliases (non-preview) with the same commit that have proxy rules
-    const [aliasWithRules] = await db
-      .select({ proxyRuleSetId: deploymentAliases.proxyRuleSetId })
+  ): Promise<string[]> {
+    const manualAliases = await db
+      .select({ id: deploymentAliases.id, proxyRuleSetId: deploymentAliases.proxyRuleSetId })
       .from(deploymentAliases)
       .where(
         and(
@@ -287,10 +287,24 @@ export class DomainsService {
           eq(deploymentAliases.commitSha, commitSha),
           eq(deploymentAliases.isAutoPreview, false),
         ),
-      )
-      .limit(1);
+      );
 
-    return aliasWithRules?.proxyRuleSetId || null;
+    for (const manual of manualAliases) {
+      const joinRows = await db
+        .select({ proxyRuleSetId: aliasProxyRuleSets.proxyRuleSetId })
+        .from(aliasProxyRuleSets)
+        .where(eq(aliasProxyRuleSets.aliasId, manual.id))
+        .orderBy(asc(aliasProxyRuleSets.order));
+
+      if (joinRows.length > 0) {
+        return joinRows.map((r) => r.proxyRuleSetId);
+      }
+      if (manual.proxyRuleSetId) {
+        return [manual.proxyRuleSetId];
+      }
+    }
+
+    return [];
   }
 
   /**

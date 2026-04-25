@@ -1,7 +1,7 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { db } from '../db/client';
-import { domainMappings, deploymentAliases, projects, pathRedirects, aliasProxyRuleSets } from '../db/schema';
-import { eq, and, inArray } from 'drizzle-orm';
+import { domainMappings, deploymentAliases, projects, pathRedirects, aliasProxyRuleSets, projectDefaultProxyRuleSets } from '../db/schema';
+import { eq, and, inArray, asc } from 'drizzle-orm';
 import { NginxConfigService, NginxProxyRule, NginxPathRedirect } from './nginx-config.service';
 import { NginxReloadService } from './nginx-reload.service';
 import { ProjectsService } from '../projects/projects.service';
@@ -204,13 +204,10 @@ export class NginxRegenerationService {
    * Get nginx proxy rules for a domain mapping.
    * Returns rules with authTransform set, which will be rendered as nginx location blocks.
    *
-   * This method mirrors the logic in NginxStartupService.getNginxProxyRulesForDomain()
-   * to ensure consistent behavior between startup and on-demand regeneration.
-   *
-   * Resolution order:
-   *   1. If alias has a proxyRuleSetId -> use that rule set
-   *   2. For preview aliases, check manual aliases with same commitSha for proxyRuleSetId
-   *   3. Else if project has a defaultProxyRuleSetId -> use that rule set
+   * Resolution order (mirrors NginxStartupService.getNginxProxyRulesForDomain):
+   *   1. Alias's own rule sets (join table → legacy column)
+   *   2. Auto-preview aliases inherit from manual aliases at same commit (join table → legacy column)
+   *   3. Project default (join table → legacy column)
    *   4. Else -> no proxy rules
    */
   private async getNginxProxyRulesForDomain(
@@ -222,7 +219,6 @@ export class NginxRegenerationService {
     }
 
     try {
-      // Find the alias
       const alias = await db
         .select()
         .from(deploymentAliases)
@@ -235,48 +231,65 @@ export class NginxRegenerationService {
         return [];
       }
 
-      // Get the rule set ID (alias override or inherited from commit aliases or project default)
-      let ruleSetId = alias[0].proxyRuleSetId;
+      let ruleSetIds: string[] = [];
 
-      // For preview aliases without a rule set, check manual aliases with same commit
-      if (!ruleSetId && alias[0].isAutoPreview) {
-        const commitAliasRuleSet = await this.findProxyRuleSetFromCommitAliases(
+      const joinRows = await db
+        .select({ proxyRuleSetId: aliasProxyRuleSets.proxyRuleSetId })
+        .from(aliasProxyRuleSets)
+        .where(eq(aliasProxyRuleSets.aliasId, alias[0].id))
+        .orderBy(asc(aliasProxyRuleSets.order));
+
+      if (joinRows.length > 0) {
+        ruleSetIds = joinRows.map((r) => r.proxyRuleSetId);
+      } else if (alias[0].proxyRuleSetId) {
+        ruleSetIds = [alias[0].proxyRuleSetId];
+      }
+
+      if (ruleSetIds.length === 0 && alias[0].isAutoPreview) {
+        const inheritedIds = await this.findProxyRuleSetsFromCommitAliases(
           projectId,
           alias[0].commitSha,
         );
-        if (commitAliasRuleSet) {
-          ruleSetId = commitAliasRuleSet;
+        if (inheritedIds.length > 0) {
+          ruleSetIds = inheritedIds;
         }
       }
 
-      if (!ruleSetId) {
-        // Try project default
-        const project = await db
-          .select({ defaultProxyRuleSetId: projects.defaultProxyRuleSetId })
-          .from(projects)
-          .where(eq(projects.id, projectId))
-          .limit(1);
+      if (ruleSetIds.length === 0) {
+        const projectDefaultJoinRows = await db
+          .select({ proxyRuleSetId: projectDefaultProxyRuleSets.proxyRuleSetId })
+          .from(projectDefaultProxyRuleSets)
+          .where(eq(projectDefaultProxyRuleSets.projectId, projectId))
+          .orderBy(asc(projectDefaultProxyRuleSets.order));
 
-        if (project.length > 0) {
-          ruleSetId = project[0].defaultProxyRuleSetId;
+        if (projectDefaultJoinRows.length > 0) {
+          ruleSetIds = projectDefaultJoinRows.map((r) => r.proxyRuleSetId);
+        } else {
+          const project = await db
+            .select({ defaultProxyRuleSetId: projects.defaultProxyRuleSetId })
+            .from(projects)
+            .where(eq(projects.id, projectId))
+            .limit(1);
+
+          if (project.length > 0 && project[0].defaultProxyRuleSetId) {
+            ruleSetIds = [project[0].defaultProxyRuleSetId];
+          }
         }
       }
 
-      if (!ruleSetId) {
+      if (ruleSetIds.length === 0) {
         return [];
       }
 
-      // Get all enabled rules from the rule set
-      const rules = await this.proxyRulesService.getEffectiveRulesForRuleSet(ruleSetId);
+      const rules = await this.proxyRulesService.getEffectiveRulesForMultipleRuleSets(ruleSetIds);
 
-      // Filter for rules with authTransform set and map to NginxProxyRule interface
       return rules
         .filter((rule) => rule.authTransform !== null)
         .map((rule) => ({
           pathPattern: rule.pathPattern,
           targetUrl: rule.targetUrl,
           stripPrefix: rule.stripPrefix,
-          timeout: Math.floor(rule.timeout / 1000), // Convert ms to seconds
+          timeout: Math.floor(rule.timeout / 1000),
           authTransform: rule.authTransform!,
           description: rule.description || undefined,
         }));
@@ -287,19 +300,19 @@ export class NginxRegenerationService {
   }
 
   /**
-   * Find a proxy rule set ID from manual aliases that point to the same commit.
-   * This allows preview aliases to inherit proxy rules from manual aliases
-   * (like "production") that point to the same commit SHA.
+   * Find proxy rule set IDs from manual aliases that point to the same commit.
+   * This allows auto-preview aliases to inherit proxy rules from manual aliases
+   * (like "production" or "preview") that point to the same commit SHA.
    *
-   * @returns The proxyRuleSetId from a manual alias with the same commit, or null
+   * Reads the join table first (modern multi-rule-set attachment), then falls
+   * back to the legacy single-id column. Returns ALL inherited rule set IDs.
    */
-  private async findProxyRuleSetFromCommitAliases(
+  private async findProxyRuleSetsFromCommitAliases(
     projectId: string,
     commitSha: string,
-  ): Promise<string | null> {
-    // Find manual aliases (non-preview) with the same commit that have proxy rules
-    const [aliasWithRules] = await db
-      .select({ proxyRuleSetId: deploymentAliases.proxyRuleSetId })
+  ): Promise<string[]> {
+    const manualAliases = await db
+      .select({ id: deploymentAliases.id, proxyRuleSetId: deploymentAliases.proxyRuleSetId })
       .from(deploymentAliases)
       .where(
         and(
@@ -307,9 +320,23 @@ export class NginxRegenerationService {
           eq(deploymentAliases.commitSha, commitSha),
           eq(deploymentAliases.isAutoPreview, false),
         ),
-      )
-      .limit(1);
+      );
 
-    return aliasWithRules?.proxyRuleSetId || null;
+    for (const manual of manualAliases) {
+      const joinRows = await db
+        .select({ proxyRuleSetId: aliasProxyRuleSets.proxyRuleSetId })
+        .from(aliasProxyRuleSets)
+        .where(eq(aliasProxyRuleSets.aliasId, manual.id))
+        .orderBy(asc(aliasProxyRuleSets.order));
+
+      if (joinRows.length > 0) {
+        return joinRows.map((r) => r.proxyRuleSetId);
+      }
+      if (manual.proxyRuleSetId) {
+        return [manual.proxyRuleSetId];
+      }
+    }
+
+    return [];
   }
 }

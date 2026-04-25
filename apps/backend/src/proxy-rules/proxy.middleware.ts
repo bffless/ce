@@ -386,13 +386,13 @@ export class ProxyMiddleware implements NestMiddleware {
       effectiveRuleSetIds = await this.resolveRuleSetIdsForAlias(alias.id, alias.proxyRuleSetId);
 
       if (effectiveRuleSetIds.length === 0 && alias.isAutoPreview) {
-        // Try to inherit from a manual alias pointing to the same commit
-        const inheritedId = await this.findProxyRuleSetFromCommitAliases(
+        // Try to inherit ALL rule sets from a manual alias pointing to the same commit
+        const inheritedIds = await this.findProxyRuleSetsFromCommitAliases(
           alias.projectId,
           alias.commitSha,
         );
-        if (inheritedId) {
-          effectiveRuleSetIds = [inheritedId];
+        if (inheritedIds.length > 0) {
+          effectiveRuleSetIds = inheritedIds;
         }
       }
     }
@@ -797,19 +797,21 @@ export class ProxyMiddleware implements NestMiddleware {
   }
 
   /**
-   * Find a proxy rule set ID from manual aliases that point to the same commit.
-   * This allows preview aliases to inherit proxy rules from manual aliases
-   * (like "production") that point to the same commit SHA.
+   * Find proxy rule set IDs from manual aliases that point to the same commit.
+   * This allows auto-preview aliases to inherit proxy rules from manual aliases
+   * (like "production" or "preview") that point to the same commit SHA.
    *
-   * @returns The proxyRuleSetId from a manual alias with the same commit, or null
+   * Reads the join table first (modern multi-rule-set attachment), then falls
+   * back to the legacy single-id column. Returns ALL inherited rule set IDs in
+   * `order` so every rule applied to the manual alias also applies to the
+   * auto-preview alias.
    */
-  private async findProxyRuleSetFromCommitAliases(
+  private async findProxyRuleSetsFromCommitAliases(
     projectId: string,
     commitSha: string,
-  ): Promise<string | null> {
-    // Find manual aliases (non-preview) with the same commit that have proxy rules
-    const [aliasWithRules] = await db
-      .select({ proxyRuleSetId: deploymentAliases.proxyRuleSetId })
+  ): Promise<string[]> {
+    const manualAliases = await db
+      .select({ id: deploymentAliases.id, proxyRuleSetId: deploymentAliases.proxyRuleSetId })
       .from(deploymentAliases)
       .where(
         and(
@@ -817,10 +819,24 @@ export class ProxyMiddleware implements NestMiddleware {
           eq(deploymentAliases.commitSha, commitSha),
           eq(deploymentAliases.isAutoPreview, false),
         ),
-      )
-      .limit(1);
+      );
 
-    return aliasWithRules?.proxyRuleSetId || null;
+    for (const manual of manualAliases) {
+      const joinRows = await db
+        .select({ proxyRuleSetId: aliasProxyRuleSets.proxyRuleSetId })
+        .from(aliasProxyRuleSets)
+        .where(eq(aliasProxyRuleSets.aliasId, manual.id))
+        .orderBy(asc(aliasProxyRuleSets.order));
+
+      if (joinRows.length > 0) {
+        return joinRows.map((r) => r.proxyRuleSetId);
+      }
+      if (manual.proxyRuleSetId) {
+        return [manual.proxyRuleSetId];
+      }
+    }
+
+    return [];
   }
 
   /**
