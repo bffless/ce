@@ -7,7 +7,7 @@ import {
   ConflictException,
   Logger,
 } from '@nestjs/common';
-import { eq, and, desc, like, asc, SQL } from 'drizzle-orm';
+import { eq, and, desc, like, asc, inArray, SQL } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { unzip } from 'fflate';
 import * as mimeTypes from 'mime-types';
@@ -1186,7 +1186,8 @@ export class DeploymentsService {
         }
       }
 
-      return this.toAliasResponse(updated);
+      const updatedRuleSetIds = await this.getAliasProxyRuleSetIds(updated.id);
+      return this.toAliasResponse(updated, updatedRuleSetIds);
     }
 
     // Create new alias
@@ -1221,7 +1222,8 @@ export class DeploymentsService {
       }
     }
 
-    return this.toAliasResponse(newAlias);
+    const newRuleSetIds = await this.getAliasProxyRuleSetIds(newAlias.id);
+    return this.toAliasResponse(newAlias, newRuleSetIds);
   }
 
   /**
@@ -1373,7 +1375,8 @@ export class DeploymentsService {
       }
     }
 
-    return this.toAliasResponse(updated);
+    const updatedRuleSetIds = await this.getAliasProxyRuleSetIds(updated.id);
+    return this.toAliasResponse(updated, updatedRuleSetIds);
   }
 
   /**
@@ -1450,8 +1453,33 @@ export class DeploymentsService {
       .where(whereClause)
       .orderBy(desc(deploymentAliases.updatedAt));
 
+    // Batch-fetch the alias→ruleSet join entries to avoid N+1.
+    const aliasIds = aliases.map((a) => a.id);
+    const ruleSetIdsByAlias = new Map<string, string[]>();
+    if (aliasIds.length > 0) {
+      const joinRows = await db
+        .select({
+          aliasId: aliasProxyRuleSets.aliasId,
+          proxyRuleSetId: aliasProxyRuleSets.proxyRuleSetId,
+        })
+        .from(aliasProxyRuleSets)
+        .where(inArray(aliasProxyRuleSets.aliasId, aliasIds))
+        .orderBy(asc(aliasProxyRuleSets.order));
+
+      for (const row of joinRows) {
+        const existing = ruleSetIdsByAlias.get(row.aliasId);
+        if (existing) {
+          existing.push(row.proxyRuleSetId);
+        } else {
+          ruleSetIdsByAlias.set(row.aliasId, [row.proxyRuleSetId]);
+        }
+      }
+    }
+
     return {
-      data: aliases.map((a) => this.toAliasResponse(a)),
+      data: aliases.map((a) =>
+        this.toAliasResponse(a, ruleSetIdsByAlias.get(a.id) ?? (a.proxyRuleSetId ? [a.proxyRuleSetId] : [])),
+      ),
     };
   }
 
@@ -1616,7 +1644,13 @@ export class DeploymentsService {
     return rows.map((r) => r.proxyRuleSetId);
   }
 
-  private toAliasResponse(alias: typeof deploymentAliases.$inferSelect): AliasResponseDto {
+  private toAliasResponse(
+    alias: typeof deploymentAliases.$inferSelect,
+    ruleSetIds?: string[],
+  ): AliasResponseDto {
+    // Resolve rule set IDs: prefer the join table (passed in), fall back to legacy column.
+    const ids =
+      ruleSetIds ?? (alias.proxyRuleSetId ? [alias.proxyRuleSetId] : []);
     return {
       id: alias.id,
       repository: alias.repository,
@@ -1625,6 +1659,8 @@ export class DeploymentsService {
       deploymentId: alias.deploymentId,
       isAutoPreview: alias.isAutoPreview,
       basePath: alias.basePath ?? undefined,
+      proxyRuleSetIds: ids,
+      proxyRuleSetId: ids[0],
       createdAt: alias.createdAt,
       updatedAt: alias.updatedAt,
     };

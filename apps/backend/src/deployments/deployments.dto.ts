@@ -405,6 +405,17 @@ export class AliasResponseDto {
   @ApiPropertyOptional({ description: 'Base path for this alias (for auto-preview aliases)' })
   basePath?: string;
 
+  @ApiPropertyOptional({
+    description: 'Ordered proxy rule set IDs attached to this alias. Empty array if none attached.',
+    type: [String],
+  })
+  proxyRuleSetIds?: string[];
+
+  @ApiPropertyOptional({
+    description: 'Legacy single proxy rule set ID. Equals proxyRuleSetIds[0] when set, undefined otherwise. Prefer proxyRuleSetIds for new code.',
+  })
+  proxyRuleSetId?: string;
+
   @ApiProperty()
   createdAt: Date;
 
