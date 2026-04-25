@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.5](https://github.com/bffless/ce/compare/v0.1.4...v0.1.5) (2026-04-25)
+
+
+### Bug Fixes
+
+* include proxyRuleSetIds in alias responses ([4a9e7b1](https://github.com/bffless/ce/commit/4a9e7b11762625f4305a5c3bf03800a9c86e8b28))
+* prune orphan nginx config files on hourly cron ([54cee9e](https://github.com/bffless/ce/commit/54cee9e6a442ea76e10148319d2f02a65a3106be))
+
 ## [0.1.4](https://github.com/bffless/ce/compare/v0.1.3...v0.1.4) (2026-04-25)
 
 
