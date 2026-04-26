@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { Readable } from 'stream';
 import { ProxyRule, ProxyHeaderConfig } from '../db/schema/proxy-rules.schema';
 
 @Injectable()
@@ -276,6 +277,23 @@ export class ProxyService {
   private getRequestBody(req: Request): BodyInit | null {
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
       return null;
+    }
+
+    // Multipart: NestJS body-parser doesn't handle multipart/form-data, so the
+    // raw stream is still readable. Stream it directly to fetch so file bytes
+    // (and the multipart boundary) survive the proxy hop. Without this, req.body
+    // is {} and we'd forward "{}" with the original multipart Content-Type
+    // header, which fails downstream with "Unexpected end of form".
+    const contentType = (req.headers['content-type'] || '').toLowerCase();
+    if (contentType.startsWith('multipart/')) {
+      return Readable.toWeb(req) as unknown as BodyInit;
+    }
+
+    // Prefer the raw bytes captured by NestJS rawBody:true when available, so
+    // forwarded JSON/text bodies are byte-identical to what the client sent.
+    const reqWithRaw = req as Request & { rawBody?: Buffer };
+    if (reqWithRaw.rawBody && reqWithRaw.rawBody.length > 0) {
+      return new Uint8Array(reqWithRaw.rawBody);
     }
 
     // Express with body-parser stores the parsed body in req.body

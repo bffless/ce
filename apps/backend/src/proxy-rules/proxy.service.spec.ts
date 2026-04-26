@@ -1,5 +1,6 @@
 import { ProxyService } from './proxy.service';
 import { Request, Response } from 'express';
+import { Readable } from 'stream';
 import { ProxyRule } from '../db/schema/proxy-rules.schema';
 
 // Mock fetch globally
@@ -203,6 +204,44 @@ describe('ProxyService', () => {
       const body = (service as any).getRequestBody(req);
 
       expect(body).toBeInstanceOf(Uint8Array);
+    });
+
+    it('should stream raw req for multipart/form-data instead of re-serializing req.body', () => {
+      // Regression: NestJS body-parser doesn't parse multipart, so req.body is {}.
+      // The old code JSON-stringified that to "{}" and forwarded it with the
+      // multipart Content-Type header, which made downstream parsers fail with
+      // "Unexpected end of form" because the boundary was nowhere in the 2-byte body.
+      const stream = Readable.from(Buffer.from('binary multipart bytes'));
+      Object.assign(stream, {
+        method: 'POST',
+        url: '/api/uploads',
+        headers: {
+          'content-type': 'multipart/form-data; boundary=----TestBoundary',
+        },
+        body: {},
+      });
+
+      const body = (service as any).getRequestBody(stream);
+
+      expect(body).not.toBe('{}');
+      expect(body).not.toBeNull();
+      // Readable.toWeb returns a Web ReadableStream with a getReader method
+      expect(typeof (body as any).getReader).toBe('function');
+    });
+
+    it('should prefer rawBody over re-serialized req.body when available', () => {
+      const raw = Buffer.from('{"a":1}');
+      const req = createMockRequest({
+        method: 'POST',
+        body: { a: 1 },
+        // rawBody is added by NestJS bootstrap when rawBody:true is set.
+        ...({ rawBody: raw } as Partial<Request>),
+      });
+
+      const body = (service as any).getRequestBody(req);
+
+      expect(body).toBeInstanceOf(Uint8Array);
+      expect(Buffer.from(body as Uint8Array).toString('utf8')).toBe('{"a":1}');
     });
   });
 
