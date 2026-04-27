@@ -341,6 +341,7 @@ export interface StripeCheckoutHandlerConfig extends BaseHandlerConfig {
   quantity?: string;
   metadata?: Record<string, string>;
   environment?: 'sandbox' | 'production';
+  allowPromotionCodes?: boolean;
 }
 
 export interface StripeWebhookHandlerConfig extends BaseHandlerConfig {

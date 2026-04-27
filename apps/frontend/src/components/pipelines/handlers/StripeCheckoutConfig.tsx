@@ -7,6 +7,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { ExpressionInput } from './ExpressionInput';
 import type { PreviousStep } from './AvailableVariables';
 import type { StripeCheckoutHandlerConfig } from './types';
@@ -26,6 +27,7 @@ export function StripeCheckoutConfig({ config, onChange, previousSteps = [] }: S
   const [clientReferenceId, setClientReferenceId] = useState(config.clientReferenceId || '');
   const [quantity, setQuantity] = useState(config.quantity || '1');
   const [environment, setEnvironment] = useState<'sandbox' | 'production' | ''>(config.environment || '');
+  const [allowPromotionCodes, setAllowPromotionCodes] = useState<boolean>(config.allowPromotionCodes ?? false);
   const [metadata, setMetadata] = useState<Array<{ key: string; value: string }>>(
     Object.entries(config.metadata || {}).map(([key, value]) => ({ key, value }))
   );
@@ -44,9 +46,10 @@ export function StripeCheckoutConfig({ config, onChange, previousSteps = [] }: S
       ...(clientReferenceId ? { clientReferenceId } : {}),
       ...(quantity !== '1' ? { quantity } : {}),
       ...(environment ? { environment } : {}),
+      ...(allowPromotionCodes ? { allowPromotionCodes: true } : {}),
       ...(Object.keys(metadataObj).length > 0 ? { metadata: metadataObj } : {}),
     });
-  }, [priceId, mode, successUrl, cancelUrl, customerEmail, clientReferenceId, quantity, environment, metadata]);
+  }, [priceId, mode, successUrl, cancelUrl, customerEmail, clientReferenceId, quantity, environment, allowPromotionCodes, metadata]);
 
   return (
     <div className="space-y-4">
@@ -152,6 +155,19 @@ export function StripeCheckoutConfig({ config, onChange, previousSteps = [] }: S
           onChange={setQuantity}
           placeholder="1"
           previousSteps={previousSteps}
+        />
+      </div>
+
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-1">
+          <Label>Allow promotion codes</Label>
+          <p className="text-xs text-muted-foreground">
+            Show "Add promotion code" on the Stripe Checkout page so customers can apply coupons.
+          </p>
+        </div>
+        <Switch
+          checked={allowPromotionCodes}
+          onCheckedChange={setAllowPromotionCodes}
         />
       </div>
 

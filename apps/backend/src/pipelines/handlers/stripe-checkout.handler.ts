@@ -29,6 +29,8 @@ export interface StripeCheckoutHandlerConfig extends BaseHandlerConfig {
   quantity?: string;
   /** Override the project's active Stripe environment for this step */
   environment?: 'sandbox' | 'production';
+  /** Show "Add promotion code" field on the Stripe Checkout page */
+  allowPromotionCodes?: boolean;
 }
 
 /**
@@ -121,6 +123,10 @@ export class StripeCheckoutHandler implements StepHandler<StripeCheckoutHandlerC
       success_url: successUrl,
       cancel_url: cancelUrl,
     };
+
+    if (config.allowPromotionCodes) {
+      sessionParams.allow_promotion_codes = true;
+    }
 
     // Optional: customer email
     if (config.customerEmail) {
