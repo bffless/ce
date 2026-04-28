@@ -331,17 +331,45 @@ export interface SignedUrlHandlerConfig extends BaseHandlerConfig {
   expiresIn?: number;
 }
 
+export interface StripeCheckoutLineItem {
+  price: string;
+  quantity?: string;
+}
+
+export interface StripeCheckoutSubscriptionData {
+  /** Expression resolving to a number of days (e.g. "30" for one free month). */
+  trialPeriodDays?: string;
+}
+
+/**
+ * Server-side discount. Provide exactly one of `coupon` or `promotionCode`.
+ * Mutually exclusive with `allowPromotionCodes`.
+ */
+export interface StripeCheckoutDiscount {
+  coupon?: string;
+  /** Promotion Code object ID (promo_xxx), not the human-readable code. */
+  promotionCode?: string;
+}
+
 export interface StripeCheckoutHandlerConfig extends BaseHandlerConfig {
-  priceId: string;
+  /** Single Price ID (legacy). Use `lineItems` for multi-price checkouts. */
+  priceId?: string;
+  /** Multiple line items — required for bundling one-time + recurring prices. */
+  lineItems?: StripeCheckoutLineItem[];
   mode?: 'payment' | 'subscription';
   successUrl: string;
   cancelUrl: string;
   customerEmail?: string;
   clientReferenceId?: string;
+  /** Quantity for the legacy `priceId` field. Ignored when `lineItems` is set. */
   quantity?: string;
   metadata?: Record<string, string>;
   environment?: 'sandbox' | 'production';
   allowPromotionCodes?: boolean;
+  /** Server-side discounts. Mutually exclusive with `allowPromotionCodes`. */
+  discounts?: StripeCheckoutDiscount[];
+  /** Subscription-mode-only options (free trial, etc.) */
+  subscriptionData?: StripeCheckoutSubscriptionData;
 }
 
 export interface StripeWebhookHandlerConfig extends BaseHandlerConfig {
