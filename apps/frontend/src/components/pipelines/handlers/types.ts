@@ -299,6 +299,17 @@ export interface HttpRequestHandlerConfig extends BaseHandlerConfig {
   headers?: Record<string, string>;
   /** Headers to forward from the original request */
   forwardHeaders?: string[];
+  /**
+   * Whether to treat 4xx/5xx HTTP responses as step failures.
+   *
+   * - `true` (default): non-2xx halts the pipeline with HTTP_REQUEST_ERROR.
+   * - `false`: any HTTP response returns a structured output `{ ok, status, statusText, body }`
+   *   so the next step can branch on `steps.<name>.ok`. Useful for health probes, polling,
+   *   and any case where a non-2xx is a normal outcome.
+   *
+   * Network errors and timeouts still fail the step regardless.
+   */
+  failOnError?: boolean;
 }
 
 export type HandlerConfig =

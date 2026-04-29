@@ -43,6 +43,8 @@ export function HttpRequestConfig({ config, onChange, previousSteps = [] }: Http
   );
   const [forwardHeaders, setForwardHeaders] = useState<string[]>(config.forwardHeaders || []);
   const [newForwardHeader, setNewForwardHeader] = useState('');
+  // failOnError defaults to true at the backend; the UI mirrors that — switch ON means halt on 4xx/5xx.
+  const [failOnError, setFailOnError] = useState(config.failOnError !== false);
 
   useEffect(() => {
     const headerObj = headers.length > 0
@@ -68,8 +70,11 @@ export function HttpRequestConfig({ config, onChange, previousSteps = [] }: Http
       body: resolvedBody,
       headers: headerObj,
       forwardHeaders: fwdHeaders,
+      // Only persist failOnError when explicitly false — keeps configs identical
+      // to existing rule shapes when the user hasn't touched the toggle.
+      failOnError: failOnError ? undefined : false,
     });
-  }, [url, method, forwardAuth, body, bodyMode, bodyFields, headers, forwardHeaders, onChange]);
+  }, [url, method, forwardAuth, body, bodyMode, bodyFields, headers, forwardHeaders, failOnError, onChange]);
 
   const isBodyMethod = method !== 'GET';
 
@@ -123,6 +128,21 @@ export function HttpRequestConfig({ config, onChange, previousSteps = [] }: Http
             </p>
           </div>
           <Switch checked={forwardAuth} onCheckedChange={setForwardAuth} />
+        </div>
+
+        {/* Fail on Error */}
+        <div className="flex items-center justify-between rounded-lg border p-3">
+          <div className="space-y-0.5">
+            <Label>Fail on non-2xx response</Label>
+            <p className="text-xs text-muted-foreground">
+              When ON (default), 4xx/5xx halts the pipeline with{' '}
+              <code className="text-[10px]">HTTP_REQUEST_ERROR</code>. When OFF, any HTTP response
+              is returned as <code className="text-[10px]">{'{ ok, status, statusText, body }'}</code>{' '}
+              so the next step can branch on <code className="text-[10px]">steps.&lt;name&gt;.ok</code>.
+              Useful for probes, health checks, and polling.
+            </p>
+          </div>
+          <Switch checked={failOnError} onCheckedChange={setFailOnError} />
         </div>
 
         {/* Body (for non-GET methods) */}
