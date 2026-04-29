@@ -59,6 +59,36 @@ export interface HttpRequestHandlerConfig {
    * Condition expression - if provided, step only runs if this evaluates to true
    */
   condition?: string;
+
+  /**
+   * Whether to treat non-2xx HTTP responses as step failures.
+   *
+   * - `true` (default, backward compat): a 4xx/5xx response halts the pipeline
+   *   with an `HTTP_REQUEST_ERROR` step error. The client sees a 500.
+   * - `false`: any HTTP response (including 4xx/5xx) is returned as a successful
+   *   step output of shape `{ ok, status, statusText, body }`. The pipeline
+   *   continues; the next step can branch on `steps.<name>.ok` or
+   *   `steps.<name>.status`. Useful for health checks, polling probes, and any
+   *   case where a non-2xx is a normal outcome rather than an error.
+   *
+   * Network errors (DNS, connection refused, TLS) and timeouts still fail the
+   * step regardless of this flag — those are genuine errors, not response
+   * outcomes.
+   *
+   * @default true
+   */
+  failOnError?: boolean;
+}
+
+/**
+ * Output shape when `failOnError: false`. Always returned for any HTTP
+ * response (2xx or otherwise) so subsequent steps can inspect status.
+ */
+export interface HttpRequestSafeOutput {
+  ok: boolean;
+  status: number;
+  statusText: string;
+  body: unknown;
 }
 
 const DEFAULT_TIMEOUT = 30000;
@@ -222,7 +252,12 @@ export class HttpRequestHandler implements StepHandler<HttpRequestHandlerConfig>
         responseBody = await response.text();
       }
 
-      if (!response.ok) {
+      // failOnError defaults to true for backward compat. When explicitly false,
+      // any HTTP response (including 4xx/5xx) is a successful step outcome with
+      // a structured output the next step can branch on.
+      const failOnError = config.failOnError !== false;
+
+      if (!response.ok && failOnError) {
         return {
           success: false,
           error: {
@@ -234,6 +269,19 @@ export class HttpRequestHandler implements StepHandler<HttpRequestHandlerConfig>
               body: responseBody,
             },
           },
+        };
+      }
+
+      if (!failOnError) {
+        const safeOutput: HttpRequestSafeOutput = {
+          ok: response.ok,
+          status: response.status,
+          statusText: response.statusText,
+          body: responseBody,
+        };
+        return {
+          success: true,
+          output: safeOutput,
         };
       }
 
