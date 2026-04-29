@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.11](https://github.com/bffless/ce/compare/v0.1.10...v0.1.11) (2026-04-29)
+
+
+### Features
+
+* **pipelines:** http_request handler — failOnError option for probes… ([d56d4ca](https://github.com/bffless/ce/commit/d56d4ca667415f15b48822cd6e550a817f7f8e7c))
+* **pipelines:** http_request handler — failOnError option for probes/health checks ([854d5ec](https://github.com/bffless/ce/commit/854d5ece315cc0fa3b5054b5748b6871981886c2))
+
 ## [0.1.10](https://github.com/bffless/ce/compare/v0.1.9...v0.1.10) (2026-04-28)
 
 
