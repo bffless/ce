@@ -132,24 +132,23 @@ export class PipelineExecutionService {
           context.stepOutputs[step.name] = lastStepResult.output;
         }
 
-        // Check for early termination (e.g., honeypot detection)
-        // Step succeeded but wants to stop pipeline and return its output as final response
+        // Check for early termination (e.g., honeypot detection, stripe_webhook ignoring
+        // an event type, ai_handler streaming response already sent, file-serve completing).
+        // Step succeeded but wants to stop pipeline and return its output as final response.
+        // Post-steps are SKIPPED on early termination: the main pipeline didn't fully run,
+        // so any side effects (notifications, follow-ups) would be operating on partial state.
         if (lastStepResult.terminates) {
           const executionEndTime = Date.now();
           this.logger.debug(
-            `Pipeline '${pipeline.name}' terminated early at step '${step.name || step.id}'`,
+            `Pipeline '${pipeline.name}' terminated early at step '${step.name || step.id}' — skipping post-steps`,
           );
 
           const response = this.buildResponse(lastStepResult, context);
-
-          // Fire-and-forget post-processing steps
-          const postStepsPromise = this.firePostSteps(pipeline, context);
 
           return {
             success: true,
             response,
             stepOutputs: context.stepOutputs,
-            postStepsPromise,
             debug: {
               validators: validatorDebugInfo,
               steps: stepDebugInfo,
