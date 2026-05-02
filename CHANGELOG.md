@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.12](https://github.com/bffless/ce/compare/v0.1.11...v0.1.12) (2026-05-01)
+
+
+### Bug Fixes
+
+* postSteps not processing on failure ([9ef931a](https://github.com/bffless/ce/commit/9ef931acb5d2fee346460b62c6dce565135607be))
+
 ## [0.1.11](https://github.com/bffless/ce/compare/v0.1.10...v0.1.11) (2026-04-29)
 
 
