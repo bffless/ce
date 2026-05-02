@@ -28,6 +28,7 @@ import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 import { EmailService } from '../email/email.service';
 import { ProjectResolverService } from './project-resolver.service';
 import { PermissionsService } from '../permissions/permissions.service';
+import { buildLoginMethodsResponse } from './login-methods.helper';
 import { Project } from '../db/schema';
 import { db } from '../db/client';
 import { users } from '../db/schema';
@@ -809,17 +810,20 @@ export class CustomDomainAuthController {
 
   @Get('login-methods')
   @ApiOperation({
-    summary: 'Get available login methods (in-page, custom domain)',
-    description: 'Public endpoint. Returns whether email/password and Google OAuth are enabled.',
+    summary: 'Get site auth capabilities (custom domain)',
+    description:
+      'Public endpoint. Returns which auth providers are enabled for this workspace, ' +
+      'and (when REQUIRE_PROJECT_MEMBERSHIP is on and the hostname maps to a project) ' +
+      'whether public signups are allowed for that project. Used by AuthDialog to decide ' +
+      'which tabs to render.',
   })
-  async getLoginMethods(): Promise<{ hasPassword: boolean; hasGoogle: boolean }> {
-    let hasGoogle = false;
-    try {
-      hasGoogle = await this.featureFlagsService.isEnabled('ENABLE_GOOGLE_OAUTH');
-    } catch {
-      hasGoogle = false;
-    }
-    return { hasPassword: true, hasGoogle };
+  async getLoginMethods(@Req() req: Request) {
+    return buildLoginMethodsResponse({
+      featureFlagsService: this.featureFlagsService,
+      setupService: this.setupService,
+      projectResolver: this.projectResolver,
+      req,
+    });
   }
 
   @Post('check-email')

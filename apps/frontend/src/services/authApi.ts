@@ -215,7 +215,11 @@ export const authApi = api.injectEndpoints({
     }),
 
     getLoginMethods: builder.query<LoginMethodsResponse, void>({
-      query: () => '/api/auth/login-methods',
+      // User-scoped (returns the current user's linked methods, used by the
+      // change-password card). The site-capability endpoint at the same name
+      // moved here when /api/auth/login-methods was reclaimed for the public
+      // AuthDialog probe.
+      query: () => '/api/auth/me/login-methods',
     }),
 
     changePassword: builder.mutation<ChangePasswordResponse, ChangePasswordDto>({
