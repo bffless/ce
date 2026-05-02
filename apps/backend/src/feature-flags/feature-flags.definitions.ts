@@ -379,6 +379,18 @@ export const FLAG_DEFINITIONS: Record<string, FlagDefinition> = {
     exposeToClient: true,
   },
 
+  REQUIRE_PROJECT_MEMBERSHIP: {
+    envKey: 'FEATURE_REQUIRE_PROJECT_MEMBERSHIP',
+    defaultValue: false,
+    type: 'boolean',
+    description:
+      'When enabled, users must have a project membership (any role) to authenticate against a specific project on signin/signup. ' +
+      'Each project can independently allow public signups via projects.allowPublicSignup. ' +
+      'When disabled (default), any workspace user can authenticate against any project — legacy behavior.',
+    category: 'features',
+    exposeToClient: true,
+  },
+
   TOS_URL: {
     envKey: 'FEATURE_TOS_URL',
     defaultValue: '',

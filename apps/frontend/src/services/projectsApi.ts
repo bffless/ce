@@ -105,6 +105,7 @@ export interface Project {
   isPublic: boolean;
   unauthorizedBehavior: UnauthorizedBehavior;
   requiredRole: RequiredRole;
+  allowPublicSignup: boolean;
   settings: Record<string, any> | null;
   defaultProxyRuleSetId: string | null;
   defaultProxyRuleSetIds?: string[];
@@ -128,6 +129,7 @@ export interface UpdateProjectDto {
   isPublic?: boolean;
   unauthorizedBehavior?: UnauthorizedBehavior;
   requiredRole?: RequiredRole;
+  allowPublicSignup?: boolean;
   settings?: Record<string, any>;
   defaultProxyRuleSetId?: string | null;
   defaultProxyRuleSetIds?: string[];

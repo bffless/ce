@@ -82,6 +82,14 @@ export class UpdateProjectDto {
   @IsOptional()
   requiredRole?: 'authenticated' | 'viewer' | 'contributor' | 'admin' | 'owner';
 
+  @ApiPropertyOptional({
+    description:
+      'Whether visitors can self-register on this project\'s site and be auto-granted a guest membership. Only consulted when REQUIRE_PROJECT_MEMBERSHIP is enabled.',
+  })
+  @IsBoolean()
+  @IsOptional()
+  allowPublicSignup?: boolean;
+
   @ApiPropertyOptional({ description: 'Project settings (JSON object)' })
   @IsObject()
   @IsOptional()
@@ -126,6 +134,9 @@ export class ProjectResponseDto {
 
   @ApiProperty({ enum: ['authenticated', 'viewer', 'contributor', 'admin', 'owner'] })
   requiredRole: 'authenticated' | 'viewer' | 'contributor' | 'admin' | 'owner';
+
+  @ApiProperty({ description: 'Whether visitors can self-register on this site' })
+  allowPublicSignup: boolean;
 
   @ApiProperty({ nullable: true })
   settings: Record<string, any> | null;

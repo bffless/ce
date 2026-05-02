@@ -30,6 +30,7 @@ describe('RepoBrowserService', () => {
     isPublic: true,
     unauthorizedBehavior: 'not_found',
     requiredRole: 'authenticated',
+    allowPublicSignup: false,
     settings: {},
     defaultProxyRuleSetId: null,
     aiProviders: null,

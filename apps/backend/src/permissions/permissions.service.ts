@@ -248,7 +248,37 @@ export class PermissionsService {
       throw new ForbiddenException('Cannot grant owner role. Use transfer ownership instead.');
     }
 
-    // Check if permission already exists
+    await this.upsertProjectPermission(projectId, userId, role, grantedBy);
+  }
+
+  /**
+   * Grant a project permission as a system action (e.g., signup auto-grant when
+   * `projects.allowPublicSignup` is true, or any other code path where there's
+   * no human granter to authorize the action).
+   *
+   * Bypasses the granter-must-be-admin check used by `grantPermission`. The
+   * resulting `project_permissions.granted_by` is null, which is the audit
+   * marker for system-granted memberships. Callers should be deliberate —
+   * grep for `grantSystemPermission` to audit every bypass site.
+   */
+  async grantSystemPermission(
+    projectId: string,
+    userId: string,
+    role: ProjectRole,
+  ): Promise<void> {
+    if (role === 'owner') {
+      throw new ForbiddenException('Cannot grant owner role via system. Use transfer ownership.');
+    }
+
+    await this.upsertProjectPermission(projectId, userId, role, null);
+  }
+
+  private async upsertProjectPermission(
+    projectId: string,
+    userId: string,
+    role: ProjectRole,
+    grantedBy: string | null,
+  ): Promise<void> {
     const [existing] = await db
       .select()
       .from(projectPermissions)
@@ -258,7 +288,6 @@ export class PermissionsService {
       .limit(1);
 
     if (existing) {
-      // Update existing permission
       await db
         .update(projectPermissions)
         .set({ role, grantedBy, grantedAt: new Date() })
@@ -266,7 +295,6 @@ export class PermissionsService {
           and(eq(projectPermissions.projectId, projectId), eq(projectPermissions.userId, userId)),
         );
     } else {
-      // Create new permission
       await db.insert(projectPermissions).values({
         projectId,
         userId,

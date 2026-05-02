@@ -16,7 +16,9 @@ import { SetupModule } from '../setup/setup.module';
 import { OnboardingRulesModule } from '../onboarding-rules/onboarding-rules.module';
 import { ProjectInviteLinksModule } from '../project-invite-links/project-invite-links.module';
 import { DomainsModule } from '../domains/domains.module';
+import { PermissionsModule } from '../permissions/permissions.module';
 import { VisibilityService } from '../domains/visibility.service';
+import { ProjectResolverService } from './project-resolver.service';
 
 @Module({
   imports: [DomainsModule],
@@ -39,6 +41,7 @@ export class AuthModule implements NestModule {
         forwardRef(() => OnboardingRulesModule),
         forwardRef(() => ProjectInviteLinksModule),
         forwardRef(() => DomainsModule),
+        forwardRef(() => PermissionsModule),
       ],
       controllers: [AuthController, CustomDomainAuthController],
       providers: [
@@ -51,6 +54,7 @@ export class AuthModule implements NestModule {
         RolesGuard,
         EmailVerificationGuard,
         VisibilityService, // Required for AuthMiddleware
+        ProjectResolverService,
         {
           provide: APP_GUARD,
           useClass: EmailVerificationGuard,
@@ -65,6 +69,7 @@ export class AuthModule implements NestModule {
         OptionalAuthGuard,
         RolesGuard,
         EmailVerificationGuard,
+        ProjectResolverService,
       ],
     };
   }

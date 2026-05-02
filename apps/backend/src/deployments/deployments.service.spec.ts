@@ -58,6 +58,7 @@ describe('DeploymentsService', () => {
     isPublic: true, // Changed to true for getDefaultAlias tests
     unauthorizedBehavior: 'not_found',
     requiredRole: 'authenticated',
+    allowPublicSignup: false,
     settings: {},
     defaultProxyRuleSetId: null,
     aiProviders: null,
