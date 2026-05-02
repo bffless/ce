@@ -570,6 +570,31 @@ export class AuthController {
       const userId = req.session.getUserId();
       const sessionHandle = req.session.getHandle();
 
+      // Project-membership gate (REQUIRE_PROJECT_MEMBERSHIP master switch).
+      // Closes the parent-domain cookie bleed across *.bffless.app: a user with
+      // a workspace SuperTokens cookie who lands on a sister site they have no
+      // membership in is reported as anonymous here. Cookie is intentionally
+      // NOT cleared — it may still be valid for sites where they ARE a member.
+      // Runs early so we short-circuit before the more expensive lookups.
+      // Admin domain (resolver returns null) and pending-invitation flow on
+      // admin domain are unaffected. A pending workspace invitation that
+      // somehow lands on a project subdomain is correctly treated as anonymous
+      // there (no project membership row exists).
+      if (await this.featureFlagsService.isEnabled('REQUIRE_PROJECT_MEMBERSHIP')) {
+        const project = await this.projectResolver.resolveProjectFromRequest(req);
+        if (project) {
+          const role = await this.permissions.getUserProjectRole(userId, project.id);
+          if (!role) {
+            return {
+              session: { userId, handle: sessionHandle },
+              user: null,
+              emailVerified: false,
+              emailVerificationRequired: false,
+            };
+          }
+        }
+      }
+
       // Look up user in our database by user ID
       let user = await this.authService.getUserById(userId);
 
