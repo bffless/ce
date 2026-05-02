@@ -24,6 +24,7 @@ import { DomainTokenService } from './domain-token.service';
 import { ProjectInviteLinksService } from '../project-invite-links/project-invite-links.service';
 import { ProjectResolverService } from './project-resolver.service';
 import { PermissionsService } from '../permissions/permissions.service';
+import { buildLoginMethodsResponse } from './login-methods.helper';
 import { CreateDomainTokenDto } from './dto/create-domain-token.dto';
 import { db } from '../db/client';
 import { workspaceInvitations, domainMappings } from '../db/schema';
@@ -1105,6 +1106,24 @@ export class AuthController {
   }
 
   @Get('login-methods')
+  @ApiOperation({
+    summary: 'Get site auth capabilities (workspace subdomain)',
+    description:
+      'Public endpoint. Returns which auth providers are enabled for this workspace, ' +
+      'and (when REQUIRE_PROJECT_MEMBERSHIP is on and the hostname maps to a project) ' +
+      'whether public signups are allowed for that project. Used by AuthDialog to decide ' +
+      'which tabs to render.',
+  })
+  async getSiteLoginMethods(@Req() req: Request) {
+    return buildLoginMethodsResponse({
+      featureFlagsService: this.featureFlagsService,
+      setupService: this.setupService,
+      projectResolver: this.projectResolver,
+      req,
+    });
+  }
+
+  @Get('me/login-methods')
   @UseGuards(SessionAuthGuard)
   @ApiOperation({
     summary: 'Get login methods for the current user',
@@ -1118,11 +1137,12 @@ export class AuthController {
       type: 'object',
       properties: {
         hasPassword: { type: 'boolean', description: 'Whether the user has email/password login' },
+        hasGoogle: { type: 'boolean', description: 'Whether the user has linked Google OAuth' },
       },
     },
   })
   @ApiResponse({ status: 401, description: 'Not authenticated' })
-  async getLoginMethods(@Req() req: Request & { session?: SessionContainer }) {
+  async getMyLoginMethods(@Req() req: Request & { session?: SessionContainer }) {
     if (!req.session) {
       throw new UnauthorizedException('No active session');
     }
