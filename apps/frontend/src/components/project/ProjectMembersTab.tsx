@@ -5,8 +5,14 @@ import {
   useRevokeUserPermissionMutation,
   type ProjectRole,
 } from '@/services/permissionsApi';
+import {
+  useGetProjectQuery,
+  useUpdateProjectMutation,
+} from '@/services/projectsApi';
+import { useFeatureFlags } from '@/services/featureFlagsApi';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import {
   Table,
@@ -75,10 +81,40 @@ export function ProjectMembersTab({ owner, repo }: ProjectMembersTabProps) {
 
   // Fetch permissions
   const { data, isLoading, error } = useGetProjectPermissionsQuery({ owner, repo });
+  const { data: project } = useGetProjectQuery({ owner, name: repo });
+  const [updateProject, { isLoading: isUpdatingProject }] = useUpdateProjectMutation();
+  const { isEnabled: isFlagEnabled, isReady: areFlagsReady } = useFeatureFlags();
+  const masterSwitchOn = isFlagEnabled('REQUIRE_PROJECT_MEMBERSHIP');
 
   // Mutations
   const [grantPermission, { isLoading: isGranting }] = useGrantUserPermissionMutation();
   const [revokePermission, { isLoading: isRevoking }] = useRevokeUserPermissionMutation();
+
+  const handleAllowPublicSignupToggle = async (next: boolean) => {
+    if (!project) return;
+    try {
+      await updateProject({
+        id: project.id,
+        updates: { allowPublicSignup: next },
+      }).unwrap();
+      toast({
+        title: next ? 'Public signups enabled' : 'Public signups disabled',
+        description: next
+          ? 'Visitors can now register on this site and will be granted guest access.'
+          : 'Self-registration is off. Members must be invited from this tab.',
+      });
+    } catch (err: unknown) {
+      const errorMessage =
+        err && typeof err === 'object' && 'data' in err
+          ? (err.data as { message?: string })?.message || 'An error occurred'
+          : 'An error occurred';
+      toast({
+        title: 'Failed to update setting',
+        description: errorMessage,
+        variant: 'destructive',
+      });
+    }
+  };
 
   const handleAddMember = async () => {
     if (!newUserEmail.trim()) {
@@ -187,9 +223,49 @@ export function ProjectMembersTab({ owner, repo }: ProjectMembersTabProps) {
   }
 
   const users = data?.userPermissions || [];
+  const allowPublicSignup = project?.allowPublicSignup ?? false;
+  const publicSignupToggleDisabled =
+    !project || isUpdatingProject || !areFlagsReady || !masterSwitchOn;
 
   return (
-    <Card>
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Public signups</CardTitle>
+          <CardDescription>
+            Control whether anonymous visitors can self-register on this site
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-start justify-between gap-4 rounded-lg border p-4">
+            <div className="space-y-1 pr-2">
+              <div className="text-base font-medium">Allow public signups</div>
+              <p className="text-sm text-muted-foreground">
+                When enabled, visitors can create their own accounts on this site and are
+                automatically granted guest access. Off by default — turn on for sites with
+                user features like bookings, comments, or saved listings.
+              </p>
+              {areFlagsReady && !masterSwitchOn && (
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  This setting only applies when{' '}
+                  <a href="/admin/settings/auth" className="underline">
+                    Require project membership for site authentication
+                  </a>{' '}
+                  is enabled at the workspace level. While that's off, all workspace users
+                  can authenticate on every project regardless of this setting.
+                </p>
+              )}
+            </div>
+            <Switch
+              checked={allowPublicSignup}
+              onCheckedChange={handleAllowPublicSignupToggle}
+              disabled={publicSignupToggleDisabled}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
@@ -404,5 +480,6 @@ export function ProjectMembersTab({ owner, repo }: ProjectMembersTabProps) {
         )}
       </CardContent>
     </Card>
+    </div>
   );
 }

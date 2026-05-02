@@ -26,6 +26,9 @@ import { AuthService } from './auth.service';
 import { SetupService } from '../setup/setup.service';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 import { EmailService } from '../email/email.service';
+import { ProjectResolverService } from './project-resolver.service';
+import { PermissionsService } from '../permissions/permissions.service';
+import { Project } from '../db/schema';
 import { db } from '../db/client';
 import { users } from '../db/schema';
 
@@ -59,7 +62,22 @@ export class CustomDomainAuthController {
     private readonly setupService: SetupService,
     private readonly featureFlagsService: FeatureFlagsService,
     private readonly emailService: EmailService,
+    private readonly projectResolver: ProjectResolverService,
+    private readonly permissions: PermissionsService,
   ) {}
+
+  /**
+   * Resolve the project (when REQUIRE_PROJECT_MEMBERSHIP is on) for the
+   * inbound request. Returns null when the master switch is off, when the
+   * request comes from the admin domain, or when the hostname doesn't map
+   * to a project.
+   */
+  private async resolveGatedProject(req: Request): Promise<Project | null> {
+    if (!(await this.featureFlagsService.isEnabled('REQUIRE_PROJECT_MEMBERSHIP'))) {
+      return null;
+    }
+    return this.projectResolver.resolveProjectFromRequest(req);
+  }
 
   private getTenantId(): string {
     const isMultiTenant = process.env.SUPERTOKENS_MULTI_TENANT === 'true';
@@ -465,6 +483,16 @@ export class CustomDomainAuthController {
       throw new UnauthorizedException('User account is disabled');
     }
 
+    const project = await this.resolveGatedProject(req);
+    if (project) {
+      const role = await this.permissions.getUserProjectRole(user.id, project.id);
+      if (!role) {
+        // Opaque to client — same shape as wrong credentials so we don't leak
+        // whether this email has an account on a sister site.
+        return { status: 'WRONG_CREDENTIALS_ERROR' };
+      }
+    }
+
     const { hostname, secure } = this.getRequestHost(req);
     await this.issueDomainSession(res, user, hostname, secure);
 
@@ -507,10 +535,45 @@ export class CustomDomainAuthController {
       throw new BadRequestException('Public registration is not available');
     }
 
+    // Project-level public-signup gate. When the master switch is on AND the
+    // request resolves to a project AND that project hasn't opted into public
+    // signups, refuse. Returned as a status string (consistent with the
+    // controller's other shape-based responses) so the in-page AuthDialog can
+    // render a friendly message without parsing an exception.
+    const project = await this.resolveGatedProject(req);
+    if (project && !project.allowPublicSignup) {
+      return { status: 'PUBLIC_SIGNUP_DISABLED' };
+    }
+
     const tenantId = this.getTenantId();
     const signUpResponse = await EmailPassword.signUp(tenantId, email, password);
 
     if (signUpResponse.status === 'EMAIL_ALREADY_EXISTS_ERROR') {
+      // Smart existing-email fallback: when public signups are allowed on this
+      // project AND the visitor knows the password to an existing platform
+      // account, silently grant guest membership and sign them in. This is the
+      // identity-provider model — one BFFless Auth account, many sites.
+      // Wrong-password case still reports EMAIL_ALREADY_EXISTS_ERROR so the
+      // AuthDialog can offer to switch to the sign-in tab.
+      if (project) {
+        const verifyResponse = await EmailPassword.signIn(tenantId, email, password);
+        if (verifyResponse.status === 'OK') {
+          let user = await this.authService.getUserByEmail(email);
+          if (!user) {
+            user = await this.authService.getUserById(verifyResponse.recipeUserId.getAsString());
+          }
+          if (user && !user.disabled) {
+            await this.permissions.grantSystemPermission(project.id, user.id, 'guest');
+            const { hostname, secure } = this.getRequestHost(req);
+            await this.issueDomainSession(res, user, hostname, secure);
+            return {
+              status: 'OK',
+              user: { id: user.id, email: user.email, role: user.role },
+              emailVerificationRequired: false,
+            };
+          }
+        }
+      }
       return { status: 'EMAIL_ALREADY_EXISTS_ERROR' };
     }
     if (signUpResponse.status !== 'OK') {
@@ -520,6 +583,14 @@ export class CustomDomainAuthController {
     const userId = signUpResponse.recipeUserId.getAsString();
     const role: 'admin' | 'user' | 'member' = email === process.env.ADMIN_EMAIL ? 'admin' : 'member';
     const dbUser = await this.authService.createUser(email, role, userId);
+
+    if (project) {
+      try {
+        await this.permissions.grantSystemPermission(project.id, dbUser.id, 'guest');
+      } catch (err) {
+        this.logger.error('[in-page signup] Failed to auto-grant guest membership', err);
+      }
+    }
 
     const verificationRequired = await this.featureFlagsService.isEnabled(
       'ENABLE_EMAIL_VERIFICATION',

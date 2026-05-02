@@ -52,6 +52,22 @@ export const featureFlagsApi = api.injectEndpoints({
       query: (key) => `/api/feature-flags/${key}`,
       providesTags: (_result, _error, key) => [{ type: 'FeatureFlags', id: key }],
     }),
+
+    // Set a single feature flag's value (admin only)
+    setFeatureFlag: builder.mutation<
+      FeatureFlag,
+      { key: string; value: FlagValue; enabled?: boolean }
+    >({
+      query: ({ key, value, enabled }) => ({
+        url: `/api/feature-flags/${key}`,
+        method: 'PUT',
+        body: { value, enabled: enabled ?? true },
+      }),
+      invalidatesTags: (_result, _error, { key }) => [
+        'FeatureFlags',
+        { type: 'FeatureFlags', id: key },
+      ],
+    }),
   }),
 });
 
@@ -60,6 +76,7 @@ export const {
   useGetFeatureFlagsQuery,
   useGetFeatureFlagsByCategoryQuery,
   useGetFeatureFlagQuery,
+  useSetFeatureFlagMutation,
 } = featureFlagsApi;
 
 /**

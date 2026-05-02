@@ -29,6 +29,7 @@ describe('ProjectPermissionGuard', () => {
     isPublic: false,
     unauthorizedBehavior: 'not_found',
     requiredRole: 'authenticated',
+    allowPublicSignup: false,
     settings: {},
     defaultProxyRuleSetId: null,
     aiProviders: null,

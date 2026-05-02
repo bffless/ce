@@ -342,6 +342,75 @@ describe('PermissionsService', () => {
     });
   });
 
+  describe('grantSystemPermission', () => {
+    it('inserts a new permission with grantedBy=null when none exists', async () => {
+      (db.select as jest.Mock).mockReturnValue({
+        from: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockResolvedValue([]),
+      });
+
+      const valuesSpy = jest.fn().mockResolvedValue(undefined);
+      (db.insert as jest.Mock).mockReturnValue({ values: valuesSpy });
+
+      await service.grantSystemPermission(mockProjectId, mockUserId, 'guest');
+
+      expect(db.insert).toHaveBeenCalled();
+      expect(valuesSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId: mockProjectId,
+          userId: mockUserId,
+          role: 'guest',
+          grantedBy: null,
+        }),
+      );
+    });
+
+    it('updates an existing permission idempotently', async () => {
+      (db.select as jest.Mock).mockReturnValue({
+        from: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockResolvedValue([{ role: 'guest' }]),
+      });
+
+      const setSpy = jest.fn().mockReturnThis();
+      (db.update as jest.Mock).mockReturnValue({
+        set: setSpy,
+        where: jest.fn().mockResolvedValue(undefined),
+      });
+
+      await service.grantSystemPermission(mockProjectId, mockUserId, 'viewer');
+
+      expect(db.update).toHaveBeenCalled();
+      expect(setSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ role: 'viewer', grantedBy: null }),
+      );
+    });
+
+    it('rejects the owner role', async () => {
+      await expect(
+        service.grantSystemPermission(mockProjectId, mockUserId, 'owner' as any),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('does NOT consult the granter (no self-admin check)', async () => {
+      const roleSpy = jest.spyOn(service, 'getUserProjectRole');
+
+      (db.select as jest.Mock).mockReturnValue({
+        from: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockResolvedValue([]),
+      });
+      (db.insert as jest.Mock).mockReturnValue({
+        values: jest.fn().mockResolvedValue(undefined),
+      });
+
+      await service.grantSystemPermission(mockProjectId, mockUserId, 'guest');
+
+      expect(roleSpy).not.toHaveBeenCalled();
+    });
+  });
+
   describe('revokePermission', () => {
     it('should revoke permission if revoker is admin', async () => {
       jest.spyOn(service, 'getUserProjectRole').mockResolvedValue('admin');

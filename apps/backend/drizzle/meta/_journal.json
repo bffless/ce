@@ -162,6 +162,13 @@
       "when": 1776559499009,
       "tag": "0022_crazy_wendigo",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1777733408711,
+      "tag": "0023_ambiguous_black_bird",
+      "breakpoints": true
     }
   ]
 }

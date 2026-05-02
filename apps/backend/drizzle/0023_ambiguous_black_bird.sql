@@ -1,0 +1,1 @@
+ALTER TABLE "projects" ADD COLUMN "allow_public_signup" boolean DEFAULT false NOT NULL;

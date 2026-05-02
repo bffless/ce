@@ -39,6 +39,13 @@ export const projects = pgTable(
     requiredRole: varchar('required_role', { length: 20 })
       .default('authenticated')
       .notNull(),
+    /**
+     * When true, anonymous visitors can self-register on this project's site
+     * and are auto-granted a `guest` membership. Only consulted when the
+     * platform feature flag REQUIRE_PROJECT_MEMBERSHIP is enabled; otherwise
+     * the legacy "any workspace user can authenticate anywhere" path runs.
+     */
+    allowPublicSignup: boolean('allow_public_signup').default(false).notNull(),
     settings: jsonb('settings'), // Extensible settings object
 
     /**

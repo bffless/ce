@@ -22,6 +22,8 @@ import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 import { OnboardingExecutorService } from '../onboarding-rules/onboarding-executor.service';
 import { DomainTokenService } from './domain-token.service';
 import { ProjectInviteLinksService } from '../project-invite-links/project-invite-links.service';
+import { ProjectResolverService } from './project-resolver.service';
+import { PermissionsService } from '../permissions/permissions.service';
 import { CreateDomainTokenDto } from './dto/create-domain-token.dto';
 import { db } from '../db/client';
 import { workspaceInvitations, domainMappings } from '../db/schema';
@@ -79,6 +81,8 @@ export class AuthController {
     private readonly onboardingExecutorService: OnboardingExecutorService,
     private readonly domainTokenService: DomainTokenService,
     private readonly projectInviteLinksService: ProjectInviteLinksService,
+    private readonly projectResolver: ProjectResolverService,
+    private readonly permissions: PermissionsService,
   ) {}
 
   private getTenantId(): string {
@@ -90,6 +94,52 @@ export class AuthController {
 
   private async isEmailVerificationRequired(): Promise<boolean> {
     return this.featureFlagsService.isEnabled('ENABLE_EMAIL_VERIFICATION');
+  }
+
+  /**
+   * If REQUIRE_PROJECT_MEMBERSHIP is enabled and the request resolves to a
+   * project, refuse the signin/signup unless the user has a project-permission
+   * row. Throws UnauthorizedException with the same opaque message we use for
+   * wrong credentials so we don't leak which sister-site accounts exist.
+   *
+   * No-op when the feature flag is off, when the request comes from the admin
+   * domain, or when the hostname doesn't map to a project (workspace-level
+   * legacy flow).
+   */
+  private async enforceProjectMembership(req: Request, userId: string): Promise<void> {
+    if (!(await this.featureFlagsService.isEnabled('REQUIRE_PROJECT_MEMBERSHIP'))) {
+      return;
+    }
+    const project = await this.projectResolver.resolveProjectFromRequest(req);
+    if (!project) return;
+    const role = await this.permissions.getUserProjectRole(userId, project.id);
+    if (!role) {
+      throw new UnauthorizedException('Invalid email or password');
+    }
+  }
+
+  /**
+   * After a successful signup, auto-grant `guest` membership on the project
+   * resolved from the request hostname — but only if the user has no role
+   * yet, so we don't downgrade roles granted by an invitation flow that ran
+   * earlier in the request.
+   *
+   * No-op when no project resolves (admin/legacy flow) or when the master
+   * switch is off (caller passes `null` for `requestProject`).
+   */
+  private async autoGrantGuestIfPublicSignup(
+    requestProject: { id: string } | null,
+    userId: string,
+  ): Promise<void> {
+    if (!requestProject) return;
+    const existingRole = await this.permissions.getUserProjectRole(userId, requestProject.id);
+    if (existingRole) return;
+    try {
+      await this.permissions.grantSystemPermission(requestProject.id, userId, 'guest');
+    } catch (err) {
+      // Don't fail the signup if the grant fails; log so it can be repaired.
+      this.logger.error('[Signup] Failed to auto-grant guest membership:', err);
+    }
   }
 
   @Post('signup')
@@ -152,6 +202,26 @@ export class AuthController {
           'Public registration is not available. Please contact an administrator for an invitation.',
         );
       }
+    }
+
+    // Project-level public-signup gate (REQUIRE_PROJECT_MEMBERSHIP master switch).
+    // Resolved once and reused below for the auto-grant after user creation.
+    const membershipGateOn = await this.featureFlagsService.isEnabled(
+      'REQUIRE_PROJECT_MEMBERSHIP',
+    );
+    const requestProject = membershipGateOn
+      ? await this.projectResolver.resolveProjectFromRequest(req)
+      : null;
+
+    if (
+      requestProject &&
+      !requestProject.allowPublicSignup &&
+      !invitation &&
+      !body.projectInviteToken
+    ) {
+      throw new BadRequestException(
+        'Public signups are not enabled for this site. Please contact an administrator for an invitation.',
+      );
     }
 
     try {
@@ -219,6 +289,8 @@ export class AuthController {
             this.logger.error('[Signup] Project invite link redemption failed:', inviteError);
           }
         }
+
+        await this.autoGrantGuestIfPublicSignup(requestProject, dbUser.id);
 
         await Session.createNewSession(req, res, tenantId, signInResponse.recipeUserId);
 
@@ -298,6 +370,8 @@ export class AuthController {
           this.logger.error('[Signup] Project invite link redemption failed:', inviteError);
         }
       }
+
+      await this.autoGrantGuestIfPublicSignup(requestProject, dbUser.id);
 
       // Create session so user is immediately logged in
       await Session.createNewSession(req, res, tenantId, signUpResponse.recipeUserId);
@@ -384,6 +458,8 @@ export class AuthController {
       if (signInResponse.status !== 'OK') {
         throw new UnauthorizedException('Failed to sign in');
       }
+
+      await this.enforceProjectMembership(req, signInResponse.recipeUserId.getAsString());
 
       // Create session with tenant context
       const session = await Session.createNewSession(
