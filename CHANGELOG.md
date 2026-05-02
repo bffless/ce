@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.17](https://github.com/bffless/ce/compare/v0.1.16...v0.1.17) (2026-05-02)
+
+
+### Features
+
+* **auth:** project-membership gate for /session endpoints (Phase B) ([18b2745](https://github.com/bffless/ce/commit/18b274542fe776f7c53f6ec276be030292a29d27))
+* **auth:** project-membership gate for /session endpoints (Phase B) ([f3bcaba](https://github.com/bffless/ce/commit/f3bcababcfe9e15bc9f8a340e3cec3a6cab6bfb1))
+
 ## [0.1.16](https://github.com/bffless/ce/compare/v0.1.15...v0.1.16) (2026-05-02)
 
 
