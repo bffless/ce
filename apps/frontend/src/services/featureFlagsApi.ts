@@ -61,7 +61,10 @@ export const featureFlagsApi = api.injectEndpoints({
       query: ({ key, value, enabled }) => ({
         url: `/api/feature-flags/${key}`,
         method: 'PUT',
-        body: { value, enabled: enabled ?? true },
+        // Backend's UpdateFeatureFlagDto requires `key` in the body in
+        // addition to the URL param — omitting it 400s with
+        // "key should not be empty".
+        body: { key, value, enabled: enabled ?? true },
       }),
       invalidatesTags: (_result, _error, { key }) => [
         'FeatureFlags',
