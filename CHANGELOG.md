@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.13](https://github.com/bffless/ce/compare/v0.1.12...v0.1.13) (2026-05-02)
+
+
+### Features
+
+* **auth:** in-page auth endpoints under /_bffless/auth ([c58a425](https://github.com/bffless/ce/commit/c58a425a45ea5b9daa2f3bd9cc4f330cb1c146fc))
+* **auth:** in-page auth endpoints under /_bffless/auth ([c49ca25](https://github.com/bffless/ce/commit/c49ca25cff89ca93c66ee990fd19087ed54a57a4))
+
 ## [0.1.12](https://github.com/bffless/ce/compare/v0.1.11...v0.1.12) (2026-05-01)
 
 
