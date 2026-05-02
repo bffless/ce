@@ -24,6 +24,7 @@ import { DomainTokenService } from './domain-token.service';
 import { ProjectInviteLinksService } from '../project-invite-links/project-invite-links.service';
 import { ProjectResolverService } from './project-resolver.service';
 import { PermissionsService } from '../permissions/permissions.service';
+import { PublicProjectAccess } from './decorators/public-project-access.decorator';
 import { buildLoginMethodsResponse } from './login-methods.helper';
 import { CreateDomainTokenDto } from './dto/create-domain-token.dto';
 import { db } from '../db/client';
@@ -72,6 +73,10 @@ interface ChangePasswordDto {
 
 @ApiTags('Authentication')
 @Controller('api/auth')
+// AuthController routes enforce project membership inline (Phase A: signin/signup,
+// Phase B: getSession returns `{ user: null }`). Bypass the global Phase C guard
+// so those controlled response shapes aren't pre-empted by a 403.
+@PublicProjectAccess()
 export class AuthController {
   private readonly logger = new (require('@nestjs/common').Logger)(AuthController.name);
 
