@@ -80,6 +80,19 @@ export class CustomDomainAuthController {
     return this.projectResolver.resolveProjectFromRequest(req);
   }
 
+  /**
+   * True when the user passes the project-membership gate for this request.
+   * Returns true (pass) when the master switch is off OR the hostname doesn't
+   * resolve to a project (admin/legacy flow). Used by /session to refuse to
+   * expose a signed-in user on sites they have no membership in.
+   */
+  private async userHasProjectMembership(req: Request, userId: string): Promise<boolean> {
+    const project = await this.resolveGatedProject(req);
+    if (!project) return true;
+    const role = await this.permissions.getUserProjectRole(userId, project.id);
+    return Boolean(role);
+  }
+
   private getTenantId(): string {
     const isMultiTenant = process.env.SUPERTOKENS_MULTI_TENANT === 'true';
     return isMultiTenant
@@ -377,6 +390,10 @@ export class CustomDomainAuthController {
       }
     }
 
+    if (!(await this.userHasProjectMembership(req, payload.sub))) {
+      return { authenticated: false, user: null };
+    }
+
     return {
       authenticated: true,
       user: {
@@ -409,6 +426,10 @@ export class CustomDomainAuthController {
       const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
 
       if (!user) {
+        return { authenticated: false, user: null };
+      }
+
+      if (!(await this.userHasProjectMembership(req, user.id))) {
         return { authenticated: false, user: null };
       }
 
