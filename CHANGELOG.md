@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.15](https://github.com/bffless/ce/compare/v0.1.14...v0.1.15) (2026-05-02)
+
+
+### Bug Fixes
+
+* **featureFlagsApi:** include `key` in PUT body to match backend DTO ([13633d5](https://github.com/bffless/ce/commit/13633d59a261a30d6a76e6115f222ceaa6ebe119))
+* **featureFlagsApi:** include key in PUT body to match backend DTO ([340b49c](https://github.com/bffless/ce/commit/340b49c69aee415bd004c2fb707b49f8235c5d19))
+
+
+### Performance Improvements
+
+* **nginx:** bulk-write all configs at startup, single reload wait ([be912bd](https://github.com/bffless/ce/commit/be912bd173e681b840a3a243bbef58f557946d1b))
+* **nginx:** bulk-write configs at startup, single reload wait ([94c22a6](https://github.com/bffless/ce/commit/94c22a65233da49663c991318790dd0c58a3301d))
+
 ## [0.1.14](https://github.com/bffless/ce/compare/v0.1.13...v0.1.14) (2026-05-02)
 
 
