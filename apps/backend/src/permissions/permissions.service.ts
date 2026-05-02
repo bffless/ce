@@ -1,5 +1,5 @@
 import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, sql, inArray } from 'drizzle-orm';
 import { db } from '../db/client';
 import {
   projectPermissions,
@@ -7,10 +7,59 @@ import {
   userGroupMembers,
   users,
   userGroups,
+  projects,
+  domainMappings,
 } from '../db/schema';
 import { RequiredRole } from '../domains/visibility.service';
 
 export type ProjectRole = 'owner' | 'admin' | 'contributor' | 'viewer' | 'guest';
+
+/**
+ * Rich shape returned by `listUserProjectMemberships` for the "My Sites" hub.
+ * Distinct from `listUserProjects` (which returns bare project IDs) — this one
+ * carries everything the central account UI needs to render a project card
+ * without further per-project lookups.
+ */
+export interface MyProjectMembership {
+  projectId: string;
+  /** Display name (falls back to `name` when `displayName` is unset). */
+  projectName: string;
+  /** `${owner}/${name}` — best stable identifier we have for URL building. */
+  projectSlug: string;
+  /**
+   * Best public URL for this project — primary domain mapping if one is
+   * marked `isPrimary`, else first active custom domain, else first active
+   * subdomain. Null when the project has no active domain mappings (a
+   * synthesized workspace subdomain may still exist outside the DB; the UI
+   * decides how to render).
+   */
+  primaryUrl: string | null;
+  role: ProjectRole;
+  /** ISO timestamp of when this user's membership was granted. */
+  joinedAt: string;
+  /**
+   * Email of the project's owner (the unique `role='owner'` row in
+   * `project_permissions`). Null when no owner exists yet — should not happen
+   * in steady state but is possible mid-transfer or if the owner was deleted.
+   */
+  ownerEmail: string | null;
+}
+
+type DomainMappingRow = typeof domainMappings.$inferSelect;
+
+function pickPrimaryUrl(rows: DomainMappingRow[]): string | null {
+  if (rows.length === 0) return null;
+  const score = (r: DomainMappingRow): number => {
+    let s = 0;
+    if (r.isPrimary) s += 100;
+    if (r.domainType === 'custom') s += 10;
+    else if (r.domainType === 'subdomain') s += 5;
+    return s;
+  };
+  const best = [...rows].sort((a, b) => score(b) - score(a))[0];
+  const scheme = best.sslEnabled ? 'https' : 'http';
+  return `${scheme}://${best.domain}`;
+}
 
 @Injectable()
 export class PermissionsService {
@@ -229,6 +278,111 @@ export class PermissionsService {
   }
 
   /**
+   * List a user's project memberships with everything the "My Sites" admin
+   * page needs: display name, best public URL, role, joined-at, owner email.
+   *
+   * Aggregates direct memberships (`project_permissions`) and group-derived
+   * memberships (`project_group_permissions` via `user_group_members`),
+   * keeping the highest role per project. Per-project secondary lookups
+   * (project row, domain mappings, owner email) are batched with `inArray`
+   * so the cost is O(N) round-trips, not O(N × per-project queries).
+   */
+  async listUserProjectMemberships(userId: string): Promise<MyProjectMembership[]> {
+    const directRows = await db
+      .select({
+        projectId: projectPermissions.projectId,
+        role: projectPermissions.role,
+        grantedAt: projectPermissions.grantedAt,
+      })
+      .from(projectPermissions)
+      .where(eq(projectPermissions.userId, userId));
+
+    const groupRows = await db
+      .select({
+        projectId: projectGroupPermissions.projectId,
+        role: projectGroupPermissions.role,
+        grantedAt: projectGroupPermissions.grantedAt,
+      })
+      .from(projectGroupPermissions)
+      .innerJoin(userGroupMembers, eq(projectGroupPermissions.groupId, userGroupMembers.groupId))
+      .where(eq(userGroupMembers.userId, userId));
+
+    const roleHierarchy: Record<ProjectRole, number> = {
+      owner: 4,
+      admin: 3,
+      contributor: 2,
+      viewer: 1,
+      guest: 0,
+    };
+
+    const aggregated = new Map<string, { role: ProjectRole; grantedAt: Date }>();
+    for (const row of [...directRows, ...groupRows]) {
+      const role = row.role as ProjectRole;
+      const existing = aggregated.get(row.projectId);
+      if (!existing || roleHierarchy[role] > roleHierarchy[existing.role]) {
+        aggregated.set(row.projectId, { role, grantedAt: row.grantedAt });
+      }
+    }
+
+    if (aggregated.size === 0) return [];
+
+    const projectIds = Array.from(aggregated.keys());
+
+    const projectRows = await db
+      .select()
+      .from(projects)
+      .where(inArray(projects.id, projectIds));
+
+    const domainRows = await db
+      .select()
+      .from(domainMappings)
+      .where(
+        and(inArray(domainMappings.projectId, projectIds), eq(domainMappings.isActive, true)),
+      );
+
+    const ownerRows = await db
+      .select({ projectId: projectPermissions.projectId, email: users.email })
+      .from(projectPermissions)
+      .innerJoin(users, eq(users.id, projectPermissions.userId))
+      .where(
+        and(
+          inArray(projectPermissions.projectId, projectIds),
+          eq(projectPermissions.role, 'owner'),
+        ),
+      );
+
+    const ownerByProject = new Map(ownerRows.map((r) => [r.projectId, r.email]));
+
+    const domainsByProject = new Map<string, typeof domainRows>();
+    for (const dm of domainRows) {
+      if (!dm.projectId) continue;
+      const list = domainsByProject.get(dm.projectId) ?? [];
+      list.push(dm);
+      domainsByProject.set(dm.projectId, list);
+    }
+
+    const result: MyProjectMembership[] = [];
+    for (const project of projectRows) {
+      const membership = aggregated.get(project.id);
+      if (!membership) continue;
+      const projectDomains = domainsByProject.get(project.id) ?? [];
+      result.push({
+        projectId: project.id,
+        projectName: project.displayName ?? project.name,
+        projectSlug: `${project.owner}/${project.name}`,
+        primaryUrl: pickPrimaryUrl(projectDomains),
+        role: membership.role,
+        joinedAt: membership.grantedAt.toISOString(),
+        ownerEmail: ownerByProject.get(project.id) ?? null,
+      });
+    }
+
+    // Stable sort: most recently joined first.
+    result.sort((a, b) => (a.joinedAt < b.joinedAt ? 1 : -1));
+    return result;
+  }
+
+  /**
    * Grant permission to a user on a project
    */
   async grantPermission(
@@ -302,6 +456,45 @@ export class PermissionsService {
         grantedBy,
       });
     }
+  }
+
+  /**
+   * Revoke a project membership as a system action — used by self-serve
+   * "leave site" flows where there's no human revoker authorizing the
+   * removal. Mirror of `grantSystemPermission`: bypasses the
+   * revoker-must-be-admin check used by `revokePermission`. Owners cannot be
+   * removed this way (they must transfer ownership first); callers that
+   * receive a thrown ForbiddenException for an owner should surface a
+   * "transfer ownership first" message. Idempotent: throws NotFoundException
+   * when no membership row exists for the (projectId, userId) pair.
+   *
+   * Greppable: `git grep 'revokeSystemPermission'` lists every system-revoke
+   * site for audit.
+   */
+  async revokeSystemPermission(projectId: string, userId: string): Promise<void> {
+    const [permission] = await db
+      .select()
+      .from(projectPermissions)
+      .where(
+        and(eq(projectPermissions.projectId, projectId), eq(projectPermissions.userId, userId)),
+      )
+      .limit(1);
+
+    if (!permission) {
+      throw new NotFoundException('Permission not found');
+    }
+
+    if (permission.role === 'owner') {
+      throw new ForbiddenException(
+        'Cannot revoke owner permission. Use transfer ownership instead.',
+      );
+    }
+
+    await db
+      .delete(projectPermissions)
+      .where(
+        and(eq(projectPermissions.projectId, projectId), eq(projectPermissions.userId, userId)),
+      );
   }
 
   /**

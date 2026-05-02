@@ -20,6 +20,7 @@ import { UserGroupsPage } from '@/pages/UserGroupsPage';
 import { GroupDetailPage } from '@/pages/GroupDetailPage';
 import { UsersPage } from '@/pages/UsersPage';
 import { UserSettingsPage } from '@/pages/UserSettingsPage';
+import { AccountPage } from '@/pages/AccountPage';
 import { AdminSettingsPage } from '@/pages/AdminSettingsPage';
 import { GeneralTab } from '@/pages/admin-settings/GeneralTab';
 import { AuthTab } from '@/pages/admin-settings/AuthTab';
@@ -74,6 +75,9 @@ function App() {
 
         {/* User Settings route (requires auth) */}
         <Route path="/settings" element={<ProtectedRoute><UserSettingsPage /></ProtectedRoute>} />
+
+        {/* Identity hub: BFFless Auth account + "My Sites" memberships */}
+        <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
 
         {/* Admin Settings routes (requires admin, tabbed layout) */}
         <Route path="/admin/settings" element={<ProtectedRoute requireAdmin><AdminSettingsPage /></ProtectedRoute>}>

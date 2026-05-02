@@ -625,4 +625,193 @@ describe('PermissionsService', () => {
       expect(result).toEqual(mockPermissions);
     });
   });
+
+  describe('revokeSystemPermission', () => {
+    it('deletes the membership row when present and not owner', async () => {
+      // Existence check
+      (db.select as jest.Mock).mockReturnValueOnce({
+        from: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockResolvedValue([
+          { projectId: mockProjectId, userId: mockUserId, role: 'guest' },
+        ]),
+      });
+
+      const deleteWhere = jest.fn().mockResolvedValue(undefined);
+      (db.delete as jest.Mock).mockReturnValue({ where: deleteWhere });
+
+      await service.revokeSystemPermission(mockProjectId, mockUserId);
+
+      expect(db.delete).toHaveBeenCalled();
+      expect(deleteWhere).toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException when no membership exists', async () => {
+      (db.select as jest.Mock).mockReturnValueOnce({
+        from: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockResolvedValue([]),
+      });
+
+      await expect(
+        service.revokeSystemPermission(mockProjectId, mockUserId),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws ForbiddenException when target role is owner', async () => {
+      (db.select as jest.Mock).mockReturnValueOnce({
+        from: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockResolvedValue([
+          { projectId: mockProjectId, userId: mockUserId, role: 'owner' },
+        ]),
+      });
+
+      await expect(
+        service.revokeSystemPermission(mockProjectId, mockUserId),
+      ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  describe('listUserProjectMemberships', () => {
+    it('aggregates direct + group memberships, picks the highest role per project', async () => {
+      const grantedAt = new Date('2026-04-30T00:00:00.000Z');
+
+      // 1. directRows query
+      (db.select as jest.Mock).mockReturnValueOnce({
+        from: jest.fn().mockReturnThis(),
+        where: jest.fn().mockResolvedValue([
+          { projectId: 'p-1', role: 'guest', grantedAt },
+        ]),
+      });
+
+      // 2. groupRows query (innerJoin chain)
+      (db.select as jest.Mock).mockReturnValueOnce({
+        from: jest.fn().mockReturnThis(),
+        innerJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockResolvedValue([
+          { projectId: 'p-1', role: 'admin', grantedAt }, // higher than direct guest
+          { projectId: 'p-2', role: 'viewer', grantedAt },
+        ]),
+      });
+
+      // 3. projects in bulk
+      (db.select as jest.Mock).mockReturnValueOnce({
+        from: jest.fn().mockReturnThis(),
+        where: jest.fn().mockResolvedValue([
+          {
+            id: 'p-1',
+            owner: 'bffless',
+            name: 'realestate-modern',
+            displayName: 'Bella Charlesworth Real Estate',
+          },
+          {
+            id: 'p-2',
+            owner: 'bffless',
+            name: 'salon',
+            displayName: null,
+          },
+        ]),
+      });
+
+      // 4. domain mappings (active)
+      (db.select as jest.Mock).mockReturnValueOnce({
+        from: jest.fn().mockReturnThis(),
+        where: jest.fn().mockResolvedValue([
+          {
+            projectId: 'p-1',
+            domain: 'www.bellacharlesworth.com',
+            domainType: 'custom',
+            isPrimary: true,
+            isActive: true,
+            sslEnabled: true,
+          },
+          {
+            projectId: 'p-2',
+            domain: 'salon.sites.bffless.app',
+            domainType: 'subdomain',
+            isPrimary: false,
+            isActive: true,
+            sslEnabled: true,
+          },
+        ]),
+      });
+
+      // 5. owner emails in bulk
+      (db.select as jest.Mock).mockReturnValueOnce({
+        from: jest.fn().mockReturnThis(),
+        innerJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockResolvedValue([
+          { projectId: 'p-1', email: 'james@example.com' },
+          { projectId: 'p-2', email: 'salonowner@example.com' },
+        ]),
+      });
+
+      const result = await service.listUserProjectMemberships(mockUserId);
+
+      expect(result).toHaveLength(2);
+      const p1 = result.find((m) => m.projectId === 'p-1')!;
+      const p2 = result.find((m) => m.projectId === 'p-2')!;
+
+      expect(p1.role).toBe('admin'); // group beat direct guest
+      expect(p1.projectName).toBe('Bella Charlesworth Real Estate');
+      expect(p1.projectSlug).toBe('bffless/realestate-modern');
+      expect(p1.primaryUrl).toBe('https://www.bellacharlesworth.com');
+      expect(p1.ownerEmail).toBe('james@example.com');
+
+      expect(p2.role).toBe('viewer');
+      expect(p2.projectName).toBe('salon'); // falls back to name when displayName null
+      expect(p2.primaryUrl).toBe('https://salon.sites.bffless.app');
+    });
+
+    it('returns empty array when user has no memberships anywhere', async () => {
+      (db.select as jest.Mock).mockReturnValueOnce({
+        from: jest.fn().mockReturnThis(),
+        where: jest.fn().mockResolvedValue([]),
+      });
+      (db.select as jest.Mock).mockReturnValueOnce({
+        from: jest.fn().mockReturnThis(),
+        innerJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockResolvedValue([]),
+      });
+
+      const result = await service.listUserProjectMemberships(mockUserId);
+      expect(result).toEqual([]);
+    });
+
+    it('handles a project with no domain mappings (primaryUrl=null)', async () => {
+      const grantedAt = new Date();
+
+      (db.select as jest.Mock).mockReturnValueOnce({
+        from: jest.fn().mockReturnThis(),
+        where: jest.fn().mockResolvedValue([
+          { projectId: 'p-3', role: 'guest', grantedAt },
+        ]),
+      });
+      (db.select as jest.Mock).mockReturnValueOnce({
+        from: jest.fn().mockReturnThis(),
+        innerJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockResolvedValue([]),
+      });
+      (db.select as jest.Mock).mockReturnValueOnce({
+        from: jest.fn().mockReturnThis(),
+        where: jest.fn().mockResolvedValue([
+          { id: 'p-3', owner: 'acme', name: 'unmapped', displayName: 'Unmapped' },
+        ]),
+      });
+      (db.select as jest.Mock).mockReturnValueOnce({
+        from: jest.fn().mockReturnThis(),
+        where: jest.fn().mockResolvedValue([]),
+      });
+      (db.select as jest.Mock).mockReturnValueOnce({
+        from: jest.fn().mockReturnThis(),
+        innerJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockResolvedValue([]),
+      });
+
+      const [m] = await service.listUserProjectMemberships(mockUserId);
+      expect(m.primaryUrl).toBeNull();
+      expect(m.ownerEmail).toBeNull();
+    });
+  });
 });
