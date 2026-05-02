@@ -20,6 +20,7 @@ import { RepoBrowserModule } from './repo-browser/repo-browser.module';
 import { ProjectsModule } from './projects/projects.module';
 import { UserGroupsModule } from './user-groups/user-groups.module';
 import { PermissionsModule } from './permissions/permissions.module';
+import { MeModule } from './me/me.module';
 import { DomainsModule } from './domains/domains.module';
 import { SettingsModule } from './settings/settings.module';
 import { ProxyRulesModule } from './proxy-rules/proxy-rules.module';
@@ -159,6 +160,7 @@ import { McpToolsModule } from './mcp/mcp-tools.module';
     ProjectsModule,
     UserGroupsModule,
     PermissionsModule,
+    MeModule,
     DomainsModule,
     SettingsModule,
     MigrationModule,

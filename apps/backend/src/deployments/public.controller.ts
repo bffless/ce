@@ -295,6 +295,8 @@ export class PublicController {
             requiredRole: accessControl.requiredRole,
             currentRole: userRole,
             projectName: project.displayName || project.name,
+            userEmail: user.email,
+            req,
           });
         }
       }
@@ -563,6 +565,8 @@ export class PublicController {
             requiredRole: accessControl.requiredRole,
             currentRole: userRole,
             projectName: project.displayName || project.name,
+            userEmail: user.email,
+            req,
           });
         }
       }
@@ -1299,11 +1303,21 @@ export class PublicController {
   }
 
   /**
-   * Serve a styled 403 Forbidden page for authenticated users without sufficient role
+   * Serve a styled 403 Forbidden page for authenticated users without
+   * sufficient role. When the request carries a signed-in user, surfaces
+   * their email and a link to the central account hub
+   * (`<ADMIN_DOMAIN>/account` — falls back to `admin.<workspace-base>/account`)
+   * so they can manage their site memberships from one place.
    */
   private serve403Page(
     res: Response,
-    info: { requiredRole: string; currentRole: ProjectRole | null; projectName: string },
+    info: {
+      requiredRole: string;
+      currentRole: ProjectRole | null;
+      projectName: string;
+      userEmail?: string;
+      req?: Request;
+    },
   ): void {
     const roleLabels: Record<string, string> = {
       authenticated: 'Any authenticated user',
@@ -1315,6 +1329,20 @@ export class PublicController {
 
     const requiredLabel = roleLabels[info.requiredRole] || info.requiredRole;
     const currentLabel = info.currentRole ? roleLabels[info.currentRole] : 'None';
+    const accountHubUrl = info.req ? this.buildAccountHubUrl(info.req) : null;
+
+    const identityBlock =
+      info.userEmail && accountHubUrl
+        ? `
+        <p>You are signed in as <strong>${this.escapeHtml(info.userEmail)}</strong>, but you don't have access to this site.</p>`
+        : `
+        <p>You don't have permission to access this content.</p>`;
+
+    const accountHubLink = accountHubUrl
+      ? `
+        <a href="${this.escapeHtml(accountHubUrl)}" class="button" target="_blank" rel="noopener noreferrer">Manage your sites</a>`
+      : `
+        <a href="/" class="button">Go to Dashboard</a>`;
 
     const html = `<!DOCTYPE html>
 <html lang="en">
@@ -1391,8 +1419,7 @@ export class PublicController {
 <body>
     <div class="container">
         <div class="icon">&#128274;</div>
-        <h1>Access Denied</h1>
-        <p>You don't have permission to access this content.</p>
+        <h1>Access Denied</h1>${identityBlock}
 
         <div class="role-info">
             <div class="role-row">
@@ -1407,9 +1434,7 @@ export class PublicController {
                 <span class="role-label">Your role</span>
                 <span class="role-value">${currentLabel}</span>
             </div>
-        </div>
-
-        <a href="/" class="button">Go to Dashboard</a>
+        </div>${accountHubLink}
     </div>
 </body>
 </html>`;
@@ -1437,6 +1462,28 @@ export class PublicController {
     const path = originalUri || req.originalUrl;
 
     return `${protocol}://${host}${path}`;
+  }
+
+  /**
+   * Build the absolute URL of the central identity hub at `/account`. Used
+   * by `serve403Page` to link a stranded workspace user (signed-in but not a
+   * member of *this* site) back to the place where they can see and manage
+   * the sites they actually belong to.
+   *
+   * Mirrors `buildLoginUrl`'s host-resolution: prefer `ADMIN_DOMAIN`, fall
+   * back to `admin.<workspace-base>` derived from the inbound host.
+   */
+  private buildAccountHubUrl(req: Request): string {
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+
+    const adminDomain = this.configService.get<string>('ADMIN_DOMAIN');
+    if (adminDomain) {
+      return `${protocol}://${adminDomain}/account`;
+    }
+
+    const host = (req.headers['x-forwarded-host'] || req.get('host')) as string;
+    const workspaceBase = this.extractWorkspaceBase(host);
+    return `${protocol}://admin.${workspaceBase}/account`;
   }
 
   /**

@@ -208,6 +208,7 @@ export const api = createApi({
     'Branding',
     'OAuthSettings',
     'ProjectInviteLink',
+    'MyProjects',
   ],
   endpoints: () => ({}),
 });
