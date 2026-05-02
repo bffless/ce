@@ -2,21 +2,30 @@ import {
   Controller,
   Get,
   Post,
+  Body,
   Query,
   Req,
   Res,
   Logger,
+  HttpCode,
+  HttpStatus,
   BadRequestException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiBody } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { getSession } from 'supertokens-node/recipe/session';
 import { SessionContainer } from 'supertokens-node/recipe/session';
+import EmailPassword from 'supertokens-node/recipe/emailpassword';
+import EmailVerification from 'supertokens-node/recipe/emailverification';
+import { RecipeUserId, listUsersByAccountInfo } from 'supertokens-node';
 import { eq } from 'drizzle-orm';
 import { DomainTokenService } from './domain-token.service';
 import { CustomDomainAuthService } from './custom-domain-auth.service';
 import { AuthService } from './auth.service';
+import { SetupService } from '../setup/setup.service';
+import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
+import { EmailService } from '../email/email.service';
 import { db } from '../db/client';
 import { users } from '../db/schema';
 
@@ -47,7 +56,41 @@ export class CustomDomainAuthController {
     private readonly domainTokenService: DomainTokenService,
     private readonly customDomainAuthService: CustomDomainAuthService,
     private readonly authService: AuthService,
+    private readonly setupService: SetupService,
+    private readonly featureFlagsService: FeatureFlagsService,
+    private readonly emailService: EmailService,
   ) {}
+
+  private getTenantId(): string {
+    const isMultiTenant = process.env.SUPERTOKENS_MULTI_TENANT === 'true';
+    return isMultiTenant
+      ? process.env.ORGANIZATION_ID || process.env.TENANT_ID || 'public'
+      : 'public';
+  }
+
+  private getRequestHost(req: Request): { hostname: string; origin: string; secure: boolean } {
+    const host = (req.headers['x-forwarded-host'] as string) || req.headers.host || '';
+    const hostname = host.split(':')[0];
+    const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+    const protocol = isLocalhost ? 'http' : 'https';
+    return { hostname, origin: `${protocol}://${host}`, secure: !isLocalhost };
+  }
+
+  private async issueDomainSession(
+    res: Response,
+    user: { id: string; email: string; role: string },
+    hostname: string,
+    secure: boolean,
+  ): Promise<void> {
+    const accessToken = this.customDomainAuthService.createAccessToken(
+      user.id,
+      user.email,
+      user.role,
+      hostname,
+    );
+    const refreshToken = this.customDomainAuthService.createRefreshToken(user.id, hostname);
+    this.customDomainAuthService.setAuthCookies(res, accessToken, refreshToken, secure);
+  }
 
   /**
    * Callback endpoint for domain authentication relay.
@@ -360,6 +403,375 @@ export class CustomDomainAuthController {
       };
     } catch {
       return { authenticated: false, user: null };
+    }
+  }
+
+  // ==========================================================================
+  // In-page auth flow (used by AuthDialog on custom domains)
+  //
+  // These endpoints wrap SuperTokens recipes server-side and mint
+  // domain-scoped JWT cookies on the request hostname. They exist because
+  // SuperTokens' HTTP middleware is bound to bffless.app and would reject
+  // POSTs originating from a non-bffless.app origin. The recipe layer
+  // (EmailPassword.signIn etc.) has no such binding.
+  //
+  // Email links (reset, verification) are constructed to point back to the
+  // originating domain at /?bffless_reset=<token> or /?bffless_verify=<token>,
+  // so the AuthDialog mounted on the user's site can pick them up.
+  // ==========================================================================
+
+  @Post('signin')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Sign in (in-page, custom domain)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        email: { type: 'string', format: 'email' },
+        password: { type: 'string' },
+      },
+      required: ['email', 'password'],
+    },
+  })
+  async signIn(
+    @Body() body: { email: string; password: string },
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { email, password } = body || {};
+    if (!email || !password) {
+      throw new BadRequestException('Email and password are required');
+    }
+
+    const tenantId = this.getTenantId();
+    const signInResponse = await EmailPassword.signIn(tenantId, email, password);
+
+    if (signInResponse.status === 'WRONG_CREDENTIALS_ERROR') {
+      return { status: 'WRONG_CREDENTIALS_ERROR' };
+    }
+    if (signInResponse.status !== 'OK') {
+      throw new UnauthorizedException('Failed to sign in');
+    }
+
+    const userId = signInResponse.recipeUserId.getAsString();
+    let user = await this.authService.getUserByEmail(email);
+    if (!user) {
+      user = await this.authService.getUserById(userId);
+    }
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+    if (user.disabled) {
+      throw new UnauthorizedException('User account is disabled');
+    }
+
+    const { hostname, secure } = this.getRequestHost(req);
+    await this.issueDomainSession(res, user, hostname, secure);
+
+    return {
+      status: 'OK',
+      user: { id: user.id, email: user.email, role: user.role },
+    };
+  }
+
+  @Post('signup')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Sign up (in-page, custom domain)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        email: { type: 'string', format: 'email' },
+        password: { type: 'string', minLength: 8 },
+      },
+      required: ['email', 'password'],
+    },
+  })
+  async signUp(
+    @Body() body: { email: string; password: string },
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { email, password } = body || {};
+    if (!email || !password) {
+      throw new BadRequestException('Email and password are required');
+    }
+    if (password.length < 8) {
+      throw new BadRequestException('Password must be at least 8 characters long');
+    }
+
+    if (!(await this.setupService.isRegistrationFeatureEnabled())) {
+      throw new BadRequestException('Registration is currently disabled');
+    }
+    if (!(await this.setupService.canPublicSignup())) {
+      throw new BadRequestException('Public registration is not available');
+    }
+
+    const tenantId = this.getTenantId();
+    const signUpResponse = await EmailPassword.signUp(tenantId, email, password);
+
+    if (signUpResponse.status === 'EMAIL_ALREADY_EXISTS_ERROR') {
+      return { status: 'EMAIL_ALREADY_EXISTS_ERROR' };
+    }
+    if (signUpResponse.status !== 'OK') {
+      throw new BadRequestException('Failed to create user');
+    }
+
+    const userId = signUpResponse.recipeUserId.getAsString();
+    const role: 'admin' | 'user' | 'member' = email === process.env.ADMIN_EMAIL ? 'admin' : 'member';
+    const dbUser = await this.authService.createUser(email, role, userId);
+
+    const verificationRequired = await this.featureFlagsService.isEnabled(
+      'ENABLE_EMAIL_VERIFICATION',
+    );
+
+    const { hostname, origin, secure } = this.getRequestHost(req);
+
+    if (verificationRequired) {
+      try {
+        const tokenResponse = await EmailVerification.createEmailVerificationToken(
+          tenantId,
+          new RecipeUserId(userId),
+          email,
+        );
+        if (tokenResponse.status === 'OK') {
+          const verifyLink = `${origin}/?bffless_verify=${encodeURIComponent(tokenResponse.token)}`;
+          await this.emailService.sendVerificationEmail(email, verifyLink);
+          this.logger.log(`[in-page signup] Sent verification email for ${email}`);
+        }
+      } catch (err) {
+        this.logger.error('[in-page signup] Failed to send verification email', err);
+      }
+    } else {
+      await this.issueDomainSession(
+        res,
+        { id: dbUser.id, email: dbUser.email, role: dbUser.role },
+        hostname,
+        secure,
+      );
+    }
+
+    return {
+      status: 'OK',
+      user: { id: dbUser.id, email: dbUser.email, role: dbUser.role },
+      emailVerificationRequired: verificationRequired,
+    };
+  }
+
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Request password reset (in-page, custom domain)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { email: { type: 'string', format: 'email' } },
+      required: ['email'],
+    },
+  })
+  async forgotPassword(@Body() body: { email: string }, @Req() req: Request) {
+    const { email } = body || {};
+    if (!email) {
+      throw new BadRequestException('Email is required');
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new BadRequestException('Invalid email format');
+    }
+
+    try {
+      const user = await this.authService.getUserByEmail(email);
+      if (user) {
+        const tenantId = this.getTenantId();
+        const tokenResponse = await EmailPassword.createResetPasswordToken(
+          tenantId,
+          user.id,
+          email,
+        );
+        if (tokenResponse.status === 'OK') {
+          const { origin } = this.getRequestHost(req);
+          const resetLink = `${origin}/?bffless_reset=${encodeURIComponent(tokenResponse.token)}`;
+          await this.emailService.sendPasswordResetEmail(email, resetLink);
+          this.logger.log(`[in-page forgot] Sent reset email for ${email}`);
+        }
+      }
+    } catch (err) {
+      this.logger.error('[in-page forgot] Failed to send reset email', err);
+    }
+
+    return {
+      status: 'OK',
+      message:
+        'If an account exists with that email, a password reset link has been sent. Please check your inbox.',
+    };
+  }
+
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reset password using token (in-page, custom domain)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        token: { type: 'string' },
+        password: { type: 'string', minLength: 8 },
+      },
+      required: ['token', 'password'],
+    },
+  })
+  async resetPassword(
+    @Body() body: { token: string; password: string },
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { token, password } = body || {};
+    if (!token || !password) {
+      throw new BadRequestException('Token and password are required');
+    }
+    if (password.length < 8) {
+      throw new BadRequestException('Password must be at least 8 characters long');
+    }
+
+    const tenantId = this.getTenantId();
+    const response = await EmailPassword.resetPasswordUsingToken(tenantId, token, password);
+
+    if (response.status === 'RESET_PASSWORD_INVALID_TOKEN_ERROR') {
+      return { status: 'RESET_PASSWORD_INVALID_TOKEN_ERROR' };
+    }
+    if (response.status !== 'OK') {
+      throw new BadRequestException('Failed to reset password');
+    }
+
+    const userId = (response as { userId?: string }).userId;
+    if (userId) {
+      const user = await this.authService.getUserById(userId);
+      if (user && !user.disabled) {
+        const { hostname, secure } = this.getRequestHost(req);
+        await this.issueDomainSession(res, user, hostname, secure);
+        return {
+          status: 'OK',
+          user: { id: user.id, email: user.email, role: user.role },
+        };
+      }
+    }
+
+    return { status: 'OK' };
+  }
+
+  @Post('verify-email')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Verify email using token (in-page, custom domain)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { token: { type: 'string' } },
+      required: ['token'],
+    },
+  })
+  async verifyEmail(
+    @Body() body: { token: string },
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { token } = body || {};
+    if (!token) {
+      throw new BadRequestException('Token is required');
+    }
+
+    const tenantId = this.getTenantId();
+    const response = await EmailVerification.verifyEmailUsingToken(tenantId, token);
+
+    if (response.status === 'EMAIL_VERIFICATION_INVALID_TOKEN_ERROR') {
+      return { status: 'EMAIL_VERIFICATION_INVALID_TOKEN_ERROR' };
+    }
+    if (response.status !== 'OK') {
+      throw new BadRequestException('Failed to verify email');
+    }
+
+    const verifiedUserId = response.user.recipeUserId.getAsString();
+    const user = await this.authService.getUserById(verifiedUserId);
+    if (user && !user.disabled) {
+      const { hostname, secure } = this.getRequestHost(req);
+      await this.issueDomainSession(res, user, hostname, secure);
+      return {
+        status: 'OK',
+        user: { id: user.id, email: user.email, role: user.role },
+      };
+    }
+
+    return { status: 'OK' };
+  }
+
+  @Post('send-verification-email')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Resend verification email (in-page, custom domain)' })
+  async sendVerificationEmail(@Req() req: Request) {
+    const accessToken = req.cookies?.[CustomDomainAuthService.ACCESS_COOKIE_NAME];
+    if (!accessToken) {
+      throw new UnauthorizedException('Not authenticated');
+    }
+    const payload = this.customDomainAuthService.validateAccessToken(accessToken);
+    if (!payload) {
+      throw new UnauthorizedException('Invalid session');
+    }
+
+    const tenantId = this.getTenantId();
+    const recipeUserId = new RecipeUserId(payload.sub);
+
+    if (await EmailVerification.isEmailVerified(recipeUserId)) {
+      return { status: 'OK', alreadyVerified: true };
+    }
+
+    const tokenResponse = await EmailVerification.createEmailVerificationToken(
+      tenantId,
+      recipeUserId,
+      payload.email,
+    );
+    if (tokenResponse.status !== 'OK') {
+      return { status: 'OK', alreadyVerified: true };
+    }
+
+    const { origin } = this.getRequestHost(req);
+    const verifyLink = `${origin}/?bffless_verify=${encodeURIComponent(tokenResponse.token)}`;
+    await this.emailService.sendVerificationEmail(payload.email, verifyLink);
+
+    return { status: 'OK' };
+  }
+
+  @Get('login-methods')
+  @ApiOperation({
+    summary: 'Get available login methods (in-page, custom domain)',
+    description: 'Public endpoint. Returns whether email/password and Google OAuth are enabled.',
+  })
+  async getLoginMethods(): Promise<{ hasPassword: boolean; hasGoogle: boolean }> {
+    let hasGoogle = false;
+    try {
+      hasGoogle = await this.featureFlagsService.isEnabled('ENABLE_GOOGLE_OAUTH');
+    } catch {
+      hasGoogle = false;
+    }
+    return { hasPassword: true, hasGoogle };
+  }
+
+  @Post('check-email')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Check if email exists (in-page, custom domain)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { email: { type: 'string', format: 'email' } },
+      required: ['email'],
+    },
+  })
+  async checkEmail(@Body() body: { email: string }): Promise<{ exists: boolean }> {
+    const { email } = body || {};
+    if (!email) {
+      throw new BadRequestException('Email is required');
+    }
+    const tenantId = this.getTenantId();
+    try {
+      const stUsers = await listUsersByAccountInfo(tenantId, { email });
+      return { exists: stUsers.length > 0 };
+    } catch {
+      return { exists: false };
     }
   }
 }
