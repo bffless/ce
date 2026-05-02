@@ -80,10 +80,36 @@ export class NginxReloadService {
   }
 
   /**
-   * Wait for the nginx file watcher to process the config change.
-   * The watcher has a ~1s delay after detecting changes, plus validation time.
+   * Copy a config to its final location WITHOUT waiting for nginx to reload.
+   *
+   * Used by bulk regen paths (e.g. startup) that write many configs back-to-back.
+   * The nginx watcher debounces, so per-file waits would just stack up sleeps for
+   * a single coalesced reload. Callers MUST call `waitForReload` once after their
+   * batch completes to give the watcher time to validate and reload.
    */
-  private async waitForReload(): Promise<void> {
+  async writeConfigOnly(
+    tempConfigPath: string,
+    finalConfigPath: string,
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      await copyFile(tempConfigPath, finalConfigPath);
+      await unlink(tempConfigPath);
+      return { success: true };
+    } catch (error) {
+      this.logger.error('Failed to write config', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
+  /**
+   * Wait for the nginx file watcher to process config changes.
+   * The watcher has a ~1s delay after detecting changes, plus validation time.
+   * Public so bulk callers can do one wait after a batch of `writeConfigOnly` calls.
+   */
+  async waitForReload(): Promise<void> {
     const waitTime = parseInt(process.env.NGINX_RELOAD_WAIT_MS || '3000', 10);
     await new Promise((resolve) => setTimeout(resolve, waitTime));
   }
