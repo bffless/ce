@@ -11,6 +11,7 @@ import { ApiKeyGuard } from './api-key.guard';
 import { OptionalAuthGuard } from './optional-auth.guard';
 import { RolesGuard } from './roles.guard';
 import { EmailVerificationGuard } from './email-verification.guard';
+import { ProjectMembershipGuard } from './project-membership.guard';
 import { initSuperTokens, registerGoogleOAuthFromEnv } from './supertokens.config';
 import { SetupModule } from '../setup/setup.module';
 import { OnboardingRulesModule } from '../onboarding-rules/onboarding-rules.module';
@@ -53,11 +54,16 @@ export class AuthModule implements NestModule {
         OptionalAuthGuard,
         RolesGuard,
         EmailVerificationGuard,
+        ProjectMembershipGuard,
         VisibilityService, // Required for AuthMiddleware
         ProjectResolverService,
         {
           provide: APP_GUARD,
           useClass: EmailVerificationGuard,
+        },
+        {
+          provide: APP_GUARD,
+          useClass: ProjectMembershipGuard,
         },
       ],
       exports: [
@@ -69,6 +75,7 @@ export class AuthModule implements NestModule {
         OptionalAuthGuard,
         RolesGuard,
         EmailVerificationGuard,
+        ProjectMembershipGuard,
         ProjectResolverService,
       ],
     };

@@ -9,11 +9,13 @@ export { SessionAuthGuard } from './session-auth.guard';
 export { ApiKeyGuard } from './api-key.guard';
 export { RolesGuard } from './roles.guard';
 export { EmailVerificationGuard } from './email-verification.guard';
+export { ProjectMembershipGuard } from './project-membership.guard';
 
 // Decorators
 export { Roles } from './decorators/roles.decorator';
 export { Public } from './decorators/public.decorator';
 export { SkipEmailVerification } from './decorators/skip-email-verification.decorator';
+export { PublicProjectAccess } from './decorators/public-project-access.decorator';
 export { CurrentUser, CurrentUserData } from './decorators/current-user.decorator';
 
 // Middleware

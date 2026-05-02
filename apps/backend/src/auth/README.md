@@ -66,6 +66,20 @@ getAllUsers() {
 }
 ```
 
+#### ProjectMembershipGuard (global, default-on)
+
+Registered as `APP_GUARD`, runs after route-level auth guards. When the workspace feature flag `REQUIRE_PROJECT_MEMBERSHIP` is enabled and the inbound hostname resolves to a project, every authenticated request is required to hold a `project_permissions` row for that project — otherwise the guard throws `ForbiddenException`.
+
+The guard is a no-op when:
+
+- The workspace flag is off (legacy "any workspace user authenticates anywhere" behavior).
+- The route (or controller) is annotated with `@PublicProjectAccess()`.
+- The request is unauthenticated (`req.user` not populated).
+- The request authenticates via API key (`req.user.apiKeyId` set) — keys are CI/CD credentials and `ApiKeyGuard` already enforces project scope.
+- The hostname resolves to no project — admin domain, unknown hostname.
+
+If your new authenticated route should be reachable by any workspace user regardless of which project the hostname maps to (account management, cross-project dashboards, control-plane internal calls), annotate the controller method or class with `@PublicProjectAccess()`.
+
 ### Decorators
 
 #### @Public()
@@ -89,6 +103,19 @@ Specifies required roles for a route.
 @Delete('users/:id')
 deleteUser(@Param('id') id: string) {
   // Only admins and moderators can access
+}
+```
+
+#### @PublicProjectAccess()
+
+Bypasses the global `ProjectMembershipGuard`. Use on workspace-level admin endpoints, cross-project endpoints, or routes that already enforce membership inline (and would have their controlled error shape pre-empted by a generic 403).
+
+```typescript
+@PublicProjectAccess()
+@Controller('api/me/projects')
+export class MyProjectsController {
+  // Hit on any workspace subdomain — listing the user's memberships across
+  // projects is by definition cross-project, so the per-project gate is bypassed.
 }
 ```
 

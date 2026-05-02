@@ -28,6 +28,7 @@ import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 import { EmailService } from '../email/email.service';
 import { ProjectResolverService } from './project-resolver.service';
 import { PermissionsService } from '../permissions/permissions.service';
+import { PublicProjectAccess } from './decorators/public-project-access.decorator';
 import { buildLoginMethodsResponse } from './login-methods.helper';
 import { Project } from '../db/schema';
 import { db } from '../db/client';
@@ -53,6 +54,11 @@ import { users } from '../db/schema';
  */
 @ApiTags('Custom Domain Authentication')
 @Controller('_bffless/auth')
+// Routes here enforce project membership inline (Phase A: signin/signup,
+// Phase B: /session via `userHasProjectMembership`). Bypass the global Phase C
+// guard so those controlled response shapes (`{ authenticated: false, user: null }`,
+// 401 with the same message used for wrong credentials) survive.
+@PublicProjectAccess()
 export class CustomDomainAuthController {
   private readonly logger = new Logger(CustomDomainAuthController.name);
 

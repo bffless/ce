@@ -23,6 +23,7 @@ import { IStorageAdapter, STORAGE_ADAPTER, DownloadResult } from '../storage/sto
 import { DeploymentsService } from './deployments.service';
 import { ProjectsService } from '../projects/projects.service';
 import { OptionalAuthGuard } from '../auth/optional-auth.guard';
+import { PublicProjectAccess } from '../auth/decorators/public-project-access.decorator';
 import { VisibilityService, AccessControlInfo } from '../domains/visibility.service';
 import { TrafficRoutingService, VariantSelectionResult } from '../domains/traffic-routing.service';
 import { PermissionsService, ProjectRole } from '../permissions/permissions.service';
@@ -85,6 +86,11 @@ const MIME_TYPES: Record<string, string> = {
 @Controller('public')
 @SkipThrottle()
 @UseGuards(OptionalAuthGuard)
+// Public-content serving runs on customer hostnames where a sister-site visitor
+// may carry a workspace SuperTokens cookie. We must keep static asset access
+// open even for non-members; per-route visibility/role gates are handled by
+// VisibilityService and the route handlers themselves.
+@PublicProjectAccess()
 export class PublicController {
   private readonly logger = new Logger(PublicController.name);
   private readonly svg404: string;
