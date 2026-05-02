@@ -83,6 +83,47 @@ describe('NginxReloadService', () => {
     });
   });
 
+  describe('writeConfigOnly', () => {
+    it('copies the temp file to final, deletes temp, and does NOT wait for nginx', async () => {
+      const tempPath = '/tmp/domain-bulk.conf';
+      const finalPath = '/etc/nginx/sites-enabled/domain-bulk.conf';
+
+      const startTime = Date.now();
+      const result = await service.writeConfigOnly(tempPath, finalPath);
+      const elapsed = Date.now() - startTime;
+
+      expect(mockCopyFile).toHaveBeenCalledWith(tempPath, finalPath);
+      expect(mockUnlink).toHaveBeenCalledWith(tempPath);
+      expect(result.success).toBe(true);
+      expect(result.error).toBeUndefined();
+      // Must return well before NGINX_RELOAD_WAIT_MS (100ms in test) — otherwise
+      // the bulk-write speedup at startup is defeated.
+      expect(elapsed).toBeLessThan(50);
+    });
+
+    it('returns failure on copyFile error without throwing', async () => {
+      mockCopyFile.mockRejectedValueOnce(new Error('disk full'));
+
+      const result = await service.writeConfigOnly('/tmp/x.conf', '/etc/nginx/x.conf');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('disk full');
+      // Temp file should NOT be unlinked when copy failed (would mask the original error)
+      expect(mockUnlink).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('waitForReload', () => {
+    it('waits for the configured NGINX_RELOAD_WAIT_MS', async () => {
+      const startTime = Date.now();
+      await service.waitForReload();
+      const elapsed = Date.now() - startTime;
+
+      // 100ms configured in beforeEach; allow 90ms threshold for timer imprecision
+      expect(elapsed).toBeGreaterThanOrEqual(90);
+    });
+  });
+
   describe('removeConfigAndReload', () => {
     it('should delete config file and return success', async () => {
       const configPath = '/etc/nginx/sites-enabled/domain-1.conf';

@@ -52,7 +52,13 @@ export class NginxStartupService implements OnModuleInit {
   }
 
   /**
-   * Regenerates all nginx configs (domain mappings + redirects + primary content)
+   * Regenerates all nginx configs (domain mappings + redirects + primary content).
+   *
+   * Uses a bulk write strategy: every config is written to disk first, then a
+   * single `waitForReload()` lets the nginx watcher debounce and reload once.
+   * This collapses N × ~3s waits (N = total configs) into a single wait, which
+   * matters at startup where serialized waits previously pushed cold-start
+   * past the liveness probe budget on workspaces with many domains.
    */
   async regenerateAllConfigs(): Promise<void> {
     this.logger.log('Regenerating all nginx configs on startup...');
@@ -63,14 +69,19 @@ export class NginxStartupService implements OnModuleInit {
     // 0.5. Clean up stale primary domain mapping if PRIMARY_DOMAIN changed
     await this.cleanupStalePrimaryDomainMapping();
 
-    // 1. Regenerate all domain mapping configs
-    await this.regenerateDomainMappingConfigs();
+    // 1. Regenerate all domain mapping configs (write only, no per-file wait)
+    const domainCount = await this.regenerateDomainMappingConfigs();
 
-    // 2. Regenerate all redirect configs
-    await this.regenerateRedirectConfigs();
+    // 2. Regenerate all redirect configs (write only, no per-file wait)
+    const redirectCount = await this.regenerateRedirectConfigs();
 
-    // 3. Regenerate primary content config
-    await this.regeneratePrimaryContentConfig();
+    // 3. Regenerate primary content config (write only)
+    const primaryCount = await this.regeneratePrimaryContentConfig();
+
+    // 4. Single wait for the nginx watcher to debounce + reload all the writes.
+    if (domainCount + redirectCount + primaryCount > 0) {
+      await this.nginxReloadService.waitForReload();
+    }
 
     this.logger.log('Nginx config regeneration complete');
   }
@@ -411,14 +422,19 @@ export class NginxStartupService implements OnModuleInit {
   }
 
   /**
-   * Regenerates nginx configs for all active domain mappings
+   * Regenerates nginx configs for all active domain mappings.
+   *
+   * Writes each config to its final location WITHOUT waiting for nginx to reload
+   * — the caller (`regenerateAllConfigs`) does one final `waitForReload` after
+   * every config is on disk. Returns the number of configs written so the caller
+   * can decide whether to wait at all.
    */
-  private async regenerateDomainMappingConfigs(): Promise<void> {
+  private async regenerateDomainMappingConfigs(): Promise<number> {
     const domains = await db.select().from(domainMappings).where(eq(domainMappings.isActive, true));
 
     if (domains.length === 0) {
       this.logger.log('No active domain mappings found');
-      return;
+      return 0;
     }
 
     let successCount = 0;
@@ -449,7 +465,7 @@ export class NginxStartupService implements OnModuleInit {
           domain.id,
           config,
         );
-        await this.nginxReloadService.validateAndReload(tempPath, finalPath);
+        await this.nginxReloadService.writeConfigOnly(tempPath, finalPath);
         successCount++;
       } catch (error) {
         this.logger.error(`Failed to regenerate config for ${domain.domain}: ${error}`);
@@ -458,6 +474,7 @@ export class NginxStartupService implements OnModuleInit {
     }
 
     this.logger.log(`Regenerated ${successCount} domain mapping configs (${errorCount} errors)`);
+    return successCount;
   }
 
   /**
@@ -482,9 +499,12 @@ export class NginxStartupService implements OnModuleInit {
   }
 
   /**
-   * Regenerates nginx configs for all active redirects
+   * Regenerates nginx configs for all active redirects.
+   *
+   * Same bulk-write pattern as `regenerateDomainMappingConfigs` — caller does
+   * the single final wait. Returns the number of configs written.
    */
-  private async regenerateRedirectConfigs(): Promise<void> {
+  private async regenerateRedirectConfigs(): Promise<number> {
     const redirects = await db
       .select({
         redirect: domainRedirects,
@@ -496,7 +516,7 @@ export class NginxStartupService implements OnModuleInit {
 
     if (redirects.length === 0) {
       this.logger.log('No active redirects found');
-      return;
+      return 0;
     }
 
     let successCount = 0;
@@ -531,7 +551,7 @@ export class NginxStartupService implements OnModuleInit {
           redirect.id,
           config,
         );
-        await this.nginxReloadService.validateAndReload(tempPath, finalPath);
+        await this.nginxReloadService.writeConfigOnly(tempPath, finalPath);
         successCount++;
       } catch (error) {
         this.logger.error(
@@ -542,6 +562,7 @@ export class NginxStartupService implements OnModuleInit {
     }
 
     this.logger.log(`Regenerated ${successCount} redirect configs (${errorCount} errors)`);
+    return successCount;
   }
 
   /**
@@ -550,8 +571,11 @@ export class NginxStartupService implements OnModuleInit {
    * - If an ACTIVE primary domain mapping exists, it's already handled by regenerateDomainMappingConfigs()
    * - If an INACTIVE primary domain mapping exists, generate a welcome page
    * - If no primary domain mapping exists, generate a welcome page
+   *
+   * Same bulk-write pattern — caller does the single final wait. Returns the
+   * number of configs written (0 or 1).
    */
-  private async regeneratePrimaryContentConfig(): Promise<void> {
+  private async regeneratePrimaryContentConfig(): Promise<number> {
     // Check if a primary domain mapping exists (unified system)
     const [primaryDomainMapping] = await db
       .select()
@@ -566,25 +590,27 @@ export class NginxStartupService implements OnModuleInit {
       );
       // Clean up legacy primary-content.conf if it exists (avoid conflict)
       await this.cleanupLegacyPrimaryContentConfig();
-      return;
+      return 0;
     }
 
     // Either no primary domain mapping, or it's inactive - generate welcome page config
     try {
       const { tempPath, finalPath } = await this.nginxConfigService.generateWelcomePageConfig();
 
-      const result = await this.nginxReloadService.validateAndReload(tempPath, finalPath);
+      const result = await this.nginxReloadService.writeConfigOnly(tempPath, finalPath);
 
       if (result.success) {
         const reason = primaryDomainMapping
           ? 'primary domain disabled'
           : 'no primary domain configured';
         this.logger.log(`Regenerated welcome page config (${reason})`);
-      } else {
-        this.logger.error(`Failed to reload welcome page config: ${result.error}`);
+        return 1;
       }
+      this.logger.error(`Failed to write welcome page config: ${result.error}`);
+      return 0;
     } catch (error) {
       this.logger.error(`Failed to regenerate welcome page config: ${error}`);
+      return 0;
     }
   }
 
