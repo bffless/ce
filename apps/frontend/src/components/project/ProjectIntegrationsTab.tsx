@@ -10,7 +10,8 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { StripeIntegrationDialog } from './StripeIntegrationDialog';
 import { GitHubIntegrationDialog } from './GitHubIntegrationDialog';
-import { Settings, Trash2, CreditCard, Github } from 'lucide-react';
+import { GoogleCalendarIntegrationDialog } from './GoogleCalendarIntegrationDialog';
+import { Settings, Trash2, CreditCard, Github, Calendar } from 'lucide-react';
 
 interface Project {
   id: string;
@@ -35,6 +36,11 @@ const INTEGRATION_META: Record<
     name: 'GitHub',
     description: 'Create repositories from templates and interact with the GitHub API from pipeline steps.',
     icon: Github,
+  },
+  'google-calendar': {
+    name: 'Google Calendar',
+    description: 'Mirror bookings to Google Calendar and read free/busy from connected sub-calendars.',
+    icon: Calendar,
   },
 };
 
@@ -112,7 +118,9 @@ export function ProjectIntegrationsTab({ project }: ProjectIntegrationsTabProps)
                     <div>
                       <div className="flex items-center gap-2">
                         <h4 className="font-medium">{meta.name}</h4>
-                        {integration.enabled && integration.id !== 'github' && (
+                        {integration.enabled &&
+                          integration.id !== 'github' &&
+                          integration.id !== 'google-calendar' && (
                           <Badge
                             variant={
                               integration.activeEnvironment === 'production'
@@ -190,6 +198,20 @@ export function ProjectIntegrationsTab({ project }: ProjectIntegrationsTabProps)
             if (!open) setConfigDialogId(null);
           }}
           projectId={project.id}
+          integration={configIntegration}
+        />
+      )}
+
+      {/* Google Calendar Dialog */}
+      {configDialogId === 'google-calendar' && configIntegration && (
+        <GoogleCalendarIntegrationDialog
+          open={true}
+          onOpenChange={(open) => {
+            if (!open) setConfigDialogId(null);
+          }}
+          projectId={project.id}
+          projectOwner={project.owner}
+          projectName={project.name}
           integration={configIntegration}
         />
       )}
