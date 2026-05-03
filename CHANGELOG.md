@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.21](https://github.com/bffless/ce/compare/v0.1.20...v0.1.21) (2026-05-03)
+
+
+### Features
+
+* **auth:** add My Sites card to admin homepage ([4478194](https://github.com/bffless/ce/commit/4478194421ce4b10d61ac9b86d1931a1bb90ae51))
+
 ## [0.1.20](https://github.com/bffless/ce/compare/v0.1.19...v0.1.20) (2026-05-03)
 
 
