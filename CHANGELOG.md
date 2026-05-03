@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.23](https://github.com/bffless/ce/compare/v0.1.22...v0.1.23) (2026-05-03)
+
+
+### Features
+
+* generic scheduling component (Phase A: google-calendar integration) ([df9e8ce](https://github.com/bffless/ce/commit/df9e8ce697f8035c5e1876d1ac3fc0d1438a87dd))
+* **integrations:** promote google-calendar to first-class integration ([9c3f84f](https://github.com/bffless/ce/commit/9c3f84f535649aff1a08150f237b74698a55ff9b))
+* **pipelines:** add google_calendar step handler with action dispatch ([c730294](https://github.com/bffless/ce/commit/c730294b5c5f07bb8b40c54c99b72d72a4c5c003))
+
 ## [0.1.22](https://github.com/bffless/ce/compare/v0.1.21...v0.1.22) (2026-05-03)
 
 
