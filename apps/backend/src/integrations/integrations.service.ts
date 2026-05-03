@@ -1,9 +1,10 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { db } from '../db/client';
 import { projects } from '../db/schema';
 import { eq } from 'drizzle-orm';
 import * as crypto from 'crypto';
+import { GoogleCalendarOAuthService } from './google-calendar-oauth.service';
 
 /**
  * Stored integration config shape in projects.settings.integrations
@@ -63,7 +64,11 @@ export class IntegrationsService {
   private readonly ENCRYPTION_KEY: Buffer;
   private readonly ENCRYPTION_ALGORITHM = 'aes-256-gcm';
 
-  constructor(private configService: ConfigService) {
+  constructor(
+    private configService: ConfigService,
+    @Inject(forwardRef(() => GoogleCalendarOAuthService))
+    private readonly googleCalendarOAuthService: GoogleCalendarOAuthService,
+  ) {
     const encryptionKey = this.configService.get<string>('ENCRYPTION_KEY');
     if (encryptionKey) {
       this.ENCRYPTION_KEY = Buffer.from(encryptionKey, 'base64');
@@ -73,9 +78,13 @@ export class IntegrationsService {
     }
   }
 
+  /** Supported integration ids (returned by `listIntegrations`). */
+  private static readonly SUPPORTED_INTEGRATIONS = ['stripe', 'github', 'google-calendar'] as const;
+
   /** Fields that are safe to expose in the API response (per integration) */
   private static readonly PUBLIC_CONFIG_FIELDS: Record<string, string[]> = {
     github: ['defaultOrg'],
+    'google-calendar': ['connectedEmail', 'availableCalendars'],
   };
 
   /**
@@ -91,9 +100,9 @@ export class IntegrationsService {
    */
   async listIntegrations(projectId: string): Promise<IntegrationInfo[]> {
     const allIntegrations = await this.getAllStoredIntegrations(projectId);
-    const supported = ['stripe', 'github'];
-
-    return supported.map((id) => this.toIntegrationInfo(id, allIntegrations[id]));
+    return IntegrationsService.SUPPORTED_INTEGRATIONS.map((id) =>
+      this.toIntegrationInfo(id, allIntegrations[id]),
+    );
   }
 
   private toIntegrationInfo(id: string, stored?: StoredIntegrationConfig | null): IntegrationInfo {
@@ -303,6 +312,25 @@ export class IntegrationsService {
           return { success: false, error: body.message || `HTTP ${response.status}` };
         }
 
+        return { success: true };
+      }
+
+      if (integrationId === 'google-calendar') {
+        const token = await this.googleCalendarOAuthService.getValidAccessToken(projectId, env);
+        if (!token) {
+          return { success: false, error: 'Google Calendar not connected (complete OAuth flow first)' };
+        }
+        const response = await fetch(
+          'https://www.googleapis.com/calendar/v3/users/me/calendarList',
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          return {
+            success: false,
+            error: body.error?.message || `Google API HTTP ${response.status}`,
+          };
+        }
         return { success: true };
       }
 
