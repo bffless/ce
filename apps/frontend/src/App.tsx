@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { RepositoryPage } from '@/pages/RepositoryPage';
 import { RepositoryLayout } from '@/pages/RepositoryLayout';
 import { RepositoriesPage } from '@/pages/RepositoriesPage';
@@ -20,7 +20,6 @@ import { UserGroupsPage } from '@/pages/UserGroupsPage';
 import { GroupDetailPage } from '@/pages/GroupDetailPage';
 import { UsersPage } from '@/pages/UsersPage';
 import { UserSettingsPage } from '@/pages/UserSettingsPage';
-import { AccountPage } from '@/pages/AccountPage';
 import { AdminSettingsPage } from '@/pages/AdminSettingsPage';
 import { GeneralTab } from '@/pages/admin-settings/GeneralTab';
 import { AuthTab } from '@/pages/admin-settings/AuthTab';
@@ -73,11 +72,14 @@ function App() {
         {/* OAuth callback (handles plugin OAuth redirects) */}
         <Route path="/oauth/callback" element={<ProtectedRoute><OAuthCallbackPage /></ProtectedRoute>} />
 
-        {/* User Settings route (requires auth) */}
+        {/* User Settings route (requires auth). Hosts Profile, My Sites,
+            API Keys, and Preferences tabs. */}
         <Route path="/settings" element={<ProtectedRoute><UserSettingsPage /></ProtectedRoute>} />
 
-        {/* Identity hub: BFFless Auth account + "My Sites" memberships */}
-        <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
+        {/* /account is the canonical identity-hub URL referenced by
+            <AuthDialog.PoweredBy /> and the 403 link-back. It lives as a
+            tab inside UserSettingsPage — redirect to it. */}
+        <Route path="/account" element={<Navigate to="/settings?tab=sites" replace />} />
 
         {/* Admin Settings routes (requires admin, tabbed layout) */}
         <Route path="/admin/settings" element={<ProtectedRoute requireAdmin><AdminSettingsPage /></ProtectedRoute>}>

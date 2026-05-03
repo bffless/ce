@@ -7,8 +7,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { AlertCircle, ArrowLeft, User as UserIcon } from 'lucide-react';
 import { GlobalApiKeysTab } from '@/components/settings/GlobalApiKeysTab';
 import { ChangePasswordCard } from '@/components/settings/ChangePasswordCard';
+import { MySitesSection } from '@/components/settings/MySitesSection';
 
-type TabValue = 'profile' | 'api-keys' | 'preferences';
+type TabValue = 'profile' | 'sites' | 'api-keys' | 'preferences';
 
 /**
  * UserSettingsPage - User profile and settings
@@ -37,7 +38,9 @@ export function UserSettingsPage() {
       ? 'api-keys'
       : tabParam === 'preferences'
         ? 'preferences'
-        : 'profile';
+        : tabParam === 'sites'
+          ? 'sites'
+          : 'profile';
 
   // Handler for tab changes
   const handleTabChange = (value: string) => {
@@ -84,6 +87,7 @@ export function UserSettingsPage() {
       <Tabs value={currentTab} onValueChange={handleTabChange}>
         <TabsList>
           <TabsTrigger value="profile">Profile</TabsTrigger>
+          <TabsTrigger value="sites">My Sites</TabsTrigger>
           {canAccessApiKeys && <TabsTrigger value="api-keys">API Keys</TabsTrigger>}
           <TabsTrigger value="preferences">Preferences</TabsTrigger>
         </TabsList>
@@ -122,6 +126,11 @@ export function UserSettingsPage() {
           </Card>
 
           {loginMethods?.hasPassword && <ChangePasswordCard />}
+        </TabsContent>
+
+        {/* My Sites Tab — projects this user is a member of */}
+        <TabsContent value="sites" className="space-y-4">
+          <MySitesSection />
         </TabsContent>
 
         {/* API Keys Tab - Hidden for member role */}
