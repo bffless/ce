@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { OnboardingModal } from '@/components/setup/onboarding/OnboardingModal';
-import { FolderGit2, Settings, Users, UserCog, ShieldAlert, X, ArrowRight, ExternalLink } from 'lucide-react';
+import { FolderGit2, Settings, Users, UserCog, ShieldAlert, X, ArrowRight, ExternalLink, Globe } from 'lucide-react';
 import { useBranding } from '@/hooks/useBranding';
 
 /**
@@ -156,7 +156,7 @@ export function HomePage() {
         )}
 
         {/* Navigation Cards */}
-        <div className={`grid gap-4 ${user?.role === 'admin' ? 'md:grid-cols-4' : user?.role === 'member' ? 'md:grid-cols-1' : 'md:grid-cols-2'}`}>
+        <div className={`grid gap-4 ${user?.role === 'admin' ? 'md:grid-cols-2 lg:grid-cols-4' : user?.role === 'member' ? 'md:grid-cols-2' : 'md:grid-cols-3'}`}>
           {user?.role !== 'member' && (
             <Link to="/repo" className="group block">
               <div className="bg-white dark:bg-card border border-[#3a3a3a]/10 dark:border-border rounded-lg p-6 hover:border-[#d96459]/50 hover:shadow-md transition-all duration-200">
@@ -207,6 +207,21 @@ export function HomePage() {
               </div>
             </Link>
           )}
+
+          <Link to="/settings?tab=sites" className="group block">
+            <div className="bg-white dark:bg-card border border-[#3a3a3a]/10 dark:border-border rounded-lg p-6 hover:border-[#d96459]/50 hover:shadow-md transition-all duration-200">
+              <div className="flex items-start justify-between">
+                <Globe className="h-8 w-8 text-[#d96459]" />
+                <ArrowRight className="h-5 w-5 text-[#4a4a4a]/30 group-hover:text-[#d96459] group-hover:translate-x-1 transition-all" />
+              </div>
+              <h2 className="text-lg font-semibold text-[#3a3a3a] dark:text-foreground mt-4">
+                My Sites
+              </h2>
+              <p className="text-sm text-[#4a4a4a] dark:text-muted-foreground mt-1">
+                Sites your BFFless Auth account is a member of
+              </p>
+            </div>
+          </Link>
 
           <Link to="/settings" className="group block">
             <div className="bg-white dark:bg-card border border-[#3a3a3a]/10 dark:border-border rounded-lg p-6 hover:border-[#d96459]/50 hover:shadow-md transition-all duration-200">
