@@ -454,4 +454,98 @@ describe('GoogleCalendarHandler', () => {
       expect(mockFetch).toHaveBeenCalledTimes(1);
     });
   });
+
+  // ===== Soft-fail (optional: true) =====
+
+  describe('optional flag', () => {
+    it('NOT_CONFIGURED → success with skipped=not_configured + warning', async () => {
+      oauthService.getValidAccessToken.mockResolvedValueOnce(null);
+
+      const result = await handler.execute(
+        makeContext(),
+        makeStep({ action: 'create_event', optional: true, calendarId: 'primary' }),
+      );
+
+      expect(result.success).toBe(true);
+      expect((result.output as any).skipped).toBe(true);
+      expect((result.output as any).reason).toBe('not_configured');
+      expect(result.warning).toBeDefined();
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('AUTH_FAILED (401 + refresh fail) → success with skipped=auth_failed', async () => {
+      mockFetch.mockResolvedValueOnce(makeFetchResponse({ status: 401, body: {} }));
+      oauthService.getValidAccessToken
+        .mockResolvedValueOnce('stale-tok')
+        .mockResolvedValueOnce(null);
+
+      const result = await handler.execute(
+        makeContext(),
+        makeStep({ action: 'list_calendars', optional: true }),
+      );
+
+      expect(result.success).toBe(true);
+      expect((result.output as any).skipped).toBe(true);
+      expect((result.output as any).reason).toBe('auth_failed');
+    });
+
+    it('NOT_FOUND on a non-delete action → success with skipped=not_found', async () => {
+      mockFetch.mockResolvedValue(
+        makeFetchResponse({ status: 404, body: { error: { message: 'Calendar not found' } } }),
+      );
+
+      const result = await handler.execute(
+        makeContext(),
+        makeStep({
+          action: 'list_events',
+          calendarId: 'gone@x',
+          optional: true,
+        }),
+      );
+
+      expect(result.success).toBe(true);
+      expect((result.output as any).skipped).toBe(true);
+      expect((result.output as any).reason).toBe('not_found');
+    });
+
+    it('RATE_LIMITED (429) is NOT soft-failed even with optional: true', async () => {
+      mockFetch.mockResolvedValue(
+        makeFetchResponse({ status: 429, body: { error: { message: 'rate' } } }),
+      );
+
+      const result = await handler.execute(
+        makeContext(),
+        makeStep({ action: 'list_calendars', optional: true }),
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error?.code).toBe('GOOGLE_CALENDAR_RATE_LIMITED');
+    });
+
+    it('5xx (API_ERROR) is NOT soft-failed even with optional: true', async () => {
+      mockFetch.mockResolvedValue(
+        makeFetchResponse({ status: 500, body: { error: { message: 'internal' } } }),
+      );
+
+      const result = await handler.execute(
+        makeContext(),
+        makeStep({ action: 'list_calendars', optional: true }),
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error?.code).toBe('GOOGLE_CALENDAR_API_ERROR');
+    });
+
+    it('default (optional: false) keeps the existing error behavior', async () => {
+      oauthService.getValidAccessToken.mockResolvedValueOnce(null);
+
+      const result = await handler.execute(
+        makeContext(),
+        makeStep({ action: 'create_event', calendarId: 'primary' }),
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error?.code).toBe('GOOGLE_CALENDAR_NOT_CONFIGURED');
+    });
+  });
 });
