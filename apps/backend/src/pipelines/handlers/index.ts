@@ -19,3 +19,4 @@ export * from './stripe-checkout.handler';
 export * from './stripe-webhook.handler';
 export * from './signed-url.handler';
 export * from './github-api.handler';
+export * from './google-calendar.handler';

@@ -39,6 +39,7 @@ import {
   StripeWebhookHandler,
   SignedUrlHandler,
   GitHubApiHandler,
+  GoogleCalendarHandler,
 } from './handlers';
 import { IntegrationsModule } from '../integrations/integrations.module';
 // Embeddings service
@@ -112,6 +113,7 @@ import {
     StripeWebhookHandler,
     SignedUrlHandler,
     GitHubApiHandler,
+    GoogleCalendarHandler,
     // Validators (auto-register on construction)
     AuthRequiredValidator,
     RateLimitValidator,

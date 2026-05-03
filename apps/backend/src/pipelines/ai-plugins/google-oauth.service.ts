@@ -1,22 +1,24 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import { AIToolPluginService } from './ai-tool-plugin.service';
-
-const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
-const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
-const GOOGLE_USERINFO_URL = 'https://www.googleapis.com/oauth2/v2/userinfo';
-const GOOGLE_REVOKE_URL = 'https://oauth2.googleapis.com/revoke';
-
-const SCOPES = [
-  'https://www.googleapis.com/auth/calendar.freebusy',
-  'https://www.googleapis.com/auth/calendar.events',
-  'https://www.googleapis.com/auth/calendar.readonly',
-  'https://www.googleapis.com/auth/userinfo.email',
-];
+import { GoogleCalendarOAuthService } from '../../integrations/google-calendar-oauth.service';
 
 const STATE_EXPIRY_MS = 10 * 60 * 1000; // 10 minutes
 
+/**
+ * AI-chat Google Calendar OAuth.
+ *
+ * The HTTP plumbing (auth URL build, code exchange, refresh, calendar list,
+ * revoke) is delegated to `GoogleCalendarOAuthService`. What stays here:
+ *   - state-token encryption / replay protection bound to this AI plugin
+ *   - storage in `settings.aiPlugins['google-calendar']` via `AIToolPluginService`
+ *
+ * The new scheduling integration uses `settings.integrations['google-calendar']`
+ * instead. Both store per-project clientId/clientSecret + tokens; they share the
+ * same OAuth client model but live in different `settings` namespaces so the
+ * AI-chat path keeps working without migration.
+ */
 @Injectable()
 export class GoogleOAuthService {
   private readonly logger = new Logger(GoogleOAuthService.name);
@@ -26,6 +28,8 @@ export class GoogleOAuthService {
   constructor(
     private readonly pluginService: AIToolPluginService,
     private readonly configService: ConfigService,
+    @Inject(forwardRef(() => GoogleCalendarOAuthService))
+    private readonly googleCalendarOAuthService: GoogleCalendarOAuthService,
   ) {
     const encryptionKey = this.configService.get<string>('ENCRYPTION_KEY');
     if (encryptionKey) {
@@ -56,17 +60,13 @@ export class GoogleOAuthService {
       timestamp: Date.now(),
     });
 
-    const params = new URLSearchParams({
-      client_id: config.clientId as string,
-      redirect_uri: redirectUri,
-      response_type: 'code',
-      scope: SCOPES.join(' '),
-      access_type: 'offline',
-      prompt: 'consent',
+    const authUrl = this.googleCalendarOAuthService.buildAuthorizationUrl(
+      config.clientId as string,
       state,
-    });
+      redirectUri,
+    );
 
-    return { authUrl: `${GOOGLE_AUTH_URL}?${params.toString()}` };
+    return { authUrl };
   }
 
   /**
@@ -79,7 +79,6 @@ export class GoogleOAuthService {
     state: string,
     redirectUri: string,
   ): Promise<{ connectedEmail: string }> {
-    // Validate state
     const stateData = this.decryptState(state);
     if (stateData.projectId !== projectId || stateData.pluginId !== pluginId) {
       throw new Error('Invalid OAuth state: project/plugin mismatch');
@@ -88,103 +87,55 @@ export class GoogleOAuthService {
       throw new Error('OAuth state expired');
     }
 
-    // Get client credentials from stored config
     const config = await this.pluginService.getDecryptedPluginConfig(projectId, pluginId);
     if (!config?.clientId || !config?.clientSecret) {
       throw new Error('Google OAuth credentials not configured');
     }
 
-    // Exchange code for tokens
-    const tokenResponse = await fetch(GOOGLE_TOKEN_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        code,
-        client_id: config.clientId as string,
-        client_secret: config.clientSecret as string,
-        redirect_uri: redirectUri,
-        grant_type: 'authorization_code',
-      }),
-    });
+    const tokens = await this.googleCalendarOAuthService.exchangeCodeForCredentials(
+      config.clientId as string,
+      config.clientSecret as string,
+      code,
+      redirectUri,
+    );
 
-    if (!tokenResponse.ok) {
-      const error = await tokenResponse.json();
-      this.logger.error(`Token exchange failed: ${JSON.stringify(error)}`);
-      throw new Error(error.error_description || 'Failed to exchange authorization code');
-    }
-
-    const tokens = await tokenResponse.json();
-
-    // Fetch user email
-    const userInfoResponse = await fetch(GOOGLE_USERINFO_URL, {
-      headers: { Authorization: `Bearer ${tokens.access_token}` },
-    });
-
-    let connectedEmail = 'unknown';
-    if (userInfoResponse.ok) {
-      const userInfo = await userInfoResponse.json();
-      connectedEmail = userInfo.email || 'unknown';
-    }
-
-    // Merge tokens into existing plugin config
-    const updatedConfig = {
+    await this.pluginService.updatePluginConfig(projectId, pluginId, {
       ...config,
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token,
-      tokenExpiry: Date.now() + tokens.expires_in * 1000,
-      connectedEmail,
-    };
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      tokenExpiry: tokens.tokenExpiry,
+      connectedEmail: tokens.connectedEmail,
+    });
+    this.logger.log(`Google OAuth connected for project ${projectId}: ${tokens.connectedEmail}`);
 
-    await this.pluginService.updatePluginConfig(projectId, pluginId, updatedConfig);
-    this.logger.log(`Google OAuth connected for project ${projectId}: ${connectedEmail}`);
-
-    return { connectedEmail };
+    return { connectedEmail: tokens.connectedEmail };
   }
 
   /**
-   * Refresh an expired access token.
+   * Refresh an expired access token. Returns the raw shape the AI plugin
+   * already expects (`expiresIn` seconds rather than absolute expiry).
    */
   async refreshAccessToken(
     clientId: string,
     clientSecret: string,
     refreshToken: string,
   ): Promise<{ accessToken: string; expiresIn: number }> {
-    const response = await fetch(GOOGLE_TOKEN_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: clientId,
-        client_secret: clientSecret,
-        refresh_token: refreshToken,
-        grant_type: 'refresh_token',
-      }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error_description || 'Failed to refresh access token');
-    }
-
-    const data = await response.json();
+    const refreshed = await this.googleCalendarOAuthService.refreshAccessTokenForCredentials(
+      clientId,
+      clientSecret,
+      refreshToken,
+    );
     return {
-      accessToken: data.access_token,
-      expiresIn: data.expires_in,
+      accessToken: refreshed.accessToken,
+      expiresIn: Math.max(0, Math.floor((refreshed.tokenExpiry - Date.now()) / 1000)),
     };
   }
 
   /**
-   * Revoke a refresh token.
+   * Revoke a refresh token (best-effort).
    */
   async revokeToken(refreshToken: string): Promise<void> {
-    try {
-      await fetch(`${GOOGLE_REVOKE_URL}?token=${refreshToken}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      });
-    } catch (error) {
-      this.logger.warn(`Token revocation failed: ${error.message}`);
-      // Continue — revoking is best-effort
-    }
+    await this.googleCalendarOAuthService.revokeToken(refreshToken);
   }
 
   /**
@@ -200,22 +151,11 @@ export class GoogleOAuthService {
     }
 
     const accessToken = await this.getValidAccessToken(projectId, pluginId, config);
-
-    const response = await fetch(
-      'https://www.googleapis.com/calendar/v3/users/me/calendarList',
-      { headers: { Authorization: `Bearer ${accessToken}` } },
-    );
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error?.message || 'Failed to list calendars');
-    }
-
-    const data = await response.json();
-    return (data.items || []).map((item: any) => ({
-      id: item.id,
-      summary: item.summary || item.id,
-      primary: item.primary || false,
+    const calendars = await this.googleCalendarOAuthService.listCalendarsForToken(accessToken);
+    return calendars.map((c) => ({
+      id: c.id,
+      summary: c.summary,
+      primary: c.primary || false,
     }));
   }
 
@@ -234,22 +174,19 @@ export class GoogleOAuthService {
       return config.accessToken as string;
     }
 
-    // Refresh
-    const { accessToken, expiresIn } = await this.refreshAccessToken(
+    const refreshed = await this.googleCalendarOAuthService.refreshAccessTokenForCredentials(
       config.clientId as string,
       config.clientSecret as string,
       config.refreshToken as string,
     );
 
-    // Update stored config with new token
-    const updatedConfig = {
+    await this.pluginService.updatePluginConfig(projectId, pluginId, {
       ...config,
-      accessToken,
-      tokenExpiry: Date.now() + expiresIn * 1000,
-    };
-    await this.pluginService.updatePluginConfig(projectId, pluginId, updatedConfig);
+      accessToken: refreshed.accessToken,
+      tokenExpiry: refreshed.tokenExpiry,
+    });
 
-    return accessToken;
+    return refreshed.accessToken;
   }
 
   // ===== State encryption helpers =====
