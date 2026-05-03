@@ -5,14 +5,22 @@ import { GoogleCalendarIntegrationKeys } from './google-calendar.interface';
 
 describe('GoogleCalendarOAuthService', () => {
   let service: GoogleCalendarOAuthService;
-  let integrationsService: { getActiveConfig: jest.Mock; setConfig: jest.Mock };
+  let integrationsService: {
+    getActiveConfig: jest.Mock;
+    setConfig: jest.Mock;
+    getStoredIntegration: jest.Mock;
+  };
   let originalFetch: typeof globalThis.fetch;
 
   beforeEach(async () => {
     integrationsService = {
       getActiveConfig: jest.fn(),
       setConfig: jest.fn().mockResolvedValue(undefined),
-    };
+      getStoredIntegration: jest.fn().mockResolvedValue({
+        enabled: true,
+        activeEnvironment: 'production',
+      }),
+    } as any;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -157,6 +165,32 @@ describe('GoogleCalendarOAuthService', () => {
         clientSecret: 'sec',
       });
       const tok = await service.getValidAccessToken('proj', 'production');
+      expect(tok).toBeNull();
+    });
+
+    it('falls back to active environment when env is omitted', async () => {
+      integrationsService.getStoredIntegration.mockResolvedValue({
+        enabled: true,
+        activeEnvironment: 'sandbox',
+      });
+      integrationsService.getActiveConfig.mockResolvedValue(baseConfig);
+
+      const tok = await service.getValidAccessToken('proj');
+      expect(tok).toBe('current-tok');
+      // resolved env should propagate to getActiveConfig
+      expect(integrationsService.getActiveConfig).toHaveBeenCalledWith(
+        'proj',
+        'google-calendar',
+        'sandbox',
+      );
+    });
+
+    it('returns null when integration is not enabled and env omitted', async () => {
+      integrationsService.getStoredIntegration.mockResolvedValue({
+        enabled: false,
+        activeEnvironment: 'production',
+      });
+      const tok = await service.getValidAccessToken('proj');
       expect(tok).toBeNull();
     });
   });

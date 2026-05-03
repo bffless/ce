@@ -200,11 +200,13 @@ export class GoogleCalendarOAuthService {
    */
   async getAuthorizationUrlForProject(
     projectId: string,
-    env: 'sandbox' | 'production',
+    env: 'sandbox' | 'production' | undefined,
     state: string,
     redirectUri: string,
   ): Promise<string | null> {
-    const config = await this.getProjectConfig(projectId, env);
+    const resolvedEnv = await this.resolveActiveEnv(projectId, env);
+    if (!resolvedEnv) return null;
+    const config = await this.getProjectConfig(projectId, resolvedEnv);
     if (!config?.clientId) return null;
     return this.buildAuthorizationUrl(config.clientId, state, redirectUri);
   }
@@ -215,11 +217,15 @@ export class GoogleCalendarOAuthService {
    */
   async exchangeCodeForProject(
     projectId: string,
-    env: 'sandbox' | 'production',
+    env: 'sandbox' | 'production' | undefined,
     code: string,
     redirectUri: string,
   ): Promise<ExchangedTokens> {
-    const config = await this.getProjectConfig(projectId, env);
+    const resolvedEnv = await this.resolveActiveEnv(projectId, env);
+    if (!resolvedEnv) {
+      throw new Error('Google Calendar integration not configured');
+    }
+    const config = await this.getProjectConfig(projectId, resolvedEnv);
     if (!config?.clientId || !config?.clientSecret) {
       throw new Error('Google Calendar integration not configured');
     }
@@ -238,7 +244,7 @@ export class GoogleCalendarOAuthService {
       this.logger.warn(`Could not fetch calendarList after exchange: ${err.message}`);
     }
 
-    await this.integrationsService.setConfig(projectId, 'google-calendar', env, {
+    await this.integrationsService.setConfig(projectId, 'google-calendar', resolvedEnv, {
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
       tokenExpiry: tokens.tokenExpiry,
@@ -253,12 +259,18 @@ export class GoogleCalendarOAuthService {
    * Get a valid access token for a project, refreshing if within 60s of expiry.
    * Persists the refreshed token back to the integration config.
    * Returns null if the integration isn't configured or refresh fails.
+   *
+   * `env` is optional — when omitted, resolves to the project's active
+   * environment (matches `IntegrationsService.getActiveConfig` behaviour).
    */
   async getValidAccessToken(
     projectId: string,
-    env: 'sandbox' | 'production',
+    env?: 'sandbox' | 'production',
   ): Promise<string | null> {
-    const config = await this.getProjectConfig(projectId, env);
+    const resolvedEnv = await this.resolveActiveEnv(projectId, env);
+    if (!resolvedEnv) return null;
+
+    const config = await this.getProjectConfig(projectId, resolvedEnv);
     if (!config?.clientId || !config?.clientSecret || !config?.refreshToken) {
       return null;
     }
@@ -274,7 +286,7 @@ export class GoogleCalendarOAuthService {
         config.clientSecret,
         config.refreshToken,
       );
-      await this.integrationsService.setConfig(projectId, 'google-calendar', env, {
+      await this.integrationsService.setConfig(projectId, 'google-calendar', resolvedEnv, {
         accessToken: refreshed.accessToken,
         tokenExpiry: refreshed.tokenExpiry,
       });
@@ -291,14 +303,18 @@ export class GoogleCalendarOAuthService {
    */
   async listCalendarsForProject(
     projectId: string,
-    env: 'sandbox' | 'production',
+    env?: 'sandbox' | 'production',
   ): Promise<CalendarSummary[]> {
-    const accessToken = await this.getValidAccessToken(projectId, env);
+    const resolvedEnv = await this.resolveActiveEnv(projectId, env);
+    if (!resolvedEnv) {
+      throw new Error('Google Calendar not connected');
+    }
+    const accessToken = await this.getValidAccessToken(projectId, resolvedEnv);
     if (!accessToken) {
       throw new Error('Google Calendar not connected');
     }
     const calendars = await this.listCalendarsForToken(accessToken);
-    await this.integrationsService.setConfig(projectId, 'google-calendar', env, {
+    await this.integrationsService.setConfig(projectId, 'google-calendar', resolvedEnv, {
       availableCalendars: calendars,
     });
     return calendars;
@@ -316,5 +332,24 @@ export class GoogleCalendarOAuthService {
       env,
     );
     return (config as GoogleCalendarIntegrationKeys | null) ?? null;
+  }
+
+  /**
+   * Resolve the environment to use for token reads/writes. When `env` is
+   * supplied, returns it. Otherwise looks up the project's stored
+   * `activeEnvironment` for `'google-calendar'`. Returns null if the
+   * integration isn't enabled.
+   */
+  private async resolveActiveEnv(
+    projectId: string,
+    env: 'sandbox' | 'production' | undefined,
+  ): Promise<'sandbox' | 'production' | null> {
+    if (env) return env;
+    const stored = await this.integrationsService.getStoredIntegration(
+      projectId,
+      'google-calendar',
+    );
+    if (!stored?.enabled) return null;
+    return stored.activeEnvironment;
   }
 }
