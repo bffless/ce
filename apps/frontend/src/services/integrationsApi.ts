@@ -9,6 +9,13 @@ export interface IntegrationInfo {
   publicConfig?: Record<string, unknown>;
 }
 
+export interface CalendarSummary {
+  id: string;
+  summary: string;
+  primary?: boolean;
+  timeZone: string;
+}
+
 export const integrationsApi = api.injectEndpoints({
   endpoints: (builder) => ({
     getProjectIntegrations: builder.query<IntegrationInfo[], string>({
@@ -85,6 +92,48 @@ export const integrationsApi = api.injectEndpoints({
         body: { environment },
       }),
     }),
+
+    // ===== Google Calendar OAuth =====
+
+    initiateGoogleCalendarOAuth: builder.query<
+      { authUrl: string },
+      { projectId: string; redirectUri: string }
+    >({
+      query: ({ projectId, redirectUri }) =>
+        `/api/projects/${projectId}/integrations/google-calendar/oauth/initiate?redirectUri=${encodeURIComponent(redirectUri)}`,
+    }),
+
+    completeGoogleCalendarOAuth: builder.mutation<
+      { success: boolean; connectedEmail: string },
+      { projectId: string; code: string; state: string; redirectUri: string }
+    >({
+      query: ({ projectId, code, state, redirectUri }) => ({
+        url: `/api/projects/${projectId}/integrations/google-calendar/oauth/callback`,
+        method: 'POST',
+        body: { code, state, redirectUri },
+      }),
+      invalidatesTags: (_result, _error, { projectId }) => [
+        { type: 'Integration' as const, id: projectId },
+      ],
+    }),
+
+    disconnectGoogleCalendarOAuth: builder.mutation<void, { projectId: string }>({
+      query: ({ projectId }) => ({
+        url: `/api/projects/${projectId}/integrations/google-calendar/oauth`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: (_result, _error, { projectId }) => [
+        { type: 'Integration' as const, id: projectId },
+      ],
+    }),
+
+    listGoogleCalendarCalendars: builder.query<{ calendars: CalendarSummary[] }, string>({
+      query: (projectId) =>
+        `/api/projects/${projectId}/integrations/google-calendar/calendars`,
+      providesTags: (_result, _error, projectId) => [
+        { type: 'Integration' as const, id: projectId },
+      ],
+    }),
   }),
 });
 
@@ -95,4 +144,8 @@ export const {
   useSwitchIntegrationEnvironmentMutation,
   useDeleteIntegrationMutation,
   useTestIntegrationConnectionMutation,
+  useLazyInitiateGoogleCalendarOAuthQuery,
+  useCompleteGoogleCalendarOAuthMutation,
+  useDisconnectGoogleCalendarOAuthMutation,
+  useListGoogleCalendarCalendarsQuery,
 } = integrationsApi;

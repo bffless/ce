@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useCompletePluginOAuthMutation } from '@/services/projectsApi';
+import { useCompleteGoogleCalendarOAuthMutation } from '@/services/integrationsApi';
 import { Loader2, CheckCircle2, XCircle } from 'lucide-react';
 
 export function OAuthCallbackPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const [completeOAuth] = useCompletePluginOAuthMutation();
+  const [completePluginOAuth] = useCompletePluginOAuthMutation();
+  const [completeIntegrationOAuth] = useCompleteGoogleCalendarOAuthMutation();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState('');
   const [connectedEmail, setConnectedEmail] = useState('');
@@ -32,39 +34,74 @@ export function OAuthCallbackPage() {
       return;
     }
 
-    // Read stored context from sessionStorage
-    const storedData = sessionStorage.getItem('oauth_plugin_context');
-    if (!storedData) {
-      setStatus('error');
-      setErrorMessage('OAuth session expired. Please try connecting again.');
+    // Two callers, two sessionStorage keys. Integration takes precedence
+    // because the new google-calendar entry under Project Settings is the
+    // intended path going forward; AI-plugin OAuth is the legacy path.
+    const integrationContext = sessionStorage.getItem('oauth_integration_context');
+    const pluginContext = sessionStorage.getItem('oauth_plugin_context');
+
+    if (integrationContext) {
+      sessionStorage.removeItem('oauth_integration_context');
+      const { projectId, integrationId, owner, repo } = JSON.parse(integrationContext);
+      const redirectUri = window.location.origin + '/oauth/callback';
+
+      if (integrationId !== 'google-calendar') {
+        setStatus('error');
+        setErrorMessage(`Unsupported integration: ${integrationId}`);
+        return;
+      }
+
+      completeIntegrationOAuth({ projectId, code, state, redirectUri })
+        .unwrap()
+        .then((result) => {
+          setConnectedEmail(result.connectedEmail);
+          setStatus('success');
+          setTimeout(() => {
+            if (owner && repo) {
+              navigate(`/repo/${owner}/${repo}/settings?tab=integrations`);
+            } else {
+              navigate('/');
+            }
+          }, 2000);
+        })
+        .catch((err) => {
+          setStatus('error');
+          setErrorMessage(
+            err.data?.message || 'Failed to complete OAuth connection. Please try again.',
+          );
+        });
       return;
     }
 
-    const { projectId, pluginId, owner, repo } = JSON.parse(storedData);
-    sessionStorage.removeItem('oauth_plugin_context');
+    if (pluginContext) {
+      sessionStorage.removeItem('oauth_plugin_context');
+      const { projectId, pluginId, owner, repo } = JSON.parse(pluginContext);
+      const redirectUri = window.location.origin + '/oauth/callback';
 
-    const redirectUri = window.location.origin + '/oauth/callback';
+      completePluginOAuth({ projectId, pluginId, code, state, redirectUri })
+        .unwrap()
+        .then((result) => {
+          setConnectedEmail(result.connectedEmail);
+          setStatus('success');
+          setTimeout(() => {
+            if (owner && repo) {
+              navigate(`/repo/${owner}/${repo}/settings?tab=ai`);
+            } else {
+              navigate('/');
+            }
+          }, 2000);
+        })
+        .catch((err) => {
+          setStatus('error');
+          setErrorMessage(
+            err.data?.message || 'Failed to complete OAuth connection. Please try again.',
+          );
+        });
+      return;
+    }
 
-    completeOAuth({ projectId, pluginId, code, state, redirectUri })
-      .unwrap()
-      .then((result) => {
-        setConnectedEmail(result.connectedEmail);
-        setStatus('success');
-        // Redirect to project settings after a brief delay
-        setTimeout(() => {
-          if (owner && repo) {
-            navigate(`/repo/${owner}/${repo}/settings?tab=ai`);
-          } else {
-            navigate('/');
-          }
-        }, 2000);
-      })
-      .catch((err) => {
-        setStatus('error');
-        setErrorMessage(
-          err.data?.message || 'Failed to complete OAuth connection. Please try again.',
-        );
-      });
+    setStatus('error');
+    setErrorMessage('OAuth session expired. Please try connecting again.');
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
