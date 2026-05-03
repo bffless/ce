@@ -18,6 +18,17 @@ jest.mock('supertokens-node/recipe/session', () => ({
   getSession: (...args: any[]) => getSessionMock(...args),
 }));
 
+// Mock EmailPassword recipe used by signUp / signIn paths.
+const stSignUpMock = jest.fn();
+const stSignInMock = jest.fn();
+jest.mock('supertokens-node/recipe/emailpassword', () => ({
+  __esModule: true,
+  default: {
+    signUp: (...args: any[]) => stSignUpMock(...args),
+    signIn: (...args: any[]) => stSignInMock(...args),
+  },
+}));
+
 import { CustomDomainAuthController } from './custom-domain-auth.controller';
 import { CustomDomainAuthService } from './custom-domain-auth.service';
 import { DomainTokenService } from './domain-token.service';
@@ -177,5 +188,194 @@ describe('CustomDomainAuthController.session (project-membership gate, Phase B)'
 
       expect(result).toEqual({ authenticated: true, user: stUser });
     });
+  });
+});
+
+describe('CustomDomainAuthController.signUp (existing-email orphan re-create)', () => {
+  let controller: CustomDomainAuthController;
+  let customDomainAuthService: jest.Mocked<CustomDomainAuthService>;
+  let authService: jest.Mocked<AuthService>;
+  let setupService: jest.Mocked<SetupService>;
+  let featureFlags: jest.Mocked<FeatureFlagsService>;
+  let projectResolver: jest.Mocked<ProjectResolverService>;
+  let permissions: jest.Mocked<PermissionsService>;
+
+  const EMAIL = 'orphan@example.com';
+  const PASSWORD = 'correct-horse-battery';
+  const ST_USER_ID = 'st-user-123';
+  const PROJECT = { id: 'proj-1', allowPublicSignup: true } as any;
+
+  const reqForSignup = (): Request =>
+    ({
+      headers: { host: 'www.bellacharlesworth.com' },
+      cookies: {},
+    }) as unknown as Request;
+
+  const resForSignup = (): Response =>
+    ({
+      cookie: jest.fn().mockReturnThis(),
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn().mockReturnThis(),
+    }) as unknown as Response;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    stSignUpMock.mockReset();
+    stSignInMock.mockReset();
+
+    customDomainAuthService = {
+      createAccessToken: jest.fn().mockReturnValue('access-token'),
+      createRefreshToken: jest.fn().mockReturnValue('refresh-token'),
+      setAuthCookies: jest.fn(),
+    } as unknown as jest.Mocked<CustomDomainAuthService>;
+
+    authService = {
+      getUserByEmail: jest.fn(),
+      getUserById: jest.fn(),
+      createUser: jest.fn(),
+    } as unknown as jest.Mocked<AuthService>;
+
+    setupService = {
+      isRegistrationFeatureEnabled: jest.fn().mockResolvedValue(true),
+      canPublicSignup: jest.fn().mockResolvedValue(true),
+    } as unknown as jest.Mocked<SetupService>;
+
+    featureFlags = {
+      isEnabled: jest.fn().mockResolvedValue(true),
+    } as unknown as jest.Mocked<FeatureFlagsService>;
+
+    projectResolver = {
+      resolveProjectFromRequest: jest.fn().mockResolvedValue(PROJECT),
+    } as unknown as jest.Mocked<ProjectResolverService>;
+
+    permissions = {
+      grantSystemPermission: jest.fn().mockResolvedValue(undefined),
+    } as unknown as jest.Mocked<PermissionsService>;
+
+    controller = new CustomDomainAuthController(
+      {} as DomainTokenService,
+      customDomainAuthService,
+      authService,
+      setupService,
+      featureFlags,
+      {} as EmailService,
+      projectResolver,
+      permissions,
+    );
+  });
+
+  it('backfills the workspace user row when SuperTokens has the identity but the local users table does not', async () => {
+    stSignUpMock.mockResolvedValue({ status: 'EMAIL_ALREADY_EXISTS_ERROR' });
+    stSignInMock.mockResolvedValue({
+      status: 'OK',
+      recipeUserId: { getAsString: () => ST_USER_ID },
+    });
+    authService.getUserByEmail.mockResolvedValue(null);
+    authService.getUserById.mockResolvedValue(null);
+    const created = { id: ST_USER_ID, email: EMAIL, role: 'member', disabled: false } as any;
+    authService.createUser.mockResolvedValue(created);
+
+    const result = await controller.signUp(
+      { email: EMAIL, password: PASSWORD },
+      reqForSignup(),
+      resForSignup(),
+    );
+
+    expect(authService.createUser).toHaveBeenCalledWith(EMAIL, 'member', ST_USER_ID);
+    expect(permissions.grantSystemPermission).toHaveBeenCalledWith(PROJECT.id, ST_USER_ID, 'guest');
+    expect(customDomainAuthService.setAuthCookies).toHaveBeenCalled();
+    expect(result).toEqual({
+      status: 'OK',
+      user: { id: ST_USER_ID, email: EMAIL, role: 'member' },
+      emailVerificationRequired: false,
+    });
+  });
+
+  it('grants admin role to the orphan re-create when the email matches ADMIN_EMAIL', async () => {
+    const prevAdmin = process.env.ADMIN_EMAIL;
+    process.env.ADMIN_EMAIL = EMAIL;
+    try {
+      stSignUpMock.mockResolvedValue({ status: 'EMAIL_ALREADY_EXISTS_ERROR' });
+      stSignInMock.mockResolvedValue({
+        status: 'OK',
+        recipeUserId: { getAsString: () => ST_USER_ID },
+      });
+      authService.getUserByEmail.mockResolvedValue(null);
+      authService.getUserById.mockResolvedValue(null);
+      authService.createUser.mockResolvedValue({
+        id: ST_USER_ID,
+        email: EMAIL,
+        role: 'admin',
+        disabled: false,
+      } as any);
+
+      await controller.signUp(
+        { email: EMAIL, password: PASSWORD },
+        reqForSignup(),
+        resForSignup(),
+      );
+
+      expect(authService.createUser).toHaveBeenCalledWith(EMAIL, 'admin', ST_USER_ID);
+    } finally {
+      process.env.ADMIN_EMAIL = prevAdmin;
+    }
+  });
+
+  it('does not call createUser when the workspace user already exists (non-orphan)', async () => {
+    const existing = { id: ST_USER_ID, email: EMAIL, role: 'member', disabled: false } as any;
+    stSignUpMock.mockResolvedValue({ status: 'EMAIL_ALREADY_EXISTS_ERROR' });
+    stSignInMock.mockResolvedValue({
+      status: 'OK',
+      recipeUserId: { getAsString: () => ST_USER_ID },
+    });
+    authService.getUserByEmail.mockResolvedValue(existing);
+
+    const result = await controller.signUp(
+      { email: EMAIL, password: PASSWORD },
+      reqForSignup(),
+      resForSignup(),
+    );
+
+    expect(authService.createUser).not.toHaveBeenCalled();
+    expect(permissions.grantSystemPermission).toHaveBeenCalledWith(PROJECT.id, ST_USER_ID, 'guest');
+    expect(result).toEqual({
+      status: 'OK',
+      user: { id: ST_USER_ID, email: EMAIL, role: 'member' },
+      emailVerificationRequired: false,
+    });
+  });
+
+  it('still returns EMAIL_ALREADY_EXISTS_ERROR when the password is wrong (no orphan re-create)', async () => {
+    stSignUpMock.mockResolvedValue({ status: 'EMAIL_ALREADY_EXISTS_ERROR' });
+    stSignInMock.mockResolvedValue({ status: 'WRONG_CREDENTIALS_ERROR' });
+    authService.getUserByEmail.mockResolvedValue(null);
+    authService.getUserById.mockResolvedValue(null);
+
+    const result = await controller.signUp(
+      { email: EMAIL, password: 'wrong-but-long-enough' },
+      reqForSignup(),
+      resForSignup(),
+    );
+
+    expect(authService.createUser).not.toHaveBeenCalled();
+    expect(permissions.grantSystemPermission).not.toHaveBeenCalled();
+    expect(result).toEqual({ status: 'EMAIL_ALREADY_EXISTS_ERROR' });
+  });
+
+  it('does not orphan-re-create when the request resolves to no project (admin domain)', async () => {
+    projectResolver.resolveProjectFromRequest.mockResolvedValue(null);
+    stSignUpMock.mockResolvedValue({ status: 'EMAIL_ALREADY_EXISTS_ERROR' });
+    authService.getUserByEmail.mockResolvedValue(null);
+    authService.getUserById.mockResolvedValue(null);
+
+    const result = await controller.signUp(
+      { email: EMAIL, password: PASSWORD },
+      reqForSignup(),
+      resForSignup(),
+    );
+
+    expect(stSignInMock).not.toHaveBeenCalled();
+    expect(authService.createUser).not.toHaveBeenCalled();
+    expect(result).toEqual({ status: 'EMAIL_ALREADY_EXISTS_ERROR' });
   });
 });
