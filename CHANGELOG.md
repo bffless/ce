@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.24](https://github.com/bffless/ce/compare/v0.1.23...v0.1.24) (2026-05-03)
+
+
+### Features
+
+* **integrations:** google-calendar OAuth UX in CE Project Settings ([e54bedd](https://github.com/bffless/ce/commit/e54bedd20d543d2008bff8d366dccdf29f5956d2))
+* scheduling component (Phase C-1: google-calendar OAuth UX in CE Settings) ([83dbc05](https://github.com/bffless/ce/commit/83dbc05fa820268840763ad274859ed347e41be8))
+
+
+### Bug Fixes
+
+* **integrations:** add PermissionsModule + ProjectsModule imports for guard ([3954e32](https://github.com/bffless/ce/commit/3954e32bd31aa088348ad2b365e77f36fc73ef90))
+
 ## [0.1.23](https://github.com/bffless/ce/compare/v0.1.22...v0.1.23) (2026-05-03)
 
 
