@@ -586,9 +586,21 @@ export class CustomDomainAuthController {
       if (project) {
         const verifyResponse = await EmailPassword.signIn(tenantId, email, password);
         if (verifyResponse.status === 'OK') {
+          const stUserId = verifyResponse.recipeUserId.getAsString();
           let user = await this.authService.getUserByEmail(email);
           if (!user) {
-            user = await this.authService.getUserById(verifyResponse.recipeUserId.getAsString());
+            user = await this.authService.getUserById(stUserId);
+          }
+          if (!user) {
+            // Orphan: SuperTokens has the identity but this workspace's `users`
+            // table doesn't. Happens when the email exists from another
+            // workspace sharing the same SuperTokens core, or the row was
+            // deleted app-side. Backfill using the verified SuperTokens id so
+            // the membership grant has something to point at. Mirrors the
+            // admin-side orphan re-create in auth.controller.ts:signUp.
+            const role: 'admin' | 'user' | 'member' =
+              email === process.env.ADMIN_EMAIL ? 'admin' : 'member';
+            user = await this.authService.createUser(email, role, stUserId);
           }
           if (user && !user.disabled) {
             await this.permissions.grantSystemPermission(project.id, user.id, 'guest');
