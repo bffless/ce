@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.19](https://github.com/bffless/ce/compare/v0.1.18...v0.1.19) (2026-05-02)
+
+
+### Features
+
+* **auth:** /account identity hub + My Sites + 403 link-back (Phase D) ([6c950c0](https://github.com/bffless/ce/commit/6c950c0edd60f8430ec978a9809a75170510f899))
+* **auth:** add /account identity hub with My Sites + 403 link-back (Phase D) ([1d9cb33](https://github.com/bffless/ce/commit/1d9cb33ad085cd27039f9f4ac1215b484a0ea4f2))
+
 ## [0.1.18](https://github.com/bffless/ce/compare/v0.1.17...v0.1.18) (2026-05-02)
 
 
