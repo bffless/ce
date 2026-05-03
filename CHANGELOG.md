@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.22](https://github.com/bffless/ce/compare/v0.1.21...v0.1.22) (2026-05-03)
+
+
+### Bug Fixes
+
+* **auth:** backfill workspace user row on orphan signup via custom domain ([64ec72b](https://github.com/bffless/ce/commit/64ec72bd2d9fa1276d0e1386e79042faeef4b541))
+* **auth:** backfill workspace user row on orphan signup via custom domain ([8a92263](https://github.com/bffless/ce/commit/8a92263cf4c853a329db3dc7854a88d33e03c398))
+
 ## [0.1.21](https://github.com/bffless/ce/compare/v0.1.20...v0.1.21) (2026-05-03)
 
 
