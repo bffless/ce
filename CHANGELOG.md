@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.27](https://github.com/bffless/ce/compare/v0.1.26...v0.1.27) (2026-05-04)
+
+
+### Bug Fixes
+
+* **frontend:** teach pipeline editor about google_calendar handler ([af09e53](https://github.com/bffless/ce/commit/af09e53804c3cce9bc6fc20a263c360958d91ff0))
+* **frontend:** teach pipeline editor about google_calendar handler ([d39b3d5](https://github.com/bffless/ce/commit/d39b3d51955c53cb0d3bee5c03594813553a0ecd))
+
 ## [0.1.26](https://github.com/bffless/ce/compare/v0.1.25...v0.1.26) (2026-05-04)
 
 
