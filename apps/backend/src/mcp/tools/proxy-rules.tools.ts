@@ -33,6 +33,7 @@ const pipelineStepSchema = z.object({
       'stripe_webhook',
       'signed_url',
       'github_api',
+      'google_calendar',
     ])
     .describe(
       'IMPORTANT: Use exact handler type strings. Some have _handler suffix, some do not. The enum values are the only valid options.',
@@ -67,6 +68,13 @@ const pipelineStepSchema = z.object({
   - action "close_pull_request": { action: "close_pull_request", owner: "expression", repo: "expression", issueNumber: "expression" }. Closes a PR. Output: { number, state, html_url }.
   - action "merge_pull_request": { action: "merge_pull_request", owner: "expression", repo: "expression", issueNumber: "expression", mergeMethod?: "expression" (default "merge") }. Merges a PR. Output: { sha, merged, message }.
   - action "list_pull_requests": { action: "list_pull_requests", owner: "expression", repo: "expression", state?: "expression" (default "open") }. Lists PRs. Output: [{ number, title, state, html_url, head_ref, body }].
+- google_calendar: Read free/busy and read/write events on Google Calendar via the project's Google Calendar integration (per-project clientId/clientSecret stored encrypted in IntegrationsService). Supports multiple actions via the "action" field. Token refresh + 401 retry are handled internally; pass calendar IDs and event IDs as expressions where useful. Set optional?: true to soft-fail (NOT_CONFIGURED / AUTH_FAILED / NOT_FOUND become success-with-warning, output: { skipped: true, reason }) so the integration can be a layered enhancement on top of DB-only flows. Transient failures (5xx, 429) still error regardless of optional. All string-typed inputs run through the expression evaluator.
+  - action "list_calendars": { action: "list_calendars" }. Lists sub-calendars on the connected account. Output: { calendars: [{ id, summary, primary, timeZone }] }.
+  - action "freebusy": { action: "freebusy", calendarIds: ["expression" | string[]], timeMin: "expression (ISO 8601)", timeMax: "expression (ISO 8601)", timezone?: "IANA tz" }. Output: { calendars: { [calId]: { busy: [{ start, end }] } }, timeMin, timeMax }.
+  - action "list_events": { action: "list_events", calendarId: "expression", timeMin?: "expression", timeMax?: "expression", maxResults?: number, singleEvents?: boolean, orderBy?: "startTime"|"updated" }. Output: { events: [{ id, summary, start, end, ... }], nextPageToken }.
+  - action "create_event": { action: "create_event", calendarId: "expression", summary: "template", description?: "template", location?: "template", startTime: "expression (ISO 8601)", endTime: "expression (ISO 8601)", attendees?: [{ email: "expression" }], timezone?: "IANA tz", sendUpdates?: "all"|"externalOnly"|"none" }. Output: { event: { id, summary, start, end, htmlLink, ... } }.
+  - action "update_event": { action: "update_event", calendarId: "expression", eventId: "expression", summary?: "template", description?: "template", location?: "template", startTime?: "expression", endTime?: "expression", sendUpdates?: "all"|"externalOnly"|"none" }. Output: { event: { ... } }.
+  - action "delete_event": { action: "delete_event", calendarId: "expression", eventId: "expression", sendUpdates?: "all"|"externalOnly"|"none" }. Treats 204/404/410 as success. Output: { eventId, calendarId, deleted: true }.
 
 All configs support: condition?: "expression" (skip step if falsy), timeout?: number (ms).
 Expressions reference prior steps by step NAME (not id): "steps.stepName.field" or request data: "request.body.field". Use bracket notation for names with spaces: "steps['Step Name'].field". Use simple names without spaces to keep expressions clean.`,

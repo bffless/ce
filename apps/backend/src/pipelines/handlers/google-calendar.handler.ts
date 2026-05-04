@@ -58,6 +58,38 @@ export interface GoogleCalendarHandlerConfig extends BaseHandlerConfig {
   attendees?: Array<{ email: string }>;
   /** Whether Google sends notifications. Defaults to 'none' for safety. */
   sendUpdates?: 'all' | 'externalOnly' | 'none';
+
+  /**
+   * When true, downstream "Google not available" failures (NOT_CONFIGURED /
+   * AUTH_FAILED / NOT_FOUND) return success with `output: { skipped: true,
+   * reason }` instead of erroring out. Lets pipelines treat the integration
+   * as a soft, layered enhancement on top of a DB-as-truth booking flow
+   * (see scheduling design decisions §12). Transient failures (rate limits,
+   * 5xx, network errors) still bubble up — they're recoverable, the others
+   * aren't.
+   * @default false
+   */
+  optional?: boolean;
+}
+
+/** Soft-failable error codes when `optional: true`. */
+const SOFT_FAIL_CODES = new Set<string>([
+  'GOOGLE_CALENDAR_NOT_CONFIGURED',
+  'GOOGLE_CALENDAR_AUTH_FAILED',
+  'GOOGLE_CALENDAR_NOT_FOUND',
+]);
+
+function softFailReason(code: string): 'not_configured' | 'auth_failed' | 'not_found' {
+  switch (code) {
+    case 'GOOGLE_CALENDAR_NOT_CONFIGURED':
+      return 'not_configured';
+    case 'GOOGLE_CALENDAR_AUTH_FAILED':
+      return 'auth_failed';
+    case 'GOOGLE_CALENDAR_NOT_FOUND':
+      return 'not_found';
+    default:
+      return 'not_configured'; // unreachable — guarded by SOFT_FAIL_CODES
+  }
 }
 
 const ERROR_CODES = {
@@ -166,7 +198,20 @@ export class GoogleCalendarHandler implements StepHandler<GoogleCalendarHandlerC
 
   async execute(context: PipelineContext, step: PipelineStep): Promise<StepResult> {
     const config = step.config as GoogleCalendarHandlerConfig;
+    const result = await this.executeInner(context, step, config);
+    return this.maybeSoftFail(result, config);
+  }
 
+  /**
+   * Pre-soft-fail dispatch — same shape as the original execute. The wrapper
+   * above filters the result through the soft-fail policy when `optional`
+   * is set.
+   */
+  private async executeInner(
+    context: PipelineContext,
+    step: PipelineStep,
+    config: GoogleCalendarHandlerConfig,
+  ): Promise<StepResult> {
     const token = await this.googleCalendarOAuthService.getValidAccessToken(context.projectId);
     if (!token) {
       return {
@@ -216,6 +261,28 @@ export class GoogleCalendarHandler implements StepHandler<GoogleCalendarHandlerC
         },
       };
     }
+  }
+
+  /**
+   * If `config.optional === true` and the result is a soft-failable error,
+   * convert to success-with-warning. Hard errors (5xx, rate-limit, network)
+   * pass through unchanged because they're transient — pipelines should
+   * surface them, not pretend nothing happened.
+   */
+  private maybeSoftFail(
+    result: StepResult,
+    config: GoogleCalendarHandlerConfig,
+  ): StepResult {
+    if (result.success) return result;
+    if (!config.optional) return result;
+    const code = result.error?.code;
+    if (!code || !SOFT_FAIL_CODES.has(code)) return result;
+    const reason = softFailReason(code);
+    return {
+      success: true,
+      output: { skipped: true, reason },
+      warning: result.error?.message ?? `Google Calendar step skipped: ${reason}`,
+    };
   }
 
   // ===== Actions =====
