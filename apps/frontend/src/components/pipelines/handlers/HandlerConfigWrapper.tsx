@@ -21,6 +21,7 @@ import { StripeCheckoutConfig } from './StripeCheckoutConfig';
 import { StripeWebhookConfig } from './StripeWebhookConfig';
 import { SignedUrlHandlerConfig } from './SignedUrlHandlerConfig';
 import { GitHubApiConfig } from './GitHubApiConfig';
+import { GoogleCalendarConfig } from './GoogleCalendarConfig';
 import { AvailableVariables, type PreviousStep } from './AvailableVariables';
 import type { HandlerConfig } from './types';
 
@@ -322,6 +323,18 @@ export function HandlerConfigWrapper({
         </>
       );
 
+    case 'google_calendar':
+      return (
+        <>
+          {renderVariablesPanel()}
+          <GoogleCalendarConfig
+            config={config}
+            onChange={handleChange}
+            previousSteps={previousSteps}
+          />
+        </>
+      );
+
     default:
       return (
         <div className="text-sm text-destructive p-4 bg-destructive/10 rounded-md">
@@ -358,6 +371,7 @@ export function getHandlerDisplayName(type: HandlerType): string {
     stripe_webhook: 'Stripe Webhook',
     signed_url: 'Signed URL',
     github_api: 'GitHub API',
+    google_calendar: 'Google Calendar',
   };
   return names[type] || type;
 }
@@ -389,6 +403,7 @@ export function getHandlerDescription(type: HandlerType): string {
     stripe_webhook: 'Verify Stripe webhook signature and parse the event',
     signed_url: 'Generate a time-limited presigned URL for a file in storage',
     github_api: 'Create repositories from templates and call the GitHub API',
+    google_calendar: 'Read free/busy and read/write events on Google Calendar',
   };
   return descriptions[type] || '';
 }
