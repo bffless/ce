@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.26](https://github.com/bffless/ce/compare/v0.1.25...v0.1.26) (2026-05-04)
+
+
+### Features
+
+* optional flag on google_calendar handler (Phase C-2 prep) ([1e3c5cd](https://github.com/bffless/ce/commit/1e3c5cd71dabb337df5c9c3e951d36967d7e2316))
+* **pipelines:** optional flag on google_calendar handler for soft-fail ([34dbafd](https://github.com/bffless/ce/commit/34dbafd1c66fda4e42e2c9fe3558572ae308b789))
+
+
+### Bug Fixes
+
+* **mcp:** add google_calendar to proxy-rules MCP tool enum + docs ([b94b824](https://github.com/bffless/ce/commit/b94b824dd1386af755c4e2303ae38312663e3984))
+
 ## [0.1.25](https://github.com/bffless/ce/compare/v0.1.24...v0.1.25) (2026-05-03)
 
 
