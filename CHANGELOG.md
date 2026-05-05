@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.29](https://github.com/bffless/ce/compare/v0.1.28...v0.1.29) (2026-05-05)
+
+
+### Bug Fixes
+
+* disconnect calendar ([46dceb8](https://github.com/bffless/ce/commit/46dceb824e0e8171336a7128b112f100889aaa8e))
+
 ## [0.1.28](https://github.com/bffless/ce/compare/v0.1.27...v0.1.28) (2026-05-05)
 
 
