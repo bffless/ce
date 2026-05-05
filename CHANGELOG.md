@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.28](https://github.com/bffless/ce/compare/v0.1.27...v0.1.28) (2026-05-05)
+
+
+### Features
+
+* **integrations:** workspace-level Google OAuth credentials in system_config ([083d972](https://github.com/bffless/ce/commit/083d972fbd8cb70372c1e2689f3420111146a4ee))
+* **integrations:** workspace-level Google OAuth credentials in system_config ([ec197e3](https://github.com/bffless/ce/commit/ec197e392789f93ed0b9e19a27016a1f0c14d6ad))
+
 ## [0.1.27](https://github.com/bffless/ce/compare/v0.1.26...v0.1.27) (2026-05-04)
 
 
