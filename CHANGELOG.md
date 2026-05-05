@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.31](https://github.com/bffless/ce/compare/v0.1.30...v0.1.31) (2026-05-05)
+
+
+### Bug Fixes
+
+* **auth:** fall back to body.redirect for email-link host when origin missing ([1a00305](https://github.com/bffless/ce/commit/1a00305c441b464164af7dfd3b80dd4a39bfb25c))
+* **auth:** fall back to body.redirect for email-link host when origin missing ([440a683](https://github.com/bffless/ce/commit/440a68322386d3d830fad749d933c04b839df570))
+
 ## [0.1.30](https://github.com/bffless/ce/compare/v0.1.29...v0.1.30) (2026-05-05)
 
 
