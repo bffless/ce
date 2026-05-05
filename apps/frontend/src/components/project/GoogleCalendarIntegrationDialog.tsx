@@ -8,11 +8,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
-  useSetIntegrationConfigMutation,
   useTestIntegrationConnectionMutation,
   useLazyInitiateGoogleCalendarOAuthQuery,
   useDisconnectGoogleCalendarOAuthMutation,
@@ -20,8 +18,9 @@ import {
   type IntegrationInfo,
   type CalendarSummary,
 } from '@/services/integrationsApi';
+import { useGetGoogleOAuthIntegrationQuery } from '@/services/settingsApi';
 import { useToast } from '@/hooks/use-toast';
-import { CheckCircle, XCircle, Loader2, ExternalLink, Unlink } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, ExternalLink, Unlink, Settings } from 'lucide-react';
 
 interface GoogleCalendarIntegrationDialogProps {
   open: boolean;
@@ -42,19 +41,21 @@ export function GoogleCalendarIntegrationDialog({
 }: GoogleCalendarIntegrationDialogProps) {
   const { toast } = useToast();
 
-  const [clientId, setClientId] = useState('');
-  const [clientSecret, setClientSecret] = useState('');
   const [testResult, setTestResult] = useState<{ success: boolean; error?: string } | null>(null);
 
-  const [setConfig, { isLoading: isSaving }] = useSetIntegrationConfigMutation();
   const [testConnection, { isLoading: isTesting }] = useTestIntegrationConnectionMutation();
   const [initiateOAuth, { isFetching: isInitiating }] = useLazyInitiateGoogleCalendarOAuthQuery();
   const [disconnectOAuth, { isLoading: isDisconnecting }] = useDisconnectGoogleCalendarOAuthMutation();
 
+  // Workspace-level OAuth credentials must be set at /admin/settings/auth
+  // before any project can connect Google Calendar. Polled when the dialog
+  // opens so the operator sees the live state.
+  const { data: workspaceOAuth, isLoading: isWorkspaceLoading } =
+    useGetGoogleOAuthIntegrationQuery(undefined, { skip: !open });
+
   const connectedEmail = integration.publicConfig?.connectedEmail as string | undefined;
   const availableCalendars =
     (integration.publicConfig?.availableCalendars as CalendarSummary[] | undefined) || [];
-  const hasCredentials = integration.hasProductionConfig;
   const isConnected = !!connectedEmail;
 
   // Only fetch fresh calendar list when already connected — avoid 4xx noise
@@ -68,43 +69,6 @@ export function GoogleCalendarIntegrationDialog({
     (calendarsData?.calendars && calendarsData.calendars.length > 0
       ? calendarsData.calendars
       : availableCalendars) || [];
-
-  const handleSaveCredentials = async () => {
-    if (!hasCredentials && (!clientId || !clientSecret)) {
-      toast({
-        title: 'Error',
-        description: 'Both Client ID and Client Secret are required',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    try {
-      const config: Record<string, string> = {};
-      if (clientId) config.clientId = clientId;
-      if (clientSecret) config.clientSecret = clientSecret;
-
-      await setConfig({
-        projectId,
-        integrationId: 'google-calendar',
-        environment: 'production',
-        config,
-      }).unwrap();
-
-      toast({
-        title: 'Saved',
-        description: 'Google Calendar credentials saved. Click "Connect Google" to authorize.',
-      });
-      setClientId('');
-      setClientSecret('');
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error?.data?.message || 'Failed to save credentials',
-        variant: 'destructive',
-      });
-    }
-  };
 
   const handleConnect = async () => {
     try {
@@ -164,90 +128,56 @@ export function GoogleCalendarIntegrationDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[520px]">
         <DialogHeader>
-          <DialogTitle>Configure Google Calendar Integration</DialogTitle>
+          <DialogTitle>Connect Google Calendar</DialogTitle>
           <DialogDescription>
             Connect a Google account so pipelines can read free/busy information and create
-            calendar events. Each project owns its own OAuth client (configured in
-            Google Cloud Console) so credentials never leave this project.
+            calendar events. Uses the workspace's shared Google OAuth credentials — no Google
+            Cloud Console setup needed per project.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          {/* Step 1 — credentials */}
-          {!isConnected && (
-            <div className="space-y-3">
-              {hasCredentials && (
-                <Alert>
-                  <CheckCircle className="h-4 w-4" />
-                  <AlertDescription>
-                    OAuth credentials saved. Click "Connect Google" to authorize.
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              <div className="space-y-2">
-                <Label>Client ID *</Label>
-                <Input
-                  type="text"
-                  placeholder={
-                    hasCredentials
-                      ? '••••••••••.apps.googleusercontent.com'
-                      : 'xxxxx.apps.googleusercontent.com'
-                  }
-                  value={clientId}
-                  onChange={(e) => setClientId(e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Client Secret *</Label>
-                <Input
-                  type="password"
-                  placeholder={hasCredentials ? '••••••••••••••••' : 'GOCSPX-...'}
-                  value={clientSecret}
-                  onChange={(e) => setClientSecret(e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Create at{' '}
+          {/* Workspace credentials check */}
+          {!isWorkspaceLoading && !workspaceOAuth?.isConfigured && (
+            <Alert>
+              <Settings className="h-4 w-4" />
+              <AlertDescription className="space-y-2">
+                <p>
+                  Workspace Google OAuth credentials aren't configured yet. A workspace admin
+                  needs to set them up before any project can connect Google Calendar.
+                </p>
+                <p>
                   <a
-                    href="https://console.cloud.google.com/apis/credentials"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="underline inline-flex items-center gap-1"
+                    href="/admin/settings/auth"
+                    className="text-primary hover:underline font-medium inline-flex items-center gap-1"
                   >
-                    console.cloud.google.com/apis/credentials
+                    Open /admin/settings/auth
                     <ExternalLink className="h-3 w-3" />
                   </a>
-                  . Add{' '}
-                  <code>{`${typeof window !== 'undefined' ? window.location.origin : ''}/oauth/callback`}</code>{' '}
-                  as an authorized redirect URI.
                 </p>
-              </div>
+              </AlertDescription>
+            </Alert>
+          )}
 
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  onClick={handleSaveCredentials}
-                  disabled={isSaving || (!hasCredentials && (!clientId || !clientSecret))}
-                >
-                  {isSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-                  Save Credentials
-                </Button>
-
-                {hasCredentials && (
-                  <Button onClick={handleConnect} variant="default" disabled={isInitiating}>
-                    {isInitiating ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <ExternalLink className="h-4 w-4 mr-2" />
-                    )}
-                    Connect Google
-                  </Button>
+          {/* Not connected */}
+          {!isConnected && workspaceOAuth?.isConfigured && (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Click below to authorize this project against the workspace's Google OAuth
+                client. You'll be redirected to Google's consent screen and back.
+              </p>
+              <Button onClick={handleConnect} variant="default" disabled={isInitiating}>
+                {isInitiating ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <ExternalLink className="h-4 w-4 mr-2" />
                 )}
-              </div>
+                Connect Google Calendar
+              </Button>
             </div>
           )}
 
-          {/* Step 2 — connected state */}
+          {/* Connected state */}
           {isConnected && (
             <div className="space-y-3">
               <Alert>

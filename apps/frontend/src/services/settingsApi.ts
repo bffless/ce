@@ -145,6 +145,20 @@ export interface UpdateGoogleOAuthResponse {
   google: { enabled: boolean };
 }
 
+// Workspace-level Google OAuth INTEGRATION credentials (Calendar, etc.).
+// Distinct from sign-in (which uses env vars) — see backend
+// google-oauth-settings.service.ts.
+export interface GoogleOAuthIntegrationStatus {
+  isConfigured: boolean;
+  clientIdMasked?: string;
+  hasSecret?: boolean;
+}
+
+export interface UpdateGoogleOAuthIntegrationDto {
+  clientId: string;
+  clientSecret: string;
+}
+
 export interface UpdateBrandingResponse {
   success: boolean;
   config: BrandingConfig;
@@ -309,6 +323,36 @@ export const settingsApi = api.injectEndpoints({
       }),
       invalidatesTags: ['OAuthSettings', 'FeatureFlags'],
     }),
+
+    // ==========================================================================
+    // Google OAuth INTEGRATION credentials (workspace-level — Calendar etc.)
+    // Distinct from sign-in above — see backend GoogleOAuthSettingsService.
+    // ==========================================================================
+
+    getGoogleOAuthIntegration: builder.query<GoogleOAuthIntegrationStatus, void>({
+      query: () => '/api/settings/oauth/google/integration',
+      providesTags: ['OAuthSettings'],
+    }),
+
+    updateGoogleOAuthIntegration: builder.mutation<
+      GoogleOAuthIntegrationStatus,
+      UpdateGoogleOAuthIntegrationDto
+    >({
+      query: (body) => ({
+        url: '/api/settings/oauth/google/integration',
+        method: 'PATCH',
+        body,
+      }),
+      invalidatesTags: ['OAuthSettings', 'Integration'],
+    }),
+
+    deleteGoogleOAuthIntegration: builder.mutation<GoogleOAuthIntegrationStatus, void>({
+      query: () => ({
+        url: '/api/settings/oauth/google/integration',
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['OAuthSettings', 'Integration'],
+    }),
   }),
 });
 
@@ -334,4 +378,7 @@ export const {
   // OAuth settings hooks
   useGetOAuthSettingsQuery,
   useUpdateGoogleOAuthMutation,
+  useGetGoogleOAuthIntegrationQuery,
+  useUpdateGoogleOAuthIntegrationMutation,
+  useDeleteGoogleOAuthIntegrationMutation,
 } = settingsApi;

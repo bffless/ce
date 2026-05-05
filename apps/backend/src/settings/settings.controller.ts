@@ -20,6 +20,7 @@ import Multitenancy from 'supertokens-node/recipe/multitenancy';
 import { PrimaryContentService, PrimaryContentConfig } from './primary-content.service';
 import { SmtpService } from './smtp.service';
 import { EmailSettingsService } from './email-settings.service';
+import { GoogleOAuthSettingsService } from './google-oauth-settings.service';
 import { BrandingService, BrandingConfig } from './branding.service';
 import { UpdatePrimaryContentDto } from './dto/update-primary-content.dto';
 import { UpdateSmtpDto, SmtpStatusResponseDto, TestSmtpResponseDto } from './dto/update-smtp.dto';
@@ -43,6 +44,7 @@ export class SettingsController {
     private readonly primaryContentService: PrimaryContentService,
     private readonly smtpService: SmtpService,
     private readonly emailSettingsService: EmailSettingsService,
+    private readonly googleOauthSettingsService: GoogleOAuthSettingsService,
     private readonly brandingService: BrandingService,
     private readonly featureFlagsService: FeatureFlagsService,
   ) {}
@@ -298,5 +300,51 @@ export class SettingsController {
       success: true,
       google: { enabled: body.enabled },
     };
+  }
+
+  // ─── Google OAuth INTEGRATION credentials ─────────────────────────────────
+  // Distinct from the SIGN-IN endpoints above — these manage the workspace's
+  // Google OAuth client used by Calendar (and future Drive/Sheets/Gmail).
+  // Sign-in keeps using env-var credentials shared across all workspaces;
+  // integration credentials live in system_config and are workspace-distinct.
+
+  @Get('oauth/google/integration')
+  @Roles('admin')
+  @ApiOperation({
+    summary: 'Get workspace-level Google OAuth integration credentials status (Calendar, etc.)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Whether integration credentials are configured (secret never returned)',
+  })
+  async getGoogleOAuthIntegration() {
+    return this.googleOauthSettingsService.getStatus();
+  }
+
+  @Patch('oauth/google/integration')
+  @Roles('admin')
+  @ApiOperation({
+    summary: 'Save workspace-level Google OAuth integration credentials',
+  })
+  @ApiResponse({ status: 200, description: 'Credentials saved' })
+  async updateGoogleOAuthIntegration(
+    @Body() body: { clientId: string; clientSecret: string },
+  ) {
+    await this.googleOauthSettingsService.update({
+      clientId: body.clientId,
+      clientSecret: body.clientSecret,
+    });
+    return this.googleOauthSettingsService.getStatus();
+  }
+
+  @Delete('oauth/google/integration')
+  @Roles('admin')
+  @ApiOperation({
+    summary: 'Clear workspace-level Google OAuth integration credentials',
+  })
+  @ApiResponse({ status: 200, description: 'Credentials cleared' })
+  async deleteGoogleOAuthIntegration() {
+    await this.googleOauthSettingsService.clear();
+    return this.googleOauthSettingsService.getStatus();
   }
 }

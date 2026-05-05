@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
 import { IntegrationsService } from './integrations.service';
+import { GoogleOAuthSettingsService } from '../settings/google-oauth-settings.service';
 import { GoogleCalendarIntegrationKeys } from './google-calendar.interface';
 
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -63,7 +64,18 @@ export class GoogleCalendarOAuthService {
   constructor(
     @Inject(forwardRef(() => IntegrationsService))
     private readonly integrationsService: IntegrationsService,
+    private readonly oauthSettings: GoogleOAuthSettingsService,
   ) {}
+
+  /**
+   * Returns the workspace-level Google OAuth client credentials, or null if
+   * the integration hasn't been configured at /admin/settings/auth. Replaces
+   * the per-project clientId/clientSecret reads — projects only store the
+   * refresh token + connected-account metadata now.
+   */
+  private async getClientCredentials(): Promise<{ clientId: string; clientSecret: string } | null> {
+    return this.oauthSettings.getCredentials();
+  }
 
   // ===== ForCredentials (pure HTTP) =====
 
@@ -195,25 +207,28 @@ export class GoogleCalendarOAuthService {
   // ===== ForProject (IntegrationsService-backed) =====
 
   /**
-   * Build the consent URL using the project's stored clientId.
-   * Returns null if the integration isn't configured.
+   * Build the consent URL using the workspace-level Google OAuth client.
+   * Returns null if the workspace hasn't configured Google OAuth credentials
+   * at /admin/settings/auth. The `projectId` / `env` parameters are kept on
+   * the signature so the controller doesn't need a refactor today, but the
+   * project-level config is no longer the source of clientId.
    */
   async getAuthorizationUrlForProject(
-    projectId: string,
-    env: 'sandbox' | 'production' | undefined,
+    _projectId: string,
+    _env: 'sandbox' | 'production' | undefined,
     state: string,
     redirectUri: string,
   ): Promise<string | null> {
-    const resolvedEnv = await this.resolveActiveEnv(projectId, env);
-    if (!resolvedEnv) return null;
-    const config = await this.getProjectConfig(projectId, resolvedEnv);
-    if (!config?.clientId) return null;
-    return this.buildAuthorizationUrl(config.clientId, state, redirectUri);
+    const creds = await this.getClientCredentials();
+    if (!creds) return null;
+    return this.buildAuthorizationUrl(creds.clientId, state, redirectUri);
   }
 
   /**
-   * Exchange auth code for tokens using the project's stored credentials and
-   * persist tokens + connectedEmail back into the integration config.
+   * Exchange auth code for tokens using the workspace-level OAuth client and
+   * persist tokens + connectedEmail back into the project's integration
+   * config (refresh + access tokens, expiry, connected email — no clientId
+   * or clientSecret are written per-project anymore).
    */
   async exchangeCodeForProject(
     projectId: string,
@@ -221,17 +236,16 @@ export class GoogleCalendarOAuthService {
     code: string,
     redirectUri: string,
   ): Promise<ExchangedTokens> {
-    const resolvedEnv = await this.resolveActiveEnv(projectId, env);
-    if (!resolvedEnv) {
-      throw new Error('Google Calendar integration not configured');
-    }
-    const config = await this.getProjectConfig(projectId, resolvedEnv);
-    if (!config?.clientId || !config?.clientSecret) {
-      throw new Error('Google Calendar integration not configured');
+    const resolvedEnv = (await this.resolveActiveEnv(projectId, env)) ?? 'production';
+    const creds = await this.getClientCredentials();
+    if (!creds) {
+      throw new Error(
+        'Workspace Google OAuth credentials not configured. Set them at /admin/settings/auth.',
+      );
     }
     const tokens = await this.exchangeCodeForCredentials(
-      config.clientId,
-      config.clientSecret,
+      creds.clientId,
+      creds.clientSecret,
       code,
       redirectUri,
     );
@@ -271,19 +285,20 @@ export class GoogleCalendarOAuthService {
     if (!resolvedEnv) return null;
 
     const config = await this.getProjectConfig(projectId, resolvedEnv);
-    if (!config?.clientId || !config?.clientSecret || !config?.refreshToken) {
-      return null;
-    }
+    if (!config?.refreshToken) return null;
 
     const expiry = config.tokenExpiry ?? 0;
     if (config.accessToken && expiry > Date.now() + 60_000) {
       return config.accessToken;
     }
 
+    const creds = await this.getClientCredentials();
+    if (!creds) return null;
+
     try {
       const refreshed = await this.refreshAccessTokenForCredentials(
-        config.clientId,
-        config.clientSecret,
+        creds.clientId,
+        creds.clientSecret,
         config.refreshToken,
       );
       await this.integrationsService.setConfig(projectId, 'google-calendar', resolvedEnv, {

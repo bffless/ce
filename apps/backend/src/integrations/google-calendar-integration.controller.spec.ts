@@ -15,6 +15,11 @@ function makeController(): {
     getStoredIntegration: jest.fn(),
   };
   const oauthService = {
+    // Default: workspace creds are configured and the consent URL builds.
+    // Tests that need the "not configured" branch override per-test.
+    getAuthorizationUrlForProject: jest
+      .fn()
+      .mockResolvedValue('https://accounts.google.com/o/oauth2/v2/auth?…'),
     buildAuthorizationUrl: jest.fn().mockReturnValue('https://accounts.google.com/o/oauth2/v2/auth?…'),
     exchangeCodeForProject: jest.fn().mockResolvedValue({
       accessToken: 'a',
@@ -46,26 +51,28 @@ describe('GoogleCalendarIntegrationController', () => {
       await expect(controller.initiateOAuth('proj-1', '')).rejects.toThrow(BadRequestException);
     });
 
-    it('rejects when clientId is not configured', async () => {
-      const { controller, integrationsService } = makeController();
-      integrationsService.getActiveConfig.mockResolvedValueOnce(null);
-      await expect(controller.initiateOAuth('proj-1', 'https://cb')).rejects.toThrow(/Client ID/);
+    it('rejects when workspace OAuth credentials are not configured', async () => {
+      const { controller, oauthService } = makeController();
+      oauthService.getAuthorizationUrlForProject.mockResolvedValueOnce(null);
+      await expect(controller.initiateOAuth('proj-1', 'https://cb')).rejects.toThrow(
+        /Workspace Google OAuth credentials/,
+      );
     });
 
     it('returns authUrl from the oauth service', async () => {
-      const { controller, integrationsService, oauthService } = makeController();
-      integrationsService.getActiveConfig.mockResolvedValueOnce({ clientId: 'cid', clientSecret: 'sec' });
+      const { controller, oauthService } = makeController();
 
       const result = await controller.initiateOAuth('proj-1', 'https://cb');
 
       expect(result.authUrl).toContain('accounts.google.com');
-      expect(oauthService.buildAuthorizationUrl).toHaveBeenCalledWith(
-        'cid',
+      expect(oauthService.getAuthorizationUrlForProject).toHaveBeenCalledWith(
+        'proj-1',
+        undefined,
         expect.any(String), // encrypted state
         'https://cb',
       );
       // State should be a 3-segment AES-GCM payload (iv:tag:cipher)
-      const stateArg = oauthService.buildAuthorizationUrl.mock.calls[0][1];
+      const stateArg = oauthService.getAuthorizationUrlForProject.mock.calls[0][2];
       expect(stateArg.split(':')).toHaveLength(3);
     });
   });
@@ -90,12 +97,10 @@ describe('GoogleCalendarIntegrationController', () => {
     });
 
     it('rejects projectId mismatch', async () => {
-      const { controller, integrationsService } = makeController();
+      const { controller, oauthService } = makeController();
       // First initiate to get a state token bound to proj-A
-      integrationsService.getActiveConfig.mockResolvedValueOnce({ clientId: 'cid', clientSecret: 'sec' });
       await controller.initiateOAuth('proj-A', 'https://cb');
-      const oauth = (controller as any).googleCalendarOAuthService;
-      const state = oauth.buildAuthorizationUrl.mock.calls[0][1];
+      const state = oauthService.getAuthorizationUrlForProject.mock.calls[0][2];
 
       // Then attempt completion as proj-B
       await expect(
@@ -104,8 +109,7 @@ describe('GoogleCalendarIntegrationController', () => {
     });
 
     it('rejects expired state token', async () => {
-      const { controller, integrationsService, oauthService } = makeController();
-      integrationsService.getActiveConfig.mockResolvedValueOnce({ clientId: 'cid', clientSecret: 'sec' });
+      const { controller, oauthService } = makeController();
 
       // Freeze "now" 11 minutes in the past for state generation
       const realNow = Date.now;
@@ -113,17 +117,16 @@ describe('GoogleCalendarIntegrationController', () => {
       await controller.initiateOAuth('proj-1', 'https://cb');
       Date.now = realNow;
 
-      const state = oauthService.buildAuthorizationUrl.mock.calls[0][1];
+      const state = oauthService.getAuthorizationUrlForProject.mock.calls[0][2];
       await expect(
         controller.completeOAuth('proj-1', { code: 'c', state, redirectUri: 'https://cb' }),
       ).rejects.toThrow(/expired/);
     });
 
     it('exchanges code and returns connectedEmail on valid state', async () => {
-      const { controller, integrationsService, oauthService } = makeController();
-      integrationsService.getActiveConfig.mockResolvedValueOnce({ clientId: 'cid', clientSecret: 'sec' });
+      const { controller, oauthService } = makeController();
       await controller.initiateOAuth('proj-1', 'https://cb');
-      const state = oauthService.buildAuthorizationUrl.mock.calls[0][1];
+      const state = oauthService.getAuthorizationUrlForProject.mock.calls[0][2];
 
       const result = await controller.completeOAuth('proj-1', {
         code: 'auth-code',
