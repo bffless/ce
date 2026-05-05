@@ -231,14 +231,48 @@ export class IntegrationsService {
   }
 
   /**
-   * Delete an integration (remove all config)
+   * Delete an integration (remove all config). Per-integration cleanup
+   * (e.g. revoking OAuth tokens with the upstream provider) runs first;
+   * a failure there is logged but doesn't block the local delete — leaving
+   * a stale grant on Google is preferable to leaving a stuck integration
+   * row in the project.
    */
   async deleteIntegration(projectId: string, integrationId: string): Promise<void> {
+    if (integrationId === 'google-calendar') {
+      await this.revokeGoogleCalendarTokens(projectId);
+    }
+
     const allIntegrations = await this.getAllStoredIntegrations(projectId);
     delete allIntegrations[integrationId];
     await this.saveAllIntegrations(projectId, allIntegrations);
 
     this.logger.log(`Deleted integration '${integrationId}' from project ${projectId}`);
+  }
+
+  /**
+   * Best-effort revoke of any stored refresh token before deleting the
+   * google-calendar integration. Iterates both environments so a project
+   * that connected sandbox + production (rare) gets both grants released.
+   */
+  private async revokeGoogleCalendarTokens(projectId: string): Promise<void> {
+    const stored = await this.getStoredIntegration(projectId, 'google-calendar');
+    if (!stored) return;
+    for (const env of ['sandbox', 'production'] as const) {
+      const envConfig = stored[env];
+      if (!envConfig?.config) continue;
+      try {
+        const decrypted = JSON.parse(this.decryptData(envConfig.config)) as {
+          refreshToken?: string;
+        };
+        if (decrypted.refreshToken) {
+          await this.googleCalendarOAuthService.revokeToken(decrypted.refreshToken);
+        }
+      } catch (err) {
+        this.logger.warn(
+          `Failed to revoke ${env} refresh token for project ${projectId}: ${(err as Error).message}`,
+        );
+      }
+    }
   }
 
   /**

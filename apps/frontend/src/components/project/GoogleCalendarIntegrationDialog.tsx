@@ -13,14 +13,13 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   useTestIntegrationConnectionMutation,
   useLazyInitiateGoogleCalendarOAuthQuery,
-  useDisconnectGoogleCalendarOAuthMutation,
   useListGoogleCalendarCalendarsQuery,
   type IntegrationInfo,
   type CalendarSummary,
 } from '@/services/integrationsApi';
 import { useGetGoogleOAuthIntegrationQuery } from '@/services/settingsApi';
 import { useToast } from '@/hooks/use-toast';
-import { CheckCircle, XCircle, Loader2, ExternalLink, Unlink, Settings } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, ExternalLink, Settings } from 'lucide-react';
 
 interface GoogleCalendarIntegrationDialogProps {
   open: boolean;
@@ -45,7 +44,6 @@ export function GoogleCalendarIntegrationDialog({
 
   const [testConnection, { isLoading: isTesting }] = useTestIntegrationConnectionMutation();
   const [initiateOAuth, { isFetching: isInitiating }] = useLazyInitiateGoogleCalendarOAuthQuery();
-  const [disconnectOAuth, { isLoading: isDisconnecting }] = useDisconnectGoogleCalendarOAuthMutation();
 
   // Workspace-level OAuth credentials must be set at /admin/settings/auth
   // before any project can connect Google Calendar. Polled when the dialog
@@ -91,19 +89,6 @@ export function GoogleCalendarIntegrationDialog({
         variant: 'destructive',
       });
       sessionStorage.removeItem('oauth_integration_context');
-    }
-  };
-
-  const handleDisconnect = async () => {
-    try {
-      await disconnectOAuth({ projectId }).unwrap();
-      toast({ title: 'Google Calendar disconnected' });
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error?.data?.message || 'Failed to disconnect',
-        variant: 'destructive',
-      });
     }
   };
 
@@ -216,24 +201,15 @@ export function GoogleCalendarIntegrationDialog({
                 )}
               </div>
 
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button variant="outline" onClick={handleTestConnection} disabled={isTesting}>
                   {isTesting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
                   Test Connection
                 </Button>
-                <Button
-                  variant="ghost"
-                  onClick={handleDisconnect}
-                  disabled={isDisconnecting}
-                  className="text-destructive hover:text-destructive"
-                >
-                  {isDisconnecting ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <Unlink className="h-4 w-4 mr-2" />
-                  )}
-                  Disconnect
-                </Button>
+                <p className="text-xs text-muted-foreground ml-auto">
+                  To switch Google accounts or remove the integration, close this dialog
+                  and click the trash icon on the Google Calendar card.
+                </p>
               </div>
 
               {testResult && (
