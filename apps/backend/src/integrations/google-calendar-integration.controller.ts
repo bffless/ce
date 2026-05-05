@@ -176,8 +176,21 @@ export class GoogleCalendarIntegrationController {
   ): Promise<{
     calendars: Array<{ id: string; summary: string; primary?: boolean; timeZone: string }>;
   }> {
-    const calendars = await this.googleCalendarOAuthService.listCalendarsForProject(projectId);
-    return { calendars };
+    try {
+      const calendars = await this.googleCalendarOAuthService.listCalendarsForProject(projectId);
+      return { calendars };
+    } catch (err: unknown) {
+      // listCalendarsForProject throws a plain Error('Google Calendar not
+      // connected') when there's no active env / no valid token. The dialog
+      // races: it can call /calendars before its integration query refetches
+      // the disconnected state. Surface that as 404 (consumed gracefully by
+      // useGoogleCalendarConnect's treat404AsEmpty) instead of bubbling to 500.
+      const message = err instanceof Error ? err.message : 'Google Calendar not connected';
+      if (message.toLowerCase().includes('not connected')) {
+        throw new NotFoundException(message);
+      }
+      throw err;
+    }
   }
 
   // ===== State encryption =====
