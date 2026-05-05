@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.30](https://github.com/bffless/ce/compare/v0.1.29...v0.1.30) (2026-05-05)
+
+
+### Bug Fixes
+
+* drop Disconnect button — use trash icon on the card to remove instead ([2a4fdc8](https://github.com/bffless/ce/commit/2a4fdc82a153cd946ce624fdf1702d6e54bf55ae))
+* make /oauth/google/integration GET readable by any authenticated user ([5324c5a](https://github.com/bffless/ce/commit/5324c5aec4a7bb13cd8549124ea9bf8944663699))
+* make /oauth/google/integration GET readable by any authenticated user ([842b598](https://github.com/bffless/ce/commit/842b59855722360b60c200320e6b49b230574a3b))
+
 ## [0.1.29](https://github.com/bffless/ce/compare/v0.1.28...v0.1.29) (2026-05-05)
 
 
