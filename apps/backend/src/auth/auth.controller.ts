@@ -103,6 +103,28 @@ export class AuthController {
   }
 
   /**
+   * Resolve the origin used to rewrite verify/reset email links to the
+   * correct admin host. Headers are the primary source — but when the
+   * request comes through a proxy chain that strips Origin/Referer (e.g.
+   * a per-tenant subdomain proxying /api/auth/* to the backend), fall
+   * back to the body.redirect URL the client passed. Without this,
+   * verify links default to SuperTokens' configured website domain
+   * (sites.bffless.app) instead of admin.<workspace>.<domain>.
+   */
+  private resolveRequestOrigin(req: Request, redirect?: string | null): string | undefined {
+    const headerOrigin = (req.headers.origin as string | undefined) || (req.headers.referer as string | undefined);
+    if (headerOrigin) return headerOrigin;
+    if (redirect) {
+      try {
+        return new URL(redirect).origin;
+      } catch {
+        // ignore — invalid redirect URL, return undefined
+      }
+    }
+    return undefined;
+  }
+
+  /**
    * If REQUIRE_PROJECT_MEMBERSHIP is enabled and the request resolves to a
    * project, refuse the signin/signup unless the user has a project-permission
    * row. Throws UnauthorizedException with the same opaque message we use for
@@ -304,13 +326,13 @@ export class AuthController {
         try {
           emailVerificationRequired = await this.isEmailVerificationRequired();
           if (emailVerificationRequired) {
-            const origin = req.headers.origin || req.headers.referer;
+            const origin = this.resolveRequestOrigin(req, redirect);
             await EmailVerification.sendEmailVerificationEmail(
               tenantId,
               userId,
               signInResponse.recipeUserId,
               email,
-              { requestOrigin: origin },
+              { requestOrigin: origin, redirectUrl: redirect },
             );
           }
         } catch (verifyError) {
@@ -387,11 +409,11 @@ export class AuthController {
       try {
         emailVerificationRequired = await this.isEmailVerificationRequired();
         if (emailVerificationRequired) {
-          const origin = req.headers.origin || req.headers.referer;
           // If invitation was already accepted during signup, don't redirect back to
           // /invite/{token} after verification — it would show "already accepted" error.
           // Redirect to home instead.
           const verifyRedirect = invitation ? undefined : redirect;
+          const origin = this.resolveRequestOrigin(req, verifyRedirect);
           await EmailVerification.sendEmailVerificationEmail(
             tenantId,
             userId,
@@ -757,7 +779,10 @@ export class AuthController {
       if (user) {
         // Capture the origin for constructing the reset link
         // The reset link should always go to admin.<workspace>.<domain>
-        const origin = req.headers.origin || req.headers.referer;
+        // ForgotPasswordDto doesn't carry a redirect — reset flow lands on
+        // admin.<workspace>/reset-password and stays there. The fallback is
+        // header-only.
+        const origin = this.resolveRequestOrigin(req);
 
         // Use SuperTokens to send password reset email
         // Pass origin in userContext so email delivery can construct the correct URL
@@ -894,7 +919,7 @@ export class AuthController {
     }
 
     const tenantId = this.getTenantId();
-    const origin = req.headers.origin || req.headers.referer;
+    const origin = this.resolveRequestOrigin(req, body?.redirect);
 
     await EmailVerification.sendEmailVerificationEmail(tenantId, userId, recipeUserId, email, {
       requestOrigin: origin,
