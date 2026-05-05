@@ -309,7 +309,6 @@ export class SettingsController {
   // integration credentials live in system_config and are workspace-distinct.
 
   @Get('oauth/google/integration')
-  @Roles('admin')
   @ApiOperation({
     summary: 'Get workspace-level Google OAuth integration credentials status (Calendar, etc.)',
   })
@@ -318,6 +317,11 @@ export class SettingsController {
     description: 'Whether integration credentials are configured (secret never returned)',
   })
   async getGoogleOAuthIntegration() {
+    // Readable by any authenticated user — the per-project Connect dialog
+    // needs to know whether workspace creds exist to render the right CTA
+    // (button vs. "ask your workspace admin to set them up"). Status payload
+    // is non-sensitive: { isConfigured, clientIdMasked, hasSecret }.
+    // PATCH / DELETE below stay admin-gated since they mutate the credentials.
     return this.googleOauthSettingsService.getStatus();
   }
 
