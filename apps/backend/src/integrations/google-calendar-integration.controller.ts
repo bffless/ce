@@ -66,7 +66,7 @@ export class GoogleCalendarIntegrationController {
   }
 
   @Get('oauth/initiate')
-  @ApiOperation({ summary: 'Initiate Google Calendar OAuth flow' })
+  @ApiOperation({ summary: 'Initiate Google Calendar OAuth flow (uses workspace OAuth credentials)' })
   @ApiParam({ name: 'projectId', description: 'Project UUID' })
   async initiateOAuth(
     @Param('projectId') projectId: string,
@@ -76,27 +76,21 @@ export class GoogleCalendarIntegrationController {
       throw new BadRequestException('redirectUri is required');
     }
 
-    const config = (await this.integrationsService.getActiveConfig(
+    const authUrl = await this.googleCalendarOAuthService.getAuthorizationUrlForProject(
       projectId,
-      'google-calendar',
-    )) as GoogleCalendarIntegrationKeys | null;
-    if (!config?.clientId) {
-      throw new BadRequestException(
-        'Google OAuth Client ID not configured. Save clientId/clientSecret first.',
-      );
-    }
-
-    const state = this.encryptState({
-      projectId,
-      integrationId: 'google-calendar',
-      timestamp: Date.now(),
-    });
-
-    const authUrl = this.googleCalendarOAuthService.buildAuthorizationUrl(
-      config.clientId,
-      state,
+      undefined,
+      this.encryptState({
+        projectId,
+        integrationId: 'google-calendar',
+        timestamp: Date.now(),
+      }),
       redirectUri,
     );
+    if (!authUrl) {
+      throw new BadRequestException(
+        'Workspace Google OAuth credentials not configured. Set them at /admin/settings/auth.',
+      );
+    }
     return { authUrl };
   }
 
@@ -140,7 +134,7 @@ export class GoogleCalendarIntegrationController {
 
   @Delete('oauth')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Disconnect Google Calendar (revoke tokens, keep clientId/clientSecret)' })
+  @ApiOperation({ summary: 'Disconnect Google Calendar — revoke tokens + clear connected-account state' })
   @ApiParam({ name: 'projectId', description: 'Project UUID' })
   async disconnectOAuth(@Param('projectId') projectId: string): Promise<void> {
     const stored = await this.integrationsService.getStoredIntegration(
@@ -162,7 +156,9 @@ export class GoogleCalendarIntegrationController {
       await this.googleCalendarOAuthService.revokeToken(config.refreshToken);
     }
 
-    // Keep clientId / clientSecret; clear OAuth state.
+    // Clear all per-project OAuth state. clientId / clientSecret are no
+    // longer stored per-project (workspace-level via /admin/settings/auth)
+    // so there's nothing extra to preserve here.
     await this.integrationsService.setConfig(projectId, 'google-calendar', env, {
       accessToken: '',
       refreshToken: '',

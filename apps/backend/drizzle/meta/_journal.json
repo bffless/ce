@@ -169,6 +169,13 @@
       "when": 1777733408711,
       "tag": "0023_ambiguous_black_bird",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1777976601882,
+      "tag": "0024_youthful_black_cat",
+      "breakpoints": true
     }
   ]
 }

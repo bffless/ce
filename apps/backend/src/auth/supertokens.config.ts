@@ -151,6 +151,11 @@ export function initSuperTokens() {
  * Register Google OAuth provider with SuperTokens if env vars are set.
  * This enables CE self-hosted users to configure Google OAuth via .env
  * without needing direct SuperTokens API access.
+ *
+ * Sign-in uses workspace-shared env-var credentials (this function).
+ * INTEGRATION credentials (Calendar, etc.) live in system_config and
+ * are managed via GoogleIntegrationOAuthSettingsService — a different
+ * Cloud client, scoped per workspace.
  */
 export async function registerGoogleOAuthFromEnv(): Promise<void> {
   const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
