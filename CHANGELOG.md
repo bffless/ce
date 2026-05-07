@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.32](https://github.com/bffless/ce/compare/v0.1.31...v0.1.32) (2026-05-07)
+
+
+### Features
+
+* adds delay handler ([5ece596](https://github.com/bffless/ce/commit/5ece596da846906604f9af28018ece3f7e4eebc6))
+
 ## [0.1.31](https://github.com/bffless/ce/compare/v0.1.30...v0.1.31) (2026-05-05)
 
 
