@@ -201,6 +201,7 @@ function getStepOutputDescription(handlerType: string, config?: Record<string, u
     stripe_checkout: 'Stripe Checkout Session with payment URL',
     stripe_webhook: 'Verified Stripe event object',
     github_api: 'GitHub API response (repo details, variable info, or issue details)',
+    delay: 'Actual delay applied (delayedMs)',
   };
   return descriptions[handlerType] || 'Step output data';
 }

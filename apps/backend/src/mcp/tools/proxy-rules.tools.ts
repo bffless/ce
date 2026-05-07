@@ -34,6 +34,7 @@ const pipelineStepSchema = z.object({
       'signed_url',
       'github_api',
       'google_calendar',
+      'delay',
     ])
     .describe(
       'IMPORTANT: Use exact handler type strings. Some have _handler suffix, some do not. The enum values are the only valid options.',
@@ -75,6 +76,7 @@ const pipelineStepSchema = z.object({
   - action "create_event": { action: "create_event", calendarId: "expression", summary: "template", description?: "template", location?: "template", startTime: "expression (ISO 8601)", endTime: "expression (ISO 8601)", attendees?: [{ email: "expression" }], timezone?: "IANA tz", sendUpdates?: "all"|"externalOnly"|"none" }. Output: { event: { id, summary, start, end, htmlLink, ... } }.
   - action "update_event": { action: "update_event", calendarId: "expression", eventId: "expression", summary?: "template", description?: "template", location?: "template", startTime?: "expression", endTime?: "expression", sendUpdates?: "all"|"externalOnly"|"none" }. Output: { event: { ... } }.
   - action "delete_event": { action: "delete_event", calendarId: "expression", eventId: "expression", sendUpdates?: "all"|"externalOnly"|"none" }. Treats 204/404/410 as success. Output: { eventId, calendarId, deleted: true }.
+- delay: { ms?: number|"expression", seconds?: number|"expression" }. Pauses pipeline execution before continuing. Provide either ms or seconds (ms wins if both set). Capped at 60000ms (60s). Output: { delayedMs }.
 
 All configs support: condition?: "expression" (skip step if falsy), timeout?: number (ms).
 Expressions reference prior steps by step NAME (not id): "steps.stepName.field" or request data: "request.body.field". Use bracket notation for names with spaces: "steps['Step Name'].field". Use simple names without spaces to keep expressions clean.`,

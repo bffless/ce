@@ -333,13 +333,21 @@ export type HandlerConfig =
   | HttpRequestHandlerConfig
   | SignedUrlHandlerConfig
   | StripeCheckoutHandlerConfig
-  | StripeWebhookHandlerConfig;
+  | StripeWebhookHandlerConfig
+  | DelayHandlerConfig;
 
 export interface SignedUrlHandlerConfig extends BaseHandlerConfig {
   /** Storage key / path (supports expressions, e.g. "steps.upload.storage_path") */
   path: string;
   /** URL expiration in seconds. Default: 3600 */
   expiresIn?: number;
+}
+
+export interface DelayHandlerConfig extends BaseHandlerConfig {
+  /** Delay in milliseconds. Supports expressions. Capped at 60000. */
+  ms?: number | string;
+  /** Delay in seconds (converted to ms). Supports expressions. Ignored if `ms` is set. */
+  seconds?: number | string;
 }
 
 export interface StripeCheckoutLineItem {

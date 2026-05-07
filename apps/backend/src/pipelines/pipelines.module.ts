@@ -40,6 +40,7 @@ import {
   SignedUrlHandler,
   GitHubApiHandler,
   GoogleCalendarHandler,
+  DelayHandler,
 } from './handlers';
 import { IntegrationsModule } from '../integrations/integrations.module';
 // Embeddings service
@@ -114,6 +115,7 @@ import {
     SignedUrlHandler,
     GitHubApiHandler,
     GoogleCalendarHandler,
+    DelayHandler,
     // Validators (auto-register on construction)
     AuthRequiredValidator,
     RateLimitValidator,

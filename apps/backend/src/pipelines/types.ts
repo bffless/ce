@@ -78,7 +78,8 @@ export type HandlerType =
   | 'stripe_webhook'
   | 'signed_url'
   | 'github_api'
-  | 'google_calendar';
+  | 'google_calendar'
+  | 'delay';
 
 /**
  * Pipeline step definition for execution.

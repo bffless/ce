@@ -52,7 +52,8 @@ export type HandlerType =
   | 'stripe_webhook'
   | 'signed_url'
   | 'github_api'
-  | 'google_calendar';
+  | 'google_calendar'
+  | 'delay';
 
 export interface Pipeline {
   id: string;
