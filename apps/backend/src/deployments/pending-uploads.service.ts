@@ -22,6 +22,7 @@ export interface CreatePendingUploadParams {
   files: PendingUploadFile[];
   uploadedBy?: string;
   expiresInSeconds?: number;
+  source?: string;
 }
 
 @Injectable()
@@ -56,6 +57,7 @@ export class PendingUploadsService {
       proxyRuleSetId: params.proxyRuleSetId,
       files: params.files,
       uploadedBy: params.uploadedBy,
+      source: params.source ?? 'github',
       expiresAt,
     };
 

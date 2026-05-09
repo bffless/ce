@@ -176,6 +176,13 @@
       "when": 1777976601882,
       "tag": "0024_youthful_black_cat",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1778329799960,
+      "tag": "0025_hesitant_morlocks",
+      "breakpoints": true
     }
   ]
 }

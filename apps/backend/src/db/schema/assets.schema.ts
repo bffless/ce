@@ -38,6 +38,11 @@ export const assets = pgTable(
     // Asset type for path segmentation (commits, uploads, static)
     assetType: varchar('asset_type', { length: 20 }).notNull().default(AssetType.COMMITS),
 
+    // Origin of the deployment that created this asset
+    // 'github' = uploaded by upload-artifact GitHub Action (default)
+    // 'manual' = uploaded via the admin UI
+    source: varchar('source', { length: 20 }).notNull().default('github'),
+
     // Git commit timestamp (when the commit was authored)
     // Nullable for backwards compatibility - old records use createdAt as fallback
     committedAt: timestamp('committed_at'),

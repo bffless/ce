@@ -294,6 +294,7 @@ export class DeploymentsService {
                 deploymentId,
                 publicPath,
                 assetType: AssetType.COMMITS,
+                source: dto.source ?? 'github',
                 description: dto.description,
                 committedAt,
                 tags,
@@ -1699,6 +1700,7 @@ export class DeploymentsService {
         storageKey: string;
       }>;
       userId?: string;
+      source?: string;
     },
     userRole?: string,
   ): Promise<{
@@ -1772,6 +1774,7 @@ export class DeploymentsService {
               deploymentId,
               publicPath,
               assetType: AssetType.COMMITS,
+              source: params.source ?? 'github',
               description: params.description,
               tags,
             })
