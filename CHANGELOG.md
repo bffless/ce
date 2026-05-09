@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.33](https://github.com/bffless/ce/compare/v0.1.32...v0.1.33) (2026-05-09)
+
+
+### Features
+
+* create deployments from the admin UI ([2cb9d6c](https://github.com/bffless/ce/commit/2cb9d6c845906137cd6284390d3208591bd3afa8))
+* create deployments from the admin UI ([e430733](https://github.com/bffless/ce/commit/e43073342916486bf1d40b755a91b444b1be8fc1))
+
 ## [0.1.32](https://github.com/bffless/ce/compare/v0.1.31...v0.1.32) (2026-05-07)
 
 
