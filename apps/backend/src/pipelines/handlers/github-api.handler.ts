@@ -12,7 +12,15 @@ import { IntegrationsService } from '../../integrations/integrations.service';
  */
 export interface GitHubApiHandlerConfig extends BaseHandlerConfig {
   /** The GitHub API action to perform */
-  action: 'create_repo_from_template' | 'set_repo_variable' | 'create_issue' | 'add_issue_comment' | 'close_issue' | 'close_pull_request' | 'merge_pull_request' | 'list_pull_requests';
+  action: 'create_repo_from_template' | 'set_repo_variable' | 'create_issue' | 'add_issue_comment' | 'close_issue' | 'close_pull_request' | 'merge_pull_request' | 'list_pull_requests' | 'dispatch';
+
+  // --- dispatch fields ---
+
+  /** Event type for repository_dispatch (expression, e.g. "'compose'") */
+  eventType?: string;
+
+  /** Optional structured payload delivered to the workflow as github.event.client_payload */
+  clientPayload?: Record<string, unknown>;
 
   // --- create_repo_from_template fields ---
 
@@ -185,9 +193,19 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
       if (!config.repo) {
         throw new ConfigurationError('repo is required for list_pull_requests', 'github_api');
       }
+    } else if (config.action === 'dispatch') {
+      if (!config.owner) {
+        throw new ConfigurationError('owner is required for dispatch', 'github_api');
+      }
+      if (!config.repo) {
+        throw new ConfigurationError('repo is required for dispatch', 'github_api');
+      }
+      if (!config.eventType) {
+        throw new ConfigurationError('eventType is required for dispatch', 'github_api');
+      }
     } else {
       throw new ConfigurationError(
-        `Unknown action '${config.action}'. Supported: create_repo_from_template, set_repo_variable, create_issue, add_issue_comment, close_issue, close_pull_request, merge_pull_request, list_pull_requests`,
+        `Unknown action '${config.action}'. Supported: create_repo_from_template, set_repo_variable, create_issue, add_issue_comment, close_issue, close_pull_request, merge_pull_request, list_pull_requests, dispatch`,
         'github_api',
       );
     }
@@ -244,6 +262,10 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
 
     if (config.action === 'list_pull_requests') {
       return this.listPullRequests(config, context, step, token);
+    }
+
+    if (config.action === 'dispatch') {
+      return this.dispatch(config, context, step, token);
     }
 
     return {
@@ -800,6 +822,64 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
         })),
       };
     } catch (error: any) {
+      return { success: false, error: { code: 'GITHUB_API_ERROR', message: `GitHub API request failed: ${error.message}` } };
+    }
+  }
+
+  private async dispatch(
+    config: GitHubApiHandlerConfig,
+    context: PipelineContext,
+    step: PipelineStep,
+    token: string,
+  ): Promise<StepResult> {
+    const owner = String(this.expressionEvaluator.evaluateExpression(config.owner!, context, step.name));
+    const repo = String(this.expressionEvaluator.evaluateExpression(config.repo!, context, step.name));
+    const eventType = String(this.expressionEvaluator.evaluateExpression(config.eventType!, context, step.name));
+
+    const clientPayload: Record<string, unknown> = {};
+    if (config.clientPayload && typeof config.clientPayload === 'object') {
+      for (const [key, raw] of Object.entries(config.clientPayload)) {
+        if (typeof raw === 'string') {
+          clientPayload[key] = this.expressionEvaluator.evaluateExpression(raw, context, step.name);
+        } else {
+          clientPayload[key] = raw;
+        }
+      }
+    }
+
+    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/dispatches`;
+    this.logger.debug(`Dispatching '${eventType}' to '${owner}/${repo}'`);
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+        },
+        body: JSON.stringify({ event_type: eventType, client_payload: clientPayload }),
+      });
+
+      // 204 No Content is the success response for repository_dispatch.
+      if (response.status === 204) {
+        this.logger.log(`Dispatched '${eventType}' to '${owner}/${repo}'`);
+        return { success: true, output: { eventType, owner, repo, clientPayload } };
+      }
+
+      const errorBody = await response.json().catch(() => ({}));
+      const message = (errorBody as any).message || `HTTP ${response.status}`;
+      this.logger.error(`GitHub API error for step '${step.name}': ${response.status} - ${message}`);
+      return {
+        success: false,
+        error: {
+          code: 'GITHUB_API_ERROR',
+          message: `GitHub API error: ${message}`,
+          details: { status: response.status, errors: (errorBody as any).errors },
+        },
+      };
+    } catch (error: any) {
+      this.logger.error(`GitHub API request failed for step '${step.name}': ${error.message}`);
       return { success: false, error: { code: 'GITHUB_API_ERROR', message: `GitHub API request failed: ${error.message}` } };
     }
   }
