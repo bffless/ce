@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.34](https://github.com/bffless/ce/compare/v0.1.33...v0.1.34) (2026-05-09)
+
+
+### Features
+
+* add dispatch action to github_api pipeline handler ([6e721a5](https://github.com/bffless/ce/commit/6e721a56b54958aa560b18dfd9be46b22243ef35))
+* add dispatch action to github_api pipeline handler ([9e94dc0](https://github.com/bffless/ce/commit/9e94dc0065ae51bd39d6501f35cbc34ab35d7bb9))
+
 ## [0.1.33](https://github.com/bffless/ce/compare/v0.1.32...v0.1.33) (2026-05-09)
 
 
