@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -12,6 +13,20 @@ interface GitHubApiConfigProps {
 
 export function GitHubApiConfig({ config, onChange, previousSteps }: GitHubApiConfigProps) {
   const action = (config.action as string) || 'create_repo_from_template';
+
+  const [clientPayloadPairs, setClientPayloadPairs] = useState<Array<{ key: string; value: string }>>(
+    () => Object.entries((config.clientPayload as Record<string, string>) || {}).map(([key, value]) => ({ key, value: String(value) })),
+  );
+
+  useEffect(() => {
+    if (action !== 'dispatch') return;
+    const obj = clientPayloadPairs.reduce<Record<string, string>>((acc, { key, value }) => {
+      if (key) acc[key] = value;
+      return acc;
+    }, {});
+    if (JSON.stringify(obj) === JSON.stringify(config.clientPayload || {})) return;
+    onChange({ ...config, clientPayload: Object.keys(obj).length > 0 ? obj : undefined });
+  }, [clientPayloadPairs, action]);
 
   return (
     <div className="space-y-4">
@@ -33,6 +48,7 @@ export function GitHubApiConfig({ config, onChange, previousSteps }: GitHubApiCo
             <SelectItem value="close_pull_request">Close Pull Request</SelectItem>
             <SelectItem value="merge_pull_request">Merge Pull Request</SelectItem>
             <SelectItem value="list_pull_requests">List Pull Requests</SelectItem>
+            <SelectItem value="dispatch">Repository Dispatch</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -348,6 +364,98 @@ export function GitHubApiConfig({ config, onChange, previousSteps }: GitHubApiCo
               onCheckedChange={(checked) => onChange({ ...config, private: checked })}
             />
             <Label>Private repository</Label>
+          </div>
+        </>
+      )}
+
+      {action === 'dispatch' && (
+        <>
+          <div className="space-y-2">
+            <Label>Owner *</Label>
+            <ExpressionInput
+              value={(config.owner as string) || ''}
+              onChange={(value) => onChange({ ...config, owner: value })}
+              placeholder="bffless-sites"
+              previousSteps={previousSteps}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Repo *</Label>
+            <ExpressionInput
+              value={(config.repo as string) || ''}
+              onChange={(value) => onChange({ ...config, repo: value })}
+              placeholder="steps.guard.repoName"
+              previousSteps={previousSteps}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Event Type *</Label>
+            <ExpressionInput
+              value={(config.eventType as string) || ''}
+              onChange={(value) => onChange({ ...config, eventType: value })}
+              placeholder="'compose'"
+              previousSteps={previousSteps}
+            />
+            <p className="text-xs text-muted-foreground">
+              Workflows trigger via <code>on: repository_dispatch: types: [&lt;eventType&gt;]</code>. Quote string literals.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Client Payload (optional)</Label>
+            <p className="text-xs text-muted-foreground">
+              Key-value pairs delivered to the workflow as <code>{'${{ github.event.client_payload.<key> }}'}</code>. Values are evaluated as expressions.
+            </p>
+            <div className="space-y-2">
+              {clientPayloadPairs.map((entry, i) => (
+                <div key={i} className="space-y-2 rounded-md border border-border/50 p-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Key</Label>
+                      <ExpressionInput
+                        value={entry.key}
+                        onChange={(v) => {
+                          const updated = [...clientPayloadPairs];
+                          updated[i] = { ...updated[i], key: v };
+                          setClientPayloadPairs(updated);
+                        }}
+                        placeholder="customizationId"
+                        previousSteps={[]}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Value</Label>
+                      <ExpressionInput
+                        value={entry.value}
+                        onChange={(v) => {
+                          const updated = [...clientPayloadPairs];
+                          updated[i] = { ...updated[i], value: v };
+                          setClientPayloadPairs(updated);
+                        }}
+                        placeholder="steps.guard.customizationId"
+                        previousSteps={previousSteps}
+                      />
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setClientPayloadPairs(clientPayloadPairs.filter((_, j) => j !== i))}
+                    className="text-xs text-muted-foreground hover:text-destructive"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => setClientPayloadPairs([...clientPayloadPairs, { key: '', value: '' }])}
+                className="text-xs text-primary hover:underline"
+              >
+                + Add payload entry
+              </button>
+            </div>
           </div>
         </>
       )}
