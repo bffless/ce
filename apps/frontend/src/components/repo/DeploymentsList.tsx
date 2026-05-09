@@ -27,12 +27,14 @@ import {
   Package,
   Copy,
   Check,
+  Plus,
   Search,
   X,
 } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
+import { CreateDeploymentDialog } from './CreateDeploymentDialog';
 
 interface DeploymentsListProps {
   owner: string;
@@ -50,6 +52,7 @@ export function DeploymentsList({ owner, repo }: DeploymentsListProps) {
     (state) => state.repoOverview,
   );
   const [copiedSha, setCopiedSha] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   // Fetch deployments
   const {
@@ -197,20 +200,33 @@ export function DeploymentsList({ owner, repo }: DeploymentsListProps) {
   // Empty state
   if (!deploymentsData || deploymentsData.deployments.length === 0) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Deployments</CardTitle>
-        </CardHeader>
-        <CardContent className="p-8 text-center">
-          <Package className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-          <p className="text-muted-foreground font-medium">No deployments found</p>
-          {selectedBranch && (
-            <p className="text-sm text-muted-foreground mt-2">
-              Try selecting a different branch or clear the filter
-            </p>
-          )}
-        </CardContent>
-      </Card>
+      <>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle>Deployments</CardTitle>
+            <Button onClick={() => setCreateOpen(true)} className="gap-2">
+              <Plus className="h-4 w-4" />
+              Create Deployment
+            </Button>
+          </CardHeader>
+          <CardContent className="p-8 text-center">
+            <Package className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+            <p className="text-muted-foreground font-medium">No deployments found</p>
+            {selectedBranch && (
+              <p className="text-sm text-muted-foreground mt-2">
+                Try selecting a different branch or clear the filter
+              </p>
+            )}
+          </CardContent>
+        </Card>
+        <CreateDeploymentDialog
+          open={createOpen}
+          onOpenChange={setCreateOpen}
+          owner={owner}
+          repo={repo}
+          branches={refsData?.branches ?? []}
+        />
+      </>
     );
   }
 
@@ -220,6 +236,7 @@ export function DeploymentsList({ owner, repo }: DeploymentsListProps) {
   const hasNoSearchResults = searchQuery.trim() && filteredDeployments.length === 0;
 
   return (
+    <>
     <Card>
       <CardHeader>
         <CardTitle>Deployments</CardTitle>
@@ -302,6 +319,12 @@ export function DeploymentsList({ owner, repo }: DeploymentsListProps) {
               : sortOrder === 'desc'
                 ? 'Newest First'
                 : 'Oldest First'}
+          </Button>
+
+          {/* Create Deployment */}
+          <Button onClick={() => setCreateOpen(true)} size="sm" className="gap-2 ml-auto">
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Create Deployment
           </Button>
         </div>
 
@@ -466,5 +489,13 @@ export function DeploymentsList({ owner, repo }: DeploymentsListProps) {
         )}
       </CardContent>
     </Card>
+    <CreateDeploymentDialog
+      open={createOpen}
+      onOpenChange={setCreateOpen}
+      owner={owner}
+      repo={repo}
+      branches={refsData?.branches ?? []}
+    />
+    </>
   );
 }

@@ -77,6 +77,13 @@ export const pendingUploads = pgTable(
     /** User who initiated the upload */
     uploadedBy: uuid('uploaded_by').references(() => users.id),
 
+    /**
+     * Origin of the upload — propagated to assets.source on finalize.
+     * 'github' = upload-artifact GitHub Action (default)
+     * 'manual' = admin UI
+     */
+    source: varchar('source', { length: 20 }).notNull().default('github'),
+
     /** When the upload session was created */
     createdAt: timestamp('created_at').defaultNow().notNull(),
 

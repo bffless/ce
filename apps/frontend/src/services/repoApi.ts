@@ -213,6 +213,54 @@ export interface DeleteCommitError {
   aliases?: string[];
 }
 
+// Manual deployment creation (presigned-URL flow)
+export interface PrepareDeploymentUploadFile {
+  path: string;
+  size: number;
+  contentType: string;
+}
+
+export interface PrepareDeploymentUploadRequest {
+  repository: string;
+  commitSha: string;
+  branch?: string;
+  alias?: string;
+  description?: string;
+  tags?: string;
+  basePath?: string;
+  proxyRuleSetId?: string;
+  proxyRuleSetName?: string;
+  source?: 'github' | 'manual';
+  files: PrepareDeploymentUploadFile[];
+}
+
+export interface PresignedUrlInfo {
+  path: string;
+  presignedUrl: string;
+  storageKey: string;
+}
+
+export interface PrepareDeploymentUploadResponse {
+  presignedUrlsSupported: boolean;
+  uploadToken?: string;
+  expiresAt?: string;
+  files?: PresignedUrlInfo[];
+}
+
+export interface FinalizeDeploymentUploadResponse {
+  deploymentId: string;
+  commitSha: string;
+  fileCount: number;
+  totalSize: number;
+  urls: {
+    sha: string;
+    default?: string;
+    preview?: string;
+  };
+  aliases: string[];
+  failed?: { file: string; error: string }[];
+}
+
 // Extend the base API with repository endpoints
 export const repoApi = api.injectEndpoints({
   endpoints: (builder) => ({
@@ -379,6 +427,33 @@ export const repoApi = api.injectEndpoints({
       }),
       invalidatesTags: (_result, _error, { projectId, aliasName }) => [
         { type: 'Asset', id: `alias-visibility-${projectId}-${aliasName}` },
+      ],
+    }),
+
+    prepareDeploymentUpload: builder.mutation<
+      PrepareDeploymentUploadResponse,
+      PrepareDeploymentUploadRequest
+    >({
+      query: (body) => ({
+        url: `/api/deployments/prepare-batch-upload`,
+        method: 'POST',
+        body,
+      }),
+    }),
+
+    finalizeDeploymentUpload: builder.mutation<
+      FinalizeDeploymentUploadResponse,
+      { uploadToken: string; owner: string; repo: string }
+    >({
+      query: ({ uploadToken }) => ({
+        url: `/api/deployments/finalize-upload`,
+        method: 'POST',
+        body: { uploadToken },
+      }),
+      invalidatesTags: (_result, _error, { owner, repo }) => [
+        { type: 'Asset', id: `${owner}/${repo}/deployments` },
+        { type: 'Asset', id: `${owner}/${repo}/refs` },
+        { type: 'Asset', id: `${owner}/${repo}/stats` },
       ],
     }),
   }),

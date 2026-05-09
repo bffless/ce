@@ -227,6 +227,15 @@ export class CreateDeploymentZipDto {
   @IsOptional()
   @IsUUID()
   proxyRuleSetId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Origin of the deployment. Defaults to "github" for upload-artifact GitHub Action; the admin UI sends "manual".',
+    enum: ['github', 'manual'],
+    default: 'github',
+  })
+  @IsOptional()
+  @IsIn(['github', 'manual'])
+  source?: 'github' | 'manual';
 }
 
 export class UpdateDeploymentDto {
@@ -749,6 +758,15 @@ export class PrepareBatchUploadDto {
   @IsArray()
   @ArrayMaxSize(10000)
   files: BatchUploadFileDto[];
+
+  @ApiPropertyOptional({
+    description: 'Origin of the deployment. Defaults to "github" for upload-artifact GitHub Action; the admin UI sends "manual".',
+    enum: ['github', 'manual'],
+    default: 'github',
+  })
+  @IsOptional()
+  @IsIn(['github', 'manual'])
+  source?: 'github' | 'manual';
 }
 
 /**

@@ -263,6 +263,7 @@ export class DeploymentsController {
       proxyRuleSetId: dto.proxyRuleSetId,
       files: pendingFiles,
       uploadedBy: user.id,
+      source: dto.source,
       expiresInSeconds,
     });
 
@@ -336,6 +337,7 @@ export class DeploymentsController {
         basePath: pendingUpload.basePath ?? undefined,
         files: pendingUpload.files,
         userId: pendingUpload.uploadedBy ?? undefined,
+        source: pendingUpload.source,
       },
       user.role,
     );
