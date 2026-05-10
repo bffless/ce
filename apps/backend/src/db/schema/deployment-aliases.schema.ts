@@ -42,7 +42,7 @@ export const deploymentAliases = pgTable(
     // Access control overrides (null = inherit from project)
     // 'not_found' | 'redirect_login'
     unauthorizedBehavior: varchar('unauthorized_behavior', { length: 20 }),
-    // 'authenticated' | 'viewer' | 'contributor' | 'admin' | 'owner'
+    // 'authenticated' | 'guest' | 'viewer' | 'contributor' | 'admin' | 'owner'
     requiredRole: varchar('required_role', { length: 20 }),
 
     // Auto-preview aliases (generated from basePath during upload)

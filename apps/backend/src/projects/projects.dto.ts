@@ -37,12 +37,12 @@ export class CreateProjectDto {
 
   @ApiPropertyOptional({
     description: 'Minimum role required to access private content',
-    enum: ['authenticated', 'viewer', 'contributor', 'admin', 'owner'],
+    enum: ['authenticated', 'guest', 'viewer', 'contributor', 'admin', 'owner'],
     default: 'authenticated',
   })
-  @IsIn(['authenticated', 'viewer', 'contributor', 'admin', 'owner'])
+  @IsIn(['authenticated', 'guest', 'viewer', 'contributor', 'admin', 'owner'])
   @IsOptional()
-  requiredRole?: 'authenticated' | 'viewer' | 'contributor' | 'admin' | 'owner';
+  requiredRole?: 'authenticated' | 'guest' | 'viewer' | 'contributor' | 'admin' | 'owner';
 
   @ApiPropertyOptional({ description: 'Project settings (JSON object)' })
   @IsObject()
@@ -76,11 +76,11 @@ export class UpdateProjectDto {
 
   @ApiPropertyOptional({
     description: 'Minimum role required to access private content',
-    enum: ['authenticated', 'viewer', 'contributor', 'admin', 'owner'],
+    enum: ['authenticated', 'guest', 'viewer', 'contributor', 'admin', 'owner'],
   })
-  @IsIn(['authenticated', 'viewer', 'contributor', 'admin', 'owner'])
+  @IsIn(['authenticated', 'guest', 'viewer', 'contributor', 'admin', 'owner'])
   @IsOptional()
-  requiredRole?: 'authenticated' | 'viewer' | 'contributor' | 'admin' | 'owner';
+  requiredRole?: 'authenticated' | 'guest' | 'viewer' | 'contributor' | 'admin' | 'owner';
 
   @ApiPropertyOptional({
     description:
@@ -132,8 +132,8 @@ export class ProjectResponseDto {
   @ApiProperty({ enum: ['not_found', 'redirect_login'] })
   unauthorizedBehavior: 'not_found' | 'redirect_login';
 
-  @ApiProperty({ enum: ['authenticated', 'viewer', 'contributor', 'admin', 'owner'] })
-  requiredRole: 'authenticated' | 'viewer' | 'contributor' | 'admin' | 'owner';
+  @ApiProperty({ enum: ['authenticated', 'guest', 'viewer', 'contributor', 'admin', 'owner'] })
+  requiredRole: 'authenticated' | 'guest' | 'viewer' | 'contributor' | 'admin' | 'owner';
 
   @ApiProperty({ description: 'Whether visitors can self-register on this site' })
   allowPublicSignup: boolean;

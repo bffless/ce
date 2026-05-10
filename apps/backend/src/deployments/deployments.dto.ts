@@ -618,12 +618,12 @@ export class UpdateAliasVisibilityDto {
   @ApiPropertyOptional({
     description:
       'Required role override: null = inherit from project',
-    enum: ['authenticated', 'viewer', 'contributor', 'admin', 'owner'],
+    enum: ['authenticated', 'guest', 'viewer', 'contributor', 'admin', 'owner'],
     nullable: true,
   })
   @IsOptional()
-  @IsIn(['authenticated', 'viewer', 'contributor', 'admin', 'owner'])
-  requiredRole?: 'authenticated' | 'viewer' | 'contributor' | 'admin' | 'owner' | null;
+  @IsIn(['authenticated', 'guest', 'viewer', 'contributor', 'admin', 'owner'])
+  requiredRole?: 'authenticated' | 'guest' | 'viewer' | 'contributor' | 'admin' | 'owner' | null;
 }
 
 export class AliasVisibilityResponseDto {
@@ -659,9 +659,9 @@ export class AliasVisibilityResponseDto {
 
   @ApiPropertyOptional({
     description: 'Effective required role',
-    enum: ['authenticated', 'viewer', 'contributor', 'admin', 'owner'],
+    enum: ['authenticated', 'guest', 'viewer', 'contributor', 'admin', 'owner'],
   })
-  effectiveRequiredRole?: 'authenticated' | 'viewer' | 'contributor' | 'admin' | 'owner';
+  effectiveRequiredRole?: 'authenticated' | 'guest' | 'viewer' | 'contributor' | 'admin' | 'owner';
 }
 
 // Phase: Pre-signed URL Artifact Uploads

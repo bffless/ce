@@ -90,12 +90,12 @@ export class CreateDomainDto {
   @ApiPropertyOptional({
     description:
       'Required role override: null = inherit from alias/project',
-    enum: ['authenticated', 'viewer', 'contributor', 'admin', 'owner'],
+    enum: ['authenticated', 'guest', 'viewer', 'contributor', 'admin', 'owner'],
     nullable: true,
   })
   @IsOptional()
-  @IsIn(['authenticated', 'viewer', 'contributor', 'admin', 'owner'])
-  requiredRole?: 'authenticated' | 'viewer' | 'contributor' | 'admin' | 'owner' | null;
+  @IsIn(['authenticated', 'guest', 'viewer', 'contributor', 'admin', 'owner'])
+  requiredRole?: 'authenticated' | 'guest' | 'viewer' | 'contributor' | 'admin' | 'owner' | null;
 
   @ApiPropertyOptional({
     description:

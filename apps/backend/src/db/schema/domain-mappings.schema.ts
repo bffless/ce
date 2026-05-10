@@ -22,7 +22,7 @@ export const domainMappings = pgTable(
     // Access control overrides (null = inherit from alias, then project)
     // 'not_found' | 'redirect_login'
     unauthorizedBehavior: varchar('unauthorized_behavior', { length: 20 }),
-    // 'authenticated' | 'viewer' | 'contributor' | 'admin' | 'owner'
+    // 'authenticated' | 'guest' | 'viewer' | 'contributor' | 'admin' | 'owner'
     requiredRole: varchar('required_role', { length: 20 }),
     sslEnabled: boolean('ssl_enabled').notNull().default(false),
     sslExpiresAt: timestamp('ssl_expires_at'),

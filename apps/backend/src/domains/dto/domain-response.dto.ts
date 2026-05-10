@@ -54,10 +54,10 @@ export class DomainResponseDto {
   @ApiPropertyOptional({
     description:
       'Required role override: null = inherit from alias/project',
-    enum: ['authenticated', 'viewer', 'contributor', 'admin', 'owner'],
+    enum: ['authenticated', 'guest', 'viewer', 'contributor', 'admin', 'owner'],
     nullable: true,
   })
-  requiredRole?: 'authenticated' | 'viewer' | 'contributor' | 'admin' | 'owner' | null;
+  requiredRole?: 'authenticated' | 'guest' | 'viewer' | 'contributor' | 'admin' | 'owner' | null;
 
   @ApiPropertyOptional({
     description:
