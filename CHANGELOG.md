@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.35](https://github.com/bffless/ce/compare/v0.1.34...v0.1.35) (2026-05-10)
+
+
+### Bug Fixes
+
+* **auth:** accept 'guest' as a valid requiredRole in DTOs ([f927049](https://github.com/bffless/ce/commit/f92704955efd04c9c054a6a3350355fb011aa0a0))
+
 ## [0.1.34](https://github.com/bffless/ce/compare/v0.1.33...v0.1.34) (2026-05-09)
 
 
