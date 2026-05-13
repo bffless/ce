@@ -207,6 +207,7 @@ export const api = createApi({
     'Integration',
     'Branding',
     'OAuthSettings',
+    'SsoProvider',
     'ProjectInviteLink',
     'MyProjects',
   ],

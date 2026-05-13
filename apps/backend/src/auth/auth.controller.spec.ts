@@ -86,6 +86,7 @@ describe('AuthController.getSession (project-membership gate, Phase B)', () => {
       {} as ProjectInviteLinksService,
       projectResolver,
       permissions,
+      {} as never, // OidcProvidersService — not exercised by these tests
     );
   });
 

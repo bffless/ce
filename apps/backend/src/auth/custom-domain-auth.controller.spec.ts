@@ -97,6 +97,7 @@ describe('CustomDomainAuthController.session (project-membership gate, Phase B)'
       {} as EmailService,
       projectResolver,
       permissions,
+      {} as never, // OidcProvidersService — not exercised here
     );
   });
 
@@ -261,6 +262,7 @@ describe('CustomDomainAuthController.signUp (existing-email orphan re-create)', 
       {} as EmailService,
       projectResolver,
       permissions,
+      {} as never, // OidcProvidersService — not exercised here
     );
   });
 

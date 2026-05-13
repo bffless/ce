@@ -11,6 +11,8 @@
     "dev:services:restart": "docker-compose -f docker-compose.dev.yml --profile postgres --profile supertokens restart",
     "dev:services:reset": "docker-compose -f docker-compose.dev.yml --profile postgres --profile supertokens down -v && docker-compose -f docker-compose.dev.yml --profile postgres --profile supertokens up -d && sleep 5 && cd apps/backend && pnpm db:migrate",
     "dev:full": "pnpm dev:services && pnpm dev",
+    "dev:dex": "docker compose -f docker-compose.dex.yml up -d && echo 'Dex running at http://localhost:5556 — add as Generic OIDC in /admin/settings/auth (clientId: bffless-ce-dev, secret: dev-secret-change-me, discovery: http://localhost:5556/.well-known/openid-configuration)'",
+    "dev:dex:stop": "docker compose -f docker-compose.dex.yml down",
     "build": "pnpm --filter backend build && pnpm --filter frontend build",
     "build:backend": "pnpm --filter backend build",
     "build:frontend": "pnpm --filter frontend build",

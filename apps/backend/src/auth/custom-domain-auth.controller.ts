@@ -27,6 +27,7 @@ import { SetupService } from '../setup/setup.service';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 import { EmailService } from '../email/email.service';
 import { ProjectResolverService } from './project-resolver.service';
+import { OidcProvidersService } from '../settings/oidc-providers.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { PublicProjectAccess } from './decorators/public-project-access.decorator';
 import { buildLoginMethodsResponse } from './login-methods.helper';
@@ -71,6 +72,7 @@ export class CustomDomainAuthController {
     private readonly emailService: EmailService,
     private readonly projectResolver: ProjectResolverService,
     private readonly permissions: PermissionsService,
+    private readonly oidcProvidersService: OidcProvidersService,
   ) {}
 
   /**
@@ -861,6 +863,7 @@ export class CustomDomainAuthController {
       featureFlagsService: this.featureFlagsService,
       setupService: this.setupService,
       projectResolver: this.projectResolver,
+      oidcProvidersService: this.oidcProvidersService,
       req,
     });
   }

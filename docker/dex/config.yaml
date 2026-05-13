@@ -1,0 +1,41 @@
+# Dex local-dev OIDC server config — used only by docker-compose.dex.yml.
+# See https://dexidp.io/docs/configuration/ for the full schema.
+
+issuer: http://localhost:5556
+
+storage:
+  type: memory   # ephemeral; restart wipes everything — fine for dev
+
+web:
+  http: 0.0.0.0:5556
+
+oauth2:
+  skipApprovalScreen: true       # one less click during dev
+  alwaysShowLoginScreen: true    # show the user-picker even after a recent login
+
+# OIDC clients allowed to use this Dex instance. The `secret` is shared with
+# the matching row in CE's `oidc_providers` table when an admin adds Dex via
+# /admin/settings/auth -> "Add SSO Provider" -> kind: Generic OIDC.
+staticClients:
+  - id: bffless-ce-dev
+    name: BFFless CE (local dev)
+    secret: dev-secret-change-me
+    redirectURIs:
+      # CE backend (when frontend builds are served by the backend)
+      - http://localhost:3000/oauth/signin/callback
+      # Vite dev server
+      - http://localhost:5173/oauth/signin/callback
+
+enablePasswordDB: true
+staticPasswords:
+  # Both passwords below are bcrypt hashes of the literal string "password".
+  # Generate replacements with:
+  #   docker run --rm -it --entrypoint=/bin/sh ghcr.io/dexidp/dex:v2.43.0 -c "echo -n 'newpassword' | htpasswd -BinC 10 _ | cut -d: -f2"
+  - email: alice@example.com
+    hash: '$2b$10$QpyaolsvNnUfSjlElS1DmeTXNc6RvBgowTByOwRCjrMi.z/yJTYJu'
+    username: alice
+    userID: 08a8684b-db88-4b73-90a9-3cd1661f5466
+  - email: bob@example.com
+    hash: '$2b$10$QpyaolsvNnUfSjlElS1DmeTXNc6RvBgowTByOwRCjrMi.z/yJTYJu'
+    username: bob
+    userID: 41331323-6f44-4510-9d49-f17d68d3c7d5

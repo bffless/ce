@@ -99,22 +99,32 @@ export interface ChangePasswordResponse {
   message: string;
 }
 
-export interface OAuthProvidersResponse {
-  google: { enabled: boolean };
+export type OAuthProviderKind = 'google' | 'okta' | 'azure-ad' | 'oidc';
+
+export interface OAuthProvider {
+  id: string;
+  kind: OAuthProviderKind;
+  displayName: string;
 }
 
-export interface GoogleAuthUrlResponse {
+export interface OAuthProvidersResponse {
+  providers: OAuthProvider[];
+}
+
+export interface OAuthAuthUrlResponse {
   url: string;
   pkceCodeVerifier?: string;
 }
 
-export interface GoogleOAuthCallbackDto {
+export interface OAuthCallbackDto {
+  providerId: string;
   code: string;
   redirectUrl: string;
   pkceCodeVerifier?: string;
+  projectInviteToken?: string;
 }
 
-export interface GoogleOAuthCallbackResponse {
+export interface OAuthCallbackResponse {
   message: string;
   user: User;
   createdNewUser: boolean;
@@ -234,15 +244,16 @@ export const authApi = api.injectEndpoints({
       query: () => '/api/auth/oauth/providers',
     }),
 
-    getGoogleAuthUrl: builder.query<GoogleAuthUrlResponse, { redirectUrl: string }>({
-      query: ({ redirectUrl }) => `/api/auth/oauth/google/url?redirectUrl=${encodeURIComponent(redirectUrl)}`,
+    getOAuthUrl: builder.query<OAuthAuthUrlResponse, { providerId: string; redirectUrl: string }>({
+      query: ({ providerId, redirectUrl }) =>
+        `/api/auth/oauth/${encodeURIComponent(providerId)}/url?redirectUrl=${encodeURIComponent(redirectUrl)}`,
     }),
 
-    googleOAuthCallback: builder.mutation<GoogleOAuthCallbackResponse, GoogleOAuthCallbackDto>({
-      query: (data) => ({
-        url: '/api/auth/oauth/google/callback',
+    oauthCallback: builder.mutation<OAuthCallbackResponse, OAuthCallbackDto>({
+      query: ({ providerId, ...body }) => ({
+        url: `/api/auth/oauth/${encodeURIComponent(providerId)}/callback`,
         method: 'POST',
-        body: data,
+        body,
       }),
       invalidatesTags: ['User'],
     }),
@@ -263,6 +274,6 @@ export const {
   useGetLoginMethodsQuery,
   useChangePasswordMutation,
   useGetOAuthProvidersQuery,
-  useLazyGetGoogleAuthUrlQuery,
-  useGoogleOAuthCallbackMutation,
+  useLazyGetOAuthUrlQuery,
+  useOauthCallbackMutation,
 } = authApi;

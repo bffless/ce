@@ -183,6 +183,13 @@
       "when": 1778329799960,
       "tag": "0025_hesitant_morlocks",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1778673229623,
+      "tag": "0026_lyrical_crusher_hogan",
+      "breakpoints": true
     }
   ]
 }

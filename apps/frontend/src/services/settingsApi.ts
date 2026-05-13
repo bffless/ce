@@ -164,6 +164,58 @@ export interface UpdateBrandingResponse {
   config: BrandingConfig;
 }
 
+// ─── SSO provider types (story 0047) ─────────────────────────────────────────
+
+export type SsoProviderKind = 'google' | 'okta' | 'azure-ad' | 'oidc';
+
+/** Public/admin-readable shape — credentials masked. Mirrors backend's `OidcProviderStatus`. */
+export interface SsoProviderStatus {
+  id: string;
+  providerId: string;
+  displayName: string;
+  kind: SsoProviderKind;
+  enabled: boolean;
+  source: 'admin' | 'env';
+  clientIdMasked: string | null;
+  hasSecret: boolean;
+  oktaDomain: string | null;
+  directoryId: string | null;
+  oidcDiscoveryEndpoint: string | null;
+  scope: string[] | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SsoProviderConfig {
+  clientId: string;
+  clientSecret: string;
+  oidcDiscoveryEndpoint?: string; // kind='oidc'
+  oktaDomain?: string; // kind='okta'
+  directoryId?: string; // kind='azure-ad'
+  scope?: string[];
+}
+
+export interface CreateSsoProviderDto {
+  providerId: string;
+  displayName: string;
+  kind: SsoProviderKind;
+  config: SsoProviderConfig;
+  enabled?: boolean;
+}
+
+export interface UpdateSsoProviderDto {
+  displayName?: string;
+  enabled?: boolean;
+  config?: Partial<SsoProviderConfig>;
+}
+
+export interface TestSsoProviderResponse {
+  ok: boolean;
+  issuer?: string;
+  authorizationEndpoint?: string;
+  error?: string;
+}
+
 export const settingsApi = api.injectEndpoints({
   endpoints: (builder) => ({
     // Get primary content configuration
@@ -353,6 +405,55 @@ export const settingsApi = api.injectEndpoints({
       }),
       invalidatesTags: ['OAuthSettings', 'Integration'],
     }),
+
+    // ─── SSO providers (story 0047) ─────────────────────────────────────────
+    // CRUD over the `oidc_providers` table. Each mutation also triggers
+    // backend syncOidcProviders() server-side, so the new buttons appear on
+    // /login without a backend restart. Tag: 'SsoProvider' so the providers
+    // list refetches after every mutation, and so /oauth/providers (consumed
+    // by Login/Signup pages) refetches via 'OAuthSettings'.
+    listSsoProviders: builder.query<SsoProviderStatus[], void>({
+      query: () => '/api/settings/sso/providers',
+      providesTags: ['SsoProvider'],
+    }),
+
+    getSsoProvider: builder.query<SsoProviderStatus, { id: string }>({
+      query: ({ id }) => `/api/settings/sso/providers/${encodeURIComponent(id)}`,
+      providesTags: (_r, _e, { id }) => [{ type: 'SsoProvider', id }],
+    }),
+
+    createSsoProvider: builder.mutation<SsoProviderStatus, CreateSsoProviderDto>({
+      query: (body) => ({
+        url: '/api/settings/sso/providers',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['SsoProvider', 'OAuthSettings'],
+    }),
+
+    updateSsoProvider: builder.mutation<SsoProviderStatus, { id: string; body: UpdateSsoProviderDto }>({
+      query: ({ id, body }) => ({
+        url: `/api/settings/sso/providers/${encodeURIComponent(id)}`,
+        method: 'PATCH',
+        body,
+      }),
+      invalidatesTags: ['SsoProvider', 'OAuthSettings'],
+    }),
+
+    deleteSsoProvider: builder.mutation<{ success: boolean }, { id: string }>({
+      query: ({ id }) => ({
+        url: `/api/settings/sso/providers/${encodeURIComponent(id)}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['SsoProvider', 'OAuthSettings'],
+    }),
+
+    testSsoProvider: builder.mutation<TestSsoProviderResponse, { id: string }>({
+      query: ({ id }) => ({
+        url: `/api/settings/sso/providers/${encodeURIComponent(id)}/test`,
+        method: 'POST',
+      }),
+    }),
   }),
 });
 
@@ -381,4 +482,11 @@ export const {
   useGetGoogleOAuthIntegrationQuery,
   useUpdateGoogleOAuthIntegrationMutation,
   useDeleteGoogleOAuthIntegrationMutation,
+  // SSO provider hooks (story 0047)
+  useListSsoProvidersQuery,
+  useGetSsoProviderQuery,
+  useCreateSsoProviderMutation,
+  useUpdateSsoProviderMutation,
+  useDeleteSsoProviderMutation,
+  useTestSsoProviderMutation,
 } = settingsApi;

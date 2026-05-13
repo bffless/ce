@@ -8,7 +8,7 @@ import { useSignInMutation, useGetSessionQuery, useGetOAuthProvidersQuery } from
 import { useValidateProjectInviteTokenQuery } from '@/services/projectInviteLinksApi';
 import { useBranding } from '@/hooks/useBranding';
 import { useGetSetupStatusQuery } from '@/services/setupApi';
-import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
+import { OAuthProviderButton } from '@/components/auth/OAuthProviderButton';
 import { useToast } from '@/hooks/use-toast';
 import { validateRedirectUrl } from '@/lib/validateRedirectUrl';
 import { Button } from '@/components/ui/button';
@@ -45,7 +45,8 @@ export function LoginPage() {
   const { data: setupStatus, isLoading: isLoadingSetup } = useGetSetupStatusQuery();
   const { data: oauthProviders } = useGetOAuthProvidersQuery();
   const { siteName, authLogoUrl } = useBranding();
-  const googleEnabled = oauthProviders?.google?.enabled ?? false;
+  const oauthList = oauthProviders?.providers ?? [];
+  const showOAuthSection = oauthList.length > 0;
   const [showPassword, setShowPassword] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const refreshAttemptedRef = useRef(false);
@@ -350,7 +351,7 @@ export function LoginPage() {
                   {isLoading ? 'Signing in...' : 'Sign In'}
                 </Button>
 
-                {googleEnabled && (
+                {showOAuthSection && (
                   <>
                     <div className="relative">
                       <div className="absolute inset-0 flex items-center">
@@ -360,7 +361,9 @@ export function LoginPage() {
                         <span className="bg-card px-2 text-muted-foreground">Or</span>
                       </div>
                     </div>
-                    <GoogleSignInButton redirectTo={redirectTo} />
+                    {oauthList.map((p) => (
+                      <OAuthProviderButton key={p.id} provider={p} redirectTo={redirectTo} labelMode="sign-in" />
+                    ))}
                   </>
                 )}
 

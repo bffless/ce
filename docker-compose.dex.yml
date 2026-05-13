@@ -1,0 +1,23 @@
+# Local OIDC IdP (Dex) for testing the BYO-OIDC sign-in flow during dev.
+#
+# **NOT** part of the main docker-compose.yml — production self-hosters running
+# ./start.sh on a Droplet never see this file. Devs opt in via:
+#
+#   pnpm dev:dex        # start
+#   pnpm dev:dex:stop   # stop
+#
+# Both scripts pass `-f docker-compose.dex.yml` explicitly so this file is the
+# only entry point. The dev IdP runs as an independent stack (no shared
+# network with the CE backend) — Dex is reached via http://localhost:5556 from
+# both the browser and the backend's loopback.
+
+services:
+  dex:
+    image: ghcr.io/dexidp/dex:v2.43.0
+    container_name: ce-dex-dev
+    command: dex serve /etc/dex/config.yaml
+    ports:
+      - '5556:5556'
+    volumes:
+      - ./docker/dex/config.yaml:/etc/dex/config.yaml:ro
+    restart: unless-stopped

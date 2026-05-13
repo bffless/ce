@@ -250,11 +250,35 @@ export const FLAG_DEFINITIONS: Record<string, FlagDefinition> = {
   // Feature Toggles
   // ==========================================================================
 
+  /**
+   * Master switch for OIDC sign-in (Google, Okta, Azure AD, generic OIDC).
+   * Per-provider enable/disable lives on each `oidc_providers` row; this flag
+   * is the operator-level kill switch to force email/password only.
+   *
+   * Default true: rows in `oidc_providers` only exist when an admin or env-var
+   * backfill creates them, so an empty workspace shows zero buttons regardless.
+   */
+  ENABLE_OIDC_PROVIDERS: {
+    envKey: 'FEATURE_OIDC_PROVIDERS',
+    defaultValue: true,
+    type: 'boolean',
+    description:
+      'Enable third-party OIDC sign-in (Google, Okta, Azure AD, generic OIDC). Disable to force email/password only. Per-provider toggles live in /admin/settings/auth.',
+    category: 'features',
+    exposeToClient: true,
+  },
+
+  /**
+   * @deprecated Use ENABLE_OIDC_PROVIDERS. Kept as a one-version alias so
+   * self-hosters with FEATURE_GOOGLE_OAUTH=true in their .env keep working.
+   * Value mirrors ENABLE_OIDC_PROVIDERS at evaluation time. Removed in 0049.
+   */
   ENABLE_GOOGLE_OAUTH: {
     envKey: 'FEATURE_GOOGLE_OAUTH',
     defaultValue: false,
     type: 'boolean',
-    description: 'Enable Sign in with Google on login and signup pages (requires Google OAuth credentials in SuperTokens). Workspace admins can disable per-workspace.',
+    description:
+      'DEPRECATED — use ENABLE_OIDC_PROVIDERS. Kept for back-compat; will be removed in story 0049.',
     category: 'features',
     exposeToClient: true,
   },
