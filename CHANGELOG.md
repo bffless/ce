@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.37](https://github.com/bffless/ce/compare/v0.1.36...v0.1.37) (2026-05-14)
+
+
+### Features
+
+* migrate Google integration creds off system_config (story 0048) ([0a941de](https://github.com/bffless/ce/commit/0a941defe55fc1e3f072b3aa6888a2b0d2002041))
+* migrate Google integration creds off system_config to per-service table ([800dd1b](https://github.com/bffless/ce/commit/800dd1bfebb8a8b27169565a7860c0c1b9f9e758))
+
 ## [0.1.36](https://github.com/bffless/ce/compare/v0.1.35...v0.1.36) (2026-05-14)
 
 
