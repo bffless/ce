@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import {
-  useGetGoogleOAuthIntegrationQuery,
-  useUpdateGoogleOAuthIntegrationMutation,
-  useDeleteGoogleOAuthIntegrationMutation,
+  useGetGoogleIntegrationQuery,
+  useUpdateGoogleIntegrationMutation,
+  useDeleteGoogleIntegrationMutation,
   useListSsoProvidersQuery,
   useCreateSsoProviderMutation,
   useUpdateSsoProviderMutation,
@@ -549,12 +549,15 @@ function extractErrorMessage(err: unknown): string {
 }
 
 // ─── Google Integration OAuth (workspace-level credentials) ────────────────
+// Only the Calendar service is rendered today. The backend table supports
+// per-service rows (drive/sheets/gmail) — those become additional cards in
+// follow-up stories alongside their handlers (0048 §Out of scope).
 
 function GoogleIntegrationOAuthCard() {
   const { toast } = useToast();
-  const { data: status, isLoading } = useGetGoogleOAuthIntegrationQuery();
-  const [updateCreds, { isLoading: isSaving }] = useUpdateGoogleOAuthIntegrationMutation();
-  const [deleteCreds, { isLoading: isClearing }] = useDeleteGoogleOAuthIntegrationMutation();
+  const { data: status, isLoading } = useGetGoogleIntegrationQuery({ service: 'calendar' });
+  const [updateCreds, { isLoading: isSaving }] = useUpdateGoogleIntegrationMutation();
+  const [deleteCreds, { isLoading: isClearing }] = useDeleteGoogleIntegrationMutation();
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [editing, setEditing] = useState(false);
@@ -575,7 +578,7 @@ function GoogleIntegrationOAuthCard() {
       return;
     }
     try {
-      await updateCreds({ clientId, clientSecret }).unwrap();
+      await updateCreds({ service: 'calendar', body: { clientId, clientSecret } }).unwrap();
       toast({
         title: 'Saved',
         description:
@@ -598,7 +601,7 @@ function GoogleIntegrationOAuthCard() {
       return;
     }
     try {
-      await deleteCreds().unwrap();
+      await deleteCreds({ service: 'calendar' }).unwrap();
       toast({ title: 'Cleared', description: 'Google integration credentials removed.' });
       setClientId('');
       setClientSecret('');

@@ -12,7 +12,7 @@ import { SettingsModule } from '../settings/settings.module';
   // ProjectsModule already imports IntegrationsModule, so the cycle is broken
   // with forwardRef on this side. Same pattern PipelinesModule uses.
   // SettingsModule is imported so GoogleCalendarOAuthService can read
-  // workspace-level OAuth credentials via GoogleOAuthSettingsService.
+  // workspace-level OAuth credentials via GoogleIntegrationCredentialsService.
   // forwardRef on SettingsModule: AuthModule.forRoot now imports SettingsModule
   // (story 0047 — OidcProvidersService injection into AuthController), which
   // creates a module-evaluation cycle through DomainsModule → ProxyRulesModule

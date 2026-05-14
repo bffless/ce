@@ -6,9 +6,7 @@ import {
   NotFoundException,
   InternalServerErrorException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { eq, asc } from 'drizzle-orm';
-import * as crypto from 'crypto';
 import { db } from '../db/client';
 import {
   oidcProviders,
@@ -16,17 +14,16 @@ import {
   type OidcProviderConfig,
   type OidcProviderKind,
 } from '../db/schema';
+import { decryptJson, encryptJson } from '../common/crypto/aes-gcm';
 
 /**
  * CRUD + encryption for `oidc_providers` rows. Source of truth for which
  * SuperTokens ThirdParty providers are registered against the workspace's
  * 'public' tenant.
  *
- * Encryption uses the same AES-256-GCM scheme as `GoogleOAuthSettingsService`
- * (same wire format `iv:authTag:ciphertext`, same `ENCRYPTION_KEY` env var) so
- * the two services share decryption guarantees but stay independent for now.
- * The shared crypto util extraction is queued for story 0048 (task #1) — by
- * then both consumers exist and the refactor avoids duplicate work.
+ * Encryption uses the shared AES-256-GCM helper in `common/crypto/aes-gcm.ts`
+ * (same wire format `iv:authTag:ciphertext`, same `ENCRYPTION_KEY` env var as
+ * every other encrypted credential row).
  *
  * The `sync` step against SuperTokens lives in `auth/supertokens.config.ts`
  * (`syncOidcProviders`), not here, to avoid a circular module import — that
@@ -35,20 +32,6 @@ import {
 @Injectable()
 export class OidcProvidersService {
   private readonly logger = new Logger(OidcProvidersService.name);
-  private readonly ENCRYPTION_KEY: Buffer;
-  private readonly ENCRYPTION_ALGORITHM = 'aes-256-gcm';
-
-  constructor(private readonly configService: ConfigService) {
-    const encryptionKey = this.configService.get<string>('ENCRYPTION_KEY');
-    if (encryptionKey) {
-      this.ENCRYPTION_KEY = Buffer.from(encryptionKey, 'base64');
-    } else {
-      this.ENCRYPTION_KEY = crypto.randomBytes(32);
-      this.logger.warn(
-        'No ENCRYPTION_KEY found. Generated temporary key — OIDC provider credentials will be unrecoverable across restarts.',
-      );
-    }
-  }
 
   // ─── reads ────────────────────────────────────────────────────────────────
 
@@ -99,8 +82,7 @@ export class OidcProvidersService {
   /** Decrypt creds for a row. Internal-use only — never returned over HTTP. */
   decryptConfig(row: OidcProvider): OidcProviderConfig | null {
     try {
-      const json = this.decryptData(row.configEncrypted);
-      const parsed = JSON.parse(json) as Partial<OidcProviderConfig>;
+      const parsed = decryptJson<Partial<OidcProviderConfig>>(row.configEncrypted);
       if (!parsed.clientId || !parsed.clientSecret) return null;
       return {
         clientId: parsed.clientId,
@@ -129,7 +111,7 @@ export class OidcProvidersService {
       );
     }
 
-    const encrypted = this.encryptData(JSON.stringify(input.config));
+    const encrypted = encryptJson(input.config);
     try {
       const [row] = await db
         .insert(oidcProviders)
@@ -174,7 +156,7 @@ export class OidcProvidersService {
         scope: input.config.scope ?? current.scope,
       };
       this.validateInput(existing.kind as OidcProviderKind, merged);
-      configEncrypted = this.encryptData(JSON.stringify(merged));
+      configEncrypted = encryptJson(merged);
     }
 
     const [row] = await db
@@ -265,28 +247,6 @@ export class OidcProvidersService {
   private maskClientId(clientId: string): string {
     if (clientId.length <= 8) return '****';
     return clientId.substring(0, 6) + '...' + clientId.substring(clientId.length - 4);
-  }
-
-  // ─── crypto (mirrors GoogleOAuthSettingsService.encryptData/decryptData) ──
-
-  private encryptData(data: string): string {
-    const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipheriv(this.ENCRYPTION_ALGORITHM, this.ENCRYPTION_KEY, iv);
-    let encrypted = cipher.update(data, 'utf8', 'hex');
-    encrypted += cipher.final('hex');
-    const authTag = cipher.getAuthTag();
-    return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
-  }
-
-  private decryptData(encryptedData: string): string {
-    const [ivHex, authTagHex, encrypted] = encryptedData.split(':');
-    const iv = Buffer.from(ivHex, 'hex');
-    const authTag = Buffer.from(authTagHex, 'hex');
-    const decipher = crypto.createDecipheriv(this.ENCRYPTION_ALGORITHM, this.ENCRYPTION_KEY, iv);
-    decipher.setAuthTag(authTag);
-    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
-    return decrypted;
   }
 }
 

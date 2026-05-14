@@ -176,8 +176,10 @@ export function initSuperTokens() {
  * trick the old `registerGoogleOAuthFromEnv` relied on.
  *
  * Replaces the previous `registerGoogleOAuthFromEnv()` — see story 0047.
- * INTEGRATION credentials (Calendar, etc.) keep using system_config via
- * GoogleOAuthSettingsService; only sign-in moved to oidc_providers.
+ * INTEGRATION credentials (Calendar, etc.) live in
+ * `google_integration_credentials` and are managed by
+ * `GoogleIntegrationCredentialsService` (story 0048); only sign-in lives
+ * in `oidc_providers`.
  */
 export async function syncOidcProviders(): Promise<void> {
   await backfillEnvGoogleProviderIfMissing();
@@ -314,11 +316,12 @@ async function rotateEnvGoogleProviderIfChanged(): Promise<void> {
   console.log('[Auth] Refreshed env-sourced Google OIDC provider from updated env vars');
 }
 
-// ─── crypto (mirrors OidcProvidersService.encryptData/decryptData) ──────────
+// ─── crypto (mirrors common/crypto/aes-gcm.ts) ──────────────────────────────
 // Inlined here (not injected) because syncOidcProviders runs before the Nest
-// DI graph is fully wired during onModuleInit. Same algorithm, same wire
-// format, same ENCRYPTION_KEY env var as OidcProvidersService and
-// GoogleOAuthSettingsService — to be unified into a shared util in story 0048.
+// DI graph is fully wired during onModuleInit, so importing the @Injectable()
+// crypto helper would create a chicken-and-egg problem at boot. Same
+// algorithm, same wire format, same ENCRYPTION_KEY env var — if the wire
+// format ever changes, update both this block and common/crypto/aes-gcm.ts.
 
 const ENCRYPTION_ALGORITHM = 'aes-256-gcm';
 let cachedEncryptionKey: Buffer | null = null;
