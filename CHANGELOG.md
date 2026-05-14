@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.36](https://github.com/bffless/ce/compare/v0.1.35...v0.1.36) (2026-05-14)
+
+
+### Features
+
+* **auth:** pluggable OIDC sign-in providers (Google / Okta / Azure AD / generic) ([b00037a](https://github.com/bffless/ce/commit/b00037a5af43bc7b381ef68b798af3d0102c6b44))
+* **auth:** pluggable OIDC sign-in providers (Google / Okta / Azure AD / generic) ([7634ea5](https://github.com/bffless/ce/commit/7634ea5d457965c7a7048b8d108ce812662fbbac))
+
 ## [0.1.35](https://github.com/bffless/ce/compare/v0.1.34...v0.1.35) (2026-05-10)
 
 
