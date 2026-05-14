@@ -66,7 +66,18 @@ import {
 } from './ai-plugins';
 
 @Module({
-  imports: [PermissionsModule, SettingsModule, forwardRef(() => ProjectsModule), CacheRulesModule, forwardRef(() => IntegrationsModule)],
+  imports: [
+    PermissionsModule,
+    // forwardRef: AuthModule.forRoot now imports SettingsModule (story 0047 —
+    // OidcProvidersService injection into AuthController), which creates a
+    // module-evaluation cycle through DomainsModule → … → PipelinesModule that
+    // resolves SettingsModule to undefined here at file-evaluation time.
+    // forwardRef defers the binding until after all module files have loaded.
+    forwardRef(() => SettingsModule),
+    forwardRef(() => ProjectsModule),
+    CacheRulesModule,
+    forwardRef(() => IntegrationsModule),
+  ],
   controllers: [
     PipelineSchemasController,
     PipelineDataController,

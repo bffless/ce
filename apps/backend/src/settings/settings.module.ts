@@ -6,6 +6,7 @@ import { SmtpService } from './smtp.service';
 import { EmailSettingsService } from './email-settings.service';
 import { EmailInitService } from './email-init.service';
 import { GoogleOAuthSettingsService } from './google-oauth-settings.service';
+import { OidcProvidersService } from './oidc-providers.service';
 import { BrandingService } from './branding.service';
 import { DomainsModule } from '../domains/domains.module';
 import { EmailModule } from '../email/email.module';
@@ -20,6 +21,7 @@ import { EmailModule } from '../email/email.module';
     EmailSettingsService,
     EmailInitService,
     GoogleOAuthSettingsService,
+    OidcProvidersService,
     BrandingService,
   ],
   exports: [
@@ -27,6 +29,7 @@ import { EmailModule } from '../email/email.module';
     SmtpService,
     EmailSettingsService,
     GoogleOAuthSettingsService,
+    OidcProvidersService,
     BrandingService,
   ],
 })

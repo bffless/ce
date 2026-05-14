@@ -12,7 +12,8 @@ import { OptionalAuthGuard } from './optional-auth.guard';
 import { RolesGuard } from './roles.guard';
 import { EmailVerificationGuard } from './email-verification.guard';
 import { ProjectMembershipGuard } from './project-membership.guard';
-import { initSuperTokens, registerGoogleOAuthFromEnv } from './supertokens.config';
+import { initSuperTokens, syncOidcProviders } from './supertokens.config';
+import { SettingsModule } from '../settings/settings.module';
 import { SetupModule } from '../setup/setup.module';
 import { OnboardingRulesModule } from '../onboarding-rules/onboarding-rules.module';
 import { ProjectInviteLinksModule } from '../project-invite-links/project-invite-links.module';
@@ -27,7 +28,7 @@ import { ProjectResolverService } from './project-resolver.service';
 })
 export class AuthModule implements NestModule {
   async onModuleInit() {
-    await registerGoogleOAuthFromEnv();
+    await syncOidcProviders();
   }
 
   static forRoot(): DynamicModule {
@@ -43,6 +44,7 @@ export class AuthModule implements NestModule {
         forwardRef(() => ProjectInviteLinksModule),
         forwardRef(() => DomainsModule),
         forwardRef(() => PermissionsModule),
+        forwardRef(() => SettingsModule),
       ],
       controllers: [AuthController, CustomDomainAuthController],
       providers: [

@@ -21,7 +21,13 @@ import { PrimaryContentService, PrimaryContentConfig } from './primary-content.s
 import { SmtpService } from './smtp.service';
 import { EmailSettingsService } from './email-settings.service';
 import { GoogleOAuthSettingsService } from './google-oauth-settings.service';
+import {
+  OidcProvidersService,
+  type CreateOidcProviderInput,
+  type UpdateOidcProviderInput,
+} from './oidc-providers.service';
 import { BrandingService, BrandingConfig } from './branding.service';
+import { syncOidcProviders } from '../auth/supertokens.config';
 import { UpdatePrimaryContentDto } from './dto/update-primary-content.dto';
 import { UpdateSmtpDto, SmtpStatusResponseDto, TestSmtpResponseDto } from './dto/update-smtp.dto';
 import {
@@ -45,6 +51,7 @@ export class SettingsController {
     private readonly smtpService: SmtpService,
     private readonly emailSettingsService: EmailSettingsService,
     private readonly googleOauthSettingsService: GoogleOAuthSettingsService,
+    private readonly oidcProvidersService: OidcProvidersService,
     private readonly brandingService: BrandingService,
     private readonly featureFlagsService: FeatureFlagsService,
   ) {}
@@ -350,5 +357,120 @@ export class SettingsController {
   async deleteGoogleOAuthIntegration() {
     await this.googleOauthSettingsService.clear();
     return this.googleOauthSettingsService.getStatus();
+  }
+
+  // ─── Single Sign-On (OIDC) providers ──────────────────────────────────────
+  // CRUD over the `oidc_providers` table that drives /api/auth/oauth/...
+  // endpoints. Mutations call syncOidcProviders() so changes apply without a
+  // backend restart. Per [[feedback-supertokens-single-tenant]], all
+  // providers are registered against the 'public' tenant.
+
+  @Get('sso/providers')
+  @Roles('admin')
+  @ApiOperation({
+    summary: 'List configured SSO providers',
+    description: 'Returns all rows (enabled or not) with credentials masked.',
+  })
+  @ApiResponse({ status: 200, description: 'Configured providers' })
+  async listSsoProviders() {
+    return this.oidcProvidersService.listAll();
+  }
+
+  @Get('sso/providers/:id')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Get one SSO provider by ID' })
+  async getSsoProvider(@Param('id') id: string) {
+    return this.oidcProvidersService.getStatus(id);
+  }
+
+  @Post('sso/providers')
+  @Roles('admin')
+  @ApiOperation({
+    summary: 'Create a new SSO provider',
+    description:
+      'Body: { providerId (URL slug), displayName, kind: "google"|"okta"|"azure-ad"|"oidc", config: {...kind-specific...}, enabled? }',
+  })
+  @ApiResponse({ status: 201, description: 'Provider created' })
+  @ApiResponse({ status: 400, description: 'Invalid input (missing fields, bad slug, kind/config mismatch)' })
+  @ApiResponse({ status: 409, description: 'A provider with that providerId already exists' })
+  async createSsoProvider(
+    @Body() body: CreateOidcProviderInput,
+    @CurrentUser() user: { id: string },
+  ) {
+    const created = await this.oidcProvidersService.create({
+      ...body,
+      createdByUserId: user?.id,
+      source: 'admin',
+    });
+    await syncOidcProviders();
+    return created;
+  }
+
+  @Patch('sso/providers/:id')
+  @Roles('admin')
+  @ApiOperation({
+    summary: 'Update an SSO provider',
+    description:
+      'Partial update. Omit clientSecret to keep the existing one. Toggle `enabled` to enable/disable without deleting.',
+  })
+  async updateSsoProvider(@Param('id') id: string, @Body() body: UpdateOidcProviderInput) {
+    const updated = await this.oidcProvidersService.update(id, body);
+    await syncOidcProviders();
+    return updated;
+  }
+
+  @Delete('sso/providers/:id')
+  @Roles('admin')
+  @ApiOperation({
+    summary: 'Delete an SSO provider',
+    description:
+      'Refuses to delete env-sourced rows (source=env) — unset the env vars and restart instead.',
+  })
+  @ApiResponse({ status: 409, description: 'Provider is env-sourced; cannot be deleted via API' })
+  async deleteSsoProvider(@Param('id') id: string) {
+    await this.oidcProvidersService.delete(id);
+    await syncOidcProviders();
+    return { success: true };
+  }
+
+  @Post('sso/providers/:id/test')
+  @Roles('admin')
+  @ApiOperation({
+    summary: 'Probe an OIDC provider\'s discovery endpoint',
+    description:
+      'For kind="oidc", fetches the configured discovery URL and reports back the issuer + authorization_endpoint. Pure read — no token issued. For other kinds (Google/Okta/Azure AD), returns ok=true if the row decrypts (no upstream call).',
+  })
+  async testSsoProvider(@Param('id') id: string): Promise<{ ok: boolean; issuer?: string; authorizationEndpoint?: string; error?: string }> {
+    const row = await this.oidcProvidersService.findById(id);
+    if (!row) throw new BadRequestException(`Provider ${id} not found`);
+    const cfg = this.oidcProvidersService.decryptConfig(row);
+    if (!cfg) {
+      return { ok: false, error: 'Failed to decrypt credentials. Re-enter clientId / clientSecret.' };
+    }
+    if (row.kind !== 'oidc') {
+      // Non-discovery kinds: we don't call out (Google/Okta/Azure don't use a
+      // generic discovery URL in our config). Just confirm the row is intact.
+      return { ok: true };
+    }
+    if (!cfg.oidcDiscoveryEndpoint) {
+      return { ok: false, error: 'No oidcDiscoveryEndpoint configured.' };
+    }
+    try {
+      const res = await fetch(cfg.oidcDiscoveryEndpoint, { redirect: 'follow' });
+      if (!res.ok) {
+        return { ok: false, error: `Discovery endpoint returned HTTP ${res.status}` };
+      }
+      const meta = (await res.json()) as { issuer?: string; authorization_endpoint?: string };
+      return {
+        ok: true,
+        issuer: meta.issuer,
+        authorizationEndpoint: meta.authorization_endpoint,
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : 'Failed to reach discovery endpoint',
+      };
+    }
   }
 }

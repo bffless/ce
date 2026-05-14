@@ -13,7 +13,13 @@ import { SettingsModule } from '../settings/settings.module';
   // with forwardRef on this side. Same pattern PipelinesModule uses.
   // SettingsModule is imported so GoogleCalendarOAuthService can read
   // workspace-level OAuth credentials via GoogleOAuthSettingsService.
-  imports: [PermissionsModule, forwardRef(() => ProjectsModule), SettingsModule],
+  // forwardRef on SettingsModule: AuthModule.forRoot now imports SettingsModule
+  // (story 0047 — OidcProvidersService injection into AuthController), which
+  // creates a module-evaluation cycle through DomainsModule → ProxyRulesModule
+  // → PipelinesModule → ProjectsModule → DeploymentsModule → ProjectsModule
+  // and back into IntegrationsModule. forwardRef defers SettingsModule binding
+  // until after all module files have evaluated.
+  imports: [PermissionsModule, forwardRef(() => ProjectsModule), forwardRef(() => SettingsModule)],
   controllers: [GoogleCalendarIntegrationController],
   providers: [IntegrationsService, GoogleCalendarOAuthService],
   exports: [IntegrationsService, GoogleCalendarOAuthService],

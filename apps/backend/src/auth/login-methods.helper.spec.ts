@@ -3,11 +3,12 @@ import { buildLoginMethodsResponse } from './login-methods.helper';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 import { SetupService } from '../setup/setup.service';
 import { ProjectResolverService } from './project-resolver.service';
+import { OidcProvidersService } from '../settings/oidc-providers.service';
 
 const reqStub = {} as Request;
 
 const makeFlags = (
-  values: Partial<Record<'ENABLE_GOOGLE_OAUTH' | 'REQUIRE_PROJECT_MEMBERSHIP', boolean>>,
+  values: Partial<Record<'ENABLE_OIDC_PROVIDERS' | 'REQUIRE_PROJECT_MEMBERSHIP', boolean>>,
 ): FeatureFlagsService =>
   ({
     isEnabled: jest.fn(async (key: string) => values[key as keyof typeof values] ?? false),
@@ -23,13 +24,23 @@ const makeResolver = (project: { id: string; allowPublicSignup: boolean } | null
     resolveProjectFromRequest: jest.fn(async () => project),
   }) as unknown as ProjectResolverService;
 
+const makeOidc = (
+  providers: Array<{ id: string; kind: 'google' | 'okta' | 'azure-ad' | 'oidc'; displayName: string }>,
+): OidcProvidersService =>
+  ({
+    listEnabled: jest.fn(async () => providers),
+  }) as unknown as OidcProvidersService;
+
 describe('buildLoginMethodsResponse', () => {
   describe('top-level back-compat fields', () => {
-    it('always returns hasPassword: true and hasGoogle from the workspace flag', async () => {
+    it('returns hasGoogle=true when the master OIDC switch is on AND a kind=google provider is enabled', async () => {
       const res = await buildLoginMethodsResponse({
-        featureFlagsService: makeFlags({ ENABLE_GOOGLE_OAUTH: true }),
+        featureFlagsService: makeFlags({ ENABLE_OIDC_PROVIDERS: true }),
         setupService: makeSetup(true),
         projectResolver: makeResolver(null),
+        oidcProvidersService: makeOidc([
+          { id: 'google', kind: 'google', displayName: 'Google' },
+        ]),
         req: reqStub,
       });
 
@@ -38,6 +49,41 @@ describe('buildLoginMethodsResponse', () => {
       // Same values are mirrored under workspace.* — old + new fields agree.
       expect(res.workspace.hasPassword).toBe(true);
       expect(res.workspace.hasGoogle).toBe(true);
+      // New `providers` array is the authoritative shape.
+      expect(res.providers).toEqual([{ id: 'google', kind: 'google', displayName: 'Google' }]);
+    });
+
+    it('returns hasGoogle=false when only non-Google providers are enabled', async () => {
+      const res = await buildLoginMethodsResponse({
+        featureFlagsService: makeFlags({ ENABLE_OIDC_PROVIDERS: true }),
+        setupService: makeSetup(true),
+        projectResolver: makeResolver(null),
+        oidcProvidersService: makeOidc([
+          { id: 'okta-acme', kind: 'okta', displayName: 'Acme SSO' },
+        ]),
+        req: reqStub,
+      });
+
+      expect(res.hasGoogle).toBe(false);
+      expect(res.workspace.hasGoogle).toBe(false);
+      expect(res.providers).toHaveLength(1);
+    });
+
+    it('returns empty providers and hasGoogle=false when ENABLE_OIDC_PROVIDERS is off, even if rows exist', async () => {
+      // Master switch off — no buttons regardless of what's in the table.
+      const oidc = makeOidc([{ id: 'google', kind: 'google', displayName: 'Google' }]);
+      const res = await buildLoginMethodsResponse({
+        featureFlagsService: makeFlags({ ENABLE_OIDC_PROVIDERS: false }),
+        setupService: makeSetup(true),
+        projectResolver: makeResolver(null),
+        oidcProvidersService: oidc,
+        req: reqStub,
+      });
+
+      expect(res.providers).toEqual([]);
+      expect(res.hasGoogle).toBe(false);
+      // Service should not even be consulted when the switch is off.
+      expect(oidc.listEnabled).not.toHaveBeenCalled();
     });
   });
 
@@ -47,28 +93,30 @@ describe('buildLoginMethodsResponse', () => {
         featureFlagsService: makeFlags({}),
         setupService: makeSetup(false),
         projectResolver: makeResolver(null),
+        oidcProvidersService: makeOidc([]),
         req: reqStub,
       });
 
       expect(res.workspace.allowSignup).toBe(false);
     });
 
-    it('falls back to hasGoogle=false if the feature-flag lookup throws', async () => {
-      const flags = {
-        isEnabled: jest.fn(async () => {
-          throw new Error('flag service down');
+    it('falls back to empty providers if listEnabled throws', async () => {
+      const oidc = {
+        listEnabled: jest.fn(async () => {
+          throw new Error('db down');
         }),
-      } as unknown as FeatureFlagsService;
+      } as unknown as OidcProvidersService;
 
       const res = await buildLoginMethodsResponse({
-        featureFlagsService: flags,
+        featureFlagsService: makeFlags({ ENABLE_OIDC_PROVIDERS: true }),
         setupService: makeSetup(true),
         projectResolver: makeResolver(null),
+        oidcProvidersService: oidc,
         req: reqStub,
       });
 
       expect(res.hasGoogle).toBe(false);
-      expect(res.workspace.hasGoogle).toBe(false);
+      expect(res.providers).toEqual([]);
     });
   });
 
@@ -80,6 +128,7 @@ describe('buildLoginMethodsResponse', () => {
         featureFlagsService: makeFlags({ REQUIRE_PROJECT_MEMBERSHIP: false }),
         setupService: makeSetup(true),
         projectResolver: resolver,
+        oidcProvidersService: makeOidc([]),
         req: reqStub,
       });
 
@@ -93,6 +142,7 @@ describe('buildLoginMethodsResponse', () => {
         featureFlagsService: makeFlags({ REQUIRE_PROJECT_MEMBERSHIP: true }),
         setupService: makeSetup(true),
         projectResolver: makeResolver(null),
+        oidcProvidersService: makeOidc([]),
         req: reqStub,
       });
 
@@ -104,6 +154,7 @@ describe('buildLoginMethodsResponse', () => {
         featureFlagsService: makeFlags({ REQUIRE_PROJECT_MEMBERSHIP: true }),
         setupService: makeSetup(true),
         projectResolver: makeResolver({ id: 'p1', allowPublicSignup: true }),
+        oidcProvidersService: makeOidc([]),
         req: reqStub,
       });
 
@@ -115,6 +166,7 @@ describe('buildLoginMethodsResponse', () => {
         featureFlagsService: makeFlags({ REQUIRE_PROJECT_MEMBERSHIP: true }),
         setupService: makeSetup(true),
         projectResolver: makeResolver({ id: 'p1', allowPublicSignup: false }),
+        oidcProvidersService: makeOidc([]),
         req: reqStub,
       });
 
@@ -128,6 +180,7 @@ describe('buildLoginMethodsResponse', () => {
         featureFlagsService: makeFlags({ REQUIRE_PROJECT_MEMBERSHIP: true }),
         setupService: makeSetup(true),
         projectResolver: makeResolver({ id: 'p1', allowPublicSignup: false }),
+        oidcProvidersService: makeOidc([]),
         req: reqStub,
       });
 

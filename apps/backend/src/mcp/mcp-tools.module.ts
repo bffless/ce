@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { McpModule } from '@rekog/mcp-nest';
 import { ProjectsModule } from '../projects/projects.module';
 import { DeploymentsModule } from '../deployments/deployments.module';
@@ -39,7 +39,11 @@ const ALL_TOOLS = [
     DeploymentsModule,
     DomainsModule,
     PipelinesModule,
-    SettingsModule,
+    // forwardRef: same cycle as PipelinesModule and IntegrationsModule —
+    // AuthModule.forRoot now imports SettingsModule (story 0047), which
+    // pulls SettingsModule into the module-evaluation cycle that reaches
+    // back to McpToolsModule. forwardRef defers the binding.
+    forwardRef(() => SettingsModule),
     UsersModule,
     ApiKeysModule,
     ProxyRulesModule,

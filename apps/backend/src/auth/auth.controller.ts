@@ -6,6 +6,7 @@ import {
   Req,
   Res,
   Query,
+  Param,
   HttpCode,
   HttpStatus,
   BadRequestException,
@@ -24,8 +25,10 @@ import { DomainTokenService } from './domain-token.service';
 import { ProjectInviteLinksService } from '../project-invite-links/project-invite-links.service';
 import { ProjectResolverService } from './project-resolver.service';
 import { PermissionsService } from '../permissions/permissions.service';
+import { OidcProvidersService } from '../settings/oidc-providers.service';
 import { PublicProjectAccess } from './decorators/public-project-access.decorator';
 import { buildLoginMethodsResponse } from './login-methods.helper';
+import { TENANT_ID } from './supertokens.config';
 import { CreateDomainTokenDto } from './dto/create-domain-token.dto';
 import { db } from '../db/client';
 import { workspaceInvitations, domainMappings } from '../db/schema';
@@ -89,6 +92,7 @@ export class AuthController {
     private readonly projectInviteLinksService: ProjectInviteLinksService,
     private readonly projectResolver: ProjectResolverService,
     private readonly permissions: PermissionsService,
+    private readonly oidcProvidersService: OidcProvidersService,
   ) {}
 
   private getTenantId(): string {
@@ -1174,6 +1178,7 @@ export class AuthController {
       featureFlagsService: this.featureFlagsService,
       setupService: this.setupService,
       projectResolver: this.projectResolver,
+      oidcProvidersService: this.oidcProvidersService,
       req,
     });
   }
@@ -1315,85 +1320,130 @@ export class AuthController {
 
   // ==========================================================================
   // OAuth / Third-Party Sign-In
+  //
+  // Provider-agnostic: each enabled `oidc_providers` row gets routed via
+  // /oauth/:providerId/url and /oauth/:providerId/callback. The legacy
+  // /oauth/google/* endpoints below forward to :providerId='google' for
+  // back-compat with old AuthDialog bundles and CE clients (removed in 0050).
+  //
+  // Always uses TENANT_ID='public' — see [[feedback-supertokens-single-tenant]].
   // ==========================================================================
 
   @Get('oauth/providers')
   @ApiOperation({
-    summary: 'Get available OAuth providers',
-    description: 'Public endpoint. Returns which OAuth providers are configured and enabled.',
+    summary: 'Get enabled OAuth/OIDC sign-in providers',
+    description: 'Public endpoint. Returns the list of enabled providers (Google / Okta / Azure AD / generic OIDC) for rendering sign-in buttons.',
   })
   @ApiResponse({
     status: 200,
-    description: 'Available OAuth providers',
+    description: 'Enabled providers',
     schema: {
       type: 'object',
       properties: {
-        google: {
-          type: 'object',
-          properties: {
-            enabled: { type: 'boolean' },
+        providers: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', description: 'Provider slug, used as :providerId in /oauth/:providerId/url' },
+              kind: { type: 'string', enum: ['google', 'okta', 'azure-ad', 'oidc'] },
+              displayName: { type: 'string' },
+            },
           },
         },
       },
     },
   })
-  async getOAuthProviders(): Promise<{ google: { enabled: boolean } }> {
-    let googleEnabled = false;
+  async getOAuthProviders(): Promise<{ providers: Array<{ id: string; kind: string; displayName: string }> }> {
     try {
-      const flagEnabled = await this.featureFlagsService.isEnabled('ENABLE_GOOGLE_OAUTH');
-      if (flagEnabled) {
-        const tenantId = this.getTenantId();
-        const provider = await ThirdParty.getProvider(tenantId, 'google', undefined);
-        googleEnabled = !!provider;
-      }
-    } catch {
-      googleEnabled = false;
+      const masterEnabled = await this.featureFlagsService.isEnabled('ENABLE_OIDC_PROVIDERS');
+      if (!masterEnabled) return { providers: [] };
+      const providers = await this.oidcProvidersService.listEnabled();
+      return { providers };
+    } catch (err) {
+      this.logger.error('[OAuth] Failed to list providers', err);
+      return { providers: [] };
     }
-    return { google: { enabled: googleEnabled } };
   }
 
-  @Get('oauth/google/url')
+  @Get('oauth/:providerId/url')
   @ApiOperation({
-    summary: 'Get Google OAuth authorization URL',
-    description: 'Public endpoint. Returns the URL to redirect the user to for Google sign-in.',
+    summary: 'Get OAuth authorization URL for a provider',
+    description: 'Public endpoint. Returns the URL to redirect the user to for sign-in via the named provider.',
   })
   @ApiQuery({ name: 'redirectUrl', required: true, description: 'OAuth redirect URI (callback URL)' })
-  @ApiResponse({ status: 200, description: 'Google authorization URL' })
-  @ApiResponse({ status: 400, description: 'Google OAuth not configured or not enabled' })
-  async getGoogleAuthUrl(
+  @ApiResponse({ status: 200, description: 'Provider authorization URL' })
+  @ApiResponse({ status: 400, description: 'Provider not configured, not enabled, or feature disabled' })
+  async getOAuthUrl(
+    @Param('providerId') providerId: string,
     @Query('redirectUrl') redirectUrl: string,
+  ): Promise<{ url: string; pkceCodeVerifier?: string }> {
+    return this.startOAuthAuthorisationFlow(providerId, redirectUrl);
+  }
+
+  /**
+   * @deprecated Use GET /oauth/google/url's generic replacement at
+   * /oauth/:providerId/url with providerId='google'. Kept for one minor
+   * version so older AuthDialog bundles and direct API consumers don't break.
+   * Removed in story 0050.
+   */
+  @Get('oauth/google/url')
+  @ApiOperation({
+    summary: 'DEPRECATED: Get Google OAuth authorization URL',
+    description: 'Forwards to /oauth/google/url\'s generic equivalent. Use /oauth/:providerId/url with providerId="google" instead. Removed in 0050.',
+  })
+  async getGoogleAuthUrlLegacy(
+    @Query('redirectUrl') redirectUrl: string,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ url: string; pkceCodeVerifier?: string }> {
+    res.setHeader('Sunset', 'Mon, 01 Sep 2026 00:00:00 GMT');
+    res.setHeader('Deprecation', 'true');
+    res.setHeader('Link', '</api/auth/oauth/google/url>; rel="successor-version"');
+    this.logger.warn('[OAuth] Legacy /oauth/google/url alias was hit — clients should migrate to /oauth/:providerId/url');
+    return this.startOAuthAuthorisationFlow('google', redirectUrl);
+  }
+
+  private async startOAuthAuthorisationFlow(
+    providerId: string,
+    redirectUrl: string,
   ): Promise<{ url: string; pkceCodeVerifier?: string }> {
     if (!redirectUrl) {
       throw new BadRequestException('redirectUrl is required');
     }
-
-    const flagEnabled = await this.featureFlagsService.isEnabled('ENABLE_GOOGLE_OAUTH');
-    if (!flagEnabled) {
-      throw new BadRequestException('Google OAuth is not enabled');
+    if (!(await this.featureFlagsService.isEnabled('ENABLE_OIDC_PROVIDERS'))) {
+      throw new BadRequestException('OIDC sign-in is not enabled');
+    }
+    const row = await this.oidcProvidersService.findByProviderId(providerId);
+    if (!row || !row.enabled) {
+      throw new BadRequestException(`OIDC provider '${providerId}' is not configured or not enabled`);
     }
 
-    const tenantId = this.getTenantId();
-    const provider = await ThirdParty.getProvider(tenantId, 'google', undefined);
+    // For kind='google' the SuperTokens thirdPartyId is forced to 'google';
+    // for everything else it matches the row's slug. Mirrors the discriminator
+    // in supertokens.config.ts:buildSuperTokensConfig.
+    const stThirdPartyId = row.kind === 'google' ? 'google' : row.providerId;
+    const provider = await ThirdParty.getProvider(TENANT_ID, stThirdPartyId, undefined);
     if (!provider) {
-      throw new BadRequestException('Google OAuth is not configured');
+      throw new BadRequestException(
+        `OIDC provider '${providerId}' is not registered with SuperTokens — try toggling it off and on, or check backend logs`,
+      );
     }
 
     const result = await provider.getAuthorisationRedirectURL({
       redirectURIOnProviderDashboard: redirectUrl,
       userContext: getUserContext(),
     });
-
     return {
       url: result.urlWithQueryParams,
       pkceCodeVerifier: result.pkceCodeVerifier,
     };
   }
 
-  @Post('oauth/google/callback')
+  @Post('oauth/:providerId/callback')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Complete Google OAuth sign-in',
-    description: 'Exchanges OAuth code for tokens, creates/links user, and creates session.',
+    summary: 'Complete OAuth/OIDC sign-in for a provider',
+    description: 'Exchanges OAuth code for tokens, creates/links user, and creates session. Provider-agnostic.',
   })
   @ApiBody({
     schema: {
@@ -1402,37 +1452,74 @@ export class AuthController {
         code: { type: 'string' },
         redirectUrl: { type: 'string', description: 'The redirect URI used in the authorization request' },
         pkceCodeVerifier: { type: 'string' },
+        projectInviteToken: { type: 'string' },
       },
       required: ['code', 'redirectUrl'],
     },
   })
-  @ApiResponse({ status: 200, description: 'User signed in via Google' })
+  @ApiResponse({ status: 200, description: 'User signed in via the provider' })
   @ApiResponse({ status: 400, description: 'OAuth flow failed' })
-  async googleOAuthCallback(
+  async oauthCallback(
+    @Param('providerId') providerId: string,
     @Body() body: { code: string; redirectUrl: string; pkceCodeVerifier?: string; projectInviteToken?: string },
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const { code, redirectUrl, pkceCodeVerifier } = body;
+    return this.completeOAuthCallback(providerId, body, req, res);
+  }
 
+  /**
+   * @deprecated Use POST /oauth/:providerId/callback with providerId='google'.
+   * Kept for one minor version so older AuthDialog bundles (which POST to the
+   * old path) keep working. Removed in story 0050.
+   */
+  @Post('oauth/google/callback')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'DEPRECATED: Complete Google OAuth sign-in',
+    description: 'Forwards to /oauth/:providerId/callback with providerId="google". Removed in 0050.',
+  })
+  async googleOAuthCallbackLegacy(
+    @Body() body: { code: string; redirectUrl: string; pkceCodeVerifier?: string; projectInviteToken?: string },
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    res.setHeader('Sunset', 'Mon, 01 Sep 2026 00:00:00 GMT');
+    res.setHeader('Deprecation', 'true');
+    res.setHeader('Link', '</api/auth/oauth/google/callback>; rel="successor-version"');
+    this.logger.warn('[OAuth] Legacy /oauth/google/callback alias was hit — clients should migrate to /oauth/:providerId/callback');
+    return this.completeOAuthCallback('google', body, req, res);
+  }
+
+  private async completeOAuthCallback(
+    providerId: string,
+    body: { code: string; redirectUrl: string; pkceCodeVerifier?: string; projectInviteToken?: string },
+    req: Request,
+    res: Response,
+  ) {
+    const { code, redirectUrl, pkceCodeVerifier } = body;
     if (!code || !redirectUrl) {
       throw new BadRequestException('code and redirectUrl are required');
     }
-
-    const flagEnabled = await this.featureFlagsService.isEnabled('ENABLE_GOOGLE_OAUTH');
-    if (!flagEnabled) {
-      throw new BadRequestException('Google OAuth is not enabled');
+    if (!(await this.featureFlagsService.isEnabled('ENABLE_OIDC_PROVIDERS'))) {
+      throw new BadRequestException('OIDC sign-in is not enabled');
     }
 
-    const tenantId = this.getTenantId();
+    const row = await this.oidcProvidersService.findByProviderId(providerId);
+    if (!row || !row.enabled) {
+      throw new BadRequestException(`OIDC provider '${providerId}' is not configured or not enabled`);
+    }
+    const stThirdPartyId = row.kind === 'google' ? 'google' : row.providerId;
+    const providerLabel = row.displayName;
 
     try {
-      const provider = await ThirdParty.getProvider(tenantId, 'google', undefined);
+      const provider = await ThirdParty.getProvider(TENANT_ID, stThirdPartyId, undefined);
       if (!provider) {
-        throw new BadRequestException('Google OAuth is not configured');
+        throw new BadRequestException(
+          `OIDC provider '${providerId}' is not registered with SuperTokens`,
+        );
       }
 
-      // Exchange authorization code for tokens
       const oAuthTokens = await provider.exchangeAuthCodeForOAuthTokens({
         redirectURIInfo: {
           redirectURIOnProviderDashboard: redirectUrl,
@@ -1442,136 +1529,173 @@ export class AuthController {
         userContext: getUserContext(),
       });
 
-      // Get user info from Google
       const userInfo = await provider.getUserInfo({
         oAuthTokens,
         userContext: getUserContext(),
       });
 
       if (!userInfo.email?.id) {
-        throw new BadRequestException('Could not get email from Google account');
+        throw new BadRequestException(`Could not get email from ${providerLabel} account`);
       }
-
       const email = userInfo.email.id;
       const thirdPartyUserId = userInfo.thirdPartyUserId;
 
-      // Create or update user in SuperTokens via ThirdParty recipe
+      // isVerified=true: Google + Okta + Azure AD + most OIDC IdPs verify
+      // emails before issuing them. If we ever connect to an IdP that doesn't,
+      // gate this on userInfo.email.isVerified and add per-kind override.
       const signInUpResponse = await ThirdParty.manuallyCreateOrUpdateUser(
-        tenantId,
-        'google',
+        TENANT_ID,
+        stThirdPartyId,
         thirdPartyUserId,
         email,
-        true, // isVerified - Google verifies emails
+        true,
       );
 
       if (signInUpResponse.status !== 'OK') {
-        this.logger.error('[Google OAuth] manuallyCreateOrUpdateUser failed:', signInUpResponse);
-        throw new BadRequestException('Failed to create or link Google user');
+        this.logger.error(`[${providerLabel} OAuth] manuallyCreateOrUpdateUser failed:`, signInUpResponse);
+        throw new BadRequestException(`Failed to create or link ${providerLabel} user`);
       }
 
-      const recipeUserId = signInUpResponse.recipeUserId;
-      const userId = signInUpResponse.user.id;
-
-      // Check if app DB user exists
-      let dbUser = await this.authService.getUserByEmail(email);
-
-      if (!dbUser) {
-        // New user - create in app database
-        // Check for invitation to determine role
-        const [invitation] = await db
-          .select()
-          .from(workspaceInvitations)
-          .where(
-            and(
-              eq(workspaceInvitations.email, email.toLowerCase()),
-              isNull(workspaceInvitations.acceptedAt),
-              gt(workspaceInvitations.expiresAt, new Date()),
-            ),
-          )
-          .limit(1);
-
-        let role: 'admin' | 'user' | 'member' = 'member';
-        if (email === process.env.ADMIN_EMAIL) {
-          role = 'admin';
-        } else if (invitation) {
-          role = invitation.role as 'admin' | 'user' | 'member';
-        }
-
-        // Check registration settings for new users (invited users always allowed)
-        if (!invitation) {
-          const registrationEnabled = await this.setupService.isRegistrationFeatureEnabled();
-          const canPublicSignup = await this.setupService.canPublicSignup();
-          if (!registrationEnabled || !canPublicSignup) {
-            throw new BadRequestException(
-              'Public registration is not available. Please contact an administrator for an invitation.',
-            );
-          }
-        }
-
-        dbUser = await this.authService.createUser(email, role, userId);
-
-        // Accept invitation if present
-        if (invitation) {
-          await db
-            .update(workspaceInvitations)
-            .set({ acceptedAt: new Date(), acceptedUserId: dbUser.id })
-            .where(eq(workspaceInvitations.id, invitation.id));
-        }
-
-        // Execute onboarding rules
-        try {
-          const trigger = invitation ? 'invite_accepted' : 'user_signup';
-          await this.onboardingExecutorService.executeRulesForUser({
-            userId: dbUser.id,
-            userEmail: email,
-            trigger,
-            invitationRole: invitation?.role,
-          });
-        } catch (onboardingError) {
-          this.logger.error('[Google OAuth] Onboarding rules failed:', onboardingError);
-        }
-      }
-
-      // Process project invite link if present
-      if (body.projectInviteToken && dbUser) {
-        try {
-          await this.projectInviteLinksService.redeemForUser(body.projectInviteToken, dbUser.id);
-        } catch (inviteError) {
-          this.logger.error('[Google OAuth] Project invite link redemption failed:', inviteError);
-        }
-      }
-
-      // Create session using the app DB user's ID as the recipeUserId.
-      // When an existing email/password user signs in via Google, SuperTokens creates
-      // a new ThirdParty recipe user with a different ID. Using that ID would cause
-      // session.getUserId() to return an ID that doesn't match the app DB user.
-      // By using the original app DB user ID (which matches the EmailPassword recipeUserId),
-      // all downstream lookups via session.getUserId() find the correct user.
-      const sessionRecipeUserId = new RecipeUserId(dbUser.id);
-      const session = await Session.createNewSession(req, res, tenantId, sessionRecipeUserId);
-
-      // Add role to JWT
-      await session.mergeIntoAccessTokenPayload({
-        role: dbUser.role,
+      return await this.completeOAuthSignIn({
+        email,
+        providerLabel,
+        createdNewRecipeUser: signInUpResponse.createdNewRecipeUser,
+        // SuperTokens primary user ID. For NEW app users we propagate this as
+        // the DB row PK so the unified-ID invariant holds: dbUser.id === a
+        // valid SuperTokens recipeUserId. Without this, Session.createNewSession
+        // below errors with UNKNOWN_USER_ID.
+        supertokensUserId: signInUpResponse.user.id,
+        projectInviteToken: body.projectInviteToken,
+        req,
+        res,
       });
-
-      return {
-        message: signInUpResponse.createdNewRecipeUser ? 'Account created via Google' : 'Signed in via Google',
-        user: {
-          id: dbUser.id,
-          email: dbUser.email,
-          role: dbUser.role,
-        },
-        createdNewUser: signInUpResponse.createdNewRecipeUser,
-      };
     } catch (error) {
       if (error instanceof BadRequestException) {
         throw error;
       }
-      this.logger.error('[Google OAuth] Callback error:', error);
+      this.logger.error(`[${providerLabel} OAuth] Callback error:`, error);
       throw new BadRequestException(
-        error instanceof Error ? error.message : 'Google sign-in failed',
+        error instanceof Error ? error.message : `${providerLabel} sign-in failed`,
       );
     }
+  }
+
+  /**
+   * Provider-agnostic completion of an OAuth/OIDC sign-in flow. Called by
+   * `completeOAuthCallback` after the controller has exchanged the auth code
+   * for tokens and resolved IdP user info. Lives on the controller (rather
+   * than AuthService) because moving it to AuthService introduces a circular
+   * import: roles.guard imports AuthService, AuthService would import
+   * SetupService, SetupService transitively pulls cache.controller, which
+   * imports roles.guard back. Controllers don't sit in that chain.
+   *
+   *   1. Look up app DB user by email.
+   *   2. If new: check workspace invitation, determine role, enforce the
+   *      public-signup gate (unless invited), create the DB user, accept
+   *      invitation if present, run onboarding rules.
+   *   3. If a project invite token was passed, redeem it.
+   *   4. Create a SuperTokens session using the **app DB user's ID** as the
+   *      recipeUserId — not the new ThirdParty recipe user ID. When an
+   *      existing email/password user signs in via OAuth, SuperTokens issues
+   *      a different recipe user; using that ID would desync session.getUserId
+   *      from the app DB. Using dbUser.id keeps all downstream lookups working.
+   *   5. Merge `role` into the access token payload so guards see it.
+   */
+  private async completeOAuthSignIn(input: {
+    email: string;
+    providerLabel: string;
+    createdNewRecipeUser: boolean;
+    /**
+     * SuperTokens primary user ID for this sign-in. When we create a brand-new
+     * app DB user, we MUST use this as the row's PK so the session's
+     * recipeUserId (set to dbUser.id below) is one SuperTokens already knows
+     * about. Skipping this re-introduces UNKNOWN_USER_ID errors on first
+     * sign-in via a new IdP.
+     */
+    supertokensUserId: string;
+    projectInviteToken?: string;
+    req: Request;
+    res: Response;
+  }) {
+    const { email, providerLabel, createdNewRecipeUser, supertokensUserId, projectInviteToken, req, res } = input;
+
+    let dbUser = await this.authService.getUserByEmail(email);
+
+    if (!dbUser) {
+      const [invitation] = await db
+        .select()
+        .from(workspaceInvitations)
+        .where(
+          and(
+            eq(workspaceInvitations.email, email.toLowerCase()),
+            isNull(workspaceInvitations.acceptedAt),
+            gt(workspaceInvitations.expiresAt, new Date()),
+          ),
+        )
+        .limit(1);
+
+      let role: 'admin' | 'user' | 'member' = 'member';
+      if (email === process.env.ADMIN_EMAIL) {
+        role = 'admin';
+      } else if (invitation) {
+        role = invitation.role as 'admin' | 'user' | 'member';
+      }
+
+      if (!invitation) {
+        const registrationEnabled = await this.setupService.isRegistrationFeatureEnabled();
+        const canPublicSignup = await this.setupService.canPublicSignup();
+        if (!registrationEnabled || !canPublicSignup) {
+          throw new BadRequestException(
+            'Public registration is not available. Please contact an administrator for an invitation.',
+          );
+        }
+      }
+
+      // Pass the SuperTokens user ID so dbUser.id === a recipeUserId
+      // SuperTokens recognises — required for Session.createNewSession below.
+      dbUser = await this.authService.createUser(email, role, supertokensUserId);
+
+      if (invitation) {
+        await db
+          .update(workspaceInvitations)
+          .set({ acceptedAt: new Date(), acceptedUserId: dbUser.id })
+          .where(eq(workspaceInvitations.id, invitation.id));
+      }
+
+      try {
+        const trigger = invitation ? 'invite_accepted' : 'user_signup';
+        await this.onboardingExecutorService.executeRulesForUser({
+          userId: dbUser.id,
+          userEmail: email,
+          trigger,
+          invitationRole: invitation?.role,
+        });
+      } catch (onboardingError) {
+        this.logger.error(`[${providerLabel} OAuth] Onboarding rules failed:`, onboardingError);
+      }
+    }
+
+    if (projectInviteToken && dbUser) {
+      try {
+        await this.projectInviteLinksService.redeemForUser(projectInviteToken, dbUser.id);
+      } catch (inviteError) {
+        this.logger.error(
+          `[${providerLabel} OAuth] Project invite link redemption failed:`,
+          inviteError,
+        );
+      }
+    }
+
+    const sessionRecipeUserId = new RecipeUserId(dbUser.id);
+    const session = await Session.createNewSession(req, res, TENANT_ID, sessionRecipeUserId);
+    await session.mergeIntoAccessTokenPayload({ role: dbUser.role });
+
+    return {
+      message: createdNewRecipeUser
+        ? `Account created via ${providerLabel}`
+        : `Signed in via ${providerLabel}`,
+      user: { id: dbUser.id, email: dbUser.email, role: dbUser.role },
+      createdNewUser: createdNewRecipeUser,
+    };
   }
 }

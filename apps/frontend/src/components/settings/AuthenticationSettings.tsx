@@ -1,10 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  useGetOAuthSettingsQuery,
-  useUpdateGoogleOAuthMutation,
   useGetGoogleOAuthIntegrationQuery,
   useUpdateGoogleOAuthIntegrationMutation,
   useDeleteGoogleOAuthIntegrationMutation,
+  useListSsoProvidersQuery,
+  useCreateSsoProviderMutation,
+  useUpdateSsoProviderMutation,
+  useDeleteSsoProviderMutation,
+  useTestSsoProviderMutation,
+  type SsoProviderKind,
+  type SsoProviderStatus,
+  type SsoProviderConfig,
 } from '@/services/settingsApi';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -14,37 +20,41 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Shield, CheckCircle, XCircle, Info, Loader2, ExternalLink, Calendar, Unlink } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Shield,
+  CheckCircle,
+  XCircle,
+  Info,
+  Loader2,
+  ExternalLink,
+  Calendar,
+  Unlink,
+  Plus,
+  Trash2,
+  Pencil,
+} from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export function AuthenticationSettings() {
-  const { toast } = useToast();
-  const { data, isLoading, error } = useGetOAuthSettingsQuery();
-  const [updateGoogleOAuth, { isLoading: isUpdating }] = useUpdateGoogleOAuthMutation();
-
-  const googleEnabled = data?.google?.enabled ?? false;
-  const googleConfigured = data?.google?.configured ?? false;
-
-  const handleToggle = async (enabled: boolean) => {
-    try {
-      await updateGoogleOAuth({ enabled }).unwrap();
-      toast({
-        title: enabled ? 'Google OAuth enabled' : 'Google OAuth disabled',
-        description: enabled
-          ? 'Google sign-in is now available on login and signup pages.'
-          : 'Google sign-in has been removed from login and signup pages.',
-      });
-    } catch (err: unknown) {
-      const errorMessage = err && typeof err === 'object' && 'data' in err
-        ? (err.data as { message?: string })?.message || 'An error occurred'
-        : 'An error occurred';
-      toast({
-        title: 'Failed to update Google OAuth',
-        description: errorMessage,
-        variant: 'destructive',
-      });
-    }
-  };
+  // Loading skeleton for the wrapper — the actual SSO list has its own loading
+  // state inside SingleSignOnSettingsCard, so this just covers initial render.
+  const isLoading = false;
+  const error = null as unknown as { message: string } | null;
 
   if (isLoading) {
     return (
@@ -115,68 +125,427 @@ export function AuthenticationSettings() {
           <Switch checked disabled />
         </div>
 
-        {/* Google OAuth */}
-        <div className="rounded-lg border p-4 space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <div className="flex items-center gap-2">
-                <Label className="text-base font-medium">Google OAuth</Label>
-                {googleConfigured ? (
-                  googleEnabled ? (
-                    <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-                      <CheckCircle className="h-3 w-3 mr-1" />
-                      Enabled
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline">
-                      <XCircle className="h-3 w-3 mr-1" />
-                      Disabled
-                    </Badge>
-                  )
-                ) : (
-                  <Badge variant="outline" className="text-muted-foreground">
-                    Not Configured
-                  </Badge>
-                )}
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Allow users to sign in with their Google account.
-              </p>
-            </div>
-            {googleConfigured && (
-              <Switch
-                checked={googleEnabled}
-                onCheckedChange={handleToggle}
-                disabled={isUpdating}
-              />
-            )}
-          </div>
-
-          {!googleConfigured && (
-            <Alert>
-              <Info className="h-4 w-4" />
-              <AlertDescription className="text-sm">
-                Google OAuth requires credentials to be configured in SuperTokens.
-                See the{' '}
-                <a
-                  href="https://docs.bffless.app/configuration/authentication/#google-oauth"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:underline font-medium"
-                >
-                  authentication docs
-                </a>
-                {' '}for setup instructions.
-              </AlertDescription>
-            </Alert>
-          )}
-        </div>
+        {/* Single Sign-On (OIDC) providers — Google, Okta, Azure AD, generic OIDC */}
+        <SingleSignOnSettingsCard />
 
         {/* Google Integration OAuth (Calendar, etc.) — workspace-level credentials */}
         <GoogleIntegrationOAuthCard />
       </CardContent>
     </Card>
   );
+}
+
+// ─── Single Sign-On (OIDC) providers ───────────────────────────────────────
+// CRUD over /api/settings/sso/providers. Replaces the old single-Google
+// toggle with a list of pluggable providers (Google, Okta, Azure AD, generic
+// OIDC). Each provider in the list maps to one button on /login.
+
+function SingleSignOnSettingsCard() {
+  const { data: providers, isLoading } = useListSsoProvidersQuery();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<SsoProviderStatus | null>(null);
+
+  const openCreate = () => {
+    setEditing(null);
+    setDialogOpen(true);
+  };
+  const openEdit = (p: SsoProviderStatus) => {
+    setEditing(p);
+    setDialogOpen(true);
+  };
+
+  return (
+    <div className="rounded-lg border p-4 space-y-4">
+      <div className="flex items-center justify-between gap-4">
+        <div className="space-y-0.5">
+          <Label className="text-base font-medium">Single Sign-On (OIDC)</Label>
+          <p className="text-sm text-muted-foreground">
+            Pluggable identity providers — Google, Okta, Azure AD, or any OIDC-compliant IdP.
+            Each enabled provider renders one button on the login screen.
+          </p>
+        </div>
+        <Button size="sm" onClick={openCreate}>
+          <Plus className="h-4 w-4 mr-1" /> Add provider
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <Skeleton className="h-20 w-full" />
+      ) : !providers || providers.length === 0 ? (
+        <Alert>
+          <Info className="h-4 w-4" />
+          <AlertDescription className="text-sm">
+            No SSO providers configured. Click "Add provider" to set up Google, Okta, Azure AD,
+            or a generic OIDC IdP. Self-hosters who set <code className="text-xs">GOOGLE_OAUTH_CLIENT_ID</code>{' '}
+            in their environment are auto-backfilled here on backend boot.
+          </AlertDescription>
+        </Alert>
+      ) : (
+        <div className="space-y-2">
+          {providers.map((p) => (
+            <SsoProviderRow key={p.id} provider={p} onEdit={() => openEdit(p)} />
+          ))}
+        </div>
+      )}
+
+      {dialogOpen && (
+        <SsoProviderDialog
+          provider={editing}
+          onClose={() => setDialogOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function SsoProviderRow({
+  provider,
+  onEdit,
+}: {
+  provider: SsoProviderStatus;
+  onEdit: () => void;
+}) {
+  const { toast } = useToast();
+  const [updateProvider, { isLoading: isToggling }] = useUpdateSsoProviderMutation();
+  const [deleteProvider, { isLoading: isDeleting }] = useDeleteSsoProviderMutation();
+  const [testProvider, { isLoading: isTesting }] = useTestSsoProviderMutation();
+
+  const handleToggle = async (enabled: boolean) => {
+    try {
+      await updateProvider({ id: provider.id, body: { enabled } }).unwrap();
+      toast({ title: enabled ? 'Provider enabled' : 'Provider disabled' });
+    } catch (err: unknown) {
+      toast({
+        title: 'Failed to toggle provider',
+        description: extractErrorMessage(err),
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirm(`Delete the SSO provider "${provider.displayName}"? This cannot be undone.`)) return;
+    try {
+      await deleteProvider({ id: provider.id }).unwrap();
+      toast({ title: 'Provider deleted' });
+    } catch (err: unknown) {
+      toast({
+        title: 'Failed to delete provider',
+        description: extractErrorMessage(err),
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleTest = async () => {
+    try {
+      const result = await testProvider({ id: provider.id }).unwrap();
+      if (result.ok) {
+        toast({
+          title: 'Probe succeeded',
+          description: result.issuer ? `Issuer: ${result.issuer}` : 'Credentials decrypt cleanly.',
+        });
+      } else {
+        toast({
+          title: 'Probe failed',
+          description: result.error,
+          variant: 'destructive',
+        });
+      }
+    } catch (err: unknown) {
+      toast({
+        title: 'Probe failed',
+        description: extractErrorMessage(err),
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const isEnvSourced = provider.source === 'env';
+
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-md border p-3">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <Label className="text-sm font-medium">{provider.displayName}</Label>
+          <Badge variant="outline" className="text-xs">{kindLabel(provider.kind)}</Badge>
+          {isEnvSourced && (
+            <Badge variant="secondary" className="text-xs">env-managed</Badge>
+          )}
+          {provider.enabled ? (
+            <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 text-xs">
+              <CheckCircle className="h-3 w-3 mr-1" />
+              Enabled
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="text-xs">
+              <XCircle className="h-3 w-3 mr-1" />
+              Disabled
+            </Badge>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground mt-1 truncate">
+          id: <code>{provider.providerId}</code>
+          {provider.clientIdMasked && <> · clientId: <code>{provider.clientIdMasked}</code></>}
+        </p>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <Switch checked={provider.enabled} onCheckedChange={handleToggle} disabled={isToggling} />
+        <Button variant="ghost" size="sm" onClick={handleTest} disabled={isTesting}>
+          {isTesting ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Test'}
+        </Button>
+        <Button variant="ghost" size="sm" onClick={onEdit}>
+          <Pencil className="h-3 w-3" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleDelete}
+          disabled={isDeleting || isEnvSourced}
+          title={isEnvSourced ? 'Env-managed providers cannot be deleted via UI — unset env vars and restart' : 'Delete'}
+        >
+          <Trash2 className="h-3 w-3" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function SsoProviderDialog({
+  provider,
+  onClose,
+}: {
+  provider: SsoProviderStatus | null;
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const isCreate = !provider;
+  const [createProvider, { isLoading: isCreating }] = useCreateSsoProviderMutation();
+  const [updateProvider, { isLoading: isUpdating }] = useUpdateSsoProviderMutation();
+
+  const [providerId, setProviderId] = useState(provider?.providerId ?? '');
+  const [displayName, setDisplayName] = useState(provider?.displayName ?? '');
+  const [kind, setKind] = useState<SsoProviderKind>(provider?.kind ?? 'oidc');
+  const [enabled, setEnabled] = useState(provider?.enabled ?? true);
+  const [clientId, setClientId] = useState('');
+  const [clientSecret, setClientSecret] = useState('');
+  const [oidcDiscoveryEndpoint, setOidcDiscoveryEndpoint] = useState(
+    provider?.oidcDiscoveryEndpoint ?? '',
+  );
+  const [oktaDomain, setOktaDomain] = useState(provider?.oktaDomain ?? '');
+  const [directoryId, setDirectoryId] = useState(provider?.directoryId ?? '');
+  const [scope, setScope] = useState((provider?.scope ?? []).join(' '));
+
+  // When kind changes (in create mode only — kind is locked on edit), reset
+  // kind-specific fields so we don't carry stale Okta domain into a generic
+  // OIDC submission.
+  useEffect(() => {
+    if (!isCreate) return;
+    setOidcDiscoveryEndpoint('');
+    setOktaDomain('');
+    setDirectoryId('');
+  }, [kind, isCreate]);
+
+  const handleSave = async () => {
+    const config: SsoProviderConfig = {
+      clientId,
+      clientSecret,
+      ...(kind === 'oidc' && oidcDiscoveryEndpoint ? { oidcDiscoveryEndpoint } : {}),
+      ...(kind === 'okta' && oktaDomain ? { oktaDomain } : {}),
+      ...(kind === 'azure-ad' && directoryId ? { directoryId } : {}),
+      ...(scope.trim() ? { scope: scope.trim().split(/\s+/) } : {}),
+    };
+
+    try {
+      if (isCreate) {
+        await createProvider({ providerId, displayName, kind, config, enabled }).unwrap();
+        toast({ title: 'Provider created' });
+      } else {
+        // On edit, omit clientSecret if blank so backend keeps the existing one.
+        const editConfig: Partial<SsoProviderConfig> = {
+          ...(clientId ? { clientId } : {}),
+          ...(clientSecret ? { clientSecret } : {}),
+          ...(kind === 'oidc' && oidcDiscoveryEndpoint ? { oidcDiscoveryEndpoint } : {}),
+          ...(kind === 'okta' && oktaDomain ? { oktaDomain } : {}),
+          ...(kind === 'azure-ad' && directoryId ? { directoryId } : {}),
+          ...(scope.trim() ? { scope: scope.trim().split(/\s+/) } : {}),
+        };
+        await updateProvider({
+          id: provider!.id,
+          body: { displayName, enabled, config: editConfig },
+        }).unwrap();
+        toast({ title: 'Provider updated' });
+      }
+      onClose();
+    } catch (err: unknown) {
+      toast({
+        title: 'Failed to save provider',
+        description: extractErrorMessage(err),
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const isSaving = isCreating || isUpdating;
+  const canSubmit =
+    !!displayName &&
+    (!isCreate || (!!providerId && !!clientId && !!clientSecret));
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{isCreate ? 'Add SSO Provider' : `Edit ${provider!.displayName}`}</DialogTitle>
+          <DialogDescription>
+            {isCreate
+              ? 'Configure an OIDC provider. Pick the kind that matches your IdP — Google, Okta, Azure AD, or a generic OIDC server.'
+              : 'Update display name, scope, or rotate credentials. Leave clientSecret blank to keep the existing one.'}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          {isCreate && (
+            <>
+              <div>
+                <Label className="text-sm">Kind</Label>
+                <Select value={kind} onValueChange={(v) => setKind(v as SsoProviderKind)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="google">Google</SelectItem>
+                    <SelectItem value="okta">Okta</SelectItem>
+                    <SelectItem value="azure-ad">Azure AD / Microsoft Entra</SelectItem>
+                    <SelectItem value="oidc">Generic OIDC (any IdP)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-sm">Provider ID (URL slug)</Label>
+                <Input
+                  placeholder="okta-acme"
+                  value={providerId}
+                  onChange={(e) => setProviderId(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Lowercase letters, numbers, hyphens. Used in /api/auth/oauth/<i>:providerId</i>/url.
+                  Pick something stable — it can't be renamed.
+                </p>
+              </div>
+            </>
+          )}
+
+          <div>
+            <Label className="text-sm">Display name</Label>
+            <Input
+              placeholder="Acme SSO"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground mt-1">Shown on the login button.</p>
+          </div>
+
+          <div>
+            <Label className="text-sm">Client ID</Label>
+            <Input
+              placeholder={isCreate ? '' : provider?.clientIdMasked ?? ''}
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <Label className="text-sm">Client Secret</Label>
+            <Input
+              type="password"
+              placeholder={isCreate ? '' : '(leave blank to keep existing)'}
+              value={clientSecret}
+              onChange={(e) => setClientSecret(e.target.value)}
+            />
+          </div>
+
+          {kind === 'oidc' && (
+            <div>
+              <Label className="text-sm">Issuer URL</Label>
+              <Input
+                placeholder="https://idp.example.com"
+                value={oidcDiscoveryEndpoint}
+                onChange={(e) => setOidcDiscoveryEndpoint(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                The IdP's base issuer URL (e.g. <code>http://localhost:5556</code> for local Dex).
+                Pasting the full <code>/.well-known/openid-configuration</code> URL also works —
+                the suffix is stripped automatically.
+              </p>
+            </div>
+          )}
+
+          {kind === 'okta' && (
+            <div>
+              <Label className="text-sm">Okta Domain</Label>
+              <Input
+                placeholder="dev-XXXXXX.okta.com"
+                value={oktaDomain}
+                onChange={(e) => setOktaDomain(e.target.value)}
+              />
+            </div>
+          )}
+
+          {kind === 'azure-ad' && (
+            <div>
+              <Label className="text-sm">Directory (Tenant) ID</Label>
+              <Input
+                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                value={directoryId}
+                onChange={(e) => setDirectoryId(e.target.value)}
+              />
+            </div>
+          )}
+
+          <div>
+            <Label className="text-sm">Scopes (space-separated, optional)</Label>
+            <Input
+              placeholder="openid email profile"
+              value={scope}
+              onChange={(e) => setScope(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Defaults to <code>openid email profile</code> for generic OIDC; provider built-ins set their own.
+            </p>
+          </div>
+
+          <div className="flex items-center justify-between rounded-md border p-2">
+            <Label className="text-sm">Enabled</Label>
+            <Switch checked={enabled} onCheckedChange={setEnabled} />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={handleSave} disabled={!canSubmit || isSaving}>
+            {isSaving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+            {isCreate ? 'Create' : 'Save'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function kindLabel(kind: SsoProviderKind): string {
+  switch (kind) {
+    case 'google': return 'Google';
+    case 'okta': return 'Okta';
+    case 'azure-ad': return 'Azure AD';
+    case 'oidc': return 'Generic OIDC';
+  }
+}
+
+function extractErrorMessage(err: unknown): string {
+  if (err && typeof err === 'object' && 'data' in err) {
+    const data = (err as { data?: { message?: string } }).data;
+    if (data?.message) return data.message;
+  }
+  if (err instanceof Error) return err.message;
+  return 'An unexpected error occurred.';
 }
 
 // ─── Google Integration OAuth (workspace-level credentials) ────────────────
