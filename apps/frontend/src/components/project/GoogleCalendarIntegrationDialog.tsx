@@ -17,7 +17,7 @@ import {
   type IntegrationInfo,
   type CalendarSummary,
 } from '@/services/integrationsApi';
-import { useGetGoogleOAuthIntegrationQuery } from '@/services/settingsApi';
+import { useGetGoogleIntegrationQuery } from '@/services/settingsApi';
 import { useToast } from '@/hooks/use-toast';
 import { CheckCircle, XCircle, Loader2, ExternalLink, Settings } from 'lucide-react';
 
@@ -45,11 +45,11 @@ export function GoogleCalendarIntegrationDialog({
   const [testConnection, { isLoading: isTesting }] = useTestIntegrationConnectionMutation();
   const [initiateOAuth, { isFetching: isInitiating }] = useLazyInitiateGoogleCalendarOAuthQuery();
 
-  // Workspace-level OAuth credentials must be set at /admin/settings/auth
-  // before any project can connect Google Calendar. Polled when the dialog
-  // opens so the operator sees the live state.
+  // Workspace-level Calendar OAuth client must be set at /admin/settings/auth
+  // before any project owner can connect their calendar. Polled when the
+  // dialog opens so the operator sees the live state.
   const { data: workspaceOAuth, isLoading: isWorkspaceLoading } =
-    useGetGoogleOAuthIntegrationQuery(undefined, { skip: !open });
+    useGetGoogleIntegrationQuery({ service: 'calendar' }, { skip: !open });
 
   const connectedEmail = integration.publicConfig?.connectedEmail as string | undefined;
   const availableCalendars =

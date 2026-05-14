@@ -145,9 +145,28 @@ export interface UpdateGoogleOAuthResponse {
   google: { enabled: boolean };
 }
 
-// Workspace-level Google OAuth INTEGRATION credentials (Calendar, etc.).
-// Distinct from sign-in (which uses env vars) — see backend
-// google-oauth-settings.service.ts.
+// Workspace-level Google integration credentials, per service. Distinct
+// from sign-in (env vars) — see backend GoogleIntegrationCredentialsService.
+// Story 0048: one row per Google API surface (calendar today, future
+// drive/sheets/gmail). The admin UI currently only renders calendar.
+export type GoogleService = 'calendar' | 'drive' | 'sheets' | 'gmail';
+
+export interface GoogleIntegrationStatus {
+  service: GoogleService;
+  isConfigured: boolean;
+  clientIdMasked?: string;
+  hasSecret?: boolean;
+}
+
+export interface UpdateGoogleIntegrationDto {
+  clientId: string;
+  clientSecret: string;
+  scopes?: string[];
+}
+
+// DEPRECATED — legacy alias kept so callers updated incrementally still
+// compile. Identical to GoogleIntegrationStatus minus `service`. Removed
+// in story 0050.
 export interface GoogleOAuthIntegrationStatus {
   isConfigured: boolean;
   clientIdMasked?: string;
@@ -377,13 +396,56 @@ export const settingsApi = api.injectEndpoints({
     }),
 
     // ==========================================================================
-    // Google OAuth INTEGRATION credentials (workspace-level — Calendar etc.)
-    // Distinct from sign-in above — see backend GoogleOAuthSettingsService.
+    // Google integration credentials, per service (workspace-level)
+    // Story 0048: replaces the single /oauth/google/integration endpoint with
+    // per-service routes so future Drive/Sheets/Gmail can have distinct
+    // Cloud projects. Backend: GoogleIntegrationCredentialsService.
     // ==========================================================================
 
-    getGoogleOAuthIntegration: builder.query<GoogleOAuthIntegrationStatus, void>({
-      query: () => '/api/settings/oauth/google/integration',
+    listGoogleIntegrations: builder.query<GoogleIntegrationStatus[], void>({
+      query: () => '/api/settings/google-integrations',
       providesTags: ['OAuthSettings'],
+    }),
+
+    getGoogleIntegration: builder.query<GoogleIntegrationStatus, { service: GoogleService }>({
+      query: ({ service }) => `/api/settings/google-integrations/${service}`,
+      providesTags: ['OAuthSettings'],
+    }),
+
+    updateGoogleIntegration: builder.mutation<
+      GoogleIntegrationStatus,
+      { service: GoogleService; body: UpdateGoogleIntegrationDto }
+    >({
+      query: ({ service, body }) => ({
+        url: `/api/settings/google-integrations/${service}`,
+        method: 'PUT',
+        body,
+      }),
+      invalidatesTags: ['OAuthSettings', 'Integration'],
+    }),
+
+    deleteGoogleIntegration: builder.mutation<
+      GoogleIntegrationStatus,
+      { service: GoogleService }
+    >({
+      query: ({ service }) => ({
+        url: `/api/settings/google-integrations/${service}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['OAuthSettings', 'Integration'],
+    }),
+
+    // ─── Legacy hooks (forwarded to service='calendar') ─────────────────────
+    // Kept so any in-flight code paths keep working through the deprecation
+    // window. Removed in story 0050 alongside the backend route aliases.
+    getGoogleOAuthIntegration: builder.query<GoogleOAuthIntegrationStatus, void>({
+      query: () => '/api/settings/google-integrations/calendar',
+      providesTags: ['OAuthSettings'],
+      transformResponse: (response: GoogleIntegrationStatus): GoogleOAuthIntegrationStatus => ({
+        isConfigured: response.isConfigured,
+        clientIdMasked: response.clientIdMasked,
+        hasSecret: response.hasSecret,
+      }),
     }),
 
     updateGoogleOAuthIntegration: builder.mutation<
@@ -391,19 +453,29 @@ export const settingsApi = api.injectEndpoints({
       UpdateGoogleOAuthIntegrationDto
     >({
       query: (body) => ({
-        url: '/api/settings/oauth/google/integration',
-        method: 'PATCH',
+        url: '/api/settings/google-integrations/calendar',
+        method: 'PUT',
         body,
       }),
       invalidatesTags: ['OAuthSettings', 'Integration'],
+      transformResponse: (response: GoogleIntegrationStatus): GoogleOAuthIntegrationStatus => ({
+        isConfigured: response.isConfigured,
+        clientIdMasked: response.clientIdMasked,
+        hasSecret: response.hasSecret,
+      }),
     }),
 
     deleteGoogleOAuthIntegration: builder.mutation<GoogleOAuthIntegrationStatus, void>({
       query: () => ({
-        url: '/api/settings/oauth/google/integration',
+        url: '/api/settings/google-integrations/calendar',
         method: 'DELETE',
       }),
       invalidatesTags: ['OAuthSettings', 'Integration'],
+      transformResponse: (response: GoogleIntegrationStatus): GoogleOAuthIntegrationStatus => ({
+        isConfigured: response.isConfigured,
+        clientIdMasked: response.clientIdMasked,
+        hasSecret: response.hasSecret,
+      }),
     }),
 
     // ─── SSO providers (story 0047) ─────────────────────────────────────────
@@ -479,6 +551,12 @@ export const {
   // OAuth settings hooks
   useGetOAuthSettingsQuery,
   useUpdateGoogleOAuthMutation,
+  // Google integration credentials (per service) — story 0048
+  useListGoogleIntegrationsQuery,
+  useGetGoogleIntegrationQuery,
+  useUpdateGoogleIntegrationMutation,
+  useDeleteGoogleIntegrationMutation,
+  // Legacy hooks — service='calendar' shims, removed in story 0050
   useGetGoogleOAuthIntegrationQuery,
   useUpdateGoogleOAuthIntegrationMutation,
   useDeleteGoogleOAuthIntegrationMutation,

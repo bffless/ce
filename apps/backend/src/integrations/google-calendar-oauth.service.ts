@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
 import { IntegrationsService } from './integrations.service';
-import { GoogleOAuthSettingsService } from '../settings/google-oauth-settings.service';
+import { GoogleIntegrationCredentialsService } from '../settings/google-integration-credentials.service';
 import { GoogleCalendarIntegrationKeys } from './google-calendar.interface';
 
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -64,17 +64,20 @@ export class GoogleCalendarOAuthService {
   constructor(
     @Inject(forwardRef(() => IntegrationsService))
     private readonly integrationsService: IntegrationsService,
-    private readonly oauthSettings: GoogleOAuthSettingsService,
+    private readonly creds: GoogleIntegrationCredentialsService,
   ) {}
 
   /**
-   * Returns the workspace-level Google OAuth client credentials, or null if
-   * the integration hasn't been configured at /admin/settings/auth. Replaces
-   * the per-project clientId/clientSecret reads — projects only store the
-   * refresh token + connected-account metadata now.
+   * Returns the workspace-level Google OAuth client credentials for the
+   * Calendar service, or null if not configured at /admin/settings/auth.
+   * Per-project Calendar refresh tokens still live in
+   * `projects.settings.integrations['google-calendar'][env]`; this method
+   * resolves only the workspace-shared OAuth client.
    */
   private async getClientCredentials(): Promise<{ clientId: string; clientSecret: string } | null> {
-    return this.oauthSettings.getCredentials();
+    const config = await this.creds.getCredentials('calendar');
+    if (!config) return null;
+    return { clientId: config.clientId, clientSecret: config.clientSecret };
   }
 
   // ===== ForCredentials (pure HTTP) =====

@@ -1,8 +1,10 @@
 import {
   Controller,
   Get,
+  Header,
   Patch,
   Post,
+  Put,
   Delete,
   Body,
   Param,
@@ -20,7 +22,8 @@ import Multitenancy from 'supertokens-node/recipe/multitenancy';
 import { PrimaryContentService, PrimaryContentConfig } from './primary-content.service';
 import { SmtpService } from './smtp.service';
 import { EmailSettingsService } from './email-settings.service';
-import { GoogleOAuthSettingsService } from './google-oauth-settings.service';
+import { GoogleIntegrationCredentialsService } from './google-integration-credentials.service';
+import { GOOGLE_SERVICES, type GoogleService } from '../db/schema/google-integration-credentials.schema';
 import {
   OidcProvidersService,
   type CreateOidcProviderInput,
@@ -50,7 +53,7 @@ export class SettingsController {
     private readonly primaryContentService: PrimaryContentService,
     private readonly smtpService: SmtpService,
     private readonly emailSettingsService: EmailSettingsService,
-    private readonly googleOauthSettingsService: GoogleOAuthSettingsService,
+    private readonly googleIntegrationCredentials: GoogleIntegrationCredentialsService,
     private readonly oidcProvidersService: OidcProvidersService,
     private readonly brandingService: BrandingService,
     private readonly featureFlagsService: FeatureFlagsService,
@@ -309,54 +312,127 @@ export class SettingsController {
     };
   }
 
-  // ─── Google OAuth INTEGRATION credentials ─────────────────────────────────
+  // ─── Google integration credentials (per-service) ─────────────────────────
   // Distinct from the SIGN-IN endpoints above — these manage the workspace's
   // Google OAuth client used by Calendar (and future Drive/Sheets/Gmail).
   // Sign-in keeps using env-var credentials shared across all workspaces;
-  // integration credentials live in system_config and are workspace-distinct.
+  // integration credentials are workspace-distinct, one row per service.
+  // Project owners use the workspace admin's OAuth client to connect their
+  // own calendars — per-project refresh tokens live in
+  // `projects.settings.integrations['google-calendar'][env]` and don't
+  // touch these endpoints.
+
+  @Get('google-integrations')
+  @ApiOperation({
+    summary: 'List Google integration credential status for every known service',
+    description:
+      'Returns one entry per Google API surface (calendar today; drive/sheets/gmail when their handlers ship). Readable by any authenticated user so the per-project Connect dialog can render the right CTA. PUT/DELETE stay admin-gated.',
+  })
+  @ApiResponse({ status: 200, description: 'Per-service status list' })
+  async listGoogleIntegrations() {
+    return this.googleIntegrationCredentials.listStatuses(GOOGLE_SERVICES);
+  }
+
+  @Get('google-integrations/:service')
+  @ApiOperation({ summary: 'Get integration credential status for one service' })
+  @ApiResponse({ status: 200, description: 'Status (secret never returned)' })
+  async getGoogleIntegration(@Param('service') service: string) {
+    return this.googleIntegrationCredentials.getStatus(this.assertGoogleService(service));
+  }
+
+  @Put('google-integrations/:service')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Save Google integration credentials for one service' })
+  @ApiResponse({ status: 200, description: 'Credentials saved' })
+  async updateGoogleIntegration(
+    @Param('service') service: string,
+    @Body() body: { clientId: string; clientSecret: string; scopes?: string[] },
+    @CurrentUser() user: { id: string },
+  ) {
+    const svc = this.assertGoogleService(service);
+    await this.googleIntegrationCredentials.update(
+      svc,
+      {
+        clientId: body.clientId,
+        clientSecret: body.clientSecret,
+        scopes: body.scopes,
+      },
+      user.id,
+    );
+    return this.googleIntegrationCredentials.getStatus(svc);
+  }
+
+  @Delete('google-integrations/:service')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Clear Google integration credentials for one service' })
+  @ApiResponse({ status: 200, description: 'Credentials cleared' })
+  async deleteGoogleIntegration(@Param('service') service: string) {
+    const svc = this.assertGoogleService(service);
+    await this.googleIntegrationCredentials.clear(svc);
+    return this.googleIntegrationCredentials.getStatus(svc);
+  }
+
+  // ─── Legacy single-resource endpoints (forwarded to service='calendar') ───
+  // Kept for one minor version so existing clients keep working; removed in
+  // story 0050 alongside the system_config column drop. Sunset date is the
+  // story-0050 ship target — clients should switch to /google-integrations.
+
+  private static readonly LEGACY_SUNSET = 'Wed, 31 Dec 2026 00:00:00 GMT';
 
   @Get('oauth/google/integration')
+  @Header('Sunset', SettingsController.LEGACY_SUNSET)
+  @Header('Deprecation', 'true')
+  @Header('Link', '</api/settings/google-integrations/calendar>; rel="successor-version"')
   @ApiOperation({
-    summary: 'Get workspace-level Google OAuth integration credentials status (Calendar, etc.)',
+    summary: 'DEPRECATED — use GET /google-integrations/calendar instead',
+    deprecated: true,
   })
-  @ApiResponse({
-    status: 200,
-    description: 'Whether integration credentials are configured (secret never returned)',
-  })
-  async getGoogleOAuthIntegration() {
-    // Readable by any authenticated user — the per-project Connect dialog
-    // needs to know whether workspace creds exist to render the right CTA
-    // (button vs. "ask your workspace admin to set them up"). Status payload
-    // is non-sensitive: { isConfigured, clientIdMasked, hasSecret }.
-    // PATCH / DELETE below stay admin-gated since they mutate the credentials.
-    return this.googleOauthSettingsService.getStatus();
+  async getGoogleOAuthIntegrationLegacy() {
+    return this.googleIntegrationCredentials.getStatus('calendar');
   }
 
   @Patch('oauth/google/integration')
   @Roles('admin')
+  @Header('Sunset', SettingsController.LEGACY_SUNSET)
+  @Header('Deprecation', 'true')
+  @Header('Link', '</api/settings/google-integrations/calendar>; rel="successor-version"')
   @ApiOperation({
-    summary: 'Save workspace-level Google OAuth integration credentials',
+    summary: 'DEPRECATED — use PUT /google-integrations/calendar instead',
+    deprecated: true,
   })
-  @ApiResponse({ status: 200, description: 'Credentials saved' })
-  async updateGoogleOAuthIntegration(
+  async updateGoogleOAuthIntegrationLegacy(
     @Body() body: { clientId: string; clientSecret: string },
+    @CurrentUser() user: { id: string },
   ) {
-    await this.googleOauthSettingsService.update({
-      clientId: body.clientId,
-      clientSecret: body.clientSecret,
-    });
-    return this.googleOauthSettingsService.getStatus();
+    await this.googleIntegrationCredentials.update(
+      'calendar',
+      { clientId: body.clientId, clientSecret: body.clientSecret },
+      user.id,
+    );
+    return this.googleIntegrationCredentials.getStatus('calendar');
   }
 
   @Delete('oauth/google/integration')
   @Roles('admin')
+  @Header('Sunset', SettingsController.LEGACY_SUNSET)
+  @Header('Deprecation', 'true')
+  @Header('Link', '</api/settings/google-integrations/calendar>; rel="successor-version"')
   @ApiOperation({
-    summary: 'Clear workspace-level Google OAuth integration credentials',
+    summary: 'DEPRECATED — use DELETE /google-integrations/calendar instead',
+    deprecated: true,
   })
-  @ApiResponse({ status: 200, description: 'Credentials cleared' })
-  async deleteGoogleOAuthIntegration() {
-    await this.googleOauthSettingsService.clear();
-    return this.googleOauthSettingsService.getStatus();
+  async deleteGoogleOAuthIntegrationLegacy() {
+    await this.googleIntegrationCredentials.clear('calendar');
+    return this.googleIntegrationCredentials.getStatus('calendar');
+  }
+
+  private assertGoogleService(raw: string): GoogleService {
+    if (!(GOOGLE_SERVICES as readonly string[]).includes(raw)) {
+      throw new BadRequestException(
+        `Unknown Google service '${raw}'. Expected one of: ${GOOGLE_SERVICES.join(', ')}.`,
+      );
+    }
+    return raw as GoogleService;
   }
 
   // ─── Single Sign-On (OIDC) providers ──────────────────────────────────────

@@ -21,14 +21,12 @@ export const systemConfig = pgTable('system_config', {
   // Cache Configuration
   cacheConfig: text('cache_config'), // JSON object stored as text (encrypted)
 
-  // Google OAuth client credentials (sign-in + calendar share one app).
-  // Edited via /admin/settings/auth. AES-256-GCM encrypted JSON
-  // { clientId, clientSecret }. Replaces the env-only GOOGLE_OAUTH_CLIENT_ID
-  // / GOOGLE_OAUTH_CLIENT_SECRET pattern and the per-project clientId/secret
-  // fields on `settings.integrations.google-calendar.production.config`.
-  // Google creds for authenication are at the env level and the
-  // same across all workspaces. these creds are for calendar and other
-  // integration features and can be different across workspaces.
+  // DEPRECATED — moved to `google_integration_credentials` table by story
+  // 0048 and dropped in story 0050. Kept here for one minor version so a
+  // rollback of the backend binary doesn't trip on a missing column. The
+  // `GoogleIntegrationBackfillService` runs at boot and NULLs these values
+  // after copying them into the new table; do not write to them anywhere
+  // else. Sign-in Google OAuth has been on `oidc_providers` since 0047.
   googleOauthConfig: text('google_oauth_config'),
   googleOauthConfigured: boolean('google_oauth_configured').default(false).notNull(),
 

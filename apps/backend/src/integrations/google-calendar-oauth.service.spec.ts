@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { GoogleCalendarOAuthService } from './google-calendar-oauth.service';
 import { IntegrationsService } from './integrations.service';
-import { GoogleOAuthSettingsService } from '../settings/google-oauth-settings.service';
+import { GoogleIntegrationCredentialsService } from '../settings/google-integration-credentials.service';
 import { GoogleCalendarIntegrationKeys } from './google-calendar.interface';
 
 describe('GoogleCalendarOAuthService', () => {
@@ -11,7 +11,7 @@ describe('GoogleCalendarOAuthService', () => {
     setConfig: jest.Mock;
     getStoredIntegration: jest.Mock;
   };
-  let oauthSettings: {
+  let credsService: {
     getCredentials: jest.Mock;
     isConfigured: jest.Mock;
   };
@@ -26,7 +26,7 @@ describe('GoogleCalendarOAuthService', () => {
         activeEnvironment: 'production',
       }),
     } as any;
-    oauthSettings = {
+    credsService = {
       // Default: workspace creds are configured. Tests that need the
       // "not configured" branch override per-test.
       getCredentials: jest
@@ -39,7 +39,7 @@ describe('GoogleCalendarOAuthService', () => {
       providers: [
         GoogleCalendarOAuthService,
         { provide: IntegrationsService, useValue: integrationsService },
-        { provide: GoogleOAuthSettingsService, useValue: oauthSettings },
+        { provide: GoogleIntegrationCredentialsService, useValue: credsService },
       ],
     }).compile();
 
