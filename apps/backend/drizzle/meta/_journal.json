@@ -197,6 +197,13 @@
       "when": 1778759658499,
       "tag": "0027_cuddly_karnak",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1778844879300,
+      "tag": "0028_free_big_bertha",
+      "breakpoints": true
     }
   ]
 }

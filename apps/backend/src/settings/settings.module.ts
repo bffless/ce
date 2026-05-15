@@ -6,7 +6,6 @@ import { SmtpService } from './smtp.service';
 import { EmailSettingsService } from './email-settings.service';
 import { EmailInitService } from './email-init.service';
 import { GoogleIntegrationCredentialsService } from './google-integration-credentials.service';
-import { GoogleIntegrationBackfillService } from './google-integration-backfill.service';
 import { OidcProvidersService } from './oidc-providers.service';
 import { BrandingService } from './branding.service';
 import { DomainsModule } from '../domains/domains.module';
@@ -22,9 +21,6 @@ import { EmailModule } from '../email/email.module';
     EmailSettingsService,
     EmailInitService,
     GoogleIntegrationCredentialsService,
-    // OnModuleInit — one-shot backfill from system_config.googleOauthConfig
-    // into google_integration_credentials. Story 0048. Idempotent.
-    GoogleIntegrationBackfillService,
     OidcProvidersService,
     BrandingService,
   ],

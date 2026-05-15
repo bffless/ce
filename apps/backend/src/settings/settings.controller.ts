@@ -1,7 +1,6 @@
 import {
   Controller,
   Get,
-  Header,
   Patch,
   Post,
   Put,
@@ -11,13 +10,11 @@ import {
   UseGuards,
   UseInterceptors,
   UploadedFile,
-  Res,
   BadRequestException,
   Logger,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiConsumes } from '@nestjs/swagger';
-import { Response } from 'express';
 import Multitenancy from 'supertokens-node/recipe/multitenancy';
 import { PrimaryContentService, PrimaryContentConfig } from './primary-content.service';
 import { SmtpService } from './smtp.service';
@@ -262,9 +259,9 @@ export class SettingsController {
     }
 
     // Google OAuth is enabled if credentials are configured at the platform level
-    // AND this workspace hasn't explicitly disabled it via the feature flag
+    // AND this workspace hasn't disabled OIDC sign-in via the master flag.
     if (googleConfigured) {
-      googleEnabled = await this.featureFlagsService.isEnabled('ENABLE_GOOGLE_OAUTH');
+      googleEnabled = await this.featureFlagsService.isEnabled('ENABLE_OIDC_PROVIDERS');
     }
 
     return {
@@ -303,8 +300,9 @@ export class SettingsController {
       }
     }
 
-    // Only toggle the feature flag — credentials are managed at the platform level
-    await this.featureFlagsService.setFlag('ENABLE_GOOGLE_OAUTH', body.enabled);
+    // Only toggle the OIDC master flag — credentials are managed at the platform level
+    // and per-provider toggles live on oidc_providers.enabled.
+    await this.featureFlagsService.setFlag('ENABLE_OIDC_PROVIDERS', body.enabled);
 
     return {
       success: true,
@@ -370,60 +368,6 @@ export class SettingsController {
     const svc = this.assertGoogleService(service);
     await this.googleIntegrationCredentials.clear(svc);
     return this.googleIntegrationCredentials.getStatus(svc);
-  }
-
-  // ─── Legacy single-resource endpoints (forwarded to service='calendar') ───
-  // Kept for one minor version so existing clients keep working; removed in
-  // story 0050 alongside the system_config column drop. Sunset date is the
-  // story-0050 ship target — clients should switch to /google-integrations.
-
-  private static readonly LEGACY_SUNSET = 'Wed, 31 Dec 2026 00:00:00 GMT';
-
-  @Get('oauth/google/integration')
-  @Header('Sunset', SettingsController.LEGACY_SUNSET)
-  @Header('Deprecation', 'true')
-  @Header('Link', '</api/settings/google-integrations/calendar>; rel="successor-version"')
-  @ApiOperation({
-    summary: 'DEPRECATED — use GET /google-integrations/calendar instead',
-    deprecated: true,
-  })
-  async getGoogleOAuthIntegrationLegacy() {
-    return this.googleIntegrationCredentials.getStatus('calendar');
-  }
-
-  @Patch('oauth/google/integration')
-  @Roles('admin')
-  @Header('Sunset', SettingsController.LEGACY_SUNSET)
-  @Header('Deprecation', 'true')
-  @Header('Link', '</api/settings/google-integrations/calendar>; rel="successor-version"')
-  @ApiOperation({
-    summary: 'DEPRECATED — use PUT /google-integrations/calendar instead',
-    deprecated: true,
-  })
-  async updateGoogleOAuthIntegrationLegacy(
-    @Body() body: { clientId: string; clientSecret: string },
-    @CurrentUser() user: { id: string },
-  ) {
-    await this.googleIntegrationCredentials.update(
-      'calendar',
-      { clientId: body.clientId, clientSecret: body.clientSecret },
-      user.id,
-    );
-    return this.googleIntegrationCredentials.getStatus('calendar');
-  }
-
-  @Delete('oauth/google/integration')
-  @Roles('admin')
-  @Header('Sunset', SettingsController.LEGACY_SUNSET)
-  @Header('Deprecation', 'true')
-  @Header('Link', '</api/settings/google-integrations/calendar>; rel="successor-version"')
-  @ApiOperation({
-    summary: 'DEPRECATED — use DELETE /google-integrations/calendar instead',
-    deprecated: true,
-  })
-  async deleteGoogleOAuthIntegrationLegacy() {
-    await this.googleIntegrationCredentials.clear('calendar');
-    return this.googleIntegrationCredentials.getStatus('calendar');
   }
 
   private assertGoogleService(raw: string): GoogleService {

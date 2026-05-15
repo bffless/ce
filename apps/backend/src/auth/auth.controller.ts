@@ -1381,28 +1381,6 @@ export class AuthController {
     return this.startOAuthAuthorisationFlow(providerId, redirectUrl);
   }
 
-  /**
-   * @deprecated Use GET /oauth/google/url's generic replacement at
-   * /oauth/:providerId/url with providerId='google'. Kept for one minor
-   * version so older AuthDialog bundles and direct API consumers don't break.
-   * Removed in story 0050.
-   */
-  @Get('oauth/google/url')
-  @ApiOperation({
-    summary: 'DEPRECATED: Get Google OAuth authorization URL',
-    description: 'Forwards to /oauth/google/url\'s generic equivalent. Use /oauth/:providerId/url with providerId="google" instead. Removed in 0050.',
-  })
-  async getGoogleAuthUrlLegacy(
-    @Query('redirectUrl') redirectUrl: string,
-    @Res({ passthrough: true }) res: Response,
-  ): Promise<{ url: string; pkceCodeVerifier?: string }> {
-    res.setHeader('Sunset', 'Mon, 01 Sep 2026 00:00:00 GMT');
-    res.setHeader('Deprecation', 'true');
-    res.setHeader('Link', '</api/auth/oauth/google/url>; rel="successor-version"');
-    this.logger.warn('[OAuth] Legacy /oauth/google/url alias was hit — clients should migrate to /oauth/:providerId/url');
-    return this.startOAuthAuthorisationFlow('google', redirectUrl);
-  }
-
   private async startOAuthAuthorisationFlow(
     providerId: string,
     redirectUrl: string,
@@ -1466,29 +1444,6 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     return this.completeOAuthCallback(providerId, body, req, res);
-  }
-
-  /**
-   * @deprecated Use POST /oauth/:providerId/callback with providerId='google'.
-   * Kept for one minor version so older AuthDialog bundles (which POST to the
-   * old path) keep working. Removed in story 0050.
-   */
-  @Post('oauth/google/callback')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'DEPRECATED: Complete Google OAuth sign-in',
-    description: 'Forwards to /oauth/:providerId/callback with providerId="google". Removed in 0050.',
-  })
-  async googleOAuthCallbackLegacy(
-    @Body() body: { code: string; redirectUrl: string; pkceCodeVerifier?: string; projectInviteToken?: string },
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    res.setHeader('Sunset', 'Mon, 01 Sep 2026 00:00:00 GMT');
-    res.setHeader('Deprecation', 'true');
-    res.setHeader('Link', '</api/auth/oauth/google/callback>; rel="successor-version"');
-    this.logger.warn('[OAuth] Legacy /oauth/google/callback alias was hit — clients should migrate to /oauth/:providerId/callback');
-    return this.completeOAuthCallback('google', body, req, res);
   }
 
   private async completeOAuthCallback(

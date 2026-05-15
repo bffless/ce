@@ -164,20 +164,6 @@ export interface UpdateGoogleIntegrationDto {
   scopes?: string[];
 }
 
-// DEPRECATED — legacy alias kept so callers updated incrementally still
-// compile. Identical to GoogleIntegrationStatus minus `service`. Removed
-// in story 0050.
-export interface GoogleOAuthIntegrationStatus {
-  isConfigured: boolean;
-  clientIdMasked?: string;
-  hasSecret?: boolean;
-}
-
-export interface UpdateGoogleOAuthIntegrationDto {
-  clientId: string;
-  clientSecret: string;
-}
-
 export interface UpdateBrandingResponse {
   success: boolean;
   config: BrandingConfig;
@@ -435,49 +421,6 @@ export const settingsApi = api.injectEndpoints({
       invalidatesTags: ['OAuthSettings', 'Integration'],
     }),
 
-    // ─── Legacy hooks (forwarded to service='calendar') ─────────────────────
-    // Kept so any in-flight code paths keep working through the deprecation
-    // window. Removed in story 0050 alongside the backend route aliases.
-    getGoogleOAuthIntegration: builder.query<GoogleOAuthIntegrationStatus, void>({
-      query: () => '/api/settings/google-integrations/calendar',
-      providesTags: ['OAuthSettings'],
-      transformResponse: (response: GoogleIntegrationStatus): GoogleOAuthIntegrationStatus => ({
-        isConfigured: response.isConfigured,
-        clientIdMasked: response.clientIdMasked,
-        hasSecret: response.hasSecret,
-      }),
-    }),
-
-    updateGoogleOAuthIntegration: builder.mutation<
-      GoogleOAuthIntegrationStatus,
-      UpdateGoogleOAuthIntegrationDto
-    >({
-      query: (body) => ({
-        url: '/api/settings/google-integrations/calendar',
-        method: 'PUT',
-        body,
-      }),
-      invalidatesTags: ['OAuthSettings', 'Integration'],
-      transformResponse: (response: GoogleIntegrationStatus): GoogleOAuthIntegrationStatus => ({
-        isConfigured: response.isConfigured,
-        clientIdMasked: response.clientIdMasked,
-        hasSecret: response.hasSecret,
-      }),
-    }),
-
-    deleteGoogleOAuthIntegration: builder.mutation<GoogleOAuthIntegrationStatus, void>({
-      query: () => ({
-        url: '/api/settings/google-integrations/calendar',
-        method: 'DELETE',
-      }),
-      invalidatesTags: ['OAuthSettings', 'Integration'],
-      transformResponse: (response: GoogleIntegrationStatus): GoogleOAuthIntegrationStatus => ({
-        isConfigured: response.isConfigured,
-        clientIdMasked: response.clientIdMasked,
-        hasSecret: response.hasSecret,
-      }),
-    }),
-
     // ─── SSO providers (story 0047) ─────────────────────────────────────────
     // CRUD over the `oidc_providers` table. Each mutation also triggers
     // backend syncOidcProviders() server-side, so the new buttons appear on
@@ -556,10 +499,6 @@ export const {
   useGetGoogleIntegrationQuery,
   useUpdateGoogleIntegrationMutation,
   useDeleteGoogleIntegrationMutation,
-  // Legacy hooks — service='calendar' shims, removed in story 0050
-  useGetGoogleOAuthIntegrationQuery,
-  useUpdateGoogleOAuthIntegrationMutation,
-  useDeleteGoogleOAuthIntegrationMutation,
   // SSO provider hooks (story 0047)
   useListSsoProvidersQuery,
   useGetSsoProviderQuery,

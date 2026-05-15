@@ -30,9 +30,8 @@ import { decryptJson, encryptJson } from '../common/crypto/aes-gcm';
  * by `IntegrationsService`, not this service. This service only owns the
  * client credentials themselves.
  *
- * Replaces `GoogleOAuthSettingsService` (which read from
- * `system_config.googleOauthConfig`). Backfill from the old location runs
- * once on backend boot via `GoogleIntegrationBackfillService`.
+ * Replaces `GoogleOAuthSettingsService` (which read from the legacy
+ * `system_config.googleOauthConfig` column dropped in story 0050).
  */
 @Injectable()
 export class GoogleIntegrationCredentialsService {

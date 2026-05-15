@@ -6,9 +6,9 @@ import { pgTable, uuid, varchar, text, boolean, timestamp, uniqueIndex } from 'd
  * Sheets / Gmail integrations add their own rows so each surface can have
  * a distinct Cloud project (separate audit trail, separate quota).
  *
- * Replaces `system_config.googleOauthConfig` / `googleOauthConfigured`,
- * which collapsed every Google integration into a single row. Backfill on
- * startup is done by `GoogleIntegrationBackfillService` (`OnModuleInit`).
+ * Replaces the legacy `system_config.googleOauthConfig` / `googleOauthConfigured`
+ * columns (dropped in story 0050), which collapsed every Google integration
+ * into a single row.
  *
  * Workspace isolation comes from per-workspace databases (see
  * [[feedback-supertokens-single-tenant]]) — no `workspace_id` column.
