@@ -268,21 +268,6 @@ export const FLAG_DEFINITIONS: Record<string, FlagDefinition> = {
     exposeToClient: true,
   },
 
-  /**
-   * @deprecated Use ENABLE_OIDC_PROVIDERS. Kept as a one-version alias so
-   * self-hosters with FEATURE_GOOGLE_OAUTH=true in their .env keep working.
-   * Value mirrors ENABLE_OIDC_PROVIDERS at evaluation time. Removed in 0049.
-   */
-  ENABLE_GOOGLE_OAUTH: {
-    envKey: 'FEATURE_GOOGLE_OAUTH',
-    defaultValue: false,
-    type: 'boolean',
-    description:
-      'DEPRECATED — use ENABLE_OIDC_PROVIDERS. Kept for back-compat; will be removed in story 0049.',
-    category: 'features',
-    exposeToClient: true,
-  },
-
   ENABLE_CUSTOM_DOMAINS: {
     envKey: 'FEATURE_CUSTOM_DOMAINS',
     defaultValue: true,

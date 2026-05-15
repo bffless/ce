@@ -21,15 +21,6 @@ export const systemConfig = pgTable('system_config', {
   // Cache Configuration
   cacheConfig: text('cache_config'), // JSON object stored as text (encrypted)
 
-  // DEPRECATED — moved to `google_integration_credentials` table by story
-  // 0048 and dropped in story 0050. Kept here for one minor version so a
-  // rollback of the backend binary doesn't trip on a missing column. The
-  // `GoogleIntegrationBackfillService` runs at boot and NULLs these values
-  // after copying them into the new table; do not write to them anywhere
-  // else. Sign-in Google OAuth has been on `oidc_providers` since 0047.
-  googleOauthConfig: text('google_oauth_config'),
-  googleOauthConfigured: boolean('google_oauth_configured').default(false).notNull(),
-
   // Security Settings
   jwtSecret: text('jwt_secret'),
   apiKeySalt: text('api_key_salt'),
