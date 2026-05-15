@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.38](https://github.com/bffless/ce/compare/v0.1.37...v0.1.38) (2026-05-15)
+
+
+### Features
+
+* drop system_config Google columns + legacy /oauth/google/* aliases (story 0050) ([fa6d7a1](https://github.com/bffless/ce/commit/fa6d7a161ceaac78b72e11da693acfccb157ad60))
+* drop system_config Google columns + legacy /oauth/google/* aliases (story 0050) ([4b94cf2](https://github.com/bffless/ce/commit/4b94cf27c994687e12289e7285220b529715cbfa))
+
 ## [0.1.37](https://github.com/bffless/ce/compare/v0.1.36...v0.1.37) (2026-05-14)
 
 
