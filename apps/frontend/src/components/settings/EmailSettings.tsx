@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   useGetEmailStatusQuery,
   useUpdateEmailSettingsMutation,
+  useClearEmailSettingsMutation,
   useTestEmailSettingsMutation,
   useSendTestEmailMutation,
   SettingsEmailProvider,
@@ -23,8 +24,19 @@ import {
   Zap,
   Send,
   Shield,
+  Trash2,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 // Provider metadata for display (fallback if API not available)
 const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
@@ -42,6 +54,7 @@ export function EmailSettings() {
   const { data: providersData } = useGetEmailProvidersQuery();
   const { data: availableOptions } = useGetAvailableOptionsQuery();
   const [updateEmail, { isLoading: isUpdating }] = useUpdateEmailSettingsMutation();
+  const [clearEmail, { isLoading: isClearing }] = useClearEmailSettingsMutation();
   const [testEmail, { isLoading: isTesting }] = useTestEmailSettingsMutation();
   const [sendTestEmail, { isLoading: isSendingTest }] = useSendTestEmailMutation();
 
@@ -74,6 +87,9 @@ export function EmailSettings() {
     error?: string;
     messageId?: string;
   } | null>(null);
+
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [clearError, setClearError] = useState<string | null>(null);
 
   // Provider-specific form state
   const [smtpConfig, setSmtpConfig] = useState({
@@ -261,6 +277,20 @@ export function EmailSettings() {
     setSendTestResult(null);
   };
 
+  const handleClearConfig = async () => {
+    try {
+      setClearError(null);
+      await clearEmail().unwrap();
+      setShowClearConfirm(false);
+      setShowSendTest(false);
+      setTestEmailAddress('');
+      setSendTestResult(null);
+    } catch (error: unknown) {
+      const err = error as { data?: { message?: string } };
+      setClearError(err.data?.message || 'Failed to remove email configuration');
+    }
+  };
+
   if (isLoadingStatus) {
     return (
       <Card>
@@ -389,7 +419,67 @@ export function EmailSettings() {
                     <Send className="h-4 w-4 mr-2" />
                     Send Test Email
                   </Button>
+                  {!isUsingManagedEmail && (
+                    <Button
+                      variant="outline"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => {
+                        setClearError(null);
+                        setShowClearConfirm(true);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Remove Configuration
+                    </Button>
+                  )}
                 </div>
+
+                {clearError && (
+                  <Alert variant="destructive">
+                    <XCircle className="h-4 w-4" />
+                    <AlertDescription>{clearError}</AlertDescription>
+                  </Alert>
+                )}
+
+                <AlertDialog
+                  open={showClearConfirm}
+                  onOpenChange={(open) => {
+                    setShowClearConfirm(open);
+                    if (!open) setClearError(null);
+                  }}
+                >
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Remove email configuration?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Password reset and verification links will be logged to the
+                        server console instead of being emailed. Useful for local
+                        development; not recommended for production users who need to
+                        reset their own passwords.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel disabled={isClearing}>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={(e) => {
+                          e.preventDefault();
+                          handleClearConfig();
+                        }}
+                        disabled={isClearing}
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      >
+                        {isClearing ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Removing...
+                          </>
+                        ) : (
+                          'Remove Configuration'
+                        )}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
 
                 {/* Send Test Email Panel */}
                 {showSendTest && (
