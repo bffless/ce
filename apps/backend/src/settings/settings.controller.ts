@@ -160,6 +160,22 @@ export class SettingsController {
     });
   }
 
+  @Delete('email')
+  @Roles('admin')
+  @ApiOperation({
+    summary: 'Clear email provider configuration',
+    description:
+      'Removes the configured email provider so password reset and verification links fall back to console logging.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Updated (unconfigured) email status',
+    type: EmailStatusResponseDto,
+  })
+  async clearEmail(): Promise<EmailStatusResponseDto> {
+    return this.emailSettingsService.clearEmail();
+  }
+
   @Post('email/test')
   @Roles('admin')
   @ApiOperation({ summary: 'Test email connection' })

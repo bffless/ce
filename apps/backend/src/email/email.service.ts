@@ -44,6 +44,17 @@ export class EmailService {
   }
 
   /**
+   * Remove the configured provider, returning the service to its
+   * unconfigured state (callers will fall back to console logging).
+   */
+  deconfigure(): void {
+    this.logger.log('Deconfiguring email provider');
+    this.provider = null;
+    this.providerType = null;
+    this.providerConfig = null;
+  }
+
+  /**
    * Check if the email service is configured
    */
   isConfigured(): boolean {

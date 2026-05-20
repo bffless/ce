@@ -170,6 +170,42 @@ export class EmailSettingsService {
   }
 
   /**
+   * Clear email provider configuration, returning the system to its
+   * unconfigured state where SuperTokens falls back to console-logged
+   * password reset / verification links.
+   */
+  async clearEmail(): Promise<EmailStatusResponse> {
+    try {
+      const config = await this.getSystemConfig();
+      if (!config) {
+        throw new InternalServerErrorException('System configuration not found');
+      }
+
+      await db
+        .update(systemConfig)
+        .set({
+          emailProvider: null,
+          emailConfig: null,
+          emailConfigured: false,
+          // Also clear the legacy SMTP slot so we don't fall back to it
+          // on the next initializeFromDatabase() call.
+          smtpConfig: null,
+          smtpConfigured: false,
+          updatedAt: new Date(),
+        })
+        .where(eq(systemConfig.id, config.id));
+
+      this.emailService.deconfigure();
+      this.logger.log('Email configuration cleared');
+
+      return this.getEmailStatus();
+    } catch (error) {
+      this.logger.error('Error clearing email configuration:', error);
+      throw new InternalServerErrorException('Failed to clear email configuration');
+    }
+  }
+
+  /**
    * Test email connection
    */
   async testEmailConnection(): Promise<TestEmailResponse> {

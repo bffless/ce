@@ -297,6 +297,15 @@ export const settingsApi = api.injectEndpoints({
       invalidatesTags: ['EmailSettings'],
     }),
 
+    // Clear email configuration (revert to console-log fallback)
+    clearEmailSettings: builder.mutation<EmailStatus, void>({
+      query: () => ({
+        url: '/api/settings/email',
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['EmailSettings'],
+    }),
+
     // Test email connection (settings - requires auth)
     testEmailSettings: builder.mutation<TestEmailSettingsResponse, void>({
       query: () => ({
@@ -483,6 +492,7 @@ export const {
   // New email settings hooks
   useGetEmailStatusQuery,
   useUpdateEmailSettingsMutation,
+  useClearEmailSettingsMutation,
   useTestEmailSettingsMutation,
   useSendTestEmailMutation,
   // Branding hooks
