@@ -362,12 +362,21 @@ export class CreateAliasRequestDto {
   commitSha: string;
 
   @ApiPropertyOptional({
-    description: 'Proxy rule set ID to apply to this alias',
+    description: 'Proxy rule set ID to apply to this alias. Legacy — prefer proxyRuleSetIds.',
     example: '550e8400-e29b-41d4-a716-446655440000',
   })
   @IsOptional()
   @IsUUID()
   proxyRuleSetId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Ordered array of proxy rule set IDs to apply to this alias. Overrides proxyRuleSetId if both are provided.',
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  proxyRuleSetIds?: string[];
 }
 
 export class UpdateAliasRequestDto {
