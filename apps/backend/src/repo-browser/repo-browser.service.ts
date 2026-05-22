@@ -478,11 +478,16 @@ export class RepoBrowserService {
 
     const stats = statsQuery[0];
 
-    // Get alias count
+    // Get alias count — only manual aliases, matching what the Aliases tab shows.
+    // Auto-preview aliases (one per uploaded commit) would otherwise dominate the
+    // count and make it diverge from the visible table.
     const aliasCountResult = await db
       .select({ count: count() })
       .from(deploymentAliases)
-      .where(eq(deploymentAliases.projectId, project.id));
+      .where(and(
+        eq(deploymentAliases.projectId, project.id),
+        eq(deploymentAliases.isAutoPreview, false),
+      ));
 
     const aliasCount = Number(aliasCountResult[0]?.count || 0);
 
@@ -619,7 +624,7 @@ export class RepoBrowserService {
       dto.name,
       dto.commitSha,
       targetAsset.deploymentId,
-      { proxyRuleSetId: dto.proxyRuleSetId },
+      { proxyRuleSetId: dto.proxyRuleSetId, proxyRuleSetIds: dto.proxyRuleSetIds },
     );
 
     return {
