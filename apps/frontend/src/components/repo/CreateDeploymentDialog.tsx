@@ -63,6 +63,33 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
+// Find the longest common directory prefix across all paths so the served
+// site mounts at "/" instead of "/<picked-folder>/". Returns "" when there
+// is no shared parent (single loose file, mixed roots, etc.).
+function detectCommonBasePath(paths: string[]): string {
+  if (paths.length === 0) return '';
+  const split = paths.map((p) => p.split('/'));
+  // Need at least one path with a directory segment to have a common parent.
+  if (!split.some((parts) => parts.length > 1)) return '';
+  const first = split[0];
+  const common: string[] = [];
+  for (let i = 0; i < first.length - 1; i++) {
+    const segment = first[i];
+    if (split.every((parts) => parts.length > i + 1 && parts[i] === segment)) {
+      common.push(segment);
+    } else {
+      break;
+    }
+  }
+  return common.join('/');
+}
+
+function normalizeBasePath(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed || trimmed === '/') return '/';
+  return `/${trimmed.replace(/^\/+/, '').replace(/\/+$/, '')}`;
+}
+
 export function CreateDeploymentDialog({
   open,
   onOpenChange,
@@ -83,6 +110,7 @@ export function CreateDeploymentDialog({
   const [newBranchName, setNewBranchName] = useState('');
   const [description, setDescription] = useState('');
   const [shaOverride, setShaOverride] = useState('');
+  const [basePathOverride, setBasePathOverride] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -90,6 +118,11 @@ export function CreateDeploymentDialog({
   const [error, setError] = useState<string | null>(null);
 
   const totalSize = useMemo(() => files.reduce((s, f) => s + f.file.size, 0), [files]);
+  const detectedBasePath = useMemo(
+    () => detectCommonBasePath(files.map((f) => f.path)),
+    [files],
+  );
+  const effectiveBasePath = basePathOverride ?? detectedBasePath;
 
   const handleFiles = useCallback((fileList: FileList | File[]) => {
     const incoming = Array.from(fileList).map((file) => {
@@ -121,6 +154,7 @@ export function CreateDeploymentDialog({
     setNewBranchName('');
     setDescription('');
     setShaOverride('');
+    setBasePathOverride(null);
     setShowAdvanced(false);
     setError(null);
     setIsUploading(false);
@@ -184,6 +218,8 @@ export function CreateDeploymentDialog({
     );
 
     try {
+      const normalizedBasePath = normalizeBasePath(effectiveBasePath);
+
       const result = await uploadDeployment({
         files: files.map((f) => f.file),
         paths: files.map((f) => f.path),
@@ -191,6 +227,7 @@ export function CreateDeploymentDialog({
         commitSha,
         branch,
         description: description.trim() || undefined,
+        basePath: normalizedBasePath !== '/' ? normalizedBasePath : undefined,
         source: 'manual',
         onProgress: (next) => setProgress(next),
       });
@@ -431,20 +468,40 @@ export function CreateDeploymentDialog({
                   {showAdvanced ? '▾' : '▸'} Advanced
                 </button>
                 {showAdvanced && (
-                  <div className="mt-2 space-y-1">
-                    <Label htmlFor="deploy-sha" className="text-xs">
-                      Commit SHA override
-                    </Label>
-                    <Input
-                      id="deploy-sha"
-                      value={shaOverride}
-                      onChange={(e) => setShaOverride(e.target.value)}
-                      placeholder={autoSha}
-                      className="font-mono text-xs"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      7–40 hex characters. Leave blank to use the auto-generated SHA.
-                    </p>
+                  <div className="mt-2 space-y-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="deploy-sha" className="text-xs">
+                        Commit SHA override
+                      </Label>
+                      <Input
+                        id="deploy-sha"
+                        value={shaOverride}
+                        onChange={(e) => setShaOverride(e.target.value)}
+                        placeholder={autoSha}
+                        className="font-mono text-xs"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        7–40 hex characters. Leave blank to use the auto-generated SHA.
+                      </p>
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label htmlFor="deploy-base-path" className="text-xs">
+                        Base path
+                      </Label>
+                      <Input
+                        id="deploy-base-path"
+                        value={effectiveBasePath}
+                        onChange={(e) => setBasePathOverride(e.target.value)}
+                        placeholder="/"
+                        className="font-mono text-xs"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        {detectedBasePath
+                          ? `Stripped from URLs so the site serves at the root. Auto-detected from your files: "${detectedBasePath}". Clear to serve everything as-is.`
+                          : 'Stripped from URLs when serving. Leave as "/" for site-root deployments.'}
+                      </p>
+                    </div>
                   </div>
                 )}
               </div>

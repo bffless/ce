@@ -19,6 +19,7 @@ export interface UploadDeploymentArgs {
   commitSha: string;
   branch?: string;
   description?: string;
+  basePath?: string;
   source?: 'github' | 'manual';
   onProgress?: (progress: FileProgress[]) => void;
   signal?: AbortSignal;
@@ -50,6 +51,7 @@ export async function uploadDeployment(
       commitSha: args.commitSha,
       branch: args.branch,
       description: args.description,
+      basePath: args.basePath,
       source: args.source ?? 'manual',
       files: manifest,
     },
@@ -226,6 +228,7 @@ async function uploadWithZipFallback(
   formData.append('commitSha', args.commitSha);
   if (args.branch) formData.append('branch', args.branch);
   if (args.description) formData.append('description', args.description);
+  if (args.basePath) formData.append('basePath', args.basePath);
   formData.append('source', args.source ?? 'manual');
 
   return new Promise((resolve, reject) => {
