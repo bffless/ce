@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.39](https://github.com/bffless/ce/compare/v0.1.38...v0.1.39) (2026-05-23)
+
+
+### Features
+
+* allows reset of no smtp provider from ui ([df51e19](https://github.com/bffless/ce/commit/df51e198a8b030aae97ef3302387fda3e40fc3f8))
+* allows reset of no smtp provider from ui ([ab1f2c2](https://github.com/bffless/ce/commit/ab1f2c2be56ccd60dbe62736a4124e0564e235f2))
+* auto-detect basePath in Create Deployment UI ([3403d83](https://github.com/bffless/ce/commit/3403d838ad090d8d0436b9fa0ef3660b0435f8db))
+
+
+### Bug Fixes
+
+* accept proxyRuleSetIds array when creating aliases via repo-browser ([178825b](https://github.com/bffless/ce/commit/178825b2d1df467fc0bc0b9c9c097d600b4c7f49))
+* exclude auto-preview aliases from repo stats count ([ada9ffa](https://github.com/bffless/ce/commit/ada9ffac502068969951ec13e49a8dfb77ab1c7e))
+
 ## [0.1.38](https://github.com/bffless/ce/compare/v0.1.37...v0.1.38) (2026-05-15)
 
 
