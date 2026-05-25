@@ -419,7 +419,14 @@ export function CacheStep() {
               >
                 <HardDrive className="w-6 h-6 text-muted-foreground flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <div className="font-medium">In-Memory (LRU)</div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium">In-Memory (LRU)</span>
+                    {!enableManagedRedis && !enableLocalRedis && (
+                      <span className="inline-flex items-center text-xs bg-blue-500/20 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded">
+                        Recommended
+                      </span>
+                    )}
+                  </div>
                   <p className="mt-1 text-sm text-muted-foreground">
                     Fast, single-instance cache. Lost on restart. Best for development or single-server deployments.
                   </p>
@@ -468,7 +475,7 @@ export function CacheStep() {
                           {enableManagedRedis && (
                             <Badge variant="outline" className="text-xs">BYOB</Badge>
                           )}
-                          {!enableManagedRedis && !(isDockerRedisDisabled && !enableExternalRedis) && (
+                          {!enableManagedRedis && enableLocalRedis && (
                             <span className="inline-flex items-center text-xs bg-blue-500/20 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded">
                               Recommended
                             </span>
@@ -479,6 +486,11 @@ export function CacheStep() {
                             ? 'Bring your own Redis (AWS ElastiCache, Upstash, Redis Cloud, etc.)'
                             : 'Persistent cache that survives restarts. Faster than memory for large datasets.'}
                         </p>
+                        {!enableManagedRedis && isDockerRedisDisabled && enableExternalRedis && (
+                          <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+                            Bundled Redis is disabled. Set <code className="bg-amber-100 dark:bg-amber-950/50 px-1 rounded">ENABLE_REDIS=true</code> in <code className="bg-amber-100 dark:bg-amber-950/50 px-1 rounded">.env</code> and restart Docker, or configure an external Redis server below.
+                          </p>
+                        )}
                       </div>
                     </button>
                   </TooltipTrigger>
