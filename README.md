@@ -55,7 +55,7 @@ Install the BFFless plugin for [Claude Code](https://claude.ai/code) to get AI-a
 
 ```bash
 # Add the BFFless plugin marketplace
-/plugin marketplace add bffless/claude-skills
+/plugin marketplace add bffless/skills
 
 # Install the plugin
 /plugin install bffless

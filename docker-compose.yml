@@ -209,10 +209,14 @@ services:
         required: false # Optional: only when postgres profile is active
     # -------------------------------------------------------------------------
     # SUPERTOKENS MEMORY: Java-based auth service, JVM is the main consumer
-    # 1GB VM: 200M | 2GB VM: 300M | 4GB VM: 512M
+    # 1GB VM: 256M | 2GB VM: 320M | 4GB VM: 512M
+    #
+    # Why 256M on 1GB: -Xmx128m heap + JVM overhead (metaspace, threads, JIT,
+    # native code) settles at ~180M RSS. A 200M cgroup ceiling consistently
+    # OOM-kills the process under light load. 256M gives a safe buffer.
     #
     # Tuning guide:
-    #   -Xmx = 70% of container limit (128m/200m/350m)
+    #   -Xmx = 50% of container limit (128m/160m/256m) - leaves room for JVM overhead
     #   -Xms = 50% of -Xmx (start small, grow as needed)
     #   -XX:+UseSerialGC = best for small heaps (<256MB), use G1GC for larger
     #   POSTGRESQL_CONNECTION_POOL_SIZE = 5 for 1GB, 10 for 2GB+
@@ -222,15 +226,15 @@ services:
       # - Default (local postgres): postgresql://postgres:password@postgres:5432/supertokens
       # - External: Set SUPERTOKENS_DATABASE_URL in .env (must be quoted if contains & character)
       POSTGRESQL_CONNECTION_URI: ${SUPERTOKENS_DATABASE_URL:-postgresql://postgres:${POSTGRES_PASSWORD:-changeme}@postgres:5432/supertokens}
-      # JVM memory: -Xmx=128m for 1GB VM, 200m for 2GB, 350m for 4GB
+      # JVM heap: keep ~50% of container limit to leave room for JVM overhead (~80M)
       JAVA_OPTS: '-Xmx128m -Xms64m -XX:+UseSerialGC -XX:MaxMetaspaceSize=64m'
       POSTGRESQL_CONNECTION_POOL_SIZE: '3' # Increase to 5-10 on 2GB+ VMs with higher DB connection limits
     deploy:
       resources:
         limits:
-          memory: 200M
+          memory: 256M
         reservations:
-          memory: 128M
+          memory: 160M
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://localhost:3567/hello']
       interval: 10s
