@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.41](https://github.com/bffless/ce/compare/v0.1.40...v0.1.41) (2026-05-27)
+
+
+### Bug Fixes
+
+* serve subdomains over HTTPS when PROXY_MODE=cloudflare ([fc1cf76](https://github.com/bffless/ce/commit/fc1cf76983ec24d7b1bd1124f21444826ae12576))
+
 ## [0.1.40](https://github.com/bffless/ce/compare/v0.1.39...v0.1.40) (2026-05-25)
 
 
