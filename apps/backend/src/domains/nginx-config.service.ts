@@ -83,6 +83,8 @@ interface TemplateContext {
   alias: string;
   path: string;
   sslEnabled: boolean;
+  sslCertPath: string;
+  sslCertKeyPath: string;
   isSpa: boolean;
   backendHost: string;
   backendPort: string;
@@ -159,16 +161,29 @@ export class NginxConfigService implements OnModuleInit {
       });
     }
 
-    // Determine if SSL should be enabled
-    // For subdomains, check ENABLE_WILDCARD_SSL flag - if false (PaaS mode where Traefik handles SSL),
-    // force sslEnabled to false so nginx doesn't try to load wildcard certs
+    // Determine SSL mode for subdomains.
+    // Two ways a subdomain can serve HTTPS:
+    //   1. Let's Encrypt wildcard cert at /etc/nginx/ssl/wildcard.<baseDomain>.crt
+    //      (gated by ENABLE_WILDCARD_SSL feature flag)
+    //   2. Cloudflare Origin Cert at /etc/nginx/ssl/fullchain.pem (PROXY_MODE=cloudflare).
+    //      The Origin Cert from Cloudflare covers *.<baseDomain>, so it works for subdomains.
+    // If neither, force HTTP-only — Traefik / Cloudflare Tunnel handles SSL at the edge.
     let sslEnabled = domainMapping.sslEnabled;
+    let subdomainSslCertPath = `/etc/nginx/ssl/wildcard.${this.getBaseDomain()}.crt`;
+    let subdomainSslKeyPath = `/etc/nginx/ssl/wildcard.${this.getBaseDomain()}.key`;
     if (domainMapping.domainType === 'subdomain') {
       const wildcardSslEnabled = await this.featureFlagsService.isEnabled('ENABLE_WILDCARD_SSL');
-      if (!wildcardSslEnabled) {
+      const cloudflareOriginCert = this.isCloudflareOriginCertMode();
+      if (wildcardSslEnabled) {
+        // Use Let's Encrypt wildcard cert (default paths above)
+      } else if (cloudflareOriginCert) {
+        sslEnabled = true;
+        subdomainSslCertPath = '/etc/nginx/ssl/fullchain.pem';
+        subdomainSslKeyPath = '/etc/nginx/ssl/privkey.pem';
+      } else {
         sslEnabled = false;
         this.logger.debug(
-          `Subdomain ${domainMapping.domain}: SSL disabled (ENABLE_WILDCARD_SSL=false, Traefik handles SSL)`,
+          `Subdomain ${domainMapping.domain}: SSL disabled (no wildcard cert and PROXY_MODE!=cloudflare)`,
         );
       }
     }
@@ -216,6 +231,8 @@ export class NginxConfigService implements OnModuleInit {
       alias: domainMapping.alias || 'latest',
       path: domainMapping.path || '',
       sslEnabled,
+      sslCertPath: subdomainSslCertPath,
+      sslCertKeyPath: subdomainSslKeyPath,
       isSpa: domainMapping.isSpa,
       backendHost: this.getBackendHost(),
       backendPort: this.getBackendPort(),
@@ -749,6 +766,15 @@ ${spaFallback}
     // Only cloudflare-tunnel fully terminates SSL at Cloudflare's edge
     // Regular cloudflare mode uses Origin Certificates (nginx needs SSL)
     return proxyMode === 'cloudflare-tunnel';
+  }
+
+  /**
+   * PROXY_MODE=cloudflare: nginx terminates SSL with a Cloudflare Origin Certificate
+   * stored at /etc/nginx/ssl/fullchain.pem. The Origin Cert is issued for the apex
+   * + wildcard (covers *.<baseDomain>), so subdomain server blocks can reuse it.
+   */
+  private isCloudflareOriginCertMode(): boolean {
+    return this.configService.get<string>('PROXY_MODE', 'none') === 'cloudflare';
   }
 
   /**

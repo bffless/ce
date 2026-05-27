@@ -42,6 +42,18 @@ describe('NginxConfigService', () => {
 
   const subdomainTemplate = `
 # Generated config for domain mapping: {{domain}}
+{{#if sslEnabled}}
+server {
+    listen 443 ssl;
+    server_name {{domain}};
+    ssl_certificate {{sslCertPath}};
+    ssl_certificate_key {{sslCertKeyPath}};
+    location / {
+        rewrite ^/(.*)$ /public/{{project.owner}}/{{project.name}}/alias/{{alias}}{{#if path}}{{path}}{{/if}}/$1 break;
+        proxy_pass http://{{backendHost}}:{{backendPort}};
+    }
+}
+{{else}}
 server {
     listen 80;
     server_name {{domain}};
@@ -50,6 +62,7 @@ server {
         proxy_pass http://{{backendHost}}:{{backendPort}};
     }
 }
+{{/if}}
 `;
 
   const customDomainTemplate = `
@@ -242,6 +255,150 @@ server {
 
       expect(config).toContain('server_name custom.example.com');
       expect(config).toContain('Custom domain');
+    });
+
+    it('should emit 443 with Cloudflare Origin Cert for subdomains when PROXY_MODE=cloudflare', async () => {
+      mockFeatureFlagsService.isEnabled.mockResolvedValue(false);
+      mockConfigService.get.mockImplementation((key: string, defaultValue?: string) => {
+        const config: Record<string, string> = {
+          PRIMARY_DOMAIN: 'example.com',
+          BACKEND_HOST: 'backend',
+          BACKEND_PORT: '3000',
+          PLATFORM_MODE: 'false',
+          PROXY_MODE: 'cloudflare',
+        };
+        return config[key] ?? defaultValue;
+      });
+
+      const domainMapping = {
+        id: 'domain-cf',
+        projectId: 'proj-1',
+        domain: 'app.example.com',
+        domainType: 'subdomain' as const,
+        alias: 'production',
+        path: null,
+        sslEnabled: false,
+        isActive: true,
+        isPublic: null,
+        unauthorizedBehavior: null,
+        requiredRole: null,
+        dnsVerified: true,
+        createdBy: 'user-1',
+        createdAt: new Date('2024-01-01'),
+        updatedAt: new Date('2024-01-01'),
+        sslExpiresAt: null,
+        dnsVerifiedAt: null,
+        nginxConfigPath: null,
+        autoRenewSsl: true,
+        sslRenewedAt: null,
+        sslRenewalStatus: null,
+        sslRenewalError: null,
+        stickySessionsEnabled: true,
+        stickySessionDuration: 86400,
+        isSpa: false,
+        isPrimary: false,
+        wwwBehavior: null,
+        redirectTarget: null,
+      };
+
+      const config = await service.generateConfig(domainMapping, mockProject);
+
+      expect(config).toContain('listen 443 ssl');
+      expect(config).toContain('ssl_certificate /etc/nginx/ssl/fullchain.pem');
+      expect(config).toContain('ssl_certificate_key /etc/nginx/ssl/privkey.pem');
+      expect(config).not.toContain('wildcard.');
+    });
+
+    it('should emit 443 with Let’s Encrypt wildcard cert when ENABLE_WILDCARD_SSL=true', async () => {
+      mockFeatureFlagsService.isEnabled.mockResolvedValue(true);
+
+      const domainMapping = {
+        id: 'domain-le',
+        projectId: 'proj-1',
+        domain: 'app.example.com',
+        domainType: 'subdomain' as const,
+        alias: 'production',
+        path: null,
+        sslEnabled: true,
+        isActive: true,
+        isPublic: null,
+        unauthorizedBehavior: null,
+        requiredRole: null,
+        dnsVerified: true,
+        createdBy: 'user-1',
+        createdAt: new Date('2024-01-01'),
+        updatedAt: new Date('2024-01-01'),
+        sslExpiresAt: null,
+        dnsVerifiedAt: null,
+        nginxConfigPath: null,
+        autoRenewSsl: true,
+        sslRenewedAt: null,
+        sslRenewalStatus: null,
+        sslRenewalError: null,
+        stickySessionsEnabled: true,
+        stickySessionDuration: 86400,
+        isSpa: false,
+        isPrimary: false,
+        wwwBehavior: null,
+        redirectTarget: null,
+      };
+
+      const config = await service.generateConfig(domainMapping, mockProject);
+
+      expect(config).toContain('listen 443 ssl');
+      // baseDomain comes from process.env.PRIMARY_DOMAIN (defaults to "localhost" in tests)
+      expect(config).toContain('ssl_certificate /etc/nginx/ssl/wildcard.localhost.crt');
+      expect(config).toContain('ssl_certificate_key /etc/nginx/ssl/wildcard.localhost.key');
+    });
+
+    it('should fall back to HTTP-only for subdomains when no wildcard cert and PROXY_MODE!=cloudflare', async () => {
+      mockFeatureFlagsService.isEnabled.mockResolvedValue(false);
+      mockConfigService.get.mockImplementation((key: string, defaultValue?: string) => {
+        const config: Record<string, string> = {
+          PRIMARY_DOMAIN: 'example.com',
+          BACKEND_HOST: 'backend',
+          BACKEND_PORT: '3000',
+          PLATFORM_MODE: 'false',
+          PROXY_MODE: 'none',
+        };
+        return config[key] ?? defaultValue;
+      });
+
+      const domainMapping = {
+        id: 'domain-http',
+        projectId: 'proj-1',
+        domain: 'app.example.com',
+        domainType: 'subdomain' as const,
+        alias: 'production',
+        path: null,
+        sslEnabled: true, // even when set true at the db level
+        isActive: true,
+        isPublic: null,
+        unauthorizedBehavior: null,
+        requiredRole: null,
+        dnsVerified: true,
+        createdBy: 'user-1',
+        createdAt: new Date('2024-01-01'),
+        updatedAt: new Date('2024-01-01'),
+        sslExpiresAt: null,
+        dnsVerifiedAt: null,
+        nginxConfigPath: null,
+        autoRenewSsl: true,
+        sslRenewedAt: null,
+        sslRenewalStatus: null,
+        sslRenewalError: null,
+        stickySessionsEnabled: true,
+        stickySessionDuration: 86400,
+        isSpa: false,
+        isPrimary: false,
+        wwwBehavior: null,
+        redirectTarget: null,
+      };
+
+      const config = await service.generateConfig(domainMapping, mockProject);
+
+      expect(config).toContain('listen 80');
+      expect(config).not.toContain('listen 443 ssl');
     });
 
     it('should use "latest" as default alias', async () => {
