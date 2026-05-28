@@ -258,6 +258,44 @@
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
       }
 
+      .video {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+      }
+
+      .video h2 {
+        font-size: 1.25rem;
+        margin-bottom: 0.5rem;
+      }
+
+      .video p.description {
+        color: var(--text-secondary);
+        font-size: 0.95rem;
+        margin-bottom: 1.25rem;
+      }
+
+      .video-wrapper {
+        position: relative;
+        padding-bottom: 56.25%;
+        height: 0;
+        overflow: hidden;
+        border-radius: 8px;
+        background: #000;
+      }
+
+      .video-wrapper iframe {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        border: 0;
+      }
+
       .setup-form h2 {
         font-size: 1.25rem;
         margin-bottom: 0.5rem;
@@ -412,6 +450,20 @@
           via an internal URL. Set up a Cloudflare Tunnel to expose this app to the internet with
           your own domain.
         </p>
+      </div>
+
+      <div class="video">
+        <h2>Watch the Setup Guide</h2>
+        <p class="description">A walkthrough of installing and configuring BFFless on Umbrel with Cloudflare Tunnel.</p>
+        <div class="video-wrapper">
+          <iframe
+            src="https://www.youtube.com/embed/TZzXtZk2wzE"
+            title="BFFless on Umbrel - Setup Guide"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            referrerpolicy="strict-origin-when-cross-origin"
+            allowfullscreen
+          ></iframe>
+        </div>
       </div>
 
       <div class="architecture">
