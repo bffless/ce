@@ -642,6 +642,7 @@ export class DomainsController {
       isSpa: domain.isSpa, // SPA mode for client-side routing
       wwwBehavior: domain.wwwBehavior, // WWW/apex redirect behavior
       redirectTarget: domain.redirectTarget, // Target for redirect domains
+      redirectType: domain.redirectType, // HTTP status code for redirect domains (301/302)
       sslEnabled: domain.sslEnabled,
       sslExpiresAt: domain.sslExpiresAt,
       dnsVerified: domain.dnsVerified,
