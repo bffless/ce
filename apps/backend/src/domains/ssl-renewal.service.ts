@@ -217,6 +217,7 @@ export class SslRenewalService {
                 id: domain.id,
                 domain: domain.domain,
                 redirectTarget: domain.redirectTarget!,
+                redirectType: domain.redirectType,
                 sslEnabled: domain.sslEnabled,
               });
             } else if (domain.projectId) {
