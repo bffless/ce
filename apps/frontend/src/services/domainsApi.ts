@@ -28,6 +28,8 @@ export interface DomainMapping {
   wwwBehavior?: WwwBehavior | null;
   // Target domain for redirect domain type
   redirectTarget?: string | null;
+  // HTTP status code for redirect domain type: '301' (permanent) or '302' (temporary)
+  redirectType?: '301' | '302';
   sslEnabled: boolean;
   sslExpiresAt?: string;
   dnsVerified: boolean;
@@ -56,6 +58,8 @@ export interface CreateDomainDto {
   wwwBehavior?: WwwBehavior | null;
   /** Target domain for redirect domain type */
   redirectTarget?: string;
+  /** HTTP status code for redirect domain type. '301' = permanent (default), '302' = temporary. */
+  redirectType?: '301' | '302';
 }
 
 export interface UpdateDomainDto {
@@ -73,6 +77,8 @@ export interface UpdateDomainDto {
   wwwBehavior?: WwwBehavior | null;
   // Target domain for redirect domain type
   redirectTarget?: string;
+  // HTTP status code for redirect domain type: '301' (permanent) or '302' (temporary)
+  redirectType?: '301' | '302';
 }
 
 // Phase B5: Domain visibility info response

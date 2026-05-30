@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsIn, IsOptional, IsString, Matches, ValidateIf } from 'class-validator';
+import { IsBoolean, IsEnum, IsIn, IsOptional, IsString, Matches } from 'class-validator';
 
 export class UpdateDomainDto {
   @ApiPropertyOptional({ description: 'Deployment alias' })
@@ -75,4 +75,13 @@ export class UpdateDomainDto {
     message: 'Invalid redirect target domain format',
   })
   redirectTarget?: string;
+
+  @ApiPropertyOptional({
+    enum: ['301', '302'],
+    description:
+      'HTTP redirect status code for redirect domains. 301 = permanent, 302 = temporary.',
+  })
+  @IsOptional()
+  @IsEnum(['301', '302'])
+  redirectType?: '301' | '302';
 }

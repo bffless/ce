@@ -271,9 +271,19 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
             </p>
             {/* Show redirect target for redirect domains */}
             {domain.domainType === 'redirect' && domain.redirectTarget && (
-              <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1">
+              <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1 flex-wrap">
                 <ArrowRight className="h-3 w-3" />
                 Redirects to: <span className="font-medium">{domain.redirectTarget}</span>
+                <span
+                  className="text-xs px-1.5 py-0.5 bg-muted rounded font-mono"
+                  title={
+                    (domain.redirectType ?? '301') === '301'
+                      ? 'Permanent redirect (301)'
+                      : 'Temporary redirect (302)'
+                  }
+                >
+                  {domain.redirectType ?? '301'}
+                </span>
               </p>
             )}
           </div>

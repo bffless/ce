@@ -87,6 +87,8 @@ export function EditDomainDialog({ domain, open, onOpenChange }: EditDomainDialo
   const [isSpa, setIsSpa] = useState(false);
   // WWW behavior for custom domains
   const [wwwBehavior, setWwwBehavior] = useState<WwwBehavior | 'none'>('none');
+  // Redirect type for redirect domains (301 permanent / 302 temporary)
+  const [redirectType, setRedirectType] = useState<'301' | '302'>('301');
 
   // Reset form when domain changes
   useEffect(() => {
@@ -108,6 +110,8 @@ export function EditDomainDialog({ domain, open, onOpenChange }: EditDomainDialo
       setRequiredRole(domain.requiredRole ?? 'inherit');
       // Initialize wwwBehavior
       setWwwBehavior(domain.wwwBehavior ?? 'none');
+      // Initialize redirect type (defaults to 301 on rows created before this column existed)
+      setRedirectType(domain.redirectType ?? '301');
     }
   }, [domain]);
 
@@ -166,6 +170,14 @@ export function EditDomainDialog({ domain, open, onOpenChange }: EditDomainDialo
       const originalWwwBehavior = domain.wwwBehavior ?? null;
       if (newWwwBehavior !== originalWwwBehavior) {
         updates.wwwBehavior = newWwwBehavior;
+      }
+    }
+
+    // Check if redirect type changed (only for redirect domains)
+    if (domain.domainType === 'redirect') {
+      const originalRedirectType = domain.redirectType ?? '301';
+      if (redirectType !== originalRedirectType) {
+        updates.redirectType = redirectType;
       }
     }
 
@@ -238,14 +250,36 @@ export function EditDomainDialog({ domain, open, onOpenChange }: EditDomainDialo
 
           <TabsContent value="general" className="mt-4">
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Redirect domain info */}
+              {/* Redirect domain info + type selector */}
               {isRedirectDomain && (
-                <div className="p-3 bg-muted rounded-md">
-                  <p className="text-sm font-medium">Redirect Domain</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    All traffic to this domain is redirected to {domain.redirectTarget}
-                  </p>
-                </div>
+                <>
+                  <div className="p-3 bg-muted rounded-md">
+                    <p className="text-sm font-medium">Redirect Domain</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      All traffic to this domain is redirected to {domain.redirectTarget}
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="redirectType">Redirect Type</Label>
+                    <Select
+                      value={redirectType}
+                      onValueChange={(v) => setRedirectType(v as '301' | '302')}
+                    >
+                      <SelectTrigger id="redirectType">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="301">301 — Permanent</SelectItem>
+                        <SelectItem value="302">302 — Temporary</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      <strong>301</strong> is permanent and cached by browsers and search
+                      engines (recommended for SEO). <strong>302</strong> is temporary.
+                    </p>
+                  </div>
+                </>
               )}
 
               {/* Alias input - only for non-redirect domains */}

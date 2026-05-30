@@ -64,6 +64,16 @@ export class CreateDomainDto {
   })
   redirectTarget?: string;
 
+  @ApiPropertyOptional({
+    enum: ['301', '302'],
+    description:
+      'HTTP redirect status code used when domainType is "redirect". 301 = permanent (default, recommended for SEO), 302 = temporary.',
+    default: '301',
+  })
+  @IsOptional()
+  @IsEnum(['301', '302'])
+  redirectType?: '301' | '302';
+
   @ApiPropertyOptional({ description: 'Enable SSL', default: false })
   @IsOptional()
   @IsBoolean()
