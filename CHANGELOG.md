@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.43](https://github.com/bffless/ce/compare/v0.1.42...v0.1.43) (2026-05-30)
+
+
+### Features
+
+* allow choosing 301 or 302 for redirect-type domains ([82f0d13](https://github.com/bffless/ce/commit/82f0d137f54708306927484ce3ac4e1a926209f9))
+* allow choosing 301 or 302 for redirect-type domains ([9e07c8c](https://github.com/bffless/ce/commit/9e07c8ccb58ade583d380c05329b3a9686dcda6b))
+
 ## [0.1.42](https://github.com/bffless/ce/compare/v0.1.41...v0.1.42) (2026-05-28)
 
 
