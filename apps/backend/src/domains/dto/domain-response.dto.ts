@@ -37,6 +37,13 @@ export class DomainResponseDto {
   redirectTarget?: string;
 
   @ApiPropertyOptional({
+    enum: ['301', '302'],
+    description:
+      'HTTP redirect status code for redirect domains. 301 = permanent, 302 = temporary.',
+  })
+  redirectType?: '301' | '302';
+
+  @ApiPropertyOptional({
     description:
       'Visibility override: true = force public, false = force private, null = inherit from alias/project',
     nullable: true,

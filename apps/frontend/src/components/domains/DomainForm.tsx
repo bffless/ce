@@ -75,6 +75,7 @@ export function DomainForm({
   const [subdomain, setSubdomain] = useState('');
   const [customDomain, setCustomDomain] = useState('');
   const [redirectTarget, setRedirectTarget] = useState('');
+  const [redirectType, setRedirectType] = useState<'301' | '302'>('301');
   const [alias, setAlias] = useState('');
   const [path, setPath] = useState('');
   const [sslEnabled, setSslEnabled] = useState(false);
@@ -185,9 +186,10 @@ export function DomainForm({
       dto.isSpa = isSpa;
     }
 
-    // Include redirect target for redirect domains
+    // Include redirect target and type for redirect domains
     if (domainType === 'redirect') {
       dto.redirectTarget = redirectTarget;
+      dto.redirectType = redirectType;
     }
 
     // Include wwwBehavior for custom domains if set
@@ -261,27 +263,50 @@ export function DomainForm({
         )}
       </div>
 
-      {/* Redirect target - only for redirect domains */}
+      {/* Redirect target & type - only for redirect domains */}
       {domainType === 'redirect' && (
-        <div>
-          <Label htmlFor="redirectTarget">Redirect Target</Label>
-          <div className="flex items-center gap-2">
-            <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
-            <Input
-              id="redirectTarget"
-              placeholder="new-brand.example.com"
-              value={redirectTarget}
-              onChange={(e) => setRedirectTarget(e.target.value.toLowerCase())}
-              className="min-w-0 flex-1"
-            />
+        <>
+          <div>
+            <Label htmlFor="redirectTarget">Redirect Target</Label>
+            <div className="flex items-center gap-2">
+              <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
+              <Input
+                id="redirectTarget"
+                placeholder="new-brand.example.com"
+                value={redirectTarget}
+                onChange={(e) => setRedirectTarget(e.target.value.toLowerCase())}
+                className="min-w-0 flex-1"
+              />
+            </div>
+            {errors.redirectTarget && (
+              <p className="text-sm text-destructive mt-1">{errors.redirectTarget}</p>
+            )}
+            <p className="text-xs text-muted-foreground mt-1">
+              All traffic to the source domain will redirect to this domain.
+            </p>
           </div>
-          {errors.redirectTarget && (
-            <p className="text-sm text-destructive mt-1">{errors.redirectTarget}</p>
-          )}
-          <p className="text-xs text-muted-foreground mt-1">
-            All traffic to the source domain will redirect to this domain (301 permanent redirect)
-          </p>
-        </div>
+
+          <div>
+            <Label htmlFor="redirectType">Redirect Type</Label>
+            <Select
+              value={redirectType}
+              onValueChange={(value) => setRedirectType(value as '301' | '302')}
+            >
+              <SelectTrigger id="redirectType">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="301">301 — Permanent</SelectItem>
+                <SelectItem value="302">302 — Temporary</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground mt-1">
+              <strong>301</strong> is permanent and cached by browsers and search engines
+              (recommended for SEO). <strong>302</strong> is temporary and lets you change the
+              target later without cache problems.
+            </p>
+          </div>
+        </>
       )}
 
       {/* www/apex behavior - only for custom domains with detected alternate */}

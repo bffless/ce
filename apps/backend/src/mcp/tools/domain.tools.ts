@@ -87,6 +87,12 @@ export class DomainTools {
         .string()
         .optional()
         .describe('Target URL for redirect domains'),
+      redirectType: z
+        .enum(['301', '302'])
+        .optional()
+        .describe(
+          'HTTP redirect status code for redirect domains: "301" permanent (default), "302" temporary',
+        ),
     }),
   })
   async createDomain(
@@ -97,6 +103,7 @@ export class DomainTools {
       alias?: string;
       path?: string;
       redirectTarget?: string;
+      redirectType?: '301' | '302';
     },
     _context: Context,
     request: Request,
@@ -110,6 +117,7 @@ export class DomainTools {
         alias: args.alias,
         path: args.path,
         redirectTarget: args.redirectTarget,
+        redirectType: args.redirectType,
       },
       user.id,
       undefined,
@@ -143,6 +151,12 @@ export class DomainTools {
         .optional()
         .describe('How to handle www/apex redirects'),
       redirectTarget: z.string().optional().describe('Target domain for redirect type'),
+      redirectType: z
+        .enum(['301', '302'])
+        .optional()
+        .describe(
+          'HTTP redirect status code for redirect domains: "301" permanent, "302" temporary',
+        ),
     }),
   })
   async updateDomain(
@@ -155,6 +169,7 @@ export class DomainTools {
       isSpa?: boolean;
       wwwBehavior?: 'redirect-to-www' | 'redirect-to-root' | 'serve-both';
       redirectTarget?: string;
+      redirectType?: '301' | '302';
     },
     _context: Context,
     request: Request,

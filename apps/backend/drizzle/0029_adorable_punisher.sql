@@ -1,0 +1,1 @@
+ALTER TABLE "domain_mappings" ADD COLUMN "redirect_type" varchar(10) DEFAULT '301' NOT NULL;

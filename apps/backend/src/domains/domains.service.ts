@@ -712,6 +712,7 @@ export class DomainsService {
           id: domainMapping.id,
           domain: domainMapping.domain,
           redirectTarget: domainMapping.redirectTarget!,
+          redirectType: domainMapping.redirectType,
           sslEnabled: domainMapping.sslEnabled,
         });
         const result = await this.nginxConfigService.writeConfigFile(domainMapping.id, config);
@@ -924,7 +925,9 @@ export class DomainsService {
       updateDomainDto.path !== undefined ||
       updateDomainDto.isActive !== undefined ||
       updateDomainDto.isSpa !== undefined ||
-      updateDomainDto.wwwBehavior !== undefined
+      updateDomainDto.wwwBehavior !== undefined ||
+      updateDomainDto.redirectTarget !== undefined ||
+      updateDomainDto.redirectType !== undefined
     ) {
       try {
         if (updated.isActive) {
@@ -938,6 +941,7 @@ export class DomainsService {
               id: updated.id,
               domain: updated.domain,
               redirectTarget: updated.redirectTarget!,
+              redirectType: updated.redirectType,
               sslEnabled: updated.sslEnabled,
             });
             const result = await this.nginxConfigService.writeConfigFile(updated.id, config);
@@ -1361,6 +1365,7 @@ export class DomainsService {
             id: domain.id,
             domain: domain.domain,
             redirectTarget: domain.redirectTarget!,
+            redirectType: domain.redirectType,
             sslEnabled: false,
           });
         } else {
@@ -2226,6 +2231,7 @@ export class DomainsService {
         id: domain.id,
         domain: domain.domain,
         redirectTarget: domain.redirectTarget!,
+        redirectType: domain.redirectType,
         sslEnabled: true,
       });
     } else {

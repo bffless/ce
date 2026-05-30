@@ -15,6 +15,11 @@ export const domainMappings = pgTable(
     // Target domain for redirect type (e.g., 'new-brand.com')
     // Only used when domainType = 'redirect'
     redirectTarget: varchar('redirect_target', { length: 255 }),
+    // HTTP status code used when domainType = 'redirect': '301' (permanent) or '302' (temporary)
+    redirectType: varchar('redirect_type', { length: 10 })
+      .notNull()
+      .default('301')
+      .$type<'301' | '302'>(),
     isActive: boolean('is_active').notNull().default(true),
     // Phase B5: Visibility override
     // null = inherit from alias, true = force public, false = force private

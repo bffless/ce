@@ -53,6 +53,8 @@ export interface RedirectDomainConfig {
   id: string;
   domain: string;
   redirectTarget: string;
+  /** HTTP status code: '301' (permanent, default) or '302' (temporary). */
+  redirectType?: '301' | '302';
   sslEnabled: boolean;
 }
 
@@ -820,13 +822,15 @@ ${spaFallback}
 
   /**
    * Platform mode: Traefik handles SSL, nginx listens on port 80.
-   * Returns a 301 redirect to the target domain.
+   * Returns a 301 (permanent) or 302 (temporary) redirect to the target domain.
    */
   private generatePlatformRedirectDomainConfig(config: RedirectDomainConfig): string {
+    const redirectType = config.redirectType || '301';
     return `# Redirect Domain Configuration (Platform Mode)
 # Generated: ${new Date().toISOString()}
 # Domain: ${config.domain}
 # Redirect Target: ${config.redirectTarget}
+# Redirect Type: ${redirectType}
 # Note: SSL is terminated by Traefik, nginx listens on port 80
 
 server {
@@ -847,7 +851,7 @@ server {
 
     # Redirect all traffic to target domain
     location / {
-        return 301 https://${config.redirectTarget}$request_uri;
+        return ${redirectType} https://${config.redirectTarget}$request_uri;
     }
 }
 `;
@@ -857,10 +861,12 @@ server {
    * CE mode: nginx handles SSL directly.
    * For redirect domains without SSL, only listen on port 80.
    * For redirect domains with SSL, also listen on port 443.
+   * Status code is 301 (permanent, default) or 302 (temporary).
    */
   private generateCERedirectDomainConfig(config: RedirectDomainConfig): string {
     const sslCertPath = config.sslEnabled ? this.getSslCertPathForDomain(config.domain) : '';
     const sslKeyPath = config.sslEnabled ? this.getSslKeyPathForDomain(config.domain) : '';
+    const redirectType = config.redirectType || '301';
 
     const httpServerBlock = `
 server {
@@ -881,7 +887,7 @@ server {
 
     # Redirect all traffic to target domain (HTTPS)
     location / {
-        return 301 https://${config.redirectTarget}$request_uri;
+        return ${redirectType} https://${config.redirectTarget}$request_uri;
     }
 }`;
 
@@ -905,7 +911,7 @@ server {
 
     # Redirect all traffic to target domain (HTTPS)
     location / {
-        return 301 https://${config.redirectTarget}$request_uri;
+        return ${redirectType} https://${config.redirectTarget}$request_uri;
     }
 }`
       : '';
@@ -914,6 +920,7 @@ server {
 # Generated: ${new Date().toISOString()}
 # Domain: ${config.domain}
 # Redirect Target: ${config.redirectTarget}
+# Redirect Type: ${redirectType}
 # SSL Enabled: ${config.sslEnabled}
 ${httpServerBlock}${httpsServerBlock}
 `;

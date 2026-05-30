@@ -203,6 +203,7 @@ server {
         wwwBehavior: null,
         // Redirect domain
         redirectTarget: null,
+        redirectType: '301' as const,
       };
 
       const config = await service.generateConfig(domainMapping, mockProject);
@@ -249,6 +250,7 @@ server {
         wwwBehavior: null,
         // Redirect domain
         redirectTarget: null,
+        redirectType: '301' as const,
       };
 
       const config = await service.generateConfig(domainMapping, mockProject);
@@ -299,6 +301,7 @@ server {
         isPrimary: false,
         wwwBehavior: null,
         redirectTarget: null,
+        redirectType: '301' as const,
       };
 
       const config = await service.generateConfig(domainMapping, mockProject);
@@ -341,6 +344,7 @@ server {
         isPrimary: false,
         wwwBehavior: null,
         redirectTarget: null,
+        redirectType: '301' as const,
       };
 
       const config = await service.generateConfig(domainMapping, mockProject);
@@ -393,6 +397,7 @@ server {
         isPrimary: false,
         wwwBehavior: null,
         redirectTarget: null,
+        redirectType: '301' as const,
       };
 
       const config = await service.generateConfig(domainMapping, mockProject);
@@ -436,11 +441,67 @@ server {
         wwwBehavior: null,
         // Redirect domain
         redirectTarget: null,
+        redirectType: '301' as const,
       };
 
       const config = await service.generateConfig(domainMapping, mockProject);
 
       expect(config).toContain('latest');
+    });
+  });
+
+  describe('generateRedirectDomainConfig', () => {
+    it('defaults to 301 when redirectType is not provided', () => {
+      const config = service.generateRedirectDomainConfig({
+        id: 'dm-1',
+        domain: 'old-brand.example.com',
+        redirectTarget: 'new-brand.example.com',
+        sslEnabled: false,
+      });
+
+      expect(config).toContain('return 301 https://new-brand.example.com$request_uri');
+      expect(config).not.toContain('return 302');
+      expect(config).toContain('server_name old-brand.example.com');
+    });
+
+    it('emits a 302 redirect when redirectType is "302"', () => {
+      const config = service.generateRedirectDomainConfig({
+        id: 'dm-2',
+        domain: 'temp.example.com',
+        redirectTarget: 'new.example.com',
+        redirectType: '302',
+        sslEnabled: false,
+      });
+
+      expect(config).toContain('return 302 https://new.example.com$request_uri');
+      expect(config).not.toContain('return 301 https://new.example.com');
+    });
+
+    it('emits a 301 redirect when redirectType is explicitly "301"', () => {
+      const config = service.generateRedirectDomainConfig({
+        id: 'dm-3',
+        domain: 'perm.example.com',
+        redirectTarget: 'new.example.com',
+        redirectType: '301',
+        sslEnabled: false,
+      });
+
+      expect(config).toContain('return 301 https://new.example.com$request_uri');
+    });
+
+    it('applies redirectType to both HTTP and HTTPS server blocks when SSL is enabled', () => {
+      const config = service.generateRedirectDomainConfig({
+        id: 'dm-4',
+        domain: 'ssl.example.com',
+        redirectTarget: 'new.example.com',
+        redirectType: '302',
+        sslEnabled: true,
+      });
+
+      const matches = config.match(/return 302 https:\/\/new\.example\.com\$request_uri/g);
+      expect(matches).not.toBeNull();
+      expect(matches!.length).toBeGreaterThanOrEqual(2);
+      expect(config).not.toContain('return 301 https://new.example.com');
     });
   });
 

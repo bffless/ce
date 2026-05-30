@@ -67,6 +67,7 @@ describe('VisibilityService', () => {
       wwwBehavior: null,
       // Redirect domain
       redirectTarget: null,
+      redirectType: '301' as const,
     };
 
     it('should return domain override when isPublic is true', async () => {
@@ -256,6 +257,7 @@ describe('VisibilityService', () => {
       wwwBehavior: null,
       // Redirect domain
       redirectTarget: null,
+      redirectType: '301' as const,
     };
 
     it('should return domain as source when domain has override', async () => {
