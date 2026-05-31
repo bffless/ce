@@ -163,6 +163,14 @@ async function putFileWithRetry(
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
+function isAzureBlobUrl(url: string): boolean {
+  try {
+    return new URL(url).hostname.includes('.blob.core.');
+  } catch {
+    return false;
+  }
+}
+
 function putFile(
   file: File,
   url: string,
@@ -173,6 +181,7 @@ function putFile(
     const xhr = new XMLHttpRequest();
     xhr.open('PUT', url, true);
     if (file.type) xhr.setRequestHeader('Content-Type', file.type);
+    if (isAzureBlobUrl(url)) xhr.setRequestHeader('x-ms-blob-type', 'BlockBlob');
 
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) onProgress(e.loaded);

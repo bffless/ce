@@ -124,7 +124,6 @@ export function StorageStep() {
     containerName: '',
     accessTier: 'Hot',
   });
-  const [azureAuthMethod, setAzureAuthMethod] = useState<'key' | 'connection' | 'managed'>('key');
 
   const { data: envConfig, isLoading: isLoadingEnvConfig } = useGetEnvStorageConfigQuery();
   const { data: constraints, isLoading: isLoadingConstraints } = useGetConstraintsQuery();
@@ -245,44 +244,17 @@ export function StorageStep() {
 
         await configureStorage({ storageProvider: 'gcs', config: submitConfig }).unwrap();
       } else if (storageProvider === 'azure') {
-        // Validate Azure config
-        if (!azureConfig.accountName || !azureConfig.containerName) {
-          dispatch(setWizardError('Please fill in Account Name and Container Name'));
+        if (!azureConfig.accountName || !azureConfig.containerName || !azureConfig.accountKey) {
+          dispatch(setWizardError('Please fill in Account Name, Container Name, and Account Key'));
           return;
         }
 
-        // Build Azure config based on auth method
         const submitConfig: AzureStorageConfig = {
           accountName: azureConfig.accountName,
           containerName: azureConfig.containerName,
+          accountKey: azureConfig.accountKey,
           accessTier: azureConfig.accessTier,
         };
-
-        if (azureAuthMethod === 'key') {
-          if (!azureConfig.accountKey) {
-            dispatch(setWizardError('Please provide account key'));
-            return;
-          }
-          submitConfig.accountKey = azureConfig.accountKey;
-        } else if (azureAuthMethod === 'connection') {
-          if (!azureConfig.connectionString) {
-            dispatch(setWizardError('Please provide connection string'));
-            return;
-          }
-          submitConfig.connectionString = azureConfig.connectionString;
-          // Extract account name from connection string if not already set
-          if (!submitConfig.accountName) {
-            const match = azureConfig.connectionString.match(/AccountName=([^;]+)/);
-            if (match) {
-              submitConfig.accountName = match[1];
-            }
-          }
-        } else if (azureAuthMethod === 'managed') {
-          submitConfig.useManagedIdentity = true;
-          if (azureConfig.managedIdentityClientId) {
-            submitConfig.managedIdentityClientId = azureConfig.managedIdentityClientId;
-          }
-        }
 
         await configureStorage({ storageProvider: 'azure', config: submitConfig }).unwrap();
       } else {
@@ -902,91 +874,25 @@ export function StorageStep() {
             />
           </div>
 
-          {/* Authentication Method */}
-          <div className="space-y-4">
-            <Label>Authentication Method</Label>
-            <Tabs
-              value={azureAuthMethod}
-              onValueChange={(v) => setAzureAuthMethod(v as 'key' | 'connection' | 'managed')}
-            >
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="key">Account Key</TabsTrigger>
-                <TabsTrigger value="connection">Connection String</TabsTrigger>
-                <TabsTrigger value="managed">Managed Identity</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="key" className="space-y-4 pt-4">
-                <div className="space-y-2">
-                  <Label htmlFor="azureAccountKey">Account Key</Label>
-                  <Input
-                    id="azureAccountKey"
-                    type="password"
-                    value={azureConfig.accountKey || ''}
-                    onChange={(e) =>
-                      setAzureConfig({ ...azureConfig, accountKey: e.target.value || undefined })
-                    }
-                    placeholder="Enter account key"
-                    autoComplete="new-password"
-                    data-1p-ignore
-                    data-lpignore="true"
-                    data-form-type="other"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Found in Azure Portal → Storage account → Access keys
-                  </p>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="connection" className="space-y-4 pt-4">
-                <div className="space-y-2">
-                  <Label htmlFor="azureConnectionString">Connection String</Label>
-                  <Textarea
-                    id="azureConnectionString"
-                    value={azureConfig.connectionString || ''}
-                    onChange={(e) =>
-                      setAzureConfig({
-                        ...azureConfig,
-                        connectionString: e.target.value || undefined,
-                      })
-                    }
-                    placeholder="DefaultEndpointsProtocol=https;AccountName=..."
-                    rows={3}
-                    className="font-mono text-xs"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Found in Azure Portal → Storage account → Access keys → Connection string
-                  </p>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="managed" className="pt-4 space-y-4">
-                <div className="p-4 bg-muted rounded-md">
-                  <p className="text-sm">
-                    <strong>Managed Identity</strong> will be used. This works automatically when
-                    running on Azure (VMs, AKS, App Service, Functions).
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="azureManagedIdentityClientId">
-                    User-Assigned Identity Client ID (optional)
-                  </Label>
-                  <Input
-                    id="azureManagedIdentityClientId"
-                    value={azureConfig.managedIdentityClientId || ''}
-                    onChange={(e) =>
-                      setAzureConfig({
-                        ...azureConfig,
-                        managedIdentityClientId: e.target.value || undefined,
-                      })
-                    }
-                    placeholder="Leave empty for system-assigned identity"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Only needed if using a user-assigned managed identity
-                  </p>
-                </div>
-              </TabsContent>
-            </Tabs>
+          {/* Account Key */}
+          <div className="space-y-2">
+            <Label htmlFor="azureAccountKey">Account Key</Label>
+            <Input
+              id="azureAccountKey"
+              type="password"
+              value={azureConfig.accountKey || ''}
+              onChange={(e) =>
+                setAzureConfig({ ...azureConfig, accountKey: e.target.value || undefined })
+              }
+              placeholder="Enter account key"
+              autoComplete="new-password"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
+            />
+            <p className="text-xs text-muted-foreground">
+              Found in Azure Portal → Storage account → Access keys
+            </p>
           </div>
 
           {/* Access Tier */}
@@ -1059,7 +965,7 @@ export function StorageStep() {
                 (!s3Config.bucket || !s3Config.accessKeyId || !s3Config.secretAccessKey)) ||
               (storageProvider === 'gcs' && (!gcsConfig.projectId || !gcsConfig.bucket)) ||
               (storageProvider === 'azure' &&
-                (!azureConfig.accountName || !azureConfig.containerName)) ||
+                (!azureConfig.accountName || !azureConfig.containerName || !azureConfig.accountKey)) ||
               (storageProvider !== 'managed' &&
                 storageProvider !== 'minio' &&
                 storageProvider !== 'local' &&
