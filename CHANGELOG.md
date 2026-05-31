@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.45](https://github.com/bffless/ce/compare/v0.1.44...v0.1.45) (2026-05-31)
+
+
+### Bug Fixes
+
+* surface storage migration errors and add force-switch recovery path ([4f1ce33](https://github.com/bffless/ce/commit/4f1ce33d04f84ebbb9bb3461b535587d5c1c98e6))
+* surface storage migration errors and add force-switch recovery path ([2ba8ccd](https://github.com/bffless/ce/commit/2ba8ccd8ae310ebd2aa703fb30dcaf00b82773b6))
+
 ## [0.1.44](https://github.com/bffless/ce/compare/v0.1.43...v0.1.44) (2026-05-30)
 
 
