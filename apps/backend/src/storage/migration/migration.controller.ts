@@ -63,9 +63,15 @@ export class MigrationController {
     });
 
     // Test target connection
-    const connected = await targetAdapter.testConnection();
-    if (!connected) {
-      throw new BadRequestException('Cannot connect to target storage provider');
+    try {
+      const connected = await targetAdapter.testConnection();
+      if (!connected) {
+        throw new BadRequestException('Cannot connect to target storage provider');
+      }
+    } catch (err) {
+      if (err instanceof BadRequestException) throw err;
+      const reason = err instanceof Error ? err.message : String(err);
+      throw new BadRequestException(`Cannot connect to target storage provider: ${reason}`);
     }
 
     // Get current storage provider name
@@ -150,6 +156,41 @@ export class MigrationController {
     });
 
     await this.migrationService.resumeMigration(this.currentStorage, targetAdapter);
+    return { success: true };
+  }
+
+  @Post('force-switch')
+  @ApiOperation({
+    summary: 'Switch storage provider without migrating data (recovery path)',
+    description:
+      'For situations where the current storage backend is unreachable (e.g. deleted bucket, revoked credentials) and the user just needs to repoint to a new provider. Validates the target, persists config, and swaps the runtime adapter. Does NOT copy any files.',
+  })
+  @ApiResponse({ status: 200, description: 'Provider switched without data migration' })
+  async forceSwitchProvider(@Body() dto: CompleteMigrationDto): Promise<{ success: boolean }> {
+    const targetAdapter = StorageModule.createAdapter({
+      storageType: dto.provider,
+      config: dto.config,
+    });
+
+    try {
+      const connected = await targetAdapter.testConnection();
+      if (!connected) {
+        throw new BadRequestException('Cannot connect to target storage provider');
+      }
+    } catch (err) {
+      if (err instanceof BadRequestException) throw err;
+      const reason = err instanceof Error ? err.message : String(err);
+      throw new BadRequestException(`Cannot connect to target storage provider: ${reason}`);
+    }
+
+    await this.saveStorageConfig(dto.provider, dto.config);
+    this.dynamicStorage.setAdapter(targetAdapter);
+    this.migrationService.clearMigrationJob();
+
+    this.logger.warn(
+      `Storage provider FORCE-SWITCHED to ${dto.provider} (no data migration performed)`,
+    );
+
     return { success: true };
   }
 

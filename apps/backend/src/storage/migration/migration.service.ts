@@ -329,9 +329,24 @@ export class StorageMigrationService {
    * Calculate migration scope without starting
    */
   async calculateScope(source: IStorageAdapter, filterPrefix?: string): Promise<MigrationScope> {
-    const keys = await source.listKeys(filterPrefix);
-    let totalBytes = 0;
+    let keys: string[];
+    try {
+      keys = await source.listKeys(filterPrefix);
+    } catch (err) {
+      // Source storage is unreachable (deleted bucket, revoked credentials,
+      // network outage, etc). Return a degraded scope so the wizard can render
+      // a recovery option instead of bubbling a 500.
+      const message = err instanceof Error ? err.message : String(err);
+      return {
+        fileCount: 0,
+        totalBytes: 0,
+        formattedSize: '0 B',
+        estimatedDuration: 'unknown',
+        sourceError: message,
+      };
+    }
 
+    let totalBytes = 0;
     for (const key of keys) {
       try {
         const metadata = await source.getMetadata(key);

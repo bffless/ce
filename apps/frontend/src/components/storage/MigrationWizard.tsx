@@ -19,6 +19,7 @@ import {
   useLazyCalculateMigrationScopeQuery,
   useStartMigrationMutation,
   useCompleteMigrationMutation,
+  useForceSwitchProviderMutation,
   useGetMigrationJobQuery,
   type MigrationOptions,
 } from '@/services/migrationApi';
@@ -98,6 +99,7 @@ export function MigrationWizard({ currentProvider, onComplete, onCancel }: Migra
   const [calculateScope, { data: scope, isLoading: isCalculating }] = useLazyCalculateMigrationScopeQuery();
   const [startMigration, { isLoading: isStarting }] = useStartMigrationMutation();
   const [completeMigration, { isLoading: isCompleting }] = useCompleteMigrationMutation();
+  const [forceSwitchProvider, { isLoading: isForceSwitching }] = useForceSwitchProviderMutation();
   // Always check for active migration on mount and during progress step
   const { data: currentJob } = useGetMigrationJobQuery(undefined, {
     pollingInterval: step === 'progress' || step === 'select' ? 1000 : undefined,
@@ -246,6 +248,23 @@ export function MigrationWizard({ currentProvider, onComplete, onCancel }: Migra
 
   const handleMigrationComplete = () => {
     setStep('complete');
+  };
+
+  const handleForceSwitch = async () => {
+    if (!targetProvider) return;
+
+    try {
+      setError(null);
+      await forceSwitchProvider({
+        provider: targetProvider,
+        config: getConfig(),
+      }).unwrap();
+
+      onComplete?.();
+    } catch (err: unknown) {
+      const e = err as { data?: { message?: string } };
+      setError(e.data?.message || 'Failed to switch provider');
+    }
   };
 
   const handleFinish = async () => {
@@ -849,33 +868,57 @@ export function MigrationWizard({ currentProvider, onComplete, onCancel }: Migra
       {step === 'confirm' && scope && (
         <Card>
           <CardHeader>
-            <CardTitle>Confirm Migration</CardTitle>
-            <CardDescription>Review the migration details before starting</CardDescription>
+            <CardTitle>{scope.sourceError ? 'Source Storage Unreachable' : 'Confirm Migration'}</CardTitle>
+            <CardDescription>
+              {scope.sourceError
+                ? `BFFless could not list files from ${currentProvider}. You can still switch providers, but no data will be copied.`
+                : 'Review the migration details before starting'}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <Alert>
-              <AlertTriangle className="h-4 w-4" />
-              <AlertDescription>
-                Migration will copy all files from {currentProvider} to {targetProvider}. This process
-                may take a while for large datasets.
-              </AlertDescription>
-            </Alert>
+            {scope.sourceError ? (
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  <p className="font-medium mb-1">
+                    Cannot read from {currentProvider}:
+                  </p>
+                  <p className="font-mono text-xs break-all">{scope.sourceError}</p>
+                  <p className="mt-3">
+                    This usually means the bucket was deleted, credentials were revoked,
+                    or the storage backend is unreachable. Use{' '}
+                    <strong>Switch Without Migrating</strong> below to repoint BFFless to
+                    {' '}{targetProvider} without copying data.
+                  </p>
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <>
+                <Alert>
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription>
+                    Migration will copy all files from {currentProvider} to {targetProvider}. This process
+                    may take a while for large datasets.
+                  </AlertDescription>
+                </Alert>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-4 bg-muted rounded-lg">
-                <p className="text-sm text-muted-foreground">Files to migrate</p>
-                <p className="text-2xl font-bold">{scope.fileCount.toLocaleString()}</p>
-              </div>
-              <div className="p-4 bg-muted rounded-lg">
-                <p className="text-sm text-muted-foreground">Total size</p>
-                <p className="text-2xl font-bold">{scope.formattedSize}</p>
-              </div>
-            </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-4 bg-muted rounded-lg">
+                    <p className="text-sm text-muted-foreground">Files to migrate</p>
+                    <p className="text-2xl font-bold">{scope.fileCount.toLocaleString()}</p>
+                  </div>
+                  <div className="p-4 bg-muted rounded-lg">
+                    <p className="text-sm text-muted-foreground">Total size</p>
+                    <p className="text-2xl font-bold">{scope.formattedSize}</p>
+                  </div>
+                </div>
 
-            <div className="p-4 border rounded-lg">
-              <p className="text-sm text-muted-foreground">Estimated duration</p>
-              <p className="text-lg font-semibold">{scope.estimatedDuration}</p>
-            </div>
+                <div className="p-4 border rounded-lg">
+                  <p className="text-sm text-muted-foreground">Estimated duration</p>
+                  <p className="text-lg font-semibold">{scope.estimatedDuration}</p>
+                </div>
+              </>
+            )}
 
             {error && (
               <Alert variant="destructive">
@@ -894,16 +937,33 @@ export function MigrationWizard({ currentProvider, onComplete, onCancel }: Migra
                 <Button variant="outline" onClick={() => setStep('configure')}>
                   Back
                 </Button>
-                <Button onClick={handleStartMigration} disabled={isStarting}>
-                  {isStarting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Starting...
-                    </>
-                  ) : (
-                    'Start Migration'
-                  )}
-                </Button>
+                {scope.sourceError ? (
+                  <Button
+                    variant="destructive"
+                    onClick={handleForceSwitch}
+                    disabled={isForceSwitching}
+                  >
+                    {isForceSwitching ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Switching...
+                      </>
+                    ) : (
+                      'Switch Without Migrating'
+                    )}
+                  </Button>
+                ) : (
+                  <Button onClick={handleStartMigration} disabled={isStarting}>
+                    {isStarting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Starting...
+                      </>
+                    ) : (
+                      'Start Migration'
+                    )}
+                  </Button>
+                )}
               </div>
             </div>
           </CardContent>
