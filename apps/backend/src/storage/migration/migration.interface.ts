@@ -128,6 +128,10 @@ export interface MigrationScope {
   totalBytes: number;
   formattedSize: string;
   estimatedDuration: string;
+  // Set when the current (source) storage adapter could not be reached.
+  // The wizard uses this to offer a "switch without migrating data" recovery path
+  // instead of blocking the user with a 500.
+  sourceError?: string;
 }
 
 /**

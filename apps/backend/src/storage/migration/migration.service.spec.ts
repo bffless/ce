@@ -202,6 +202,19 @@ describe('StorageMigrationService', () => {
 
       expect(scope.estimatedDuration).toBe('1 minutes');
     });
+
+    it('should return sourceError instead of throwing when source is unreachable', async () => {
+      mockSource.listKeys.mockReset();
+      mockSource.listKeys.mockRejectedValueOnce(
+        new Error('bucket does not exist or is not accessible'),
+      );
+
+      const scope = await service.calculateScope(mockSource);
+
+      expect(scope.sourceError).toBe('bucket does not exist or is not accessible');
+      expect(scope.fileCount).toBe(0);
+      expect(scope.totalBytes).toBe(0);
+    });
   });
 
   describe('file migration', () => {

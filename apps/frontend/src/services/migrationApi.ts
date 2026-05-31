@@ -41,6 +41,9 @@ export interface MigrationScope {
   totalBytes: number;
   formattedSize: string;
   estimatedDuration: string;
+  // Set when the current (source) storage adapter could not be reached.
+  // Wizard uses this to offer a "switch without migrating data" recovery option.
+  sourceError?: string;
 }
 
 // Migration options
@@ -142,6 +145,17 @@ export const migrationApi = api.injectEndpoints({
       }),
       invalidatesTags: ['Setup'],
     }),
+
+    // Switch storage provider without copying data (recovery path for
+    // when the current source is unreachable, e.g. deleted bucket).
+    forceSwitchProvider: builder.mutation<{ success: boolean }, CompleteMigrationRequest>({
+      query: (body) => ({
+        url: '/api/storage/migration/force-switch',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['Setup'],
+    }),
   }),
 });
 
@@ -154,4 +168,5 @@ export const {
   useCancelMigrationMutation,
   useResumeMigrationMutation,
   useCompleteMigrationMutation,
+  useForceSwitchProviderMutation,
 } = migrationApi;
