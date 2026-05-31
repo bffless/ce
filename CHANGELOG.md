@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.46](https://github.com/bffless/ce/compare/v0.1.45...v0.1.46) (2026-05-31)
+
+
+### Bug Fixes
+
+* azure blob storage upload and setup wizard ([eddf9b4](https://github.com/bffless/ce/commit/eddf9b468a7441cc58432e2aee5735e99f7ccc66))
+
 ## [0.1.45](https://github.com/bffless/ce/compare/v0.1.44...v0.1.45) (2026-05-31)
 
 
