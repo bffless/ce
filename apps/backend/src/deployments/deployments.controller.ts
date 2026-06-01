@@ -320,6 +320,14 @@ export class DeploymentsController {
       });
     }
 
+    // Resolve proxy rule sets: prefer values from the finalize body (authoritative),
+    // fall back to the singular value persisted in pending_uploads on prepare.
+    const finalizeProxyOverride =
+      (dto.proxyRuleSetIds && dto.proxyRuleSetIds.length > 0) ||
+      (dto.proxyRuleSetNames && dto.proxyRuleSetNames.length > 0) ||
+      dto.proxyRuleSetId ||
+      dto.proxyRuleSetName;
+
     // Create asset records from manifest
     const result = await this.deploymentsService.createAssetsFromManifest(
       {
@@ -332,7 +340,12 @@ export class DeploymentsController {
           typeof pendingUpload.tags === 'string'
             ? pendingUpload.tags
             : JSON.stringify(pendingUpload.tags),
-        proxyRuleSetId: pendingUpload.proxyRuleSetId ?? undefined,
+        proxyRuleSetId: finalizeProxyOverride
+          ? dto.proxyRuleSetId
+          : (pendingUpload.proxyRuleSetId ?? undefined),
+        proxyRuleSetName: finalizeProxyOverride ? dto.proxyRuleSetName : undefined,
+        proxyRuleSetIds: finalizeProxyOverride ? dto.proxyRuleSetIds : undefined,
+        proxyRuleSetNames: finalizeProxyOverride ? dto.proxyRuleSetNames : undefined,
         alias: pendingUpload.alias ?? undefined,
         basePath: pendingUpload.basePath ?? undefined,
         files: pendingUpload.files,

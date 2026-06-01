@@ -115,6 +115,71 @@ export class DeploymentsService {
   }
 
   /**
+   * Resolve proxy rule set names + IDs to an ordered, deduped array of IDs.
+   * Plural inputs win over singular; singular only applies as a back-compat
+   * fallback when neither plural array is provided.
+   * Returns [] when nothing is requested.
+   */
+  private async resolveProxyRuleSetIds(
+    projectId: string,
+    input: {
+      proxyRuleSetNames?: string[];
+      proxyRuleSetIds?: string[];
+      proxyRuleSetName?: string;
+      proxyRuleSetId?: string;
+    },
+  ): Promise<string[]> {
+    const usePlural =
+      (input.proxyRuleSetNames && input.proxyRuleSetNames.length > 0) ||
+      (input.proxyRuleSetIds && input.proxyRuleSetIds.length > 0);
+
+    const namesToResolve = usePlural
+      ? (input.proxyRuleSetNames ?? [])
+      : input.proxyRuleSetName
+        ? [input.proxyRuleSetName]
+        : [];
+
+    const directIds = usePlural
+      ? (input.proxyRuleSetIds ?? [])
+      : input.proxyRuleSetId
+        ? [input.proxyRuleSetId]
+        : [];
+
+    // Resolve names to IDs in a single query
+    const resolvedNameIds: string[] = [];
+    if (namesToResolve.length > 0) {
+      const rows = await db
+        .select({ id: proxyRuleSets.id, name: proxyRuleSets.name })
+        .from(proxyRuleSets)
+        .where(
+          and(eq(proxyRuleSets.projectId, projectId), inArray(proxyRuleSets.name, namesToResolve)),
+        );
+
+      const byName = new Map(rows.map((r) => [r.name, r.id]));
+      for (const name of namesToResolve) {
+        const id = byName.get(name);
+        if (!id) {
+          throw new BadRequestException(
+            `Proxy rule set "${name}" not found for this project`,
+          );
+        }
+        resolvedNameIds.push(id);
+      }
+    }
+
+    // Names first, then explicit IDs, in caller order — dedupe preserving first occurrence
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const id of [...resolvedNameIds, ...directIds]) {
+      if (!seen.has(id)) {
+        seen.add(id);
+        result.push(id);
+      }
+    }
+    return result;
+  }
+
+  /**
    * Create a new deployment from a zip file
    */
   async createDeploymentFromZip(
@@ -164,12 +229,13 @@ export class DeploymentsService {
     // Parse tags if provided
     const tags = this.parseTags(dto.tags);
 
-    // Resolve proxy rule set name to ID if provided
-    const resolvedProxyRuleSetId = await this.resolveProxyRuleSetId(
-      project.id,
-      dto.proxyRuleSetName,
-      dto.proxyRuleSetId,
-    );
+    // Resolve proxy rule set names/IDs to a deduped ordered array
+    const resolvedProxyRuleSetIds = await this.resolveProxyRuleSetIds(project.id, {
+      proxyRuleSetNames: dto.proxyRuleSetNames,
+      proxyRuleSetIds: dto.proxyRuleSetIds,
+      proxyRuleSetName: dto.proxyRuleSetName,
+      proxyRuleSetId: dto.proxyRuleSetId,
+    });
 
     try {
       // Parse zip with fflate (async, non-blocking - better CPU performance)
@@ -321,7 +387,7 @@ export class DeploymentsService {
       if (dto.alias) {
         try {
           await this.createOrUpdateAlias(dto.repository, dto.alias, dto.commitSha, deploymentId, {
-            proxyRuleSetId: resolvedProxyRuleSetId,
+            proxyRuleSetIdsToAppend: resolvedProxyRuleSetIds,
           });
           aliases.push(dto.alias);
         } catch (error) {
@@ -346,7 +412,7 @@ export class DeploymentsService {
           {
             isAutoPreview: true,
             basePath: effectiveBasePath,
-            proxyRuleSetId: resolvedProxyRuleSetId,
+            proxyRuleSetIdsToAppend: resolvedProxyRuleSetIds,
           },
         );
         aliases.push(previewAliasName);
@@ -453,12 +519,13 @@ export class DeploymentsService {
     // Parse tags if provided
     const tags = this.parseTags(dto.tags);
 
-    // Resolve proxy rule set name to ID if provided
-    const resolvedProxyRuleSetId = await this.resolveProxyRuleSetId(
-      project.id,
-      dto.proxyRuleSetName,
-      dto.proxyRuleSetId,
-    );
+    // Resolve proxy rule set names/IDs to a deduped ordered array
+    const resolvedProxyRuleSetIds = await this.resolveProxyRuleSetIds(project.id, {
+      proxyRuleSetNames: dto.proxyRuleSetNames,
+      proxyRuleSetIds: dto.proxyRuleSetIds,
+      proxyRuleSetName: dto.proxyRuleSetName,
+      proxyRuleSetId: dto.proxyRuleSetId,
+    });
 
     // Upload each file
     for (let i = 0; i < files.length; i++) {
@@ -556,7 +623,9 @@ export class DeploymentsService {
     const aliases: string[] = [];
     if (dto.alias) {
       try {
-        await this.createOrUpdateAlias(dto.repository, dto.alias, dto.commitSha, deploymentId);
+        await this.createOrUpdateAlias(dto.repository, dto.alias, dto.commitSha, deploymentId, {
+          proxyRuleSetIdsToAppend: resolvedProxyRuleSetIds,
+        });
         aliases.push(dto.alias);
       } catch (error) {
         // Alias creation failure is non-critical
@@ -580,7 +649,7 @@ export class DeploymentsService {
         {
           isAutoPreview: true,
           basePath: effectiveBasePath,
-          proxyRuleSetId: resolvedProxyRuleSetId,
+          proxyRuleSetIdsToAppend: resolvedProxyRuleSetIds,
         },
       );
       aliases.push(previewAliasName);
@@ -1101,7 +1170,13 @@ export class DeploymentsService {
     alias: string,
     commitSha: string,
     deploymentId: string,
-    options?: { isAutoPreview?: boolean; basePath?: string; proxyRuleSetId?: string; proxyRuleSetIds?: string[] },
+    options?: {
+      isAutoPreview?: boolean;
+      basePath?: string;
+      proxyRuleSetId?: string;
+      proxyRuleSetIds?: string[];
+      proxyRuleSetIdsToAppend?: string[];
+    },
   ): Promise<AliasResponseDto> {
     // Phase 3H: Convert repository string to projectId
     const [owner, name] = repository.split('/');
@@ -1117,10 +1192,12 @@ export class DeploymentsService {
       .where(and(eq(deploymentAliases.projectId, project.id), eq(deploymentAliases.alias, alias)))
       .limit(1);
 
-    // Determine the rule set IDs to write
-    // When proxyRuleSetIds (array) is provided, it's an explicit full replacement (e.g. from update_alias API).
-    // When only proxyRuleSetId (singular) is provided, merge it into existing rule sets (e.g. from deploy).
-    // This prevents deploys from overwriting rule sets that were added separately (admin-toolbar, uploads, etc.).
+    // Determine the rule set IDs to write. Three modes, in precedence order:
+    //   1. proxyRuleSetIds (array)  — explicit full replacement (update_alias API).
+    //   2. proxyRuleSetIdsToAppend  — append each id to existing rule sets, dedupe (deploy with plural).
+    //   3. proxyRuleSetId           — single-id back-compat append (legacy deploy).
+    // Append-mode (2 & 3) preserves rule sets that were added separately
+    // (admin-toolbar, uploads, etc.) so deploys never silently drop them.
     let ruleSetIds: string[] | undefined;
     let ruleSetChanged = false;
 
@@ -1128,6 +1205,37 @@ export class DeploymentsService {
       // Explicit array = full replacement
       ruleSetIds = options.proxyRuleSetIds;
       ruleSetChanged = true;
+    } else if (options?.proxyRuleSetIdsToAppend && options.proxyRuleSetIdsToAppend.length > 0) {
+      // Array of ids to append idempotently
+      const toAppend = options.proxyRuleSetIdsToAppend;
+      if (existingAlias) {
+        const existingIds = await this.getAliasProxyRuleSetIds(existingAlias.id);
+        const seen = new Set(existingIds);
+        const merged = [...existingIds];
+        for (const id of toAppend) {
+          if (!seen.has(id)) {
+            seen.add(id);
+            merged.push(id);
+          }
+        }
+        if (merged.length !== existingIds.length) {
+          ruleSetIds = merged;
+          ruleSetChanged = true;
+        }
+        // All ids already present → no change
+      } else {
+        // New alias — dedupe the incoming list and write as-is
+        const seen = new Set<string>();
+        const initial: string[] = [];
+        for (const id of toAppend) {
+          if (!seen.has(id)) {
+            seen.add(id);
+            initial.push(id);
+          }
+        }
+        ruleSetIds = initial;
+        ruleSetChanged = true;
+      }
     } else if (options?.proxyRuleSetId) {
       // Single ID = merge with existing (for deploys)
       if (existingAlias) {
@@ -1691,6 +1799,9 @@ export class DeploymentsService {
       description?: string;
       tags?: string;
       proxyRuleSetId?: string;
+      proxyRuleSetName?: string;
+      proxyRuleSetIds?: string[];
+      proxyRuleSetNames?: string[];
       alias?: string;
       basePath?: string;
       files: Array<{
@@ -1717,6 +1828,14 @@ export class DeploymentsService {
 
     // Parse tags if provided
     const tags = this.parseTags(params.tags);
+
+    // Resolve proxy rule set names/IDs to a deduped ordered array
+    const resolvedProxyRuleSetIds = await this.resolveProxyRuleSetIds(params.projectId, {
+      proxyRuleSetNames: params.proxyRuleSetNames,
+      proxyRuleSetIds: params.proxyRuleSetIds,
+      proxyRuleSetName: params.proxyRuleSetName,
+      proxyRuleSetId: params.proxyRuleSetId,
+    });
 
     for (const file of params.files) {
       try {
@@ -1803,7 +1922,7 @@ export class DeploymentsService {
           params.commitSha,
           deploymentId,
           {
-            proxyRuleSetId: params.proxyRuleSetId,
+            proxyRuleSetIdsToAppend: resolvedProxyRuleSetIds,
           },
         );
         aliases.push(params.alias);
@@ -1828,7 +1947,7 @@ export class DeploymentsService {
         {
           isAutoPreview: true,
           basePath: effectiveBasePath,
-          proxyRuleSetId: params.proxyRuleSetId,
+          proxyRuleSetIdsToAppend: resolvedProxyRuleSetIds,
         },
       );
       aliases.push(previewAliasName);

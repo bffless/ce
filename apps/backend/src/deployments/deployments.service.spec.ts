@@ -388,6 +388,74 @@ describe('DeploymentsService', () => {
     });
   });
 
+  describe('resolveProxyRuleSetIds (plural resolver)', () => {
+    // Private method — invoked via cast for direct unit coverage
+    const callResolve = (input: Record<string, unknown>) =>
+      (service as unknown as {
+        resolveProxyRuleSetIds: (projectId: string, input: unknown) => Promise<string[]>;
+      }).resolveProxyRuleSetIds(mockProjectId, input);
+
+    it('returns empty array when nothing provided', async () => {
+      const result = await callResolve({});
+      expect(result).toEqual([]);
+    });
+
+    it('returns plural ids unchanged when only proxyRuleSetIds provided', async () => {
+      const ids = ['id-a', 'id-b', 'id-c'];
+      const result = await callResolve({ proxyRuleSetIds: ids });
+      expect(result).toEqual(ids);
+    });
+
+    it('resolves plural names + ids, names first in caller order', async () => {
+      setupMockChain([
+        [
+          { id: 'id-stripe', name: 'stripe-webhook' },
+          { id: 'id-ai', name: 'ai-proxy' },
+        ],
+      ]);
+      const result = await callResolve({
+        proxyRuleSetNames: ['stripe-webhook', 'ai-proxy'],
+        proxyRuleSetIds: ['id-extra'],
+      });
+      expect(result).toEqual(['id-stripe', 'id-ai', 'id-extra']);
+    });
+
+    it('falls back to singular proxyRuleSetId when no plural provided', async () => {
+      const result = await callResolve({ proxyRuleSetId: 'id-legacy' });
+      expect(result).toEqual(['id-legacy']);
+    });
+
+    it('falls back to singular proxyRuleSetName when no plural provided', async () => {
+      setupMockChain([[{ id: 'id-from-name', name: 'legacy-set' }]]);
+      const result = await callResolve({ proxyRuleSetName: 'legacy-set' });
+      expect(result).toEqual(['id-from-name']);
+    });
+
+    it('ignores singular when plural is provided', async () => {
+      const result = await callResolve({
+        proxyRuleSetIds: ['id-plural'],
+        proxyRuleSetId: 'id-singular-ignored',
+      });
+      expect(result).toEqual(['id-plural']);
+    });
+
+    it('dedupes preserving first occurrence', async () => {
+      setupMockChain([[{ id: 'id-shared', name: 'shared-set' }]]);
+      const result = await callResolve({
+        proxyRuleSetNames: ['shared-set'],
+        proxyRuleSetIds: ['id-shared', 'id-unique'],
+      });
+      expect(result).toEqual(['id-shared', 'id-unique']);
+    });
+
+    it('throws BadRequestException when a plural name does not resolve', async () => {
+      setupMockChain([[{ id: 'id-known', name: 'known-set' }]]);
+      await expect(
+        callResolve({ proxyRuleSetNames: ['known-set', 'unknown-set'] }),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
   describe('resolveAlias', () => {
     it('should resolve alias to commit SHA', async () => {
       setupMockChain([[mockAlias]]);
