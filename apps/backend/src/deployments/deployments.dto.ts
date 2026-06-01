@@ -107,7 +107,7 @@ export class CreateDeploymentDto {
   basePath?: string;
 
   @ApiPropertyOptional({
-    description: 'Proxy rule set name to apply to auto-preview aliases. Takes precedence over proxyRuleSetId. If neither specified, uses project default.',
+    description: 'Proxy rule set name to apply to auto-preview aliases. Legacy — prefer proxyRuleSetNames.',
     example: 'api-backend',
   })
   @IsOptional()
@@ -115,12 +115,32 @@ export class CreateDeploymentDto {
   proxyRuleSetName?: string;
 
   @ApiPropertyOptional({
-    description: 'Proxy rule set ID to apply to auto-preview aliases. Use proxyRuleSetName for a more human-friendly option.',
+    description: 'Proxy rule set ID to apply to auto-preview aliases. Legacy — prefer proxyRuleSetIds.',
     example: '550e8400-e29b-41d4-a716-446655440000',
   })
   @IsOptional()
   @IsUUID()
   proxyRuleSetId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Ordered list of proxy rule set names to attach to auto-preview aliases. Appended idempotently to any rule sets already on the alias. Overrides proxyRuleSetName when provided.',
+    example: ['stripe-webhook', 'ai-proxy'],
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  proxyRuleSetNames?: string[];
+
+  @ApiPropertyOptional({
+    description: 'Ordered list of proxy rule set IDs to attach to auto-preview aliases. Appended idempotently to any rule sets already on the alias. Overrides proxyRuleSetId when provided.',
+    example: ['550e8400-e29b-41d4-a716-446655440000'],
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  proxyRuleSetIds?: string[];
 }
 
 export class CreateDeploymentZipDto {
@@ -213,7 +233,7 @@ export class CreateDeploymentZipDto {
   basePath?: string;
 
   @ApiPropertyOptional({
-    description: 'Proxy rule set name to apply to auto-preview aliases. Takes precedence over proxyRuleSetId. If neither specified, uses project default.',
+    description: 'Proxy rule set name to apply to auto-preview aliases. Legacy — prefer proxyRuleSetNames.',
     example: 'api-backend',
   })
   @IsOptional()
@@ -221,12 +241,32 @@ export class CreateDeploymentZipDto {
   proxyRuleSetName?: string;
 
   @ApiPropertyOptional({
-    description: 'Proxy rule set ID to apply to auto-preview aliases. Use proxyRuleSetName for a more human-friendly option.',
+    description: 'Proxy rule set ID to apply to auto-preview aliases. Legacy — prefer proxyRuleSetIds.',
     example: '550e8400-e29b-41d4-a716-446655440000',
   })
   @IsOptional()
   @IsUUID()
   proxyRuleSetId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Ordered list of proxy rule set names to attach to auto-preview aliases. Appended idempotently to any rule sets already on the alias. Overrides proxyRuleSetName when provided.',
+    example: ['stripe-webhook', 'ai-proxy'],
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  proxyRuleSetNames?: string[];
+
+  @ApiPropertyOptional({
+    description: 'Ordered list of proxy rule set IDs to attach to auto-preview aliases. Appended idempotently to any rule sets already on the alias. Overrides proxyRuleSetId when provided.',
+    example: ['550e8400-e29b-41d4-a716-446655440000'],
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  proxyRuleSetIds?: string[];
 
   @ApiPropertyOptional({
     description: 'Origin of the deployment. Defaults to "github" for upload-artifact GitHub Action; the admin UI sends "manual".',
@@ -736,7 +776,7 @@ export class PrepareBatchUploadDto {
   tags?: string;
 
   @ApiPropertyOptional({
-    description: 'Proxy rule set name to apply to auto-preview aliases',
+    description: 'Proxy rule set name to apply to auto-preview aliases. Legacy — prefer proxyRuleSetNames.',
     example: 'api-backend',
   })
   @IsOptional()
@@ -744,12 +784,32 @@ export class PrepareBatchUploadDto {
   proxyRuleSetName?: string;
 
   @ApiPropertyOptional({
-    description: 'Proxy rule set ID to apply to auto-preview aliases',
+    description: 'Proxy rule set ID to apply to auto-preview aliases. Legacy — prefer proxyRuleSetIds.',
     example: '550e8400-e29b-41d4-a716-446655440000',
   })
   @IsOptional()
   @IsUUID()
   proxyRuleSetId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Ordered list of proxy rule set names. Echoed on finalize-upload — the values used there are authoritative.',
+    example: ['stripe-webhook', 'ai-proxy'],
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  proxyRuleSetNames?: string[];
+
+  @ApiPropertyOptional({
+    description: 'Ordered list of proxy rule set IDs. Echoed on finalize-upload — the values used there are authoritative.',
+    example: ['550e8400-e29b-41d4-a716-446655440000'],
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  proxyRuleSetIds?: string[];
 
   @ApiProperty({
     description: 'Array of files to upload',
@@ -816,6 +876,42 @@ export class FinalizeUploadDto {
   @ApiProperty({ description: 'Upload token from prepare-batch-upload response' })
   @IsString()
   uploadToken: string;
+
+  @ApiPropertyOptional({
+    description: 'Proxy rule set name to apply to auto-preview aliases. Legacy — prefer proxyRuleSetNames.',
+    example: 'api-backend',
+  })
+  @IsOptional()
+  @IsString()
+  proxyRuleSetName?: string;
+
+  @ApiPropertyOptional({
+    description: 'Proxy rule set ID to apply to auto-preview aliases. Legacy — prefer proxyRuleSetIds.',
+    example: '550e8400-e29b-41d4-a716-446655440000',
+  })
+  @IsOptional()
+  @IsUUID()
+  proxyRuleSetId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Ordered list of proxy rule set names to attach to auto-preview aliases. Appended idempotently. Overrides any value carried over from prepare-batch-upload.',
+    example: ['stripe-webhook', 'ai-proxy'],
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  proxyRuleSetNames?: string[];
+
+  @ApiPropertyOptional({
+    description: 'Ordered list of proxy rule set IDs to attach to auto-preview aliases. Appended idempotently. Overrides any value carried over from prepare-batch-upload.',
+    example: ['550e8400-e29b-41d4-a716-446655440000'],
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  proxyRuleSetIds?: string[];
 }
 
 /**
