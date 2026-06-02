@@ -1,42 +1,45 @@
 name: Cleanup old container images
 
-# WARNING: Do NOT add delete-only-untagged-versions jobs!
-# Multi-arch images (buildx) store platform-specific manifests as "untagged" versions.
-# Deleting untagged versions breaks the OCI index references and corrupts the images.
-# See: https://github.com/actions/delete-package-versions/issues/90
+# DISABLED — see below.
+#
+# ROOT CAUSE: actions/delete-package-versions does not understand OCI multi-arch
+# image indices. A multi-arch image consists of:
+#   - 1 tagged "index" manifest (e.g., :umbrel, :latest)
+#   - N untagged platform-specific manifests (amd64, arm64, ...)
+#   - N untagged attestation manifests (provenance/SBOM from buildx)
+# Each appears as a separate "version" in GHCR, and only the index has a tag.
+#
+# `min-versions-to-keep: 20` sorts by timestamp and keeps the 20 newest. After
+# enough rebuilds, older indices' sub-manifests fall out of the keep window and
+# get deleted — leaving the (still-tagged) index pointing at vanished children.
+# Pulling the index then resolves but fails with "manifest unknown" when Docker
+# tries to fetch the platform-specific child.
+#
+# This is what corrupted ghcr.io/bffless/ce-frontend:umbrel and broke Umbrel
+# installs in June 2026. `ignore-versions` only matches version *names* (i.e.,
+# tags), so protecting "umbrel" by name does NOT protect its untagged children.
+#
+# The same hazard applies to delete-only-untagged-versions (the original
+# warning that used to live here).
+#
+# FIX OPTIONS (pick one before re-enabling):
+#   1. Custom script that walks each tagged index, collects referenced child
+#      digests, and excludes them from deletion. (GraphQL via gh api.)
+#   2. Use a third-party action that understands OCI indices, e.g.
+#      snok/container-retention-policy with --cut-off and --keep-tags.
+#   3. Live with the bloat. GHCR storage for public packages is free.
+#
+# Until then this workflow is a no-op so it doesn't silently corrupt images.
 
 on:
-  schedule:
-    - cron: '0 0 * * 0' # Weekly on Sunday at midnight UTC
-  workflow_dispatch: # Allow manual trigger
+  workflow_dispatch: # Manual trigger only; no schedule.
 
 jobs:
-  cleanup-backend:
+  noop:
     runs-on: ubuntu-latest
-    permissions:
-      packages: write
     steps:
-      - name: Delete old backend versions (keep 20 most recent)
-        uses: actions/delete-package-versions@v5
-        with:
-          package-name: ce-backend
-          package-type: container
-          min-versions-to-keep: 20
-          delete-only-pre-release-versions: false
-          # Protect semver releases, latest, and buildcache from min-versions-to-keep
-          ignore-versions: '^(v\\d+\\.\\d+\\.\\d+|latest|buildcache)$'
-
-  cleanup-frontend:
-    runs-on: ubuntu-latest
-    permissions:
-      packages: write
-    steps:
-      - name: Delete old frontend versions (keep 20 most recent)
-        uses: actions/delete-package-versions@v5
-        with:
-          package-name: ce-frontend
-          package-type: container
-          min-versions-to-keep: 20
-          delete-only-pre-release-versions: false
-          # Protect semver releases, latest, and buildcache from min-versions-to-keep
-          ignore-versions: '^(v\\d+\\.\\d+\\.\\d+|latest|buildcache)$'
+      - name: Cleanup disabled
+        run: |
+          echo "Image cleanup is disabled. See workflow file header for rationale."
+          echo "If you need to free space, run a manual cleanup that understands"
+          echo "OCI multi-arch indices — do NOT re-enable delete-package-versions."
