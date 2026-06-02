@@ -26,6 +26,10 @@ interface RulesListProps {
   onUpdateRule: (id: string, updates: UpdateProxyRuleDto) => Promise<void>;
   onDeleteRule: (id: string) => Promise<void>;
   onViewLogs?: (rule: ProxyRule) => void;
+  // When false, write actions (toggle, debug, edit, delete) are hidden so the
+  // list reads as view-only for viewers/guests. Row click still works so they
+  // can open the rule in the read-only editor.
+  canEdit?: boolean;
 }
 
 /**
@@ -57,6 +61,7 @@ export function RulesList({
   onUpdateRule,
   onDeleteRule,
   onViewLogs,
+  canEdit = true,
 }: RulesListProps) {
   const [deletingRule, setDeletingRule] = useState<ProxyRule | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -224,47 +229,49 @@ export function RulesList({
                 )}
               </div>
             </div>
-            {rule.proxyType === 'pipeline' && (
+            {rule.proxyType === 'pipeline' && rule.debugEnabled && (
+              <LogCountBadge
+                ruleId={rule.id}
+                onClick={(e) => handleViewLogs(rule, e)}
+              />
+            )}
+            {canEdit && (
               <>
-                {rule.debugEnabled && (
-                  <LogCountBadge
-                    ruleId={rule.id}
-                    onClick={(e) => handleViewLogs(rule, e)}
-                  />
+                {rule.proxyType === 'pipeline' && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={(e) => handleToggleDebug(rule, e)}
+                    title={rule.debugEnabled ? 'Disable debug logging' : 'Enable debug logging'}
+                    className={rule.debugEnabled ? 'text-purple-500' : ''}
+                  >
+                    <Bug className="h-4 w-4" />
+                  </Button>
                 )}
+                <Switch
+                  checked={rule.isEnabled}
+                  onCheckedChange={() => {}}
+                  onClick={(e) => handleToggleEnabled(rule, e)}
+                  title={rule.isEnabled ? 'Disable rule' : 'Enable rule'}
+                />
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={(e) => handleToggleDebug(rule, e)}
-                  title={rule.debugEnabled ? 'Disable debug logging' : 'Enable debug logging'}
-                  className={rule.debugEnabled ? 'text-purple-500' : ''}
+                  onClick={(e) => handleEditClick(rule, e)}
+                  title="Edit rule"
                 >
-                  <Bug className="h-4 w-4" />
+                  <Edit2 className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={(e) => handleDeleteClick(rule, e)}
+                  title="Delete rule"
+                >
+                  <Trash2 className="h-4 w-4 text-destructive" />
                 </Button>
               </>
             )}
-            <Switch
-              checked={rule.isEnabled}
-              onCheckedChange={() => {}}
-              onClick={(e) => handleToggleEnabled(rule, e)}
-              title={rule.isEnabled ? 'Disable rule' : 'Enable rule'}
-            />
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={(e) => handleEditClick(rule, e)}
-              title="Edit rule"
-            >
-              <Edit2 className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={(e) => handleDeleteClick(rule, e)}
-              title="Delete rule"
-            >
-              <Trash2 className="h-4 w-4 text-destructive" />
-            </Button>
           </div>
         ))}
       </div>

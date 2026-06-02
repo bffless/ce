@@ -5,6 +5,7 @@ import { useGetSessionQuery } from '@/services/authApi';
 import { useGetSetupStatusQuery } from '@/services/setupApi';
 import { useGetWildcardCertificateStatusQuery } from '@/services/domainsApi';
 import { useFeatureFlags } from '@/services/featureFlagsApi';
+import { useGetMyRepositoriesQuery } from '@/services/repositoriesApi';
 import { RootState } from '@/store';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -46,6 +47,13 @@ export function HomePage() {
   );
 
   const user = sessionData?.user;
+  // Show the Repositories card when the user has at least one non-guest repo
+  // membership. The backend's /api/repositories/mine already filters out
+  // guest-only entries, so total > 0 means there is somewhere to navigate to.
+  // Admins always get a result here because the endpoint returns every repo.
+  const { data: myRepos } = useGetMyRepositoriesQuery(undefined, { skip: !user });
+  const showRepositoriesCard = (myRepos?.total ?? 0) > 0;
+
   const showSslBanner =
     user?.role === 'admin' &&
     isBannerEnabled &&
@@ -156,8 +164,8 @@ export function HomePage() {
         )}
 
         {/* Navigation Cards */}
-        <div className={`grid gap-4 ${user?.role === 'admin' ? 'md:grid-cols-2 lg:grid-cols-4' : user?.role === 'member' ? 'md:grid-cols-2' : 'md:grid-cols-3'}`}>
-          {user?.role !== 'member' && (
+        <div className={`grid gap-4 ${user?.role === 'admin' ? 'md:grid-cols-2 lg:grid-cols-4' : showRepositoriesCard ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
+          {showRepositoriesCard && (
             <Link to="/repo" className="group block">
               <div className="bg-white dark:bg-card border border-[#3a3a3a]/10 dark:border-border rounded-lg p-6 hover:border-[#d96459]/50 hover:shadow-md transition-all duration-200">
                 <div className="flex items-start justify-between">
