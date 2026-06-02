@@ -13,6 +13,28 @@ import {
 import { RequiredRole } from '../domains/visibility.service';
 
 export type ProjectRole = 'owner' | 'admin' | 'contributor' | 'viewer' | 'guest';
+export type GlobalRole = 'admin' | 'user' | 'member';
+
+/**
+ * Project roles a user with the given global role is allowed to receive.
+ * Global Admins act as project Owners everywhere (see ProjectPermissionGuard)
+ * and don't need explicit grants — listed here only so the helper is total.
+ * Members are workspace participants who cannot create projects, so they
+ * cannot be granted project-admin or contributor authority without first
+ * being promoted to 'user' at the workspace level.
+ */
+const PROJECT_ROLES_BY_GLOBAL_ROLE: Record<GlobalRole, ProjectRole[]> = {
+  admin: ['owner', 'admin', 'contributor', 'viewer', 'guest'],
+  user: ['admin', 'contributor', 'viewer', 'guest'],
+  member: ['viewer', 'guest'],
+};
+
+export function isProjectRoleAllowedForGlobalRole(
+  globalRole: GlobalRole,
+  projectRole: ProjectRole,
+): boolean {
+  return PROJECT_ROLES_BY_GLOBAL_ROLE[globalRole].includes(projectRole);
+}
 
 /**
  * Rich shape returned by `listUserProjectMemberships` for the "My Sites" hub.
@@ -402,6 +424,25 @@ export class PermissionsService {
       throw new ForbiddenException('Cannot grant owner role. Use transfer ownership instead.');
     }
 
+    // Project role must stay in lane with the target's workspace-level role:
+    // a global Member cannot be granted project Admin/Contributor without
+    // first being promoted to Global User.
+    const [targetUser] = await db
+      .select({ role: users.role, email: users.email })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (!targetUser) {
+      throw new NotFoundException('User not found');
+    }
+    const targetGlobalRole = targetUser.role as GlobalRole;
+    if (!isProjectRoleAllowedForGlobalRole(targetGlobalRole, role)) {
+      throw new ForbiddenException(
+        `${targetUser.email} has the global '${targetGlobalRole}' role and cannot be granted the project '${role}' role. ` +
+          `Promote the user to 'user' in the Users tab first, then re-grant.`,
+      );
+    }
+
     await this.upsertProjectPermission(projectId, userId, role, grantedBy);
   }
 
@@ -638,6 +679,7 @@ export class PermissionsService {
           id: users.id,
           email: users.email,
           name: sql<string | null>`NULL`, // Users table doesn't have a name field yet
+          role: users.role,
         },
       })
       .from(projectPermissions)

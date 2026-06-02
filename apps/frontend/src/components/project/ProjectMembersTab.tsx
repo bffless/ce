@@ -3,7 +3,9 @@ import {
   useGetProjectPermissionsQuery,
   useGrantUserPermissionMutation,
   useRevokeUserPermissionMutation,
+  isProjectRoleAllowedForGlobalRole,
   type ProjectRole,
+  type GlobalRole,
 } from '@/services/permissionsApi';
 import {
   useGetProjectQuery,
@@ -78,6 +80,17 @@ export function ProjectMembersTab({ owner, repo }: ProjectMembersTabProps) {
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserRole, setNewUserRole] = useState<ProjectRole>('guest');
   const [editRole, setEditRole] = useState<ProjectRole>('viewer');
+
+  // Project roles available given the target member's global (workspace) role.
+  // Mirrors backend enforcement: global Members can only hold viewer/guest.
+  const allowedRolesFor = (globalRole: GlobalRole | undefined): ProjectRole[] => {
+    if (!globalRole) {
+      return ['admin', 'contributor', 'viewer', 'guest'];
+    }
+    return (['admin', 'contributor', 'viewer', 'guest'] as ProjectRole[]).filter((r) =>
+      isProjectRoleAllowedForGlobalRole(globalRole, r),
+    );
+  };
 
   // Fetch permissions
   const { data, isLoading, error } = useGetProjectPermissionsQuery({ owner, repo });
@@ -312,6 +325,13 @@ export function ProjectMembersTab({ owner, repo }: ProjectMembersTabProps) {
                       <SelectItem value="admin">Admin - Can manage settings</SelectItem>
                     </SelectContent>
                   </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Contributor and Admin require the target to have the global{' '}
+                    <code className="font-mono">user</code> or{' '}
+                    <code className="font-mono">admin</code> role. Members can only be granted
+                    Viewer or Guest — promote them in the{' '}
+                    <a href="/users" className="underline">Users tab</a> first if needed.
+                  </p>
                 </div>
               </div>
               <DialogFooter>
@@ -400,16 +420,34 @@ export function ProjectMembersTab({ owner, repo }: ProjectMembersTabProps) {
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      <SelectItem value="guest">Guest - Site access only</SelectItem>
-                                      <SelectItem value="viewer">Viewer - Read only admin</SelectItem>
-                                      <SelectItem value="contributor">
-                                        Contributor - Can deploy
-                                      </SelectItem>
-                                      <SelectItem value="admin">
-                                        Admin - Can manage settings
-                                      </SelectItem>
+                                      {allowedRolesFor(permission.user.role).includes('guest') && (
+                                        <SelectItem value="guest">Guest - Site access only</SelectItem>
+                                      )}
+                                      {allowedRolesFor(permission.user.role).includes('viewer') && (
+                                        <SelectItem value="viewer">Viewer - Read only admin</SelectItem>
+                                      )}
+                                      {allowedRolesFor(permission.user.role).includes('contributor') && (
+                                        <SelectItem value="contributor">
+                                          Contributor - Can deploy
+                                        </SelectItem>
+                                      )}
+                                      {allowedRolesFor(permission.user.role).includes('admin') && (
+                                        <SelectItem value="admin">
+                                          Admin - Can manage settings
+                                        </SelectItem>
+                                      )}
                                     </SelectContent>
                                   </Select>
+                                  {permission.user.role === 'member' && (
+                                    <p className="text-xs text-muted-foreground">
+                                      {permission.user.email} has the global{' '}
+                                      <code className="font-mono">member</code> role, so only
+                                      Viewer or Guest can be granted here. Promote them to{' '}
+                                      <code className="font-mono">user</code> in the{' '}
+                                      <a href="/users" className="underline">Users tab</a>{' '}
+                                      first to grant Contributor or Admin.
+                                    </p>
+                                  )}
                                 </div>
                               </div>
                               <DialogFooter>

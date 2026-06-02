@@ -286,14 +286,30 @@ describe('PermissionsService', () => {
   });
 
   describe('grantPermission', () => {
+    // Two-stage select mock: first call (target-user lookup) returns the supplied
+    // user row, every subsequent call (existing-permission lookup, etc.) returns
+    // the supplied existing row (or []). Implemented with mockImplementation so
+    // state is contained to the current test — mockReturnValueOnce queues survive
+    // jest.clearAllMocks() and would leak into neighbouring tests.
+    const mockSelectChain = (
+      targetUser: { role: string; email: string } | null,
+      existing: { role: string }[] = [],
+    ) => {
+      let call = 0;
+      (db.select as jest.Mock).mockImplementation(() => {
+        call += 1;
+        const result = call === 1 ? (targetUser ? [targetUser] : []) : existing;
+        return {
+          from: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockResolvedValue(result),
+        };
+      });
+    };
+
     it('should grant permission if granter is admin', async () => {
       jest.spyOn(service, 'getUserProjectRole').mockResolvedValue('admin');
-
-      (db.select as jest.Mock).mockReturnValue({
-        from: jest.fn().mockReturnThis(),
-        where: jest.fn().mockReturnThis(),
-        limit: jest.fn().mockResolvedValue([]), // No existing permission
-      });
+      mockSelectChain({ role: 'user', email: 'target@example.com' });
 
       (db.insert as jest.Mock).mockReturnValue({
         values: jest.fn().mockResolvedValue(undefined),
@@ -322,14 +338,7 @@ describe('PermissionsService', () => {
 
     it('should update existing permission if already exists', async () => {
       jest.spyOn(service, 'getUserProjectRole').mockResolvedValue('admin');
-
-      const mockExisting = { role: 'viewer' };
-
-      (db.select as jest.Mock).mockReturnValue({
-        from: jest.fn().mockReturnThis(),
-        where: jest.fn().mockReturnThis(),
-        limit: jest.fn().mockResolvedValue([mockExisting]),
-      });
+      mockSelectChain({ role: 'user', email: 'target@example.com' }, [{ role: 'viewer' }]);
 
       (db.update as jest.Mock).mockReturnValue({
         set: jest.fn().mockReturnThis(),
@@ -339,6 +348,73 @@ describe('PermissionsService', () => {
       await service.grantPermission(mockProjectId, mockUserId, 'admin', mockGrantedBy);
 
       expect(db.update).toHaveBeenCalled();
+    });
+
+    describe('role lanes', () => {
+      it('rejects granting project admin to a global member', async () => {
+        jest.spyOn(service, 'getUserProjectRole').mockResolvedValue('admin');
+        mockSelectChain({ role: 'member', email: 'member@example.com' });
+
+        await expect(
+          service.grantPermission(mockProjectId, mockUserId, 'admin', mockGrantedBy),
+        ).rejects.toThrow(
+          /global 'member' role and cannot be granted the project 'admin' role/,
+        );
+      });
+
+      it('rejects granting project contributor to a global member', async () => {
+        jest.spyOn(service, 'getUserProjectRole').mockResolvedValue('admin');
+        mockSelectChain({ role: 'member', email: 'member@example.com' });
+
+        await expect(
+          service.grantPermission(mockProjectId, mockUserId, 'contributor', mockGrantedBy),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('allows granting project viewer to a global member', async () => {
+        jest.spyOn(service, 'getUserProjectRole').mockResolvedValue('admin');
+        mockSelectChain({ role: 'member', email: 'member@example.com' });
+        (db.insert as jest.Mock).mockReturnValue({
+          values: jest.fn().mockResolvedValue(undefined),
+        });
+
+        await service.grantPermission(mockProjectId, mockUserId, 'viewer', mockGrantedBy);
+
+        expect(db.insert).toHaveBeenCalled();
+      });
+
+      it('allows granting project guest to a global member', async () => {
+        jest.spyOn(service, 'getUserProjectRole').mockResolvedValue('admin');
+        mockSelectChain({ role: 'member', email: 'member@example.com' });
+        (db.insert as jest.Mock).mockReturnValue({
+          values: jest.fn().mockResolvedValue(undefined),
+        });
+
+        await service.grantPermission(mockProjectId, mockUserId, 'guest', mockGrantedBy);
+
+        expect(db.insert).toHaveBeenCalled();
+      });
+
+      it('allows granting project admin to a global user', async () => {
+        jest.spyOn(service, 'getUserProjectRole').mockResolvedValue('admin');
+        mockSelectChain({ role: 'user', email: 'user@example.com' });
+        (db.insert as jest.Mock).mockReturnValue({
+          values: jest.fn().mockResolvedValue(undefined),
+        });
+
+        await service.grantPermission(mockProjectId, mockUserId, 'admin', mockGrantedBy);
+
+        expect(db.insert).toHaveBeenCalled();
+      });
+
+      it('throws NotFoundException if the target user does not exist', async () => {
+        jest.spyOn(service, 'getUserProjectRole').mockResolvedValue('admin');
+        mockSelectChain(null);
+
+        await expect(
+          service.grantPermission(mockProjectId, mockUserId, 'viewer', mockGrantedBy),
+        ).rejects.toThrow(/User not found/);
+      });
     });
   });
 
