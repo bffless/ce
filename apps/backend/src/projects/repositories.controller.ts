@@ -56,8 +56,8 @@ export class RepositoriesController {
   })
   async getRepositoryFeed(
     @Query() query: GetRepositoryFeedQueryDto,
-    @CurrentUser('id') userId?: string,
+    @CurrentUser() user?: CurrentUserData,
   ): Promise<GetRepositoryFeedResponseDto> {
-    return this.projectsService.getRepositoryFeed(userId || null, query);
+    return this.projectsService.getRepositoryFeed(user?.id ?? null, user?.role, query);
   }
 }

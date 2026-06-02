@@ -29,7 +29,7 @@ export interface FeedRepository {
   displayName: string | null;
   description: string | null;
   isPublic: boolean;
-  permissionType: 'owner' | 'direct' | 'group' | 'public';
+  permissionType: 'owner' | 'direct' | 'group' | 'public' | 'admin';
   role: string | null;
   stats: RepositoryStats;
   createdAt: string;

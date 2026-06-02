@@ -794,7 +794,7 @@ describe('ProjectsService', () => {
       mockDb.execute.mockResolvedValueOnce(mockResults);
       mockDb.execute.mockResolvedValueOnce([{ total: 1 }]);
 
-      const result = await service.getRepositoryFeed('user-uuid-1234', {
+      const result = await service.getRepositoryFeed('user-uuid-1234', 'user', {
         page: 1,
         limit: 20,
       });
@@ -830,7 +830,7 @@ describe('ProjectsService', () => {
       mockDb.execute.mockResolvedValueOnce(mockResults);
       mockDb.execute.mockResolvedValueOnce([{ total: 1 }]);
 
-      const result = await service.getRepositoryFeed(null, {
+      const result = await service.getRepositoryFeed(null, undefined, {
         page: 1,
         limit: 20,
       });
@@ -845,7 +845,7 @@ describe('ProjectsService', () => {
       mockDb.execute.mockResolvedValueOnce([]);
       mockDb.execute.mockResolvedValueOnce([{ total: 0 }]);
 
-      await service.getRepositoryFeed('user-uuid-1234', {
+      await service.getRepositoryFeed('user-uuid-1234', 'user', {
         page: 1,
         limit: 20,
         search: 'testquery',
@@ -859,7 +859,7 @@ describe('ProjectsService', () => {
       mockDb.execute.mockResolvedValueOnce([]);
       mockDb.execute.mockResolvedValueOnce([{ total: 0 }]);
 
-      await service.getRepositoryFeed('user-uuid-1234', {
+      await service.getRepositoryFeed('user-uuid-1234', 'user', {
         page: 1,
         limit: 20,
         sortBy: 'name',
@@ -873,7 +873,7 @@ describe('ProjectsService', () => {
       mockDb.execute.mockResolvedValueOnce([]);
       mockDb.execute.mockResolvedValueOnce([{ total: 0 }]);
 
-      const result = await service.getRepositoryFeed('user-uuid-1234', {
+      const result = await service.getRepositoryFeed('user-uuid-1234', 'user', {
         page: 1,
         limit: 500, // Request more than max
       });
@@ -886,7 +886,7 @@ describe('ProjectsService', () => {
       mockDb.execute.mockResolvedValueOnce([]);
       mockDb.execute.mockResolvedValueOnce([{ total: 0 }]);
 
-      const result = await service.getRepositoryFeed('user-uuid-1234', {
+      const result = await service.getRepositoryFeed('user-uuid-1234', 'user', {
         page: 3,
         limit: 20,
       });
@@ -918,10 +918,58 @@ describe('ProjectsService', () => {
       mockDb.execute.mockResolvedValueOnce(mockResults);
       mockDb.execute.mockResolvedValueOnce([{ total: 1 }]);
 
-      const result = await service.getRepositoryFeed('user-uuid-1234', {});
+      const result = await service.getRepositoryFeed('user-uuid-1234', 'user', {});
 
       expect(result.repositories[0].stats.storageBytes).toBe(10485760);
       expect(result.repositories[0].stats.storageMB).toBe(10);
+    });
+
+    it('should return every project for a global admin, regardless of permissions', async () => {
+      const mockResults = [
+        {
+          id: 'proj-a',
+          owner: 'alice',
+          name: 'site-a',
+          display_name: null,
+          description: null,
+          is_public: false,
+          permission_type: 'admin',
+          role: 'owner',
+          deployment_count: 0,
+          storage_bytes: 0,
+          last_deployed_at: null,
+          created_at: new Date(),
+          updated_at: new Date(),
+        },
+        {
+          id: 'proj-b',
+          owner: 'bob',
+          name: 'site-b',
+          display_name: null,
+          description: null,
+          is_public: false,
+          permission_type: 'admin',
+          role: 'owner',
+          deployment_count: 0,
+          storage_bytes: 0,
+          last_deployed_at: null,
+          created_at: new Date(),
+          updated_at: new Date(),
+        },
+      ];
+
+      mockDb.execute.mockResolvedValueOnce(mockResults);
+      mockDb.execute.mockResolvedValueOnce([{ total: 2 }]);
+
+      const result = await service.getRepositoryFeed('admin-uuid', 'admin', {
+        page: 1,
+        limit: 20,
+      });
+
+      expect(result.total).toBe(2);
+      expect(result.repositories).toHaveLength(2);
+      expect(result.repositories[0].permissionType).toBe('admin');
+      expect(result.repositories[0].role).toBe('owner');
     });
   });
 });

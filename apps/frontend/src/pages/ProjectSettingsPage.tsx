@@ -98,14 +98,16 @@ export function ProjectSettingsPage() {
     },
   );
 
-  // Check if current user has admin or owner role
+  // Check if current user has admin or owner role.
+  // Global admins are treated as project Owner on every project (see docs: authorization.md).
+  const isGlobalAdmin = currentUser?.role === 'admin';
   const userPermission = permissions?.userPermissions.find(
     (perm) => perm.userId === currentUser?.id,
   );
-  const hasAdminAccess = userPermission
-    ? ['owner', 'admin'].includes(userPermission.role)
-    : false;
-  const hasOwnerAccess = userPermission?.role === 'owner';
+  const hasAdminAccess =
+    isGlobalAdmin ||
+    (userPermission ? ['owner', 'admin'].includes(userPermission.role) : false);
+  const hasOwnerAccess = isGlobalAdmin || userPermission?.role === 'owner';
 
   const isLoading = isLoadingSession || isLoadingProject || isLoadingPermissions;
   const error = projectError || permissionsError;

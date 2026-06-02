@@ -500,6 +500,7 @@ export class ProjectsService {
    */
   async getRepositoryFeed(
     userId: string | null,
+    userRole: string | undefined,
     query: {
       page?: number;
       limit?: number;
@@ -518,7 +519,7 @@ export class ProjectsService {
       displayName: string | null;
       description: string | null;
       isPublic: boolean;
-      permissionType: 'owner' | 'direct' | 'group' | 'public';
+      permissionType: 'owner' | 'direct' | 'group' | 'public' | 'admin';
       role: 'owner' | 'admin' | 'contributor' | 'viewer' | null;
       stats: {
         deploymentCount: number;
@@ -553,8 +554,27 @@ export class ProjectsService {
     const sortDirection = order === 'asc' ? sql`ASC` : sql`DESC`;
 
     let accessibleReposQuery;
+    const isGlobalAdmin = userId !== null && userRole === 'admin';
 
-    if (userId) {
+    if (isGlobalAdmin) {
+      // Global admin acts as owner on every project (see docs: authorization.md).
+      accessibleReposQuery = sql`
+        SELECT
+          p.id, p.owner, p.name, p.display_name, p.description, p.is_public,
+          'admin' as permission_type, 'owner' as role, 1 as priority,
+          p.created_at, p.updated_at,
+          COALESCE(COUNT(DISTINCT a.deployment_id), 0)::int as deployment_count,
+          COALESCE(SUM(a.size), 0)::bigint as storage_bytes,
+          MAX(a.created_at) as last_deployed_at
+        FROM projects p
+        LEFT JOIN assets a ON a.project_id = p.id
+        WHERE 1=1 ${searchCondition}
+        GROUP BY p.id, p.owner, p.name, p.display_name, p.description,
+                 p.is_public, p.created_at, p.updated_at
+        ORDER BY ${sortColumn} ${sortDirection}
+        LIMIT ${limit} OFFSET ${offset}
+      `;
+    } else if (userId) {
       // Authenticated user - only repos they have explicit access to (owned, direct, group)
       accessibleReposQuery = sql`
         WITH all_repos AS (
@@ -632,7 +652,9 @@ export class ProjectsService {
 
     // Get total count (for pagination)
     let totalCountQuery;
-    if (userId) {
+    if (isGlobalAdmin) {
+      totalCountQuery = sql`SELECT COUNT(*)::int as total FROM projects`;
+    } else if (userId) {
       totalCountQuery = sql`
         WITH all_repos AS (
           SELECT p.id FROM projects p WHERE p.created_by = ${userId}

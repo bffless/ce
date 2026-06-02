@@ -256,8 +256,8 @@ export class FeedRepositoryDto {
   @ApiProperty({ description: 'Is public repository' })
   isPublic: boolean;
 
-  @ApiProperty({ description: 'Permission type', enum: ['owner', 'direct', 'group', 'public'] })
-  permissionType: 'owner' | 'direct' | 'group' | 'public';
+  @ApiProperty({ description: 'Permission type', enum: ['owner', 'direct', 'group', 'public', 'admin'] })
+  permissionType: 'owner' | 'direct' | 'group' | 'public' | 'admin';
 
   @ApiProperty({
     description: 'User role',
