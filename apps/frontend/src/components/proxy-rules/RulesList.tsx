@@ -146,10 +146,10 @@ export function RulesList({
         {sortedRules.map((rule) => (
           <div
             key={rule.id}
-            onClick={() => onRuleClick(rule)}
-            className={`flex items-center gap-3 p-3 border rounded-md bg-background transition-colors cursor-pointer hover:bg-accent ${
-              !rule.isEnabled ? 'opacity-50' : ''
-            }`}
+            onClick={canEdit ? () => onRuleClick(rule) : undefined}
+            className={`flex items-center gap-3 p-3 border rounded-md bg-background transition-colors ${
+              canEdit ? 'cursor-pointer hover:bg-accent' : ''
+            } ${!rule.isEnabled ? 'opacity-50' : ''}`}
           >
             <div
               className="flex items-center justify-center w-6 h-6 rounded bg-muted text-xs font-mono flex-shrink-0"
