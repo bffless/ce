@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.48](https://github.com/bffless/ce/compare/v0.1.47...v0.1.48) (2026-06-02)
+
+
+### Bug Fixes
+
+* **auth:** treat global Admin as project Owner consistently ([4038562](https://github.com/bffless/ce/commit/4038562c9ccae123fee2679d839d7ed451332834))
+* **auth:** treat global Admin as project Owner consistently ([73db853](https://github.com/bffless/ce/commit/73db853c0c2bd0d19a7ae4c313a76774b0b87255))
+* **authz:** Repositories card visibility and proxy-rule action gating ([39af013](https://github.com/bffless/ce/commit/39af0133a73622122dec42b5d57f78d8b2279009))
+
 ## [0.1.47](https://github.com/bffless/ce/compare/v0.1.46...v0.1.47) (2026-06-01)
 
 
