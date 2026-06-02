@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.49](https://github.com/bffless/ce/compare/v0.1.48...v0.1.49) (2026-06-02)
+
+
+### Bug Fixes
+
+* **permissions:** enforce role lanes when granting project permissions ([b922377](https://github.com/bffless/ce/commit/b92237736e9629e0f7346c4f51c9f7f6ef42ecf7))
+* **permissions:** enforce role lanes when granting project permissions ([3523fdf](https://github.com/bffless/ce/commit/3523fdfbe93093d8a3a1426d0683dcc73c156b4f))
+
 ## [0.1.48](https://github.com/bffless/ce/compare/v0.1.47...v0.1.48) (2026-06-02)
 
 
