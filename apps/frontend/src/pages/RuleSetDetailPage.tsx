@@ -209,6 +209,7 @@ export function RuleSetDetailPage() {
             onViewLogs={(rule) =>
               navigate(`/repo/${owner}/${repo}/proxy-rules/${ruleSetId}/${rule.id}/logs`)
             }
+            canEdit={canEdit}
           />
         </CardContent>
       </Card>
