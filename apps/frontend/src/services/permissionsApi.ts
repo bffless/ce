@@ -2,6 +2,23 @@ import { api } from './api';
 
 export type ProjectRole = 'owner' | 'admin' | 'contributor' | 'viewer' | 'guest';
 export type ProjectGroupRole = 'admin' | 'contributor' | 'viewer' | 'guest';
+export type GlobalRole = 'admin' | 'user' | 'member';
+
+// Mirrors PROJECT_ROLES_BY_GLOBAL_ROLE in the backend's permissions.service.ts.
+// Global Members can only hold viewer/guest at the project level; promotion to
+// 'user' is required before they can be a project Admin or Contributor.
+export const PROJECT_ROLES_BY_GLOBAL_ROLE: Record<GlobalRole, ProjectRole[]> = {
+  admin: ['owner', 'admin', 'contributor', 'viewer', 'guest'],
+  user: ['admin', 'contributor', 'viewer', 'guest'],
+  member: ['viewer', 'guest'],
+};
+
+export function isProjectRoleAllowedForGlobalRole(
+  globalRole: GlobalRole,
+  projectRole: ProjectRole,
+): boolean {
+  return PROJECT_ROLES_BY_GLOBAL_ROLE[globalRole].includes(projectRole);
+}
 
 export interface UserPermission {
   id: string;
@@ -14,6 +31,7 @@ export interface UserPermission {
     id: string;
     email: string;
     name: string | null;
+    role: GlobalRole;
   };
 }
 
