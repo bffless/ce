@@ -35,6 +35,7 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { CreateDeploymentDialog } from './CreateDeploymentDialog';
+import { useProjectRole } from '@/hooks/useProjectRole';
 
 interface DeploymentsListProps {
   owner: string;
@@ -48,6 +49,7 @@ interface DeploymentsListProps {
 export function DeploymentsList({ owner, repo }: DeploymentsListProps) {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
+  const { canEdit } = useProjectRole(owner, repo);
   const { selectedBranch, currentPage, sortBy, sortOrder, searchQuery } = useAppSelector(
     (state) => state.repoOverview,
   );
@@ -204,10 +206,12 @@ export function DeploymentsList({ owner, repo }: DeploymentsListProps) {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Deployments</CardTitle>
-            <Button onClick={() => setCreateOpen(true)} className="gap-2">
-              <Plus className="h-4 w-4" />
-              Create Deployment
-            </Button>
+            {canEdit && (
+              <Button onClick={() => setCreateOpen(true)} className="gap-2">
+                <Plus className="h-4 w-4" />
+                Create Deployment
+              </Button>
+            )}
           </CardHeader>
           <CardContent className="p-8 text-center">
             <Package className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
@@ -322,10 +326,12 @@ export function DeploymentsList({ owner, repo }: DeploymentsListProps) {
           </Button>
 
           {/* Create Deployment */}
-          <Button onClick={() => setCreateOpen(true)} size="sm" className="gap-2 ml-auto">
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            Create Deployment
-          </Button>
+          {canEdit && (
+            <Button onClick={() => setCreateOpen(true)} size="sm" className="gap-2 ml-auto">
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              Create Deployment
+            </Button>
+          )}
         </div>
 
         {/* Empty Search Results */}
