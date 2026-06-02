@@ -17,11 +17,25 @@ interface UseProjectRoleResult {
 export function useProjectRole(owner: string, repo: string): UseProjectRoleResult {
   const { data: sessionData, isLoading: isLoadingSession } = useGetSessionQuery();
   const currentUser = sessionData?.user;
+  const isGlobalAdmin = currentUser?.role === 'admin';
 
   const { data: permissions, isLoading: isLoadingPermissions } = useGetProjectPermissionsQuery(
     { owner, repo },
-    { skip: !owner || !repo || !currentUser }
+    { skip: !owner || !repo || !currentUser || isGlobalAdmin }
   );
+
+  // Global admins are project owners on every project in their workspace —
+  // matches the backend ProjectPermissionGuard / PermissionsService bypass.
+  if (isGlobalAdmin) {
+    return {
+      role: 'owner',
+      isLoading: isLoadingSession,
+      canEdit: true,
+      canAdmin: true,
+      isOwner: true,
+      isGuest: false,
+    };
+  }
 
   const isLoading = isLoadingSession || isLoadingPermissions;
 

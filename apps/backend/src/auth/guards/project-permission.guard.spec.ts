@@ -335,5 +335,60 @@ describe('ProjectPermissionGuard', () => {
         await expect(guard.canActivate(mockExecutionContext)).rejects.toThrow(ForbiddenException);
       });
     });
+
+    describe('global admin bypass', () => {
+      beforeEach(() => {
+        jest.spyOn(reflector, 'get').mockImplementation((key: string) => {
+          if (key === PROJECT_ROLE_KEY) return 'owner';
+          return undefined;
+        });
+        jest.spyOn(projectsService, 'getProjectByOwnerName').mockResolvedValue(mockProject);
+      });
+
+      it('grants project owner privileges to a global admin with no membership row', async () => {
+        mockRequest.user = { id: 'admin-user', role: 'admin' };
+        const getRoleSpy = jest.spyOn(permissionsService, 'getUserProjectRole');
+
+        const result = await guard.canActivate(mockExecutionContext);
+
+        expect(result).toBe(true);
+        expect(mockRequest.userRole).toBe('owner');
+        expect(getRoleSpy).not.toHaveBeenCalled();
+      });
+
+      it('still confines a project-scoped admin api key to its declared project', async () => {
+        mockRequest.user = {
+          id: 'admin-user',
+          role: 'admin',
+          apiKeyProjectId: 'some-other-project',
+        };
+
+        await expect(guard.canActivate(mockExecutionContext)).rejects.toThrow(
+          new ForbiddenException('API key is not authorized for this project'),
+        );
+      });
+
+      it('allows a project-scoped admin api key when it targets the same project', async () => {
+        mockRequest.user = {
+          id: 'admin-user',
+          role: 'admin',
+          apiKeyProjectId: mockProject.id,
+        };
+
+        const result = await guard.canActivate(mockExecutionContext);
+
+        expect(result).toBe(true);
+        expect(mockRequest.userRole).toBe('owner');
+      });
+
+      it('does not bypass for non-admin global roles', async () => {
+        mockRequest.user = { id: 'regular-user', role: 'user' };
+        jest.spyOn(permissionsService, 'getUserProjectRole').mockResolvedValue(null);
+
+        await expect(guard.canActivate(mockExecutionContext)).rejects.toThrow(
+          new ForbiddenException('You do not have access to this project'),
+        );
+      });
+    });
   });
 });

@@ -79,6 +79,25 @@ export class ProjectPermissionGuard implements CanActivate {
       throw new UnauthorizedException('Authentication required');
     }
 
+    // Project-scoped API keys are confined to their declared project even for
+    // global admins — matches PermissionsService.requireProjectAccess ordering.
+    if (
+      user.apiKeyProjectId !== undefined &&
+      user.apiKeyProjectId !== null &&
+      user.apiKeyProjectId !== project.id
+    ) {
+      throw new ForbiddenException('API key is not authorized for this project');
+    }
+
+    // Global admins act as project owners on every project in their workspace.
+    // The api-key scope check above still applies, so a project-scoped admin
+    // key cannot reach a different project.
+    if (user.role === 'admin') {
+      request.project = project;
+      request.userRole = 'owner';
+      return true;
+    }
+
     // Check if user has required role on the project
     const userRole = await this.permissionsService.getUserProjectRole(user.id, project.id);
 
