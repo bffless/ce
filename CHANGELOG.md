@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.50](https://github.com/bffless/ce/compare/v0.1.49...v0.1.50) (2026-06-02)
+
+
+### Bug Fixes
+
+* **authz:** hide Create Deployment for viewers and make rule rows non-clickable ([13b12a6](https://github.com/bffless/ce/commit/13b12a6de5ef8ecd3393ec963a368cd394b0962c))
+* **deployments:** hide Create Deployment button for viewers ([8b15ea1](https://github.com/bffless/ce/commit/8b15ea12c09d327b723b972d4f436053fe3535db))
+* **proxy-rules:** make rule rows non-clickable for viewers ([42c7999](https://github.com/bffless/ce/commit/42c7999641ff130b3d0542371f6957fe05ab19d1))
+
 ## [0.1.49](https://github.com/bffless/ce/compare/v0.1.48...v0.1.49) (2026-06-02)
 
 
