@@ -1129,7 +1129,12 @@ export class ProxyMiddleware implements NestMiddleware {
             res.setHeader(key, value);
           }
         }
-        res.status(result.response.status).json(result.response.body);
+        // Use res.send (not res.json): for string bodies (text/plain, text/html,
+        // application/x-sh, etc.) res.json would JSON.stringify the string and
+        // produce `"#!/bin/sh\n..."` instead of the raw script. res.send writes
+        // strings verbatim, calls res.json for objects/arrays, and respects the
+        // Content-Type header we already set above.
+        res.status(result.response.status).send(result.response.body);
       } else {
         // Pipeline failed - map error codes to appropriate HTTP status codes
         const errorCode = result.error?.code;
