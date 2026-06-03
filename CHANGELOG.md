@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.52](https://github.com/bffless/ce/compare/v0.1.51...v0.1.52) (2026-06-03)
+
+
+### Bug Fixes
+
+* **pipelines:** serve string response bodies verbatim instead of JSON-encoding ([b8f3212](https://github.com/bffless/ce/commit/b8f32124bfbfdc0a95f7ed2a3847999fb8fa66e2))
+* **pipelines:** serve string response bodies verbatim instead of JSON-encoding ([5ebf008](https://github.com/bffless/ce/commit/5ebf008e91bbb983448274026031bc0d3fc4793b))
+
 ## [0.1.51](https://github.com/bffless/ce/compare/v0.1.50...v0.1.51) (2026-06-02)
 
 
