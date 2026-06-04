@@ -1048,6 +1048,17 @@ ${httpServerBlock}${httpsServerBlock}
     const locationBlock = `
 ${proxyLocations}
 
+    # BFFless auth relay endpoints (login relay, session, callback, refresh, logout)
+    location /_bffless/auth/ {
+        proxy_pass http://${backendHost}:${backendPort}/_bffless/auth/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+    }
+
     # Main location - serves static content
     location / {
         rewrite ^/(.*)$ ${internalPath}/$1 break;
@@ -1231,6 +1242,17 @@ ${serverBlocks}`;
 
     const locationBlock = `
 ${proxyLocations}
+
+    # BFFless auth relay endpoints (login relay, session, callback, refresh, logout)
+    location /_bffless/auth/ {
+        proxy_pass http://${backendHost}:${backendPort}/_bffless/auth/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+    }
 
     location / {
         rewrite ^/(.*)$ ${internalPath}/$1 break;
