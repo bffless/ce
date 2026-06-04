@@ -163,6 +163,30 @@ export class NginxConfigService implements OnModuleInit {
       });
     }
 
+    // Primary domain mappings have a dedicated generator that handles wwwBehavior
+    // (serve-both / redirect), SPA fallback, and the /_bffless/auth relay. Without
+    // this branch, regeneration paths that funnel through generateConfig — startup
+    // (regenerateDomainMappingConfigs) and proxy-rule changes (regenerateForAlias)
+    // — would fall through to the custom-domain/subdomain template and silently
+    // drop SPA mode + www handling, until the next explicit domain save re-ran the
+    // primary generator. Mirrors the isPrimary branch in DomainsService.
+    if (domainMapping.isPrimary) {
+      const primaryConfig: PrimaryDomainConfig = {
+        id: domainMapping.id,
+        owner: project.owner,
+        repo: project.name,
+        alias: domainMapping.alias || 'latest',
+        path: domainMapping.path || '',
+        wwwBehavior: domainMapping.wwwBehavior as PrimaryDomainConfig['wwwBehavior'],
+        isSpa: domainMapping.isSpa,
+        proxyRules,
+      };
+      const baseDomain = this.getBaseDomain();
+      return this.shouldNginxHandleSsl()
+        ? this.generateCEPrimaryDomainConfig(primaryConfig, baseDomain)
+        : this.generatePlatformPrimaryDomainConfig(primaryConfig, baseDomain);
+    }
+
     // Determine SSL mode for subdomains.
     // Two ways a subdomain can serve HTTPS:
     //   1. Let's Encrypt wildcard cert at /etc/nginx/ssl/wildcard.<baseDomain>.crt
