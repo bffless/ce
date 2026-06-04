@@ -374,6 +374,11 @@ export function LoginPage() {
                       const params = new URLSearchParams();
                       if (searchParams.get('redirect')) params.set('redirect', searchParams.get('redirect')!);
                       if (searchParams.get('projectInvite')) params.set('projectInvite', searchParams.get('projectInvite')!);
+                      // Preserve custom-domain relay params so new users get relayed
+                      // back to the target domain after signing up (not stranded on admin).
+                      if (searchParams.get('customDomainRelay')) params.set('customDomainRelay', searchParams.get('customDomainRelay')!);
+                      if (searchParams.get('targetDomain')) params.set('targetDomain', searchParams.get('targetDomain')!);
+                      if (searchParams.get('targetOrigin')) params.set('targetOrigin', searchParams.get('targetOrigin')!);
                       const qs = params.toString();
                       return qs ? `?${qs}` : '';
                     })()}`}
