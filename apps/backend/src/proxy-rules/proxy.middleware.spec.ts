@@ -169,7 +169,12 @@ describe('ProxyMiddleware', () => {
       expect((middleware as any).matchesPattern('/api/*', '/api/users')).toBe(true);
       expect((middleware as any).matchesPattern('/api/*', '/api/users/123')).toBe(true);
       expect((middleware as any).matchesPattern('/api/*', '/api/')).toBe(true);
-      expect((middleware as any).matchesPattern('/api/*', '/api')).toBe(true);
+      // The wildcard requires a path separator: '/prefix/*' must NOT match the
+      // bare '/prefix', so a same-named SPA route (e.g. '/auth') falls through
+      // to the SPA fallback instead of being proxied.
+      expect((middleware as any).matchesPattern('/api/*', '/api')).toBe(false);
+      expect((middleware as any).matchesPattern('/auth/*', '/auth')).toBe(false);
+      expect((middleware as any).matchesPattern('/auth/*', '/auth/signin')).toBe(true);
       expect((middleware as any).matchesPattern('/api/*', '/graphql')).toBe(false);
     });
 
