@@ -1438,8 +1438,11 @@ export class ProxyMiddleware implements NestMiddleware {
     if (pattern === path) return true;
     if (!pattern.includes('*')) return false;
 
-    // Backward-compat: '/prefix/*' also matches the bare '/prefix' (no trailing slash).
-    if (pattern.endsWith('/*') && path === pattern.slice(0, -2)) return true;
+    // Note: '/prefix/*' matches '/prefix/' and '/prefix/<sub>' but NOT the bare
+    // '/prefix' — the wildcard requires a path separator. This lets a same-named
+    // client-side SPA route (e.g. bare '/auth') fall through to the SPA fallback
+    // while subpaths (e.g. '/auth/signin') are still proxied. To also match the
+    // bare prefix, use '/prefix*' or add an explicit '/prefix' rule.
 
     // Glob → regex: escape regex metacharacters (but not '*'), then replace
     // '*' with '.*' and anchor. Handles trailing, leading, and middle wildcards.
