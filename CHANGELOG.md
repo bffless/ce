@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.54](https://github.com/bffless/ce/compare/v0.1.53...v0.1.54) (2026-06-04)
+
+
+### Bug Fixes
+
+* serve /auth via SPA fallback instead of proxying to backend ([d552713](https://github.com/bffless/ce/commit/d5527133787341759f7ac7a855c5136e7d0641fc))
+* serve /auth via SPA fallback instead of proxying to backend ([9767137](https://github.com/bffless/ce/commit/976713781bcdf63a32b30d5f706933d4a46dfe6a))
+
 ## [0.1.53](https://github.com/bffless/ce/compare/v0.1.52...v0.1.53) (2026-06-04)
 
 
