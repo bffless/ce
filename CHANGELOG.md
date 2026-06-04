@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.53](https://github.com/bffless/ce/compare/v0.1.52...v0.1.53) (2026-06-04)
+
+
+### Bug Fixes
+
+* **auth:** relay custom-domain sign-ups back to the target domain ([2e24b84](https://github.com/bffless/ce/commit/2e24b846915996fb070a66f4e735e2e64f186849))
+* **auth:** relay custom-domain sign-ups back to the target domain ([f7186f4](https://github.com/bffless/ce/commit/f7186f45e050df44fbfcf06eff95b109b533a5cd))
+
 ## [0.1.52](https://github.com/bffless/ce/compare/v0.1.51...v0.1.52) (2026-06-03)
 
 
