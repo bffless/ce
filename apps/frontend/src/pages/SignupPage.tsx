@@ -90,6 +90,15 @@ export function SignupPage() {
   const redirectTo = validateRedirectUrl(searchParams.get('redirect'));
   const isExternalRedirect = redirectTo.startsWith('http');
 
+  // Custom domain relay params (mirror LoginPage). When a new user signs up
+  // from a cross-origin custom domain, we must relay the freshly-created
+  // session back to that domain via a domain token — otherwise they finish
+  // stranded on the admin host with no auth cookie on the content domain.
+  const customDomainRelay = searchParams.get('customDomainRelay') === 'true';
+  const targetDomain = searchParams.get('targetDomain');
+  const targetOrigin = searchParams.get('targetOrigin');
+  const [isRelaying, setIsRelaying] = useState(false);
+
   const doRedirect = useCallback(() => {
     if (isExternalRedirect) {
       window.location.href = redirectTo;
@@ -97,6 +106,50 @@ export function SignupPage() {
       navigate(redirectTo);
     }
   }, [isExternalRedirect, redirectTo, navigate]);
+
+  // Finish a successful auth: relay to the custom domain if requested,
+  // otherwise fall back to the normal redirect. Mirrors LoginPage's relay flow.
+  const finishAuthRedirect = useCallback(async () => {
+    if (customDomainRelay && targetDomain) {
+      setIsRelaying(true);
+      try {
+        const response = await fetch('/api/auth/domain-token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            targetDomain,
+            redirectPath: searchParams.get('redirect'),
+            ...(targetOrigin && { targetOrigin }),
+          }),
+        });
+
+        if (response.ok) {
+          const { redirectUrl } = await response.json();
+          // Redirect to custom domain callback
+          window.location.href = redirectUrl;
+          return;
+        }
+
+        // Domain token request failed, fall back to normal redirect
+        console.error('Failed to get domain token:', await response.text());
+        toast({
+          title: 'Warning',
+          description: 'Could not authenticate to custom domain. Redirecting to dashboard.',
+          variant: 'destructive',
+        });
+      } catch (error) {
+        console.error('Domain relay error:', error);
+        toast({
+          title: 'Warning',
+          description: 'Could not authenticate to custom domain. Redirecting to dashboard.',
+          variant: 'destructive',
+        });
+      }
+      setIsRelaying(false);
+    }
+    doRedirect();
+  }, [customDomainRelay, targetDomain, targetOrigin, searchParams, toast, doRedirect]);
 
   // Extract invite token from redirect URL if present (e.g., /invite/{token})
   const inviteToken = useMemo(() => {
@@ -147,9 +200,9 @@ export function SignupPage() {
   // Redirect if already logged in
   useEffect(() => {
     if (!isLoadingSession && sessionData?.user) {
-      doRedirect();
+      finishAuthRedirect();
     }
-  }, [isLoadingSession, sessionData, doRedirect]);
+  }, [isLoadingSession, sessionData, finishAuthRedirect]);
 
   // Pre-fill email when user has a valid invitation
   useEffect(() => {
@@ -253,13 +306,13 @@ export function SignupPage() {
           title: 'Welcome back!',
           description: 'You have been signed in successfully.',
         });
-        doRedirect();
+        await finishAuthRedirect();
       } else {
         toast({
           title: 'Account created!',
           description: 'Your account has been successfully created.',
         });
-        doRedirect();
+        await finishAuthRedirect();
       }
     } catch (error: any) {
       let errorMessage = authMode === 'signin'
@@ -278,10 +331,12 @@ export function SignupPage() {
     }
   };
 
-  if (isLoadingSession || isLoadingRegistration || isLoadingInvitation) {
+  if (isLoadingSession || isLoadingRegistration || isLoadingInvitation || isRelaying) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-muted-foreground">Loading...</div>
+        <div className="text-muted-foreground">
+          {isRelaying ? 'Redirecting to custom domain...' : 'Loading...'}
+        </div>
       </div>
     );
   }
@@ -324,7 +379,15 @@ export function SignupPage() {
                 <Button
                   variant="outline"
                   className="w-full"
-                  onClick={() => navigate(`/login${searchParams.get('redirect') ? `?redirect=${searchParams.get('redirect')}` : ''}`)}
+                  onClick={() => navigate(`/login${(() => {
+                    const params = new URLSearchParams();
+                    if (searchParams.get('redirect')) params.set('redirect', searchParams.get('redirect')!);
+                    if (customDomainRelay) params.set('customDomainRelay', 'true');
+                    if (targetDomain) params.set('targetDomain', targetDomain);
+                    if (targetOrigin) params.set('targetOrigin', targetOrigin);
+                    const qs = params.toString();
+                    return qs ? `?${qs}` : '';
+                  })()}`)}
                 >
                   Sign In
                 </Button>
@@ -593,6 +656,9 @@ export function SignupPage() {
                           const params = new URLSearchParams();
                           if (searchParams.get('redirect')) params.set('redirect', searchParams.get('redirect')!);
                           if (projectInviteToken) params.set('projectInvite', projectInviteToken);
+                          if (customDomainRelay) params.set('customDomainRelay', 'true');
+                          if (targetDomain) params.set('targetDomain', targetDomain);
+                          if (targetOrigin) params.set('targetOrigin', targetOrigin);
                           const qs = params.toString();
                           return qs ? `?${qs}` : '';
                         })()}`}
