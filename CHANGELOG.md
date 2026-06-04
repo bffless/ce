@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.57](https://github.com/bffless/ce/compare/v0.1.56...v0.1.57) (2026-06-04)
+
+
+### Bug Fixes
+
+* route primary domain mappings to the primary generator in generateConfig ([8c2ce9a](https://github.com/bffless/ce/commit/8c2ce9add335607b4cb0a65fac4cccff278ec10a))
+* route primary domain mappings to the primary generator on regeneration ([c494edd](https://github.com/bffless/ce/commit/c494edd50f536c22b9d5867af9c826c0a27a7249))
+
 ## [0.1.56](https://github.com/bffless/ce/compare/v0.1.55...v0.1.56) (2026-06-04)
 
 
