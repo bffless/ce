@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.56](https://github.com/bffless/ce/compare/v0.1.55...v0.1.56) (2026-06-04)
+
+
+### Bug Fixes
+
+* proxy /_bffless/auth/* on primary domain nginx config ([c94a9c8](https://github.com/bffless/ce/commit/c94a9c8310038d16be0acfc55255c6128b09c4b5))
+* proxy /_bffless/auth/* on primary domain nginx config ([e4660dc](https://github.com/bffless/ce/commit/e4660dc21bf521b575338f1098965447288aac01))
+
 ## [0.1.55](https://github.com/bffless/ce/compare/v0.1.54...v0.1.55) (2026-06-04)
 
 
