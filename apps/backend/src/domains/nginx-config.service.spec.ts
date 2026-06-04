@@ -448,6 +448,56 @@ server {
 
       expect(config).toContain('latest');
     });
+
+    it('routes isPrimary mappings to the primary-domain generator (SPA + www + auth relay survive regeneration)', async () => {
+      // Regression: regeneration paths (startup, proxy-rule changes) funnel
+      // primary mappings through generateConfig. Without an isPrimary branch they
+      // fell through to the custom-domain template, dropping SPA mode + www
+      // handling until the next explicit domain save.
+      const domainMapping = {
+        id: 'domain-primary',
+        projectId: 'proj-1',
+        domain: 'example.com',
+        domainType: 'custom' as const,
+        alias: 'production',
+        path: '/dist',
+        sslEnabled: true,
+        isActive: true,
+        isPublic: null,
+        unauthorizedBehavior: null,
+        requiredRole: null,
+        dnsVerified: true,
+        createdBy: 'user-1',
+        createdAt: new Date('2024-01-01'),
+        updatedAt: new Date('2024-01-01'),
+        sslExpiresAt: null,
+        dnsVerifiedAt: null,
+        nginxConfigPath: null,
+        autoRenewSsl: true,
+        sslRenewedAt: null,
+        sslRenewalStatus: null,
+        sslRenewalError: null,
+        stickySessionsEnabled: true,
+        stickySessionDuration: 86400,
+        isSpa: true,
+        isPrimary: true,
+        wwwBehavior: 'serve-both' as const,
+        redirectTarget: null,
+        redirectType: '301' as const,
+      };
+
+      const config = await service.generateConfig(domainMapping, mockProject);
+
+      // Primary-domain generator output, not the custom-domain template
+      expect(config).toContain('Primary Domain Configuration');
+      // www handling preserved (serve-both → "server_name <base> www.<base>").
+      // server_name comes from getBaseDomain(), not domainMapping.domain.
+      expect(config).toContain('www.');
+      // SPA fallback present because isSpa is true
+      expect(config).toContain('@spa_fallback');
+      // BFFless auth relay proxied (not swallowed by SPA fallback)
+      expect(config).toContain('location /_bffless/auth/');
+    });
   });
 
   describe('generateRedirectDomainConfig', () => {
