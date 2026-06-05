@@ -27,6 +27,7 @@ import {
 import { ChevronDown, ChevronRight, ChevronUp, GripVertical, Plus, Trash2, Send, Info, Filter } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import type { HandlerType, ValidatorConfig } from '@/services/pipelinesApi';
+import { useGetCurrentStorageConfigQuery } from '@/services/setupApi';
 import type {
   PipelineStepConfig,
   PipelineConfig as PipelineConfigType,
@@ -61,14 +62,19 @@ interface PipelineConfigProps {
 const HANDLER_GROUPS: { label: string; types: HandlerType[] }[] = [
   { label: 'Input', types: ['form_handler'] },
   { label: 'Data', types: ['data_create', 'data_query', 'data_update', 'data_delete', 'db_aggregate'] },
-  { label: 'Files', types: ['file_upload_handler', 'file_serve_handler', 'image_convert_handler', 'signed_url'] },
+  { label: 'Files', types: ['file_upload_handler', 'file_serve_handler', 'image_convert_handler', 'signed_url', 'presigned_upload', 'register_upload'] },
   { label: 'AI & ML', types: ['ai_handler', 'replicate', 'embed_store', 'vector_search'] },
   { label: 'Payments', types: ['stripe_checkout', 'stripe_webhook'] },
   { label: 'Integrations', types: ['github_api', 'google_calendar'] },
   { label: 'Other', types: ['email_handler', 'function_handler', 'http_request', 'delay'] },
 ];
 
-function HandlerTypeSelectContent() {
+function HandlerTypeSelectContent({
+  unsupported,
+}: {
+  /** Map of handler type → reason it's disabled (e.g. storage backend can't presign) */
+  unsupported?: Partial<Record<HandlerType, string>>;
+}) {
   return (
     <>
       {HANDLER_GROUPS.map((group, i) => (
@@ -76,14 +82,19 @@ function HandlerTypeSelectContent() {
           {i > 0 && <SelectSeparator />}
           <SelectGroup>
             <SelectLabel className="text-xs text-muted-foreground font-semibold">{group.label}</SelectLabel>
-            {group.types.map((type) => (
-              <SelectItem key={type} value={type} className="py-1.5">
-                <div>
-                  <div className="font-medium">{getHandlerDisplayName(type)}</div>
-                  <div className="text-xs text-muted-foreground">{getHandlerDescription(type)}</div>
-                </div>
-              </SelectItem>
-            ))}
+            {group.types.map((type) => {
+              const disabledReason = unsupported?.[type];
+              return (
+                <SelectItem key={type} value={type} className="py-1.5" disabled={!!disabledReason}>
+                  <div>
+                    <div className="font-medium">{getHandlerDisplayName(type)}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {disabledReason || getHandlerDescription(type)}
+                    </div>
+                  </div>
+                </SelectItem>
+              );
+            })}
           </SelectGroup>
         </Fragment>
       ))}
@@ -118,6 +129,15 @@ export function PipelineConfig({
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [deletePostConfirm, setDeletePostConfirm] = useState<string | null>(null);
   const [terminalExpanded, setTerminalExpanded] = useState(false);
+
+  // Direct-to-bucket uploads (presigned_upload) only work on object storage,
+  // not local. Disable the option in the picker when storage can't presign.
+  const { data: storageConfig } = useGetCurrentStorageConfigQuery();
+  const storageProvider = storageConfig?.storageProvider?.toLowerCase();
+  const supportsPresignedUploads = !!storageProvider && storageProvider !== 'local';
+  const unsupportedHandlers: Partial<Record<HandlerType, string>> = supportsPresignedUploads
+    ? {}
+    : { presigned_upload: 'Requires S3, GCS, MinIO, or Azure storage (not local)' };
 
   // Separate terminal steps (response_handler, proxy_forward) from regular steps
   const allSteps = config.steps || [];
@@ -588,7 +608,7 @@ export function PipelineConfig({
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent className="max-h-[400px]">
-                              <HandlerTypeSelectContent />
+                              <HandlerTypeSelectContent unsupported={unsupportedHandlers} />
                             </SelectContent>
                           </Select>
                         </div>
@@ -957,7 +977,7 @@ data: {"type":"text-delta","value":" world"}
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent className="max-h-[400px]">
-                              <HandlerTypeSelectContent />
+                              <HandlerTypeSelectContent unsupported={unsupportedHandlers} />
                             </SelectContent>
                           </Select>
                         </div>

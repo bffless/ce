@@ -18,6 +18,8 @@ export * from './http-request.handler';
 export * from './stripe-checkout.handler';
 export * from './stripe-webhook.handler';
 export * from './signed-url.handler';
+export * from './presigned-upload.handler';
+export * from './register-upload.handler';
 export * from './github-api.handler';
 export * from './google-calendar.handler';
 export * from './delay.handler';

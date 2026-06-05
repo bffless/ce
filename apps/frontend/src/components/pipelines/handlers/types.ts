@@ -332,6 +332,8 @@ export type HandlerConfig =
   | VectorSearchHandlerConfig
   | HttpRequestHandlerConfig
   | SignedUrlHandlerConfig
+  | PresignedUploadHandlerConfig
+  | RegisterUploadHandlerConfig
   | StripeCheckoutHandlerConfig
   | StripeWebhookHandlerConfig
   | DelayHandlerConfig;
@@ -341,6 +343,40 @@ export interface SignedUrlHandlerConfig extends BaseHandlerConfig {
   path: string;
   /** URL expiration in seconds. Default: 3600 */
   expiresIn?: number;
+}
+
+export interface PresignedUploadHandlerConfig extends BaseHandlerConfig {
+  /** Storage sub-directory (e.g. "images", "documents") */
+  subDir: string;
+  /** Expression resolving to the upload filename. Default: request.body.filename */
+  filename?: string;
+  /** Organize files in YYYY-MM-DD folders */
+  dateBucket?: boolean;
+  /** Presigned URL expiration in seconds. Default: 3600 */
+  expiresIn?: number;
+  /** Max file size hint (bytes), echoed to the client and enforced at register */
+  maxFileSize?: number;
+  /** Allowed MIME type patterns, echoed to the client and enforced at register */
+  allowedMimeTypes?: string[];
+}
+
+export interface RegisterUploadHandlerConfig extends BaseHandlerConfig {
+  /** Schema where the upload metadata record is stored */
+  schemaId: string;
+  /** Storage sub-directory the file was uploaded into (should match presigned_upload) */
+  subDir: string;
+  /** Expression resolving to the storageKey from presigned_upload. Default: request.body.storageKey */
+  storageKey?: string;
+  /** Expression resolving to the display filename. Default: request.body.originalName */
+  originalName?: string;
+  /** Max allowed file size in bytes (enforced against the uploaded object). Default: 500MB */
+  maxFileSize?: number;
+  /** Allowed MIME type patterns (enforced against the object's content-type when known) */
+  allowedMimeTypes?: string[];
+  /** Delete the uploaded object if it fails validation. Default: true */
+  deleteOnViolation?: boolean;
+  /** Map additional fields to schema fields */
+  extraFields?: Record<string, string>;
 }
 
 export interface DelayHandlerConfig extends BaseHandlerConfig {
