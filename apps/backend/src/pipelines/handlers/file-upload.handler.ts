@@ -4,16 +4,12 @@ import { StepHandlerRegistry } from '../execution/step-handler.registry';
 import { ExpressionEvaluator } from '../execution/expression-evaluator';
 import { PipelineContext, StepResult } from '../execution/pipeline-context.interface';
 import { PipelineStep } from '../types';
-import { PipelineDataService } from '../pipeline-data.service';
 import { PipelineSchemasService } from '../pipeline-schemas.service';
 import { ConfigurationError, SchemaNotFoundError } from '../errors';
 import { IStorageAdapter, STORAGE_ADAPTER } from '../../storage/storage.interface';
-import { db } from '../../db/client';
-import { assets, projects } from '../../db/schema';
-import { AssetType } from '../../types/asset-type.enum';
+import { UploadRecordService } from '../upload-record.service';
 import { randomUUID } from 'crypto';
 import { createHash } from 'crypto';
-import { eq } from 'drizzle-orm';
 import * as path from 'path';
 
 /**
@@ -34,8 +30,8 @@ export class FileUploadHandler implements StepHandler<FileUploadHandlerConfig> {
   constructor(
     private readonly registry: StepHandlerRegistry,
     private readonly expressionEvaluator: ExpressionEvaluator,
-    private readonly dataService: PipelineDataService,
     private readonly schemasService: PipelineSchemasService,
+    private readonly uploadRecords: UploadRecordService,
     @Inject(STORAGE_ADAPTER) private readonly storageAdapter: IStorageAdapter,
   ) {
     this.registry.register(this);
@@ -97,7 +93,7 @@ export class FileUploadHandler implements StepHandler<FileUploadHandlerConfig> {
 
       // Validate MIME type
       const allowedMimeTypes = config.allowedMimeTypes || ['*/*'];
-      if (!this.isMimeTypeAllowed(file.mimetype, allowedMimeTypes)) {
+      if (!this.uploadRecords.isMimeTypeAllowed(file.mimetype, allowedMimeTypes)) {
         return {
           success: false,
           error: {
@@ -184,67 +180,30 @@ export class FileUploadHandler implements StepHandler<FileUploadHandlerConfig> {
       }
     }
 
-    // Build storage key — get owner/repo from deployment context, or fall back to project lookup
-    let owner = context.deployment?.owner;
-    let repo = context.deployment?.repo;
-    if (!owner || !repo) {
-      const [project] = await db
-        .select({ owner: projects.owner, name: projects.name })
-        .from(projects)
-        .where(eq(projects.id, context.projectId))
-        .limit(1);
-      if (!project) {
-        throw new ConfigurationError(
-          'Could not resolve project for file upload storage path',
-          stepName,
-        );
-      }
-      owner = project.owner;
-      repo = project.name;
-    }
-
-    const uuid = randomUUID();
-    const sanitizedFilename = originalName.replace(/[^a-zA-Z0-9._-]/g, '_');
-    let storageKey = `${owner}/${repo}/uploads/${config.subDir}`;
-
-    let dateBucketSegment = '';
-    if (config.dateBucket) {
-      dateBucketSegment = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-      storageKey += `/${dateBucketSegment}`;
-    }
-
-    const storedFilename = `${uuid}-${sanitizedFilename}`;
-    storageKey += `/${storedFilename}`;
-
-    // Upload to storage
-    await this.storageAdapter.upload(fileBuffer, storageKey, {
-      mimeType,
+    // Build storage key (shared with the presigned upload path).
+    const { owner, repo } = await this.uploadRecords.resolveOwnerRepo(context, stepName);
+    const keyParts = this.uploadRecords.buildUploadKey({
+      owner,
+      repo,
+      subDir: config.subDir,
+      originalName,
+      dateBucket: config.dateBucket,
     });
 
-    // Build the public URL path (include date bucket if enabled)
-    const subDirPath = dateBucketSegment
-      ? `${config.subDir}/${dateBucketSegment}`
-      : config.subDir;
-    const publicPath = `/api/uploads/${subDirPath}/${storedFilename}`;
+    // Upload to storage (proxied — bytes pass through the backend).
+    await this.storageAdapter.upload(fileBuffer, keyParts.storageKey, {
+      mimeType,
+    });
 
     // Compute content hash
     const contentHash = createHash('md5').update(fileBuffer).digest('hex');
 
-    // Create pipeline_data record with metadata
-    const data: Record<string, unknown> = {
-      filename: storedFilename,
-      storage_path: storageKey,
-      content_type: mimeType,
-      size: fileBuffer.length,
-      url: publicPath,
-      sub_dir: config.subDir,
-      original_name: originalName,
-    };
-
-    // Evaluate extra field expressions and merge into data
+    // Evaluate extra field expressions.
+    let extraData: Record<string, unknown> | undefined;
     if (config.extraFields) {
+      extraData = {};
       for (const [fieldName, expression] of Object.entries(config.extraFields)) {
-        data[fieldName] = this.expressionEvaluator.evaluateExpression(
+        extraData[fieldName] = this.expressionEvaluator.evaluateExpression(
           expression,
           context,
           stepName,
@@ -252,50 +211,24 @@ export class FileUploadHandler implements StepHandler<FileUploadHandlerConfig> {
       }
     }
 
-    const record = await this.dataService.create(
-      config.schemaId,
-      context.projectId,
-      data,
-      context.user?.id,
-      context.deployment?.alias ?? null,
-      schema.version,
-    );
+    // Write pipeline_data + asset records (shared with the presigned path).
+    const output = await this.uploadRecords.createUploadRecords({
+      context,
+      schemaId: config.schemaId,
+      schemaVersion: schema.version,
+      subDir: config.subDir,
+      storageKey: keyParts.storageKey,
+      storedFilename: keyParts.storedFilename,
+      sanitizedFilename: keyParts.sanitizedFilename,
+      originalName,
+      mimeType,
+      size: fileBuffer.length,
+      publicPath: keyParts.publicPath,
+      contentHash,
+      extraData,
+    });
 
-    // Create asset record
-    try {
-      await db.insert(assets).values({
-        fileName: sanitizedFilename,
-        originalPath: originalName,
-        storageKey,
-        mimeType,
-        size: fileBuffer.length,
-        projectId: context.projectId,
-        uploadedBy: context.user?.id || null,
-        assetType: AssetType.UPLOADS,
-        publicPath,
-        contentHash,
-      });
-    } catch (err) {
-      this.logger.warn(`Failed to create asset record: ${err}`);
-      // Non-fatal - the upload and pipeline_data record are the source of truth
-    }
-
-    this.logger.debug(
-      `Uploaded file "${sanitizedFilename}" to ${storageKey} (record ${record.id})`,
-    );
-
-    return {
-      success: true,
-      output: {
-        id: record.id,
-        filename: sanitizedFilename,
-        url: publicPath,
-        storage_path: storageKey,
-        content_type: mimeType,
-        size: fileBuffer.length,
-        original_name: originalName,
-      },
-    };
+    return { success: true, output };
   }
 
   /**
@@ -417,21 +350,5 @@ export class FileUploadHandler implements StepHandler<FileUploadHandlerConfig> {
       // ignore URL parse errors
     }
     return `download-${randomUUID().substring(0, 8)}`;
-  }
-
-  /**
-   * Check if a MIME type matches allowed patterns (supports glob like "image/*")
-   */
-  private isMimeTypeAllowed(mimeType: string, allowedTypes: string[]): boolean {
-    for (const pattern of allowedTypes) {
-      if (pattern === '*/*') return true;
-      if (pattern === mimeType) return true;
-      // Handle wildcard patterns like "image/*"
-      if (pattern.endsWith('/*')) {
-        const prefix = pattern.slice(0, -2);
-        if (mimeType.startsWith(prefix + '/')) return true;
-      }
-    }
-    return false;
   }
 }

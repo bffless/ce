@@ -51,6 +51,8 @@ export type HandlerType =
   | 'stripe_checkout'
   | 'stripe_webhook'
   | 'signed_url'
+  | 'presigned_upload'
+  | 'register_upload'
   | 'github_api'
   | 'google_calendar'
   | 'delay';

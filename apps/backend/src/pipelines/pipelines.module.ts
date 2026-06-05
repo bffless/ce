@@ -6,6 +6,7 @@ import { PipelineDataService } from './pipeline-data.service';
 import { StateSchemaGeneratorService } from './state-schema-generator.service';
 import { ChatSchemaGeneratorService } from './chat-schema-generator.service';
 import { UploadSchemaGeneratorService } from './upload-schema-generator.service';
+import { UploadRecordService } from './upload-record.service';
 import {
   PipelineExecutionService,
   StepHandlerRegistry,
@@ -38,6 +39,8 @@ import {
   StripeCheckoutHandler,
   StripeWebhookHandler,
   SignedUrlHandler,
+  PresignedUploadHandler,
+  RegisterUploadHandler,
   GitHubApiHandler,
   GoogleCalendarHandler,
   DelayHandler,
@@ -90,6 +93,8 @@ import {
     StateSchemaGeneratorService,
     ChatSchemaGeneratorService,
     UploadSchemaGeneratorService,
+    // Shared upload bookkeeping (used by file_upload + register_upload handlers)
+    UploadRecordService,
     // Execution engine
     PipelineExecutionService,
     StepHandlerRegistry,
@@ -124,6 +129,8 @@ import {
     StripeCheckoutHandler,
     StripeWebhookHandler,
     SignedUrlHandler,
+    PresignedUploadHandler,
+    RegisterUploadHandler,
     GitHubApiHandler,
     GoogleCalendarHandler,
     DelayHandler,

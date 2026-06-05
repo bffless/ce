@@ -20,6 +20,8 @@ import { HttpRequestConfig } from './HttpRequestConfig';
 import { StripeCheckoutConfig } from './StripeCheckoutConfig';
 import { StripeWebhookConfig } from './StripeWebhookConfig';
 import { SignedUrlHandlerConfig } from './SignedUrlHandlerConfig';
+import { PresignedUploadHandlerConfig } from './PresignedUploadHandlerConfig';
+import { RegisterUploadHandlerConfig } from './RegisterUploadHandlerConfig';
 import { GitHubApiConfig } from './GitHubApiConfig';
 import { GoogleCalendarConfig } from './GoogleCalendarConfig';
 import { DelayHandlerConfig } from './DelayHandlerConfig';
@@ -312,6 +314,31 @@ export function HandlerConfigWrapper({
         </>
       );
 
+    case 'presigned_upload':
+      return (
+        <>
+          {renderVariablesPanel()}
+          <PresignedUploadHandlerConfig
+            config={config}
+            onChange={handleChange}
+            previousSteps={previousSteps}
+          />
+        </>
+      );
+
+    case 'register_upload':
+      return (
+        <>
+          {renderVariablesPanel()}
+          <RegisterUploadHandlerConfig
+            config={config}
+            onChange={handleChange}
+            projectId={projectId}
+            previousSteps={previousSteps}
+          />
+        </>
+      );
+
     case 'github_api':
       return (
         <>
@@ -383,6 +410,8 @@ export function getHandlerDisplayName(type: HandlerType): string {
     stripe_checkout: 'Stripe Checkout',
     stripe_webhook: 'Stripe Webhook',
     signed_url: 'Signed URL',
+    presigned_upload: 'Presigned Upload',
+    register_upload: 'Register Upload',
     github_api: 'GitHub API',
     google_calendar: 'Google Calendar',
     delay: 'Delay',
@@ -416,6 +445,8 @@ export function getHandlerDescription(type: HandlerType): string {
     stripe_checkout: 'Create a Stripe Checkout Session and return the payment URL',
     stripe_webhook: 'Verify Stripe webhook signature and parse the event',
     signed_url: 'Generate a time-limited presigned URL for a file in storage',
+    presigned_upload: 'Issue a presigned URL for direct-to-bucket upload (large files)',
+    register_upload: 'Record a file uploaded directly to the bucket via presigned URL',
     github_api: 'Create repositories from templates and call the GitHub API',
     google_calendar: 'Read free/busy and read/write events on Google Calendar',
     delay: 'Pause the pipeline for a configurable duration',
