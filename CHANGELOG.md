@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.58](https://github.com/bffless/ce/compare/v0.1.57...v0.1.58) (2026-06-05)
+
+
+### Features
+
+* **pipelines:** add presigned direct-to-bucket upload handlers ([a058d8f](https://github.com/bffless/ce/commit/a058d8f242ea4bedff6e75321c2e3b88aadfbb4d))
+* **pipelines:** presigned direct-to-bucket uploads + nginx upload-size fix ([767bb17](https://github.com/bffless/ce/commit/767bb1759aff0e6e03a78dea8dea05302f0a91ab))
+
+
+### Bug Fixes
+
+* **nginx:** set http-level client_max_body_size so per-domain configs don't default to 1MB ([5786d7e](https://github.com/bffless/ce/commit/5786d7ea5b6b5b33357799a9153921e72e958d86))
+
 ## [0.1.57](https://github.com/bffless/ce/compare/v0.1.56...v0.1.57) (2026-06-04)
 
 
