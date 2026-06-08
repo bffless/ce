@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.60](https://github.com/bffless/ce/compare/v0.1.59...v0.1.60) (2026-06-08)
+
+
+### Features
+
+* add update_pipeline_step MCP tool for single-step pipeline patches ([da97763](https://github.com/bffless/ce/commit/da977634b705388a823ecfdf655a091ce8cfa514))
+
 ## [0.1.59](https://github.com/bffless/ce/compare/v0.1.58...v0.1.59) (2026-06-08)
 
 
