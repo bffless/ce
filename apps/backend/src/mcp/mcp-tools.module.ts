@@ -9,6 +9,7 @@ import { UsersModule } from '../users/users.module';
 import { ApiKeysModule } from '../api-keys/api-keys.module';
 import { ProxyRulesModule } from '../proxy-rules/proxy-rules.module';
 import { CacheRulesModule } from '../cache-rules/cache-rules.module';
+import { ResponseHeaderRulesModule } from '../response-header-rules/response-header-rules.module';
 import { ProjectTools } from './tools/project.tools';
 import { DeploymentTools } from './tools/deployment.tools';
 import { DomainTools } from './tools/domain.tools';
@@ -18,6 +19,7 @@ import { UserTools } from './tools/user.tools';
 import { ApiKeyTools } from './tools/api-key.tools';
 import { ProxyRulesTools } from './tools/proxy-rules.tools';
 import { CacheRulesTools } from './tools/cache-rules.tools';
+import { ResponseHeaderRulesTools } from './tools/response-header-rules.tools';
 import { StorageTools } from './tools/storage.tools';
 
 const ALL_TOOLS = [
@@ -30,6 +32,7 @@ const ALL_TOOLS = [
   ApiKeyTools,
   ProxyRulesTools,
   CacheRulesTools,
+  ResponseHeaderRulesTools,
   StorageTools,
 ];
 
@@ -48,6 +51,7 @@ const ALL_TOOLS = [
     ApiKeysModule,
     ProxyRulesModule,
     CacheRulesModule,
+    ResponseHeaderRulesModule,
     McpModule.forFeature(ALL_TOOLS, 'bffless-ce'),
   ],
   providers: ALL_TOOLS,

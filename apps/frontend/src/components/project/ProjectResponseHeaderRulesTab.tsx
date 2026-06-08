@@ -127,6 +127,9 @@ export function ProjectResponseHeaderRulesTab({ project }: ProjectResponseHeader
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [ruleToDelete, setRuleToDelete] = useState<ResponseHeaderRule | null>(null);
   const [originsText, setOriginsText] = useState('');
+  const [customHeaderRows, setCustomHeaderRows] = useState<
+    { name: string; value: string }[]
+  >([]);
 
   const {
     data: rules,
@@ -142,6 +145,7 @@ export function ProjectResponseHeaderRulesTab({ project }: ProjectResponseHeader
     setEditingRule(null);
     setRuleForm(defaultRuleForm);
     setOriginsText('');
+    setCustomHeaderRows([]);
     setShowRuleDialog(true);
   };
 
@@ -155,6 +159,7 @@ export function ProjectResponseHeaderRulesTab({ project }: ProjectResponseHeader
       description: preset.description,
     });
     setOriginsText(preset.allowedOrigins.join('\n'));
+    setCustomHeaderRows([]);
   };
 
   const handleEditRule = (rule: ResponseHeaderRule) => {
@@ -170,8 +175,29 @@ export function ProjectResponseHeaderRulesTab({ project }: ProjectResponseHeader
       description: rule.description || '',
     });
     setOriginsText(origins.join('\n'));
+    setCustomHeaderRows(
+      Object.entries(rule.customHeaders || {}).map(([name, value]) => ({
+        name,
+        value: value ?? '',
+      })),
+    );
     setShowRuleDialog(true);
   };
+
+  const addCustomHeaderRow = () =>
+    setCustomHeaderRows((rows) => [...rows, { name: '', value: '' }]);
+
+  const updateCustomHeaderRow = (
+    index: number,
+    field: 'name' | 'value',
+    next: string,
+  ) =>
+    setCustomHeaderRows((rows) =>
+      rows.map((row, i) => (i === index ? { ...row, [field]: next } : row)),
+    );
+
+  const removeCustomHeaderRow = (index: number) =>
+    setCustomHeaderRows((rows) => rows.filter((_, i) => i !== index));
 
   const handleSaveRule = async () => {
     // Parse origins from textarea
@@ -180,9 +206,23 @@ export function ProjectResponseHeaderRulesTab({ project }: ProjectResponseHeader
       .map((s) => s.trim())
       .filter(Boolean);
 
+    // Build custom headers from key/value rows.
+    // Blank value => null, which removes a default header on matching responses.
+    const customHeaders = customHeaderRows.reduce<Record<string, string | null>>(
+      (acc, { name, value }) => {
+        const headerName = name.trim();
+        if (!headerName) return acc;
+        const trimmedValue = value.trim();
+        acc[headerName] = trimmedValue === '' ? null : trimmedValue;
+        return acc;
+      },
+      {},
+    );
+
     const formData = {
       ...ruleForm,
       allowedOrigins: origins,
+      customHeaders,
     };
 
     try {
@@ -204,6 +244,7 @@ export function ProjectResponseHeaderRulesTab({ project }: ProjectResponseHeader
       setEditingRule(null);
       setRuleForm(defaultRuleForm);
       setOriginsText('');
+      setCustomHeaderRows([]);
     } catch (err: any) {
       toast({
         title: 'Error',
@@ -321,6 +362,13 @@ export function ProjectResponseHeaderRulesTab({ project }: ProjectResponseHeader
                         {rule.name && (
                           <span className="text-xs text-muted-foreground">{rule.name}</span>
                         )}
+                        {rule.customHeaders &&
+                          Object.keys(rule.customHeaders).length > 0 && (
+                            <span className="text-xs text-muted-foreground">
+                              {Object.keys(rule.customHeaders).length} custom header
+                              {Object.keys(rule.customHeaders).length === 1 ? '' : 's'}
+                            </span>
+                          )}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -487,6 +535,52 @@ export function ProjectResponseHeaderRulesTab({ project }: ProjectResponseHeader
                 </p>
               </div>
             )}
+
+            {/* Custom Headers */}
+            <div className="space-y-2">
+              <Label>Custom Headers (optional)</Label>
+              <div className="space-y-2">
+                {customHeaderRows.map((row, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <Input
+                      value={row.name}
+                      onChange={(e) =>
+                        updateCustomHeaderRow(index, 'name', e.target.value)
+                      }
+                      placeholder="Header-Name"
+                      className="font-mono text-sm"
+                    />
+                    <Input
+                      value={row.value}
+                      onChange={(e) =>
+                        updateCustomHeaderRow(index, 'value', e.target.value)
+                      }
+                      placeholder="value"
+                      className="font-mono text-sm"
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeCustomHeaderRow(index)}
+                      aria-label="Remove header"
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+              <Button variant="outline" size="sm" onClick={addCustomHeaderRow}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add header
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Arbitrary response headers applied to matching files (e.g.{' '}
+                <code className="text-xs bg-muted px-1 rounded">
+                  Cross-Origin-Opener-Policy
+                </code>
+                ). Leave the value blank to remove a default header.
+              </p>
+            </div>
 
             {/* Priority */}
             <div className="space-y-2">
