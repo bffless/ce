@@ -362,6 +362,67 @@ export class ProxyRulesTools {
   }
 
   @Tool({
+    name: 'update_pipeline_step',
+    description:
+      'Patch a SINGLE step inside a pipeline rule without resending the whole pipeline. Use this instead of update_proxy_rule when you only need to change one step (e.g. tweak a function_handler\'s code or one config value) and the full pipelineConfig would be large. The step is located by its name. Only provided fields change; nginx is regenerated automatically. Use get_proxy_rule first to see step names and current config.',
+    parameters: z.object({
+      ruleId: z.string().describe('Proxy rule ID (must be a pipeline-type rule)'),
+      stepName: z
+        .string()
+        .describe('Name of the step to patch (the step\'s "name" field, used in expressions)'),
+      target: z
+        .enum(['steps', 'postSteps'])
+        .optional()
+        .describe('Which step list the step lives in (default "steps")'),
+      config: z
+        .record(z.string(), z.unknown())
+        .optional()
+        .describe(
+          'New handler config for this step. By default REPLACES the step\'s config entirely. Set mergeConfig:true to shallow-merge these keys into the existing config instead. Same config shape as in create_proxy_rule.',
+        ),
+      mergeConfig: z
+        .boolean()
+        .optional()
+        .describe(
+          'If true, shallow-merge `config` keys into the existing step config instead of replacing it (default false = replace).',
+        ),
+      handlerType: pipelineStepSchema.shape.handlerType
+        .optional()
+        .describe('New handler type for the step (rarely needed; usually keep the existing one)'),
+      name: z
+        .string()
+        .optional()
+        .describe('Rename the step. WARNING: other steps referencing "steps.<oldName>" will break.'),
+      isEnabled: z.boolean().optional().describe('Enable or disable just this step'),
+    }),
+  })
+  async updatePipelineStep(
+    args: {
+      ruleId: string;
+      stepName: string;
+      target?: 'steps' | 'postSteps';
+      config?: Record<string, unknown>;
+      mergeConfig?: boolean;
+      handlerType?: string;
+      name?: string;
+      isEnabled?: boolean;
+    },
+    _context: Context,
+    request: Request,
+  ) {
+    const user = await getUserContext(request, this.authService);
+    const { ruleId, ...params } = args;
+    const result = await this.proxyRulesService.updateStep(
+      ruleId,
+      params,
+      user.id,
+      user.role,
+      user.apiKeyProjectId,
+    );
+    return JSON.stringify(result);
+  }
+
+  @Tool({
     name: 'delete_proxy_rule',
     description: 'Delete a proxy rule.',
     parameters: z.object({

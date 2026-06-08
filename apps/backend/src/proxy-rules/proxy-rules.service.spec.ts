@@ -418,4 +418,105 @@ describe('ProxyRulesService', () => {
       expect(rule).toBeNull();
     });
   });
+
+  describe('updateStep', () => {
+    const makePipelineRule = (overrides: Record<string, unknown> = {}) =>
+      createMockRule({
+        id: 'pipe-1',
+        proxyType: 'pipeline' as const,
+        targetUrl: 'pipeline',
+        pipelineConfig: {
+          name: 'my-pipeline',
+          steps: [
+            { id: 's1', name: 'parse', handlerType: 'form_handler', config: { a: 1 } },
+            { id: 's2', name: 'send', handlerType: 'email_handler', config: { to: 'x@y.z' } },
+          ],
+          postSteps: [{ id: 'p1', name: 'log', handlerType: 'function_handler', config: { code: 'old' } }],
+        },
+        ...overrides,
+      });
+
+    it('throws NotFound when the rule does not exist', async () => {
+      mockDb.__setResults([[]]); // findById -> none
+
+      await expect(
+        service.updateStep('missing', { stepName: 'parse' }, 'user-1', 'admin'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws BadRequest when the rule has no pipelineConfig', async () => {
+      mockDb.__setResults([[createMockRule({ id: 'plain' })]]); // findById -> non-pipeline
+
+      await expect(
+        service.updateStep('plain', { stepName: 'parse' }, 'user-1', 'admin'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('throws NotFound (with available step names) when the step is absent', async () => {
+      mockDb.__setResults([[makePipelineRule()]]);
+
+      await expect(
+        service.updateStep('pipe-1', { stepName: 'nope' }, 'user-1', 'admin'),
+      ).rejects.toThrow(/Available steps: parse, send/);
+    });
+
+    it('replaces the target step config by default and delegates to update()', async () => {
+      mockDb.__setResults([[makePipelineRule()]]);
+      const updateSpy = jest
+        .spyOn(service, 'update')
+        .mockResolvedValue(createMockRule() as never);
+
+      await service.updateStep(
+        'pipe-1',
+        { stepName: 'parse', config: { b: 2 } },
+        'user-1',
+        'admin',
+      );
+
+      const passedConfig = updateSpy.mock.calls[0][1].pipelineConfig as any;
+      expect(passedConfig.steps[0].config).toEqual({ b: 2 }); // replaced, not merged
+      expect(passedConfig.steps[1]).toEqual({
+        id: 's2',
+        name: 'send',
+        handlerType: 'email_handler',
+        config: { to: 'x@y.z' },
+      }); // untouched
+    });
+
+    it('shallow-merges config when mergeConfig is true', async () => {
+      mockDb.__setResults([[makePipelineRule()]]);
+      const updateSpy = jest
+        .spyOn(service, 'update')
+        .mockResolvedValue(createMockRule() as never);
+
+      await service.updateStep(
+        'pipe-1',
+        { stepName: 'parse', config: { b: 2 }, mergeConfig: true },
+        'user-1',
+        'admin',
+      );
+
+      const passedConfig = updateSpy.mock.calls[0][1].pipelineConfig as any;
+      expect(passedConfig.steps[0].config).toEqual({ a: 1, b: 2 });
+    });
+
+    it('patches a step in postSteps when target is postSteps', async () => {
+      mockDb.__setResults([[makePipelineRule()]]);
+      const updateSpy = jest
+        .spyOn(service, 'update')
+        .mockResolvedValue(createMockRule() as never);
+
+      await service.updateStep(
+        'pipe-1',
+        { stepName: 'log', target: 'postSteps', config: { code: 'new' }, isEnabled: false },
+        'user-1',
+        'admin',
+      );
+
+      const passedConfig = updateSpy.mock.calls[0][1].pipelineConfig as any;
+      expect(passedConfig.postSteps[0].config).toEqual({ code: 'new' });
+      expect(passedConfig.postSteps[0].isEnabled).toBe(false);
+      expect(passedConfig.steps).toHaveLength(2); // steps untouched
+    });
+  });
 });

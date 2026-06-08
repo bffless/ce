@@ -17,7 +17,7 @@ import { PermissionsService } from '../permissions/permissions.service';
 import { NginxRegenerationService } from '../domains/nginx-regeneration.service';
 import { EmailService } from '../email/email.service';
 import { CreateProxyRuleDto, UpdateProxyRuleDto, ReorderProxyRulesDto } from './dto';
-import type { PipelineConfig } from '../db/schema/proxy-rules.schema';
+import type { PipelineConfig, PipelineStepConfig } from '../db/schema/proxy-rules.schema';
 
 // SSRF protection - blocked hostnames
 const BLOCKED_HOSTS = [
@@ -426,6 +426,84 @@ export class ProxyRulesService {
     this.logger.log(`Updated proxy rule ${id}`);
 
     return this.decryptHeaderConfig(updated);
+  }
+
+  /**
+   * Patch a single step within a pipeline rule's config, without resending the
+   * entire pipelineConfig. The step is located by name within either `steps`
+   * (default) or `postSteps`. Only the provided fields are changed; `config`
+   * replaces the step's config unless `mergeConfig` is set, in which case it is
+   * shallow-merged into the existing config.
+   *
+   * Reuses update() so permission checks, nginx regeneration, and rollback all
+   * apply identically to a full pipelineConfig update.
+   */
+  async updateStep(
+    id: string,
+    params: {
+      stepName: string;
+      target?: 'steps' | 'postSteps';
+      config?: Record<string, unknown>;
+      mergeConfig?: boolean;
+      handlerType?: string;
+      name?: string;
+      isEnabled?: boolean;
+    },
+    userId: string,
+    userRole: string,
+    apiKeyProjectId?: string | null,
+  ): Promise<typeof proxyRules.$inferSelect> {
+    const existing = await this.findById(id);
+    if (!existing) {
+      throw new NotFoundException(`Proxy rule ${id} not found`);
+    }
+
+    const pipelineConfig = existing.pipelineConfig;
+    if (!pipelineConfig) {
+      throw new BadRequestException(
+        `Proxy rule ${id} has no pipelineConfig (not a pipeline rule)`,
+      );
+    }
+
+    const target = params.target ?? 'steps';
+    const list = target === 'postSteps' ? pipelineConfig.postSteps : pipelineConfig.steps;
+    if (!list || list.length === 0) {
+      throw new NotFoundException(`Pipeline rule ${id} has no ${target} to update`);
+    }
+
+    const index = list.findIndex((s) => s.name === params.stepName);
+    if (index < 0) {
+      const available = list.map((s) => s.name).join(', ');
+      throw new NotFoundException(
+        `Step "${params.stepName}" not found in ${target}. Available steps: ${available}`,
+      );
+    }
+
+    const current = list[index];
+    const patched: PipelineStepConfig = { ...current };
+    if (params.name !== undefined) patched.name = params.name;
+    if (params.handlerType !== undefined) patched.handlerType = params.handlerType;
+    if (params.isEnabled !== undefined) patched.isEnabled = params.isEnabled;
+    if (params.config !== undefined) {
+      patched.config = params.mergeConfig
+        ? { ...current.config, ...params.config }
+        : params.config;
+    }
+
+    const newList = [...list];
+    newList[index] = patched;
+    const newConfig: PipelineConfig =
+      target === 'postSteps'
+        ? { ...pipelineConfig, postSteps: newList }
+        : { ...pipelineConfig, steps: newList };
+
+    return this.update(
+      id,
+      { pipelineConfig: newConfig } as UpdateProxyRuleDto,
+      userId,
+      userRole,
+      apiKeyProjectId,
+    );
   }
 
   /**
