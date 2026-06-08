@@ -15,7 +15,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { ChevronsUpDown, Check, Plus, Trash2, Info, ExternalLink } from 'lucide-react';
+import { ChevronsUpDown, Check, Plus, Trash2, Info, ExternalLink, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ReplicateHandlerConfig as Config } from './types';
 import type { PreviousStep } from './AvailableVariables';
@@ -130,6 +130,7 @@ export function ReplicateHandlerConfig({ config, onChange, previousSteps = [] }:
     return entries.length > 0 ? entries : [['', '']];
   });
   const [outputField, setOutputField] = useState(typedConfig.outputField || '');
+  const [timeoutMs, setTimeoutMs] = useState<number | ''>(typedConfig.timeout ?? '');
   const [modelOpen, setModelOpen] = useState(false);
 
   // Sync to parent
@@ -146,10 +147,11 @@ export function ReplicateHandlerConfig({ config, onChange, previousSteps = [] }:
       input,
       ...(version ? { version } : {}),
       ...(outputField ? { outputField } : {}),
+      ...(timeoutMs ? { timeout: timeoutMs } : {}),
     };
 
     onChangeRef.current(newConfig);
-  }, [model, version, inputEntries, outputField]);
+  }, [model, version, inputEntries, outputField, timeoutMs]);
 
   const selectPreset = useCallback((preset: ModelPreset) => {
     setModel(preset.id);
@@ -446,6 +448,34 @@ export function ReplicateHandlerConfig({ config, onChange, previousSteps = [] }:
         />
         <p className="text-xs text-muted-foreground">
           Extract a specific key from the model output. Leave empty to use the full output.
+        </p>
+      </div>
+
+      {/* Timeout (optional) */}
+      <div className="space-y-2">
+        <Label htmlFor="replicate-timeout" className="flex items-center gap-2">
+          <Clock className="h-4 w-4" />
+          Timeout (ms) <span className="text-muted-foreground font-normal">(optional)</span>
+        </Label>
+        <Input
+          id="replicate-timeout"
+          type="number"
+          value={timeoutMs}
+          onChange={(e) => {
+            const v = e.target.value;
+            setTimeoutMs(v === '' ? '' : parseInt(v, 10) || '');
+          }}
+          placeholder="30000"
+          min={1000}
+          max={300000}
+          step={1000}
+          className="font-mono text-sm"
+        />
+        <p className="text-xs text-muted-foreground">
+          Max time to wait for the prediction. Default 30000ms. Slow models (e.g. large
+          LLMs with high thinking effort) may need more. Note: values above ~60s also
+          require raising <code className="font-mono">proxy_read_timeout</code> in your
+          nginx config, or the request is cut short at the proxy.
         </p>
       </div>
     </div>
