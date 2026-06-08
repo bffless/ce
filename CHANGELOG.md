@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.59](https://github.com/bffless/ce/compare/v0.1.58...v0.1.59) (2026-06-08)
+
+
+### Features
+
+* custom response headers via UI editor + MCP tools ([105da8d](https://github.com/bffless/ce/commit/105da8dd1268aab162828bb029f4151303bab760))
+* expose arbitrary custom response headers via UI editor and MCP tools ([51cdc96](https://github.com/bffless/ce/commit/51cdc96ac979509f8437663cb5bff8e8eb9ca6c0))
+* expose step timeout field in Replicate pipeline handler editor ([0461542](https://github.com/bffless/ce/commit/04615425c97056ebfcf6f25833ca0868f9f15dce))
+
 ## [0.1.58](https://github.com/bffless/ce/compare/v0.1.57...v0.1.58) (2026-06-05)
 
 
