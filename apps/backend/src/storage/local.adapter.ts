@@ -1,5 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { IStorageAdapter, FileMetadata, StreamDownloadResult } from './storage.interface';
+import {
+  IStorageAdapter,
+  FileMetadata,
+  StreamDownloadResult,
+  DownloadStreamOptions,
+} from './storage.interface';
 import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
 import * as path from 'path';
@@ -93,14 +98,21 @@ export class LocalStorageAdapter implements IStorageAdapter {
   /**
    * Download a file as a stream without buffering into memory
    */
-  async downloadStream(key: string): Promise<StreamDownloadResult> {
+  async downloadStream(
+    key: string,
+    opts?: DownloadStreamOptions,
+  ): Promise<StreamDownloadResult> {
     const sanitizedKey = this.sanitizeKey(key);
     const storageKey = this.prefixKey(sanitizedKey);
     const fullPath = path.join(this.basePath, storageKey);
 
     try {
       const stats = await fs.stat(fullPath);
-      const stream = fsSync.createReadStream(fullPath);
+      // fs.createReadStream start/end are inclusive byte offsets (HTTP Range).
+      const hasRange = opts?.start !== undefined || opts?.end !== undefined;
+      const stream = hasRange
+        ? fsSync.createReadStream(fullPath, { start: opts?.start ?? 0, end: opts?.end })
+        : fsSync.createReadStream(fullPath);
       const mimeType = this.guessMimeType(sanitizedKey);
 
       return {

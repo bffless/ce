@@ -1,5 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { IStorageAdapter, FileMetadata, StreamDownloadResult } from './storage.interface';
+import {
+  IStorageAdapter,
+  FileMetadata,
+  StreamDownloadResult,
+  DownloadStreamOptions,
+} from './storage.interface';
 import * as Minio from 'minio';
 
 export interface MinioConfig {
@@ -132,13 +137,25 @@ export class MinioStorageAdapter implements IStorageAdapter {
   /**
    * Download a file as a stream without buffering into memory
    */
-  async downloadStream(key: string): Promise<StreamDownloadResult> {
+  async downloadStream(
+    key: string,
+    opts?: DownloadStreamOptions,
+  ): Promise<StreamDownloadResult> {
     const sanitizedKey = this.sanitizeKey(key);
     const storageKey = this.prefixKey(sanitizedKey);
 
     try {
       const stat = await this.client.statObject(this.bucket, storageKey);
-      const stream = await this.client.getObject(this.bucket, storageKey);
+
+      // When a byte range is requested, fetch only that range from storage via
+      // getPartialObject so large videos/audio are never pulled in full.
+      // length 0 means "to end of object". Bounds are inclusive (HTTP Range).
+      const hasRange = opts?.start !== undefined || opts?.end !== undefined;
+      const offset = opts?.start ?? 0;
+      const length = opts?.end !== undefined ? opts.end - offset + 1 : 0;
+      const stream = hasRange
+        ? await this.client.getPartialObject(this.bucket, storageKey, offset, length)
+        : await this.client.getObject(this.bucket, storageKey);
 
       return {
         stream,

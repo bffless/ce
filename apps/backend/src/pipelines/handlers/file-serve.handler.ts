@@ -180,6 +180,11 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
   /**
    * Stream file directly from storage to response.
    * Supports HTTP Range requests for video/audio seeking.
+   *
+   * For range requests, only the requested byte range is fetched from storage
+   * (via downloadStream's range options) and piped straight to the response so
+   * backpressure is honored — never buffering the whole object in memory or
+   * pulling the full file from storage for a partial request.
    */
   private async serveWithStream(
     storageKey: string,
@@ -188,29 +193,50 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
     context: PipelineContext,
     res: any,
   ): Promise<StepResult> {
-    const result = await this.storageAdapter.downloadStream!(storageKey);
-    const fileSize = result.size;
     const rangeHeader = context.metadata.headers['range'] as string | undefined;
 
-    // Common headers for all responses
+    // Mix cache-control into ETag so CDN refetches when cache rules change
+    const setEtag = (etag?: string) => {
+      if (!etag) return;
+      const combined = crypto
+        .createHash('md5')
+        .update(`${etag.replace(/"/g, '')}:${cacheControlHeader}`)
+        .digest('hex');
+      res.setHeader('ETag', `"${combined}"`);
+    };
+
+    // Pipe a storage stream to the response with backpressure + cleanup.
+    const pipeStream = (stream: NodeJS.ReadableStream) => {
+      stream.pipe(res);
+      stream.on('error', (err: Error) => {
+        this.logger.error(`Stream error during serve: ${err.message}`);
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Stream error' });
+        } else if (!res.writableEnded) {
+          res.end();
+        }
+      });
+      // If the client disconnects mid-stream (common when scrubbing video,
+      // which cancels in-flight range requests), stop pulling from storage.
+      res.on('close', () => {
+        if (!res.writableEnded && typeof (stream as any).destroy === 'function') {
+          (stream as any).destroy();
+        }
+      });
+    };
+
     res.setHeader('Accept-Ranges', 'bytes');
     res.setHeader('Cache-Control', cacheControlHeader);
-    if (result.etag) {
-      // Mix cache-control into ETag so CDN refetches when cache rules change
-      const combined = crypto.createHash('md5').update(`${result.etag.replace(/"/g, '')}:${cacheControlHeader}`).digest('hex');
-      res.setHeader('ETag', `"${combined}"`);
-    }
 
     if (rangeHeader) {
-      // Parse Range header (e.g., "bytes=0-1023")
+      // Need the total object size to validate the range and build Content-Range.
+      const meta = await this.storageAdapter.getMetadata(storageKey);
+      const fileSize = meta.size;
+
       const match = rangeHeader.match(/bytes=(\d*)-(\d*)/);
       if (!match) {
         res.status(416).setHeader('Content-Range', `bytes */${fileSize}`);
         res.end();
-        // Destroy the unused stream to prevent resource leaks
-        if (typeof (result.stream as any).destroy === 'function') {
-          (result.stream as any).destroy();
-        }
         return { success: true, terminates: true };
       }
 
@@ -220,76 +246,29 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
       if (start >= fileSize || end >= fileSize || start > end) {
         res.status(416).setHeader('Content-Range', `bytes */${fileSize}`);
         res.end();
-        if (typeof (result.stream as any).destroy === 'function') {
-          (result.stream as any).destroy();
-        }
         return { success: true, terminates: true };
       }
 
-      const chunkSize = end - start + 1;
+      // Fetch ONLY the requested range from storage.
+      const { stream } = await this.storageAdapter.downloadStream!(storageKey, { start, end });
 
       res.setHeader('Content-Type', contentType);
-      res.setHeader('Content-Length', chunkSize);
+      res.setHeader('Content-Length', end - start + 1);
       res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
+      setEtag(meta.etag);
       res.status(206);
 
-      // For range requests, we need to slice the stream
-      // Pipe through and track bytes to only send the requested range
-      let bytesRead = 0;
-      const stream = result.stream;
-
-      stream.on('data', (chunk: Buffer) => {
-        const chunkStart = bytesRead;
-        const chunkEnd = bytesRead + chunk.length;
-        bytesRead += chunk.length;
-
-        // Calculate overlap between this chunk and the requested range
-        const overlapStart = Math.max(chunkStart, start);
-        const overlapEnd = Math.min(chunkEnd, end + 1);
-
-        if (overlapStart < overlapEnd) {
-          const slice = chunk.slice(overlapStart - chunkStart, overlapEnd - chunkStart);
-          res.write(slice);
-        }
-
-        // If we've read past the end, we can stop
-        if (bytesRead > end) {
-          if (typeof (stream as any).destroy === 'function') {
-            (stream as any).destroy();
-          }
-          res.end();
-        }
-      });
-
-      stream.on('end', () => {
-        if (!res.writableEnded) {
-          res.end();
-        }
-      });
-
-      stream.on('error', (err: Error) => {
-        this.logger.error(`Stream error during range serve: ${err.message}`);
-        if (!res.headersSent) {
-          res.status(500).json({ error: 'Stream error' });
-        } else if (!res.writableEnded) {
-          res.end();
-        }
-      });
+      pipeStream(stream);
     } else {
-      // Full file response — stream directly
+      // Full file response — stream directly.
+      const result = await this.storageAdapter.downloadStream!(storageKey);
+
       res.setHeader('Content-Type', contentType);
-      res.setHeader('Content-Length', fileSize);
+      res.setHeader('Content-Length', result.size);
+      setEtag(result.etag);
       res.status(200);
 
-      const stream = result.stream;
-      stream.pipe(res);
-
-      stream.on('error', (err: Error) => {
-        this.logger.error(`Stream error during full serve: ${err.message}`);
-        if (!res.writableEnded) {
-          res.end();
-        }
-      });
+      pipeStream(result.stream);
     }
 
     return {

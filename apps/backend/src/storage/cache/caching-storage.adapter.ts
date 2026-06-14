@@ -1,5 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { IStorageAdapter, FileMetadata, DownloadResult, StreamDownloadResult } from '../storage.interface';
+import {
+  IStorageAdapter,
+  FileMetadata,
+  DownloadResult,
+  StreamDownloadResult,
+  DownloadStreamOptions,
+} from '../storage.interface';
 import { ICacheAdapter, CacheConfig } from './cache.interface';
 
 /**
@@ -176,11 +182,14 @@ export class CachingStorageAdapter implements IStorageAdapter {
    * Large files (video/audio) should not be cached in the application layer.
    * CDN and browser caching via Cache-Control/ETag headers handle repeat requests.
    */
-  async downloadStream(key: string): Promise<StreamDownloadResult> {
+  async downloadStream(
+    key: string,
+    opts?: DownloadStreamOptions,
+  ): Promise<StreamDownloadResult> {
     if (!this.storage.downloadStream) {
       throw new Error('Underlying storage adapter does not support streaming');
     }
-    return this.storage.downloadStream(key);
+    return this.storage.downloadStream(key, opts);
   }
 
   /**
