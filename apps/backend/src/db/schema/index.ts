@@ -8,6 +8,7 @@ export * from './deployment-aliases.schema';
 export * from './alias-proxy-rule-sets.schema';
 export * from './project-default-proxy-rule-sets.schema';
 export * from './projects.schema';
+export * from './project-secrets.schema';
 export * from './user-groups.schema';
 export * from './project-permissions.schema';
 export * from './domain-mappings.schema';

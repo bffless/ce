@@ -61,6 +61,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { ProjectAIPluginsSection } from './ProjectAIPluginsSection';
+import { ProjectSecretsSection } from './ProjectSecretsSection';
 
 // AI Service display config
 const SERVICE_CONFIG: Record<string, { name: string; color: string; bgColor: string; description: string }> = {
@@ -859,7 +860,7 @@ export function ProjectAISettingsTab({ project }: ProjectAISettingsTabProps) {
   const hasProviders = configuredProviders.length > 0;
 
   return (
-    <>
+    <div className="space-y-6">
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -924,6 +925,8 @@ export function ProjectAISettingsTab({ project }: ProjectAISettingsTabProps) {
 
       <ProjectAIServicesSection project={project} />
 
+      <ProjectSecretsSection project={project} />
+
       <AddProviderDialog
         open={showAddDialog}
         onOpenChange={setShowAddDialog}
@@ -933,6 +936,6 @@ export function ProjectAISettingsTab({ project }: ProjectAISettingsTabProps) {
         error={addError}
         isFirstProvider={!hasProviders}
       />
-    </>
+    </div>
   );
 }

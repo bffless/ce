@@ -18,6 +18,7 @@ import {
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { ProjectsService } from './projects.service';
 import { ProjectAISettingsService, AIProviderType, AIServiceType } from './project-ai-settings.service';
+import { ProjectSecretsService } from './project-secrets.service';
 import { ApiKeyGuard } from '../auth/api-key.guard';
 import { ProjectPermissionGuard } from '../auth/guards/project-permission.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -47,6 +48,7 @@ export class ProjectsController {
   constructor(
     private readonly projectsService: ProjectsService,
     private readonly aiSettingsService: ProjectAISettingsService,
+    private readonly secretsService: ProjectSecretsService,
     private readonly skillsService: SkillsService,
     private readonly pluginService: AIToolPluginService,
     @Inject(forwardRef(() => DeploymentsService))
@@ -281,6 +283,43 @@ export class ProjectsController {
       return this.aiSettingsService.testReplicateConnection(body.apiToken);
     }
     return { success: false, message: `Unknown service: ${body.service}` };
+  }
+
+  // ==========================================================================
+  // Project Secrets Endpoints (named, encrypted values for pipelines)
+  // NOTE: These MUST be defined BEFORE :owner/:name to avoid route conflicts.
+  // Values are write-only: listing returns names + metadata only, never values.
+  // ==========================================================================
+
+  @Get(':id/secrets')
+  @UseGuards(ApiKeyGuard, ProjectPermissionGuard)
+  @RequireProjectRole('contributor')
+  @ApiOperation({ summary: 'List secret names for this project (values are never returned)' })
+  @ApiResponse({ status: 200, description: 'Secret names and metadata' })
+  async listSecrets(@Param('id') id: string) {
+    return this.secretsService.listSecrets(id);
+  }
+
+  @Post(':id/secrets')
+  @UseGuards(ApiKeyGuard, ProjectPermissionGuard)
+  @RequireProjectRole('admin')
+  @ApiOperation({ summary: 'Create or rotate a project secret' })
+  @ApiResponse({ status: 200, description: 'Secret saved; returns updated names list' })
+  async setSecret(
+    @Param('id') id: string,
+    @Body() body: { name: string; value: string },
+    @CurrentUser('id') userId?: string,
+  ) {
+    return this.secretsService.setSecret(id, body.name, body.value, userId);
+  }
+
+  @Delete(':id/secrets/:name')
+  @UseGuards(ApiKeyGuard, ProjectPermissionGuard)
+  @RequireProjectRole('admin')
+  @ApiOperation({ summary: 'Delete a project secret' })
+  @ApiResponse({ status: 200, description: 'Secret deleted; returns updated names list' })
+  async deleteSecret(@Param('id') id: string, @Param('name') name: string) {
+    return this.secretsService.deleteSecret(id, name);
   }
 
   // ==========================================================================

@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import type { PreviousStep } from './AvailableVariables';
+import { useSecretNames } from '../SecretsContext';
 
 interface ExpressionInputProps {
   value: string;
@@ -32,10 +33,20 @@ export function ExpressionInput({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
+  const secretNames = useSecretNames();
 
   // Generate all available suggestions
   const allSuggestions = useMemo(() => {
     const suggestions: Suggestion[] = [];
+
+    // Project secrets (names only — values are write-only)
+    for (const secretName of secretNames) {
+      suggestions.push({
+        value: `secrets.${secretName}`,
+        description: 'Project secret',
+        category: 'Secrets',
+      });
+    }
 
     // Request info (body first as most commonly used)
     suggestions.push(
@@ -131,7 +142,7 @@ export function ExpressionInput({
     }
 
     return suggestions;
-  }, [previousSteps]);
+  }, [previousSteps, secretNames]);
 
   // Ensure value is always a string
   const safeValue = typeof value === 'string' ? value : String(value ?? '');

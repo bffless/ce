@@ -1,6 +1,7 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { ProjectsService } from './projects.service';
 import { ProjectAISettingsService } from './project-ai-settings.service';
+import { ProjectSecretsService } from './project-secrets.service';
 import { ProjectsController } from './projects.controller';
 import { RepositoriesController } from './repositories.controller';
 import { PermissionsModule } from '../permissions/permissions.module';
@@ -16,7 +17,7 @@ import { IntegrationsModule } from '../integrations/integrations.module';
     IntegrationsModule,
   ],
   controllers: [ProjectsController, RepositoriesController],
-  providers: [ProjectsService, ProjectAISettingsService],
-  exports: [ProjectsService, ProjectAISettingsService],
+  providers: [ProjectsService, ProjectAISettingsService, ProjectSecretsService],
+  exports: [ProjectsService, ProjectAISettingsService, ProjectSecretsService],
 })
 export class ProjectsModule {}

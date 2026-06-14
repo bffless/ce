@@ -211,6 +211,13 @@
       "when": 1780172073051,
       "tag": "0029_adorable_punisher",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1781441677965,
+      "tag": "0030_square_taskmaster",
+      "breakpoints": true
     }
   ]
 }

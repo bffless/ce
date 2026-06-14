@@ -28,6 +28,8 @@ import { ChevronDown, ChevronRight, ChevronUp, GripVertical, Plus, Trash2, Send,
 import { Switch } from '@/components/ui/switch';
 import type { HandlerType, ValidatorConfig } from '@/services/pipelinesApi';
 import { useGetCurrentStorageConfigQuery } from '@/services/setupApi';
+import { useGetProjectSecretsQuery } from '@/services/projectsApi';
+import { SecretNamesProvider } from './SecretsContext';
 import type {
   PipelineStepConfig,
   PipelineConfig as PipelineConfigType,
@@ -133,6 +135,11 @@ export function PipelineConfig({
   // Direct-to-bucket uploads (presigned_upload) only work on object storage,
   // not local. Disable the option in the picker when storage can't presign.
   const { data: storageConfig } = useGetCurrentStorageConfigQuery();
+  const { data: secretsData } = useGetProjectSecretsQuery(projectId, { skip: !projectId });
+  const secretNames = useMemo(
+    () => (secretsData?.secrets || []).map((s) => s.name),
+    [secretsData],
+  );
   const storageProvider = storageConfig?.storageProvider?.toLowerCase();
   const supportsPresignedUploads = !!storageProvider && storageProvider !== 'local';
   const unsupportedHandlers: Partial<Record<HandlerType, string>> = supportsPresignedUploads
@@ -437,6 +444,7 @@ export function PipelineConfig({
   );
 
   return (
+    <SecretNamesProvider secretNames={secretNames}>
     <div className="space-y-6">
       {/* Pipeline Metadata */}
       <div className="space-y-4">
@@ -1075,5 +1083,6 @@ data: {"type":"text-delta","value":" world"}
         </AlertDialogContent>
       </AlertDialog>
     </div>
+    </SecretNamesProvider>
   );
 }

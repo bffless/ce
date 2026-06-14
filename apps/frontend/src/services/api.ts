@@ -202,6 +202,7 @@ export const api = createApi({
     'PipelineData',
     'ProjectAI',
     'ProjectAIServices',
+    'ProjectSecrets',
     'ProjectPlugin',
     'PipelineLog',
     'Integration',
