@@ -8,7 +8,12 @@ import {
   SASProtocol,
 } from '@azure/storage-blob';
 import { DefaultAzureCredential, ManagedIdentityCredential } from '@azure/identity';
-import { IStorageAdapter, FileMetadata, StreamDownloadResult } from './storage.interface';
+import {
+  IStorageAdapter,
+  FileMetadata,
+  StreamDownloadResult,
+  DownloadStreamOptions,
+} from './storage.interface';
 import { AzureBlobStorageConfig, validateAzureConfig } from './azure.config';
 
 /**
@@ -149,14 +154,21 @@ export class AzureBlobStorageAdapter implements IStorageAdapter {
   /**
    * Download a file as a stream without buffering into memory
    */
-  async downloadStream(key: string): Promise<StreamDownloadResult> {
+  async downloadStream(
+    key: string,
+    opts?: DownloadStreamOptions,
+  ): Promise<StreamDownloadResult> {
     const sanitizedKey = this.sanitizeKey(key);
     const storageKey = this.prefixKey(sanitizedKey);
     const blockBlobClient = this.containerClient.getBlockBlobClient(storageKey);
 
     try {
       const properties = await blockBlobClient.getProperties();
-      const downloadResponse = await blockBlobClient.download(0);
+      // download(offset, count): count undefined reads to end. Bounds inclusive
+      // (HTTP Range), so count = end - start + 1.
+      const offset = opts?.start ?? 0;
+      const count = opts?.end !== undefined ? opts.end - offset + 1 : undefined;
+      const downloadResponse = await blockBlobClient.download(offset, count);
 
       if (!downloadResponse.readableStreamBody) {
         throw new Error('Empty response body');

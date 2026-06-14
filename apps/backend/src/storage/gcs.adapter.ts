@@ -1,6 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Storage, Bucket, GetSignedUrlConfig } from '@google-cloud/storage';
-import { IStorageAdapter, FileMetadata, StreamDownloadResult } from './storage.interface';
+import {
+  IStorageAdapter,
+  FileMetadata,
+  StreamDownloadResult,
+  DownloadStreamOptions,
+} from './storage.interface';
 import { GcsStorageConfig, validateGcsConfig } from './gcs.config';
 
 /**
@@ -119,14 +124,14 @@ export class GcsStorageAdapter implements IStorageAdapter {
   /**
    * Download a file as a stream without buffering into memory
    */
-  async downloadStream(key: string): Promise<StreamDownloadResult> {
+  async downloadStream(key: string, opts?: DownloadStreamOptions): Promise<StreamDownloadResult> {
     const sanitizedKey = this.sanitizeKey(key);
     const storageKey = this.prefixKey(sanitizedKey);
     const blob = this.bucket.file(storageKey);
 
     try {
       const [metadata] = await blob.getMetadata();
-      const stream = blob.createReadStream();
+      const stream = blob.createReadStream({ start: opts?.start, end: opts?.end });
 
       return {
         stream,

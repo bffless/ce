@@ -55,10 +55,21 @@ export interface DownloadResult {
 }
 
 /**
+ * Byte range for downloadStream (both bounds inclusive, like HTTP Range)
+ */
+export interface DownloadStreamOptions {
+  /** First byte to read (inclusive). Defaults to 0. */
+  start?: number;
+  /** Last byte to read (inclusive). Defaults to end of file. */
+  end?: number;
+}
+
+/**
  * Result from downloadStream for streaming file access
  */
 export interface StreamDownloadResult {
   stream: NodeJS.ReadableStream;
+  /** Total object size in bytes (not the range length) */
   size: number;
   etag?: string;
   mimeType?: string;
@@ -162,7 +173,10 @@ export interface IStorageAdapter {
    * Returns the stream along with metadata (size, etag, etc.)
    * Essential for serving large files (videos, images) without OOM.
    * @param key - Storage key/path
+   * @param opts - Optional byte range (inclusive bounds); the stream then
+   *               yields only the requested range, but `size` is still the
+   *               total object size (for Content-Range headers)
    * @returns Stream and metadata
    */
-  downloadStream?(key: string): Promise<StreamDownloadResult>;
+  downloadStream?(key: string, opts?: DownloadStreamOptions): Promise<StreamDownloadResult>;
 }
