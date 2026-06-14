@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.61](https://github.com/bffless/ce/compare/v0.1.60...v0.1.61) (2026-06-14)
+
+
+### Features
+
+* add project secrets for pipelines ([2f96d53](https://github.com/bffless/ce/commit/2f96d53d039249425fb6e6309e8dc5ee742c6b71))
+* project secrets for pipelines ([8aa0373](https://github.com/bffless/ce/commit/8aa03733ea70bcea29f9f23b1e912ec7faa7414b))
+
 ## [0.1.60](https://github.com/bffless/ce/compare/v0.1.59...v0.1.60) (2026-06-08)
 
 
