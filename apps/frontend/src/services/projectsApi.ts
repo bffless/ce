@@ -68,6 +68,18 @@ export interface AIServicesStatus {
   }[];
 }
 
+// Project secrets types (values are write-only; never returned)
+export interface SecretSummary {
+  name: string;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SecretsListResponse {
+  secrets: SecretSummary[];
+}
+
 // Plugin types
 export interface PluginListItem {
   id: string;
@@ -404,6 +416,41 @@ export const projectsApi = api.injectEndpoints({
       }),
     }),
 
+    // Project secrets endpoints (list returns names only; values are write-only)
+    getProjectSecrets: builder.query<SecretsListResponse, string>({
+      query: (projectId) => `/api/projects/${projectId}/secrets`,
+      providesTags: (_result, _error, projectId) => [
+        { type: 'ProjectSecrets' as const, id: projectId },
+      ],
+    }),
+
+    setProjectSecret: builder.mutation<
+      SecretsListResponse,
+      { projectId: string; name: string; value: string }
+    >({
+      query: ({ projectId, name, value }) => ({
+        url: `/api/projects/${projectId}/secrets`,
+        method: 'POST',
+        body: { name, value },
+      }),
+      invalidatesTags: (_result, _error, { projectId }) => [
+        { type: 'ProjectSecrets' as const, id: projectId },
+      ],
+    }),
+
+    deleteProjectSecret: builder.mutation<
+      SecretsListResponse,
+      { projectId: string; name: string }
+    >({
+      query: ({ projectId, name }) => ({
+        url: `/api/projects/${projectId}/secrets/${encodeURIComponent(name)}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: (_result, _error, { projectId }) => [
+        { type: 'ProjectSecrets' as const, id: projectId },
+      ],
+    }),
+
     // Skills endpoint
     listProjectSkills: builder.query<
       { skills: SkillSummary[] },
@@ -473,6 +520,10 @@ export const {
   useAddProjectAIServiceMutation,
   useRemoveProjectAIServiceMutation,
   useTestProjectAIServiceMutation,
+  // Secrets
+  useGetProjectSecretsQuery,
+  useSetProjectSecretMutation,
+  useDeleteProjectSecretMutation,
   // Skills
   useListProjectSkillsQuery,
   useGetProjectSkillsPathQuery,

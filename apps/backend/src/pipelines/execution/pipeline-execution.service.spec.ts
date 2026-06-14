@@ -29,10 +29,15 @@ describe('PipelineExecutionService — early termination', () => {
       evaluateExpression: jest.fn(),
     } as unknown as ExpressionEvaluator;
 
+    const projectSecretsService = {
+      getDecryptedSecrets: jest.fn().mockResolvedValue({}),
+    } as unknown as import('../../projects/project-secrets.service').ProjectSecretsService;
+
     return new PipelineExecutionService(
       handlerRegistry,
       validatorRegistry,
       expressionEvaluator,
+      projectSecretsService,
     );
   };
 

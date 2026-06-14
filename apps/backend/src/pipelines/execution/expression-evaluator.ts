@@ -60,7 +60,7 @@ export class ExpressionEvaluator {
 
     // Check if this looks like a valid expression path (must start with a known root)
     // This allows literal values like email addresses to pass through unchanged
-    const validRoots = ['user', 'steps', 'metadata', 'request', 'deployment'];
+    const validRoots = ['user', 'steps', 'metadata', 'request', 'deployment', 'secrets'];
     // Extract first part before '.' or '[' for root check
     const firstPartMatch = trimmed.match(/^([a-zA-Z_][a-zA-Z0-9_]*)/);
     const firstPart = firstPartMatch ? firstPartMatch[1] : '';
@@ -172,10 +172,27 @@ export class ExpressionEvaluator {
           );
         }
         break;
+      case 'secrets':
+        // Project secrets, referenced as secrets.<NAME>. Decrypted values are
+        // injected into context.secrets at the start of the run. A missing
+        // secret resolves to null (rather than throwing) so optional inputs
+        // degrade gracefully.
+        if (parts.length < 2) {
+          throw new ExpressionError(
+            expression,
+            'Secret reference requires a name, e.g. secrets.HF_TOKEN',
+            stepName,
+          );
+        }
+        if (!context.secrets) {
+          return null;
+        }
+        value = context.secrets[parts[1]] ?? null;
+        break;
       default:
         throw new ExpressionError(
           expression,
-          `Unknown root '${root}'. Valid roots: user, steps, metadata, request, deployment`,
+          `Unknown root '${root}'. Valid roots: user, steps, metadata, request, deployment, secrets`,
           stepName,
         );
     }

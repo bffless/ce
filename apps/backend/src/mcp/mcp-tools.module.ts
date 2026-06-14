@@ -21,6 +21,7 @@ import { ProxyRulesTools } from './tools/proxy-rules.tools';
 import { CacheRulesTools } from './tools/cache-rules.tools';
 import { ResponseHeaderRulesTools } from './tools/response-header-rules.tools';
 import { StorageTools } from './tools/storage.tools';
+import { SecretsTools } from './tools/secrets.tools';
 
 const ALL_TOOLS = [
   ProjectTools,
@@ -34,6 +35,7 @@ const ALL_TOOLS = [
   CacheRulesTools,
   ResponseHeaderRulesTools,
   StorageTools,
+  SecretsTools,
 ];
 
 @Module({

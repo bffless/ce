@@ -10,6 +10,8 @@ import {
 import { StepHandlerRegistry } from './step-handler.registry';
 import { ValidatorRegistry } from './validator.registry';
 import { ExpressionEvaluator } from './expression-evaluator';
+import { ProjectSecretsService } from '../../projects/project-secrets.service';
+import { redactSecrets } from './redact-secrets';
 import { PipelineError, StepExecutionError, ConfigurationError } from '../errors';
 import { BaseHandlerConfig } from './step-handler.interface';
 import { Pipeline, PipelineStep, ValidatorType, ValidatorConfig, HandlerType } from '../types';
@@ -25,7 +27,63 @@ export class PipelineExecutionService {
     private readonly handlerRegistry: StepHandlerRegistry,
     private readonly validatorRegistry: ValidatorRegistry,
     private readonly expressionEvaluator: ExpressionEvaluator,
+    private readonly projectSecretsService: ProjectSecretsService,
   ) {}
+
+  /**
+   * Execute a pipeline with debug information, with project secrets loaded into
+   * context and redacted from all output.
+   *
+   * This is a thin wrapper around {@link executePipelineWithDebugInner}. It loads
+   * the project's decrypted secrets, runs the pipeline, then scrubs every secret
+   * value from the result (debug step I/O, response body/headers, stepOutputs,
+   * and the async post-steps debug) before returning. This single chokepoint is
+   * what guarantees secrets can be USED but never read back — including via the
+   * persisted execution logs and the MCP log tools that read them.
+   */
+  async executePipelineWithDebug(
+    pipeline: Pipeline & { steps: PipelineStep[] },
+    req: Request,
+    user?: { id: string; email?: string; role?: string },
+    options?: {
+      dryRun?: boolean;
+      deployment?: { owner: string; repo: string; commitSha: string; alias?: string };
+    },
+  ): Promise<PipelineDebugResult> {
+    let secrets: Record<string, string> = {};
+    try {
+      secrets = await this.projectSecretsService.getDecryptedSecrets(pipeline.projectId);
+    } catch (error) {
+      // Never let secret loading break a pipeline run; expressions referencing a
+      // secret will resolve to null if the map is empty.
+      this.logger.error(
+        `Failed to load secrets for project ${pipeline.projectId}; continuing without them`,
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
+
+    const secretValues = Object.values(secrets);
+    const result = await this.executePipelineWithDebugInner(pipeline, req, user, options, secrets);
+
+    if (secretValues.length === 0) {
+      return result;
+    }
+
+    // Redact synchronous result surfaces in place.
+    if (result.debug) result.debug = redactSecrets(result.debug, secretValues);
+    if (result.response) result.response = redactSecrets(result.response, secretValues);
+    if (result.stepOutputs) result.stepOutputs = redactSecrets(result.stepOutputs, secretValues);
+    if (result.error) result.error = redactSecrets(result.error, secretValues);
+
+    // Redact the async post-steps debug once it resolves.
+    if (result.postStepsPromise) {
+      result.postStepsPromise = result.postStepsPromise.then((steps) =>
+        redactSecrets(steps, secretValues),
+      );
+    }
+
+    return result;
+  }
 
   /**
    * Execute a pipeline with debug information
@@ -36,7 +94,7 @@ export class PipelineExecutionService {
    * @param options Execution options (deployment context for skills, dryRun not yet implemented)
    * @returns Pipeline execution result with debug info
    */
-  async executePipelineWithDebug(
+  private async executePipelineWithDebugInner(
     pipeline: Pipeline & { steps: PipelineStep[] },
     req: Request,
     user?: { id: string; email?: string; role?: string },
@@ -44,6 +102,7 @@ export class PipelineExecutionService {
       dryRun?: boolean;
       deployment?: { owner: string; repo: string; commitSha: string; alias?: string };
     },
+    secrets?: Record<string, string>,
   ): Promise<PipelineDebugResult> {
     const executionStartTime = Date.now();
     const executionStartIso = new Date(executionStartTime).toISOString();
@@ -70,6 +129,7 @@ export class PipelineExecutionService {
         userAgent: req.get('user-agent'),
       },
       deployment: options?.deployment,
+      secrets: secrets ?? {},
     };
 
     // Debug info collections

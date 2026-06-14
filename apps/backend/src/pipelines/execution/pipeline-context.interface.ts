@@ -61,6 +61,16 @@ export interface PipelineContext {
     commitSha: string;
     alias?: string;
   };
+
+  /**
+   * Decrypted project secrets, keyed by name, available to expressions as
+   * `secrets.<NAME>`. Populated once per run from project_secrets.
+   *
+   * SECURITY: these plaintext values must never be persisted to debug logs or
+   * returned in responses — they are redacted at debug-capture time. See
+   * PipelineExecutionService.redactSecrets.
+   */
+  secrets?: Record<string, string>;
 }
 
 /**
