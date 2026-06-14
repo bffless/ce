@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.62](https://github.com/bffless/ce/compare/v0.1.61...v0.1.62) (2026-06-14)
+
+
+### Bug Fixes
+
+* stream only requested byte range in file_serve_handler ([296884d](https://github.com/bffless/ce/commit/296884dc156a154fd4e4fedede7b1249824ee217))
+* stream only the requested byte range in file_serve_handler ([e53c7df](https://github.com/bffless/ce/commit/e53c7dfbe9ce31c8018472470ce67b7308146cb7))
+
 ## [0.1.61](https://github.com/bffless/ce/compare/v0.1.60...v0.1.61) (2026-06-14)
 
 
