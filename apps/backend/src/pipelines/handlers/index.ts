@@ -10,6 +10,7 @@ export * from './function.handler';
 export * from './ai.handler';
 export * from './file-upload.handler';
 export * from './file-serve.handler';
+export * from './file-delete.handler';
 export * from './replicate.handler';
 export * from './embed-store.handler';
 export * from './vector-search.handler';

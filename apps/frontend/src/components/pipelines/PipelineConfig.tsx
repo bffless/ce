@@ -64,7 +64,7 @@ interface PipelineConfigProps {
 const HANDLER_GROUPS: { label: string; types: HandlerType[] }[] = [
   { label: 'Input', types: ['form_handler'] },
   { label: 'Data', types: ['data_create', 'data_query', 'data_update', 'data_delete', 'db_aggregate'] },
-  { label: 'Files', types: ['file_upload_handler', 'file_serve_handler', 'image_convert_handler', 'signed_url', 'presigned_upload', 'register_upload'] },
+  { label: 'Files', types: ['file_upload_handler', 'file_serve_handler', 'file_delete', 'image_convert_handler', 'signed_url', 'presigned_upload', 'register_upload'] },
   { label: 'AI & ML', types: ['ai_handler', 'replicate', 'embed_store', 'vector_search'] },
   { label: 'Payments', types: ['stripe_checkout', 'stripe_webhook'] },
   { label: 'Integrations', types: ['github_api', 'google_calendar'] },
