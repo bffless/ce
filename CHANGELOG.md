@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.64](https://github.com/bffless/ce/compare/v0.1.63...v0.1.64) (2026-06-16)
+
+
+### Features
+
+* support expressions in upload subDir for per-project layouts ([983a129](https://github.com/bffless/ce/commit/983a1291fcbdd10a421b43b84e6ce54c50b12283))
+* support expressions in upload subDir for per-project layouts ([d1a304e](https://github.com/bffless/ce/commit/d1a304e5caf83c48287a43fcdece155281aa10fd))
+
 ## [0.1.63](https://github.com/bffless/ce/compare/v0.1.62...v0.1.63) (2026-06-16)
 
 
