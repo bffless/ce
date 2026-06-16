@@ -5,6 +5,7 @@ import { db } from '../db/client';
 import { assets, projects } from '../db/schema';
 import { AssetType } from '../types/asset-type.enum';
 import { PipelineContext } from './execution/pipeline-context.interface';
+import { ExpressionEvaluator } from './execution/expression-evaluator';
 import { PipelineDataService } from './pipeline-data.service';
 import { ConfigurationError } from './errors';
 
@@ -48,7 +49,40 @@ export interface UploadRecordOutput {
 export class UploadRecordService {
   private readonly logger = new Logger(UploadRecordService.name);
 
-  constructor(private readonly dataService: PipelineDataService) {}
+  constructor(
+    private readonly dataService: PipelineDataService,
+    private readonly expressionEvaluator: ExpressionEvaluator,
+  ) {}
+
+  /**
+   * Resolve a `subDir` config value (which may contain {{expressions}}) into a
+   * concrete, safe storage sub-path.
+   *
+   * A static value like "images" passes through unchanged, so existing rules are
+   * unaffected. An expression like "projects/{{request.body.projectId}}" enables
+   * per-project storage layouts. Because the result is now dynamic, this defends
+   * the uploads root: a blank result or any ".." traversal is rejected so a
+   * subDir can never escape {owner}/{repo}/uploads/. Leading/trailing slashes are
+   * trimmed so the key is built cleanly.
+   */
+  resolveSubDir(subDirExpr: string, context: PipelineContext, stepName: string): string {
+    const resolved = this.expressionEvaluator.evaluateTemplate(subDirExpr, context, stepName);
+    const trimmed = (resolved ?? '').trim().replace(/^\/+|\/+$/g, '');
+
+    if (!trimmed) {
+      throw new ConfigurationError(
+        `Resolved subDir is empty (from "${subDirExpr}") — a sub-directory is required`,
+        stepName,
+      );
+    }
+    if (trimmed.includes('..')) {
+      throw new ConfigurationError(
+        `Resolved subDir "${trimmed}" contains ".." — path traversal is not allowed`,
+        stepName,
+      );
+    }
+    return trimmed;
+  }
 
   /**
    * Resolve the owner/repo used to namespace the storage key — from the
@@ -116,11 +150,7 @@ export class UploadRecordService {
    *
    * @returns parsed key parts, or null if the key is not a valid upload key for this owner/repo
    */
-  parseUploadKey(
-    storageKey: string,
-    owner: string,
-    repo: string,
-  ): UploadKeyParts | null {
+  parseUploadKey(storageKey: string, owner: string, repo: string): UploadKeyParts | null {
     const prefix = `${owner}/${repo}/uploads/`;
     if (typeof storageKey !== 'string') return null;
     if (!storageKey.startsWith(prefix)) return null;

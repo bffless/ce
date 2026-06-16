@@ -64,12 +64,16 @@ export function RegisterUploadHandlerConfig({ config, onChange, projectId, previ
 
       <div className="space-y-2">
         <Label>Sub-directory</Label>
-        <Input
+        <ExpressionInput
           value={subDir}
-          onChange={(e) => setSubDir(e.target.value)}
-          placeholder="e.g., images, documents"
+          onChange={setSubDir}
+          placeholder="e.g., images or projects/{{request.body.projectId}}"
+          previousSteps={previousSteps}
         />
-        <p className="text-xs text-muted-foreground">Must match the Presigned Upload step.</p>
+        <p className="text-xs text-muted-foreground">
+          Must match the Presigned Upload step. Supports expressions, e.g.{' '}
+          <code>projects/{'{{request.body.projectId}}'}</code>.
+        </p>
       </div>
 
       <div className="space-y-2">

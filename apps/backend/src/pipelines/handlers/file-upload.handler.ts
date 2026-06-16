@@ -181,11 +181,13 @@ export class FileUploadHandler implements StepHandler<FileUploadHandlerConfig> {
     }
 
     // Build storage key (shared with the presigned upload path).
+    // subDir may be an expression (e.g. "projects/{{request.body.projectId}}").
+    const subDir = this.uploadRecords.resolveSubDir(config.subDir, context, stepName);
     const { owner, repo } = await this.uploadRecords.resolveOwnerRepo(context, stepName);
     const keyParts = this.uploadRecords.buildUploadKey({
       owner,
       repo,
-      subDir: config.subDir,
+      subDir,
       originalName,
       dateBucket: config.dateBucket,
     });
@@ -216,7 +218,7 @@ export class FileUploadHandler implements StepHandler<FileUploadHandlerConfig> {
       context,
       schemaId: config.schemaId,
       schemaVersion: schema.version,
-      subDir: config.subDir,
+      subDir,
       storageKey: keyParts.storageKey,
       storedFilename: keyParts.storedFilename,
       sanitizedFilename: keyParts.sanitizedFilename,

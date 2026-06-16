@@ -18,6 +18,7 @@ export interface RegisterUploadHandlerConfig {
   /**
    * Storage sub-directory the file was uploaded into (e.g. "images").
    * Used for the sub_dir field; should match the presigned_upload step.
+   * Supports expressions, e.g. "projects/{{request.body.projectId}}".
    */
   subDir: string;
 
@@ -228,11 +229,15 @@ export class RegisterUploadHandler
       }
     }
 
+    // subDir is recorded as the sub_dir metadata field; it may be an expression
+    // (e.g. "projects/{{request.body.projectId}}") to match the presigned step.
+    const subDir = this.uploadRecords.resolveSubDir(config.subDir, context, stepName);
+
     const output = await this.uploadRecords.createUploadRecords({
       context,
       schemaId: config.schemaId,
       schemaVersion: schema.version,
-      subDir: config.subDir,
+      subDir,
       storageKey: keyParts.storageKey,
       storedFilename: keyParts.storedFilename,
       sanitizedFilename: keyParts.sanitizedFilename,
