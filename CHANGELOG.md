@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.63](https://github.com/bffless/ce/compare/v0.1.62...v0.1.63) (2026-06-16)
+
+
+### Features
+
+* add file_delete pipeline handler ([0c74457](https://github.com/bffless/ce/commit/0c74457068cf0a1957c121730b0261a6b3f2f038))
+* add file_delete pipeline handler ([1e7913e](https://github.com/bffless/ce/commit/1e7913e2f3443daa943931f44e346760fbf22f94))
+
 ## [0.1.62](https://github.com/bffless/ce/compare/v0.1.61...v0.1.62) (2026-06-14)
 
 
