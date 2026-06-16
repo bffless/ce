@@ -245,6 +245,15 @@ export interface FileServeHandlerConfig extends BaseHandlerConfig {
   cacheMaxAge?: number;
 }
 
+export interface FileDeleteHandlerConfig extends BaseHandlerConfig {
+  /** Delete every object under this prefix, relative to the uploads root (supports expressions). Mutually exclusive with key. */
+  prefix?: string;
+  /** Delete a single object, relative to the uploads root (supports expressions). Mutually exclusive with prefix. */
+  key?: string;
+  /** List/report what would be deleted but delete nothing. Default: false */
+  dryRun?: boolean;
+}
+
 export interface ReplicateHandlerConfig extends BaseHandlerConfig {
   /** Replicate model identifier (e.g., 'andreasjansson/clip-features') */
   model: string;
@@ -326,6 +335,7 @@ export type HandlerConfig =
   | AIHandlerConfig
   | FileUploadHandlerConfig
   | FileServeHandlerConfig
+  | FileDeleteHandlerConfig
   | ImageConvertHandlerConfig
   | ReplicateHandlerConfig
   | EmbedStoreHandlerConfig

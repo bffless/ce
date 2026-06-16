@@ -642,6 +642,35 @@ export interface FileServeHandlerConfig extends BaseHandlerConfig {
   cacheMaxAge?: number;
 }
 
+/**
+ * Configuration for file_delete handler.
+ *
+ * Deletes objects within this project's uploads root
+ * ({owner}/{repo}/uploads/). Both `prefix` and `key` are RELATIVE to that
+ * root, exactly like `subDir` is for the upload/serve handlers, and both are
+ * expression-interpolated ({{steps.x.y}}, {{request.body.z}}) before use.
+ * Exactly one of `prefix` or `key` must be provided.
+ */
+export interface FileDeleteHandlerConfig extends BaseHandlerConfig {
+  /**
+   * Delete EVERY object whose key starts with this, relative to the uploads
+   * root (e.g. "projects/abc123/"). Mutually exclusive with `key`.
+   */
+  prefix?: string;
+
+  /**
+   * Delete a single object, relative to the uploads root
+   * (e.g. "projects/abc123/source/uuid-file.mov"). Mutually exclusive with `prefix`.
+   */
+  key?: string;
+
+  /**
+   * When true, list and report what WOULD be deleted but delete nothing.
+   * @default false
+   */
+  dryRun?: boolean;
+}
+
 // Backwards compatibility alias
 export type ChatHandlerConfig = AIHandlerConfig;
 

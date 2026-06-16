@@ -43,6 +43,7 @@ export type HandlerType =
   | 'ai_handler'
   | 'file_upload_handler'
   | 'file_serve_handler'
+  | 'file_delete'
   | 'image_convert_handler'
   | 'replicate'
   | 'embed_store'

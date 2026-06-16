@@ -16,6 +16,7 @@ export { ReplicateHandlerConfig } from './ReplicateHandlerConfig';
 export { ImageConvertHandlerConfig } from './ImageConvertHandlerConfig';
 export { EmbedStoreConfig } from './EmbedStoreConfig';
 export { VectorSearchConfig } from './VectorSearchConfig';
+export { FileDeleteHandlerConfig } from './FileDeleteHandlerConfig';
 
 // Function templates
 export * from './function-templates';

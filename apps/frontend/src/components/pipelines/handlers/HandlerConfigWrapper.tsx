@@ -12,6 +12,7 @@ import { FunctionHandlerConfig } from './FunctionHandlerConfig';
 import { AIHandlerConfig } from './AIHandlerConfig';
 import { FileUploadHandlerConfig } from './FileUploadHandlerConfig';
 import { FileServeHandlerConfig } from './FileServeHandlerConfig';
+import { FileDeleteHandlerConfig } from './FileDeleteHandlerConfig';
 import { ImageConvertHandlerConfig } from './ImageConvertHandlerConfig';
 import { ReplicateHandlerConfig } from './ReplicateHandlerConfig';
 import { EmbedStoreConfig } from './EmbedStoreConfig';
@@ -219,6 +220,18 @@ export function HandlerConfigWrapper({
         />
       );
 
+    case 'file_delete':
+      return (
+        <>
+          {renderVariablesPanel()}
+          <FileDeleteHandlerConfig
+            config={config}
+            onChange={handleChange}
+            previousSteps={previousSteps}
+          />
+        </>
+      );
+
     case 'image_convert_handler':
       return (
         <>
@@ -402,6 +415,7 @@ export function getHandlerDisplayName(type: HandlerType): string {
     ai_handler: 'AI',
     file_upload_handler: 'File Upload',
     file_serve_handler: 'File Serve',
+    file_delete: 'File Delete',
     image_convert_handler: 'Image Convert',
     replicate: 'Replicate AI',
     embed_store: 'Store Embedding',
@@ -437,6 +451,7 @@ export function getHandlerDescription(type: HandlerType): string {
     ai_handler: 'Call an AI model for chat or text completion',
     file_upload_handler: 'Upload a file to storage and create a metadata record',
     file_serve_handler: 'Serve a file from storage with caching headers',
+    file_delete: 'Delete objects under a prefix (or a single key) from storage',
     image_convert_handler: 'Convert an image to a different format (e.g., HEIC to PNG)',
     replicate: 'Call a Replicate ML model (embeddings, image gen, transcription, etc.)',
     embed_store: 'Store embedding vectors in pgvector for similarity search',
