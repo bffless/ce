@@ -544,7 +544,9 @@ export interface FileUploadHandlerConfig extends BaseHandlerConfig {
   schemaId: string;
 
   /**
-   * Storage sub-directory (e.g. "images", "documents")
+   * Storage sub-directory (e.g. "images", "documents"). Supports expressions for
+   * per-project layouts, e.g. "projects/{{request.body.projectId}}". The resolved
+   * value must be non-empty and contain no ".." traversal.
    */
   subDir: string;
 

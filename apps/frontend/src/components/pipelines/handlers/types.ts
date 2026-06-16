@@ -217,6 +217,7 @@ export type ChatHandlerConfig = AIHandlerConfig;
 
 export interface FileUploadHandlerConfig extends BaseHandlerConfig {
   schemaId: string;
+  /** Storage sub-directory. Supports expressions, e.g. "projects/{{request.body.projectId}}". */
   subDir: string;
   dateBucket?: boolean;
   maxFileSize?: number;
@@ -356,7 +357,7 @@ export interface SignedUrlHandlerConfig extends BaseHandlerConfig {
 }
 
 export interface PresignedUploadHandlerConfig extends BaseHandlerConfig {
-  /** Storage sub-directory (e.g. "images", "documents") */
+  /** Storage sub-directory. Supports expressions, e.g. "projects/{{request.body.projectId}}". */
   subDir: string;
   /** Expression resolving to the upload filename. Default: request.body.filename */
   filename?: string;
@@ -373,7 +374,7 @@ export interface PresignedUploadHandlerConfig extends BaseHandlerConfig {
 export interface RegisterUploadHandlerConfig extends BaseHandlerConfig {
   /** Schema where the upload metadata record is stored */
   schemaId: string;
-  /** Storage sub-directory the file was uploaded into (should match presigned_upload) */
+  /** Storage sub-directory the file was uploaded into (should match presigned_upload). Supports expressions. */
   subDir: string;
   /** Expression resolving to the storageKey from presigned_upload. Default: request.body.storageKey */
   storageKey?: string;

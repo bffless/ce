@@ -122,13 +122,15 @@ export function FileUploadHandlerConfig({ config, onChange, projectId, previousS
 
       <div className="space-y-2">
         <Label>Sub-directory</Label>
-        <Input
+        <ExpressionInput
           value={subDir}
-          onChange={(e) => setSubDir(e.target.value)}
-          placeholder="e.g., images, documents"
+          onChange={setSubDir}
+          placeholder="e.g., images or projects/{{request.body.projectId}}"
+          previousSteps={previousSteps}
         />
         <p className="text-xs text-muted-foreground">
-          Storage sub-directory for uploaded files.
+          Storage sub-directory for uploaded files. Supports expressions for per-project
+          layouts, e.g. <code>projects/{'{{request.body.projectId}}'}</code>.
         </p>
       </div>
 

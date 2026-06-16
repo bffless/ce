@@ -10,7 +10,8 @@ import { UploadRecordService } from '../upload-record.service';
 
 export interface PresignedUploadHandlerConfig {
   /**
-   * Storage sub-directory (e.g. "images", "documents")
+   * Storage sub-directory (e.g. "images", "documents"). Supports expressions for
+   * per-project layouts, e.g. "projects/{{request.body.projectId}}".
    */
   subDir: string;
 
@@ -117,11 +118,13 @@ export class PresignedUploadHandler
       };
     }
 
+    // subDir may be an expression (e.g. "projects/{{request.body.projectId}}").
+    const subDir = this.uploadRecords.resolveSubDir(config.subDir, context, stepName);
     const { owner, repo } = await this.uploadRecords.resolveOwnerRepo(context, stepName);
     const keyParts = this.uploadRecords.buildUploadKey({
       owner,
       repo,
-      subDir: config.subDir,
+      subDir,
       originalName,
       dateBucket: config.dateBucket,
     });
