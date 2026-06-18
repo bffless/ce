@@ -555,9 +555,18 @@ export class ProjectAISettingsService {
       const data = (await response.json()) as {
         data?: Array<{ id?: string; display_name?: string }>;
       };
+      // Normalize current models to their stable alias form (e.g. drop the
+      // dated suffix on claude-haiku-4-5-20251001) so the list is consistent —
+      // some entries come back aliased, others dated — then dedupe.
+      const seen = new Set<string>();
       const models = (data.data ?? [])
         .filter((m): m is { id: string; display_name?: string } => Boolean(m.id))
-        .map((m) => this.toAnthropicModelInfo(m.id, m.display_name));
+        .map((m) => this.toAnthropicModelInfo(this.normalizeAnthropicModelId(m.id), m.display_name))
+        .filter((m) => {
+          if (seen.has(m.id)) return false;
+          seen.add(m.id);
+          return true;
+        });
 
       if (models.length === 0) {
         return fallback;
@@ -574,6 +583,20 @@ export class ProjectAISettingsService {
       );
       return fallback;
     }
+  }
+
+  /**
+   * Prefer the stable alias form for current Claude models by dropping the
+   * trailing dated-snapshot suffix (e.g. claude-haiku-4-5-20251001 →
+   * claude-haiku-4-5), so the picker is consistent regardless of whether the
+   * API returns the aliased or dated id.
+   *
+   * Restricted to the modern "family-major-minor-date" shape: older 3.x ids
+   * (e.g. claude-3-5-sonnet-20241022), whose stripped form is NOT a valid
+   * alias, and single-segment ids (claude-opus-4-20250514) are left untouched.
+   */
+  private normalizeAnthropicModelId(id: string): string {
+    return id.replace(/^(claude-(?:opus|sonnet|haiku|fable)-\d+-\d+)-20\d{6}$/, '$1');
   }
 
   /**
