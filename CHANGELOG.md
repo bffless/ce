@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.66](https://github.com/bffless/ce/compare/v0.1.65...v0.1.66) (2026-06-18)
+
+
+### Bug Fixes
+
+* normalize live Anthropic model ids to alias form ([fdbcef5](https://github.com/bffless/ce/commit/fdbcef59bfddca3fee1389f118181234d22e4193))
+* normalize live Anthropic model ids to alias form ([cc37b07](https://github.com/bffless/ce/commit/cc37b07a0857b5c85b8a2b580bf84e457d1f7938))
+* send literal AI handler message text instead of treating it as a field name ([83f29e2](https://github.com/bffless/ce/commit/83f29e2268ea9545019972df755ab4f804bc3aa5))
+* send literal AI handler message text instead of treating it as a field name ([3f58947](https://github.com/bffless/ce/commit/3f589470c4497023dfc90c6db48a140cfa99e842))
+
 ## [0.1.65](https://github.com/bffless/ce/compare/v0.1.64...v0.1.65) (2026-06-18)
 
 
