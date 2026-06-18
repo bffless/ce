@@ -1,0 +1,94 @@
+/* Base layout, prose, and shared helper classes. Token-driven only. */
+
+* { box-sizing: border-box; }
+
+html { color-scheme: light dark; }
+
+body {
+  margin: 0;
+  font-family: var(--wf-sans);
+  color: var(--wf-ink);
+  background: var(--wf-paper);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--wf-accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+code, pre, .mono { font-family: var(--wf-mono); }
+
+/* ---- page shell ---- */
+.vp-shell { max-width: 880px; margin: 0 auto; padding: 28px 20px 96px; }
+
+.vp-topbar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 20px; border-bottom: 1px solid var(--wf-line);
+  position: sticky; top: 0; background: var(--wf-paper); z-index: 10;
+}
+.vp-topbar a { color: var(--wf-muted); font-size: 13px; }
+.vp-topbar .vp-brand { color: var(--wf-ink); font-weight: 600; }
+.vp-spacer { flex: 1 1 auto; }
+
+/* prose rhythm for markdown between blocks */
+.vp-doc > * { margin-block: 14px; }
+.vp-doc > :first-child { margin-top: 0; }
+.vp-doc h1 { font-size: 26px; line-height: 1.2; margin-block: 8px 4px; }
+.vp-doc h2 { font-size: 19px; margin-top: 30px; padding-bottom: 6px; border-bottom: 1px solid var(--wf-line); }
+.vp-doc h3 { font-size: 15px; margin-top: 22px; }
+.vp-doc p, .vp-doc li { font-size: 15px; }
+.vp-doc :not(pre) > code {
+  font-size: .88em; padding: 1px 5px; border-radius: var(--wf-radius);
+  background: var(--wf-card); border: 1px solid var(--wf-line);
+}
+.vp-doc pre {
+  padding: 12px 14px; border-radius: var(--wf-radius); overflow: auto;
+  background: var(--wf-card); border: 1px solid var(--wf-line); font-size: 13px;
+}
+.vp-doc blockquote {
+  margin-inline: 0; padding: 2px 14px; color: var(--wf-muted);
+  border-left: 3px solid var(--wf-line);
+}
+
+/* ---- helper primitives ---- */
+.wf-card {
+  border: 1px solid var(--wf-line); border-radius: var(--wf-radius);
+  background: var(--wf-card); padding: 14px;
+}
+.wf-box {
+  border: 1px solid var(--wf-line); border-radius: var(--wf-radius);
+  background: var(--wf-paper); padding: 12px;
+}
+.wf-muted { color: var(--wf-muted); }
+.wf-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; line-height: 1; padding: 4px 9px; border-radius: 999px;
+  border: 1px solid var(--wf-line); background: var(--wf-paper); color: var(--wf-muted);
+}
+.wf-pill.accent { background: var(--wf-accent); border-color: var(--wf-accent); color: var(--wf-accent-fg); }
+.wf-chip {
+  font-family: var(--wf-mono); font-size: 12px; padding: 2px 7px;
+  border-radius: var(--wf-radius); border: 1px solid var(--wf-line); background: var(--wf-paper);
+}
+.wf-icon, .wf-icon svg { width: 16px; height: 16px; flex: none; }
+.wf-eyebrow {
+  font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--wf-muted); font-weight: 600;
+}
+
+button.wf-pill, .wf-btn {
+  cursor: pointer; font: inherit; font-size: 13px;
+  padding: 6px 12px; border-radius: var(--wf-radius);
+  border: 1px solid var(--wf-line); background: var(--wf-paper); color: var(--wf-ink);
+}
+.wf-btn.primary, [data-primary] {
+  background: var(--wf-accent); border-color: var(--wf-accent); color: var(--wf-accent-fg);
+}
+
+/* change-flag tints reused by DataModel / FileTree / Diff */
+.flag-added { color: var(--wf-add); }
+.flag-removed { color: var(--wf-del); }
+.flag-changed { color: var(--wf-warn); }
+.bg-added { background: var(--wf-add-soft); }
+.bg-removed { background: var(--wf-del-soft); }
+.bg-changed { background: var(--wf-warn-soft); }

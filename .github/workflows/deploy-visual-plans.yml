@@ -1,0 +1,53 @@
+# Deploy the visual-plans gallery to BFFless.
+#
+# Triggers:
+#   - pull_request touching visual-plans/**  -> builds + deploys to the shared
+#     `visual-plan-preview` alias and comments the preview URL on the PR.
+#   - push to main touching visual-plans/**  -> deploys the production
+#     `visual-plans` alias.
+#   - workflow_dispatch                       -> manual deploy.
+#
+# Required repo config:
+#   - Variable  ASSET_HOST_URL  (e.g. https://your-instance.bffless.app)
+#   - Secret    ASSET_HOST_KEY  (BFFless API key)
+name: Deploy visual plans
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths: ['visual-plans/**']
+  pull_request:
+    paths: ['visual-plans/**']
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # for PR preview comments
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # upload-artifact uses commit timestamp
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build gallery
+        working-directory: visual-plans
+        run: |
+          npm ci
+          npm run build
+
+      - name: Deploy to BFFless
+        uses: bffless/upload-artifact@v1
+        with:
+          path: visual-plans/dist
+          api-url: ${{ vars.ASSET_HOST_URL }}
+          api-key: ${{ secrets.ASSET_HOST_KEY }}
+          alias: ${{ github.event_name == 'pull_request' && 'visual-plan-preview' || 'visual-plans' }}
+          description: 'visual-plans @ ${{ github.sha }}'
+          pr-comment: ${{ github.event_name == 'pull_request' }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}

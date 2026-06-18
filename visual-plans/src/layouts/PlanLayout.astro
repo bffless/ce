@@ -1,0 +1,33 @@
+---
+import '../styles/tokens.css';
+import '../styles/app.css';
+
+interface Props {
+  title: string;
+  kind?: 'plan' | 'recap';
+}
+const { title, kind } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>{title}</title>
+  </head>
+  <body>
+    <nav class="vp-topbar">
+      <a href="/" class="vp-brand">Visual Plans</a>
+      {kind && <span class="wf-chip">{kind}</span>}
+      <span class="vp-spacer"></span>
+      <a href="/">← all</a>
+    </nav>
+    <main class="vp-shell">
+      <article class="vp-doc">
+        <slot />
+      </article>
+    </main>
+  </body>
+</html>

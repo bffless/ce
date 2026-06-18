@@ -1,0 +1,16 @@
+---
+import { getCollection, render } from 'astro:content';
+import PlanLayout from '../../layouts/PlanLayout.astro';
+
+export async function getStaticPaths() {
+  const plans = await getCollection('plans');
+  return plans.map((entry) => ({ params: { slug: entry.id }, props: { entry } }));
+}
+
+const { entry } = Astro.props;
+const { Content } = await render(entry);
+---
+
+<PlanLayout title={entry.data.title} kind="plan">
+  <Content />
+</PlanLayout>
