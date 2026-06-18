@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.65](https://github.com/bffless/ce/compare/v0.1.64...v0.1.65) (2026-06-18)
+
+
+### Features
+
+* fetch Anthropic models live from /v1/models ([804199c](https://github.com/bffless/ce/commit/804199c4ff9687e6c0b373d5957257fa40990bba))
+* fetch Anthropic models live from /v1/models ([5594a37](https://github.com/bffless/ce/commit/5594a3730bf6c262bc612326dcb47cace9dc2fb9))
+
 ## [0.1.64](https://github.com/bffless/ce/compare/v0.1.63...v0.1.64) (2026-06-16)
 
 
