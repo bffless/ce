@@ -234,20 +234,22 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
           context,
           stepName,
         );
-      } else if (messageFieldConfig.includes('.')) {
-        // Full expression: request.body.message, steps.form.data
+      } else if (/^[\w.]+$/.test(messageFieldConfig.trim())) {
+        // Field/expression reference (no spaces): a dotted path like
+        // "request.body.message" / "steps.form.data", or a bare field name
+        // "message" → request.body.message.
+        const expression = messageFieldConfig.includes('.')
+          ? messageFieldConfig
+          : `request.body.${messageFieldConfig}`;
         userMessage = this.expressionEvaluator.evaluateExpression(
-          messageFieldConfig,
+          expression,
           context,
           stepName,
         ) as string;
       } else {
-        // Simple field name: "message" → request.body.message
-        userMessage = this.expressionEvaluator.evaluateExpression(
-          `request.body.${messageFieldConfig}`,
-          context,
-          stepName,
-        ) as string;
+        // Literal message text (contains spaces/punctuation, no {{ }} vars):
+        // send it to the model as-is.
+        userMessage = messageFieldConfig;
       }
 
       if (!userMessage || typeof userMessage !== 'string') {
