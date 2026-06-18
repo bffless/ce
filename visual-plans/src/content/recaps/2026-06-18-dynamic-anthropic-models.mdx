@@ -1,0 +1,119 @@
+---
+title: "Recap: live Anthropic model list (#326)"
+summary: Replaces the hardcoded Anthropic model catalog with a live /v1/models fetch so new models appear without a redeploy — in both the per-pipeline picker and the Add-Provider dialog.
+status: done
+date: 2026-06-18
+pr: "#326"
+tags: [backend, frontend, ai]
+---
+
+import { Meta, Callout, FileTree, ApiEndpoint, Diff, Checklist } from '@components';
+
+<Meta title="Recap: live Anthropic model list" status="done" date="2026-06-18" tags={['#326', 'ai']}
+  objective="What shipped: the Anthropic model dropdown is now fetched live from the provider's /v1/models API (cached, with fallback) instead of a hardcoded list — so a new release surfaces in the UI with no redeploy." />
+
+## Why
+
+The Anthropic model list was a static array in `project-ai-settings.service.ts`. Every new model
+(e.g. a `claude-opus-4-x` bump) required a code change + redeploy to show up. Anthropic exposes a
+public `GET /v1/models`, so we pull the list live using the workspace's own key.
+
+## What changed
+
+<FileTree files={[
+  { path: 'apps/backend/src/projects/project-ai-settings.service.ts', change: 'changed', add: 142, del: 13 },
+  { path: 'apps/backend/src/projects/projects.controller.ts', change: 'changed', add: 23, del: 0 },
+  { path: 'apps/frontend/src/components/project/ProjectAISettingsTab.tsx', change: 'changed', add: 41, del: 3 },
+  { path: 'apps/frontend/src/services/projectsApi.ts', change: 'changed', add: 12, del: 0 },
+]} />
+
+## Two surfaces, two data sources
+
+The fix had to cover two pickers that source models differently — that's the crux of the change.
+
+**AI Handler dropdown** (per-pipeline):
+
+<Checklist items={[
+  'Reads getAIStatus → getAllProviders().suggestedModels',
+  'Uses the stored workspace key',
+  'Fixed by making getAllProviders fetch live',
+]} />
+
+**Add-Provider dialog** (settings tab → default-model picker):
+
+<Checklist items={[
+  'Read keyless getAvailableProviders() — static catalog',
+  'No saved key yet — the key is still being typed',
+  'Fixed via a new preview endpoint + the typed key',
+]} />
+
+## Live fetch in getAllProviders
+
+<Diff file="apps/backend/src/projects/project-ai-settings.service.ts" summary="Anthropic now resolves models live; other providers keep the static catalog"
+  lines={[
+    "-      return stored.map((p) => {",
+    "-        const meta = AI_PROVIDER_METADATA[p.provider];",
+    "-        return { ...suggestedModels: meta?.models || [] };",
+    "-      });",
+    "+      return await Promise.all(stored.map(async (p) => {",
+    "+        const meta = AI_PROVIDER_METADATA[p.provider];",
+    "+        const suggestedModels =",
+    "+          p.provider === 'anthropic'",
+    "+            ? await this.fetchAnthropicModels(config.apiKey)",
+    "+            : meta?.models || [];",
+    "+        return { ...suggestedModels };",
+    "+      }));",
+  ]} />
+
+## The fetch: cache + tier classify + fallback
+
+`/v1/models` returns `id`/`display_name` only — no tier or description — so we classify by family
+locally and keep a tiny description map.
+
+<Diff file="apps/backend/src/projects/project-ai-settings.service.ts" summary="fetchAnthropicModels — per-key cache (1h), fallback to static catalog on any failure"
+  lines={[
+    "+ const fallback = AI_PROVIDER_METADATA.anthropic.models;",
+    "+ const cacheKey = crypto.createHash('sha256').update(apiKey).digest('hex');",
+    "+ const cached = this.modelsCache.get(cacheKey);",
+    "+ if (cached && cached.expires > Date.now()) return cached.models;",
+    "+ const response = await fetch('https://api.anthropic.com/v1/models?limit=100', {",
+    "+   headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' } });",
+    "+ if (!response.ok) return fallback;            // never empty the UI",
+    "+ const models = data.data.map(m => this.toAnthropicModelInfo(m.id, m.display_name));",
+    "+ this.modelsCache.set(cacheKey, { models, expires: Date.now() + 60*60*1000 });",
+  ]} />
+
+<Diff file="apps/backend/src/projects/project-ai-settings.service.ts" summary="anthropicTierFor — family → tier, unknown stays selectable"
+  lines={[
+    "+ if (lower.includes('opus') || lower.includes('fable')) return 'premium';",
+    "+ if (lower.includes('haiku')) return 'economy';",
+    "+ if (lower.includes('sonnet')) return 'balanced';",
+    "+ return 'balanced';   // brand-new family still shows up, selectable",
+  ]} />
+
+## New preview endpoint (keyless add flow)
+
+<ApiEndpoint method="POST" path="/api/projects/:id/ai/providers/:provider/models" change="added"
+  summary="lists models for the key being typed; admin-guarded"
+  request={`{ "apiKey": "sk-ant-•••" }`}
+  response={`{ "models": [ { "id": "claude-opus-4-8", "name": "Claude Opus 4.8", "tier": "premium", "description": "..." } ] }`} />
+
+## Dialog fetches live models as you type
+
+<Diff file="apps/frontend/src/components/project/ProjectAISettingsTab.tsx" summary="debounce-fetch after a plausible key; prefer live over static"
+  lines={[
+    "+ const [liveModels, setLiveModels] = useState<ModelInfo[] | null>(null);",
+    "+ useEffect(() => {",
+    "+   if (!selectedProvider || apiKey.trim().length < 8) { setLiveModels(null); return; }",
+    "+   const handle = setTimeout(async () => {",
+    "+     const r = await previewModels({ projectId, provider: selectedProvider, apiKey }).unwrap();",
+    "+     setLiveModels(r.models?.length ? r.models : null);",
+    "+   }, 500);",
+    "+   return () => clearTimeout(handle);",
+    "+ }, [apiKey, selectedProvider]);",
+    "+ const modelOptions = liveModels ?? selectedProviderInfo?.models ?? [];",
+  ]} />
+
+<Callout kind="ok">Verified: `tsc --noEmit` passes for both backend and frontend; no existing tests touch the changed paths. OpenAI/Google intentionally keep the static catalog (live listing not implemented).</Callout>
+
+<Callout kind="note">Tier/description are derived locally since the API omits them. The per-pipeline dropdown reflects exactly the models each workspace's key can access; a network blip falls back to the hardcoded list rather than emptying the picker.</Callout>

@@ -1,0 +1,56 @@
+---
+import { getCollection } from 'astro:content';
+import '../styles/tokens.css';
+import '../styles/app.css';
+
+const plans = (await getCollection('plans')).sort((a, b) => +b.data.date - +a.data.date);
+const recaps = (await getCollection('recaps')).sort((a, b) => +b.data.date - +a.data.date);
+
+const fmt = (d: Date) => d.toISOString().slice(0, 10);
+
+const sections = [
+  { kind: 'plan', base: 'plans', label: 'Plans', items: plans },
+  { kind: 'recap', base: 'recaps', label: 'Recaps', items: recaps },
+] as const;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Visual Plans</title>
+  </head>
+  <body>
+    <nav class="vp-topbar"><span class="vp-brand">Visual Plans</span></nav>
+    <main class="vp-shell">
+      <h1 style="font-size:27px;margin:4px 0 24px">Plans &amp; recaps</h1>
+      {sections.map((s) => (
+        <section style="margin-bottom:32px">
+          <div class="wf-eyebrow" style="margin-bottom:10px">{s.label} ({s.items.length})</div>
+          {s.items.length === 0 ? (
+            <p class="wf-muted" style="font-size:14px">None yet.</p>
+          ) : (
+            <div style="display:grid;grid-template-columns:minmax(0,1fr);gap:10px">
+              {s.items.map((it) => (
+                <a href={`/${s.base}/${it.id}/`} class="wf-card" style="display:flex;align-items:center;gap:12px;text-decoration:none;color:inherit">
+                  <div style="min-width:0;flex:1">
+                    <div style="font-weight:600;font-size:15px">{it.data.title}</div>
+                    {('objective' in it.data && it.data.objective) || ('summary' in it.data && it.data.summary) ? (
+                      <div class="wf-muted" style="font-size:13px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                        {('objective' in it.data ? it.data.objective : (it.data as any).summary)}
+                      </div>
+                    ) : null}
+                  </div>
+                  <span class="wf-pill">{it.data.status}</span>
+                  <span class="wf-muted" style="font-size:12px">{fmt(it.data.date)}</span>
+                </a>
+              ))}
+            </div>
+          )}
+        </section>
+      ))}
+    </main>
+  </body>
+</html>

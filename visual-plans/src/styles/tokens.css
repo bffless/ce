@@ -1,0 +1,52 @@
+/*
+ * Design tokens — the single source of visual consistency.
+ * Block components reference ONLY these variables; they never hard-code
+ * hex colors or font families. Adapted from the agent-native wireframe
+ * `--wf-*` token system. Light + dark via prefers-color-scheme.
+ */
+:root {
+  --wf-ink: #1a1d21;
+  --wf-muted: #6b7280;
+  --wf-line: #e5e7eb;
+  --wf-paper: #ffffff;
+  --wf-card: #f9fafb;
+  --wf-accent: #4f46e5;
+  --wf-accent-fg: #ffffff;
+  --wf-accent-soft: #eef2ff;
+  --wf-warn: #b45309;
+  --wf-warn-soft: #fff7ed;
+  --wf-ok: #047857;
+  --wf-ok-soft: #ecfdf5;
+  --wf-add: #047857;
+  --wf-add-soft: #ecfdf5;
+  --wf-del: #b91c1c;
+  --wf-del-soft: #fef2f2;
+
+  /* user preference: 4px corners — 12px+ feels too bubbly */
+  --wf-radius: 4px;
+  --wf-radius-lg: 6px;
+
+  --wf-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --wf-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --wf-ink: #e6e8eb;
+    --wf-muted: #9aa3af;
+    --wf-line: #2a2f37;
+    --wf-paper: #0f1216;
+    --wf-card: #161a20;
+    --wf-accent: #818cf8;
+    --wf-accent-fg: #0f1216;
+    --wf-accent-soft: #1e2330;
+    --wf-warn: #fbbf24;
+    --wf-warn-soft: #29230f;
+    --wf-ok: #34d399;
+    --wf-ok-soft: #0f231c;
+    --wf-add: #34d399;
+    --wf-add-soft: #0f231c;
+    --wf-del: #f87171;
+    --wf-del-soft: #2a1416;
+  }
+}
