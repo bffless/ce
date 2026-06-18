@@ -167,6 +167,14 @@ export class ProjectAISettingsService {
   private readonly ENCRYPTION_KEY: Buffer;
   private readonly ENCRYPTION_ALGORITHM = 'aes-256-gcm';
 
+  /**
+   * In-memory cache of live model lists keyed by a hash of the API key.
+   * Model catalogs change rarely (a few times a year), so a long TTL avoids
+   * hitting the provider's /v1/models endpoint on every status fetch.
+   */
+  private readonly modelsCache = new Map<string, { models: ModelInfo[]; expires: number }>();
+  private readonly MODELS_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
   constructor(private configService: ConfigService) {
     const encryptionKey = this.configService.get<string>('ENCRYPTION_KEY');
     if (encryptionKey) {
@@ -432,19 +440,29 @@ export class ProjectAISettingsService {
     try {
       const stored = await this.getStoredProviders(projectId);
 
-      return stored.map((p) => {
-        const config = JSON.parse(this.decryptData(p.config));
-        const meta = AI_PROVIDER_METADATA[p.provider];
+      return await Promise.all(
+        stored.map(async (p) => {
+          const config = JSON.parse(this.decryptData(p.config));
+          const meta = AI_PROVIDER_METADATA[p.provider];
 
-        return {
-          provider: p.provider,
-          providerName: meta?.name || p.provider,
-          apiKey: config.apiKey,
-          defaultModel: config.defaultModel,
-          isDefault: p.isDefault,
-          suggestedModels: meta?.models || [],
-        };
-      });
+          // For Anthropic, pull the live model list from the provider's API so
+          // newly released models show up without a redeploy. Falls back to the
+          // hardcoded metadata if the fetch fails.
+          const suggestedModels =
+            p.provider === 'anthropic'
+              ? await this.fetchAnthropicModels(config.apiKey)
+              : meta?.models || [];
+
+          return {
+            provider: p.provider,
+            providerName: meta?.name || p.provider,
+            apiKey: config.apiKey,
+            defaultModel: config.defaultModel,
+            isDefault: p.isDefault,
+            suggestedModels,
+          };
+        }),
+      );
     } catch (error) {
       this.logger.error('Failed to get AI providers:', error);
       return [];
@@ -474,6 +492,119 @@ export class ProjectAISettingsService {
       description: meta.description,
       models: meta.models,
     }));
+  }
+
+  /**
+   * Preview the live model list for a provider using a caller-supplied API key.
+   *
+   * Used by the "Add Provider" dialog so the default-model picker reflects the
+   * models the typed key can actually access, before the provider is saved.
+   * Falls back to the hardcoded metadata list (no key, unsupported provider, or
+   * a failed fetch) so the picker is never empty.
+   */
+  async previewProviderModels(provider: AIProviderType, apiKey: string): Promise<ModelInfo[]> {
+    const fallback = AI_PROVIDER_METADATA[provider]?.models || [];
+    if (!apiKey?.trim()) {
+      return fallback;
+    }
+
+    if (provider === 'anthropic') {
+      return this.fetchAnthropicModels(apiKey.trim());
+    }
+
+    // OpenAI/Google live listing not implemented yet — return the static catalog.
+    return fallback;
+  }
+
+  /**
+   * Fetch the live Anthropic model list via GET /v1/models.
+   *
+   * The API returns model IDs + display names only (no tier/description), so we
+   * classify each into a tier locally. Results are cached per-key with a long
+   * TTL, and any failure falls back to the hardcoded catalog so the UI never
+   * ends up with an empty model list.
+   */
+  private async fetchAnthropicModels(apiKey: string): Promise<ModelInfo[]> {
+    const fallback = AI_PROVIDER_METADATA.anthropic.models;
+    if (!apiKey) {
+      return fallback;
+    }
+
+    const cacheKey = crypto.createHash('sha256').update(apiKey).digest('hex');
+    const cached = this.modelsCache.get(cacheKey);
+    if (cached && cached.expires > Date.now()) {
+      return cached.models;
+    }
+
+    try {
+      const response = await fetch('https://api.anthropic.com/v1/models?limit=100', {
+        method: 'GET',
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+      });
+
+      if (!response.ok) {
+        this.logger.warn(
+          `Anthropic models fetch failed (HTTP ${response.status}); using fallback list`,
+        );
+        return fallback;
+      }
+
+      const data = (await response.json()) as {
+        data?: Array<{ id?: string; display_name?: string }>;
+      };
+      const models = (data.data ?? [])
+        .filter((m): m is { id: string; display_name?: string } => Boolean(m.id))
+        .map((m) => this.toAnthropicModelInfo(m.id, m.display_name));
+
+      if (models.length === 0) {
+        return fallback;
+      }
+
+      this.modelsCache.set(cacheKey, {
+        models,
+        expires: Date.now() + this.MODELS_CACHE_TTL_MS,
+      });
+      return models;
+    } catch (error) {
+      this.logger.warn(
+        `Anthropic models fetch error; using fallback list: ${(error as Error)?.message}`,
+      );
+      return fallback;
+    }
+  }
+
+  /**
+   * Map a live Anthropic model id + display name into our tiered ModelInfo.
+   * Tier is derived from the model family so new releases slot in automatically.
+   */
+  private toAnthropicModelInfo(id: string, displayName?: string): ModelInfo {
+    const tier = this.anthropicTierFor(id);
+    const descriptions: Record<ModelTier, string> = {
+      premium: 'Most intelligent for agents and coding',
+      balanced: 'Best balance of speed and intelligence',
+      economy: 'Fastest with near-frontier intelligence',
+    };
+    return {
+      id,
+      name: displayName || id,
+      tier,
+      description: descriptions[tier],
+    };
+  }
+
+  /**
+   * Classify an Anthropic model id into a pricing/capability tier by family.
+   * Unknown families default to 'balanced' so they remain selectable.
+   */
+  private anthropicTierFor(id: string): ModelTier {
+    const lower = id.toLowerCase();
+    if (lower.includes('opus') || lower.includes('fable')) return 'premium';
+    if (lower.includes('haiku')) return 'economy';
+    if (lower.includes('sonnet')) return 'balanced';
+    return 'balanced';
   }
 
   // ===== Skills Path Settings =====

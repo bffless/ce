@@ -277,6 +277,17 @@ export const projectsApi = api.injectEndpoints({
       query: (projectId) => `/api/projects/${projectId}/ai/providers`,
     }),
 
+    previewProviderModels: builder.mutation<
+      { models: ModelInfo[] },
+      { projectId: string; provider: AIProviderType; apiKey: string }
+    >({
+      query: ({ projectId, provider, apiKey }) => ({
+        url: `/api/projects/${projectId}/ai/providers/${provider}/models`,
+        method: 'POST',
+        body: { apiKey },
+      }),
+    }),
+
     // AI Plugin endpoints
     listProjectPlugins: builder.query<PluginListItem[], string>({
       query: (id) => `/api/projects/${id}/ai-plugins`,
@@ -505,6 +516,7 @@ export const {
   useSetProjectDefaultAIProviderMutation,
   useTestProjectAIMutation,
   useGetAvailableAIProvidersQuery,
+  usePreviewProviderModelsMutation,
   // Plugins
   useListProjectPluginsQuery,
   useEnableProjectPluginMutation,

@@ -36,6 +36,7 @@ import {
   TestAIResponseDto,
   AIProvidersResponseDto,
   AIProviderEnum,
+  ModelInfoDto,
 } from '../settings/dto/ai-settings.dto';
 import { SkillsService, SkillSummary } from '../pipelines/skills.service';
 import { AIToolPluginService, PluginListItem } from '../pipelines/ai-plugins/ai-tool-plugin.service';
@@ -156,6 +157,28 @@ export class ProjectsController {
     return {
       providers: this.aiSettingsService.getAvailableProviders(),
     };
+  }
+
+  @Post(':id/ai/providers/:provider/models')
+  @UseGuards(ApiKeyGuard, ProjectPermissionGuard)
+  @RequireProjectRole('admin')
+  @ApiOperation({
+    summary: 'Preview live model list for a provider using a supplied API key',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Live (or fallback) model suggestions for the provider',
+    type: [ModelInfoDto],
+  })
+  async previewProviderModels(
+    @Param('provider') provider: AIProviderEnum,
+    @Body() body: { apiKey?: string },
+  ): Promise<{ models: ModelInfoDto[] }> {
+    const models = await this.aiSettingsService.previewProviderModels(
+      provider as AIProviderType,
+      body?.apiKey ?? '',
+    );
+    return { models };
   }
 
   @Get(':id/ai/skills')

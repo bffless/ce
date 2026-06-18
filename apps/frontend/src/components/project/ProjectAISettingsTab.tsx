@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   useGetProjectAIStatusQuery,
   useAddProjectAIProviderMutation,
@@ -6,6 +6,7 @@ import {
   useSetProjectDefaultAIProviderMutation,
   useTestProjectAIMutation,
   useGetAvailableAIProvidersQuery,
+  usePreviewProviderModelsMutation,
   useGetProjectAIServicesQuery,
   useAddProjectAIServiceMutation,
   useRemoveProjectAIServiceMutation,
@@ -555,6 +556,7 @@ function ProviderCard({
 function AddProviderDialog({
   open,
   onOpenChange,
+  projectId,
   availableProviders,
   onAdd,
   isAdding,
@@ -563,6 +565,7 @@ function AddProviderDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  projectId: string;
   availableProviders: { provider: AIProviderType; displayName: string; models: ModelInfo[] }[];
   onAdd: (provider: AIProviderType, apiKey: string, defaultModel: string, isDefault: boolean) => void;
   isAdding: boolean;
@@ -574,8 +577,37 @@ function AddProviderDialog({
   const [defaultModel, setDefaultModel] = useState('');
   // First provider is always default
   const [isDefault, setIsDefault] = useState(isFirstProvider);
+  // Live model list fetched with the entered key (overrides the static catalog)
+  const [liveModels, setLiveModels] = useState<ModelInfo[] | null>(null);
+
+  const [previewModels, { isLoading: isLoadingModels }] = usePreviewProviderModelsMutation();
 
   const selectedProviderInfo = availableProviders.find((p) => p.provider === selectedProvider);
+
+  // When a plausible key is entered, fetch the live model list (debounced) so the
+  // default-model picker reflects models that key can actually access.
+  useEffect(() => {
+    if (!selectedProvider || apiKey.trim().length < 8) {
+      setLiveModels(null);
+      return;
+    }
+    const handle = setTimeout(async () => {
+      try {
+        const result = await previewModels({
+          projectId,
+          provider: selectedProvider,
+          apiKey: apiKey.trim(),
+        }).unwrap();
+        setLiveModels(result.models?.length ? result.models : null);
+      } catch {
+        setLiveModels(null); // fall back to the static catalog
+      }
+    }, 500);
+    return () => clearTimeout(handle);
+  }, [apiKey, selectedProvider, projectId, previewModels]);
+
+  // Prefer live models when available, otherwise the static catalog
+  const modelOptions = liveModels ?? selectedProviderInfo?.models ?? [];
 
   const handleSubmit = () => {
     if (selectedProvider && apiKey.trim()) {
@@ -587,6 +619,7 @@ function AddProviderDialog({
     setSelectedProvider(null);
     setApiKey('');
     setDefaultModel('');
+    setLiveModels(null);
     setIsDefault(isFirstProvider); // Reset to true for first provider
     onOpenChange(false);
   };
@@ -676,11 +709,15 @@ function AddProviderDialog({
                   <ModelSelector
                     value={defaultModel}
                     onChange={setDefaultModel}
-                    suggestedModels={selectedProviderInfo.models}
+                    suggestedModels={modelOptions}
                   />
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Choose a suggested model or type any model ID. Can be overridden per-pipeline.
+                  {isLoadingModels
+                    ? 'Fetching available models for this key…'
+                    : liveModels
+                      ? 'Showing models available to this API key. You can also type any model ID.'
+                      : 'Choose a suggested model or type any model ID. Can be overridden per-pipeline.'}
                 </p>
               </div>
 
@@ -930,6 +967,7 @@ export function ProjectAISettingsTab({ project }: ProjectAISettingsTabProps) {
       <AddProviderDialog
         open={showAddDialog}
         onOpenChange={setShowAddDialog}
+        projectId={project.id}
         availableProviders={availableToAdd}
         onAdd={handleAddProvider}
         isAdding={isAdding}
