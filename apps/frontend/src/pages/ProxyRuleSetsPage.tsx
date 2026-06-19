@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -25,16 +25,18 @@ import {
   useDeleteRuleSetMutation,
   useCopyRuleSetMutation,
   useLazyGetRuleSetQuery,
-  useImportRuleSetMutation,
   type ProxyRuleSetExport,
   type ExportedProxyRule,
-  type ProxyRuleSetWithRules,
+  type ExportedSchema,
   type HeaderConfig,
 } from '@/services/proxyRulesApi';
+import { useLazyGetSchemaQuery } from '@/services/pipelineSchemasApi';
 import { useGetProjectQuery } from '@/services/projectsApi';
 import { useProjectRole } from '@/hooks/useProjectRole';
 import { useToast } from '@/hooks/use-toast';
+import { collectSchemaIds } from '@/utils/proxyRuleSchemaRefs';
 import { CreateRuleSetDialog } from '@/components/proxy-rules/CreateRuleSetDialog';
+import { ImportRuleSetDialog } from '@/components/proxy-rules/ImportRuleSetDialog';
 import { RuleSetCard } from '@/components/proxy-rules/RuleSetCard';
 import { routes } from '@/utils/routes';
 
@@ -92,14 +94,28 @@ export function ProxyRuleSetsPage() {
 
   // Export / import
   const [fetchRuleSet, { isFetching: isExporting }] = useLazyGetRuleSetQuery();
-  const [importRuleSet, { isLoading: isImporting }] = useImportRuleSetMutation();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [fetchSchema] = useLazyGetSchemaQuery();
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
 
   const handleExport = async (ruleSetId: string) => {
     try {
       const ruleSet = await fetchRuleSet(ruleSetId).unwrap();
+
+      // Bundle the schema definitions the pipelines depend on so the export is
+      // portable across projects. Definitions only (name + fields), no data rows.
+      const schemaIds = [...collectSchemaIds(ruleSet.rules)];
+      const schemas: ExportedSchema[] = [];
+      for (const id of schemaIds) {
+        try {
+          const schema = await fetchSchema(id).unwrap();
+          schemas.push({ id: schema.id, name: schema.name, fields: schema.fields });
+        } catch {
+          // Schema missing/inaccessible — leave it as an unbundled reference
+        }
+      }
+
       const exportData: ProxyRuleSetExport = {
-        version: 1,
+        version: 2,
         exportedAt: new Date().toISOString(),
         kind: 'bffless-proxy-rule-set',
         ruleSet: {
@@ -129,6 +145,7 @@ export function ProxyRuleSetsPage() {
             description: rule.description,
           }),
         ),
+        schemas: schemas.length > 0 ? schemas : undefined,
       };
 
       const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
@@ -148,64 +165,16 @@ export function ProxyRuleSetsPage() {
       toast({
         title: 'Rule set exported',
         description:
-          `Exported "${ruleSet.name}" with ${ruleSet.rules.length} rule${ruleSet.rules.length !== 1 ? 's' : ''}.` +
+          `Exported "${ruleSet.name}" with ${ruleSet.rules.length} rule${ruleSet.rules.length !== 1 ? 's' : ''}` +
+          (schemas.length > 0
+            ? ` and ${schemas.length} schema${schemas.length !== 1 ? 's' : ''}.`
+            : '.') +
           (hadSecrets ? ' Added-header secret values were not included.' : ''),
       });
     } catch {
       toast({
         title: 'Export failed',
         description: 'Could not export the rule set. Please try again.',
-        variant: 'destructive',
-      });
-    }
-  };
-
-  const handleImportClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    // Reset the input so selecting the same file again re-triggers onChange
-    event.target.value = '';
-    if (!file || !project?.id) return;
-
-    let parsed: ProxyRuleSetExport;
-    try {
-      parsed = JSON.parse(await file.text());
-    } catch {
-      toast({
-        title: 'Invalid file',
-        description: 'The selected file is not valid JSON.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    if (!parsed?.ruleSet?.name || !Array.isArray(parsed.rules)) {
-      toast({
-        title: 'Invalid file',
-        description: 'This file is not a valid proxy rule set export.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    try {
-      const imported = (await importRuleSet({
-        projectId: project.id,
-        data: parsed,
-      }).unwrap()) as ProxyRuleSetWithRules;
-      toast({
-        title: 'Rule set imported',
-        description: `Created "${imported.name}" with ${imported.rules.length} rule${imported.rules.length !== 1 ? 's' : ''}.`,
-      });
-    } catch (err: unknown) {
-      const errorMessage =
-        (err as { data?: { message?: string } })?.data?.message || 'Failed to import rule set';
-      toast({
-        title: 'Import failed',
-        description: errorMessage,
         variant: 'destructive',
       });
     }
@@ -298,13 +267,6 @@ export function ProxyRuleSetsPage() {
 
   return (
     <>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="application/json,.json"
-        className="hidden"
-        onChange={handleImportFile}
-      />
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
@@ -317,11 +279,11 @@ export function ProxyRuleSetsPage() {
                 variant="outline"
                 size="sm"
                 className="gap-2"
-                onClick={handleImportClick}
-                disabled={isImporting || !project?.id}
+                onClick={() => setIsImportDialogOpen(true)}
+                disabled={!project?.id}
               >
                 <Upload className="h-4 w-4" />
-                {isImporting ? 'Importing...' : 'Import'}
+                Import
               </Button>
               <Button size="sm" className="gap-2" onClick={() => setIsCreateDialogOpen(true)}>
                 <Plus className="h-4 w-4" />
@@ -413,6 +375,15 @@ export function ProxyRuleSetsPage() {
           projectId={project?.id || ''}
           open={isCreateDialogOpen}
           onOpenChange={setIsCreateDialogOpen}
+        />
+      )}
+
+      {/* Import Dialog */}
+      {canEdit && (
+        <ImportRuleSetDialog
+          projectId={project?.id || ''}
+          open={isImportDialogOpen}
+          onOpenChange={setIsImportDialogOpen}
         />
       )}
 

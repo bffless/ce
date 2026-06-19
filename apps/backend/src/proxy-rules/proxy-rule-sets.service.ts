@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  BadRequestException,
   Logger,
   Inject,
   forwardRef,
@@ -11,6 +12,7 @@ import { db } from '../db/client';
 import { proxyRuleSets, proxyRules, projects, aliasProxyRuleSets, deploymentAliases } from '../db/schema';
 import { PermissionsService } from '../permissions/permissions.service';
 import { NginxRegenerationService } from '../domains/nginx-regeneration.service';
+import { PipelineSchemasService } from '../pipelines/pipeline-schemas.service';
 import {
   CreateProxyRuleSetDto,
   UpdateProxyRuleSetDto,
@@ -20,6 +22,7 @@ import {
 } from './dto';
 import type { PipelineConfig, ProxyType } from '../db/schema/proxy-rules.schema';
 import { ProxyRulesService } from './proxy-rules.service';
+import { remapSchemaIds } from './schema-refs.util';
 
 @Injectable()
 export class ProxyRuleSetsService {
@@ -30,6 +33,8 @@ export class ProxyRuleSetsService {
     private readonly proxyRulesService: ProxyRulesService,
     @Inject(forwardRef(() => NginxRegenerationService))
     private readonly nginxRegenerationService: NginxRegenerationService,
+    @Inject(forwardRef(() => PipelineSchemasService))
+    private readonly pipelineSchemasService: PipelineSchemasService,
   ) {}
 
   /**
@@ -290,6 +295,52 @@ export class ProxyRuleSetsService {
       apiKeyProjectId,
     );
 
+    // Resolve bundled schema dependencies to target-project schema ids.
+    // Pipeline rules carry the original (source) schema ids; we build a map and
+    // remap every schema reference in the pipeline configs before insert.
+    const idMap = new Map<string, string>();
+    const schemaResolutions = dto.schemas ?? [];
+    if (schemaResolutions.length > 0) {
+      const existingSchemas = await this.pipelineSchemasService.getByProjectId(
+        projectId,
+        apiKeyProjectId,
+      );
+      const existingNames = new Set(existingSchemas.map((s) => s.name));
+
+      for (const res of schemaResolutions) {
+        if (res.action === 'reuse') {
+          if (!res.targetSchemaId) {
+            throw new BadRequestException(
+              `Schema "${res.name}" is set to reuse but no targetSchemaId was provided`,
+            );
+          }
+          const target = await this.pipelineSchemasService.getById(res.targetSchemaId);
+          if (!target || target.projectId !== projectId) {
+            throw new BadRequestException(
+              `Target schema ${res.targetSchemaId} not found in this project`,
+            );
+          }
+          idMap.set(res.sourceId, target.id);
+        } else {
+          // create — auto-suffix on name conflict so import never hard-fails
+          let schemaName = res.name;
+          if (existingNames.has(schemaName)) {
+            let suffix = 2;
+            while (existingNames.has(`${res.name} (${suffix})`)) suffix++;
+            schemaName = `${res.name} (${suffix})`;
+          }
+          existingNames.add(schemaName);
+          const created = await this.pipelineSchemasService.create(
+            { projectId, name: schemaName, fields: res.fields },
+            userId,
+            userRole,
+            apiKeyProjectId,
+          );
+          idMap.set(res.sourceId, created.id);
+        }
+      }
+    }
+
     // Generate a unique name, appending "(Imported)" on collision
     const baseName = dto.ruleSet.name?.trim() || 'Imported Rule Set';
     let name = baseName;
@@ -312,8 +363,10 @@ export class ProxyRuleSetsService {
       })
       .returning();
 
-    // Insert rules in their declared order so evaluation order is preserved
-    const rules = [...(dto.rules ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    // Remap schema references to the resolved target-project ids, then insert
+    // rules in their declared order so evaluation order is preserved
+    const sourceRules = idMap.size > 0 ? remapSchemaIds(dto.rules ?? [], idMap) : dto.rules ?? [];
+    const rules = [...sourceRules].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     for (let i = 0; i < rules.length; i++) {
       const rule = rules[i];
       await db.insert(proxyRules).values({

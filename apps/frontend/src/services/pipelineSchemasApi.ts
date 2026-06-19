@@ -340,6 +340,7 @@ export const {
   // Schemas
   useGetProjectSchemasQuery,
   useGetSchemaQuery,
+  useLazyGetSchemaQuery,
   useCreateSchemaMutation,
   useUpdateSchemaMutation,
   useDeleteSchemaMutation,
