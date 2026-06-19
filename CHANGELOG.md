@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.67](https://github.com/bffless/ce/compare/v0.1.66...v0.1.67) (2026-06-19)
+
+
+### Features
+
+* export and import proxy rule sets from the admin UI ([1e5b560](https://github.com/bffless/ce/commit/1e5b56064c6501188d3772ebac65f3eef73ad948))
+* export and import proxy rule sets from the admin UI ([f70cd6b](https://github.com/bffless/ce/commit/f70cd6b373ff65a47b422aef0ba89823f832c361))
+
 ## [0.1.66](https://github.com/bffless/ce/compare/v0.1.65...v0.1.66) (2026-06-18)
 
 
