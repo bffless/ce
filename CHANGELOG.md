@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.69](https://github.com/bffless/ce/compare/v0.1.68...v0.1.69) (2026-06-19)
+
+
+### Features
+
+* bundle schema dependencies in proxy rule set export/import ([1362838](https://github.com/bffless/ce/commit/13628387db01c7b2875eef71c6303dd790e20845))
+* bundle schema dependencies in proxy rule set export/import ([202134c](https://github.com/bffless/ce/commit/202134c5d570ddc667432ca8d595ed874016822b))
+
 ## [0.1.68](https://github.com/bffless/ce/compare/v0.1.67...v0.1.68) (2026-06-19)
 
 
