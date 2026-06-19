@@ -1,5 +1,6 @@
 import { api } from './api';
 import type { HandlerType, TestPipelineDto, TestPipelineResult, ValidatorConfig } from './pipelinesApi';
+import type { SchemaField } from './pipelineSchemasApi';
 
 // Header configuration for proxy rules
 export interface HeaderConfig {
@@ -150,7 +151,16 @@ export type ExportedProxyRule = Omit<
   'id' | 'ruleSetId' | 'createdAt' | 'updatedAt'
 >;
 
-// Portable export envelope for a proxy rule set and its rules
+// A schema dependency bundled in an export (definitions only — name + fields).
+// `id` is the original (source-project) schema id as referenced in the rules.
+export interface ExportedSchema {
+  id: string;
+  name: string;
+  fields: SchemaField[];
+}
+
+// Portable export envelope for a proxy rule set, its rules, and schema deps.
+// version 1: no `schemas`. version 2: bundles referenced schema definitions.
 export interface ProxyRuleSetExport {
   version: number;
   exportedAt: string;
@@ -161,7 +171,22 @@ export interface ProxyRuleSetExport {
     environment?: string | null;
   };
   rules: ExportedProxyRule[];
+  schemas?: ExportedSchema[];
 }
+
+// How to resolve one bundled schema in the target project on import
+export interface ImportSchemaResolution {
+  sourceId: string;
+  name: string;
+  fields: SchemaField[];
+  action: 'reuse' | 'create';
+  targetSchemaId?: string;
+}
+
+// Import payload: the export envelope, with `schemas` carrying per-schema resolutions
+export type ImportRuleSetPayload = Omit<ProxyRuleSetExport, 'schemas'> & {
+  schemas?: ImportSchemaResolution[];
+};
 
 // Pipeline execution log summary (list view)
 export interface PipelineExecutionLogSummary {
@@ -324,7 +349,7 @@ export const proxyRulesApi = api.injectEndpoints({
     // Import a rule set (with rules) from an exported JSON definition
     importRuleSet: builder.mutation<
       ProxyRuleSetWithRules,
-      { projectId: string; data: ProxyRuleSetExport }
+      { projectId: string; data: ImportRuleSetPayload }
     >({
       query: ({ projectId, data }) => ({
         url: `/api/proxy-rule-sets/project/${projectId}/import`,
