@@ -144,6 +144,25 @@ export interface UpdateProxyRuleDto {
   debugEnabled?: boolean;
 }
 
+// A single proxy rule as represented in an export file (no server-managed fields)
+export type ExportedProxyRule = Omit<
+  ProxyRule,
+  'id' | 'ruleSetId' | 'createdAt' | 'updatedAt'
+>;
+
+// Portable export envelope for a proxy rule set and its rules
+export interface ProxyRuleSetExport {
+  version: number;
+  exportedAt: string;
+  kind: 'bffless-proxy-rule-set';
+  ruleSet: {
+    name: string;
+    description?: string | null;
+    environment?: string | null;
+  };
+  rules: ExportedProxyRule[];
+}
+
 // Pipeline execution log summary (list view)
 export interface PipelineExecutionLogSummary {
   id: string;
@@ -302,6 +321,22 @@ export const proxyRulesApi = api.injectEndpoints({
       invalidatesTags: ['ProxyRuleSet', 'ProxyRule'],
     }),
 
+    // Import a rule set (with rules) from an exported JSON definition
+    importRuleSet: builder.mutation<
+      ProxyRuleSetWithRules,
+      { projectId: string; data: ProxyRuleSetExport }
+    >({
+      query: ({ projectId, data }) => ({
+        url: `/api/proxy-rule-sets/project/${projectId}/import`,
+        method: 'POST',
+        body: data,
+      }),
+      invalidatesTags: (_result, _error, { projectId }) => [
+        { type: 'ProxyRuleSet' as const, id: `project-${projectId}` },
+        'ProxyRuleSet',
+      ],
+    }),
+
     // ==================== Rules within a Rule Set ====================
 
     // List rules in a rule set
@@ -441,9 +476,11 @@ export const {
   useGetProjectRuleSetsQuery,
   useCreateRuleSetMutation,
   useGetRuleSetQuery,
+  useLazyGetRuleSetQuery,
   useUpdateRuleSetMutation,
   useDeleteRuleSetMutation,
   useCopyRuleSetMutation,
+  useImportRuleSetMutation,
   // Rules within a Rule Set
   useGetRuleSetRulesQuery,
   useCreateRuleInSetMutation,

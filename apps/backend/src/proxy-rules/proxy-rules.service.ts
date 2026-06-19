@@ -728,6 +728,18 @@ export class ProxyRulesService {
   }
 
   /**
+   * Encrypt header config 'add' values for storage. Public wrapper around the
+   * internal encryption used when persisting rules directly (e.g. import/copy),
+   * bypassing the create()/update() paths.
+   */
+  encryptHeaderConfigForStorage(
+    config: ProxyHeaderConfig | null | undefined,
+  ): ProxyHeaderConfig | null {
+    if (!config) return null;
+    return this.encryptHeaderConfig(config);
+  }
+
+  /**
    * Encrypt sensitive header values
    */
   private encryptHeaderConfig(config: ProxyHeaderConfig): ProxyHeaderConfig {
