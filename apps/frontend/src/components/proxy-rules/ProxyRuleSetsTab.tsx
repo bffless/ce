@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -19,11 +19,27 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Plus, MoreHorizontal, Edit2, Trash2, Settings, Layers, CopyPlus } from 'lucide-react';
+import {
+  Plus,
+  MoreHorizontal,
+  Edit2,
+  Trash2,
+  Settings,
+  Layers,
+  CopyPlus,
+  Download,
+  Upload,
+} from 'lucide-react';
 import {
   useGetProjectRuleSetsQuery,
   useDeleteRuleSetMutation,
   useCopyRuleSetMutation,
+  useLazyGetRuleSetQuery,
+  useImportRuleSetMutation,
+  type ProxyRuleSetExport,
+  type ExportedProxyRule,
+  type ProxyRuleSetWithRules,
+  type HeaderConfig,
 } from '@/services/proxyRulesApi';
 import { useGetProjectQuery } from '@/services/projectsApi';
 import { useProjectRole } from '@/hooks/useProjectRole';
@@ -34,6 +50,22 @@ import { RuleSetEditorDialog } from './RuleSetEditorDialog';
 interface ProxyRuleSetsTabProps {
   owner: string;
   repo: string;
+}
+
+/**
+ * Header `add` values can hold secrets (API keys, bearer tokens). We deliberately
+ * do NOT export their values — exports keep the header names but blank the values,
+ * so the user re-enters secrets after import. This is a known export/import gap
+ * until inline secrets move to project-level `secrets.<name>` references
+ * (see stories/tasks/migrate-inline-pipeline-secrets-to-project-secrets.md).
+ */
+function sanitizeHeaderConfigForExport(headerConfig: HeaderConfig | null): HeaderConfig | null {
+  if (!headerConfig?.add) return headerConfig;
+  const blankedAdd: Record<string, string> = {};
+  for (const key of Object.keys(headerConfig.add)) {
+    blankedAdd[key] = '';
+  }
+  return { ...headerConfig, add: blankedAdd };
 }
 
 /**
@@ -70,6 +102,127 @@ export function ProxyRuleSetsTab({ owner, repo }: ProxyRuleSetsTabProps) {
 
   // Copy mutation
   const [copyRuleSet, { isLoading: isCopying }] = useCopyRuleSetMutation();
+
+  // Export / import
+  const [fetchRuleSet, { isFetching: isExporting }] = useLazyGetRuleSetQuery();
+  const [importRuleSet, { isLoading: isImporting }] = useImportRuleSetMutation();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleExport = async (ruleSetId: string) => {
+    try {
+      const ruleSet = await fetchRuleSet(ruleSetId).unwrap();
+      const exportData: ProxyRuleSetExport = {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        kind: 'bffless-proxy-rule-set',
+        ruleSet: {
+          name: ruleSet.name,
+          description: ruleSet.description,
+          environment: ruleSet.environment,
+        },
+        // Strip server-managed fields; keep only portable rule config
+        rules: ruleSet.rules.map(
+          (rule): ExportedProxyRule => ({
+            pathPattern: rule.pathPattern,
+            method: rule.method,
+            targetUrl: rule.targetUrl,
+            stripPrefix: rule.stripPrefix,
+            order: rule.order,
+            timeout: rule.timeout,
+            preserveHost: rule.preserveHost,
+            forwardCookies: rule.forwardCookies,
+            headerConfig: sanitizeHeaderConfigForExport(rule.headerConfig),
+            authTransform: rule.authTransform,
+            internalRewrite: rule.internalRewrite,
+            proxyType: rule.proxyType,
+            emailHandlerConfig: rule.emailHandlerConfig,
+            pipelineConfig: rule.pipelineConfig,
+            isEnabled: rule.isEnabled,
+            debugEnabled: rule.debugEnabled,
+            description: rule.description,
+          }),
+        ),
+      };
+
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const safeName = ruleSet.name.replace(/[^a-zA-Z0-9-_]+/g, '-').replace(/^-+|-+$/g, '');
+      link.href = url;
+      link.download = `${safeName || 'proxy-rule-set'}.proxy-rules.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      const hadSecrets = ruleSet.rules.some(
+        (rule) => rule.headerConfig?.add && Object.keys(rule.headerConfig.add).length > 0,
+      );
+      toast({
+        title: 'Rule set exported',
+        description:
+          `Exported "${ruleSet.name}" with ${ruleSet.rules.length} rule${ruleSet.rules.length !== 1 ? 's' : ''}.` +
+          (hadSecrets ? ' Added-header secret values were not included.' : ''),
+      });
+    } catch {
+      toast({
+        title: 'Export failed',
+        description: 'Could not export the rule set. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    // Reset the input so selecting the same file again re-triggers onChange
+    event.target.value = '';
+    if (!file || !project?.id) return;
+
+    let parsed: ProxyRuleSetExport;
+    try {
+      parsed = JSON.parse(await file.text());
+    } catch {
+      toast({
+        title: 'Invalid file',
+        description: 'The selected file is not valid JSON.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!parsed?.ruleSet?.name || !Array.isArray(parsed.rules)) {
+      toast({
+        title: 'Invalid file',
+        description: 'This file is not a valid proxy rule set export.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      const imported = (await importRuleSet({
+        projectId: project.id,
+        data: parsed,
+      }).unwrap()) as ProxyRuleSetWithRules;
+      toast({
+        title: 'Rule set imported',
+        description: `Created "${imported.name}" with ${imported.rules.length} rule${imported.rules.length !== 1 ? 's' : ''}.`,
+      });
+    } catch (err: unknown) {
+      const errorMessage =
+        (err as { data?: { message?: string } })?.data?.message || 'Failed to import rule set';
+      toast({
+        title: 'Import failed',
+        description: errorMessage,
+        variant: 'destructive',
+      });
+    }
+  };
 
   const handleCopy = async (ruleSetId: string) => {
     try {
@@ -110,6 +263,37 @@ export function ProxyRuleSetsTab({ owner, repo }: ProxyRuleSetsTabProps) {
   };
 
   const isLoading = isLoadingProject || isLoadingRuleSets;
+
+  // Shared header action buttons (Import + Create), reused across states
+  const headerActions = canEdit ? (
+    <div className="flex items-center gap-2">
+      <Button
+        variant="outline"
+        size="sm"
+        className="gap-2"
+        onClick={handleImportClick}
+        disabled={isImporting || !project?.id}
+      >
+        <Upload className="h-4 w-4" />
+        {isImporting ? 'Importing...' : 'Import'}
+      </Button>
+      <Button size="sm" className="gap-2" onClick={() => setIsCreateDialogOpen(true)}>
+        <Plus className="h-4 w-4" />
+        Create Rule Set
+      </Button>
+    </div>
+  ) : null;
+
+  // Hidden file input used by the Import button
+  const importFileInput = (
+    <input
+      ref={fileInputRef}
+      type="file"
+      accept="application/json,.json"
+      className="hidden"
+      onChange={handleImportFile}
+    />
+  );
 
   // Loading state
   if (isLoading) {
@@ -161,6 +345,7 @@ export function ProxyRuleSetsTab({ owner, repo }: ProxyRuleSetsTabProps) {
   if (ruleSets.length === 0) {
     return (
       <>
+        {importFileInput}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
@@ -198,18 +383,14 @@ export function ProxyRuleSetsTab({ owner, repo }: ProxyRuleSetsTabProps) {
 
   return (
     <>
+      {importFileInput}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle>Proxy Rule Sets</CardTitle>
             <CardDescription>Manage reusable proxy rule configurations</CardDescription>
           </div>
-          {canEdit && (
-            <Button size="sm" className="gap-2" onClick={() => setIsCreateDialogOpen(true)}>
-              <Plus className="h-4 w-4" />
-              Create Rule Set
-            </Button>
-          )}
+          {headerActions}
         </CardHeader>
         <CardContent>
           {/* Rule Sets List */}
@@ -265,6 +446,13 @@ export function ProxyRuleSetsTab({ owner, repo }: ProxyRuleSetsTabProps) {
                         >
                           <CopyPlus className="h-4 w-4 mr-2" />
                           {isCopying ? 'Duplicating...' : 'Duplicate'}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => handleExport(ruleSet.id)}
+                          disabled={isExporting}
+                        >
+                          <Download className="h-4 w-4 mr-2" />
+                          {isExporting ? 'Exporting...' : 'Export'}
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={() => setDeletingRuleSet({ id: ruleSet.id, name: ruleSet.name })}

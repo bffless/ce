@@ -16,7 +16,9 @@ import {
   UpdateProxyRuleSetDto,
   ProxyRuleSetResponseDto,
   ProxyRuleSetWithRulesResponseDto,
+  ImportProxyRuleSetDto,
 } from './dto';
+import type { PipelineConfig, ProxyType } from '../db/schema/proxy-rules.schema';
 import { ProxyRulesService } from './proxy-rules.service';
 
 @Injectable()
@@ -249,6 +251,102 @@ export class ProxyRuleSetsService {
     return {
       ...newRuleSet,
       rules: copiedRules as ProxyRuleSetWithRulesResponseDto['rules'],
+    };
+  }
+
+  /**
+   * Import a rule set (and all its rules) from an exported JSON definition.
+   *
+   * Mirrors copy() — rules are inserted directly rather than going through
+   * ProxyRulesService.create(), so there is no per-rule nginx regeneration
+   * (a freshly imported set is not yet attached to any alias) and no
+   * email-service / SSRF re-validation beyond the DTO validation already
+   * performed at the controller boundary. Header `add` values are encrypted
+   * before storage so they round-trip correctly with the rest of the system.
+   */
+  async importRuleSet(
+    projectId: string,
+    dto: ImportProxyRuleSetDto,
+    userId: string,
+    userRole: string,
+    apiKeyProjectId?: string | null,
+  ): Promise<ProxyRuleSetWithRulesResponseDto> {
+    // Verify project exists
+    const [project] = await db
+      .select()
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1);
+
+    if (!project) {
+      throw new NotFoundException(`Project ${projectId} not found`);
+    }
+
+    await this.permissionsService.requireProjectAccess(
+      projectId,
+      userId,
+      userRole,
+      'contributor',
+      apiKeyProjectId,
+    );
+
+    // Generate a unique name, appending "(Imported)" on collision
+    const baseName = dto.ruleSet.name?.trim() || 'Imported Rule Set';
+    let name = baseName;
+    if (await this.findByName(projectId, name)) {
+      name = `${baseName} (Imported)`;
+      let importIndex = 1;
+      while (await this.findByName(projectId, name)) {
+        importIndex++;
+        name = `${baseName} (Imported ${importIndex})`;
+      }
+    }
+
+    const [newRuleSet] = await db
+      .insert(proxyRuleSets)
+      .values({
+        projectId,
+        name,
+        description: dto.ruleSet.description,
+        environment: dto.ruleSet.environment,
+      })
+      .returning();
+
+    // Insert rules in their declared order so evaluation order is preserved
+    const rules = [...(dto.rules ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    for (let i = 0; i < rules.length; i++) {
+      const rule = rules[i];
+      await db.insert(proxyRules).values({
+        ruleSetId: newRuleSet.id,
+        pathPattern: rule.pathPattern,
+        method: rule.method ?? null,
+        targetUrl: rule.targetUrl ?? '',
+        stripPrefix: rule.stripPrefix ?? true,
+        order: rule.order ?? i,
+        timeout: rule.timeout ?? 30000,
+        preserveHost: rule.preserveHost ?? false,
+        forwardCookies: rule.forwardCookies ?? false,
+        headerConfig: this.proxyRulesService.encryptHeaderConfigForStorage(rule.headerConfig),
+        authTransform: rule.authTransform ?? null,
+        internalRewrite: rule.internalRewrite ?? false,
+        proxyType: (rule.proxyType as ProxyType) ?? 'external_proxy',
+        emailHandlerConfig: rule.emailHandlerConfig ?? null,
+        pipelineConfig: (rule.pipelineConfig as PipelineConfig) ?? null,
+        isEnabled: rule.isEnabled ?? true,
+        debugEnabled: rule.debugEnabled ?? false,
+        description: rule.description,
+      });
+    }
+
+    this.logger.log(
+      `Imported proxy rule set "${name}" (${rules.length} rules) for project ${projectId}`,
+    );
+
+    const insertedRules = await this.proxyRulesService.getRulesByRuleSetId(newRuleSet.id);
+
+    return {
+      ...newRuleSet,
+      rules: insertedRules as ProxyRuleSetWithRulesResponseDto['rules'],
     };
   }
 

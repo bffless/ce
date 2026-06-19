@@ -31,6 +31,7 @@ import {
   ReorderProxyRulesDto,
   ProxyRuleResponseDto,
   ProxyRulesListResponseDto,
+  ImportProxyRuleSetDto,
 } from './dto';
 import { ApiKeyGuard } from '../auth/api-key.guard';
 import { CurrentUser, CurrentUserData } from '../auth/decorators/current-user.decorator';
@@ -81,6 +82,26 @@ export class ProxyRuleSetsController {
     @CurrentUser() user: CurrentUserData,
   ): Promise<ProxyRuleSetResponseDto> {
     return this.proxyRuleSetsService.create(
+      projectId,
+      dto,
+      user.id,
+      user.role || 'user',
+      user.apiKeyProjectId,
+    );
+  }
+
+  @Post('project/:projectId/import')
+  @ApiOperation({ summary: 'Import a rule set (with rules) from an exported JSON definition' })
+  @ApiParam({ name: 'projectId', type: 'string' })
+  @ApiResponse({ status: 201, description: 'Imported rule set with rules', type: ProxyRuleSetWithRulesResponseDto })
+  @ApiResponse({ status: 400, description: 'Invalid import payload' })
+  @ApiResponse({ status: 403, description: 'Not authorized' })
+  async import(
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+    @Body() dto: ImportProxyRuleSetDto,
+    @CurrentUser() user: CurrentUserData,
+  ): Promise<ProxyRuleSetWithRulesResponseDto> {
+    return this.proxyRuleSetsService.importRuleSet(
       projectId,
       dto,
       user.id,
