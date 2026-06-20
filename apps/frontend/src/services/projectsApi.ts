@@ -499,6 +499,30 @@ export const projectsApi = api.injectEndpoints({
         { type: 'ProjectAI' as const, id: `${projectId}-skills` },
       ],
     }),
+    // Skills alias (which deployment alias skills are loaded from)
+    getProjectSkillsAlias: builder.query<
+      { skillsAlias: string | null },
+      { projectId: string }
+    >({
+      query: ({ projectId }) => `/api/projects/${projectId}/ai/skills-alias`,
+      providesTags: (_result, _error, { projectId }) => [
+        { type: 'ProjectAI' as const, id: `${projectId}-skills-alias` },
+      ],
+    }),
+    setProjectSkillsAlias: builder.mutation<
+      { skillsAlias: string | null },
+      { projectId: string; skillsAlias: string | null }
+    >({
+      query: ({ projectId, skillsAlias }) => ({
+        url: `/api/projects/${projectId}/ai/skills-alias`,
+        method: 'PUT',
+        body: { skillsAlias },
+      }),
+      invalidatesTags: (_result, _error, { projectId }) => [
+        { type: 'ProjectAI' as const, id: `${projectId}-skills-alias` },
+        { type: 'ProjectAI' as const, id: `${projectId}-skills` },
+      ],
+    }),
   }),
 });
 
@@ -540,4 +564,6 @@ export const {
   useListProjectSkillsQuery,
   useGetProjectSkillsPathQuery,
   useSetProjectSkillsPathMutation,
+  useGetProjectSkillsAliasQuery,
+  useSetProjectSkillsAliasMutation,
 } = projectsApi;

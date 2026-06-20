@@ -277,9 +277,18 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
     );
 
     if (config.skills?.mode !== 'none' && context.deployment) {
-      const { owner, repo, commitSha } = context.deployment;
+      const { owner, repo } = context.deployment;
+      // Use the project's configured skills alias if set; otherwise load skills
+      // from the deployment serving this request.
+      const commitSha =
+        (await this.projectAISettingsService.resolveSkillsCommitSha(
+          context.projectId,
+          context.deployment.commitSha,
+        )) ?? context.deployment.commitSha;
       const skillsPath = await this.projectAISettingsService.getSkillsPath(context.projectId);
-      this.logger.debug(`Skills path for project ${context.projectId}: ${skillsPath}`);
+      this.logger.debug(
+        `Skills source for project ${context.projectId}: ${commitSha?.substring(0, 8)} (path: ${skillsPath})`,
+      );
 
       try {
         const allSkills = await this.skillsService.listSkills(owner, repo, commitSha, skillsPath);
