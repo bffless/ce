@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.72](https://github.com/bffless/ce/compare/v0.1.71...v0.1.72) (2026-06-20)
+
+
+### Bug Fixes
+
+* render markdown viewer GitHub-style with source toggle ([78b9786](https://github.com/bffless/ce/commit/78b97860134cc1c8a20c08ab84c45040deae03b1))
+* render markdown viewer GitHub-style with source toggle ([4097fb1](https://github.com/bffless/ce/commit/4097fb17ae637e618aa5e524584acdfc951267e5))
+
 ## [0.1.71](https://github.com/bffless/ce/compare/v0.1.70...v0.1.71) (2026-06-20)
 
 
