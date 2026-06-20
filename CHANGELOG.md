@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.70](https://github.com/bffless/ce/compare/v0.1.69...v0.1.70) (2026-06-20)
+
+
+### Features
+
+* let users pin which deployment alias AI skills load from ([73e7fd1](https://github.com/bffless/ce/commit/73e7fd176c634daf4e0ca596a00eb51350dff059))
+* let users pin which deployment alias AI skills load from ([8445c66](https://github.com/bffless/ce/commit/8445c66327f4314a7aea6c8f80cbcc17c0e9fe6f))
+
 ## [0.1.69](https://github.com/bffless/ce/compare/v0.1.68...v0.1.69) (2026-06-19)
 
 
