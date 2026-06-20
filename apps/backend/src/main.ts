@@ -1,14 +1,23 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, LogLevel } from '@nestjs/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger: (process.env.LOG_LEVEL?.split(',') as LogLevel[]) || ['error', 'warn', 'log'],
     rawBody: true, // Needed for Stripe webhook signature verification
   });
+
+  // Raise the request body limit above body-parser's 100kb default. Pipeline
+  // endpoints (e.g. studio's /api/projects/save) POST large JSON documents that
+  // otherwise fail with PayloadTooLargeError -> 500. Re-registering the parsers
+  // here keeps the rawBody capture enabled above.
+  const bodyLimit = process.env.BODY_LIMIT || '10mb';
+  app.useBodyParser('json', { limit: bodyLimit });
+  app.useBodyParser('urlencoded', { extended: true, limit: bodyLimit });
 
   // Parse cookies (populates req.cookies)
   app.use(cookieParser());
