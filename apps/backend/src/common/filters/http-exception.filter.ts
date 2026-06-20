@@ -75,8 +75,13 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       message = this.isProduction ? 'Internal server error' : exception.message;
       error = 'Internal Server Error';
 
-      // Check for specific database errors
-      if (this.isDatabaseConnectionError(exception)) {
+      // Body-parser rejects oversized request bodies with a plain Error;
+      // surface it as a proper 413 instead of a generic 500.
+      if (this.isPayloadTooLargeError(exception)) {
+        status = HttpStatus.PAYLOAD_TOO_LARGE;
+        error = 'Payload Too Large';
+        message = 'Request body is too large.';
+      } else if (this.isDatabaseConnectionError(exception)) {
         status = HttpStatus.SERVICE_UNAVAILABLE;
         error = 'Service Unavailable';
         message = 'Service temporarily unavailable. Please try again later.';
@@ -116,11 +121,22 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       [HttpStatus.NOT_FOUND]: 'Not Found',
       [HttpStatus.CONFLICT]: 'Conflict',
       [HttpStatus.UNPROCESSABLE_ENTITY]: 'Unprocessable Entity',
+      [HttpStatus.PAYLOAD_TOO_LARGE]: 'Payload Too Large',
       [HttpStatus.TOO_MANY_REQUESTS]: 'Too Many Requests',
       [HttpStatus.INTERNAL_SERVER_ERROR]: 'Internal Server Error',
       [HttpStatus.SERVICE_UNAVAILABLE]: 'Service Unavailable',
     };
     return errorNames[status] || 'Error';
+  }
+
+  /**
+   * Check if exception is a body-parser "request entity too large" error.
+   */
+  private isPayloadTooLargeError(exception: Error): boolean {
+    return (
+      exception.name === 'PayloadTooLargeError' ||
+      (exception as { type?: string }).type === 'entity.too.large'
+    );
   }
 
   /**
