@@ -1655,6 +1655,22 @@ export class DeploymentsService {
     return project.isPublic ? latestAsset?.commitSha || null : null;
   }
 
+  /**
+   * Get the commit SHA of the most recent deployment for a project,
+   * regardless of visibility or alias. Used as a fallback when no
+   * conventional alias (e.g. 'production') exists.
+   */
+  async getLatestDeploymentSha(projectId: string): Promise<string | null> {
+    const [latestAsset] = await db
+      .select({ commitSha: assets.commitSha })
+      .from(assets)
+      .where(eq(assets.projectId, projectId))
+      .orderBy(desc(assets.createdAt))
+      .limit(1);
+
+    return latestAsset?.commitSha || null;
+  }
+
   // Helper methods
 
   /**

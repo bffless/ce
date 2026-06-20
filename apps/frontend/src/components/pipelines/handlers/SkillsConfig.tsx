@@ -1,5 +1,13 @@
 import { useState, useEffect } from 'react';
-import { useListProjectSkillsQuery, useGetProjectSkillsPathQuery, useSetProjectSkillsPathMutation } from '@/services/projectsApi';
+import {
+  useListProjectSkillsQuery,
+  useGetProjectSkillsPathQuery,
+  useSetProjectSkillsPathMutation,
+  useGetProjectByIdQuery,
+  useGetProjectSkillsAliasQuery,
+  useSetProjectSkillsAliasMutation,
+} from '@/services/projectsApi';
+import { useListAliasesQuery } from '@/services/repoApi';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -33,6 +41,25 @@ export function SkillsConfig({ config, onChange, projectId }: SkillsConfigProps)
   const [localPath, setLocalPath] = useState('');
   const [saved, setSaved] = useState(false);
   const skills = data?.skills ?? [];
+
+  // Skills alias: which deployment alias to load skills from
+  const { data: project } = useGetProjectByIdQuery(projectId);
+  const { data: aliasesData } = useListAliasesQuery(
+    { owner: project?.owner ?? '', repo: project?.name ?? '' },
+    { skip: !project?.owner || !project?.name },
+  );
+  const { data: aliasData } = useGetProjectSkillsAliasQuery({ projectId });
+  const [setSkillsAlias] = useSetProjectSkillsAliasMutation();
+  const aliases = aliasesData?.aliases ?? [];
+  const AUTO = '__auto__';
+  const selectedAlias = aliasData?.skillsAlias || AUTO;
+
+  const handleAliasChange = async (value: string) => {
+    await setSkillsAlias({
+      projectId,
+      skillsAlias: value === AUTO ? null : value,
+    });
+  };
 
   useEffect(() => {
     if (pathData?.skillsPath) {
@@ -74,6 +101,30 @@ export function SkillsConfig({ config, onChange, projectId }: SkillsConfigProps)
           {config.mode === 'selected' && 'Choose specific skills to enable.'}
         </p>
       </div>
+
+      {config.mode !== 'none' && (
+        <div className="space-y-2">
+          <Label>Skills Source (Alias)</Label>
+          <Select value={selectedAlias} onValueChange={handleAliasChange}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={AUTO}>Auto (serving deployment)</SelectItem>
+              {aliases.map((a) => (
+                <SelectItem key={a.name} value={a.name}>
+                  {a.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            Which deployment alias to load <code className="bg-muted px-1 rounded">SKILL.md</code> files
+            from. <strong>Auto</strong> uses whichever deployment serves the request at runtime; pick a
+            specific alias to always load skills from there (e.g. a dedicated skills deployment).
+          </p>
+        </div>
+      )}
 
       {config.mode !== 'none' && (
         <div className="space-y-2">

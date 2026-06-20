@@ -1,8 +1,8 @@
 import { Injectable, Logger, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { db } from '../db/client';
-import { projects } from '../db/schema';
-import { eq } from 'drizzle-orm';
+import { projects, deploymentAliases } from '../db/schema';
+import { eq, and } from 'drizzle-orm';
 import * as crypto from 'crypto';
 
 /**
@@ -666,6 +666,82 @@ export class ProjectAISettingsService {
       .where(eq(projects.id, projectId));
 
     this.logger.log(`Updated skillsPath for project ${projectId}: ${skillsPath}`);
+  }
+
+  // ===== Skills Alias Settings =====
+
+  /**
+   * Get the alias that skills are loaded from for a project.
+   * Returns null when unset (callers should fall back to the serving
+   * deployment at runtime, or the latest deployment in the config UI).
+   */
+  async getSkillsAlias(projectId: string): Promise<string | null> {
+    const project = await this.getProject(projectId);
+    if (!project?.settings) {
+      return null;
+    }
+
+    const settings = project.settings as Record<string, unknown>;
+    const alias = settings.skillsAlias as string | undefined;
+    return alias && alias.trim() ? alias : null;
+  }
+
+  /**
+   * Set (or clear, when given an empty value) the alias skills are loaded from.
+   */
+  async setSkillsAlias(projectId: string, alias: string | null): Promise<void> {
+    const project = await this.getProject(projectId);
+    if (!project) {
+      throw new NotFoundException('Project not found');
+    }
+
+    const settings = (project.settings || {}) as Record<string, unknown>;
+    if (alias && alias.trim()) {
+      settings.skillsAlias = alias.trim();
+    } else {
+      delete settings.skillsAlias;
+    }
+
+    await db
+      .update(projects)
+      .set({
+        settings,
+        updatedAt: new Date(),
+      })
+      .where(eq(projects.id, projectId));
+
+    this.logger.log(
+      `Updated skillsAlias for project ${projectId}: ${alias?.trim() || '(cleared)'}`,
+    );
+  }
+
+  /**
+   * Resolve the commit SHA that skills should be loaded from for a project.
+   * If a skills alias is configured and resolves to a deployment, that SHA is
+   * returned; otherwise the provided fallback (e.g. the serving deployment's
+   * SHA at runtime) is returned.
+   */
+  async resolveSkillsCommitSha(
+    projectId: string,
+    fallbackCommitSha?: string,
+  ): Promise<string | undefined> {
+    const alias = await this.getSkillsAlias(projectId);
+    if (alias) {
+      const [record] = await db
+        .select({ commitSha: deploymentAliases.commitSha })
+        .from(deploymentAliases)
+        .where(
+          and(
+            eq(deploymentAliases.projectId, projectId),
+            eq(deploymentAliases.alias, alias),
+          ),
+        )
+        .limit(1);
+      if (record?.commitSha) {
+        return record.commitSha;
+      }
+    }
+    return fallbackCommitSha;
   }
 
   // ===== AI Services (Replicate, etc.) =====

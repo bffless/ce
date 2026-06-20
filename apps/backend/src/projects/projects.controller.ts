@@ -199,8 +199,18 @@ export class ProjectsController {
       throw new NotFoundException('Project not found');
     }
 
-    // Resolve commitSha: use provided, or try to get from production alias
+    // Resolve commitSha in priority order:
+    //   1. explicit ?commitSha query param
+    //   2. the project's configured skills alias (settings.skillsAlias)
+    //   3. the 'production' alias
+    //   4. the most recent deployment
+    // Steps 3-4 are sensible defaults for when no skills alias is configured;
+    // they matter because deployments may be aliased something other than
+    // 'production' (e.g. 'studio').
     let sha = commitSha;
+    if (!sha) {
+      sha = await this.aiSettingsService.resolveSkillsCommitSha(projectId);
+    }
     if (!sha) {
       try {
         const alias = await this.deploymentsService.getAlias(
@@ -211,8 +221,13 @@ export class ProjectsController {
         );
         sha = alias?.commitSha;
       } catch {
-        // No production alias - that's OK
+        // No production alias - that's OK, fall through to latest deployment
       }
+    }
+    if (!sha) {
+      sha =
+        (await this.deploymentsService.getLatestDeploymentSha(projectId)) ??
+        undefined;
     }
 
     if (!sha) {
@@ -253,6 +268,32 @@ export class ProjectsController {
   ): Promise<{ skillsPath: string }> {
     await this.aiSettingsService.setSkillsPath(projectId, body.skillsPath);
     return { skillsPath: body.skillsPath };
+  }
+
+  @Get(':id/ai/skills-alias')
+  @UseGuards(ApiKeyGuard, ProjectPermissionGuard)
+  @RequireProjectRole('admin')
+  @ApiOperation({ summary: 'Get the alias skills are loaded from for a project' })
+  @ApiResponse({ status: 200, description: 'Skills alias configuration' })
+  async getSkillsAlias(
+    @Param('id') projectId: string,
+  ): Promise<{ skillsAlias: string | null }> {
+    const skillsAlias = await this.aiSettingsService.getSkillsAlias(projectId);
+    return { skillsAlias };
+  }
+
+  @Put(':id/ai/skills-alias')
+  @UseGuards(ApiKeyGuard, ProjectPermissionGuard)
+  @RequireProjectRole('admin')
+  @ApiOperation({ summary: 'Set the alias skills are loaded from for a project' })
+  @ApiResponse({ status: 200, description: 'Skills alias updated' })
+  async setSkillsAlias(
+    @Param('id') projectId: string,
+    @Body() body: { skillsAlias: string | null },
+  ): Promise<{ skillsAlias: string | null }> {
+    await this.aiSettingsService.setSkillsAlias(projectId, body.skillsAlias);
+    const skillsAlias = await this.aiSettingsService.getSkillsAlias(projectId);
+    return { skillsAlias };
   }
 
   // ==========================================================================
