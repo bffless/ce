@@ -42,6 +42,7 @@ import { PipelinesModule } from './pipelines/pipelines.module';
 import { McpModule, McpTransportType } from '@rekog/mcp-nest';
 import { ApiKeyGuard } from './auth/api-key.guard';
 import { McpToolsModule } from './mcp/mcp-tools.module';
+import { TelemetryModule } from './telemetry/telemetry.module';
 
 @Module({
   imports: [
@@ -169,6 +170,7 @@ import { McpToolsModule } from './mcp/mcp-tools.module';
     StorageUsageModule,
     OnboardingRulesModule,
     McpToolsModule,
+    TelemetryModule,
   ],
   controllers: [AppController],
   providers: [

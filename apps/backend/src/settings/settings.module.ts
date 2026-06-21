@@ -8,6 +8,7 @@ import { EmailInitService } from './email-init.service';
 import { GoogleIntegrationCredentialsService } from './google-integration-credentials.service';
 import { OidcProvidersService } from './oidc-providers.service';
 import { BrandingService } from './branding.service';
+import { TelemetrySettingsService } from './telemetry-settings.service';
 import { DomainsModule } from '../domains/domains.module';
 import { EmailModule } from '../email/email.module';
 
@@ -23,6 +24,7 @@ import { EmailModule } from '../email/email.module';
     GoogleIntegrationCredentialsService,
     OidcProvidersService,
     BrandingService,
+    TelemetrySettingsService,
   ],
   exports: [
     PrimaryContentService,
@@ -31,6 +33,7 @@ import { EmailModule } from '../email/email.module';
     GoogleIntegrationCredentialsService,
     OidcProvidersService,
     BrandingService,
+    TelemetrySettingsService,
   ],
 })
 export class SettingsModule {}

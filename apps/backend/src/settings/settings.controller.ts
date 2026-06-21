@@ -27,6 +27,7 @@ import {
   type UpdateOidcProviderInput,
 } from './oidc-providers.service';
 import { BrandingService, BrandingConfig } from './branding.service';
+import { TelemetrySettingsService, TelemetryStatus } from './telemetry-settings.service';
 import { syncOidcProviders } from '../auth/supertokens.config';
 import { UpdatePrimaryContentDto } from './dto/update-primary-content.dto';
 import { UpdateSmtpDto, SmtpStatusResponseDto, TestSmtpResponseDto } from './dto/update-smtp.dto';
@@ -54,6 +55,7 @@ export class SettingsController {
     private readonly oidcProvidersService: OidcProvidersService,
     private readonly brandingService: BrandingService,
     private readonly featureFlagsService: FeatureFlagsService,
+    private readonly telemetrySettingsService: TelemetrySettingsService,
   ) {}
 
   private getTenantId(): string {
@@ -245,6 +247,26 @@ export class SettingsController {
   ): Promise<{ success: boolean; config: BrandingConfig }> {
     const config = await this.brandingService.deleteLogo(type);
     return { success: true, config };
+  }
+
+  // ==========================================================================
+  // Install Telemetry Settings
+  // ==========================================================================
+
+  @Get('telemetry')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Get install telemetry status' })
+  @ApiResponse({ status: 200, description: 'Telemetry status' })
+  async getTelemetry(): Promise<TelemetryStatus> {
+    return this.telemetrySettingsService.getStatus();
+  }
+
+  @Patch('telemetry')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Enable or disable install telemetry' })
+  @ApiResponse({ status: 200, description: 'Updated telemetry status' })
+  async updateTelemetry(@Body() dto: { enabled: boolean }): Promise<TelemetryStatus> {
+    return this.telemetrySettingsService.setEnabled(dto.enabled === true);
   }
 
   // ==========================================================================

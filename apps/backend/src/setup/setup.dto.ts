@@ -280,6 +280,15 @@ export class CompleteSetupDto {
   @IsBoolean()
   @IsNotEmpty()
   confirm: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Whether to send anonymous install telemetry (version, OS, bucketed counts). Opt-out: defaults to true. Can be changed later in admin settings or disabled with TELEMETRY=off.',
+    default: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  telemetryEnabled?: boolean;
 }
 
 // Response DTOs

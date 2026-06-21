@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -11,6 +11,7 @@ import {
 import { prevWizardStep, setWizardError } from '@/store/slices/setupSlice';
 import { RootState } from '@/store';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { CheckCircle, AlertTriangle, Loader2, Lightbulb } from 'lucide-react';
 
@@ -43,6 +44,9 @@ export function CompleteStep() {
   const { data: cacheConfig } = useGetCacheConfigQuery();
   const { data: availableOptions } = useGetAvailableOptionsQuery();
   const [completeSetup, { isLoading }] = useCompleteSetupMutation();
+
+  // Install telemetry is opt-out: pre-checked, can be unchecked here or disabled later.
+  const [telemetryEnabled, setTelemetryEnabled] = useState(true);
 
   // UI display flags
   const showEnvOptimizationHints = availableOptions?.ui?.enableEnvOptimizationHints ?? true;
@@ -84,7 +88,7 @@ export function CompleteStep() {
   const handleComplete = async () => {
     try {
       dispatch(setWizardError(null));
-      await completeSetup({ confirm: true }).unwrap();
+      await completeSetup({ confirm: true, telemetryEnabled }).unwrap();
       navigate('/login');
     } catch (error: unknown) {
       const err = error as { data?: { message?: string } };
@@ -175,6 +179,29 @@ export function CompleteStep() {
           </AlertDescription>
         </Alert>
       )}
+
+      {/* Install telemetry disclosure (opt-out) */}
+      <div className="rounded-lg border border-border p-4">
+        <div className="flex items-start gap-3">
+          <Checkbox
+            id="telemetry"
+            checked={telemetryEnabled}
+            onCheckedChange={(checked) => setTelemetryEnabled(checked === true)}
+            className="mt-0.5"
+          />
+          <div className="space-y-1">
+            <label htmlFor="telemetry" className="text-sm font-medium text-foreground cursor-pointer">
+              Send anonymous usage data to help improve BFFless
+            </label>
+            <p className="text-xs text-muted-foreground">
+              A weekly anonymous ping with a random install ID, version, OS, and{' '}
+              <em>bucketed</em> counts (e.g. "2–5") of projects, deployments, and users. Never your
+              domains, content, or any personal data. You can change this later in Settings or disable
+              it entirely with <code className="bg-muted px-1 rounded">TELEMETRY=off</code>.
+            </p>
+          </div>
+        </div>
+      </div>
 
       <div className="flex justify-between">
         <Button variant="outline" onClick={() => dispatch(prevWizardStep())}>

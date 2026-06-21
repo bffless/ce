@@ -731,11 +731,15 @@ export class SetupService {
         .update(systemConfig)
         .set({
           isSetupComplete: true,
+          // Opt-out install telemetry: enabled unless the wizard explicitly unchecked it.
+          telemetryEnabled: dto.telemetryEnabled !== false,
           updatedAt: new Date(),
         })
         .where(eq(systemConfig.id, config.id));
 
-      this.logger.log('System setup completed');
+      this.logger.log(
+        `System setup completed (install telemetry ${dto.telemetryEnabled !== false ? 'enabled' : 'disabled'})`,
+      );
 
       // Enable email verification if email was configured during setup
       if (config.emailConfigured) {
