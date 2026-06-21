@@ -109,6 +109,8 @@ export interface TestStorageResponse {
 // Complete setup
 export interface CompleteSetupRequest {
   confirm: boolean;
+  // Opt-out install telemetry; defaults to true if omitted.
+  telemetryEnabled?: boolean;
 }
 
 export interface CompleteSetupResponse {

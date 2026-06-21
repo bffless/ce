@@ -28,6 +28,14 @@ export const systemConfig = pgTable('system_config', {
   // Registration Settings
   allowPublicSignups: boolean('allow_public_signups').default(false).notNull(),
 
+  // Install Telemetry (opt-out, privacy-respecting phone-home)
+  // installId: stable random identifier for this CE instance (the dedup key on the collector)
+  // telemetryEnabled: opt-out flag (ON by default); also overridable via TELEMETRY=off env var
+  // telemetryLastSent: timestamp of the last successful phone-home
+  installId: uuid('install_id').defaultRandom(),
+  telemetryEnabled: boolean('telemetry_enabled').default(true).notNull(),
+  telemetryLastSent: timestamp('telemetry_last_sent'),
+
   // Branding Configuration (not encrypted - not sensitive)
   brandingConfig: text('branding_config'), // JSON: { siteName, headerLogoKey, authLogoKey }
 

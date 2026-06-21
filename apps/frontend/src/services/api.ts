@@ -183,6 +183,7 @@ export const api = createApi({
     'ProxyRuleSet',
     'SmtpSettings',
     'EmailSettings',
+    'Telemetry',
     'PathPreference',
     'FeatureFlags',
     'Invitation',

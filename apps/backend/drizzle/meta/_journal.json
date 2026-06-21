@@ -218,6 +218,13 @@
       "when": 1781441677965,
       "tag": "0030_square_taskmaster",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1782063267961,
+      "tag": "0031_nappy_silverclaw",
+      "breakpoints": true
     }
   ]
 }

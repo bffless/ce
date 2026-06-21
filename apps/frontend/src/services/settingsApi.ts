@@ -221,8 +221,30 @@ export interface TestSsoProviderResponse {
   error?: string;
 }
 
+export interface TelemetryStatus {
+  enabled: boolean;
+  forcedOffByEnv: boolean;
+  lastSentAt: string | null;
+}
+
 export const settingsApi = api.injectEndpoints({
   endpoints: (builder) => ({
+    // Install telemetry status
+    getTelemetryStatus: builder.query<TelemetryStatus, void>({
+      query: () => '/api/settings/telemetry',
+      providesTags: ['Telemetry'],
+    }),
+
+    // Enable/disable install telemetry
+    updateTelemetry: builder.mutation<TelemetryStatus, { enabled: boolean }>({
+      query: (body) => ({
+        url: '/api/settings/telemetry',
+        method: 'PATCH',
+        body,
+      }),
+      invalidatesTags: ['Telemetry'],
+    }),
+
     // Get primary content configuration
     getPrimaryContent: builder.query<PrimaryContentConfig, void>({
       query: () => '/api/settings/primary-content',
@@ -482,6 +504,9 @@ export const settingsApi = api.injectEndpoints({
 });
 
 export const {
+  // Install telemetry hooks
+  useGetTelemetryStatusQuery,
+  useUpdateTelemetryMutation,
   useGetPrimaryContentQuery,
   useUpdatePrimaryContentMutation,
   useGetPrimaryContentProjectsQuery,
