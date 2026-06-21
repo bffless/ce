@@ -3,15 +3,23 @@
 [![Main Release](https://github.com/bffless/ce/actions/workflows/main-release.yml/badge.svg)](https://github.com/bffless/ce/actions/workflows/main-release.yml)
 [![PR Tests](https://github.com/bffless/ce/actions/workflows/pr-tests.yml/badge.svg)](https://github.com/bffless/ce/actions/workflows/pr-tests.yml)
 
-A self-contained platform for hosting images and static assets generated from CI/CD pipelines. View build artifacts like screenshots, test reports, and other generated assets through an intuitive web interface.
+**The home for your AI-generated apps, internal tools, and HTML docs — with a backend, auth, and a path to your internal services.**
+
+BFFless gives static frontends real backend capabilities without standing up a server. Point any static site, dashboard, demo, or set of HTML docs at BFFless and get hosting, authentication, per-branch/commit previews, proxy rules to your internal APIs, traffic splitting, share links, and an AI chat endpoint — deployed as a single Docker stack and stored in Local, MinIO, S3, GCS, or Azure.
+
+It's especially a natural home for the explosion of self-contained HTML apps and docs that AI coding agents produce: somewhere they can actually live inside a company, with a backend and access control, behind the corporate boundary.
+
+> _Technical framing for those who know the category: a self-hosted Supabase/Appwrite aimed at static sites and internal apps._
 
 ## Features
 
-- **Easy Asset Upload** - GitHub Action for seamless artifact uploads from CI/CD
-- **Web-Based Viewing** - Browse and view assets through a beautiful interface
+- **Backend for static frontends** - Auth, proxy rules to internal services, and an AI chat endpoint — no server to run
+- **Deployment previews** - Per-branch/commit URLs and mutable aliases (`production`, `staging`) for any deployment
+- **Traffic splitting & share links** - A/B test across aliases; share private deployments via tokenized links
+- **CI/CD artifact hosting** - GitHub Action for seamless artifact uploads (screenshots, reports, build output)
 - **Self-Contained Deployment** - Single Docker Compose deployment for any cloud
 - **Flexible Storage** - Support for Local, MinIO, S3, GCS, and Azure Blob Storage
-- **Secure Access** - Authentication and authorization for asset management
+- **Secure Access** - Authentication and authorization across content and management
 
 ## Documentation
 
