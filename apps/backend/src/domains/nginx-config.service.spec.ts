@@ -215,6 +215,65 @@ server {
       expect(config).toContain('/apps/frontend/coverage');
     });
 
+    // Regression: redirect targets that are absolute external URLs must be emitted
+    // verbatim. Previously they were forced to start with "/", so nginx produced
+    // `return 302 /https://discord.gg/...`, which the browser resolved relative to
+    // the host (-> example.com/https://discord.gg/...) instead of redirecting out.
+    it('should emit absolute external URL redirect targets without a leading slash', async () => {
+      const domainMapping = {
+        id: 'domain-redir',
+        projectId: 'proj-1',
+        domain: 'app.example.com',
+        domainType: 'subdomain' as const,
+        alias: 'production',
+        path: null,
+        sslEnabled: false,
+        isActive: true,
+        isPublic: null,
+        unauthorizedBehavior: null,
+        requiredRole: null,
+        dnsVerified: true,
+        createdBy: 'user-1',
+        createdAt: new Date('2024-01-01'),
+        updatedAt: new Date('2024-01-01'),
+        sslExpiresAt: null,
+        dnsVerifiedAt: null,
+        nginxConfigPath: null,
+        autoRenewSsl: true,
+        sslRenewedAt: null,
+        sslRenewalStatus: null,
+        sslRenewalError: null,
+        stickySessionsEnabled: true,
+        stickySessionDuration: 86400,
+        isSpa: false,
+        isPrimary: false,
+        wwwBehavior: null,
+        redirectTarget: null,
+        redirectType: '301' as const,
+      };
+
+      const config = await service.generateConfig(domainMapping, mockProject, undefined, [
+        {
+          sourcePath: '/discord',
+          targetPath: 'https://discord.gg/CaRsVzuE',
+          redirectType: '302' as const,
+          priority: '100',
+        },
+        {
+          sourcePath: '/old-page',
+          targetPath: '/new-page',
+          redirectType: '301' as const,
+          priority: '100',
+        },
+      ]);
+
+      // Absolute URL passes through untouched (redirects off-site).
+      expect(config).toContain('return 302 https://discord.gg/CaRsVzuE;');
+      expect(config).not.toContain('return 302 /https://discord.gg/CaRsVzuE');
+      // Relative same-domain targets still work as before.
+      expect(config).toContain('return 301 /new-page;');
+    });
+
     it('should generate custom domain config', async () => {
       const domainMapping = {
         id: 'domain-2',

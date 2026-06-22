@@ -13,13 +13,16 @@ export class UpdatePathRedirectDto {
   sourcePath?: string;
 
   @ApiPropertyOptional({
-    description: 'Target path to redirect to (/new-page or /blog/$1 for wildcard replacement)',
+    description:
+      'Target to redirect to: a path on this domain (/new-page or /blog/$1 for wildcard replacement) or an absolute URL (https://example.com)',
     example: '/new-page',
   })
   @IsOptional()
   @IsString()
   @Length(1, 500)
-  @Matches(/^\//, { message: 'Target path must start with /' })
+  @Matches(/^(https?:\/\/|\/)/, {
+    message: 'Target must start with / or be an absolute http(s) URL',
+  })
   targetPath?: string;
 
   @ApiPropertyOptional({
