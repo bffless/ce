@@ -53,9 +53,16 @@ export function RedirectsTab({ domainId, targetDomain }: RedirectsTabProps) {
       return;
     }
 
-    // Ensure paths start with /
+    // Source is always a path on this domain, so ensure it starts with /.
     const sourcePath = newSourcePath.startsWith('/') ? newSourcePath : `/${newSourcePath}`;
-    const targetPath = newTargetPath.startsWith('/') ? newTargetPath : `/${newTargetPath}`;
+    // Target can be an absolute external URL (http(s)://...) or a path on this
+    // domain. Only prepend / for relative paths — never mangle an absolute URL.
+    const trimmedTarget = newTargetPath.trim();
+    const targetPath = /^https?:\/\//i.test(trimmedTarget)
+      ? trimmedTarget
+      : trimmedTarget.startsWith('/')
+        ? trimmedTarget
+        : `/${trimmedTarget}`;
 
     try {
       await createPathRedirect({
@@ -224,7 +231,7 @@ export function RedirectsTab({ domainId, targetDomain }: RedirectsTabProps) {
             <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
             <div className="flex-1">
               <Input
-                placeholder="/new-page"
+                placeholder="/new-page or https://example.com"
                 value={newTargetPath}
                 onChange={(e) => setNewTargetPath(e.target.value)}
                 className="font-mono text-sm"
@@ -267,6 +274,7 @@ export function RedirectsTab({ domainId, targetDomain }: RedirectsTabProps) {
           <strong>301</strong> = Permanent redirect (recommended for SEO),{' '}
           <strong>302</strong> = Temporary redirect.
           Use <code className="bg-muted px-1 rounded">*</code> for wildcards (e.g., <code className="bg-muted px-1 rounded">/old-blog/*</code>).
+          Targets can be a path on this domain or an absolute URL (e.g., <code className="bg-muted px-1 rounded">https://discord.gg/…</code>).
         </p>
       </div>
     </div>
