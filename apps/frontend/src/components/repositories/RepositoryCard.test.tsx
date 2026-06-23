@@ -184,6 +184,28 @@ describe('RepositoryCard', () => {
     expect(screen.getByText('Admin')).toBeInTheDocument();
   });
 
+  it('displays Owner badge for global admin (permissionType admin, role owner)', () => {
+    // Global admins act as owner on every project: the feed returns
+    // permissionType 'admin' with role 'owner'. This must not fall through
+    // to the Viewer default.
+    const globalAdminRepository: FeedRepository = {
+      ...mockRepository,
+      id: 'repo-global-admin',
+      name: 'global-admin-repo',
+      permissionType: 'admin',
+      role: 'owner',
+    };
+
+    render(
+      <RouterWrapper>
+        <RepositoryCard repository={globalAdminRepository} />
+      </RouterWrapper>
+    );
+
+    expect(screen.getByText('Owner')).toBeInTheDocument();
+    expect(screen.queryByText('Viewer')).not.toBeInTheDocument();
+  });
+
   it('does not display permission badge for public repos', () => {
     render(
       <RouterWrapper>

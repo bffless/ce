@@ -17,16 +17,21 @@ interface RepositoryCardProps {
 export function RepositoryCard({ repository }: RepositoryCardProps) {
   // Map permission type and role to PermissionLevel
   const getPermissionLevel = (): PermissionLevel | null => {
-    if (repository.permissionType === 'owner') return 'owner';
     if (repository.permissionType === 'public') return null; // No permission badge for public repos
 
-    // For direct and group permissions, map role to permission level
+    // The effective role is the source of truth. Owners and global admins
+    // (permissionType 'admin', who act as owner on every project) both have
+    // role 'owner'; direct/group grants carry their own role.
     const role = repository.role?.toLowerCase();
+    if (role === 'owner') return 'owner';
     if (role === 'admin') return 'admin';
     if (role === 'contributor') return 'contributor';
     if (role === 'viewer') return 'viewer';
 
-    // Default to viewer if role is not recognized
+    // Fall back to permissionType when role is missing/unrecognized.
+    if (repository.permissionType === 'owner') return 'owner';
+    if (repository.permissionType === 'admin') return 'admin';
+
     return 'viewer';
   };
 
