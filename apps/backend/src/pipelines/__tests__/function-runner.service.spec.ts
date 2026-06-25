@@ -404,5 +404,96 @@ describe('FunctionRunnerService', () => {
         expect(result.executionTime).toBeGreaterThanOrEqual(0);
       });
     });
+
+    describe('utils crypto helpers', () => {
+      it('exposes utils on the handler argument and as a global', async () => {
+        const viaArg = await service.run(
+          'function handler({ utils }) { return typeof utils.sign; }',
+          {},
+        );
+        expect(viaArg.success).toBe(true);
+        expect(viaArg.output).toBe('function');
+
+        const viaGlobal = await service.run(
+          'function handler() { return typeof utils.sign; }',
+          {},
+        );
+        expect(viaGlobal.success).toBe(true);
+        expect(viaGlobal.output).toBe('function');
+      });
+
+      it('sha256 returns a stable lowercase hex digest', async () => {
+        const result = await service.run(
+          'function handler({ utils }) { return utils.sha256("hello"); }',
+          {},
+        );
+        expect(result.success).toBe(true);
+        // Known SHA-256 of "hello"
+        expect(result.output).toBe(
+          '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824',
+        );
+      });
+
+      it('sign + verify round-trips and rejects tampering', async () => {
+        const result = await service.run(
+          `function handler({ utils }) {
+            var sig = utils.sign('folder:abc|user:42');
+            return {
+              ok: utils.verify('folder:abc|user:42', sig),
+              tampered: utils.verify('folder:abc|user:99', sig),
+              wrongSig: utils.verify('folder:abc|user:42', 'deadbeef'),
+            };
+          }`,
+          {},
+        );
+        expect(result.success).toBe(true);
+        expect(result.output).toEqual({
+          ok: true,
+          tampered: false,
+          wrongSig: false,
+        });
+      });
+
+      it('the same message always signs to the same value (stable key)', async () => {
+        const a = await service.run(
+          'function handler({ utils }) { return utils.sign("x"); }',
+          {},
+        );
+        const b = await service.run(
+          'function handler({ utils }) { return utils.sign("x"); }',
+          {},
+        );
+        expect(a.output).toBe(b.output);
+        expect(typeof a.output).toBe('string');
+      });
+
+      it('randomToken returns distinct hex tokens of the requested length', async () => {
+        const result = await service.run(
+          `function handler({ utils }) {
+            var a = utils.randomToken(16);
+            var b = utils.randomToken(16);
+            return { len: a.length, distinct: a !== b, hex: /^[0-9a-f]+$/.test(a) };
+          }`,
+          {},
+        );
+        expect(result.success).toBe(true);
+        expect(result.output).toEqual({ len: 32, distinct: true, hex: true });
+      });
+
+      it('base64url encode/decode round-trips without padding', async () => {
+        const result = await service.run(
+          `function handler({ utils }) {
+            var enc = utils.base64urlEncode('{"f":"abc","u":"42"}');
+            return { dec: utils.base64urlDecode(enc), padless: enc.indexOf('=') === -1 };
+          }`,
+          {},
+        );
+        expect(result.success).toBe(true);
+        expect(result.output).toEqual({
+          dec: '{"f":"abc","u":"42"}',
+          padless: true,
+        });
+      });
+    });
   });
 });
