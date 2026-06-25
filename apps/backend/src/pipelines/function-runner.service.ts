@@ -1,5 +1,42 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as vm from 'vm';
+import {
+  createHash,
+  createHmac,
+  randomBytes,
+  randomUUID,
+  timingSafeEqual,
+} from 'crypto';
+
+/**
+ * Crypto helpers exposed to pipeline function handlers as the global `utils`
+ * (also passed on the handler argument, so both `utils.sign(...)` and
+ * `function handler({ utils }) { ... }` work).
+ *
+ * These are pure string -> string|boolean helpers backed by Node's crypto at
+ * the host level. `sign`/`verify` use a server-held pipeline signing key that
+ * is NEVER exposed to the sandbox, so handlers can mint/validate tamper-proof
+ * tokens (e.g. a short-lived, folder-scoped access cookie) without handling the
+ * raw secret.
+ */
+export interface PipelineFunctionUtils {
+  /** Lowercase hex SHA-256 of `message`. */
+  sha256(message: string): string;
+  /** Lowercase hex HMAC-SHA256 of `message` with the caller-supplied `key`. */
+  hmacSha256(message: string, key: string): string;
+  /** Hex HMAC-SHA256 of `message` using the server pipeline signing key. */
+  sign(message: string): string;
+  /** Timing-safe check that `signature` matches `sign(message)`. */
+  verify(message: string, signature: string): boolean;
+  /** Crypto-strong random hex token of `bytes` length (default 18 → 36 hex chars). */
+  randomToken(bytes?: number): string;
+  /** RFC4122 v4 UUID. */
+  randomUUID(): string;
+  /** Base64url-encode a UTF-8 string (no padding). */
+  base64urlEncode(value: string): string;
+  /** Decode a base64url string back to a UTF-8 string ('' on malformed input). */
+  base64urlDecode(value: string): string;
+}
 
 /**
  * Options for function execution
@@ -79,6 +116,65 @@ const PROHIBITED_PATTERNS = [
 export class FunctionRunnerService {
   private readonly logger = new Logger(FunctionRunnerService.name);
 
+  /** Cached server-side signing key for `utils.sign` / `utils.verify`. */
+  private signingKeyCache: Buffer | null = null;
+
+  /**
+   * Derive the pipeline signing key once, from a dedicated env var when set,
+   * otherwise from the (required, stable) ENCRYPTION_KEY so signatures survive
+   * restarts without extra configuration. Never exposed to the sandbox.
+   */
+  private getSigningKey(): Buffer {
+    if (!this.signingKeyCache) {
+      const base =
+        process.env.PIPELINE_SIGNING_SECRET ||
+        process.env.ENCRYPTION_KEY ||
+        'bffless-pipeline-dev-signing-secret';
+      this.signingKeyCache = createHash('sha256')
+        .update(`${base}|pipeline-fn-sign`)
+        .digest();
+    }
+    return this.signingKeyCache;
+  }
+
+  /**
+   * Build the `utils` crypto bag injected into every function sandbox. All
+   * helpers coerce their inputs with String() and never throw on bad input.
+   */
+  private buildUtils(): PipelineFunctionUtils {
+    const signingKey = this.getSigningKey();
+    const hmacHex = (message: string, key: Buffer | string): string =>
+      createHmac('sha256', key).update(String(message)).digest('hex');
+
+    return {
+      sha256: (message) =>
+        createHash('sha256').update(String(message)).digest('hex'),
+      hmacSha256: (message, key) => hmacHex(message, String(key)),
+      sign: (message) => hmacHex(message, signingKey),
+      verify: (message, signature) => {
+        const expected = hmacHex(message, signingKey);
+        const a = Buffer.from(expected, 'utf8');
+        const b = Buffer.from(String(signature), 'utf8');
+        if (a.length !== b.length) return false;
+        return timingSafeEqual(a, b);
+      },
+      randomToken: (bytes = 18) => {
+        const n = Math.min(Math.max(Math.floor(Number(bytes) || 18), 1), 64);
+        return randomBytes(n).toString('hex');
+      },
+      randomUUID: () => randomUUID(),
+      base64urlEncode: (value) =>
+        Buffer.from(String(value), 'utf8').toString('base64url'),
+      base64urlDecode: (value) => {
+        try {
+          return Buffer.from(String(value), 'base64url').toString('utf8');
+        } catch {
+          return '';
+        }
+      },
+    };
+  }
+
   /**
    * Validate user code before execution.
    * Checks for prohibited patterns that could be used to escape the sandbox.
@@ -146,10 +242,17 @@ export class FunctionRunnerService {
       // Create a frozen copy of data to prevent modifications
       const frozenData = this.deepFreeze(structuredClone(data));
 
+      // Crypto helpers exposed to the handler. Built per-run; functions are not
+      // structured-cloneable, so utils is attached AFTER the freeze/clone above.
+      const utils = this.buildUtils();
+
       // Create a minimal sandbox context with safe built-ins
       const sandbox: vm.Context = {
-        // User data (frozen)
-        data: frozenData,
+        // User data (frozen) + crypto helpers on the handler argument
+        data: { ...frozenData, utils },
+
+        // Crypto helpers also available as a bare global (`utils.sign(...)`)
+        utils,
 
         // Safe built-ins
         Math,
@@ -207,8 +310,9 @@ export class FunctionRunnerService {
       // Create the context
       vm.createContext(sandbox);
 
-      // Wrap user code: user defines a handler({ input, user, request, steps }) function, we call it
-      // This matches the serverless function pattern (AWS Lambda, Cloud Functions, etc.)
+      // Wrap user code: user defines a handler({ user, request, steps, deployment, utils }) function, we call it
+      // (`utils` is also available as a bare global). This matches the serverless
+      // function pattern (AWS Lambda, Cloud Functions, etc.)
       const wrappedCode = `
         (async function() {
           try {
