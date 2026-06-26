@@ -642,6 +642,18 @@ export interface FileServeHandlerConfig extends BaseHandlerConfig {
    * @default 3600
    */
   cacheMaxAge?: number;
+
+  /**
+   * Cache directive for the served bytes: `'public'` (shared caches / CDNs may
+   * store and reuse the response) or `'private'` (browser-only; never a shared
+   * cache). Pipeline-served files are usually behind app-defined access control
+   * that this handler cannot see, so the default is `'private'` to avoid a CDN
+   * serving ACL-gated content to other users. Set `'public'` only for content
+   * that is genuinely public. A matching cache rule's `cacheability` overrides
+   * this.
+   * @default 'private'
+   */
+  cacheability?: 'public' | 'private';
 }
 
 /**
