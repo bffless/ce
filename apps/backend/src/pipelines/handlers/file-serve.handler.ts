@@ -1,6 +1,7 @@
 import { Injectable, Inject, Logger } from '@nestjs/common';
 import { StepHandler, FileServeHandlerConfig } from '../execution/step-handler.interface';
 import { StepHandlerRegistry } from '../execution/step-handler.registry';
+import { ExpressionEvaluator } from '../execution/expression-evaluator';
 import { PipelineContext, StepResult } from '../execution/pipeline-context.interface';
 import { PipelineStep } from '../types';
 import { ConfigurationError } from '../errors';
@@ -56,13 +57,15 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
     private readonly registry: StepHandlerRegistry,
     @Inject(STORAGE_ADAPTER) private readonly storageAdapter: IStorageAdapter,
     private readonly cacheConfigService: CacheConfigService,
+    private readonly expressionEvaluator: ExpressionEvaluator,
   ) {
     this.registry.register(this);
   }
 
   validateConfig(config: FileServeHandlerConfig): void {
-    if (!config.subDir) {
-      throw new ConfigurationError('subDir is required', 'file_serve_handler');
+    const hasKey = typeof config.key === 'string' && config.key.length > 0;
+    if (!config.subDir && !hasKey) {
+      throw new ConfigurationError('Either "subDir" or "key" is required', 'file_serve_handler');
     }
   }
 
@@ -90,37 +93,76 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
       repo = project.name;
     }
 
-    // Extract the file path from the request URL
     const requestPath = context.metadata.path;
-    const prefix = `/api/uploads/${config.subDir}/`;
-    let filePath = '';
 
-    if (requestPath.startsWith(prefix)) {
-      filePath = requestPath.slice(prefix.length);
-    } else {
-      const rawOriginalUri = context.metadata.headers['x-original-uri'] as string | undefined;
-      const originalUri = rawOriginalUri?.split('?')[0];
-      if (originalUri && originalUri.includes(prefix)) {
-        filePath = originalUri.slice(originalUri.indexOf(prefix) + prefix.length);
+    // The relative path used to derive both the storage key and the content
+    // type. In `key` mode it is the explicit (interpolated) key; otherwise it is
+    // extracted from the request URL under /api/uploads/<subDir>/.
+    let relativePath: string;
+
+    const hasKey = typeof config.key === 'string' && config.key.length > 0;
+    if (hasKey) {
+      // Explicit key mode: a prior step (e.g. a manifest lookup) names the
+      // object to serve, instead of it being derived from the request path.
+      // The key is relative to the project's uploads root, mirroring
+      // file_delete's `key`. This keeps a Site's assets served in-place under
+      // /api/sites/<id>/<rel> so relative sub-resources re-enter the manifest.
+      const resolved = this.expressionEvaluator.evaluateTemplate(
+        config.key!,
+        context,
+        stepName,
+      );
+      const trimmed = (resolved ?? '').trim();
+      if (!trimmed || trimmed === '/') {
+        return {
+          success: false,
+          error: { code: 'FILE_NOT_FOUND', message: 'Resolved key is empty' },
+        };
       }
+      if (resolved.includes('..')) {
+        return {
+          success: false,
+          error: {
+            code: 'INVALID_PATH',
+            message: `Resolved key "${resolved}" contains ".." — path traversal is not allowed`,
+          },
+        };
+      }
+      relativePath = resolved.replace(/^\/+/, '');
+    } else {
+      // Path-derived mode: extract the file path from the request URL.
+      const prefix = `/api/uploads/${config.subDir}/`;
+      let filePath = '';
+
+      if (requestPath.startsWith(prefix)) {
+        filePath = requestPath.slice(prefix.length);
+      } else {
+        const rawOriginalUri = context.metadata.headers['x-original-uri'] as string | undefined;
+        const originalUri = rawOriginalUri?.split('?')[0];
+        if (originalUri && originalUri.includes(prefix)) {
+          filePath = originalUri.slice(originalUri.indexOf(prefix) + prefix.length);
+        }
+      }
+
+      if (!filePath) {
+        return {
+          success: false,
+          error: {
+            code: 'FILE_NOT_FOUND',
+            message: 'No file path specified',
+          },
+        };
+      }
+
+      // Sanitize path to prevent traversal attacks
+      const sanitized = filePath.replace(/\.\./g, '').replace(/\/\//g, '/');
+      relativePath = `${config.subDir}/${sanitized}`;
     }
 
-    if (!filePath) {
-      return {
-        success: false,
-        error: {
-          code: 'FILE_NOT_FOUND',
-          message: 'No file path specified',
-        },
-      };
-    }
-
-    // Sanitize path to prevent traversal attacks
-    const sanitized = filePath.replace(/\.\./g, '').replace(/\/\//g, '/');
-    const storageKey = `${owner}/${repo}/uploads/${config.subDir}/${sanitized}`;
+    const storageKey = `${owner}/${repo}/uploads/${relativePath}`;
 
     // Determine content type from file extension
-    const ext = path.extname(sanitized).toLowerCase();
+    const ext = path.extname(relativePath).toLowerCase();
     const contentType = MIME_TYPES[ext] || 'application/octet-stream';
 
     // Resolve cache headers: check cache rules first, fall back to config/default.

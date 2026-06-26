@@ -214,10 +214,14 @@ export function HandlerConfigWrapper({
 
     case 'file_serve_handler':
       return (
-        <FileServeHandlerConfig
-          config={config}
-          onChange={handleChange}
-        />
+        <>
+          {renderVariablesPanel()}
+          <FileServeHandlerConfig
+            config={config}
+            onChange={handleChange}
+            previousSteps={previousSteps}
+          />
+        </>
       );
 
     case 'file_delete':

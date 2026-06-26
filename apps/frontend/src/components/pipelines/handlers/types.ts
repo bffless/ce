@@ -242,7 +242,10 @@ export interface ImageConvertHandlerConfig extends BaseHandlerConfig {
 }
 
 export interface FileServeHandlerConfig extends BaseHandlerConfig {
-  subDir: string;
+  /** Serve from this sub-directory; the file path is derived from the request URL. Mutually exclusive with key. */
+  subDir?: string;
+  /** Serve this explicit object, relative to the uploads root (supports expressions). Mutually exclusive with subDir. */
+  key?: string;
   cacheMaxAge?: number;
 }
 

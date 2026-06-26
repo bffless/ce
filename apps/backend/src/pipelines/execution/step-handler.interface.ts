@@ -633,9 +633,23 @@ export interface ImageConvertHandlerConfig extends BaseHandlerConfig {
  */
 export interface FileServeHandlerConfig extends BaseHandlerConfig {
   /**
-   * Storage sub-directory to serve from
+   * Storage sub-directory to serve from. The file path is then derived from the
+   * request URL under /api/uploads/<subDir>/. Required unless `key` is provided.
    */
-  subDir: string;
+  subDir?: string;
+
+  /**
+   * Explicit object to serve, RELATIVE to the project's uploads root
+   * ({owner}/{repo}/uploads/) — e.g. "content/uuid-styles.css". When provided,
+   * the file is served from this key instead of being derived from the request
+   * path, and `subDir` is not required. The value is expression-interpolated
+   * ({{steps.x.y}}) before use and rejected if it contains "..". The
+   * Content-Type is derived from this key's extension. Mirrors file_delete's
+   * `key`. Use this to serve a manifest-resolved object in-place (e.g. a Site
+   * asset under /api/sites/<id>/<rel>) so relative sub-resources keep resolving
+   * same-origin instead of being 302-redirected out of the namespace.
+   */
+  key?: string;
 
   /**
    * Cache-Control max-age in seconds

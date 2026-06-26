@@ -2,6 +2,7 @@ import { FileServeHandler } from './file-serve.handler';
 import { StepHandlerRegistry } from '../execution/step-handler.registry';
 import { IStorageAdapter } from '../../storage/storage.interface';
 import { CacheConfigService } from '../../cache-rules/cache-config.service';
+import { ExpressionEvaluator } from '../execution/expression-evaluator';
 import { PipelineContext } from '../execution/pipeline-context.interface';
 import { PipelineStep } from '../types';
 
@@ -27,7 +28,12 @@ describe('FileServeHandler — streaming & range', () => {
       getCacheConfig: jest.fn().mockResolvedValue({ source: 'default' }),
       buildCacheControlHeader: jest.fn(),
     } as unknown as CacheConfigService;
-    return new FileServeHandler(registry, storage as IStorageAdapter, cacheConfigService);
+    return new FileServeHandler(
+      registry,
+      storage as IStorageAdapter,
+      cacheConfigService,
+      new ExpressionEvaluator(),
+    );
   };
 
   const step = {
@@ -154,5 +160,123 @@ describe('FileServeHandler — streaming & range', () => {
     await handler.execute(buildContext(res, {}), publicStep);
 
     expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'public, max-age=3600');
+  });
+});
+
+// An explicit `key` lets a prior step (e.g. a manifest lookup) name the object to
+// serve, instead of deriving it from the request path. This keeps a Site's assets
+// served in-place under /api/sites/<id>/<rel> (no cross-namespace redirect), so
+// relative sub-resources re-enter the manifest. The key is relative to the
+// project's uploads root ({owner}/{repo}/uploads/), mirroring file_delete's `key`.
+describe('FileServeHandler — explicit key mode', () => {
+  const makeRes = () => {
+    const res: any = {
+      headersSent: false,
+      writableEnded: false,
+      setHeader: jest.fn(),
+      end: jest.fn(),
+      on: jest.fn(),
+      json: jest.fn(),
+    };
+    res.status = jest.fn(() => res);
+    return res;
+  };
+
+  const makeStream = () => ({ pipe: jest.fn(), on: jest.fn(), destroy: jest.fn() });
+
+  const buildHandler = (storage: Partial<IStorageAdapter>) => {
+    const registry = { register: jest.fn() } as unknown as StepHandlerRegistry;
+    const cacheConfigService = {
+      getCacheConfig: jest.fn().mockResolvedValue({ source: 'default' }),
+      buildCacheControlHeader: jest.fn(),
+    } as unknown as CacheConfigService;
+    return new FileServeHandler(
+      registry,
+      storage as IStorageAdapter,
+      cacheConfigService,
+      new ExpressionEvaluator(),
+    );
+  };
+
+  const buildContext = (
+    res: any,
+    path: string,
+    steps: Record<string, unknown> = {},
+  ): PipelineContext =>
+    ({
+      projectId: 'p1',
+      deployment: { owner: 'o', repo: 'r', commitSha: 'sha' },
+      metadata: { path, headers: {} },
+      stepOutputs: steps,
+      request: { res },
+    }) as unknown as PipelineContext;
+
+  it('serves the object named by `key` (relative to uploads root), ignoring the request path', async () => {
+    const stream = makeStream();
+    const storage = {
+      downloadStream: jest.fn().mockResolvedValue({ stream, size: 42, etag: 'e' }),
+      getMetadata: jest.fn(),
+    };
+    const handler = buildHandler(storage);
+    const res = makeRes();
+    const step = {
+      id: 'serve',
+      name: 'serve',
+      handlerType: 'file_serve_handler',
+      config: { key: 'content/abc-styles.css' },
+    } as unknown as PipelineStep;
+
+    await handler.execute(buildContext(res, '/api/sites/site-123/styles.css'), step);
+
+    expect(storage.downloadStream).toHaveBeenCalledWith('o/r/uploads/content/abc-styles.css');
+    expect(res.status).toHaveBeenCalledWith(200);
+    // Content-Type comes from the key's extension, not the request path.
+    expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/css');
+  });
+
+  it('interpolates a `key` expression resolved from a prior step', async () => {
+    const stream = makeStream();
+    const storage = {
+      downloadStream: jest.fn().mockResolvedValue({ stream, size: 10, etag: 'e' }),
+      getMetadata: jest.fn(),
+    };
+    const handler = buildHandler(storage);
+    const res = makeRes();
+    const step = {
+      id: 'serve',
+      name: 'serve',
+      handlerType: 'file_serve_handler',
+      config: { key: '{{steps.resolve.serveKey}}' },
+    } as unknown as PipelineStep;
+
+    await handler.execute(
+      buildContext(res, '/api/sites/site-123/app.js', {
+        resolve: { serveKey: 'content/def-app.js' },
+      }),
+      step,
+    );
+
+    expect(storage.downloadStream).toHaveBeenCalledWith('o/r/uploads/content/def-app.js');
+    expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'application/javascript');
+  });
+
+  it('rejects a resolved key containing ".." (path traversal)', async () => {
+    const storage = {
+      downloadStream: jest.fn(),
+      getMetadata: jest.fn(),
+    };
+    const handler = buildHandler(storage);
+    const res = makeRes();
+    const step = {
+      id: 'serve',
+      name: 'serve',
+      handlerType: 'file_serve_handler',
+      config: { key: 'content/../../etc/passwd' },
+    } as unknown as PipelineStep;
+
+    const result = await handler.execute(buildContext(res, '/api/sites/s/x'), step);
+
+    expect(result.success).toBe(false);
+    expect(storage.downloadStream).not.toHaveBeenCalled();
   });
 });
