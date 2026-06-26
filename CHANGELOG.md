@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.78](https://github.com/bffless/ce/compare/v0.1.77...v0.1.78) (2026-06-26)
+
+
+### Bug Fixes
+
+* **pipelines:** default file_serve_handler to private caching ([#355](https://github.com/bffless/ce/issues/355)) ([e96bcf6](https://github.com/bffless/ce/commit/e96bcf643b85a2ce28a0a6abac59fdb9312c16af))
+
 ## [0.1.77](https://github.com/bffless/ce/compare/v0.1.76...v0.1.77) (2026-06-26)
 
 
