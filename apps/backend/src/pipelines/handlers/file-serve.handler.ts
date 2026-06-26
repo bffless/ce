@@ -123,7 +123,12 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
     const ext = path.extname(sanitized).toLowerCase();
     const contentType = MIME_TYPES[ext] || 'application/octet-stream';
 
-    // Resolve cache headers: check cache rules first, fall back to config/default
+    // Resolve cache headers: check cache rules first, fall back to config/default.
+    // Files served through a pipeline are typically behind app-defined access
+    // control this handler can't see, so the safe default is `private` (never a
+    // shared/CDN cache) — `public` is opt-in via the step config. A matching
+    // cache rule's own `cacheability` still wins over this default.
+    const isPublicContent = config.cacheability === 'public';
     let cacheControlHeader: string;
     const cacheConfig = await this.cacheConfigService.getCacheConfig(
       context.projectId,
@@ -131,10 +136,13 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
       false,
     );
     if (cacheConfig.source === 'rule') {
-      cacheControlHeader = this.cacheConfigService.buildCacheControlHeader(cacheConfig, true);
+      cacheControlHeader = this.cacheConfigService.buildCacheControlHeader(
+        cacheConfig,
+        isPublicContent,
+      );
     } else {
       const cacheMaxAge = config.cacheMaxAge ?? 3600;
-      cacheControlHeader = `public, max-age=${cacheMaxAge}`;
+      cacheControlHeader = `${isPublicContent ? 'public' : 'private'}, max-age=${cacheMaxAge}`;
     }
 
     const res = context.request.res;

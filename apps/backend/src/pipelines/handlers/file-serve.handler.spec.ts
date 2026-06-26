@@ -115,4 +115,44 @@ describe('FileServeHandler — streaming & range', () => {
     expect(res.setHeader).toHaveBeenCalledWith('Content-Range', 'bytes */1000');
     expect(storage.downloadStream).not.toHaveBeenCalled();
   });
+
+  // Pipeline-served files are typically behind app-defined access control
+  // (e.g. an ACL gate), but this handler can't see that. Defaulting to `public`
+  // lets a CDN cache and serve gated bytes to anyone — so the safe default is
+  // `private` (browser-only, never a shared/CDN cache). Public is opt-in.
+  it('defaults Cache-Control to private when there is no rule and no override', async () => {
+    const stream = makeStream();
+    const storage = {
+      downloadStream: jest.fn().mockResolvedValue({ stream, size: 10000, etag: 'abc' }),
+      getMetadata: jest.fn(),
+    };
+    const handler = buildHandler(storage);
+    const res = makeRes();
+
+    await handler.execute(buildContext(res, {}), step);
+
+    expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'private, max-age=3600');
+    expect(res.setHeader).not.toHaveBeenCalledWith(
+      'Cache-Control',
+      expect.stringContaining('public'),
+    );
+  });
+
+  it('serves public only when the step opts in via cacheability: "public"', async () => {
+    const stream = makeStream();
+    const storage = {
+      downloadStream: jest.fn().mockResolvedValue({ stream, size: 10000, etag: 'abc' }),
+      getMetadata: jest.fn(),
+    };
+    const handler = buildHandler(storage);
+    const res = makeRes();
+    const publicStep = {
+      ...step,
+      config: { subDir: 'export', cacheability: 'public' },
+    } as unknown as PipelineStep;
+
+    await handler.execute(buildContext(res, {}), publicStep);
+
+    expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'public, max-age=3600');
+  });
 });
