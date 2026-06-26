@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ExpressionInput } from './ExpressionInput';
@@ -23,15 +24,20 @@ interface Props {
 export function FileServeHandlerConfig({ config, onChange, previousSteps = [] }: Props) {
   const typedConfig = config as unknown as Partial<Config>;
 
-  // Default to sub-directory mode unless an explicit key is already set.
-  const mode: 'subDir' | 'key' =
-    typeof typedConfig.key === 'string' && typedConfig.key.length > 0 ? 'key' : 'subDir';
+  // Track the selected mode in local state. Deriving it from whether `key` has
+  // content would strand the user in sub-directory mode: switching to Key while
+  // the key is still empty would leave the derived mode at 'subDir', so the Key
+  // field could never appear. Seed from the existing config (key present → key).
+  const [mode, setMode] = useState<'subDir' | 'key'>(
+    typeof typedConfig.key === 'string' && typedConfig.key.length > 0 ? 'key' : 'subDir',
+  );
 
   const update = (partial: Partial<Config>) => {
     onChange({ ...typedConfig, ...partial } as Config);
   };
 
-  const setMode = (next: 'subDir' | 'key') => {
+  const switchMode = (next: 'subDir' | 'key') => {
+    setMode(next);
     // Keep only the field for the selected mode so exactly one is sent.
     if (next === 'subDir') {
       onChange({ ...typedConfig, key: undefined } as Config);
@@ -47,7 +53,7 @@ export function FileServeHandlerConfig({ config, onChange, previousSteps = [] }:
         <div className="flex gap-2">
           <button
             type="button"
-            onClick={() => setMode('subDir')}
+            onClick={() => switchMode('subDir')}
             className={`rounded border px-3 py-1.5 text-sm ${
               mode === 'subDir' ? 'border-primary bg-primary/10 font-medium' : 'border-input'
             }`}
@@ -56,7 +62,7 @@ export function FileServeHandlerConfig({ config, onChange, previousSteps = [] }:
           </button>
           <button
             type="button"
-            onClick={() => setMode('key')}
+            onClick={() => switchMode('key')}
             className={`rounded border px-3 py-1.5 text-sm ${
               mode === 'key' ? 'border-primary bg-primary/10 font-medium' : 'border-input'
             }`}
