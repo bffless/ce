@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.79](https://github.com/bffless/ce/compare/v0.1.78...v0.1.79) (2026-06-26)
+
+
+### Features
+
+* **pipelines:** add explicit `key` mode to file_serve_handler ([#357](https://github.com/bffless/ce/issues/357)) ([32d86ea](https://github.com/bffless/ce/commit/32d86ea01ad97dc5f2c55554930ccd84a4c003ff))
+
 ## [0.1.78](https://github.com/bffless/ce/compare/v0.1.77...v0.1.78) (2026-06-26)
 
 
