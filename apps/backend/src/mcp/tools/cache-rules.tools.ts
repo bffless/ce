@@ -6,6 +6,31 @@ import { CacheRulesService } from '../../cache-rules/cache-rules.service';
 import { AuthService } from '../../auth/auth.service';
 import { getUserContext } from '../helpers/user-context.helper';
 
+/**
+ * Parameters for the `create_cache_rule` tool. Exported so the schema (and the
+ * fields it forwards to the service) can be asserted in tests — the MCP
+ * framework strips any field not declared here before it reaches the service.
+ */
+export const createCacheRuleParameters = z.object({
+  projectId: z.string().describe('Project ID'),
+  pathPattern: z.string().describe('Glob pattern to match paths (e.g. "*.js", "images/**")'),
+  name: z.string().optional().describe('Rule name'),
+  description: z.string().optional().describe('Rule description'),
+  browserMaxAge: z.number().optional().describe('Browser cache max-age in seconds'),
+  cdnMaxAge: z.number().optional().describe('CDN cache max-age in seconds'),
+  staleWhileRevalidate: z.number().optional().describe('Stale-while-revalidate window in seconds'),
+  immutable: z.boolean().optional().describe('Mark assets as immutable'),
+  cacheability: z
+    .enum(['public', 'private'])
+    .nullable()
+    .optional()
+    .describe(
+      'Cache directive: "public" (CDNs can cache) or "private" (browser only, not shared/CDN caches). Null = inherit from project visibility.',
+    ),
+  isEnabled: z.boolean().optional().describe('Whether the rule is enabled'),
+  priority: z.number().optional().describe('Rule priority (lower number = evaluated first)'),
+});
+
 @Injectable()
 export class CacheRulesTools {
   constructor(
@@ -55,35 +80,10 @@ export class CacheRulesTools {
   @Tool({
     name: 'create_cache_rule',
     description: 'Create a new cache rule for a project.',
-    parameters: z.object({
-      projectId: z.string().describe('Project ID'),
-      pathPattern: z.string().describe('Glob pattern to match paths (e.g. "*.js", "images/**")'),
-      name: z.string().optional().describe('Rule name'),
-      description: z.string().optional().describe('Rule description'),
-      browserMaxAge: z.number().optional().describe('Browser cache max-age in seconds'),
-      cdnMaxAge: z.number().optional().describe('CDN cache max-age in seconds'),
-      staleWhileRevalidate: z
-        .number()
-        .optional()
-        .describe('Stale-while-revalidate window in seconds'),
-      immutable: z.boolean().optional().describe('Mark assets as immutable'),
-      isEnabled: z.boolean().optional().describe('Whether the rule is enabled'),
-      priority: z.number().optional().describe('Rule priority (higher = evaluated first)'),
-    }),
+    parameters: createCacheRuleParameters,
   })
   async createRule(
-    args: {
-      projectId: string;
-      pathPattern: string;
-      name?: string;
-      description?: string;
-      browserMaxAge?: number;
-      cdnMaxAge?: number;
-      staleWhileRevalidate?: number;
-      immutable?: boolean;
-      isEnabled?: boolean;
-      priority?: number;
-    },
+    args: z.infer<typeof createCacheRuleParameters>,
     _context: Context,
     request: Request,
   ) {
