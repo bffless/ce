@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.80](https://github.com/bffless/ce/compare/v0.1.79...v0.1.80) (2026-06-26)
+
+
+### Bug Fixes
+
+* **frontend:** keep file_serve/file_delete mode toggle switchable ([#359](https://github.com/bffless/ce/issues/359)) ([b6fcd73](https://github.com/bffless/ce/commit/b6fcd73eea748ce6eba479a4d8a7e6eb51a8fafe))
+
 ## [0.1.79](https://github.com/bffless/ce/compare/v0.1.78...v0.1.79) (2026-06-26)
 
 
