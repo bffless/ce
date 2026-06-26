@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.77](https://github.com/bffless/ce/compare/v0.1.76...v0.1.77) (2026-06-26)
+
+
+### Features
+
+* **mcp:** expose cacheability on create_cache_rule tool ([#353](https://github.com/bffless/ce/issues/353)) ([47b6a44](https://github.com/bffless/ce/commit/47b6a441fd394b0fca64ef83e78e28bda1058336))
+
 ## [0.1.76](https://github.com/bffless/ce/compare/v0.1.75...v0.1.76) (2026-06-25)
 
 
