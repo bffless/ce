@@ -21,6 +21,11 @@ import { UploadRecordService } from '../upload-record.service';
  *   - key:    delete a single object at <uploadsRoot>/<key>.
  *   - keys:   delete an explicit set of objects that share no common prefix
  *             (e.g. a Site manifest's assets), each at <uploadsRoot>/<entry>.
+ *             `keys` is either a static array of key templates, or a single
+ *             expression STRING that resolves at runtime to an array of keys —
+ *             the dynamic, variable-length case (e.g. a Site manifest mapped to
+ *             its object keys) that a static array can't express. A resolved
+ *             empty array is a no-op (`{ deleted: 0 }`), not an error.
  *
  * `prefix`, `key`, and every entry of `keys` are relative to the uploads root
  * and are expression-interpolated before use. This is a destructive handler, so it
@@ -63,12 +68,28 @@ export class FileDeleteHandler implements StepHandler<FileDeleteHandlerConfig> {
     }
 
     if (hasKeys) {
-      if (!Array.isArray(config.keys) || config.keys.length === 0) {
-        throw new ConfigurationError('"keys" must be a non-empty array', 'file_delete');
-      }
-      if (!config.keys.every((k) => typeof k === 'string' && k.length > 0)) {
+      // `keys` may be a static array of key templates, OR a single expression
+      // string that resolves to an array at runtime (validated when it runs).
+      if (typeof config.keys === 'string') {
+        if (config.keys.trim().length === 0) {
+          throw new ConfigurationError(
+            '"keys" expression must be a non-empty string',
+            'file_delete',
+          );
+        }
+      } else if (Array.isArray(config.keys)) {
+        if (config.keys.length === 0) {
+          throw new ConfigurationError('"keys" must be a non-empty array', 'file_delete');
+        }
+        if (!config.keys.every((k) => typeof k === 'string' && k.length > 0)) {
+          throw new ConfigurationError(
+            'Every entry in "keys" must be a non-empty string',
+            'file_delete',
+          );
+        }
+      } else {
         throw new ConfigurationError(
-          'Every entry in "keys" must be a non-empty string',
+          '"keys" must be an array of strings or an expression string',
           'file_delete',
         );
       }
@@ -83,11 +104,12 @@ export class FileDeleteHandler implements StepHandler<FileDeleteHandlerConfig> {
     const { owner, repo } = await this.uploadRecords.resolveOwnerRepo(context, stepName);
     const uploadsRoot = `${owner}/${repo}/uploads/`;
 
-    const isKeysMode = Array.isArray(config.keys) && config.keys.length > 0;
+    const isKeysMode = config.keys !== undefined;
     if (isKeysMode) {
+      const keyList = this.resolveKeyList(config.keys!, context, stepName);
       // Resolve and guard EVERY entry before any storage call, so a single bad
       // entry aborts the whole step without partially deleting the good ones.
-      const targets = config.keys!.map((expr) => {
+      const targets = keyList.map((expr) => {
         const relKey = this.resolveAndGuard(expr, context, stepName, 'key');
         const fullKey = this.confineToRoot(uploadsRoot, relKey, stepName);
         return { relKey, fullKey };
@@ -106,6 +128,41 @@ export class FileDeleteHandler implements StepHandler<FileDeleteHandlerConfig> {
     const relPrefix = this.resolveAndGuard(config.prefix!, context, stepName, 'prefix');
     const fullPrefix = this.confineToRoot(uploadsRoot, relPrefix, stepName);
     return this.deletePrefix(fullPrefix, relPrefix, dryRun, stepName);
+  }
+
+  /**
+   * Produce the list of key expressions for `keys` mode.
+   *
+   *   - Array form: a static list of key templates, used as-is (each is still
+   *     interpolated + guarded downstream).
+   *   - String form: a single expression that must resolve to an array of
+   *     strings at runtime — the dynamic, variable-length case (e.g. a prior
+   *     step parsing a Site manifest into its object keys). A resolved empty
+   *     array is allowed (it makes the whole step a no-op).
+   */
+  private resolveKeyList(
+    keys: string[] | string,
+    context: PipelineContext,
+    stepName: string,
+  ): string[] {
+    if (Array.isArray(keys)) {
+      return keys;
+    }
+
+    const resolved = this.expressionEvaluator.evaluateExpression(keys, context, stepName);
+    if (!Array.isArray(resolved)) {
+      throw new ConfigurationError(
+        `"keys" expression "${keys}" must resolve to an array, but resolved to ${typeof resolved}`,
+        stepName,
+      );
+    }
+    if (!resolved.every((k) => typeof k === 'string')) {
+      throw new ConfigurationError(
+        `"keys" expression "${keys}" must resolve to an array of strings`,
+        stepName,
+      );
+    }
+    return resolved as string[];
   }
 
   /**
