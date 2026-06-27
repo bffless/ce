@@ -68,6 +68,14 @@ server {
         proxy_set_header X-Forwarded-Host $host;
         proxy_set_header X-Original-URI $request_uri;
 
+        # Header buffers must hold SuperTokens' session-refresh response, which
+        # sets several large Set-Cookie/token headers. The nginx default (8k)
+        # overflows on a successful /api/auth/session/refresh (502 "upstream
+        # sent too big header"), so subdomain apps proxying auth need headroom.
+        proxy_buffer_size 16k;
+        proxy_buffers 8 16k;
+        proxy_busy_buffers_size 32k;
+
         # Don't intercept errors - let backend's styled 404 page pass through
         # This ensures requests to non-existent files show proper 404, not index.html
         # SPA behavior is controlled per-domain via domain mapping settings
