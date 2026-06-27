@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.85](https://github.com/bffless/ce/compare/v0.1.84...v0.1.85) (2026-06-27)
+
+
+### Bug Fixes
+
+* **nginx:** enlarge proxy header buffers for SuperTokens session refresh ([#370](https://github.com/bffless/ce/issues/370)) ([e727c9e](https://github.com/bffless/ce/commit/e727c9eb282aaa790aa933295b4862ca65f0ba34))
+
 ## [0.1.84](https://github.com/bffless/ce/compare/v0.1.83...v0.1.84) (2026-06-27)
 
 
