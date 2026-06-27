@@ -225,6 +225,10 @@ export class ProxyRulesTools {
         .enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'])
         .optional()
         .describe('HTTP method to match (omit for any method)'),
+      methods: z
+        .array(z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']))
+        .optional()
+        .describe('HTTP methods to match (alternative to `method`; takes precedence; omit both for any)'),
       proxyType: z
         .enum(['external_proxy', 'internal_rewrite', 'email_form_handler', 'pipeline'])
         .optional()
@@ -305,6 +309,10 @@ export class ProxyRulesTools {
         .enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'])
         .optional()
         .describe('New HTTP method'),
+      methods: z
+        .array(z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']))
+        .optional()
+        .describe('HTTP methods to match (alternative to `method`; takes precedence; omit both for any)'),
       proxyType: z
         .enum(['external_proxy', 'internal_rewrite', 'email_form_handler', 'pipeline'])
         .optional(),
