@@ -193,6 +193,16 @@ export const proxyRules = pgTable(
     method: varchar('method', { length: 10 }),
 
     /**
+     * Optional set of HTTP methods to match (e.g. ['GET','HEAD']).
+     *
+     * - null / empty: fall back to `method` (and then to "any")
+     * - non-empty: match only if the request method is in this list
+     *
+     * Additive to `method` for backward compatibility; takes precedence when set.
+     */
+    methods: jsonb('methods').$type<string[]>(),
+
+    /**
      * Target URL to forward matching requests to.
      *
      * Must be HTTPS. Internal IPs and localhost are blocked for security.
