@@ -10,13 +10,17 @@ describe('FileDeleteHandler', () => {
   const UPLOADS_ROOT = 'o/r/uploads/';
 
   // evaluateTemplate is a pass-through by default; individual tests can override.
+  // resolveExpr backs evaluateExpression — used by the `keys`-as-expression mode
+  // to resolve a single expression to its runtime value (e.g. an array).
   const buildHandler = (
     storage: Partial<IStorageAdapter>,
     evaluate: (expr: string) => string = (expr) => expr,
+    resolveExpr: (expr: string) => unknown = (expr) => expr,
   ) => {
     const registry = { register: jest.fn() } as unknown as StepHandlerRegistry;
     const expressionEvaluator = {
       evaluateTemplate: jest.fn((expr: string) => evaluate(expr)),
+      evaluateExpression: jest.fn((expr: string) => resolveExpr(expr)),
     } as unknown as ExpressionEvaluator;
     const uploadRecords = {
       resolveOwnerRepo: jest.fn().mockResolvedValue({ owner: 'o', repo: 'r' }),
@@ -53,6 +57,23 @@ describe('FileDeleteHandler', () => {
     it('accepts a non-empty keys array', () => {
       const handler = buildHandler({});
       expect(() => handler.validateConfig({ keys: ['a/b', 'c/d'] })).not.toThrow();
+    });
+
+    it('accepts keys as an expression string (resolved at runtime)', () => {
+      const handler = buildHandler({});
+      expect(() => handler.validateConfig({ keys: 'steps.siteKeys.list' })).not.toThrow();
+    });
+
+    it('rejects a blank keys expression string', () => {
+      const handler = buildHandler({});
+      expect(() => handler.validateConfig({ keys: '   ' })).toThrow(/non-empty/i);
+    });
+
+    it('rejects keys that is neither an array nor a string', () => {
+      const handler = buildHandler({});
+      expect(() =>
+        handler.validateConfig({ keys: { not: 'valid' } as unknown as string[] }),
+      ).toThrow(/array of strings or an expression string/i);
     });
 
     it('rejects keys combined with key', () => {
@@ -321,6 +342,80 @@ describe('FileDeleteHandler', () => {
       await expect(
         handler.execute(context, step({ keys: ['projects/abc/ok', '{{blank}}'] })),
       ).rejects.toThrow(/empty/i);
+      expect(exists).not.toHaveBeenCalled();
+      expect(del).not.toHaveBeenCalled();
+    });
+  });
+
+  // `keys` given as a SINGLE expression string that resolves to an array at
+  // runtime — the dynamic, variable-length case a static array can't express
+  // (e.g. a Site manifest's object keys, computed by a prior step).
+  describe('keys expression mode', () => {
+    const KEYS_EXPR = 'steps.siteKeys.list';
+
+    it('resolves the expression to an array and deletes each key', async () => {
+      const exists = jest.fn().mockResolvedValue(true);
+      const del = jest.fn().mockResolvedValue(undefined);
+      const resolved = ['content/aaa', 'content/bbb', 'content/ccc'];
+      const handler = buildHandler(
+        { exists, delete: del },
+        (expr) => expr,
+        (expr) => (expr === KEYS_EXPR ? resolved : expr),
+      );
+
+      const result = await handler.execute(context, step({ keys: KEYS_EXPR }));
+
+      resolved.forEach((k) => expect(del).toHaveBeenCalledWith(`${UPLOADS_ROOT}${k}`));
+      expect(del).toHaveBeenCalledTimes(3);
+      expect(result).toEqual({
+        success: true,
+        output: { deleted: 3, keys: resolved, dryRun: false },
+      });
+    });
+
+    it('treats a resolved empty array as a no-op (deleted: 0, no storage calls)', async () => {
+      const exists = jest.fn();
+      const del = jest.fn();
+      const handler = buildHandler(
+        { exists, delete: del },
+        (expr) => expr,
+        () => [],
+      );
+
+      const result = await handler.execute(context, step({ keys: KEYS_EXPR }));
+
+      expect(exists).not.toHaveBeenCalled();
+      expect(del).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        success: true,
+        output: { deleted: 0, keys: [], dryRun: false },
+      });
+    });
+
+    it('throws when the expression resolves to a non-array', async () => {
+      const handler = buildHandler({ exists: jest.fn(), delete: jest.fn() }, (expr) => expr, () => 'not-an-array');
+      await expect(handler.execute(context, step({ keys: KEYS_EXPR }))).rejects.toThrow(/must resolve to an array/i);
+    });
+
+    it('throws when the resolved array contains a non-string entry', async () => {
+      const handler = buildHandler(
+        { exists: jest.fn(), delete: jest.fn() },
+        (expr) => expr,
+        () => ['content/ok', 42],
+      );
+      await expect(handler.execute(context, step({ keys: KEYS_EXPR }))).rejects.toThrow(/array of strings/i);
+    });
+
+    it('still guards each resolved key against traversal before any storage call', async () => {
+      const exists = jest.fn();
+      const del = jest.fn();
+      const handler = buildHandler(
+        { exists, delete: del },
+        (expr) => expr,
+        () => ['content/ok', '../../secret.env'],
+      );
+
+      await expect(handler.execute(context, step({ keys: KEYS_EXPR }))).rejects.toThrow(/traversal/i);
       expect(exists).not.toHaveBeenCalled();
       expect(del).not.toHaveBeenCalled();
     });

@@ -697,8 +697,17 @@ export interface FileDeleteHandlerConfig extends BaseHandlerConfig {
    * each expression-interpolated and guarded exactly like `key`. Use this to
    * purge objects that share no common prefix (e.g. a Site manifest's assets).
    * Mutually exclusive with both `prefix` and `key`.
+   *
+   * Two forms:
+   *   - a **static array** of key templates (`["a/b", "content/{{hash}}"]`) when
+   *     the set is known at authoring time, or
+   *   - a **single expression string** (e.g. `"steps.siteKeys.list"`) that
+   *     resolves AT RUNTIME to an array of string keys. Use this when the set is
+   *     dynamic and variable-length — a prior step computes it (e.g. parsing a
+   *     Site manifest into its object keys). A resolved empty array is a no-op
+   *     (`{ deleted: 0 }`), not an error.
    */
-  keys?: string[];
+  keys?: string[] | string;
 
   /**
    * When true, list and report what WOULD be deleted but delete nothing.
