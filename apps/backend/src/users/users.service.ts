@@ -18,7 +18,11 @@ import {
   SortOrder,
   PaginatedUsersResponseDto,
   UserResponseDto,
+  DirectoryResponseDto,
 } from './users.dto';
+
+/** Hard cap on directory search results, so the member-facing picker can't bulk-export users. */
+const DIRECTORY_MAX_LIMIT = 25;
 
 @Injectable()
 export class UsersService {
@@ -92,6 +96,35 @@ export class UsersService {
         hasPreviousPage: page > 1,
       },
     };
+  }
+
+  /**
+   * Search users by email for people-pickers / autocomplete.
+   *
+   * Unlike findAll (admin-only, full user records), this is member-accessible and
+   * deliberately minimal: it requires a non-empty search term, returns only id +
+   * email (never role/status), skips disabled accounts, and caps the result count —
+   * so an authenticated member can resolve an email to a user without being able to
+   * enumerate or bulk-export the whole directory.
+   */
+  async searchDirectory(search: string, limit = 10): Promise<DirectoryResponseDto> {
+    const term = (search ?? '').trim();
+
+    // A blank term must not return the entire user table.
+    if (term.length === 0) {
+      return { users: [] };
+    }
+
+    const capped = Math.min(Math.max(Math.trunc(limit) || 10, 1), DIRECTORY_MAX_LIMIT);
+
+    const rows = await db
+      .select({ id: users.id, email: users.email })
+      .from(users)
+      .where(and(like(users.email, `%${term}%`), eq(users.disabled, false)))
+      .orderBy(asc(users.email))
+      .limit(capped);
+
+    return { users: rows.map((row) => ({ id: row.id, email: row.email })) };
   }
 
   /**

@@ -54,6 +54,9 @@ describe('UsersController', () => {
 
   const mockUsersService = {
     findAll: jest.fn().mockResolvedValue(mockPaginatedResponse),
+    searchDirectory: jest.fn().mockResolvedValue({
+      users: [{ id: mockUser.id, email: mockUser.email }],
+    }),
     findById: jest.fn().mockResolvedValue(mockUser),
     findByEmail: jest.fn().mockResolvedValue(mockUser),
     update: jest.fn().mockResolvedValue(mockUser),
@@ -94,6 +97,15 @@ describe('UsersController', () => {
 
       expect(result).toEqual(mockPaginatedResponse);
       expect(usersService.findAll).toHaveBeenCalledWith({ page: 1, limit: 10 });
+    });
+  });
+
+  describe('searchDirectory', () => {
+    it('should delegate to the service and return matching users', async () => {
+      const result = await controller.searchDirectory({ search: 'test', limit: 10 });
+
+      expect(result).toEqual({ users: [{ id: mockUser.id, email: mockUser.email }] });
+      expect(usersService.searchDirectory).toHaveBeenCalledWith('test', 10);
     });
   });
 

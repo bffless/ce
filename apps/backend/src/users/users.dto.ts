@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsEmail, IsOptional, IsEnum, IsInt, Min, Max } from 'class-validator';
+import { IsString, IsEmail, IsOptional, IsEnum, IsInt, IsNotEmpty, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 
 // Enums
@@ -98,7 +98,45 @@ export class ListUsersQueryDto {
   sortOrder?: SortOrder = SortOrder.DESC;
 }
 
+export class SearchDirectoryQueryDto {
+  @ApiProperty({
+    description: 'Email substring to search for (required)',
+    example: 'jane',
+  })
+  @IsString()
+  @IsNotEmpty()
+  search: string;
+
+  @ApiPropertyOptional({
+    description: 'Maximum number of results to return (1-25)',
+    example: 10,
+    default: 10,
+  })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(25)
+  @IsOptional()
+  limit?: number = 10;
+}
+
 // Response DTOs
+export class DirectoryUserDto {
+  @ApiProperty({ description: 'User ID', example: '550e8400-e29b-41d4-a716-446655440000' })
+  id: string;
+
+  @ApiProperty({ description: 'User email', example: 'user@example.com' })
+  email: string;
+}
+
+export class DirectoryResponseDto {
+  @ApiProperty({
+    description: 'Matching users — id and email only',
+    type: [DirectoryUserDto],
+  })
+  users: DirectoryUserDto[];
+}
+
 export class UserResponseDto {
   @ApiProperty({ description: 'User ID', example: '550e8400-e29b-41d4-a716-446655440000' })
   id: string;
