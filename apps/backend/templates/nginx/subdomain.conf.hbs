@@ -64,10 +64,15 @@ server {
         proxy_read_timeout 60s;
 
         # Buffer settings
+        # Header buffers must be large enough to hold SuperTokens' session
+        # refresh response, which sets several big Set-Cookie/token headers
+        # (rotated sAccessToken + sRefreshToken JWTs, front-token, anti-csrf).
+        # At 4k a successful /api/auth/session/refresh overflows the header
+        # buffer and nginx returns 502 "upstream sent too big header".
         proxy_buffering on;
-        proxy_buffer_size 4k;
-        proxy_buffers 8 4k;
-        proxy_busy_buffers_size 8k;
+        proxy_buffer_size 16k;
+        proxy_buffers 8 16k;
+        proxy_busy_buffers_size 32k;
 
 {{#if isSpa}}
         # SPA mode: intercept 404s to fallback to index.html for client-side routing
@@ -169,10 +174,15 @@ server {
         proxy_read_timeout 60s;
 
         # Buffer settings
+        # Header buffers must be large enough to hold SuperTokens' session
+        # refresh response, which sets several big Set-Cookie/token headers
+        # (rotated sAccessToken + sRefreshToken JWTs, front-token, anti-csrf).
+        # At 4k a successful /api/auth/session/refresh overflows the header
+        # buffer and nginx returns 502 "upstream sent too big header".
         proxy_buffering on;
-        proxy_buffer_size 4k;
-        proxy_buffers 8 4k;
-        proxy_busy_buffers_size 8k;
+        proxy_buffer_size 16k;
+        proxy_buffers 8 16k;
+        proxy_busy_buffers_size 32k;
 
 {{#if isSpa}}
         # SPA mode: intercept 404s to fallback to index.html for client-side routing
