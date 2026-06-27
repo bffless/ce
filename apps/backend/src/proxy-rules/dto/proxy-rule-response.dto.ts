@@ -11,6 +11,16 @@ export class ProxyRuleResponseDto {
   @ApiProperty({ description: 'Path pattern to match', example: '/api/*' })
   pathPattern: string;
 
+  @ApiPropertyOptional({ description: 'HTTP method to match (null = any)', nullable: true })
+  method?: string | null;
+
+  @ApiPropertyOptional({
+    description: 'HTTP methods to match (takes precedence over method when set)',
+    isArray: true,
+    nullable: true,
+  })
+  methods?: string[] | null;
+
   @ApiProperty({ description: 'Target URL to forward requests to' })
   targetUrl: string;
 
