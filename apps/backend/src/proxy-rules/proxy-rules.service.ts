@@ -232,7 +232,8 @@ export class ProxyRulesService {
     // Check for duplicate path pattern + method within the rule set
     const existingRule = await this.findRuleByPattern(dto.ruleSetId, dto.pathPattern, dto.method, dto.methods);
     if (existingRule) {
-      const methodDesc = dto.method ? ` with method ${dto.method}` : '';
+      const sig = methodSignature({ method: dto.method ?? null, methods: dto.methods ?? null });
+      const methodDesc = sig ? ` with method(s) ${sig}` : '';
       throw new ConflictException(`A rule with path pattern "${dto.pathPattern}"${methodDesc} already exists`);
     }
 
@@ -248,7 +249,7 @@ export class ProxyRulesService {
         ruleSetId: dto.ruleSetId,
         pathPattern: dto.pathPattern,
         method: dto.method ?? null,
-        methods: dto.methods ?? null,
+        methods: dto.methods?.length ? dto.methods : null,
         targetUrl: dto.targetUrl,
         stripPrefix: dto.stripPrefix ?? true,
         order,
@@ -354,7 +355,8 @@ export class ProxyRulesService {
     if (newPattern !== existing.pathPattern || sigChanged) {
       const duplicate = await this.findRuleByPattern(existing.ruleSetId, newPattern, newMethod, newMethods);
       if (duplicate && duplicate.id !== id) {
-        const methodDesc = newMethod ? ` with method ${newMethod}` : '';
+        const effectiveSig = methodSignature({ method: newMethod, methods: newMethods });
+        const methodDesc = effectiveSig ? ` with method(s) ${effectiveSig}` : '';
         throw new ConflictException(`A rule with path pattern "${newPattern}"${methodDesc} already exists`);
       }
     }
@@ -366,7 +368,7 @@ export class ProxyRulesService {
 
     if (dto.pathPattern !== undefined) updateData.pathPattern = dto.pathPattern;
     if (dto.method !== undefined) updateData.method = dto.method;
-    if (dto.methods !== undefined) updateData.methods = dto.methods ?? null;
+    if (dto.methods !== undefined) updateData.methods = dto.methods?.length ? dto.methods : null;
     if (dto.targetUrl !== undefined) updateData.targetUrl = dto.targetUrl;
     if (dto.stripPrefix !== undefined) updateData.stripPrefix = dto.stripPrefix;
     if (dto.order !== undefined) updateData.order = dto.order;
@@ -671,7 +673,11 @@ export class ProxyRulesService {
     method?: string | null,
     methods?: string[] | null,
   ) {
-    const rules = await db.select().from(proxyRules).where(eq(proxyRules.ruleSetId, ruleSetId));
+    const rules = await db
+      .select()
+      .from(proxyRules)
+      .where(eq(proxyRules.ruleSetId, ruleSetId))
+      .orderBy(asc(proxyRules.order));
 
     // Match pathPattern + method signature (methods[] aware; '' == any)
     const wantSig = methodSignature({ method: method ?? null, methods: methods ?? null });
