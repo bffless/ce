@@ -693,6 +693,14 @@ export interface FileDeleteHandlerConfig extends BaseHandlerConfig {
   key?: string;
 
   /**
+   * Delete a set of unrelated objects, each relative to the uploads root and
+   * each expression-interpolated and guarded exactly like `key`. Use this to
+   * purge objects that share no common prefix (e.g. a Site manifest's assets).
+   * Mutually exclusive with both `prefix` and `key`.
+   */
+  keys?: string[];
+
+  /**
    * When true, list and report what WOULD be deleted but delete nothing.
    * @default false
    */
