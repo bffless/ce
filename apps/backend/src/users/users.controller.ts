@@ -21,11 +21,13 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser, CurrentUserData } from '../auth/decorators/current-user.decorator';
 import {
   ListUsersQueryDto,
+  SearchDirectoryQueryDto,
   CreateUserDto,
   UpdateUserDto,
   UpdateUserRoleDto,
   UserResponseDto,
   PaginatedUsersResponseDto,
+  DirectoryResponseDto,
   CreateUserResponseDto,
   UpdateUserResponseDto,
   DeleteUserResponseDto,
@@ -68,6 +70,25 @@ export class UsersController {
   @ApiResponse({ status: 401, description: 'Not authenticated' })
   async getCurrentUser(@CurrentUser() user: CurrentUserData): Promise<UserResponseDto> {
     return this.usersService.findById(user.id);
+  }
+
+  @Get('directory')
+  @ApiOperation({
+    summary: 'Search the user directory',
+    description:
+      'Search users by email for people-pickers / autocomplete. Available to any ' +
+      'authenticated user (session or API key) — NOT admin-only — so a content owner ' +
+      'can resolve a colleague by email. Returns only id + email, requires a non-empty ' +
+      'search term, excludes disabled accounts, and caps the result count.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Matching users',
+    type: DirectoryResponseDto,
+  })
+  @ApiResponse({ status: 401, description: 'Not authenticated' })
+  async searchDirectory(@Query() query: SearchDirectoryQueryDto): Promise<DirectoryResponseDto> {
+    return this.usersService.searchDirectory(query.search, query.limit);
   }
 
   @Get('by-email/:email')

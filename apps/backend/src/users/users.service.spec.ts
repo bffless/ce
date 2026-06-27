@@ -179,6 +179,53 @@ describe('UsersService', () => {
     });
   });
 
+  describe('searchDirectory', () => {
+    it('should return id + email projections for matching users', async () => {
+      const limitMock = jest.fn().mockResolvedValue([
+        { id: mockUser.id, email: mockUser.email },
+        { id: mockAdminUser.id, email: mockAdminUser.email },
+      ]);
+      mockDb.select.mockReturnValueOnce({
+        from: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnValue({
+            orderBy: jest.fn().mockReturnValue({ limit: limitMock }),
+          }),
+        }),
+      });
+
+      const result = await service.searchDirectory('example');
+
+      expect(result.users).toEqual([
+        { id: mockUser.id, email: mockUser.email },
+        { id: mockAdminUser.id, email: mockAdminUser.email },
+      ]);
+      // Default limit applied.
+      expect(limitMock).toHaveBeenCalledWith(10);
+    });
+
+    it('should return an empty list for a blank search without querying the db', async () => {
+      const result = await service.searchDirectory('   ');
+
+      expect(result).toEqual({ users: [] });
+      expect(mockDb.select).not.toHaveBeenCalled();
+    });
+
+    it('should cap the result limit to prevent bulk export', async () => {
+      const limitMock = jest.fn().mockResolvedValue([]);
+      mockDb.select.mockReturnValueOnce({
+        from: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnValue({
+            orderBy: jest.fn().mockReturnValue({ limit: limitMock }),
+          }),
+        }),
+      });
+
+      await service.searchDirectory('a', 9999);
+
+      expect(limitMock).toHaveBeenCalledWith(25);
+    });
+  });
+
   describe('findById', () => {
     it('should return a user by ID', async () => {
       mockDb.select.mockReturnValueOnce({
