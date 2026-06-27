@@ -225,6 +225,13 @@
       "when": 1782063267961,
       "tag": "0031_nappy_silverclaw",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1782562175324,
+      "tag": "0032_numerous_marten_broadcloak",
+      "breakpoints": true
     }
   ]
 }

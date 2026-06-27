@@ -379,6 +379,18 @@ export class CreateProxyRuleDto {
   @IsIn(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'])
   method?: string;
 
+  @ApiPropertyOptional({
+    description:
+      'HTTP methods to match (alternative to `method`). When non-empty, takes precedence over `method`. Omit both to match any method.',
+    example: ['GET', 'HEAD'],
+    isArray: true,
+    enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsIn(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'], { each: true })
+  methods?: string[];
+
   @ApiProperty({
     description:
       'Target URL to forward requests to. Must be HTTPS, or HTTP for internal K8s services. When internalRewrite is true, this must be a path starting with "/" (e.g., /environments/production.json).',

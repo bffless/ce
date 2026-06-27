@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ProxyRulesService } from './proxy-rules.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { NginxRegenerationService } from '../domains/nginx-regeneration.service';
@@ -89,6 +89,7 @@ describe('ProxyRulesService', () => {
     ruleSetId: 'rule-set-1',
     pathPattern: '/api/*',
     method: null,
+    methods: null,
     targetUrl: 'https://api.example.com',
     stripPrefix: true,
     order: 0,
@@ -319,6 +320,7 @@ describe('ProxyRulesService', () => {
         description: null,
         debugEnabled: false,
         method: null,
+        methods: null,
         createdAt: new Date(),
         updatedAt: new Date(),
       };
@@ -416,6 +418,123 @@ describe('ProxyRulesService', () => {
       const rule = await service.getRuleById('non-existent');
 
       expect(rule).toBeNull();
+    });
+  });
+
+  describe('duplicate detection (methods[] aware)', () => {
+    describe('create', () => {
+      it('should throw ConflictException when methods[] match the same set in different order', async () => {
+        // Existing rule: methods ['GET','POST'] on /api/*
+        // New rule:      methods ['POST','GET'] on /api/*  → same signature → conflict
+        const existingRule = createMockRule({ methods: ['GET', 'POST'] });
+
+        mockDb.__setResults([
+          [createMockRuleSet()], // rule set lookup (limit)
+          [existingRule],        // findRuleByPattern (orderBy) — sig 'GET,POST' matches 'POST,GET' sorted
+        ]);
+
+        await expect(
+          service.create(
+            {
+              ruleSetId: 'rule-set-1',
+              pathPattern: '/api/*',
+              targetUrl: 'https://api.example.com',
+              methods: ['POST', 'GET'],
+            },
+            'user-id',
+            'admin',
+          ),
+        ).rejects.toThrow(ConflictException);
+      });
+
+      it('should not conflict when existing methods and new methods are disjoint', async () => {
+        // Existing rule: methods ['GET','POST'] → sig 'GET,POST'
+        // New rule:      methods ['DELETE']      → sig 'DELETE'  → no overlap → no conflict
+        const existingRule = createMockRule({ methods: ['GET', 'POST'] });
+
+        mockDb.__setResults([
+          [createMockRuleSet()], // rule set lookup (limit)
+          [existingRule],        // findRuleByPattern (orderBy) — sig mismatch → returns null
+          [],                    // getNextOrder (orderBy) — empty → order 0
+          // insert returning uses mock fallback [{id:'test-id'}]
+        ]);
+
+        await expect(
+          service.create(
+            {
+              ruleSetId: 'rule-set-1',
+              pathPattern: '/api/*',
+              targetUrl: 'https://api.example.com',
+              methods: ['DELETE'],
+            },
+            'user-id',
+            'admin',
+          ),
+        ).resolves.toBeDefined();
+      });
+
+      it('should not conflict when existing is any-method and new is method-specific', async () => {
+        // Existing rule: method:null, methods:null → sig '' (matches any method)
+        // New rule:      methods:['GET']           → sig 'GET'  → different sig → no conflict
+        const existingAnyMethod = createMockRule({ method: null, methods: null });
+
+        mockDb.__setResults([
+          [createMockRuleSet()], // rule set lookup (limit)
+          [existingAnyMethod],   // findRuleByPattern (orderBy) — sig '' vs 'GET' → no match → null
+          [],                    // getNextOrder (orderBy)
+        ]);
+
+        await expect(
+          service.create(
+            {
+              ruleSetId: 'rule-set-1',
+              pathPattern: '/api/*',
+              targetUrl: 'https://api.example.com',
+              methods: ['GET'],
+            },
+            'user-id',
+            'admin',
+          ),
+        ).resolves.toBeDefined();
+      });
+    });
+
+    describe('update', () => {
+      it('should throw ConflictException when new methods collide with a different existing rule', async () => {
+        // rule-1 currently has methods:['GET']; we change it to methods:['DELETE']
+        // rule-2 already owns methods:['DELETE'] on the same path → conflict
+        const existingRule = createMockRule({ id: 'rule-1', pathPattern: '/api/*', methods: ['GET'] });
+        const collidingRule = createMockRule({ id: 'rule-2', pathPattern: '/api/*', methods: ['DELETE'] });
+
+        mockDb.__setResults([
+          [existingRule],        // findById (limit)
+          [createMockRuleSet()], // rule set lookup (limit)
+          [collidingRule],       // findRuleByPattern (orderBy) — sig 'DELETE' matches → collision
+        ]);
+
+        await expect(
+          service.update('rule-1', { methods: ['DELETE'] }, 'user-id', 'admin'),
+        ).rejects.toThrow(ConflictException);
+      });
+
+      it('should not check for conflicts when only a non-signature field is updated', async () => {
+        // Updating description only → pathPattern and methodSignature unchanged → no dup check
+        const existingRule = createMockRule({ id: 'rule-1' });
+
+        mockDb.__setResults([
+          [existingRule],                                           // findById (limit)
+          [createMockRuleSet()],                                    // rule set lookup (limit)
+          [createMockRule({ id: 'rule-1', description: 'new' })],  // update.returning()
+        ]);
+
+        const findRuleByPatternSpy = jest.spyOn(service as any, 'findRuleByPattern');
+
+        await expect(
+          service.update('rule-1', { description: 'new' }, 'user-id', 'admin'),
+        ).resolves.toBeDefined();
+
+        expect(findRuleByPatternSpy).not.toHaveBeenCalled();
+      });
     });
   });
 
