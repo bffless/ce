@@ -18,6 +18,7 @@ import { NginxRegenerationService } from '../domains/nginx-regeneration.service'
 import { EmailService } from '../email/email.service';
 import { CreateProxyRuleDto, UpdateProxyRuleDto, ReorderProxyRulesDto } from './dto';
 import type { PipelineConfig, PipelineStepConfig } from '../db/schema/proxy-rules.schema';
+import { methodSignature } from './method-match';
 
 // SSRF protection - blocked hostnames
 const BLOCKED_HOSTS = [
@@ -147,7 +148,7 @@ export class ProxyRulesService {
     // Deduplicate by path+method — first wins (higher priority set)
     const seen = new Set<string>();
     return enabledRules.filter((rule) => {
-      const key = `${rule.pathPattern}:${rule.method ?? ''}`;
+      const key = `${rule.pathPattern}:${methodSignature(rule)}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -229,7 +230,7 @@ export class ProxyRulesService {
     }
 
     // Check for duplicate path pattern + method within the rule set
-    const existingRule = await this.findRuleByPattern(dto.ruleSetId, dto.pathPattern, dto.method);
+    const existingRule = await this.findRuleByPattern(dto.ruleSetId, dto.pathPattern, dto.method, dto.methods);
     if (existingRule) {
       const methodDesc = dto.method ? ` with method ${dto.method}` : '';
       throw new ConflictException(`A rule with path pattern "${dto.pathPattern}"${methodDesc} already exists`);
@@ -247,6 +248,7 @@ export class ProxyRulesService {
         ruleSetId: dto.ruleSetId,
         pathPattern: dto.pathPattern,
         method: dto.method ?? null,
+        methods: dto.methods ?? null,
         targetUrl: dto.targetUrl,
         stripPrefix: dto.stripPrefix ?? true,
         order,
@@ -343,11 +345,14 @@ export class ProxyRulesService {
       this.validateTargetUrl(dto.targetUrl);
     }
 
-    // Check for duplicate path pattern + method if changing
+    // Check for duplicate path pattern + method/methods if changing
     const newPattern = dto.pathPattern ?? existing.pathPattern;
     const newMethod = dto.method !== undefined ? dto.method : existing.method;
-    if (dto.pathPattern !== existing.pathPattern || dto.method !== existing.method) {
-      const duplicate = await this.findRuleByPattern(existing.ruleSetId, newPattern, newMethod);
+    const newMethods = dto.methods !== undefined ? dto.methods : existing.methods;
+    const sigChanged =
+      methodSignature({ method: newMethod, methods: newMethods }) !== methodSignature(existing);
+    if (newPattern !== existing.pathPattern || sigChanged) {
+      const duplicate = await this.findRuleByPattern(existing.ruleSetId, newPattern, newMethod, newMethods);
       if (duplicate && duplicate.id !== id) {
         const methodDesc = newMethod ? ` with method ${newMethod}` : '';
         throw new ConflictException(`A rule with path pattern "${newPattern}"${methodDesc} already exists`);
@@ -361,6 +366,7 @@ export class ProxyRulesService {
 
     if (dto.pathPattern !== undefined) updateData.pathPattern = dto.pathPattern;
     if (dto.method !== undefined) updateData.method = dto.method;
+    if (dto.methods !== undefined) updateData.methods = dto.methods ?? null;
     if (dto.targetUrl !== undefined) updateData.targetUrl = dto.targetUrl;
     if (dto.stripPrefix !== undefined) updateData.stripPrefix = dto.stripPrefix;
     if (dto.order !== undefined) updateData.order = dto.order;
@@ -659,11 +665,17 @@ export class ProxyRulesService {
     return rule || null;
   }
 
-  private async findRuleByPattern(ruleSetId: string, pattern: string, method?: string | null) {
+  private async findRuleByPattern(
+    ruleSetId: string,
+    pattern: string,
+    method?: string | null,
+    methods?: string[] | null,
+  ) {
     const rules = await db.select().from(proxyRules).where(eq(proxyRules.ruleSetId, ruleSetId));
 
-    // Match both pathPattern and method (null method matches null method)
-    return rules.find((r) => r.pathPattern === pattern && r.method === (method ?? null)) || null;
+    // Match pathPattern + method signature (methods[] aware; '' == any)
+    const wantSig = methodSignature({ method: method ?? null, methods: methods ?? null });
+    return rules.find((r) => r.pathPattern === pattern && methodSignature(r) === wantSig) || null;
   }
 
   private async getNextOrder(ruleSetId: string): Promise<number> {
