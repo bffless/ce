@@ -56,6 +56,7 @@ export interface ProxyRule {
   ruleSetId: string;
   pathPattern: string;
   method: HttpMethod | null; // null = match any method
+  methods?: HttpMethod[] | null;
   targetUrl: string;
   stripPrefix: boolean;
   order: number;
@@ -109,6 +110,7 @@ export interface UpdateProxyRuleSetDto {
 export interface CreateProxyRuleDto {
   pathPattern: string;
   method?: HttpMethod | null; // null or omitted = match any method
+  methods?: HttpMethod[] | null;
   targetUrl: string;
   stripPrefix?: boolean;
   order?: number;
@@ -129,6 +131,7 @@ export interface CreateProxyRuleDto {
 export interface UpdateProxyRuleDto {
   pathPattern?: string;
   method?: HttpMethod | null; // null = match any method
+  methods?: HttpMethod[] | null;
   targetUrl?: string;
   stripPrefix?: boolean;
   order?: number;

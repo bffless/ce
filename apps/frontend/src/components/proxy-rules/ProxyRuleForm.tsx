@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -46,7 +47,16 @@ export function ProxyRuleForm({ initialData, onSubmit, onCancel }: ProxyRuleForm
 
   // Basic fields
   const [pathPattern, setPathPattern] = useState(initialData?.pathPattern || '');
-  const [method, setMethod] = useState<HttpMethod | null>(initialData?.method || null);
+  const [methods, setMethods] = useState<HttpMethod[]>(
+    initialData?.methods && initialData.methods.length > 0
+      ? initialData.methods
+      : initialData?.method
+        ? [initialData.method]
+        : [],
+  );
+  const ALL_METHODS: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
+  const toggleMethod = (m: HttpMethod) =>
+    setMethods((cur) => (cur.includes(m) ? cur.filter((x) => x !== m) : [...cur, m]));
   const [targetUrl, setTargetUrl] = useState(initialData?.targetUrl || '');
   const [proxyType, setProxyType] = useState<ProxyType>(getEffectiveProxyType(initialData));
   const [order, setOrder] = useState<number | undefined>(initialData?.order);
@@ -195,7 +205,8 @@ export function ProxyRuleForm({ initialData, onSubmit, onCancel }: ProxyRuleForm
 
       await onSubmit({
         pathPattern,
-        method: method || undefined, // null/undefined = match any method
+        methods: methods.length > 0 ? methods : undefined, // empty = match any method
+        method: undefined, // superseded by methods[]
         targetUrl: isEmailHandler ? '' : targetUrl, // Email handler doesn't use targetUrl
         proxyType,
         // Include internalRewrite for backward compatibility
@@ -223,43 +234,35 @@ export function ProxyRuleForm({ initialData, onSubmit, onCancel }: ProxyRuleForm
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Path Pattern and Method */}
-      <div className="grid grid-cols-[1fr,auto] gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="pathPattern">Path Pattern *</Label>
-          <Input
-            id="pathPattern"
-            value={pathPattern}
-            onChange={(e) => setPathPattern(e.target.value)}
-            placeholder="/api/*"
-            className={errors.pathPattern ? 'border-destructive' : ''}
-          />
-          {errors.pathPattern ? (
-            <p className="text-xs text-destructive">{errors.pathPattern}</p>
-          ) : (
-            <p className="text-xs text-muted-foreground">Examples: /api/*, /graphql, *.json</p>
-          )}
+      {/* Path Pattern */}
+      <div className="space-y-2">
+        <Label htmlFor="pathPattern">Path Pattern *</Label>
+        <Input
+          id="pathPattern"
+          value={pathPattern}
+          onChange={(e) => setPathPattern(e.target.value)}
+          placeholder="/api/*"
+          className={errors.pathPattern ? 'border-destructive' : ''}
+        />
+        {errors.pathPattern ? (
+          <p className="text-xs text-destructive">{errors.pathPattern}</p>
+        ) : (
+          <p className="text-xs text-muted-foreground">Examples: /api/*, /graphql, *.json</p>
+        )}
+      </div>
+      <div className="space-y-2">
+        <Label>Methods</Label>
+        <div className="flex flex-wrap items-center gap-3 rounded-md border px-3 py-2">
+          {ALL_METHODS.map((m) => (
+            <label key={m} className="flex items-center gap-1.5 text-sm">
+              <Checkbox checked={methods.includes(m)} onCheckedChange={() => toggleMethod(m)} />
+              {m}
+            </label>
+          ))}
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="method">Method</Label>
-          <Select
-            value={method || 'ANY'}
-            onValueChange={(v) => setMethod(v === 'ANY' ? null : (v as HttpMethod))}
-          >
-            <SelectTrigger id="method" className="w-28">
-              <SelectValue placeholder="Any" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ANY">Any</SelectItem>
-              <SelectItem value="GET">GET</SelectItem>
-              <SelectItem value="POST">POST</SelectItem>
-              <SelectItem value="PUT">PUT</SelectItem>
-              <SelectItem value="PATCH">PATCH</SelectItem>
-              <SelectItem value="DELETE">DELETE</SelectItem>
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-muted-foreground">HTTP method</p>
-        </div>
+        <p className="text-xs text-muted-foreground">
+          {methods.length === 0 ? 'Any method' : `Matches: ${methods.join(', ')}`}
+        </p>
       </div>
 
       {/* Proxy Type Selector */}
