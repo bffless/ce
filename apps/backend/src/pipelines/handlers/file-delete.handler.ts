@@ -14,14 +14,16 @@ import { UploadRecordService } from '../upload-record.service';
  *
  * Deletes objects within the calling project's uploads root
  * ({owner}/{repo}/uploads/) — the same root file_upload/file_serve address via
- * `subDir`. Operates in two modes:
+ * `subDir`. Operates in three mutually-exclusive modes:
  *
  *   - prefix: list every object under <uploadsRoot>/<prefix> and delete them all
  *             (object stores have no atomic folder delete, so this is list+delete).
  *   - key:    delete a single object at <uploadsRoot>/<key>.
+ *   - keys:   delete an explicit set of objects that share no common prefix
+ *             (e.g. a Site manifest's assets), each at <uploadsRoot>/<entry>.
  *
- * Both `prefix` and `key` are relative to the uploads root and are
- * expression-interpolated before use. This is a destructive handler, so it
+ * `prefix`, `key`, and every entry of `keys` are relative to the uploads root
+ * and are expression-interpolated before use. This is a destructive handler, so it
  * defends itself: blank prefixes and path traversal are rejected before any
  * storage call (a blank prefix must NEVER mean "delete the whole uploads root").
  *
@@ -44,15 +46,32 @@ export class FileDeleteHandler implements StepHandler<FileDeleteHandlerConfig> {
   validateConfig(config: FileDeleteHandlerConfig): void {
     const hasPrefix = typeof config.prefix === 'string' && config.prefix.length > 0;
     const hasKey = typeof config.key === 'string' && config.key.length > 0;
+    const hasKeys = config.keys !== undefined;
 
-    if (hasPrefix && hasKey) {
+    const modes = [hasPrefix, hasKey, hasKeys].filter(Boolean).length;
+    if (modes > 1) {
       throw new ConfigurationError(
-        'Provide exactly one of "prefix" or "key", not both',
+        'Provide exactly one of "prefix", "key", or "keys"',
         'file_delete',
       );
     }
-    if (!hasPrefix && !hasKey) {
-      throw new ConfigurationError('Either "prefix" or "key" is required', 'file_delete');
+    if (modes === 0) {
+      throw new ConfigurationError(
+        'One of "prefix", "key", or "keys" is required',
+        'file_delete',
+      );
+    }
+
+    if (hasKeys) {
+      if (!Array.isArray(config.keys) || config.keys.length === 0) {
+        throw new ConfigurationError('"keys" must be a non-empty array', 'file_delete');
+      }
+      if (!config.keys.every((k) => typeof k === 'string' && k.length > 0)) {
+        throw new ConfigurationError(
+          'Every entry in "keys" must be a non-empty string',
+          'file_delete',
+        );
+      }
     }
   }
 
@@ -63,6 +82,18 @@ export class FileDeleteHandler implements StepHandler<FileDeleteHandlerConfig> {
 
     const { owner, repo } = await this.uploadRecords.resolveOwnerRepo(context, stepName);
     const uploadsRoot = `${owner}/${repo}/uploads/`;
+
+    const isKeysMode = Array.isArray(config.keys) && config.keys.length > 0;
+    if (isKeysMode) {
+      // Resolve and guard EVERY entry before any storage call, so a single bad
+      // entry aborts the whole step without partially deleting the good ones.
+      const targets = config.keys!.map((expr) => {
+        const relKey = this.resolveAndGuard(expr, context, stepName, 'key');
+        const fullKey = this.confineToRoot(uploadsRoot, relKey, stepName);
+        return { relKey, fullKey };
+      });
+      return this.deleteMany(targets, dryRun, stepName);
+    }
 
     const isKeyMode = typeof config.key === 'string' && config.key.length > 0;
 
@@ -149,6 +180,49 @@ export class FileDeleteHandler implements StepHandler<FileDeleteHandlerConfig> {
         stepName,
       );
     }
+  }
+
+  /**
+   * Delete an explicit set of objects that share no common prefix. Each is
+   * deleted independently; missing objects are skipped (idempotent), and any
+   * per-object failures are collected and surfaced together so partial success
+   * is never silently swallowed.
+   */
+  private async deleteMany(
+    targets: { relKey: string; fullKey: string }[],
+    dryRun: boolean,
+    stepName: string,
+  ): Promise<StepResult> {
+    let deleted = 0;
+    const failed: string[] = [];
+
+    for (const { relKey, fullKey } of targets) {
+      try {
+        const exists = await this.storageAdapter.exists(fullKey);
+        if (!exists) {
+          continue;
+        }
+        if (!dryRun) {
+          await this.storageAdapter.delete(fullKey);
+          this.logger.debug(`Deleted object ${fullKey}`);
+        }
+        deleted++;
+      } catch {
+        failed.push(relKey);
+      }
+    }
+
+    const keys = targets.map((t) => t.relKey);
+
+    if (failed.length > 0) {
+      throw new StepExecutionError(
+        `Deleted ${deleted} object(s) but ${failed.length} failed`,
+        stepName,
+        { deleted, failed },
+      );
+    }
+
+    return { success: true, output: { deleted, keys, dryRun } };
   }
 
   private async deletePrefix(

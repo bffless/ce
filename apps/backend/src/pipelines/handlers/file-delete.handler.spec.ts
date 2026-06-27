@@ -49,6 +49,33 @@ describe('FileDeleteHandler', () => {
       const handler = buildHandler({});
       expect(() => handler.validateConfig({ prefix: 'projects/abc/' })).not.toThrow();
     });
+
+    it('accepts a non-empty keys array', () => {
+      const handler = buildHandler({});
+      expect(() => handler.validateConfig({ keys: ['a/b', 'c/d'] })).not.toThrow();
+    });
+
+    it('rejects keys combined with key', () => {
+      const handler = buildHandler({});
+      expect(() => handler.validateConfig({ keys: ['a/b'], key: 'c/d' })).toThrow(/exactly one/i);
+    });
+
+    it('rejects keys combined with prefix', () => {
+      const handler = buildHandler({});
+      expect(() => handler.validateConfig({ keys: ['a/b'], prefix: 'c/' })).toThrow(/exactly one/i);
+    });
+
+    it('rejects an empty keys array', () => {
+      const handler = buildHandler({});
+      expect(() => handler.validateConfig({ keys: [] })).toThrow(/keys.*non-empty|non-empty.*keys/i);
+    });
+
+    it('rejects a keys array containing a non-string entry', () => {
+      const handler = buildHandler({});
+      expect(() =>
+        handler.validateConfig({ keys: ['a/b', 123 as unknown as string] }),
+      ).toThrow(/string/i);
+    });
   });
 
   describe('prefix mode', () => {
@@ -184,6 +211,116 @@ describe('FileDeleteHandler', () => {
       await expect(
         handler.execute(context, step({ key: '../../other/secret.env' })),
       ).rejects.toThrow(/traversal/i);
+      expect(exists).not.toHaveBeenCalled();
+      expect(del).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('keys mode', () => {
+    it('deletes each existing key and returns the count', async () => {
+      const exists = jest.fn().mockResolvedValue(true);
+      const del = jest.fn().mockResolvedValue(undefined);
+      const handler = buildHandler({ exists, delete: del });
+
+      const keys = ['projects/abc/a.mov', 'projects/abc/b.png', 'projects/abc/c.css'];
+      const result = await handler.execute(context, step({ keys }));
+
+      keys.forEach((k) => expect(del).toHaveBeenCalledWith(`${UPLOADS_ROOT}${k}`));
+      expect(del).toHaveBeenCalledTimes(3);
+      expect(result).toEqual({
+        success: true,
+        output: { deleted: 3, keys, dryRun: false },
+      });
+    });
+
+    it('is idempotent: missing keys are skipped and only existing keys count', async () => {
+      const present = new Set([`${UPLOADS_ROOT}projects/abc/here.mov`]);
+      const exists = jest.fn((k: string) => Promise.resolve(present.has(k)));
+      const del = jest.fn().mockResolvedValue(undefined);
+      const handler = buildHandler({ exists, delete: del });
+
+      const keys = ['projects/abc/here.mov', 'projects/abc/gone.mov'];
+      const result = await handler.execute(context, step({ keys }));
+
+      expect(del).toHaveBeenCalledTimes(1);
+      expect(del).toHaveBeenCalledWith(`${UPLOADS_ROOT}projects/abc/here.mov`);
+      expect(result).toEqual({
+        success: true,
+        output: { deleted: 1, keys, dryRun: false },
+      });
+    });
+
+    it('dryRun counts existing keys but deletes nothing', async () => {
+      const exists = jest.fn().mockResolvedValue(true);
+      const del = jest.fn();
+      const handler = buildHandler({ exists, delete: del });
+
+      const keys = ['projects/abc/a.mov', 'projects/abc/b.png'];
+      const result = await handler.execute(context, step({ keys, dryRun: true }));
+
+      expect(del).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        success: true,
+        output: { deleted: 2, keys, dryRun: true },
+      });
+    });
+
+    it('interpolates each key expression against the uploads root', async () => {
+      const exists = jest.fn().mockResolvedValue(true);
+      const del = jest.fn().mockResolvedValue(undefined);
+      const handler = buildHandler(
+        { exists, delete: del },
+        (expr) => expr.replace('{{hash}}', 'deadbeef'),
+      );
+
+      const result = await handler.execute(
+        context,
+        step({ keys: ['content/{{hash}}'] }),
+      );
+
+      expect(del).toHaveBeenCalledWith(`${UPLOADS_ROOT}content/deadbeef`);
+      expect(result).toEqual({
+        success: true,
+        output: { deleted: 1, keys: ['content/deadbeef'], dryRun: false },
+      });
+    });
+
+    it('surfaces partial deletion failures as an error reporting the count', async () => {
+      const exists = jest.fn().mockResolvedValue(true);
+      const del = jest.fn((k: string) => {
+        if (k.endsWith('b.png')) {
+          return Promise.reject(new Error('boom'));
+        }
+        return Promise.resolve(undefined);
+      });
+      const handler = buildHandler({ exists, delete: del });
+
+      const keys = ['projects/abc/a.mov', 'projects/abc/b.png', 'projects/abc/c.css'];
+      await expect(handler.execute(context, step({ keys }))).rejects.toThrow(/1 failed/);
+    });
+
+    it('rejects a keys entry containing ".." before any storage call', async () => {
+      const exists = jest.fn();
+      const del = jest.fn();
+      const handler = buildHandler({ exists, delete: del });
+
+      await expect(
+        handler.execute(context, step({ keys: ['projects/abc/ok', '../../secret.env'] })),
+      ).rejects.toThrow(/traversal/i);
+      expect(exists).not.toHaveBeenCalled();
+      expect(del).not.toHaveBeenCalled();
+    });
+
+    it('rejects a keys entry that resolves to blank before any storage call', async () => {
+      const exists = jest.fn();
+      const del = jest.fn();
+      const handler = buildHandler({ exists, delete: del }, (expr) =>
+        expr === '{{blank}}' ? '   ' : expr,
+      );
+
+      await expect(
+        handler.execute(context, step({ keys: ['projects/abc/ok', '{{blank}}'] })),
+      ).rejects.toThrow(/empty/i);
       expect(exists).not.toHaveBeenCalled();
       expect(del).not.toHaveBeenCalled();
     });
