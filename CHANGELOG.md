@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.83](https://github.com/bffless/ce/compare/v0.1.82...v0.1.83) (2026-06-27)
+
+
+### Features
+
+* **proxy-rules:** match multiple HTTP methods (methods[]) ([#366](https://github.com/bffless/ce/issues/366)) ([4192b3e](https://github.com/bffless/ce/commit/4192b3e10630b1e79fbf14a5051bc2d9ec039122))
+
 ## [0.1.82](https://github.com/bffless/ce/compare/v0.1.81...v0.1.82) (2026-06-27)
 
 
