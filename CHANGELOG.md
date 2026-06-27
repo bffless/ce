@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.84](https://github.com/bffless/ce/compare/v0.1.83...v0.1.84) (2026-06-27)
+
+
+### Features
+
+* **users:** member-accessible user directory endpoint for people-pickers ([#368](https://github.com/bffless/ce/issues/368)) ([2245af7](https://github.com/bffless/ce/commit/2245af7db99ed2a83ac822e837f7c9823c5fa9cb))
+
 ## [0.1.83](https://github.com/bffless/ce/compare/v0.1.82...v0.1.83) (2026-06-27)
 
 
