@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.81](https://github.com/bffless/ce/compare/v0.1.80...v0.1.81) (2026-06-27)
+
+
+### Features
+
+* **pipelines:** add keys[] multi-object mode to file_delete ([#362](https://github.com/bffless/ce/issues/362)) ([c5fdcb3](https://github.com/bffless/ce/commit/c5fdcb3e1ea41b0e52fe0fb50ed8de72291b5aa7)), closes [#361](https://github.com/bffless/ce/issues/361)
+
 ## [0.1.80](https://github.com/bffless/ce/compare/v0.1.79...v0.1.80) (2026-06-26)
 
 
