@@ -20,6 +20,7 @@ import { CustomDomainAuthService } from '../auth/custom-domain-auth.service';
 import { VisibilityService, AccessControlInfo } from '../domains/visibility.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { TrafficRoutingService } from '../domains/traffic-routing.service';
+import { matchesMethod } from './method-match';
 
 interface ParsedPublicPath {
   owner: string;
@@ -1037,8 +1038,8 @@ export class ProxyMiddleware implements NestMiddleware {
         continue;
       }
 
-      // Check method if specified on rule
-      if (rule.method && requestMethod && rule.method.toUpperCase() !== requestMethod) {
+      // Check method(s): methods[] wins, else single method, else any (case-insensitive)
+      if (!matchesMethod(rule, requestMethod)) {
         continue;
       }
 
