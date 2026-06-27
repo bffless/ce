@@ -19,9 +19,9 @@ import type {
   EmailHandlerConfig,
 } from '@/services/proxyRulesApi';
 import { useGetEmailConfigStatusQuery } from '@/services/proxyRulesApi';
+import { AlertTriangle } from 'lucide-react';
 
 const ALL_METHODS: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
-import { AlertTriangle } from 'lucide-react';
 
 interface ProxyRuleFormProps {
   initialData?: ProxyRule;
