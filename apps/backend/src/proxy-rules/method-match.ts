@@ -32,7 +32,6 @@ export function methodSignature(rule: MethodShape): string {
   if (rule.methods && rule.methods.length > 0) {
     return rule.methods
       .map((m) => String(m).toUpperCase())
-      .slice()
       .sort()
       .join(',');
   }

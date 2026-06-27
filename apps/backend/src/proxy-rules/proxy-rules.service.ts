@@ -411,6 +411,7 @@ export class ProxyRulesService {
         .set({
           pathPattern: existing.pathPattern,
           method: existing.method,
+          methods: existing.methods,
           targetUrl: existing.targetUrl,
           stripPrefix: existing.stripPrefix,
           order: existing.order,
@@ -562,6 +563,7 @@ export class ProxyRulesService {
         ruleSetId: existing.ruleSetId,
         pathPattern: existing.pathPattern,
         method: existing.method,
+        methods: existing.methods,
         targetUrl: existing.targetUrl,
         stripPrefix: existing.stripPrefix,
         order: existing.order,

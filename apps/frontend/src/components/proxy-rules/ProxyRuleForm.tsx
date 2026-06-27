@@ -19,6 +19,8 @@ import type {
   EmailHandlerConfig,
 } from '@/services/proxyRulesApi';
 import { useGetEmailConfigStatusQuery } from '@/services/proxyRulesApi';
+
+const ALL_METHODS: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
 import { AlertTriangle } from 'lucide-react';
 
 interface ProxyRuleFormProps {
@@ -54,7 +56,6 @@ export function ProxyRuleForm({ initialData, onSubmit, onCancel }: ProxyRuleForm
         ? [initialData.method]
         : [],
   );
-  const ALL_METHODS: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
   const toggleMethod = (m: HttpMethod) =>
     setMethods((cur) => (cur.includes(m) ? cur.filter((x) => x !== m) : [...cur, m]));
   const [targetUrl, setTargetUrl] = useState(initialData?.targetUrl || '');
@@ -205,8 +206,8 @@ export function ProxyRuleForm({ initialData, onSubmit, onCancel }: ProxyRuleForm
 
       await onSubmit({
         pathPattern,
-        methods: methods.length > 0 ? methods : undefined, // empty = match any method
-        method: undefined, // superseded by methods[]
+        methods: methods, // empty array = match any method
+        method: null, // always null; methods[] is the single source of truth
         targetUrl: isEmailHandler ? '' : targetUrl, // Email handler doesn't use targetUrl
         proxyType,
         // Include internalRewrite for backward compatibility
