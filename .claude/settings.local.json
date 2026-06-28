@@ -13,8 +13,6 @@
       "Bash(mkdir:*)",
       "Bash(pnpm add:*)",
       "Bash(grep:*)"
-    ],
-    "deny": [],
-    "ask": []
+    ]
   }
 }
