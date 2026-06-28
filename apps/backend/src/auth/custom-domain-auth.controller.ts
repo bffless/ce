@@ -11,8 +11,9 @@ import {
   HttpStatus,
   BadRequestException,
   UnauthorizedException,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiBody } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiBody, ApiHeader } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { getSession } from 'supertokens-node/recipe/session';
 import { SessionContainer } from 'supertokens-node/recipe/session';
@@ -29,6 +30,7 @@ import { EmailService } from '../email/email.service';
 import { ProjectResolverService } from './project-resolver.service';
 import { OidcProvidersService } from '../settings/oidc-providers.service';
 import { PermissionsService } from '../permissions/permissions.service';
+import { ApiKeyGuard } from './api-key.guard';
 import { PublicProjectAccess } from './decorators/public-project-access.decorator';
 import { buildLoginMethodsResponse } from './login-methods.helper';
 import { Project } from '../db/schema';
@@ -520,6 +522,76 @@ export class CustomDomainAuthController {
         // Opaque to client — same shape as wrong credentials so we don't leak
         // whether this email has an account on a sister site.
         return { status: 'WRONG_CREDENTIALS_ERROR' };
+      }
+    }
+
+    const { hostname, secure } = this.getRequestHost(req);
+    await this.issueDomainSession(res, user, hostname, secure);
+
+    return {
+      status: 'OK',
+      user: { id: user.id, email: user.email, role: user.role },
+    };
+  }
+
+  /**
+   * Mint a content-domain session from a project API key.
+   *
+   * The API-key counterpart of `signin`: instead of email+password, the caller
+   * presents an `X-API-Key`, and we mint `bffless_access` / `bffless_refresh`
+   * for the key's owner on the requesting host. Intended for headless automation
+   * (e.g. a `localhost` dev server driven by Playwright) that already holds a
+   * project key but has no password — so it can render login-gated SPA routes
+   * without seeding a cookie or storing credentials.
+   *
+   * `localhost` is cross-origin to the primary domain, so a SuperTokens
+   * `sAccessToken` can never reach it; the relay's self-signed `bffless_access`
+   * is the only cookie that works there. This path is SuperTokens-independent.
+   * The session carries the key owner's *actual* role — no elevation; it is
+   * exactly "log in as the key's owner, without their password". Acceptable
+   * because the key already authenticates `/api/*` as that owner. See CE
+   * `docs/adr/0001-api-key-mints-custom-domain-session.md`.
+   */
+  @Post('session-from-key')
+  @UseGuards(ApiKeyGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Mint a content-domain session from a project API key',
+    description:
+      'Authenticates via the X-API-Key header and sets bffless_access / bffless_refresh ' +
+      'cookies for the key owner on the requesting host. SuperTokens is not involved. ' +
+      'See CE ADR-0001.',
+  })
+  @ApiHeader({ name: 'X-API-Key', description: 'A project (or global) API key', required: true })
+  @ApiResponse({ status: 200, description: 'Session minted; sets auth cookies' })
+  @ApiResponse({
+    status: 401,
+    description: 'Missing/invalid key, or the key owner is not a member of this site',
+  })
+  async sessionFromKey(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    // ApiKeyGuard also falls back to SuperTokens session auth when no key is
+    // present; this endpoint is specifically the API-key bridge, so require the
+    // key path (the guard sets `apiKeyId` only on the API-key branch).
+    const apiUser = (req as unknown as { user?: { id?: string; apiKeyId?: string } }).user;
+    if (!apiUser?.id || !apiUser.apiKeyId) {
+      throw new UnauthorizedException('A valid X-API-Key is required');
+    }
+
+    const user = await this.authService.getUserById(apiUser.id);
+    if (!user) {
+      throw new UnauthorizedException('API key owner not found');
+    }
+    if (user.disabled) {
+      throw new UnauthorizedException('User account is disabled');
+    }
+
+    // Same membership gate as the password signin: when REQUIRE_PROJECT_MEMBERSHIP
+    // is on and the host maps to a project, the key owner must be a member.
+    const project = await this.resolveGatedProject(req);
+    if (project) {
+      const role = await this.permissions.getUserProjectRole(user.id, project.id);
+      if (!role) {
+        throw new UnauthorizedException('API key owner is not a member of this site');
       }
     }
 

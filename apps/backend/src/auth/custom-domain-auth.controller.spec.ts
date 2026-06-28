@@ -1,5 +1,15 @@
 import { Request, Response } from 'express';
 
+// ApiKeyGuard (imported transitively via the controller's @UseGuards) pulls in
+// bcrypt's native binding; replace it with a factory mock so the suite loads
+// without requiring the native module. The guard itself is never executed here
+// — sessionFromKey is called directly.
+jest.mock('bcrypt', () => ({
+  compare: jest.fn(),
+  hash: jest.fn(),
+  genSalt: jest.fn(),
+}));
+
 // Mock the database client used by trySupertokensSession's user lookup.
 const dbLimitMock = jest.fn();
 jest.mock('../db/client', () => ({
@@ -379,5 +389,117 @@ describe('CustomDomainAuthController.signUp (existing-email orphan re-create)', 
     expect(stSignInMock).not.toHaveBeenCalled();
     expect(authService.createUser).not.toHaveBeenCalled();
     expect(result).toEqual({ status: 'EMAIL_ALREADY_EXISTS_ERROR' });
+  });
+});
+
+describe('CustomDomainAuthController.sessionFromKey (API key → session)', () => {
+  let controller: CustomDomainAuthController;
+  let authService: jest.Mocked<AuthService>;
+  let customDomainAuthService: jest.Mocked<CustomDomainAuthService>;
+  let featureFlags: jest.Mocked<FeatureFlagsService>;
+  let projectResolver: jest.Mocked<ProjectResolverService>;
+  let permissions: jest.Mocked<PermissionsService>;
+
+  // The key owner's real workspace role is 'admin'. ApiKeyGuard hardcodes the
+  // request role to 'user', so this asserts we mint with the *owner's* role.
+  const keyOwner = { id: 'user-1', email: 'owner@example.com', role: 'admin', disabled: false };
+
+  const reqWithKeyUser = (user: unknown, host = HOST): Request =>
+    ({ headers: { host }, user }) as unknown as Request;
+
+  const cookieRes = (): Response =>
+    ({
+      cookie: jest.fn().mockReturnThis(),
+      clearCookie: jest.fn().mockReturnThis(),
+    }) as unknown as Response;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+
+    authService = {
+      getUserById: jest.fn().mockResolvedValue(keyOwner),
+    } as unknown as jest.Mocked<AuthService>;
+
+    customDomainAuthService = {
+      createAccessToken: jest.fn().mockReturnValue('access-jwt'),
+      createRefreshToken: jest.fn().mockReturnValue('refresh-jwt'),
+      setAuthCookies: jest.fn(),
+    } as unknown as jest.Mocked<CustomDomainAuthService>;
+
+    featureFlags = {
+      isEnabled: jest.fn().mockResolvedValue(false),
+    } as unknown as jest.Mocked<FeatureFlagsService>;
+
+    projectResolver = {
+      resolveProjectFromRequest: jest.fn().mockResolvedValue(null),
+    } as unknown as jest.Mocked<ProjectResolverService>;
+
+    permissions = {
+      getUserProjectRole: jest.fn().mockResolvedValue(null),
+    } as unknown as jest.Mocked<PermissionsService>;
+
+    controller = new CustomDomainAuthController(
+      {} as DomainTokenService,
+      customDomainAuthService,
+      authService,
+      {} as SetupService,
+      featureFlags,
+      {} as EmailService,
+      projectResolver,
+      permissions,
+      {} as never,
+    );
+  });
+
+  const apiKeyUser = {
+    id: 'user-1',
+    apiKeyId: 'key-1',
+    apiKeyProjectId: 'proj-1',
+    role: 'user',
+  };
+
+  it('mints the access+refresh pair for the key owner and returns OK', async () => {
+    const res = cookieRes();
+
+    const result = await controller.sessionFromKey(reqWithKeyUser(apiKeyUser), res);
+
+    expect(authService.getUserById).toHaveBeenCalledWith('user-1');
+    // Signs the owner's real role ('admin'), not the API-key hardcoded 'user'.
+    expect(customDomainAuthService.createAccessToken).toHaveBeenCalledWith(
+      'user-1',
+      'owner@example.com',
+      'admin',
+      HOST,
+    );
+    expect(customDomainAuthService.createRefreshToken).toHaveBeenCalledWith('user-1', HOST);
+    expect(customDomainAuthService.setAuthCookies).toHaveBeenCalledWith(
+      res,
+      'access-jwt',
+      'refresh-jwt',
+      true,
+    );
+    expect(result).toEqual({
+      status: 'OK',
+      user: { id: 'user-1', email: 'owner@example.com', role: 'admin' },
+    });
+  });
+
+  it('rejects when no API key was used (session fallback / missing apiKeyId)', async () => {
+    await expect(
+      controller.sessionFromKey(reqWithKeyUser({ id: 'user-1' }), cookieRes()),
+    ).rejects.toThrow('A valid X-API-Key is required');
+    expect(customDomainAuthService.setAuthCookies).not.toHaveBeenCalled();
+  });
+
+  it('rejects when the key owner is not a member of the resolved site', async () => {
+    featureFlags.isEnabled.mockResolvedValue(true);
+    projectResolver.resolveProjectFromRequest.mockResolvedValue({ id: 'proj-9' } as never);
+    permissions.getUserProjectRole.mockResolvedValue(null);
+
+    await expect(
+      controller.sessionFromKey(reqWithKeyUser(apiKeyUser), cookieRes()),
+    ).rejects.toThrow('not a member of this site');
+    expect(permissions.getUserProjectRole).toHaveBeenCalledWith('user-1', 'proj-9');
+    expect(customDomainAuthService.setAuthCookies).not.toHaveBeenCalled();
   });
 });
