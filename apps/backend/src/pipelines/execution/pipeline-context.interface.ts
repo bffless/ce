@@ -149,9 +149,11 @@ export interface StepDebugInfo {
   status: 'success' | 'failed' | 'skipped';
 
   /**
-   * Input snapshot before execution (context state)
+   * Input snapshot before execution (context state).
+   * Omitted when debug capture is disabled (see captureDebug) to avoid retaining
+   * a per-step copy of all accumulated step outputs in memory.
    */
-  input: {
+  input?: {
     requestBody: Record<string, unknown>;
     previousStepOutputs: Record<string, unknown>;
   };
