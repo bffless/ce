@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.86](https://github.com/bffless/ce/compare/v0.1.85...v0.1.86) (2026-06-28)
+
+
+### Features
+
+* **auth:** mint a content-domain session from a project API key ([#372](https://github.com/bffless/ce/issues/372)) ([#374](https://github.com/bffless/ce/issues/374)) ([2772a34](https://github.com/bffless/ce/commit/2772a345ac95fd7e5e776b5f9a51636ee7a5e69f))
+
 ## [0.1.85](https://github.com/bffless/ce/compare/v0.1.84...v0.1.85) (2026-06-27)
 
 
