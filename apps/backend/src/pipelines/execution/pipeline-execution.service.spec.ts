@@ -146,4 +146,50 @@ describe('PipelineExecutionService — early termination', () => {
     expect(mainExecute).toHaveBeenCalledTimes(1);
     expect(postExecute).toHaveBeenCalledTimes(1);
   });
+
+  describe('debug capture gating (memory)', () => {
+    it('omits heavy per-step input/output snapshots when captureDebug is false', async () => {
+      const big = 'x'.repeat(1000);
+      const mainExecute = jest
+        .fn<Promise<StepResult>, unknown[]>()
+        .mockResolvedValue({ success: true, output: { big } });
+
+      const service = buildService({ execute: mainExecute }, { execute: jest.fn() });
+      const pipeline = buildPipeline(
+        [{ id: 'work', name: 'work', handlerType: 'main', isEnabled: true, config: {} } as PipelineStep],
+        [],
+      );
+
+      const result = await service.executePipelineWithDebug(pipeline, buildRequest(), undefined, {
+        captureDebug: false,
+      });
+
+      // Execution still works and runtime step outputs are intact (needed for chaining/response).
+      expect(result.success).toBe(true);
+      expect(result.stepOutputs?.work).toEqual({ big });
+
+      // But the heavy debug snapshots are NOT retained.
+      expect(result.debug?.steps).toHaveLength(1);
+      expect(result.debug?.steps[0].status).toBe('success');
+      expect(result.debug?.steps[0].input).toBeUndefined();
+      expect(result.debug?.steps[0].output).toBeUndefined();
+    });
+
+    it('retains per-step input/output snapshots when captureDebug defaults on', async () => {
+      const mainExecute = jest
+        .fn<Promise<StepResult>, unknown[]>()
+        .mockResolvedValue({ success: true, output: { ok: true } });
+
+      const service = buildService({ execute: mainExecute }, { execute: jest.fn() });
+      const pipeline = buildPipeline(
+        [{ id: 'work', name: 'work', handlerType: 'main', isEnabled: true, config: {} } as PipelineStep],
+        [],
+      );
+
+      const result = await service.executePipelineWithDebug(pipeline, buildRequest());
+
+      expect(result.debug?.steps[0].input).toBeDefined();
+      expect(result.debug?.steps[0].output).toEqual({ ok: true });
+    });
+  });
 });

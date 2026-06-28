@@ -226,8 +226,10 @@ export class StepDebugInfoDto {
   @ApiProperty({ description: 'Execution status', enum: ['success', 'failed', 'skipped'] })
   status: 'success' | 'failed' | 'skipped';
 
-  @ApiProperty({ description: 'Input snapshot before execution' })
-  input: {
+  @ApiPropertyOptional({
+    description: 'Input snapshot before execution (omitted when debug capture is disabled)',
+  })
+  input?: {
     requestBody: Record<string, unknown>;
     previousStepOutputs: Record<string, unknown>;
   };

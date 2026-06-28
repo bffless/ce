@@ -294,12 +294,12 @@ services:
     deploy:
       resources:
         limits:
-          memory: 192M
+          memory: 384M
         reservations:
           memory: 96M
     environment:
       # Node.js heap: 128 for 1GB VM, 180 for 2GB, 350 for 4GB
-      NODE_OPTIONS: '--max-old-space-size=128'
+      NODE_OPTIONS: '--max-old-space-size=256'
       NODE_ENV: production
       PORT: 3000
       # Log level: error,warn,log (default) or error,warn,log,debug for verbose

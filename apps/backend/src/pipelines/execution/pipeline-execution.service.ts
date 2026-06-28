@@ -48,6 +48,14 @@ export class PipelineExecutionService {
     options?: {
       dryRun?: boolean;
       deployment?: { owner: string; repo: string; commitSha: string; alias?: string };
+      /**
+       * Whether to retain per-step input/output debug snapshots in memory.
+       * Defaults to true. Set to false (e.g. when the rule does not have debug
+       * logging enabled) to avoid holding a copy of every step's I/O — including
+       * a per-step snapshot of all accumulated step outputs — for the lifetime of
+       * the request, which on memory-constrained instances can exhaust the heap.
+       */
+      captureDebug?: boolean;
     },
   ): Promise<PipelineDebugResult> {
     let secrets: Record<string, string> = {};
@@ -101,13 +109,17 @@ export class PipelineExecutionService {
     options?: {
       dryRun?: boolean;
       deployment?: { owner: string; repo: string; commitSha: string; alias?: string };
+      captureDebug?: boolean;
     },
     secrets?: Record<string, string>,
   ): Promise<PipelineDebugResult> {
     const executionStartTime = Date.now();
     const executionStartIso = new Date(executionStartTime).toISOString();
+    const captureDebug = options?.captureDebug ?? true;
 
-    this.logger.log(`Executing pipeline '${pipeline.name}' (${pipeline.id}) with debug mode`);
+    this.logger.log(
+      `Executing pipeline '${pipeline.name}' (${pipeline.id})${captureDebug ? ' with debug mode' : ''}`,
+    );
 
     // Build context
     // Extract real client IP (prefer X-Forwarded-For for proxied requests)
@@ -153,7 +165,7 @@ export class PipelineExecutionService {
       // Execute steps sequentially with debug capture
       let lastStepResult: StepResult | null = null;
       for (const step of steps) {
-        const stepDebug = await this.executeStepWithDebug(step, context);
+        const stepDebug = await this.executeStepWithDebug(step, context, captureDebug);
         stepDebugInfo.push(stepDebug);
 
         // When a step is skipped (condition not met), preserve the previous step's output
@@ -227,7 +239,7 @@ export class PipelineExecutionService {
       const response = this.buildResponse(lastStepResult, context);
 
       // Fire-and-forget post-processing steps
-      const postStepsPromise = this.firePostSteps(pipeline, context);
+      const postStepsPromise = this.firePostSteps(pipeline, context, captureDebug);
 
       return {
         success: true,
@@ -387,17 +399,22 @@ export class PipelineExecutionService {
   private async executeStepWithDebug(
     step: PipelineStep,
     context: PipelineContext,
+    captureDebug = true,
   ): Promise<StepDebugInfo & { result: StepResult }> {
     const stepName = step.name || step.id;
     const config = step.config as BaseHandlerConfig;
     const startTime = Date.now();
     const startTimeIso = new Date(startTime).toISOString();
 
-    // Capture input snapshot
-    const inputSnapshot = {
-      requestBody: { ...context.metadata.body },
-      previousStepOutputs: { ...context.stepOutputs },
-    };
+    // Capture input snapshot only when debug capture is enabled. The snapshot
+    // copies all accumulated step outputs, so retaining one per step is what
+    // exhausts the heap on memory-constrained instances when debug is off.
+    const inputSnapshot = captureDebug
+      ? {
+          requestBody: { ...context.metadata.body },
+          previousStepOutputs: { ...context.stepOutputs },
+        }
+      : undefined;
 
     // Check condition if present
     let conditionResult: boolean | undefined;
@@ -450,7 +467,7 @@ export class PipelineExecutionService {
         durationMs: endTime - startTime,
         status: result.success ? 'success' : 'failed',
         input: inputSnapshot,
-        output: result.output,
+        output: captureDebug ? result.output : undefined,
         error: result.error,
         warning: result.warning,
         condition: config.condition,
@@ -491,14 +508,18 @@ export class PipelineExecutionService {
    * Fire post-processing steps as fire-and-forget if the pipeline has any.
    * Returns a promise that resolves with debug info for all post-steps.
    */
-  private firePostSteps(pipeline: Pipeline, context: PipelineContext): Promise<StepDebugInfo[]> | undefined {
+  private firePostSteps(
+    pipeline: Pipeline,
+    context: PipelineContext,
+    captureDebug = true,
+  ): Promise<StepDebugInfo[]> | undefined {
     if (pipeline.postSteps && pipeline.postSteps.length > 0) {
       const enabledPostSteps = pipeline.postSteps.filter((s) => s.isEnabled);
       if (enabledPostSteps.length > 0) {
         this.logger.log(
           `Running ${enabledPostSteps.length} post-processing step(s) for pipeline '${pipeline.name}'`,
         );
-        const promise = this.runPostSteps(enabledPostSteps, context);
+        const promise = this.runPostSteps(enabledPostSteps, context, captureDebug);
         // Still catch to prevent unhandled rejection
         promise.catch((err) =>
           this.logger.error(
@@ -519,6 +540,7 @@ export class PipelineExecutionService {
   private async runPostSteps(
     postSteps: PipelineStep[],
     context: PipelineContext,
+    captureDebug = true,
   ): Promise<StepDebugInfo[]> {
     const debugInfo: StepDebugInfo[] = [];
 
@@ -527,11 +549,13 @@ export class PipelineExecutionService {
       const startTime = Date.now();
       const startTimeIso = new Date(startTime).toISOString();
 
-      // Capture input snapshot
-      const inputSnapshot = {
-        requestBody: { ...(context.metadata.body || {}) },
-        previousStepOutputs: { ...context.stepOutputs },
-      };
+      // Capture input snapshot only when debug capture is enabled (see executeStepWithDebug).
+      const inputSnapshot = captureDebug
+        ? {
+            requestBody: { ...(context.metadata.body || {}) },
+            previousStepOutputs: { ...context.stepOutputs },
+          }
+        : undefined;
 
       try {
         const handler = this.handlerRegistry.get(step.handlerType as HandlerType, stepName);
@@ -581,7 +605,7 @@ export class PipelineExecutionService {
           durationMs: endTime - startTime,
           status: result.success ? 'success' : 'failed',
           input: inputSnapshot,
-          output: result.output,
+          output: captureDebug ? result.output : undefined,
           error: result.error,
           warning: result.warning,
         });

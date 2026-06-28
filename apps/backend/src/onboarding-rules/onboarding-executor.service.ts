@@ -465,6 +465,8 @@ export class OnboardingExecutorService implements OnModuleInit {
       pipeline,
       syntheticReq,
       user,
+      // Only retain in-memory debug snapshots when this rule persists them.
+      { captureDebug: rule.debugEnabled },
     );
 
     // Persist execution log (fire-and-forget, same as proxy middleware)

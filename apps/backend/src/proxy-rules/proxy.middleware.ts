@@ -1115,7 +1115,9 @@ export class ProxyMiddleware implements NestMiddleware {
         pipeline,
         req,
         user,
-        { deployment },
+        // Only retain in-memory debug snapshots when this rule actually persists
+        // them; otherwise they're built and thrown away, needlessly pressuring the heap.
+        { deployment, captureDebug: rule.debugEnabled },
       );
 
       // If the response was already sent (e.g., by a streaming handler), don't try to send again
