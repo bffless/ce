@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.87](https://github.com/bffless/ce/compare/v0.1.86...v0.1.87) (2026-06-28)
+
+
+### Bug Fixes
+
+* **pipelines:** skip in-memory debug snapshots when debug is disabled ([#376](https://github.com/bffless/ce/issues/376)) ([2af6ad7](https://github.com/bffless/ce/commit/2af6ad7d4f499de8ef1b01f382588acf67f725c6))
+
 ## [0.1.86](https://github.com/bffless/ce/compare/v0.1.85...v0.1.86) (2026-06-28)
 
 
