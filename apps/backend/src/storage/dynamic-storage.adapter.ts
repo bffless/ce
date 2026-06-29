@@ -1,5 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { IStorageAdapter, FileMetadata, DownloadResult } from './storage.interface';
+import {
+  IStorageAdapter,
+  FileMetadata,
+  DownloadResult,
+  DownloadStreamOptions,
+  StreamDownloadResult,
+} from './storage.interface';
 import { LocalStorageAdapter } from './local.adapter';
 
 /**
@@ -83,6 +89,27 @@ export class DynamicStorageAdapter implements IStorageAdapter {
     // Fallback: no caching layer, return 'none'
     const data = await this.adapter.download(key);
     return { data, cacheHit: 'none' };
+  }
+
+  /**
+   * Stream a file from the active adapter without buffering it into memory.
+   *
+   * Exposed as a getter so capability detection by property presence keeps
+   * working: callers (e.g. FileServeHandler) check `if (storageAdapter.downloadStream)`
+   * to choose between streaming and the buffer-everything fallback. Because the
+   * real adapter is swapped in at runtime (after the setup wizard), a plain
+   * delegating method would always be present and defeat that check — making the
+   * handler stream even for backends that can't, or, as happened here, this proxy
+   * lacking the method entirely forced every serve down the buffer path (OOM on
+   * large files). The getter returns a delegating function only when the active
+   * adapter actually supports streaming, and undefined otherwise.
+   */
+  get downloadStream():
+    | ((key: string, opts?: DownloadStreamOptions) => Promise<StreamDownloadResult>)
+    | undefined {
+    return this.adapter.downloadStream
+      ? (key: string, opts?: DownloadStreamOptions) => this.adapter.downloadStream!(key, opts)
+      : undefined;
   }
 
   async delete(key: string): Promise<void> {

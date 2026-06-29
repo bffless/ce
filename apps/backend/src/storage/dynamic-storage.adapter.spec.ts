@@ -190,4 +190,52 @@ describe('DynamicStorageAdapter', () => {
       });
     });
   });
+
+  describe('downloadStream', () => {
+    it('should expose downloadStream and delegate when the active adapter supports streaming', async () => {
+      const fakeStream = { pipe: jest.fn() } as unknown as NodeJS.ReadableStream;
+      const streamResult = { stream: fakeStream, size: 1024 };
+      const streamingAdapter: IStorageAdapter = {
+        upload: jest.fn(),
+        download: jest.fn(),
+        delete: jest.fn(),
+        exists: jest.fn(),
+        getUrl: jest.fn(),
+        listKeys: jest.fn(),
+        getMetadata: jest.fn(),
+        testConnection: jest.fn(),
+        deletePrefix: jest.fn(),
+        downloadStream: jest.fn().mockResolvedValue(streamResult),
+      };
+      adapter.setAdapter(streamingAdapter);
+
+      // Capability detection (FileServeHandler does `if (storageAdapter.downloadStream)`)
+      expect(typeof adapter.downloadStream).toBe('function');
+
+      const result = await adapter.downloadStream!('videos/clip.mp4', { start: 0, end: 1023 });
+
+      expect(result).toBe(streamResult);
+      expect(streamingAdapter.downloadStream).toHaveBeenCalledWith('videos/clip.mp4', {
+        start: 0,
+        end: 1023,
+      });
+    });
+
+    it('should report no streaming capability when the active adapter lacks downloadStream', () => {
+      const bufferingAdapter: IStorageAdapter = {
+        upload: jest.fn(),
+        download: jest.fn(),
+        delete: jest.fn(),
+        exists: jest.fn(),
+        getUrl: jest.fn(),
+        listKeys: jest.fn(),
+        getMetadata: jest.fn(),
+        testConnection: jest.fn(),
+        deletePrefix: jest.fn(),
+      };
+      adapter.setAdapter(bufferingAdapter);
+
+      expect(adapter.downloadStream).toBeUndefined();
+    });
+  });
 });
