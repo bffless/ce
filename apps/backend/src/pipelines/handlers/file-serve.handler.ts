@@ -257,6 +257,14 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
 
     // Pipe a storage stream to the response with backpressure + cleanup.
     const pipeStream = (stream: NodeJS.ReadableStream) => {
+      // Commit the status line + headers synchronously, before this handler
+      // returns. stream.pipe() only flushes headers on its first (async) data
+      // chunk, so without this the proxy middleware sees res.headersSent === false
+      // when the pipeline resolves and writes its own JSON result body over the
+      // response — the client receives `{"success":true}` instead of the file.
+      if (typeof res.flushHeaders === 'function' && !res.headersSent) {
+        res.flushHeaders();
+      }
       stream.pipe(res);
       stream.on('error', (err: Error) => {
         this.logger.error(`Stream error during serve: ${err.message}`);
