@@ -17,6 +17,10 @@ describe('FileServeHandler — streaming & range', () => {
       json: jest.fn(),
     };
     res.status = jest.fn(() => res);
+    // Mirror Node: flushHeaders commits the headers synchronously.
+    res.flushHeaders = jest.fn(() => {
+      res.headersSent = true;
+    });
     return res;
   };
 
@@ -107,6 +111,28 @@ describe('FileServeHandler — streaming & range', () => {
     expect(stream.pipe).toHaveBeenCalledWith(res);
   });
 
+  it('flushes headers synchronously so the response is committed before returning (no result body clobber)', async () => {
+    const stream = makeStream();
+    const storage = {
+      downloadStream: jest.fn().mockResolvedValue({ stream, size: 10000, etag: 'abc' }),
+      getMetadata: jest.fn(),
+    };
+    const handler = buildHandler(storage);
+    const res = makeRes();
+
+    await handler.execute(buildContext(res, {}), step);
+
+    // Headers must be flushed before piping (pipe only flushes on its first
+    // async chunk), and committed before the handler resolves — otherwise the
+    // proxy middleware's `if (res.headersSent) return` guard misses and it
+    // overwrites the stream with the pipeline's JSON result body.
+    expect(res.flushHeaders).toHaveBeenCalled();
+    const flushOrder = res.flushHeaders.mock.invocationCallOrder[0];
+    const pipeOrder = stream.pipe.mock.invocationCallOrder[0];
+    expect(flushOrder).toBeLessThan(pipeOrder);
+    expect(res.headersSent).toBe(true);
+  });
+
   it('returns 416 for an unsatisfiable range without touching storage data', async () => {
     const storage = {
       downloadStream: jest.fn(),
@@ -179,6 +205,10 @@ describe('FileServeHandler — explicit key mode', () => {
       json: jest.fn(),
     };
     res.status = jest.fn(() => res);
+    // Mirror Node: flushHeaders commits the headers synchronously.
+    res.flushHeaders = jest.fn(() => {
+      res.headersSent = true;
+    });
     return res;
   };
 
