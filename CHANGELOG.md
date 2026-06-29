@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.88](https://github.com/bffless/ce/compare/v0.1.87...v0.1.88) (2026-06-29)
+
+
+### Bug Fixes
+
+* **storage:** forward downloadStream through DynamicStorageAdapter ([#378](https://github.com/bffless/ce/issues/378)) ([bbf24dd](https://github.com/bffless/ce/commit/bbf24dd62d16a6ad10e6a7cfd684af89306eac27))
+
 ## [0.1.87](https://github.com/bffless/ce/compare/v0.1.86...v0.1.87) (2026-06-28)
 
 
