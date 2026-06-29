@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.89](https://github.com/bffless/ce/compare/v0.1.88...v0.1.89) (2026-06-29)
+
+
+### Bug Fixes
+
+* **pipelines:** flush headers in streaming file serve so the response isn't clobbered ([#380](https://github.com/bffless/ce/issues/380)) ([6a8ce1b](https://github.com/bffless/ce/commit/6a8ce1b0157b23f14c3767ff4a39043951ec61d8))
+
 ## [0.1.88](https://github.com/bffless/ce/compare/v0.1.87...v0.1.88) (2026-06-29)
 
 
