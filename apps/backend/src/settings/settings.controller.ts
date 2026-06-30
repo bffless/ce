@@ -572,8 +572,18 @@ export class SettingsController {
     if (!cfg.oidcDiscoveryEndpoint) {
       return { ok: false, error: 'No oidcDiscoveryEndpoint configured.' };
     }
+    // The stored value is the bare issuer URL (validateInput strips the
+    // `/.well-known/openid-configuration` suffix because SuperTokens re-appends
+    // it at auth time). Fetching the issuer root returns the IdP's HTML landing
+    // page, not JSON — so build the discovery-document URL here. Tolerate a
+    // value that already includes the suffix (older / env-sourced rows).
+    const discoveryUrl =
+      cfg.oidcDiscoveryEndpoint
+        .replace(/\/+$/, '')
+        .replace(/\/\.well-known\/openid-configuration$/, '') +
+      '/.well-known/openid-configuration';
     try {
-      const res = await fetch(cfg.oidcDiscoveryEndpoint, { redirect: 'follow' });
+      const res = await fetch(discoveryUrl, { redirect: 'follow' });
       if (!res.ok) {
         return { ok: false, error: `Discovery endpoint returned HTTP ${res.status}` };
       }
