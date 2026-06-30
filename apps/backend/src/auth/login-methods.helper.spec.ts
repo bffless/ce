@@ -8,10 +8,21 @@ import { OidcProvidersService } from '../settings/oidc-providers.service';
 const reqStub = {} as Request;
 
 const makeFlags = (
-  values: Partial<Record<'ENABLE_OIDC_PROVIDERS' | 'REQUIRE_PROJECT_MEMBERSHIP', boolean>>,
+  values: Partial<
+    Record<
+      'ENABLE_OIDC_PROVIDERS' | 'REQUIRE_PROJECT_MEMBERSHIP' | 'ENABLE_EMAIL_PASSWORD',
+      boolean
+    >
+  >,
 ): FeatureFlagsService =>
   ({
-    isEnabled: jest.fn(async (key: string) => values[key as keyof typeof values] ?? false),
+    // ENABLE_EMAIL_PASSWORD defaults to true (matching the production flag
+    // default) unless a test overrides it; every other flag defaults to false.
+    isEnabled: jest.fn(async (key: string) =>
+      key === 'ENABLE_EMAIL_PASSWORD'
+        ? values.ENABLE_EMAIL_PASSWORD ?? true
+        : values[key as keyof typeof values] ?? false,
+    ),
   }) as unknown as FeatureFlagsService;
 
 const makeSetup = (canPublicSignup: boolean): SetupService =>
@@ -66,6 +77,26 @@ describe('buildLoginMethodsResponse', () => {
 
       expect(res.hasGoogle).toBe(false);
       expect(res.workspace.hasGoogle).toBe(false);
+      expect(res.providers).toHaveLength(1);
+    });
+
+    it('reports hasPassword=false when ENABLE_EMAIL_PASSWORD is off (OIDC-only workspace)', async () => {
+      const res = await buildLoginMethodsResponse({
+        featureFlagsService: makeFlags({
+          ENABLE_OIDC_PROVIDERS: true,
+          ENABLE_EMAIL_PASSWORD: false,
+        }),
+        setupService: makeSetup(true),
+        projectResolver: makeResolver(null),
+        oidcProvidersService: makeOidc([
+          { id: 'okta-acme', kind: 'okta', displayName: 'Acme SSO' },
+        ]),
+        req: reqStub,
+      });
+
+      expect(res.hasPassword).toBe(false);
+      expect(res.workspace.hasPassword).toBe(false);
+      // OIDC stays available — only the password method is gated.
       expect(res.providers).toHaveLength(1);
     });
 
