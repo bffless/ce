@@ -4,7 +4,12 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Eye, EyeOff, CheckCircle } from 'lucide-react';
-import { useSignInMutation, useGetSessionQuery, useGetOAuthProvidersQuery } from '@/services/authApi';
+import {
+  useSignInMutation,
+  useGetSessionQuery,
+  useGetOAuthProvidersQuery,
+  useGetRegistrationStatusQuery,
+} from '@/services/authApi';
 import { useValidateProjectInviteTokenQuery } from '@/services/projectInviteLinksApi';
 import { useBranding } from '@/hooks/useBranding';
 import { useGetSetupStatusQuery } from '@/services/setupApi';
@@ -44,9 +49,13 @@ export function LoginPage() {
   const { data: sessionData, isLoading: isLoadingSession } = useGetSessionQuery();
   const { data: setupStatus, isLoading: isLoadingSetup } = useGetSetupStatusQuery();
   const { data: oauthProviders } = useGetOAuthProvidersQuery();
+  const { data: registrationStatus } = useGetRegistrationStatusQuery();
   const { siteName, authLogoUrl } = useBranding();
   const oauthList = oauthProviders?.providers ?? [];
   const showOAuthSection = oauthList.length > 0;
+  // Hide the email/password form when the operator forces OIDC-only sign-in.
+  // Default to showing it until the status loads so the form never flickers out.
+  const showPasswordForm = registrationStatus?.emailPasswordEnabled !== false;
   const [showPassword, setShowPassword] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const refreshAttemptedRef = useRef(false);
@@ -269,6 +278,8 @@ export function LoginPage() {
             )}
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                {showPasswordForm && (
+                <>
                 <FormField
                   control={form.control}
                   name="email"
@@ -350,21 +361,31 @@ export function LoginPage() {
                 <Button type="submit" className="w-full" disabled={isLoading}>
                   {isLoading ? 'Signing in...' : 'Sign In'}
                 </Button>
+                </>
+                )}
 
                 {showOAuthSection && (
                   <>
-                    <div className="relative">
-                      <div className="absolute inset-0 flex items-center">
-                        <span className="w-full border-t" />
+                    {showPasswordForm && (
+                      <div className="relative">
+                        <div className="absolute inset-0 flex items-center">
+                          <span className="w-full border-t" />
+                        </div>
+                        <div className="relative flex justify-center text-xs uppercase">
+                          <span className="bg-card px-2 text-muted-foreground">Or</span>
+                        </div>
                       </div>
-                      <div className="relative flex justify-center text-xs uppercase">
-                        <span className="bg-card px-2 text-muted-foreground">Or</span>
-                      </div>
-                    </div>
+                    )}
                     {oauthList.map((p) => (
                       <OAuthProviderButton key={p.id} provider={p} redirectTo={redirectTo} labelMode="sign-in" />
                     ))}
                   </>
+                )}
+
+                {!showPasswordForm && !showOAuthSection && (
+                  <p className="text-center text-sm text-muted-foreground">
+                    No sign-in methods are currently available. Please contact an administrator.
+                  </p>
                 )}
 
                 <div className="text-center text-sm">

@@ -10,6 +10,7 @@ import {
   HttpCode,
   HttpStatus,
   BadRequestException,
+  ForbiddenException,
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
@@ -31,7 +32,7 @@ import { buildLoginMethodsResponse } from './login-methods.helper';
 import { TENANT_ID } from './supertokens.config';
 import { CreateDomainTokenDto } from './dto/create-domain-token.dto';
 import { db } from '../db/client';
-import { workspaceInvitations, domainMappings } from '../db/schema';
+import { workspaceInvitations, domainMappings, users } from '../db/schema';
 import { eq, and, isNull, gt } from 'drizzle-orm';
 import EmailPassword from 'supertokens-node/recipe/emailpassword';
 import EmailVerification from 'supertokens-node/recipe/emailverification';
@@ -205,6 +206,12 @@ export class AuthController {
     // Validate password strength
     if (password.length < 8) {
       throw new BadRequestException('Password must be at least 8 characters long');
+    }
+
+    // Master switch for built-in email/password auth. When off, the workspace
+    // is OIDC-only — reject email/password registration entirely.
+    if (!(await this.featureFlagsService.isEnabled('ENABLE_EMAIL_PASSWORD'))) {
+      throw new ForbiddenException('Email/password sign-up is disabled. Please use single sign-on.');
     }
 
     // Check registration settings
@@ -476,6 +483,12 @@ export class AuthController {
 
     if (!email || !password) {
       throw new BadRequestException('Email and password are required');
+    }
+
+    // Master switch for built-in email/password auth. When off, the workspace
+    // is OIDC-only — reject email/password sign-in.
+    if (!(await this.featureFlagsService.isEnabled('ENABLE_EMAIL_PASSWORD'))) {
+      throw new ForbiddenException('Email/password sign-in is disabled. Please use single sign-on.');
     }
 
     try {
@@ -1046,6 +1059,11 @@ export class AuthController {
           type: 'boolean',
           description: 'Whether public signups are allowed (invite-only when false)',
         },
+        emailPasswordEnabled: {
+          type: 'boolean',
+          description:
+            'Whether built-in email/password sign-in and registration are enabled (ENABLE_EMAIL_PASSWORD). When false the workspace is OIDC-only.',
+        },
         requireTosAcceptance: {
           type: 'boolean',
           description: 'Whether users must accept Terms of Service to register',
@@ -1060,15 +1078,18 @@ export class AuthController {
   async getRegistrationStatus(): Promise<{
     registrationEnabled: boolean;
     allowPublicSignups: boolean;
+    emailPasswordEnabled: boolean;
     requireTosAcceptance: boolean;
     tosUrl: string;
   }> {
     const registrationSettings = await this.setupService.getRegistrationSettings();
+    const emailPasswordEnabled = await this.featureFlagsService.isEnabled('ENABLE_EMAIL_PASSWORD');
     const requireTosAcceptance = await this.featureFlagsService.get('REQUIRE_TOS_ACCEPTANCE');
     const tosUrl = await this.featureFlagsService.get('TOS_URL');
 
     return {
       ...registrationSettings,
+      emailPasswordEnabled,
       requireTosAcceptance: requireTosAcceptance as boolean,
       tosUrl: tosUrl as string,
     };
@@ -1639,6 +1660,21 @@ export class AuthController {
           inviteError,
         );
       }
+    }
+
+    // Record that this user has proven a working OIDC sign-in. This is the
+    // safeguard consulted before email/password login can be disabled via the
+    // admin UI (see settings.controller `PATCH auth/email-password`).
+    try {
+      await db
+        .update(users)
+        .set({ oidcVerifiedAt: new Date() })
+        .where(eq(users.id, dbUser.id));
+    } catch (stampError) {
+      this.logger.error(
+        `[${providerLabel} OAuth] Failed to stamp oidcVerifiedAt:`,
+        stampError,
+      );
     }
 
     const sessionRecipeUserId = new RecipeUserId(dbUser.id);

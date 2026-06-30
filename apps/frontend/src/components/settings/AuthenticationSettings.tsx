@@ -8,6 +8,8 @@ import {
   useUpdateSsoProviderMutation,
   useDeleteSsoProviderMutation,
   useTestSsoProviderMutation,
+  useGetEmailPasswordAuthQuery,
+  useUpdateEmailPasswordAuthMutation,
   type SsoProviderKind,
   type SsoProviderStatus,
   type SsoProviderConfig,
@@ -111,19 +113,9 @@ export function AuthenticationSettings() {
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Email/Password - always enabled */}
-        <div className="flex items-center justify-between rounded-lg border p-4">
-          <div className="space-y-0.5">
-            <div className="flex items-center gap-2">
-              <Label className="text-base font-medium">Email & Password</Label>
-              <Badge variant="secondary">Always On</Badge>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Users can sign in with their email and password.
-            </p>
-          </div>
-          <Switch checked disabled />
-        </div>
+        {/* Email/Password master switch — can only be turned off once an admin
+            has proven a working OIDC sign-in (lockout safeguard). */}
+        <EmailPasswordSettingsCard />
 
         {/* Single Sign-On (OIDC) providers — Google, Okta, Azure AD, generic OIDC */}
         <SingleSignOnSettingsCard />
@@ -132,6 +124,81 @@ export function AuthenticationSettings() {
         <GoogleIntegrationOAuthCard />
       </CardContent>
     </Card>
+  );
+}
+
+// ─── Email & Password master switch ─────────────────────────────────────────
+// Toggles the ENABLE_EMAIL_PASSWORD flag via /api/settings/auth/email-password.
+// The switch only allows turning OFF once an admin has signed in via OIDC
+// (`canDisable`) — the lockout safeguard. Enabling is always allowed.
+
+function EmailPasswordSettingsCard() {
+  const { toast } = useToast();
+  const { data, isLoading } = useGetEmailPasswordAuthQuery();
+  const [updateAuth, { isLoading: isUpdating }] = useUpdateEmailPasswordAuthMutation();
+
+  // Default to enabled while loading so the toggle never flickers to "off".
+  const enabled = data?.enabled ?? true;
+  const canDisable = data?.canDisable ?? false;
+
+  const handleToggle = async (next: boolean) => {
+    try {
+      await updateAuth({ enabled: next }).unwrap();
+      toast({
+        title: next ? 'Email & password enabled' : 'Email & password disabled',
+      });
+    } catch (err) {
+      const message =
+        (err as { data?: { message?: string } })?.data?.message ??
+        'Failed to update email/password sign-in.';
+      toast({ title: 'Could not update', description: message, variant: 'destructive' });
+    }
+  };
+
+  // Locked off until an admin has proven OIDC works. Enabling is never gated.
+  const lockedOn = enabled && !canDisable;
+  const switchDisabled = isLoading || isUpdating || lockedOn;
+
+  return (
+    <div className="space-y-3 rounded-lg border p-4">
+      <div className="flex items-center justify-between">
+        <div className="space-y-0.5">
+          <div className="flex items-center gap-2">
+            <Label className="text-base font-medium">Email & Password</Label>
+            {enabled ? (
+              <Badge variant="secondary">Enabled</Badge>
+            ) : (
+              <Badge variant="outline">Disabled</Badge>
+            )}
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Users can sign in with their email and password.
+          </p>
+        </div>
+        <Switch checked={enabled} disabled={switchDisabled} onCheckedChange={handleToggle} />
+      </div>
+
+      {lockedOn && (
+        <Alert>
+          <Info className="h-4 w-4" />
+          <AlertDescription>
+            Want SSO-only sign-in? First add an OIDC provider below and sign in with it
+            as an admin. Once that succeeds, you can disable email/password here — this
+            check makes sure SSO works so you can&apos;t lock yourself out.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {!enabled && (
+        <Alert>
+          <Info className="h-4 w-4" />
+          <AlertDescription>
+            Email/password sign-in is off — this workspace is OIDC-only and the password
+            form is hidden on the login page. Toggle back on any time to restore it.
+          </AlertDescription>
+        </Alert>
+      )}
+    </div>
   );
 }
 

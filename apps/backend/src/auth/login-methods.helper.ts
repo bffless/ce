@@ -73,7 +73,12 @@ export async function buildLoginMethodsResponse({
   oidcProvidersService,
   req,
 }: BuildOpts): Promise<LoginMethodsResponse> {
-  const hasPassword = true; // Email/password is always available in CE.
+  // Email/password is available unless the operator forces OIDC-only via the
+  // ENABLE_EMAIL_PASSWORD master switch. Default to true if the lookup fails so
+  // a transient flag-store error never hides the only built-in login method.
+  const hasPassword = await featureFlagsService
+    .isEnabled('ENABLE_EMAIL_PASSWORD')
+    .catch(() => true);
 
   // Master switch for OIDC sign-in. When off, no buttons regardless of rows.
   const oidcEnabled = await featureFlagsService

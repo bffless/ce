@@ -145,6 +145,23 @@ export interface UpdateGoogleOAuthResponse {
   google: { enabled: boolean };
 }
 
+// ─── Email/password sign-in master switch ───────────────────────────────────
+// `canDisable` is true only once an admin has signed in via OIDC — the lockout
+// safeguard that keeps an OIDC-misconfig from locking everyone out.
+export interface EmailPasswordAuthStatus {
+  enabled: boolean;
+  canDisable: boolean;
+}
+
+export interface UpdateEmailPasswordAuthDto {
+  enabled: boolean;
+}
+
+export interface UpdateEmailPasswordAuthResponse {
+  success: boolean;
+  enabled: boolean;
+}
+
 // Workspace-level Google integration credentials, per service. Distinct
 // from sign-in (env vars) — see backend GoogleIntegrationCredentialsService.
 // Story 0048: one row per Google API surface (calendar today, future
@@ -412,6 +429,26 @@ export const settingsApi = api.injectEndpoints({
       invalidatesTags: ['OAuthSettings', 'FeatureFlags'],
     }),
 
+    // Email/password master switch (enable/disable built-in sign-in).
+    getEmailPasswordAuth: builder.query<EmailPasswordAuthStatus, void>({
+      query: () => '/api/settings/auth/email-password',
+      providesTags: ['FeatureFlags'],
+    }),
+
+    updateEmailPasswordAuth: builder.mutation<
+      UpdateEmailPasswordAuthResponse,
+      UpdateEmailPasswordAuthDto
+    >({
+      query: (body) => ({
+        url: '/api/settings/auth/email-password',
+        method: 'PATCH',
+        body,
+      }),
+      // FeatureFlags so the status refetches; OAuthSettings so any login-method
+      // probes refresh too.
+      invalidatesTags: ['FeatureFlags', 'OAuthSettings'],
+    }),
+
     // ==========================================================================
     // Google integration credentials, per service (workspace-level)
     // Story 0048: replaces the single /oauth/google/integration endpoint with
@@ -529,6 +566,9 @@ export const {
   // OAuth settings hooks
   useGetOAuthSettingsQuery,
   useUpdateGoogleOAuthMutation,
+  // Email/password master switch hooks
+  useGetEmailPasswordAuthQuery,
+  useUpdateEmailPasswordAuthMutation,
   // Google integration credentials (per service) — story 0048
   useListGoogleIntegrationsQuery,
   useGetGoogleIntegrationQuery,

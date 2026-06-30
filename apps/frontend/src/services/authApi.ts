@@ -72,6 +72,11 @@ export interface CheckEmailResponse {
 export interface RegistrationStatusResponse {
   registrationEnabled: boolean;
   allowPublicSignups: boolean;
+  /**
+   * Whether built-in email/password sign-in and registration are enabled.
+   * When false the workspace is OIDC-only and the password form is hidden.
+   */
+  emailPasswordEnabled: boolean;
   requireTosAcceptance: boolean;
   tosUrl: string;
 }

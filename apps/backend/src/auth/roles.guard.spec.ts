@@ -73,6 +73,7 @@ describe('RolesGuard', () => {
         disabled: false,
         disabledAt: null,
         disabledBy: null,
+        oidcVerifiedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
       };
@@ -96,6 +97,7 @@ describe('RolesGuard', () => {
         disabled: false,
         disabledAt: null,
         disabledBy: null,
+        oidcVerifiedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
       };
@@ -135,6 +137,7 @@ describe('RolesGuard', () => {
         disabled: false,
         disabledAt: null,
         disabledBy: null,
+        oidcVerifiedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
       };

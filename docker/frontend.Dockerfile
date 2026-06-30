@@ -10,7 +10,11 @@ RUN npm install -g pnpm
 WORKDIR /app
 
 # Copy package files
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
+# .npmrc is required: it sets node-linker=hoisted so phantom deps used by the
+# frontend (e.g. type-only `monaco-editor` imports via @monaco-editor/react)
+# resolve inside the image. Without it pnpm defaults to isolated linking and
+# `pnpm build` fails. Mirrors backend.Dockerfile.
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* .npmrc ./
 COPY apps/frontend/package.json ./apps/frontend/
 
 # Copy frontend source code (dockerignore will exclude node_modules)
