@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "oidc_verified_at" timestamp;

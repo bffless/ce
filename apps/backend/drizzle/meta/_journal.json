@@ -232,6 +232,13 @@
       "when": 1782562175324,
       "tag": "0032_numerous_marten_broadcloak",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1782853348877,
+      "tag": "0033_dazzling_spitfire",
+      "breakpoints": true
     }
   ]
 }

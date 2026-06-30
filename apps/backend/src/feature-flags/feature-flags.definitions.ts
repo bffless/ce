@@ -268,6 +268,32 @@ export const FLAG_DEFINITIONS: Record<string, FlagDefinition> = {
     exposeToClient: true,
   },
 
+  /**
+   * Master switch for the built-in email/password sign-in + registration.
+   * The mirror image of ENABLE_OIDC_PROVIDERS: turn this off to force
+   * OIDC-only authentication. When off, the /api/auth/signup and
+   * /api/auth/signin endpoints are rejected and the login/signup UI hides
+   * the password form.
+   *
+   * Default true so existing deployments are unaffected.
+   *
+   * Recovery (if you lock yourself out): set FEATURE_EMAIL_PASSWORD=true and
+   * restart, or clear the `feature_flags` DB row for this key — note that a
+   * database override outranks the env var (see feature-flags.service.ts
+   * resolution priority Database > File > Environment > Default). Disabling
+   * via the admin UI is gated on a successful admin OIDC sign-in for exactly
+   * this reason; the env var is the unguarded operator override / break-glass.
+   */
+  ENABLE_EMAIL_PASSWORD: {
+    envKey: 'FEATURE_EMAIL_PASSWORD',
+    defaultValue: true,
+    type: 'boolean',
+    description:
+      'Enable built-in email/password sign-in and registration. Disable to force OIDC-only sign-in. Recovery: set FEATURE_EMAIL_PASSWORD=true and restart (or clear the feature_flags DB row).',
+    category: 'features',
+    exposeToClient: true,
+  },
+
   ENABLE_CUSTOM_DOMAINS: {
     envKey: 'FEATURE_CUSTOM_DOMAINS',
     defaultValue: true,

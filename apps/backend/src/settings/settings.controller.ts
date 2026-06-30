@@ -40,6 +40,9 @@ import {
 } from './dto/email-settings.dto';
 import { ApiKeyGuard, RolesGuard, Roles, CurrentUser } from '../auth';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
+import { db } from '../db/client';
+import { users } from '../db/schema';
+import { and, eq, isNotNull } from 'drizzle-orm';
 
 @ApiTags('Settings')
 @Controller('api/settings')
@@ -346,6 +349,62 @@ export class SettingsController {
       success: true,
       google: { enabled: body.enabled },
     };
+  }
+
+  @Get('auth/email-password')
+  @Roles('admin')
+  @ApiOperation({
+    summary: 'Get the email/password sign-in master switch and its disable gate',
+  })
+  @ApiResponse({ status: 200, description: 'Email/password auth status' })
+  async getEmailPasswordAuth(): Promise<{
+    enabled: boolean;
+    canDisable: boolean;
+  }> {
+    const enabled = await this.featureFlagsService.isEnabled('ENABLE_EMAIL_PASSWORD');
+    return { enabled, canDisable: await this.hasAdminVerifiedViaOidc() };
+  }
+
+  @Patch('auth/email-password')
+  @Roles('admin')
+  @ApiOperation({
+    summary: 'Enable or disable built-in email/password sign-in for this workspace',
+    description:
+      'Disabling forces OIDC-only sign-in. As a lockout safeguard, disabling is only permitted once at least one admin user has successfully signed in via OIDC. The FEATURE_EMAIL_PASSWORD env var bypasses this gate and is the break-glass recovery path.',
+  })
+  @ApiResponse({ status: 200, description: 'Email/password auth setting updated' })
+  @ApiResponse({
+    status: 400,
+    description: 'Cannot disable: no admin has signed in via OIDC yet',
+  })
+  async updateEmailPasswordAuth(
+    @Body() body: { enabled: boolean },
+  ): Promise<{ success: boolean; enabled: boolean }> {
+    // Lockout safeguard: only allow disabling once an admin has proven a
+    // working OIDC sign-in (see users.oidcVerifiedAt). Enabling is always safe.
+    if (!body.enabled && !(await this.hasAdminVerifiedViaOidc())) {
+      throw new BadRequestException(
+        'Sign in with OIDC as an admin before disabling email/password login. ' +
+          'This prevents locking yourself out if single sign-on is misconfigured.',
+      );
+    }
+
+    await this.featureFlagsService.setFlag('ENABLE_EMAIL_PASSWORD', body.enabled);
+
+    return { success: true, enabled: body.enabled };
+  }
+
+  /**
+   * True when at least one admin user has a recorded successful OIDC sign-in.
+   * Gates disabling email/password login via the admin UI.
+   */
+  private async hasAdminVerifiedViaOidc(): Promise<boolean> {
+    const [row] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.role, 'admin'), isNotNull(users.oidcVerifiedAt)))
+      .limit(1);
+    return !!row;
   }
 
   // ─── Google integration credentials (per-service) ─────────────────────────

@@ -79,6 +79,9 @@ export function SignupPage() {
   const { siteName, authLogoUrl } = useBranding();
   const oauthList = oauthProviders?.providers ?? [];
   const showOAuthSection = oauthList.length > 0;
+  // Hide the email/password form when the operator forces OIDC-only sign-in.
+  // Default to true until the status loads so the form never flickers out.
+  const emailPasswordEnabled = registrationStatus?.emailPasswordEnabled !== false;
   const requireTos = registrationStatus?.requireTosAcceptance ?? false;
   const tosUrl = registrationStatus?.tosUrl ?? '';
   const [showPassword, setShowPassword] = useState(false);
@@ -453,6 +456,8 @@ export function SignupPage() {
             )}
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                {emailPasswordEnabled && (
+                <>
                 <FormField
                   control={form.control}
                   name="email"
@@ -609,17 +614,21 @@ export function SignupPage() {
                     ? (authMode === 'signin' ? 'Signing in...' : 'Creating account...')
                     : (authMode === 'signin' ? 'Sign In' : 'Create Account')}
                 </Button>
+                </>
+                )}
 
                 {showOAuthSection && (
                   <>
-                    <div className="relative">
-                      <div className="absolute inset-0 flex items-center">
-                        <span className="w-full border-t" />
+                    {emailPasswordEnabled && (
+                      <div className="relative">
+                        <div className="absolute inset-0 flex items-center">
+                          <span className="w-full border-t" />
+                        </div>
+                        <div className="relative flex justify-center text-xs uppercase">
+                          <span className="bg-card px-2 text-muted-foreground">Or</span>
+                        </div>
                       </div>
-                      <div className="relative flex justify-center text-xs uppercase">
-                        <span className="bg-card px-2 text-muted-foreground">Or</span>
-                      </div>
-                    </div>
+                    )}
                     {oauthList.map((p) => (
                       <OAuthProviderButton
                         key={p.id}
@@ -629,6 +638,12 @@ export function SignupPage() {
                       />
                     ))}
                   </>
+                )}
+
+                {!emailPasswordEnabled && !showOAuthSection && (
+                  <p className="text-center text-sm text-muted-foreground">
+                    No sign-up methods are currently available. Please contact an administrator.
+                  </p>
                 )}
 
                 <div className="text-center text-sm">
