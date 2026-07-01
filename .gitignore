@@ -80,3 +80,6 @@ Thumbs.db
 packages/github-action/dist/
 
 apps/frontend/storybook-static/
+
+# Impeccable tooling cache
+**/.impeccable/
