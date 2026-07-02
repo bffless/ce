@@ -90,6 +90,32 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
       );
     }
 
+    if (config.attachments !== undefined) {
+      if (!Array.isArray(config.attachments)) {
+        throw new ConfigurationError('attachments must be an array', 'ai_handler');
+      }
+      for (const attachment of config.attachments) {
+        if (!attachment || !['image', 'file'].includes(attachment.type)) {
+          throw new ConfigurationError(
+            `Invalid attachment type: ${attachment?.type}. Must be 'image' or 'file'.`,
+            'ai_handler',
+          );
+        }
+        if (typeof attachment.source !== 'string' || attachment.source.trim() === '') {
+          throw new ConfigurationError(
+            'Attachment source must be a non-empty string expression',
+            'ai_handler',
+          );
+        }
+        if (attachment.type === 'file' && !attachment.mediaType) {
+          throw new ConfigurationError(
+            "Attachment mediaType is required when type is 'file'",
+            'ai_handler',
+          );
+        }
+      }
+    }
+
     // Validate persistence config
     if (config.persistMessages) {
       if (!config.persistMessagesSchemaId) {
