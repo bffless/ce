@@ -13,9 +13,14 @@ import {
 import { eq, and, asc } from 'drizzle-orm';
 import { NginxConfigService, NginxProxyRule, NginxPathRedirect } from './nginx-config.service';
 import { NginxReloadService } from './nginx-reload.service';
+import { EdgeBlocklistService } from './edge-blocklist.service';
 import { ProjectsService } from '../projects/projects.service';
 import { SslCertificateService } from './ssl-certificate.service';
 import { ProxyRulesService } from '../proxy-rules/proxy-rules.service';
+import { BlocklistService } from '../traffic/blocklist.service';
+
+/** Collapse a burst of Blocklist mutations into one config regeneration. */
+const BLOCKLIST_REGEN_DEBOUNCE_MS = 1_500;
 
 /**
  * Service that regenerates all nginx configs on backend startup.
@@ -26,12 +31,18 @@ import { ProxyRulesService } from '../proxy-rules/proxy-rules.service';
 export class NginxStartupService implements OnModuleInit {
   private readonly logger = new Logger(NginxStartupService.name);
 
+  private blocklistRegenTimer: NodeJS.Timeout | null = null;
+  private blocklistRegenRunning = false;
+  private blocklistRegenPending = false;
+
   constructor(
     private readonly nginxConfigService: NginxConfigService,
     private readonly nginxReloadService: NginxReloadService,
     private readonly projectsService: ProjectsService,
     private readonly sslCertificateService: SslCertificateService,
     private readonly proxyRulesService: ProxyRulesService,
+    private readonly edgeBlocklistService: EdgeBlocklistService,
+    private readonly blocklistService: BlocklistService,
   ) {}
 
   async onModuleInit() {
@@ -39,6 +50,12 @@ export class NginxStartupService implements OnModuleInit {
     if (process.env.NODE_ENV === 'test') {
       return;
     }
+
+    // Edge enforcement (#392): whenever the effective Blocklist changes
+    // (toggle flip, list mutation, interval re-sync), regenerate every
+    // generated config so the edge rules follow — debounced, because a
+    // single admin save can land as several mutations.
+    this.blocklistService.onEffectiveChange(() => this.scheduleBlocklistRegen());
 
     // Wait a bit for database connections to stabilize
     await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -49,6 +66,63 @@ export class NginxStartupService implements OnModuleInit {
       this.logger.error(`Failed to regenerate nginx configs on startup: ${error}`);
       // Don't throw - the app should still start even if this fails
     }
+  }
+
+  private scheduleBlocklistRegen(): void {
+    if (this.blocklistRegenTimer) {
+      clearTimeout(this.blocklistRegenTimer);
+    }
+    this.blocklistRegenTimer = setTimeout(() => {
+      this.blocklistRegenTimer = null;
+      void this.runBlocklistRegen();
+    }, BLOCKLIST_REGEN_DEBOUNCE_MS);
+    // Don't hold the process open for a pending regen (tests, shutdown).
+    this.blocklistRegenTimer.unref?.();
+  }
+
+  /** Serialized runner: a change arriving mid-regeneration queues one more pass. */
+  private async runBlocklistRegen(): Promise<void> {
+    if (this.blocklistRegenRunning) {
+      this.blocklistRegenPending = true;
+      return;
+    }
+    this.blocklistRegenRunning = true;
+    try {
+      await this.regenerateAllForBlocklistChange();
+    } catch (error) {
+      this.logger.error(`Blocklist-triggered nginx regeneration failed: ${error}`);
+    } finally {
+      this.blocklistRegenRunning = false;
+      if (this.blocklistRegenPending) {
+        this.blocklistRegenPending = false;
+        this.scheduleBlocklistRegen();
+      }
+    }
+  }
+
+  /**
+   * Regenerate every generated nginx config with the current edge Blocklist
+   * rules and let the watcher/sidecar hot-reload once.
+   *
+   * Unlike the startup path this does NOT delete configs first — files are
+   * rewritten in place (bulk write + one reload wait), so live sites never
+   * hit a window where their server block is missing.
+   */
+  async regenerateAllForBlocklistChange(): Promise<void> {
+    const changed = await this.edgeBlocklistService.sync();
+    if (!changed) {
+      return;
+    }
+    this.logger.log('Effective Blocklist changed; regenerating nginx configs with new edge rules');
+
+    const domainCount = await this.regenerateDomainMappingConfigs();
+    const redirectCount = await this.regenerateRedirectConfigs();
+    const primaryCount = await this.regeneratePrimaryContentConfig();
+
+    if (domainCount + redirectCount + primaryCount > 0) {
+      await this.nginxReloadService.waitForReload();
+    }
+    this.logger.log('Edge blocklist regeneration complete');
   }
 
   /**
@@ -62,6 +136,11 @@ export class NginxStartupService implements OnModuleInit {
    */
   async regenerateAllConfigs(): Promise<void> {
     this.logger.log('Regenerating all nginx configs on startup...');
+
+    // Pull (and validate) the current edge Blocklist rules before any config
+    // is generated (#392). BlocklistService loaded its state during
+    // TrafficModule init, which precedes this module's.
+    await this.edgeBlocklistService.sync();
 
     // 0. Clean up orphaned config files (from previous installs or deleted mappings)
     await this.cleanupOrphanedConfigs();

@@ -1,0 +1,148 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { execFile } from 'child_process';
+import { mkdtemp, rm, writeFile } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { promisify } from 'util';
+import { BlocklistService } from '../traffic/blocklist.service';
+import {
+  renderEdgeBlocklistRules,
+  renderEdgeBlocklistSandboxConfig,
+} from '../traffic/blocklist-nginx.util';
+
+const execFileAsync = promisify(execFile);
+
+/**
+ * The edge enforcement seam (issue #392, ADR-0002): turns BlocklistService's
+ * compiled effective set into validated nginx server-block rules that
+ * NginxConfigService injects into every generated per-domain config.
+ *
+ * sync() pulls the compiled state, renders the rules, and — when an nginx
+ * binary is available — validates them with `nginx -t` against a sandboxed,
+ * self-contained config BEFORE they can ever reach sites-enabled/. An
+ * invalid snippet rolls back to "no edge rules" (with a loud error): the
+ * app-side interceptor still enforces the same set, so blocking degrades
+ * gracefully instead of a broken config risking nginx startup. The compose
+ * watcher's full-config `nginx -t` and nginx's own SIGHUP validation remain
+ * the final gates on the reload itself.
+ *
+ * getServerRules() is synchronous from the cache so config generators stay
+ * simple; regeneration entry points call sync() first.
+ */
+@Injectable()
+export class EdgeBlocklistService {
+  private readonly logger = new Logger(EdgeBlocklistService.name);
+
+  private fingerprint: string | null = null;
+  private blockSource: string | null = null;
+  private allowSource: string | null = null;
+  private warnedMissingNginx = false;
+
+  constructor(private readonly blocklistService: BlocklistService) {}
+
+  /**
+   * Re-derive (and validate) the cached edge rules from the current compiled
+   * Blocklist state. Returns true when the cached rules changed — callers use
+   * that to decide whether a config regeneration is needed.
+   */
+  async sync(): Promise<boolean> {
+    const state = this.blocklistService.getCompiledState();
+    const fingerprint = `${state.enabled}|${state.blockSource ?? ''}|${state.allowSource ?? ''}`;
+    if (fingerprint === this.fingerprint) {
+      return false;
+    }
+
+    // Disabled or empty set: edge rules are simply omitted.
+    let blockSource = state.enabled ? state.blockSource : null;
+    let allowSource = state.enabled ? state.allowSource : null;
+
+    if (blockSource) {
+      const rules = this.renderOrNull(blockSource, allowSource);
+      const valid = rules !== null && (await this.validateWithNginx(rules));
+      if (!valid) {
+        this.logger.error(
+          'Generated edge blocklist rules failed validation; omitting edge rules ' +
+            '(app-side enforcement still applies)',
+        );
+        blockSource = null;
+        allowSource = null;
+      }
+    }
+
+    this.blockSource = blockSource;
+    this.allowSource = allowSource;
+    this.fingerprint = fingerprint;
+    return true;
+  }
+
+  /**
+   * The server-block rules for a generated config, from the last sync().
+   * Empty string when bot protection is off, the effective set is empty, or
+   * the last sync rolled back on a validation failure.
+   */
+  getServerRules(returnCode: '444' | '403'): string {
+    const rules = this.renderOrNull(this.blockSource, this.allowSource, returnCode);
+    return rules ?? '';
+  }
+
+  private renderOrNull(
+    blockSource: string | null,
+    allowSource: string | null,
+    returnCode: '444' | '403' = '444',
+  ): string | null {
+    try {
+      return renderEdgeBlocklistRules({ blockSource, allowSource, returnCode });
+    } catch (error) {
+      // A compiler-charset violation can only be a bug upstream; degrade to
+      // app-side-only enforcement rather than emitting a suspect config.
+      this.logger.error(`Edge blocklist rendering failed: ${String(error)}`);
+      return null;
+    }
+  }
+
+  /**
+   * `nginx -t` the rules inside a minimal sandbox config (no certs, no
+   * upstreams — see renderEdgeBlocklistSandboxConfig). Returns true when the
+   * config parses, and also when no nginx binary exists (dev environments):
+   * the compiler's charset plus assertNginxSafeRegexSource make the snippet
+   * safe by construction, and the nginx-side validators still gate the reload.
+   */
+  private async validateWithNginx(rules: string): Promise<boolean> {
+    let dir: string | null = null;
+    try {
+      dir = await mkdtemp(join(tmpdir(), 'blocklist-validate-'));
+      const confPath = join(dir, 'blocklist-validate.conf');
+      await writeFile(confPath, renderEdgeBlocklistSandboxConfig(rules), 'utf-8');
+      await execFileAsync('nginx', ['-t', '-q', '-p', dir, '-c', confPath]);
+      return true;
+    } catch (error) {
+      const err = error as NodeJS.ErrnoException & { stderr?: string };
+      if (err.code === 'ENOENT') {
+        if (!this.warnedMissingNginx) {
+          this.warnedMissingNginx = true;
+          this.logger.warn(
+            'No nginx binary found for blocklist rule validation; relying on charset ' +
+              'guarantees and the nginx-side reload validators',
+          );
+        }
+        return true;
+      }
+      // nginx separates parsing from environment checks: a config/regex error
+      // never prints "syntax is ok", while environment failures (pid/log file
+      // permissions in the sandbox) do. Only a parse failure should strip the
+      // edge rules.
+      if (err.stderr?.includes('syntax is ok')) {
+        this.logger.warn(
+          `nginx -t sandbox environment issue (rules accepted, syntax ok): ${err.stderr}`,
+        );
+        return true;
+      }
+      this.logger.error(`nginx -t rejected generated blocklist rules: ${err.stderr || String(error)}`);
+      return false;
+    } finally {
+      if (dir) {
+        await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+      }
+    }
+  }
+}

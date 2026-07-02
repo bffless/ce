@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { NginxConfigService } from './nginx-config.service';
+import { EdgeBlocklistService } from './edge-blocklist.service';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -17,6 +18,12 @@ jest.mock('fs/promises', () => ({
 const mockFeatureFlagsService = {
   isEnabled: jest.fn().mockResolvedValue(true),
   get: jest.fn(),
+};
+
+// Mock EdgeBlocklistService (edge rules empty by default; tests override)
+const mockEdgeBlocklistService = {
+  getServerRules: jest.fn().mockReturnValue(''),
+  sync: jest.fn().mockResolvedValue(false),
 };
 
 // Mock ConfigService
@@ -126,6 +133,7 @@ server {
         NginxConfigService,
         { provide: FeatureFlagsService, useValue: mockFeatureFlagsService },
         { provide: ConfigService, useValue: mockConfigService },
+        { provide: EdgeBlocklistService, useValue: mockEdgeBlocklistService },
       ],
     }).compile();
 

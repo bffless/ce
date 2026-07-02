@@ -21,10 +21,7 @@ server {
 
     # Security headers are set by the NestJS backend (SecurityHeadersMiddleware)
 
-    # Block vulnerability scanners (drop connection silently)
-    if ($block_scanner) {
-        return 444;
-    }
+{{{blocklistRules}}}
 
     # Custom error pages (50x only - 404s handled by backend or SPA fallback)
     error_page 500 502 503 504 /50x.html;
@@ -131,10 +128,7 @@ server {
 
     # Security headers are set by the NestJS backend (SecurityHeadersMiddleware)
 
-    # Block vulnerability scanners (drop connection silently)
-    if ($block_scanner) {
-        return 444;
-    }
+{{{blocklistRules}}}
 
     # Custom error pages (50x only - 404s handled by backend or SPA fallback)
     error_page 500 502 503 504 /50x.html;

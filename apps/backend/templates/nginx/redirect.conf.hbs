@@ -17,10 +17,7 @@ server {
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
 
-    # Block vulnerability scanners (drop connection silently)
-    if ($block_scanner) {
-        return 444;
-    }
+{{{blocklistRules}}}
 
     return {{redirectType}} {{protocol}}://{{targetDomain}}$request_uri;
 }
@@ -41,10 +38,7 @@ server {
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
 
-    # Block vulnerability scanners (drop connection silently)
-    if ($block_scanner) {
-        return 444;
-    }
+{{{blocklistRules}}}
 
     return {{redirectType}} {{protocol}}://{{targetDomain}}$request_uri;
 }

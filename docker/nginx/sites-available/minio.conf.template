@@ -22,11 +22,6 @@ server {
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-XSS-Protection "1; mode=block" always;
 
-    # Block vulnerability scanners (drop connection silently)
-    if ($block_scanner) {
-        return 444;
-    }
-
     # Proxy to MinIO console
     location / {
         proxy_pass http://minio:9001;
