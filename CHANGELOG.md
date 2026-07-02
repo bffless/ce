@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.93](https://github.com/bffless/ce/compare/v0.1.92...v0.1.93) (2026-07-02)
+
+
+### Features
+
+* **traffic:** blocklist library, baseline + app-side enforcement ([#391](https://github.com/bffless/ce/issues/391)) ([#400](https://github.com/bffless/ce/issues/400)) ([ddae676](https://github.com/bffless/ce/commit/ddae676ad8ff86cff0fe8a8e18b994efa577fb4f))
+
 ## [0.1.92](https://github.com/bffless/ce/compare/v0.1.91...v0.1.92) (2026-07-02)
 
 
