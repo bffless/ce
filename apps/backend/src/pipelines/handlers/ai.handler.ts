@@ -14,6 +14,7 @@ import { PipelineSchemasService } from '../pipeline-schemas.service';
 import { SkillsService, SkillSummary } from '../skills.service';
 import { AIToolPluginService } from '../ai-plugins/ai-tool-plugin.service';
 import { ConfigurationError, SchemaNotFoundError } from '../errors';
+import { buildAttachmentParts } from './ai-attachments.util';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
@@ -88,6 +89,32 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
         `Invalid provider: ${config.provider}. Must be 'openai', 'anthropic', or 'google'.`,
         'ai_handler',
       );
+    }
+
+    if (config.attachments !== undefined) {
+      if (!Array.isArray(config.attachments)) {
+        throw new ConfigurationError('attachments must be an array', 'ai_handler');
+      }
+      for (const attachment of config.attachments) {
+        if (!attachment || !['image', 'file'].includes(attachment.type)) {
+          throw new ConfigurationError(
+            `Invalid attachment type: ${attachment?.type}. Must be 'image' or 'file'.`,
+            'ai_handler',
+          );
+        }
+        if (typeof attachment.source !== 'string' || attachment.source.trim() === '') {
+          throw new ConfigurationError(
+            'Attachment source must be a non-empty string expression',
+            'ai_handler',
+          );
+        }
+        if (attachment.type === 'file' && !attachment.mediaType) {
+          throw new ConfigurationError(
+            "Attachment mediaType is required when type is 'file'",
+            'ai_handler',
+          );
+        }
+      }
     }
 
     // Validate persistence config
@@ -263,7 +290,28 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
         };
       }
 
-      messages.push({ role: 'user', content: userMessage });
+      let userContent: ModelMessage['content'] = userMessage;
+      if (config.attachments?.length) {
+        try {
+          const attachmentParts = buildAttachmentParts(config.attachments, (expression) =>
+            this.expressionEvaluator.evaluateExpression(expression, context, stepName),
+          );
+          if (attachmentParts.length > 0) {
+            userContent = [{ type: 'text', text: userMessage }, ...attachmentParts];
+          }
+        } catch (error) {
+          return {
+            success: false,
+            error: {
+              code: 'ATTACHMENT_ERROR',
+              message: error.message || 'Failed to resolve attachments',
+              details: { step: stepName },
+            },
+          };
+        }
+      }
+
+      messages.push({ role: 'user', content: userContent } as ModelMessage);
     }
 
     // Handle skills if deployment context is available
@@ -401,9 +449,14 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
     const maxTokens = config.maxTokens ?? 4096;
     const temperature = config.temperature ?? 0.7;
 
-    // Extract the last user message content for persistence
+    // Extract the last user message content for persistence. With
+    // attachments the content is a parts array — persist only its text part.
     const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user');
-    const userContent = lastUserMessage?.content || '';
+    const rawContent = lastUserMessage?.content || '';
+    const userContent = Array.isArray(rawContent)
+      ? ((rawContent.find((p) => p.type === 'text') as { type: 'text'; text: string } | undefined)
+          ?.text ?? '')
+      : rawContent;
 
     try {
       if (responseMode === 'stream') {
@@ -415,7 +468,7 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
           messages,
           maxTokens,
           temperature,
-          userContent as string,
+          userContent,
           tools,
         );
       } else {
@@ -590,7 +643,7 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
           totalTokens: finishData.usage?.totalTokens || 0,
         },
         finishReason: finishData.finishReason,
-        resolvedMessages: messages.map((m) => ({ role: m.role, content: m.content })),
+        resolvedMessages: this.toResolvedMessages(messages),
       },
       terminates: true, // Pipeline should not continue, response already sent
     };
@@ -681,7 +734,7 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
         // Include tool call info if any tools were called
         ...(toolCalls?.length && { toolCalls }),
         ...(toolResults?.length && { toolResults }),
-        resolvedMessages: messages.map((m) => ({ role: m.role, content: m.content })),
+        resolvedMessages: this.toResolvedMessages(messages),
       },
     };
   }
@@ -1088,6 +1141,27 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
     }
 
     return data;
+  }
+
+  /**
+   * Echo messages for step output with URL parts flattened to strings so
+   * the redaction pass (which only traverses plain data) can scrub them.
+   */
+  private toResolvedMessages(messages: ModelMessage[]) {
+    return messages.map((m) => ({
+      role: m.role,
+      content: Array.isArray(m.content)
+        ? m.content.map((part: any) => {
+            if (part?.type === 'image' && part.image instanceof URL) {
+              return { ...part, image: part.image.toString() };
+            }
+            if (part?.type === 'file' && part.data instanceof URL) {
+              return { ...part, data: part.data.toString() };
+            }
+            return part;
+          })
+        : m.content,
+    }));
   }
 
   // ===== Plugin Helper Methods =====

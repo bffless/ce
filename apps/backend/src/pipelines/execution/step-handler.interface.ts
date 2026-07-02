@@ -1,3 +1,4 @@
+import type { AIAttachmentConfig } from '../handlers/ai-attachments.util';
 import { PipelineContext, StepResult } from './pipeline-context.interface';
 import { HandlerType, PipelineStep } from '../types';
 
@@ -372,6 +373,16 @@ export interface AIHandlerConfig extends BaseHandlerConfig {
    * @default 'message'
    */
   messageField?: string;
+
+  /**
+   * [Completion mode only]
+   * Attachments to include with the user message. Each source is an
+   * expression that resolves to a URL string or an array of URL strings
+   * (e.g. "steps.collect.images"). Arrays fan out into one content part
+   * per element; empty/null resolved values are skipped silently.
+   * Chat mode ignores this field.
+   */
+  attachments?: AIAttachmentConfig[];
 
   /**
    * [Chat mode only]

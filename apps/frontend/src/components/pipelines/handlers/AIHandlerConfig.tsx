@@ -128,6 +128,25 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
   );
   const [systemPrompt, setSystemPrompt] = useState(config.systemPrompt || DEFAULT_SYSTEM_PROMPT);
   const [messageField, setMessageField] = useState(config.messageField || 'message');
+  const [attachments, setAttachments] = useState<
+    Array<{ type: 'image' | 'file'; source: string; mediaType: string }>
+  >(() =>
+    (config.attachments || []).map((a) => ({
+      type: a.type,
+      source: a.source,
+      mediaType: a.mediaType || '',
+    })),
+  );
+
+  const addAttachment = () =>
+    setAttachments((prev) => [...prev, { type: 'image', source: '', mediaType: '' }]);
+  const removeAttachment = (index: number) =>
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
+  const handleAttachmentChange = (
+    index: number,
+    patch: Partial<{ type: 'image' | 'file'; source: string; mediaType: string }>,
+  ) => setAttachments((prev) => prev.map((a, i) => (i === index ? { ...a, ...patch } : a)));
+
   const [messagesField, setMessagesField] = useState(config.messagesField || 'request.body.messages');
   const [maxHistoryMessages, setMaxHistoryMessages] = useState(config.maxHistoryMessages ?? 50);
   const [maxTokens, setMaxTokens] = useState(config.maxTokens ?? 4096);
@@ -251,6 +270,14 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
       if (m.schemaField.trim()) extraConvObj[m.schemaField.trim()] = m.expression;
     }
 
+    const cleanedAttachments = attachments
+      .filter((a) => a.source.trim())
+      .map((a) => ({
+        type: a.type,
+        source: a.source.trim(),
+        ...(a.type === 'file' && a.mediaType.trim() ? { mediaType: a.mediaType.trim() } : {}),
+      }));
+
     onChangeRef.current({
       mode,
       provider: provider as 'openai' | 'anthropic' | 'google' | undefined,
@@ -259,6 +286,8 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
       systemPrompt: systemPrompt.trim() || undefined,
       messageField: mode === 'completion' ? (messageField || 'message') : undefined,
       messagesField: mode === 'chat' ? (messagesField || 'messages') : undefined,
+      attachments:
+        mode === 'completion' && cleanedAttachments.length > 0 ? cleanedAttachments : undefined,
       maxHistoryMessages,
       maxTokens,
       temperature,
@@ -275,7 +304,7 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
       // Plugins
       plugins: plugins.mode !== 'none' ? plugins : undefined,
     });
-  }, [mode, provider, model, responseMode, systemPrompt, messageField, messagesField, maxHistoryMessages, maxTokens, temperature, persistMessages, persistMessagesSchemaId, persistConversationsSchemaId, conversationIdField, extraMessageFields, extraConversationFields, skills, plugins]);
+  }, [mode, provider, model, responseMode, systemPrompt, messageField, messagesField, attachments, maxHistoryMessages, maxTokens, temperature, persistMessages, persistMessagesSchemaId, persistConversationsSchemaId, conversationIdField, extraMessageFields, extraConversationFields, skills, plugins]);
 
   // Find selected model info
   const selectedModelInfo = suggestedModels.find(m => m.id === model);
@@ -501,53 +530,121 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
 
         {/* Mode-specific configuration */}
         {mode === 'completion' ? (
-          /* Completion Mode: Message Template */
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Label htmlFor="messageField">Message</Label>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button type="button" className="cursor-help">
-                    <HelpCircle className="h-4 w-4 text-muted-foreground" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent className="max-w-xs">
-                  <p>The message to send to the AI. Use template variables like <code>{'{{steps.form.message}}'}</code> to include data from previous steps.</p>
-                </TooltipContent>
-              </Tooltip>
+          <>
+            {/* Completion Mode: Message Template */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="messageField">Message</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button type="button" className="cursor-help">
+                      <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    <p>The message to send to the AI. Use template variables like <code>{'{{steps.form.message}}'}</code> to include data from previous steps.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <div className="border rounded-md overflow-hidden">
+                <Suspense fallback={<Skeleton className="h-[80px] w-full" />}>
+                  <Editor
+                    height="80px"
+                    defaultLanguage="handlebars"
+                    value={messageField}
+                    onChange={(value) => setMessageField(value || '')}
+                    options={{
+                      minimap: { enabled: false },
+                      lineNumbers: 'off',
+                      scrollBeyondLastLine: false,
+                      wordWrap: 'on',
+                      fontSize: 13,
+                      tabSize: 2,
+                      padding: { top: 8, bottom: 8 },
+                      renderLineHighlight: 'none',
+                      overviewRulerLanes: 0,
+                      hideCursorInOverviewRuler: true,
+                      overviewRulerBorder: false,
+                      scrollbar: {
+                        vertical: 'auto',
+                        horizontal: 'hidden',
+                      },
+                    }}
+                    theme="vs-dark"
+                  />
+                </Suspense>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Use <code className="bg-muted px-1 rounded">{'{{variable}}'}</code> syntax for template variables (e.g., <code className="bg-muted px-1 rounded">{'{{steps.form.name}}'}</code>)
+              </p>
             </div>
-            <div className="border rounded-md overflow-hidden">
-              <Suspense fallback={<Skeleton className="h-[80px] w-full" />}>
-                <Editor
-                  height="80px"
-                  defaultLanguage="handlebars"
-                  value={messageField}
-                  onChange={(value) => setMessageField(value || '')}
-                  options={{
-                    minimap: { enabled: false },
-                    lineNumbers: 'off',
-                    scrollBeyondLastLine: false,
-                    wordWrap: 'on',
-                    fontSize: 13,
-                    tabSize: 2,
-                    padding: { top: 8, bottom: 8 },
-                    renderLineHighlight: 'none',
-                    overviewRulerLanes: 0,
-                    hideCursorInOverviewRuler: true,
-                    overviewRulerBorder: false,
-                    scrollbar: {
-                      vertical: 'auto',
-                      horizontal: 'hidden',
-                    },
-                  }}
-                  theme="vs-dark"
-                />
-              </Suspense>
+
+            {/* Attachments */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label>Attachments</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button type="button" className="cursor-help">
+                      <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    <p>
+                      Attach images or files to the message. Source is an expression that
+                      resolves to a URL or an array of URLs (e.g.{' '}
+                      <code>steps.collect.images</code>) — arrays send one attachment per URL.
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              {attachments.map((att, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  <Select
+                    value={att.type}
+                    onValueChange={(value) =>
+                      handleAttachmentChange(index, { type: value as 'image' | 'file' })
+                    }
+                  >
+                    <SelectTrigger className="w-[110px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="image">Image</SelectItem>
+                      <SelectItem value="file">File</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <div className="flex-1">
+                    <ExpressionInput
+                      value={att.source}
+                      onChange={(value) => handleAttachmentChange(index, { source: value })}
+                      placeholder="steps.collect.images"
+                      previousSteps={previousSteps}
+                    />
+                  </div>
+                  {att.type === 'file' && (
+                    <Input
+                      value={att.mediaType}
+                      onChange={(e) => handleAttachmentChange(index, { mediaType: e.target.value })}
+                      placeholder="audio/mpeg"
+                      className="w-[130px]"
+                    />
+                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => removeAttachment(index)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+              <Button type="button" variant="outline" size="sm" onClick={addAttachment}>
+                <Plus className="h-4 w-4 mr-1" /> Add attachment
+              </Button>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Use <code className="bg-muted px-1 rounded">{'{{variable}}'}</code> syntax for template variables (e.g., <code className="bg-muted px-1 rounded">{'{{steps.form.name}}'}</code>)
-            </p>
-          </div>
+          </>
         ) : (
           /* Chat Mode: Messages Field */
           <div className="space-y-2">
