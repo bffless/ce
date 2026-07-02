@@ -13,6 +13,7 @@ describe('SetupService', () => {
             getSetupStatus: jest.fn(),
             initialize: jest.fn(),
             configureStorage: jest.fn(),
+            updateStorageCredentials: jest.fn(),
             testStorageConnection: jest.fn(),
             completeSetup: jest.fn(),
           },
@@ -51,6 +52,18 @@ describe('SetupService', () => {
       jest.spyOn(service, 'configureStorage').mockResolvedValue(mockResult as any);
 
       expect(service.configureStorage({} as any)).resolves.toEqual(mockResult);
+    });
+  });
+
+  describe('updateStorageCredentials', () => {
+    it('should update storage credentials in place', () => {
+      const mockResult = {
+        message: 'Storage credentials updated successfully',
+        storageProvider: 's3',
+      };
+      jest.spyOn(service, 'updateStorageCredentials').mockResolvedValue(mockResult as any);
+
+      expect(service.updateStorageCredentials({} as any)).resolves.toEqual(mockResult);
     });
   });
 });
