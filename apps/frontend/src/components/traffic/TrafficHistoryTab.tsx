@@ -27,7 +27,7 @@ const TIME_RANGES: Record<string, { label: string; hours?: number }> = {
 
 /**
  * History view over the persisted Request log (issue #390): the Unmatched
- * (and, later, blocked) requests the application interceptor recorded,
+ * and blocked requests the application interceptor recorded,
  * rendered as access-log lines like the Live tail, with filters and export.
  */
 export function TrafficHistoryTab() {
@@ -93,7 +93,7 @@ export function TrafficHistoryTab() {
             <CardTitle className="text-base">Request log</CardTitle>
             <p className="text-xs text-[#4a4a4a] dark:text-muted-foreground mt-1">
               Only the bot-signal subset is persisted: Unmatched requests (404 — paths that resolve
-              to no deployment, alias, or asset) and, once Blocklists land, blocked ones. Matched
+              to no deployment, alias, or asset) and requests blocked by a Blocklist. Matched
               traffic appears only in the Live tab.
             </p>
           </div>

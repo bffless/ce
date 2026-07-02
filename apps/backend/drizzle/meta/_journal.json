@@ -246,6 +246,13 @@
       "when": 1782993567563,
       "tag": "0034_shiny_sandman",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1783015226726,
+      "tag": "0035_lying_shooting_star",
+      "breakpoints": true
     }
   ]
 }

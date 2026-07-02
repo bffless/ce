@@ -30,8 +30,9 @@ export interface TrafficEvent {
    * matched: the request resolved to a real asset/API/deployment.
    * unmatched: it resolved to no deployment, alias, or asset (bot scans
    * for /.env, /wp-login, ... produce these).
+   * blocked: refused by the Blocklist with a bare 403 (issue #391).
    */
-  classification: 'matched' | 'unmatched';
+  classification: 'matched' | 'unmatched' | 'blocked';
   /** The event rendered as an nginx combined-access-log line */
   line: string;
 }

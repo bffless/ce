@@ -6,6 +6,37 @@ import { api } from './api';
  * interceptor observes, admin-only.
  */
 
+export type BlocklistMatchType = 'prefix' | 'exact' | 'suffix' | 'extension' | 'contains';
+
+export interface BlocklistPatternEntry {
+  matchType: BlocklistMatchType;
+  value: string;
+}
+
+/** A named Blocklist from the admin-global library (issue #391). */
+export interface BlocklistEntry {
+  id: string;
+  name: string;
+  description: string | null;
+  entries: BlocklistPatternEntry[];
+  allowlist: BlocklistPatternEntry[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BlocklistSettings {
+  /** Master toggle: false disables ALL blocking (Baseline and lists) instantly. */
+  enabled: boolean;
+  baselineEntryCount: number;
+}
+
+export interface UpsertBlocklistInput {
+  name?: string;
+  description?: string;
+  entries?: BlocklistPatternEntry[];
+  allowlist?: BlocklistPatternEntry[];
+}
+
 export interface TrafficRequestEntry {
   id: string;
   timestamp: string;
@@ -91,10 +122,69 @@ export const trafficApi = api.injectEndpoints({
       query: (params) => `/api/traffic/ips${toQueryString({ ...(params ?? {}) })}`,
       providesTags: [{ type: 'TrafficIpRollup' as const, id: 'LIST' }],
     }),
+
+    getBlocklistSettings: builder.query<BlocklistSettings, void>({
+      query: () => '/api/traffic/blocklist-settings',
+      providesTags: ['BlocklistSettings'],
+    }),
+
+    updateBlocklistSettings: builder.mutation<BlocklistSettings, { enabled: boolean }>({
+      query: (body) => ({
+        url: '/api/traffic/blocklist-settings',
+        method: 'PATCH',
+        body,
+      }),
+      invalidatesTags: ['BlocklistSettings'],
+    }),
+
+    getBaselineBlocklist: builder.query<{ entries: BlocklistPatternEntry[] }, void>({
+      query: () => '/api/traffic/blocklists/baseline',
+    }),
+
+    listBlocklists: builder.query<BlocklistEntry[], void>({
+      query: () => '/api/traffic/blocklists',
+      providesTags: [{ type: 'Blocklist' as const, id: 'LIST' }],
+    }),
+
+    createBlocklist: builder.mutation<BlocklistEntry, UpsertBlocklistInput>({
+      query: (body) => ({
+        url: '/api/traffic/blocklists',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: [{ type: 'Blocklist' as const, id: 'LIST' }],
+    }),
+
+    updateBlocklist: builder.mutation<BlocklistEntry, { id: string } & UpsertBlocklistInput>({
+      query: ({ id, ...body }) => ({
+        url: `/api/traffic/blocklists/${id}`,
+        method: 'PATCH',
+        body,
+      }),
+      invalidatesTags: [{ type: 'Blocklist' as const, id: 'LIST' }],
+    }),
+
+    deleteBlocklist: builder.mutation<void, string>({
+      query: (id) => ({
+        url: `/api/traffic/blocklists/${id}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: [{ type: 'Blocklist' as const, id: 'LIST' }],
+    }),
   }),
 });
 
-export const { useListTrafficRequestsQuery, useListTrafficIpRollupsQuery } = trafficApi;
+export const {
+  useListTrafficRequestsQuery,
+  useListTrafficIpRollupsQuery,
+  useGetBlocklistSettingsQuery,
+  useUpdateBlocklistSettingsMutation,
+  useGetBaselineBlocklistQuery,
+  useListBlocklistsQuery,
+  useCreateBlocklistMutation,
+  useUpdateBlocklistMutation,
+  useDeleteBlocklistMutation,
+} = trafficApi;
 
 /**
  * Download a Request-log or per-IP-rollup export (CSV/JSON) as a file.

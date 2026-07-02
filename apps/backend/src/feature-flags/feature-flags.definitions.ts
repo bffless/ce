@@ -519,6 +519,19 @@ export const FLAG_DEFINITIONS: Record<string, FlagDefinition> = {
     description: 'Enable traffic analytics dashboard',
     category: 'experimental',
   },
+
+  // ==========================================================================
+  // Bot Protection (issue #383/#391)
+  // ==========================================================================
+
+  BOT_PROTECTION_ENABLED: {
+    envKey: 'BOT_PROTECTION_ENABLED',
+    defaultValue: true,
+    type: 'boolean',
+    description:
+      'Master toggle for bot protection: when off, no Blocklist (Baseline or named lists) blocks anything, instantly.',
+    category: 'features',
+  },
 };
 
 /**

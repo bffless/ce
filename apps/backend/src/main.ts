@@ -6,6 +6,7 @@ import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { createTrafficObserver } from './traffic/traffic-observer.middleware';
 import { TrafficEventsService } from './traffic/traffic-events.service';
+import { BlocklistService } from './traffic/blocklist.service';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -13,10 +14,12 @@ async function bootstrap() {
     rawBody: true, // Needed for Stripe webhook signature verification
   });
 
-  // Traffic observation seam (ADR-0003): registered with app.use() so it sits
-  // above ALL Nest module middleware and observes every request that reaches
-  // the app — including ones ProxyMiddleware short-circuits before a controller.
-  app.use(createTrafficObserver(app.get(TrafficEventsService)));
+  // Traffic observation + Blocklist enforcement seam (ADR-0003): registered
+  // with app.use() so it sits above ALL Nest module middleware and observes
+  // every request that reaches the app — including ones ProxyMiddleware
+  // short-circuits before a controller. Blocklisted requests are refused
+  // here with a bare 403 before any routing (issue #391).
+  app.use(createTrafficObserver(app.get(TrafficEventsService), app.get(BlocklistService)));
 
   // Raise the request body limit above body-parser's 100kb default. Pipeline
   // endpoints (e.g. studio's /api/projects/save) POST large JSON documents that
