@@ -45,13 +45,17 @@ export function TrafficRollupTab() {
   const [exporting, setExporting] = useState(false);
 
   const ipFilter = ip.trim() || undefined;
-  const { data, isLoading, isFetching, error } = useListTrafficIpRollupsQuery({
-    ip: ipFilter,
-    sortBy,
-    sortOrder: 'desc',
-    page,
-    pageSize: PAGE_SIZE,
-  });
+  const { data, isLoading, isFetching, error } = useListTrafficIpRollupsQuery(
+    {
+      ip: ipFilter,
+      sortBy,
+      sortOrder: 'desc',
+      page,
+      pageSize: PAGE_SIZE,
+    },
+    // Rollups update continuously server-side; don't serve a stale cached page.
+    { refetchOnMountOrArgChange: true },
+  );
 
   const handleExport = async (format: 'csv' | 'json') => {
     setExporting(true);
@@ -72,7 +76,13 @@ export function TrafficRollupTab() {
     <Card>
       <CardHeader className="pb-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <CardTitle className="text-base">Per-IP rollup</CardTitle>
+          <div>
+            <CardTitle className="text-base">Per-IP rollup</CardTitle>
+            <p className="text-xs text-[#4a4a4a] dark:text-muted-foreground mt-1">
+              IPs that produced persisted (Unmatched/blocked) requests — matched traffic doesn't
+              count here.
+            </p>
+          </div>
           <div className="flex items-center gap-2">
             <Button
               variant="outline"

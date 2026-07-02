@@ -52,11 +52,16 @@ export function TrafficHistoryTab() {
     from,
   };
 
-  const { data, isLoading, isFetching, error } = useListTrafficRequestsQuery({
-    ...filters,
-    page,
-    pageSize: PAGE_SIZE,
-  });
+  const { data, isLoading, isFetching, error } = useListTrafficRequestsQuery(
+    {
+      ...filters,
+      page,
+      pageSize: PAGE_SIZE,
+    },
+    // New records land continuously server-side; a cached page from before the
+    // last flush would read as "no data", so always refetch on mount/arg change.
+    { refetchOnMountOrArgChange: true },
+  );
 
   const handleExport = async (format: 'csv' | 'json') => {
     setExporting(true);
@@ -84,7 +89,14 @@ export function TrafficHistoryTab() {
     <Card>
       <CardHeader className="pb-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <CardTitle className="text-base">Request log</CardTitle>
+          <div>
+            <CardTitle className="text-base">Request log</CardTitle>
+            <p className="text-xs text-[#4a4a4a] dark:text-muted-foreground mt-1">
+              Only the bot-signal subset is persisted: Unmatched requests (404 — paths that resolve
+              to no deployment, alias, or asset) and, once Blocklists land, blocked ones. Matched
+              traffic appears only in the Live tab.
+            </p>
+          </div>
           <div className="flex items-center gap-2">
             <Button
               variant="outline"

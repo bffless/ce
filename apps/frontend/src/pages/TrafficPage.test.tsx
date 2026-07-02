@@ -112,6 +112,30 @@ describe('TrafficPage tabs', () => {
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'By IP' }), { button: 0 });
     expect(screen.getByText('ROLLUP-TAB-CONTENT')).toBeInTheDocument();
   });
+
+  it('keeps the live tail (stream + events) alive across tab switches', () => {
+    render(
+      <MemoryRouter>
+        <TrafficPage />
+      </MemoryRouter>,
+    );
+    const live = MockEventSource.instances[0];
+    act(() => {
+      live.emit(
+        'request',
+        makeEvent({ line: 'SURVIVES-TAB-SWITCH', status: 404, classification: 'unmatched' }),
+      );
+    });
+    expect(screen.getByText(/SURVIVES-TAB-SWITCH/)).toBeInTheDocument();
+
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'History' }), { button: 0 });
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Live' }), { button: 0 });
+
+    // same EventSource (no reconnect), events not wiped
+    expect(MockEventSource.instances).toHaveLength(1);
+    expect(live.closed).toBe(false);
+    expect(screen.getByText(/SURVIVES-TAB-SWITCH/)).toBeInTheDocument();
+  });
 });
 
 describe('LiveTrafficTab', () => {
@@ -135,7 +159,12 @@ describe('LiveTrafficTab', () => {
       source().emit('request', makeEvent({ line: 'MATCHED-OK-LINE', status: 200 }));
       source().emit(
         'request',
-        makeEvent({ line: 'SCANNER-LINE', status: 404, classification: 'unmatched', path: '/.env' }),
+        makeEvent({
+          line: 'SCANNER-LINE',
+          status: 404,
+          classification: 'unmatched',
+          path: '/.env',
+        }),
       );
     });
 
@@ -158,7 +187,10 @@ describe('LiveTrafficTab', () => {
   it('defaults to unwrapped lines and persists the wrap preference', () => {
     render(<LiveTrafficTab />);
     act(() => {
-      source().emit('request', makeEvent({ line: 'SCANNER-LINE', status: 404, classification: 'unmatched' }));
+      source().emit(
+        'request',
+        makeEvent({ line: 'SCANNER-LINE', status: 404, classification: 'unmatched' }),
+      );
     });
 
     const line = screen.getByText(/SCANNER-LINE/).parentElement!;
@@ -189,7 +221,10 @@ describe('LiveTrafficTab', () => {
     const { unmount } = render(<LiveTrafficTab />);
     fireEvent.click(screen.getByRole('button', { name: /pause/i }));
     act(() => {
-      source().emit('request', makeEvent({ line: 'WHILE-PAUSED', status: 404, classification: 'unmatched' }));
+      source().emit(
+        'request',
+        makeEvent({ line: 'WHILE-PAUSED', status: 404, classification: 'unmatched' }),
+      );
     });
     expect(screen.queryByText(/WHILE-PAUSED/)).not.toBeInTheDocument();
 

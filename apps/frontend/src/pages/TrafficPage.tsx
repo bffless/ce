@@ -68,7 +68,10 @@ export function TrafficPage() {
           <TabsTrigger value="history">History</TabsTrigger>
           <TabsTrigger value="rollup">By IP</TabsTrigger>
         </TabsList>
-        <TabsContent value="live">
+        {/* forceMount keeps the live tail mounted (hidden) across tab switches,
+            so the SSE connection and accumulated events survive visiting
+            History / By IP. The other tabs re-query on mount instead. */}
+        <TabsContent value="live" forceMount hidden={activeTab !== 'live'}>
           <LiveTrafficTab />
         </TabsContent>
         <TabsContent value="history">
