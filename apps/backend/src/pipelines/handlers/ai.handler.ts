@@ -14,6 +14,7 @@ import { PipelineSchemasService } from '../pipeline-schemas.service';
 import { SkillsService, SkillSummary } from '../skills.service';
 import { AIToolPluginService } from '../ai-plugins/ai-tool-plugin.service';
 import { ConfigurationError, SchemaNotFoundError } from '../errors';
+import { buildAttachmentParts } from './ai-attachments.util';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
@@ -289,7 +290,28 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
         };
       }
 
-      messages.push({ role: 'user', content: userMessage });
+      let userContent: ModelMessage['content'] = userMessage;
+      if (config.attachments?.length) {
+        try {
+          const attachmentParts = buildAttachmentParts(config.attachments, (expression) =>
+            this.expressionEvaluator.evaluateExpression(expression, context, stepName),
+          );
+          if (attachmentParts.length > 0) {
+            userContent = [{ type: 'text', text: userMessage }, ...attachmentParts];
+          }
+        } catch (error) {
+          return {
+            success: false,
+            error: {
+              code: 'ATTACHMENT_ERROR',
+              message: error.message || 'Failed to resolve attachments',
+              details: { step: stepName },
+            },
+          };
+        }
+      }
+
+      messages.push({ role: 'user', content: userContent } as ModelMessage);
     }
 
     // Handle skills if deployment context is available
