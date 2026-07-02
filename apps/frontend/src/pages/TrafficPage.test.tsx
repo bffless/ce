@@ -84,6 +84,7 @@ describe('TrafficPage', () => {
   beforeEach(() => {
     MockEventSource.instances = [];
     vi.stubGlobal('EventSource', MockEventSource);
+    localStorage.clear();
   });
 
   const source = () => MockEventSource.instances[0];
@@ -116,8 +117,38 @@ describe('TrafficPage', () => {
     });
     expect(screen.queryByText(/MATCHED-OK-LINE/)).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('switch'));
+    fireEvent.click(screen.getByLabelText(/show all/i));
     expect(screen.getByText(/MATCHED-OK-LINE/)).toBeInTheDocument();
+  });
+
+  it('defaults to unwrapped lines and persists the wrap preference', () => {
+    render(<TrafficPage />);
+    act(() => {
+      source().emit('request', makeEvent({ line: 'SCANNER-LINE', status: 404, classification: 'unmatched' }));
+    });
+
+    const line = screen.getByText(/SCANNER-LINE/).parentElement!;
+    expect(line.className).toContain('whitespace-pre');
+    expect(line.className).not.toContain('whitespace-pre-wrap');
+
+    fireEvent.click(screen.getByLabelText(/wrap lines/i));
+    expect(screen.getByText(/SCANNER-LINE/).parentElement!.className).toContain(
+      'whitespace-pre-wrap',
+    );
+    expect(localStorage.getItem('bffless.traffic.wrapLines')).toBe('true');
+  });
+
+  it('shows a Paused badge instead of Live while paused', () => {
+    render(<TrafficPage />);
+    act(() => source().onopen?.());
+    expect(screen.getByText('Live')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /pause/i }));
+    expect(screen.queryByText('Live')).not.toBeInTheDocument();
+    expect(screen.getByText('Paused')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /resume/i }));
+    expect(screen.getByText('Live')).toBeInTheDocument();
   });
 
   it('stops appending while paused and closes the stream on unmount', () => {

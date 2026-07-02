@@ -28,6 +28,9 @@ type ConnectionState = 'connecting' | 'live' | 'disconnected';
 /** Cap the in-memory tail so a scanner storm can't grow the page unbounded. */
 const MAX_EVENTS = 1000;
 
+/** Display preference only — deliberately not pause state, which stays ephemeral. */
+const WRAP_LINES_STORAGE_KEY = 'bffless.traffic.wrapLines';
+
 /**
  * Default view: only the signal (Unmatched requests and 4xx/5xx responses).
  * "Show all" reveals the 200-OK asset firehose too.
@@ -47,6 +50,9 @@ export function TrafficPage() {
   const [events, setEvents] = useState<TrafficStreamEvent[]>([]);
   const [showAll, setShowAll] = useState(false);
   const [paused, setPaused] = useState(false);
+  const [wrapLines, setWrapLines] = useState(
+    () => localStorage.getItem(WRAP_LINES_STORAGE_KEY) === 'true',
+  );
   const [connection, setConnection] = useState<ConnectionState>('connecting');
 
   const pausedRef = useRef(paused);
@@ -84,6 +90,11 @@ export function TrafficPage() {
 
   const clear = useCallback(() => setEvents([]), []);
 
+  const toggleWrapLines = useCallback((checked: boolean) => {
+    setWrapLines(checked);
+    localStorage.setItem(WRAP_LINES_STORAGE_KEY, String(checked));
+  }, []);
+
   return (
     <div className="container mx-auto px-4 py-8 max-w-7xl">
       <div className="flex items-center justify-between mb-6">
@@ -96,7 +107,7 @@ export function TrafficPage() {
             Live tail of requests hitting this instance, as the application observes them
           </p>
         </div>
-        <ConnectionBadge state={connection} />
+        <ConnectionBadge state={connection} paused={paused} />
       </div>
 
       <Card>
@@ -108,6 +119,12 @@ export function TrafficPage() {
                 <Switch id="show-all" checked={showAll} onCheckedChange={setShowAll} />
                 <Label htmlFor="show-all" className="text-sm cursor-pointer">
                   Show all
+                </Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch id="wrap-lines" checked={wrapLines} onCheckedChange={toggleWrapLines} />
+                <Label htmlFor="wrap-lines" className="text-sm cursor-pointer">
+                  Wrap lines
                 </Label>
               </div>
               <Button variant="outline" size="sm" onClick={() => setPaused((p) => !p)}>
@@ -132,7 +149,7 @@ export function TrafficPage() {
           <div
             ref={scrollRef}
             data-testid="traffic-log"
-            className="bg-[#1e1e1e] rounded-md p-3 h-[32rem] overflow-y-auto font-mono text-xs leading-5"
+            className={`bg-[#1e1e1e] rounded-md p-3 h-[32rem] overflow-y-auto font-mono text-xs leading-5 ${wrapLines ? '' : 'overflow-x-auto'}`}
           >
             {visibleEvents.length === 0 ? (
               <p className="text-gray-400">
@@ -144,7 +161,10 @@ export function TrafficPage() {
               </p>
             ) : (
               visibleEvents.map((event) => (
-                <div key={event.id} className="whitespace-pre-wrap break-all text-gray-200">
+                <div
+                  key={event.id}
+                  className={`text-gray-200 ${wrapLines ? 'whitespace-pre-wrap break-all' : 'whitespace-pre w-max min-w-full'}`}
+                >
                   {event.classification === 'unmatched' && (
                     <span className="text-[#d96459] mr-1" title="Unmatched request">
                       ●
@@ -161,7 +181,17 @@ export function TrafficPage() {
   );
 }
 
-function ConnectionBadge({ state }: { state: ConnectionState }) {
+function ConnectionBadge({ state, paused }: { state: ConnectionState; paused: boolean }) {
+  // Pause is a view state that trumps the connection state: while paused the
+  // stream stays open but nothing appends, so advertising "Live" would lie.
+  if (paused) {
+    return (
+      <Badge variant="outline" className="border-amber-500/50 text-amber-600 dark:text-amber-400">
+        <span className="h-2 w-2 rounded-full bg-amber-500 mr-1.5" />
+        Paused
+      </Badge>
+    );
+  }
   if (state === 'live') {
     return (
       <Badge variant="outline" className="border-emerald-500/50 text-emerald-600 dark:text-emerald-400">
