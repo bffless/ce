@@ -449,9 +449,14 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
     const maxTokens = config.maxTokens ?? 4096;
     const temperature = config.temperature ?? 0.7;
 
-    // Extract the last user message content for persistence
+    // Extract the last user message content for persistence. With
+    // attachments the content is a parts array — persist only its text part.
     const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user');
-    const userContent = lastUserMessage?.content || '';
+    const rawContent = lastUserMessage?.content || '';
+    const userContent = Array.isArray(rawContent)
+      ? ((rawContent.find((p) => p.type === 'text') as { type: 'text'; text: string } | undefined)
+          ?.text ?? '')
+      : rawContent;
 
     try {
       if (responseMode === 'stream') {
@@ -463,7 +468,7 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
           messages,
           maxTokens,
           temperature,
-          userContent as string,
+          userContent,
           tools,
         );
       } else {
