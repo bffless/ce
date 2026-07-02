@@ -33,6 +33,7 @@ import { Globe, Lock, ArrowDown, Shield } from 'lucide-react';
 import { RedirectsTab } from './RedirectsTab';
 import { SslTab } from './SslTab';
 import { TrafficTab } from './TrafficTab';
+import { DomainBlocklistsSection } from './DomainBlocklistsSection';
 import { DomainShareLinksSection } from './DomainShareLinksSection';
 import { PathTypeahead } from './PathTypeahead';
 import { useFeatureFlags } from '@/services/featureFlagsApi';
@@ -543,8 +544,9 @@ export function EditDomainDialog({ domain, open, onOpenChange }: EditDomainDialo
             <RedirectsTab domainId={domain.id} targetDomain={domain.domain} />
           </TabsContent>
 
-          <TabsContent value="traffic" className="mt-4">
+          <TabsContent value="traffic" className="mt-4 space-y-4">
             <TrafficTab domainId={domain.id} domain={domain.domain} />
+            <DomainBlocklistsSection domainId={domain.id} domain={domain.domain} />
           </TabsContent>
 
           {!isRedirectDomain && (

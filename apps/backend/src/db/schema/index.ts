@@ -41,3 +41,4 @@ export * from './google-integration-credentials.schema';
 export * from './traffic-requests.schema';
 export * from './traffic-ip-rollups.schema';
 export * from './blocklists.schema';
+export * from './domain-blocklists.schema';

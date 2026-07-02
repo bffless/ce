@@ -21,10 +21,12 @@ const mockExecFile = execFile as unknown as jest.Mock;
 
 describe('EdgeBlocklistService', () => {
   let state: CompiledBlocklistState;
+  let domainStates: Map<string, CompiledBlocklistState>;
   let service: EdgeBlocklistService;
 
   const blocklistService = {
     getCompiledState: jest.fn((): CompiledBlocklistState => state),
+    getCompiledDomainStates: jest.fn(() => domainStates),
   } as unknown as BlocklistService;
 
   beforeEach(() => {
@@ -34,6 +36,7 @@ describe('EdgeBlocklistService', () => {
         cb(null, { stdout: '', stderr: '' }),
     );
     state = { enabled: true, blockSource: '(?:^/wp\\-admin)', allowSource: null };
+    domainStates = new Map();
     service = new EdgeBlocklistService(blocklistService);
   });
 
@@ -124,5 +127,62 @@ describe('EdgeBlocklistService', () => {
     expect(rules.indexOf('set $blocklist_hit 1;')).toBeLessThan(
       rules.lastIndexOf('set $blocklist_hit 0;'),
     );
+  });
+
+  describe('per-domain rules (#393)', () => {
+    it('resolves a domain-specific set, falling back to the default for other ids', async () => {
+      domainStates = new Map([
+        ['dom-1', { enabled: true, blockSource: '(?:^/wp\\-admin|^/custom)', allowSource: null }],
+      ]);
+      await expect(service.sync()).resolves.toBe(true);
+
+      expect(service.getServerRules('444', 'dom-1')).toContain('^/custom');
+      expect(service.getServerRules('444', 'dom-2')).not.toContain('^/custom');
+      expect(service.getServerRules('444')).not.toContain('^/custom');
+      expect(service.getServerRules('444', 'dom-2')).toContain('^/wp\\-admin');
+    });
+
+    it('validates each distinct source pair exactly once', async () => {
+      domainStates = new Map([
+        ['dom-1', { enabled: true, blockSource: '(?:^/custom)', allowSource: null }],
+        ['dom-2', { enabled: true, blockSource: '(?:^/custom)', allowSource: null }],
+      ]);
+      await service.sync();
+      // default pair + one shared per-domain pair = 2 nginx -t runs
+      expect(mockExecFile).toHaveBeenCalledTimes(2);
+    });
+
+    it('treats an attachment change as a sync change', async () => {
+      await service.sync();
+      domainStates = new Map([
+        ['dom-1', { enabled: true, blockSource: '(?:^/custom)', allowSource: null }],
+      ]);
+      await expect(service.sync()).resolves.toBe(true);
+      expect(service.getServerRules('403', 'dom-1')).toContain('^/custom');
+    });
+
+    it('rolls back only the invalid pair, keeping other domains enforced', async () => {
+      domainStates = new Map([
+        ['dom-1', { enabled: true, blockSource: '(?:^/custom)', allowSource: null }],
+      ]);
+      mockExecFile.mockImplementation(
+        (_cmd: string, args: string[], cb: (err: unknown, out?: unknown) => void) => {
+          // The sandbox config is written per-pair; reject only the run whose
+          // rules contain the per-domain pattern (second call in sync order).
+          const writes = (jest.requireMock('fs/promises').writeFile as jest.Mock).mock.calls;
+          const lastConfig = String(writes[writes.length - 1]?.[1] ?? '');
+          if (lastConfig.includes('^/custom')) {
+            const error = new Error('nginx failed') as Error & { stderr: string };
+            error.stderr = 'nginx: [emerg] invalid regex';
+            cb(error);
+            return;
+          }
+          cb(null, { stdout: '', stderr: '' });
+        },
+      );
+      await service.sync();
+      expect(service.getServerRules('444')).toContain('return 444;');
+      expect(service.getServerRules('444', 'dom-1')).toBe('');
+    });
   });
 });

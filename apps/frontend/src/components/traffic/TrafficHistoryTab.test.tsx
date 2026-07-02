@@ -9,6 +9,9 @@ const mockDownloadTrafficExport = vi.fn();
 vi.mock('@/services/trafficApi', () => ({
   useListTrafficRequestsQuery: (params: unknown) => mockUseListTrafficRequestsQuery(params),
   downloadTrafficExport: (...args: unknown[]) => mockDownloadTrafficExport(...args),
+  // Consumed by the embedded AddToBlocklistDialog (#393)
+  useListBlocklistsQuery: () => ({ data: [], isLoading: false }),
+  useAppendBlocklistEntryMutation: () => [vi.fn(), { isLoading: false }],
 }));
 
 // Radix Select doesn't play well with happy-dom; the time-range filter is

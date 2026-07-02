@@ -16,9 +16,10 @@ const OBSERVER_EXEMPT_PATHS = ['/api/traffic/stream'];
 const ENFORCEMENT_EXEMPT_PREFIXES = ['/api/', '/auth/'];
 
 /** What the middleware needs from BlocklistService (kept as an interface so
- *  the middleware stays constructible without Nest in tests). */
+ *  the middleware stays constructible without Nest in tests). `host` selects
+ *  the domain's effective set (#393); unknown hosts use the default set. */
 export interface BlocklistEnforcer {
-  shouldBlock(pathname: string): boolean;
+  shouldBlock(pathname: string, host?: string | null): boolean;
 }
 
 let eventCounter = 0;
@@ -59,12 +60,13 @@ export function createTrafficObserver(events: TrafficEventsService, blocklist?: 
       return next();
     }
 
+    const clientHost = (req.headers['x-forwarded-host'] as string) || req.headers.host || null;
     const blocked =
       blocklist !== undefined &&
       !ENFORCEMENT_EXEMPT_PREFIXES.some(
         (prefix) => req.path.startsWith(prefix) || req.path === prefix.slice(0, -1),
       ) &&
-      blocklist.shouldBlock(clientVisiblePath(req));
+      blocklist.shouldBlock(clientVisiblePath(req), clientHost);
 
     let bytes = 0;
     const countChunk = (chunk: unknown, encoding?: unknown): void => {
@@ -101,7 +103,7 @@ export function createTrafficObserver(events: TrafficEventsService, blocklist?: 
         bytes,
         referer: (req.headers.referer as string) || null,
         userAgent: (req.headers['user-agent'] as string) || null,
-        host: (req.headers['x-forwarded-host'] as string) || req.headers.host || null,
+        host: clientHost,
         classification: blocked ? 'blocked' : res.statusCode === 404 ? 'unmatched' : 'matched',
       };
       events.emit({ ...withoutLine, line: formatAccessLogLine(withoutLine) });

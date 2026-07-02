@@ -13,11 +13,21 @@ export interface BlocklistPatternEntry {
   value: string;
 }
 
-/** A named Blocklist from the admin-global library (issue #391). */
+/** A domain a Blocklist is attached to (issue #393). */
+export interface AttachedDomainRef {
+  id: string;
+  domain: string;
+}
+
+/** A named Blocklist from the admin-global library (issues #391/#393). */
 export interface BlocklistEntry {
   id: string;
   name: string;
   description: string | null;
+  /** True = applies to all domains (the all-domains default attachment). */
+  isDefault: boolean;
+  /** Domains this list is explicitly attached to (relevant when !isDefault). */
+  attachedDomains: AttachedDomainRef[];
   entries: BlocklistPatternEntry[];
   allowlist: BlocklistPatternEntry[];
   createdAt: string;
@@ -33,6 +43,7 @@ export interface BlocklistSettings {
 export interface UpsertBlocklistInput {
   name?: string;
   description?: string;
+  isDefault?: boolean;
   entries?: BlocklistPatternEntry[];
   allowlist?: BlocklistPatternEntry[];
 }
@@ -171,6 +182,43 @@ export const trafficApi = api.injectEndpoints({
       }),
       invalidatesTags: [{ type: 'Blocklist' as const, id: 'LIST' }],
     }),
+
+    appendBlocklistEntry: builder.mutation<
+      BlocklistEntry,
+      { id: string } & BlocklistPatternEntry
+    >({
+      query: ({ id, ...body }) => ({
+        url: `/api/traffic/blocklists/${id}/entries`,
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: [{ type: 'Blocklist' as const, id: 'LIST' }],
+    }),
+
+    getDomainBlocklists: builder.query<
+      { domainMappingId: string; blocklistIds: string[] },
+      string
+    >({
+      query: (domainMappingId) => `/api/traffic/domains/${domainMappingId}/blocklists`,
+      providesTags: (_result, _error, domainMappingId) => [
+        { type: 'Blocklist' as const, id: `DOMAIN-${domainMappingId}` },
+      ],
+    }),
+
+    syncDomainBlocklists: builder.mutation<
+      { domainMappingId: string; blocklistIds: string[] },
+      { domainMappingId: string; blocklistIds: string[] }
+    >({
+      query: ({ domainMappingId, blocklistIds }) => ({
+        url: `/api/traffic/domains/${domainMappingId}/blocklists`,
+        method: 'PUT',
+        body: { blocklistIds },
+      }),
+      invalidatesTags: (_result, _error, { domainMappingId }) => [
+        { type: 'Blocklist' as const, id: 'LIST' },
+        { type: 'Blocklist' as const, id: `DOMAIN-${domainMappingId}` },
+      ],
+    }),
   }),
 });
 
@@ -184,6 +232,9 @@ export const {
   useCreateBlocklistMutation,
   useUpdateBlocklistMutation,
   useDeleteBlocklistMutation,
+  useAppendBlocklistEntryMutation,
+  useGetDomainBlocklistsQuery,
+  useSyncDomainBlocklistsMutation,
 } = trafficApi;
 
 /**

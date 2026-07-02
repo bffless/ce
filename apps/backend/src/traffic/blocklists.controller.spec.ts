@@ -22,6 +22,9 @@ describe('BlocklistsController', () => {
       createBlocklist: jest.fn(),
       updateBlocklist: jest.fn(),
       deleteBlocklist: jest.fn(),
+      appendEntry: jest.fn(),
+      getDomainBlocklistIds: jest.fn(),
+      syncDomainBlocklists: jest.fn(),
     } as unknown as jest.Mocked<BlocklistService>;
     controller = new BlocklistsController(service);
   });
@@ -36,6 +39,9 @@ describe('BlocklistsController', () => {
       controller.get,
       controller.update,
       controller.remove,
+      controller.appendEntry,
+      controller.getDomainBlocklists,
+      controller.syncDomainBlocklists,
     ]) {
       expect(Reflect.getMetadata(ROLES_KEY, handler)).toEqual(['admin']);
     }
@@ -69,5 +75,24 @@ describe('BlocklistsController', () => {
 
     await controller.remove('b1');
     expect(service.deleteBlocklist).toHaveBeenCalledWith('b1');
+  });
+
+  it('delegates the inline entry append to the service (#393)', async () => {
+    await controller.appendEntry('b1', { matchType: 'prefix', value: '/wp-extra' });
+    expect(service.appendEntry).toHaveBeenCalledWith('b1', {
+      matchType: 'prefix',
+      value: '/wp-extra',
+    });
+  });
+
+  it('delegates domain attachment reads and writes to the service (#393)', async () => {
+    service.getDomainBlocklistIds.mockResolvedValue(['b1']);
+    await expect(controller.getDomainBlocklists('dom-1')).resolves.toEqual({
+      domainMappingId: 'dom-1',
+      blocklistIds: ['b1'],
+    });
+
+    await controller.syncDomainBlocklists('dom-1', { blocklistIds: ['b1', 'b2'] });
+    expect(service.syncDomainBlocklists).toHaveBeenCalledWith('dom-1', ['b1', 'b2']);
   });
 });

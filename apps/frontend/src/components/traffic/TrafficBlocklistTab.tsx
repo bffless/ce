@@ -14,6 +14,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -32,12 +33,14 @@ import {
 import { formatPatternEntries, parsePatternLines } from './blocklist-format';
 
 /**
- * Blocklist configuration on the Traffic page (issue #391): the bot-protection
- * master toggle, the code-shipped Baseline (read-only), and the admin-global
- * library of named Blocklists with their patterns + allowlist exceptions.
+ * Blocklist configuration on the Traffic page (issues #391/#393): the
+ * bot-protection master toggle, the code-shipped Baseline (read-only), and the
+ * admin-global library of named Blocklists with their patterns + allowlist
+ * exceptions. A list applies to all domains by default, or only to the domains
+ * it is attached to (attachment lives in each domain's settings dialog).
  *
- * App-side enforcement takes effect within seconds of saving; edge (nginx)
- * enforcement rides on top in a later slice (#392).
+ * App-side enforcement takes effect within seconds of saving; the edge (nginx)
+ * configs regenerate and hot-reload right behind it (#392).
  */
 export function TrafficBlocklistTab() {
   return (
@@ -133,6 +136,7 @@ interface EditorState {
   id: string | null; // null = creating
   name: string;
   description: string;
+  isDefault: boolean;
   patternsText: string;
   allowlistText: string;
 }
@@ -141,6 +145,7 @@ const emptyEditor = (): EditorState => ({
   id: null,
   name: '',
   description: '',
+  isDefault: true,
   patternsText: '',
   allowlistText: '',
 });
@@ -149,6 +154,7 @@ const editorFor = (list: BlocklistEntry): EditorState => ({
   id: list.id,
   name: list.name,
   description: list.description ?? '',
+  isDefault: list.isDefault,
   patternsText: formatPatternEntries(list.entries),
   allowlistText: formatPatternEntries(list.allowlist),
 });
@@ -179,6 +185,7 @@ function BlocklistLibraryCard() {
     const payload = {
       name: editor.name.trim(),
       description: editor.description.trim() || undefined,
+      isDefault: editor.isDefault,
       entries: parsePatternLines(editor.patternsText),
       allowlist: parsePatternLines(editor.allowlistText),
     };
@@ -190,7 +197,7 @@ function BlocklistLibraryCard() {
       }
       toast({
         title: editor.id === null ? 'Blocklist created' : 'Blocklist updated',
-        description: 'App-side enforcement is live; edge rules follow in a later release.',
+        description: 'App-side enforcement is live; edge rules regenerate right behind it.',
       });
       setEditor(null);
       setEditorErrors([]);
@@ -218,8 +225,8 @@ function BlocklistLibraryCard() {
           <div>
             <CardTitle className="text-base">Blocklists</CardTitle>
             <p className="text-xs text-[#4a4a4a] dark:text-muted-foreground mt-1">
-              Named pattern lists on top of the Baseline. Until per-domain attachment lands, a
-              Blocklist applies to all traffic reaching this instance.
+              Named pattern lists on top of the Baseline. A list applies to all domains, or only
+              to the domains it is attached to — attach lists from a domain&apos;s settings.
             </p>
           </div>
           <Button
@@ -293,6 +300,22 @@ function BlocklistLibraryCard() {
                 legitimate path.
               </p>
             </div>
+            <div className="flex items-start gap-2">
+              <Checkbox
+                id="blocklist-default"
+                checked={editor.isDefault}
+                onCheckedChange={(checked) => setEditor({ ...editor, isDefault: checked === true })}
+              />
+              <div>
+                <Label htmlFor="blocklist-default" className="text-sm cursor-pointer">
+                  Apply to all domains
+                </Label>
+                <p className="text-xs text-[#4a4a4a] dark:text-muted-foreground">
+                  Unchecked, this list only enforces on the domains it is attached to (attach it
+                  from a domain&apos;s settings). Its allowlist exceptions scope the same way.
+                </p>
+              </div>
+            </div>
             {editorErrors.length > 0 && (
               <Alert variant="destructive">
                 <AlertDescription>
@@ -348,6 +371,25 @@ function BlocklistLibraryCard() {
                     {list.allowlist.length > 0 && (
                       <Badge variant="outline" className="text-xs">
                         {list.allowlist.length} exception{list.allowlist.length === 1 ? '' : 's'}
+                      </Badge>
+                    )}
+                    {list.isDefault ? (
+                      <Badge variant="secondary" className="text-xs">
+                        All domains
+                      </Badge>
+                    ) : list.attachedDomains.length > 0 ? (
+                      <Badge
+                        variant="secondary"
+                        className="text-xs"
+                        title={list.attachedDomains.map((d) => d.domain).join(', ')}
+                      >
+                        {list.attachedDomains.length === 1
+                          ? list.attachedDomains[0].domain
+                          : `${list.attachedDomains.length} domains`}
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-xs text-amber-600">
+                        Not attached
                       </Badge>
                     )}
                   </div>

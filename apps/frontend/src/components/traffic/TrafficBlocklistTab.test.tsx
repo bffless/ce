@@ -38,6 +38,8 @@ const makeList = (overrides: Partial<BlocklistEntry> = {}): BlocklistEntry => ({
   id: 'b1',
   name: 'aggressive-scanners',
   description: 'Custom probes seen in the wild',
+  isDefault: true,
+  attachedDomains: [],
   entries: [
     { matchType: 'prefix', value: '/hidden-probe' },
     { matchType: 'extension', value: 'php' },
@@ -101,6 +103,7 @@ describe('TrafficBlocklistTab', () => {
       expect(mockCreate).toHaveBeenCalledWith({
         name: 'my-list',
         description: undefined,
+        isDefault: true,
         entries: [
           { matchType: 'prefix', value: '/hidden-probe' },
           { matchType: 'extension', value: 'php' },

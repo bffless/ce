@@ -253,6 +253,13 @@
       "when": 1783015226726,
       "tag": "0035_lying_shooting_star",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1783024474244,
+      "tag": "0036_stale_hydra",
+      "breakpoints": true
     }
   ]
 }
