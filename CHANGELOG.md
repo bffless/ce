@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.94](https://github.com/bffless/ce/compare/v0.1.93...v0.1.94) (2026-07-02)
+
+
+### Features
+
+* **traffic:** edge enforcement — generated per-domain nginx blocklist rules + reload ([#392](https://github.com/bffless/ce/issues/392)) ([#402](https://github.com/bffless/ce/issues/402)) ([d246db7](https://github.com/bffless/ce/commit/d246db7c6db04ad6ed2537b05a33ce4e66db28b3))
+
 ## [0.1.93](https://github.com/bffless/ce/compare/v0.1.92...v0.1.93) (2026-07-02)
 
 
