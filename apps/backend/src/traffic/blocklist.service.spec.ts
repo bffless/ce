@@ -129,6 +129,66 @@ describe('BlocklistService', () => {
     });
   });
 
+  describe('compiled state + change listeners (edge enforcement, #392)', () => {
+    it('exposes the compiled sources the matcher enforces', async () => {
+      mockDb.__queue([]); // listBlocklists: no lists
+      await service.refresh();
+
+      const state = service.getCompiledState();
+      expect(state.enabled).toBe(true);
+      expect(state.blockSource).toContain('^/wp-admin');
+      expect(state.allowSource).toBeNull();
+    });
+
+    it('does not fire listeners on the initial load or unchanged refreshes', async () => {
+      const listener = jest.fn();
+      service.onEffectiveChange(listener);
+
+      mockDb.__queue([]); // first refresh
+      await service.refresh();
+      mockDb.__queue([]); // identical second refresh (interval re-sync)
+      await service.refresh();
+
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('fires listeners when the effective set changes (mutation or toggle flip)', async () => {
+      const listener = jest.fn();
+      service.onEffectiveChange(listener);
+
+      mockDb.__queue([]); // initial load: Baseline only
+      await service.refresh();
+
+      mockDb.__queue([listRow()]);
+      mockDb.__queue([entryRow()]); // a list appears
+      await service.refresh();
+      expect(listener).toHaveBeenCalledTimes(1);
+
+      featureFlags.isEnabled.mockResolvedValue(false); // toggle flips
+      mockDb.__queue([listRow()]);
+      mockDb.__queue([entryRow()]);
+      await service.refresh();
+      expect(listener).toHaveBeenCalledTimes(2);
+    });
+
+    it('a throwing listener never breaks refresh or the other listeners', async () => {
+      const second = jest.fn();
+      service.onEffectiveChange(() => {
+        throw new Error('boom');
+      });
+      service.onEffectiveChange(second);
+
+      mockDb.__queue([]); // initial load
+      await service.refresh();
+      mockDb.__queue([listRow()]);
+      mockDb.__queue([entryRow()]); // change
+      await service.refresh();
+
+      expect(second).toHaveBeenCalledTimes(1);
+      expect(service.shouldBlock('/custom-probe')).toBe(true);
+    });
+  });
+
   describe('settings', () => {
     it('reports the toggle and Baseline size', async () => {
       const settings = await service.getSettings();

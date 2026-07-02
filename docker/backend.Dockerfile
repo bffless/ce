@@ -32,9 +32,11 @@ RUN pnpm --filter backend build
 # Production stage
 FROM node:20-alpine
 
-# Install pnpm, netcat for health checks, and build tools for native modules
+# Install pnpm, netcat for health checks, and build tools for native modules.
+# nginx is installed ONLY for `nginx -t` validation of generated blocklist
+# rules (EdgeBlocklistService) — it never serves traffic in this container.
 RUN npm install -g pnpm && \
-    apk add --no-cache netcat-openbsd python3 make g++ && \
+    apk add --no-cache netcat-openbsd nginx python3 make g++ && \
     ln -sf python3 /usr/bin/python
 
 WORKDIR /app

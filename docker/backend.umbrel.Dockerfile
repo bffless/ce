@@ -40,7 +40,7 @@ FROM node:20-alpine
 
 # Install pnpm, netcat for health checks, and build tools for native modules
 RUN npm install -g pnpm && \
-    apk add --no-cache netcat-openbsd python3 make g++ && \
+    apk add --no-cache netcat-openbsd nginx python3 make g++ && \
     ln -sf python3 /usr/bin/python
 
 WORKDIR /app

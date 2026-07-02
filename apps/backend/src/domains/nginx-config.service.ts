@@ -5,6 +5,7 @@ import { readFile, writeFile, unlink, access } from 'fs/promises';
 import { join } from 'path';
 import { DomainMapping, AuthTransformConfig } from '../db/schema';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
+import { EdgeBlocklistService } from './edge-blocklist.service';
 
 /**
  * Proxy rule with auth transformation for nginx-level rendering.
@@ -92,6 +93,8 @@ interface TemplateContext {
   backendPort: string;
   listenPort: string;
   createdAt: string;
+  /** Generated edge blocklist rules for each server block (may be empty). */
+  blocklistRules: string;
 }
 
 interface RedirectTemplateContext {
@@ -104,6 +107,8 @@ interface RedirectTemplateContext {
   protocol: 'http' | 'https';
   listenPort: string;
   createdAt: string;
+  /** Generated edge blocklist rules for each server block (may be empty). */
+  blocklistRules: string;
 }
 
 @Injectable()
@@ -116,7 +121,18 @@ export class NginxConfigService implements OnModuleInit {
   constructor(
     private readonly featureFlagsService: FeatureFlagsService,
     private readonly configService: ConfigService,
+    private readonly edgeBlocklistService: EdgeBlocklistService,
   ) {}
+
+  /**
+   * Edge blocklist rules for embedding into a generated server block (#392).
+   * Shaped like the old static scanner block: either '' or a leading-newline
+   * section, so call sites can interpolate it unconditionally.
+   */
+  private buildEdgeBlocklistRules(returnCode: '444' | '403'): string {
+    const rules = this.edgeBlocklistService.getServerRules(returnCode);
+    return rules ? `\n${rules}` : '';
+  }
 
   async onModuleInit() {
     await this.loadTemplates();
@@ -264,6 +280,7 @@ export class NginxConfigService implements OnModuleInit {
       backendPort: this.getBackendPort(),
       listenPort: this.getNginxListenPort(),
       createdAt: domainMapping.createdAt.toISOString(),
+      blocklistRules: this.edgeBlocklistService.getServerRules('444'),
     };
 
     let config = template(context);
@@ -417,11 +434,7 @@ export class NginxConfigService implements OnModuleInit {
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;`;
 
-    const scannerBlock = `
-    # Block vulnerability scanners (403 for Traefik compatibility)
-    if ($block_scanner) {
-        return 403;
-    }`;
+    const scannerBlock = this.buildEdgeBlocklistRules('403');
 
     const errorPages = `
     # Custom error pages
@@ -661,12 +674,7 @@ server {
     # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
-
-    # Block vulnerability scanners (403 for Traefik compatibility)
-    if ($block_scanner) {
-        return 403;
-    }
-
+${this.buildEdgeBlocklistRules('403')}
     # Custom error pages
     error_page 404 /404.html;
     error_page 500 502 503 504 /50x.html;
@@ -860,12 +868,7 @@ ${spaFallback}
 server {
     listen ${this.getNginxListenPort()};
     server_name ${config.domain};
-
-    # Block vulnerability scanners (403 for Traefik compatibility)
-    if ($block_scanner) {
-        return 403;
-    }
-
+${this.buildEdgeBlocklistRules('403')}
     # Health check endpoint (used for DNS verification)
     location /.well-known/health {
         access_log off;
@@ -896,12 +899,7 @@ server {
 server {
     listen ${this.getNginxListenPort()};
     server_name ${config.domain};
-
-    # Block vulnerability scanners
-    if ($block_scanner) {
-        return 444;
-    }
-
+${this.buildEdgeBlocklistRules('444')}
     # Health check endpoint
     location /.well-known/health {
         access_log off;
@@ -927,12 +925,7 @@ server {
     ssl_certificate_key ${sslKeyPath};
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers HIGH:!aNULL:!MD5;
-
-    # Block vulnerability scanners
-    if ($block_scanner) {
-        return 444;
-    }
-
+${this.buildEdgeBlocklistRules('444')}
     # Redirect all traffic to target domain (HTTPS)
     location / {
         return ${redirectType} https://${config.redirectTarget}$request_uri;
@@ -1019,12 +1012,8 @@ ${httpServerBlock}${httpsServerBlock}
     add_header X-Content-Type-Options "nosniff" always;
     add_header Link "<https://${canonicalDomain}$request_uri>; rel=\\"canonical\\"" always;`;
 
-    // Block vulnerability scanners (403 for Traefik compatibility)
-    const scannerBlock = `
-    # Block vulnerability scanners (403 for Traefik compatibility)
-    if ($block_scanner) {
-        return 403;
-    }`;
+    // Edge blocklist rules (403 for Traefik compatibility)
+    const scannerBlock = this.buildEdgeBlocklistRules('403');
 
     // Error page configuration
     const errorPages = `
@@ -1217,11 +1206,7 @@ ${serverBlocks}`;
     add_header X-Content-Type-Options "nosniff" always;
     add_header Link "<https://${canonicalDomain}$request_uri>; rel=\\"canonical\\"" always;`;
 
-    const scannerBlock = `
-    # Block vulnerability scanners (drop connection silently)
-    if ($block_scanner) {
-        return 444;
-    }`;
+    const scannerBlock = this.buildEdgeBlocklistRules('444');
 
     const errorPages = `
     # Custom error pages
@@ -1438,12 +1423,7 @@ ${proxyRulesComment}${serverBlocks}`;
 server {
     listen ${this.getNginxListenPort()};
     server_name ${baseDomain} www.${baseDomain};
-
-    # Block vulnerability scanners (403 for Traefik compatibility)
-    if ($block_scanner) {
-        return 403;
-    }
-
+${this.buildEdgeBlocklistRules('403')}
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-XSS-Protection "1; mode=block" always;
@@ -1548,12 +1528,7 @@ server {
     ssl_certificate_key /etc/nginx/ssl/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers HIGH:!aNULL:!MD5;
-
-    # Block vulnerability scanners (drop connection silently)
-    if ($block_scanner) {
-        return 444;
-    }
-
+${this.buildEdgeBlocklistRules('444')}
     add_header Cache-Control "no-cache, no-store, must-revalidate" always;
     add_header Pragma "no-cache" always;
     return 301 https://www.${baseDomain}$request_uri;
@@ -1573,12 +1548,7 @@ server {
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-Cache-Hit "none" always;
-
-    # Block vulnerability scanners (drop connection silently)
-    if ($block_scanner) {
-        return 444;
-    }
-
+${this.buildEdgeBlocklistRules('444')}
     location / {
         default_type text/html;
         return 200 '<!DOCTYPE html>
@@ -1698,6 +1668,9 @@ server {
       protocol: sslEnabled ? 'https' : 'http',
       listenPort: this.getNginxListenPort(),
       createdAt: new Date().toISOString(),
+      blocklistRules: this.edgeBlocklistService.getServerRules(
+        this.shouldNginxHandleSsl() ? '444' : '403',
+      ),
     });
   }
 

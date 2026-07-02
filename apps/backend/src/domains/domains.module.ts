@@ -14,10 +14,12 @@ import { SslCertificateService } from './ssl-certificate.service';
 import { SslInfoService } from './ssl-info.service';
 import { SslRenewalService } from './ssl-renewal.service';
 import { VisibilityService } from './visibility.service';
+import { EdgeBlocklistService } from './edge-blocklist.service';
 import { ProjectsModule } from '../projects/projects.module';
 import { FeatureFlagsModule } from '../feature-flags/feature-flags.module';
 import { ProxyRulesModule } from '../proxy-rules/proxy-rules.module';
 import { PermissionsModule } from '../permissions/permissions.module';
+import { TrafficModule } from '../traffic/traffic.module';
 
 @Module({
   imports: [
@@ -26,6 +28,7 @@ import { PermissionsModule } from '../permissions/permissions.module';
     FeatureFlagsModule,
     forwardRef(() => ProxyRulesModule),
     PermissionsModule,
+    TrafficModule,
   ],
   controllers: [DomainsController],
   providers: [
@@ -38,6 +41,7 @@ import { PermissionsModule } from '../permissions/permissions.module';
     NginxReloadService,
     NginxStartupService,
     NginxRegenerationService,
+    EdgeBlocklistService,
     SslCertificateService,
     SslInfoService,
     SslRenewalService,

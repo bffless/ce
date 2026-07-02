@@ -51,6 +51,17 @@ export interface BlocklistSettings {
 }
 
 /**
+ * The compiled effective set, as consumed by edge enforcement (#392): the
+ * same regex sources the in-memory matcher enforces app-side, plus the
+ * toggle. Sources are null when there is nothing to block/allow.
+ */
+export interface CompiledBlocklistState {
+  enabled: boolean;
+  blockSource: string | null;
+  allowSource: string | null;
+}
+
+/**
  * The Blocklist library + app-side enforcement authority (issue #391).
  *
  * Owns the admin-global library of named Blocklists and keeps an in-memory
@@ -73,10 +84,38 @@ export class BlocklistService implements OnModuleInit {
   private matcher: CompiledBlocklistMatcher = buildBlocklistMatcher(BASELINE_BLOCKLIST_ENTRIES, []);
   private enabled = true;
 
+  /** Fingerprint of the last compiled state; null until the first refresh. */
+  private lastFingerprint: string | null = null;
+  private readonly changeListeners: Array<() => void> = [];
+
   constructor(private readonly featureFlags: FeatureFlagsService) {}
 
   async onModuleInit(): Promise<void> {
     await this.refresh();
+  }
+
+  /**
+   * The compiled effective set for edge enforcement (#392). Same in-memory
+   * state shouldBlock() enforces, so app and edge can never disagree about
+   * what the effective rules are.
+   */
+  getCompiledState(): CompiledBlocklistState {
+    return {
+      enabled: this.enabled,
+      blockSource: this.matcher.blockSource,
+      allowSource: this.matcher.allowSource,
+    };
+  }
+
+  /**
+   * Register a listener fired whenever a refresh lands a DIFFERENT effective
+   * set (toggle flip, list mutation, or interval re-sync picking up another
+   * replica's change). Not fired for the initial load — startup config
+   * regeneration reads the state directly. Listener errors are logged, never
+   * propagated into refresh().
+   */
+  onEffectiveChange(listener: () => void): void {
+    this.changeListeners.push(listener);
   }
 
   /**
@@ -117,9 +156,26 @@ export class BlocklistService implements OnModuleInit {
 
       this.matcher = buildBlocklistMatcher(blockEntries, allowEntries);
       this.enabled = enabled;
+
+      const fingerprint = `${enabled}|${this.matcher.blockSource ?? ''}|${this.matcher.allowSource ?? ''}`;
+      const changed = this.lastFingerprint !== null && this.lastFingerprint !== fingerprint;
+      this.lastFingerprint = fingerprint;
+      if (changed) {
+        this.notifyEffectiveChange();
+      }
     } catch (error) {
       // Keep the last good matcher; never let a refresh failure break serving.
       this.logger.error(`Blocklist refresh failed: ${String(error)}`);
+    }
+  }
+
+  private notifyEffectiveChange(): void {
+    for (const listener of this.changeListeners) {
+      try {
+        listener();
+      } catch (error) {
+        this.logger.error(`Blocklist change listener failed: ${String(error)}`);
+      }
     }
   }
 

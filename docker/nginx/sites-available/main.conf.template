@@ -3,11 +3,6 @@ server {
     listen 80;
     server_name _;
 
-    # Block scanners even on HTTP (before redirect)
-    if ($block_scanner) {
-        return 444;
-    }
-
     # HTTP action (redirect to HTTPS or drop connection based on PROXY_MODE)
     ${PORT80_ACTION}
 }
@@ -30,11 +25,6 @@ server {
     ssl_prefer_server_ciphers on;
 
     # Security headers are set by the NestJS backend (SecurityHeadersMiddleware)
-
-    # Block vulnerability scanners (drop connection silently)
-    if ($block_scanner) {
-        return 444;
-    }
 
     # Extract subdomain from host header
     # e.g., ca996e-wsaopens-a7f3-7d2f.example.com -> ca996e-wsaopens-a7f3-7d2f
@@ -120,11 +110,6 @@ server {
 
     # Allow large file uploads
     client_max_body_size 100M;
-
-    # Block vulnerability scanners (drop connection silently)
-    if ($block_scanner) {
-        return 444;
-    }
 
     # Proxy MCP (Model Context Protocol) requests to backend
     location /mcp {
