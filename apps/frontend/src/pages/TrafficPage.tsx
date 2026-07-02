@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { TrafficBlocklistTab } from '@/components/traffic/TrafficBlocklistTab';
 import { TrafficHistoryTab } from '@/components/traffic/TrafficHistoryTab';
 import { TrafficRollupTab } from '@/components/traffic/TrafficRollupTab';
 import { statusColorClass } from '@/components/traffic/traffic-format';
@@ -24,7 +25,7 @@ export interface TrafficStreamEvent {
   referer: string | null;
   userAgent: string | null;
   host: string | null;
-  classification: 'matched' | 'unmatched';
+  classification: 'matched' | 'unmatched' | 'blocked';
   line: string;
 }
 
@@ -37,11 +38,11 @@ const MAX_EVENTS = 1000;
 const WRAP_LINES_STORAGE_KEY = 'bffless.traffic.wrapLines';
 
 /**
- * Default view: only the signal (Unmatched requests and 4xx/5xx responses).
- * "Show all" reveals the 200-OK asset firehose too.
+ * Default view: only the signal (Unmatched/blocked requests and 4xx/5xx
+ * responses). "Show all" reveals the 200-OK asset firehose too.
  */
 export function isSignalEvent(event: TrafficStreamEvent): boolean {
-  return event.classification === 'unmatched' || event.status >= 400;
+  return event.classification !== 'matched' || event.status >= 400;
 }
 
 export function TrafficPage() {
@@ -67,6 +68,7 @@ export function TrafficPage() {
           <TabsTrigger value="live">Live</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
           <TabsTrigger value="rollup">By IP</TabsTrigger>
+          <TabsTrigger value="blocklist">Blocklist</TabsTrigger>
         </TabsList>
         {/* forceMount keeps the live tail mounted (hidden) across tab switches,
             so the SSE connection and accumulated events survive visiting
@@ -79,6 +81,9 @@ export function TrafficPage() {
         </TabsContent>
         <TabsContent value="rollup">
           <TrafficRollupTab />
+        </TabsContent>
+        <TabsContent value="blocklist">
+          <TrafficBlocklistTab />
         </TabsContent>
       </Tabs>
     </div>
@@ -196,6 +201,11 @@ export function LiveTrafficTab() {
               >
                 {event.classification === 'unmatched' && (
                   <span className="text-[#d96459] mr-1" title="Unmatched request">
+                    ●
+                  </span>
+                )}
+                {event.classification === 'blocked' && (
+                  <span className="text-purple-400 mr-1" title="Blocked by Blocklist">
                     ●
                   </span>
                 )}

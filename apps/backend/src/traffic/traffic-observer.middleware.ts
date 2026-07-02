@@ -7,25 +7,64 @@ import { TrafficEventsService } from './traffic-events.service';
 /** The SSE live-tail endpoint itself must not feed the stream it serves. */
 const OBSERVER_EXEMPT_PATHS = ['/api/traffic/stream'];
 
+/**
+ * The app's own control surfaces are never Blocklist-enforced: an admin must
+ * always be able to reach the API that turns bot protection off, and auth
+ * must keep working. These are still observed. Content-domain traffic is
+ * unaffected — nginx rewrites it to /public/... before it reaches the app.
+ */
+const ENFORCEMENT_EXEMPT_PREFIXES = ['/api/', '/auth/'];
+
+/** What the middleware needs from BlocklistService (kept as an interface so
+ *  the middleware stays constructible without Nest in tests). */
+export interface BlocklistEnforcer {
+  shouldBlock(pathname: string): boolean;
+}
+
 let eventCounter = 0;
 
 /**
- * The application interceptor's observation seam (ADR-0003).
+ * The client-visible path for enforcement. Content requests are rewritten by
+ * nginx (e.g. /wp-login.php -> /public/{owner}/{repo}/alias/{alias}/wp-login.php)
+ * with the original URI preserved in X-Original-URI — the Blocklist matches
+ * what the client asked for, not the internal rewrite. Query strings are not
+ * matched.
+ */
+function clientVisiblePath(req: Request): string {
+  const header = req.headers['x-original-uri'];
+  const raw = typeof header === 'string' && header.startsWith('/') ? header : req.originalUrl;
+  const queryStart = raw.indexOf('?');
+  return queryStart === -1 ? raw : raw.slice(0, queryStart);
+}
+
+/**
+ * The application interceptor's observation + enforcement seam (ADR-0003).
  *
  * Installed with `app.use()` in main.ts — ABOVE all Nest module middleware —
  * so it observes every request that reaches the app, including ones
  * short-circuited by ProxyMiddleware or answered by guards/filters, in every
- * topology (docker-compose and GKE). It never alters a response; it counts
- * response bytes and publishes a TrafficEvent when the response finishes.
+ * topology (docker-compose and GKE). It counts response bytes and publishes a
+ * TrafficEvent when the response finishes.
  *
- * Classification: a 404 response means the request resolved to no deployment,
- * alias, or asset — an Unmatched request. Everything else is matched.
+ * Since #391 it is also the app-side Blocklist authority: a blocklisted
+ * request is refused with a bare 403 (empty body — the same no-detail
+ * discipline as the generic 404) BEFORE next(), and its event is classified
+ * 'blocked'. For everything else, classification derives from the response
+ * status: 404 means the request resolved to no deployment, alias, or asset —
+ * an Unmatched request.
  */
-export function createTrafficObserver(events: TrafficEventsService) {
+export function createTrafficObserver(events: TrafficEventsService, blocklist?: BlocklistEnforcer) {
   return function trafficObserver(req: Request, res: Response, next: NextFunction): void {
     if (OBSERVER_EXEMPT_PATHS.some((p) => req.path === p)) {
       return next();
     }
+
+    const blocked =
+      blocklist !== undefined &&
+      !ENFORCEMENT_EXEMPT_PREFIXES.some(
+        (prefix) => req.path.startsWith(prefix) || req.path === prefix.slice(0, -1),
+      ) &&
+      blocklist.shouldBlock(clientVisiblePath(req));
 
     let bytes = 0;
     const countChunk = (chunk: unknown, encoding?: unknown): void => {
@@ -63,10 +102,17 @@ export function createTrafficObserver(events: TrafficEventsService) {
         referer: (req.headers.referer as string) || null,
         userAgent: (req.headers['user-agent'] as string) || null,
         host: (req.headers['x-forwarded-host'] as string) || req.headers.host || null,
-        classification: res.statusCode === 404 ? 'unmatched' : 'matched',
+        classification: blocked ? 'blocked' : res.statusCode === 404 ? 'unmatched' : 'matched',
       };
       events.emit({ ...withoutLine, line: formatAccessLogLine(withoutLine) });
     });
+
+    if (blocked) {
+      // Bare 403, empty body: a scanner learns nothing, and the app does not
+      // attempt to replicate nginx's 444 socket-close.
+      res.status(403).end();
+      return;
+    }
 
     next();
   };

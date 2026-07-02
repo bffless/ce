@@ -214,6 +214,8 @@ export const api = createApi({
     'MyProjects',
     'TrafficRequest',
     'TrafficIpRollup',
+    'Blocklist',
+    'BlocklistSettings',
   ],
   endpoints: () => ({}),
 });
