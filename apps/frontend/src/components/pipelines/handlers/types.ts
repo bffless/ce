@@ -138,6 +138,12 @@ export interface AIHandlerConfig extends BaseHandlerConfig {
   systemPrompt?: string;
   /** [Completion mode] Message template. Supports {{steps.form.field}} syntax. Default: 'message' */
   messageField?: string;
+  /**
+   * [Completion mode] Attachments for the user message. Each source is an
+   * expression resolving to a URL or an array of URLs (arrays fan out into
+   * one part per URL). mediaType is required for type 'file'.
+   */
+  attachments?: Array<{ type: 'image' | 'file'; source: string; mediaType?: string }>;
   /** [Chat mode] Field in input containing conversation history. Default: 'messages' */
   messagesField?: string;
   /** Maximum number of history messages to include. Default: 50 */
