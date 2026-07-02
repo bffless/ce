@@ -643,7 +643,7 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
           totalTokens: finishData.usage?.totalTokens || 0,
         },
         finishReason: finishData.finishReason,
-        resolvedMessages: messages.map((m) => ({ role: m.role, content: m.content })),
+        resolvedMessages: this.toResolvedMessages(messages),
       },
       terminates: true, // Pipeline should not continue, response already sent
     };
@@ -734,7 +734,7 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
         // Include tool call info if any tools were called
         ...(toolCalls?.length && { toolCalls }),
         ...(toolResults?.length && { toolResults }),
-        resolvedMessages: messages.map((m) => ({ role: m.role, content: m.content })),
+        resolvedMessages: this.toResolvedMessages(messages),
       },
     };
   }
@@ -1141,6 +1141,27 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
     }
 
     return data;
+  }
+
+  /**
+   * Echo messages for step output with URL parts flattened to strings so
+   * the redaction pass (which only traverses plain data) can scrub them.
+   */
+  private toResolvedMessages(messages: ModelMessage[]) {
+    return messages.map((m) => ({
+      role: m.role,
+      content: Array.isArray(m.content)
+        ? m.content.map((part: any) => {
+            if (part?.type === 'image' && part.image instanceof URL) {
+              return { ...part, image: part.image.toString() };
+            }
+            if (part?.type === 'file' && part.data instanceof URL) {
+              return { ...part, data: part.data.toString() };
+            }
+            return part;
+          })
+        : m.content,
+    }));
   }
 
   // ===== Plugin Helper Methods =====

@@ -202,4 +202,28 @@ describe('AIHandler.execute — completion attachments', () => {
     expect(result.error?.code).toBe('ATTACHMENT_ERROR');
     expect(generateText).not.toHaveBeenCalled();
   });
+
+  it('echoes resolvedMessages with URL parts flattened to plain strings (redactable)', async () => {
+    const { handler } = createHandler();
+    const context = createContext({
+      prep: { prompt: 'refine this' },
+      collect: { images: ['https://x.test/a.png?token=secret123'] },
+    });
+
+    const result = await handler.execute(
+      context,
+      completionStep({
+        messageField: 'steps.prep.prompt',
+        attachments: [{ type: 'image', source: 'steps.collect.images' }],
+      }),
+    );
+
+    const resolved = (result.output as any).resolvedMessages;
+    const userMessage = resolved.find((m: { role: string }) => m.role === 'user');
+    expect(userMessage.content[1]).toEqual({
+      type: 'image',
+      image: 'https://x.test/a.png?token=secret123',
+    });
+    expect(typeof userMessage.content[1].image).toBe('string');
+  });
 });
