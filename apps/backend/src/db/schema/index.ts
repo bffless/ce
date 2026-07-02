@@ -38,3 +38,5 @@ export * from './pipeline-execution-logs.schema';
 export * from './response-header-rules.schema';
 export * from './oidc-providers.schema';
 export * from './google-integration-credentials.schema';
+export * from './traffic-requests.schema';
+export * from './traffic-ip-rollups.schema';

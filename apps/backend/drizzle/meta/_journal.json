@@ -239,6 +239,13 @@
       "when": 1782853348877,
       "tag": "0033_dazzling_spitfire",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1782993567563,
+      "tag": "0034_shiny_sandman",
+      "breakpoints": true
     }
   ]
 }
