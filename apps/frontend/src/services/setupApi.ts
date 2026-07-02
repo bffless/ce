@@ -537,6 +537,16 @@ export const setupApi = api.injectEndpoints({
       invalidatesTags: ['Setup'],
     }),
 
+    // Update credentials for the current storage provider in place (no migration)
+    updateStorageCredentials: builder.mutation<StorageConfigResponse, ConfigureStorageRequest>({
+      query: (body) => ({
+        url: '/api/setup/storage/credentials',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['Setup'],
+    }),
+
     // Test storage connection
     testStorage: builder.mutation<TestStorageResponse, void>({
       query: () => ({
@@ -712,6 +722,7 @@ export const {
   useAdoptExistingUserMutation,
   useAdoptSessionUserMutation,
   useConfigureStorageMutation,
+  useUpdateStorageCredentialsMutation,
   useTestStorageMutation,
   useGetEnvStorageConfigQuery,
   useGetCurrentStorageConfigQuery,

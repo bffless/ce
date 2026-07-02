@@ -17,6 +17,7 @@ describe('SetupController', () => {
             getSetupStatus: jest.fn(),
             initialize: jest.fn(),
             configureStorage: jest.fn(),
+            updateStorageCredentials: jest.fn(),
             testStorageConnection: jest.fn(),
             completeSetup: jest.fn(),
           },

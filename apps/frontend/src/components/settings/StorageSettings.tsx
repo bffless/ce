@@ -11,6 +11,8 @@ import {
 import { useGetMigrationJobQuery } from '@/services/migrationApi';
 import { MigrationWizard } from '@/components/storage/MigrationWizard';
 import { MigrationProgress } from '@/components/storage/MigrationProgress';
+import { EditStorageCredentials } from '@/components/storage/EditStorageCredentials';
+import type { StorageProvider } from '@/services/setupApi';
 import {
   Database,
   HardDrive,
@@ -22,6 +24,7 @@ import {
   Globe,
   AlertTriangle,
   Shield,
+  KeyRound,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
@@ -54,6 +57,7 @@ const getProviderDisplayName = (
 
 export function StorageSettings() {
   const [showMigrationWizard, setShowMigrationWizard] = useState(false);
+  const [showEditCredentials, setShowEditCredentials] = useState(false);
   const { data: setupStatus, isLoading: isLoadingStatus } = useGetSetupStatusQuery();
   const { data: storageConfig, isLoading: isLoadingConfig } = useGetCurrentStorageConfigQuery();
   const { data: migrationJob } = useGetMigrationJobQuery();
@@ -82,6 +86,12 @@ export function StorageSettings() {
   };
 
   const canMigrate = getAvailableProviderCount() > 1;
+
+  // Credential editing applies only to providers that actually have credentials.
+  // Managed storage is platform-provided, and local filesystem has none.
+  const currentProviderRaw = setupStatus?.storageProvider;
+  const canEditCredentials =
+    !!currentProviderRaw && ['s3', 'minio', 'gcs', 'azure'].includes(currentProviderRaw);
 
   // Only poll when there's an active migration
   const hasMigrationInProgress =
@@ -146,6 +156,18 @@ export function StorageSettings() {
           />
         </CardContent>
       </Card>
+    );
+  }
+
+  // Show the edit-credentials panel if active
+  if (showEditCredentials) {
+    return (
+      <EditStorageCredentials
+        currentProvider={currentProvider as StorageProvider}
+        currentConfig={storageConfig}
+        onDone={() => setShowEditCredentials(false)}
+        onCancel={() => setShowEditCredentials(false)}
+      />
     );
   }
 
@@ -318,25 +340,44 @@ export function StorageSettings() {
           )}
         </div>
 
+        {/* Rotate credentials for the current provider (no data migration) */}
+        {canEditCredentials && (
+          <Alert>
+            <KeyRound className="h-4 w-4" />
+            <AlertDescription>
+              Rotated an access key or need to update your connection details? Edit the credentials
+              for your current provider in place — no data is moved.
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Migration Info - only show if migration is possible */}
         {canMigrate && (
-          <>
-            <Alert>
-              <ArrowRightLeft className="h-4 w-4" />
-              <AlertDescription>
-                Need to switch storage providers? Use the migration wizard to safely copy all your
-                files to a new provider before switching.
-              </AlertDescription>
-            </Alert>
+          <Alert>
+            <ArrowRightLeft className="h-4 w-4" />
+            <AlertDescription>
+              Need to switch storage providers? Use the migration wizard to safely copy all your
+              files to a new provider before switching.
+            </AlertDescription>
+          </Alert>
+        )}
 
-            {/* Migration Button */}
-            <div className="flex justify-end">
+        {/* Actions */}
+        {(canEditCredentials || canMigrate) && (
+          <div className="flex justify-end gap-2">
+            {canEditCredentials && (
+              <Button variant="outline" onClick={() => setShowEditCredentials(true)}>
+                <KeyRound className="h-4 w-4 mr-2" />
+                Edit Credentials
+              </Button>
+            )}
+            {canMigrate && (
               <Button onClick={() => setShowMigrationWizard(true)}>
                 <ArrowRightLeft className="h-4 w-4 mr-2" />
                 Migrate Storage
               </Button>
-            </div>
-          </>
+            )}
+          </div>
         )}
       </CardContent>
     </Card>

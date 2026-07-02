@@ -243,6 +243,36 @@ export class SetupController {
     return this.setupService.configureStorage(dto);
   }
 
+  @Post('storage/credentials')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles('admin')
+  @ApiOperation({
+    summary: 'Update storage credentials in place',
+    description:
+      'Update the credentials / connection details for the CURRENT storage provider (e.g. rotate an ' +
+      'AWS access key) without migrating data. Admin only. Fields left out of the request keep their ' +
+      'existing value (so a secret can be left blank to preserve it). The new credentials are validated ' +
+      'with a live connection test before anything is saved, and provider changes are rejected — use ' +
+      'storage migration to switch providers.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Storage credentials updated successfully',
+    type: StorageConfigResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid credentials, connection test failed, or a provider change was attempted',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
+  async updateStorageCredentials(
+    @Body() dto: ConfigureStorageDto,
+  ): Promise<StorageConfigResponseDto> {
+    return this.setupService.updateStorageCredentials(dto);
+  }
+
   @Post('test-storage')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

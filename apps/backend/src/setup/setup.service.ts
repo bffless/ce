@@ -540,62 +540,9 @@ export class SetupService {
 
       this.logger.log(`Storage connection test passed for ${config.storageProvider}`);
 
-      // Swap the dynamic adapter to use the new storage configuration
-      // This allows the app to use the new storage without restarting
-      try {
-        // Prefer injected instance, fall back to moduleRef
-        let dynamicAdapter = this.dynamicStorageAdapter;
-        if (dynamicAdapter) {
-          this.logger.log(
-            `Using injected DynamicStorageAdapter [${dynamicAdapter.getInstanceId()}]`,
-          );
-        } else {
-          this.logger.log('No injected adapter, attempting moduleRef.get()...');
-          dynamicAdapter = this.moduleRef.get<DynamicStorageAdapter>(DYNAMIC_STORAGE_ADAPTER, {
-            strict: false,
-          });
-          this.logger.log(
-            `moduleRef.get() returned: ${dynamicAdapter ? 'instance' : 'null/undefined'}`,
-          );
-        }
-
-        if (dynamicAdapter) {
-          this.logger.log(
-            `Found DynamicStorageAdapter instance [${dynamicAdapter.getInstanceId()}], current adapter: ${dynamicAdapter.getAdapterType()}`,
-          );
-          const mappedConfig = await this.getStorageConfig();
-          // Add keyPrefix for workspace isolation (PaaS deployments)
-          const keyPrefix = this.getManagedStoragePrefix();
-          const configWithPrefix = keyPrefix ? { ...mappedConfig, keyPrefix } : mappedConfig;
-          // Managed storage uses S3 adapter under the hood
-          const effectiveStorageType =
-            config.storageProvider === StorageProvider.MANAGED ? 's3' : config.storageProvider;
-          let newAdapter = StorageModule.createAdapter({
-            storageType: effectiveStorageType as 'local' | 'minio' | 's3' | 'gcs' | 'azure',
-            config: configWithPrefix,
-          });
-
-          // Wrap with caching layer if cache adapter is available
-          const cacheConfig = await this.getCacheConfig();
-          if (this.cacheAdapter && cacheConfig.enabled !== false) {
-            this.logger.log('Wrapping storage adapter with caching layer');
-            newAdapter = new CachingStorageAdapter(newAdapter, this.cacheAdapter, cacheConfig);
-          }
-
-          dynamicAdapter.setAdapter(newAdapter);
-          this.logger.log(
-            `Storage adapter swapped to ${config.storageProvider} on instance [${dynamicAdapter.getInstanceId()}] (no restart needed)`,
-          );
-        } else {
-          this.logger.warn(
-            'DynamicStorageAdapter not available (null/undefined) - storage will be updated on next restart',
-          );
-        }
-      } catch (err) {
-        this.logger.error(`Failed to get DynamicStorageAdapter: ${err.message}`);
-        this.logger.error(err.stack);
-        this.logger.warn('Storage will be updated on next restart');
-      }
+      // Swap the dynamic adapter to use the (now persisted) storage configuration
+      // so the change takes effect without restarting.
+      await this.swapDynamicStorageAdapter();
 
       return {
         success: true,
@@ -608,6 +555,172 @@ export class SetupService {
         message: 'Storage connection test failed',
         error: error.message,
       };
+    }
+  }
+
+  /**
+   * Swap the runtime DynamicStorageAdapter to the currently-persisted storage
+   * configuration, so a credential/provider change takes effect without a restart.
+   *
+   * Best-effort: if the adapter can't be resolved, it logs and returns — the new
+   * config is already saved and will be picked up on the next restart.
+   */
+  private async swapDynamicStorageAdapter(): Promise<void> {
+    const config = await this.getSystemConfig();
+    if (!config || !config.storageProvider) {
+      this.logger.warn('Cannot swap storage adapter - storage is not configured');
+      return;
+    }
+
+    try {
+      // Prefer injected instance, fall back to moduleRef
+      let dynamicAdapter = this.dynamicStorageAdapter;
+      if (dynamicAdapter) {
+        this.logger.log(`Using injected DynamicStorageAdapter [${dynamicAdapter.getInstanceId()}]`);
+      } else {
+        this.logger.log('No injected adapter, attempting moduleRef.get()...');
+        dynamicAdapter = this.moduleRef.get<DynamicStorageAdapter>(DYNAMIC_STORAGE_ADAPTER, {
+          strict: false,
+        });
+        this.logger.log(
+          `moduleRef.get() returned: ${dynamicAdapter ? 'instance' : 'null/undefined'}`,
+        );
+      }
+
+      if (dynamicAdapter) {
+        this.logger.log(
+          `Found DynamicStorageAdapter instance [${dynamicAdapter.getInstanceId()}], current adapter: ${dynamicAdapter.getAdapterType()}`,
+        );
+        const mappedConfig = await this.getStorageConfig();
+        // Add keyPrefix for workspace isolation (PaaS deployments)
+        const keyPrefix = this.getManagedStoragePrefix();
+        const configWithPrefix = keyPrefix ? { ...mappedConfig, keyPrefix } : mappedConfig;
+        // Managed storage uses S3 adapter under the hood
+        const effectiveStorageType =
+          config.storageProvider === StorageProvider.MANAGED ? 's3' : config.storageProvider;
+        let newAdapter = StorageModule.createAdapter({
+          storageType: effectiveStorageType as 'local' | 'minio' | 's3' | 'gcs' | 'azure',
+          config: configWithPrefix,
+        });
+
+        // Wrap with caching layer if cache adapter is available
+        const cacheConfig = await this.getCacheConfig();
+        if (this.cacheAdapter && cacheConfig.enabled !== false) {
+          this.logger.log('Wrapping storage adapter with caching layer');
+          newAdapter = new CachingStorageAdapter(newAdapter, this.cacheAdapter, cacheConfig);
+        }
+
+        dynamicAdapter.setAdapter(newAdapter);
+        this.logger.log(
+          `Storage adapter swapped to ${config.storageProvider} on instance [${dynamicAdapter.getInstanceId()}] (no restart needed)`,
+        );
+      } else {
+        this.logger.warn(
+          'DynamicStorageAdapter not available (null/undefined) - storage will be updated on next restart',
+        );
+      }
+    } catch (err) {
+      this.logger.error(`Failed to get DynamicStorageAdapter: ${err.message}`);
+      this.logger.error(err.stack);
+      this.logger.warn('Storage will be updated on next restart');
+    }
+  }
+
+  /**
+   * Update the credentials / connection details for the CURRENT storage provider
+   * in place (e.g. rotating an AWS access key) without migrating any data.
+   *
+   * Unlike {@link configureStorage}, this is allowed *after* setup is complete, but
+   * it is deliberately restricted to the provider already in use — switching to a
+   * different provider still goes through the migration flow so files are copied first.
+   *
+   * Behaviour:
+   * - Merges the submitted fields over the existing config, so fields the caller
+   *   doesn't send (e.g. `forcePathStyle`, or an unchanged secret left blank) are
+   *   preserved rather than wiped.
+   * - Connection-tests the merged config BEFORE persisting, so a bad credential can
+   *   never lock the instance out of its own storage.
+   * - Hot-swaps the runtime adapter so the change applies without a restart.
+   */
+  async updateStorageCredentials(dto: ConfigureStorageDto): Promise<StorageConfigResponseDto> {
+    const config = await this.getSystemConfig();
+    if (!config || !config.storageProvider || !config.storageConfig) {
+      throw new BadRequestException(
+        'Storage is not configured yet. Complete setup before editing credentials.',
+      );
+    }
+
+    if (config.storageProvider === StorageProvider.MANAGED) {
+      throw new BadRequestException(
+        'Managed storage uses platform-provided credentials and cannot be edited here.',
+      );
+    }
+
+    if (dto.storageProvider !== config.storageProvider) {
+      throw new BadRequestException(
+        `Cannot change the storage provider here. This only updates credentials for the current ` +
+          `provider (${config.storageProvider}). To switch to ${dto.storageProvider}, use storage ` +
+          `migration so your files are copied to the new provider first.`,
+      );
+    }
+
+    // Merge new values over the existing config so untouched fields (and secrets
+    // left blank to keep the current value) are preserved.
+    let existingConfig: Record<string, unknown>;
+    try {
+      existingConfig = JSON.parse(this.decryptData(config.storageConfig));
+    } catch (error) {
+      this.logger.error('Error decrypting existing storage config:', error);
+      throw new InternalServerErrorException('Failed to read existing storage configuration');
+    }
+    const mergedConfig = {
+      ...existingConfig,
+      ...(dto.config as unknown as Record<string, unknown>),
+    };
+
+    // Validate the merged configuration for this provider
+    this.validateStorageConfig(dto.storageProvider, mergedConfig);
+
+    // Verify the new credentials actually work BEFORE persisting anything.
+    try {
+      const adapter = await this.createStorageAdapter(dto.storageProvider, mergedConfig);
+      const connected = await adapter.testConnection();
+      if (!connected) {
+        throw new BadRequestException(
+          'Could not connect to storage with the provided credentials. No changes were saved.',
+        );
+      }
+    } catch (error) {
+      if (error instanceof BadRequestException) throw error;
+      throw new BadRequestException(
+        `Could not connect to storage with the provided credentials: ${error.message}. ` +
+          'No changes were saved.',
+      );
+    }
+
+    try {
+      const encryptedConfig = this.encryptData(JSON.stringify(mergedConfig));
+      await db
+        .update(systemConfig)
+        .set({
+          storageConfig: encryptedConfig,
+          updatedAt: new Date(),
+        })
+        .where(eq(systemConfig.id, config.id));
+
+      this.logger.log(`Storage credentials updated for provider: ${dto.storageProvider}`);
+
+      // Apply the new credentials to the running app without a restart.
+      await this.swapDynamicStorageAdapter();
+
+      return {
+        message: 'Storage credentials updated successfully',
+        storageProvider: dto.storageProvider,
+      };
+    } catch (error) {
+      if (error instanceof BadRequestException) throw error;
+      this.logger.error('Error updating storage credentials:', error);
+      throw new InternalServerErrorException('Failed to update storage credentials');
     }
   }
 
