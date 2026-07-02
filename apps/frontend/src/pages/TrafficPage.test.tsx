@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
-import { TrafficPage, isSignalEvent, type TrafficStreamEvent } from './TrafficPage';
+import { MemoryRouter } from 'react-router-dom';
+import { TrafficPage, LiveTrafficTab, isSignalEvent, type TrafficStreamEvent } from './TrafficPage';
 
 // Radix Switch doesn't play well with happy-dom; stub it like other page tests do
 vi.mock('@/components/ui/switch', () => ({
@@ -13,6 +14,15 @@ vi.mock('@/components/ui/switch', () => ({
       onChange={(e) => onCheckedChange(e.target.checked)}
     />
   ),
+}));
+
+// The History/Rollup tabs have their own tests; stub them so TrafficPage tests
+// don't need the RTK Query store.
+vi.mock('@/components/traffic/TrafficHistoryTab', () => ({
+  TrafficHistoryTab: () => <div>HISTORY-TAB-CONTENT</div>,
+}));
+vi.mock('@/components/traffic/TrafficRollupTab', () => ({
+  TrafficRollupTab: () => <div>ROLLUP-TAB-CONTENT</div>,
 }));
 
 type Listener = (event: { data: string }) => void;
@@ -80,7 +90,31 @@ describe('isSignalEvent', () => {
   });
 });
 
-describe('TrafficPage', () => {
+describe('TrafficPage tabs', () => {
+  beforeEach(() => {
+    MockEventSource.instances = [];
+    vi.stubGlobal('EventSource', MockEventSource);
+    localStorage.clear();
+  });
+
+  it('shows the live tail by default and switches to History and By IP', () => {
+    render(
+      <MemoryRouter>
+        <TrafficPage />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('Live requests')).toBeInTheDocument();
+    expect(screen.queryByText('HISTORY-TAB-CONTENT')).not.toBeInTheDocument();
+
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'History' }), { button: 0 });
+    expect(screen.getByText('HISTORY-TAB-CONTENT')).toBeInTheDocument();
+
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'By IP' }), { button: 0 });
+    expect(screen.getByText('ROLLUP-TAB-CONTENT')).toBeInTheDocument();
+  });
+});
+
+describe('LiveTrafficTab', () => {
   beforeEach(() => {
     MockEventSource.instances = [];
     vi.stubGlobal('EventSource', MockEventSource);
@@ -90,13 +124,13 @@ describe('TrafficPage', () => {
   const source = () => MockEventSource.instances[0];
 
   it('opens a credentialed SSE connection to the traffic stream', () => {
-    render(<TrafficPage />);
+    render(<LiveTrafficTab />);
     expect(source().url).toContain('/api/traffic/stream');
     expect(source().withCredentials).toBe(true);
   });
 
   it('defaults to showing only Unmatched and 4xx/5xx requests', () => {
-    render(<TrafficPage />);
+    render(<LiveTrafficTab />);
     act(() => {
       source().emit('request', makeEvent({ line: 'MATCHED-OK-LINE', status: 200 }));
       source().emit(
@@ -111,7 +145,7 @@ describe('TrafficPage', () => {
   });
 
   it('reveals all traffic when "Show all" is toggled', () => {
-    render(<TrafficPage />);
+    render(<LiveTrafficTab />);
     act(() => {
       source().emit('request', makeEvent({ line: 'MATCHED-OK-LINE', status: 200 }));
     });
@@ -122,7 +156,7 @@ describe('TrafficPage', () => {
   });
 
   it('defaults to unwrapped lines and persists the wrap preference', () => {
-    render(<TrafficPage />);
+    render(<LiveTrafficTab />);
     act(() => {
       source().emit('request', makeEvent({ line: 'SCANNER-LINE', status: 404, classification: 'unmatched' }));
     });
@@ -139,7 +173,7 @@ describe('TrafficPage', () => {
   });
 
   it('shows a Paused badge instead of Live while paused', () => {
-    render(<TrafficPage />);
+    render(<LiveTrafficTab />);
     act(() => source().onopen?.());
     expect(screen.getByText('Live')).toBeInTheDocument();
 
@@ -152,7 +186,7 @@ describe('TrafficPage', () => {
   });
 
   it('stops appending while paused and closes the stream on unmount', () => {
-    const { unmount } = render(<TrafficPage />);
+    const { unmount } = render(<LiveTrafficTab />);
     fireEvent.click(screen.getByRole('button', { name: /pause/i }));
     act(() => {
       source().emit('request', makeEvent({ line: 'WHILE-PAUSED', status: 404, classification: 'unmatched' }));

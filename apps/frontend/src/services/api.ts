@@ -212,6 +212,8 @@ export const api = createApi({
     'SsoProvider',
     'ProjectInviteLink',
     'MyProjects',
+    'TrafficRequest',
+    'TrafficIpRollup',
   ],
   endpoints: () => ({}),
 });
