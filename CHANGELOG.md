@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.92](https://github.com/bffless/ce/compare/v0.1.91...v0.1.92) (2026-07-02)
+
+
+### Features
+
+* ai_handler attachments (multi-part image/file content) ([#396](https://github.com/bffless/ce/issues/396)) ([f6e0334](https://github.com/bffless/ce/commit/f6e0334fa76ba48ca90a82172d322929f517da84))
+* **storage:** edit provider credentials in place without migrating ([#398](https://github.com/bffless/ce/issues/398)) ([a7fbcda](https://github.com/bffless/ce/commit/a7fbcda8d991385a5069b417e795d70e26bd680c))
+* **traffic:** persist Unmatched requests, per-IP rollup, history + read API ([#390](https://github.com/bffless/ce/issues/390)) ([#397](https://github.com/bffless/ce/issues/397)) ([e4082d6](https://github.com/bffless/ce/commit/e4082d6b52d379c2e6fc0d6267761e34d8e404b6))
+
 ## [0.1.91](https://github.com/bffless/ce/compare/v0.1.90...v0.1.91) (2026-07-02)
 
 
