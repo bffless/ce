@@ -8,6 +8,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
   ValidateNested,
 } from 'class-validator';
@@ -45,6 +46,14 @@ export class CreateBlocklistDto {
   @MaxLength(2_000)
   description?: string;
 
+  @ApiPropertyOptional({
+    description: 'Apply to all domains (default attachment). Defaults to true.',
+    default: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  isDefault?: boolean;
+
   @ApiPropertyOptional({ type: [BlocklistPatternEntryDto], description: 'Block patterns' })
   @IsOptional()
   @IsArray()
@@ -79,6 +88,11 @@ export class UpdateBlocklistDto {
   @MaxLength(2_000)
   description?: string;
 
+  @ApiPropertyOptional({ description: 'Apply to all domains (default attachment)' })
+  @IsOptional()
+  @IsBoolean()
+  isDefault?: boolean;
+
   @ApiPropertyOptional({ type: [BlocklistPatternEntryDto], description: 'Replaces all block patterns when present' })
   @IsOptional()
   @IsArray()
@@ -100,4 +114,16 @@ export class UpdateBlocklistSettingsDto {
   @ApiProperty({ description: 'Master toggle: false disables ALL blocking instantly' })
   @IsBoolean()
   enabled!: boolean;
+}
+
+/** Inline "add to blocklist" from the Traffic views (#393): one block pattern. */
+export class AppendBlocklistEntryDto extends BlocklistPatternEntryDto {}
+
+/** Replace-all attachment of Blocklists to a domain mapping (#393). */
+export class SyncDomainBlocklistsDto {
+  @ApiProperty({ type: [String], description: 'Blocklist ids attached to the domain (replaces the set)' })
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsUUID('4', { each: true })
+  blocklistIds!: string[];
 }

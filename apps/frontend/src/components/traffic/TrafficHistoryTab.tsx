@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Download, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, Loader2, ShieldPlus } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { downloadTrafficExport, useListTrafficRequestsQuery } from '@/services/trafficApi';
+import { AddToBlocklistDialog, AddToBlocklistTarget } from './AddToBlocklistDialog';
 import { statusColorClass } from './traffic-format';
 
 const PAGE_SIZE = 100;
@@ -38,6 +39,7 @@ export function TrafficHistoryTab() {
   const [timeRange, setTimeRange] = useState('all');
   const [page, setPage] = useState(1);
   const [exporting, setExporting] = useState(false);
+  const [blockTarget, setBlockTarget] = useState<AddToBlocklistTarget | null>(null);
 
   // Recomputed only when the range selection changes, so the query arg is stable
   const from = useMemo(() => {
@@ -193,6 +195,17 @@ export function TrafficHistoryTab() {
               ) : (
                 data.data.map((entry) => (
                   <div key={entry.id} className="text-gray-200 whitespace-pre w-max min-w-full">
+                    <button
+                      type="button"
+                      className="text-gray-500 hover:text-[#d96459] mr-1 align-middle"
+                      title="Add to blocklist"
+                      aria-label={`Add ${entry.path} to a blocklist`}
+                      onClick={() =>
+                        setBlockTarget({ path: entry.path.split('?')[0], host: entry.host })
+                      }
+                    >
+                      <ShieldPlus className="h-3.5 w-3.5 inline" />
+                    </button>
                     <span
                       className="text-[#d96459] mr-1"
                       title={
@@ -235,6 +248,10 @@ export function TrafficHistoryTab() {
           </>
         )}
       </CardContent>
+      <AddToBlocklistDialog
+        target={blockTarget}
+        onOpenChange={(open) => !open && setBlockTarget(null)}
+      />
     </Card>
   );
 }

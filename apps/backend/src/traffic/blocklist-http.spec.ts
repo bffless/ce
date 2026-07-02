@@ -145,4 +145,34 @@ describe('Blocklist enforcement at the HTTP boundary', () => {
     await waitForEvents(1);
     expect(observed[0].classification).toBe('unmatched');
   });
+
+  it('passes the client-visible host so per-domain sets apply (#393)', async () => {
+    // Domain-scoped enforcer: blocks /scoped-probe only on attached.example.com.
+    shouldBlock = () => false;
+    const hostAware = jest.fn(
+      (pathname: string, host?: string | null) =>
+        pathname === '/scoped-probe' && host === 'attached.example.com',
+    );
+    (enforcer as { shouldBlock: BlocklistEnforcer['shouldBlock'] }).shouldBlock = hostAware;
+    try {
+      const onAttached = await request(app.getHttpServer())
+        .get('/scoped-probe')
+        .set('X-Forwarded-Host', 'attached.example.com');
+      expect(onAttached.status).toBe(403);
+
+      const elsewhere = await request(app.getHttpServer())
+        .get('/scoped-probe')
+        .set('X-Forwarded-Host', 'plain.example.com');
+      expect(elsewhere.status).toBe(404);
+
+      expect(hostAware).toHaveBeenCalledWith('/scoped-probe', 'attached.example.com');
+      expect(hostAware).toHaveBeenCalledWith('/scoped-probe', 'plain.example.com');
+
+      await waitForEvents(2);
+      expect(observed.map((e) => e.classification)).toEqual(['blocked', 'unmatched']);
+    } finally {
+      (enforcer as { shouldBlock: BlocklistEnforcer['shouldBlock'] }).shouldBlock = (pathname) =>
+        shouldBlock(pathname);
+    }
+  });
 });

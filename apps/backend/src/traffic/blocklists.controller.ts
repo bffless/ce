@@ -8,6 +8,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   UseGuards,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -18,12 +19,19 @@ import { ApiKeyGuard } from '../auth/api-key.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { BlocklistService } from './blocklist.service';
-import { CreateBlocklistDto, UpdateBlocklistDto, UpdateBlocklistSettingsDto } from './blocklist.dto';
+import {
+  AppendBlocklistEntryDto,
+  CreateBlocklistDto,
+  SyncDomainBlocklistsDto,
+  UpdateBlocklistDto,
+  UpdateBlocklistSettingsDto,
+} from './blocklist.dto';
 
 /**
- * The Blocklist library + bot-protection settings (issue #391), admin-only
- * like the rest of /api/traffic. CRUD here rebuilds the app-side enforcement
- * matcher immediately; edge (nginx) enforcement rides on top in #392.
+ * The Blocklist library + bot-protection settings + per-domain attachment
+ * (issues #391/#393), admin-only like the rest of /api/traffic. Mutations here
+ * rebuild the app-side enforcement matchers immediately and trigger edge
+ * (nginx) config regeneration when the effective set changed.
  */
 @ApiTags('Traffic')
 @Controller('api/traffic')
@@ -86,5 +94,32 @@ export class BlocklistsController {
   @ApiOperation({ summary: 'Delete a Blocklist (admin only)' })
   async remove(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
     await this.blocklistService.deleteBlocklist(id);
+  }
+
+  @Post('blocklists/:id/entries')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Append one block pattern (inline add-to-blocklist, admin only)' })
+  async appendEntry(@Param('id', ParseUUIDPipe) id: string, @Body() dto: AppendBlocklistEntryDto) {
+    return this.blocklistService.appendEntry(id, dto);
+  }
+
+  @Get('domains/:domainMappingId/blocklists')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Blocklist ids attached to a domain mapping (admin only)' })
+  async getDomainBlocklists(@Param('domainMappingId', ParseUUIDPipe) domainMappingId: string) {
+    return {
+      domainMappingId,
+      blocklistIds: await this.blocklistService.getDomainBlocklistIds(domainMappingId),
+    };
+  }
+
+  @Put('domains/:domainMappingId/blocklists')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Replace the Blocklists attached to a domain mapping (admin only)' })
+  async syncDomainBlocklists(
+    @Param('domainMappingId', ParseUUIDPipe) domainMappingId: string,
+    @Body() dto: SyncDomainBlocklistsDto,
+  ) {
+    return this.blocklistService.syncDomainBlocklists(domainMappingId, dto.blocklistIds);
   }
 }

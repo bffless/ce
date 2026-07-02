@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronLeft, ChevronRight, Download, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, Loader2, ShieldPlus } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,8 +20,16 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
 import { downloadTrafficExport, useListTrafficIpRollupsQuery } from '@/services/trafficApi';
+import { AddToBlocklistDialog, AddToBlocklistTarget } from './AddToBlocklistDialog';
 
 const PAGE_SIZE = 50;
 
@@ -43,6 +51,7 @@ export function TrafficRollupTab() {
   const [sortBy, setSortBy] = useState<SortBy>('requestCount');
   const [page, setPage] = useState(1);
   const [exporting, setExporting] = useState(false);
+  const [blockTarget, setBlockTarget] = useState<AddToBlocklistTarget | null>(null);
 
   const ipFilter = ip.trim() || undefined;
   const { data, isLoading, isFetching, error } = useListTrafficIpRollupsQuery(
@@ -167,6 +176,9 @@ export function TrafficRollupTab() {
                   <TableHead>Last seen</TableHead>
                   <TableHead>Sample paths</TableHead>
                   <TableHead>Sample user-agents</TableHead>
+                  <TableHead className="w-10">
+                    <span className="sr-only">Actions</span>
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -193,6 +205,37 @@ export function TrafficRollupTab() {
                       title={rollup.sampleUserAgents.join('\n')}
                     >
                       {rollup.sampleUserAgents.join(' ')}
+                    </TableCell>
+                    <TableCell>
+                      {rollup.samplePaths.length > 0 && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              aria-label={`Add a path from ${rollup.ip} to a blocklist`}
+                            >
+                              <ShieldPlus className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuLabel className="text-xs">
+                              Add to blocklist…
+                            </DropdownMenuLabel>
+                            {rollup.samplePaths.map((path) => (
+                              <DropdownMenuItem
+                                key={path}
+                                className="font-mono text-xs"
+                                onClick={() =>
+                                  setBlockTarget({ path: path.split('?')[0], host: null })
+                                }
+                              >
+                                {path}
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -227,6 +270,10 @@ export function TrafficRollupTab() {
           </>
         )}
       </CardContent>
+      <AddToBlocklistDialog
+        target={blockTarget}
+        onOpenChange={(open) => !open && setBlockTarget(null)}
+      />
     </Card>
   );
 }

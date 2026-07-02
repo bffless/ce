@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Activity, Pause, Play, Trash2 } from 'lucide-react';
+import { Activity, Pause, Play, ShieldPlus, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +10,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TrafficBlocklistTab } from '@/components/traffic/TrafficBlocklistTab';
 import { TrafficHistoryTab } from '@/components/traffic/TrafficHistoryTab';
 import { TrafficRollupTab } from '@/components/traffic/TrafficRollupTab';
+import {
+  AddToBlocklistDialog,
+  AddToBlocklistTarget,
+} from '@/components/traffic/AddToBlocklistDialog';
 import { statusColorClass } from '@/components/traffic/traffic-format';
 
 /** A request observed by the backend's application interceptor (issue #389). */
@@ -98,6 +102,7 @@ export function LiveTrafficTab() {
     () => localStorage.getItem(WRAP_LINES_STORAGE_KEY) === 'true',
   );
   const [connection, setConnection] = useState<ConnectionState>('connecting');
+  const [blockTarget, setBlockTarget] = useState<AddToBlocklistTarget | null>(null);
 
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
@@ -199,6 +204,17 @@ export function LiveTrafficTab() {
                 key={event.id}
                 className={`text-gray-200 ${wrapLines ? 'whitespace-pre-wrap break-all' : 'whitespace-pre w-max min-w-full'}`}
               >
+                <button
+                  type="button"
+                  className="text-gray-500 hover:text-[#d96459] mr-1 align-middle"
+                  title="Add to blocklist"
+                  aria-label={`Add ${event.path} to a blocklist`}
+                  onClick={() =>
+                    setBlockTarget({ path: event.path.split('?')[0], host: event.host })
+                  }
+                >
+                  <ShieldPlus className="h-3.5 w-3.5 inline" />
+                </button>
                 {event.classification === 'unmatched' && (
                   <span className="text-[#d96459] mr-1" title="Unmatched request">
                     ●
@@ -215,6 +231,10 @@ export function LiveTrafficTab() {
           )}
         </div>
       </CardContent>
+      <AddToBlocklistDialog
+        target={blockTarget}
+        onOpenChange={(open) => !open && setBlockTarget(null)}
+      />
     </Card>
   );
 }

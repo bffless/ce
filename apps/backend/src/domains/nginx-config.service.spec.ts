@@ -221,6 +221,8 @@ server {
       expect(config).toContain('testrepo');
       expect(config).toContain('production');
       expect(config).toContain('/apps/frontend/coverage');
+      // #393: edge rules are resolved for THIS mapping's effective set.
+      expect(mockEdgeBlocklistService.getServerRules).toHaveBeenCalledWith('444', 'domain-1');
     });
 
     // Regression: redirect targets that are absolute external URLs must be emitted

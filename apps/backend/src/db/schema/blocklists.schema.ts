@@ -1,5 +1,14 @@
 import { relations } from 'drizzle-orm';
-import { pgTable, uuid, varchar, text, timestamp, uniqueIndex, index } from 'drizzle-orm/pg-core';
+import {
+  pgTable,
+  uuid,
+  varchar,
+  text,
+  boolean,
+  timestamp,
+  uniqueIndex,
+  index,
+} from 'drizzle-orm/pg-core';
 
 /**
  * Blocklists (issue #383/#391): the admin-global library of named bot/scanner
@@ -8,9 +17,11 @@ import { pgTable, uuid, varchar, text, timestamp, uniqueIndex, index } from 'dri
  * blocklist_entries, discriminated by `kind`).
  *
  * Blocklists are admin-global (not project-scoped): they curate instance-wide
- * bot protection. Attachment to specific domains arrives with #393; the
- * code-shipped Baseline (see traffic/blocklist-baseline.ts) is NOT one of
- * these rows — it ships as code and improves on upgrade.
+ * bot protection. Since #393 a Blocklist applies per-domain: to every domain
+ * when `isDefault` is true, otherwise only to the domains it is attached to
+ * via domain_blocklists. The code-shipped Baseline (see
+ * traffic/blocklist-baseline.ts) is NOT one of these rows — it ships as code,
+ * improves on upgrade, and applies to every domain unconditionally.
  */
 export const blocklists = pgTable(
   'blocklists',
@@ -21,6 +32,14 @@ export const blocklists = pgTable(
     name: varchar('name', { length: 255 }).notNull(),
 
     description: text('description'),
+
+    /**
+     * The all-domains default attachment (#393): true means the list applies
+     * to every domain (plus the wildcard/unknown-host fallback), no explicit
+     * attachment needed. Defaults true so pre-#393 lists keep their original
+     * instance-wide behaviour across the upgrade.
+     */
+    isDefault: boolean('is_default').notNull().default(true),
 
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),

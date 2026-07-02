@@ -126,11 +126,13 @@ export class NginxConfigService implements OnModuleInit {
 
   /**
    * Edge blocklist rules for embedding into a generated server block (#392).
-   * Shaped like the old static scanner block: either '' or a leading-newline
-   * section, so call sites can interpolate it unconditionally.
+   * `domainMappingId` selects the domain's effective set (#393); configs that
+   * serve no mapping (welcome page, redirect sources) omit it and get the
+   * default set. Shaped like the old static scanner block: either '' or a
+   * leading-newline section, so call sites can interpolate it unconditionally.
    */
-  private buildEdgeBlocklistRules(returnCode: '444' | '403'): string {
-    const rules = this.edgeBlocklistService.getServerRules(returnCode);
+  private buildEdgeBlocklistRules(returnCode: '444' | '403', domainMappingId?: string): string {
+    const rules = this.edgeBlocklistService.getServerRules(returnCode, domainMappingId);
     return rules ? `\n${rules}` : '';
   }
 
@@ -280,7 +282,7 @@ export class NginxConfigService implements OnModuleInit {
       backendPort: this.getBackendPort(),
       listenPort: this.getNginxListenPort(),
       createdAt: domainMapping.createdAt.toISOString(),
-      blocklistRules: this.edgeBlocklistService.getServerRules('444'),
+      blocklistRules: this.edgeBlocklistService.getServerRules('444', domainMapping.id),
     };
 
     let config = template(context);
@@ -434,7 +436,7 @@ export class NginxConfigService implements OnModuleInit {
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;`;
 
-    const scannerBlock = this.buildEdgeBlocklistRules('403');
+    const scannerBlock = this.buildEdgeBlocklistRules('403', domainMapping.id);
 
     const errorPages = `
     # Custom error pages
@@ -674,7 +676,7 @@ server {
     # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
-${this.buildEdgeBlocklistRules('403')}
+${this.buildEdgeBlocklistRules('403', domainMapping.id)}
     # Custom error pages
     error_page 404 /404.html;
     error_page 500 502 503 504 /50x.html;
@@ -868,7 +870,7 @@ ${spaFallback}
 server {
     listen ${this.getNginxListenPort()};
     server_name ${config.domain};
-${this.buildEdgeBlocklistRules('403')}
+${this.buildEdgeBlocklistRules('403', config.id)}
     # Health check endpoint (used for DNS verification)
     location /.well-known/health {
         access_log off;
@@ -899,7 +901,7 @@ ${this.buildEdgeBlocklistRules('403')}
 server {
     listen ${this.getNginxListenPort()};
     server_name ${config.domain};
-${this.buildEdgeBlocklistRules('444')}
+${this.buildEdgeBlocklistRules('444', config.id)}
     # Health check endpoint
     location /.well-known/health {
         access_log off;
@@ -925,7 +927,7 @@ server {
     ssl_certificate_key ${sslKeyPath};
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers HIGH:!aNULL:!MD5;
-${this.buildEdgeBlocklistRules('444')}
+${this.buildEdgeBlocklistRules('444', config.id)}
     # Redirect all traffic to target domain (HTTPS)
     location / {
         return ${redirectType} https://${config.redirectTarget}$request_uri;
@@ -1013,7 +1015,7 @@ ${httpServerBlock}${httpsServerBlock}
     add_header Link "<https://${canonicalDomain}$request_uri>; rel=\\"canonical\\"" always;`;
 
     // Edge blocklist rules (403 for Traefik compatibility)
-    const scannerBlock = this.buildEdgeBlocklistRules('403');
+    const scannerBlock = this.buildEdgeBlocklistRules('403', config.id);
 
     // Error page configuration
     const errorPages = `
@@ -1206,7 +1208,7 @@ ${serverBlocks}`;
     add_header X-Content-Type-Options "nosniff" always;
     add_header Link "<https://${canonicalDomain}$request_uri>; rel=\\"canonical\\"" always;`;
 
-    const scannerBlock = this.buildEdgeBlocklistRules('444');
+    const scannerBlock = this.buildEdgeBlocklistRules('444', config.id);
 
     const errorPages = `
     # Custom error pages
