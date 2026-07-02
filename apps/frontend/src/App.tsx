@@ -26,6 +26,7 @@ import { AuthTab } from '@/pages/admin-settings/AuthTab';
 import { EmailTab } from '@/pages/admin-settings/EmailTab';
 import { InfrastructureTab } from '@/pages/admin-settings/InfrastructureTab';
 import { DomainsPage } from '@/pages/DomainsPage';
+import { TrafficPage } from '@/pages/TrafficPage';
 import { HomePage } from '@/pages/HomePage';
 import { LoginPage } from '@/pages/LoginPage';
 import { LogoutPage } from '@/pages/LogoutPage';
@@ -128,6 +129,9 @@ function App() {
 
         {/* Domains route (admin only) */}
         <Route path="/domains" element={<ProtectedRoute requireAdmin><DomainsPage /></ProtectedRoute>} />
+
+        {/* Traffic route (admin only) */}
+        <Route path="/traffic" element={<ProtectedRoute requireAdmin><TrafficPage /></ProtectedRoute>} />
         </Routes>
         <Toaster />
       </div>

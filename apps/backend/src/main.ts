@@ -4,12 +4,19 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
+import { createTrafficObserver } from './traffic/traffic-observer.middleware';
+import { TrafficEventsService } from './traffic/traffic-events.service';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger: (process.env.LOG_LEVEL?.split(',') as LogLevel[]) || ['error', 'warn', 'log'],
     rawBody: true, // Needed for Stripe webhook signature verification
   });
+
+  // Traffic observation seam (ADR-0003): registered with app.use() so it sits
+  // above ALL Nest module middleware and observes every request that reaches
+  // the app — including ones ProxyMiddleware short-circuits before a controller.
+  app.use(createTrafficObserver(app.get(TrafficEventsService)));
 
   // Raise the request body limit above body-parser's 100kb default. Pipeline
   // endpoints (e.g. studio's /api/projects/save) POST large JSON documents that

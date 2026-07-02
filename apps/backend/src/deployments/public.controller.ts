@@ -159,7 +159,7 @@ export class PublicController {
         if (served) return;
       }
 
-      return this.serve404Page(res, `Preview not found: ${aliasName}`);
+      return this.serve404Page(res);
     }
 
     this.logger.debug(
@@ -231,7 +231,7 @@ export class PublicController {
     const commitSha = await this.deploymentsService.getDefaultAlias(repository);
 
     if (!commitSha) {
-      return this.serve404Page(res, `No deployment found for ${repository}`);
+      return this.serve404Page(res);
     }
 
     // Get project for visibility check
@@ -382,7 +382,7 @@ export class PublicController {
     // Resolve alias to SHA
     const commitSha = await this.deploymentsService.resolveAlias(repository, effectiveAlias);
     if (!commitSha) {
-      return this.serve404Page(res, `Alias not found: ${effectiveAlias}`);
+      return this.serve404Page(res);
     }
 
     // Set variant cookie if new selection
@@ -598,7 +598,7 @@ export class PublicController {
       // Serve image placeholder for image requests, HTML page otherwise
       return this.isImageRequest(req)
         ? this.serve404Image(res)
-        : this.serve404Page(res, `File not found: ${normalizedPath}`);
+        : this.serve404Page(res);
     }
 
     // Add response headers
@@ -722,7 +722,7 @@ export class PublicController {
       res.status(statusCode).send(fileBuffer);
     } catch (error) {
       this.logger.error(`Failed to download from storage: ${asset.storageKey}`, error);
-      return this.serve404Page(res, `File not found: ${asset.fileName}`);
+      return this.serve404Page(res);
     }
   }
 
@@ -859,7 +859,7 @@ export class PublicController {
       }
     } catch (error) {
       this.logger.error(`Failed to stream from storage: ${asset.storageKey}`, error);
-      return this.serve404Page(res, `File not found: ${asset.fileName}`);
+      return this.serve404Page(res);
     }
   }
 
@@ -1231,12 +1231,14 @@ export class PublicController {
   }
 
   /**
-   * Serve a styled 404 HTML page with optional custom message
-   * This is used when access is denied or content is not found,
-   * providing a nicer user experience than nginx's default error page.
+   * Serve a styled, deliberately generic 404 HTML page.
+   * Used when access is denied or content is not found. The page carries no
+   * request- or filesystem-derived detail: earlier versions echoed internal
+   * storage paths (e.g. "File not found: sites/landing/dist/backend/.env"),
+   * handing scanners a map of the instance (issue #389).
    */
-  private serve404Page(res: Response, message?: string): void {
-    const displayMessage = message || "The page you're looking for doesn't exist.";
+  private serve404Page(res: Response): void {
+    const displayMessage = "The page you're looking for doesn't exist.";
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
