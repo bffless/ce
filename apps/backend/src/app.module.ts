@@ -43,6 +43,7 @@ import { McpModule, McpTransportType } from '@rekog/mcp-nest';
 import { ApiKeyGuard } from './auth/api-key.guard';
 import { McpToolsModule } from './mcp/mcp-tools.module';
 import { TelemetryModule } from './telemetry/telemetry.module';
+import { TrafficModule } from './traffic/traffic.module';
 
 @Module({
   imports: [
@@ -171,6 +172,7 @@ import { TelemetryModule } from './telemetry/telemetry.module';
     OnboardingRulesModule,
     McpToolsModule,
     TelemetryModule,
+    TrafficModule,
   ],
   controllers: [AppController],
   providers: [

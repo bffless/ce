@@ -260,6 +260,9 @@ export function HomePage() {
               <Button asChild variant="outline" className="border-[#4a4a4a]/20 hover:border-[#d96459]/50 hover:bg-[#ede8dd] dark:hover:bg-accent">
                 <Link to="/domains">Domains</Link>
               </Button>
+              <Button asChild variant="outline" className="border-[#4a4a4a]/20 hover:border-[#d96459]/50 hover:bg-[#ede8dd] dark:hover:bg-accent">
+                <Link to="/traffic">Traffic</Link>
+              </Button>
             </div>
           </div>
         )}
