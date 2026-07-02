@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.95](https://github.com/bffless/ce/compare/v0.1.94...v0.1.95) (2026-07-02)
+
+
+### Features
+
+* **traffic:** per-domain Blocklist attachment + inline add-to-blocklist ([#393](https://github.com/bffless/ce/issues/393)) ([#404](https://github.com/bffless/ce/issues/404)) ([ff94f30](https://github.com/bffless/ce/commit/ff94f304e132d700e94f03c6be76ff9465f2d576))
+
 ## [0.1.94](https://github.com/bffless/ce/compare/v0.1.93...v0.1.94) (2026-07-02)
 
 
