@@ -20,6 +20,7 @@ import { BlocklistPatternEntry } from './blocklist-compiler';
 const prefix = (value: string): BlocklistPatternEntry => ({ matchType: 'prefix', value });
 const exact = (value: string): BlocklistPatternEntry => ({ matchType: 'exact', value });
 const extension = (value: string): BlocklistPatternEntry => ({ matchType: 'extension', value });
+const contains = (value: string): BlocklistPatternEntry => ({ matchType: 'contains', value });
 
 export const BASELINE_BLOCKLIST_ENTRIES: BlocklistPatternEntry[] = [
   // WordPress paths
@@ -99,7 +100,11 @@ export const BASELINE_BLOCKLIST_ENTRIES: BlocklistPatternEntry[] = [
   prefix('/.git'),
   prefix('/.svn'),
   prefix('/.hg'),
-  prefix('/.env'),
+  // Bots probe .env in subdirectories too (/backend/.env, /app/.env.local, …),
+  // so this is a contains match, not just a root prefix — deliberately wider
+  // than the old nginx map, which only covered ^/.env. A legitimate path like
+  // /docs/.envelope would need an allowlist rescue.
+  contains('/.env'),
   prefix('/.htaccess'),
   prefix('/.htpasswd'),
   prefix('/.DS_Store'),

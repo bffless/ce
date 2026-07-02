@@ -180,6 +180,8 @@ describe('blocklist compiler', () => {
       const matcher = buildBlocklistMatcher(BASELINE_BLOCKLIST_ENTRIES, []);
       for (const path of [
         '/.env',
+        '/backend/.env',
+        '/app/.env.local',
         '/.git/config',
         '/wp-login.php',
         '/phpMyAdmin/index.php',
