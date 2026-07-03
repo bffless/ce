@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.96](https://github.com/bffless/ce/compare/v0.1.95...v0.1.96) (2026-07-03)
+
+
+### Features
+
+* **pipelines:** three generic primitives — xml_feed_parse, data_upsert_many, pipeline_schedules ([#406](https://github.com/bffless/ce/issues/406), [#407](https://github.com/bffless/ce/issues/407), [#408](https://github.com/bffless/ce/issues/408)) ([#409](https://github.com/bffless/ce/issues/409)) ([be79cfb](https://github.com/bffless/ce/commit/be79cfbf0fb5465171640e8a2a370f57ec79d16c))
+
 ## [0.1.95](https://github.com/bffless/ce/compare/v0.1.94...v0.1.95) (2026-07-02)
 
 
