@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>Example Podcast</title>
+    <link>https://podcast.example.com/</link>
+    <description>A sample podcast feed with enclosures</description>
+    <itunes:author>Podcast Author</itunes:author>
+    <item>
+      <title>Episode 1: The Beginning</title>
+      <link>https://podcast.example.com/ep/1</link>
+      <guid>podcast-ep-1</guid>
+      <pubDate>Mon, 07 Oct 2024 06:00:00 GMT</pubDate>
+      <description>Show notes for episode one.</description>
+      <enclosure url="https://cdn.example.com/audio/ep1.mp3" type="audio/mpeg" length="15728640"/>
+      <itunes:duration>00:32:10</itunes:duration>
+      <itunes:episode>1</itunes:episode>
+    </item>
+  </channel>
+</rss>

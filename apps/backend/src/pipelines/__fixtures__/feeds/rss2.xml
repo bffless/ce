@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>Example RSS Feed</title>
+    <link>https://example.com/</link>
+    <description>A sample RSS 2.0 feed</description>
+    <item>
+      <title>First Post</title>
+      <link>/posts/first</link>
+      <guid isPermaLink="false">post-0001</guid>
+      <pubDate>Wed, 02 Oct 2024 13:00:00 GMT</pubDate>
+      <author>alice@example.com</author>
+      <description><![CDATA[<p>Summary of the <b>first</b> post.</p>]]></description>
+      <content:encoded><![CDATA[<p>Full <b>HTML</b> content of the first post.</p>]]></content:encoded>
+      <dc:creator>Alice</dc:creator>
+    </item>
+    <item>
+      <title>Second Post</title>
+      <link>https://example.com/posts/second</link>
+      <pubDate>Thu, 03 Oct 2024 09:30:00 GMT</pubDate>
+      <description>Plain text summary, no guid so link is the id.</description>
+    </item>
+  </channel>
+</rss>
