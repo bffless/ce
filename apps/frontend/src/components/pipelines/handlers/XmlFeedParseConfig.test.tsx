@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { XmlFeedParseConfig } from './XmlFeedParseConfig';
+import type { XmlFeedParseHandlerConfig } from './types';
 
 // Controlled harness mirroring how the real editor feeds config back in.
 // IMPORTANT: onChange MUST be stable (useCallback) — the component lists
@@ -19,9 +20,10 @@ function Harness({
 }) {
   const [config, setConfig] = useState<Record<string, unknown>>(initial);
   const handleChange = useCallback(
-    (c: Record<string, unknown>) => {
-      setConfig(c);
-      if (sink) sink.current = c;
+    (c: XmlFeedParseHandlerConfig) => {
+      const record = c as unknown as Record<string, unknown>;
+      setConfig(record);
+      if (sink) sink.current = record;
     },
     [sink],
   );
