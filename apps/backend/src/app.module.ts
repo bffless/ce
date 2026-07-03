@@ -39,6 +39,7 @@ import { PlatformModule } from './platform/platform.module';
 import { StorageUsageModule } from './storage/storage-usage.module';
 import { OnboardingRulesModule } from './onboarding-rules/onboarding-rules.module';
 import { PipelinesModule } from './pipelines/pipelines.module';
+import { PipelineSchedulesModule } from './pipeline-schedules/pipeline-schedules.module';
 import { McpModule, McpTransportType } from '@rekog/mcp-nest';
 import { ApiKeyGuard } from './auth/api-key.guard';
 import { McpToolsModule } from './mcp/mcp-tools.module';
@@ -158,6 +159,7 @@ import { TrafficModule } from './traffic/traffic.module';
     ShareLinksModule,    // Must come BEFORE ProjectsModule (route ordering)
     ProjectInviteLinksModule, // Must come BEFORE ProjectsModule (route ordering)
     PipelinesModule,     // Must come BEFORE ProjectsModule (route ordering)
+    PipelineSchedulesModule, // Cron-scheduled pipelines (own /api/pipeline-schedules prefix)
     ResponseHeaderRulesModule, // Must come BEFORE ProjectsModule (route ordering)
     ProjectsModule,
     UserGroupsModule,

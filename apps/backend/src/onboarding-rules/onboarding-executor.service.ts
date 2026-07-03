@@ -1,7 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { eq, and } from 'drizzle-orm';
-import { Request } from 'express';
 import { db } from '../db/client';
 import {
   OnboardingRule,
@@ -19,12 +18,10 @@ import {
   ExecutionStatus,
   NewOnboardingRuleExecution,
 } from '../db/schema/onboarding-rule-executions.schema';
-import { projects, projectPermissions, users, userGroupMembers, proxyRules, proxyRuleSets } from '../db/schema';
-import { PipelineConfig } from '../db/schema/proxy-rules.schema';
+import { projects, projectPermissions, users, userGroupMembers, proxyRules } from '../db/schema';
 import { OnboardingRulesService } from './onboarding-rules.service';
-import { PipelineExecutionService } from '../pipelines/execution/pipeline-execution.service';
+import { SystemPipelineTriggerService } from '../pipelines/execution/system-pipeline-trigger.service';
 import { PipelineExecutionLogService } from '../pipelines/pipeline-execution-log.service';
-import { Pipeline, PipelineStep } from '../pipelines/types';
 
 /**
  * Context for executing onboarding rules
@@ -40,7 +37,7 @@ export interface OnboardingContext {
 @Injectable()
 export class OnboardingExecutorService implements OnModuleInit {
   private readonly logger = new Logger(OnboardingExecutorService.name);
-  private pipelineExecutionService: PipelineExecutionService;
+  private systemTrigger: SystemPipelineTriggerService;
   private executionLogService: PipelineExecutionLogService;
 
   constructor(
@@ -49,7 +46,7 @@ export class OnboardingExecutorService implements OnModuleInit {
   ) {}
 
   onModuleInit() {
-    this.pipelineExecutionService = this.moduleRef.get(PipelineExecutionService, { strict: false });
+    this.systemTrigger = this.moduleRef.get(SystemPipelineTriggerService, { strict: false });
     this.executionLogService = this.moduleRef.get(PipelineExecutionLogService, { strict: false });
   }
 
@@ -382,30 +379,35 @@ export class OnboardingExecutorService implements OnModuleInit {
     const { proxyRuleId } = params;
     const { userId, userEmail, trigger } = context;
 
-    // Fetch the proxy rule with its project ID
-    const [ruleWithProject] = await db
-      .select({
-        rule: proxyRules,
-        projectId: proxyRuleSets.projectId,
-      })
+    // Fetch debugEnabled up front (the shared trigger service doesn't need it,
+    // but the log-persistence decision below does).
+    const [rule] = await db
+      .select({ debugEnabled: proxyRules.debugEnabled })
       .from(proxyRules)
-      .innerJoin(proxyRuleSets, eq(proxyRules.ruleSetId, proxyRuleSets.id))
       .where(eq(proxyRules.id, proxyRuleId))
       .limit(1);
 
-    if (!ruleWithProject) {
+    const outcome = await this.systemTrigger.triggerByProxyRuleId(proxyRuleId, {
+      source: '/internal/onboarding-pipeline',
+      body: {
+        userId,
+        email: userEmail,
+        trigger,
+        invitationRole: context.invitationRole,
+      },
+      user: { id: userId, email: userEmail },
+      // Only retain in-memory debug snapshots when this rule persists them.
+      captureDebug: rule?.debugEnabled === true,
+    });
+
+    if (!outcome.found) {
       return {
         action: { type: 'run_pipeline', params },
         success: false,
         error: `Proxy rule not found: ${proxyRuleId}`,
       };
     }
-
-    const rule = ruleWithProject.rule;
-    const projectId = ruleWithProject.projectId;
-
-    const pipelineConfig = rule.pipelineConfig as PipelineConfig | null;
-    if (!pipelineConfig || !pipelineConfig.steps || pipelineConfig.steps.length === 0) {
+    if (!outcome.hasPipeline) {
       return {
         action: { type: 'run_pipeline', params },
         success: false,
@@ -413,65 +415,12 @@ export class OnboardingExecutorService implements OnModuleInit {
       };
     }
 
-    // Build Pipeline object from proxy rule config (same pattern as proxy.middleware.ts)
-    const pipeline: Pipeline & { steps: PipelineStep[] } = {
-      id: rule.id,
-      projectId,
-      name: pipelineConfig.name || `Onboarding pipeline`,
-      validators: pipelineConfig.validators || [],
-      steps: pipelineConfig.steps.map((step, index) => ({
-        id: step.id || `step-${index}`,
-        pipelineId: rule.id,
-        name: step.name || `step_${index + 1}`,
-        handlerType: step.handlerType,
-        config: step.config,
-        order: index,
-        isEnabled: step.isEnabled !== false,
-      })),
-      postSteps: pipelineConfig.postSteps?.map((step, index) => ({
-        id: step.id || `post-step-${index}`,
-        pipelineId: rule.id,
-        name: step.name || `post_step_${index + 1}`,
-        handlerType: step.handlerType,
-        config: step.config,
-        order: index,
-        isEnabled: step.isEnabled !== false,
-      })),
-    };
-
-    // Build a synthetic request with user context in the body
-    const syntheticReq = {
-      path: '/internal/onboarding-pipeline',
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: {
-        userId,
-        email: userEmail,
-        trigger,
-        invitationRole: context.invitationRole,
-      },
-      query: {},
-      get: (key: string) => {
-        const headers: Record<string, string> = { 'content-type': 'application/json' };
-        return headers[key.toLowerCase()];
-      },
-      ip: '127.0.0.1',
-      socket: { remoteAddress: '127.0.0.1' },
-    } as unknown as Request;
-
-    const user = { id: userId, email: userEmail };
-
-    const result = await this.pipelineExecutionService.executePipelineWithDebug(
-      pipeline,
-      syntheticReq,
-      user,
-      // Only retain in-memory debug snapshots when this rule persists them.
-      { captureDebug: rule.debugEnabled },
-    );
+    const result = outcome.result!;
+    const pipelineName = outcome.pipelineName || 'Onboarding pipeline';
 
     // Persist execution log (fire-and-forget, same as proxy middleware)
-    if (rule.debugEnabled) {
-      this.executionLogService.log(rule.id, projectId, result, {
+    if (rule?.debugEnabled && outcome.projectId) {
+      this.executionLogService.log(proxyRuleId, outcome.projectId, result, {
         ip: '127.0.0.1',
         userAgent: 'onboarding-executor',
         userId,
@@ -481,20 +430,20 @@ export class OnboardingExecutorService implements OnModuleInit {
     }
 
     if (result.success) {
-      this.logger.log(`Pipeline ${pipelineConfig.name} executed successfully for user ${userId}`);
+      this.logger.log(`Pipeline ${pipelineName} executed successfully for user ${userId}`);
       return {
         action: { type: 'run_pipeline', params },
         success: true,
-        message: `Pipeline "${pipelineConfig.name}" executed successfully`,
+        message: `Pipeline "${pipelineName}" executed successfully`,
       };
     }
 
     const errorMsg = result.error || 'Pipeline execution failed';
-    this.logger.error(`Pipeline ${pipelineConfig.name} failed for user ${userId}: ${errorMsg}`);
+    this.logger.error(`Pipeline ${pipelineName} failed for user ${userId}: ${errorMsg}`);
     return {
       action: { type: 'run_pipeline', params },
       success: false,
-      error: `Pipeline "${pipelineConfig.name}" failed: ${errorMsg}`,
+      error: `Pipeline "${pipelineName}" failed: ${errorMsg}`,
     };
   }
 

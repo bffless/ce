@@ -35,6 +35,7 @@ export * from './pipeline-schemas.schema';
 export * from './pipeline-data.schema';
 export * from './pipeline-data-embeddings.schema';
 export * from './pipeline-execution-logs.schema';
+export * from './pipeline-schedules.schema';
 export * from './response-header-rules.schema';
 export * from './oidc-providers.schema';
 export * from './google-integration-credentials.schema';
