@@ -219,6 +219,91 @@ export class PipelineDataService {
   }
 
   /**
+   * Bulk-insert many data records in one shot. Used by the data_upsert_many
+   * handler; functionally the single-row {@link create} in a loop, but batched
+   * into chunked multi-row INSERTs to stay within Postgres parameter limits.
+   * No permission check — callers run in a trusted pipeline/system context and
+   * have already resolved the schema + project.
+   */
+  async createMany(
+    schemaId: string,
+    projectId: string,
+    records: Record<string, unknown>[],
+    createdBy?: string,
+    alias?: string | null,
+    version?: number,
+  ): Promise<PipelineData[]> {
+    if (records.length === 0) {
+      return [];
+    }
+
+    const rows: NewPipelineData[] = records.map(
+      (data) =>
+        ({
+          schemaId,
+          projectId,
+          data,
+          createdBy,
+          alias: alias ?? null,
+          version: version ?? 1,
+        }) as NewPipelineData,
+    );
+
+    // Chunk so a very large batch never blows the ~65k bound parameter ceiling
+    // (6 columns per row → ~10k rows/chunk is safe; keep well under it).
+    const CHUNK = 500;
+    const inserted: PipelineData[] = [];
+    for (let i = 0; i < rows.length; i += CHUNK) {
+      const chunk = rows.slice(i, i + CHUNK);
+      const result = await db.insert(pipelineData).values(chunk).returning();
+      inserted.push(...result);
+    }
+
+    this.logger.log(`Bulk-created ${inserted.length} data record(s) in schema ${schemaId}`);
+    return inserted;
+  }
+
+  /**
+   * Return the subset of `values` that already exist in a schema's records under
+   * a given JSONB field. Used by data_upsert_many to detect already-present
+   * dedup keys before inserting. `field` MUST be validated against the schema's
+   * field names by the caller (it is interpolated into SQL).
+   */
+  async findExistingKeys(
+    schemaId: string,
+    projectId: string,
+    field: string,
+    values: string[],
+  ): Promise<Set<string>> {
+    const existing = new Set<string>();
+    if (values.length === 0) {
+      return existing;
+    }
+
+    const fieldPath = sql`${pipelineData.data}->>${sql.raw(`'${field}'`)}`;
+    const CHUNK = 500;
+    for (let i = 0; i < values.length; i += CHUNK) {
+      const chunk = values.slice(i, i + CHUNK);
+      const rows = await db
+        .select({ key: fieldPath })
+        .from(pipelineData)
+        .where(
+          and(
+            eq(pipelineData.schemaId, schemaId),
+            eq(pipelineData.projectId, projectId),
+            inArray(fieldPath, chunk),
+          ),
+        );
+      for (const row of rows) {
+        if (row.key != null) {
+          existing.add(String(row.key));
+        }
+      }
+    }
+    return existing;
+  }
+
+  /**
    * Create a new data record with access check
    * Used by the API for manual record creation
    */
