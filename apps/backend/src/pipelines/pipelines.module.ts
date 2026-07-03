@@ -12,6 +12,7 @@ import {
   StepHandlerRegistry,
   ValidatorRegistry,
   ExpressionEvaluator,
+  SystemPipelineTriggerService,
 } from './execution';
 import { PermissionsModule } from '../permissions/permissions.module';
 import { SettingsModule } from '../settings/settings.module';
@@ -44,8 +45,11 @@ import {
   RegisterUploadHandler,
   GitHubApiHandler,
   GoogleCalendarHandler,
+  XmlFeedParseHandler,
+  DataUpsertManyHandler,
   DelayHandler,
 } from './handlers';
+import { FeedParserService } from './feed-parser.service';
 import { IntegrationsModule } from '../integrations/integrations.module';
 // Embeddings service
 import { PipelineEmbeddingsService } from './pipeline-embeddings.service';
@@ -101,6 +105,8 @@ import {
     StepHandlerRegistry,
     ValidatorRegistry,
     ExpressionEvaluator,
+    // Shared "system context" trigger (onboarding rules + scheduled pipelines)
+    SystemPipelineTriggerService,
     // Embeddings service (pgvector operations)
     PipelineEmbeddingsService,
     // Execution log persistence
@@ -109,6 +115,8 @@ import {
     FunctionRunnerService,
     // Skills service for AI agent skills
     SkillsService,
+    // Feed parsing (pure) service used by the xml_feed_parse handler
+    FeedParserService,
     // Step handlers (auto-register on construction)
     FormHandler,
     ResponseHandler,
@@ -135,6 +143,8 @@ import {
     RegisterUploadHandler,
     GitHubApiHandler,
     GoogleCalendarHandler,
+    XmlFeedParseHandler,
+    DataUpsertManyHandler,
     DelayHandler,
     // Validators (auto-register on construction)
     AuthRequiredValidator,
@@ -153,6 +163,7 @@ import {
   ],
   exports: [
     PipelineExecutionService,
+    SystemPipelineTriggerService,
     PipelineSchemasService,
     PipelineDataService,
     SkillsService,

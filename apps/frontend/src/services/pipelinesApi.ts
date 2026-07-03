@@ -56,6 +56,8 @@ export type HandlerType =
   | 'register_upload'
   | 'github_api'
   | 'google_calendar'
+  | 'xml_feed_parse'
+  | 'data_upsert_many'
   | 'delay';
 
 export interface Pipeline {

@@ -34,6 +34,30 @@ export interface DataCreateHandlerConfig extends BaseHandlerConfig {
   fields: Record<string, string>;
 }
 
+export interface XmlFeedParseHandlerConfig extends BaseHandlerConfig {
+  /** Expression resolving to a feed URL or array of URLs. Mutually exclusive with xml. */
+  urls?: string;
+  /** Expression resolving to raw feed XML. Mutually exclusive with urls. */
+  xml?: string;
+  /** Max feeds fetched concurrently (default 8). */
+  concurrency?: number;
+  /** Per-feed fetch timeout in ms (default 30000). */
+  timeoutMs?: number;
+}
+
+export interface DataUpsertManyHandlerConfig extends BaseHandlerConfig {
+  /** Target schema ID. */
+  schemaId: string;
+  /** Expression resolving to the source array. */
+  items: string;
+  /** Per-column field mappings; each array element is exposed as steps.item. */
+  map: Record<string, string>;
+  /** Schema column that stores the dedup key. */
+  dedupField: string;
+  /** Expression, or an ordered fallback chain, computing each item's dedup value. */
+  dedupKey: string | string[];
+}
+
 export interface FilterConfig {
   op: 'eq' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte' | 'like';
   value: string;
@@ -358,6 +382,8 @@ export type HandlerConfig =
   | RegisterUploadHandlerConfig
   | StripeCheckoutHandlerConfig
   | StripeWebhookHandlerConfig
+  | XmlFeedParseHandlerConfig
+  | DataUpsertManyHandlerConfig
   | DelayHandlerConfig;
 
 export interface SignedUrlHandlerConfig extends BaseHandlerConfig {

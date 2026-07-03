@@ -25,6 +25,8 @@ import { PresignedUploadHandlerConfig } from './PresignedUploadHandlerConfig';
 import { RegisterUploadHandlerConfig } from './RegisterUploadHandlerConfig';
 import { GitHubApiConfig } from './GitHubApiConfig';
 import { GoogleCalendarConfig } from './GoogleCalendarConfig';
+import { XmlFeedParseConfig } from './XmlFeedParseConfig';
+import { DataUpsertManyConfig } from './DataUpsertManyConfig';
 import { DelayHandlerConfig } from './DelayHandlerConfig';
 import { AvailableVariables, type PreviousStep } from './AvailableVariables';
 import type { HandlerConfig } from './types';
@@ -380,6 +382,31 @@ export function HandlerConfigWrapper({
         </>
       );
 
+    case 'xml_feed_parse':
+      return (
+        <>
+          {renderVariablesPanel()}
+          <XmlFeedParseConfig
+            config={config}
+            onChange={handleChange}
+            previousSteps={previousSteps}
+          />
+        </>
+      );
+
+    case 'data_upsert_many':
+      return (
+        <>
+          {renderVariablesPanel()}
+          <DataUpsertManyConfig
+            config={config}
+            onChange={handleChange}
+            projectId={projectId}
+            previousSteps={previousSteps}
+          />
+        </>
+      );
+
     case 'delay':
       return (
         <>
@@ -432,6 +459,8 @@ export function getHandlerDisplayName(type: HandlerType): string {
     register_upload: 'Register Upload',
     github_api: 'GitHub API',
     google_calendar: 'Google Calendar',
+    xml_feed_parse: 'Parse Feed',
+    data_upsert_many: 'Upsert Many',
     delay: 'Delay',
   };
   return names[type] || type;
@@ -468,6 +497,8 @@ export function getHandlerDescription(type: HandlerType): string {
     register_upload: 'Record a file uploaded directly to the bucket via presigned URL',
     github_api: 'Create repositories from templates and call the GitHub API',
     google_calendar: 'Read free/busy and read/write events on Google Calendar',
+    xml_feed_parse: 'Fetch and parse RSS / Atom / RDF feeds into normalized entries',
+    data_upsert_many: 'Insert an array of records into a schema, skipping duplicates',
     delay: 'Pause the pipeline for a configurable duration',
   };
   return descriptions[type] || '';

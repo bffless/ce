@@ -5,3 +5,4 @@ export * from './validator.interface';
 export * from './validator.registry';
 export * from './expression-evaluator';
 export * from './pipeline-execution.service';
+export * from './system-pipeline-trigger.service';

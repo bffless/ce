@@ -260,6 +260,13 @@
       "when": 1783024474244,
       "tag": "0036_stale_hydra",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1783096365744,
+      "tag": "0037_fluffy_chimera",
+      "breakpoints": true
     }
   ]
 }
