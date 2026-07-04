@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.97](https://github.com/bffless/ce/compare/v0.1.96...v0.1.97) (2026-07-04)
+
+
+### Bug Fixes
+
+* **pipeline-schedules:** honor repo-scoped API key project scope ([#411](https://github.com/bffless/ce/issues/411)) ([#413](https://github.com/bffless/ce/issues/413)) ([e1e1720](https://github.com/bffless/ce/commit/e1e17208adeb4c742031e31b178571e1f272b4f0))
+* **pipelines:** widen data_delete filter operators to match data_query ([#412](https://github.com/bffless/ce/issues/412)) ([#414](https://github.com/bffless/ce/issues/414)) ([bc1e75f](https://github.com/bffless/ce/commit/bc1e75f48557aa6b0b991b9789a6e029701ca59f))
+
 ## [0.1.96](https://github.com/bffless/ce/compare/v0.1.95...v0.1.96) (2026-07-03)
 
 
