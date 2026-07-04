@@ -192,7 +192,7 @@ export function PipelineSchedulesPage() {
                         {relative(schedule.lastRunAt)}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {relative(schedule.nextRunAt)}
+                        {schedule.enabled ? relative(schedule.nextRunAt) : '—'}
                       </TableCell>
                       <TableCell>
                         <Switch
@@ -235,8 +235,6 @@ export function PipelineSchedulesPage() {
       {projectId && (
         <ScheduleFormDialog
           projectId={projectId}
-          owner={owner!}
-          repo={repo!}
           schedule={editing}
           open={formOpen}
           onOpenChange={setFormOpen}

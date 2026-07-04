@@ -79,8 +79,6 @@ describe('ScheduleFormDialog', () => {
     render(
       <ScheduleFormDialog
         projectId="proj-1"
-        owner="acme"
-        repo="site"
         open
         onOpenChange={() => {}}
       />,
@@ -103,8 +101,6 @@ describe('ScheduleFormDialog', () => {
     render(
       <ScheduleFormDialog
         projectId="proj-1"
-        owner="acme"
-        repo="site"
         open
         onOpenChange={() => {}}
       />,
@@ -117,8 +113,6 @@ describe('ScheduleFormDialog', () => {
     render(
       <ScheduleFormDialog
         projectId="proj-1"
-        owner="acme"
-        repo="site"
         open
         onOpenChange={() => {}}
       />,
@@ -131,8 +125,6 @@ describe('ScheduleFormDialog', () => {
     render(
       <ScheduleFormDialog
         projectId="proj-1"
-        owner="acme"
-        repo="site"
         schedule={schedule()}
         open
         onOpenChange={() => {}}

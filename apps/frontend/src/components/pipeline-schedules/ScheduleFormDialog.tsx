@@ -28,8 +28,6 @@ import { useToast } from '@/hooks/use-toast';
 
 interface ScheduleFormDialogProps {
   projectId: string;
-  owner: string;
-  repo: string;
   schedule?: PipelineSchedule;
   open: boolean;
   onOpenChange: (open: boolean) => void;
