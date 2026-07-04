@@ -158,10 +158,16 @@ export class HttpRequestHandler implements StepHandler<HttpRequestHandlerConfig>
       };
     }
 
-    // Build headers
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
+    // Build headers. Only advertise a JSON Content-Type when we will actually
+    // send a body: a bodyless GET carrying `Content-Type: application/json` is
+    // semantically wrong and strict upstreams (e.g. nginx) reject it with a
+    // 415 Unsupported Media Type. A caller can still set its own Content-Type
+    // via `config.headers` below.
+    const headers: Record<string, string> = {};
+    const willSendBody = method !== 'GET' && config.body !== undefined;
+    if (willSendBody) {
+      headers['Content-Type'] = 'application/json';
+    }
 
     // Forward specific headers from original request
     if (config.forwardHeaders) {

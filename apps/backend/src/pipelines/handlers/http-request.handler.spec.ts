@@ -255,4 +255,44 @@ describe('HttpRequestHandler', () => {
       expect(mockFetch).not.toHaveBeenCalled();
     });
   });
+
+  describe('execute — Content-Type header', () => {
+    function sentHeaders(): Record<string, string> {
+      return (mockFetch.mock.calls[0][1] as { headers: Record<string, string> }).headers;
+    }
+
+    it('omits Content-Type on a bodyless GET (strict upstreams 415 otherwise)', async () => {
+      mockFetch.mockResolvedValue(makeFetchResponse({ status: 200, body: '<rss/>', isJson: false }));
+
+      await handler.execute(makeContext(), makeStep({ url: 'https://example.com/rss' }));
+
+      expect(sentHeaders()['Content-Type']).toBeUndefined();
+    });
+
+    it('sends Content-Type: application/json when a body is present', async () => {
+      mockFetch.mockResolvedValue(makeFetchResponse({ status: 200, body: { ok: true } }));
+
+      await handler.execute(
+        makeContext(),
+        makeStep({ url: 'https://example.com/post', method: 'POST', body: { a: 1 } }),
+      );
+
+      expect(sentHeaders()['Content-Type']).toBe('application/json');
+    });
+
+    it('lets a caller override Content-Type via config.headers', async () => {
+      mockFetch.mockResolvedValue(makeFetchResponse({ status: 200, body: '<rss/>', isJson: false }));
+
+      await handler.execute(
+        makeContext(),
+        makeStep({
+          url: 'https://example.com/rss',
+          headers: { Accept: 'application/rss+xml' },
+        }),
+      );
+
+      expect(sentHeaders()['accept']).toBe('application/rss+xml');
+      expect(sentHeaders()['Content-Type']).toBeUndefined();
+    });
+  });
 });
