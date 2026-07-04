@@ -10,6 +10,7 @@ import { ProxyRuleSetsPage } from '@/pages/ProxyRuleSetsPage';
 import { RuleSetDetailPage } from '@/pages/RuleSetDetailPage';
 import { RuleEditorPage } from '@/pages/RuleEditorPage';
 import PipelineLogsPage from '@/pages/PipelineLogsPage';
+import { PipelineSchedulesPage } from '@/pages/PipelineSchedulesPage';
 import { SchemasListPage } from '@/pages/SchemasListPage';
 import { SchemaDetailPage } from '@/pages/SchemaDetailPage';
 import { SchemaEditorPage } from '@/pages/SchemaEditorPage';
@@ -112,6 +113,7 @@ function App() {
           <Route path="proxy-rules/:ruleSetId/new" element={<RuleEditorPage />} />
           <Route path="proxy-rules/:ruleSetId/:ruleId" element={<RuleEditorPage />} />
           <Route path="proxy-rules/:ruleSetId/:ruleId/logs" element={<PipelineLogsPage />} />
+          <Route path="schedules" element={<PipelineSchedulesPage />} />
           <Route path="data" element={<SchemasListPage />} />
           <Route path="data/new" element={<SchemaEditorPage />} />
           <Route path="data/:schemaId" element={<SchemaDetailPage />} />

@@ -29,13 +29,15 @@ export function RepositoryLayout() {
     ? 'uploads'
     : pathAfterRepo.startsWith('/data')
       ? 'data'
-      : pathAfterRepo.startsWith('/proxy-rules')
-        ? 'proxy-rules'
-        : pathAfterRepo.startsWith('/aliases')
-          ? 'aliases'
-          : pathAfterRepo.startsWith('/branches')
-            ? 'branches'
-            : 'deployments';
+      : pathAfterRepo.startsWith('/schedules')
+        ? 'schedules'
+        : pathAfterRepo.startsWith('/proxy-rules')
+          ? 'proxy-rules'
+          : pathAfterRepo.startsWith('/aliases')
+            ? 'aliases'
+            : pathAfterRepo.startsWith('/branches')
+              ? 'branches'
+              : 'deployments';
 
   // Update Redux store when URL params change
   useEffect(() => {
@@ -155,6 +157,9 @@ export function RepositoryLayout() {
             </TabsTrigger>
             <TabsTrigger value="proxy-rules" asChild>
               <Link to={routes.proxyRules(owner!, repo!)}>Proxy Rules</Link>
+            </TabsTrigger>
+            <TabsTrigger value="schedules" asChild>
+              <Link to={routes.schedules(owner!, repo!)}>Schedules</Link>
             </TabsTrigger>
             <TabsTrigger value="data" asChild>
               <Link to={`/repo/${owner}/${repo}/data`}>Data</Link>
