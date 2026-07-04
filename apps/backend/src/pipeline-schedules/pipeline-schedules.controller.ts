@@ -27,6 +27,7 @@ import {
   UpdatePipelineScheduleDto,
   PipelineScheduleResponseDto,
   ListPipelineSchedulesResponseDto,
+  ListPipelineRuleOptionsResponseDto,
 } from './pipeline-schedules.dto';
 
 /**
@@ -60,6 +61,23 @@ export class PipelineSchedulesController {
     @CurrentUser() user: CurrentUserData,
   ): Promise<ListPipelineSchedulesResponseDto> {
     const data = await this.schedulesService.listSchedules(
+      projectId,
+      user.id,
+      user.role,
+      user.apiKeyProjectId,
+    );
+    return { data };
+  }
+
+  @Get('projects/:projectId/pipeline-rules')
+  @ApiOperation({ summary: 'List pipeline-type proxy rules in a project (schedule targets)' })
+  @ApiParam({ name: 'projectId', description: 'Project ID' })
+  @ApiResponse({ status: 200, type: ListPipelineRuleOptionsResponseDto })
+  async listPipelineRules(
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+    @CurrentUser() user: CurrentUserData,
+  ): Promise<ListPipelineRuleOptionsResponseDto> {
+    const data = await this.schedulesService.listPipelineRules(
       projectId,
       user.id,
       user.role,

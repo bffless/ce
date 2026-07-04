@@ -292,3 +292,54 @@ describe('PipelineSchedulesService.runDueSchedules', () => {
     expect(advance!.lastError).toBe('connection reset');
   });
 });
+
+describe('listPipelineRules', () => {
+  it('returns pipeline rules for the project mapped to option rows', async () => {
+    const requireProjectAccess = jest.fn().mockResolvedValue(undefined);
+    const permissions = { requireProjectAccess } as unknown as PermissionsService;
+    const systemTrigger = {} as unknown as SystemPipelineTriggerService;
+    const service = new PipelineSchedulesService(permissions, systemTrigger);
+
+    mockDb.__reset();
+    mockDb.__queue([
+      {
+        id: 'rule-1',
+        ruleSetId: 'set-1',
+        ruleSetName: 'Feeds',
+        pathPattern: '/api/feeds',
+        method: 'GET',
+        pipelineName: 'feeds-sync',
+      },
+      {
+        id: 'rule-2',
+        ruleSetId: 'set-1',
+        ruleSetName: 'Feeds',
+        pathPattern: '/api/report',
+        method: null,
+        pipelineName: null,
+      },
+    ]);
+
+    const result = await service.listPipelineRules('proj-1', 'user-1', 'admin', null);
+
+    expect(requireProjectAccess).toHaveBeenCalledWith('proj-1', 'user-1', 'admin', 'viewer', null);
+    expect(result).toEqual([
+      {
+        id: 'rule-1',
+        name: 'feeds-sync',
+        ruleSetId: 'set-1',
+        ruleSetName: 'Feeds',
+        pathPattern: '/api/feeds',
+        method: 'GET',
+      },
+      {
+        id: 'rule-2',
+        name: '/api/report', // falls back to pathPattern when pipelineName is null
+        ruleSetId: 'set-1',
+        ruleSetName: 'Feeds',
+        pathPattern: '/api/report',
+        method: null,
+      },
+    ]);
+  });
+});
