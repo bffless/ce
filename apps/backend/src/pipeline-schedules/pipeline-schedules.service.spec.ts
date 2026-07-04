@@ -35,6 +35,7 @@ jest.mock('../db/client', () => {
   return { db: chainable };
 });
 
+import { ForbiddenException } from '@nestjs/common';
 import { db } from '../db/client';
 import { PipelineSchedulesService } from './pipeline-schedules.service';
 import { PermissionsService } from '../permissions/permissions.service';
@@ -83,6 +84,132 @@ function advanceSetArg(): Record<string, unknown> | undefined {
     .map((c) => c[0] as Record<string, unknown>)
     .find((arg) => arg && 'nextRunAt' in arg && 'lastRunAt' in arg);
 }
+
+describe('PipelineSchedulesService CRUD api-key project scope', () => {
+  beforeEach(() => mockDb.__reset());
+
+  // Mirrors the real requireProjectAccess short-circuit: a project-scoped
+  // api-key is authorized iff its scope matches the target project.
+  function buildScopedService() {
+    const requireProjectAccess = jest.fn(
+      async (
+        projectId: string,
+        _userId: string,
+        _userRole?: string,
+        _requiredRole?: string,
+        apiKeyProjectId?: string | null,
+      ) => {
+        if (apiKeyProjectId !== undefined && apiKeyProjectId !== null) {
+          if (apiKeyProjectId !== projectId) {
+            throw new ForbiddenException('API key is not authorized for this project');
+          }
+        }
+      },
+    );
+    const permissions = { requireProjectAccess } as unknown as PermissionsService;
+    const systemTrigger = {
+      triggerByProxyRuleId: jest.fn(),
+    } as unknown as SystemPipelineTriggerService;
+    const service = new PipelineSchedulesService(permissions, systemTrigger);
+    return { service, requireProjectAccess };
+  }
+
+  const createDto = {
+    name: 'Refresh',
+    targetProxyRuleId: 'rule-1',
+    cronExpression: '*/15 * * * *',
+  };
+
+  it('createSchedule threads apiKeyProjectId and succeeds for a key scoped to the project', async () => {
+    const { service, requireProjectAccess } = buildScopedService();
+    mockDb.__queue([{ projectId: 'proj-1' }]); // assertTargetInProject
+    mockDb.__queue([schedule()]); // insert .returning()
+
+    await expect(
+      service.createSchedule('proj-1', createDto, 'user-1', 'user', 'proj-1'),
+    ).resolves.toMatchObject({ id: 'sched-1', projectId: 'proj-1' });
+
+    expect(requireProjectAccess).toHaveBeenCalledWith(
+      'proj-1',
+      'user-1',
+      'user',
+      'contributor',
+      'proj-1',
+    );
+  });
+
+  it('createSchedule rejects a key scoped to another project before touching the db', async () => {
+    const { service } = buildScopedService();
+
+    await expect(
+      service.createSchedule('proj-1', createDto, 'user-1', 'user', 'proj-2'),
+    ).rejects.toThrow(ForbiddenException);
+
+    expect(mockDb.insert).not.toHaveBeenCalled();
+  });
+
+  it('listSchedules threads apiKeyProjectId and rejects a cross-project scoped key', async () => {
+    const { service, requireProjectAccess } = buildScopedService();
+    mockDb.__queue([schedule()]);
+
+    await expect(service.listSchedules('proj-1', 'user-1', 'user', 'proj-1')).resolves.toHaveLength(
+      1,
+    );
+    expect(requireProjectAccess).toHaveBeenCalledWith(
+      'proj-1',
+      'user-1',
+      'user',
+      'viewer',
+      'proj-1',
+    );
+
+    await expect(service.listSchedules('proj-1', 'user-1', 'user', 'proj-2')).rejects.toThrow(
+      ForbiddenException,
+    );
+  });
+
+  it('by-id methods enforce scope against the row project (cross-project isolation)', async () => {
+    const { service, requireProjectAccess } = buildScopedService();
+
+    // The schedule row belongs to proj-1; the key is scoped to proj-2.
+    mockDb.__queue([schedule()]); // getById for getSchedule
+    await expect(service.getSchedule('sched-1', 'user-1', 'user', 'proj-2')).rejects.toThrow(
+      ForbiddenException,
+    );
+
+    mockDb.__queue([schedule()]); // getById for updateSchedule
+    await expect(
+      service.updateSchedule('sched-1', { enabled: false }, 'user-1', 'user', 'proj-2'),
+    ).rejects.toThrow(ForbiddenException);
+
+    mockDb.__queue([schedule()]); // getById for deleteSchedule
+    await expect(service.deleteSchedule('sched-1', 'user-1', 'user', 'proj-2')).rejects.toThrow(
+      ForbiddenException,
+    );
+
+    // Scope was checked against the row's projectId, with the key's scope threaded.
+    for (const call of requireProjectAccess.mock.calls) {
+      expect(call[0]).toBe('proj-1');
+      expect(call[4]).toBe('proj-2');
+    }
+    expect(mockDb.update).not.toHaveBeenCalled();
+    expect(mockDb.delete).not.toHaveBeenCalled();
+  });
+
+  it('session auth (no apiKeyProjectId) still passes undefined through unchanged', async () => {
+    const { service, requireProjectAccess } = buildScopedService();
+    mockDb.__queue([]);
+
+    await expect(service.listSchedules('proj-1', 'user-1', 'admin')).resolves.toEqual([]);
+    expect(requireProjectAccess).toHaveBeenCalledWith(
+      'proj-1',
+      'user-1',
+      'admin',
+      'viewer',
+      undefined,
+    );
+  });
+});
 
 describe('PipelineSchedulesService.runDueSchedules', () => {
   beforeEach(() => mockDb.__reset());

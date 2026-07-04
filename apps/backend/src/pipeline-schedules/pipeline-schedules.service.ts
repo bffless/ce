@@ -47,8 +47,15 @@ export class PipelineSchedulesService {
     projectId: string,
     userId: string,
     userRole?: string,
+    apiKeyProjectId?: string | null,
   ): Promise<PipelineScheduleResponseDto[]> {
-    await this.permissionsService.requireProjectAccess(projectId, userId, userRole, 'viewer');
+    await this.permissionsService.requireProjectAccess(
+      projectId,
+      userId,
+      userRole,
+      'viewer',
+      apiKeyProjectId,
+    );
     const rows = await db
       .select()
       .from(pipelineSchedules)
@@ -60,9 +67,16 @@ export class PipelineSchedulesService {
     id: string,
     userId: string,
     userRole?: string,
+    apiKeyProjectId?: string | null,
   ): Promise<PipelineScheduleResponseDto> {
     const row = await this.getById(id);
-    await this.permissionsService.requireProjectAccess(row.projectId, userId, userRole, 'viewer');
+    await this.permissionsService.requireProjectAccess(
+      row.projectId,
+      userId,
+      userRole,
+      'viewer',
+      apiKeyProjectId,
+    );
     return this.toResponse(row);
   }
 
@@ -71,8 +85,15 @@ export class PipelineSchedulesService {
     dto: CreatePipelineScheduleDto,
     userId: string,
     userRole?: string,
+    apiKeyProjectId?: string | null,
   ): Promise<PipelineScheduleResponseDto> {
-    await this.permissionsService.requireProjectAccess(projectId, userId, userRole, 'contributor');
+    await this.permissionsService.requireProjectAccess(
+      projectId,
+      userId,
+      userRole,
+      'contributor',
+      apiKeyProjectId,
+    );
 
     const timezone = dto.timezone || 'UTC';
     // Validate cron + tz, and seed the first nextRunAt.
@@ -103,6 +124,7 @@ export class PipelineSchedulesService {
     dto: UpdatePipelineScheduleDto,
     userId: string,
     userRole?: string,
+    apiKeyProjectId?: string | null,
   ): Promise<PipelineScheduleResponseDto> {
     const existing = await this.getById(id);
     await this.permissionsService.requireProjectAccess(
@@ -110,6 +132,7 @@ export class PipelineSchedulesService {
       userId,
       userRole,
       'contributor',
+      apiKeyProjectId,
     );
 
     const cronExpression = dto.cronExpression ?? existing.cronExpression;
@@ -144,13 +167,19 @@ export class PipelineSchedulesService {
     return this.toResponse(row);
   }
 
-  async deleteSchedule(id: string, userId: string, userRole?: string): Promise<void> {
+  async deleteSchedule(
+    id: string,
+    userId: string,
+    userRole?: string,
+    apiKeyProjectId?: string | null,
+  ): Promise<void> {
     const existing = await this.getById(id);
     await this.permissionsService.requireProjectAccess(
       existing.projectId,
       userId,
       userRole,
       'contributor',
+      apiKeyProjectId,
     );
     await db.delete(pipelineSchedules).where(eq(pipelineSchedules.id, id));
     this.logger.log(`Deleted pipeline schedule ${id}`);

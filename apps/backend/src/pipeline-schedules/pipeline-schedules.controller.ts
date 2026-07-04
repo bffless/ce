@@ -29,6 +29,20 @@ import {
   ListPipelineSchedulesResponseDto,
 } from './pipeline-schedules.dto';
 
+/**
+ * REST surface for pipeline schedules. Route shape:
+ *
+ *   GET/POST          /api/pipeline-schedules/projects/:projectId/schedules
+ *   GET/PUT/DELETE    /api/pipeline-schedules/schedules/:id
+ *
+ * Deliberately NOT nested under /api/projects/:id/... — that prefix is owned by
+ * ProjectsController, whose two-segment catch-all (@Get(':owner/:name')) would
+ * swallow such paths and fail with a misleading "Project not found". Same reason
+ * proxy-rule-sets lives at /api/proxy-rule-sets/project/:projectId.
+ *
+ * Works with session auth and API keys; a project-scoped key (apiKeyProjectId)
+ * is authorized only for its own project's schedules.
+ */
 @ApiTags('Pipeline Schedules')
 @Controller('api/pipeline-schedules')
 @UseGuards(ApiKeyGuard)
@@ -45,7 +59,12 @@ export class PipelineSchedulesController {
     @Param('projectId', ParseUUIDPipe) projectId: string,
     @CurrentUser() user: CurrentUserData,
   ): Promise<ListPipelineSchedulesResponseDto> {
-    const data = await this.schedulesService.listSchedules(projectId, user.id, user.role);
+    const data = await this.schedulesService.listSchedules(
+      projectId,
+      user.id,
+      user.role,
+      user.apiKeyProjectId,
+    );
     return { data };
   }
 
@@ -58,7 +77,13 @@ export class PipelineSchedulesController {
     @Body() dto: CreatePipelineScheduleDto,
     @CurrentUser() user: CurrentUserData,
   ): Promise<PipelineScheduleResponseDto> {
-    return this.schedulesService.createSchedule(projectId, dto, user.id, user.role);
+    return this.schedulesService.createSchedule(
+      projectId,
+      dto,
+      user.id,
+      user.role,
+      user.apiKeyProjectId,
+    );
   }
 
   @Get('schedules/:id')
@@ -69,7 +94,7 @@ export class PipelineSchedulesController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: CurrentUserData,
   ): Promise<PipelineScheduleResponseDto> {
-    return this.schedulesService.getSchedule(id, user.id, user.role);
+    return this.schedulesService.getSchedule(id, user.id, user.role, user.apiKeyProjectId);
   }
 
   @Put('schedules/:id')
@@ -81,7 +106,7 @@ export class PipelineSchedulesController {
     @Body() dto: UpdatePipelineScheduleDto,
     @CurrentUser() user: CurrentUserData,
   ): Promise<PipelineScheduleResponseDto> {
-    return this.schedulesService.updateSchedule(id, dto, user.id, user.role);
+    return this.schedulesService.updateSchedule(id, dto, user.id, user.role, user.apiKeyProjectId);
   }
 
   @Delete('schedules/:id')
@@ -93,6 +118,6 @@ export class PipelineSchedulesController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: CurrentUserData,
   ): Promise<void> {
-    return this.schedulesService.deleteSchedule(id, user.id, user.role);
+    return this.schedulesService.deleteSchedule(id, user.id, user.role, user.apiKeyProjectId);
   }
 }
