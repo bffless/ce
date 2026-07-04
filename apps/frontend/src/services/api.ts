@@ -216,6 +216,7 @@ export const api = createApi({
     'TrafficIpRollup',
     'Blocklist',
     'BlocklistSettings',
+    'PipelineSchedule',
   ],
   endpoints: () => ({}),
 });
