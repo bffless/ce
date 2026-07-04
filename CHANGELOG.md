@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.98](https://github.com/bffless/ce/compare/v0.1.97...v0.1.98) (2026-07-04)
+
+
+### Bug Fixes
+
+* **pipelines:** send large strict-JSON response bodies verbatim to avoid OOM ([#418](https://github.com/bffless/ce/issues/418)) ([#419](https://github.com/bffless/ce/issues/419)) ([6b9645f](https://github.com/bffless/ce/commit/6b9645fa244b6270acacf5698bc642d5e4192256))
+
 ## [0.1.97](https://github.com/bffless/ce/compare/v0.1.96...v0.1.97) (2026-07-04)
 
 
