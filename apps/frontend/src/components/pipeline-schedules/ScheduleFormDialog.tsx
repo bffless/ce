@@ -84,13 +84,6 @@ export function ScheduleFormDialog({
     setNameError('');
   }, [open, schedule]);
 
-  // Default the target rule to the first available option once the list loads,
-  // mirroring how a native <select> presents its first option pre-selected.
-  useEffect(() => {
-    if (!open || isEdit || targetProxyRuleId || ruleOptions.length === 0) return;
-    setTargetProxyRuleId(ruleOptions[0].id);
-  }, [open, isEdit, targetProxyRuleId, ruleOptions]);
-
   const cronDescription = useMemo(() => describeCron(cronExpression), [cronExpression]);
   const cronValid = cronDescription !== null;
   const timezones = useMemo(timezoneOptions, []);
@@ -160,6 +153,7 @@ export function ScheduleFormDialog({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Refresh feeds every 15 min"
+              maxLength={100}
               className={nameError ? 'border-destructive' : ''}
             />
             {nameError && <p className="text-xs text-destructive">{nameError}</p>}
