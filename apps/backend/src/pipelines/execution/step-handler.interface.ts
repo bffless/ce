@@ -169,9 +169,14 @@ export interface DataDeleteHandlerConfig extends BaseHandlerConfig {
   recordId?: string;
 
   /**
-   * Filter to identify records to delete (ignored if recordId is set)
+   * Filter to identify records to delete (ignored if recordId is set).
+   * Same operator set as data_query; range ops (gt/lt/gte/lte) cast the field
+   * to numeric, so the stored value must be numeric (e.g. epoch-ms timestamps).
    */
-  filters?: Record<string, { op: 'eq' | 'ne'; value: string }>;
+  filters?: Record<
+    string,
+    { op: 'eq' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte' | 'like'; value: string }
+  >;
 
   /**
    * How to combine multiple filters: 'and' (all must match) or 'or' (any must match)
