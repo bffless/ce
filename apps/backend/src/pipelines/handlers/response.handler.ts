@@ -19,6 +19,16 @@ export class ResponseHandler implements StepHandler<ResponseHandlerConfig> {
   readonly type = 'response_handler' as const;
   private readonly logger = new Logger(ResponseHandler.name);
 
+  /**
+   * String bodies at or above this size are sent verbatim when they are
+   * already strict JSON instead of being JSON5-parsed into an object (#418).
+   * Below the threshold the legacy parse is kept so existing pipelines that
+   * read `steps.<respond>.body.<field>` still see an object; above it,
+   * retaining a parsed copy of the payload (plus Express re-stringifying it)
+   * is what OOMs small-heap deployments.
+   */
+  private static readonly JSON_PASSTHROUGH_MIN_CHARS = 256 * 1024;
+
   constructor(
     private readonly registry: StepHandlerRegistry,
     private readonly expressionEvaluator: ExpressionEvaluator,
@@ -106,6 +116,21 @@ export class ResponseHandler implements StepHandler<ResponseHandlerConfig> {
     // For JSON content type, ensure body is properly formatted
     if (contentType.includes('application/json')) {
       if (typeof body === 'string') {
+        // Large-body fast path: if the rendered template is already strict
+        // JSON, send the string verbatim. Materializing it into an object here
+        // only for Express to JSON.stringify it again multiplies peak heap by
+        // several times the payload size and OOMs the worker on large list
+        // responses (#418). The JSON.parse is validation only; its result is
+        // discarded.
+        if (body.length >= ResponseHandler.JSON_PASSTHROUGH_MIN_CHARS) {
+          try {
+            JSON.parse(body);
+            return { body };
+          } catch {
+            // Not strict JSON — fall through to JSON5 normalization.
+          }
+        }
+
         // Try to parse as JSON5 (handles unquoted keys, trailing commas, etc.)
         // This allows templates like { success: true, data: {{ steps.foo.value }} }
         // to work even though they produce non-strict JSON
