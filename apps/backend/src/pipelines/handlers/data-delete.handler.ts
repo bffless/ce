@@ -13,8 +13,9 @@ import { ConfigurationError, SchemaNotFoundError } from '../errors';
 /**
  * Data Delete Handler
  *
- * Deletes records from a pipeline schema.
- * Supports eq and ne filter operators for finding records to delete.
+ * Deletes records from a pipeline schema, either by recordId or by filter
+ * predicate (delete-by-query). Filters support the same operator set as
+ * data_query: eq, ne, gt, lt, gte, lte, like.
  */
 @Injectable()
 export class DataDeleteHandler implements StepHandler<DataDeleteHandlerConfig> {
@@ -44,7 +45,7 @@ export class DataDeleteHandler implements StepHandler<DataDeleteHandlerConfig> {
 
     // Validate filter operators if filters are provided
     if (hasFilters) {
-      const validOps = ['eq', 'ne'];
+      const validOps = ['eq', 'ne', 'gt', 'lt', 'gte', 'lte', 'like'];
       for (const [field, filter] of Object.entries(config.filters!)) {
         if (!validOps.includes(filter.op)) {
           throw new ConfigurationError(
@@ -110,6 +111,21 @@ export class DataDeleteHandler implements StepHandler<DataDeleteHandlerConfig> {
             break;
           case 'ne':
             filterConditions.push(sql`${fieldPath} != ${String(value)}`);
+            break;
+          case 'gt':
+            filterConditions.push(sql`(${fieldPath})::numeric > ${Number(value)}`);
+            break;
+          case 'lt':
+            filterConditions.push(sql`(${fieldPath})::numeric < ${Number(value)}`);
+            break;
+          case 'gte':
+            filterConditions.push(sql`(${fieldPath})::numeric >= ${Number(value)}`);
+            break;
+          case 'lte':
+            filterConditions.push(sql`(${fieldPath})::numeric <= ${Number(value)}`);
+            break;
+          case 'like':
+            filterConditions.push(sql`${fieldPath} ILIKE ${String(value)}`);
             break;
         }
       }
