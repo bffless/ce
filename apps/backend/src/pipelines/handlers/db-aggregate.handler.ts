@@ -9,6 +9,7 @@ import { pipelineData } from '../../db/schema';
 import { PipelineSchemasService } from '../pipeline-schemas.service';
 import { db } from '../../db/client';
 import { ConfigurationError, SchemaNotFoundError } from '../errors';
+import { buildInPredicate } from './in-filter.util';
 
 /**
  * DB Aggregate Handler
@@ -52,7 +53,7 @@ export class DbAggregateHandler implements StepHandler<DbAggregateHandlerConfig>
 
     // Validate filter operators
     if (config.filters) {
-      const validFilterOps = ['eq', 'ne', 'gt', 'lt', 'gte', 'lte', 'like'];
+      const validFilterOps = ['eq', 'ne', 'gt', 'lt', 'gte', 'lte', 'like', 'in'];
       for (const [field, filter] of Object.entries(config.filters)) {
         if (!validFilterOps.includes(filter.op)) {
           throw new ConfigurationError(
@@ -123,6 +124,9 @@ export class DbAggregateHandler implements StepHandler<DbAggregateHandlerConfig>
             break;
           case 'like':
             filterConditions.push(sql`${fieldPath} ILIKE ${String(value)}`);
+            break;
+          case 'in':
+            filterConditions.push(buildInPredicate(fieldPath, value));
             break;
         }
       }

@@ -283,7 +283,7 @@ export interface DbAggregateHandlerConfig extends BaseHandlerConfig {
    */
   filters?: Record<
     string,
-    { op: 'eq' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte' | 'like'; value: string }
+    { op: 'eq' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte' | 'like' | 'in'; value: string }
   >;
 
   /**
