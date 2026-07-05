@@ -87,3 +87,62 @@ describe('DataQueryHandler in operator', () => {
     );
   });
 });
+
+describe('DataQueryHandler output shape (array vs single object)', () => {
+  beforeEach(() => mockDb.__reset());
+
+  const row = (guid: string) => ({
+    id: `id-${guid}`,
+    alias: null,
+    version: 1,
+    data: { guid },
+    createdAt: 'c',
+    updatedAt: 'u',
+  });
+
+  it('returns an ARRAY when limit is 1 and single/recordId are not set (bffless/ce#428)', async () => {
+    // Regression: limit:1 used to implicitly return a single object, which
+    // silently dropped the row for any array-shaped consumer.
+    const { handler } = buildHandler();
+    mockDb.__queue([row('g1')]);
+    const result = await handler.execute(
+      context(),
+      step({ schemaId: 'schema-1', limit: 1 }),
+    );
+    expect(Array.isArray(result.output)).toBe(true);
+    expect(result.output).toHaveLength(1);
+    expect((result.output as Array<{ guid: string }>)[0].guid).toBe('g1');
+  });
+
+  it('returns a single OBJECT when single:true is set explicitly', async () => {
+    const { handler } = buildHandler();
+    mockDb.__queue([row('g1')]);
+    const result = await handler.execute(
+      context(),
+      step({ schemaId: 'schema-1', single: true }),
+    );
+    expect(Array.isArray(result.output)).toBe(false);
+    expect((result.output as { guid: string }).guid).toBe('g1');
+  });
+
+  it('returns null when single:true matches no rows', async () => {
+    const { handler } = buildHandler();
+    mockDb.__queue([]);
+    const result = await handler.execute(
+      context(),
+      step({ schemaId: 'schema-1', single: true }),
+    );
+    expect(result.output).toBeNull();
+  });
+
+  it('returns a single OBJECT when recordId is set', async () => {
+    const { handler } = buildHandler();
+    mockDb.__queue([row('g1')]);
+    const result = await handler.execute(
+      context(),
+      step({ schemaId: 'schema-1', recordId: 'id-g1' }),
+    );
+    expect(Array.isArray(result.output)).toBe(false);
+    expect((result.output as { guid: string }).guid).toBe('g1');
+  });
+});
