@@ -123,3 +123,27 @@ describe('UploadRecordService.buildUploadKey — verbatim mode', () => {
     );
   });
 });
+
+describe('UploadRecordService.parseUploadKey — verbatim keys round-trip', () => {
+  const build = () =>
+    new UploadRecordService({} as PipelineDataService, new ExpressionEvaluator());
+
+  it('accepts a structural key and recovers the leaf name unchanged', () => {
+    const svc = build();
+    const parts = svc.parseUploadKey(
+      'acme/site/uploads/content/Design Docs/Q3 Handoff/assets/foo.png',
+      'acme',
+      'site',
+    );
+    expect(parts).not.toBeNull();
+    expect(parts!.sanitizedFilename).toBe('foo.png');
+    expect(parts!.storedFilename).toBe('foo.png');
+    expect(parts!.publicPath).toBe('/api/uploads/content/Design Docs/Q3 Handoff/assets/foo.png');
+  });
+
+  it('still rejects traversal and cross-project keys', () => {
+    const svc = build();
+    expect(svc.parseUploadKey('acme/site/uploads/../x', 'acme', 'site')).toBeNull();
+    expect(svc.parseUploadKey('other/site/uploads/content/x.png', 'acme', 'site')).toBeNull();
+  });
+});
