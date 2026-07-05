@@ -18,6 +18,7 @@ describe('DbAggregateConfig in operator', () => {
       />,
     );
     expect(screen.getByDisplayValue('a, b')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Expression, or comma-separated list')).toBeInTheDocument();
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({ filters: { feedId: { op: 'in', value: ['a', 'b'] } } }),
     );
@@ -35,5 +36,19 @@ describe('DbAggregateConfig in operator', () => {
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({ filters: { feedId: { op: 'in', value: 'steps.prep.urls' } } }),
     );
+  });
+
+  it('uses the plain Expression placeholder for non-in operators', () => {
+    render(
+      <DbAggregateConfig
+        projectId="p1"
+        config={{ schemaId: 's1', operation: 'count', filters: { title: { op: 'eq', value: 'hi' } } }}
+        onChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByPlaceholderText('Expression')).toBeInTheDocument();
+    expect(
+      screen.queryByPlaceholderText('Expression, or comma-separated list'),
+    ).not.toBeInTheDocument();
   });
 });

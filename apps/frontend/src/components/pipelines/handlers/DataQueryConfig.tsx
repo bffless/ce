@@ -180,7 +180,7 @@ export function DataQueryConfig({ config, onChange, projectId, previousSteps = [
                   <ExpressionInput
                     value={filter.value}
                     onChange={(value) => handleFilterChange(index, { value })}
-                    placeholder="Expression"
+                    placeholder={filter.op === 'in' ? 'Expression, or comma-separated list' : 'Expression'}
                     previousSteps={previousSteps}
                   />
                 </div>

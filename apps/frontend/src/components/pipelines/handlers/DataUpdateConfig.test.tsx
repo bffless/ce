@@ -22,6 +22,7 @@ describe('DataUpdateConfig in operator', () => {
       />,
     );
     expect(screen.getByDisplayValue('a, b')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Expression, or comma-separated list')).toBeInTheDocument();
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({ filters: { feedId: { op: 'in', value: ['a', 'b'] } } }),
     );
@@ -43,5 +44,19 @@ describe('DataUpdateConfig in operator', () => {
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({ filters: { feedId: { op: 'in', value: 'steps.prep.urls' } } }),
     );
+  });
+
+  it('uses the plain Expression placeholder for non-in operators', () => {
+    render(
+      <DataUpdateConfig
+        projectId="p1"
+        config={{ schemaId: 's1', filters: { title: { op: 'eq', value: 'hi' } }, fields: { read: 'true' } }}
+        onChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByPlaceholderText('Expression')).toBeInTheDocument();
+    expect(
+      screen.queryByPlaceholderText('Expression, or comma-separated list'),
+    ).not.toBeInTheDocument();
   });
 });

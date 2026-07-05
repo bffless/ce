@@ -23,6 +23,9 @@ describe('DataQueryConfig in operator', () => {
     // Displayed as comma-joined text in the value input.
     expect(screen.getByDisplayValue('https://a.com/feed, https://b.com/feed')).toBeInTheDocument();
 
+    // The in operator hints that a comma-separated list is accepted.
+    expect(screen.getByPlaceholderText('Expression, or comma-separated list')).toBeInTheDocument();
+
     // The mount effect emits the config with the value re-serialized to an array.
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -45,5 +48,19 @@ describe('DataQueryConfig in operator', () => {
         filters: { feedId: { op: 'in', value: 'steps.prep.urls' } },
       }),
     );
+  });
+
+  it('uses the plain Expression placeholder for non-in operators', () => {
+    render(
+      <DataQueryConfig
+        projectId="p1"
+        config={{ schemaId: 's1', filters: { title: { op: 'eq', value: 'hi' } } }}
+        onChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByPlaceholderText('Expression')).toBeInTheDocument();
+    expect(
+      screen.queryByPlaceholderText('Expression, or comma-separated list'),
+    ).not.toBeInTheDocument();
   });
 });
