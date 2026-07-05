@@ -122,7 +122,7 @@ export class PresignedUploadHandler
     if (keyStrategy === 'verbatim') {
       const keyExpr = config.key || 'request.body.path';
       const resolvedKey = this.expressionEvaluator.evaluateExpression(keyExpr, context, stepName);
-      if (!resolvedKey || typeof resolvedKey !== 'string') {
+      if (!resolvedKey || typeof resolvedKey !== 'string' || !resolvedKey.trim()) {
         return {
           success: false,
           error: {

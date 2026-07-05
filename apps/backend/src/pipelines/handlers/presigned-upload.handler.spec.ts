@@ -57,6 +57,16 @@ describe('PresignedUploadHandler — verbatim mode', () => {
     expect(res.error!.code).toBe('MISSING_KEY');
   });
 
+  it('errors with MISSING_KEY when the resolved key is whitespace-only', async () => {
+    const handler = buildHandler();
+    const res = await handler.execute(
+      contextWith({ path: '   ' }),
+      step({ subDir: 'content', keyStrategy: 'verbatim', key: 'request.body.path' }),
+    );
+    expect(res.success).toBe(false);
+    expect(res.error!.code).toBe('MISSING_KEY');
+  });
+
   it('is unchanged in default (uuid) mode', async () => {
     const handler = buildHandler();
     const res = await handler.execute(
@@ -67,5 +77,14 @@ describe('PresignedUploadHandler — verbatim mode', () => {
     expect((res.output as any).storageKey).toMatch(
       /^acme\/site\/uploads\/content\/[0-9a-f-]{36}-a_b\.png$/,
     );
+  });
+});
+
+describe('PresignedUploadHandler — uuid mode', () => {
+  it('errors with MISSING_FILENAME when no filename is provided', async () => {
+    const handler = buildHandler();
+    const res = await handler.execute(contextWith({}), step({ subDir: 'content' }));
+    expect(res.success).toBe(false);
+    expect(res.error!.code).toBe('MISSING_FILENAME');
   });
 });

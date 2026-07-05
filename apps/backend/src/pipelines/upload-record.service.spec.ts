@@ -104,6 +104,19 @@ describe('UploadRecordService.buildUploadKey — verbatim mode', () => {
     expect(() => svc.buildUploadKey({ ...base, verbatimKey: 'a//b.png' })).toThrow(/segment|\/\//i);
   });
 
+  it('accepts a filename that merely contains ".." (not a full segment)', () => {
+    const svc = build();
+    const parts = svc.buildUploadKey({ ...base, verbatimKey: 'docs/report..final.md' });
+    expect(parts.storageKey).toBe('acme/site/uploads/content/docs/report..final.md');
+  });
+
+  it('rejects a "." segment (browser-normalizable, would silently move the object)', () => {
+    const svc = build();
+    expect(() => svc.buildUploadKey({ ...base, verbatimKey: 'a/./b.png' })).toThrow(
+      /segment|unsafe/i,
+    );
+  });
+
   it('rejects control characters', () => {
     const svc = build();
     expect(() => svc.buildUploadKey({ ...base, verbatimKey: 'a/\u0001b.png' })).toThrow(/control/i);

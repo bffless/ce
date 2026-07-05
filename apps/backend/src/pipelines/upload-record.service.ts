@@ -128,6 +128,7 @@ export class UploadRecordService {
      * When set, store the object at exactly {owner}/{repo}/uploads/{subDir}/{verbatimKey}
      * — no UUID prefix, no character rewriting. The app-chosen path IS the key, so
      * relative asset references resolve by passthrough. Safety-checked below.
+     * `dateBucket` has no effect in verbatim mode (the app-chosen path is exact).
      */
     verbatimKey?: string;
   }): UploadKeyParts {
@@ -169,15 +170,10 @@ export class UploadRecordService {
     if (!key) {
       throw new ConfigurationError('verbatim key resolved to empty', 'presigned_upload');
     }
-    if (key.includes('..')) {
+    const segments = key.split('/');
+    if (segments.some((s) => s === '' || s === '.' || s === '..')) {
       throw new ConfigurationError(
-        `verbatim key "${key}" contains ".." — path traversal is not allowed`,
-        'presigned_upload',
-      );
-    }
-    if (key.includes('//')) {
-      throw new ConfigurationError(
-        `verbatim key "${key}" contains an empty path segment ("//")`,
+        `verbatim key "${key}" has an unsafe path segment (empty, "." or "..")`,
         'presigned_upload',
       );
     }
@@ -186,13 +182,13 @@ export class UploadRecordService {
       throw new ConfigurationError('verbatim key contains control characters', 'presigned_upload');
     }
     const storageKey = `${owner}/${repo}/uploads/${subDir}/${key}`;
-    if (Buffer.byteLength(storageKey, 'utf8') > 1024) {
+    const storageKeyByteLength = Buffer.byteLength(storageKey, 'utf8');
+    if (storageKeyByteLength > 1024) {
       throw new ConfigurationError(
-        `verbatim storage key exceeds the 1024-byte limit (${Buffer.byteLength(storageKey, 'utf8')} bytes)`,
+        `verbatim storage key exceeds the 1024-byte limit (${storageKeyByteLength} bytes)`,
         'presigned_upload',
       );
     }
-    const segments = key.split('/');
     const storedFilename = segments[segments.length - 1];
     const publicPath = `/api/uploads/${subDir}/${key}`;
     return { storageKey, storedFilename, sanitizedFilename: storedFilename, publicPath };
