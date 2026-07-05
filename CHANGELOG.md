@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.102](https://github.com/bffless/ce/compare/v0.1.101...v0.1.102) (2026-07-05)
+
+
+### Bug Fixes
+
+* **pipelines:** data_query returns array unless single/recordId set ([#429](https://github.com/bffless/ce/issues/429)) ([b8ed41a](https://github.com/bffless/ce/commit/b8ed41a929afd45d62babfde18a651d1ab516453)), closes [#428](https://github.com/bffless/ce/issues/428)
+
 ## [0.1.101](https://github.com/bffless/ce/compare/v0.1.100...v0.1.101) (2026-07-05)
 
 
