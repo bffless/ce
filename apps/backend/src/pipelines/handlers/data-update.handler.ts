@@ -9,6 +9,7 @@ import { pipelineData } from '../../db/schema';
 import { PipelineSchemasService } from '../pipeline-schemas.service';
 import { db } from '../../db/client';
 import { ConfigurationError, SchemaNotFoundError } from '../errors';
+import { buildInPredicate } from './in-filter.util';
 
 /**
  * Data Update Handler
@@ -48,7 +49,7 @@ export class DataUpdateHandler implements StepHandler<DataUpdateHandlerConfig> {
 
     // Validate filter operators if filters are provided
     if (hasFilters) {
-      const validOps = ['eq', 'ne'];
+      const validOps = ['eq', 'ne', 'in'];
       for (const [field, filter] of Object.entries(config.filters!)) {
         if (!validOps.includes(filter.op)) {
           throw new ConfigurationError(
@@ -114,6 +115,9 @@ export class DataUpdateHandler implements StepHandler<DataUpdateHandlerConfig> {
             break;
           case 'ne':
             filterConditions.push(sql`${fieldPath} != ${String(value)}`);
+            break;
+          case 'in':
+            filterConditions.push(buildInPredicate(fieldPath, value));
             break;
         }
       }
