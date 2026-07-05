@@ -28,6 +28,22 @@ export interface PresignedUploadHandlerConfig {
   filename?: string;
 
   /**
+   * Key construction strategy.
+   * - 'uuid' (default): {subDir}/{uuid}-{sanitizedFilename} — collision-safe, opaque.
+   * - 'verbatim': store at the exact app-chosen sub-path (see `key`), so relative
+   *   asset references resolve by passthrough. No UUID prefix, no char rewriting.
+   * @default 'uuid'
+   */
+  keyStrategy?: 'uuid' | 'verbatim';
+
+  /**
+   * Expression resolving to the sub-path under `subDir` for verbatim mode
+   * (e.g. "Design Docs/doc.md"). Required when keyStrategy is 'verbatim'.
+   * @default "request.body.path"
+   */
+  key?: string;
+
+  /**
    * Presigned URL expiration in seconds.
    * @default 3600
    */
@@ -99,23 +115,53 @@ export class PresignedUploadHandler
       };
     }
 
-    // Resolve the original filename from the request.
+    const keyStrategy = config.keyStrategy ?? 'uuid';
+
+    // Verbatim mode: resolve the app-chosen sub-path.
+    let verbatimKey: string | undefined;
+    if (keyStrategy === 'verbatim') {
+      const keyExpr = config.key || 'request.body.path';
+      const resolvedKey = this.expressionEvaluator.evaluateExpression(keyExpr, context, stepName);
+      if (!resolvedKey || typeof resolvedKey !== 'string') {
+        return {
+          success: false,
+          error: {
+            code: 'MISSING_KEY',
+            message: `key expression "${keyExpr}" resolved to ${
+              resolvedKey === null ? 'null' : typeof resolvedKey
+            }, expected a path string for verbatim keyStrategy`,
+          },
+        };
+      }
+      verbatimKey = resolvedKey;
+    }
+
+    // Resolve the display filename. In verbatim mode it is optional — fall back
+    // to the key's last segment; in uuid mode it is still required.
     const filenameExpr = config.filename || 'request.body.filename';
-    const originalName = this.expressionEvaluator.evaluateExpression(
+    const rawFilename = this.expressionEvaluator.evaluateExpression(
       filenameExpr,
       context,
       stepName,
     );
-    if (!originalName || typeof originalName !== 'string') {
-      return {
-        success: false,
-        error: {
-          code: 'MISSING_FILENAME',
-          message: `filename expression "${filenameExpr}" resolved to ${
-            originalName === null ? 'null' : typeof originalName
-          }, expected a filename string`,
-        },
-      };
+    let originalName: string;
+    if (!rawFilename || typeof rawFilename !== 'string') {
+      if (verbatimKey) {
+        const segs = verbatimKey.replace(/^\/+|\/+$/g, '').split('/');
+        originalName = segs[segs.length - 1];
+      } else {
+        return {
+          success: false,
+          error: {
+            code: 'MISSING_FILENAME',
+            message: `filename expression "${filenameExpr}" resolved to ${
+              rawFilename === null ? 'null' : typeof rawFilename
+            }, expected a filename string`,
+          },
+        };
+      }
+    } else {
+      originalName = rawFilename;
     }
 
     // subDir may be an expression (e.g. "projects/{{request.body.projectId}}").
@@ -127,6 +173,7 @@ export class PresignedUploadHandler
       subDir,
       originalName,
       dateBucket: config.dateBucket,
+      verbatimKey,
     });
 
     const expiresIn = config.expiresIn ?? 3600;
