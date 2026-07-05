@@ -22,6 +22,9 @@ export const routes = {
   /** Proxy rule sets list page */
   proxyRules: (owner: string, name: string) => `/repo/${owner}/${name}/proxy-rules`,
 
+  /** Pipeline schedules tab */
+  schedules: (owner: string, name: string) => `/repo/${owner}/${name}/schedules`,
+
   /** Rule set detail page showing all rules */
   ruleSet: (owner: string, name: string, ruleSetId: string) =>
     `/repo/${owner}/${name}/proxy-rules/${ruleSetId}`,

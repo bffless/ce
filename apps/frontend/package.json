@@ -49,6 +49,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
+    "cronstrue": "^3.24.0",
     "date-fns": "^4.1.0",
     "jszip": "^3.10.1",
     "lucide-react": "^0.303.0",

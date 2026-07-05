@@ -4,7 +4,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import { and, eq, lt, lte, or, isNull } from 'drizzle-orm';
+import { and, eq, lt, lte, or, isNull, sql } from 'drizzle-orm';
 import parser from 'cron-parser';
 import { db } from '../db/client';
 import {
@@ -19,6 +19,7 @@ import {
   CreatePipelineScheduleDto,
   UpdatePipelineScheduleDto,
   PipelineScheduleResponseDto,
+  PipelineRuleOptionDto,
 } from './pipeline-schedules.dto';
 
 /**
@@ -61,6 +62,49 @@ export class PipelineSchedulesService {
       .from(pipelineSchedules)
       .where(eq(pipelineSchedules.projectId, projectId));
     return rows.map((r) => this.toResponse(r));
+  }
+
+  /**
+   * All pipeline-type proxy rules in a project, flattened across rule sets, for
+   * the schedule target picker. Read-only (viewer access).
+   */
+  async listPipelineRules(
+    projectId: string,
+    userId: string,
+    userRole?: string,
+    apiKeyProjectId?: string | null,
+  ): Promise<PipelineRuleOptionDto[]> {
+    await this.permissionsService.requireProjectAccess(
+      projectId,
+      userId,
+      userRole,
+      'viewer',
+      apiKeyProjectId,
+    );
+
+    const rows = await db
+      .select({
+        id: proxyRules.id,
+        ruleSetId: proxyRules.ruleSetId,
+        ruleSetName: proxyRuleSets.name,
+        pathPattern: proxyRules.pathPattern,
+        method: proxyRules.method,
+        pipelineName: sql<string | null>`${proxyRules.pipelineConfig}->>'name'`,
+      })
+      .from(proxyRules)
+      .innerJoin(proxyRuleSets, eq(proxyRules.ruleSetId, proxyRuleSets.id))
+      .where(
+        and(eq(proxyRuleSets.projectId, projectId), eq(proxyRules.proxyType, 'pipeline')),
+      );
+
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.pipelineName || r.pathPattern,
+      ruleSetId: r.ruleSetId,
+      ruleSetName: r.ruleSetName,
+      pathPattern: r.pathPattern,
+      method: r.method ?? null,
+    }));
   }
 
   async getSchedule(

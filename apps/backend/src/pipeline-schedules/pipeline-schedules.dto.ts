@@ -82,3 +82,22 @@ export class ListPipelineSchedulesResponseDto {
   @ApiProperty({ type: [PipelineScheduleResponseDto] })
   data: PipelineScheduleResponseDto[];
 }
+
+/**
+ * A pipeline-type proxy rule offered as a schedule target. Flattened across the
+ * project's rule sets so the UI can render a single picker.
+ */
+export class PipelineRuleOptionDto {
+  @ApiProperty() id: string;
+  @ApiProperty({ description: 'pipelineConfig.name, falling back to pathPattern' })
+  name: string;
+  @ApiProperty() ruleSetId: string;
+  @ApiProperty() ruleSetName: string;
+  @ApiProperty() pathPattern: string;
+  @ApiPropertyOptional({ nullable: true }) method: string | null;
+}
+
+export class ListPipelineRuleOptionsResponseDto {
+  @ApiProperty({ type: [PipelineRuleOptionDto] })
+  data: PipelineRuleOptionDto[];
+}
