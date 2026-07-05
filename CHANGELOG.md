@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.101](https://github.com/bffless/ce/compare/v0.1.100...v0.1.101) (2026-07-05)
+
+
+### Features
+
+* **pipelines:** verbatim keyStrategy for presigned uploads ([#426](https://github.com/bffless/ce/issues/426)) ([791fcd0](https://github.com/bffless/ce/commit/791fcd0d7d84e49ebe957140a5543478eb1edf2b))
+
 ## [0.1.100](https://github.com/bffless/ce/compare/v0.1.99...v0.1.100) (2026-07-05)
 
 
