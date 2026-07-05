@@ -59,8 +59,8 @@ export interface DataUpsertManyHandlerConfig extends BaseHandlerConfig {
 }
 
 export interface FilterConfig {
-  op: 'eq' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte' | 'like';
-  value: string;
+  op: 'eq' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte' | 'like' | 'in';
+  value: string | string[];
 }
 
 export interface DataQueryHandlerConfig extends BaseHandlerConfig {
@@ -82,7 +82,7 @@ export interface DataUpdateHandlerConfig extends BaseHandlerConfig {
   schemaId: string;
   /** Find a specific record by its ID (table column). Ignores filters when set. */
   recordId?: string;
-  filters?: Record<string, { op: 'eq' | 'ne'; value: string }>;
+  filters?: Record<string, { op: 'eq' | 'ne' | 'in'; value: string | string[] }>;
   /** How to combine multiple filters: 'and' (all must match) or 'or' (any must match). Default: 'and' */
   filterLogic?: 'and' | 'or';
   /** When true, updates only first match and returns single object (or null). Default: false */
