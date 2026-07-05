@@ -183,10 +183,7 @@ export class UploadRecordService {
     }
     // eslint-disable-next-line no-control-regex
     if (/[\u0000-\u001f]/.test(key)) {
-      throw new ConfigurationError(
-        'verbatim key contains control characters',
-        'presigned_upload',
-      );
+      throw new ConfigurationError('verbatim key contains control characters', 'presigned_upload');
     }
     const storageKey = `${owner}/${repo}/uploads/${subDir}/${key}`;
     if (Buffer.byteLength(storageKey, 'utf8') > 1024) {

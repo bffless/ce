@@ -15,7 +15,7 @@ describe('UploadRecordService.resolveSubDir', () => {
   // The evaluator maps request.body -> context.metadata.body and reads steps
   // from context.stepOutputs.
   const contextWith = (body: Record<string, unknown>): PipelineContext =>
-    ({ metadata: { body }, stepOutputs: {} } as unknown as PipelineContext);
+    ({ metadata: { body }, stepOutputs: {} }) as unknown as PipelineContext;
 
   it('passes a static subDir through unchanged (backward compatible)', () => {
     const svc = build();
@@ -39,9 +39,9 @@ describe('UploadRecordService.resolveSubDir', () => {
 
   it('rejects an expression that resolves to empty', () => {
     const svc = build();
-    expect(() =>
-      svc.resolveSubDir('{{request.body.missing}}', contextWith({}), 'upload'),
-    ).toThrow(/empty/i);
+    expect(() => svc.resolveSubDir('{{request.body.missing}}', contextWith({}), 'upload')).toThrow(
+      /empty/i,
+    );
   });
 
   it('rejects a whitespace-only result', () => {
@@ -62,8 +62,7 @@ describe('UploadRecordService.resolveSubDir', () => {
 });
 
 describe('UploadRecordService.buildUploadKey — verbatim mode', () => {
-  const build = () =>
-    new UploadRecordService({} as PipelineDataService, new ExpressionEvaluator());
+  const build = () => new UploadRecordService({} as PipelineDataService, new ExpressionEvaluator());
   const base = { owner: 'acme', repo: 'site', subDir: 'content', originalName: 'ignored.md' };
 
   it('stores the object at the exact path (no UUID, no sanitize)', () => {
@@ -95,7 +94,9 @@ describe('UploadRecordService.buildUploadKey — verbatim mode', () => {
 
   it('rejects ".." traversal', () => {
     const svc = build();
-    expect(() => svc.buildUploadKey({ ...base, verbatimKey: '../secrets/x' })).toThrow(/traversal|\.\./i);
+    expect(() => svc.buildUploadKey({ ...base, verbatimKey: '../secrets/x' })).toThrow(
+      /traversal|\.\./i,
+    );
   });
 
   it('rejects an empty path segment ("//")', () => {
@@ -111,22 +112,26 @@ describe('UploadRecordService.buildUploadKey — verbatim mode', () => {
   it('rejects a key that pushes the storage key past 1024 bytes', () => {
     const svc = build();
     const huge = 'a/'.repeat(700) + 'x.png'; // > 1024 bytes with the prefix
-    expect(() => svc.buildUploadKey({ ...base, verbatimKey: huge })).toThrow(/1024|too long|length/i);
+    expect(() => svc.buildUploadKey({ ...base, verbatimKey: huge })).toThrow(
+      /1024|too long|length/i,
+    );
   });
 
   it('leaves UUID mode unchanged when verbatimKey is absent', () => {
     const svc = build();
-    const parts = svc.buildUploadKey({ owner: 'acme', repo: 'site', subDir: 'content', originalName: 'a b.png' });
+    const parts = svc.buildUploadKey({
+      owner: 'acme',
+      repo: 'site',
+      subDir: 'content',
+      originalName: 'a b.png',
+    });
     // UUID prefix + sanitized filename, as today.
-    expect(parts.storageKey).toMatch(
-      /^acme\/site\/uploads\/content\/[0-9a-f-]{36}-a_b\.png$/,
-    );
+    expect(parts.storageKey).toMatch(/^acme\/site\/uploads\/content\/[0-9a-f-]{36}-a_b\.png$/);
   });
 });
 
 describe('UploadRecordService.parseUploadKey — verbatim keys round-trip', () => {
-  const build = () =>
-    new UploadRecordService({} as PipelineDataService, new ExpressionEvaluator());
+  const build = () => new UploadRecordService({} as PipelineDataService, new ExpressionEvaluator());
 
   it('accepts a structural key and recovers the leaf name unchanged', () => {
     const svc = build();
