@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.99](https://github.com/bffless/ce/compare/v0.1.98...v0.1.99) (2026-07-05)
+
+
+### Features
+
+* **pipeline-schedules:** add Schedules UI (list/create/edit/toggle/delete) ([#423](https://github.com/bffless/ce/issues/423)) ([bdb240f](https://github.com/bffless/ce/commit/bdb240fdfb49be47d96abd60591bffb12d639933))
+
+
+### Bug Fixes
+
+* **pipelines:** don't send Content-Type on bodyless http_request GETs ([#421](https://github.com/bffless/ce/issues/421)) ([df8b152](https://github.com/bffless/ce/commit/df8b152111ba8947d508af8d325f2ade16e63de9))
+
 ## [0.1.98](https://github.com/bffless/ce/compare/v0.1.97...v0.1.98) (2026-07-04)
 
 
