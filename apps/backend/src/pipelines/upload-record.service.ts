@@ -124,7 +124,17 @@ export class UploadRecordService {
     subDir: string;
     originalName: string;
     dateBucket?: boolean;
+    /**
+     * When set, store the object at exactly {owner}/{repo}/uploads/{subDir}/{verbatimKey}
+     * — no UUID prefix, no character rewriting. The app-chosen path IS the key, so
+     * relative asset references resolve by passthrough. Safety-checked below.
+     */
+    verbatimKey?: string;
   }): UploadKeyParts {
+    if (opts.verbatimKey !== undefined) {
+      return this.buildVerbatimKey(opts.owner, opts.repo, opts.subDir, opts.verbatimKey);
+    }
+
     const uuid = randomUUID();
     const sanitizedFilename = opts.originalName.replace(/[^a-zA-Z0-9._-]/g, '_');
 
@@ -141,6 +151,54 @@ export class UploadRecordService {
     const publicPath = `/api/uploads/${subDirPath}/${storedFilename}`;
 
     return { storageKey, storedFilename, sanitizedFilename, publicPath };
+  }
+
+  /**
+   * Build a storage key where the app-supplied path is used verbatim (no UUID
+   * prefix, no character rewriting), so relative references resolve by
+   * passthrough. Rejects unsafe input rather than silently rewriting it — heavy
+   * sanitization would break the very relative paths this mode exists to preserve.
+   */
+  private buildVerbatimKey(
+    owner: string,
+    repo: string,
+    subDir: string,
+    rawKey: string,
+  ): UploadKeyParts {
+    const key = (rawKey ?? '').trim().replace(/^\/+|\/+$/g, '');
+    if (!key) {
+      throw new ConfigurationError('verbatim key resolved to empty', 'presigned_upload');
+    }
+    if (key.includes('..')) {
+      throw new ConfigurationError(
+        `verbatim key "${key}" contains ".." — path traversal is not allowed`,
+        'presigned_upload',
+      );
+    }
+    if (key.includes('//')) {
+      throw new ConfigurationError(
+        `verbatim key "${key}" contains an empty path segment ("//")`,
+        'presigned_upload',
+      );
+    }
+    // eslint-disable-next-line no-control-regex
+    if (/[\u0000-\u001f]/.test(key)) {
+      throw new ConfigurationError(
+        'verbatim key contains control characters',
+        'presigned_upload',
+      );
+    }
+    const storageKey = `${owner}/${repo}/uploads/${subDir}/${key}`;
+    if (Buffer.byteLength(storageKey, 'utf8') > 1024) {
+      throw new ConfigurationError(
+        `verbatim storage key exceeds the 1024-byte limit (${Buffer.byteLength(storageKey, 'utf8')} bytes)`,
+        'presigned_upload',
+      );
+    }
+    const segments = key.split('/');
+    const storedFilename = segments[segments.length - 1];
+    const publicPath = `/api/uploads/${subDir}/${key}`;
+    return { storageKey, storedFilename, sanitizedFilename: storedFilename, publicPath };
   }
 
   /**
