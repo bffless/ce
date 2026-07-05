@@ -230,12 +230,14 @@ export class DataQueryHandler implements StepHandler<DataQueryHandlerConfig> {
 
     this.logger.debug(`Query returned ${results.length} records`);
 
-    // Return single object when:
+    // Return a single object ONLY when explicitly requested:
     // - recordId is specified (find by ID)
-    // - single is true (find one)
-    // - limit is 1 (legacy behavior)
-    const resolvedLimit = this.resolveNumericExpression(config.limit, 100, context, stepName);
-    const returnSingle = config.recordId || config.single || resolvedLimit === 1;
+    // - single is true (the "Return Single Object" option)
+    // Otherwise always return an array, so the output TYPE never depends on the
+    // row count / limit. (Previously `limit === 1` implicitly returned a single
+    // object, overriding the explicit `single` flag and silently dropping the
+    // row for any array-shaped consumer — see bffless/ce#428.)
+    const returnSingle = config.recordId || config.single;
     const output = returnSingle ? (results[0] || null) : results;
 
     return {
