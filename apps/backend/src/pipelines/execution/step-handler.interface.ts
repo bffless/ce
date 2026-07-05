@@ -84,7 +84,7 @@ export interface DataQueryHandlerConfig extends BaseHandlerConfig {
    */
   filters?: Record<
     string,
-    { op: 'eq' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte' | 'like'; value: string }
+    { op: 'eq' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte' | 'like' | 'in'; value: string }
   >;
 
   /**
@@ -132,7 +132,7 @@ export interface DataUpdateHandlerConfig extends BaseHandlerConfig {
   /**
    * Filter to identify records to update (ignored if recordId is set)
    */
-  filters?: Record<string, { op: 'eq' | 'ne'; value: string }>;
+  filters?: Record<string, { op: 'eq' | 'ne' | 'in'; value: string }>;
 
   /**
    * How to combine multiple filters: 'and' (all must match) or 'or' (any must match)
@@ -283,7 +283,7 @@ export interface DbAggregateHandlerConfig extends BaseHandlerConfig {
    */
   filters?: Record<
     string,
-    { op: 'eq' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte' | 'like'; value: string }
+    { op: 'eq' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte' | 'like' | 'in'; value: string }
   >;
 
   /**

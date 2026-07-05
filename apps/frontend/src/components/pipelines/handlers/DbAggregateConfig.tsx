@@ -15,6 +15,7 @@ import { SchemaFieldPicker } from './SchemaFieldPicker';
 import { ExpressionInput } from './ExpressionInput';
 import type { PreviousStep } from './AvailableVariables';
 import type { DbAggregateHandlerConfig, FilterConfig } from './types';
+import { serializeFilterValue, displayFilterValue } from './filter-value';
 
 interface DbAggregateConfigProps {
   config: Partial<DbAggregateHandlerConfig>;
@@ -50,6 +51,7 @@ const FILTER_OPS: { value: FilterConfig['op']; label: string }[] = [
   { value: 'lt', label: 'Less Than (<)' },
   { value: 'lte', label: 'Less or Equal (<=)' },
   { value: 'like', label: 'Like (pattern)' },
+  { value: 'in', label: 'In (any of)' },
 ];
 
 export function DbAggregateConfig({ config, onChange, projectId, previousSteps = [] }: DbAggregateConfigProps) {
@@ -62,7 +64,7 @@ export function DbAggregateConfig({ config, onChange, projectId, previousSteps =
     const existing = config.filters || {};
     const entries = Object.entries(existing);
     return entries.length > 0
-      ? entries.map(([f, conf]) => ({ field: f, op: conf.op, value: conf.value }))
+      ? entries.map(([f, conf]) => ({ field: f, op: conf.op, value: displayFilterValue(conf.value) }))
       : [];
   });
   const [filterLogic, setFilterLogic] = useState<'and' | 'or'>(config.filterLogic || 'and');
@@ -75,7 +77,7 @@ export function DbAggregateConfig({ config, onChange, projectId, previousSteps =
     const filtersRecord: Record<string, FilterConfig> = {};
     for (const filter of filters) {
       if (filter.field.trim()) {
-        filtersRecord[filter.field.trim()] = { op: filter.op, value: filter.value };
+        filtersRecord[filter.field.trim()] = { op: filter.op, value: serializeFilterValue(filter.op, filter.value) };
       }
     }
 
@@ -209,7 +211,7 @@ export function DbAggregateConfig({ config, onChange, projectId, previousSteps =
                   <ExpressionInput
                     value={filter.value}
                     onChange={(value) => handleFilterChange(index, { value })}
-                    placeholder="Expression"
+                    placeholder={filter.op === 'in' ? 'Expression, or comma-separated list' : 'Expression'}
                     previousSteps={previousSteps}
                   />
                 </div>

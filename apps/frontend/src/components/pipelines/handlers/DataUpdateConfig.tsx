@@ -16,6 +16,7 @@ import { SchemaFieldPicker } from './SchemaFieldPicker';
 import { ExpressionInput } from './ExpressionInput';
 import type { PreviousStep } from './AvailableVariables';
 import type { DataUpdateHandlerConfig } from './types';
+import { serializeFilterValue, displayFilterValue } from './filter-value';
 
 interface DataUpdateConfigProps {
   config: Partial<DataUpdateHandlerConfig>;
@@ -26,7 +27,7 @@ interface DataUpdateConfigProps {
 
 interface FilterEntry {
   field: string;
-  op: 'eq' | 'ne';
+  op: 'eq' | 'ne' | 'in';
   value: string;
 }
 
@@ -43,7 +44,7 @@ export function DataUpdateConfig({ config, onChange, projectId, previousSteps = 
     const existing = config.filters || {};
     const entries = Object.entries(existing);
     return entries.length > 0
-      ? entries.map(([field, conf]) => ({ field, op: conf.op, value: conf.value }))
+      ? entries.map(([field, conf]) => ({ field, op: conf.op, value: displayFilterValue(conf.value) }))
       : [{ field: '', op: 'eq' as const, value: '' }];
   });
   const [filterLogic, setFilterLogic] = useState<'and' | 'or'>(config.filterLogic || 'and');
@@ -56,10 +57,10 @@ export function DataUpdateConfig({ config, onChange, projectId, previousSteps = 
   });
 
   useEffect(() => {
-    const filtersRecord: Record<string, { op: 'eq' | 'ne'; value: string }> = {};
+    const filtersRecord: Record<string, { op: 'eq' | 'ne' | 'in'; value: string | string[] }> = {};
     for (const filter of filters) {
       if (filter.field.trim()) {
-        filtersRecord[filter.field.trim()] = { op: filter.op, value: filter.value };
+        filtersRecord[filter.field.trim()] = { op: filter.op, value: serializeFilterValue(filter.op, filter.value) };
       }
     }
 
@@ -170,7 +171,7 @@ export function DataUpdateConfig({ config, onChange, projectId, previousSteps = 
               <Select
                 value={filter.op}
                 onValueChange={(value) =>
-                  handleFilterChange(index, { op: value as 'eq' | 'ne' })
+                  handleFilterChange(index, { op: value as 'eq' | 'ne' | 'in' })
                 }
               >
                 <SelectTrigger className="w-32">
@@ -179,13 +180,14 @@ export function DataUpdateConfig({ config, onChange, projectId, previousSteps = 
                 <SelectContent>
                   <SelectItem value="eq">Equals</SelectItem>
                   <SelectItem value="ne">Not Equals</SelectItem>
+                  <SelectItem value="in">In (any of)</SelectItem>
                 </SelectContent>
               </Select>
               <div className="flex-1">
                 <ExpressionInput
                   value={filter.value}
                   onChange={(value) => handleFilterChange(index, { value })}
-                  placeholder="Expression"
+                  placeholder={filter.op === 'in' ? 'Expression, or comma-separated list' : 'Expression'}
                   previousSteps={previousSteps}
                 />
               </div>
