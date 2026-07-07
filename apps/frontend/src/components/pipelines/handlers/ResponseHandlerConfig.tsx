@@ -10,14 +10,28 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Trash2, HelpCircle } from 'lucide-react';
+import { Plus, Trash2, HelpCircle, Check, ChevronsUpDown } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
 import type { ResponseHandlerConfig } from './types';
 import type { PreviousStep } from './AvailableVariables';
 import { ExpressionInput } from './ExpressionInput';
@@ -53,11 +67,21 @@ const CONTENT_TYPES = [
   { value: 'application/json', label: 'JSON (application/json)' },
   { value: 'text/html', label: 'HTML (text/html)' },
   { value: 'text/plain', label: 'Plain Text (text/plain)' },
+  { value: 'application/xml', label: 'XML (application/xml)' },
+  { value: 'text/xml', label: 'XML (text/xml)' },
+  { value: 'application/rss+xml', label: 'RSS (application/rss+xml)' },
+  { value: 'application/atom+xml', label: 'Atom (application/atom+xml)' },
+  { value: 'text/csv', label: 'CSV (text/csv)' },
+  { value: 'text/calendar', label: 'Calendar (text/calendar)' },
 ];
 
 export function ResponseHandlerConfig({ config, onChange, previousSteps = [] }: ResponseHandlerConfigProps) {
   const [status, setStatus] = useState<number>(config.status || 200);
   const [contentType, setContentType] = useState(config.contentType || 'application/json');
+  const [contentTypeOpen, setContentTypeOpen] = useState(false);
+  // Search text is kept separate from contentType so opening the picker always
+  // shows the full preset list instead of pre-filtering by the current value.
+  const [contentTypeSearch, setContentTypeSearch] = useState('');
   const [bodyMode, setBodyMode] = useState<'template' | 'json'>(() => {
     return typeof config.body === 'object' ? 'json' : 'template';
   });
@@ -159,18 +183,67 @@ export function ResponseHandlerConfig({ config, onChange, previousSteps = [] }: 
         </div>
         <div className="space-y-2">
           <Label htmlFor="contentType">Content Type</Label>
-          <Select value={contentType} onValueChange={setContentType}>
-            <SelectTrigger id="contentType">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {CONTENT_TYPES.map((ct) => (
-                <SelectItem key={ct.value} value={ct.value}>
-                  {ct.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Popover
+            open={contentTypeOpen}
+            onOpenChange={(open) => {
+              setContentTypeOpen(open);
+              if (open) setContentTypeSearch('');
+            }}
+          >
+            <PopoverTrigger asChild>
+              <Button
+                id="contentType"
+                type="button"
+                variant="outline"
+                role="combobox"
+                aria-expanded={contentTypeOpen}
+                className="w-full justify-between font-normal font-mono text-sm"
+              >
+                {contentType || 'Select or type a content type...'}
+                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+              <Command>
+                <CommandInput
+                  placeholder="Search or type a content type..."
+                  value={contentTypeSearch}
+                  onValueChange={(v) => {
+                    setContentTypeSearch(v);
+                    setContentType(v);
+                  }}
+                />
+                <CommandList>
+                  <CommandEmpty>
+                    <div className="py-2 text-sm text-muted-foreground">
+                      Using custom type: <span className="font-mono">{contentType}</span>
+                    </div>
+                  </CommandEmpty>
+                  <CommandGroup>
+                    {CONTENT_TYPES.map((ct) => (
+                      <CommandItem
+                        key={ct.value}
+                        value={ct.value}
+                        onSelect={() => {
+                          setContentType(ct.value);
+                          setContentTypeSearch('');
+                          setContentTypeOpen(false);
+                        }}
+                      >
+                        <Check
+                          className={cn(
+                            'mr-2 h-4 w-4 shrink-0',
+                            contentType === ct.value ? 'opacity-100' : 'opacity-0',
+                          )}
+                        />
+                        {ct.label}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
 
