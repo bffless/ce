@@ -675,15 +675,22 @@ export interface FileServeHandlerConfig extends BaseHandlerConfig {
 
   /**
    * Cache directive for the served bytes: `'public'` (shared caches / CDNs may
-   * store and reuse the response) or `'private'` (browser-only; never a shared
-   * cache). Pipeline-served files are usually behind app-defined access control
-   * that this handler cannot see, so the default is `'private'` to avoid a CDN
-   * serving ACL-gated content to other users. Set `'public'` only for content
-   * that is genuinely public. A matching cache rule's `cacheability` overrides
+   * store and reuse the response) or anything else, including `'private'`
+   * (browser-only; never a shared cache). Pipeline-served files are usually
+   * behind app-defined access control that this handler cannot see, so the
+   * default is private to avoid a CDN serving ACL-gated content to other
+   * users. Set to the literal `'public'` only for content that is genuinely
+   * public.
+   *
+   * Expression-interpolated ({{steps.x.y}}) before use, like `key` — so a
+   * prior ACL-gate step can resolve this per request (e.g. `'public'` when
+   * the step determines the object is Anyone-viewable, `'private'`
+   * otherwise) instead of it being a fixed value for every request through
+   * this step. A matching cache rule's own `cacheability` still overrides
    * this.
    * @default 'private'
    */
-  cacheability?: 'public' | 'private';
+  cacheability?: string;
 }
 
 /**

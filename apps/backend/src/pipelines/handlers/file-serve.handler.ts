@@ -168,9 +168,15 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
     // Resolve cache headers: check cache rules first, fall back to config/default.
     // Files served through a pipeline are typically behind app-defined access
     // control this handler can't see, so the safe default is `private` (never a
-    // shared/CDN cache) — `public` is opt-in via the step config. A matching
-    // cache rule's own `cacheability` still wins over this default.
-    const isPublicContent = config.cacheability === 'public';
+    // shared/CDN cache) — `public` is opt-in via the step config. `cacheability`
+    // is expression-interpolated like `key`, so a prior ACL-gate step can
+    // resolve it per request (e.g. only when a served object is genuinely
+    // Anyone-viewable). A matching cache rule's own `cacheability` still wins
+    // over this default.
+    const resolvedCacheability = config.cacheability
+      ? this.expressionEvaluator.evaluateTemplate(config.cacheability, context, stepName)
+      : undefined;
+    const isPublicContent = resolvedCacheability === 'public';
     let cacheControlHeader: string;
     const cacheConfig = await this.cacheConfigService.getCacheConfig(
       context.projectId,

@@ -47,11 +47,16 @@ describe('FileServeHandler — streaming & range', () => {
     config: { subDir: 'export' },
   } as unknown as PipelineStep;
 
-  const buildContext = (res: any, headers: Record<string, unknown>): PipelineContext =>
+  const buildContext = (
+    res: any,
+    headers: Record<string, unknown>,
+    steps: Record<string, unknown> = {},
+  ): PipelineContext =>
     ({
       projectId: 'p1',
       deployment: { owner: 'o', repo: 'r', commitSha: 'sha' },
       metadata: { path: '/api/uploads/export/video.mp4', headers },
+      stepOutputs: steps,
       request: { res },
     }) as unknown as PipelineContext;
 
@@ -186,6 +191,69 @@ describe('FileServeHandler — streaming & range', () => {
     await handler.execute(buildContext(res, {}), publicStep);
 
     expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'public, max-age=3600');
+  });
+
+  // `cacheability` is expression-interpolated like `key`, so an app's ACL-gate
+  // step (e.g. one that resolves an "Anyone can view" grant) can drive the
+  // Cache-Control directive per request instead of a fixed step config.
+  it('resolves cacheability from a template expression populated by a prior ACL-gate step', async () => {
+    const stream = makeStream();
+    const storage = {
+      downloadStream: jest.fn().mockResolvedValue({ stream, size: 10000, etag: 'abc' }),
+      getMetadata: jest.fn(),
+    };
+    const handler = buildHandler(storage);
+    const res = makeRes();
+    const gatedStep = {
+      ...step,
+      config: { subDir: 'export', cacheability: '{{steps.gate.cacheability}}' },
+    } as unknown as PipelineStep;
+
+    await handler.execute(
+      buildContext(res, {}, { gate: { cacheability: 'public' } }),
+      gatedStep,
+    );
+
+    expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'public, max-age=3600');
+  });
+
+  it('stays private when the resolved cacheability expression is not exactly "public"', async () => {
+    const stream = makeStream();
+    const storage = {
+      downloadStream: jest.fn().mockResolvedValue({ stream, size: 10000, etag: 'abc' }),
+      getMetadata: jest.fn(),
+    };
+    const handler = buildHandler(storage);
+    const res = makeRes();
+    const gatedStep = {
+      ...step,
+      config: { subDir: 'export', cacheability: '{{steps.gate.cacheability}}' },
+    } as unknown as PipelineStep;
+
+    await handler.execute(
+      buildContext(res, {}, { gate: { cacheability: 'private' } }),
+      gatedStep,
+    );
+
+    expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'private, max-age=3600');
+  });
+
+  it('stays private when the cacheability expression cannot be resolved (step never ran)', async () => {
+    const stream = makeStream();
+    const storage = {
+      downloadStream: jest.fn().mockResolvedValue({ stream, size: 10000, etag: 'abc' }),
+      getMetadata: jest.fn(),
+    };
+    const handler = buildHandler(storage);
+    const res = makeRes();
+    const gatedStep = {
+      ...step,
+      config: { subDir: 'export', cacheability: '{{steps.gate.cacheability}}' },
+    } as unknown as PipelineStep;
+
+    await handler.execute(buildContext(res, {}, {}), gatedStep);
+
+    expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'private, max-age=3600');
   });
 });
 
