@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.103](https://github.com/bffless/ce/compare/v0.1.102...v0.1.103) (2026-07-08)
+
+
+### Features
+
+* **pipelines:** data_upsert_many optional update-on-conflict (updateFields) ([#438](https://github.com/bffless/ce/issues/438)) ([#439](https://github.com/bffless/ce/issues/439)) ([f4db1fc](https://github.com/bffless/ce/commit/f4db1fc4470fbc42a8fa53aec4eedc5256072b20))
+* **pipelines:** file_serve_handler cacheability supports expression interpolation ([#436](https://github.com/bffless/ce/issues/436)) ([9758ee8](https://github.com/bffless/ce/commit/9758ee849390d99fe5e0353e4bc805212ad9b2b6)), closes [#434](https://github.com/bffless/ce/issues/434)
+
+
+### Bug Fixes
+
+* **pipelines:** allow custom content types in response_handler UI ([#435](https://github.com/bffless/ce/issues/435)) ([1dc62d4](https://github.com/bffless/ce/commit/1dc62d429394520ffe87c0209b51790fe543ca1e)), closes [#433](https://github.com/bffless/ce/issues/433)
+
 ## [0.1.102](https://github.com/bffless/ce/compare/v0.1.101...v0.1.102) (2026-07-05)
 
 
