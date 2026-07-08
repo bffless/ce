@@ -51,6 +51,17 @@ export interface DataUpsertManyHandlerConfig {
   dedupKey: string | string[];
 
   /**
+   * Optional whitelist of columns to refresh when a row with the dedup key
+   * already exists. Absent (default) → insert-only: existing rows are never
+   * overwritten, so per-record state (read/starred/fetchedAt) survives re-runs.
+   * Present → those columns — and only those — are updated from the item's mapped
+   * values when they differ from the stored row; every other column (including
+   * per-record state and the dedup column) is preserved. Unchanged rows are not
+   * written. Each entry must be a key of `map` and must not be the dedupField.
+   */
+  updateFields?: string[];
+
+  /**
    * Condition expression - if provided, step only runs if this evaluates to true
    */
   condition?: string;
@@ -65,11 +76,16 @@ interface UpsertError {
 /** Structured output of the data_upsert_many handler. */
 export interface DataUpsertManyOutput {
   inserted: number;
+  /** Existing rows whose whitelisted (updateFields) columns changed and were updated. */
+  updated: number;
+  /** Within-batch duplicates plus existing rows left unchanged (not inserted, not updated). */
   skipped: number;
   errored: number;
   total: number;
   /** IDs of the newly-inserted records. */
   insertedIds: string[];
+  /** IDs of the existing records whose whitelisted columns were updated. */
+  updatedIds: string[];
   /** Per-item errors (mapping/validation failures), if any. */
   errors: UpsertError[];
 }
@@ -80,8 +96,11 @@ const ITEM_SCOPE = 'item';
 /**
  * data_upsert_many — a generic pipeline handler that inserts an array of records
  * into a target Data-Table schema, skipping any whose dedup-key value already
- * exists. Insert-only: existing rows are never overwritten, so per-record state
- * (e.g. an RSS reader's read/starred flags) survives re-runs.
+ * exists. Insert-only by default: existing rows are never overwritten, so
+ * per-record state (e.g. an RSS reader's read/starred flags) survives re-runs.
+ * When `updateFields` is set, an existing row instead has that whitelist of
+ * columns refreshed (only when a value changed); all other columns are still
+ * preserved.
  *
  * This is where the item-level loop lives — the CE pattern that avoids a generic
  * executor `foreach`. Nothing here is feed-specific; it's usable for any
@@ -120,6 +139,32 @@ export class DataUpsertManyHandler implements StepHandler<DataUpsertManyHandlerC
         'dedupKey is required (an expression or a non-empty array of expressions)',
         'data_upsert_many',
       );
+    }
+    if (config.updateFields !== undefined) {
+      if (
+        !Array.isArray(config.updateFields) ||
+        config.updateFields.length === 0 ||
+        config.updateFields.some((f) => typeof f !== 'string' || f.trim().length === 0)
+      ) {
+        throw new ConfigurationError(
+          'updateFields must be a non-empty array of column names',
+          'data_upsert_many',
+        );
+      }
+      for (const field of config.updateFields) {
+        if (field === config.dedupField) {
+          throw new ConfigurationError(
+            `updateFields cannot include the dedup column '${config.dedupField}'`,
+            'data_upsert_many',
+          );
+        }
+        if (!(field in config.map)) {
+          throw new ConfigurationError(
+            `updateFields entry '${field}' must be a column present in map`,
+            'data_upsert_many',
+          );
+        }
+      }
     }
   }
 
@@ -193,17 +238,58 @@ export class DataUpsertManyHandler implements StepHandler<DataUpsertManyHandlerC
       }
     }
 
-    // 2. Find which keys already exist and drop them (insert-only, no overwrite).
-    const existing = await this.dataService.findExistingKeys(
-      config.schemaId,
-      context.projectId,
-      config.dedupField,
-      candidates.map((c) => c.key),
-    );
-    const toInsert = candidates.filter((c) => !existing.has(c.key));
+    const alias = context.deployment?.alias ?? null;
+    const updateFields = config.updateFields;
+
+    let toInsert: { key: string; data: Record<string, unknown> }[];
+    let updatedIds: string[] = [];
+    // Existing rows that matched but were left untouched (already-present in
+    // insert-only mode, or unchanged in update mode).
+    let existingUnchanged: number;
+
+    if (updateFields && updateFields.length > 0) {
+      // 2a. Update-on-conflict: fetch matched rows so we can compare + refresh.
+      const existingRows = await this.dataService.findExistingRecordsByKeys(
+        config.schemaId,
+        context.projectId,
+        config.dedupField,
+        candidates.map((c) => c.key),
+      );
+
+      toInsert = [];
+      const toUpdate: { id: string; fields: Record<string, unknown> }[] = [];
+      let unchanged = 0;
+      for (const candidate of candidates) {
+        const existing = existingRows.get(candidate.key);
+        if (!existing) {
+          toInsert.push(candidate); // genuinely new → insert
+          continue;
+        }
+        const fields = this.pickChangedFields(updateFields, candidate.data, existing.data);
+        if (fields) {
+          toUpdate.push({ id: existing.id, fields });
+        } else {
+          unchanged++; // whitelisted columns identical → leave the row alone
+        }
+      }
+
+      if (toUpdate.length > 0) {
+        updatedIds = await this.dataService.updateManyFields(toUpdate);
+      }
+      existingUnchanged = unchanged;
+    } else {
+      // 2b. Insert-only (default): find existing keys and drop them, no overwrite.
+      const existing = await this.dataService.findExistingKeys(
+        config.schemaId,
+        context.projectId,
+        config.dedupField,
+        candidates.map((c) => c.key),
+      );
+      toInsert = candidates.filter((c) => !existing.has(c.key));
+      existingUnchanged = candidates.length - toInsert.length;
+    }
 
     // 3. Bulk insert the genuinely-new records.
-    const alias = context.deployment?.alias ?? null;
     const insertedRecords = await this.dataService.createMany(
       config.schemaId,
       context.projectId,
@@ -213,17 +299,19 @@ export class DataUpsertManyHandler implements StepHandler<DataUpsertManyHandlerC
       schema.version,
     );
 
-    const skipped = batchDuplicates + (candidates.length - toInsert.length);
+    const skipped = batchDuplicates + existingUnchanged;
     this.logger.debug(
-      `data_upsert_many: ${insertedRecords.length} inserted, ${skipped} skipped, ${errors.length} errored (of ${rawItems.length})`,
+      `data_upsert_many: ${insertedRecords.length} inserted, ${updatedIds.length} updated, ${skipped} skipped, ${errors.length} errored (of ${rawItems.length})`,
     );
 
     const output: DataUpsertManyOutput = {
       inserted: insertedRecords.length,
+      updated: updatedIds.length,
       skipped,
       errored: errors.length,
       total: rawItems.length,
       insertedIds: insertedRecords.map((r) => r.id),
+      updatedIds,
       errors,
     };
     return { success: true, output };
@@ -289,6 +377,41 @@ export class DataUpsertManyHandler implements StepHandler<DataUpsertManyHandlerC
     }
   }
 
+  /**
+   * Compare an item's mapped values against the stored row for the whitelisted
+   * columns. Returns a partial object of just those columns when at least one
+   * differs (so it can be merged into the row), or null when all are identical
+   * (so the row is left untouched — no needless write / updatedAt churn).
+   *
+   * A field that resolved to `undefined` (absent in the source item) is treated
+   * as "no new information": it is neither compared nor written. This keeps a
+   * source that drops a previously-present field from both clearing the stored
+   * value AND churning updatedAt on every refresh (JSON.stringify omits undefined
+   * keys, so the merge would silently no-op it while still flagging a change). An
+   * explicit `null` mapping is a real value and still updates/clears the column.
+   *
+   * Comparison is by JSON serialization, so a stored "5" vs a mapped 5 counts as
+   * changed. Intended for scalar columns; object/array-valued fields whose keys
+   * serialize in a different order would read as changed every run.
+   */
+  private pickChangedFields(
+    updateFields: string[],
+    mapped: Record<string, unknown>,
+    stored: Record<string, unknown>,
+  ): Record<string, unknown> | null {
+    const fields: Record<string, unknown> = {};
+    let changed = false;
+    for (const field of updateFields) {
+      const value = mapped[field];
+      if (value === undefined) continue; // absent in source → leave stored value alone
+      fields[field] = value;
+      if (JSON.stringify(value) !== JSON.stringify(stored[field])) {
+        changed = true;
+      }
+    }
+    return changed ? fields : null;
+  }
+
   /** Normalize dedupKey config into an ordered expression list. */
   private dedupChain(dedupKey: string | string[] | undefined): string[] {
     if (Array.isArray(dedupKey)) {
@@ -301,6 +424,15 @@ export class DataUpsertManyHandler implements StepHandler<DataUpsertManyHandlerC
   }
 
   private emptyOutput(): DataUpsertManyOutput {
-    return { inserted: 0, skipped: 0, errored: 0, total: 0, insertedIds: [], errors: [] };
+    return {
+      inserted: 0,
+      updated: 0,
+      skipped: 0,
+      errored: 0,
+      total: 0,
+      insertedIds: [],
+      updatedIds: [],
+      errors: [],
+    };
   }
 }
