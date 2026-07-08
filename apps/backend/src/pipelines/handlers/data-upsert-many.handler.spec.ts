@@ -45,10 +45,21 @@ function buildHandler() {
 
   const dataService = {
     findExistingKeys: jest.fn(async () => new Set<string>()),
+    findExistingRecordsByKeys: jest.fn(
+      async () => new Map<string, { id: string; data: Record<string, unknown> }>(),
+    ),
     createMany: jest.fn(async (_s, _p, records: Record<string, unknown>[]) =>
       records.map((data, i) => ({ id: `new-${i}`, data })),
     ),
-  } as unknown as jest.Mocked<Pick<PipelineDataService, 'findExistingKeys' | 'createMany'>>;
+    updateManyFields: jest.fn(async (updates: { id: string; fields: Record<string, unknown> }[]) =>
+      updates.map((u) => u.id),
+    ),
+  } as unknown as jest.Mocked<
+    Pick<
+      PipelineDataService,
+      'findExistingKeys' | 'findExistingRecordsByKeys' | 'createMany' | 'updateManyFields'
+    >
+  >;
 
   const schemasService = {
     getById: jest.fn(async () => SCHEMA),
@@ -112,6 +123,198 @@ describe('DataUpsertManyHandler', () => {
           dedupKey: 'steps.item.guid',
         } as any),
       ).not.toThrow();
+    });
+
+    it('rejects updateFields naming a column not present in map', () => {
+      const { handler } = buildHandler();
+      expect(() =>
+        handler.validateConfig({
+          schemaId: 's',
+          items: 'x',
+          map: { guid: 'steps.item.guid', title: 'steps.item.title' },
+          dedupField: 'guid',
+          dedupKey: 'steps.item.guid',
+          updateFields: ['title', 'summary'], // summary is not in map
+        } as any),
+      ).toThrow(/updateFields/);
+    });
+
+    it('rejects updateFields that includes the dedup column', () => {
+      const { handler } = buildHandler();
+      expect(() =>
+        handler.validateConfig({
+          schemaId: 's',
+          items: 'x',
+          map: { guid: 'steps.item.guid', title: 'steps.item.title' },
+          dedupField: 'guid',
+          dedupKey: 'steps.item.guid',
+          updateFields: ['guid'], // the dedup column can't be updated
+        } as any),
+      ).toThrow(/dedup/);
+    });
+
+    it('accepts valid updateFields (subset of map, excluding dedupField)', () => {
+      const { handler } = buildHandler();
+      expect(() =>
+        handler.validateConfig({
+          schemaId: 's',
+          items: 'x',
+          map: { guid: 'steps.item.guid', title: 'steps.item.title' },
+          dedupField: 'guid',
+          dedupKey: 'steps.item.guid',
+          updateFields: ['title'],
+        } as any),
+      ).not.toThrow();
+    });
+  });
+
+  describe('updateFields (update-on-conflict)', () => {
+    it('updates whitelisted fields of an existing row when they changed', async () => {
+      const { handler, dataService } = buildHandler();
+      // The stored row has the OLD title plus per-record state we must preserve.
+      dataService.findExistingRecordsByKeys.mockResolvedValueOnce(
+        new Map([
+          [
+            'a',
+            {
+              id: 'row-a',
+              data: {
+                guid: 'a',
+                title: 'Old A',
+                link: 'https://x/a',
+                read: true,
+                fetchedAt: '2000-01-01T00:00:00.000Z',
+              },
+            },
+          ],
+        ]),
+      );
+      const items = [{ guid: 'a', title: 'New A', link: 'https://x/a' }];
+      const config = { ...defaultConfig(items), updateFields: ['title', 'link'] };
+
+      const result = await handler.execute(contextWith(items), step(config));
+      const output = result.output as DataUpsertManyOutput;
+
+      expect(output.updated).toBe(1);
+      expect(output.updatedIds).toEqual(['row-a']);
+      expect(output.inserted).toBe(0);
+      expect(output.skipped).toBe(0);
+      // Insert-only path is NOT used in update mode.
+      expect(dataService.findExistingKeys).not.toHaveBeenCalled();
+      expect(dataService.createMany.mock.calls[0][2]).toEqual([]);
+      // Only the whitelisted fields are sent — read/fetchedAt/guid are untouched.
+      expect(dataService.updateManyFields).toHaveBeenCalledWith([
+        { id: 'row-a', fields: { title: 'New A', link: 'https://x/a' } },
+      ]);
+    });
+
+    it('skips an existing row whose whitelisted fields are unchanged', async () => {
+      const { handler, dataService } = buildHandler();
+      dataService.findExistingRecordsByKeys.mockResolvedValueOnce(
+        new Map([
+          [
+            'a',
+            {
+              id: 'row-a',
+              data: { guid: 'a', title: 'Same', link: 'https://x/a', read: true },
+            },
+          ],
+        ]),
+      );
+      const items = [{ guid: 'a', title: 'Same', link: 'https://x/a' }];
+      const config = { ...defaultConfig(items), updateFields: ['title', 'link'] };
+
+      const result = await handler.execute(contextWith(items), step(config));
+      const output = result.output as DataUpsertManyOutput;
+
+      expect(output.updated).toBe(0);
+      expect(output.skipped).toBe(1);
+      expect(output.inserted).toBe(0);
+      expect(dataService.updateManyFields).not.toHaveBeenCalled();
+    });
+
+    it('inserts new items and updates changed existing ones in one batch', async () => {
+      const { handler, dataService } = buildHandler();
+      dataService.findExistingRecordsByKeys.mockResolvedValueOnce(
+        new Map([
+          ['a', { id: 'row-a', data: { guid: 'a', title: 'Old A', read: true } }],
+        ]),
+      );
+      const items = [
+        { guid: 'a', title: 'New A' }, // exists, changed → update
+        { guid: 'b', title: 'B' }, // new → insert
+      ];
+      const config = { ...defaultConfig(items), updateFields: ['title'] };
+
+      const result = await handler.execute(contextWith(items), step(config));
+      const output = result.output as DataUpsertManyOutput;
+
+      expect(output.inserted).toBe(1);
+      expect(output.updated).toBe(1);
+      expect(output.skipped).toBe(0);
+      expect(dataService.createMany.mock.calls[0][2]).toEqual([
+        expect.objectContaining({ guid: 'b', title: 'B' }),
+      ]);
+      expect(dataService.updateManyFields).toHaveBeenCalledWith([
+        { id: 'row-a', fields: { title: 'New A' } },
+      ]);
+    });
+
+    it('leaves a stored value untouched (no churn) when a whitelisted field is absent in the source', async () => {
+      const { handler, dataService } = buildHandler();
+      dataService.findExistingRecordsByKeys.mockResolvedValueOnce(
+        new Map([
+          [
+            'a',
+            {
+              id: 'row-a',
+              // Row has a summary that the incoming item no longer provides.
+              data: { guid: 'a', title: 'A', summary: 'Old summary', read: true },
+            },
+          ],
+        ]),
+      );
+      const items = [{ guid: 'a', title: 'A' }]; // no `summary` → maps to undefined; title unchanged
+      const config = {
+        ...defaultConfig(items),
+        map: { ...defaultConfig(items).map, summary: 'steps.item.summary' },
+        updateFields: ['title', 'summary'],
+      };
+
+      const result = await handler.execute(contextWith(items), step(config));
+      const output = result.output as DataUpsertManyOutput;
+
+      // Nothing genuinely changed → row is skipped, not churned.
+      expect(output.updated).toBe(0);
+      expect(output.skipped).toBe(1);
+      expect(dataService.updateManyFields).not.toHaveBeenCalled();
+    });
+
+    it('updates only the fields that resolved, omitting an absent whitelisted field from the payload', async () => {
+      const { handler, dataService } = buildHandler();
+      dataService.findExistingRecordsByKeys.mockResolvedValueOnce(
+        new Map([
+          [
+            'a',
+            { id: 'row-a', data: { guid: 'a', title: 'Old', summary: 'Sum', read: true } },
+          ],
+        ]),
+      );
+      const items = [{ guid: 'a', title: 'New' }]; // title changed; summary absent → undefined
+      const config = {
+        ...defaultConfig(items),
+        map: { ...defaultConfig(items).map, summary: 'steps.item.summary' },
+        updateFields: ['title', 'summary'],
+      };
+
+      const result = await handler.execute(contextWith(items), step(config));
+      const output = result.output as DataUpsertManyOutput;
+
+      expect(output.updated).toBe(1);
+      const updateArg = dataService.updateManyFields.mock.calls[0][0];
+      expect(updateArg).toEqual([{ id: 'row-a', fields: { title: 'New' } }]);
+      // The absent field must not be in the merge payload (else it clears / churns).
+      expect('summary' in updateArg[0].fields).toBe(false);
     });
   });
 
@@ -243,10 +446,12 @@ describe('DataUpsertManyHandler', () => {
 
     expect(output).toEqual({
       inserted: 0,
+      updated: 0,
       skipped: 0,
       errored: 0,
       total: 0,
       insertedIds: [],
+      updatedIds: [],
       errors: [],
     });
     expect(dataService.createMany).not.toHaveBeenCalled();

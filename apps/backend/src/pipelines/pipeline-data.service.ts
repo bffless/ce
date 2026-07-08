@@ -304,6 +304,86 @@ export class PipelineDataService {
   }
 
   /**
+   * Like {@link findExistingKeys}, but returns the full matched rows keyed by
+   * their dedup value (id + data), so a caller can compare current column values
+   * before deciding whether to update. Used by data_upsert_many's update-on-
+   * conflict path. `field` MUST be validated against the schema's field names by
+   * the caller (it is interpolated into SQL). If the same dedup value appears on
+   * more than one row, the last one seen wins.
+   */
+  async findExistingRecordsByKeys(
+    schemaId: string,
+    projectId: string,
+    field: string,
+    values: string[],
+  ): Promise<Map<string, { id: string; data: Record<string, unknown> }>> {
+    const existing = new Map<string, { id: string; data: Record<string, unknown> }>();
+    if (values.length === 0) {
+      return existing;
+    }
+
+    const fieldPath = sql`${pipelineData.data}->>${sql.raw(`'${field}'`)}`;
+    const CHUNK = 500;
+    for (let i = 0; i < values.length; i += CHUNK) {
+      const chunk = values.slice(i, i + CHUNK);
+      const rows = await db
+        .select({ id: pipelineData.id, key: fieldPath, data: pipelineData.data })
+        .from(pipelineData)
+        .where(
+          and(
+            eq(pipelineData.schemaId, schemaId),
+            eq(pipelineData.projectId, projectId),
+            inArray(fieldPath, chunk),
+          ),
+        );
+      for (const row of rows) {
+        if (row.key != null) {
+          existing.set(String(row.key), {
+            id: row.id,
+            data: (row.data ?? {}) as Record<string, unknown>,
+          });
+        }
+      }
+    }
+    return existing;
+  }
+
+  /**
+   * Merge a partial set of columns into each row's JSONB `data` (preserving every
+   * other column) and bump `updatedAt`. Used by data_upsert_many's update-on-
+   * conflict path; each `fields` object is bound as a parameter (no SQL
+   * injection) and merged with the Postgres `||` jsonb operator. No permission
+   * check — callers run in a trusted pipeline/system context. Returns the ids
+   * actually updated. Per-row updates in a loop are fine for expected batch
+   * sizes; a bulk `UPDATE ... FROM (VALUES ...)` is a future optimization.
+   */
+  async updateManyFields(
+    updates: { id: string; fields: Record<string, unknown> }[],
+  ): Promise<string[]> {
+    if (updates.length === 0) {
+      return [];
+    }
+
+    const updatedIds: string[] = [];
+    for (const { id, fields } of updates) {
+      const [updated] = await db
+        .update(pipelineData)
+        .set({
+          data: sql`${pipelineData.data} || ${JSON.stringify(fields)}::jsonb`,
+          updatedAt: new Date(),
+        })
+        .where(eq(pipelineData.id, id))
+        .returning({ id: pipelineData.id });
+      if (updated) {
+        updatedIds.push(updated.id);
+      }
+    }
+
+    this.logger.log(`Updated fields on ${updatedIds.length} data record(s)`);
+    return updatedIds;
+  }
+
+  /**
    * Create a new data record with access check
    * Used by the API for manual record creation
    */
