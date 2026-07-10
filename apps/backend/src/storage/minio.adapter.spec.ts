@@ -210,7 +210,7 @@ describe('MinioStorageAdapter', () => {
       const url = await adapter.getUrl(key, 3600);
 
       expect(url).toBe(expectedUrl);
-      expect(mockMinioClient.presignedGetObject).toHaveBeenCalledWith('test-bucket', key, 3600);
+      expect(mockMinioClient.presignedGetObject).toHaveBeenCalledWith('test-bucket', key, 3600, {});
     });
 
     it('should use default expiration if not provided', async () => {
@@ -225,6 +225,31 @@ describe('MinioStorageAdapter', () => {
         'test-bucket',
         key,
         3600, // default expiration
+        {},
+      );
+    });
+
+    it('sets response-content-disposition when a downloadFilename is given', async () => {
+      await adapter.getUrl('test/file.mp4', 600, {
+        downloadFilename: 'my-video.mp4',
+      });
+
+      expect(mockMinioClient.presignedGetObject).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+        600,
+        { 'response-content-disposition': 'attachment; filename="my-video.mp4"' },
+      );
+    });
+
+    it('passes no response headers when no downloadFilename is given', async () => {
+      await adapter.getUrl('test/file.mp4', 600);
+
+      expect(mockMinioClient.presignedGetObject).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+        600,
+        {},
       );
     });
   });
