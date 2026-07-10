@@ -359,9 +359,8 @@ describe('GcsStorageAdapter', () => {
     it('omits promptSaveAs when no downloadFilename is given', async () => {
       await adapter.getUrl('test/file.mp4', 600);
 
-      expect(mockFile.getSignedUrl).toHaveBeenCalledWith(
-        expect.not.objectContaining({ promptSaveAs: expect.anything() }),
-      );
+      const config = mockFile.getSignedUrl.mock.calls[0][0];
+      expect(config).not.toHaveProperty('promptSaveAs');
     });
   });
 
