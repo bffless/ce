@@ -5,6 +5,7 @@ import {
   FileMetadata,
   StreamDownloadResult,
   DownloadStreamOptions,
+  SignedUrlOptions,
 } from './storage.interface';
 import { GcsStorageConfig, validateGcsConfig } from './gcs.config';
 
@@ -185,20 +186,31 @@ export class GcsStorageAdapter implements IStorageAdapter {
   /**
    * Get a signed URL for accessing the file (read)
    */
-  async getUrl(key: string, expiresIn?: number): Promise<string> {
+  async getUrl(
+    key: string,
+    expiresIn?: number,
+    options?: SignedUrlOptions,
+  ): Promise<string> {
     const sanitizedKey = this.sanitizeKey(key);
     const storageKey = this.prefixKey(sanitizedKey);
     const blob = this.bucket.file(storageKey);
     const expiration = expiresIn ?? this.config.signedUrlExpiration ?? 3600;
 
-    const options: GetSignedUrlConfig = {
+    const signedUrlConfig: GetSignedUrlConfig = {
       version: 'v4',
       action: 'read',
       expires: Date.now() + expiration * 1000,
     };
 
+    // Signs `response-content-disposition: attachment; filename="..."` into the
+    // URL. It cannot be appended afterward — V4 signing covers the whole query
+    // string, so a bolted-on param yields 403 SignatureDoesNotMatch.
+    if (options?.downloadFilename) {
+      signedUrlConfig.promptSaveAs = options.downloadFilename;
+    }
+
     try {
-      const [url] = await blob.getSignedUrl(options);
+      const [url] = await blob.getSignedUrl(signedUrlConfig);
       return url;
     } catch (error: any) {
       this.logger.error(`Failed to generate signed URL: ${storageKey}`, error);

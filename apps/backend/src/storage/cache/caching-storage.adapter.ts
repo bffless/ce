@@ -5,6 +5,7 @@ import {
   DownloadResult,
   StreamDownloadResult,
   DownloadStreamOptions,
+  SignedUrlOptions,
 } from '../storage.interface';
 import { ICacheAdapter, CacheConfig } from './cache.interface';
 
@@ -137,9 +138,16 @@ export class CachingStorageAdapter implements IStorageAdapter {
 
   /**
    * Get URL (pass through, URLs are temporary)
+   *
+   * Forwards `options` — a dropped `downloadFilename` here would silently strip
+   * `Content-Disposition` from every presigned URL on cache-enabled deployments.
    */
-  async getUrl(key: string, expiresIn?: number): Promise<string> {
-    return this.storage.getUrl(key, expiresIn);
+  async getUrl(
+    key: string,
+    expiresIn?: number,
+    options?: SignedUrlOptions,
+  ): Promise<string> {
+    return this.storage.getUrl(key, expiresIn, options);
   }
 
   /**

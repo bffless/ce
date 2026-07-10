@@ -159,10 +159,26 @@ describe('CachingStorageAdapter', () => {
     });
   });
 
+  describe('getUrl', () => {
+    it('should forward downloadFilename options to storage', async () => {
+      await cachingAdapter.getUrl('k', 600, { downloadFilename: 'my-video.mp4' });
+
+      expect(mockStorage.getUrl).toHaveBeenCalledWith('k', 600, {
+        downloadFilename: 'my-video.mp4',
+      });
+    });
+
+    it('should forward undefined options to storage when omitted', async () => {
+      await cachingAdapter.getUrl('k', 600);
+
+      expect(mockStorage.getUrl).toHaveBeenCalledWith('k', 600, undefined);
+    });
+  });
+
   describe('pass-through methods', () => {
     it('should pass getUrl to storage', async () => {
       await cachingAdapter.getUrl('key', 3600);
-      expect(mockStorage.getUrl).toHaveBeenCalledWith('key', 3600);
+      expect(mockStorage.getUrl).toHaveBeenCalledWith('key', 3600, undefined);
     });
 
     it('should pass listKeys to storage', async () => {

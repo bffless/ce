@@ -345,6 +345,23 @@ describe('GcsStorageAdapter', () => {
 
       await expect(adapter.getUrl('test/file.txt')).rejects.toThrow('Failed to generate signed URL');
     });
+
+    it('sets promptSaveAs when a downloadFilename is given', async () => {
+      await adapter.getUrl('test/file.mp4', 600, {
+        downloadFilename: 'my-video.mp4',
+      });
+
+      expect(mockFile.getSignedUrl).toHaveBeenCalledWith(
+        expect.objectContaining({ promptSaveAs: 'my-video.mp4' }),
+      );
+    });
+
+    it('omits promptSaveAs when no downloadFilename is given', async () => {
+      await adapter.getUrl('test/file.mp4', 600);
+
+      const config = mockFile.getSignedUrl.mock.calls[0][0];
+      expect(config).not.toHaveProperty('promptSaveAs');
+    });
   });
 
   describe('testConnection', () => {

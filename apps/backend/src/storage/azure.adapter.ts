@@ -6,6 +6,7 @@ import {
   BlobSASPermissions,
   generateBlobSASQueryParameters,
   SASProtocol,
+  BlobSASSignatureValues,
 } from '@azure/storage-blob';
 import { DefaultAzureCredential, ManagedIdentityCredential } from '@azure/identity';
 import {
@@ -13,6 +14,7 @@ import {
   FileMetadata,
   StreamDownloadResult,
   DownloadStreamOptions,
+  SignedUrlOptions,
 } from './storage.interface';
 import { AzureBlobStorageConfig, validateAzureConfig } from './azure.config';
 
@@ -225,7 +227,11 @@ export class AzureBlobStorageAdapter implements IStorageAdapter {
   /**
    * Get a SAS URL for accessing the file (read)
    */
-  async getUrl(key: string, expiresIn?: number): Promise<string> {
+  async getUrl(
+    key: string,
+    expiresIn?: number,
+    options?: SignedUrlOptions,
+  ): Promise<string> {
     const sanitizedKey = this.sanitizeKey(key);
     const storageKey = this.prefixKey(sanitizedKey);
     const blockBlobClient = this.containerClient.getBlockBlobClient(storageKey);
@@ -234,7 +240,7 @@ export class AzureBlobStorageAdapter implements IStorageAdapter {
     try {
       // If we have shared key credential, generate SAS URL
       if (this.sharedKeyCredential) {
-        const sasOptions = {
+        const sasOptions: BlobSASSignatureValues = {
           containerName: this.config.containerName,
           blobName: storageKey,
           permissions: BlobSASPermissions.parse('r'), // Read only
@@ -242,6 +248,11 @@ export class AzureBlobStorageAdapter implements IStorageAdapter {
           expiresOn: new Date(Date.now() + expiration * 1000),
           protocol: SASProtocol.HttpsAndHttp,
         };
+
+        // Signed into the SAS token, so it cannot be tampered with or appended.
+        if (options?.downloadFilename) {
+          sasOptions.contentDisposition = `attachment; filename="${options.downloadFilename}"`;
+        }
 
         const sasToken = generateBlobSASQueryParameters(
           sasOptions,

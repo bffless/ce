@@ -4,6 +4,7 @@ import {
   FileMetadata,
   StreamDownloadResult,
   DownloadStreamOptions,
+  SignedUrlOptions,
 } from './storage.interface';
 import * as Minio from 'minio';
 
@@ -210,13 +211,30 @@ export class MinioStorageAdapter implements IStorageAdapter {
   /**
    * Get presigned URL for accessing the file (GET)
    */
-  async getUrl(key: string, expiresIn: number = 3600): Promise<string> {
+  async getUrl(
+    key: string,
+    expiresIn: number = 3600,
+    options?: SignedUrlOptions,
+  ): Promise<string> {
     const sanitizedKey = this.sanitizeKey(key);
     const storageKey = this.prefixKey(sanitizedKey);
 
+    // Signed into the URL, not appended to it: S3/MinIO V4 signatures cover the
+    // query string. An empty object is equivalent to passing nothing.
+    const respHeaders: Record<string, string> = options?.downloadFilename
+      ? {
+          'response-content-disposition': `attachment; filename="${options.downloadFilename}"`,
+        }
+      : {};
+
     try {
       // Generate presigned URL (default 1 hour expiration)
-      const url = await this.client.presignedGetObject(this.bucket, storageKey, expiresIn);
+      const url = await this.client.presignedGetObject(
+        this.bucket,
+        storageKey,
+        expiresIn,
+        respHeaders,
+      );
       return url;
     } catch (error) {
       this.logger.error(`Failed to generate presigned URL: ${storageKey}`, error);

@@ -140,7 +140,7 @@ describe('DynamicStorageAdapter', () => {
         const result = await adapter.getUrl(key, expiresIn);
 
         expect(result).toBe('https://example.com/file');
-        expect(mockAdapter.getUrl).toHaveBeenCalledWith(key, expiresIn);
+        expect(mockAdapter.getUrl).toHaveBeenCalledWith(key, expiresIn, undefined);
       });
 
       it('should work without expiresIn parameter', async () => {
@@ -148,7 +148,7 @@ describe('DynamicStorageAdapter', () => {
 
         await adapter.getUrl(key);
 
-        expect(mockAdapter.getUrl).toHaveBeenCalledWith(key, undefined);
+        expect(mockAdapter.getUrl).toHaveBeenCalledWith(key, undefined, undefined);
       });
     });
 
@@ -188,6 +188,28 @@ describe('DynamicStorageAdapter', () => {
         expect(result).toBe(true);
         expect(mockAdapter.testConnection).toHaveBeenCalled();
       });
+    });
+  });
+
+  describe('getUrl', () => {
+    it('forwards signed URL options to the wrapped adapter', async () => {
+      const inner = { getUrl: jest.fn().mockResolvedValue('https://signed') };
+      (adapter as any).adapter = inner;
+
+      await adapter.getUrl('a/b.mp4', 600, { downloadFilename: 'my-video.mp4' });
+
+      expect(inner.getUrl).toHaveBeenCalledWith('a/b.mp4', 600, {
+        downloadFilename: 'my-video.mp4',
+      });
+    });
+
+    it('forwards undefined options unchanged', async () => {
+      const inner = { getUrl: jest.fn().mockResolvedValue('https://signed') };
+      (adapter as any).adapter = inner;
+
+      await adapter.getUrl('a/b.mp4', 600);
+
+      expect(inner.getUrl).toHaveBeenCalledWith('a/b.mp4', 600, undefined);
     });
   });
 
