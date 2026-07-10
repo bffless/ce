@@ -251,6 +251,12 @@ describe('MinioStorageAdapter', () => {
         600,
         {},
       );
+
+      // Verify the key is actually absent (not just undefined), to catch future
+      // regressions where respHeaders is built unconditionally with undefined values
+      const respHeaders = mockMinioClient.presignedGetObject.mock.calls[0][3];
+      expect(respHeaders).not.toHaveProperty('response-content-disposition');
+      expect(respHeaders).toEqual({});
     });
   });
 
