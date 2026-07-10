@@ -387,6 +387,28 @@ describe('AzureBlobStorageAdapter', () => {
       // URL should be generated (we can't test exact expiration without more complex mocking)
       expect(result).toContain('https://');
     });
+
+    it('sets contentDisposition when a downloadFilename is given', async () => {
+      await adapter.getUrl('test/file.mp4', 600, {
+        downloadFilename: 'my-video.mp4',
+      });
+
+      expect(generateBlobSASQueryParameters).toHaveBeenCalledWith(
+        expect.objectContaining({
+          contentDisposition: 'attachment; filename="my-video.mp4"',
+        }),
+        expect.anything(),
+      );
+    });
+
+    it('omits contentDisposition when no downloadFilename is given', async () => {
+      await adapter.getUrl('test/file.mp4', 600);
+
+      const sasOptions = (generateBlobSASQueryParameters as jest.Mock).mock.calls[
+        (generateBlobSASQueryParameters as jest.Mock).mock.calls.length - 1
+      ][0];
+      expect(sasOptions).not.toHaveProperty('contentDisposition');
+    });
   });
 
   describe('testConnection', () => {
