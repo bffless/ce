@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.104](https://github.com/bffless/ce/compare/v0.1.103...v0.1.104) (2026-07-10)
+
+
+### Features
+
+* **storage:** sign Content-Disposition into presigned download URLs ([#442](https://github.com/bffless/ce/issues/442)) ([666929f](https://github.com/bffless/ce/commit/666929ff2589e6ea6bcc7b1e21b8ef168b84a51b))
+
 ## [0.1.103](https://github.com/bffless/ce/compare/v0.1.102...v0.1.103) (2026-07-08)
 
 
