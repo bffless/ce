@@ -178,8 +178,11 @@ export class LocalStorageAdapter implements IStorageAdapter {
   }
 
   /**
-   * Get URL for accessing the file
-   * For local storage, this returns a URL that will be served by the backend
+   * Local storage serves files through the backend API rather than presigning,
+   * so there is no signature to embed a `Content-Disposition` into. A
+   * `SignedUrlOptions.downloadFilename` passed here is deliberately IGNORED —
+   * the browser will render the object inline. Presigned-only apps (e.g. Studio,
+   * whose uploads bypass the 1 MB body cap) cannot run on local storage anyway.
    */
   async getUrl(key: string): Promise<string> {
     const sanitizedKey = this.sanitizeKey(key);

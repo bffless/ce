@@ -76,6 +76,27 @@ export interface StreamDownloadResult {
   lastModified?: Date;
 }
 
+/**
+ * Options for a signed/presigned read URL.
+ */
+export interface SignedUrlOptions {
+  /**
+   * Force the browser to save rather than render, under this exact name, by
+   * signing `Content-Disposition: attachment; filename="..."` into the URL.
+   *
+   * Required because `<a download>` is ignored on cross-origin URLs, so the
+   * name can only arrive as a response header — and the header can only be
+   * signed in, never appended afterward (the signature covers the query string).
+   *
+   * Ignored by the local adapter, which cannot presign at all.
+   *
+   * Callers MUST pass a value already sanitized by `sanitizeDownloadFilename`
+   * (see `signed-url.handler.ts`): adapters interpolate this straight into a
+   * header value.
+   */
+  downloadFilename?: string;
+}
+
 export interface IStorageAdapter {
   /**
    * Upload a file to storage
@@ -118,9 +139,10 @@ export interface IStorageAdapter {
    * Get a URL for accessing the file
    * @param key - Storage key/path
    * @param expiresIn - Optional expiration time in seconds (for presigned URLs)
+   * @param options - Optional signed-URL options (e.g. force download w/ filename)
    * @returns URL to access the file
    */
-  getUrl(key: string, expiresIn?: number): Promise<string>;
+  getUrl(key: string, expiresIn?: number, options?: SignedUrlOptions): Promise<string>;
 
   /**
    * List all storage keys with optional prefix filter

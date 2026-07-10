@@ -5,6 +5,7 @@ import {
   DownloadResult,
   DownloadStreamOptions,
   StreamDownloadResult,
+  SignedUrlOptions,
 } from './storage.interface';
 import { LocalStorageAdapter } from './local.adapter';
 
@@ -120,8 +121,12 @@ export class DynamicStorageAdapter implements IStorageAdapter {
     return this.adapter.exists(key);
   }
 
-  async getUrl(key: string, expiresIn?: number): Promise<string> {
-    return this.adapter.getUrl(key, expiresIn);
+  async getUrl(
+    key: string,
+    expiresIn?: number,
+    options?: SignedUrlOptions,
+  ): Promise<string> {
+    return this.adapter.getUrl(key, expiresIn, options);
   }
 
   async listKeys(prefix?: string): Promise<string[]> {
