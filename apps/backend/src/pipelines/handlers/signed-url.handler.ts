@@ -18,6 +18,39 @@ export interface SignedUrlHandlerConfig {
    * @default 3600
    */
   expiresIn?: number;
+
+  /**
+   * Optional filename to force a download under (supports expressions, e.g.
+   * "steps.resolvePath.filename", or a literal like "video.mp4"). When present
+   * and non-empty after sanitizing, the signed URL carries
+   * `Content-Disposition: attachment; filename="..."`.
+   *
+   * Ignored on local storage, which cannot presign.
+   */
+  filename?: string;
+}
+
+/**
+ * Reduce an arbitrary value to a filename safe to interpolate into a
+ * `Content-Disposition` header value. THE choke point: every adapter trusts
+ * that `SignedUrlOptions.downloadFilename` came through here.
+ *
+ * Strips path separators (basename only), then control characters, double
+ * quotes and backslashes — the characters that could break out of the quoted
+ * header value or inject a second header. Returns `undefined` when nothing
+ * usable survives, which makes the handler omit the disposition entirely.
+ */
+export function sanitizeDownloadFilename(raw: unknown): string | undefined {
+  if (typeof raw !== 'string') return undefined;
+
+  const basename = raw.split(/[/\\]/).pop() ?? '';
+  const cleaned = basename
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f"\\]/g, '')
+    .trim()
+    .slice(0, 200);
+
+  return cleaned || undefined;
 }
 
 /**
@@ -68,12 +101,22 @@ export class SignedUrlHandler implements StepHandler<SignedUrlHandlerConfig> {
       };
     }
 
-    try {
-      const url = await this.storageAdapter.getUrl(resolvedPath, expiresIn);
+    // Resolve + sanitize the optional download filename. An absent or
+    // unusable filename means no disposition at all, which keeps every existing
+    // caller (e.g. Studio's `useSignedBytes`) byte-identical.
+    const resolvedFilename = config.filename
+      ? this.expressionEvaluator.evaluateExpression(config.filename, context, stepName)
+      : undefined;
+    const downloadFilename = sanitizeDownloadFilename(resolvedFilename);
 
-      this.logger.debug(
-        `Generated signed URL for ${resolvedPath} (expires in ${expiresIn}s)`,
+    try {
+      const url = await this.storageAdapter.getUrl(
+        resolvedPath,
+        expiresIn,
+        downloadFilename ? { downloadFilename } : undefined,
       );
+
+      this.logger.debug(`Generated signed URL for ${resolvedPath} (expires in ${expiresIn}s)`);
 
       return {
         success: true,
