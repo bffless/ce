@@ -235,3 +235,61 @@ describe('ProxyRuleSetsPage export', () => {
     expect(createdBlobs).toHaveLength(0);
   });
 });
+
+describe('ProxyRuleSetsPage managed-from-git badge', () => {
+  const managedSource = {
+    repo: 'bffless/apps',
+    path: 'apps/studio/proxy-rules',
+    gitSha: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0',
+    syncedAt: '2026-07-10T00:00:00.000Z',
+    contentHash: 'sha256:deadbeef',
+  };
+
+  let listBody: unknown;
+
+  beforeEach(() => {
+    mockToast.mockClear();
+    listBody = ruleSetsList;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: Request | string) => {
+        const url = typeof input === 'string' ? input : input.url;
+        if (url.includes('/api/projects/acme/site')) return jsonResponse(project);
+        if (url.includes('/api/proxy-rule-sets/project/proj-1')) return jsonResponse(listBody);
+        throw new Error(`Unexpected fetch: ${url}`);
+      }),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('shows the badge with repo@shortSha on sets that carry a source', async () => {
+    listBody = {
+      ruleSets: [
+        { ...ruleSetsList.ruleSets[0], source: managedSource },
+        {
+          ...ruleSetsList.ruleSets[0],
+          id: 'rs-2',
+          name: 'Manual Rules',
+          source: null,
+        },
+      ],
+    };
+    renderPage();
+
+    expect(await screen.findByText('Managed from git')).toBeInTheDocument();
+    expect(screen.getByText('bffless/apps@a1b2c3d')).toBeInTheDocument();
+    // Only the managed set gets a badge
+    expect(screen.getAllByText('Managed from git')).toHaveLength(1);
+  });
+
+  it('shows no badge when no set has a source', async () => {
+    renderPage();
+
+    expect(await screen.findByText('My API Rules!')).toBeInTheDocument();
+    expect(screen.queryByText('Managed from git')).not.toBeInTheDocument();
+  });
+});

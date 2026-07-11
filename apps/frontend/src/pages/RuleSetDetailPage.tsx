@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -23,6 +23,10 @@ import { useProjectRole } from '@/hooks/useProjectRole';
 import { useToast } from '@/hooks/use-toast';
 import { RulesList } from '@/components/proxy-rules/RulesList';
 import { EditRuleSetDialog } from '@/components/proxy-rules/EditRuleSetDialog';
+import {
+  ManagedFromGitBadge,
+  MANAGED_FROM_GIT_WARNING,
+} from '@/components/proxy-rules/ManagedFromGitBadge';
 import { routes } from '@/utils/routes';
 
 /**
@@ -52,7 +56,21 @@ export function RuleSetDetailPage() {
   // Edit dialog state
   const [editDialogOpen, setEditDialogOpen] = useState(false);
 
+  // One-time (per page visit) warning when mutating a git-managed set
+  // (decision 2: warn, never block, never clear `source`). The set edit
+  // dialog carries its own inline alert, so it's excluded here.
+  const managedEditWarnedRef = useRef(false);
+  const warnIfManaged = () => {
+    if (!ruleSet?.source || managedEditWarnedRef.current) return;
+    managedEditWarnedRef.current = true;
+    toast({
+      title: 'Managed from git',
+      description: MANAGED_FROM_GIT_WARNING,
+    });
+  };
+
   const handleUpdateRule = async (id: string, updates: UpdateProxyRuleDto) => {
+    warnIfManaged();
     try {
       await updateRule({ id, updates }).unwrap();
       toast({
@@ -72,6 +90,7 @@ export function RuleSetDetailPage() {
   };
 
   const handleDeleteRule = async (id: string) => {
+    warnIfManaged();
     try {
       await deleteRule(id).unwrap();
       toast({
@@ -172,6 +191,7 @@ export function RuleSetDetailPage() {
               {ruleSet.environment && (
                 <Badge variant="outline">{ruleSet.environment}</Badge>
               )}
+              <ManagedFromGitBadge source={ruleSet.source} />
               {canEdit && (
                 <Button
                   variant="ghost"
@@ -192,7 +212,10 @@ export function RuleSetDetailPage() {
             <Button
               size="sm"
               className="gap-2"
-              onClick={() => navigate(routes.newRule(owner!, repo!, ruleSetId!))}
+              onClick={() => {
+                warnIfManaged();
+                navigate(routes.newRule(owner!, repo!, ruleSetId!));
+              }}
             >
               <Plus className="h-4 w-4" />
               Add Rule

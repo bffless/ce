@@ -248,6 +248,7 @@ export function ProxyRuleSetsPage() {
                     name={ruleSet.name}
                     description={ruleSet.description}
                     environment={ruleSet.environment}
+                    source={ruleSet.source}
                     isDefault={project?.defaultProxyRuleSetId === ruleSet.id}
                     href={routes.ruleSet(owner!, repo!, ruleSet.id)}
                   />

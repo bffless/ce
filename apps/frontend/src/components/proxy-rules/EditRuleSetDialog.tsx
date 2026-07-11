@@ -10,8 +10,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { GitBranch } from 'lucide-react';
 import { useUpdateRuleSetMutation, type ProxyRuleSet } from '@/services/proxyRulesApi';
 import { useToast } from '@/hooks/use-toast';
+import { MANAGED_FROM_GIT_WARNING } from '@/components/proxy-rules/ManagedFromGitBadge';
 
 interface EditRuleSetDialogProps {
   ruleSet: ProxyRuleSet;
@@ -98,6 +101,14 @@ export function EditRuleSetDialog({ ruleSet, open, onOpenChange }: EditRuleSetDi
             Update the name, environment, or description for this rule set.
           </DialogDescription>
         </DialogHeader>
+
+        {ruleSet.source && (
+          <Alert className="mt-2">
+            <GitBranch className="h-4 w-4" />
+            <AlertTitle>Managed from git</AlertTitle>
+            <AlertDescription>{MANAGED_FROM_GIT_WARNING}</AlertDescription>
+          </Alert>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4 mt-4">
           <div className="space-y-2">

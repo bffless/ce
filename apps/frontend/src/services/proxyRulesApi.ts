@@ -76,6 +76,18 @@ export interface ProxyRule {
   updatedAt: string;
 }
 
+// Provenance metadata for a rule set managed from git via the sync endpoint
+// (PUT /api/proxy-rule-sets/project/:projectId/sync). repo/path/gitSha are
+// caller-supplied best-effort; syncedAt and contentHash are stamped
+// server-side on every successful sync. Null/absent for sets never synced.
+export interface ProxyRuleSetSource {
+  repo?: string;
+  path?: string;
+  gitSha?: string;
+  syncedAt: string;
+  contentHash: string;
+}
+
 // Proxy rule set response from API
 export interface ProxyRuleSet {
   id: string;
@@ -83,6 +95,9 @@ export interface ProxyRuleSet {
   name: string;
   description: string | null;
   environment: string | null;
+  // Present when the set is managed from git (rules-as-code sync); kept even
+  // after manual edits — the UI warns instead of clearing it.
+  source?: ProxyRuleSetSource | null;
   createdAt: string;
   updatedAt: string;
 }

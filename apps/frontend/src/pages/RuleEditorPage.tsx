@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent } from '@/components/ui/card';
@@ -21,6 +22,7 @@ import {
 import { useProjectRole } from '@/hooks/useProjectRole';
 import { useToast } from '@/hooks/use-toast';
 import { ExpandedProxyRuleForm } from '@/components/proxy-rules/ExpandedProxyRuleForm';
+import { MANAGED_FROM_GIT_WARNING } from '@/components/proxy-rules/ManagedFromGitBadge';
 import { routes } from '@/utils/routes';
 
 /**
@@ -64,7 +66,21 @@ export function RuleEditorPage() {
   const [createRule, { isLoading: isCreating }] = useCreateRuleInSetMutation();
   const [updateRule, { isLoading: isUpdating }] = useUpdateProxyRuleMutation();
 
+  // One-time (per page visit) warning when saving into a git-managed set
+  // (decision 2: warn, never block, never clear `source`). Covers rule edits
+  // AND order changes — the Priority field saves through this page too.
+  const managedEditWarnedRef = useRef(false);
+  const warnIfManaged = () => {
+    if (!ruleSet?.source || managedEditWarnedRef.current) return;
+    managedEditWarnedRef.current = true;
+    toast({
+      title: 'Managed from git',
+      description: MANAGED_FROM_GIT_WARNING,
+    });
+  };
+
   const handleSubmit = async (data: CreateProxyRuleDto) => {
+    warnIfManaged();
     try {
       if (isCreateMode) {
         const newRule = await createRule({ ruleSetId: ruleSetId!, rule: data }).unwrap();

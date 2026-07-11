@@ -1,12 +1,15 @@
 import { Link } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { ChevronRight, Settings } from 'lucide-react';
+import { ManagedFromGitBadge } from '@/components/proxy-rules/ManagedFromGitBadge';
+import type { ProxyRuleSetSource } from '@/services/proxyRulesApi';
 
 interface RuleSetCardProps {
   id: string;
   name: string;
   description: string | null;
   environment: string | null;
+  source?: ProxyRuleSetSource | null;
   isDefault: boolean;
   href: string;
 }
@@ -19,6 +22,7 @@ export function RuleSetCard({
   name,
   description,
   environment,
+  source,
   isDefault,
   href,
 }: RuleSetCardProps) {
@@ -42,6 +46,7 @@ export function RuleSetCard({
                 Default
               </Badge>
             )}
+            <ManagedFromGitBadge source={source} />
           </div>
           {description && (
             <p className="text-sm text-muted-foreground mt-1">{description}</p>
