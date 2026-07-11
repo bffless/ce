@@ -13,7 +13,7 @@ import {
   parseYamlFile,
 } from '../format/manifest.js';
 import type { RuleManifest } from '../format/manifest.js';
-import { relPathToPattern, deriveOrders } from '../format/routes.js';
+import { relPathToPattern, deriveOrders, METHOD_STEMS } from '../format/routes.js';
 import { applyRuleDefaults } from '../format/defaults.js';
 import { canonicalizeExport } from '../format/canonical.js';
 import { walkSchemaRefs } from '../format/schema-refs.js';
@@ -37,9 +37,7 @@ export interface BuildResult {
  *  the valid `…-bff1e55c0de0` — see task-6 report.) */
 export const SCHEMA_NAMESPACE = '6e1a24d0-0000-4000-8000-bff1e55c0de0';
 
-const METHOD_STEMS = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'any'] as const;
-const METHOD_STEM_SET = new Set<string>(METHOD_STEMS);
-const RULE_FILE_RE = /^(get|post|put|patch|delete|head|options|any)\.rule\.yaml$/;
+const RULE_FILE_RE = new RegExp(`^(${[...METHOD_STEMS].join('|')})\\.rule\\.yaml$`);
 const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 const SECRET_RE = /\{\{\s*secrets\.([A-Za-z0-9_]+)\s*\}\}/g;
 
@@ -61,25 +59,41 @@ interface Discovered {
   manifestPath: string; // the *.rule.yaml / rule.yaml file
   manifestDir: string; // directory files (code:, $file:) resolve relative to
   methodStem: string; // get|post|…|any
+  stemFileDisplay: string; // display name of the stem file for error messages, e.g. `post.rule.yaml` or `post/rule.yaml`
   dirSegments: string[]; // path segments between rules/ and the method file/dir
 }
 
-/** Recursively find single-file (`get.rule.yaml`) and directory-shape (`post/rule.yaml`) rules. */
+/** Recursively find single-file (`get.rule.yaml`) and directory-shape (`post/rule.yaml`) rules.
+ *  Directory entries are sorted by name so discovery order — and therefore duplicate-error
+ *  file ordering — is deterministic across filesystems. */
 function discoverRules(rulesDir: string, segments: string[], out: Discovered[]): void {
   if (!existsSync(rulesDir)) return;
-  for (const entry of readdirSync(rulesDir, { withFileTypes: true })) {
+  const entries = readdirSync(rulesDir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
+  for (const entry of entries) {
     const full = path.join(rulesDir, entry.name);
     if (entry.isFile()) {
       const m = RULE_FILE_RE.exec(entry.name);
       if (m) {
-        out.push({ manifestPath: full, manifestDir: rulesDir, methodStem: m[1], dirSegments: segments });
+        out.push({
+          manifestPath: full,
+          manifestDir: rulesDir,
+          methodStem: m[1],
+          stemFileDisplay: entry.name,
+          dirSegments: segments,
+        });
       }
       continue;
     }
     if (entry.isDirectory()) {
       const ruleYaml = path.join(full, 'rule.yaml');
-      if (METHOD_STEM_SET.has(entry.name) && existsSync(ruleYaml)) {
-        out.push({ manifestPath: ruleYaml, manifestDir: full, methodStem: entry.name, dirSegments: segments });
+      if (METHOD_STEMS.has(entry.name) && existsSync(ruleYaml)) {
+        out.push({
+          manifestPath: ruleYaml,
+          manifestDir: full,
+          methodStem: entry.name,
+          stemFileDisplay: `${entry.name}/rule.yaml`,
+          dirSegments: segments,
+        });
       } else {
         discoverRules(full, [...segments, entry.name], out);
       }
@@ -87,19 +101,33 @@ function discoverRules(rulesDir: string, segments: string[], out: Discovered[]):
   }
 }
 
+/** Resolve `ref` relative to `manifestDir`, rejecting absolute refs and any resolution that
+ *  escapes `setDir` (path traversal guard for `$file:`/`code:` refs). */
+function resolveConfinedPath(setDir: string, manifestDir: string, manifestPath: string, ref: string): string {
+  if (path.isAbsolute(ref)) {
+    throw new Error(`${manifestPath}: file reference escapes the rule set directory: ${ref}`);
+  }
+  const resolved = path.resolve(manifestDir, ref);
+  const rel = path.relative(setDir, resolved);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) {
+    throw new Error(`${manifestPath}: file reference escapes the rule set directory: ${ref}`);
+  }
+  return resolved;
+}
+
 /** Deep-replace any `{ $file: <relpath> }` object with the referenced file's utf8 contents. */
-function resolveFileRefs(value: unknown, manifestDir: string, manifestPath: string): unknown {
-  if (Array.isArray(value)) return value.map((v) => resolveFileRefs(v, manifestDir, manifestPath));
+function resolveFileRefs(value: unknown, setDir: string, manifestDir: string, manifestPath: string): unknown {
+  if (Array.isArray(value)) return value.map((v) => resolveFileRefs(v, setDir, manifestDir, manifestPath));
   if (value && typeof value === 'object') {
     const obj = value as Record<string, unknown>;
     const keys = Object.keys(obj);
     if (keys.length === 1 && keys[0] === '$file' && typeof obj.$file === 'string') {
-      const file = path.resolve(manifestDir, obj.$file);
+      const file = resolveConfinedPath(setDir, manifestDir, manifestPath, obj.$file);
       if (!existsSync(file)) throw new Error(`${manifestPath}: $file not found: ${obj.$file}`);
       return readFileSync(file, 'utf8');
     }
     const out: Record<string, unknown> = {};
-    for (const k of keys) out[k] = resolveFileRefs(obj[k], manifestDir, manifestPath);
+    for (const k of keys) out[k] = resolveFileRefs(obj[k], setDir, manifestDir, manifestPath);
     return out;
   }
   return value;
@@ -109,6 +137,7 @@ function resolveFileRefs(value: unknown, manifestDir: string, manifestPath: stri
 function compilePipeline(
   pipeline: NonNullable<RuleManifest['pipeline']>,
   defaultName: string,
+  setDir: string,
   manifestDir: string,
   manifestPath: string,
 ): PipelineConfig {
@@ -116,7 +145,7 @@ function compilePipeline(
     steps.map((step) => {
       const config: Record<string, unknown> = { ...(step.config ?? {}) };
       if (step.code !== undefined) {
-        const file = path.resolve(manifestDir, step.code);
+        const file = resolveConfinedPath(setDir, manifestDir, manifestPath, step.code);
         if (!existsSync(file)) throw new Error(`${manifestPath}: code file not found: ${step.code}`);
         config.code = readFileSync(file, 'utf8');
       }
@@ -200,10 +229,29 @@ export async function buildRuleSet(setDir: string, opts?: { exportedAt?: string 
   const compiled: Compiled[] = [];
   for (const d of discovered) {
     const manifest = parseYamlFile(d.manifestPath, RuleManifestSchema);
-    const method = d.methodStem === 'any' ? undefined : d.methodStem.toUpperCase();
+    const isAny = d.methodStem === 'any';
+    const stemMethod = isAny ? undefined : d.methodStem.toUpperCase();
 
-    if (manifest.methods !== undefined && d.methodStem !== 'any') {
-      throw new Error(`${d.manifestPath}: 'methods:' is only allowed in an 'any' rule (found in ${d.methodStem}.rule.yaml)`);
+    if (manifest.methods !== undefined && !isAny) {
+      throw new Error(`${d.manifestPath}: 'methods:' is only allowed in an 'any' rule (found in ${d.stemFileDisplay})`);
+    }
+
+    // `method:` escape hatch: in an `any` rule it's a single-method override (may not be
+    // combined with `methods:`); in a method-stem file it must match the stem (case-insensitive)
+    // — a match is silently accepted (harmless redundancy), a mismatch is an error.
+    let method: string | undefined;
+    if (isAny) {
+      if (manifest.method !== undefined && manifest.methods !== undefined) {
+        throw new Error(`${d.manifestPath}: 'method:' and 'methods:' may not both be set`);
+      }
+      method = manifest.method;
+    } else {
+      if (manifest.method !== undefined && manifest.method.toUpperCase() !== stemMethod) {
+        throw new Error(
+          `${d.manifestPath}: method: ${manifest.method} conflicts with file stem '${d.stemFileDisplay}' (expected ${stemMethod})`,
+        );
+      }
+      method = stemMethod;
     }
 
     const pathPattern = manifest.pathPattern ?? relPathToPattern(d.dirSegments);
@@ -229,7 +277,7 @@ export async function buildRuleSet(setDir: string, opts?: { exportedAt?: string 
     if (manifest.forwardCookies !== undefined) partial.forwardCookies = manifest.forwardCookies;
     if (manifest.headerConfig !== undefined) partial.headerConfig = manifest.headerConfig;
     if (manifest.authTransform !== undefined) {
-      partial.authTransform = resolveFileRefs(manifest.authTransform, d.manifestDir, d.manifestPath) as Record<
+      partial.authTransform = resolveFileRefs(manifest.authTransform, setDir, d.manifestDir, d.manifestPath) as Record<
         string,
         unknown
       >;
@@ -239,6 +287,7 @@ export async function buildRuleSet(setDir: string, opts?: { exportedAt?: string 
     if (manifest.emailHandlerConfig !== undefined) {
       partial.emailHandlerConfig = resolveFileRefs(
         manifest.emailHandlerConfig,
+        setDir,
         d.manifestDir,
         d.manifestPath,
       ) as Record<string, unknown>;
@@ -246,13 +295,13 @@ export async function buildRuleSet(setDir: string, opts?: { exportedAt?: string 
 
     let pipelineConfig: PipelineConfig | undefined;
     if (manifest.pipeline !== undefined) {
-      pipelineConfig = compilePipeline(manifest.pipeline, defaultPipelineName, d.manifestDir, d.manifestPath);
+      pipelineConfig = compilePipeline(manifest.pipeline, defaultPipelineName, setDir, d.manifestDir, d.manifestPath);
     } else if (manifest.pipelineConfig !== undefined) {
-      pipelineConfig = resolveFileRefs(manifest.pipelineConfig, d.manifestDir, d.manifestPath) as PipelineConfig;
+      pipelineConfig = resolveFileRefs(manifest.pipelineConfig, setDir, d.manifestDir, d.manifestPath) as PipelineConfig;
     }
     if (pipelineConfig) {
       // $file: refs inside pipeline step configs (pipeline sugar path already handled `code:`).
-      pipelineConfig = resolveFileRefs(pipelineConfig, d.manifestDir, d.manifestPath) as PipelineConfig;
+      pipelineConfig = resolveFileRefs(pipelineConfig, setDir, d.manifestDir, d.manifestPath) as PipelineConfig;
       // Resolve $schema: refs (and warn on raw UUIDs) in place.
       walkSchemaRefs(pipelineConfig, (ref, set) => {
         if (ref.startsWith('$schema:')) {
@@ -300,6 +349,22 @@ export async function buildRuleSet(setDir: string, opts?: { exportedAt?: string 
     c.partial.order = c.explicitOrder ?? orderMap.get(c.descriptor) ?? 0;
     return applyRuleDefaults(c.partial);
   });
+
+  // Warn when two rules land on the same numeric order (explicit vs derived collision) —
+  // the DB tolerates it but it makes tiebreak behavior implicit and easy to get wrong.
+  const orderGroups = new Map<number, string[]>();
+  for (const c of compiled) {
+    const order = c.partial.order as number;
+    const list = orderGroups.get(order);
+    if (list) list.push(c.manifestPath);
+    else orderGroups.set(order, [c.manifestPath]);
+  }
+  for (const order of [...orderGroups.keys()].sort((a, b) => a - b)) {
+    const paths = orderGroups.get(order)!;
+    if (paths.length > 1) {
+      warnings.push(`multiple rules share order ${order}: ${paths.join(', ')}`);
+    }
+  }
 
   const schemas = [...schemasByName.values()];
   const exportObj: RuleSetExport = {

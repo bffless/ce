@@ -4,7 +4,9 @@
  * ordering used by the compiler (Task 6) and decompiler (Task 7).
  */
 
-const METHOD_STEMS = new Set(['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'any']);
+/** Authoring-layout method stems (filenames `<stem>.rule.yaml` / directories `<stem>/rule.yaml`).
+ *  Shared with the compiler (Task 6) so the stem list has exactly one definition. */
+export const METHOD_STEMS = new Set(['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'any']);
 const LITERAL_SEGMENT_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const SPREAD_SEGMENT_RE = /^\[\.\.\..*\]$/;
 const BRACKET_SEGMENT_RE = /^\[.*\]$/;
