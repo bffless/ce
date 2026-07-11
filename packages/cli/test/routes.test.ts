@@ -132,6 +132,30 @@ describe('relPathToPattern / exact inverse', () => {
     expect(relPathToPattern(segs as string[])).toBe('/api/*/x');
   });
 
+  it('round-trips /a/*/b/* exactly', () => {
+    const segs = patternToRelPath('/a/*/b/*');
+    expect(segs).toEqual(['a', '[p1]', 'b', '[...path]']);
+    expect(relPathToPattern(segs as string[])).toBe('/a/*/b/*');
+  });
+
+  it('round-trips /*/x/*/y/* exactly', () => {
+    const segs = patternToRelPath('/*/x/*/y/*');
+    expect(segs).toEqual(['[p0]', 'x', '[p2]', 'y', '[...path]']);
+    expect(relPathToPattern(segs as string[])).toBe('/*/x/*/y/*');
+  });
+
+  it('round-trips /*/* exactly', () => {
+    const segs = patternToRelPath('/*/*');
+    expect(segs).toEqual(['[p0]', '[...path]']);
+    expect(relPathToPattern(segs as string[])).toBe('/*/*');
+  });
+
+  it('round-trips /a/*/*/b exactly', () => {
+    const segs = patternToRelPath('/a/*/*/b');
+    expect(segs).toEqual(['a', '[p1]', '[p2]', 'b']);
+    expect(relPathToPattern(segs as string[])).toBe('/a/*/*/b');
+  });
+
   it('converts a spread segment [...path] to a trailing *', () => {
     expect(relPathToPattern(['api', 'auth', '[...path]'])).toBe('/api/auth/*');
   });
@@ -178,6 +202,20 @@ describe('sortRulesBySpecificity', () => {
     ];
     const sorted = sortRulesBySpecificity(rules);
     expect(sorted.map((r) => r.pathPattern)).toEqual(['/api/*/y', '/*/api/y']);
+  });
+
+  it('multi-wildcard tiebreak: first-divergent wildcard position determines sort (deeper-first-wildcard sorts first)', () => {
+    // Both: literalCount=3 ('a','b','c'), wildcardCount=2, 5 segments total.
+    // /a/b/*/*/c has wildcards at [2,3]; /a/*/b/*/c has wildcards at [1,3].
+    // First wildcard position differs (2 vs 1), so deeper position (2) sorts first.
+    // This pins the pairwise front-to-back comparison rule: compareSpecificityKeys
+    // iterates wildcard indices and returns bi - ai when they diverge (higher index = later = more specific).
+    const rules: Rule[] = [
+      { pathPattern: '/a/*/b/*/c' },
+      { pathPattern: '/a/b/*/*/c' },
+    ];
+    const sorted = sortRulesBySpecificity(rules);
+    expect(sorted.map((r) => r.pathPattern)).toEqual(['/a/b/*/*/c', '/a/*/b/*/c']);
   });
 
   it('falls back to pathPattern lexicographic order when shape ties', () => {
