@@ -13,10 +13,11 @@
  * sole source of truth for — `code:` ref existence and `$schema:` ref resolution — while
  * walking manifests for zod validation (step 1). `buildRuleSet` (step 2) still runs and
  * is still the authority for everything else (duplicate routes, header-secret leakage,
- * order collisions, etc.); its thrown error is only added as a *new* issue when it isn't
- * already covered by a step-1 finding for the same file, so a set with several unrelated
- * problems doesn't drown in duplicate reports of whichever one `buildRuleSet` tripped on
- * first.
+ * order collisions, etc.); its thrown error is only added as a *new* issue when an
+ * identical (file, message) pair isn't already covered by a step-1 finding, so a set
+ * with several unrelated problems doesn't drown in duplicate reports of whichever one
+ * `buildRuleSet` tripped on first — while a *different* problem on the same file (e.g. a
+ * dangling `code:` ref alongside a committed header secret) still surfaces both issues.
  */
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
@@ -30,7 +31,7 @@ import {
 import type { RuleManifest } from '../format/manifest.js';
 import { walkSchemaRefs } from '../format/schema-refs.js';
 import { METHOD_STEMS } from '../format/routes.js';
-import { buildRuleSet } from '../compile/build.js';
+import { buildRuleSet, resolveConfinedPath, assertRealpathConfined } from '../compile/build.js';
 import { validateHandlerSource } from '../lint/patterns.js';
 
 export interface Issue {
@@ -124,8 +125,12 @@ interface ManifestStepLike {
 }
 
 /** Checks every step's `code:` ref (authoring-sugar convenience field) resolves to an
- *  existing file relative to `manifestDir`. (Canonical `pipelineConfig` file refs use
- *  `{ $file: ... }` instead, which `buildRuleSet` remains the sole checker for — the
+ *  existing file relative to `manifestDir`, reusing `buildRuleSet`'s own confinement
+ *  guard (`resolveConfinedPath` + `assertRealpathConfined`) rather than a bare
+ *  `path.resolve`/`existsSync` pair — otherwise a `code:` ref that lexically or via
+ *  symlink escapes `setDir` but happens to resolve to an existing file would pass
+ *  `validate` even though `build` would reject it. (Canonical `pipelineConfig` file refs
+ *  use `{ $file: ... }` instead, which `buildRuleSet` remains the sole checker for — the
  *  fixture and brief both describe the authoring `code:` sugar specifically.) */
 function checkCodeRefs(pipeline: ManifestPipelineLike | undefined, manifestDir: string, manifestPath: string, setDir: string, errors: Issue[]): void {
   if (!pipeline) return;
@@ -133,9 +138,21 @@ function checkCodeRefs(pipeline: ManifestPipelineLike | undefined, manifestDir: 
     if (!steps) continue;
     for (const step of steps) {
       if (step.code === undefined) continue;
-      const resolved = path.resolve(manifestDir, step.code);
+      let resolved: string;
+      try {
+        resolved = resolveConfinedPath(setDir, manifestDir, manifestPath, step.code);
+      } catch (err) {
+        errors.push({ file: toRel(setDir, manifestPath), message: stripFilePrefix(manifestPath, (err as Error).message) });
+        continue;
+      }
       if (!existsSync(resolved)) {
         errors.push({ file: toRel(setDir, manifestPath), message: `code file not found: ${step.code}` });
+        continue;
+      }
+      try {
+        assertRealpathConfined(setDir, manifestPath, resolved, step.code);
+      } catch (err) {
+        errors.push({ file: toRel(setDir, manifestPath), message: stripFilePrefix(manifestPath, (err as Error).message) });
       }
     }
   }
@@ -258,7 +275,13 @@ export async function validateRuleSet(setDir: string): Promise<{ errors: Issue[]
         text = message.slice(match[0].length);
       }
     }
-    const alreadyKnown = errors.some((e) => e.file === file);
+    // Dedup on the exact (file, message) pair, not file alone — a manifest can have
+    // several *distinct* problems (e.g. a committed header secret AND a dangling
+    // `code:` ref), and buildRuleSet's thrown error must only be suppressed when an
+    // identical issue was already recorded in step 1, not whenever step 1 found *any*
+    // issue for that file (which would silently drop a different, possibly
+    // security-relevant, error).
+    const alreadyKnown = errors.some((e) => e.file === file && e.message === text);
     if (!alreadyKnown) errors.push({ file, message: text });
   }
 

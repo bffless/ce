@@ -80,6 +80,58 @@ describe('validateRuleSet — broken fixture (five distinct issues)', () => {
   });
 });
 
+describe('validateRuleSet — dedup by (file, message), not file alone', () => {
+  it('a manifest with both a committed header secret and a dangling code ref reports BOTH', async () => {
+    const dir = scratchSet({
+      '.bffless/proxy-rules/myset/ruleset.yaml': 'name: myset\n',
+      '.bffless/proxy-rules/myset/rules/api/x/post.rule.yaml': [
+        'headerConfig:',
+        '  add:',
+        '    X-Api-Key: shhh-secret-value',
+        'pipeline:',
+        '  steps:',
+        '    - name: fn',
+        '      handler: function_handler',
+        '      code: ./missing.js',
+        '',
+      ].join('\n'),
+    });
+    const setDir = path.join(dir, '.bffless', 'proxy-rules', 'myset');
+    const { errors } = await validateRuleSet(setDir);
+    const file = path.join('rules', 'api', 'x', 'post.rule.yaml');
+    const fileErrors = errors.filter((e) => e.file === file);
+    expect(fileErrors, JSON.stringify(errors, null, 2)).toHaveLength(2);
+    expect(fileErrors.some((e) => /code file not found.*missing\.js/.test(e.message))).toBe(true);
+    expect(fileErrors.some((e) => /secret values must not be committed/.test(e.message))).toBe(true);
+  });
+});
+
+describe('validateRuleSet — code: ref confinement', () => {
+  it('a code: ref that escapes the set dir but resolves to an existing file is flagged, not silently passed', async () => {
+    const outsideDir = mkdtempSync(path.join(tmpdir(), 'bffless-validate-outside-'));
+    const outsideFile = path.join(outsideDir, 'outside.js');
+    writeFileSync(outsideFile, 'module.exports = () => {};\n', 'utf8');
+
+    const dir = scratchSet({
+      '.bffless/proxy-rules/myset/ruleset.yaml': 'name: myset\n',
+    });
+    const setDir = path.join(dir, '.bffless', 'proxy-rules', 'myset');
+    const manifestDir = path.join(setDir, 'rules', 'api', 'x');
+    mkdirSync(manifestDir, { recursive: true });
+    const ref = path.relative(manifestDir, outsideFile);
+    writeFileSync(
+      path.join(manifestDir, 'post.rule.yaml'),
+      ['pipeline:', '  steps:', '    - name: fn', '      handler: function_handler', `      code: ${ref}`, ''].join('\n'),
+      'utf8',
+    );
+
+    const { errors } = await validateRuleSet(setDir);
+    const file = path.join('rules', 'api', 'x', 'post.rule.yaml');
+    const issue = errors.find((e) => e.file === file && /escapes the rule set directory/.test(e.message));
+    expect(issue, JSON.stringify(errors, null, 2)).toBeTruthy();
+  });
+});
+
 describe('validateRuleSet — skills cross-ref', () => {
   const AI_RULE = [
     'pipeline:',

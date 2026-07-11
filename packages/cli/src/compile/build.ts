@@ -106,7 +106,7 @@ function discoverRules(rulesDir: string, segments: string[], out: Discovered[]):
  *  only — it does not follow symlinks. Callers MUST also call `assertRealpathConfined` once
  *  the target's existence has been confirmed, to catch a symlink inside the rule set dir that
  *  points outside it. */
-function resolveConfinedPath(setDir: string, manifestDir: string, manifestPath: string, ref: string): string {
+export function resolveConfinedPath(setDir: string, manifestDir: string, manifestPath: string, ref: string): string {
   if (path.isAbsolute(ref)) {
     throw new Error(`${manifestPath}: file reference escapes the rule set directory: ${ref}`);
   }
@@ -122,7 +122,7 @@ function resolveConfinedPath(setDir: string, manifestDir: string, manifestPath: 
  *  still confined to `setDir`'s realpath. `resolveConfinedPath`'s check is purely lexical, so a
  *  symlink placed inside the rule set dir but pointing outside it would otherwise let `$file:`/
  *  `code:` refs inline arbitrary host files into compiled output. */
-function assertRealpathConfined(setDir: string, manifestPath: string, resolved: string, ref: string): void {
+export function assertRealpathConfined(setDir: string, manifestPath: string, resolved: string, ref: string): void {
   const realSetDir = realpathSync(setDir);
   const realResolved = realpathSync(resolved);
   const rel = path.relative(realSetDir, realResolved);
