@@ -437,4 +437,82 @@ describe('ProxyMiddleware', () => {
       expect((middleware as any).extractPathFromUri('/?foo=bar')).toBe('/');
     });
   });
+
+  describe('checkVisibilityAndAuth', () => {
+    const project = { id: 'proj-1', owner: 'owner', name: 'repo' } as any;
+
+    const makePrivate = () => {
+      mockVisibilityService.resolveAccessControlForAlias.mockResolvedValue({
+        isPublic: false,
+        unauthorizedBehavior: 'redirect_login',
+        requiredRole: 'authenticated',
+        source: 'alias',
+      });
+    };
+
+    // An API request whose access token has expired, but whose refresh token is
+    // still good - the state a long-running build lands in.
+    const expiredTokenRequest = (path: string): Request => {
+      const req = createMockRequest(path, { accept: 'application/json' });
+      (req as any).tokenExpired = true;
+      return req;
+    };
+
+    const authRule = createMockRule({
+      pathPattern: '/api/auth/*',
+      targetUrl: 'http://localhost:3000/api/auth',
+      proxyType: 'external_proxy',
+    });
+
+    it('allows a matched auth-proxy rule through on a private deployment', async () => {
+      makePrivate();
+      const req = expiredTokenRequest('/api/auth/session/refresh');
+      const res = createMockResponse();
+
+      const result = await (middleware as any).checkVisibilityAndAuth(
+        req,
+        res,
+        project,
+        'studio',
+        authRule,
+      );
+
+      expect(result).toBe('allowed');
+      expect(res.status).not.toHaveBeenCalled();
+    });
+
+    it('still blocks a normal API rule on a private deployment when the token expired', async () => {
+      makePrivate();
+      const req = expiredTokenRequest('/api/works');
+      const res = createMockResponse();
+
+      const result = await (middleware as any).checkVisibilityAndAuth(
+        req,
+        res,
+        project,
+        'studio',
+        createMockRule({ pathPattern: '/api/*' }),
+      );
+
+      expect(result).toBe('blocked');
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith({ message: 'try refresh token' });
+    });
+
+    it('does not exempt a non-proxy rule served from an auth path', async () => {
+      makePrivate();
+      const req = expiredTokenRequest('/api/auth/session/refresh');
+      const res = createMockResponse();
+
+      const result = await (middleware as any).checkVisibilityAndAuth(
+        req,
+        res,
+        project,
+        'studio',
+        createMockRule({ pathPattern: '/api/auth/*', proxyType: 'pipeline' }),
+      );
+
+      expect(result).toBe('blocked');
+    });
+  });
 });
