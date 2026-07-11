@@ -159,9 +159,29 @@ export interface BuildExportEnvelopeInput {
 }
 
 /**
+ * Canonical rule sort — mirrors `sortRules` in `packages/cli/src/format/canonical.ts`:
+ * `(order ?? 0, pathPattern, method ?? '')`. The DB query's `asc(order)` alone has no
+ * tie-break, so without this the envelope byte-order would depend on insertion order.
+ */
+function canonicalRuleCompare(a: ExportedRule, b: ExportedRule): number {
+  const oa = a.order ?? 0;
+  const ob = b.order ?? 0;
+  if (oa !== ob) return oa - ob;
+  if (a.pathPattern !== b.pathPattern) return a.pathPattern < b.pathPattern ? -1 : 1;
+  const ma = a.method ?? '';
+  const mb = b.method ?? '';
+  if (ma !== mb) return ma < mb ? -1 : 1;
+  return 0;
+}
+
+/**
  * Build the v2 export envelope with keys in `ENVELOPE_KEY_ORDER`. `ruleSet`
  * keys with `null`/`undefined` values are stripped (structural level); the
  * `schemas` key is omitted entirely when the list is empty or undefined.
+ *
+ * The output is byte-canonical per the CLI canonicalizer: rules are sorted by
+ * `(order, pathPattern, method)` and schemas by name, so
+ * `canonicalizeExport(envelope)` is a no-op on it.
  */
 export function buildExportEnvelope(input: BuildExportEnvelopeInput): RuleSetExport {
   const ruleSet: RuleSetExport['ruleSet'] = { name: input.ruleSet.name };
@@ -177,10 +197,13 @@ export function buildExportEnvelope(input: BuildExportEnvelopeInput): RuleSetExp
     exportedAt: input.exportedAt,
     kind: 'bffless-proxy-rule-set',
     ruleSet,
-    rules: input.rules,
+    rules: [...input.rules].sort(canonicalRuleCompare),
   };
   if (input.schemas && input.schemas.length > 0) {
-    envelope.schemas = input.schemas;
+    // CLI canonical form sorts bundled schemas by name (sortSchemas).
+    envelope.schemas = [...input.schemas].sort((a, b) =>
+      a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
+    );
   }
   return envelope;
 }

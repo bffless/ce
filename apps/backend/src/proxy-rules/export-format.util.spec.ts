@@ -263,9 +263,38 @@ describe('export-format.util', () => {
       expect(Object.keys(kept.ruleSet)).toEqual(['name', 'description', 'environment']);
     });
 
-    it('passes already-serialized rules through verbatim', () => {
+    it('passes already-serialized rules through content-verbatim (individual rules unmodified)', () => {
       const out = buildExportEnvelope({ ruleSet: { name: 'api' }, rules, exportedAt });
-      expect(out.rules).toBe(rules);
+      expect(out.rules).toEqual(rules);
+      expect(out.rules[0]).toBe(rules[0]); // rules themselves are not cloned, only re-ordered
+    });
+
+    it('sorts rules canonically by (order, pathPattern, method) — CLI sortRules parity', () => {
+      const mk = (pathPattern: string, order: number, method?: string) =>
+        serializeRuleForExport(makeRuleRow({ pathPattern, order, method: method ?? null, methods: null }));
+      const unsorted = [mk('/b', 1), mk('/a', 1, 'POST'), mk('/a', 1, 'GET'), mk('/z', 0)];
+      const out = buildExportEnvelope({ ruleSet: { name: 'api' }, rules: unsorted, exportedAt });
+      expect(out.rules.map((r) => [r.pathPattern, r.order, r.method ?? null])).toEqual([
+        ['/z', 0, null],
+        ['/a', 1, 'GET'],
+        ['/a', 1, 'POST'],
+        ['/b', 1, null],
+      ]);
+      // Input array order untouched (non-mutating sort).
+      expect(unsorted.map((r) => r.pathPattern)).toEqual(['/b', '/a', '/a', '/z']);
+    });
+
+    it('sorts bundled schemas by name — CLI sortSchemas parity', () => {
+      const out = buildExportEnvelope({
+        ruleSet: { name: 'api' },
+        rules,
+        schemas: [
+          { id: 's2', name: 'zebra', fields: [] },
+          { id: 's1', name: 'alpha', fields: [] },
+        ],
+        exportedAt,
+      });
+      expect(out.schemas!.map((s) => s.name)).toEqual(['alpha', 'zebra']);
     });
   });
 });

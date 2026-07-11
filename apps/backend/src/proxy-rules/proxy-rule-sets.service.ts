@@ -22,7 +22,13 @@ import {
 } from './dto';
 import type { PipelineConfig, ProxyType } from '../db/schema/proxy-rules.schema';
 import { ProxyRulesService } from './proxy-rules.service';
-import { remapSchemaIds } from './schema-refs.util';
+import { collectSchemaIds, remapSchemaIds } from './schema-refs.util';
+import {
+  buildExportEnvelope,
+  serializeRuleForExport,
+  type ExportedSchema,
+  type RuleSetExport,
+} from './export-format.util';
 
 @Injectable()
 export class ProxyRuleSetsService {
@@ -76,6 +82,54 @@ export class ProxyRuleSetsService {
       ...ruleSet,
       rules: rules as ProxyRuleSetWithRulesResponseDto['rules'],
     };
+  }
+
+  /**
+   * Export a rule set as the canonical v2 envelope (`GET :id/export`).
+   *
+   * Same authorization as getById: any authenticated caller whose API key
+   * scope (if any) matches the rule set's project. Rules are serialized via
+   * export-format.util — header `add` secret values are blanked there, so no
+   * secret ever leaves this method. Schema definitions referenced by pipeline
+   * rules are bundled as `{id, name, fields}` for portability; a referenced
+   * schema that is missing or belongs to another project is skipped silently,
+   * leaving an unbundled reference (parity with the frontend exporter this
+   * endpoint replaces — closes #448, where the frontend copy dropped
+   * `methods`).
+   */
+  async exportRuleSet(id: string, apiKeyProjectId?: string | null): Promise<RuleSetExport> {
+    const ruleSet = await this.findById(id);
+    if (!ruleSet) {
+      throw new NotFoundException(`Rule set ${id} not found`);
+    }
+
+    this.permissionsService.enforceApiKeyProjectScope(apiKeyProjectId, ruleSet.projectId);
+
+    // Decrypted headerConfig — serializeRuleForExport blanks the add values
+    const rules = await this.proxyRulesService.getRulesByRuleSetId(id);
+    const serializedRules = rules.map((rule) => serializeRuleForExport(rule));
+
+    // Bundle the schema definitions the pipeline rules depend on (definitions
+    // only — name + fields, never data rows)
+    const schemas: ExportedSchema[] = [];
+    for (const schemaId of collectSchemaIds(serializedRules)) {
+      const schema = await this.pipelineSchemasService.getById(schemaId);
+      // Skip silently: missing refs stay unbundled; never bundle another
+      // project's schema definition
+      if (!schema || schema.projectId !== ruleSet.projectId) continue;
+      schemas.push({ id: schema.id, name: schema.name, fields: schema.fields });
+    }
+
+    return buildExportEnvelope({
+      ruleSet: {
+        name: ruleSet.name,
+        description: ruleSet.description,
+        environment: ruleSet.environment,
+      },
+      rules: serializedRules,
+      schemas,
+      exportedAt: new Date().toISOString(),
+    });
   }
 
   /**

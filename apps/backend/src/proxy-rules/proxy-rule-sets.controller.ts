@@ -32,6 +32,7 @@ import {
   ProxyRuleResponseDto,
   ProxyRulesListResponseDto,
   ImportProxyRuleSetDto,
+  ExportProxyRuleSetResponseDto,
 } from './dto';
 import { ApiKeyGuard } from '../auth/api-key.guard';
 import { CurrentUser, CurrentUserData } from '../auth/decorators/current-user.decorator';
@@ -108,6 +109,36 @@ export class ProxyRuleSetsController {
       user.role || 'user',
       user.apiKeyProjectId,
     );
+  }
+
+  // NOTE: declared before GET ':id' — Nest registers routes in declaration
+  // order, so the static '/export' segment must come first to guarantee it is
+  // never shadowed by the plain ':id' route.
+  @Get(':id/export')
+  @ApiOperation({
+    summary: 'Export a rule set as the canonical v2 envelope',
+    description:
+      'Server-side export (closes #448 — the export format is no longer a frontend contract). ' +
+      'Returns the v2 envelope accepted verbatim by the bffless CLI: rule keys in canonical ' +
+      'order (including methods), header add secret values blanked to empty strings, and the ' +
+      'schema definitions referenced by pipeline rules bundled under schemas (omitted when none).',
+  })
+  @ApiParam({ name: 'id', type: 'string' })
+  @ApiResponse({
+    status: 200,
+    description: 'The v2 export envelope',
+    type: ExportProxyRuleSetResponseDto,
+  })
+  @ApiResponse({ status: 403, description: 'Not authorized' })
+  @ApiResponse({ status: 404, description: 'Rule set not found' })
+  async export(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: CurrentUserData,
+  ): Promise<ExportProxyRuleSetResponseDto> {
+    const envelope = await this.proxyRuleSetsService.exportRuleSet(id, user.apiKeyProjectId);
+    // RuleSetExport is the runtime shape (db schema types); the DTO class only
+    // exists for Swagger — same bridging cast as the other rule responses.
+    return envelope as unknown as ExportProxyRuleSetResponseDto;
   }
 
   @Get(':id')
