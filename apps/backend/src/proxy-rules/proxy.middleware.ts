@@ -72,6 +72,22 @@ export class ProxyMiddleware implements NestMiddleware {
     return rule.proxyType || 'external_proxy';
   }
 
+  /**
+   * True when a rule forwards an auth endpoint (/api/auth/*) to a backend.
+   *
+   * Only rules the project owner explicitly mapped to the auth backend qualify, and
+   * only as a plain proxy - a pipeline or email handler mounted on an auth path is
+   * app code, so it stays behind the visibility gate.
+   */
+  private isAuthProxyRule(rule: ProxyRule): boolean {
+    if (this.getProxyType(rule) !== 'external_proxy') {
+      return false;
+    }
+
+    const pattern = rule.pathPattern ?? '';
+    return pattern === '/api/auth' || pattern.startsWith('/api/auth/');
+  }
+
   async use(req: Request, res: Response, next: NextFunction): Promise<void> {
     // Only handle /public/* routes
     if (!req.path.startsWith('/public/')) {
@@ -236,7 +252,13 @@ export class ProxyMiddleware implements NestMiddleware {
 
       // For all other proxy types (pipeline, email_form_handler, external_proxy),
       // check visibility BEFORE handling - these bypass PublicController
-      const visibilityResult = await this.checkVisibilityAndAuth(req, res, project, aliasName);
+      const visibilityResult = await this.checkVisibilityAndAuth(
+        req,
+        res,
+        project,
+        aliasName,
+        matchedRule,
+      );
       if (visibilityResult === 'blocked') {
         return; // Response already sent
       }
@@ -453,6 +475,7 @@ export class ProxyMiddleware implements NestMiddleware {
       res,
       project,
       resolvedAliasName,
+      matchedRule,
     );
     if (visibilityResult === 'blocked') {
       return; // Response already sent
@@ -505,7 +528,16 @@ export class ProxyMiddleware implements NestMiddleware {
     res: Response,
     project: typeof projects.$inferSelect,
     aliasName: string | null,
+    matchedRule?: ProxyRule,
   ): Promise<'allowed' | 'blocked'> {
+    // A private deployment gates every /api/* call on a valid session. That would
+    // include the endpoint used to renew an expired session, leaving the client no
+    // way out: refreshing requires the session that only refreshing can restore.
+    // Let the auth endpoints through - SuperTokens authenticates them itself.
+    if (matchedRule && this.isAuthProxyRule(matchedRule)) {
+      return 'allowed';
+    }
+
     // Resolve access control - check domain mapping first (for subdomain requests),
     // then fall back to alias/project
     let accessControl: AccessControlInfo | null = null;
