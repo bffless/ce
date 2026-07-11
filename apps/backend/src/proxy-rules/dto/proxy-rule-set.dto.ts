@@ -1,6 +1,32 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsString, IsOptional, IsUUID, MaxLength } from 'class-validator';
 import { ProxyRuleResponseDto } from './proxy-rule-response.dto';
+import type { ProxyRuleSetSource } from '../../db/schema/proxy-rule-sets.schema';
+
+/**
+ * Rules-as-code provenance for a git-managed rule set (see
+ * ProxyRuleSetSource in the schema). Response-only; written exclusively
+ * by the sync endpoint.
+ */
+export class ProxyRuleSetSourceDto implements ProxyRuleSetSource {
+  @ApiPropertyOptional({ description: 'Source repository', example: 'bffless/apps' })
+  repo?: string;
+
+  @ApiPropertyOptional({
+    description: 'Rule-set directory path within the repo',
+    example: 'apps/studio/.bffless/proxy-rules/studio',
+  })
+  path?: string;
+
+  @ApiPropertyOptional({ description: 'Commit SHA the synced payload was built from' })
+  gitSha?: string;
+
+  @ApiProperty({ description: 'ISO timestamp of the last successful sync' })
+  syncedAt: string;
+
+  @ApiProperty({ description: 'sha256 of the defaults-normalized synced payload' })
+  contentHash: string;
+}
 
 export class CreateProxyRuleSetDto {
   @ApiProperty({
@@ -72,6 +98,14 @@ export class ProxyRuleSetResponseDto {
 
   @ApiPropertyOptional({ description: 'Environment tag' })
   environment?: string | null;
+
+  @ApiPropertyOptional({
+    type: ProxyRuleSetSourceDto,
+    description:
+      'Rules-as-code provenance — set when this rule set is managed from git via the ' +
+      'sync endpoint, null/absent otherwise. Kept (not cleared) on manual edits.',
+  })
+  source?: ProxyRuleSetSourceDto | null;
 
   @ApiProperty({ description: 'Creation timestamp' })
   createdAt: Date;
