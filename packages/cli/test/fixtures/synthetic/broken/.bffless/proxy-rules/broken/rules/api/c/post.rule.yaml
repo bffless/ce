@@ -1,0 +1,6 @@
+pipeline:
+  steps:
+    - name: q
+      handler: data_query
+      config:
+        schemaId: $schema:nope

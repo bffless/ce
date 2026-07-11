@@ -1,0 +1,9 @@
+pipeline:
+  steps:
+    - name: chat
+      handler: ai_handler
+      config:
+        skills:
+          mode: selected
+          enabled:
+            - does-not-exist
