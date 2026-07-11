@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mkdtempSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { buildRuleSet, uuidv5, SCHEMA_NAMESPACE } from '../src/compile/build.js';
@@ -7,6 +7,19 @@ import type { RuleSetExport } from '../src/format/types.js';
 
 const basicDir = path.resolve('test/fixtures/synthetic/basic');
 const EXPORTED_AT = '2026-07-11T00:00:00.000Z';
+
+/** Some restricted environments (e.g. certain CI/container setups) can't create symlinks.
+ *  Probe once at module load so the symlink-confinement test can skip gracefully rather than
+ *  fail on an unrelated environment limitation. */
+const canSymlink = (() => {
+  const probeDir = mkdtempSync(path.join(tmpdir(), 'bffless-build-test-symlink-probe-'));
+  try {
+    symlinkSync(path.join(probeDir, 'target'), path.join(probeDir, 'link'));
+    return true;
+  } catch {
+    return false;
+  }
+})();
 
 /** Materialize a throwaway rule set from a { relpath: contents } map and return its dir. */
 function scratchSet(files: Record<string, string>): string {
@@ -134,6 +147,40 @@ describe('buildRuleSet', () => {
         'pipeline:\n  steps:\n    - name: fn\n      handler: function_handler\n      code: /etc/hostname.js\n',
     });
     await expect(buildRuleSet(dir)).rejects.toThrow(/file reference escapes the rule set directory: \/etc\/hostname\.js/);
+  });
+
+  it.skipIf(!canSymlink)(
+    '(i3) $file: through a symlink pointing outside the rule set dir throws the confinement error',
+    async () => {
+      // Lexical resolution stays inside setDir (rules/api/x/link.txt), but the symlink target
+      // resolves (via realpath) to a sibling directory outside setDir — this must fail closed.
+      const dir = scratchSet({
+        'ruleset.yaml': 'name: s\n',
+        'rules/api/x/get.rule.yaml':
+          'pipeline:\n  steps:\n    - name: q\n      handler: function_handler\n      config:\n        payload:\n          $file: link.txt\n',
+      });
+      const outsideDir = mkdtempSync(path.join(tmpdir(), 'bffless-build-test-outside-'));
+      const secretFile = path.join(outsideDir, 'secret.txt');
+      writeFileSync(secretFile, 'host secret', 'utf8');
+      const linkPath = path.join(dir, 'rules/api/x/link.txt');
+      symlinkSync(secretFile, linkPath);
+      await expect(buildRuleSet(dir)).rejects.toThrow(/file reference escapes the rule set directory: link\.txt/);
+    },
+  );
+
+  it('(i4) a file legitimately named "..config.txt" inside the rule set dir is accepted', async () => {
+    // `..config.txt` is a valid filename that merely starts with `..` — the segment-safe check
+    // (rel === '..' || rel.startsWith('../')) must not reject it the way a naive
+    // rel.startsWith('..') check would.
+    const dir = scratchSet({
+      'ruleset.yaml': 'name: s\n',
+      'rules/api/x/get.rule.yaml':
+        'pipeline:\n  steps:\n    - name: q\n      handler: function_handler\n      config:\n        payload:\n          $file: ..config.txt\n',
+      'rules/api/x/..config.txt': 'legit contents',
+    });
+    const res = await buildRuleSet(dir, { exportedAt: EXPORTED_AT });
+    const step = res.export.rules[0].pipelineConfig?.steps[0];
+    expect(step?.config.payload).toBe('legit contents');
   });
 
   it('(j) a raw-UUID schema ref passes through with a warning', async () => {

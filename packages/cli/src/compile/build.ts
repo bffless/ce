@@ -3,7 +3,7 @@
  * `RuleSetExport` (the wire format consumed by the DB import). See task-6 brief for the
  * binding 10-point behavior spec.
  */
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import {
@@ -102,17 +102,33 @@ function discoverRules(rulesDir: string, segments: string[], out: Discovered[]):
 }
 
 /** Resolve `ref` relative to `manifestDir`, rejecting absolute refs and any resolution that
- *  escapes `setDir` (path traversal guard for `$file:`/`code:` refs). */
+ *  escapes `setDir` (path traversal guard for `$file:`/`code:` refs). This is a lexical check
+ *  only — it does not follow symlinks. Callers MUST also call `assertRealpathConfined` once
+ *  the target's existence has been confirmed, to catch a symlink inside the rule set dir that
+ *  points outside it. */
 function resolveConfinedPath(setDir: string, manifestDir: string, manifestPath: string, ref: string): string {
   if (path.isAbsolute(ref)) {
     throw new Error(`${manifestPath}: file reference escapes the rule set directory: ${ref}`);
   }
   const resolved = path.resolve(manifestDir, ref);
   const rel = path.relative(setDir, resolved);
-  if (rel.startsWith('..') || path.isAbsolute(rel)) {
+  if (rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)) {
     throw new Error(`${manifestPath}: file reference escapes the rule set directory: ${ref}`);
   }
   return resolved;
+}
+
+/** After confirming `resolved` exists, verify its *realpath* (i.e. with symlinks followed) is
+ *  still confined to `setDir`'s realpath. `resolveConfinedPath`'s check is purely lexical, so a
+ *  symlink placed inside the rule set dir but pointing outside it would otherwise let `$file:`/
+ *  `code:` refs inline arbitrary host files into compiled output. */
+function assertRealpathConfined(setDir: string, manifestPath: string, resolved: string, ref: string): void {
+  const realSetDir = realpathSync(setDir);
+  const realResolved = realpathSync(resolved);
+  const rel = path.relative(realSetDir, realResolved);
+  if (rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)) {
+    throw new Error(`${manifestPath}: file reference escapes the rule set directory: ${ref}`);
+  }
 }
 
 /** Deep-replace any `{ $file: <relpath> }` object with the referenced file's utf8 contents. */
@@ -124,6 +140,7 @@ function resolveFileRefs(value: unknown, setDir: string, manifestDir: string, ma
     if (keys.length === 1 && keys[0] === '$file' && typeof obj.$file === 'string') {
       const file = resolveConfinedPath(setDir, manifestDir, manifestPath, obj.$file);
       if (!existsSync(file)) throw new Error(`${manifestPath}: $file not found: ${obj.$file}`);
+      assertRealpathConfined(setDir, manifestPath, file, obj.$file);
       return readFileSync(file, 'utf8');
     }
     const out: Record<string, unknown> = {};
@@ -147,6 +164,7 @@ function compilePipeline(
       if (step.code !== undefined) {
         const file = resolveConfinedPath(setDir, manifestDir, manifestPath, step.code);
         if (!existsSync(file)) throw new Error(`${manifestPath}: code file not found: ${step.code}`);
+        assertRealpathConfined(setDir, manifestPath, file, step.code);
         config.code = readFileSync(file, 'utf8');
       }
       const out: PipelineStep = { name: step.name, handlerType: step.handler, config };
@@ -237,8 +255,10 @@ export async function buildRuleSet(setDir: string, opts?: { exportedAt?: string 
     }
 
     // `method:` escape hatch: in an `any` rule it's a single-method override (may not be
-    // combined with `methods:`); in a method-stem file it must match the stem (case-insensitive)
-    // — a match is silently accepted (harmless redundancy), a mismatch is an error.
+    // combined with `methods:`); in a method-stem file it must match the stem — a match is
+    // silently accepted (harmless redundancy), a mismatch is an error. MethodSchema (see
+    // format/manifest.ts) is a zod enum of uppercase-only values, so `manifest.method` is
+    // already uppercase here; no case normalization is needed.
     let method: string | undefined;
     if (isAny) {
       if (manifest.method !== undefined && manifest.methods !== undefined) {
@@ -246,7 +266,7 @@ export async function buildRuleSet(setDir: string, opts?: { exportedAt?: string 
       }
       method = manifest.method;
     } else {
-      if (manifest.method !== undefined && manifest.method.toUpperCase() !== stemMethod) {
+      if (manifest.method !== undefined && manifest.method !== stemMethod) {
         throw new Error(
           `${d.manifestPath}: method: ${manifest.method} conflicts with file stem '${d.stemFileDisplay}' (expected ${stemMethod})`,
         );
