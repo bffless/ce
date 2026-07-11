@@ -63,6 +63,23 @@ Because the compiler targets the existing export format, Phase 0 works against t
 
 ### 3.1 Directory layout (per rule set)
 
+**Location is configurable — only the layout *inside* a rule-set directory is convention.**
+Nothing is derived from where the directory sits in the repo: every CLI command takes an
+explicit directory argument (`bffless rules build [dir]`), and `bffless.config.json`
+declares the rule-set roots for the no-args case, e.g.
+
+```jsonc
+// repo root, a standalone site:        // monorepo root (bffless/apps style):
+{ "ruleSets": ["bffless/*"] }           { "ruleSets": ["apps/*/bffless/*"] }
+```
+
+Globs resolve to directories containing a `ruleset.yaml` (the marker file that makes a
+directory a rule set). The CLI finds the nearest config by walking up from cwd (like
+`tsconfig`/`eslint`), so in a monorepo you can equally keep one root config with globs or a
+per-app `bffless.config.json` next to each app. The GitHub Action mirrors this with a
+`path:` input, same as upload-artifact's. `bffless/` as a folder name is just the default
+convention used in examples below.
+
 ```
 bffless/
   studio/                            # one directory per rule set
@@ -187,8 +204,9 @@ bffless logs …         # tail pipeline execution logs while developing rules
 ```
 
 Config resolution shared by all subcommands: `--api-url`/`--api-key` flags →
-`BFFLESS_API_URL`/`BFFLESS_API_KEY` env vars → a `bffless.config.json` (committable, no
-secrets — instance URL + default project) next to the rule-set directory.
+`BFFLESS_API_URL`/`BFFLESS_API_KEY` env vars → the nearest `bffless.config.json` walking up
+from cwd (committable, no secrets — instance URL, default project, and the `ruleSets` root
+globs from §3.1).
 
 `rules` subcommands:
 
