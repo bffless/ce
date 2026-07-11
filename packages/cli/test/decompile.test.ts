@@ -16,7 +16,10 @@ import type { RuleSetExport } from '../src/format/types.js';
 const basicDir = path.resolve('test/fixtures/synthetic/basic');
 const EXPORTED_AT = '2026-07-11T00:00:00.000Z';
 
-/** Recursively list files under `root` (relative, posix), excluding `expected.json`. */
+/** Recursively list files under `root` (relative, posix), excluding `expected.json` and
+ *  `*.fn.test.yaml` — both are hand-authored fixture scaffolding (Task 6 golden output,
+ *  Task 12 `rules test` fixtures respectively), not part of `decompileExport`'s output
+ *  vocabulary, so they're not expected to appear in its file set. */
 function relFiles(root: string): string[] {
   const out: string[] = [];
   const walk = (dir: string) => {
@@ -27,7 +30,7 @@ function relFiles(root: string): string[] {
     }
   };
   walk(root);
-  return out.filter((f) => f !== 'expected.json').sort();
+  return out.filter((f) => f !== 'expected.json' && !f.endsWith('.fn.test.yaml')).sort();
 }
 
 /** Deep-normalize `code:` refs by stripping a leading `./` so `./x.fn.js` compares equal to `x.fn.js`. */

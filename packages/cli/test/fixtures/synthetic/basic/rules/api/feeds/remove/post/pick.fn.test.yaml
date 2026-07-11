@@ -1,0 +1,8 @@
+handler: ./pick.fn.js
+cases:
+  - name: returns first query row
+    data: { steps: { query: [{ id: 1, url: "https://a" }] } }
+    expect: { result: { id: 1, url: "https://a" } }
+  - name: throws when query is missing
+    data: { steps: {} }
+    expect: { throws: "Cannot read" }
