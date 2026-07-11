@@ -63,25 +63,45 @@ Because the compiler targets the existing export format, Phase 0 works against t
 
 ### 3.1 Directory layout (per rule set)
 
-**Location is configurable — only the layout *inside* a rule-set directory is convention.**
-Nothing is derived from where the directory sits in the repo: every CLI command takes an
-explicit directory argument (`bffless rules build [dir]`), and `bffless.config.json`
-declares the rule-set roots for the no-args case, e.g.
+**Default home: `.bffless/proxy-rules/<set-name>/` — one dot-directory for everything
+BFFless-owned in an app.** Consumer repos already use `.bffless/` for deployed AI skills
+(`apps/studio/.bffless/skills/`), so rule sources join it rather than adding a second
+sibling convention (the current non-dotted `bffless/` export-backup dirs get folded in and
+retired when each app is converted in Phase 2):
+
+```
+.bffless/
+  config.json          # instance URL, default project, ruleSets globs — no secrets
+  skills/…             # existing: AI skills uploaded as deployment content
+  proxy-rules/<set>/…  # new: rule-set sources, synced to the DB at deploy (this plan)
+```
+
+**Location is still fully configurable — only the layout *inside* a rule-set directory is
+convention.** Nothing is derived from where the directory sits in the repo: every CLI
+command takes an explicit directory argument (`bffless rules build [dir]`), and
+`config.json`'s `ruleSets` globs cover the no-args case, e.g.
 
 ```jsonc
-// repo root, a standalone site:        // monorepo root (bffless/apps style):
-{ "ruleSets": ["bffless/*"] }           { "ruleSets": ["apps/*/bffless/*"] }
+// standalone site (default):             // monorepo root (bffless/apps style):
+{ "ruleSets": [".bffless/proxy-rules/*"] }   { "ruleSets": ["apps/*/.bffless/proxy-rules/*"] }
 ```
 
 Globs resolve to directories containing a `ruleset.yaml` (the marker file that makes a
-directory a rule set). The CLI finds the nearest config by walking up from cwd (like
-`tsconfig`/`eslint`), so in a monorepo you can equally keep one root config with globs or a
-per-app `bffless.config.json` next to each app. The GitHub Action mirrors this with a
-`path:` input, same as upload-artifact's. `bffless/` as a folder name is just the default
-convention used in examples below.
+directory a rule set). The CLI finds the nearest `.bffless/config.json` by walking up from
+cwd (like `tsconfig`/`eslint`), so a monorepo can keep one root config with globs or a
+per-app `.bffless/` — both work. The GitHub Action mirrors this with a `path:` input, same
+as upload-artifact's.
+
+> ⚠️ One deploy-time distinction inside the shared dot-dir: `skills/` is **uploaded as
+> served deployment content**, while `proxy-rules/` is **synced to the DB and must NOT be
+> uploaded as site content** (it would publish handler source). CI steps that upload
+> `.bffless` for skills should scope to `.bffless/skills` (studio's workflow currently
+> uploads the whole `.bffless` dir — tighten when rules move in).
+
+Per rule set:
 
 ```
-bffless/
+.bffless/proxy-rules/
   studio/                            # one directory per rule set
     ruleset.yaml                     # set metadata: name, description, environment
     schemas/
@@ -179,7 +199,33 @@ deployment, utils }) { … }` — so round-tripping is byte-faithful. On top of 
   (`--require-secrets`). Same treatment for `headerConfig.add`: the manifest writes
   `$secret: NAME` placeholders instead of values.
 
-### 3.5 CLI — a `rules` command family in a single umbrella `bffless` CLI
+### 3.5 AI skills under the same roof
+
+Pipelines already have a second git-sourced input besides rule config: **AI skills.**
+`ai_handler` steps reference skills by name (`skills: { mode: "selected", enabled:
+["image-prompts"] }`), and CE's `SkillsService` resolves them at runtime from the *serving
+deployment's* storage path — `{owner}/{repo}/commits/{sha}/.bffless/skills/`
+(`skills.service.ts:29-68`). So skills reach the pipeline by riding the uploaded artifact,
+while rules (this plan) reach it via DB sync — two transports from the same repo, which can
+desync independently.
+
+Phased approach:
+
+- **Phases 0–2 — unify authoring, keep delivery as-is.** Skills stay in `.bffless/skills/`
+  and keep deploying as artifact content. The compiler gains a **cross-reference check**:
+  every skill name referenced by an `ai_handler` step in the rule sources must exist in the
+  sibling `.bffless/skills/` (build fails on a dangling reference — today that's a runtime
+  surprise). CI tightens the skills upload to `.bffless/skills` scope (see §3.1 caveat).
+  Per-deployment skill resolution is arguably a feature (skills version with the content
+  they serve), so it isn't disturbed yet.
+- **Phase 3 — evaluate skills as synced resources**, the same pattern as schemas-by-name:
+  `rules push` bundles referenced skills, CE stores them project-scoped (new table),
+  `SkillsService` resolves DB-first with storage fallback. Wins: one transport, rules and
+  their skills apply atomically, skills exist independent of which commit an alias serves.
+  Costs: CE schema + dual-resolution change, and losing skills-pinned-to-deployment
+  semantics — decide with real usage once Phase 1–2 are in.
+
+### 3.6 CLI — a `rules` command family in a single umbrella `bffless` CLI
 
 Distribution requirement: a developer who has **never cloned any bffless repo** (someone who
 grabbed the studio giveaway, or any CE self-hoster) must be able to run this. That means a
@@ -204,7 +250,7 @@ bffless logs …         # tail pipeline execution logs while developing rules
 ```
 
 Config resolution shared by all subcommands: `--api-url`/`--api-key` flags →
-`BFFLESS_API_URL`/`BFFLESS_API_KEY` env vars → the nearest `bffless.config.json` walking up
+`BFFLESS_API_URL`/`BFFLESS_API_KEY` env vars → the nearest `.bffless/config.json` walking up
 from cwd (committable, no secrets — instance URL, default project, and the `ruleSets` root
 globs from §3.1).
 
@@ -278,7 +324,7 @@ Auth: `X-API-Key`, same as everything else (`ApiKeyGuard` already covers these c
 | **0 — Authoring format + compiler** | Layout spec; `build` / `validate` / `test` / decompile-from-file; lint preset + vm test harness. Pilot: decompile **reader** (13 rules, 21 fn steps — small but function-heavy), verify byte-faithful round-trip against its export JSON, then studio. Deploy remains manual dashboard Import. | nothing (CE untouched) |
 | **1 — CE sync surface** | Server export endpoint; sync endpoint with schema-by-name + change report; `source` tracking + UI/MCP banner; CLI `pull` / `push` / `diff` wired to them. | Phase 0 format |
 | **2 — CI** | `bffless/deploy-proxy-rules` action; apps repo converts studio + reader (delete the raw JSON backups); PR-preview rule sets + cleanup; drift-check job; artifact-client plural fix. | Phase 1 |
-| **3 — Polish** | Revisions + rollback; TS handlers + esbuild bundling of shared utils; `rules dev` watch mode; docs-public guide + a `bffless:rules-as-code` skill. | Phases 1–2 |
+| **3 — Polish** | Revisions + rollback; TS handlers + esbuild bundling of shared utils; `rules dev` watch mode; evaluate skills-as-synced-resources (§3.5); docs-public guide + a `bffless:rules-as-code` skill. | Phases 1–2 |
 
 ## 7. Decisions (resolved 2026-07-11)
 
@@ -292,7 +338,7 @@ Auth: `X-API-Key`, same as everything else (`ApiKeyGuard` already covers these c
   (lockfile-style, preserves today's "backup JSON" property and eases dashboard Import), then
   drop it once Phase 2 CI deploys are the norm.
 - **Q5 CLI packaging** — **one umbrella `bffless` CLI, home `repos/ce/packages/cli`**, `rules`
-  as the first command family (§3.5). Publish unscoped `bffless` on npm if the name is
+  as the first command family (§3.6). Publish unscoped `bffless` on npm if the name is
   claimable, else `@bffless/cli` with a `bffless` bin. Open sub-questions: npm name
   availability, and whether `@bffless/artifact-client` becomes an internal dependency of it
   (recommended) or stays parallel.
