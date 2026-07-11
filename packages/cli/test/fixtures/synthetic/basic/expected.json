@@ -1,0 +1,94 @@
+{
+  "version": 2,
+  "exportedAt": "2026-07-11T00:00:00.000Z",
+  "kind": "bffless-proxy-rule-set",
+  "ruleSet": {
+    "name": "basic"
+  },
+  "rules": [
+    {
+      "pathPattern": "/api/feeds/remove",
+      "method": "POST",
+      "targetUrl": "http://internal/pipeline",
+      "stripPrefix": true,
+      "order": 0,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "internalRewrite": false,
+      "proxyType": "pipeline",
+      "pipelineConfig": {
+        "name": "api/feeds/remove POST",
+        "steps": [
+          {
+            "name": "query",
+            "handlerType": "data_query",
+            "config": {
+              "schemaId": "11111111-2222-4333-8444-555555555555"
+            }
+          },
+          {
+            "name": "pick",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ steps }) { return steps.query[0]; }\n"
+            }
+          }
+        ]
+      },
+      "isEnabled": true,
+      "debugEnabled": false
+    },
+    {
+      "pathPattern": "/api/items",
+      "method": "GET",
+      "targetUrl": "http://internal/pipeline",
+      "stripPrefix": true,
+      "order": 1,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "internalRewrite": false,
+      "proxyType": "pipeline",
+      "pipelineConfig": {
+        "name": "api/items GET",
+        "steps": [
+          {
+            "name": "query",
+            "handlerType": "data_query",
+            "config": {
+              "schemaId": "11111111-2222-4333-8444-555555555555"
+            }
+          }
+        ]
+      },
+      "isEnabled": true,
+      "debugEnabled": false
+    },
+    {
+      "pathPattern": "/api/items/*",
+      "methods": ["GET", "HEAD"],
+      "targetUrl": "http://localhost:3000/api/items",
+      "stripPrefix": true,
+      "order": 5,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "internalRewrite": false,
+      "proxyType": "external_proxy",
+      "isEnabled": true,
+      "debugEnabled": false,
+      "description": "Catch-all read proxy for item subpaths."
+    }
+  ],
+  "schemas": [
+    {
+      "id": "11111111-2222-4333-8444-555555555555",
+      "name": "items",
+      "fields": [
+        { "name": "title", "type": "string", "required": true },
+        { "name": "body", "type": "string" }
+      ]
+    }
+  ]
+}

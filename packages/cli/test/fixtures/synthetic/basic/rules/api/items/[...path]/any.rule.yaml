@@ -1,0 +1,4 @@
+methods: [GET, HEAD]
+order: 5
+targetUrl: http://localhost:3000/api/items
+description: Catch-all read proxy for item subpaths.
