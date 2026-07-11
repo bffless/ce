@@ -44,6 +44,60 @@ describe('canonicalizeExport / stringifyExport', () => {
   });
 });
 
+describe('canonicalizeExport strictness and scoped null-stripping', () => {
+  it('throws on an unknown rule key even when its value is null', () => {
+    const bad = {
+      ...structuredClone(mini),
+      rules: [{ pathPattern: '/a', targetUrl: 't', bogusKey: null }],
+    };
+    expect(() => canonicalizeExport(bad as unknown as RuleSetExport)).toThrow('Unknown rule key: "bogusKey"');
+  });
+  it('throws on an unknown envelope key', () => {
+    const bad = { ...structuredClone(mini), bogusEnvelopeKey: 'x' };
+    expect(() => canonicalizeExport(bad as unknown as RuleSetExport)).toThrow('Unknown export key: "bogusEnvelopeKey"');
+  });
+  it('throws on an unknown step key', () => {
+    const bad = {
+      ...structuredClone(mini),
+      rules: [
+        {
+          pathPattern: '/a',
+          targetUrl: 'pipeline',
+          proxyType: 'pipeline',
+          pipelineConfig: { name: 'p', steps: [{ name: 's', handlerType: 'response_handler', config: {}, bogusStepKey: 1 }] },
+        },
+      ],
+    };
+    expect(() => canonicalizeExport(bad as unknown as RuleSetExport)).toThrow('Unknown step key: "bogusStepKey"');
+  });
+  it('preserves a null nested deep inside a step config', () => {
+    const withNestedNull: RuleSetExport = {
+      ...structuredClone(mini),
+      rules: [
+        {
+          pathPattern: '/a',
+          targetUrl: 'pipeline',
+          proxyType: 'pipeline',
+          pipelineConfig: {
+            name: 'p',
+            steps: [{ name: 's', handlerType: 'response_handler', config: { filter: { deletedAt: null } } }],
+          },
+        },
+      ],
+    };
+    const c = canonicalizeExport(withNestedNull);
+    expect((c.rules[0].pipelineConfig!.steps[0].config as any).filter).toEqual({ deletedAt: null });
+  });
+  it('still drops a rule-level null (e.g. headerConfig: null)', () => {
+    const withRuleNull: RuleSetExport = {
+      ...structuredClone(mini),
+      rules: [{ pathPattern: '/a', targetUrl: 't', headerConfig: null as any }],
+    };
+    const c = canonicalizeExport(withRuleNull);
+    expect('headerConfig' in c.rules[0]).toBe(false);
+  });
+});
+
 describe('exportsEquivalent', () => {
   it('ignores exportedAt and key order', () => {
     const b = structuredClone(mini); b.exportedAt = '2030-01-01T00:00:00.000Z';

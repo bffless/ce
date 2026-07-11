@@ -3,58 +3,83 @@ import type { ExportedRule, ExportedSchema, PipelineStep, RuleSetExport } from '
 
 const STEP_KEY_ORDER = ['id', 'name', 'handlerType', 'config', 'isEnabled'] as const;
 
-/** Deep-clone `value`, dropping every null/undefined value (recursively), preserving insertion order. */
-function prune(value: unknown): unknown {
-  if (value === null || value === undefined) return undefined;
-  if (Array.isArray(value)) {
-    const out: unknown[] = [];
-    for (const item of value) {
-      const p = prune(item);
-      if (p !== undefined) out.push(p);
-    }
-    return out;
+/**
+ * Structural levels where null/undefined stripping applies: envelope keys, ruleSet keys,
+ * rule top-level keys, pipeline-step top-level keys, pipelineConfig top-level keys, and
+ * schemas[] entry top-level keys. Values nested *inside* those keys (headerConfig,
+ * authTransform, emailHandlerConfig, steps[].config, schemas[].fields[], etc.) are
+ * free-form user data and must pass through verbatim, nulls included.
+ */
+function stripNulls(obj: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v === null || v === undefined) continue;
+    out[k] = v;
   }
-  if (typeof value === 'object') {
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      const p = prune(v);
-      if (p !== undefined) out[k] = p;
-    }
-    return out;
+  return out;
+}
+
+function assertKnownKeys(rawKeys: string[], known: readonly string[], label: string): void {
+  const unknownKeys = rawKeys.filter((k) => !known.includes(k));
+  if (unknownKeys.length > 0) {
+    throw new Error(`Unknown ${label} key: "${unknownKeys[0]}"`);
   }
-  return value;
 }
 
 function normalizeStep(step: Record<string, unknown>): PipelineStep {
+  assertKnownKeys(Object.keys(step), STEP_KEY_ORDER, 'step');
+  const stripped = stripNulls(step);
   const out: Record<string, unknown> = {};
   for (const k of STEP_KEY_ORDER) {
-    if (k in step) out[k] = step[k];
+    if (k in stripped) out[k] = structuredClone(stripped[k]);
   }
   return out as unknown as PipelineStep;
 }
 
 /** pipelineConfig keeps its own top-level key insertion order; only step key order is normalized. */
 function normalizePipelineConfig(pc: Record<string, unknown>): Record<string, unknown> {
+  const stripped = stripNulls(pc);
   const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(pc)) {
+  for (const [k, v] of Object.entries(stripped)) {
     if ((k === 'steps' || k === 'postSteps') && Array.isArray(v)) {
       out[k] = v.map((s) => normalizeStep(s as Record<string, unknown>));
     } else {
-      out[k] = v;
+      out[k] = structuredClone(v);
     }
   }
   return out;
 }
 
-function canonicalizeRule(rule: Record<string, unknown>): ExportedRule {
-  const unknownKeys = Object.keys(rule).filter((k) => !(RULE_KEY_ORDER as readonly string[]).includes(k));
-  if (unknownKeys.length > 0) {
-    throw new Error(`Unknown rule key: "${unknownKeys[0]}"`);
+function normalizeSchemaEntry(entry: Record<string, unknown>): ExportedSchema {
+  const stripped = stripNulls(entry);
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(stripped)) {
+    out[k] = structuredClone(v);
   }
+  return out as unknown as ExportedSchema;
+}
+
+function normalizeRuleSet(ruleSet: Record<string, unknown>): Record<string, unknown> {
+  const stripped = stripNulls(ruleSet);
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(stripped)) {
+    out[k] = structuredClone(v);
+  }
+  return out;
+}
+
+function canonicalizeRule(rule: Record<string, unknown>): ExportedRule {
+  // Unknown-key validation runs against the RAW pre-strip key set so a null-valued
+  // unknown key (which stripNulls would otherwise silently drop) still throws.
+  assertKnownKeys(Object.keys(rule), RULE_KEY_ORDER, 'rule');
+  const stripped = stripNulls(rule);
   const out: Record<string, unknown> = {};
   for (const k of RULE_KEY_ORDER) {
-    if (k in rule) {
-      out[k] = k === 'pipelineConfig' ? normalizePipelineConfig(rule[k] as Record<string, unknown>) : rule[k];
+    if (k in stripped) {
+      out[k] =
+        k === 'pipelineConfig'
+          ? normalizePipelineConfig(stripped[k] as Record<string, unknown>)
+          : structuredClone(stripped[k]);
     }
   }
   return out as unknown as ExportedRule;
@@ -80,13 +105,18 @@ function sortSchemas(schemas: ExportedSchema[]): ExportedSchema[] {
 }
 
 export function canonicalizeExport(e: RuleSetExport): RuleSetExport {
-  const pruned = prune(e) as Record<string, unknown>;
+  const raw = e as unknown as Record<string, unknown>;
+  // Unknown-key validation runs against the RAW pre-strip key set so a null-valued
+  // unknown key still throws.
+  assertKnownKeys(Object.keys(raw), ENVELOPE_KEY_ORDER, 'export');
+  const stripped = stripNulls(raw);
 
-  const rulesRaw = (pruned.rules as Record<string, unknown>[] | undefined) ?? [];
+  const rulesRaw = (stripped.rules as Record<string, unknown>[] | undefined) ?? [];
   const rules = sortRules(rulesRaw.map((r) => canonicalizeRule(r)));
 
-  const schemasRaw = pruned.schemas as ExportedSchema[] | undefined;
-  const schemas = schemasRaw && schemasRaw.length > 0 ? sortSchemas(schemasRaw) : undefined;
+  const schemasRaw = stripped.schemas as Record<string, unknown>[] | undefined;
+  const schemas =
+    schemasRaw && schemasRaw.length > 0 ? sortSchemas(schemasRaw.map((s) => normalizeSchemaEntry(s))) : undefined;
 
   const out: Record<string, unknown> = {};
   for (const k of ENVELOPE_KEY_ORDER) {
@@ -94,8 +124,10 @@ export function canonicalizeExport(e: RuleSetExport): RuleSetExport {
       out.rules = rules;
     } else if (k === 'schemas') {
       if (schemas) out.schemas = schemas;
-    } else if (k in pruned) {
-      out[k] = pruned[k];
+    } else if (k === 'ruleSet') {
+      if ('ruleSet' in stripped) out.ruleSet = normalizeRuleSet(stripped.ruleSet as Record<string, unknown>);
+    } else if (k in stripped) {
+      out[k] = stripped[k];
     }
   }
   return out as unknown as RuleSetExport;
