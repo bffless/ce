@@ -110,4 +110,16 @@ describe('exportsEquivalent', () => {
     expect(r.equal).toBe(false);
     expect(r.diffs.some(d => d.includes('/api/b') && d.includes('status'))).toBe(true);
   });
+  it('(f) treats absent internalRewrite/debugEnabled as equal to explicit false, but not to true', () => {
+    // mini's rules omit internalRewrite/debugEnabled entirely (older-exporter shape).
+    const withExplicitFalse = structuredClone(mini);
+    withExplicitFalse.rules = withExplicitFalse.rules.map((r) => ({ ...r, internalRewrite: false, debugEnabled: false }));
+    expect(exportsEquivalent(mini, withExplicitFalse).equal).toBe(true);
+
+    const withDebugTrue = structuredClone(mini);
+    withDebugTrue.rules = withDebugTrue.rules.map((r) => ({ ...r, debugEnabled: true }));
+    const r = exportsEquivalent(mini, withDebugTrue);
+    expect(r.equal).toBe(false);
+    expect(r.diffs.some((d) => d.includes('debugEnabled'))).toBe(true);
+  });
 });

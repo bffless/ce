@@ -1,5 +1,6 @@
 import { ENVELOPE_KEY_ORDER, RULE_KEY_ORDER } from './types.js';
 import type { ExportedRule, ExportedSchema, PipelineStep, RuleSetExport } from './types.js';
+import { applyRuleDefaults } from './defaults.js';
 
 const STEP_KEY_ORDER = ['id', 'name', 'handlerType', 'config', 'isEnabled'] as const;
 
@@ -190,11 +191,24 @@ function diffValue(a: unknown, b: unknown, path: string, diffs: string[]): void 
   }
 }
 
+/**
+ * Different exporter eras disagree on whether default-valued rule keys (e.g. `internalRewrite`,
+ * `debugEnabled`) are emitted at all vs. explicit `false`. Absent-means-default is the DB import's
+ * own semantics (Task 3), so equivalence must be judged on each rule's defaults-complete form, not
+ * raw key presence.
+ */
+function normalizeRulesForComparison(rules: unknown): unknown {
+  if (!Array.isArray(rules)) return rules;
+  return rules.map((r) => applyRuleDefaults(r as Partial<ExportedRule> & { pathPattern: string }));
+}
+
 export function exportsEquivalent(a: RuleSetExport, b: RuleSetExport): { equal: boolean; diffs: string[] } {
   const ca = canonicalizeExport(a) as unknown as Record<string, unknown>;
   const cb = canonicalizeExport(b) as unknown as Record<string, unknown>;
   delete ca.exportedAt;
   delete cb.exportedAt;
+  if ('rules' in ca) ca.rules = normalizeRulesForComparison(ca.rules);
+  if ('rules' in cb) cb.rules = normalizeRulesForComparison(cb.rules);
   const diffs: string[] = [];
   diffValue(ca, cb, '', diffs);
   return { equal: diffs.length === 0, diffs };
