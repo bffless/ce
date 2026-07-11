@@ -106,6 +106,22 @@ describe('runHandler — timeout', () => {
     ).rejects.toThrow();
     expect(Date.now() - start).toBeLessThan(2000);
   });
+
+  it('rejects a never-resolving promise (reject-timer backstop) with timeout:1000 within ~2s', async () => {
+    const start = Date.now();
+    await expect(
+      runHandler('function handler() { return new Promise(() => {}); }', {}, { timeout: 1000 }),
+    ).rejects.toThrow();
+    expect(Date.now() - start).toBeLessThan(2000);
+  });
+});
+
+describe('runHandler — error handling', () => {
+  it('rejects with an Error when handler throws synchronously', async () => {
+    await expect(
+      runHandler("function handler() { throw new Error('boom'); }"),
+    ).rejects.toThrow('boom');
+  });
 });
 
 describe('runHandler — sandbox isolation', () => {

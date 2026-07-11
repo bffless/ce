@@ -79,6 +79,8 @@ export async function runHandler(
   const timeout = Math.min(Math.max(opts.timeout || 5000, 1000), 30000);
   const logs: HandlerLog[] = [];
 
+  // NOTE: Intentional deviation from backend: we cap all log levels (log, warn, error) uniformly at MAX_LOGS=100.
+  // The backend caps only console.log at 100; warn/error are uncapped (likely a backend bug).
   const push = (level: HandlerLog['level'], args: unknown[]): void => {
     const message = args
       .map((a) => (typeof a === 'object' ? JSON.stringify(a) : String(a)))
