@@ -148,11 +148,30 @@ export interface UpdateProxyRuleDto {
   debugEnabled?: boolean;
 }
 
-// A single proxy rule as represented in an export file (no server-managed fields)
-export type ExportedProxyRule = Omit<
-  ProxyRule,
-  'id' | 'ruleSetId' | 'createdAt' | 'updatedAt'
->;
+// A single proxy rule as represented in an export file (no server-managed fields).
+// Mirrors the server's canonical export shape (`export-format.util.ts` /
+// `ExportedProxyRuleDto`): null keys are stripped server-side, so everything but
+// `pathPattern`/`targetUrl` is optional. Includes `methods` (the #448 fix).
+export interface ExportedProxyRule {
+  pathPattern: string;
+  method?: HttpMethod;
+  methods?: HttpMethod[];
+  targetUrl: string;
+  stripPrefix?: boolean;
+  order?: number;
+  timeout?: number;
+  preserveHost?: boolean;
+  forwardCookies?: boolean;
+  headerConfig?: HeaderConfig;
+  authTransform?: AuthTransformConfig;
+  internalRewrite?: boolean;
+  proxyType?: ProxyType;
+  emailHandlerConfig?: EmailHandlerConfig;
+  pipelineConfig?: PipelineConfig;
+  isEnabled?: boolean;
+  debugEnabled?: boolean;
+  description?: string;
+}
 
 // A schema dependency bundled in an export (definitions only — name + fields).
 // `id` is the original (source-project) schema id as referenced in the rules.
@@ -164,6 +183,9 @@ export interface ExportedSchema {
 
 // Portable export envelope for a proxy rule set, its rules, and schema deps.
 // version 1: no `schemas`. version 2: bundles referenced schema definitions.
+// This is the server's canonical envelope (GET /api/proxy-rule-sets/:id/export);
+// null-valued ruleSet keys are stripped and `schemas` is omitted when empty
+// (`| null` remains for older client-assembled export files fed to import).
 export interface ProxyRuleSetExport {
   version: number;
   exportedAt: string;
@@ -349,6 +371,16 @@ export const proxyRulesApi = api.injectEndpoints({
       invalidatesTags: ['ProxyRuleSet', 'ProxyRule'],
     }),
 
+    // Get the canonical export envelope for a rule set. The server assembles it
+    // (schema bundling, secret blanking, null-stripping, key order) — clients
+    // download the payload verbatim. Deliberately untagged and uncached: each
+    // Export click is a fresh lazy fetch, and tags would make unrelated
+    // invalidations background-refetch the heavy export assembly.
+    getRuleSetExport: builder.query<ProxyRuleSetExport, string>({
+      query: (id) => `/api/proxy-rule-sets/${id}/export`,
+      keepUnusedDataFor: 0,
+    }),
+
     // Import a rule set (with rules) from an exported JSON definition
     importRuleSet: builder.mutation<
       ProxyRuleSetWithRules,
@@ -504,10 +536,10 @@ export const {
   useGetProjectRuleSetsQuery,
   useCreateRuleSetMutation,
   useGetRuleSetQuery,
-  useLazyGetRuleSetQuery,
   useUpdateRuleSetMutation,
   useDeleteRuleSetMutation,
   useCopyRuleSetMutation,
+  useLazyGetRuleSetExportQuery,
   useImportRuleSetMutation,
   // Rules within a Rule Set
   useGetRuleSetRulesQuery,
