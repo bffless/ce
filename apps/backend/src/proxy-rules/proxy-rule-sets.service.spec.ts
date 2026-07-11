@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ProxyRuleSetsService } from './proxy-rule-sets.service';
 import { ProxyRulesService } from './proxy-rules.service';
 import { PermissionsService } from '../permissions/permissions.service';
@@ -348,6 +348,278 @@ describe('ProxyRuleSetsService', () => {
       const result = await service.exportRuleSet('rule-set-1');
 
       expect(result.ruleSet).toEqual({ name: 'api-backend' });
+    });
+  });
+
+  describe('resolveSchemasByName', () => {
+    // The helper is private (only the sync path calls it); tests reach it via
+    // a structural cast rather than widening its visibility.
+    type IncomingSchema = {
+      id: string;
+      name: string;
+      fields: { name: string; type: string; required?: boolean }[];
+    };
+    type Resolution = {
+      name: string;
+      action: 'reuse' | 'create';
+      targetSchemaId: string | null;
+      fieldMismatch: boolean;
+    };
+    const resolve = (
+      schemas: IncomingSchema[] | undefined,
+      options: { strictSchemas: boolean; dryRun: boolean } = {
+        strictSchemas: false,
+        dryRun: false,
+      },
+    ) =>
+      (
+        service as unknown as {
+          resolveSchemasByName: (
+            projectId: string,
+            schemas: IncomingSchema[] | undefined,
+            options: { strictSchemas: boolean; dryRun: boolean },
+            userId: string,
+            userRole: string,
+            apiKeyProjectId?: string | null,
+          ) => Promise<{
+            idMap: Map<string, string>;
+            resolutions: Resolution[];
+            warnings: string[];
+          }>;
+        }
+      ).resolveSchemasByName('project-1', schemas, options, 'user-1', 'admin', 'project-1');
+
+    const existingComments = {
+      id: 'existing-comments-id',
+      projectId: 'project-1',
+      name: 'comments',
+      fields: [{ name: 'body', type: 'text', required: true }],
+      version: 1,
+      recordCount: 0,
+    };
+
+    beforeEach(() => {
+      mockPipelineSchemasService.getByProjectId.mockResolvedValue([existingComments]);
+      mockPipelineSchemasService.create.mockImplementation(
+        (dto: { name: string }) => Promise.resolve({ id: `created-${dto.name}`, ...dto }),
+      );
+    });
+
+    it('reuses a name match with identical fields: mapped id, no warning, no mismatch', async () => {
+      const result = await resolve([
+        {
+          id: 'src-1',
+          name: 'comments',
+          fields: [{ name: 'body', type: 'text', required: true }],
+        },
+      ]);
+
+      expect(mockPipelineSchemasService.getByProjectId).toHaveBeenCalledWith(
+        'project-1',
+        'project-1',
+      );
+      expect(result.idMap.get('src-1')).toBe('existing-comments-id');
+      expect(result.resolutions).toEqual([
+        {
+          name: 'comments',
+          action: 'reuse',
+          targetSchemaId: 'existing-comments-id',
+          fieldMismatch: false,
+        },
+      ]);
+      expect(result.warnings).toEqual([]);
+      expect(mockPipelineSchemasService.create).not.toHaveBeenCalled();
+    });
+
+    it('reuses a name match despite field mismatch: warning + fieldMismatch, no throw when not strict', async () => {
+      const result = await resolve([
+        {
+          id: 'src-1',
+          name: 'comments',
+          fields: [{ name: 'body', type: 'string', required: false }],
+        },
+      ]);
+
+      expect(result.idMap.get('src-1')).toBe('existing-comments-id');
+      expect(result.resolutions[0]).toEqual({
+        name: 'comments',
+        action: 'reuse',
+        targetSchemaId: 'existing-comments-id',
+        fieldMismatch: true,
+      });
+      expect(result.warnings).toEqual([
+        'Schema "comments": field "body": type string (incoming) vs text (existing)',
+        'Schema "comments": field "body": required false (incoming) vs true (existing)',
+      ]);
+    });
+
+    it('strictSchemas: throws 400 listing every mismatch, before any creation side effect', async () => {
+      mockPipelineSchemasService.getByProjectId.mockResolvedValue([
+        existingComments,
+        {
+          ...existingComments,
+          id: 'existing-votes-id',
+          name: 'votes',
+          fields: [{ name: 'score', type: 'number', required: true }],
+        },
+      ]);
+
+      const schemas: IncomingSchema[] = [
+        { id: 'src-1', name: 'comments', fields: [{ name: 'body', type: 'json', required: true }] },
+        // A pending create sandwiched between two mismatched reuses — it must
+        // NOT be created when strict fails
+        { id: 'src-2', name: 'brand-new', fields: [{ name: 'x', type: 'string' }] },
+        { id: 'src-3', name: 'votes', fields: [{ name: 'score', type: 'string', required: true }] },
+      ];
+
+      await expect(resolve(schemas, { strictSchemas: true, dryRun: false })).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(resolve(schemas, { strictSchemas: true, dryRun: false })).rejects.toThrow(
+        /comments.*type json \(incoming\) vs text \(existing\).*votes.*type string \(incoming\) vs number \(existing\)/s,
+      );
+      expect(mockPipelineSchemasService.create).not.toHaveBeenCalled();
+    });
+
+    it('creates a missing schema live with the EXACT name (no auto-suffixing)', async () => {
+      const result = await resolve([
+        { id: 'src-1', name: 'brand-new', fields: [{ name: 'x', type: 'string' }] },
+      ]);
+
+      expect(mockPipelineSchemasService.create).toHaveBeenCalledTimes(1);
+      expect(mockPipelineSchemasService.create).toHaveBeenCalledWith(
+        {
+          projectId: 'project-1',
+          name: 'brand-new',
+          fields: [{ name: 'x', type: 'string' }],
+        },
+        'user-1',
+        'admin',
+        'project-1',
+      );
+      expect(result.idMap.get('src-1')).toBe('created-brand-new');
+      expect(result.resolutions).toEqual([
+        {
+          name: 'brand-new',
+          action: 'create',
+          targetSchemaId: 'created-brand-new',
+          fieldMismatch: false,
+        },
+      ]);
+      expect(result.warnings).toEqual([]);
+    });
+
+    it('dryRun: plans the create with targetSchemaId null and never calls create', async () => {
+      const result = await resolve(
+        [{ id: 'src-1', name: 'brand-new', fields: [{ name: 'x', type: 'string' }] }],
+        { strictSchemas: false, dryRun: true },
+      );
+
+      expect(mockPipelineSchemasService.create).not.toHaveBeenCalled();
+      expect(result.resolutions).toEqual([
+        { name: 'brand-new', action: 'create', targetSchemaId: null, fieldMismatch: false },
+      ]);
+      expect(result.idMap.has('src-1')).toBe(false);
+    });
+
+    it('handles a mixed batch: clean reuse + mismatched reuse + create, in payload order', async () => {
+      mockPipelineSchemasService.getByProjectId.mockResolvedValue([
+        existingComments,
+        {
+          ...existingComments,
+          id: 'existing-votes-id',
+          name: 'votes',
+          fields: [{ name: 'score', type: 'number', required: false }],
+        },
+      ]);
+
+      const result = await resolve([
+        { id: 'src-1', name: 'comments', fields: [{ name: 'body', type: 'text', required: true }] },
+        { id: 'src-2', name: 'votes', fields: [{ name: 'score', type: 'string' }] },
+        { id: 'src-3', name: 'brand-new', fields: [{ name: 'x', type: 'string' }] },
+      ]);
+
+      expect(result.resolutions).toEqual([
+        {
+          name: 'comments',
+          action: 'reuse',
+          targetSchemaId: 'existing-comments-id',
+          fieldMismatch: false,
+        },
+        { name: 'votes', action: 'reuse', targetSchemaId: 'existing-votes-id', fieldMismatch: true },
+        {
+          name: 'brand-new',
+          action: 'create',
+          targetSchemaId: 'created-brand-new',
+          fieldMismatch: false,
+        },
+      ]);
+      expect(result.warnings).toEqual([
+        'Schema "votes": field "score": type string (incoming) vs number (existing)',
+      ]);
+      expect(result.idMap).toEqual(
+        new Map([
+          ['src-1', 'existing-comments-id'],
+          ['src-2', 'existing-votes-id'],
+          ['src-3', 'created-brand-new'],
+        ]),
+      );
+      expect(mockPipelineSchemasService.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects duplicate schema names within the payload before touching the DB', async () => {
+      await expect(
+        resolve([
+          { id: 'src-1', name: 'comments', fields: [] },
+          { id: 'src-2', name: 'comments', fields: [] },
+        ]),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockPipelineSchemasService.getByProjectId).not.toHaveBeenCalled();
+      expect(mockPipelineSchemasService.create).not.toHaveBeenCalled();
+    });
+
+    it('returns an empty result for empty or undefined schemas with no DB access', async () => {
+      for (const schemas of [[], undefined] as (IncomingSchema[] | undefined)[]) {
+        const result = await resolve(schemas);
+        expect(result.idMap.size).toBe(0);
+        expect(result.resolutions).toEqual([]);
+        expect(result.warnings).toEqual([]);
+      }
+      expect(mockPipelineSchemasService.getByProjectId).not.toHaveBeenCalled();
+      expect(mockPipelineSchemasService.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects duplicate source ids within the payload (refs remap by id)', async () => {
+      await expect(
+        resolve([
+          { id: 'src-1', name: 'comments', fields: [] },
+          { id: 'src-1', name: 'messages', fields: [] },
+        ]),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockPipelineSchemasService.getByProjectId).not.toHaveBeenCalled();
+      expect(mockPipelineSchemasService.create).not.toHaveBeenCalled();
+    });
+
+    it('dryRun reuse still resolves the real target id and populates the idMap', async () => {
+      const result = await resolve(
+        [{ id: 'src-1', name: 'comments', fields: [{ name: 'body', type: 'text', required: true }] }],
+        { strictSchemas: false, dryRun: true },
+      );
+      expect(result.resolutions).toEqual([
+        { name: 'comments', action: 'reuse', targetSchemaId: 'existing-comments-id', fieldMismatch: false },
+      ]);
+      expect(result.idMap.get('src-1')).toBe('existing-comments-id');
+      expect(mockPipelineSchemasService.create).not.toHaveBeenCalled();
+    });
+
+    it('strictSchemas mismatch throws 400 even under dryRun (CI must fail loudly)', async () => {
+      await expect(
+        resolve(
+          [{ id: 'src-1', name: 'comments', fields: [{ name: 'body', type: 'number' }] }],
+          { strictSchemas: true, dryRun: true },
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockPipelineSchemasService.create).not.toHaveBeenCalled();
     });
   });
 });

@@ -24,6 +24,11 @@ import type { PipelineConfig, ProxyType } from '../db/schema/proxy-rules.schema'
 import { ProxyRulesService } from './proxy-rules.service';
 import { collectSchemaIds, remapSchemaIds } from './schema-refs.util';
 import {
+  compareSchemaFields,
+  type ComparableSchemaField,
+  type SchemaResolution,
+} from './schema-sync.util';
+import {
   buildExportEnvelope,
   serializeRuleForExport,
   type ExportedSchema,
@@ -457,6 +462,130 @@ export class ProxyRuleSetsService {
       ...newRuleSet,
       rules: insertedRules as ProxyRuleSetWithRulesResponseDto['rules'],
     };
+  }
+
+  /**
+   * Resolve bundled schema definitions against the target project by NAME —
+   * the non-interactive counterpart of importRuleSet's resolution block, for
+   * the sync path (Task 6/7 of the Phase 1 plan). No `ImportSchemaResolutionDto`
+   * choices anywhere: the name IS the identity.
+   *
+   * Per bundled schema `{id, name, fields}`:
+   * - A project schema with the same name exists → `action: 'reuse'`, map
+   *   `sourceId → existing.id`. Field definitions are compared
+   *   (compareSchemaFields); a divergence sets `fieldMismatch: true` and
+   *   appends `Schema "<name>": <mismatch>` entries to `warnings[]` (design
+   *   decision 4: warnings by default).
+   * - No name match → `action: 'create'`. Live: created via
+   *   `pipelineSchemasService.create` with the EXACT name (no auto-suffixing,
+   *   unlike import — the name is the identity). Under `dryRun`, nothing is
+   *   created and `targetSchemaId` stays `null`.
+   *
+   * `strictSchemas` turns field mismatches into a single BadRequestException
+   * listing EVERY mismatched schema (CI wants the full list, not the first).
+   * ORDERING GUARANTEE: the strict throw happens after ALL schemas are
+   * examined but BEFORE any schema creation, so a failed strict sync has zero
+   * side effects — the sync endpoint (Task 7) relies on this to keep dry
+   * failures write-free even though schema creation runs outside the rule
+   * transaction.
+   *
+   * Duplicate names WITHIN the incoming schemas → 400 (ambiguous payload).
+   * Empty/undefined schemas → empty result with no DB access.
+   */
+  private async resolveSchemasByName(
+    projectId: string,
+    schemas: { id: string; name: string; fields: ComparableSchemaField[] }[] | undefined,
+    options: { strictSchemas: boolean; dryRun: boolean },
+    userId: string,
+    userRole: string,
+    apiKeyProjectId?: string | null,
+  ): Promise<{ idMap: Map<string, string>; resolutions: SchemaResolution[]; warnings: string[] }> {
+    const idMap = new Map<string, string>();
+    const resolutions: SchemaResolution[] = [];
+    const warnings: string[] = [];
+
+    if (!schemas || schemas.length === 0) {
+      return { idMap, resolutions, warnings };
+    }
+
+    const seenNames = new Set<string>();
+    const seenIds = new Set<string>();
+    for (const schema of schemas) {
+      if (seenNames.has(schema.name)) {
+        throw new BadRequestException(
+          `Duplicate schema name "${schema.name}" in payload: schema names identify schemas, so each may appear only once`,
+        );
+      }
+      seenNames.add(schema.name);
+      if (seenIds.has(schema.id)) {
+        throw new BadRequestException(
+          `Duplicate schema id "${schema.id}" in payload: rule schema-refs remap by source id, so each may appear only once`,
+        );
+      }
+      seenIds.add(schema.id);
+    }
+
+    const existingSchemas = await this.pipelineSchemasService.getByProjectId(
+      projectId,
+      apiKeyProjectId,
+    );
+    const existingByName = new Map(existingSchemas.map((s) => [s.name, s]));
+
+    // Pass 1 — examine everything (reuse resolutions + pending creates) so the
+    // strict throw can list ALL mismatches and precede ANY creation.
+    const pendingCreates: { schema: (typeof schemas)[number]; resolution: SchemaResolution }[] = [];
+    const strictFailures: string[] = [];
+    for (const schema of schemas) {
+      const existing = existingByName.get(schema.name);
+      if (existing) {
+        const { match, mismatches } = compareSchemaFields(schema.fields, existing.fields);
+        idMap.set(schema.id, existing.id);
+        resolutions.push({
+          name: schema.name,
+          action: 'reuse',
+          targetSchemaId: existing.id,
+          fieldMismatch: !match,
+        });
+        for (const mismatch of mismatches) {
+          warnings.push(`Schema "${schema.name}": ${mismatch}`);
+          strictFailures.push(`Schema "${schema.name}": ${mismatch}`);
+        }
+      } else {
+        const resolution: SchemaResolution = {
+          name: schema.name,
+          action: 'create',
+          targetSchemaId: null,
+          fieldMismatch: false,
+        };
+        resolutions.push(resolution);
+        pendingCreates.push({ schema, resolution });
+      }
+    }
+
+    // Strict failures throw even under dryRun: CI's --strict-schemas --dry-run
+    // must fail the check loudly, not return a green-looking report.
+    if (options.strictSchemas && strictFailures.length > 0) {
+      throw new BadRequestException(
+        `Schema field mismatch (strictSchemas): ${strictFailures.join('; ')}`,
+      );
+    }
+
+    // Pass 2 — perform creations (live sync only; dryRun reports the plan with
+    // targetSchemaId null and touches nothing).
+    if (!options.dryRun) {
+      for (const { schema, resolution } of pendingCreates) {
+        const created = await this.pipelineSchemasService.create(
+          { projectId, name: schema.name, fields: schema.fields },
+          userId,
+          userRole,
+          apiKeyProjectId,
+        );
+        idMap.set(schema.id, created.id);
+        resolution.targetSchemaId = created.id;
+      }
+    }
+
+    return { idMap, resolutions, warnings };
   }
 
   /**
