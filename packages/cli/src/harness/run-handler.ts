@@ -37,6 +37,33 @@ export interface RunHandlerOptions {
 const MAX_LOGS = 100;
 
 /**
+ * Rehydrate a value produced inside the vm sandbox into the host realm.
+ *
+ * Objects/arrays constructed inside `node:vm` carry that sandbox's own
+ * `Object.prototype`/`Array.prototype` — a *different* realm than the host's,
+ * even though `instanceof`-free structural shape is identical. Consumers that
+ * do prototype-sensitive deep-equality (`assert.deepStrictEqual`, and by
+ * extension `rules test`'s `expect.result` comparison) would otherwise fail
+ * every case where a handler returns a freshly-built object, despite the data
+ * being byte-for-byte the same. `structuredClone` re-materializes the value
+ * using the *calling* realm's constructors, so the result compares equal to a
+ * host-realm literal.
+ *
+ * Handlers only return JSON-ish data (the sandbox exposes no functions/symbols
+ * to close over), so this should always succeed; the try/catch is a safety net
+ * for exotic return values (e.g. a Map/Set edge case) so a clone failure never
+ * regresses a handler that otherwise ran fine — we fall back to the raw
+ * sandbox-realm value in that case.
+ */
+function toHostRealm<T>(value: T): T {
+  try {
+    return structuredClone(value);
+  } catch {
+    return value;
+  }
+}
+
+/**
  * Deep-freeze an object in place, mirroring the runtime's `deepFreeze`
  * (function-runner.service.ts ~422-439).
  */
@@ -189,7 +216,7 @@ export async function runHandler(
     throw err;
   }
 
-  return { result, logs };
+  return { result: toHostRealm(result), logs };
 }
 
 /** Read a handler file and run it via {@link runHandler}. */

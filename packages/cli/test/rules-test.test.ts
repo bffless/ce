@@ -70,6 +70,66 @@ describe('runFnTests — wrong expectation', () => {
   });
 });
 
+describe('runFnTests — cross-realm object results (vm sandbox vs host realm)', () => {
+  it('passes when a freshly-constructed object from the handler matches expect.result structurally', async () => {
+    // The handler builds this object inside the node:vm sandbox, so it has the
+    // *sandbox's* Object.prototype/Array.prototype — not the host realm's. A naive
+    // assert.deepStrictEqual on the raw vm value fails here even though the data is
+    // identical, because deepStrictEqual also checks prototype identity.
+    const dir = scratchSet({
+      'rules/api/obj/post/handler.fn.js': [
+        'function handler({ steps }) {',
+        '  return { id: steps.query[0].id, tags: ["a", "b"] };',
+        '}',
+        '',
+      ].join('\n'),
+      'rules/api/obj/post/handler.fn.test.yaml': [
+        'handler: ./handler.fn.js',
+        'cases:',
+        '  - name: returns an object built in the sandbox',
+        '    data: { steps: { query: [{ id: 7 }] } }',
+        '    expect: { result: { id: 7, tags: ["a", "b"] } }',
+        '',
+      ].join('\n'),
+    });
+
+    const result = await runFnTests(dir);
+    expect(result.failed).toEqual([]);
+    expect(result.passed).toBe(1);
+  });
+
+  it('passes for a nested object/array result built in the sandbox', async () => {
+    const dir = scratchSet({
+      'rules/api/nested/post/handler.fn.js': [
+        'function handler({ steps }) {',
+        '  return {',
+        '    user: { id: steps.userId, roles: ["admin", "editor"] },',
+        '    items: [{ n: 1 }, { n: 2 }],',
+        '    meta: { count: 2, nested: { deep: true } },',
+        '  };',
+        '}',
+        '',
+      ].join('\n'),
+      'rules/api/nested/post/handler.fn.test.yaml': [
+        'handler: ./handler.fn.js',
+        'cases:',
+        '  - name: returns a deeply nested structure built in the sandbox',
+        '    data: { steps: { userId: 3 } }',
+        '    expect:',
+        '      result:',
+        '        user: { id: 3, roles: ["admin", "editor"] }',
+        '        items: [{ n: 1 }, { n: 2 }]',
+        '        meta: { count: 2, nested: { deep: true } }',
+        '',
+      ].join('\n'),
+    });
+
+    const result = await runFnTests(dir);
+    expect(result.failed).toEqual([]);
+    expect(result.passed).toBe(1);
+  });
+});
+
 describe('runFnTests — missing handler file', () => {
   it('fails only that file’s cases, and other fixture files still run', async () => {
     const dir = scratchSet({

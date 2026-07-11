@@ -141,6 +141,20 @@ describe('runHandler — sandbox isolation', () => {
   });
 });
 
+describe('runHandler — cross-realm result (vm sandbox vs host realm)', () => {
+  it('returns an object-shaped result usable with toEqual, whose prototype is the HOST realm Object.prototype', async () => {
+    const { result } = await runHandler(
+      'function handler({ steps }) { return { id: steps.query[0].id, tags: ["a", "b"] }; }',
+      { steps: { query: [{ id: 7 }] } },
+    );
+    expect(result).toEqual({ id: 7, tags: ['a', 'b'] });
+    // The vm sandbox has its own realm, so an object built inside it has that
+    // realm's Object.prototype — NOT `Object.prototype` as seen from this test
+    // file — unless runHandler rehydrates it back into the host realm first.
+    expect(Object.getPrototypeOf(result)).toBe(Object.prototype);
+  });
+});
+
 describe('runHandlerFile', () => {
   it('reads a file and runs its handler', async () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'bffless-harness-'));
