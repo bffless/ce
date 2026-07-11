@@ -16,7 +16,6 @@
     "build": "pnpm --filter backend build && pnpm --filter frontend build",
     "build:backend": "pnpm --filter backend build",
     "build:frontend": "pnpm --filter frontend build",
-    "build:action": "pnpm --filter github-action build",
     "test": "pnpm --recursive test",
     "lint": "pnpm --recursive lint",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
