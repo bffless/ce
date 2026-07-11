@@ -1,0 +1,2378 @@
+{
+  "version": 2,
+  "exportedAt": "2026-06-25T00:00:00.000Z",
+  "kind": "bffless-proxy-rule-set",
+  "ruleSet": {
+    "name": "handoff",
+    "description": "Handoff app backend — uploads (presigned), node tree, ACL-gated serving, grants, share links.",
+    "environment": null
+  },
+  "rules": [
+    {
+      "pathPattern": "/api/auth/*",
+      "targetUrl": "http://localhost:3000/api/auth",
+      "stripPrefix": true,
+      "order": 20,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": true,
+      "proxyType": "external_proxy",
+      "isEnabled": true,
+      "description": "Reverse-proxy SuperTokens auth endpoints (session refresh, signout, oauth) to the CE backend so this subdomain app can refresh the sAccessToken session. forwardCookies carries the path-scoped sRefreshToken cookie."
+    },
+    {
+      "pathPattern": "/api/directory",
+      "method": "GET",
+      "targetUrl": "http://localhost:3000/api/users/directory",
+      "stripPrefix": true,
+      "order": 10,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": true,
+      "proxyType": "external_proxy",
+      "isEnabled": true,
+      "description": "People-picker autocomplete. Forwards GET /api/directory?search=&limit= to the CE backend's member-accessible GET /api/users/directory (returns { users: [{id,email}] }; search required, results capped, disabled users excluded). forwardCookies carries the SuperTokens session so the requester is authenticated as themselves — no admin API key is borrowed. Requires CE >= the release that adds /api/users/directory (member-accessible, non-admin)."
+    },
+    {
+      "pathPattern": "/api/uploads/content/*",
+      "method": "GET",
+      "targetUrl": "http://internal/pipeline",
+      "stripPrefix": true,
+      "order": 1,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "proxyType": "pipeline",
+      "pipelineConfig": {
+        "name": "Serve handoff_nodes",
+        "steps": [
+          {
+            "id": "parsePath",
+            "name": "parsePath",
+            "config": {
+              "code": "function handler({ request, deployment }) { var p = (request && request.path) || ''; var marker = '/api/uploads/content/'; var i = p.indexOf(marker); var rest = (i >= 0) ? p.slice(i + marker.length) : ''; var q = rest.indexOf('?'); if (q >= 0) rest = rest.slice(0, q); var segs = rest.split('/'); for (var s = 0; s < segs.length; s++) { try { segs[s] = decodeURIComponent(segs[s]); } catch (e) { /* malformed escape - keep raw */ } } rest = segs.join('/'); var owner = (deployment && deployment.owner) || ''; var repo = (deployment && deployment.repo) || ''; var fullKey = (rest && owner && repo) ? (owner + '/' + repo + '/uploads/content/' + rest) : ''; return { rest: rest, fullKey: fullKey, hasKey: !!fullKey }; }"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "nodeByKey",
+            "name": "nodeByKey",
+            "config": {
+              "filters": {
+                "storage_path": {
+                  "op": "eq",
+                  "value": "steps.parsePath.fullKey"
+                }
+              },
+              "pageSize": 1,
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0",
+              "condition": "steps.parsePath.hasKey"
+            },
+            "handlerType": "data_query"
+          },
+          {
+            "id": "allFolders",
+            "name": "allFolders",
+            "config": {
+              "filters": {
+                "nodeType": {
+                  "op": "in",
+                  "value": [
+                    "folder",
+                    "root"
+                  ]
+                }
+              },
+              "pageSize": 500,
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0"
+            },
+            "handlerType": "data_query"
+          },
+          {
+            "id": "allSites",
+            "name": "allSites",
+            "config": {
+              "filters": {
+                "nodeType": {
+                  "op": "eq",
+                  "value": "site"
+                }
+              },
+              "pageSize": 500,
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0"
+            },
+            "handlerType": "data_query"
+          },
+          {
+            "id": "gate",
+            "name": "gate",
+            "config": {
+              "code": "function handler({ user, request, steps, utils }) { var UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/; function readCookie(name){ var raw=(request&&request.headers&&request.headers.cookie)||''; if(Object.prototype.toString.call(raw)==='[object Array]')raw=raw[0]||''; raw=String(raw); var parts=raw.split(';'); for(var i=0;i<parts.length;i++){var kv=parts[i];var p=kv.indexOf('=');if(p<0)continue;var k=kv.slice(0,p).replace(/^\\s+|\\s+$/g,'');if(k===name)return decodeURIComponent(kv.slice(p+1));} return ''; } function vtok(tok){ if(!tok)return null; var d=tok.lastIndexOf('.'); if(d<1)return null; var body=tok.slice(0,d); var sig=tok.slice(d+1); if(!body||!sig)return null; if(!utils.verify(body,sig))return null; var o=null; try{o=JSON.parse(utils.base64urlDecode(body));}catch(e){return null;} if(!o||typeof o!=='object')return null; if(typeof o.exp!=='number'||Date.now()>o.exp)return null; return o; } function rank(l){return l==='owner'?3:l==='edit'?2:l==='view'?1:0;} function evalAccess(ch,vw){ if(vw.isAdmin)return 'owner'; if(vw.userId){for(var i=0;i<ch.length;i++){if(ch[i].ownerId===vw.userId)return 'owner';}} var s=0;for(var k=ch.length-1;k>=0;k--){if(ch[k].mode==='restricted'){s=k;break;}} var best='none';for(var d=s;d<ch.length;d++){var gs=ch[d].grants||[];for(var e=0;e<gs.length;e++){var g=gs[e]||{};if(g.principalId==='anyone'){if(rank('view')>rank(best))best='view';}else if(vw.userId&&g.principalId===vw.userId&&rank(g.level)>rank(best))best=g.level;}} if(!vw.userId&&vw.shareLinkFolderId){var inC=false;for(var j=0;j<ch.length;j++){if(ch[j].id===vw.shareLinkFolderId){inC=true;break;}}if(inC&&rank('view')>rank(best))best='view';} return best; } function folderChain(folders,startId){ var byId={};var rootId='';for(var a=0;a<folders.length;a++){var f=folders[a]||{};var id=f.id||f.recordId||f.record_id;if(id){byId[id]=f;if(f.nodeType==='root')rootId=id;}} var rev=[];var cur=(String(startId||'')==='root'&&rootId)?rootId:String(startId||'');var g=0; while(cur&&UUID.test(cur)&&byId[cur]&&g<64){var n=byId[cur];var gr=n.grantsJson;if(typeof gr==='string'){try{gr=JSON.parse(gr);}catch(e){gr=[];}}if(!gr||Object.prototype.toString.call(gr)!=='[object Array]')gr=[];rev.push({id:cur,ownerId:n.ownerId||null,grants:gr,mode:n.mode==='restricted'?'restricted':'inheriting'});cur=(n.parentId==='root'&&rootId)?rootId:(n.parentId||'');g++;} var ch=[];for(var b=rev.length-1;b>=0;b--)ch.push(rev[b]);return ch; } var uid=(user&&user.id)||null; var isAdmin=!!user&&user.role==='admin'; var stok=vtok(readCookie('hf_s')); var shareFolderId=(stok&&stok.s)?String(stok.s):''; var ftok=vtok(readCookie('hf_f')); var viewer; if(uid)viewer={userId:uid,isAdmin:isAdmin}; else if(shareFolderId)viewer={shareLinkFolderId:shareFolderId}; else viewer={}; var folders=(steps&&steps.allFolders)||[]; var sitesList=(steps&&steps.allSites)||[]; var fullKey=(steps&&steps.parsePath&&steps.parsePath.fullKey)||''; var rows=(steps&&steps.nodeByKey)||[]; var node=(rows&&rows.length)?rows[0]:null; var allow=false; var level='none'; var resolved=false; if(node){ resolved=true; var ch=folderChain(folders,node.parentId); ch.push({id:node.id,ownerId:node.ownerId||null,grants:[],mode:'inheriting'}); level=evalAccess(ch,viewer); allow=level!=='none'; } else { var best=null; var bestLen=-1; for(var si=0;si<sitesList.length;si++){ var s=sitesList[si]||{}; var sp=String(s.storage_path||''); if(!sp)continue; if(fullKey===sp||fullKey.indexOf(sp+'/')===0){ if(sp.length>bestLen){bestLen=sp.length;best=s;} } } if(best){ resolved=true; var sid=best.id||best.recordId||best.record_id; var sch=folderChain(folders,best.parentId); sch.push({id:sid,ownerId:best.ownerId||null,grants:[],mode:'inheriting'}); level=evalAccess(sch,viewer); allow=level!=='none'; } } var notFound=!resolved; var hasCred=!!uid||!!shareFolderId; var deny401=!allow&&!notFound&&!hasCred; var deny403=!allow&&!notFound&&hasCred; return {allow:allow,deny401:deny401,deny403:deny403,deny404:notFound,level:level,hasNode:!!node,resolved:resolved}; }"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "serve",
+            "name": "serve",
+            "config": {
+              "key": "content/{{steps.parsePath.rest}}",
+              "condition": "steps.gate.allow"
+            },
+            "handlerType": "file_serve_handler"
+          },
+          {
+            "id": "deny404",
+            "name": "deny404",
+            "config": {
+              "body": "{\"error\":\"not found\"}",
+              "status": 404,
+              "condition": "steps.gate.deny404",
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          },
+          {
+            "id": "deny401",
+            "name": "deny401",
+            "config": {
+              "body": "{\"error\":\"unauthorized\"}",
+              "status": 401,
+              "condition": "steps.gate.deny401",
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          },
+          {
+            "id": "deny403",
+            "name": "deny403",
+            "config": {
+              "body": "{\"error\":\"forbidden\"}",
+              "status": 403,
+              "condition": "steps.gate.deny403",
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          }
+        ],
+        "description": "Serve content with per-folder ACL gate (ADR-0002). Resolves a File node by its exact storage_path, or a Site-internal asset by the deepest Site node whose storage_path prefixes the request key (structural storage); evaluates access over the owning folder chain and serves the object by its exact key. 404 when the path resolves to neither a node nor a Site."
+      },
+      "isEnabled": true,
+      "description": "Serve files + Site assets via unified path-passthrough content endpoint (structural storage)"
+    },
+    {
+      "pathPattern": "/api/uploads/prepare",
+      "method": "POST",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 2,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "proxyType": "pipeline",
+      "pipelineConfig": {
+        "name": "Handoff presigned prepare",
+        "steps": [
+          {
+            "id": "pre",
+            "name": "pre",
+            "config": {
+              "code": "function handler({ request }) { var b = (request && request.body) || {}; var pid = (b.parentId != null) ? String(b.parentId) : ''; var name = (b.filename != null) ? String(b.filename) : ''; return { parentId: pid, name: name, check: pid !== '' && name !== '' }; }"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "sibling",
+            "name": "sibling",
+            "config": {
+              "filters": {
+                "parentId": {
+                  "op": "eq",
+                  "value": "request.body.parentId"
+                }
+              },
+              "pageSize": 500,
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0",
+              "condition": "steps.pre.check"
+            },
+            "handlerType": "data_query"
+          },
+          {
+            "id": "guard",
+            "name": "guard",
+            "config": {
+              "code": "function handler({ user, steps }) { var pre = (steps && steps.pre) || {}; if (!pre.check) return { collision: false, ok: true }; var uid = (user && user.id) || null; var isRoot = pre.parentId === 'root'; var rows = (steps && steps.sibling) || []; var hit = false; for (var i = 0; i < rows.length; i++) { var r = rows[i] || {}; if (isRoot && r.ownerId !== uid) continue; var nm = (r.displayName != null) ? r.displayName : ((r.original_name != null) ? r.original_name : r.filename); if (nm === pre.name) { hit = true; break; } } return { collision: hit, ok: !hit }; }"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "presigned",
+            "name": "presigned",
+            "config": {
+              "subDir": "content",
+              "keyStrategy": "verbatim",
+              "key": "request.body.path",
+              "filename": "request.body.filename",
+              "expiresIn": 3600,
+              "maxFileSize": 524288000,
+              "condition": "steps.guard.ok"
+            },
+            "handlerType": "presigned_upload"
+          },
+          {
+            "id": "response",
+            "name": "response",
+            "config": {
+              "body": "{{{steps.presigned}}}",
+              "status": 200,
+              "condition": "steps.guard.ok",
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          },
+          {
+            "id": "conflict",
+            "name": "conflict",
+            "config": {
+              "body": "{\"error\":\"An item with that name already exists in this folder. Rename it and try again.\"}",
+              "status": 409,
+              "condition": "steps.guard.collision",
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          }
+        ],
+        "description": "Mint a presigned PUT for direct-to-bucket upload — rejects (409) when a sibling in the target Folder already has this name (in-Folder uniqueness), so the existing object is never overwritten"
+      },
+      "isEnabled": true,
+      "description": "Verbatim presigned prepare + in-Folder uniqueness (structural storage)"
+    },
+    {
+      "pathPattern": "/api/nodes",
+      "method": "POST",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 3,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "proxyType": "pipeline",
+      "pipelineConfig": {
+        "name": "Handoff register node",
+        "steps": [
+          {
+            "id": "pre",
+            "name": "pre",
+            "config": {
+              "code": "function handler({ request }) { var b = (request && request.body) || {}; var pid = (b.parentId != null) ? String(b.parentId) : ''; var name = (b.displayName != null) ? String(b.displayName) : ''; return { parentId: pid, name: name, check: pid !== '' && name !== '' }; }"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "sibling",
+            "name": "sibling",
+            "config": {
+              "filters": {
+                "parentId": {
+                  "op": "eq",
+                  "value": "request.body.parentId"
+                }
+              },
+              "pageSize": 500,
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0",
+              "condition": "steps.pre.check"
+            },
+            "handlerType": "data_query"
+          },
+          {
+            "id": "guard",
+            "name": "guard",
+            "config": {
+              "code": "function handler({ user, steps }) { var pre = (steps && steps.pre) || {}; if (!pre.check) return { collision: false, ok: true }; var uid = (user && user.id) || null; var isRoot = pre.parentId === 'root'; var rows = (steps && steps.sibling) || []; var hit = false; for (var i = 0; i < rows.length; i++) { var r = rows[i] || {}; if (isRoot && r.ownerId !== uid) continue; var nm = (r.displayName != null) ? r.displayName : ((r.original_name != null) ? r.original_name : r.filename); if (nm === pre.name) { hit = true; break; } } return { collision: hit, ok: !hit }; }"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "register",
+            "name": "register",
+            "config": {
+              "subDir": "content",
+              "keyStrategy": "verbatim",
+              "key": "request.body.path",
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0",
+              "storageKey": "request.body.storageKey",
+              "extraFields": {
+                "ownerId": "user.id",
+                "nodeType": "'file'",
+                "parentId": "request.body.parentId",
+                "createdMs": "request.body.createdMs",
+                "displayName": "request.body.displayName"
+              },
+              "maxFileSize": 524288000,
+              "originalName": "request.body.originalName",
+              "condition": "steps.guard.ok"
+            },
+            "handlerType": "register_upload"
+          },
+          {
+            "id": "shape",
+            "name": "shape",
+            "config": {
+              "code": "function handler({ request, steps }) {\n  var r = (steps && steps.register) || {};\n  var body = (request && request.body) || {};\n  var rawSize = (r.size != null) ? r.size : null;\n  var size = (rawSize != null) ? Number(rawSize) : null;\n  var rawCreated = (r.createdMs != null) ? r.createdMs : body.createdMs;\n  var created = (rawCreated != null) ? Number(rawCreated) : 0;\n  return {\n    node: {\n      id: r.id || r.recordId || r.record_id || null,\n      type: r.nodeType || 'file',\n      name: r.displayName || body.displayName || r.original_name || r.filename || 'Untitled',\n      title: (r.title != null && String(r.title) !== '') ? String(r.title) : null,\n      description: (r.description != null && String(r.description) !== '') ? String(r.description) : null,\n      mime: r.content_type || r.mime_type || null,\n      size: (size != null && !isNaN(size)) ? size : null,\n      url: r.url || null,\n      storageKey: r.storage_path || body.storageKey || null,\n      parentId: r.parentId || body.parentId || 'root',\n      ownerId: r.ownerId || null,\n      mode: 'inheriting', grants: [],\n      createdAt: (created != null && !isNaN(created)) ? created : 0\n    }\n  };\n}",
+              "condition": "steps.guard.ok"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "response",
+            "name": "response",
+            "config": {
+              "body": "{\"node\": {{{steps.shape.node}}}}",
+              "status": 200,
+              "condition": "steps.guard.ok",
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          },
+          {
+            "id": "conflict",
+            "name": "conflict",
+            "config": {
+              "body": "{\"error\":\"An item with that name already exists in this folder. Rename it and try again.\"}",
+              "status": 409,
+              "condition": "steps.guard.collision",
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          }
+        ],
+        "description": "Register an uploaded file as a node and return the shaped Node — rejects (409) a name that duplicates an existing sibling in the target Folder (in-Folder uniqueness)"
+      },
+      "isEnabled": true,
+      "description": "Verbatim register node + in-Folder uniqueness (structural storage)"
+    },
+    {
+      "pathPattern": "/api/nodes",
+      "method": "GET",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 4,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "proxyType": "pipeline",
+      "pipelineConfig": {
+        "name": "Handoff list nodes",
+        "steps": [
+          {
+            "id": "pre",
+            "name": "pre",
+            "config": {
+              "code": "function handler({ request }) { var pid = String((request && request.query && request.query.parentId) || 'root'); if (!pid) pid = 'root'; var isRoot = pid === 'root'; var ok = isRoot || /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(pid); return { parentId: pid, isRoot: isRoot, parentOk: ok }; }"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "allFolders",
+            "name": "allFolders",
+            "config": {
+              "filters": {
+                "nodeType": {
+                  "op": "in",
+                  "value": [
+                    "folder",
+                    "root"
+                  ]
+                }
+              },
+              "pageSize": 500,
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0"
+            },
+            "handlerType": "data_query"
+          },
+          {
+            "id": "gate",
+            "name": "gate",
+            "config": {
+              "code": "function handler({ user, request, steps, utils }) { var UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/; function readCookie(name){ var raw=(request&&request.headers&&request.headers.cookie)||''; if(Object.prototype.toString.call(raw)==='[object Array]')raw=raw[0]||''; raw=String(raw); var parts=raw.split(';'); for(var i=0;i<parts.length;i++){var kv=parts[i];var p=kv.indexOf('=');if(p<0)continue;var k=kv.slice(0,p).replace(/^\\s+|\\s+$/g,'');if(k===name)return decodeURIComponent(kv.slice(p+1));} return ''; } function vtok(tok){ if(!tok)return null; var d=tok.lastIndexOf('.'); if(d<1)return null; var body=tok.slice(0,d); var sig=tok.slice(d+1); if(!body||!sig)return null; if(!utils.verify(body,sig))return null; var o=null; try{o=JSON.parse(utils.base64urlDecode(body));}catch(e){return null;} if(!o||typeof o!=='object')return null; if(typeof o.exp!=='number'||Date.now()>o.exp)return null; return o; } function rank(l){return l==='owner'?3:l==='edit'?2:l==='view'?1:0;} function evalAccess(ch,vw){ if(vw.isAdmin)return 'owner'; if(vw.userId){for(var i=0;i<ch.length;i++){if(ch[i].ownerId===vw.userId)return 'owner';}} var s=0;for(var k=ch.length-1;k>=0;k--){if(ch[k].mode==='restricted'){s=k;break;}} var best='none';for(var d=s;d<ch.length;d++){var gs=ch[d].grants||[];for(var e=0;e<gs.length;e++){var g=gs[e]||{};if(g.principalId==='anyone'){if(rank('view')>rank(best))best='view';}else if(vw.userId&&g.principalId===vw.userId&&rank(g.level)>rank(best))best=g.level;}} if(!vw.userId&&vw.shareLinkFolderId){var inC=false;for(var j=0;j<ch.length;j++){if(ch[j].id===vw.shareLinkFolderId){inC=true;break;}}if(inC&&rank('view')>rank(best))best='view';} return best; } function folderChain(folders,startId){ var byId={};var rootId='';for(var a=0;a<folders.length;a++){var f=folders[a]||{};var id=f.id||f.recordId||f.record_id;if(id){byId[id]=f;if(f.nodeType==='root')rootId=id;}} var rev=[];var cur=(String(startId||'')==='root'&&rootId)?rootId:String(startId||'');var g=0; while(cur&&UUID.test(cur)&&byId[cur]&&g<64){var n=byId[cur];var gr=n.grantsJson;if(typeof gr==='string'){try{gr=JSON.parse(gr);}catch(e){gr=[];}}if(!gr||Object.prototype.toString.call(gr)!=='[object Array]')gr=[];rev.push({id:cur,ownerId:n.ownerId||null,grants:gr,mode:n.mode==='restricted'?'restricted':'inheriting'});cur=(n.parentId==='root'&&rootId)?rootId:(n.parentId||'');g++;} var ch=[];for(var b=rev.length-1;b>=0;b--)ch.push(rev[b]);return ch; } var uid=(user&&user.id)||null; var isAdmin=!!user&&user.role==='admin'; var stok=vtok(readCookie('hf_s')); var shareFolderId=(stok&&stok.s)?String(stok.s):''; var ftok=vtok(readCookie('hf_f')); var viewer; if(uid)viewer={userId:uid,isAdmin:isAdmin}; else if(shareFolderId)viewer={shareLinkFolderId:shareFolderId}; else viewer={}; var folders=(steps&&steps.allFolders)||[]; var isRoot=!!(steps.pre&&steps.pre.isRoot); var parentId=String((steps.pre&&steps.pre.parentId)||'root'); var allow=false; if(isRoot){ allow=true; } else { var ch=folderChain(folders,parentId); allow=evalAccess(ch,viewer)!=='none'; } var hasCred=!!uid||!!shareFolderId||!!ftok; var deny401=!allow&&!hasCred; var deny403=!allow&&hasCred; return {allow:allow,deny401:deny401,deny403:deny403,viewer:viewer,isRoot:isRoot}; }"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "query",
+            "name": "query",
+            "config": {
+              "filters": {
+                "parentId": {
+                  "op": "eq",
+                  "value": "request.query.parentId"
+                }
+              },
+              "pageSize": 500,
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0",
+              "condition": "steps.gate.allow"
+            },
+            "handlerType": "data_query"
+          },
+          {
+            "id": "shape",
+            "name": "shape",
+            "config": {
+              "code": "function handler({ steps }) { var UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/; function rank(l){return l==='owner'?3:l==='edit'?2:l==='view'?1:0;} function evalAccess(ch,vw){ if(vw.isAdmin)return 'owner'; if(vw.userId){for(var i=0;i<ch.length;i++){if(ch[i].ownerId===vw.userId)return 'owner';}} var s=0;for(var k=ch.length-1;k>=0;k--){if(ch[k].mode==='restricted'){s=k;break;}} var best='none';for(var d=s;d<ch.length;d++){var gs=ch[d].grants||[];for(var e=0;e<gs.length;e++){var g=gs[e]||{};if(g.principalId==='anyone'){if(rank('view')>rank(best))best='view';}else if(vw.userId&&g.principalId===vw.userId&&rank(g.level)>rank(best))best=g.level;}} if(!vw.userId&&vw.shareLinkFolderId){var inC=false;for(var j=0;j<ch.length;j++){if(ch[j].id===vw.shareLinkFolderId){inC=true;break;}}if(inC&&rank('view')>rank(best))best='view';} return best; } var folders=(steps&&steps.allFolders)||[]; var byId={};var rootId='';for(var a=0;a<folders.length;a++){var f=folders[a]||{};var fid=f.id||f.recordId||f.record_id;if(fid){byId[fid]=f;if(f.nodeType==='root')rootId=fid;}} function folderChain(startId){ var rev=[];var cur=(String(startId||'')==='root'&&rootId)?rootId:String(startId||'');var g=0; while(cur&&UUID.test(cur)&&byId[cur]&&g<64){var n=byId[cur];var gr=n.grantsJson;if(typeof gr==='string'){try{gr=JSON.parse(gr);}catch(e){gr=[];}}if(!gr||Object.prototype.toString.call(gr)!=='[object Array]')gr=[];rev.push({id:cur,ownerId:n.ownerId||null,grants:gr,mode:n.mode==='restricted'?'restricted':'inheriting'});cur=(n.parentId==='root'&&rootId)?rootId:(n.parentId||'');g++;} var ch=[];for(var b=rev.length-1;b>=0;b--)ch.push(rev[b]);return ch; } function folderPath(startId){ var names=[]; var cur=String(startId||''); var g=0; while(cur&&UUID.test(cur)&&byId[cur]&&g<64){ names.push(String(byId[cur].displayName||'Untitled')); cur=byId[cur].parentId||''; g++; } var out=[]; for(var b=names.length-1;b>=0;b--)out.push(names[b]); return out.join('/'); } var CONTENT='/api/uploads/content/'; var SPM='/uploads/content/'; var vw=(steps&&steps.gate&&steps.gate.viewer)||{}; var rows=(steps&&steps.query)||[]; var out=[]; for (var i=0;i<rows.length;i++){ var r=rows[i]||{}; var id=r.id||r.recordId||r.record_id||null; if(!id)continue; var t=r.nodeType||'file'; var entry=r.siteEntry||'index.html'; var size=(typeof r.size==='number')?r.size:(r.size!=null?Number(r.size):null); var created=(typeof r.createdMs==='number')?r.createdMs:(r.createdMs!=null?Number(r.createdMs):0); var url=r.url||null; var grants=r.grantsJson; if(typeof grants==='string'){try{grants=JSON.parse(grants);}catch(e){grants=[];}} if(!grants||Object.prototype.toString.call(grants)!=='[object Array]')grants=[]; var ch; if(t==='folder'){ch=folderChain(id);} else {ch=folderChain(r.parentId);ch.push({id:id,ownerId:r.ownerId||null,grants:[],mode:'inheriting'});} if(evalAccess(ch,vw)==='none')continue; var sp=r.storage_path||''; var mi=sp.indexOf(SPM); var nonFolderPath=(mi>=0)?sp.slice(mi+SPM.length):((url&&url.indexOf(CONTENT)===0)?url.slice(CONTENT.length):null); out.push({ id:id, type:t, name:r.displayName||r.original_name||r.filename||'Untitled', title:(r.title!=null&&String(r.title)!=='')?String(r.title):null, description:(r.description!=null&&String(r.description)!=='')?String(r.description):null, mime:r.content_type||r.mime_type||null, size:(size!=null&&!isNaN(size))?size:null, url:url, storageKey:r.storage_path||null, path:(t==='folder')?folderPath(id):nonFolderPath, parentId:r.parentId||'root', ownerId:r.ownerId||null, mode:r.mode||'inheriting', feedExcluded:(r.feedExcluded===true||r.feedExcluded==='true'), grants:grants, createdAt:(created!=null&&!isNaN(created))?created:0 }); } var rootRec=null;for(var ri=0;ri<folders.length;ri++){if((folders[ri]||{}).nodeType==='root'){rootRec=folders[ri];break;}} var rootId=null;var rootPublic=false; if(rootRec){rootId=rootRec.id||rootRec.recordId||rootRec.record_id||null; var rg=rootRec.grantsJson; if(typeof rg==='string'){try{rg=JSON.parse(rg);}catch(e){rg=[];}} if(rg&&Object.prototype.toString.call(rg)==='[object Array]'){for(var gi=0;gi<rg.length;gi++){if((rg[gi]||{}).principalId==='anyone'){rootPublic=true;break;}}}} return { nodes: out, rootMeta: { id: rootId, public: rootPublic } }; }",
+              "condition": "steps.gate.allow"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "response",
+            "name": "response",
+            "config": {
+              "body": "{\"nodes\": {{{steps.shape.nodes}}}, \"root\": {{{steps.shape.rootMeta}}}}",
+              "status": 200,
+              "condition": "steps.gate.allow",
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          },
+          {
+            "id": "deny401",
+            "name": "deny401",
+            "config": {
+              "body": "{\"error\":\"unauthorized\"}",
+              "status": 401,
+              "condition": "steps.gate.deny401",
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          },
+          {
+            "id": "deny403",
+            "name": "deny403",
+            "config": {
+              "body": "{\"error\":\"forbidden\"}",
+              "status": 403,
+              "condition": "steps.gate.deny403",
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          }
+        ],
+        "description": "List nodes whose parentId matches the query — gated by per-folder ACL (ADR-0002). Requires view+ on a non-root parent; children are filtered to those the viewer can access (private by default at root)."
+      },
+      "isEnabled": true,
+      "description": "List nodes — a Site's url is its stored content URL (structural storage)"
+    },
+    {
+      "pathPattern": "/api/node",
+      "method": "GET",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 5,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "proxyType": "pipeline",
+      "pipelineConfig": {
+        "name": "Handoff get node",
+        "steps": [
+          {
+            "id": "pre",
+            "name": "pre",
+            "config": {
+              "code": "function handler({ request }) { var id = String((request && request.query && request.query.id) || ''); var ok = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(id); return { id: id, idOk: ok }; }"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "query",
+            "name": "query",
+            "config": {
+              "recordId": "request.query.id",
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0",
+              "condition": "steps.pre.idOk"
+            },
+            "handlerType": "data_query"
+          },
+          {
+            "id": "allFolders",
+            "name": "allFolders",
+            "config": {
+              "filters": {
+                "nodeType": {
+                  "op": "in",
+                  "value": [
+                    "folder",
+                    "root"
+                  ]
+                }
+              },
+              "pageSize": 500,
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0"
+            },
+            "handlerType": "data_query"
+          },
+          {
+            "id": "gate",
+            "name": "gate",
+            "config": {
+              "code": "function handler({ user, request, steps, utils }) { var UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/; function readCookie(name){ var raw=(request&&request.headers&&request.headers.cookie)||''; if(Object.prototype.toString.call(raw)==='[object Array]')raw=raw[0]||''; raw=String(raw); var parts=raw.split(';'); for(var i=0;i<parts.length;i++){var kv=parts[i];var p=kv.indexOf('=');if(p<0)continue;var k=kv.slice(0,p).replace(/^\\s+|\\s+$/g,'');if(k===name)return decodeURIComponent(kv.slice(p+1));} return ''; } function vtok(tok){ if(!tok)return null; var d=tok.lastIndexOf('.'); if(d<1)return null; var body=tok.slice(0,d); var sig=tok.slice(d+1); if(!body||!sig)return null; if(!utils.verify(body,sig))return null; var o=null; try{o=JSON.parse(utils.base64urlDecode(body));}catch(e){return null;} if(!o||typeof o!=='object')return null; if(typeof o.exp!=='number'||Date.now()>o.exp)return null; return o; } function rank(l){return l==='owner'?3:l==='edit'?2:l==='view'?1:0;} function evalAccess(ch,vw){ if(vw.isAdmin)return 'owner'; if(vw.userId){for(var i=0;i<ch.length;i++){if(ch[i].ownerId===vw.userId)return 'owner';}} var s=0;for(var k=ch.length-1;k>=0;k--){if(ch[k].mode==='restricted'){s=k;break;}} var best='none';for(var d=s;d<ch.length;d++){var gs=ch[d].grants||[];for(var e=0;e<gs.length;e++){var g=gs[e]||{};if(g.principalId==='anyone'){if(rank('view')>rank(best))best='view';}else if(vw.userId&&g.principalId===vw.userId&&rank(g.level)>rank(best))best=g.level;}} if(!vw.userId&&vw.shareLinkFolderId){var inC=false;for(var j=0;j<ch.length;j++){if(ch[j].id===vw.shareLinkFolderId){inC=true;break;}}if(inC&&rank('view')>rank(best))best='view';} return best; } function folderChain(folders,startId){ var byId={};var rootId='';for(var a=0;a<folders.length;a++){var f=folders[a]||{};var id=f.id||f.recordId||f.record_id;if(id){byId[id]=f;if(f.nodeType==='root')rootId=id;}} var rev=[];var cur=(String(startId||'')==='root'&&rootId)?rootId:String(startId||'');var g=0; while(cur&&UUID.test(cur)&&byId[cur]&&g<64){var n=byId[cur];var gr=n.grantsJson;if(typeof gr==='string'){try{gr=JSON.parse(gr);}catch(e){gr=[];}}if(!gr||Object.prototype.toString.call(gr)!=='[object Array]')gr=[];rev.push({id:cur,ownerId:n.ownerId||null,grants:gr,mode:n.mode==='restricted'?'restricted':'inheriting'});cur=(n.parentId==='root'&&rootId)?rootId:(n.parentId||'');g++;} var ch=[];for(var b=rev.length-1;b>=0;b--)ch.push(rev[b]);return ch; } var uid=(user&&user.id)||null; var isAdmin=!!user&&user.role==='admin'; var stok=vtok(readCookie('hf_s')); var shareFolderId=(stok&&stok.s)?String(stok.s):''; var ftok=vtok(readCookie('hf_f')); var viewer; if(uid)viewer={userId:uid,isAdmin:isAdmin}; else if(shareFolderId)viewer={shareLinkFolderId:shareFolderId}; else viewer={}; var folders=(steps&&steps.allFolders)||[]; var node=(steps&&steps.query)||null; if(node&&typeof node==='object'){ var hasId=node.id||node.recordId||node.record_id; if(!hasId)node=null; } else { node=null; } var allow=false; var level='none'; if(node){ var nid=node.id||node.recordId||node.record_id; var nt=node.nodeType||'file'; var ch; if(nt==='folder'){ ch=folderChain(folders,nid); } else { ch=folderChain(folders,node.parentId); ch.push({id:nid,ownerId:node.ownerId||null,grants:[],mode:'inheriting'}); } level=evalAccess(ch,viewer); allow=level!=='none'; } var hasCred=!!uid||!!shareFolderId||!!ftok; var deny401=!allow&&!hasCred; var deny403=!allow&&hasCred; return {allow:allow,deny401:deny401,deny403:deny403,level:level}; }"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "shape",
+            "name": "shape",
+            "config": {
+              "code": "function handler({ steps }) {\n  var r = (steps && steps.query) || {};\n  var UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;\n  var folders = (steps && steps.allFolders) || [];\n  var byId = {};\n  for (var a = 0; a < folders.length; a++) { var f = folders[a] || {}; var fid = f.id || f.recordId || f.record_id; if (fid) byId[fid] = f; }\n  function folderPath(startId) { var names = []; var cur = String(startId || ''); var g = 0; while (cur && UUID.test(cur) && byId[cur] && g < 64) { names.push(String(byId[cur].displayName || 'Untitled')); cur = byId[cur].parentId || ''; g++; } var out = []; for (var b = names.length - 1; b >= 0; b--) out.push(names[b]); return out.join('/'); }\n  var CONTENT = '/api/uploads/content/';\n  var SPM = '/uploads/content/';\n  if (r == null || typeof r !== 'object') r = {};\n  var id = r.id || r.recordId || r.record_id || null;\n  var t = r.nodeType || 'file';\n  var entry = r.siteEntry || 'index.html';\n  var size = (typeof r.size === 'number') ? r.size : (r.size != null ? Number(r.size) : null);\n  var created = (typeof r.createdMs === 'number') ? r.createdMs : (r.createdMs != null ? Number(r.createdMs) : 0);\n  var url = r.url || null;\n  var grants = r.grantsJson;\n  if (typeof grants === 'string') { try { grants = JSON.parse(grants); } catch (e) { grants = []; } }\n  if (!grants || Object.prototype.toString.call(grants) !== '[object Array]') { grants = []; }\n  var sp = r.storage_path || '';\n  var mi = sp.indexOf(SPM);\n  var nonFolderPath = (mi >= 0) ? sp.slice(mi + SPM.length) : ((url && url.indexOf(CONTENT) === 0) ? url.slice(CONTENT.length) : null);\n  var node = id ? {\n    id: id, type: t,\n    name: r.displayName || r.original_name || r.filename || 'Untitled',\n    title: (r.title != null && String(r.title) !== '') ? String(r.title) : null,\n    description: (r.description != null && String(r.description) !== '') ? String(r.description) : null,\n    mime: r.content_type || r.mime_type || null,\n    size: (size != null && !isNaN(size)) ? size : null,\n    url: url, storageKey: r.storage_path || null,\n    path: (t === 'folder') ? folderPath(id) : nonFolderPath,\n    parentId: r.parentId || 'root',\n    ownerId: r.ownerId || null,\n    mode: r.mode || 'inheriting',\n    feedExcluded: (r.feedExcluded === true || r.feedExcluded === 'true'),\n    grants: grants,\n    createdAt: (created != null && !isNaN(created)) ? created : 0\n  } : null;\n  return { node: node };\n}",
+              "condition": "steps.gate.allow"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "response",
+            "name": "response",
+            "config": {
+              "body": "{\"node\": {{{steps.shape.node}}}}",
+              "status": 200,
+              "condition": "steps.gate.allow",
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          },
+          {
+            "id": "deny401",
+            "name": "deny401",
+            "config": {
+              "body": "{\"error\":\"unauthorized\"}",
+              "status": 401,
+              "condition": "steps.gate.deny401",
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          },
+          {
+            "id": "deny403",
+            "name": "deny403",
+            "config": {
+              "body": "{\"error\":\"forbidden\"}",
+              "status": 403,
+              "condition": "steps.gate.deny403",
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          }
+        ],
+        "description": "Return one node by id, shaped — gated by per-folder ACL (ADR-0002)."
+      },
+      "isEnabled": true,
+      "description": "Get node — a Site's url is its stored content URL (structural storage)"
+    },
+    {
+      "pathPattern": "/api/node",
+      "method": "DELETE",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 8,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "proxyType": "pipeline",
+      "pipelineConfig": {
+        "name": "Handoff delete node",
+        "steps": [
+          {
+            "id": "pre",
+            "name": "pre",
+            "config": {
+              "code": "function handler({ request }) { var id = String((request && request.query && request.query.id) || ''); var ok = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(id); return { id: id, idOk: ok }; }"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "query",
+            "name": "query",
+            "config": {
+              "recordId": "request.query.id",
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0",
+              "condition": "steps.pre.idOk"
+            },
+            "handlerType": "data_query"
+          },
+          {
+            "id": "allFolders",
+            "name": "allFolders",
+            "config": {
+              "filters": {
+                "nodeType": {
+                  "op": "in",
+                  "value": [
+                    "folder",
+                    "root"
+                  ]
+                }
+              },
+              "pageSize": 500,
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0"
+            },
+            "handlerType": "data_query"
+          },
+          {
+            "id": "children",
+            "name": "children",
+            "config": {
+              "filters": {
+                "parentId": {
+                  "op": "eq",
+                  "value": "request.query.id"
+                }
+              },
+              "pageSize": 1,
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0",
+              "condition": "steps.pre.idOk"
+            },
+            "handlerType": "data_query"
+          },
+          {
+            "id": "gate",
+            "name": "gate",
+            "config": {
+              "code": "function handler({ user, request, steps, utils }) { var UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/; function readCookie(name){ var raw=(request&&request.headers&&request.headers.cookie)||''; if(Object.prototype.toString.call(raw)==='[object Array]')raw=raw[0]||''; raw=String(raw); var parts=raw.split(';'); for(var i=0;i<parts.length;i++){var kv=parts[i];var p=kv.indexOf('=');if(p<0)continue;var k=kv.slice(0,p).replace(/^\\s+|\\s+$/g,'');if(k===name)return decodeURIComponent(kv.slice(p+1));} return ''; } function vtok(tok){ if(!tok)return null; var d=tok.lastIndexOf('.'); if(d<1)return null; var body=tok.slice(0,d); var sig=tok.slice(d+1); if(!body||!sig)return null; if(!utils.verify(body,sig))return null; var o=null; try{o=JSON.parse(utils.base64urlDecode(body));}catch(e){return null;} if(!o||typeof o!=='object')return null; if(typeof o.exp!=='number'||Date.now()>o.exp)return null; return o; } function rank(l){return l==='owner'?3:l==='edit'?2:l==='view'?1:0;} function evalAccess(ch,vw){ if(vw.isAdmin)return 'owner'; if(vw.userId){for(var i=0;i<ch.length;i++){if(ch[i].ownerId===vw.userId)return 'owner';}} var s=0;for(var k=ch.length-1;k>=0;k--){if(ch[k].mode==='restricted'){s=k;break;}} var best='none';for(var d=s;d<ch.length;d++){var gs=ch[d].grants||[];for(var e=0;e<gs.length;e++){var g=gs[e]||{};if(g.principalId==='anyone'){if(rank('view')>rank(best))best='view';}else if(vw.userId&&g.principalId===vw.userId&&rank(g.level)>rank(best))best=g.level;}} if(!vw.userId&&vw.shareLinkFolderId){var inC=false;for(var j=0;j<ch.length;j++){if(ch[j].id===vw.shareLinkFolderId){inC=true;break;}}if(inC&&rank('view')>rank(best))best='view';} return best; } function folderChain(folders,startId){ var byId={};var rootId='';for(var a=0;a<folders.length;a++){var f=folders[a]||{};var id=f.id||f.recordId||f.record_id;if(id){byId[id]=f;if(f.nodeType==='root')rootId=id;}} var rev=[];var cur=(String(startId||'')==='root'&&rootId)?rootId:String(startId||'');var g=0; while(cur&&UUID.test(cur)&&byId[cur]&&g<64){var n=byId[cur];var gr=n.grantsJson;if(typeof gr==='string'){try{gr=JSON.parse(gr);}catch(e){gr=[];}}if(!gr||Object.prototype.toString.call(gr)!=='[object Array]')gr=[];rev.push({id:cur,ownerId:n.ownerId||null,grants:gr,mode:n.mode==='restricted'?'restricted':'inheriting'});cur=(n.parentId==='root'&&rootId)?rootId:(n.parentId||'');g++;} var ch=[];for(var b=rev.length-1;b>=0;b--)ch.push(rev[b]);return ch; } \n  var uid=(user&&user.id)||null;\n  var isAdmin=!!user&&user.role==='admin';\n  var stok=vtok(readCookie('hf_s'));\n  var shareFolderId=(stok&&stok.s)?String(stok.s):'';\n  var ftok=vtok(readCookie('hf_f'));\n  var viewer;\n  if(uid)viewer={userId:uid,isAdmin:isAdmin};\n  else if(shareFolderId)viewer={shareLinkFolderId:shareFolderId};\n  else viewer={};\n  var folders=(steps&&steps.allFolders)||[];\n  var node=(steps&&steps.query)||null;\n  if(node&&typeof node==='object'){ var hasId=node.id||node.recordId||node.record_id; if(!hasId)node=null; } else { node=null; }\n  var allow=false; var level='none';\n  var nodeType=''; var isFile=false; var isFolder=false; var isSite=false; var storageKey='';\n  if(node){\n    var nid=node.id||node.recordId||node.record_id;\n    nodeType=node.nodeType||'file';\n    isFile=nodeType==='file'; isFolder=nodeType==='folder'; isSite=nodeType==='site';\n    var ch;\n    if(isFolder){ ch=folderChain(folders,nid); }\n    else { ch=folderChain(folders,node.parentId); ch.push({id:nid,ownerId:node.ownerId||null,grants:[],mode:'inheriting'}); }\n    level=evalAccess(ch,viewer);\n    allow=rank(level)>=2;\n    var sp=String(node.storage_path||'');\n    var um=sp.indexOf('/uploads/');\n    storageKey=(um>=0)?sp.slice(um+9):'';\n  }\n  var kids=(steps&&steps.children)||[];\n  var childCount=(Object.prototype.toString.call(kids)==='[object Array]')?kids.length:0;\n  var hasChildren=childCount>0;\n  var guardBlocked=(isFolder&&hasChildren)||nodeType==='root';\n  var hasCred=!!uid||!!shareFolderId||!!ftok;\n  var deny401=!allow&&!hasCred;\n  var deny403=!allow&&hasCred;\n  var doPurge=allow&&isFile&&!!storageKey;\n  var sitePrefix=(isSite&&storageKey)?(storageKey+'/'):'';\n  var doPurgeSite=allow&&isSite&&!!sitePrefix;\n  var doDelete=allow&&!guardBlocked;\n  return {\n    allow:allow, deny401:deny401, deny403:deny403, level:level,\n    isFile:isFile, isFolder:isFolder, isSite:isSite, storageKey:storageKey,\n    childCount:childCount, hasChildren:hasChildren, guardBlocked:guardBlocked,\n    doPurge:doPurge, doPurgeSite:doPurgeSite, sitePrefix:sitePrefix, doDelete:doDelete\n  };\n}"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "guardNonEmpty",
+            "name": "guardNonEmpty",
+            "config": {
+              "body": "{\"error\":\"folder_not_empty\"}",
+              "status": 409,
+              "condition": "steps.gate.guardBlocked",
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          },
+          {
+            "id": "purgeObject",
+            "name": "purgeObject",
+            "config": {
+              "key": "{{steps.gate.storageKey}}",
+              "condition": "steps.gate.doPurge"
+            },
+            "handlerType": "file_delete"
+          },
+          {
+            "id": "purgeSiteAssets",
+            "name": "purgeSiteAssets",
+            "handlerType": "file_delete",
+            "config": {
+              "prefix": "{{steps.gate.sitePrefix}}",
+              "condition": "steps.gate.doPurgeSite"
+            }
+          },
+          {
+            "id": "del",
+            "name": "del",
+            "config": {
+              "recordId": "request.query.id",
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0",
+              "condition": "steps.gate.doDelete"
+            },
+            "handlerType": "data_delete"
+          },
+          {
+            "id": "response",
+            "name": "response",
+            "config": {
+              "body": "{\"deleted\":true,\"id\":\"{{request.query.id}}\"}",
+              "status": 200,
+              "condition": "steps.gate.doDelete",
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          },
+          {
+            "id": "deny401",
+            "name": "deny401",
+            "config": {
+              "body": "{\"error\":\"unauthorized\"}",
+              "status": 401,
+              "condition": "steps.gate.deny401",
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          },
+          {
+            "id": "deny403",
+            "name": "deny403",
+            "config": {
+              "body": "{\"error\":\"forbidden\"}",
+              "status": 403,
+              "condition": "steps.gate.deny403",
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          }
+        ],
+        "description": "Hard-delete one node by id — write-gated (edit/owner) per-folder ACL (ADR-0002). Purges the stored object for files (key mode) and a Site's assets under its content path prefix (prefix mode, trailing slash so a sibling site sharing a name-prefix is untouched); refuses a non-empty folder with 409. Client recurses for subtree delete."
+      },
+      "isEnabled": true,
+      "description": "Delete node — files purged (key), Site assets purged by content prefix (structural storage)"
+    },
+    {
+      "pathPattern": "/api/sign",
+      "method": "POST",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 6,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "proxyType": "pipeline",
+      "pipelineConfig": {
+        "name": "Handoff sign GET",
+        "steps": [
+          {
+            "id": "nodeByKey",
+            "name": "nodeByKey",
+            "config": {
+              "filters": {
+                "storage_path": {
+                  "op": "eq",
+                  "value": "request.body.path"
+                }
+              },
+              "pageSize": 1,
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0"
+            },
+            "handlerType": "data_query"
+          },
+          {
+            "id": "allFolders",
+            "name": "allFolders",
+            "config": {
+              "filters": {
+                "nodeType": {
+                  "op": "in",
+                  "value": [
+                    "folder",
+                    "root"
+                  ]
+                }
+              },
+              "pageSize": 500,
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0"
+            },
+            "handlerType": "data_query"
+          },
+          {
+            "id": "gate",
+            "name": "gate",
+            "config": {
+              "code": "function handler({ user, request, steps, utils }) { var UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/; function readCookie(name){ var raw=(request&&request.headers&&request.headers.cookie)||''; if(Object.prototype.toString.call(raw)==='[object Array]')raw=raw[0]||''; raw=String(raw); var parts=raw.split(';'); for(var i=0;i<parts.length;i++){var kv=parts[i];var p=kv.indexOf('=');if(p<0)continue;var k=kv.slice(0,p).replace(/^\\s+|\\s+$/g,'');if(k===name)return decodeURIComponent(kv.slice(p+1));} return ''; } function vtok(tok){ if(!tok)return null; var d=tok.lastIndexOf('.'); if(d<1)return null; var body=tok.slice(0,d); var sig=tok.slice(d+1); if(!body||!sig)return null; if(!utils.verify(body,sig))return null; var o=null; try{o=JSON.parse(utils.base64urlDecode(body));}catch(e){return null;} if(!o||typeof o!=='object')return null; if(typeof o.exp!=='number'||Date.now()>o.exp)return null; return o; } function rank(l){return l==='owner'?3:l==='edit'?2:l==='view'?1:0;} function evalAccess(ch,vw){ if(vw.isAdmin)return 'owner'; if(vw.userId){for(var i=0;i<ch.length;i++){if(ch[i].ownerId===vw.userId)return 'owner';}} var s=0;for(var k=ch.length-1;k>=0;k--){if(ch[k].mode==='restricted'){s=k;break;}} var best='none';for(var d=s;d<ch.length;d++){var gs=ch[d].grants||[];for(var e=0;e<gs.length;e++){var g=gs[e]||{};if(g.principalId==='anyone'){if(rank('view')>rank(best))best='view';}else if(vw.userId&&g.principalId===vw.userId&&rank(g.level)>rank(best))best=g.level;}} if(!vw.userId&&vw.shareLinkFolderId){var inC=false;for(var j=0;j<ch.length;j++){if(ch[j].id===vw.shareLinkFolderId){inC=true;break;}}if(inC&&rank('view')>rank(best))best='view';} return best; } function folderChain(folders,startId){ var byId={};var rootId='';for(var a=0;a<folders.length;a++){var f=folders[a]||{};var id=f.id||f.recordId||f.record_id;if(id){byId[id]=f;if(f.nodeType==='root')rootId=id;}} var rev=[];var cur=(String(startId||'')==='root'&&rootId)?rootId:String(startId||'');var g=0; while(cur&&UUID.test(cur)&&byId[cur]&&g<64){var n=byId[cur];var gr=n.grantsJson;if(typeof gr==='string'){try{gr=JSON.parse(gr);}catch(e){gr=[];}}if(!gr||Object.prototype.toString.call(gr)!=='[object Array]')gr=[];rev.push({id:cur,ownerId:n.ownerId||null,grants:gr,mode:n.mode==='restricted'?'restricted':'inheriting'});cur=(n.parentId==='root'&&rootId)?rootId:(n.parentId||'');g++;} var ch=[];for(var b=rev.length-1;b>=0;b--)ch.push(rev[b]);return ch; } var uid=(user&&user.id)||null; var isAdmin=!!user&&user.role==='admin'; var stok=vtok(readCookie('hf_s')); var shareFolderId=(stok&&stok.s)?String(stok.s):''; var ftok=vtok(readCookie('hf_f')); var viewer; if(uid)viewer={userId:uid,isAdmin:isAdmin}; else if(shareFolderId)viewer={shareLinkFolderId:shareFolderId}; else viewer={}; var folders=(steps&&steps.allFolders)||[]; var rows=(steps&&steps.nodeByKey)||[]; var node=(rows&&rows.length)?rows[0]:null; var allow=false; var level='none'; if(node){ var ch=folderChain(folders,node.parentId); ch.push({id:node.id,ownerId:node.ownerId||null,grants:[],mode:'inheriting'}); level=evalAccess(ch,viewer); allow=level!=='none'; } else { allow=isAdmin; } var hasCred=!!uid||!!shareFolderId||!!ftok; var deny401=!allow&&!hasCred; var deny403=!allow&&hasCred; return {allow:allow,deny401:deny401,deny403:deny403,level:level}; }"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "sign",
+            "name": "sign",
+            "config": {
+              "path": "request.body.path",
+              "condition": "steps.gate.allow",
+              "expiresIn": 3600
+            },
+            "handlerType": "signed_url"
+          },
+          {
+            "id": "response",
+            "name": "response",
+            "config": {
+              "body": "{\"signed\": {{{steps.sign}}}}",
+              "status": 200,
+              "condition": "steps.gate.allow",
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          },
+          {
+            "id": "deny401",
+            "name": "deny401",
+            "config": {
+              "body": "{\"error\":\"unauthorized\"}",
+              "status": 401,
+              "condition": "steps.gate.deny401",
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          },
+          {
+            "id": "deny403",
+            "name": "deny403",
+            "config": {
+              "body": "{\"error\":\"forbidden\"}",
+              "status": 403,
+              "condition": "steps.gate.deny403",
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          }
+        ],
+        "description": "Presigned GET for direct bucket playback (video/audio) — gated by per-folder ACL (ADR-0002). Resolves the file node by storage_path and requires view+ access (or admin); no cookie fallback since this mints a bucket URL."
+      },
+      "isEnabled": true,
+      "description": "Mint a short-lived presigned GET URL for a content object (video/audio direct play)"
+    },
+    {
+      "pathPattern": "/api/folders",
+      "method": "POST",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 7,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "proxyType": "pipeline",
+      "pipelineConfig": {
+        "name": "Handoff create folder",
+        "steps": [
+          {
+            "id": "create",
+            "name": "create",
+            "config": {
+              "fields": {
+                "mode": "'inheriting'",
+                "ownerId": "user.id",
+                "nodeType": "'folder'",
+                "parentId": "request.body.parentId",
+                "createdMs": "request.body.createdMs",
+                "displayName": "request.body.name"
+              },
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0"
+            },
+            "handlerType": "data_create"
+          },
+          {
+            "id": "shape",
+            "name": "shape",
+            "config": {
+              "code": "function handler({ request, steps }) {\n  var r = (steps && steps.create) || {};\n  var body = (request && request.body) || {};\n  var created = (r.createdMs != null) ? Number(r.createdMs) : (body.createdMs != null ? Number(body.createdMs) : 0);\n  return {\n    node: {\n      id: r.id || r.recordId || r.record_id || null,\n      type: r.nodeType || 'folder',\n      name: r.displayName || body.name || 'Untitled folder',\n      mime: null, size: null, url: null, storageKey: null,\n      parentId: r.parentId || body.parentId || 'root',\n      ownerId: r.ownerId || null,\n      mode: r.mode || 'inheriting',\n      grants: [],\n      createdAt: (created != null && !isNaN(created)) ? created : 0\n    }\n  };\n}"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "response",
+            "name": "response",
+            "config": {
+              "body": "{\"node\": {{{steps.shape.node}}}}",
+              "status": 200,
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          }
+        ],
+        "description": "Create a folder node and return the shaped Node"
+      },
+      "isEnabled": true,
+      "description": "Create a folder node under a parent"
+    },
+    {
+      "pathPattern": "/api/sites",
+      "method": "POST",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 9,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "proxyType": "pipeline",
+      "pipelineConfig": {
+        "name": "Handoff register site",
+        "steps": [
+          {
+            "id": "pre",
+            "name": "pre",
+            "config": {
+              "code": "function handler({ request }) { var b = (request && request.body) || {}; var pid = (b.parentId != null) ? String(b.parentId) : ''; var name = (b.name != null) ? String(b.name) : ''; return { parentId: pid, name: name, check: pid !== '' && name !== '' }; }"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "sibling",
+            "name": "sibling",
+            "config": {
+              "filters": {
+                "parentId": {
+                  "op": "eq",
+                  "value": "request.body.parentId"
+                }
+              },
+              "pageSize": 500,
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0",
+              "condition": "steps.pre.check"
+            },
+            "handlerType": "data_query"
+          },
+          {
+            "id": "guard",
+            "name": "guard",
+            "config": {
+              "code": "function handler({ user, steps }) { var pre = (steps && steps.pre) || {}; if (!pre.check) return { collision: false, ok: true }; var uid = (user && user.id) || null; var isRoot = pre.parentId === 'root'; var rows = (steps && steps.sibling) || []; var hit = false; for (var i = 0; i < rows.length; i++) { var r = rows[i] || {}; if (isRoot && r.ownerId !== uid) continue; var nm = (r.displayName != null) ? r.displayName : ((r.original_name != null) ? r.original_name : r.filename); if (nm === pre.name) { hit = true; break; } } return { collision: hit, ok: !hit }; }"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "build",
+            "name": "build",
+            "config": {
+              "code": "function handler({ request, deployment }) { var body = (request && request.body) || {}; var path = String(body.path || ''); var entry = String(body.entry || 'index.html'); var owner = (deployment && deployment.owner) || ''; var repo = (deployment && deployment.repo) || ''; var storagePrefix = (path && owner && repo) ? (owner + '/' + repo + '/uploads/content/' + path) : ''; var url = path ? ('/api/uploads/content/' + path + '/' + entry) : null; return { path: path, entry: entry, storagePrefix: storagePrefix, url: url }; }"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "create",
+            "name": "create",
+            "config": {
+              "fields": {
+                "mode": "'inheriting'",
+                "url": "steps.build.url",
+                "ownerId": "user.id",
+                "nodeType": "'site'",
+                "parentId": "request.body.parentId",
+                "createdMs": "request.body.createdMs",
+                "siteEntry": "steps.build.entry",
+                "storage_path": "steps.build.storagePrefix",
+                "displayName": "request.body.name"
+              },
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0",
+              "condition": "steps.guard.ok"
+            },
+            "handlerType": "data_create"
+          },
+          {
+            "id": "shape",
+            "name": "shape",
+            "config": {
+              "code": "function handler({ request, steps }) {\n  var r = (steps && steps.create) || {};\n  var body = (request && request.body) || {};\n  var build = (steps && steps.build) || {};\n  var id = r.id || r.recordId || r.record_id || null;\n  var entry = r.siteEntry || build.entry || body.entry || 'index.html';\n  var created = (r.createdMs != null) ? Number(r.createdMs) : (body.createdMs != null ? Number(body.createdMs) : 0);\n  var url = r.url || build.url || null;\n  return {\n    node: {\n      id: id, type: r.nodeType || 'site',\n      name: r.displayName || body.name || 'Untitled site',\n      mime: null, size: null, url: url, storageKey: null,\n      path: build.path || null,\n      parentId: r.parentId || body.parentId || 'root',\n      ownerId: r.ownerId || null,\n      mode: r.mode || 'inheriting', grants: [],\n      siteEntry: entry,\n      createdAt: (created != null && !isNaN(created)) ? created : 0\n    }\n  };\n}",
+              "condition": "steps.guard.ok"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "response",
+            "name": "response",
+            "config": {
+              "body": "{\"node\": {{{steps.shape.node}}}}",
+              "status": 200,
+              "condition": "steps.guard.ok",
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          },
+          {
+            "id": "conflict",
+            "name": "conflict",
+            "config": {
+              "body": "{\"error\":\"An item with that name already exists in this folder. Rename it and try again.\"}",
+              "status": 409,
+              "condition": "steps.guard.collision",
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          }
+        ],
+        "description": "Create a site node at its content path prefix (storage_path = owner/repo/uploads/content/<path>; url = the Entry's content URL) and return the shaped Node. No manifest — assets serve by path passthrough on the unified content endpoint (structural storage). Rejects (409) a name that duplicates an existing sibling in the target Folder (in-Folder uniqueness)."
+      },
+      "isEnabled": true,
+      "description": "Register a Site node at its content path prefix, no manifest (structural storage)"
+    },
+    {
+      "pathPattern": "/api/grants",
+      "method": "POST",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 11,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "proxyType": "pipeline",
+      "pipelineConfig": {
+        "name": "Handoff add grant",
+        "steps": [
+          {
+            "id": "resolveRootPre",
+            "name": "resolveRootPre",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ request, user }) { var b=(request&&request.body)||{}; var q=(request&&request.query)||{}; var fid=String(b.folderId||q.folderId||''); var isRoot=fid==='root'; var isAdmin=!!user&&user.role==='admin'; return { folderId: fid, isRoot: isRoot, isAdmin: isAdmin }; }"
+            }
+          },
+          {
+            "id": "rootRecord",
+            "name": "rootRecord",
+            "handlerType": "data_query",
+            "config": {
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0",
+              "filters": {
+                "nodeType": {
+                  "op": "eq",
+                  "value": "root"
+                }
+              },
+              "pageSize": 1,
+              "condition": "steps.resolveRootPre.isRoot"
+            }
+          },
+          {
+            "id": "rootGate",
+            "name": "rootGate",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ steps }) {\n  var pre = (steps && steps.resolveRootPre) || {};\n  var rows = (steps && steps.rootRecord);\n  var exists = false;\n  if (Object.prototype.toString.call(rows) === '[object Array]') { exists = rows.length > 0; }\n  else if (rows) { exists = true; }\n  return { shouldCreate: (pre.isRoot === true) && (pre.isAdmin === true) && (exists === false) };\n}",
+              "condition": "steps.resolveRootPre.isRoot"
+            }
+          },
+          {
+            "id": "rootCreate",
+            "name": "rootCreate",
+            "handlerType": "data_create",
+            "config": {
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0",
+              "condition": "steps.rootGate.shouldCreate",
+              "fields": {
+                "nodeType": "root",
+                "displayName": "My Files",
+                "parentId": "",
+                "ownerId": "user.id",
+                "mode": "inheriting",
+                "grantsJson": "[]",
+                "createdMs": "now()"
+              }
+            }
+          },
+          {
+            "id": "resolveRootShape",
+            "name": "resolveRootShape",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ user, steps }) { var pre=steps.resolveRootPre||{}; if(!pre.isRoot){ return { effectiveFolderId: pre.folderId, rootOwnerId: null }; } var rows=steps.rootRecord||[]; var rec=rows.length?rows[0]:(steps.rootCreate||null); var id=rec?(rec.id||rec.recordId||rec.record_id):null; var owner=rec?(rec.ownerId||((user&&user.id)||null)):null; return { effectiveFolderId: id, rootOwnerId: owner }; }"
+            }
+          },
+          {
+            "id": "folder",
+            "name": "folder",
+            "config": {
+              "recordId": "steps.resolveRootShape.effectiveFolderId",
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0",
+              "condition": "steps.resolveRootShape.effectiveFolderId"
+            },
+            "handlerType": "data_query"
+          },
+          {
+            "id": "merge",
+            "name": "merge",
+            "config": {
+              "code": "function handler({ user, request, steps }) {\n  var folder = (steps && steps.folder) || {};\n  var body = (request && request.body) || {};\n  var uid = (user && user.id) || null;\n  var isAdmin = !!user && user.role === 'admin';\n  var isOwner = !!uid && folder.ownerId === uid;\n  var eff = (steps && steps.resolveRootShape && steps.resolveRootShape.effectiveFolderId) || null;\n  if (!isAdmin && !isOwner) {\n    return { allowed: false, denied: true, grants: [], canSave: false };\n  }\n  var existing = folder.grantsJson;\n  if (typeof existing === 'string') {\n    try { existing = JSON.parse(existing); } catch (e) { existing = []; }\n  }\n  if (!existing || Object.prototype.toString.call(existing) !== '[object Array]') {\n    existing = [];\n  }\n  var pid = String(body.principalId || '').trim();\n  var level = (body.level === 'edit') ? 'edit' : 'view';\n  var email = body.principalEmail ? String(body.principalEmail) : null;\n  if (pid === 'anyone') { level = 'view'; email = null; }\n  var out = [];\n  var replaced = false;\n  for (var i = 0; i < existing.length; i++) {\n    var g = existing[i] || {};\n    if (g.principalId === pid && pid) {\n      out.push({ principalId: pid, principalEmail: (pid === 'anyone') ? null : (email || g.principalEmail || null), level: level });\n      replaced = true;\n    } else if (g.principalId) {\n      out.push({ principalId: g.principalId, principalEmail: g.principalEmail || null, level: (g.level === 'edit') ? 'edit' : 'view' });\n    }\n  }\n  if (pid && !replaced) {\n    out.push({ principalId: pid, principalEmail: email, level: level });\n  }\n  return { allowed: true, denied: false, grants: out, canSave: !!eff };\n}"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "save",
+            "name": "save",
+            "config": {
+              "fields": {
+                "grantsJson": "steps.merge.grants"
+              },
+              "recordId": "steps.resolveRootShape.effectiveFolderId",
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0",
+              "condition": "steps.merge.canSave"
+            },
+            "handlerType": "data_update"
+          },
+          {
+            "id": "ok",
+            "name": "ok",
+            "config": {
+              "body": "{\"grants\": {{{steps.merge.grants}}}}",
+              "status": 200,
+              "condition": "steps.merge.allowed",
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          },
+          {
+            "id": "denied",
+            "name": "denied",
+            "config": {
+              "body": "{\"error\":\"forbidden\"}",
+              "status": 403,
+              "condition": "steps.merge.denied",
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          }
+        ],
+        "validators": [
+          {
+            "type": "auth_required",
+            "config": {
+              "allowApiKey": true
+            }
+          }
+        ]
+      },
+      "isEnabled": true,
+      "description": "Add/update a grant on a folder (owner/admin only)"
+    },
+    {
+      "pathPattern": "/api/grants/revoke",
+      "method": "POST",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 12,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "proxyType": "pipeline",
+      "pipelineConfig": {
+        "name": "Handoff revoke grant",
+        "steps": [
+          {
+            "id": "resolveRootPre",
+            "name": "resolveRootPre",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ request, user }) { var b=(request&&request.body)||{}; var q=(request&&request.query)||{}; var fid=String(b.folderId||q.folderId||''); var isRoot=fid==='root'; var isAdmin=!!user&&user.role==='admin'; return { folderId: fid, isRoot: isRoot, isAdmin: isAdmin }; }"
+            }
+          },
+          {
+            "id": "rootRecord",
+            "name": "rootRecord",
+            "handlerType": "data_query",
+            "config": {
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0",
+              "filters": {
+                "nodeType": {
+                  "op": "eq",
+                  "value": "root"
+                }
+              },
+              "pageSize": 1,
+              "condition": "steps.resolveRootPre.isRoot"
+            }
+          },
+          {
+            "id": "resolveRootShape",
+            "name": "resolveRootShape",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ user, steps }) { var pre=steps.resolveRootPre||{}; if(!pre.isRoot){ return { effectiveFolderId: pre.folderId, rootOwnerId: null }; } var rows=steps.rootRecord||[]; var rec=rows.length?rows[0]:(steps.rootCreate||null); var id=rec?(rec.id||rec.recordId||rec.record_id):null; var owner=rec?(rec.ownerId||((user&&user.id)||null)):null; return { effectiveFolderId: id, rootOwnerId: owner }; }"
+            }
+          },
+          {
+            "id": "folder",
+            "name": "folder",
+            "config": {
+              "recordId": "steps.resolveRootShape.effectiveFolderId",
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0",
+              "condition": "steps.resolveRootShape.effectiveFolderId"
+            },
+            "handlerType": "data_query"
+          },
+          {
+            "id": "merge",
+            "name": "merge",
+            "config": {
+              "code": "function handler({ user, request, steps }) {\n  var folder = (steps && steps.folder) || {};\n  var body = (request && request.body) || {};\n  var uid = (user && user.id) || null;\n  var isAdmin = !!user && user.role === 'admin';\n  var isOwner = !!uid && folder.ownerId === uid;\n  var eff = (steps && steps.resolveRootShape && steps.resolveRootShape.effectiveFolderId) || null;\n  if (!isAdmin && !isOwner) {\n    return { allowed: false, denied: true, grants: [], canSave: false };\n  }\n  var existing = folder.grantsJson;\n  if (typeof existing === 'string') {\n    try { existing = JSON.parse(existing); } catch (e) { existing = []; }\n  }\n  if (!existing || Object.prototype.toString.call(existing) !== '[object Array]') {\n    existing = [];\n  }\n  var pid = String(body.principalId || '').trim();\n  var out = [];\n  for (var i = 0; i < existing.length; i++) {\n    var g = existing[i] || {};\n    if (g.principalId && g.principalId !== pid) {\n      out.push({ principalId: g.principalId, principalEmail: g.principalEmail || null, level: (g.level === 'edit') ? 'edit' : 'view' });\n    }\n  }\n  return { allowed: true, denied: false, grants: out, canSave: !!eff };\n}"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "save",
+            "name": "save",
+            "config": {
+              "fields": {
+                "grantsJson": "steps.merge.grants"
+              },
+              "recordId": "steps.resolveRootShape.effectiveFolderId",
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0",
+              "condition": "steps.merge.canSave"
+            },
+            "handlerType": "data_update"
+          },
+          {
+            "id": "ok",
+            "name": "ok",
+            "config": {
+              "body": "{\"grants\": {{{steps.merge.grants}}}}",
+              "status": 200,
+              "condition": "steps.merge.allowed",
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          },
+          {
+            "id": "denied",
+            "name": "denied",
+            "config": {
+              "body": "{\"error\":\"forbidden\"}",
+              "status": 403,
+              "condition": "steps.merge.denied",
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          }
+        ],
+        "validators": [
+          {
+            "type": "auth_required",
+            "config": {
+              "allowApiKey": true
+            }
+          }
+        ]
+      },
+      "isEnabled": true,
+      "description": "Revoke a grant from a folder (owner/admin only)"
+    },
+    {
+      "pathPattern": "/api/grants",
+      "method": "GET",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 13,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "proxyType": "pipeline",
+      "pipelineConfig": {
+        "name": "Handoff list grants",
+        "steps": [
+          {
+            "id": "resolveRootPre",
+            "name": "resolveRootPre",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ request, user }) { var b=(request&&request.body)||{}; var q=(request&&request.query)||{}; var fid=String(b.folderId||q.folderId||''); var isRoot=fid==='root'; var isAdmin=!!user&&user.role==='admin'; return { folderId: fid, isRoot: isRoot, isAdmin: isAdmin }; }"
+            }
+          },
+          {
+            "id": "rootRecord",
+            "name": "rootRecord",
+            "handlerType": "data_query",
+            "config": {
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0",
+              "filters": {
+                "nodeType": {
+                  "op": "eq",
+                  "value": "root"
+                }
+              },
+              "pageSize": 1,
+              "condition": "steps.resolveRootPre.isRoot"
+            }
+          },
+          {
+            "id": "resolveRootShape",
+            "name": "resolveRootShape",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ user, steps }) { var pre=steps.resolveRootPre||{}; if(!pre.isRoot){ return { effectiveFolderId: pre.folderId, rootOwnerId: null }; } var rows=steps.rootRecord||[]; var rec=rows.length?rows[0]:(steps.rootCreate||null); var id=rec?(rec.id||rec.recordId||rec.record_id):null; var owner=rec?(rec.ownerId||((user&&user.id)||null)):null; return { effectiveFolderId: id, rootOwnerId: owner }; }"
+            }
+          },
+          {
+            "id": "folder",
+            "name": "folder",
+            "config": {
+              "recordId": "steps.resolveRootShape.effectiveFolderId",
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0",
+              "condition": "steps.resolveRootShape.effectiveFolderId"
+            },
+            "handlerType": "data_query"
+          },
+          {
+            "id": "shape",
+            "name": "shape",
+            "config": {
+              "code": "function handler({ steps }) {\n  var folder = (steps && steps.folder) || {};\n  var existing = folder.grantsJson;\n  if (typeof existing === 'string') {\n    try { existing = JSON.parse(existing); } catch (e) { existing = []; }\n  }\n  if (!existing || Object.prototype.toString.call(existing) !== '[object Array]') {\n    existing = [];\n  }\n  var out = [];\n  for (var i = 0; i < existing.length; i++) {\n    var g = existing[i] || {};\n    if (g.principalId) {\n      out.push({ principalId: g.principalId, principalEmail: g.principalEmail || null, level: (g.level === 'edit') ? 'edit' : 'view' });\n    }\n  }\n  return { grants: out };\n}"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "response",
+            "name": "response",
+            "config": {
+              "body": "{\"grants\": {{{steps.shape.grants}}}}",
+              "status": 200,
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          }
+        ],
+        "validators": [
+          {
+            "type": "auth_required",
+            "config": {
+              "allowApiKey": true
+            }
+          }
+        ]
+      },
+      "isEnabled": true,
+      "description": "List a folder's grants"
+    },
+    {
+      "pathPattern": "/api/share-links",
+      "method": "POST",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 14,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "proxyType": "pipeline",
+      "pipelineConfig": {
+        "name": "Handoff mint share link",
+        "steps": [
+          {
+            "id": "resolveRootPre",
+            "name": "resolveRootPre",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ request, user }) { var b=(request&&request.body)||{}; var q=(request&&request.query)||{}; var fid=String(b.folderId||q.folderId||''); var isRoot=fid==='root'; var isAdmin=!!user&&user.role==='admin'; return { folderId: fid, isRoot: isRoot, isAdmin: isAdmin }; }"
+            }
+          },
+          {
+            "id": "rootRecord",
+            "name": "rootRecord",
+            "handlerType": "data_query",
+            "config": {
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0",
+              "filters": {
+                "nodeType": {
+                  "op": "eq",
+                  "value": "root"
+                }
+              },
+              "pageSize": 1,
+              "condition": "steps.resolveRootPre.isRoot"
+            }
+          },
+          {
+            "id": "rootGate",
+            "name": "rootGate",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ steps }) {\n  var pre = (steps && steps.resolveRootPre) || {};\n  var rows = (steps && steps.rootRecord);\n  var exists = false;\n  if (Object.prototype.toString.call(rows) === '[object Array]') { exists = rows.length > 0; }\n  else if (rows) { exists = true; }\n  return { shouldCreate: (pre.isRoot === true) && (pre.isAdmin === true) && (exists === false) };\n}",
+              "condition": "steps.resolveRootPre.isRoot"
+            }
+          },
+          {
+            "id": "rootCreate",
+            "name": "rootCreate",
+            "handlerType": "data_create",
+            "config": {
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0",
+              "condition": "steps.rootGate.shouldCreate",
+              "fields": {
+                "nodeType": "root",
+                "displayName": "My Files",
+                "parentId": "",
+                "ownerId": "user.id",
+                "mode": "inheriting",
+                "grantsJson": "[]",
+                "createdMs": "now()"
+              }
+            }
+          },
+          {
+            "id": "resolveRootShape",
+            "name": "resolveRootShape",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ user, steps }) { var pre=steps.resolveRootPre||{}; if(!pre.isRoot){ return { effectiveFolderId: pre.folderId, rootOwnerId: null }; } var rows=steps.rootRecord||[]; var rec=rows.length?rows[0]:(steps.rootCreate||null); var id=rec?(rec.id||rec.recordId||rec.record_id):null; var owner=rec?(rec.ownerId||((user&&user.id)||null)):null; return { effectiveFolderId: id, rootOwnerId: owner }; }"
+            }
+          },
+          {
+            "id": "folder",
+            "name": "folder",
+            "config": {
+              "recordId": "steps.resolveRootShape.effectiveFolderId",
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0",
+              "condition": "steps.resolveRootShape.effectiveFolderId"
+            },
+            "handlerType": "data_query"
+          },
+          {
+            "id": "check",
+            "name": "check",
+            "config": {
+              "code": "function handler({ user, steps }) {\n  var folder = (steps && steps.folder) || {};\n  var uid = (user && user.id) || null;\n  var isAdmin = !!user && user.role === 'admin';\n  var isOwner = !!uid && folder.ownerId === uid;\n  var allowed = isAdmin || isOwner;\n  return { allowed: allowed, denied: !allowed };\n}"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "create",
+            "name": "create",
+            "config": {
+              "fields": {
+                "folderId": "steps.resolveRootShape.effectiveFolderId",
+                "createdBy": "user.id",
+                "createdMs": "request.body.createdMs",
+                "expiresMs": "request.body.expiresMs"
+              },
+              "schemaId": "ace1febf-4b3d-4a11-a5f8-22a056dd9afa",
+              "condition": "steps.check.allowed"
+            },
+            "handlerType": "data_create"
+          },
+          {
+            "id": "shape",
+            "name": "shape",
+            "config": {
+              "code": "function handler({ request, steps }) {\n  var c = (steps && steps.create) || {};\n  var body = (request && request.body) || {};\n  var token = c.id || c.recordId || c.record_id || null;\n  var exp = (body.expiresMs != null) ? Number(body.expiresMs) : null;\n  return {\n    link: {\n      token: token,\n      folderId: body.folderId || null,\n      expiresAt: (exp != null && !isNaN(exp)) ? exp : null,\n      revoked: false,\n      url: token ? ('/s/' + token) : null\n    }\n  };\n}"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "ok",
+            "name": "ok",
+            "config": {
+              "body": "{{{steps.shape.link}}}",
+              "status": 200,
+              "condition": "steps.check.allowed",
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          },
+          {
+            "id": "denied",
+            "name": "denied",
+            "config": {
+              "body": "{\"error\":\"forbidden\"}",
+              "status": 403,
+              "condition": "steps.check.denied",
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          }
+        ],
+        "validators": [
+          {
+            "type": "auth_required",
+            "config": {
+              "allowApiKey": true
+            }
+          }
+        ]
+      },
+      "isEnabled": true,
+      "description": "Mint a folder-scoped View-only share link (owner/admin)"
+    },
+    {
+      "pathPattern": "/api/share-links/validate",
+      "method": "GET",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 15,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "proxyType": "pipeline",
+      "pipelineConfig": {
+        "name": "Handoff validate share link",
+        "steps": [
+          {
+            "id": "parse",
+            "name": "parse",
+            "config": {
+              "code": "function handler({ request }) {\n  var q = (request && request.query) || {};\n  var token = String(q.token || '');\n  var isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(token);\n  return { token: token, hasToken: isUuid };\n}"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "link",
+            "name": "link",
+            "config": {
+              "recordId": "steps.parse.token",
+              "schemaId": "ace1febf-4b3d-4a11-a5f8-22a056dd9afa",
+              "condition": "steps.parse.hasToken"
+            },
+            "handlerType": "data_query"
+          },
+          {
+            "id": "shape",
+            "name": "shape",
+            "config": {
+              "code": "function handler({ steps }) {\n  var l = (steps && steps.link) || {};\n  if (l == null || typeof l !== 'object') l = {};\n  var folderId = l.folderId || null;\n  var revoked = l.revoked === true || l.revoked === 'true';\n  var exp = (l.expiresMs != null) ? Number(l.expiresMs) : null;\n  var expired = (exp != null && !isNaN(exp)) ? (Date.now() > exp) : false;\n  var valid = !!folderId && !revoked && !expired;\n  return { result: { valid: valid, folderId: valid ? folderId : null } };\n}"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "resp",
+            "name": "resp",
+            "config": {
+              "body": "{{{steps.shape.result}}}",
+              "status": 200,
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          }
+        ]
+      },
+      "isEnabled": true,
+      "description": "Validate a share-link token (public)"
+    },
+    {
+      "pathPattern": "/api/share-links/revoke",
+      "method": "POST",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 16,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "proxyType": "pipeline",
+      "pipelineConfig": {
+        "name": "Handoff revoke share link",
+        "steps": [
+          {
+            "id": "link",
+            "name": "link",
+            "config": {
+              "recordId": "request.body.token",
+              "schemaId": "ace1febf-4b3d-4a11-a5f8-22a056dd9afa"
+            },
+            "handlerType": "data_query"
+          },
+          {
+            "id": "check",
+            "name": "check",
+            "config": {
+              "code": "function handler({ user, steps }) {\n  var l = (steps && steps.link) || {};\n  var uid = (user && user.id) || null;\n  var isAdmin = !!user && user.role === 'admin';\n  var isCreator = !!uid && l.createdBy === uid;\n  var allowed = !!l.folderId && (isAdmin || isCreator);\n  return { allowed: allowed, denied: !allowed };\n}"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "save",
+            "name": "save",
+            "config": {
+              "fields": {
+                "revoked": "true"
+              },
+              "recordId": "request.body.token",
+              "schemaId": "ace1febf-4b3d-4a11-a5f8-22a056dd9afa",
+              "condition": "steps.check.allowed"
+            },
+            "handlerType": "data_update"
+          },
+          {
+            "id": "ok",
+            "name": "ok",
+            "config": {
+              "body": "{\"token\":\"{{request.body.token}}\",\"revoked\":true}",
+              "status": 200,
+              "condition": "steps.check.allowed",
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          },
+          {
+            "id": "denied",
+            "name": "denied",
+            "config": {
+              "body": "{\"error\":\"forbidden\"}",
+              "status": 403,
+              "condition": "steps.check.denied",
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          }
+        ],
+        "validators": [
+          {
+            "type": "auth_required",
+            "config": {
+              "allowApiKey": true
+            }
+          }
+        ]
+      },
+      "isEnabled": true,
+      "description": "Revoke a share link (creator/admin)"
+    },
+    {
+      "pathPattern": "/api/share-links",
+      "method": "GET",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 17,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "proxyType": "pipeline",
+      "pipelineConfig": {
+        "name": "Handoff list share links",
+        "steps": [
+          {
+            "id": "resolveRootPre",
+            "name": "resolveRootPre",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ request, user }) { var b=(request&&request.body)||{}; var q=(request&&request.query)||{}; var fid=String(b.folderId||q.folderId||''); var isRoot=fid==='root'; var isAdmin=!!user&&user.role==='admin'; return { folderId: fid, isRoot: isRoot, isAdmin: isAdmin }; }"
+            }
+          },
+          {
+            "id": "rootRecord",
+            "name": "rootRecord",
+            "handlerType": "data_query",
+            "config": {
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0",
+              "filters": {
+                "nodeType": {
+                  "op": "eq",
+                  "value": "root"
+                }
+              },
+              "pageSize": 1,
+              "condition": "steps.resolveRootPre.isRoot"
+            }
+          },
+          {
+            "id": "resolveRootShape",
+            "name": "resolveRootShape",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ user, steps }) { var pre=steps.resolveRootPre||{}; if(!pre.isRoot){ return { effectiveFolderId: pre.folderId, rootOwnerId: null }; } var rows=steps.rootRecord||[]; var rec=rows.length?rows[0]:(steps.rootCreate||null); var id=rec?(rec.id||rec.recordId||rec.record_id):null; var owner=rec?(rec.ownerId||((user&&user.id)||null)):null; return { effectiveFolderId: id, rootOwnerId: owner }; }"
+            }
+          },
+          {
+            "id": "rows",
+            "name": "rows",
+            "config": {
+              "filters": {
+                "folderId": {
+                  "op": "eq",
+                  "value": "steps.resolveRootShape.effectiveFolderId"
+                }
+              },
+              "pageSize": 200,
+              "schemaId": "ace1febf-4b3d-4a11-a5f8-22a056dd9afa",
+              "condition": "steps.resolveRootShape.effectiveFolderId"
+            },
+            "handlerType": "data_query"
+          },
+          {
+            "id": "shape",
+            "name": "shape",
+            "config": {
+              "code": "function handler({ steps }) {\n  var rows = (steps && steps.rows) || [];\n  var out = [];\n  for (var i = 0; i < rows.length; i++) {\n    var l = rows[i] || {};\n    var token = l.id || l.recordId || l.record_id || null;\n    if (!token) continue;\n    var revoked = l.revoked === true || l.revoked === 'true';\n    var exp = (l.expiresMs != null) ? Number(l.expiresMs) : null;\n    out.push({\n      token: token,\n      folderId: l.folderId || null,\n      expiresAt: (exp != null && !isNaN(exp)) ? exp : null,\n      revoked: revoked,\n      url: '/s/' + token,\n      createdAt: (l.createdMs != null) ? Number(l.createdMs) : 0\n    });\n  }\n  return { links: out };\n}"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "resp",
+            "name": "resp",
+            "config": {
+              "body": "{\"links\": {{{steps.shape.links}}}}",
+              "status": 200,
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          }
+        ],
+        "validators": [
+          {
+            "type": "auth_required",
+            "config": {
+              "allowApiKey": true
+            }
+          }
+        ]
+      },
+      "isEnabled": true,
+      "description": "List a folder's active share links"
+    },
+    {
+      "pathPattern": "/api/share-links/claim",
+      "method": "POST",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 18,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "proxyType": "pipeline",
+      "pipelineConfig": {
+        "name": "Handoff claim share link",
+        "steps": [
+          {
+            "id": "parse",
+            "name": "parse",
+            "config": {
+              "code": "function handler({ request }) { var b = (request && request.body) || {}; var token = String(b.token || ''); var isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(token); return { token: token, hasToken: isUuid }; }"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "link",
+            "name": "link",
+            "config": {
+              "recordId": "steps.parse.token",
+              "schemaId": "ace1febf-4b3d-4a11-a5f8-22a056dd9afa",
+              "condition": "steps.parse.hasToken"
+            },
+            "handlerType": "data_query"
+          },
+          {
+            "id": "check",
+            "name": "check",
+            "config": {
+              "code": "function handler({ steps, utils }) { var l = (steps && steps.link) || {}; if (l == null || typeof l !== 'object') l = {}; var folderId = l.folderId || null; var revoked = l.revoked === true || l.revoked === 'true'; var exp = (l.expiresMs != null) ? Number(l.expiresMs) : null; var expired = (exp != null && !isNaN(exp)) ? (Date.now() > exp) : false; var valid = !!folderId && !revoked && !expired; var setCookie = ''; if (valid) { var payload = utils.base64urlEncode(JSON.stringify({ s: String(folderId), exp: Date.now() + 1800000 })); setCookie = 'hf_s=' + payload + '.' + utils.sign(payload) + '; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=1800'; } return { valid: valid, invalid: !valid, folderId: valid ? folderId : null, setCookie: setCookie }; }"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "ok",
+            "name": "ok",
+            "config": {
+              "body": "{\"valid\": true, \"folderId\": \"{{steps.check.folderId}}\"}",
+              "status": 200,
+              "headers": {
+                "Set-Cookie": "{{steps.check.setCookie}}"
+              },
+              "condition": "steps.check.valid",
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          },
+          {
+            "id": "bad",
+            "name": "bad",
+            "config": {
+              "body": "{\"valid\": false, \"folderId\": null}",
+              "status": 200,
+              "condition": "steps.check.invalid",
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          }
+        ],
+        "description": "Validate a share-link token and issue a signed hf_s share cookie (View-only, folder-scoped)."
+      },
+      "isEnabled": true,
+      "description": "Claim a share-link token (public) — validates the token and sets a signed folder-scoped hf_s view cookie the ACL gate accepts (ADR-0002)."
+    },
+    {
+      "pathPattern": "/r/*",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "targetUrl": "pipeline",
+      "stripPrefix": false,
+      "order": 19,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "proxyType": "pipeline",
+      "pipelineConfig": {
+        "name": "Handoff raw file redirect",
+        "steps": [
+          {
+            "id": "parse",
+            "name": "parse",
+            "config": {
+              "code": "function handler({ request }) { var p = (request && request.path) || ''; var marker = '/r/'; var i = p.indexOf(marker); var rest = (i >= 0) ? p.slice(i + marker.length) : ''; var qm = rest.indexOf('?'); if (qm >= 0) rest = rest.slice(0, qm); var slash = rest.indexOf('/'); var fileId = (slash >= 0) ? rest.slice(0, slash) : rest; try { fileId = decodeURIComponent(fileId); } catch (e) {} var query = (request && request.query) || {}; var token = String(query.token || ''); var UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/; var hasBoth = UUID.test(fileId) && UUID.test(token); return { fileId: fileId, token: token, hasBoth: hasBoth }; }"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "link",
+            "name": "link",
+            "config": {
+              "recordId": "steps.parse.token",
+              "schemaId": "ace1febf-4b3d-4a11-a5f8-22a056dd9afa",
+              "condition": "steps.parse.hasBoth"
+            },
+            "handlerType": "data_query"
+          },
+          {
+            "id": "node",
+            "name": "node",
+            "config": {
+              "recordId": "steps.parse.fileId",
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0",
+              "condition": "steps.parse.hasBoth"
+            },
+            "handlerType": "data_query"
+          },
+          {
+            "id": "folders",
+            "name": "folders",
+            "config": {
+              "filters": {
+                "nodeType": {
+                  "op": "in",
+                  "value": [
+                    "folder",
+                    "root"
+                  ]
+                }
+              },
+              "pageSize": 500,
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0",
+              "condition": "steps.parse.hasBoth"
+            },
+            "handlerType": "data_query"
+          },
+          {
+            "id": "check",
+            "name": "check",
+            "config": {
+              "code": "function handler({ steps }) { var UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/; function folderChain(folders,startId){ var byId={};var rootId='';for(var a=0;a<folders.length;a++){var f=folders[a]||{};var id=f.id||f.recordId||f.record_id;if(id){byId[id]=f;if(f.nodeType==='root')rootId=id;}} var rev=[];var cur=(String(startId||'')==='root'&&rootId)?rootId:String(startId||'');var g=0; while(cur&&UUID.test(cur)&&byId[cur]&&g<64){var n=byId[cur];var gr=n.grantsJson;if(typeof gr==='string'){try{gr=JSON.parse(gr);}catch(e){gr=[];}}if(!gr||Object.prototype.toString.call(gr)!=='[object Array]')gr=[];rev.push({id:cur,ownerId:n.ownerId||null,grants:gr,mode:n.mode==='restricted'?'restricted':'inheriting'});cur=(n.parentId==='root'&&rootId)?rootId:(n.parentId||'');g++;} var ch=[];for(var b=rev.length-1;b>=0;b--)ch.push(rev[b]);return ch; } var link=(steps&&steps.link)||{}; if(link==null||typeof link!=='object')link={}; var folderId=link.folderId||null; var revoked=link.revoked===true||link.revoked==='true'; var exp=(link.expiresMs!=null)?Number(link.expiresMs):null; var expired=(exp!=null&&!isNaN(exp))?(Date.now()>exp):false; var tokenOk=!!folderId&&!revoked&&!expired; var node=(steps&&steps.node)||{}; if(node==null||typeof node!=='object')node={}; var storagePath=node.storage_path||''; var isFile=node.nodeType==='file'; var nodeOk=isFile&&!!storagePath; var inFolder=false; if(tokenOk&&nodeOk){var folders=(steps&&steps.folders)||[];if(Object.prototype.toString.call(folders)!=='[object Array]')folders=[];var ch=folderChain(folders,node.parentId);for(var i=0;i<ch.length;i++){if(ch[i].id===folderId){inFolder=true;break;}}} var allow=tokenOk&&nodeOk&&inFolder; return { allow: allow, deny: !allow, storagePath: allow?storagePath:'' }; }"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "sign",
+            "name": "sign",
+            "config": {
+              "path": "steps.check.storagePath",
+              "condition": "steps.check.allow",
+              "expiresIn": 300
+            },
+            "handlerType": "signed_url"
+          },
+          {
+            "id": "ok",
+            "name": "ok",
+            "config": {
+              "body": "",
+              "status": 302,
+              "headers": {
+                "Location": "{{steps.sign.url}}"
+              },
+              "condition": "steps.check.allow",
+              "contentType": "text/plain"
+            },
+            "handlerType": "response_handler"
+          },
+          {
+            "id": "bad",
+            "name": "bad",
+            "config": {
+              "body": "",
+              "status": 404,
+              "condition": "steps.check.deny",
+              "contentType": "text/plain"
+            },
+            "handlerType": "response_handler"
+          }
+        ],
+        "description": "Validate a folder-scoped share token and 302-redirect to a presigned raw file URL."
+      },
+      "isEnabled": true,
+      "description": "Validate a folder-scoped share token and 302-redirect to a presigned raw file URL (one-request access)."
+    },
+    {
+      "pathPattern": "/api/resolve/*",
+      "method": "GET",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 21,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "proxyType": "pipeline",
+      "isEnabled": true,
+      "description": "Resolve a content path (/tree //blob deep link) to its node under the standard ACL gate (path-URLs spec 2026-07-06). Same chain evaluation as the content serve rule; works for owners, nested grantees, and share visitors.",
+      "pipelineConfig": {
+        "name": "Resolve content path",
+        "description": "Decode /api/resolve/<path>, match a file/site by exact storage_path else a folder by name-walk, gate via the folder chain, return the node (with path) or 401/403/404.",
+        "steps": [
+          {
+            "id": "parse",
+            "name": "parse",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ request, deployment }) { var p = (request && request.path) || ''; var marker = '/api/resolve/'; var i = p.indexOf(marker); var rest = (i >= 0) ? p.slice(i + marker.length) : ''; var q = rest.indexOf('?'); if (q >= 0) rest = rest.slice(0, q); var rawSegs = rest.split('/'); var segs = []; var bad = false; for (var s = 0; s < rawSegs.length; s++) { var sg = rawSegs[s]; if (!sg) continue; try { sg = decodeURIComponent(sg); } catch (e) { /* malformed escape - keep raw */ } if (sg === '.' || sg === '..') { bad = true; break; } segs.push(sg); } var path = segs.join('/'); var owner = (deployment && deployment.owner) || ''; var repo = (deployment && deployment.repo) || ''; var hasPath = !bad && segs.length > 0 && !!owner && !!repo; var fullKey = hasPath ? (owner + '/' + repo + '/uploads/content/' + path) : ''; return { path: path, segments: segs, fullKey: fullKey, hasPath: hasPath }; }"
+            }
+          },
+          {
+            "id": "nodeByKey",
+            "name": "nodeByKey",
+            "handlerType": "data_query",
+            "config": {
+              "filters": {
+                "storage_path": {
+                  "op": "eq",
+                  "value": "steps.parse.fullKey"
+                }
+              },
+              "pageSize": 1,
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0",
+              "condition": "steps.parse.hasPath"
+            }
+          },
+          {
+            "id": "allFolders",
+            "name": "allFolders",
+            "handlerType": "data_query",
+            "config": {
+              "filters": {
+                "nodeType": {
+                  "op": "in",
+                  "value": [
+                    "folder",
+                    "root"
+                  ]
+                }
+              },
+              "pageSize": 500,
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0"
+            }
+          },
+          {
+            "id": "gate",
+            "name": "gate",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ user, request, steps, utils }) { var UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/; function readCookie(name){ var raw=(request&&request.headers&&request.headers.cookie)||''; if(Object.prototype.toString.call(raw)==='[object Array]')raw=raw[0]||''; raw=String(raw); var parts=raw.split(';'); for(var i=0;i<parts.length;i++){var kv=parts[i];var p=kv.indexOf('=');if(p<0)continue;var k=kv.slice(0,p).replace(/^\\s+|\\s+$/g,'');if(k===name)return decodeURIComponent(kv.slice(p+1));} return ''; } function vtok(tok){ if(!tok)return null; var d=tok.lastIndexOf('.'); if(d<1)return null; var body=tok.slice(0,d); var sig=tok.slice(d+1); if(!body||!sig)return null; if(!utils.verify(body,sig))return null; var o=null; try{o=JSON.parse(utils.base64urlDecode(body));}catch(e){return null;} if(!o||typeof o!=='object')return null; if(typeof o.exp!=='number'||Date.now()>o.exp)return null; return o; } function rank(l){return l==='owner'?3:l==='edit'?2:l==='view'?1:0;} function evalAccess(ch,vw){ if(vw.isAdmin)return 'owner'; if(vw.userId){for(var i=0;i<ch.length;i++){if(ch[i].ownerId===vw.userId)return 'owner';}} var s=0;for(var k=ch.length-1;k>=0;k--){if(ch[k].mode==='restricted'){s=k;break;}} var best='none';for(var d=s;d<ch.length;d++){var gs=ch[d].grants||[];for(var e=0;e<gs.length;e++){var g=gs[e]||{};if(g.principalId==='anyone'){if(rank('view')>rank(best))best='view';}else if(vw.userId&&g.principalId===vw.userId&&rank(g.level)>rank(best))best=g.level;}} if(!vw.userId&&vw.shareLinkFolderId){var inC=false;for(var j=0;j<ch.length;j++){if(ch[j].id===vw.shareLinkFolderId){inC=true;break;}}if(inC&&rank('view')>rank(best))best='view';} return best; } function folderChain(folders,startId){ var byId={};var rootId='';for(var a=0;a<folders.length;a++){var f=folders[a]||{};var id=f.id||f.recordId||f.record_id;if(id){byId[id]=f;if(f.nodeType==='root')rootId=id;}} var rev=[];var cur=(String(startId||'')==='root'&&rootId)?rootId:String(startId||'');var g=0; while(cur&&UUID.test(cur)&&byId[cur]&&g<64){var n=byId[cur];var gr=n.grantsJson;if(typeof gr==='string'){try{gr=JSON.parse(gr);}catch(e){gr=[];}}if(!gr||Object.prototype.toString.call(gr)!=='[object Array]')gr=[];rev.push({id:cur,ownerId:n.ownerId||null,grants:gr,mode:n.mode==='restricted'?'restricted':'inheriting'});cur=(n.parentId==='root'&&rootId)?rootId:(n.parentId||'');g++;} var ch=[];for(var b=rev.length-1;b>=0;b--)ch.push(rev[b]);return ch; } var uid=(user&&user.id)||null; var isAdmin=!!user&&user.role==='admin'; var stok=vtok(readCookie('hf_s')); var shareFolderId=(stok&&stok.s)?String(stok.s):''; var viewer; if(uid)viewer={userId:uid,isAdmin:isAdmin}; else if(shareFolderId)viewer={shareLinkFolderId:shareFolderId}; else viewer={}; var folders=(steps&&steps.allFolders)||[]; var byId={}; for(var a=0;a<folders.length;a++){var f=folders[a]||{};var id0=f.id||f.recordId||f.record_id;if(id0)byId[id0]=f;} function folderPath(startId){ var names=[]; var cur=String(startId||''); var g=0; while(cur&&UUID.test(cur)&&byId[cur]&&g<64){ names.push(String(byId[cur].displayName||'Untitled')); cur=byId[cur].parentId||''; g++; } var out=[]; for(var b=names.length-1;b>=0;b--)out.push(names[b]); return out.join('/'); } var CONTENT='/api/uploads/content/'; function shapeRow(r,path){ var id=r.id||r.recordId||r.record_id||null; var t=r.nodeType||'file'; var size=(typeof r.size==='number')?r.size:(r.size!=null?Number(r.size):null); var created=(typeof r.createdMs==='number')?r.createdMs:(r.createdMs!=null?Number(r.createdMs):0); var grants=r.grantsJson; if(typeof grants==='string'){try{grants=JSON.parse(grants);}catch(e){grants=[];}} if(!grants||Object.prototype.toString.call(grants)!=='[object Array]')grants=[]; return { id:id, type:t, name:r.displayName||r.original_name||r.filename||'Untitled', mime:r.content_type||r.mime_type||null, size:(size!=null&&!isNaN(size))?size:null, url:r.url||null, storageKey:r.storage_path||null, path:path, parentId:r.parentId||'root', ownerId:r.ownerId||null, mode:r.mode||'inheriting', grants:grants, createdAt:(created!=null&&!isNaN(created))?created:0 }; } var segs=(steps&&steps.parse&&steps.parse.segments)||[]; var reqPath=(steps&&steps.parse&&steps.parse.path)||''; var hasPath=!!(steps&&steps.parse&&steps.parse.hasPath); var rows=(steps&&steps.nodeByKey)||[]; var hit=(rows&&rows.length)?rows[0]:null; var node=null; var ch=null; if(hit&&hasPath){ var hid=hit.id||hit.recordId||hit.record_id; ch=folderChain(folders,hit.parentId); ch.push({id:hid,ownerId:hit.ownerId||null,grants:[],mode:'inheriting'}); node=shapeRow(hit,reqPath); } else if(hasPath&&segs.length){ var curParent='root'; var cur=null; var curId=null; var ok=true; for(var i=0;i<segs.length;i++){ var found=null; var foundId=null; for(var fid in byId){ var ff=byId[fid]; if(String(ff.parentId||'root')===curParent&&String(ff.displayName||'')===segs[i]){found=ff;foundId=fid;break;} } if(!found){ok=false;break;} cur=found; curId=foundId; curParent=foundId; } if(ok&&cur){ ch=folderChain(folders,curId); node=shapeRow(cur,reqPath); } } var resolved=!!node; var level='none'; var allow=false; if(resolved){ level=evalAccess(ch,viewer); allow=level!=='none'; } var hasCred=!!uid||!!shareFolderId; var deny401=!allow&&resolved&&!hasCred; var deny403=!allow&&resolved&&hasCred; var deny404=!resolved; return { allow:allow, deny401:deny401, deny403:deny403, deny404:deny404, level:level, node:node }; }"
+            }
+          },
+          {
+            "id": "respond",
+            "name": "respond",
+            "handlerType": "response_handler",
+            "config": {
+              "body": "{\"node\": {{{steps.gate.node}}}}",
+              "status": 200,
+              "condition": "steps.gate.allow",
+              "contentType": "application/json"
+            }
+          },
+          {
+            "id": "deny404",
+            "name": "deny404",
+            "handlerType": "response_handler",
+            "config": {
+              "body": "{\"error\":\"not found\"}",
+              "status": 404,
+              "condition": "steps.gate.deny404",
+              "contentType": "application/json"
+            }
+          },
+          {
+            "id": "deny401",
+            "name": "deny401",
+            "handlerType": "response_handler",
+            "config": {
+              "body": "{\"error\":\"unauthorized\"}",
+              "status": 401,
+              "condition": "steps.gate.deny401",
+              "contentType": "application/json"
+            }
+          },
+          {
+            "id": "deny403",
+            "name": "deny403",
+            "handlerType": "response_handler",
+            "config": {
+              "body": "{\"error\":\"forbidden\"}",
+              "status": 403,
+              "condition": "steps.gate.deny403",
+              "contentType": "application/json"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "pathPattern": "/api/node/meta",
+      "method": "PATCH",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 30,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "proxyType": "pipeline",
+      "isEnabled": true,
+      "description": "Set a File/Site's display title + description; edit on the parent folder required",
+      "pipelineConfig": {
+        "name": "node-set-meta",
+        "steps": [
+          {
+            "id": "pre",
+            "name": "pre",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ request }) { var b=(request&&request.body)||{}; var id=String(b.id||''); var UUID=/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/; var hasTitle=(typeof b.title==='string'); var hasDescription=(typeof b.description==='string'); var titleRaw=hasTitle?String(b.title).replace(/^\\s+|\\s+$/g,''):''; var title=hasTitle?(titleRaw?titleRaw.slice(0,200):null):null; var description=hasDescription?(String(b.description)?String(b.description).slice(0,2000):null):null; var idOk=!!id&&UUID.test(id); var hasField=hasTitle||hasDescription; return { id:id, idOk:idOk, hasTitle:hasTitle, hasDescription:hasDescription, title:title, description:description, hasField:hasField }; }"
+            }
+          },
+          {
+            "id": "query",
+            "name": "query",
+            "handlerType": "data_query",
+            "config": { "recordId": "request.body.id", "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0", "condition": "steps.pre.idOk" }
+          },
+          {
+            "id": "allFolders",
+            "name": "allFolders",
+            "handlerType": "data_query",
+            "config": { "filters": { "nodeType": { "op": "in", "value": ["folder", "root"] } }, "pageSize": 500, "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0" }
+          },
+          {
+            "id": "gate",
+            "name": "gate",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ user, request, steps, utils }) { var UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/; function readCookie(name){ var raw=(request&&request.headers&&request.headers.cookie)||''; if(Object.prototype.toString.call(raw)==='[object Array]')raw=raw[0]||''; raw=String(raw); var parts=raw.split(';'); for(var i=0;i<parts.length;i++){var kv=parts[i];var p=kv.indexOf('=');if(p<0)continue;var k=kv.slice(0,p).replace(/^\\s+|\\s+$/g,'');if(k===name)return decodeURIComponent(kv.slice(p+1));} return ''; } function vtok(tok){ if(!tok)return null; var d=tok.lastIndexOf('.'); if(d<1)return null; var body=tok.slice(0,d); var sig=tok.slice(d+1); if(!body||!sig)return null; if(!utils.verify(body,sig))return null; var o=null; try{o=JSON.parse(utils.base64urlDecode(body));}catch(e){return null;} if(!o||typeof o!=='object')return null; if(typeof o.exp!=='number'||Date.now()>o.exp)return null; return o; } function rank(l){return l==='owner'?3:l==='edit'?2:l==='view'?1:0;} function evalAccess(ch,vw){ if(vw.isAdmin)return 'owner'; if(vw.userId){for(var i=0;i<ch.length;i++){if(ch[i].ownerId===vw.userId)return 'owner';}} var s=0;for(var k=ch.length-1;k>=0;k--){if(ch[k].mode==='restricted'){s=k;break;}} var best='none';for(var d=s;d<ch.length;d++){var gs=ch[d].grants||[];for(var e=0;e<gs.length;e++){var g=gs[e]||{};if(g.principalId==='anyone'){if(rank('view')>rank(best))best='view';}else if(vw.userId&&g.principalId===vw.userId&&rank(g.level)>rank(best))best=g.level;}} if(!vw.userId&&vw.shareLinkFolderId){var inC=false;for(var j=0;j<ch.length;j++){if(ch[j].id===vw.shareLinkFolderId){inC=true;break;}}if(inC&&rank('view')>rank(best))best='view';} return best; } function folderChain(folders,startId){ var byId={};var rootId='';for(var a=0;a<folders.length;a++){var f=folders[a]||{};var id=f.id||f.recordId||f.record_id;if(id){byId[id]=f;if(f.nodeType==='root')rootId=id;}} var rev=[];var cur=(String(startId||'')==='root'&&rootId)?rootId:String(startId||'');var g=0; while(cur&&UUID.test(cur)&&byId[cur]&&g<64){var n=byId[cur];var gr=n.grantsJson;if(typeof gr==='string'){try{gr=JSON.parse(gr);}catch(e){gr=[];}}if(!gr||Object.prototype.toString.call(gr)!=='[object Array]')gr=[];rev.push({id:cur,ownerId:n.ownerId||null,grants:gr,mode:n.mode==='restricted'?'restricted':'inheriting'});cur=(n.parentId==='root'&&rootId)?rootId:(n.parentId||'');g++;} var ch=[];for(var b=rev.length-1;b>=0;b--)ch.push(rev[b]);return ch; } var pre=(steps&&steps.pre)||{}; var uid=(user&&user.id)||null; var isAdmin=!!user&&user.role==='admin'; var stok=vtok(readCookie('hf_s')); var shareFolderId=(stok&&stok.s)?String(stok.s):''; var ftok=vtok(readCookie('hf_f')); var viewer; if(uid)viewer={userId:uid,isAdmin:isAdmin}; else if(shareFolderId)viewer={shareLinkFolderId:shareFolderId}; else viewer={}; var folders=(steps&&steps.allFolders)||[]; var node=(steps&&steps.query)||null; if(node&&typeof node==='object'){ var hasId=node.id||node.recordId||node.record_id; if(!hasId)node=null; } else { node=null; } var nodeType=node?(node.nodeType||'file'):''; var isLeaf=(nodeType==='file'||nodeType==='site'); var badRequest=(pre.idOk!==true)||(pre.hasField!==true)||!node||!isLeaf; var level='none'; var allow=false; if(node&&isLeaf){ var nid=node.id||node.recordId||node.record_id; var ch=folderChain(folders,node.parentId); ch.push({id:nid,ownerId:node.ownerId||null,grants:[],mode:'inheriting'}); level=evalAccess(ch,viewer); allow=rank(level)>=2; } var hasCred=!!uid||!!shareFolderId||!!ftok; var deny401=!badRequest&&!allow&&!hasCred; var deny403=!badRequest&&!allow&&hasCred; var doSave=!badRequest&&allow; return { badRequest:badRequest, deny401:deny401, deny403:deny403, doSave:doSave, level:level, doSaveTitle:(doSave===true && pre.hasTitle===true), doSaveDescription:(doSave===true && pre.hasDescription===true) }; }"
+            }
+          },
+          {
+            "id": "saveTitle",
+            "name": "saveTitle",
+            "handlerType": "data_update",
+            "config": { "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0", "recordId": "steps.pre.id", "fields": { "title": "steps.pre.title" }, "condition": "steps.gate.doSaveTitle" }
+          },
+          {
+            "id": "saveDescription",
+            "name": "saveDescription",
+            "handlerType": "data_update",
+            "config": { "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0", "recordId": "steps.pre.id", "fields": { "description": "steps.pre.description" }, "condition": "steps.gate.doSaveDescription" }
+          },
+          {
+            "id": "final",
+            "name": "final",
+            "handlerType": "data_query",
+            "config": { "recordId": "steps.pre.id", "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0", "condition": "steps.gate.doSave" }
+          },
+          {
+            "id": "shape",
+            "name": "shape",
+            "handlerType": "function_handler",
+            "config": { "code": "function handler({ steps }) { var r=(steps&&steps.final)||{}; if(r==null||typeof r!=='object')r={}; var id=(steps&&steps.pre&&steps.pre.id)||''; var t=(r.title!=null&&String(r.title)!=='')?String(r.title):null; var de=(r.description!=null&&String(r.description)!=='')?String(r.description):null; return { body: JSON.stringify({ id:id, title:t, description:de }) }; }" }
+          },
+          {
+            "id": "ok",
+            "name": "ok",
+            "handlerType": "response_handler",
+            "config": { "body": "{{{steps.shape.body}}}", "status": 200, "condition": "steps.gate.doSave", "contentType": "application/json" }
+          },
+          {
+            "id": "bad",
+            "name": "bad",
+            "handlerType": "response_handler",
+            "config": { "body": "{\"error\":\"invalid request\"}", "status": 400, "condition": "steps.gate.badRequest", "contentType": "application/json" }
+          },
+          {
+            "id": "deny401",
+            "name": "deny401",
+            "handlerType": "response_handler",
+            "config": { "body": "{\"error\":\"unauthorized\"}", "status": 401, "condition": "steps.gate.deny401", "contentType": "application/json" }
+          },
+          {
+            "id": "deny403",
+            "name": "deny403",
+            "handlerType": "response_handler",
+            "config": { "body": "{\"error\":\"forbidden\"}", "status": 403, "condition": "steps.gate.deny403", "contentType": "application/json" }
+          }
+        ]
+      }
+    },
+    {
+      "pathPattern": "/api/node",
+      "method": "PATCH",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 31,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "proxyType": "pipeline",
+      "isEnabled": true,
+      "description": "Set a folder's inheritance mode (inheriting|restricted); owner/admin only",
+      "pipelineConfig": {
+        "name": "node-set-mode",
+        "steps": [
+          {
+            "id": "pre",
+            "name": "pre",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ request, user }) { var b=(request&&request.body)||{}; var id=String(b.id||''); var mode=(b.mode==='restricted')?'restricted':((b.mode==='inheriting')?'inheriting':''); var hasMode=!!mode; var hasFeedExcluded=(typeof b.feedExcluded==='boolean'); var feedExcluded=(b.feedExcluded===true); var UUID=/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/; var valid=!!id&&UUID.test(id)&&(hasMode||hasFeedExcluded); return { id: id, mode: mode, hasMode: hasMode, hasFeedExcluded: hasFeedExcluded, feedExcluded: feedExcluded, valid: valid, isAdmin: !!user&&user.role==='admin', uid: (user&&user.id)||null }; }"
+            }
+          },
+          {
+            "id": "folder",
+            "name": "folder",
+            "handlerType": "data_query",
+            "config": {
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0",
+              "recordId": "steps.pre.id",
+              "condition": "steps.pre.valid"
+            }
+          },
+          {
+            "id": "check",
+            "name": "check",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ steps }) { var pre=steps.pre||{}; var f=steps.folder||null; var isFolder=!!f&&f.nodeType==='folder'; var isOwner=!!pre.uid&&!!f&&f.ownerId===pre.uid; var bad=(pre.valid!==true)||!isFolder; var allowed=!bad&&(pre.isAdmin===true||isOwner); return { allowed: allowed, badRequest: bad, denied: !allowed&&!bad, saveMode: allowed&&pre.hasMode===true, saveFeedExcluded: allowed&&pre.hasFeedExcluded===true }; }"
+            }
+          },
+          {
+            "id": "saveMode",
+            "name": "saveMode",
+            "handlerType": "data_update",
+            "config": {
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0",
+              "recordId": "steps.pre.id",
+              "fields": {
+                "mode": "steps.pre.mode"
+              },
+              "condition": "steps.check.saveMode"
+            }
+          },
+          {
+            "id": "saveFeedExcluded",
+            "name": "saveFeedExcluded",
+            "handlerType": "data_update",
+            "config": {
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0",
+              "recordId": "steps.pre.id",
+              "fields": {
+                "feedExcluded": "steps.pre.feedExcluded"
+              },
+              "condition": "steps.check.saveFeedExcluded"
+            }
+          },
+          {
+            "id": "ok",
+            "name": "ok",
+            "handlerType": "response_handler",
+            "config": {
+              "body": "{\"id\": \"{{steps.pre.id}}\", \"mode\": \"{{steps.pre.mode}}\"}",
+              "status": 200,
+              "condition": "steps.check.allowed",
+              "contentType": "application/json"
+            }
+          },
+          {
+            "id": "bad",
+            "name": "bad",
+            "handlerType": "response_handler",
+            "config": {
+              "body": "{\"error\":\"invalid request\"}",
+              "status": 400,
+              "condition": "steps.check.badRequest",
+              "contentType": "application/json"
+            }
+          },
+          {
+            "id": "denied",
+            "name": "denied",
+            "handlerType": "response_handler",
+            "config": {
+              "body": "{\"error\":\"forbidden\"}",
+              "status": 403,
+              "condition": "steps.check.denied",
+              "contentType": "application/json"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "pathPattern": "/feed/*",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "targetUrl": "pipeline",
+      "stripPrefix": false,
+      "order": 32,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "proxyType": "pipeline",
+      "isEnabled": true,
+      "description": "Public folder RSS feed (Handoff RSS spine #188): /feed/*",
+      "pipelineConfig": {
+        "name": "Public folder RSS feed",
+        "description": "Resolve /feed/<path>.xml (or /feed.xml for root) to a folder, flatten its publicly-viewable subtree to leaves, and emit RSS 2.0 (application/rss+xml). Evaluates access as the Anyone principal so private descendants are excluded; a private feed passes a Share Link ?token= (ADR-0008), evaluated as that share-link viewer so the folder + subtree surface with the token threaded into every item link and enclosure (#189).",
+        "steps": [
+          {
+            "id": "parse",
+            "name": "parse",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ request }) {\n  var p = (request && request.path) || '';\n  var q = p.indexOf('?');\n  if (q >= 0) p = p.slice(0, q);\n\n  // request.path is the internal rewritten path (a deployment prefix + the app\n  // route). The deployment prefix contains no '/feed/' segment, so the FIRST\n  // '/feed/' marks the folder feed route; without it the request is the root\n  // feed ('/feed.xml', which has no '/feed/' segment).\n  var rest;\n  var marker = '/feed/';\n  var i = p.indexOf(marker);\n  if (i >= 0) {\n    rest = p.slice(i + marker.length);\n    if (rest.slice(-4) === '.xml') rest = rest.slice(0, -4);\n  } else {\n    rest = '';\n  }\n\n  var rawSegs = rest.split('/');\n  var segs = [];\n  var bad = false;\n  for (var s = 0; s < rawSegs.length; s++) {\n    var sg = rawSegs[s];\n    if (!sg) continue;\n    try { sg = decodeURIComponent(sg); } catch (e) { /* malformed escape - keep raw */ }\n    if (sg === '.' || sg === '..') { bad = true; break; }\n    segs.push(sg);\n  }\n\n  // A private feed carries a Share Link ?token= (ADR-0008); surface it (and\n  // whether it is a well-formed UUID) so the link lookup + gate can run.\n  var query = (request && request.query) || {};\n  var token = String(query.token || '');\n  var UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;\n  var hasToken = UUID.test(token);\n\n  return {\n    path: segs.join('/'),\n    segments: segs,\n    isRoot: segs.length === 0,\n    bad: bad,\n    token: token,\n    hasToken: hasToken\n  };\n}\n"
+            }
+          },
+          {
+            "id": "allNodes",
+            "name": "allNodes",
+            "handlerType": "data_query",
+            "config": {
+              "filters": {
+                "nodeType": {
+                  "op": "in",
+                  "value": [
+                    "folder",
+                    "root",
+                    "file",
+                    "site"
+                  ]
+                }
+              },
+              "pageSize": 1000,
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0"
+            }
+          },
+          {
+            "id": "link",
+            "name": "link",
+            "handlerType": "data_query",
+            "config": {
+              "recordId": "steps.parse.token",
+              "schemaId": "ace1febf-4b3d-4a11-a5f8-22a056dd9afa",
+              "condition": "steps.parse.hasToken"
+            }
+          },
+          {
+            "id": "select",
+            "name": "select",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ request, steps }) {\n  var UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;\n\n  function rank(l){return l==='owner'?3:l==='edit'?2:l==='view'?1:0;}\n  function evalAccess(ch,vw){ if(vw.isAdmin)return 'owner'; if(vw.userId){for(var i=0;i<ch.length;i++){if(ch[i].ownerId===vw.userId)return 'owner';}} var s=0;for(var k=ch.length-1;k>=0;k--){if(ch[k].mode==='restricted'){s=k;break;}} var best='none';for(var d=s;d<ch.length;d++){var gs=ch[d].grants||[];for(var e=0;e<gs.length;e++){var g=gs[e]||{};if(g.principalId==='anyone'){if(rank('view')>rank(best))best='view';}else if(vw.userId&&g.principalId===vw.userId&&rank(g.level)>rank(best))best=g.level;}} if(!vw.userId&&vw.shareLinkFolderId){var inC=false;for(var j=0;j<ch.length;j++){if(ch[j].id===vw.shareLinkFolderId){inC=true;break;}}if(inC&&rank('view')>rank(best))best='view';} return best; }\n  function folderChain(folders,startId){ var byId={};var rootId='';for(var a=0;a<folders.length;a++){var f=folders[a]||{};var id=f.id||f.recordId||f.record_id;if(id){byId[id]=f;if(f.nodeType==='root')rootId=id;}} var rev=[];var cur=(String(startId||'')==='root'&&rootId)?rootId:String(startId||'');var g=0; while(cur&&UUID.test(cur)&&byId[cur]&&g<64){var n=byId[cur];var gr=n.grantsJson;if(typeof gr==='string'){try{gr=JSON.parse(gr);}catch(e){gr=[];}}if(!gr||Object.prototype.toString.call(gr)!=='[object Array]')gr=[];rev.push({id:cur,ownerId:n.ownerId||null,grants:gr,mode:n.mode==='restricted'?'restricted':'inheriting'});cur=(n.parentId==='root'&&rootId)?rootId:(n.parentId||'');g++;} var ch=[];for(var b=rev.length-1;b>=0;b--)ch.push(rev[b]);return ch; }\n\n  // data_query rows are frozen; read the id without mutating the row.\n  function idOf(n) { return (n && (n.id || n.recordId || n.record_id)) || null; }\n\n  var nodes = (steps && steps.allNodes) || [];\n  // Viewer: a tokenless public feed is evaluated as the anonymous public, so a\n  // Restricted-private descendant drops out. A private feed carries a Share\n  // Link ?token= (#189 / ADR-0008) — validate it (folder-scoped, not revoked,\n  // not expired) and evaluate access as that share-link viewer so the folder +\n  // its subtree surface. An invalid/expired/revoked token falls back to the\n  // anonymous public (a private folder then 404s — no existence leak).\n  var token = String((steps && steps.parse && steps.parse.token) || '');\n  var link = (steps && steps.link) || {};\n  if (link == null || typeof link !== 'object') link = {};\n  var linkFolderId = link.folderId || null;\n  var revoked = link.revoked === true || link.revoked === 'true';\n  var exp = (link.expiresMs != null) ? Number(link.expiresMs) : null;\n  var expired = (exp != null && !isNaN(exp)) ? (Date.now() > exp) : false;\n  var tokenOk = !!token && !!linkFolderId && !revoked && !expired;\n  var viewer = tokenOk ? { shareLinkFolderId: linkFolderId } : {};\n  // Threaded into every item link + enclosure (and the self href) so a reader\n  // fetches the feed and its media with the same bearer token.\n  var tokenQs = tokenOk ? ('?token=' + token) : '';\n\n  // Pass 1: index by id and find the root record id.\n  var byId = {};\n  var rootId = '';\n  for (var a = 0; a < nodes.length; a++) {\n    var n0 = nodes[a] || {};\n    var id0 = idOf(n0);\n    if (!id0) continue;\n    byId[id0] = n0;\n    if (n0.nodeType === 'root') rootId = id0;\n  }\n  var rootKey = rootId || 'root';\n\n  // Pass 2: children by NORMALIZED parent — top-level nodes reference the root\n  // as either the 'root' sentinel or the root record's id; unify both to rootKey.\n  var childrenByParent = {};\n  for (var b = 0; b < nodes.length; b++) {\n    var n = nodes[b] || {};\n    var id = idOf(n);\n    if (!id) continue;\n    if (id === rootId) continue;\n    var pid = n.parentId || 'root';\n    if (pid === 'root' || pid === rootId) pid = rootKey;\n    (childrenByParent[pid] = childrenByParent[pid] || []).push(n);\n  }\n\n  // Verbatim content path (display-name chain; the root record is excluded — a\n  // top-level node's path is just its own name).\n  // Verbatim content path = the leaf's storage_path minus the uploads-content\n  // prefix -- the SAME key /api/resolve and the content serve use. NOT rebuilt\n  // from displayName: displayName is a human label (e.g. an API-set title) and\n  // can differ from the stored filename, which 404s the link + media URL.\n  function contentPath(n) {\n    var sp = String((n && n.storage_path) || '');\n    var marker = '/uploads/content/';\n    var i = sp.indexOf(marker);\n    return i >= 0 ? sp.slice(i + marker.length) : '';\n  }\n\n  var segs = (steps && steps.parse && steps.parse.segments) || [];\n  var isRoot = !!(steps && steps.parse && steps.parse.isRoot);\n  var bad = !!(steps && steps.parse && steps.parse.bad);\n\n  // Resolve the target folder by name-walk from the root (folders only).\n  var targetId = null;\n  var targetName = 'My Files';\n  if (!bad && !isRoot) {\n    var curParent = rootKey;\n    var found = null;\n    var ok = true;\n    for (var i = 0; i < segs.length; i++) {\n      var kids = childrenByParent[curParent] || [];\n      var match = null;\n      for (var c = 0; c < kids.length; c++) {\n        var kk = kids[c];\n        if (kk.nodeType === 'folder' && String(kk.displayName || '') === segs[i]) { match = kk; break; }\n      }\n      if (!match) { ok = false; break; }\n      found = match;\n      curParent = idOf(match);\n    }\n    if (ok && found) {\n      targetId = idOf(found);\n      targetName = String(found.displayName || 'Untitled');\n    }\n  } else if (isRoot && !bad) {\n    targetId = rootKey;\n    targetName = 'My Files';\n  }\n\n  var resolvedKey = targetId;\n\n  // Not resolvable, or not publicly viewable -> 404 (no existence leak; a\n  // private feed needs a token, added in #189).\n  var publicOk = false;\n  if (resolvedKey) {\n    publicOk = evalAccess(folderChain(nodes, resolvedKey), viewer) !== 'none';\n  }\n  if (!resolvedKey || !publicOk) {\n    return { found: false, notfound: true, xml: '' };\n  }\n\n  // Flatten the subtree to publicly-viewable leaves.\n  // A feedExcluded folder (#191 / ADR-0007) keeps its whole subtree out of\n  // every feed — its own included — while staying browsable. Rides the walk.\n  function isExcluded(n) { return !!n && (n.feedExcluded === true || n.feedExcluded === 'true'); }\n  var queue = isExcluded(byId[resolvedKey]) ? [] : [resolvedKey];\n  var leaves = [];\n  var guard = 0;\n  while (queue.length && guard < 100000) {\n    guard++;\n    var pk = queue.shift();\n    var kids2 = childrenByParent[pk] || [];\n    for (var qi = 0; qi < kids2.length; qi++) {\n      var kid = kids2[qi];\n      if (kid.nodeType === 'folder') {\n        if (!isExcluded(kid)) queue.push(idOf(kid));\n      } else if (kid.nodeType === 'file' || kid.nodeType === 'site') {\n        if (evalAccess(folderChain(nodes, kid.parentId), viewer) !== 'none') leaves.push(kid);\n      }\n    }\n  }\n\n  function mimeOf(n) { return n.content_type || n.mime_type || null; }\n  function sizeOf(n) {\n    var sv = (typeof n.size === 'number') ? n.size : (n.size != null ? Number(n.size) : null);\n    return (sv != null && !isNaN(sv)) ? sv : null;\n  }\n  function createdOf(n) {\n    var cv = (typeof n.createdMs === 'number') ? n.createdMs : (n.createdMs != null ? Number(n.createdMs) : 0);\n    return (cv != null && !isNaN(cv)) ? cv : 0;\n  }\n\n  var items = [];\n  for (var li = 0; li < leaves.length; li++) {\n    var lf = leaves[li];\n    var lfPath = contentPath(lf);\n    if (!lfPath) continue;\n    items.push({\n      id: idOf(lf),\n      type: lf.nodeType,\n      name: String(lf.displayName || lf.original_name || lf.filename || 'Untitled'),\n      title: (lf.title != null && String(lf.title) !== '') ? String(lf.title) : null,\n      description: (lf.description != null && String(lf.description) !== '') ? String(lf.description) : null,\n      path: lfPath,\n      createdAt: createdOf(lf),\n      mime: mimeOf(lf),\n      size: sizeOf(lf)\n    });\n  }\n  items.sort(function (a, b) { return b.createdAt - a.createdAt; });\n  if (items.length > 50) items = items.slice(0, 50);\n\n  // Render RSS 2.0 (port of src/lib/feed.ts renderFeedXml).\n  function xmlEscape(s) {\n    return String(s)\n      .replace(/&/g, '&amp;')\n      .replace(/</g, '&lt;')\n      .replace(/>/g, '&gt;')\n      .replace(/\"/g, '&quot;')\n      .replace(/'/g, '&apos;');\n  }\n  // HTML-attribute-safe escape for text placed INSIDE a CDATA <img alt=\"...\">.\n  function htmlAttr(s) {\n    return String(s)\n      .replace(/&/g, '&amp;')\n      .replace(/</g, '&lt;')\n      .replace(/>/g, '&gt;')\n      .replace(/\"/g, '&quot;');\n  }\n  function descHtml(s) {\n    return String(s)\n      .replace(/&/g, '&amp;')\n      .replace(/</g, '&lt;')\n      .replace(/>/g, '&gt;')\n      .replace(/\"/g, '&quot;')\n      .replace(/\\r\\n?|\\n/g, '<br>');\n  }\n  function humanSize(bytes) {\n    if (bytes == null || bytes < 0) return '';\n    var u = ['B', 'KB', 'MB', 'GB', 'TB'];\n    var n = bytes, idx = 0;\n    while (n >= 1024 && idx < u.length - 1) { n = n / 1024; idx++; }\n    return (idx === 0 ? String(n) : n.toFixed(1)) + ' ' + u[idx];\n  }\n  function fileSummary(name, size) {\n    var h = humanSize(size);\n    return h ? (name + ' (' + h + ')') : name;\n  }\n  function rfc822(ms) { return new Date(ms).toUTCString(); }\n  function encPath(p) {\n    return String(p).split('/').map(function (x) { return encodeURIComponent(x); }).join('/');\n  }\n  function slugify(name) {\n    var dot = name.lastIndexOf('.');\n    var hasExt = dot > 0;\n    var base = hasExt ? name.slice(0, dot) : name;\n    var ext = hasExt ? name.slice(dot + 1) : '';\n    var baseSlug = base.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'file';\n    var extSlug = ext.toLowerCase().replace(/[^a-z0-9]/g, '');\n    return extSlug ? (baseSlug + '.' + extSlug) : baseSlug;\n  }\n\n  var host = (request && request.headers && request.headers.host) || '';\n  if (Object.prototype.toString.call(host) === '[object Array]') host = host[0] || '';\n  var origin = host ? ('https://' + host) : '';\n  var path = (steps && steps.parse && steps.parse.path) || '';\n  var treeLink = origin + (path ? ('/tree/' + encPath(path)) : '/');\n  var selfHref = origin + (path ? ('/feed/' + encPath(path) + '.xml') : '/feed.xml') + tokenQs;\n  var title = isRoot ? 'My Files' : targetName;\n\n  var out = [];\n  out.push('<?xml version=\"1.0\" encoding=\"UTF-8\"?>');\n  out.push('<rss version=\"2.0\" xmlns:atom=\"http://www.w3.org/2005/Atom\" xmlns:media=\"http://search.yahoo.com/mrss/\">');\n  out.push('<channel>');\n  out.push('<title>' + xmlEscape(title) + '</title>');\n  out.push('<link>' + xmlEscape(treeLink) + '</link>');\n  out.push('<description>' + xmlEscape('Files and sites shared from ' + title) + '</description>');\n  out.push('<atom:link href=\"' + xmlEscape(selfHref) + '\" rel=\"self\" type=\"application/rss+xml\"/>');\n  for (var oi = 0; oi < items.length; oi++) {\n    var it = items[oi];\n    out.push('<item>');\n    out.push('<title>' + xmlEscape(it.title || it.name) + '</title>');\n    out.push('<link>' + xmlEscape(origin + '/blob/' + encPath(it.path) + tokenQs) + '</link>');\n    out.push('<guid isPermaLink=\"false\">' + xmlEscape(it.id) + '</guid>');\n    out.push('<pubDate>' + rfc822(it.createdAt) + '</pubDate>');\n    if (it.type === 'file') {\n      var mime = it.mime || 'application/octet-stream';\n      var length = (it.size != null && it.size >= 0) ? it.size : 0;\n      // A media URL a cross-domain reader can load with NONE of this app's\n      // cookies. Public feed: serve the bytes directly (tokenless — the ACL\n      // 'Anyone' passes — and cacheable). Private feed: use the token-in-URL\n      // redirect route (/r/), since /api/uploads/content is cookie/session-gated\n      // and takes no ?token=. Never emit the presigned bucket URL itself (it\n      // expires in ~5 min) — emit this stable indirection so it re-resolves per\n      // fetch.\n      var mediaUrl = tokenOk\n        ? (origin + '/r/' + it.id + '/' + slugify(it.name) + tokenQs)\n        : (origin + '/api/uploads/content/' + encPath(it.path));\n      out.push('<enclosure url=\"' + xmlEscape(mediaUrl) + '\" type=\"' + xmlEscape(mime) + '\" length=\"' + length + '\"/>');\n      var note = it.description ? ('<p>' + descHtml(it.description) + '</p>') : '';\n      var isImage = !!it.mime && it.mime.indexOf('image/') === 0;\n      if (isImage) {\n        // Reader/article views render <description>, NOT <enclosure>; an inline\n        // <img> gives them a body + the picture. CDATA keeps the HTML literal.\n        out.push('<description><![CDATA[' + note + '<p><img src=\"' + mediaUrl + '\" alt=\"' + htmlAttr(it.name) + '\" /></p>]]></description>');\n        out.push('<media:content url=\"' + xmlEscape(mediaUrl) + '\" type=\"' + xmlEscape(mime) + '\" medium=\"image\"/>');\n        out.push('<media:thumbnail url=\"' + xmlEscape(mediaUrl) + '\"/>');\n      } else if (note) {\n        out.push('<description><![CDATA[' + note + ']]></description>');\n      } else {\n        out.push('<description>' + xmlEscape(fileSummary(it.name, it.size)) + '</description>');\n      }\n    } else {\n      // Site: emit a text/html enclosure so our reader (Rivulet) embeds the site inline. The mime is a detection hint only; the reader consent-gates on the link ORIGIN, not this label, so a feed cannot skip consent by mislabelling. The <description> stays so non-embedding readers still show a body.\n      out.push('<enclosure url=\"' + xmlEscape(origin + '/blob/' + encPath(it.path) + tokenQs) + '\" type=\"text/html\" length=\"0\"/>');\n      if (it.description) {\n        out.push('<description><![CDATA[<p>' + descHtml(it.description) + '</p>]]></description>');\n      } else {\n        out.push('<description>' + xmlEscape(it.name) + '</description>');\n      }\n    }\n    out.push('</item>');\n  }\n  out.push('</channel>');\n  out.push('</rss>');\n\n  return { found: true, notfound: false, xml: out.join('\\n') };\n}\n"
+            }
+          },
+          {
+            "id": "ok",
+            "name": "ok",
+            "handlerType": "response_handler",
+            "config": {
+              "body": "{{{steps.select.xml}}}",
+              "status": 200,
+              "condition": "steps.select.found",
+              "contentType": "application/rss+xml",
+              "headers": {
+                "Cache-Control": "public, max-age=120"
+              }
+            }
+          },
+          {
+            "id": "notfound",
+            "name": "notfound",
+            "handlerType": "response_handler",
+            "config": {
+              "body": "Not found",
+              "status": 404,
+              "condition": "steps.select.notfound",
+              "contentType": "text/plain",
+              "headers": {
+                "Cache-Control": "no-store"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "pathPattern": "/feed.xml",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "targetUrl": "pipeline",
+      "stripPrefix": false,
+      "order": 33,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "proxyType": "pipeline",
+      "isEnabled": true,
+      "description": "Public folder RSS feed (Handoff RSS spine #188): /feed.xml",
+      "pipelineConfig": {
+        "name": "Public folder RSS feed",
+        "description": "Resolve /feed/<path>.xml (or /feed.xml for root) to a folder, flatten its publicly-viewable subtree to leaves, and emit RSS 2.0 (application/rss+xml). Evaluates access as the Anyone principal so private descendants are excluded; a private feed passes a Share Link ?token= (ADR-0008), evaluated as that share-link viewer so the folder + subtree surface with the token threaded into every item link and enclosure (#189).",
+        "steps": [
+          {
+            "id": "parse",
+            "name": "parse",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ request }) {\n  var p = (request && request.path) || '';\n  var q = p.indexOf('?');\n  if (q >= 0) p = p.slice(0, q);\n\n  // request.path is the internal rewritten path (a deployment prefix + the app\n  // route). The deployment prefix contains no '/feed/' segment, so the FIRST\n  // '/feed/' marks the folder feed route; without it the request is the root\n  // feed ('/feed.xml', which has no '/feed/' segment).\n  var rest;\n  var marker = '/feed/';\n  var i = p.indexOf(marker);\n  if (i >= 0) {\n    rest = p.slice(i + marker.length);\n    if (rest.slice(-4) === '.xml') rest = rest.slice(0, -4);\n  } else {\n    rest = '';\n  }\n\n  var rawSegs = rest.split('/');\n  var segs = [];\n  var bad = false;\n  for (var s = 0; s < rawSegs.length; s++) {\n    var sg = rawSegs[s];\n    if (!sg) continue;\n    try { sg = decodeURIComponent(sg); } catch (e) { /* malformed escape - keep raw */ }\n    if (sg === '.' || sg === '..') { bad = true; break; }\n    segs.push(sg);\n  }\n\n  // A private feed carries a Share Link ?token= (ADR-0008); surface it (and\n  // whether it is a well-formed UUID) so the link lookup + gate can run.\n  var query = (request && request.query) || {};\n  var token = String(query.token || '');\n  var UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;\n  var hasToken = UUID.test(token);\n\n  return {\n    path: segs.join('/'),\n    segments: segs,\n    isRoot: segs.length === 0,\n    bad: bad,\n    token: token,\n    hasToken: hasToken\n  };\n}\n"
+            }
+          },
+          {
+            "id": "allNodes",
+            "name": "allNodes",
+            "handlerType": "data_query",
+            "config": {
+              "filters": {
+                "nodeType": {
+                  "op": "in",
+                  "value": [
+                    "folder",
+                    "root",
+                    "file",
+                    "site"
+                  ]
+                }
+              },
+              "pageSize": 1000,
+              "schemaId": "1c5d4802-596e-4f50-a08f-c41fb8f9fab0"
+            }
+          },
+          {
+            "id": "link",
+            "name": "link",
+            "handlerType": "data_query",
+            "config": {
+              "recordId": "steps.parse.token",
+              "schemaId": "ace1febf-4b3d-4a11-a5f8-22a056dd9afa",
+              "condition": "steps.parse.hasToken"
+            }
+          },
+          {
+            "id": "select",
+            "name": "select",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ request, steps }) {\n  var UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;\n\n  function rank(l){return l==='owner'?3:l==='edit'?2:l==='view'?1:0;}\n  function evalAccess(ch,vw){ if(vw.isAdmin)return 'owner'; if(vw.userId){for(var i=0;i<ch.length;i++){if(ch[i].ownerId===vw.userId)return 'owner';}} var s=0;for(var k=ch.length-1;k>=0;k--){if(ch[k].mode==='restricted'){s=k;break;}} var best='none';for(var d=s;d<ch.length;d++){var gs=ch[d].grants||[];for(var e=0;e<gs.length;e++){var g=gs[e]||{};if(g.principalId==='anyone'){if(rank('view')>rank(best))best='view';}else if(vw.userId&&g.principalId===vw.userId&&rank(g.level)>rank(best))best=g.level;}} if(!vw.userId&&vw.shareLinkFolderId){var inC=false;for(var j=0;j<ch.length;j++){if(ch[j].id===vw.shareLinkFolderId){inC=true;break;}}if(inC&&rank('view')>rank(best))best='view';} return best; }\n  function folderChain(folders,startId){ var byId={};var rootId='';for(var a=0;a<folders.length;a++){var f=folders[a]||{};var id=f.id||f.recordId||f.record_id;if(id){byId[id]=f;if(f.nodeType==='root')rootId=id;}} var rev=[];var cur=(String(startId||'')==='root'&&rootId)?rootId:String(startId||'');var g=0; while(cur&&UUID.test(cur)&&byId[cur]&&g<64){var n=byId[cur];var gr=n.grantsJson;if(typeof gr==='string'){try{gr=JSON.parse(gr);}catch(e){gr=[];}}if(!gr||Object.prototype.toString.call(gr)!=='[object Array]')gr=[];rev.push({id:cur,ownerId:n.ownerId||null,grants:gr,mode:n.mode==='restricted'?'restricted':'inheriting'});cur=(n.parentId==='root'&&rootId)?rootId:(n.parentId||'');g++;} var ch=[];for(var b=rev.length-1;b>=0;b--)ch.push(rev[b]);return ch; }\n\n  // data_query rows are frozen; read the id without mutating the row.\n  function idOf(n) { return (n && (n.id || n.recordId || n.record_id)) || null; }\n\n  var nodes = (steps && steps.allNodes) || [];\n  // Viewer: a tokenless public feed is evaluated as the anonymous public, so a\n  // Restricted-private descendant drops out. A private feed carries a Share\n  // Link ?token= (#189 / ADR-0008) — validate it (folder-scoped, not revoked,\n  // not expired) and evaluate access as that share-link viewer so the folder +\n  // its subtree surface. An invalid/expired/revoked token falls back to the\n  // anonymous public (a private folder then 404s — no existence leak).\n  var token = String((steps && steps.parse && steps.parse.token) || '');\n  var link = (steps && steps.link) || {};\n  if (link == null || typeof link !== 'object') link = {};\n  var linkFolderId = link.folderId || null;\n  var revoked = link.revoked === true || link.revoked === 'true';\n  var exp = (link.expiresMs != null) ? Number(link.expiresMs) : null;\n  var expired = (exp != null && !isNaN(exp)) ? (Date.now() > exp) : false;\n  var tokenOk = !!token && !!linkFolderId && !revoked && !expired;\n  var viewer = tokenOk ? { shareLinkFolderId: linkFolderId } : {};\n  // Threaded into every item link + enclosure (and the self href) so a reader\n  // fetches the feed and its media with the same bearer token.\n  var tokenQs = tokenOk ? ('?token=' + token) : '';\n\n  // Pass 1: index by id and find the root record id.\n  var byId = {};\n  var rootId = '';\n  for (var a = 0; a < nodes.length; a++) {\n    var n0 = nodes[a] || {};\n    var id0 = idOf(n0);\n    if (!id0) continue;\n    byId[id0] = n0;\n    if (n0.nodeType === 'root') rootId = id0;\n  }\n  var rootKey = rootId || 'root';\n\n  // Pass 2: children by NORMALIZED parent — top-level nodes reference the root\n  // as either the 'root' sentinel or the root record's id; unify both to rootKey.\n  var childrenByParent = {};\n  for (var b = 0; b < nodes.length; b++) {\n    var n = nodes[b] || {};\n    var id = idOf(n);\n    if (!id) continue;\n    if (id === rootId) continue;\n    var pid = n.parentId || 'root';\n    if (pid === 'root' || pid === rootId) pid = rootKey;\n    (childrenByParent[pid] = childrenByParent[pid] || []).push(n);\n  }\n\n  // Verbatim content path (display-name chain; the root record is excluded — a\n  // top-level node's path is just its own name).\n  // Verbatim content path = the leaf's storage_path minus the uploads-content\n  // prefix -- the SAME key /api/resolve and the content serve use. NOT rebuilt\n  // from displayName: displayName is a human label (e.g. an API-set title) and\n  // can differ from the stored filename, which 404s the link + media URL.\n  function contentPath(n) {\n    var sp = String((n && n.storage_path) || '');\n    var marker = '/uploads/content/';\n    var i = sp.indexOf(marker);\n    return i >= 0 ? sp.slice(i + marker.length) : '';\n  }\n\n  var segs = (steps && steps.parse && steps.parse.segments) || [];\n  var isRoot = !!(steps && steps.parse && steps.parse.isRoot);\n  var bad = !!(steps && steps.parse && steps.parse.bad);\n\n  // Resolve the target folder by name-walk from the root (folders only).\n  var targetId = null;\n  var targetName = 'My Files';\n  if (!bad && !isRoot) {\n    var curParent = rootKey;\n    var found = null;\n    var ok = true;\n    for (var i = 0; i < segs.length; i++) {\n      var kids = childrenByParent[curParent] || [];\n      var match = null;\n      for (var c = 0; c < kids.length; c++) {\n        var kk = kids[c];\n        if (kk.nodeType === 'folder' && String(kk.displayName || '') === segs[i]) { match = kk; break; }\n      }\n      if (!match) { ok = false; break; }\n      found = match;\n      curParent = idOf(match);\n    }\n    if (ok && found) {\n      targetId = idOf(found);\n      targetName = String(found.displayName || 'Untitled');\n    }\n  } else if (isRoot && !bad) {\n    targetId = rootKey;\n    targetName = 'My Files';\n  }\n\n  var resolvedKey = targetId;\n\n  // Not resolvable, or not publicly viewable -> 404 (no existence leak; a\n  // private feed needs a token, added in #189).\n  var publicOk = false;\n  if (resolvedKey) {\n    publicOk = evalAccess(folderChain(nodes, resolvedKey), viewer) !== 'none';\n  }\n  if (!resolvedKey || !publicOk) {\n    return { found: false, notfound: true, xml: '' };\n  }\n\n  // Flatten the subtree to publicly-viewable leaves.\n  // A feedExcluded folder (#191 / ADR-0007) keeps its whole subtree out of\n  // every feed — its own included — while staying browsable. Rides the walk.\n  function isExcluded(n) { return !!n && (n.feedExcluded === true || n.feedExcluded === 'true'); }\n  var queue = isExcluded(byId[resolvedKey]) ? [] : [resolvedKey];\n  var leaves = [];\n  var guard = 0;\n  while (queue.length && guard < 100000) {\n    guard++;\n    var pk = queue.shift();\n    var kids2 = childrenByParent[pk] || [];\n    for (var qi = 0; qi < kids2.length; qi++) {\n      var kid = kids2[qi];\n      if (kid.nodeType === 'folder') {\n        if (!isExcluded(kid)) queue.push(idOf(kid));\n      } else if (kid.nodeType === 'file' || kid.nodeType === 'site') {\n        if (evalAccess(folderChain(nodes, kid.parentId), viewer) !== 'none') leaves.push(kid);\n      }\n    }\n  }\n\n  function mimeOf(n) { return n.content_type || n.mime_type || null; }\n  function sizeOf(n) {\n    var sv = (typeof n.size === 'number') ? n.size : (n.size != null ? Number(n.size) : null);\n    return (sv != null && !isNaN(sv)) ? sv : null;\n  }\n  function createdOf(n) {\n    var cv = (typeof n.createdMs === 'number') ? n.createdMs : (n.createdMs != null ? Number(n.createdMs) : 0);\n    return (cv != null && !isNaN(cv)) ? cv : 0;\n  }\n\n  var items = [];\n  for (var li = 0; li < leaves.length; li++) {\n    var lf = leaves[li];\n    var lfPath = contentPath(lf);\n    if (!lfPath) continue;\n    items.push({\n      id: idOf(lf),\n      type: lf.nodeType,\n      name: String(lf.displayName || lf.original_name || lf.filename || 'Untitled'),\n      title: (lf.title != null && String(lf.title) !== '') ? String(lf.title) : null,\n      description: (lf.description != null && String(lf.description) !== '') ? String(lf.description) : null,\n      path: lfPath,\n      createdAt: createdOf(lf),\n      mime: mimeOf(lf),\n      size: sizeOf(lf)\n    });\n  }\n  items.sort(function (a, b) { return b.createdAt - a.createdAt; });\n  if (items.length > 50) items = items.slice(0, 50);\n\n  // Render RSS 2.0 (port of src/lib/feed.ts renderFeedXml).\n  function xmlEscape(s) {\n    return String(s)\n      .replace(/&/g, '&amp;')\n      .replace(/</g, '&lt;')\n      .replace(/>/g, '&gt;')\n      .replace(/\"/g, '&quot;')\n      .replace(/'/g, '&apos;');\n  }\n  // HTML-attribute-safe escape for text placed INSIDE a CDATA <img alt=\"...\">.\n  function htmlAttr(s) {\n    return String(s)\n      .replace(/&/g, '&amp;')\n      .replace(/</g, '&lt;')\n      .replace(/>/g, '&gt;')\n      .replace(/\"/g, '&quot;');\n  }\n  function descHtml(s) {\n    return String(s)\n      .replace(/&/g, '&amp;')\n      .replace(/</g, '&lt;')\n      .replace(/>/g, '&gt;')\n      .replace(/\"/g, '&quot;')\n      .replace(/\\r\\n?|\\n/g, '<br>');\n  }\n  function humanSize(bytes) {\n    if (bytes == null || bytes < 0) return '';\n    var u = ['B', 'KB', 'MB', 'GB', 'TB'];\n    var n = bytes, idx = 0;\n    while (n >= 1024 && idx < u.length - 1) { n = n / 1024; idx++; }\n    return (idx === 0 ? String(n) : n.toFixed(1)) + ' ' + u[idx];\n  }\n  function fileSummary(name, size) {\n    var h = humanSize(size);\n    return h ? (name + ' (' + h + ')') : name;\n  }\n  function rfc822(ms) { return new Date(ms).toUTCString(); }\n  function encPath(p) {\n    return String(p).split('/').map(function (x) { return encodeURIComponent(x); }).join('/');\n  }\n  function slugify(name) {\n    var dot = name.lastIndexOf('.');\n    var hasExt = dot > 0;\n    var base = hasExt ? name.slice(0, dot) : name;\n    var ext = hasExt ? name.slice(dot + 1) : '';\n    var baseSlug = base.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'file';\n    var extSlug = ext.toLowerCase().replace(/[^a-z0-9]/g, '');\n    return extSlug ? (baseSlug + '.' + extSlug) : baseSlug;\n  }\n\n  var host = (request && request.headers && request.headers.host) || '';\n  if (Object.prototype.toString.call(host) === '[object Array]') host = host[0] || '';\n  var origin = host ? ('https://' + host) : '';\n  var path = (steps && steps.parse && steps.parse.path) || '';\n  var treeLink = origin + (path ? ('/tree/' + encPath(path)) : '/');\n  var selfHref = origin + (path ? ('/feed/' + encPath(path) + '.xml') : '/feed.xml') + tokenQs;\n  var title = isRoot ? 'My Files' : targetName;\n\n  var out = [];\n  out.push('<?xml version=\"1.0\" encoding=\"UTF-8\"?>');\n  out.push('<rss version=\"2.0\" xmlns:atom=\"http://www.w3.org/2005/Atom\" xmlns:media=\"http://search.yahoo.com/mrss/\">');\n  out.push('<channel>');\n  out.push('<title>' + xmlEscape(title) + '</title>');\n  out.push('<link>' + xmlEscape(treeLink) + '</link>');\n  out.push('<description>' + xmlEscape('Files and sites shared from ' + title) + '</description>');\n  out.push('<atom:link href=\"' + xmlEscape(selfHref) + '\" rel=\"self\" type=\"application/rss+xml\"/>');\n  for (var oi = 0; oi < items.length; oi++) {\n    var it = items[oi];\n    out.push('<item>');\n    out.push('<title>' + xmlEscape(it.title || it.name) + '</title>');\n    out.push('<link>' + xmlEscape(origin + '/blob/' + encPath(it.path) + tokenQs) + '</link>');\n    out.push('<guid isPermaLink=\"false\">' + xmlEscape(it.id) + '</guid>');\n    out.push('<pubDate>' + rfc822(it.createdAt) + '</pubDate>');\n    if (it.type === 'file') {\n      var mime = it.mime || 'application/octet-stream';\n      var length = (it.size != null && it.size >= 0) ? it.size : 0;\n      // A media URL a cross-domain reader can load with NONE of this app's\n      // cookies. Public feed: serve the bytes directly (tokenless — the ACL\n      // 'Anyone' passes — and cacheable). Private feed: use the token-in-URL\n      // redirect route (/r/), since /api/uploads/content is cookie/session-gated\n      // and takes no ?token=. Never emit the presigned bucket URL itself (it\n      // expires in ~5 min) — emit this stable indirection so it re-resolves per\n      // fetch.\n      var mediaUrl = tokenOk\n        ? (origin + '/r/' + it.id + '/' + slugify(it.name) + tokenQs)\n        : (origin + '/api/uploads/content/' + encPath(it.path));\n      out.push('<enclosure url=\"' + xmlEscape(mediaUrl) + '\" type=\"' + xmlEscape(mime) + '\" length=\"' + length + '\"/>');\n      var note = it.description ? ('<p>' + descHtml(it.description) + '</p>') : '';\n      var isImage = !!it.mime && it.mime.indexOf('image/') === 0;\n      if (isImage) {\n        // Reader/article views render <description>, NOT <enclosure>; an inline\n        // <img> gives them a body + the picture. CDATA keeps the HTML literal.\n        out.push('<description><![CDATA[' + note + '<p><img src=\"' + mediaUrl + '\" alt=\"' + htmlAttr(it.name) + '\" /></p>]]></description>');\n        out.push('<media:content url=\"' + xmlEscape(mediaUrl) + '\" type=\"' + xmlEscape(mime) + '\" medium=\"image\"/>');\n        out.push('<media:thumbnail url=\"' + xmlEscape(mediaUrl) + '\"/>');\n      } else if (note) {\n        out.push('<description><![CDATA[' + note + ']]></description>');\n      } else {\n        out.push('<description>' + xmlEscape(fileSummary(it.name, it.size)) + '</description>');\n      }\n    } else {\n      // Site: emit a text/html enclosure so our reader (Rivulet) embeds the site inline. The mime is a detection hint only; the reader consent-gates on the link ORIGIN, not this label, so a feed cannot skip consent by mislabelling. The <description> stays so non-embedding readers still show a body.\n      out.push('<enclosure url=\"' + xmlEscape(origin + '/blob/' + encPath(it.path) + tokenQs) + '\" type=\"text/html\" length=\"0\"/>');\n      if (it.description) {\n        out.push('<description><![CDATA[<p>' + descHtml(it.description) + '</p>]]></description>');\n      } else {\n        out.push('<description>' + xmlEscape(it.name) + '</description>');\n      }\n    }\n    out.push('</item>');\n  }\n  out.push('</channel>');\n  out.push('</rss>');\n\n  return { found: true, notfound: false, xml: out.join('\\n') };\n}\n"
+            }
+          },
+          {
+            "id": "ok",
+            "name": "ok",
+            "handlerType": "response_handler",
+            "config": {
+              "body": "{{{steps.select.xml}}}",
+              "status": 200,
+              "condition": "steps.select.found",
+              "contentType": "application/rss+xml",
+              "headers": {
+                "Cache-Control": "public, max-age=120"
+              }
+            }
+          },
+          {
+            "id": "notfound",
+            "name": "notfound",
+            "handlerType": "response_handler",
+            "config": {
+              "body": "Not found",
+              "status": 404,
+              "condition": "steps.select.notfound",
+              "contentType": "text/plain",
+              "headers": {
+                "Cache-Control": "no-store"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
