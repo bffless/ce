@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.105](https://github.com/bffless/ce/compare/v0.1.104...v0.1.105) (2026-07-11)
+
+
+### Bug Fixes
+
+* **proxy-rules:** let auth-proxy rules through the visibility gate on private deployments ([#444](https://github.com/bffless/ce/issues/444)) ([a011b02](https://github.com/bffless/ce/commit/a011b0268c5878788549ed173de78d1f43e68393))
+
 ## [0.1.104](https://github.com/bffless/ce/compare/v0.1.103...v0.1.104) (2026-07-10)
 
 
