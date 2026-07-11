@@ -1,0 +1,462 @@
+{
+  "version": 2,
+  "exportedAt": "2026-07-02T11:38:24.051Z",
+  "kind": "bffless-proxy-rule-set",
+  "ruleSet": {
+    "name": "studio-blog",
+    "description": "Companion blog post endpoints for Studio (issues #66/#68-72): POST /api/blog (Gemini blog writer, async) + blog image uploads (/api/uploads/blog/{prepare,register,*}). Split into its own set; attach alongside the main `studio` set (591dab6e) on the studio + studio-preview aliases. Reuses studio_jobs (46f5eef6) + studio_source (862a1fd2) schemas.",
+    "environment": null
+  },
+  "rules": [
+    {
+      "pathPattern": "/api/blog",
+      "method": "POST",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 52,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "headerConfig": null,
+      "authTransform": null,
+      "internalRewrite": false,
+      "proxyType": "pipeline",
+      "emailHandlerConfig": null,
+      "pipelineConfig": {
+        "name": "Blog writer (async enqueue + poll)",
+        "steps": [
+          {
+            "id": "prep",
+            "name": "prep",
+            "config": {
+              "code": "function handler({ request, deployment }) {\n  var body = (request && request.body) || {}\n\n  // Sign the existing Contact sheets step-by-step (like the master director):\n  // turn each serve path into a bucket key the postStep signed_url handlers read.\n  var urls = body.sheetUrls\n  if (!urls || typeof urls.length !== 'number') urls = []\n  var prefix = deployment.owner + '/' + deployment.repo + '/uploads/'\n  var out = {}\n  for (var i = 0; i < 10; i++) {\n    var p = ''\n    if (i < urls.length && urls[i]) {\n      var key = String(urls[i]).replace(/^\\/+/, '')\n      key = key.replace(/^api\\/uploads\\//, '')\n      p = prefix + key\n    }\n    out['path' + i] = p\n  }\n\n  var script = typeof body.script === 'string' ? body.script : ''\n  var direction = typeof body.direction === 'string' ? body.direction : ''\n  var title = typeof body.title === 'string' ? body.title : ''\n  var summary = typeof body.summary === 'string' ? body.summary : ''\n  var synopsis = typeof body.synopsis === 'string' ? body.synopsis : ''\n  var duration = typeof body.duration === 'number' ? body.duration : 0\n  var scenes = (body.scenes && typeof body.scenes.length === 'number') ? body.scenes : []\n  var timed = typeof body.timedTranscript === 'string' ? body.timedTranscript : ''\n\n  var outline = ''\n  for (var s = 0; s < scenes.length; s++) {\n    var sc = scenes[s] || {}\n    var st = (typeof sc.title === 'string') ? sc.title : ''\n    var tr = (typeof sc.transcript === 'string') ? sc.transcript : ''\n    outline += (s + 1) + '. ' + (st || ('Scene ' + (s + 1)))\n    if (tr) { outline += ' — ' + tr }\n    outline += '\\n'\n  }\n\n  var sys = ''\n  sys += 'You are a senior technical writer. You turn a finished short video into a faithful, well-structured written blog post that reads well on its own.\\n\\n'\n  sys += 'You are given: the finished video NARRATION SCRIPT (what was actually said, in order), a recommended TITLE and SUMMARY, the director one-line SYNOPSIS, a per-scene OUTLINE (each scene heading + the words spoken in it), a TIMESTAMPED TRANSCRIPT of the original recording (lines like `[m:ss] words`, ~8-second buckets) so you can align what is said to WHEN, the creator optional DIRECTION, the video DURATION, and CONTACT-SHEET images (grids of frames sampled across the recording, each with its wall-clock timestamp burned into a corner) as your visual context.\\n\\n'\n  sys += 'Your job:\\n'\n  sys += '1. Write the post as flowing PROSE first — paragraphs that explain and narrate, not a transcript dump and not a bare bullet skeleton. Expand the spoken script into readable writing while staying FAITHFUL: never invent facts, numbers, names, features, or claims that are not supported by the script, the outline, or what is clearly visible in the frames. If something is uncertain, leave it out.\\n'\n  sys += '2. Begin with YAML FRONT-MATTER delimited by --- lines, containing exactly `title` and `description` (a one-sentence summary). Prefer the recommended title/summary; you may tighten them for the page.\\n'\n  sys += '3. Use an ELASTIC outline seeded from the scenes: roughly one `##` section per meaningful scene, in order, but you MAY merge tiny adjacent scenes into one section and rename headings for flow. Do not pad — fewer, stronger sections beat one-per-scene.\\n'\n  sys += '4. Add inline IMAGES SPARINGLY and only where a frame genuinely helps (a key UI state, a result, a diagram). Write each as a Markdown image whose URL is a frame token: `![A short caption](frame:<t>)`, where <t> is the moment in the ORIGINAL video in SECONDS (to pick <t>, find where that content is discussed in the TIMESTAMPED TRANSCRIPT to get its [m:ss], set <t> to a second in that window, then confirm against the contact-sheet frame whose burned-in clock is nearest) and the caption is required (it is shown under the image). Use at most a handful across the whole post; the post must read well even if every image were removed — images are additive, never load-bearing.\\n\\n'\n  sys += 'Markdown rules: standard Markdown — `#`/`##` headings, paragraphs, `-` lists, `>` blockquotes, `**bold**`, `*italic*`, `` `code` ``. Do NOT wrap the whole document in a code fence.\\n\\n'\n  sys += 'Output STRICT JSON only — no markdown fences around the JSON, no commentary — exactly this shape:\\n'\n  sys += '{\"markdown\": string}\\n'\n  sys += 'where the string is the COMPLETE Markdown document (front-matter + body). Return nothing but the JSON object.'\n\n  var prompt = ''\n  prompt += 'NARRATION SCRIPT (the finished video, in order):\\n\\n' + script + '\\n\\n'\n  if (timed) { prompt += 'TIMESTAMPED TRANSCRIPT of the ORIGINAL recording (each line \"[m:ss] words\"; the re-voiced script above tracks the same content in the same order — use this only to locate WHEN something is discussed when choosing image timestamps):\\n\\n' + timed + '\\n\\n' }\n  if (title) { prompt += 'RECOMMENDED TITLE: ' + title + '\\n' }\n  if (summary) { prompt += 'SUMMARY: ' + summary + '\\n' }\n  if (synopsis) { prompt += 'DIRECTOR SYNOPSIS: ' + synopsis + '\\n' }\n  if (outline) { prompt += '\\nSCENE OUTLINE (title — transcript), in order:\\n' + outline }\n  prompt += '\\nThe finished video is ' + Math.round(duration) + ' seconds long. The attached images are the contact sheets described in your instructions.\\n'\n  if (direction) {\n    prompt += '\\nEXTRA DIRECTION FROM THE CREATOR (weight this heavily): ' + direction + '\\n'\n  }\n  prompt += '\\nNow write the blog post as STRICT JSON exactly as specified: {\"markdown\": \"...\"}. Return nothing but the JSON object.'\n\n  out.system = sys\n  out.prompt = prompt\n  return out\n}"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "createJob",
+            "name": "createJob",
+            "config": {
+              "fields": {
+                "kind": "'blog'",
+                "prompt": "steps.prep.prompt",
+                "status": "'pending'",
+                "system": "steps.prep.system",
+                "request": "request.body"
+              },
+              "schemaId": "46f5eef6-cabe-48cf-95f8-05c9b94de2a7"
+            },
+            "handlerType": "data_create"
+          },
+          {
+            "id": "respond",
+            "name": "respond",
+            "config": {
+              "body": "{\n  \"jobId\": \"{{steps.createJob.id}}\",\n  \"status\": \"pending\"\n}",
+              "status": 200,
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          }
+        ],
+        "postSteps": [
+          {
+            "id": "setRunning",
+            "name": "setRunning",
+            "config": {
+              "fields": {
+                "status": "'running'"
+              },
+              "recordId": "steps.createJob.id",
+              "schemaId": "46f5eef6-cabe-48cf-95f8-05c9b94de2a7"
+            },
+            "handlerType": "data_update"
+          },
+          {
+            "id": "sign0",
+            "name": "sign0",
+            "config": {
+              "path": "steps.prep.path0",
+              "condition": "steps.prep.path0",
+              "expiresIn": 3600
+            },
+            "handlerType": "signed_url"
+          },
+          {
+            "id": "sign1",
+            "name": "sign1",
+            "config": {
+              "path": "steps.prep.path1",
+              "condition": "steps.prep.path1",
+              "expiresIn": 3600
+            },
+            "handlerType": "signed_url"
+          },
+          {
+            "id": "sign2",
+            "name": "sign2",
+            "config": {
+              "path": "steps.prep.path2",
+              "condition": "steps.prep.path2",
+              "expiresIn": 3600
+            },
+            "handlerType": "signed_url"
+          },
+          {
+            "id": "sign3",
+            "name": "sign3",
+            "config": {
+              "path": "steps.prep.path3",
+              "condition": "steps.prep.path3",
+              "expiresIn": 3600
+            },
+            "handlerType": "signed_url"
+          },
+          {
+            "id": "sign4",
+            "name": "sign4",
+            "config": {
+              "path": "steps.prep.path4",
+              "condition": "steps.prep.path4",
+              "expiresIn": 3600
+            },
+            "handlerType": "signed_url"
+          },
+          {
+            "id": "sign5",
+            "name": "sign5",
+            "config": {
+              "path": "steps.prep.path5",
+              "condition": "steps.prep.path5",
+              "expiresIn": 3600
+            },
+            "handlerType": "signed_url"
+          },
+          {
+            "id": "sign6",
+            "name": "sign6",
+            "config": {
+              "path": "steps.prep.path6",
+              "condition": "steps.prep.path6",
+              "expiresIn": 3600
+            },
+            "handlerType": "signed_url"
+          },
+          {
+            "id": "sign7",
+            "name": "sign7",
+            "config": {
+              "path": "steps.prep.path7",
+              "condition": "steps.prep.path7",
+              "expiresIn": 3600
+            },
+            "handlerType": "signed_url"
+          },
+          {
+            "id": "sign8",
+            "name": "sign8",
+            "config": {
+              "path": "steps.prep.path8",
+              "condition": "steps.prep.path8",
+              "expiresIn": 3600
+            },
+            "handlerType": "signed_url"
+          },
+          {
+            "id": "sign9",
+            "name": "sign9",
+            "config": {
+              "path": "steps.prep.path9",
+              "condition": "steps.prep.path9",
+              "expiresIn": 3600
+            },
+            "handlerType": "signed_url"
+          },
+          {
+            "id": "collect",
+            "name": "collect",
+            "config": {
+              "code": "function handler({ steps }) {\n  var images = []\n  for (var i = 0; i < 10; i++) {\n    var st = steps['sign' + i]\n    if (st && st.url) images.push(st.url)\n  }\n  return { images: images, count: images.length }\n}\n"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "blog",
+            "name": "blog",
+            "config": {
+              "input": {
+                "images": "steps.collect.images",
+                "prompt": "steps.prep.prompt",
+                "temperature": 0.6,
+                "thinking_level": "'medium'",
+                "max_output_tokens": 64000,
+                "system_instruction": "steps.prep.system"
+              },
+              "model": "google/gemini-3.1-pro",
+              "timeout": 280000
+            },
+            "handlerType": "replicate"
+          },
+          {
+            "id": "parse",
+            "name": "parse",
+            "config": {
+              "code": "function handler({ steps }) {\n  var d = (steps && steps.blog) || {}\n  if (!d || (d.status == null && d.output == null)) {\n    return { ok: false, notOk: true, error: 'The AI writer did not return a result — it may be temporarily overloaded, or the video may be too long. Please try again.', data: { markdown: '' } }\n  }\n\n  var raw = d.output != null ? d.output : d\n  var text = ''\n  if (typeof raw === 'string') {\n    text = raw\n  } else if (raw && typeof raw.length === 'number') {\n    for (var a = 0; a < raw.length; a++) {\n      text += String(raw[a])\n    }\n  } else if (raw && typeof raw.text === 'string') {\n    text = raw.text\n  }\n\n  // Tolerantly extract the \"markdown\" string even when the model truncated\n  // mid-document: read from the opening quote to the closing unescaped quote, or\n  // to the end of the text if it never closed (keep the completed portion).\n  function extractMarkdown(s) {\n    var ki = s.indexOf('\"markdown\"')\n    if (ki < 0) return ''\n    var ci = s.indexOf(':', ki)\n    if (ci < 0) return ''\n    var qi = s.indexOf('\"', ci + 1)\n    if (qi < 0) return ''\n    var body = ''\n    var esc = false\n    for (var i = qi + 1; i < s.length; i++) {\n      var ch = s.charAt(i)\n      if (esc) { body += '\\\\' + ch; esc = false; continue }\n      if (ch === '\\\\') { esc = true; continue }\n      if (ch === '\"') { break }\n      body += ch\n    }\n    // A trailing lone backslash (esc still open at truncation) was dropped above.\n    var attempts = [body, body.replace(/\\\\u[0-9a-fA-F]{0,3}$/, '')]\n    for (var t = 0; t < attempts.length; t++) {\n      try { return JSON.parse('\"' + attempts[t] + '\"') } catch (e) {}\n    }\n    // Last resort: unescape the common sequences by hand so literal newlines or a\n    // stray escape can't lose the whole post.\n    return body.replace(/\\\\n/g, '\\n').replace(/\\\\t/g, '\\t').replace(/\\\\r/g, '\\r').replace(/\\\\\"/g, '\"').replace(/\\\\\\\\/g, '\\\\')\n  }\n\n  var markdown = ''\n  var sIdx = text.indexOf('{')\n  var eIdx = text.lastIndexOf('}')\n  var parsed = null\n  if (sIdx >= 0 && eIdx > sIdx) {\n    try { parsed = JSON.parse(text.slice(sIdx, eIdx + 1)) } catch (e) { parsed = null }\n  }\n  if (parsed && typeof parsed.markdown === 'string') {\n    markdown = parsed.markdown\n  } else {\n    markdown = extractMarkdown(text)\n  }\n  // The model may have returned bare Markdown with no JSON envelope at all.\n  if (!markdown && text && text.indexOf('\"markdown\"') < 0) {\n    markdown = text\n  }\n\n  markdown = (typeof markdown === 'string') ? markdown.replace(/\\s+$/, '') : ''\n  if (!markdown) {\n    var snippet = (typeof text === 'string') ? text.slice(0, 280).trim() : ''\n    var emsg = snippet\n      ? 'The AI writer response could not be read. Please try again. Model said: ' + snippet\n      : 'The AI writer returned an empty response — it may be temporarily overloaded. Please try again.'\n    return { ok: false, notOk: true, error: emsg, data: { markdown: '' } }\n  }\n\n  return { ok: true, notOk: false, error: '', data: { markdown: markdown } }\n}\n"
+            },
+            "handlerType": "function_handler"
+          },
+          {
+            "id": "finishOk",
+            "name": "finishOk",
+            "config": {
+              "fields": {
+                "result": "steps.parse.data",
+                "status": "'done'"
+              },
+              "recordId": "steps.createJob.id",
+              "schemaId": "46f5eef6-cabe-48cf-95f8-05c9b94de2a7",
+              "condition": "steps.parse.ok"
+            },
+            "handlerType": "data_update"
+          },
+          {
+            "id": "finishErr",
+            "name": "finishErr",
+            "config": {
+              "fields": {
+                "error": "steps.parse.error",
+                "status": "'error'"
+              },
+              "recordId": "steps.createJob.id",
+              "schemaId": "46f5eef6-cabe-48cf-95f8-05c9b94de2a7",
+              "condition": "steps.parse.notOk"
+            },
+            "handlerType": "data_update"
+          }
+        ],
+        "validators": [],
+        "description": "Story 69: live /api/blog, a sibling of the master director. Enqueue a studio_jobs row (kind 'blog') and return { jobId } immediately; the slow multimodal Gemini call + parse run in postSteps and write the row to done/error."
+      },
+      "isEnabled": true,
+      "debugEnabled": false,
+      "description": "Blog writer (story 69; async fire-and-poll, modeled on /api/scenes). ENQUEUE-ONLY response path: prep builds the prompt/system + signed contact-sheet paths, createJob inserts a studio_jobs row (kind 'blog'), respond returns { jobId, status:'pending' }. The multimodal Gemini 3.1 Pro call + parse run in postSteps and write the row to done/error. FE polls GET /api/studio/job."
+    },
+    {
+      "pathPattern": "/api/uploads/blog/prepare",
+      "method": "POST",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 53,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "headerConfig": null,
+      "authTransform": null,
+      "internalRewrite": false,
+      "proxyType": "pipeline",
+      "emailHandlerConfig": null,
+      "pipelineConfig": {
+        "name": "Prepare studio blog upload",
+        "steps": [
+          {
+            "id": "prepare",
+            "name": "prepare",
+            "config": {
+              "subDir": "projects/{{request.body.projectId}}/blog",
+              "filename": "request.body.filename",
+              "expiresIn": 3600,
+              "dateBucket": true,
+              "maxFileSize": 10485760,
+              "allowedMimeTypes": [
+                "image/*"
+              ]
+            },
+            "handlerType": "presigned_upload"
+          },
+          {
+            "id": "response",
+            "name": "Return Prepare Result",
+            "config": {
+              "body": "{{{steps.prepare}}}",
+              "status": 200,
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          }
+        ],
+        "validators": [],
+        "description": "Mint a presigned PUT URL so the browser uploads each re-captured blog frame straight to the bucket (image/*) under the blog/ subDir (issue #70)."
+      },
+      "isEnabled": true,
+      "debugEnabled": false,
+      "description": "Prepare: mint presigned PUT URL for direct-to-bucket studio blog image (re-captured frame) upload"
+    },
+    {
+      "pathPattern": "/api/uploads/blog/register",
+      "method": "POST",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 54,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "headerConfig": null,
+      "authTransform": null,
+      "internalRewrite": false,
+      "proxyType": "pipeline",
+      "emailHandlerConfig": null,
+      "pipelineConfig": {
+        "name": "Register studio blog upload",
+        "steps": [
+          {
+            "id": "register",
+            "name": "register",
+            "config": {
+              "subDir": "projects/{{request.body.projectId}}/blog",
+              "schemaId": "862a1fd2-e373-469e-8a3f-32330473abd4",
+              "storageKey": "request.body.storageKey",
+              "maxFileSize": 10485760,
+              "originalName": "request.body.originalName",
+              "allowedMimeTypes": [
+                "image/*"
+              ]
+            },
+            "handlerType": "register_upload"
+          },
+          {
+            "id": "response",
+            "name": "Return Register Result",
+            "config": {
+              "body": "{{{steps.register}}}",
+              "status": 200,
+              "contentType": "application/json"
+            },
+            "handlerType": "response_handler"
+          }
+        ],
+        "validators": [],
+        "description": "Verify the bucket object and write the upload record (finalize step of the direct-to-bucket blog frame flow). Reuses the studio_source schema; the blog/ subDir distinguishes records (issue #70)."
+      },
+      "isEnabled": true,
+      "debugEnabled": false,
+      "description": "Register: finalize a direct-to-bucket studio blog image upload into studio_source"
+    },
+    {
+      "pathPattern": "/api/uploads/blog/*",
+      "method": "GET",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 55,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "headerConfig": null,
+      "authTransform": null,
+      "internalRewrite": false,
+      "proxyType": "pipeline",
+      "emailHandlerConfig": null,
+      "pipelineConfig": {
+        "name": "Serve studio blog images",
+        "steps": [
+          {
+            "id": "serve",
+            "name": "serve",
+            "config": {
+              "subDir": "blog"
+            },
+            "handlerType": "file_serve_handler"
+          }
+        ],
+        "validators": [],
+        "description": "Serve files from the blog subDir"
+      },
+      "isEnabled": true,
+      "debugEnabled": false,
+      "description": "Serve files from studio blog (Range-aware) so the read-only preview can fetch the inline frames"
+    }
+  ],
+  "schemas": [
+    {
+      "id": "46f5eef6-cabe-48cf-95f8-05c9b94de2a7",
+      "name": "studio_jobs",
+      "fields": [
+        {
+          "name": "kind",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "request",
+          "type": "json",
+          "required": false
+        },
+        {
+          "name": "result",
+          "type": "json",
+          "required": false
+        },
+        {
+          "name": "error",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "prompt",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "system",
+          "type": "text",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "862a1fd2-e373-469e-8a3f-32330473abd4",
+      "name": "studio_source",
+      "fields": [
+        {
+          "name": "filename",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "storage_path",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "content_type",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "size",
+          "type": "number",
+          "required": true
+        },
+        {
+          "name": "url",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "sub_dir",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "original_name",
+          "type": "string",
+          "required": true
+        }
+      ]
+    }
+  ]
+}

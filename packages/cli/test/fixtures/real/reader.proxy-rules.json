@@ -1,0 +1,1075 @@
+{
+  "version": 2,
+  "exportedAt": "2026-07-03T00:00:00.000Z",
+  "kind": "bffless-proxy-rule-set",
+  "ruleSet": {
+    "name": "reader",
+    "description": "Rivulet app backend — RSS/Atom reader. Auth reverse-proxy + feed/item/refresh pipelines (bffless/apps#112) + item read-state (POST /api/items/read, data_update — bffless/apps#114) + item star-state (POST /api/items/star, data_update — bffless/apps#115) + feed auto-discovery (POST /api/discover, http_request — bffless/apps#113). Composes CE primitives xml_feed_parse + data_upsert_many over the reader_feeds/reader_items schemas. Background auto-refresh + retention (bffless/apps#119): /api/refresh stamps a numeric epoch-ms fetchedAt and defaults read/starred=false, and POST /api/prune (data_delete delete-by-query) removes read+unstarred items older than 30 days. Two pipeline_schedules drive them as system context — refresh every 15 min, prune nightly at 03:17 UTC.",
+    "environment": null
+  },
+  "schemas": [
+    {
+      "id": "d1216df3-9776-4de2-81b0-0343d758f83d",
+      "name": "reader_feeds",
+      "fields": [
+        { "name": "url", "type": "string", "required": true },
+        { "name": "title", "type": "string", "required": false },
+        { "name": "siteUrl", "type": "string", "required": false },
+        { "name": "folder", "type": "string", "required": false },
+        { "name": "iconUrl", "type": "string", "required": false },
+        { "name": "lastFetchedAt", "type": "number", "required": false },
+        { "name": "lastError", "type": "string", "required": false },
+        { "name": "addedAt", "type": "number", "required": false }
+      ]
+    },
+    {
+      "id": "96a1b5e7-96f0-43a4-baa8-2e19b539d07c",
+      "name": "reader_items",
+      "fields": [
+        { "name": "guid", "type": "string", "required": true },
+        { "name": "feedId", "type": "string", "required": true },
+        { "name": "title", "type": "string", "required": false },
+        { "name": "link", "type": "string", "required": false },
+        { "name": "author", "type": "string", "required": false },
+        { "name": "publishedAt", "type": "string", "required": false },
+        { "name": "summary", "type": "text", "required": false },
+        { "name": "content", "type": "text", "required": false },
+        { "name": "read", "type": "boolean", "required": false },
+        { "name": "starred", "type": "boolean", "required": false },
+        { "name": "fetchedAt", "type": "number", "required": false },
+        { "name": "enclosureType", "type": "string", "required": false },
+        { "name": "enclosureUrl", "type": "string", "required": false }
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "pathPattern": "/api/auth/*",
+      "targetUrl": "http://localhost:3000/api/auth",
+      "stripPrefix": true,
+      "order": 0,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": true,
+      "proxyType": "external_proxy",
+      "isEnabled": true,
+      "description": "Reverse-proxy SuperTokens auth endpoints to the CE backend so this subdomain app can refresh the sAccessToken session. forwardCookies carries the sRefreshToken cookie. NOT the /_bffless/auth relay (D11)."
+    },
+    {
+      "pathPattern": "/api/feeds/remove",
+      "method": "POST",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 1,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "proxyType": "pipeline",
+      "isEnabled": true,
+      "description": "Unsubscribe: POST { url } -> data_query by url -> pick recordId -> data_delete(reader_feeds) -> cascade data_delete(reader_items) for the feed's non-starred items (feedId == url; starred posts are spared so intentionally-saved items survive). auth_required. bffless/apps.",
+      "pipelineConfig": {
+        "name": "Remove feed",
+        "steps": [
+          {
+            "id": "query",
+            "name": "query",
+            "handlerType": "data_query",
+            "config": {
+              "filters": { "url": { "op": "eq", "value": "request.body.url" } },
+              "pageSize": 1,
+              "schemaId": "d1216df3-9776-4de2-81b0-0343d758f83d"
+            }
+          },
+          {
+            "id": "pick",
+            "name": "pick",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ steps }) {\n  var rows = (steps && steps.query) || []\n  var q = (rows && rows.length) ? rows[0] : null\n  var rid = q ? (q.recordId || q.id || q._id) : null\n  return {\n    recordId: rid ? String(rid) : '',\n    found: rid ? true : false\n  }\n}\n"
+            }
+          },
+          {
+            "id": "del",
+            "name": "del",
+            "handlerType": "data_delete",
+            "config": {
+              "recordId": "steps.pick.recordId",
+              "schemaId": "d1216df3-9776-4de2-81b0-0343d758f83d",
+              "condition": "steps.pick.found"
+            }
+          },
+          {
+            "id": "delItems",
+            "name": "delItems",
+            "handlerType": "data_delete",
+            "config": {
+              "filters": {
+                "feedId": { "op": "eq", "value": "request.body.url" },
+                "starred": { "op": "ne", "value": "true" }
+              },
+              "filterLogic": "and",
+              "schemaId": "96a1b5e7-96f0-43a4-baa8-2e19b539d07c",
+              "condition": "steps.pick.found"
+            }
+          },
+          {
+            "id": "respond",
+            "name": "respond",
+            "handlerType": "response_handler",
+            "config": {
+              "body": "{\"ok\":true,\"removed\":{{steps.pick.found}}}",
+              "status": 200,
+              "headers": { "Cache-Control": "no-store" },
+              "contentType": "application/json"
+            }
+          }
+        ],
+        "validators": [{ "type": "auth_required", "config": { "allowApiKey": true } }]
+      }
+    },
+    {
+      "pathPattern": "/api/feeds",
+      "method": "GET",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 2,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "proxyType": "pipeline",
+      "isEnabled": true,
+      "description": "List subscribed feeds: data_query(reader_feeds) -> respond { feeds: [...] }. auth_required.",
+      "pipelineConfig": {
+        "name": "List feeds",
+        "steps": [
+          {
+            "id": "query",
+            "name": "query",
+            "handlerType": "data_query",
+            "config": { "limit": 500, "schemaId": "d1216df3-9776-4de2-81b0-0343d758f83d" }
+          },
+          {
+            "id": "respond",
+            "name": "respond",
+            "handlerType": "response_handler",
+            "config": {
+              "body": "{\"feeds\":{{{steps.query}}}}",
+              "status": 200,
+              "headers": { "Cache-Control": "no-store" },
+              "contentType": "application/json"
+            }
+          }
+        ],
+        "validators": [{ "type": "auth_required", "config": { "allowApiKey": true } }]
+      }
+    },
+    {
+      "pathPattern": "/api/feeds",
+      "method": "POST",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 3,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "proxyType": "pipeline",
+      "isEnabled": true,
+      "description": "Add a feed by URL: prep builds a 1-element array -> data_upsert_many(reader_feeds, dedupField url) -> respond { ok, inserted, skipped } (or 400). auth_required.",
+      "pipelineConfig": {
+        "name": "Add feed (upsert, dedup by url)",
+        "steps": [
+          {
+            "id": "prep",
+            "name": "prep",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ request }) {\n  var b = (request && request.body) || {}\n  var url = (typeof b.url === 'string') ? b.url.trim() : ''\n  var feed = {\n    url: url,\n    title: (typeof b.title === 'string') ? b.title : '',\n    siteUrl: (typeof b.siteUrl === 'string') ? b.siteUrl : '',\n    folder: (b.folder != null && b.folder !== '') ? String(b.folder) : null,\n    addedAt: Number(b.addedAt) || 0\n  }\n  return {\n    feeds: [feed],\n    hasUrl: !!url,\n    noUrl: !url\n  }\n}\n"
+            }
+          },
+          {
+            "id": "upsert",
+            "name": "upsert",
+            "handlerType": "data_upsert_many",
+            "config": {
+              "map": {
+                "url": "steps.item.url",
+                "title": "steps.item.title",
+                "folder": "steps.item.folder",
+                "addedAt": "steps.item.addedAt",
+                "siteUrl": "steps.item.siteUrl"
+              },
+              "items": "steps.prep.feeds",
+              "dedupKey": "steps.item.url",
+              "schemaId": "d1216df3-9776-4de2-81b0-0343d758f83d",
+              "condition": "steps.prep.hasUrl",
+              "dedupField": "url"
+            }
+          },
+          {
+            "id": "respond",
+            "name": "respond",
+            "handlerType": "response_handler",
+            "config": {
+              "body": "{\"ok\":true,\"inserted\":{{steps.upsert.inserted}},\"skipped\":{{steps.upsert.skipped}}}",
+              "status": 200,
+              "headers": { "Cache-Control": "no-store" },
+              "condition": "steps.prep.hasUrl",
+              "contentType": "application/json"
+            }
+          },
+          {
+            "id": "respondNoUrl",
+            "name": "respondNoUrl",
+            "handlerType": "response_handler",
+            "config": {
+              "body": "{\"error\":\"url is required\"}",
+              "status": 400,
+              "headers": { "Cache-Control": "no-store" },
+              "condition": "steps.prep.noUrl",
+              "contentType": "application/json"
+            }
+          }
+        ],
+        "validators": [{ "type": "auth_required", "config": { "allowApiKey": true } }]
+      }
+    },
+    {
+      "pathPattern": "/api/items",
+      "method": "GET",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 4,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "proxyType": "pipeline",
+      "isEnabled": true,
+      "description": "List items: view (all|river|starred|feed|folder) + page/limit, ordered by publishedAt desc, with a matching total count. Single-item guid branch (?guid=…) short-circuits view branches and returns just that row. Legacy no-param call returns the full set. Folder uses the CE `in` operator over the folder's feed URLs. auth_required (allowApiKey).",
+      "pipelineConfig": {
+        "name": "List items",
+        "steps": [
+          {
+            "id": "prep",
+            "name": "prep",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ request }) {\n  var q = (request && request.query) || {}\n  var guid = (typeof q.guid === 'string') ? q.guid : ''\n  var hasGuid = !!guid\n  var view = (typeof q.view === 'string') ? q.view : ''\n  var feedId = (typeof q.feedId === 'string') ? q.feedId : ''\n  var folder = (typeof q.folder === 'string') ? q.folder : ''\n  var page = parseInt(q.page, 10)\n  if (isNaN(page) || page < 1) page = 1\n  var hasPage = (typeof q.page !== 'undefined' && q.page !== '')\n  var limit = parseInt(q.limit, 10)\n  var order = (q.order === 'oldest') ? 'asc' : 'desc'\n  var legacy = (!view && !hasPage && !hasGuid)\n  if (isNaN(limit) || limit < 1) limit = legacy ? 2000 : 20\n  if (!view && feedId) view = 'feed'\n  if (!view) view = 'all'\n  var offset = (page - 1) * limit\n  return {\n    guid: guid, hasGuid: hasGuid,\n    view: view, feedId: feedId, folder: folder,\n    page: page, limit: limit, offset: offset, order: order, legacy: legacy,\n    isAll: view === 'all' && !hasGuid, isRiver: view === 'river' && !hasGuid, isStarred: view === 'starred' && !hasGuid,\n    isFeed: view === 'feed' && !hasGuid, isFolder: view === 'folder' && !hasGuid, hasFolder: view === 'folder' && !hasGuid\n  }\n}\n"
+            }
+          },
+          {
+            "id": "folderFeeds",
+            "name": "folderFeeds",
+            "handlerType": "data_query",
+            "config": {
+              "limit": 500,
+              "schemaId": "d1216df3-9776-4de2-81b0-0343d758f83d",
+              "condition": "steps.prep.hasFolder"
+            }
+          },
+          {
+            "id": "folderUrls",
+            "name": "folderUrls",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ steps }) {\n  var rows = (steps && steps.folderFeeds) || []\n  var target = ((steps && steps.prep && steps.prep.folder) || '').toLowerCase()\n  var out = []\n  for (var i = 0; i < rows.length; i++) {\n    var f = rows[i] && rows[i].folder\n    var u = rows[i] && rows[i].url\n    if (typeof u === 'string' && u && typeof f === 'string' && f.toLowerCase() === target) out.push(u)\n  }\n  return { urls: out, count: out.length }\n}\n",
+              "condition": "steps.prep.hasFolder"
+            }
+          },
+          {
+            "id": "countAll",
+            "name": "countAll",
+            "handlerType": "db_aggregate",
+            "config": {
+              "schemaId": "96a1b5e7-96f0-43a4-baa8-2e19b539d07c",
+              "condition": "steps.prep.isAll",
+              "operation": "count"
+            }
+          },
+          {
+            "id": "pageAll",
+            "name": "pageAll",
+            "handlerType": "data_query",
+            "config": {
+              "limit": "steps.prep.limit",
+              "offset": "steps.prep.offset",
+              "orderBy": { "field": "publishedAt", "direction": "desc" },
+              "schemaId": "96a1b5e7-96f0-43a4-baa8-2e19b539d07c",
+              "condition": "steps.prep.isAll"
+            }
+          },
+          {
+            "id": "countRiver",
+            "name": "countRiver",
+            "handlerType": "db_aggregate",
+            "config": {
+              "filters": { "read": { "op": "eq", "value": "false" } },
+              "schemaId": "96a1b5e7-96f0-43a4-baa8-2e19b539d07c",
+              "condition": "steps.prep.isRiver",
+              "operation": "count"
+            }
+          },
+          {
+            "id": "pageRiver",
+            "name": "pageRiver",
+            "handlerType": "data_query",
+            "config": {
+              "limit": "steps.prep.limit",
+              "offset": "steps.prep.offset",
+              "filters": { "read": { "op": "eq", "value": "false" } },
+              "orderBy": { "field": "publishedAt", "direction": "desc" },
+              "schemaId": "96a1b5e7-96f0-43a4-baa8-2e19b539d07c",
+              "condition": "steps.prep.isRiver"
+            }
+          },
+          {
+            "id": "countStarred",
+            "name": "countStarred",
+            "handlerType": "db_aggregate",
+            "config": {
+              "filters": { "starred": { "op": "eq", "value": "true" } },
+              "schemaId": "96a1b5e7-96f0-43a4-baa8-2e19b539d07c",
+              "condition": "steps.prep.isStarred",
+              "operation": "count"
+            }
+          },
+          {
+            "id": "pageStarred",
+            "name": "pageStarred",
+            "handlerType": "data_query",
+            "config": {
+              "limit": "steps.prep.limit",
+              "offset": "steps.prep.offset",
+              "filters": { "starred": { "op": "eq", "value": "true" } },
+              "orderBy": { "field": "publishedAt", "direction": "desc" },
+              "schemaId": "96a1b5e7-96f0-43a4-baa8-2e19b539d07c",
+              "condition": "steps.prep.isStarred"
+            }
+          },
+          {
+            "id": "countFeed",
+            "name": "countFeed",
+            "handlerType": "db_aggregate",
+            "config": {
+              "filters": { "feedId": { "op": "eq", "value": "steps.prep.feedId" } },
+              "schemaId": "96a1b5e7-96f0-43a4-baa8-2e19b539d07c",
+              "condition": "steps.prep.isFeed",
+              "operation": "count"
+            }
+          },
+          {
+            "id": "pageFeed",
+            "name": "pageFeed",
+            "handlerType": "data_query",
+            "config": {
+              "limit": "steps.prep.limit",
+              "offset": "steps.prep.offset",
+              "filters": { "feedId": { "op": "eq", "value": "steps.prep.feedId" } },
+              "orderBy": { "field": "publishedAt", "direction": "desc" },
+              "schemaId": "96a1b5e7-96f0-43a4-baa8-2e19b539d07c",
+              "condition": "steps.prep.isFeed"
+            }
+          },
+          {
+            "id": "countFolder",
+            "name": "countFolder",
+            "handlerType": "db_aggregate",
+            "config": {
+              "filters": { "feedId": { "op": "in", "value": "steps.folderUrls.urls" } },
+              "schemaId": "96a1b5e7-96f0-43a4-baa8-2e19b539d07c",
+              "condition": "steps.prep.isFolder",
+              "operation": "count"
+            }
+          },
+          {
+            "id": "pageFolder",
+            "name": "pageFolder",
+            "handlerType": "data_query",
+            "config": {
+              "limit": "steps.prep.limit",
+              "offset": "steps.prep.offset",
+              "filters": { "feedId": { "op": "in", "value": "steps.folderUrls.urls" } },
+              "orderBy": { "field": "publishedAt", "direction": "desc" },
+              "schemaId": "96a1b5e7-96f0-43a4-baa8-2e19b539d07c",
+              "condition": "steps.prep.isFolder"
+            }
+          },
+          {
+            "id": "pageGuid",
+            "name": "pageGuid",
+            "handlerType": "data_query",
+            "config": {
+              "limit": 2,
+              "filters": { "guid": { "op": "eq", "value": "steps.prep.guid" } },
+              "schemaId": "96a1b5e7-96f0-43a4-baa8-2e19b539d07c",
+              "condition": "steps.prep.hasGuid"
+            }
+          },
+          {
+            "id": "assemble",
+            "name": "assemble",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ steps }) {\n  var p = steps.prep || {}\n  function rows(v) { return (v && v.length != null) ? v : null }\n  var items = rows(steps.pageGuid) || rows(steps.pageAll) || rows(steps.pageRiver) || rows(steps.pageStarred) || rows(steps.pageFeed) || rows(steps.pageFolder) || []\n  function cnt(c) { return (c && typeof c.result === 'number') ? c.result : null }\n  var total = null\n  if (p.hasGuid) {\n    total = items.length\n  } else {\n    total = cnt(steps.countAll)\n    if (total == null) total = cnt(steps.countRiver)\n    if (total == null) total = cnt(steps.countStarred)\n    if (total == null) total = cnt(steps.countFeed)\n    if (total == null) total = cnt(steps.countFolder)\n    if (total == null) total = items.length\n  }\n  var pageSize = p.limit || items.length || 1\n  var totalPages = pageSize > 0 ? Math.ceil(total / pageSize) : 1\n  var out = []\n  for (var i = 0; i < items.length; i++) out.push(items[i])\n  return { items: out, total: total, page: p.page || 1, pageSize: pageSize, totalPages: totalPages }\n}\n"
+            }
+          },
+          {
+            "id": "respond",
+            "name": "respond",
+            "handlerType": "response_handler",
+            "config": {
+              "body": "{\"items\":{{{steps.assemble.items}}},\"total\":{{steps.assemble.total}},\"page\":{{steps.assemble.page}},\"pageSize\":{{steps.assemble.pageSize}},\"totalPages\":{{steps.assemble.totalPages}}}",
+              "status": 200,
+              "headers": { "Cache-Control": "no-store" },
+              "contentType": "application/json"
+            }
+          }
+        ],
+        "validators": [{ "type": "auth_required", "config": { "allowApiKey": true } }]
+      }
+    },
+    {
+      "pathPattern": "/api/refresh",
+      "method": "POST",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 5,
+      "timeout": 120000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "proxyType": "pipeline",
+      "isEnabled": true,
+      "description": "Ingest: data_query(reader_feeds) -> urls -> xml_feed_parse -> stamp(now ms) -> data_upsert_many(reader_items, dedupField guid, dedupKey guid||link; fetchedAt=epoch ms, read/starred=false so items are prune-filterable; updateFields=[enclosureType,enclosureUrl] backfills those two columns onto already-ingested rows on re-poll while preserving read/starred and everything else — insert-only otherwise) -> respond { inserted, skipped, errors }. feedId = entry.source. No auth_required validator: the reader alias is private (edge-gated login), so /api/* is protected at the site level, and the CE scheduler fires this as a system run with NO user — auth_required (which needs context.user) would reject it. #119.",
+      "pipelineConfig": {
+        "name": "Refresh feeds (ingest)",
+        "steps": [
+          {
+            "id": "feeds",
+            "name": "feeds",
+            "handlerType": "data_query",
+            "config": { "limit": 500, "schemaId": "d1216df3-9776-4de2-81b0-0343d758f83d" }
+          },
+          {
+            "id": "urls",
+            "name": "urls",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ steps }) {\n  var rows = (steps && steps.feeds) || []\n  var out = []\n  for (var i = 0; i < rows.length; i++) {\n    var u = rows[i] && rows[i].url\n    if (typeof u === 'string' && u) out.push(u)\n  }\n  return { urls: out, count: out.length }\n}\n"
+            }
+          },
+          {
+            "id": "parse",
+            "name": "parse",
+            "handlerType": "xml_feed_parse",
+            "config": {
+              "urls": "steps.urls.urls",
+              "condition": "steps.urls.count",
+              "timeoutMs": 20000,
+              "concurrency": 8
+            }
+          },
+          {
+            "id": "stamp",
+            "name": "stamp",
+            "handlerType": "function_handler",
+            "config": { "code": "function handler() {\n  return { ms: Date.now() }\n}\n" }
+          },
+          {
+            "id": "enrich",
+            "name": "enrich",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ steps }) {\n  var entries = (steps && steps.parse && steps.parse.entries) || []\n  var nowMs = (steps && steps.stamp && steps.stamp.ms) || 0\n  var nowIso = new Date(nowMs).toISOString()\n  var out = []\n  for (var i = 0; i < entries.length; i++) {\n    var e = entries[i] || {}\n    var pub = e.publishedAt\n    if (pub) { var d = new Date(pub); if (isNaN(d.getTime())) pub = '' }\n    if (!pub) pub = nowIso\n    var encType = null\n    var encUrl = null\n    var encs = e.enclosures\n    if (encs && encs.length) {\n      for (var j = 0; j < encs.length; j++) {\n        var en = encs[j]\n        if (en && typeof en.type === 'string' && en.type.indexOf('text/') === 0) {\n          encType = en.type\n          encUrl = (en.url != null) ? en.url : null\n          break\n        }\n      }\n    }\n    out.push({\n      source: e.source,\n      guid: e.guid,\n      title: e.title,\n      link: e.link,\n      author: e.author,\n      content: e.content,\n      summary: e.summary,\n      publishedAt: pub,\n      enclosureType: encType,\n      enclosureUrl: encUrl\n    })\n  }\n  return { entries: out }\n}\n"
+            }
+          },
+          {
+            "id": "upsert",
+            "name": "upsert",
+            "handlerType": "data_upsert_many",
+            "config": {
+              "map": {
+                "guid": "steps.item.guid",
+                "link": "steps.item.link",
+                "read": "false",
+                "title": "steps.item.title",
+                "author": "steps.item.author",
+                "feedId": "steps.item.source",
+                "content": "steps.item.content",
+                "starred": "false",
+                "summary": "steps.item.summary",
+                "fetchedAt": "steps.stamp.ms",
+                "publishedAt": "steps.item.publishedAt",
+                "enclosureType": "steps.item.enclosureType",
+                "enclosureUrl": "steps.item.enclosureUrl"
+              },
+              "items": "steps.enrich.entries",
+              "dedupKey": ["steps.item.guid", "steps.item.link"],
+              "schemaId": "96a1b5e7-96f0-43a4-baa8-2e19b539d07c",
+              "condition": "steps.urls.count",
+              "dedupField": "guid",
+              "updateFields": ["enclosureType", "enclosureUrl"]
+            }
+          },
+          {
+            "id": "summary",
+            "name": "summary",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ steps }) {\n  var up = (steps && steps.upsert) || {}\n  function n(v) { return (typeof v === 'number' && !isNaN(v)) ? v : 0 }\n  return {\n    inserted: n(up.inserted),\n    skipped: n(up.skipped),\n    errors: n(up.errored)\n  }\n}\n"
+            }
+          },
+          {
+            "id": "respond",
+            "name": "respond",
+            "handlerType": "response_handler",
+            "config": {
+              "body": "{\"inserted\":{{steps.summary.inserted}},\"skipped\":{{steps.summary.skipped}},\"errors\":{{steps.summary.errors}}}",
+              "status": 200,
+              "headers": { "Cache-Control": "no-store" },
+              "contentType": "application/json"
+            }
+          }
+        ],
+        "validators": []
+      }
+    },
+    {
+      "pathPattern": "/api/items/read",
+      "method": "POST",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 6,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "proxyType": "pipeline",
+      "isEnabled": true,
+      "description": "Set an item's read flag: POST { guid, read } -> prep coerces guid/read -> query finds the reader_items row by guid -> pick recordId -> data_update writes { read } (conditional) -> respond { ok, updated }. Mark-all-read fans this out client-side over a view's unread guids. auth_required (bffless/apps#114).",
+      "pipelineConfig": {
+        "name": "Set item read state",
+        "steps": [
+          {
+            "id": "prep",
+            "name": "prep",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ request }) {\n  var b = (request && request.body) || {}\n  var guid = (typeof b.guid === 'string') ? b.guid.trim() : ''\n  var read = (b.read === true || b.read === 'true' || b.read === 1 || b.read === '1')\n  return {\n    guid: guid,\n    read: read,\n    hasGuid: !!guid,\n    noGuid: !guid\n  }\n}\n"
+            }
+          },
+          {
+            "id": "query",
+            "name": "query",
+            "handlerType": "data_query",
+            "config": {
+              "filters": { "guid": { "op": "eq", "value": "steps.prep.guid" } },
+              "pageSize": 1,
+              "schemaId": "96a1b5e7-96f0-43a4-baa8-2e19b539d07c",
+              "condition": "steps.prep.hasGuid"
+            }
+          },
+          {
+            "id": "pick",
+            "name": "pick",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ steps }) {\n  var rows = (steps && steps.query) || []\n  var q = (rows && rows.length) ? rows[0] : null\n  var rid = q ? (q.recordId || q.id || q._id) : null\n  return {\n    recordId: rid ? String(rid) : '',\n    found: rid ? true : false\n  }\n}\n"
+            }
+          },
+          {
+            "id": "update",
+            "name": "update",
+            "handlerType": "data_update",
+            "config": {
+              "fields": { "read": "steps.prep.read" },
+              "recordId": "steps.pick.recordId",
+              "schemaId": "96a1b5e7-96f0-43a4-baa8-2e19b539d07c",
+              "condition": "steps.pick.found"
+            }
+          },
+          {
+            "id": "respond",
+            "name": "respond",
+            "handlerType": "response_handler",
+            "config": {
+              "body": "{\"ok\":true,\"updated\":{{steps.pick.found}}}",
+              "status": 200,
+              "headers": { "Cache-Control": "no-store" },
+              "condition": "steps.prep.hasGuid",
+              "contentType": "application/json"
+            }
+          },
+          {
+            "id": "respondNoGuid",
+            "name": "respondNoGuid",
+            "handlerType": "response_handler",
+            "config": {
+              "body": "{\"error\":\"guid is required\"}",
+              "status": 400,
+              "headers": { "Cache-Control": "no-store" },
+              "condition": "steps.prep.noGuid",
+              "contentType": "application/json"
+            }
+          }
+        ],
+        "validators": [{ "type": "auth_required", "config": { "allowApiKey": true } }]
+      }
+    },
+    {
+      "pathPattern": "/api/items/star",
+      "method": "POST",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 7,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "proxyType": "pipeline",
+      "isEnabled": true,
+      "description": "Set an item's starred flag: POST { guid, starred } -> prep coerces guid/starred -> query finds the reader_items row by guid -> pick recordId -> data_update writes { starred } (conditional) -> respond { ok, updated }. Starred items are prune-exempt (retention #119). The /api/items/read twin (bffless/apps#115).",
+      "pipelineConfig": {
+        "name": "Set item star state",
+        "steps": [
+          {
+            "id": "prep",
+            "name": "prep",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ request }) {\n  var b = (request && request.body) || {}\n  var guid = (typeof b.guid === 'string') ? b.guid.trim() : ''\n  var starred = (b.starred === true || b.starred === 'true' || b.starred === 1 || b.starred === '1')\n  return {\n    guid: guid,\n    starred: starred,\n    hasGuid: !!guid,\n    noGuid: !guid\n  }\n}\n"
+            }
+          },
+          {
+            "id": "query",
+            "name": "query",
+            "handlerType": "data_query",
+            "config": {
+              "filters": { "guid": { "op": "eq", "value": "steps.prep.guid" } },
+              "pageSize": 1,
+              "schemaId": "96a1b5e7-96f0-43a4-baa8-2e19b539d07c",
+              "condition": "steps.prep.hasGuid"
+            }
+          },
+          {
+            "id": "pick",
+            "name": "pick",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ steps }) {\n  var rows = (steps && steps.query) || []\n  var q = (rows && rows.length) ? rows[0] : null\n  var rid = q ? (q.recordId || q.id || q._id) : null\n  return {\n    recordId: rid ? String(rid) : '',\n    found: rid ? true : false\n  }\n}\n"
+            }
+          },
+          {
+            "id": "update",
+            "name": "update",
+            "handlerType": "data_update",
+            "config": {
+              "fields": { "starred": "steps.prep.starred" },
+              "recordId": "steps.pick.recordId",
+              "schemaId": "96a1b5e7-96f0-43a4-baa8-2e19b539d07c",
+              "condition": "steps.pick.found"
+            }
+          },
+          {
+            "id": "respond",
+            "name": "respond",
+            "handlerType": "response_handler",
+            "config": {
+              "body": "{\"ok\":true,\"updated\":{{steps.pick.found}}}",
+              "status": 200,
+              "headers": { "Cache-Control": "no-store" },
+              "condition": "steps.prep.hasGuid",
+              "contentType": "application/json"
+            }
+          },
+          {
+            "id": "respondNoGuid",
+            "name": "respondNoGuid",
+            "handlerType": "response_handler",
+            "config": {
+              "body": "{\"error\":\"guid is required\"}",
+              "status": 400,
+              "headers": { "Cache-Control": "no-store" },
+              "condition": "steps.prep.noGuid",
+              "contentType": "application/json"
+            }
+          }
+        ],
+        "validators": [{ "type": "auth_required", "config": { "allowApiKey": true } }]
+      }
+    },
+    {
+      "pathPattern": "/api/discover",
+      "method": "POST",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 8,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "proxyType": "pipeline",
+      "isEnabled": true,
+      "description": "Auto-discovery (#113): POST { url } -> http_request GET fetches the pasted site/feed URL server-side (dodging CORS, D12; failOnError:false so a common-path probe's 404 is data, not a halt) -> shape wraps the body in a JSON envelope { body, status, ok } (JSON.stringify escapes the HTML) -> respond. The browser DOMParses body for <link rel=alternate> feed links, or sniffs it as a feed. auth_required (allowApiKey).",
+      "pipelineConfig": {
+        "name": "Discover feed",
+        "steps": [
+          {
+            "id": "fetch",
+            "name": "fetch",
+            "handlerType": "http_request",
+            "config": {
+              "url": "request.body.url",
+              "method": "GET",
+              "headers": {
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,application/rss+xml,application/atom+xml;q=0.8,*/*;q=0.7",
+                "User-Agent": "Mozilla/5.0 (compatible; Rivulet/1.0; +https://j5s.dev)"
+              },
+              "timeout": 20000,
+              "failOnError": false
+            }
+          },
+          {
+            "id": "shape",
+            "name": "shape",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ steps }) {\n  var f = (steps && steps.fetch) || {}\n  var raw = f.body\n  var body = (typeof raw === 'string') ? raw : (raw == null ? '' : JSON.stringify(raw))\n  return {\n    json: JSON.stringify({\n      body: body,\n      status: (typeof f.status === 'number') ? f.status : 0,\n      ok: (f.ok === true)\n    })\n  }\n}\n"
+            }
+          },
+          {
+            "id": "respond",
+            "name": "respond",
+            "handlerType": "response_handler",
+            "config": {
+              "body": "{{{steps.shape.json}}}",
+              "status": 200,
+              "headers": { "Cache-Control": "no-store" },
+              "contentType": "application/json"
+            }
+          }
+        ],
+        "validators": [{ "type": "auth_required", "config": { "allowApiKey": true } }]
+      }
+    },
+    {
+      "pathPattern": "/api/prune",
+      "method": "POST",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 9,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "proxyType": "pipeline",
+      "isEnabled": true,
+      "description": "Retention (#119): cutoff = now - 30d (epoch ms) -> data_delete(reader_items) delete-by-query where read=true AND starred!=true AND fetchedAt < cutoff -> respond { pruned: count }. Starred/unread rows never match (exempt by construction). Fired nightly by a pipeline_schedule as system context. No auth_required validator: the reader alias is private (edge-gated), so this is protected at the site level, and the CE scheduler runs it with NO user — auth_required would reject a userless system run.",
+      "pipelineConfig": {
+        "name": "Prune old items (retention)",
+        "steps": [
+          {
+            "id": "cutoff",
+            "name": "cutoff",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler() {\n  var THIRTY_DAYS_MS = 2592000000\n  return { ms: Date.now() - THIRTY_DAYS_MS }\n}\n"
+            }
+          },
+          {
+            "id": "del",
+            "name": "del",
+            "handlerType": "data_delete",
+            "config": {
+              "filters": {
+                "read": { "op": "eq", "value": "true" },
+                "starred": { "op": "ne", "value": "true" },
+                "fetchedAt": { "op": "lt", "value": "steps.cutoff.ms" }
+              },
+              "schemaId": "96a1b5e7-96f0-43a4-baa8-2e19b539d07c",
+              "filterLogic": "and"
+            }
+          },
+          {
+            "id": "respond",
+            "name": "respond",
+            "handlerType": "response_handler",
+            "config": {
+              "body": "{\"pruned\":{{steps.del.count}}}",
+              "status": 200,
+              "headers": { "Cache-Control": "no-store" },
+              "contentType": "application/json"
+            }
+          }
+        ],
+        "validators": []
+      }
+    },
+    {
+      "pathPattern": "/api/feeds/folder",
+      "method": "POST",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 10,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "proxyType": "pipeline",
+      "isEnabled": true,
+      "description": "Move a feed between folders: POST { url, folder } -> prep coerces url + normalizes folder (empty -> null) -> query finds the reader_feeds row by url -> pick recordId -> data_update writes { folder } only (conditional) -> respond { ok, updated }. The add endpoint's data_upsert_many is insert-only (ce#407) so it can't change an existing feed's folder; this is the update twin, mirroring /api/items/read. auth_required (allowApiKey). bffless/apps#133.",
+      "pipelineConfig": {
+        "name": "Set feed folder",
+        "steps": [
+          {
+            "id": "prep",
+            "name": "prep",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ request }) {\n  var b = (request && request.body) || {}\n  var url = (typeof b.url === 'string') ? b.url.trim() : ''\n  var folder = (b.folder != null && typeof b.folder === 'string' && b.folder.trim() !== '') ? b.folder.trim() : null\n  return {\n    url: url,\n    folder: folder,\n    hasUrl: !!url,\n    noUrl: !url\n  }\n}\n"
+            }
+          },
+          {
+            "id": "query",
+            "name": "query",
+            "handlerType": "data_query",
+            "config": {
+              "filters": { "url": { "op": "eq", "value": "steps.prep.url" } },
+              "pageSize": 1,
+              "schemaId": "d1216df3-9776-4de2-81b0-0343d758f83d",
+              "condition": "steps.prep.hasUrl"
+            }
+          },
+          {
+            "id": "pick",
+            "name": "pick",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ steps }) {\n  var rows = (steps && steps.query) || []\n  var q = (rows && rows.length) ? rows[0] : null\n  var rid = q ? (q.recordId || q.id || q._id) : null\n  return {\n    recordId: rid ? String(rid) : '',\n    found: rid ? true : false\n  }\n}\n"
+            }
+          },
+          {
+            "id": "update",
+            "name": "update",
+            "handlerType": "data_update",
+            "config": {
+              "fields": { "folder": "steps.prep.folder" },
+              "recordId": "steps.pick.recordId",
+              "schemaId": "d1216df3-9776-4de2-81b0-0343d758f83d",
+              "condition": "steps.pick.found"
+            }
+          },
+          {
+            "id": "respond",
+            "name": "respond",
+            "handlerType": "response_handler",
+            "config": {
+              "body": "{\"ok\":true,\"updated\":{{steps.pick.found}}}",
+              "status": 200,
+              "headers": { "Cache-Control": "no-store" },
+              "condition": "steps.prep.hasUrl",
+              "contentType": "application/json"
+            }
+          },
+          {
+            "id": "respondNoUrl",
+            "name": "respondNoUrl",
+            "handlerType": "response_handler",
+            "config": {
+              "body": "{\"error\":\"url is required\"}",
+              "status": 400,
+              "headers": { "Cache-Control": "no-store" },
+              "condition": "steps.prep.noUrl",
+              "contentType": "application/json"
+            }
+          }
+        ],
+        "validators": [{ "type": "auth_required", "config": { "allowApiKey": true } }]
+      }
+    },
+    {
+      "pathPattern": "/api/counts",
+      "method": "GET",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 11,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "proxyType": "pipeline",
+      "isEnabled": true,
+      "description": "Sidebar badge counts: grouped unread-per-feed (db_aggregate count groupBy feedId, read=false) + starred total. Respond { unreadByFeed: {feedId: n}, starred: n }. auth_required (allowApiKey).",
+      "pipelineConfig": {
+        "name": "Counts",
+        "steps": [
+          {
+            "id": "unread",
+            "name": "unread",
+            "handlerType": "db_aggregate",
+            "config": {
+              "filters": { "read": { "op": "eq", "value": "false" } },
+              "groupBy": "feedId",
+              "schemaId": "96a1b5e7-96f0-43a4-baa8-2e19b539d07c",
+              "operation": "count"
+            }
+          },
+          {
+            "id": "starred",
+            "name": "starred",
+            "handlerType": "db_aggregate",
+            "config": {
+              "filters": { "starred": { "op": "eq", "value": "true" } },
+              "schemaId": "96a1b5e7-96f0-43a4-baa8-2e19b539d07c",
+              "operation": "count"
+            }
+          },
+          {
+            "id": "unreadStarred",
+            "name": "unreadStarred",
+            "handlerType": "db_aggregate",
+            "config": {
+              "filters": { "read": { "op": "eq", "value": "false" }, "starred": { "op": "eq", "value": "true" } },
+              "filterLogic": "and",
+              "schemaId": "96a1b5e7-96f0-43a4-baa8-2e19b539d07c",
+              "operation": "count"
+            }
+          },
+          {
+            "id": "shape",
+            "name": "shape",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ steps }) {\n  var u = (steps && steps.unread && steps.unread.results) || []\n  var map = {}\n  for (var i = 0; i < u.length; i++) {\n    var r = u[i] || {}\n    if (r.key != null) map[r.key] = r.value\n  }\n  var s = (steps && steps.starred && typeof steps.starred.result === 'number') ? steps.starred.result : 0\n  var us = (steps && steps.unreadStarred && typeof steps.unreadStarred.result === 'number') ? steps.unreadStarred.result : 0\n  return { json: JSON.stringify({ unreadByFeed: map, starred: s, unreadStarred: us }) }\n}\n"
+            }
+          },
+          {
+            "id": "respond",
+            "name": "respond",
+            "handlerType": "response_handler",
+            "config": {
+              "body": "{{{steps.shape.json}}}",
+              "status": 200,
+              "headers": { "Cache-Control": "no-store" },
+              "contentType": "application/json"
+            }
+          }
+        ],
+        "validators": [{ "type": "auth_required", "config": { "allowApiKey": true } }]
+      }
+    },
+    {
+      "pathPattern": "/api/items/read-all",
+      "method": "POST",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 12,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "proxyType": "pipeline",
+      "isEnabled": true,
+      "description": "Mark all read for a view: POST { view, feedId?, folder? } -> data_update read=true where the view filter matches AND read=false. Folder uses the CE `in` operator over the folder's feed URLs. Respond { updated: n }. auth_required (allowApiKey). bffless/apps reader.",
+      "pipelineConfig": {
+        "name": "Mark all read",
+        "steps": [
+          {
+            "id": "prep",
+            "name": "prep",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ request }) {\n  var b = (request && request.body) || {}\n  var view = (typeof b.view === 'string') ? b.view : 'all'\n  var feedId = (typeof b.feedId === 'string') ? b.feedId : ''\n  var folder = (typeof b.folder === 'string') ? b.folder : ''\n  return {\n    view: view, feedId: feedId, folder: folder, yes: true,\n    isAllOrRiver: (view === 'all' || view === 'river'),\n    isStarred: view === 'starred',\n    isFeed: view === 'feed',\n    isFolder: view === 'folder',\n    hasFolder: view === 'folder'\n  }\n}\n"
+            }
+          },
+          {
+            "id": "folderFeeds",
+            "name": "folderFeeds",
+            "handlerType": "data_query",
+            "config": {
+              "limit": 500,
+              "schemaId": "d1216df3-9776-4de2-81b0-0343d758f83d",
+              "condition": "steps.prep.hasFolder"
+            }
+          },
+          {
+            "id": "folderUrls",
+            "name": "folderUrls",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ steps }) {\n  var rows = (steps && steps.folderFeeds) || []\n  var target = ((steps && steps.prep && steps.prep.folder) || '').toLowerCase()\n  var out = []\n  for (var i = 0; i < rows.length; i++) {\n    var f = rows[i] && rows[i].folder\n    var u = rows[i] && rows[i].url\n    if (typeof u === 'string' && u && typeof f === 'string' && f.toLowerCase() === target) out.push(u)\n  }\n  return { urls: out, count: out.length }\n}\n",
+              "condition": "steps.prep.hasFolder"
+            }
+          },
+          {
+            "id": "updAll",
+            "name": "updAll",
+            "handlerType": "data_update",
+            "config": {
+              "fields": { "read": "steps.prep.yes" },
+              "filters": { "read": { "op": "eq", "value": "false" } },
+              "schemaId": "96a1b5e7-96f0-43a4-baa8-2e19b539d07c",
+              "condition": "steps.prep.isAllOrRiver"
+            }
+          },
+          {
+            "id": "updStarred",
+            "name": "updStarred",
+            "handlerType": "data_update",
+            "config": {
+              "fields": { "read": "steps.prep.yes" },
+              "filters": {
+                "read": { "op": "eq", "value": "false" },
+                "starred": { "op": "eq", "value": "true" }
+              },
+              "schemaId": "96a1b5e7-96f0-43a4-baa8-2e19b539d07c",
+              "condition": "steps.prep.isStarred",
+              "filterLogic": "and"
+            }
+          },
+          {
+            "id": "updFeed",
+            "name": "updFeed",
+            "handlerType": "data_update",
+            "config": {
+              "fields": { "read": "steps.prep.yes" },
+              "filters": {
+                "read": { "op": "eq", "value": "false" },
+                "feedId": { "op": "eq", "value": "steps.prep.feedId" }
+              },
+              "schemaId": "96a1b5e7-96f0-43a4-baa8-2e19b539d07c",
+              "condition": "steps.prep.isFeed",
+              "filterLogic": "and"
+            }
+          },
+          {
+            "id": "updFolder",
+            "name": "updFolder",
+            "handlerType": "data_update",
+            "config": {
+              "fields": { "read": "steps.prep.yes" },
+              "filters": {
+                "read": { "op": "eq", "value": "false" },
+                "feedId": { "op": "in", "value": "steps.folderUrls.urls" }
+              },
+              "schemaId": "96a1b5e7-96f0-43a4-baa8-2e19b539d07c",
+              "condition": "steps.prep.isFolder",
+              "filterLogic": "and"
+            }
+          },
+          {
+            "id": "assemble",
+            "name": "assemble",
+            "handlerType": "function_handler",
+            "config": {
+              "code": "function handler({ steps }) {\n  function c(u) { return (u && typeof u.count === 'number') ? u.count : null }\n  var n = c(steps.updAll)\n  if (n == null) n = c(steps.updStarred)\n  if (n == null) n = c(steps.updFeed)\n  if (n == null) n = c(steps.updFolder)\n  if (n == null) n = 0\n  return { updated: n }\n}\n"
+            }
+          },
+          {
+            "id": "respond",
+            "name": "respond",
+            "handlerType": "response_handler",
+            "config": {
+              "body": "{\"updated\":{{steps.assemble.updated}}}",
+              "status": 200,
+              "headers": { "Cache-Control": "no-store" },
+              "contentType": "application/json"
+            }
+          }
+        ],
+        "validators": [{ "type": "auth_required", "config": { "allowApiKey": true } }]
+      }
+    }
+  ]
+}

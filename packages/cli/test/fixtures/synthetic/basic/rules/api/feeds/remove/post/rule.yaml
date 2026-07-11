@@ -1,0 +1,9 @@
+pipeline:
+  steps:
+    - name: query
+      handler: data_query
+      config:
+        schemaId: $schema:items
+    - name: pick
+      handler: function_handler
+      code: pick.fn.js

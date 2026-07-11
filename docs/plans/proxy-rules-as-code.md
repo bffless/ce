@@ -334,9 +334,12 @@ Auth: `X-API-Key`, same as everything else (`ApiKeyGuard` already covers these c
   as specced in §3.1.
 - **Q3 Prune semantics** — **opt-in `--prune`**; sync never deletes rules by default, even for
   git-managed sets.
-- **Q4 Committed build artifact** — **commit the compiled export JSON during Phases 0–1**
-  (lockfile-style, preserves today's "backup JSON" property and eases dashboard Import), then
-  drop it once Phase 2 CI deploys are the norm.
+- **Q4 Committed build artifact** — **amended 2026-07-11: not committed.** `bffless rules
+  build` writes to `<set>/dist/` and drops a `dist/.gitignore` (`*`) so the compiled JSON
+  never enters git. Sources are the single source of truth from day one; to deploy during
+  Phases 0–1, run `build` and Import the result via the dashboard. (Originally: commit
+  lockfile-style during Phases 0–1 — retired to avoid generated JSON in PRs and a CI
+  freshness check.)
 - **Q5 CLI packaging** — **one umbrella `bffless` CLI, home `repos/ce/packages/cli`**, `rules`
   as the first command family (§3.6). Publish unscoped `bffless` on npm if the name is
   claimable, else `@bffless/cli` with a `bffless` bin. Open sub-questions: npm name

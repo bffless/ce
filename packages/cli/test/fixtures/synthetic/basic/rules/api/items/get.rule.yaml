@@ -1,0 +1,6 @@
+pipeline:
+  steps:
+    - name: query
+      handler: data_query
+      config:
+        schemaId: $schema:items
