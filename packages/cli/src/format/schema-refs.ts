@@ -39,7 +39,7 @@ export function walkSchemaRefs(value: unknown, visit: (ref: string, set: (v: str
     const obj = value as Record<string, unknown>;
     for (const key of Object.keys(obj)) {
       const v = obj[key];
-      if (SCHEMA_REF_KEY_SET.has(key) && typeof v === 'string') {
+      if (SCHEMA_REF_KEY_SET.has(key) && typeof v === 'string' && v) {
         visit(v, (newValue: string) => {
           obj[key] = newValue;
         });

@@ -68,7 +68,7 @@ describe('RuleManifestSchema', () => {
     });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues.some((i) => /exactly one/i.test(i.message))).toBe(true);
+      expect(result.error.issues.some((i) => /may not both/i.test(i.message))).toBe(true);
     }
   });
 
@@ -108,6 +108,13 @@ describe('RuleManifestSchema', () => {
     expect(RuleManifestSchema.safeParse({ timeout: 999 }).success).toBe(false);
     expect(RuleManifestSchema.safeParse({ timeout: 120001 }).success).toBe(false);
     expect(RuleManifestSchema.safeParse({ timeout: 5000.5 }).success).toBe(false);
+  });
+
+  it('validates order as a non-negative int', () => {
+    expect(RuleManifestSchema.safeParse({ order: 0 }).success).toBe(true);
+    expect(RuleManifestSchema.safeParse({ order: 10 }).success).toBe(true);
+    expect(RuleManifestSchema.safeParse({ order: -3 }).success).toBe(false);
+    expect(RuleManifestSchema.safeParse({ order: 2.5 }).success).toBe(false);
   });
 
   it('validates pathPattern starts with "/" or "*"', () => {
@@ -263,5 +270,13 @@ describe('walkSchemaRefs', () => {
       'conversationsSchemaId',
       'messagesSchemaId',
     ]);
+  });
+
+  it('skips empty-string values under SCHEMA_REF_KEYS', () => {
+    const doc = { config: { schemaId: '' } };
+    const seen: string[] = [];
+    walkSchemaRefs(doc, (ref) => seen.push(ref));
+    expect(seen).toEqual([]);
+    expect(doc.config.schemaId).toBe('');
   });
 });

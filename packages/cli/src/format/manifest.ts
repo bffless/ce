@@ -123,7 +123,7 @@ export const RuleManifestSchema = z
     methods: z.array(MethodSchema).optional(),
     targetUrl: z.string().optional(),
     stripPrefix: z.boolean().optional(),
-    order: z.number().optional(),
+    order: z.number().int().min(0).optional(),
     timeout: z.number().int().min(1000).max(120000).optional(),
     preserveHost: z.boolean().optional(),
     forwardCookies: z.boolean().optional(),
@@ -140,7 +140,7 @@ export const RuleManifestSchema = z
   })
   .strict()
   .refine((rule) => !(rule.pipeline !== undefined && rule.pipelineConfig !== undefined), {
-    message: 'exactly one of `pipeline`/`pipelineConfig` may be present, not both',
+    message: '`pipeline` and `pipelineConfig` may not both be present',
   });
 export type RuleManifest = z.infer<typeof RuleManifestSchema>;
 
