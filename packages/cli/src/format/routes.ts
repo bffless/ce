@@ -11,6 +11,25 @@ const LITERAL_SEGMENT_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const SPREAD_SEGMENT_RE = /^\[\.\.\..*\]$/;
 const BRACKET_SEGMENT_RE = /^\[.*\]$/;
 
+/** RFC-4122 UUID matcher. Shared between the compiler (schema-ref resolution warnings) and the
+ *  decompiler (schema-ref rewriting warnings) so there is exactly one definition. */
+export const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+/**
+ * The compiler-derived default pipeline name for a rule with no explicit `pipeline.name`:
+ * `${segments.join('/')} ${methodStem.toUpperCase()}`. `segments` are the directory segments
+ * between `rules/` and the method file/dir (build.ts's `dirSegments`, decompile.ts's derived
+ * `base`); `methodStem` is the lowercase method stem (`get`, `post`, …, `any`).
+ *
+ * The compiler (build.ts) uses this to fill in `pipeline.name` when the manifest omits it; the
+ * decompiler (decompile.ts) recomputes the same string to decide whether to elide `name:` from
+ * the emitted `pipeline:` sugar. Both call sites MUST use this single definition — a drift here
+ * silently breaks the round-trip for rule shapes not covered by the fixtures.
+ */
+export function defaultPipelineName(segments: string[], methodStem: string): string {
+  return `${segments.join('/')} ${methodStem.toUpperCase()}`;
+}
+
 /** A literal segment reserved for filesystem/route-authoring conventions; cannot map to a same-named directory. */
 function isReservedSegment(segment: string): boolean {
   if (segment === 'rules') return true;

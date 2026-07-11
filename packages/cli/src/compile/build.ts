@@ -13,7 +13,7 @@ import {
   parseYamlFile,
 } from '../format/manifest.js';
 import type { RuleManifest } from '../format/manifest.js';
-import { relPathToPattern, deriveOrders, METHOD_STEMS } from '../format/routes.js';
+import { relPathToPattern, deriveOrders, METHOD_STEMS, UUID_RE, defaultPipelineName } from '../format/routes.js';
 import { applyRuleDefaults } from '../format/defaults.js';
 import { canonicalizeExport } from '../format/canonical.js';
 import { walkSchemaRefs } from '../format/schema-refs.js';
@@ -38,7 +38,6 @@ export interface BuildResult {
 export const SCHEMA_NAMESPACE = '6e1a24d0-0000-4000-8000-bff1e55c0de0';
 
 const RULE_FILE_RE = new RegExp(`^(${[...METHOD_STEMS].join('|')})\\.rule\\.yaml$`);
-const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 const SECRET_RE = /\{\{\s*secrets\.([A-Za-z0-9_]+)\s*\}\}/g;
 
 /** RFC-4122 v5 (SHA-1). ~15 lines, no dependency. */
@@ -275,8 +274,7 @@ export async function buildRuleSet(setDir: string, opts?: { exportedAt?: string 
     }
 
     const pathPattern = manifest.pathPattern ?? relPathToPattern(d.dirSegments);
-    const routePath = d.dirSegments.join('/');
-    const defaultPipelineName = `${routePath} ${d.methodStem.toUpperCase()}`;
+    const pipelineDefaultName = defaultPipelineName(d.dirSegments, d.methodStem);
 
     // headerConfig.add must carry empty-string placeholders only — never real secret values.
     if (manifest.headerConfig?.add) {
@@ -315,7 +313,7 @@ export async function buildRuleSet(setDir: string, opts?: { exportedAt?: string 
 
     let pipelineConfig: PipelineConfig | undefined;
     if (manifest.pipeline !== undefined) {
-      pipelineConfig = compilePipeline(manifest.pipeline, defaultPipelineName, setDir, d.manifestDir, d.manifestPath);
+      pipelineConfig = compilePipeline(manifest.pipeline, pipelineDefaultName, setDir, d.manifestDir, d.manifestPath);
     } else if (manifest.pipelineConfig !== undefined) {
       pipelineConfig = resolveFileRefs(manifest.pipelineConfig, setDir, d.manifestDir, d.manifestPath) as PipelineConfig;
     }

@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { patternToRelPath, relPathToPattern, sortRulesBySpecificity, deriveOrders } from '../src/format/routes.js';
+import {
+  patternToRelPath,
+  relPathToPattern,
+  sortRulesBySpecificity,
+  deriveOrders,
+  defaultPipelineName,
+} from '../src/format/routes.js';
 
 /** Real pathPatterns pulled from packages/cli/test/fixtures/real/*.json (Task 4 brief). */
 const REAL_EXPRESSIBLE_PATTERNS = [
@@ -270,6 +276,26 @@ describe('sortRulesBySpecificity', () => {
     const b = { pathPattern: '/api/x', method: 'GET', tag: 'second' };
     const sorted = sortRulesBySpecificity([a, b]);
     expect(sorted.map((r) => r.tag)).toEqual(['first', 'second']);
+  });
+});
+
+describe('defaultPipelineName', () => {
+  // Pins the single formula shared by build.ts (compiler) and decompile.ts (decompiler): a
+  // drift here would silently break the round-trip for rule shapes not in the golden fixtures.
+  it('joins segments with "/" and appends the uppercased method stem', () => {
+    expect(defaultPipelineName(['api', 'feeds', 'remove'], 'post')).toBe('api/feeds/remove POST');
+  });
+
+  it('handles the "any" stem', () => {
+    expect(defaultPipelineName(['api', 'auth', '[...path]'], 'any')).toBe('api/auth/[...path] ANY');
+  });
+
+  it('handles a single-segment route', () => {
+    expect(defaultPipelineName(['feed.xml'], 'get')).toBe('feed.xml GET');
+  });
+
+  it('handles an empty segment list', () => {
+    expect(defaultPipelineName([], 'get')).toBe(' GET');
   });
 });
 

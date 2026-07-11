@@ -6,7 +6,7 @@
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
-import { patternToRelPath, deriveOrders } from '../format/routes.js';
+import { patternToRelPath, deriveOrders, UUID_RE, defaultPipelineName } from '../format/routes.js';
 import { elideRuleDefaults } from '../format/defaults.js';
 import { walkSchemaRefs } from '../format/schema-refs.js';
 import { canonicalizeExport } from '../format/canonical.js';
@@ -21,8 +21,6 @@ export interface DecompileResult {
   files: Map<string, string>; // relative path → content
   warnings: string[];
 }
-
-const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
 /** Emit-order for a rule manifest — readability only; the compiler is order-insensitive. */
 const MANIFEST_KEY_ORDER = [
@@ -191,8 +189,7 @@ export function decompileExport(exp: RuleSetExport): DecompileResult {
     usedManifestPaths.add(built.rel);
 
     // Path/method are encoded in the layout; recompute default pipeline name from the base used.
-    const routePath = base.join('/');
-    const defaultPipelineName = `${routePath} ${stem.toUpperCase()}`;
+    const pipelineDefaultName = defaultPipelineName(base, stem);
 
     // 5. Elide defaults, elide path/method (layout-encoded), elide derived `order:`.
     const manifest = elideRuleDefaults(clone) as Record<string, unknown>;
@@ -208,7 +205,7 @@ export function decompileExport(exp: RuleSetExport): DecompileResult {
     if (manifest.pipelineConfig) {
       manifest.pipeline = pipelineToSugar(
         manifest.pipelineConfig as PipelineConfig,
-        defaultPipelineName,
+        pipelineDefaultName,
         built.dirRel,
         files,
       );
