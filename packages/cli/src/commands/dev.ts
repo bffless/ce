@@ -25,6 +25,17 @@
  * within one set coalesces into a single rerun of that set only. Failures (build, validate,
  * or test) are logged and never stop the loop — only `close()` (SIGINT, from the command
  * wiring in `index.ts`) ends it.
+ *
+ * Passes are also serialized per set, independent of the debounce window: a debounce timer
+ * only coalesces changes that arrive BEFORE it fires. If a change arrives while a pass for
+ * that same set is already running (its timer already fired and was removed from `timers`),
+ * a naive re-arm would start a second, concurrent `pass(dir)` — two overlapping `buildOne`
+ * calls racing to write the same `<set>/dist/*.json`. Instead, `running`/`pendingRerun`
+ * track per-dir state: a timer fire while the dir is running just marks it as needing one
+ * trailing rerun (repeated fires while still running coalesce into that same single flag);
+ * when the in-flight pass finishes, it immediately starts exactly one queued rerun, which
+ * itself follows the same rule. `close()` drops any queued trailing rerun (and stops new
+ * ones from being queued) but does not abort a pass already in flight.
  */
 import path from 'node:path';
 import { watch as chokidarWatch } from 'chokidar';
@@ -174,8 +185,39 @@ export async function runDev(
   const createWatcher = deps?.createWatcher ?? defaultCreateWatcher;
   const watcher = createWatcher(resolvedDirs);
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
+  const running = new Set<string>();
+  const pendingRerun = new Set<string>();
+  let closed = false;
+
+  /** Run one pass for `dir`, tracking it in `running` for the whole duration (see
+   *  `schedulePass`), then — unless we've since closed — start exactly one queued
+   *  trailing rerun if a change arrived while this pass was in flight. */
+  async function runTracked(dir: string): Promise<void> {
+    running.add(dir);
+    try {
+      await pass(dir);
+    } finally {
+      running.delete(dir);
+    }
+    if (!closed && pendingRerun.delete(dir)) {
+      void runTracked(dir);
+    }
+  }
+
+  /** A debounce timer for `dir` fired. If a pass for `dir` is already running, don't
+   *  start a concurrent one — queue a single trailing rerun instead (further fires while
+   *  still running just leave the flag set). Otherwise start a pass now. */
+  function schedulePass(dir: string): void {
+    if (closed) return;
+    if (running.has(dir)) {
+      pendingRerun.add(dir);
+      return;
+    }
+    void runTracked(dir);
+  }
 
   watcher.on('change', (file: string) => {
+    if (closed) return;
     const dir = findOwningDir(resolvedDirs, file);
     if (!dir || isUnderDist(dir, file)) return;
 
@@ -183,15 +225,17 @@ export async function runDev(
     if (existing) clearTimeout(existing);
     const timer = setTimeout(() => {
       timers.delete(dir);
-      void pass(dir);
+      schedulePass(dir);
     }, debounceMs);
     timers.set(dir, timer);
   });
 
   return {
     close: async () => {
+      closed = true;
       for (const timer of timers.values()) clearTimeout(timer);
       timers.clear();
+      pendingRerun.clear();
       await watcher.close();
     },
   };

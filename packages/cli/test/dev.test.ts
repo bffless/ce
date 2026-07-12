@@ -106,6 +106,47 @@ function pushDeps(response: SyncResponse): PushDeps & { sentBodies: () => SyncRe
   };
 }
 
+/**
+ * A `PushDeps` whose `fetchImpl` never resolves on its own — every call parks on an
+ * internal FIFO queue of resolvers until the test calls `release()`. Because a `--push`
+ * pass's last step awaits the sync `fetch`, this is a fully deps-injected way to hold a
+ * *whole* `runPass` in flight for as long as a test needs, without mocking `buildOne`/
+ * `validateRuleSet`/`runFnTests` or adding any production hook: `runPass` only returns
+ * once the fetch it's awaiting resolves, so holding the fetch holds the pass.
+ *
+ * `inFlight`/`maxInFlight` track concurrently-parked calls — the serialization tests use
+ * `maxInFlight` as the "did two passes ever overlap" witness.
+ */
+function deferredPushDeps(response: SyncResponse): PushDeps & {
+  callCount: () => number;
+  inFlight: () => number;
+  maxInFlight: () => number;
+  release: () => void;
+} {
+  const pending: Array<() => void> = [];
+  let calls = 0;
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const fetchImpl: PushDeps['fetchImpl'] = async () => {
+    calls += 1;
+    inFlight += 1;
+    maxInFlight = Math.max(maxInFlight, inFlight);
+    await new Promise<void>((resolve) => pending.push(resolve));
+    inFlight -= 1;
+    return new Response(JSON.stringify(response), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+  return {
+    fetchImpl,
+    env: { BFFLESS_API_KEY: 'k-test' },
+    config: { apiUrl: API_URL, project: PROJECT_UUID },
+    execGit: noGit,
+    callCount: () => calls,
+    inFlight: () => inFlight,
+    maxInFlight: () => maxInFlight,
+    release: () => pending.shift()?.(),
+  };
+}
+
 describe('runDev', () => {
   it('runs an initial pass for every resolved dir', async () => {
     const dirA = scratchSet('a');
@@ -259,5 +300,140 @@ describe('runDev', () => {
     expect(close).not.toHaveBeenCalled();
     await handle.close();
     expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  describe('per-set pass serialization (trailing rerun, no overlap)', () => {
+    it('a change fired while a pass is running queues exactly one trailing pass — never two concurrent passes', async () => {
+      const dir = scratchSet('serialize-a');
+      const { watcher, emit } = fakeWatcher();
+      const log = vi.fn();
+      const fc = deferredPushDeps(syncResponse());
+
+      const handlePromise = runDev([dir], { push: true, nameSuffix: 'x' }, '/nowhere', {
+        createWatcher: () => watcher,
+        log,
+        pushDeps: fc,
+        debounceMs: DEBOUNCE_MS,
+      });
+
+      // Let the initial pass reach (and park on) its push fetch, then release it so
+      // `runDev` itself resolves.
+      await sleep(SETTLE_MS);
+      expect(fc.callCount()).toBe(1);
+      fc.release();
+      const handle = await handlePromise;
+      log.mockClear();
+
+      // A change starts pass #2, which runs its way to the push fetch and parks there —
+      // i.e. it is now "running" for the whole duration of the park.
+      emit(path.join(dir, 'rules/api/hello/get/hello.fn.js'));
+      await sleep(SETTLE_MS);
+      expect(fc.callCount()).toBe(2);
+      expect(fc.inFlight()).toBe(1);
+
+      // A second change arrives *while pass #2 is still running*. If it started a
+      // concurrent pass, that pass would reach its own push fetch and bump the call
+      // count/inFlight before pass #2 is released — the bug this test targets.
+      emit(path.join(dir, 'rules/api/hello/get/hello.fn.js'));
+      await sleep(SETTLE_MS);
+      expect(fc.callCount()).toBe(2);
+      expect(fc.maxInFlight()).toBe(1);
+
+      // Releasing pass #2 lets it finish; exactly one trailing pass should then run
+      // (coalescing the queued change), never overlapping with pass #2.
+      fc.release();
+      await sleep(SETTLE_MS);
+      expect(fc.callCount()).toBe(3);
+      expect(fc.inFlight()).toBe(1);
+      expect(fc.maxInFlight()).toBe(1);
+
+      fc.release();
+      await sleep(SETTLE_MS);
+      expect(fc.callCount()).toBe(3); // no further trailing pass — nothing else was queued
+      expect(fc.maxInFlight()).toBe(1); // passes never overlapped
+
+      await handle.close();
+    });
+
+    it('three changes during a running pass still coalesce into exactly one trailing pass', async () => {
+      const dir = scratchSet('serialize-b');
+      const { watcher, emit } = fakeWatcher();
+      const log = vi.fn();
+      const fc = deferredPushDeps(syncResponse());
+
+      const handlePromise = runDev([dir], { push: true, nameSuffix: 'x' }, '/nowhere', {
+        createWatcher: () => watcher,
+        log,
+        pushDeps: fc,
+        debounceMs: DEBOUNCE_MS,
+      });
+      await sleep(SETTLE_MS);
+      fc.release(); // initial pass
+      const handle = await handlePromise;
+      log.mockClear();
+
+      emit(path.join(dir, 'rules/api/hello/get/hello.fn.js'));
+      await sleep(SETTLE_MS);
+      expect(fc.callCount()).toBe(2); // pass #2 running, parked on push
+
+      // Three changes land back-to-back while pass #2 is running.
+      emit(path.join(dir, 'rules/api/hello/get/hello.fn.js'));
+      await sleep(DEBOUNCE_MS / 2);
+      emit(path.join(dir, 'rules/api/hello/get/hello.fn.js'));
+      await sleep(DEBOUNCE_MS / 2);
+      emit(path.join(dir, 'rules/api/hello/get/hello.fn.js'));
+      await sleep(SETTLE_MS);
+
+      expect(fc.callCount()).toBe(2); // none of the three started a concurrent pass
+      expect(fc.maxInFlight()).toBe(1);
+
+      fc.release(); // finish pass #2
+      await sleep(SETTLE_MS);
+      expect(fc.callCount()).toBe(3); // exactly one trailing pass, coalescing all three
+      expect(fc.maxInFlight()).toBe(1);
+
+      fc.release();
+      await sleep(SETTLE_MS);
+      expect(fc.callCount()).toBe(3); // no second trailing pass
+
+      await handle.close();
+    });
+
+    it('close() during a running pass with a queued trailing rerun starts no further pass', async () => {
+      const dir = scratchSet('serialize-close');
+      const { watcher, emit } = fakeWatcher();
+      const log = vi.fn();
+      const fc = deferredPushDeps(syncResponse());
+
+      const handlePromise = runDev([dir], { push: true, nameSuffix: 'x' }, '/nowhere', {
+        createWatcher: () => watcher,
+        log,
+        pushDeps: fc,
+        debounceMs: DEBOUNCE_MS,
+      });
+      await sleep(SETTLE_MS);
+      fc.release(); // initial pass
+      const handle = await handlePromise;
+      log.mockClear();
+
+      emit(path.join(dir, 'rules/api/hello/get/hello.fn.js'));
+      await sleep(SETTLE_MS);
+      expect(fc.callCount()).toBe(2); // pass #2 running, parked on push
+
+      // A change lands and its debounce timer fires *while pass #2 is still running* —
+      // this is what queues the trailing rerun (as opposed to a still-pending timer,
+      // which `close()` clearing timers would trivially cancel either way).
+      emit(path.join(dir, 'rules/api/hello/get/hello.fn.js'));
+      await sleep(SETTLE_MS);
+      expect(fc.callCount()).toBe(2); // still no concurrent pass — rerun is queued, not started
+
+      await handle.close();
+
+      // Let the in-flight pass #2 finish. Because close() drops the queued trailing
+      // rerun, no further pass should start.
+      fc.release();
+      await sleep(SETTLE_MS);
+      expect(fc.callCount()).toBe(2);
+    });
   });
 });
