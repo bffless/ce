@@ -9,6 +9,7 @@
   "main": "./dist/index.js",
   "exports": {
     ".": "./dist/index.js",
+    "./lib": "./dist/lib.js",
     "./harness": "./dist/harness/run-handler.js",
     "./eslint": "./dist/lint/eslint-preset.js"
   },
