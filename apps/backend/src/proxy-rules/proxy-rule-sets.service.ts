@@ -781,11 +781,17 @@ export class ProxyRuleSetsService {
     // when a revision already exists or the set has no rules. Never runs
     // under dryRun — a preview must not write anything.
     if (existing && !dryRun) {
-      await this.proxyRuleSetRevisionsService.captureIfUnrevisioned({
-        ruleSet: existing,
-        rules: liveRules,
-        userId,
-      });
+      try {
+        await this.proxyRuleSetRevisionsService.captureIfUnrevisioned({
+          ruleSet: existing,
+          rules: liveRules,
+          userId,
+        });
+      } catch (error) {
+        this.logger.warn(
+          `Failed to backfill pre-sync revision for rule set ${existing.id}: ${(error as Error).message}`,
+        );
+      }
     }
 
     let plan: SyncPlan;
