@@ -10,7 +10,8 @@ Import already understands, syncs that compiled output to a live instance, and s
 
 ```bash
 npx bffless rules build          # one-off, no install
-npm i -g bffless                 # or pin it as a devDependency
+npm i -g bffless                 # global install
+pnpm add -D bffless              # or pin it as a devDependency
 ```
 
 ## Commands

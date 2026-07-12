@@ -9,13 +9,13 @@ Import already understands, and gives you a `node:vm` test harness + ESLint pres
 the handler code along the way.
 
 Full design rationale, phasing, and open questions: see
-[`docs/plans/proxy-rules-as-code.md`](../../docs/plans/proxy-rules-as-code.md) — tracking
+[`docs/plans/proxy-rules-as-code.md`](../../../docs/plans/proxy-rules-as-code.md) — tracking
 issue [bffless/ce#446](https://github.com/bffless/ce/issues/446). This README documents
 what actually shipped in **Phase 0**: a local compiler/decompiler, a validator, a
 declarative handler-test runner, and the two library exports (`bffless/harness`,
-`bffless/eslint`). There is no live sync to a BFFless instance yet — `bffless rules build`
-produces a JSON file you still import by hand through the dashboard. See
-[Not yet (Phase 1)](#not-yet-phase-1) below for what's planned but not built.
+`bffless/eslint`). Live sync to a BFFless instance is available via `rules pull`, `rules push`,
+and `rules diff` against a running instance. See
+[Not yet](#not-yet) below for what's still planned but not built.
 
 Today, a rule set lives only in the database, edited through a UI form or an AI-agent MCP
 session — no history, no code review, no local testing, no diff. `function_handler` step
@@ -349,24 +349,12 @@ rules/api/d/post/bad.fn.js:2 Prohibited pattern detected: \bprocess\s*\.
 rules/api/e/post.rule.yaml skill "does-not-exist" not found in ../../skills/
 ```
 
-## Not yet (Phase 1)
+## Not yet
 
-Per [the design doc's phasing](../../docs/plans/proxy-rules-as-code.md#6-phasing), the
+Per [the design doc's phasing](../../../docs/plans/proxy-rules-as-code.md#6-phasing), the
 following are **planned but not implemented** in this package — do not write CI or docs
 that assume they exist:
 
-- **Live `rules pull`** — `--from-file` is the *only* supported pull source today; pulling
-  directly from a running BFFless instance (no server export endpoint exists yet) is a hard
-  error (`live pull requires a server export endpoint (Phase 1)`).
-- **`rules push`** — idempotent sync of a compiled rule set to a live instance (create/
-  update/delete by `(pathPattern, method)`, `--dry-run`, `--prune`, `--name-suffix` for PR
-  previews). There is no sync endpoint on the CE backend yet; today, deploy means running
-  `rules build` and importing the resulting JSON by hand through the admin UI.
-- **`rules diff`** — compiled-vs-live drift detection (for a CI drift-check job). Not built.
-- **`bffless/deploy-proxy-rules` GitHub Action** — the CI-facing wrapper around
-  build → validate → push, PR-preview rule sets, and step-summary/PR-comment change
-  reports. Not built; there is no CI integration for this package yet beyond running the
-  CLI commands documented above by hand or in your own workflow.
 - **Secret verification** — the compiler collects `{{secrets.NAME}}` references (see the
   manifest reference above) but never checks them against a target instance's
   `project_secrets`; that check (`missingSecrets[]`, `--require-secrets`) is part of the
