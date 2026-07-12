@@ -30,8 +30,8 @@ Date: 2026-07-12
    `bffless` is confirmed unclaimed (registry 404, 2026-07-12). The action lists it as a
    dependency and bundles it; development uses a `file:` dep on `../ce/packages/cli`,
    switched to the published version before the final `dist/` build.
-2. **npm publish from this VPS.** `~/.npmrc` carries a granular automation token;
-   `npm whoami` → `toshimoto821` (verified). Publish happens after the CE PR merges.
+2. **npm publish is an operator step**, run from the operator's authenticated
+   environment after the CE PR merges (auth verified working, 2026-07-12).
 3. **PR previews: per-PR for reader, shared alias for studio.** Reader gets the full
    headline flow (`reader-pr-N` rule set + `reader-pr-N` alias + close-PR cleanup).
    Studio keeps the shared `studio-preview` alias (each new alias is a new origin needing
@@ -533,14 +533,14 @@ CJS-emitting code via dynamic `import()`; if that fights ncc, fall back to
 `src/index.ts` that imports `runPushOne` from `bffless/lib`, `pnpm build`, then
 `node dist/index.js` must not throw on import. Record the working recipe in the README stub.
 
-Init: `git init -b main` in `/home/rico/bffless/repos/deploy-proxy-rules` (nothing to
+Init: `git init -b main` in the workspaces `repos/deploy-proxy-rules` (nothing to
 clone — the GitHub repo is created by the operator at release time). Run
 `cd ../ce/packages/cli && pnpm build` first so the file: dep has dist.
 
 **Done when**: `pnpm install && pnpm test` (no tests yet → passWithNoTests not set; add
 one placeholder assert-true test), the D1 import spike bundles and runs, initial commit made.
 
-### - [ ] Task D2 — inputs module
+### - [x] Task D2 — inputs module
 
 **Files**: `src/inputs.ts`, `src/types.ts`, `__tests__/inputs.test.ts`.
 
@@ -724,12 +724,12 @@ hand — the MCP server for j5s.dev is connected in the main session; the orches
 verifies this, not the subagent).
 
 Conversion (CLI from the ce checkout; build it first:
-`cd /home/rico/bffless/repos/ce/packages/cli && pnpm build`):
+`cd <workspace>/repos/ce/packages/cli && pnpm build`):
 
 ```bash
-cd /home/rico/bffless/repos/apps/apps/studio
-node /home/rico/bffless/repos/ce/packages/cli/dist/index.js rules pull --from-file bffless/studio.proxy-rules.json --decompile
-node /home/rico/bffless/repos/ce/packages/cli/dist/index.js rules pull --from-file bffless/studio-blog.proxy-rules.json --decompile
+cd <workspace>/repos/apps/apps/studio
+node <workspace>/repos/ce/packages/cli/dist/index.js rules pull --from-file bffless/studio.proxy-rules.json --decompile
+node <workspace>/repos/ce/packages/cli/dist/index.js rules pull --from-file bffless/studio-blog.proxy-rules.json --decompile
 ```
 
 (default output `.bffless/proxy-rules/<set-name>/` relative to cwd — expect
@@ -740,8 +740,8 @@ node /home/rico/bffless/repos/ce/packages/cli/dist/index.js rules pull --from-fi
 against the original raw JSON with the CLI's own equivalence:
 
 ```bash
-node /home/rico/bffless/repos/ce/packages/cli/dist/index.js rules build .bffless/proxy-rules/studio
-node -e 'import("/home/rico/bffless/repos/ce/packages/cli/dist/format/canonical.js").then(m=>{const fs=require("node:fs");const a=JSON.parse(fs.readFileSync("bffless/studio.proxy-rules.json","utf8"));const b=JSON.parse(fs.readFileSync(".bffless/proxy-rules/studio/dist/studio.proxy-rules.json","utf8"));const r=m.exportsEquivalent(a,b);console.log(JSON.stringify(r));process.exit(r.equal?0:1)})'
+node <workspace>/repos/ce/packages/cli/dist/index.js rules build .bffless/proxy-rules/studio
+node -e 'import("<workspace>/repos/ce/packages/cli/dist/format/canonical.js").then(m=>{const fs=require("node:fs");const a=JSON.parse(fs.readFileSync("bffless/studio.proxy-rules.json","utf8"));const b=JSON.parse(fs.readFileSync(".bffless/proxy-rules/studio/dist/studio.proxy-rules.json","utf8"));const r=m.exportsEquivalent(a,b);console.log(JSON.stringify(r));process.exit(r.equal?0:1)})'
 ```
 
 (equivalent invocation for studio-blog). Also `rules validate` (0 errors) and
