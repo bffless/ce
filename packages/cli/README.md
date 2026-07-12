@@ -36,6 +36,4 @@ the current directory and is safe to commit — it never holds secrets.
 
 ## Docs
 
-Full authoring-layout, manifest, and reference-form documentation lives in the
-[BFFless CE repo](https://github.com/bffless/ce). General platform docs are at
-[docs.bffless.app](https://docs.bffless.app).
+Full authoring-layout, manifest, and reference documentation: https://github.com/bffless/ce/blob/main/packages/cli/docs/reference.md
