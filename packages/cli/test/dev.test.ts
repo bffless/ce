@@ -68,6 +68,23 @@ function fakeWatcher(): { watcher: DevWatcher; emit: (file: string) => void; clo
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** Poll `condition` until it's true (or `timeout` elapses). Used instead of a fixed sleep
+ *  wherever an assertion depends on a debounce timer/pass having actually completed — a
+ *  fixed sleep races the real debounce timer under CPU contention (the timer can fire
+ *  after the sleep resolves), which is exactly the flakiness this helper avoids. Only
+ *  genuinely negative assertions (nothing happened, and never will) still use a fixed
+ *  sleep, since there's no positive signal to poll for there. */
+async function waitFor(condition: () => boolean, options: { timeout?: number; interval?: number } = {}): Promise<void> {
+  const { timeout = 2000, interval = 5 } = options;
+  const start = Date.now();
+  while (!condition()) {
+    if (Date.now() - start > timeout) {
+      throw new Error(`waitFor: condition not met within ${timeout}ms`);
+    }
+    await sleep(interval);
+  }
+}
+
 /** Short enough to keep tests fast, long enough to reliably separate "coalesced" from
  *  "separate" timer fires under CI jitter. */
 const DEBOUNCE_MS = 10;
@@ -183,7 +200,7 @@ describe('runDev', () => {
     log.mockClear();
 
     emit(path.join(dirA, 'rules/api/hello/get/hello.fn.js'));
-    await sleep(SETTLE_MS);
+    await waitFor(() => log.mock.calls.length >= 1);
 
     expect(log).toHaveBeenCalledTimes(1);
     expect(log.mock.calls[0][0]).toContain(path.basename(dirA));
@@ -203,7 +220,7 @@ describe('runDev', () => {
     emit(path.join(dir, 'rules/api/hello/get/hello.fn.js'));
     await sleep(DEBOUNCE_MS / 2);
     emit(path.join(dir, 'rules/api/hello/get/hello.fn.js'));
-    await sleep(SETTLE_MS);
+    await waitFor(() => log.mock.calls.length >= 1);
 
     expect(log).toHaveBeenCalledTimes(1);
 
@@ -236,7 +253,7 @@ describe('runDev', () => {
 
     breakSet(dir);
     emit(path.join(dir, 'rules/api/hello/get/rule.yaml'));
-    await sleep(SETTLE_MS);
+    await waitFor(() => log.mock.calls.length >= 1);
 
     expect(log).toHaveBeenCalledTimes(1);
     expect(log.mock.calls[0][0]).toMatch(/^\[\d\d:\d\d:\d\d\] \S+ ✗ build:/);
@@ -246,7 +263,7 @@ describe('runDev', () => {
     log.mockClear();
     fixSet(dir);
     emit(path.join(dir, 'rules/api/hello/get/rule.yaml'));
-    await sleep(SETTLE_MS);
+    await waitFor(() => log.mock.calls.length >= 1);
 
     expect(log).toHaveBeenCalledTimes(1);
     expect(log.mock.calls[0][0]).toMatch(/✓ build ✓ validate ✓ 1 tests$/);
@@ -276,7 +293,9 @@ describe('runDev', () => {
     log.mockClear();
     breakSet(dir);
     emit(path.join(dir, 'rules/api/hello/get/rule.yaml'));
-    await sleep(SETTLE_MS);
+    // Wait for the red pass to actually complete (positive signal: it always logs,
+    // even on failure) before checking the push count didn't move.
+    await waitFor(() => log.mock.calls.length >= 1);
     expect(deps.sentBodies()).toHaveLength(1); // unchanged — still just the initial push
 
     await handle.close();
@@ -318,7 +337,7 @@ describe('runDev', () => {
 
       // Let the initial pass reach (and park on) its push fetch, then release it so
       // `runDev` itself resolves.
-      await sleep(SETTLE_MS);
+      await waitFor(() => fc.callCount() >= 1);
       expect(fc.callCount()).toBe(1);
       fc.release();
       const handle = await handlePromise;
@@ -327,7 +346,7 @@ describe('runDev', () => {
       // A change starts pass #2, which runs its way to the push fetch and parks there —
       // i.e. it is now "running" for the whole duration of the park.
       emit(path.join(dir, 'rules/api/hello/get/hello.fn.js'));
-      await sleep(SETTLE_MS);
+      await waitFor(() => fc.callCount() >= 2);
       expect(fc.callCount()).toBe(2);
       expect(fc.inFlight()).toBe(1);
 
@@ -342,7 +361,7 @@ describe('runDev', () => {
       // Releasing pass #2 lets it finish; exactly one trailing pass should then run
       // (coalescing the queued change), never overlapping with pass #2.
       fc.release();
-      await sleep(SETTLE_MS);
+      await waitFor(() => fc.callCount() >= 3);
       expect(fc.callCount()).toBe(3);
       expect(fc.inFlight()).toBe(1);
       expect(fc.maxInFlight()).toBe(1);
@@ -367,13 +386,13 @@ describe('runDev', () => {
         pushDeps: fc,
         debounceMs: DEBOUNCE_MS,
       });
-      await sleep(SETTLE_MS);
+      await waitFor(() => fc.callCount() >= 1);
       fc.release(); // initial pass
       const handle = await handlePromise;
       log.mockClear();
 
       emit(path.join(dir, 'rules/api/hello/get/hello.fn.js'));
-      await sleep(SETTLE_MS);
+      await waitFor(() => fc.callCount() >= 2);
       expect(fc.callCount()).toBe(2); // pass #2 running, parked on push
 
       // Three changes land back-to-back while pass #2 is running.
@@ -388,7 +407,7 @@ describe('runDev', () => {
       expect(fc.maxInFlight()).toBe(1);
 
       fc.release(); // finish pass #2
-      await sleep(SETTLE_MS);
+      await waitFor(() => fc.callCount() >= 3);
       expect(fc.callCount()).toBe(3); // exactly one trailing pass, coalescing all three
       expect(fc.maxInFlight()).toBe(1);
 
@@ -411,13 +430,13 @@ describe('runDev', () => {
         pushDeps: fc,
         debounceMs: DEBOUNCE_MS,
       });
-      await sleep(SETTLE_MS);
+      await waitFor(() => fc.callCount() >= 1);
       fc.release(); // initial pass
       const handle = await handlePromise;
       log.mockClear();
 
       emit(path.join(dir, 'rules/api/hello/get/hello.fn.js'));
-      await sleep(SETTLE_MS);
+      await waitFor(() => fc.callCount() >= 2);
       expect(fc.callCount()).toBe(2); // pass #2 running, parked on push
 
       // A change lands and its debounce timer fires *while pass #2 is still running* —
