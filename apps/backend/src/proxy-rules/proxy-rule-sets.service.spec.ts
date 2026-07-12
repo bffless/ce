@@ -463,20 +463,30 @@ describe('ProxyRuleSetsService', () => {
       ]);
     });
 
-    it('invokes the viewer-level permission check (matching exportRuleSet read access)', async () => {
+    it('enforces API key project scope against the rule set project (exportRuleSet parity)', async () => {
       mockDb.__setResults([[createMockRuleSet()]]);
       mockProxyRulesService.getRulesByRuleSetId.mockResolvedValue([]);
       mockProxyRuleSetRevisionsService.listRevisions.mockResolvedValue([]);
 
       await service.listRevisions('rule-set-1', 'user-1', 'user', 'project-1');
 
-      expect(mockPermissionsService.requireProjectAccess).toHaveBeenCalledWith(
+      expect(mockPermissionsService.enforceApiKeyProjectScope).toHaveBeenCalledWith(
         'project-1',
-        'user-1',
-        'user',
-        'viewer',
         'project-1',
       );
+      expect(mockPermissionsService.requireProjectAccess).not.toHaveBeenCalled();
+    });
+
+    it('propagates scope-enforcement failures before loading revisions', async () => {
+      mockDb.__setResults([[createMockRuleSet()]]);
+      mockPermissionsService.enforceApiKeyProjectScope.mockImplementationOnce(() => {
+        throw new ForbiddenException('API key is scoped to a different project');
+      });
+
+      await expect(
+        service.listRevisions('rule-set-1', 'user-1', 'user', 'other-project'),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockProxyRuleSetRevisionsService.listRevisions).not.toHaveBeenCalled();
     });
 
     it('throws NotFoundException when the rule set does not exist', async () => {
@@ -549,6 +559,33 @@ describe('ProxyRuleSetsService', () => {
       await expect(
         service.getRevision('rule-set-1', 'foreign-revision', 'user-1', 'user', 'project-1'),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    it('enforces API key project scope against the rule set project (exportRuleSet parity)', async () => {
+      mockDb.__setResults([[createMockRuleSet()]]);
+      mockProxyRulesService.getRulesByRuleSetId.mockResolvedValue([]);
+      const revision = createMockRevision({ id: 'revision-1', contentHash: 'stale-hash' });
+      mockProxyRuleSetRevisionsService.getRevision.mockResolvedValue(revision);
+
+      await service.getRevision('rule-set-1', 'revision-1', 'user-1', 'user', 'project-1');
+
+      expect(mockPermissionsService.enforceApiKeyProjectScope).toHaveBeenCalledWith(
+        'project-1',
+        'project-1',
+      );
+      expect(mockPermissionsService.requireProjectAccess).not.toHaveBeenCalled();
+    });
+
+    it('propagates scope-enforcement failures before loading the revision', async () => {
+      mockDb.__setResults([[createMockRuleSet()]]);
+      mockPermissionsService.enforceApiKeyProjectScope.mockImplementationOnce(() => {
+        throw new ForbiddenException('API key is scoped to a different project');
+      });
+
+      await expect(
+        service.getRevision('rule-set-1', 'revision-1', 'user-1', 'user', 'other-project'),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockProxyRuleSetRevisionsService.getRevision).not.toHaveBeenCalled();
     });
   });
 

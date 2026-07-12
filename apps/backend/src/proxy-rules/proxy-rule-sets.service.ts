@@ -186,8 +186,9 @@ export class ProxyRuleSetsService {
   /**
    * List all captured revisions for a rule set, newest first (`GET
    * :id/revisions`). Same read-level authorization as `exportRuleSet`
-   * (viewer role or higher). `current` is computed by hashing the LIVE
-   * envelope once per call (via
+   * (API key project scope only — any authenticated caller whose API key
+   * scope, if any, matches the rule set's project). `current` is computed by
+   * hashing the LIVE envelope once per call (via
    * `ProxyRuleSetRevisionsService.buildCurrentEnvelope`, the same assembly
    * `capture()` uses) and comparing against each revision's stored
    * `contentHash`.
@@ -203,13 +204,7 @@ export class ProxyRuleSetsService {
       throw new NotFoundException(`Rule set ${ruleSetId} not found`);
     }
 
-    await this.permissionsService.requireProjectAccess(
-      ruleSet.projectId,
-      userId,
-      userRole,
-      'viewer',
-      apiKeyProjectId,
-    );
+    this.permissionsService.enforceApiKeyProjectScope(apiKeyProjectId, ruleSet.projectId);
 
     const revisions = await this.proxyRuleSetRevisionsService.listRevisions(ruleSetId);
     const liveHash = await this.computeLiveHash(ruleSet);
@@ -238,13 +233,7 @@ export class ProxyRuleSetsService {
       throw new NotFoundException(`Rule set ${ruleSetId} not found`);
     }
 
-    await this.permissionsService.requireProjectAccess(
-      ruleSet.projectId,
-      userId,
-      userRole,
-      'viewer',
-      apiKeyProjectId,
-    );
+    this.permissionsService.enforceApiKeyProjectScope(apiKeyProjectId, ruleSet.projectId);
 
     const revision = await this.proxyRuleSetRevisionsService.getRevision(ruleSetId, revisionId);
     if (!revision) {
