@@ -162,8 +162,9 @@ export interface BuildExportEnvelopeInput {
  * Canonical rule sort — mirrors `sortRules` in `packages/cli/src/format/canonical.ts`:
  * `(order ?? 0, pathPattern, method ?? '')`. The DB query's `asc(order)` alone has no
  * tie-break, so without this the envelope byte-order would depend on insertion order.
+ * Exported for the sync endpoint's `contentHash` (same canonical order there).
  */
-function canonicalRuleCompare(a: ExportedRule, b: ExportedRule): number {
+export function canonicalRuleCompare(a: ExportedRule, b: ExportedRule): number {
   const oa = a.order ?? 0;
   const ob = b.order ?? 0;
   if (oa !== ob) return oa - ob;

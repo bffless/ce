@@ -1,4 +1,4 @@
-import { computeSyncPlan, LiveSyncRule, SyncRuleInput } from './sync-plan.util';
+import { computeSyncPlan, normalizeSyncRules, LiveSyncRule, SyncRuleInput } from './sync-plan.util';
 
 describe('sync-plan.util', () => {
   /**
@@ -594,6 +594,42 @@ describe('sync-plan.util', () => {
 
       expect(JSON.parse(JSON.stringify(liveRules))).toEqual(liveSnapshot);
       expect(JSON.parse(JSON.stringify(incomingRules))).toEqual(incomingSnapshot);
+    });
+  });
+
+  describe('normalizeSyncRules', () => {
+    it('applies the same defaults and fallback order as computeSyncPlan', () => {
+      const rules = [
+        incoming({ pathPattern: '/b', order: 5 }),
+        incoming({ pathPattern: '/a' }), // no order → fallback index 0 in the (order ?? 0)-sorted list
+        incoming({ pathPattern: '/pipe', targetUrl: undefined, pipelineConfig: { name: 'p', steps: [] } }),
+      ];
+
+      const normalized = normalizeSyncRules(rules);
+
+      expect(normalized[0]).toMatchObject({ pathPattern: '/b', order: 5 });
+      expect(normalized[1]).toMatchObject({
+        pathPattern: '/a',
+        order: 0,
+        stripPrefix: true,
+        timeout: 30000,
+        proxyType: 'external_proxy',
+      });
+      // CLI-parity inference, exactly as the plan applies it
+      expect(normalized[2]).toMatchObject({
+        pathPattern: '/pipe',
+        proxyType: 'pipeline',
+        targetUrl: 'http://internal/pipeline',
+      });
+      // Positional: output order mirrors input order, not sorted order
+      expect(normalized.map((r) => r.pathPattern)).toEqual(['/b', '/a', '/pipe']);
+    });
+
+    it('does not mutate its inputs', () => {
+      const rules = [incoming({ pathPattern: '/x' })];
+      const snapshot = JSON.parse(JSON.stringify(rules));
+      normalizeSyncRules(rules);
+      expect(JSON.parse(JSON.stringify(rules))).toEqual(snapshot);
     });
   });
 });

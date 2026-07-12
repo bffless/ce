@@ -7,9 +7,17 @@ import {
   Inject,
   forwardRef,
 } from '@nestjs/common';
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, and, inArray, isNull } from 'drizzle-orm';
+import * as crypto from 'crypto';
 import { db } from '../db/client';
-import { proxyRuleSets, proxyRules, projects, aliasProxyRuleSets, deploymentAliases } from '../db/schema';
+import {
+  proxyRuleSets,
+  proxyRules,
+  projects,
+  aliasProxyRuleSets,
+  deploymentAliases,
+  projectSecrets,
+} from '../db/schema';
 import { PermissionsService } from '../permissions/permissions.service';
 import { NginxRegenerationService } from '../domains/nginx-regeneration.service';
 import { PipelineSchemasService } from '../pipelines/pipeline-schemas.service';
@@ -19,8 +27,12 @@ import {
   ProxyRuleSetResponseDto,
   ProxyRuleSetWithRulesResponseDto,
   ImportProxyRuleSetDto,
+  SyncProxyRuleSetDto,
+  SyncProxyRuleSetResponseDto,
+  SyncRuleRefDto,
 } from './dto';
-import type { PipelineConfig, ProxyType } from '../db/schema/proxy-rules.schema';
+import type { PipelineConfig, ProxyHeaderConfig, ProxyType } from '../db/schema/proxy-rules.schema';
+import type { ProxyRuleSetSource } from '../db/schema/proxy-rule-sets.schema';
 import { ProxyRulesService } from './proxy-rules.service';
 import { collectSchemaIds, remapSchemaIds } from './schema-refs.util';
 import {
@@ -30,10 +42,27 @@ import {
 } from './schema-sync.util';
 import {
   buildExportEnvelope,
+  canonicalRuleCompare,
   serializeRuleForExport,
   type ExportedSchema,
   type RuleSetExport,
 } from './export-format.util';
+import {
+  computeSyncPlan,
+  normalizeSyncRules,
+  type LiveSyncRule,
+  type NormalizedSyncRule,
+  type SyncPlan,
+  type SyncRuleInput,
+  type SyncRuleRef,
+} from './sync-plan.util';
+
+/**
+ * `{{secrets.NAME}}` reference pattern, matching the pipeline execution layer's
+ * interpolation (`pipelines/execution/expression-evaluator.ts`). Used to report
+ * referenced-but-missing project secrets at sync time (warning-level only).
+ */
+const SECRET_REF_PATTERN = /\{\{\s*secrets\.([A-Za-z0-9_-]+)\s*\}\}/g;
 
 @Injectable()
 export class ProxyRuleSetsService {
@@ -586,6 +615,443 @@ export class ProxyRuleSetsService {
     }
 
     return { idMap, resolutions, warnings };
+  }
+
+  /**
+   * Idempotently sync a rule set from a rules-as-code payload
+   * (`PUT project/:projectId/sync` — Task 7 of the Phase 1 plan).
+   *
+   * The payload is the desired declarative state: rules match live rows on
+   * `(pathPattern, method ?? null)` via {@link computeSyncPlan}; matched rules
+   * are updated only when a portable field actually differs, live-only rules
+   * are deleted only under `options.prune` (otherwise reported as
+   * `pruneCandidates`), and bundled schemas resolve by NAME
+   * ({@link resolveSchemasByName} — decision 4: mismatches warn, or 400 under
+   * `options.strictSchemas`).
+   *
+   * Blank-secret handling (decision 1): an incoming empty-string
+   * `headerConfig.add` value means "keep the live value" — the live decrypted
+   * value is substituted before re-encryption on updates; on NEW rules there
+   * is nothing to preserve, so `''` is stored and the header name reported in
+   * `missingSecrets[]`. The plan's rule objects (which may alias the request
+   * DTO) are never mutated — fresh headerConfig objects are built instead.
+   *
+   * `options.dryRun` returns the full response with ZERO writes: no set
+   * create, no schema create, no rule writes, no source stamp, no nginx.
+   * Note: under dryRun the schema idMap has no entries for to-be-created
+   * schemas, so rules referencing them keep their source ids in the dry-run
+   * diff — tolerated, since those rules are creates anyway.
+   *
+   * Live syncs perform ALL rule-set/rule writes in ONE `db.transaction`
+   * (schema creation runs before it, outside — see resolveSchemasByName's
+   * ordering guarantee), then regenerate nginx for the set (a synced set may
+   * be attached to live aliases, unlike import); a regeneration failure is
+   * appended to `warnings[]`, never a 500, because the DB state is already
+   * committed. `source` is re-stamped (fresh `syncedAt`/`contentHash`) on
+   * every non-dryRun sync, even a no-op one.
+   *
+   * Response arrays are sorted by `(pathPattern, method)` so CI output is
+   * byte-stable.
+   */
+  async syncRuleSet(
+    projectId: string,
+    dto: SyncProxyRuleSetDto,
+    userId: string,
+    userRole: string,
+    apiKeyProjectId?: string | null,
+  ): Promise<SyncProxyRuleSetResponseDto> {
+    // Verify project exists (import parity)
+    const [project] = await db
+      .select()
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1);
+
+    if (!project) {
+      throw new NotFoundException(`Project ${projectId} not found`);
+    }
+
+    await this.permissionsService.requireProjectAccess(
+      projectId,
+      userId,
+      userRole,
+      'contributor',
+      apiKeyProjectId,
+    );
+
+    const name = dto.ruleSet.name?.trim();
+    if (!name) {
+      throw new BadRequestException('ruleSet.name must be a non-empty string');
+    }
+
+    const prune = dto.options?.prune ?? false;
+    const dryRun = dto.options?.dryRun ?? false;
+    const strictSchemas = dto.options?.strictSchemas ?? false;
+
+    // Same bridging as importRuleSet: the DTO config classes are structural
+    // mirrors of the schema's config types.
+    const dtoRules = (dto.rules ?? []) as unknown as SyncRuleInput[];
+
+    // Early duplicate-(pathPattern, method) detection: against an empty live
+    // set the only possible computeSyncPlan throw is the duplicate-key error,
+    // and catching it HERE (before schema resolution) keeps a 400 payload from
+    // creating schemas first — schema creation runs outside the rule
+    // transaction, so it would otherwise survive the failure.
+    try {
+      computeSyncPlan([], dtoRules, { prune: false });
+    } catch (error) {
+      throw new BadRequestException((error as Error).message);
+    }
+
+    const { idMap, resolutions, warnings } = await this.resolveSchemasByName(
+      projectId,
+      dto.schemas?.map((schema) => ({
+        id: schema.id,
+        name: schema.name.trim(),
+        fields: schema.fields,
+      })),
+      { strictSchemas, dryRun },
+      userId,
+      userRole,
+      apiKeyProjectId,
+    );
+
+    // Remap schema references to target-project ids. remapSchemaIds deep-clones;
+    // with an empty idMap the rules still alias the request DTO, so downstream
+    // code must not mutate them in place.
+    const incomingRules = idMap.size > 0 ? remapSchemaIds(dtoRules, idMap) : dtoRules;
+
+    const existing = await this.findByName(projectId, name);
+    const setCreated = !existing;
+    const liveRules = existing ? await this.proxyRulesService.getRulesByRuleSetId(existing.id) : [];
+
+    let plan: SyncPlan;
+    try {
+      plan = computeSyncPlan(liveRules, incomingRules, { prune });
+    } catch (error) {
+      // Belt-and-braces: duplicates are already rejected above.
+      throw new BadRequestException((error as Error).message);
+    }
+
+    const missingSecrets = await this.collectMissingSecrets(projectId, incomingRules, plan, liveRules);
+    const contentHash = this.computeSyncContentHash(
+      { name, description: dto.ruleSet.description, environment: dto.ruleSet.environment },
+      incomingRules,
+    );
+
+    const buildResponse = (ruleSetId: string | null): SyncProxyRuleSetResponseDto => ({
+      ruleSetId,
+      created: this.sortRuleRefs(plan.toCreate),
+      updated: this.sortRuleRefs(plan.toUpdate),
+      deleted: this.sortRuleRefs(plan.toDelete),
+      unchanged: this.sortRuleRefs(plan.unchanged),
+      pruneCandidates: this.sortRuleRefs(plan.pruneCandidates),
+      schemaResolutions: resolutions,
+      missingSecrets,
+      warnings,
+      dryRun,
+      setCreated,
+    });
+
+    if (dryRun) {
+      return buildResponse(existing?.id ?? null);
+    }
+
+    const syncedAt = new Date();
+    const source: ProxyRuleSetSource = {
+      syncedAt: syncedAt.toISOString(),
+      contentHash,
+    };
+    if (dto.source?.repo !== undefined) source.repo = dto.source.repo;
+    if (dto.source?.path !== undefined) source.path = dto.source.path;
+    if (dto.source?.gitSha !== undefined) source.gitSha = dto.source.gitSha;
+
+    // Decrypted live rules by match key, for blank-secret preservation on updates
+    const liveByKey = new Map(
+      liveRules.map((rule) => [
+        JSON.stringify([rule.pathPattern, rule.method ?? null]),
+        rule,
+      ]),
+    );
+
+    let ruleSetId = existing?.id ?? '';
+    await db.transaction(async (tx) => {
+      if (!existing) {
+        const [created] = await tx
+          .insert(proxyRuleSets)
+          .values({
+            projectId,
+            name,
+            description: dto.ruleSet.description,
+            environment: dto.ruleSet.environment,
+            source,
+          })
+          .returning();
+        ruleSetId = created.id;
+      } else {
+        // Source is re-stamped on EVERY live sync (fresh syncedAt/contentHash),
+        // even when all rules are unchanged; description/environment only when
+        // provided and actually different.
+        const setUpdate: Partial<typeof proxyRuleSets.$inferInsert> = {
+          source,
+          updatedAt: syncedAt,
+        };
+        if (dto.ruleSet.description !== undefined && dto.ruleSet.description !== existing.description) {
+          setUpdate.description = dto.ruleSet.description;
+        }
+        if (dto.ruleSet.environment !== undefined && dto.ruleSet.environment !== existing.environment) {
+          setUpdate.environment = dto.ruleSet.environment;
+        }
+        await tx.update(proxyRuleSets).set(setUpdate).where(eq(proxyRuleSets.id, existing.id));
+      }
+
+      for (const entry of plan.toCreate) {
+        // New rule: blank add values are stored as-is (encrypted '') and the
+        // header names surface in missingSecrets — nothing live to preserve.
+        await tx.insert(proxyRules).values({
+          ruleSetId,
+          ...this.syncRuleToRowValues(entry.rule, entry.rule.headerConfig),
+        });
+      }
+
+      for (const entry of plan.toUpdate) {
+        const live = liveByKey.get(JSON.stringify([entry.pathPattern, entry.method]));
+        const headerConfig = this.preserveBlankHeaderValues(
+          entry.rule.headerConfig,
+          live?.headerConfig,
+        );
+        const where = entry.liveId
+          ? eq(proxyRules.id, entry.liveId)
+          : and(
+              eq(proxyRules.ruleSetId, ruleSetId),
+              eq(proxyRules.pathPattern, entry.pathPattern),
+              entry.method === null
+                ? isNull(proxyRules.method)
+                : eq(proxyRules.method, entry.method),
+            );
+        await tx
+          .update(proxyRules)
+          .set({ ...this.syncRuleToRowValues(entry.rule, headerConfig), updatedAt: syncedAt })
+          .where(where);
+      }
+
+      for (const ref of plan.toDelete) {
+        await tx
+          .delete(proxyRules)
+          .where(
+            and(
+              eq(proxyRules.ruleSetId, ruleSetId),
+              eq(proxyRules.pathPattern, ref.pathPattern),
+              ref.method === null ? isNull(proxyRules.method) : eq(proxyRules.method, ref.method),
+            ),
+          );
+      }
+    });
+
+    const changed =
+      setCreated ||
+      plan.toCreate.length > 0 ||
+      plan.toUpdate.length > 0 ||
+      plan.toDelete.length > 0;
+
+    if (changed) {
+      // Post-commit: a synced set may be attached to live aliases. Failure is a
+      // warning, not a 500 — the DB state is committed; regeneration happens on
+      // the next config change or restart.
+      try {
+        await this.nginxRegenerationService.regenerateForRuleSet(ruleSetId);
+      } catch (error) {
+        const message = `nginx regeneration failed after sync: ${(error as Error).message}. Rule changes are saved; regeneration will run on the next configuration change or restart.`;
+        warnings.push(message);
+        this.logger.warn(`Rule set ${ruleSetId}: ${message}`);
+      }
+    }
+
+    this.logger.log(
+      `Synced proxy rule set "${name}" (${ruleSetId}) for project ${projectId}: ` +
+        `${plan.toCreate.length} created, ${plan.toUpdate.length} updated, ` +
+        `${plan.toDelete.length} deleted, ${plan.unchanged.length} unchanged` +
+        (setCreated ? ' (set created)' : ''),
+    );
+
+    return buildResponse(ruleSetId);
+  }
+
+  /**
+   * Insert/update column values for a plan-normalized rule (defaults already
+   * applied by computeSyncPlan). `headerConfig` is passed separately — updates
+   * substitute preserved live values first — and is encrypted here via
+   * ProxyRulesService.encryptHeaderConfigForStorage (write-side counterpart of
+   * the decrypted read). Never mutates `rule`.
+   */
+  private syncRuleToRowValues(
+    rule: NormalizedSyncRule,
+    headerConfig: ProxyHeaderConfig | null,
+  ): Omit<typeof proxyRules.$inferInsert, 'id' | 'ruleSetId' | 'createdAt' | 'updatedAt'> {
+    return {
+      pathPattern: rule.pathPattern,
+      method: rule.method,
+      methods: rule.methods,
+      targetUrl: rule.targetUrl,
+      stripPrefix: rule.stripPrefix,
+      order: rule.order,
+      timeout: rule.timeout,
+      preserveHost: rule.preserveHost,
+      forwardCookies: rule.forwardCookies,
+      headerConfig: this.proxyRulesService.encryptHeaderConfigForStorage(headerConfig),
+      authTransform: rule.authTransform,
+      internalRewrite: rule.internalRewrite,
+      proxyType: rule.proxyType,
+      emailHandlerConfig: rule.emailHandlerConfig,
+      pipelineConfig: rule.pipelineConfig,
+      isEnabled: rule.isEnabled,
+      debugEnabled: rule.debugEnabled,
+      description: rule.description,
+    };
+  }
+
+  /**
+   * Blank-secret preservation (decision 1): build a FRESH headerConfig whose
+   * empty-string `add` values are replaced by the live decrypted value for the
+   * same header name, when one exists. Non-empty incoming values win; a blank
+   * with no live counterpart stays blank. The incoming object (which may alias
+   * the request DTO) is never mutated.
+   */
+  private preserveBlankHeaderValues(
+    incoming: ProxyHeaderConfig | null,
+    live: ProxyHeaderConfig | null | undefined,
+  ): ProxyHeaderConfig | null {
+    if (!incoming) return null;
+    if (!incoming.add) return { ...incoming };
+    const add: Record<string, string> = {};
+    for (const [header, value] of Object.entries(incoming.add)) {
+      const liveValue = live?.add?.[header];
+      add[header] = value === '' && typeof liveValue === 'string' && liveValue !== '' ? liveValue : value;
+    }
+    return { ...incoming, add };
+  }
+
+  /**
+   * `missingSecrets[]` (warning-level, never fatal):
+   * (a) every `{{secrets.NAME}}` reference in the (schema-remapped) incoming
+   *     rules whose name has no `project_secrets` row for this project, and
+   * (b) for NEW rules only (plan.toCreate), header `add` names whose incoming
+   *     value is `''` — decision 1: there is nothing live to preserve, so the
+   *     blank is stored and the operator is told to fill it in.
+   * Deduplicated and sorted. The secrets table is only queried when (a) found
+   * at least one reference.
+   */
+  private async collectMissingSecrets(
+    projectId: string,
+    incomingRules: SyncRuleInput[],
+    plan: SyncPlan,
+    liveRules: LiveSyncRule[],
+  ): Promise<string[]> {
+    const referenced = new Set<string>();
+    for (const match of JSON.stringify(incomingRules).matchAll(SECRET_REF_PATTERN)) {
+      referenced.add(match[1]);
+    }
+
+    const missing = new Set<string>();
+    if (referenced.size > 0) {
+      const rows = await db
+        .select({ name: projectSecrets.name })
+        .from(projectSecrets)
+        .where(eq(projectSecrets.projectId, projectId))
+        .orderBy(projectSecrets.name);
+      const existingNames = new Set(rows.map((row) => row.name));
+      for (const secretName of referenced) {
+        if (!existingNames.has(secretName)) missing.add(secretName);
+      }
+    }
+
+    // Blank header add values that will be stored as '' (decision 1): every
+    // blank on a NEW rule, and — on updated rules — blanks whose header name
+    // has no non-empty live value to preserve.
+    for (const entry of plan.toCreate) {
+      const add = entry.rule.headerConfig?.add;
+      if (!add) continue;
+      for (const [header, value] of Object.entries(add)) {
+        if (value === '') missing.add(header);
+      }
+    }
+    const liveAddByKey = new Map<string, Record<string, string>>();
+    for (const live of liveRules) {
+      const add = live.headerConfig?.add;
+      if (add) {
+        liveAddByKey.set(JSON.stringify([live.pathPattern, live.method ?? null]), add);
+      }
+    }
+    for (const entry of plan.toUpdate) {
+      const add = entry.rule.headerConfig?.add;
+      if (!add) continue;
+      const liveAdd = liveAddByKey.get(JSON.stringify([entry.pathPattern, entry.method]));
+      for (const [header, value] of Object.entries(add)) {
+        if (value === '' && !liveAdd?.[header]) missing.add(header);
+      }
+    }
+
+    return [...missing].sort();
+  }
+
+  /**
+   * `source.contentHash` — exact recipe (pinned by the Phase 1 plan doc,
+   * cross-cutting definitions):
+   *
+   *   sha256 hex over `JSON.stringify({ ruleSet, rules })` where
+   *   - `ruleSet` = `{ name, description?, environment? }` in that key order,
+   *     null/undefined values stripped;
+   *   - `rules` = the defaults-normalized incoming rules
+   *     ({@link normalizeSyncRules} — same normalization the sync plan
+   *     compares with, including proxyType/targetUrl inference), each
+   *     serialized through {@link serializeRuleForExport} (canonical
+   *     RULE_KEY_ORDER, null keys dropped, header `add` values blanked — so
+   *     secrets are excluded by construction), sorted by
+   *     `(order, pathPattern, method)` ({@link canonicalRuleCompare}).
+   *
+   * Schemas are excluded (project-level, not part of the set's content).
+   * Computed server-side on every sync, stored in `source.contentHash`.
+   *
+   * Reproducibility caveat: the hash covers REMAPPED schema ids inside
+   * pipelineConfig, so it is stable within one target project but not
+   * reproducible from the git payload alone across projects. Phase 1 drift
+   * detection uses `exportsEquivalent` (rules diff), not this hash.
+   */
+  private computeSyncContentHash(
+    meta: { name: string; description?: string | null; environment?: string | null },
+    incomingRules: SyncRuleInput[],
+  ): string {
+    const ruleSet: Record<string, string> = { name: meta.name };
+    if (meta.description !== undefined && meta.description !== null) {
+      ruleSet.description = meta.description;
+    }
+    if (meta.environment !== undefined && meta.environment !== null) {
+      ruleSet.environment = meta.environment;
+    }
+
+    const rules = normalizeSyncRules(incomingRules)
+      .map((rule) => serializeRuleForExport(rule))
+      .sort(canonicalRuleCompare);
+
+    return crypto
+      .createHash('sha256')
+      .update(JSON.stringify({ ruleSet, rules }))
+      .digest('hex');
+  }
+
+  /**
+   * Project plan refs to response DTOs, sorted by `(pathPattern, method ?? '')`
+   * with plain code-unit comparison (locale-independent → byte-stable for CI).
+   */
+  private sortRuleRefs(refs: SyncRuleRef[]): SyncRuleRefDto[] {
+    return refs
+      .map(({ pathPattern, method }) => ({ pathPattern, method }))
+      .sort((a, b) => {
+        if (a.pathPattern !== b.pathPattern) return a.pathPattern < b.pathPattern ? -1 : 1;
+        const ma = a.method ?? '';
+        const mb = b.method ?? '';
+        return ma === mb ? 0 : ma < mb ? -1 : 1;
+      });
   }
 
   /**

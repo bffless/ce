@@ -160,6 +160,32 @@ function normalizeRule(rule: SyncRuleInput, fallbackOrder: number): NormalizedSy
   };
 }
 
+/**
+ * Import-parity fallback order per rule: its index within the
+ * `(order ?? 0)`-sorted list, keyed by object identity. Shared by
+ * {@link computeSyncPlan} and {@link normalizeSyncRules} so both apply
+ * identical defaults.
+ */
+function computeFallbackOrders(rules: SyncRuleInput[]): Map<SyncRuleInput, number> {
+  const fallbackOrder = new Map<SyncRuleInput, number>();
+  [...rules]
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    .forEach((rule, i) => fallbackOrder.set(rule, i));
+  return fallbackOrder;
+}
+
+/**
+ * Defaults-normalize a whole incoming payload, exactly as {@link computeSyncPlan}
+ * does before comparison (same inference, same import-parity fallback `order`).
+ * Used by the sync executor (Task 7) to compute the `source.contentHash` over
+ * the plan-normalized rules — including the unchanged ones, which the plan
+ * itself only returns as refs. Pure; inputs are not mutated.
+ */
+export function normalizeSyncRules(rules: SyncRuleInput[]): NormalizedSyncRule[] {
+  const fallbackOrder = computeFallbackOrders(rules);
+  return rules.map((rule) => normalizeRule(rule, fallbackOrder.get(rule)!));
+}
+
 /** Object keys whose value is not `undefined` (undefined-valued keys count as absent). */
 function definedKeys(obj: Record<string, unknown>): string[] {
   return Object.keys(obj).filter((k) => obj[k] !== undefined);
@@ -291,10 +317,7 @@ export function computeSyncPlan(
   options: SyncPlanOptions,
 ): SyncPlan {
   // Import-parity fallback order: index within the (order ?? 0)-sorted list.
-  const fallbackOrder = new Map<SyncRuleInput, number>();
-  [...incomingRules]
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-    .forEach((rule, i) => fallbackOrder.set(rule, i));
+  const fallbackOrder = computeFallbackOrders(incomingRules);
 
   const liveByKey = new Map<string, { row: LiveSyncRule; normalized: NormalizedSyncRule }>();
   for (const row of liveRules) {

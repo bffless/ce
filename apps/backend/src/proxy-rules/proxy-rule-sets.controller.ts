@@ -33,6 +33,8 @@ import {
   ProxyRulesListResponseDto,
   ImportProxyRuleSetDto,
   ExportProxyRuleSetResponseDto,
+  SyncProxyRuleSetDto,
+  SyncProxyRuleSetResponseDto,
 } from './dto';
 import { ApiKeyGuard } from '../auth/api-key.guard';
 import { CurrentUser, CurrentUserData } from '../auth/decorators/current-user.decorator';
@@ -103,6 +105,40 @@ export class ProxyRuleSetsController {
     @CurrentUser() user: CurrentUserData,
   ): Promise<ProxyRuleSetWithRulesResponseDto> {
     return this.proxyRuleSetsService.importRuleSet(
+      projectId,
+      dto,
+      user.id,
+      user.role || 'user',
+      user.apiKeyProjectId,
+    );
+  }
+
+  @Put('project/:projectId/sync')
+  @ApiOperation({
+    summary: 'Idempotently sync a rule set from a rules-as-code payload',
+    description:
+      'Declarative counterpart of import (Phase 1 of proxy-rules-as-code). The payload is the ' +
+      'desired state: rules match live rows on (pathPattern, method); only real differences are ' +
+      'written, live-only rules are deleted only under options.prune, bundled schemas resolve by ' +
+      'name, and blank header add values preserve the live secret. options.dryRun returns the ' +
+      'full change plan without writing. Stamps source (syncedAt/contentHash + caller-supplied ' +
+      'repo/path/gitSha) on the set and regenerates nginx when anything changed.',
+  })
+  @ApiParam({ name: 'projectId', type: 'string' })
+  @ApiResponse({
+    status: 200,
+    description: 'The sync change report (also the dryRun plan)',
+    type: SyncProxyRuleSetResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid payload (duplicate rule keys, forbidden targetUrl, strict schema mismatch)' })
+  @ApiResponse({ status: 403, description: 'Not authorized' })
+  @ApiResponse({ status: 404, description: 'Project not found' })
+  async sync(
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+    @Body() dto: SyncProxyRuleSetDto,
+    @CurrentUser() user: CurrentUserData,
+  ): Promise<SyncProxyRuleSetResponseDto> {
+    return this.proxyRuleSetsService.syncRuleSet(
       projectId,
       dto,
       user.id,

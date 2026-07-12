@@ -36,6 +36,13 @@ jest.mock('../db/client', () => {
     update: jest.fn(() => chainable),
     set: jest.fn(() => chainable),
     delete: jest.fn(() => chainable),
+    // Transaction mock: invokes the callback with the SAME chainable as the tx
+    // handle, so writes inside a transaction register on the shared jest.fns
+    // and the mockResults slot accounting continues seamlessly. A throw inside
+    // the callback propagates out (real drizzle rolls the transaction back on
+    // throw — the rollback test asserts the error escapes un-swallowed and no
+    // post-commit effect runs).
+    transaction: jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(chainable)),
     __setResults: (results: unknown[][]) => {
       mockResults.length = 0;
       results.forEach((r) => mockResults.push({ data: r }));
@@ -54,6 +61,14 @@ import { db } from '../db/client';
 const mockDb = db as unknown as {
   __setResults: (results: unknown[][]) => void;
   __reset: () => void;
+  insert: jest.Mock;
+  values: jest.Mock;
+  returning: jest.Mock;
+  update: jest.Mock;
+  set: jest.Mock;
+  delete: jest.Mock;
+  where: jest.Mock;
+  transaction: jest.Mock;
 };
 
 describe('ProxyRuleSetsService', () => {
@@ -620,6 +635,509 @@ describe('ProxyRuleSetsService', () => {
         ),
       ).rejects.toThrow(BadRequestException);
       expect(mockPipelineSchemasService.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('syncRuleSet', () => {
+    const mockProject = { id: 'project-1', name: 'Project One' };
+
+    /** Minimal incoming rule matching createMockRule() once defaults apply. */
+    const baseRule = () => ({
+      pathPattern: '/api/*',
+      targetUrl: 'https://api.example.com',
+    });
+
+    const syncDto = (overrides: Record<string, unknown> = {}) => ({
+      ruleSet: { name: 'api-backend', description: 'API proxy rules', environment: 'production' },
+      rules: [baseRule()],
+      ...overrides,
+    });
+
+    const sync = (dto: Record<string, unknown>) =>
+      service.syncRuleSet(
+        'project-1',
+        dto as unknown as Parameters<typeof service.syncRuleSet>[1],
+        'user-1',
+        'admin',
+        'project-1',
+      );
+
+    beforeEach(() => {
+      // Tag encrypted values so specs can assert the exact encrypted form
+      // (in particular: blank-secret preservation encrypts the LIVE value).
+      mockProxyRulesService.encryptHeaderConfigForStorage.mockImplementation(
+        (hc: { add?: Record<string, string> } | null) => {
+          if (!hc) return null;
+          if (!hc.add) return { ...hc };
+          return {
+            ...hc,
+            add: Object.fromEntries(
+              Object.entries(hc.add).map(([k, v]) => [k, `enc(${v})`]),
+            ),
+          };
+        },
+      );
+      mockPipelineSchemasService.getByProjectId.mockResolvedValue([]);
+    });
+
+    it('throws NotFoundException when the project does not exist', async () => {
+      mockDb.__setResults([[]]);
+
+      await expect(sync(syncDto())).rejects.toThrow(NotFoundException);
+      expect(mockDb.transaction).not.toHaveBeenCalled();
+    });
+
+    it('is idempotent: re-syncing a payload whose live rules already match writes no rules but re-stamps source', async () => {
+      // Live rules mocked as the DB result of having synced this very payload
+      mockDb.__setResults([[mockProject], [createMockRuleSet()]]);
+      mockProxyRulesService.getRulesByRuleSetId.mockResolvedValue([createMockRule()]);
+
+      const result = await sync(syncDto());
+
+      expect(mockPermissionsService.requireProjectAccess).toHaveBeenCalledWith(
+        'project-1',
+        'user-1',
+        'admin',
+        'contributor',
+        'project-1',
+      );
+      expect(result).toMatchObject({
+        ruleSetId: 'rule-set-1',
+        created: [],
+        updated: [],
+        deleted: [],
+        unchanged: [{ pathPattern: '/api/*', method: null }],
+        pruneCandidates: [],
+        missingSecrets: [],
+        warnings: [],
+        dryRun: false,
+        setCreated: false,
+      });
+
+      // NO rule writes …
+      expect(mockDb.insert).not.toHaveBeenCalled();
+      expect(mockDb.delete).not.toHaveBeenCalled();
+      // … but ONE transaction whose only write re-stamps source on the set row
+      expect(mockDb.transaction).toHaveBeenCalledTimes(1);
+      expect(mockDb.update).toHaveBeenCalledTimes(1);
+      const stamped = mockDb.set.mock.calls[0][0];
+      expect(stamped.source.contentHash).toMatch(/^[0-9a-f]{64}$/);
+      expect(Date.parse(stamped.source.syncedAt)).not.toBeNaN();
+      // Unchanged metadata is not rewritten
+      expect(stamped.description).toBeUndefined();
+      expect(stamped.environment).toBeUndefined();
+      // Nothing changed → no nginx regeneration
+      expect(mockNginxRegenerationService.regenerateForRuleSet).not.toHaveBeenCalled();
+    });
+
+    it('stamps the same contentHash for the same payload on consecutive syncs', async () => {
+      mockProxyRulesService.getRulesByRuleSetId.mockResolvedValue([createMockRule()]);
+
+      mockDb.__setResults([[mockProject], [createMockRuleSet()]]);
+      await sync(syncDto());
+      mockDb.__setResults([[mockProject], [createMockRuleSet()]]);
+      await sync(syncDto());
+
+      const calls = mockDb.set.mock.calls;
+      expect(calls).toHaveLength(2);
+      expect(calls[0][0].source.contentHash).toBe(calls[1][0].source.contentHash);
+    });
+
+    it('creates the set and all rules from scratch, stamping source and regenerating nginx once', async () => {
+      mockDb.__setResults([
+        [mockProject],
+        [], // findByName: no existing set
+        [createMockRuleSet({ id: 'new-set-id', name: 'api-backend' })], // insert … returning
+      ]);
+
+      const result = await sync(
+        syncDto({
+          rules: [{ ...baseRule(), headerConfig: { add: { 'X-Api-Key': 'secretv' } } }],
+          source: { repo: 'bffless/apps', path: 'apps/studio/.bffless/proxy-rules/studio', gitSha: 'abc123' },
+        }),
+      );
+
+      expect(result).toMatchObject({
+        ruleSetId: 'new-set-id',
+        created: [{ pathPattern: '/api/*', method: null }],
+        updated: [],
+        deleted: [],
+        unchanged: [],
+        dryRun: false,
+        setCreated: true,
+      });
+
+      // First values() call: the set row, with caller source + server stamp merged
+      const setValues = mockDb.values.mock.calls[0][0];
+      expect(setValues).toMatchObject({
+        projectId: 'project-1',
+        name: 'api-backend',
+        description: 'API proxy rules',
+        environment: 'production',
+      });
+      expect(setValues.source).toMatchObject({
+        repo: 'bffless/apps',
+        path: 'apps/studio/.bffless/proxy-rules/studio',
+        gitSha: 'abc123',
+      });
+      expect(setValues.source.contentHash).toMatch(/^[0-9a-f]{64}$/);
+      expect(Date.parse(setValues.source.syncedAt)).not.toBeNaN();
+
+      // Second values() call: the rule row, defaults applied, header add encrypted
+      const ruleValues = mockDb.values.mock.calls[1][0];
+      expect(ruleValues).toMatchObject({
+        ruleSetId: 'new-set-id',
+        pathPattern: '/api/*',
+        method: null,
+        targetUrl: 'https://api.example.com',
+        stripPrefix: true,
+        order: 0,
+        timeout: 30000,
+        proxyType: 'external_proxy',
+        isEnabled: true,
+      });
+      expect(ruleValues.headerConfig.add).toEqual({ 'X-Api-Key': 'enc(secretv)' });
+
+      expect(mockDb.transaction).toHaveBeenCalledTimes(1);
+      expect(mockNginxRegenerationService.regenerateForRuleSet).toHaveBeenCalledTimes(1);
+      expect(mockNginxRegenerationService.regenerateForRuleSet).toHaveBeenCalledWith('new-set-id');
+    });
+
+    it('preserves live secret values for blank incoming header adds on update, without mutating the DTO', async () => {
+      mockDb.__setResults([[mockProject], [createMockRuleSet()]]);
+      mockProxyRulesService.getRulesByRuleSetId.mockResolvedValue([
+        createMockRule({ headerConfig: { add: { 'X-K': 'livesecret' } } }),
+      ]);
+
+      const incomingRule = {
+        ...baseRule(),
+        forwardCookies: true, // a real field change
+        headerConfig: { add: { 'X-K': '', 'X-N': 'newval' } },
+      };
+      const result = await sync(syncDto({ rules: [incomingRule] }));
+
+      expect(result.updated).toEqual([{ pathPattern: '/api/*', method: null }]);
+      // Blank on an UPDATED rule is preserved from live, not reported missing
+      expect(result.missingSecrets).toEqual([]);
+
+      // The rule update (the set() call carrying pathPattern) holds the LIVE
+      // value for X-K — in encrypted form — and the new value for X-N
+      const ruleUpdate = mockDb.set.mock.calls.find((call) => call[0].pathPattern)?.[0];
+      expect(ruleUpdate).toBeDefined();
+      expect(ruleUpdate.headerConfig.add).toEqual({
+        'X-K': 'enc(livesecret)',
+        'X-N': 'enc(newval)',
+      });
+      expect(ruleUpdate.forwardCookies).toBe(true);
+
+      // The request DTO objects were never mutated
+      expect(incomingRule.headerConfig.add['X-K']).toBe('');
+      expect(incomingRule.headerConfig.add['X-N']).toBe('newval');
+    });
+
+    it('reports live-only rules as pruneCandidates (no delete, no nginx) when prune is off', async () => {
+      mockDb.__setResults([[mockProject], [createMockRuleSet()]]);
+      mockProxyRulesService.getRulesByRuleSetId.mockResolvedValue([
+        createMockRule(),
+        createMockRule({ id: 'rule-2', pathPattern: '/old/*' }),
+      ]);
+
+      const result = await sync(syncDto());
+
+      expect(result.pruneCandidates).toEqual([{ pathPattern: '/old/*', method: null }]);
+      expect(result.deleted).toEqual([]);
+      expect(mockDb.delete).not.toHaveBeenCalled();
+      // Unchanged + pruneCandidates only → nothing changed → no nginx
+      expect(mockNginxRegenerationService.regenerateForRuleSet).not.toHaveBeenCalled();
+    });
+
+    it('deletes live-only rules when prune is on', async () => {
+      mockDb.__setResults([[mockProject], [createMockRuleSet()]]);
+      mockProxyRulesService.getRulesByRuleSetId.mockResolvedValue([
+        createMockRule(),
+        createMockRule({ id: 'rule-2', pathPattern: '/old/*' }),
+      ]);
+
+      const result = await sync(syncDto({ options: { prune: true } }));
+
+      expect(result.deleted).toEqual([{ pathPattern: '/old/*', method: null }]);
+      expect(result.pruneCandidates).toEqual([]);
+      expect(mockDb.delete).toHaveBeenCalledTimes(1);
+      expect(mockNginxRegenerationService.regenerateForRuleSet).toHaveBeenCalledTimes(1);
+    });
+
+    it('dryRun of a nonexistent set: full plan, ruleSetId null, ZERO writes, no nginx', async () => {
+      mockDb.__setResults([[mockProject], []]);
+
+      const result = await sync(syncDto({ options: { dryRun: true } }));
+
+      expect(result).toMatchObject({
+        ruleSetId: null,
+        created: [{ pathPattern: '/api/*', method: null }],
+        dryRun: true,
+        setCreated: true,
+      });
+      expect(mockDb.transaction).not.toHaveBeenCalled();
+      expect(mockDb.insert).not.toHaveBeenCalled();
+      expect(mockDb.update).not.toHaveBeenCalled();
+      expect(mockDb.delete).not.toHaveBeenCalled();
+      expect(mockNginxRegenerationService.regenerateForRuleSet).not.toHaveBeenCalled();
+    });
+
+    it('dryRun of an existing set returns its id and writes nothing (no source re-stamp)', async () => {
+      mockDb.__setResults([[mockProject], [createMockRuleSet()]]);
+      mockProxyRulesService.getRulesByRuleSetId.mockResolvedValue([createMockRule()]);
+
+      const result = await sync(syncDto({ options: { dryRun: true, prune: true } }));
+
+      expect(result.ruleSetId).toBe('rule-set-1');
+      expect(result.unchanged).toEqual([{ pathPattern: '/api/*', method: null }]);
+      expect(mockDb.transaction).not.toHaveBeenCalled();
+      expect(mockDb.update).not.toHaveBeenCalled();
+    });
+
+    it('reports missing {{secrets.NAME}} references and new-rule blank header names, deduped and sorted', async () => {
+      mockDb.__setResults([
+        [mockProject],
+        [], // findByName
+        [{ name: 'BAR' }], // project_secrets names
+      ]);
+
+      const result = await sync(
+        syncDto({
+          rules: [
+            {
+              pathPattern: '/api/ai',
+              method: 'POST',
+              pipelineConfig: {
+                name: 'ai',
+                steps: [
+                  {
+                    handlerType: 'ai',
+                    config: { apiKey: '{{secrets.FOO}}', other: '{{ secrets.BAR }}' },
+                  },
+                ],
+              },
+            },
+            {
+              pathPattern: '/api/h',
+              targetUrl: 'https://x.example.com',
+              headerConfig: { add: { 'X-New-Key': '' } },
+            },
+          ],
+          options: { dryRun: true },
+        }),
+      );
+
+      // FOO has no project secret; BAR exists; the new rule's blank header
+      // add name is reported (nothing live to preserve — decision 1)
+      expect(result.missingSecrets).toEqual(['FOO', 'X-New-Key']);
+    });
+
+    it('reports blank headers on UPDATED rules only when no live value exists to preserve', async () => {
+      mockDb.__setResults([
+        [mockProject],
+        [createMockRuleSet()], // findByName → existing set
+      ]);
+      mockProxyRulesService.getRulesByRuleSetId.mockResolvedValue([
+        createMockRule({
+          headerConfig: { add: { 'X-Kept': 'livesecret' } },
+        }),
+      ]);
+
+      const result = await sync(
+        syncDto({
+          rules: [
+            {
+              pathPattern: '/api/*',
+              targetUrl: 'https://api.example.com',
+              forwardCookies: true, // real change → toUpdate
+              headerConfig: { add: { 'X-Kept': '', 'X-Fresh': '' } },
+            },
+          ],
+          options: { dryRun: true },
+        }),
+      );
+
+      // X-Kept has a live value that will be preserved; X-Fresh is a brand-new
+      // blank header on an updated rule and would be stored as '' — report it.
+      expect(result.missingSecrets).toEqual(['X-Fresh']);
+    });
+
+    it('strictSchemas mismatch → 400 before any write', async () => {
+      mockDb.__setResults([[mockProject]]);
+      mockPipelineSchemasService.getByProjectId.mockResolvedValue([
+        {
+          id: 'existing-comments-id',
+          projectId: 'project-1',
+          name: 'comments',
+          fields: [{ name: 'body', type: 'text', required: true }],
+        },
+      ]);
+
+      await expect(
+        sync(
+          syncDto({
+            schemas: [{ id: 'src-1', name: 'comments', fields: [{ name: 'body', type: 'string' }] }],
+            options: { strictSchemas: true },
+          }),
+        ),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockDb.transaction).not.toHaveBeenCalled();
+      expect(mockDb.insert).not.toHaveBeenCalled();
+      expect(mockDb.update).not.toHaveBeenCalled();
+      expect(mockPipelineSchemasService.create).not.toHaveBeenCalled();
+    });
+
+    it('surfaces the computeSyncPlan duplicate-key error as a 400, before schema resolution', async () => {
+      mockDb.__setResults([[mockProject]]);
+
+      await expect(
+        sync(
+          syncDto({
+            rules: [baseRule(), { ...baseRule() }],
+            // Schemas present to prove the early duplicate check precedes
+            // resolution (which would otherwise create schemas outside the
+            // rule transaction before the 400)
+            schemas: [{ id: 'src-1', name: 'brand-new', fields: [] }],
+          }),
+        ),
+      ).rejects.toThrow(/Duplicate rule for path pattern "\/api\/\*"/);
+
+      expect(mockPipelineSchemasService.getByProjectId).not.toHaveBeenCalled();
+      expect(mockDb.transaction).not.toHaveBeenCalled();
+    });
+
+    it('rolls back on a mid-transaction write failure: error propagates, no nginx', async () => {
+      mockDb.__setResults([[mockProject], [createMockRuleSet()]]);
+      mockProxyRulesService.getRulesByRuleSetId.mockResolvedValue([
+        createMockRule({ pathPattern: '/old/*' }),
+      ]);
+      // The last write of this sync is the prune delete — make it fail. The
+      // transaction mock lets the throw escape the callback, which is exactly
+      // what real drizzle does before rolling back every statement issued on tx.
+      mockDb.delete.mockImplementationOnce(() => {
+        throw new Error('write failed');
+      });
+
+      await expect(sync(syncDto({ rules: [], options: { prune: true } }))).rejects.toThrow(
+        'write failed',
+      );
+
+      expect(mockDb.transaction).toHaveBeenCalledTimes(1);
+      expect(mockNginxRegenerationService.regenerateForRuleSet).not.toHaveBeenCalled();
+    });
+
+    it('appends a warning (not a 500) when nginx regeneration fails after commit', async () => {
+      mockDb.__setResults([
+        [mockProject],
+        [],
+        [createMockRuleSet({ id: 'new-set-id', name: 'api-backend' })],
+      ]);
+      mockNginxRegenerationService.regenerateForRuleSet.mockRejectedValueOnce(
+        new Error('nginx down'),
+      );
+
+      const result = await sync(syncDto());
+
+      expect(result.ruleSetId).toBe('new-set-id');
+      expect(result.created).toHaveLength(1);
+      expect(result.warnings).toEqual([
+        expect.stringMatching(/nginx regeneration failed after sync: nginx down/),
+      ]);
+    });
+
+    it('returns response arrays sorted by (pathPattern, method) for byte-stable CI output', async () => {
+      mockDb.__setResults([[mockProject], []]);
+
+      const result = await sync(
+        syncDto({
+          rules: [
+            { pathPattern: '/b', targetUrl: 'https://api.example.com' },
+            { pathPattern: '/a', method: 'GET', targetUrl: 'https://api.example.com' },
+            { pathPattern: '/a', targetUrl: 'https://api.example.com' },
+          ],
+          options: { dryRun: true },
+        }),
+      );
+
+      expect(result.created).toEqual([
+        { pathPattern: '/a', method: null },
+        { pathPattern: '/a', method: 'GET' },
+        { pathPattern: '/b', method: null },
+      ]);
+    });
+
+    it('updates description/environment on the existing set when they actually changed', async () => {
+      mockDb.__setResults([
+        [mockProject],
+        [createMockRuleSet({ description: 'old desc', environment: 'staging' })],
+      ]);
+      mockProxyRulesService.getRulesByRuleSetId.mockResolvedValue([createMockRule()]);
+
+      await sync(syncDto());
+
+      const stamped = mockDb.set.mock.calls[0][0];
+      expect(stamped.description).toBe('API proxy rules');
+      expect(stamped.environment).toBe('production');
+      // Metadata-only change: rule sets' description/environment don't reach
+      // nginx configs, so no regeneration
+      expect(mockNginxRegenerationService.regenerateForRuleSet).not.toHaveBeenCalled();
+    });
+
+    it('rejects an empty (whitespace-only) ruleSet.name with a 400', async () => {
+      mockDb.__setResults([[mockProject]]);
+
+      await expect(sync(syncDto({ ruleSet: { name: '   ' } }))).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(mockDb.transaction).not.toHaveBeenCalled();
+    });
+
+    it('resolves schemas by name and remaps rule schema refs before planning', async () => {
+      mockDb.__setResults([[mockProject], []]);
+      mockPipelineSchemasService.getByProjectId.mockResolvedValue([
+        {
+          id: 'target-comments-id',
+          projectId: 'project-1',
+          name: 'comments',
+          fields: [{ name: 'body', type: 'text', required: true }],
+        },
+      ]);
+
+      const result = await sync(
+        syncDto({
+          rules: [
+            {
+              pathPattern: '/api/comments',
+              method: 'GET',
+              pipelineConfig: {
+                name: 'q',
+                steps: [{ handlerType: 'data_query', config: { schemaId: 'src-schema-id' } }],
+              },
+            },
+          ],
+          schemas: [
+            {
+              id: 'src-schema-id',
+              name: ' comments ', // trimmed before resolution
+              fields: [{ name: 'body', type: 'text', required: true }],
+            },
+          ],
+          options: { dryRun: true },
+        }),
+      );
+
+      expect(result.schemaResolutions).toEqual([
+        {
+          name: 'comments',
+          action: 'reuse',
+          targetSchemaId: 'target-comments-id',
+          fieldMismatch: false,
+        },
+      ]);
+      expect(result.created).toEqual([{ pathPattern: '/api/comments', method: 'GET' }]);
     });
   });
 });
