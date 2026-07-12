@@ -248,6 +248,87 @@ export class ProxyRuleSetsService {
     };
   }
 
+  /**
+   * Replay a captured revision's snapshot through `syncRuleSet` (`POST
+   * :id/rollback/:revisionId`) — "history only moves forward", like `git
+   * revert`: rollback never rewrites the past, it applies the OLD state as a
+   * NEW sync.
+   *
+   * 404s exactly like `getRevision` (missing set, or missing/foreign
+   * revision — `ProxyRuleSetRevisionsService.getRevision` scopes the lookup
+   * to `ruleSetId`, so both collapse to `null`). Authorization is enforced by
+   * `syncRuleSet` itself (contributor-level `requireProjectAccess` against
+   * the SET'S OWN `projectId` — never a caller-supplied one), so this method
+   * does no separate permission check before that call.
+   *
+   * The snapshot's `ruleSet.name` is NEVER applied: rollback must not
+   * rename or (re)create a set, so the sync DTO always forces the CURRENT
+   * name, and a warning is appended when the snapshot's name differs.
+   * `options.prune` is always `true` (a rollback restores the snapshot's
+   * rule set exactly — live-only rules are deleted, not left as
+   * pruneCandidates); `dryRun` passes through verbatim.
+   *
+   * Trigger threading: `syncRuleSet`'s own post-commit capture call
+   * defaults to trigger `'sync'`; this method passes the `'rollback'`
+   * override so a non-dryRun rollback captures exactly ONE new revision,
+   * with the right trigger — not a `'sync'` + `'rollback'` pair.
+   *
+   * Inherited limitation (not fixed here): a snapshot of a methods-split set
+   * fails replay with the same 400 `syncRuleSet` gives today; that error
+   * surfaces as-is.
+   */
+  async rollbackToRevision(
+    ruleSetId: string,
+    revisionId: string,
+    options: { dryRun?: boolean },
+    userId: string,
+    userRole: string,
+    apiKeyProjectId?: string | null,
+  ): Promise<SyncProxyRuleSetResponseDto> {
+    const existingSet = await this.findById(ruleSetId);
+    if (!existingSet) {
+      throw new NotFoundException(`Rule set ${ruleSetId} not found`);
+    }
+
+    const revision = await this.proxyRuleSetRevisionsService.getRevision(ruleSetId, revisionId);
+    if (!revision) {
+      throw new NotFoundException(`Revision ${revisionId} not found`);
+    }
+
+    const snapshot = revision.snapshot as unknown as RuleSetExport;
+    const dryRun = options.dryRun ?? false;
+
+    const rollbackWarnings: string[] = [
+      `Rolled back to revision ${revisionId} (captured ${revision.createdAt.toISOString()}, ` +
+        `originally triggered by '${revision.trigger}').`,
+    ];
+    if (snapshot.ruleSet.name !== existingSet.name) {
+      rollbackWarnings.push(
+        `Snapshot rule set name "${snapshot.ruleSet.name}" differs from the current name ` +
+          `"${existingSet.name}"; rollback never renames or creates a rule set, so the current ` +
+          `name was kept.`,
+      );
+    }
+
+    const dto = {
+      ruleSet: { ...snapshot.ruleSet, name: existingSet.name },
+      rules: snapshot.rules,
+      schemas: snapshot.schemas,
+      options: { prune: true, dryRun },
+    } as unknown as SyncProxyRuleSetDto;
+
+    const result = await this.syncRuleSet(
+      existingSet.projectId,
+      dto,
+      userId,
+      userRole,
+      apiKeyProjectId,
+      'rollback',
+    );
+
+    return { ...result, warnings: [...rollbackWarnings, ...result.warnings] };
+  }
+
   /** Hash of the LIVE envelope for `ruleSet`, for the `current` flag comparison. */
   private async computeLiveHash(ruleSet: ProxyRuleSet): Promise<string> {
     const rules = await this.proxyRulesService.getRulesByRuleSetId(ruleSet.id);
@@ -808,6 +889,11 @@ export class ProxyRuleSetsService {
     userId: string,
     userRole: string,
     apiKeyProjectId?: string | null,
+    // Internal-only: overrides the trigger captured on the post-commit
+    // revision (default `'sync'`). Used by `rollbackToRevision`, which
+    // replays a snapshot THROUGH this method but must capture a `'rollback'`
+    // revision, not a `'sync'` one — never set by the controller.
+    captureTrigger?: RevisionTrigger,
   ): Promise<SyncProxyRuleSetResponseDto> {
     // Verify project exists (import parity)
     const [project] = await db
@@ -1057,7 +1143,7 @@ export class ProxyRuleSetsService {
         await this.captureRevisionSafely({
           ruleSet: postSyncRuleSet,
           rules: currentRules,
-          trigger: 'sync',
+          trigger: captureTrigger ?? 'sync',
           userId,
         });
       } catch (error) {

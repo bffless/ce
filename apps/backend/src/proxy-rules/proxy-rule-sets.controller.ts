@@ -37,6 +37,7 @@ import {
   SyncProxyRuleSetResponseDto,
   RevisionListResponseDto,
   RevisionDetailResponseDto,
+  RollbackRuleSetDto,
 } from './dto';
 import { ApiKeyGuard } from '../auth/api-key.guard';
 import { CurrentUser, CurrentUserData } from '../auth/decorators/current-user.decorator';
@@ -151,8 +152,8 @@ export class ProxyRuleSetsController {
 
   // NOTE: declared before GET ':id' — Nest registers routes in declaration
   // order, so the static segments below ('/export', '/revisions',
-  // '/revisions/:revisionId') must come first to guarantee they are never
-  // shadowed by the plain ':id' route.
+  // '/revisions/:revisionId', '/rollback/:revisionId') must come first to
+  // guarantee they are never shadowed by the plain ':id' route.
   @Get(':id/export')
   @ApiOperation({
     summary: 'Export a rule set as the canonical v2 envelope',
@@ -229,6 +230,43 @@ export class ProxyRuleSetsController {
     return this.proxyRuleSetsService.getRevision(
       id,
       revisionId,
+      user.id,
+      user.role || 'user',
+      user.apiKeyProjectId,
+    );
+  }
+
+  @Post(':id/rollback/:revisionId')
+  @ApiOperation({
+    summary: 'Roll back a rule set to a previously captured revision',
+    description:
+      'Replays a captured revision snapshot through the sync endpoint (options.prune: true) — ' +
+      "history only moves forward, like `git revert`. Never renames or (re)creates the set: the " +
+      "snapshot's ruleSet.name is ignored in favor of the current name, with a warning appended " +
+      'if they differ. Non-dryRun rollbacks capture exactly one new revision with trigger ' +
+      "'rollback'. Known limitation: a snapshot of a methods-split set fails replay with the same " +
+      '400 the sync endpoint gives today.',
+  })
+  @ApiParam({ name: 'id', type: 'string' })
+  @ApiParam({ name: 'revisionId', type: 'string' })
+  @ApiResponse({
+    status: 200,
+    description: 'The rollback change report (also the dryRun plan)',
+    type: SyncProxyRuleSetResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Snapshot fails replay (e.g. methods-split rules)' })
+  @ApiResponse({ status: 403, description: 'Not authorized' })
+  @ApiResponse({ status: 404, description: 'Rule set or revision not found' })
+  async rollback(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('revisionId', ParseUUIDPipe) revisionId: string,
+    @Body() dto: RollbackRuleSetDto,
+    @CurrentUser() user: CurrentUserData,
+  ): Promise<SyncProxyRuleSetResponseDto> {
+    return this.proxyRuleSetsService.rollbackToRevision(
+      id,
+      revisionId,
+      { dryRun: dto.dryRun },
       user.id,
       user.role || 'user',
       user.apiKeyProjectId,

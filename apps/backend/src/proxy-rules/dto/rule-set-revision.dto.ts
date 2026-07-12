@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsBoolean, IsOptional } from 'class-validator';
 import { ExportProxyRuleSetResponseDto } from './export-proxy-rule-set.dto';
 
 /**
@@ -68,4 +69,20 @@ export class RevisionListResponseDto {
 export class RevisionDetailResponseDto extends RevisionListItemDto {
   @ApiProperty({ type: ExportProxyRuleSetResponseDto, description: 'Full v2 export envelope at capture time' })
   snapshot: ExportProxyRuleSetResponseDto;
+}
+
+/**
+ * Request body for `POST /api/proxy-rule-sets/:id/rollback/:revisionId`. The
+ * response is a `SyncProxyRuleSetResponseDto` — rollback replays the
+ * revision's snapshot through `syncRuleSet` (see
+ * `ProxyRuleSetsService.rollbackToRevision`).
+ */
+export class RollbackRuleSetDto {
+  @ApiPropertyOptional({
+    description: 'Compute and return the full rollback change plan without writing anything',
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  dryRun?: boolean;
 }

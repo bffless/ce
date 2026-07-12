@@ -13,6 +13,7 @@ import type {
   SyncProxyRuleSetResponseDto,
   RevisionListResponseDto,
   RevisionDetailResponseDto,
+  RollbackRuleSetDto,
 } from './dto';
 
 describe('ProxyRuleSetsController', () => {
@@ -48,6 +49,7 @@ describe('ProxyRuleSetsController', () => {
       syncRuleSet: jest.fn(),
       listRevisions: jest.fn(),
       getRevision: jest.fn(),
+      rollbackToRevision: jest.fn(),
     } as unknown as jest.Mocked<ProxyRuleSetsService>;
 
     mockProxyRulesService = {
@@ -337,6 +339,87 @@ describe('ProxyRuleSetsController', () => {
       await expect(controller.sync('project-1', syncDto, mockUser)).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  describe('rollback', () => {
+    const rollbackDto: RollbackRuleSetDto = { dryRun: true };
+
+    const rollbackResponse: SyncProxyRuleSetResponseDto = {
+      ruleSetId: 'rule-set-1',
+      created: [],
+      updated: [],
+      deleted: [{ pathPattern: '/api/c', method: null }],
+      unchanged: [{ pathPattern: '/api/a', method: null }],
+      pruneCandidates: [],
+      schemaResolutions: [],
+      missingSecrets: [],
+      warnings: ['Rolled back to revision revision-1 (captured 2026-01-01T00:00:00.000Z).'],
+      dryRun: true,
+      setCreated: false,
+    };
+
+    it('delegates to the service with the full user context', async () => {
+      mockProxyRuleSetsService.rollbackToRevision.mockResolvedValue(rollbackResponse);
+
+      const result = await controller.rollback('rule-set-1', 'revision-1', rollbackDto, mockUser);
+
+      expect(result).toBe(rollbackResponse);
+      expect(mockProxyRuleSetsService.rollbackToRevision).toHaveBeenCalledWith(
+        'rule-set-1',
+        'revision-1',
+        { dryRun: true },
+        'user-1',
+        'admin',
+        'project-1',
+      );
+    });
+
+    it("defaults the role to 'user' when the current user has none", async () => {
+      mockProxyRuleSetsService.rollbackToRevision.mockResolvedValue(rollbackResponse);
+
+      await controller.rollback('rule-set-1', 'revision-1', rollbackDto, {
+        ...mockUser,
+        role: undefined,
+      });
+
+      expect(mockProxyRuleSetsService.rollbackToRevision).toHaveBeenCalledWith(
+        'rule-set-1',
+        'revision-1',
+        { dryRun: true },
+        'user-1',
+        'user',
+        'project-1',
+      );
+    });
+
+    it('passes NotFoundException through from the service (missing or foreign revision)', async () => {
+      mockProxyRuleSetsService.rollbackToRevision.mockRejectedValue(
+        new NotFoundException('Revision foreign-revision not found'),
+      );
+
+      await expect(
+        controller.rollback('rule-set-1', 'foreign-revision', {}, mockUser),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('is wired as POST :id/rollback/:revisionId', () => {
+      expect(Reflect.getMetadata(PATH_METADATA, controller.rollback)).toBe(
+        ':id/rollback/:revisionId',
+      );
+      expect(Reflect.getMetadata(METHOD_METADATA, controller.rollback)).toBe(RequestMethod.POST);
+    });
+
+    it('is declared before GET :id so the static segment is never shadowed', () => {
+      const methodNames = Object.getOwnPropertyNames(ProxyRuleSetsController.prototype);
+      expect(methodNames.indexOf('rollback')).toBeGreaterThan(-1);
+      expect(methodNames.indexOf('rollback')).toBeLessThan(methodNames.indexOf('getById'));
+    });
+
+    it('inherits the class-level ApiKeyGuard', () => {
+      const guards = Reflect.getMetadata(GUARDS_METADATA, ProxyRuleSetsController) as unknown[];
+      expect(guards).toContain(ApiKeyGuard);
+      expect(Reflect.getMetadata(GUARDS_METADATA, controller.rollback)).toBeUndefined();
     });
   });
 });

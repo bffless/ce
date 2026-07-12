@@ -9,7 +9,12 @@ import {
   ProxyRuleSetRevisionsService,
   computeRevisionHash,
 } from './proxy-rule-set-revisions.service';
-import { ENVELOPE_KEY_ORDER, RULE_KEY_ORDER, type RuleSetExport } from './export-format.util';
+import {
+  ENVELOPE_KEY_ORDER,
+  RULE_KEY_ORDER,
+  serializeRuleForExport,
+  type RuleSetExport,
+} from './export-format.util';
 import type { ProxyRuleSetRevision } from '../db/schema/proxy-rule-set-revisions.schema';
 
 // Mock the db client - using factory function for hoisting
@@ -1539,6 +1544,141 @@ describe('ProxyRuleSetsService', () => {
         expect(mockProxyRuleSetRevisionsService.captureIfUnrevisioned).not.toHaveBeenCalled();
         expect(mockProxyRuleSetRevisionsService.capture).not.toHaveBeenCalled();
       });
+    });
+  });
+
+  describe('rollbackToRevision', () => {
+    const mockProject = { id: 'project-1', name: 'Project One' };
+
+    /** Live rules pre-rollback: three rules, only two of which are in the snapshot. */
+    const liveRuleA = () =>
+      createMockRule({ id: 'rule-a', pathPattern: '/api/a', targetUrl: 'https://api.example.com' });
+    const liveRuleB = () =>
+      createMockRule({ id: 'rule-b', pathPattern: '/api/b', targetUrl: 'https://api.example.com' });
+    const liveRuleC = () =>
+      createMockRule({ id: 'rule-c', pathPattern: '/api/c', targetUrl: 'https://api.example.com' });
+
+    const revisionWithSnapshot = (overrides: Record<string, unknown> = {}) =>
+      createMockRevision({
+        id: 'revision-1',
+        snapshot: {
+          version: 2,
+          exportedAt: '2026-01-01T00:00:00.000Z',
+          kind: 'bffless-proxy-rule-set',
+          ruleSet: { name: 'api-backend' },
+          rules: [serializeRuleForExport(liveRuleA()), serializeRuleForExport(liveRuleB())],
+        },
+        ...overrides,
+      });
+
+    const rollback = (
+      ruleSetId: string,
+      revisionId: string,
+      options: { dryRun?: boolean } = {},
+    ) => service.rollbackToRevision(ruleSetId, revisionId, options, 'user-1', 'admin', 'project-1');
+
+    beforeEach(() => {
+      mockPipelineSchemasService.getByProjectId.mockResolvedValue([]);
+    });
+
+    it('throws NotFoundException when the rule set does not exist', async () => {
+      mockDb.__setResults([[]]);
+
+      await expect(rollback('missing-set', 'revision-1')).rejects.toThrow(NotFoundException);
+      expect(mockProxyRuleSetRevisionsService.getRevision).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException when the revision is missing or belongs to another rule set', async () => {
+      mockDb.__setResults([[createMockRuleSet()]]);
+      mockProxyRuleSetRevisionsService.getRevision.mockResolvedValue(null);
+
+      await expect(rollback('rule-set-1', 'foreign-revision')).rejects.toThrow(NotFoundException);
+      expect(mockProxyRuleSetRevisionsService.getRevision).toHaveBeenCalledWith(
+        'rule-set-1',
+        'foreign-revision',
+      );
+    });
+
+    it('replays a 2-rule snapshot over a 3-rule live set: one delete (prune), no create for unchanged rules', async () => {
+      const existingSet = createMockRuleSet();
+      mockDb.__setResults([[existingSet], [mockProject], [existingSet]]);
+      mockProxyRulesService.getRulesByRuleSetId.mockResolvedValue([
+        liveRuleA(),
+        liveRuleB(),
+        liveRuleC(),
+      ]);
+      mockProxyRuleSetRevisionsService.getRevision.mockResolvedValue(revisionWithSnapshot());
+
+      const result = await rollback('rule-set-1', 'revision-1');
+
+      expect(result.created).toEqual([]);
+      expect(result.updated).toEqual([]);
+      expect(result.deleted).toEqual([{ pathPattern: '/api/c', method: null }]);
+      expect(result.unchanged).toEqual(
+        expect.arrayContaining([
+          { pathPattern: '/api/a', method: null },
+          { pathPattern: '/api/b', method: null },
+        ]),
+      );
+      expect(result.dryRun).toBe(false);
+    });
+
+    it('under dryRun, mutates nothing and captures no revision, but still returns the change plan', async () => {
+      const existingSet = createMockRuleSet();
+      mockDb.__setResults([[existingSet], [mockProject], [existingSet]]);
+      mockProxyRulesService.getRulesByRuleSetId.mockResolvedValue([
+        liveRuleA(),
+        liveRuleB(),
+        liveRuleC(),
+      ]);
+      mockProxyRuleSetRevisionsService.getRevision.mockResolvedValue(revisionWithSnapshot());
+
+      const result = await rollback('rule-set-1', 'revision-1', { dryRun: true });
+
+      expect(result.dryRun).toBe(true);
+      expect(result.deleted).toEqual([{ pathPattern: '/api/c', method: null }]);
+      expect(mockDb.transaction).not.toHaveBeenCalled();
+      expect(mockProxyRuleSetRevisionsService.captureIfUnrevisioned).not.toHaveBeenCalled();
+      expect(mockProxyRuleSetRevisionsService.capture).not.toHaveBeenCalled();
+    });
+
+    it('keeps the current rule set name and appends a warning when the snapshot name differs', async () => {
+      const existingSet = createMockRuleSet({ name: 'current-name' });
+      mockDb.__setResults([[existingSet], [mockProject], [existingSet]]);
+      mockProxyRulesService.getRulesByRuleSetId.mockResolvedValue([]);
+      mockProxyRuleSetRevisionsService.getRevision.mockResolvedValue(
+        revisionWithSnapshot({
+          snapshot: {
+            version: 2,
+            exportedAt: '2026-01-01T00:00:00.000Z',
+            kind: 'bffless-proxy-rule-set',
+            ruleSet: { name: 'old-name' },
+            rules: [],
+          },
+        }),
+      );
+
+      const result = await rollback('rule-set-1', 'revision-1');
+
+      expect(result.setCreated).toBe(false);
+      expect(result.warnings.some((w) => w.includes('old-name'))).toBe(true);
+      expect(result.warnings.some((w) => w.includes('current-name'))).toBe(true);
+    });
+
+    it("captures exactly one revision with trigger 'rollback' (not a sync+rollback pair) and reports a self-describing warning", async () => {
+      const existingSet = createMockRuleSet();
+      mockDb.__setResults([[existingSet], [mockProject], [existingSet]]);
+      mockProxyRulesService.getRulesByRuleSetId.mockResolvedValue([liveRuleA(), liveRuleB()]);
+      mockProxyRuleSetRevisionsService.getRevision.mockResolvedValue(
+        revisionWithSnapshot({ id: 'revision-42' }),
+      );
+
+      const result = await rollback('rule-set-1', 'revision-42');
+
+      expect(mockProxyRuleSetRevisionsService.capture).toHaveBeenCalledTimes(1);
+      const [captureArg] = mockProxyRuleSetRevisionsService.capture.mock.calls[0];
+      expect(captureArg.trigger).toBe('rollback');
+      expect(result.warnings.some((w) => w.includes('revision-42'))).toBe(true);
     });
   });
 });
