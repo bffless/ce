@@ -17,6 +17,8 @@ export { runPushOne, formatSyncReport } from './commands/push.js';
 export type { PushOptions, PushOutcome, PushDeps } from './commands/push.js';
 export { runDiffOne } from './commands/diff.js';
 export type { DiffOptions, DiffOutcome } from './commands/diff.js';
+export { runDev } from './commands/dev.js';
+export type { DevOptions, DevDeps, DevWatcher } from './commands/dev.js';
 export { decompileExport, writeDecompiled } from './compile/decompile.js';
 export { canonicalizeExport, stringifyExport, exportsEquivalent } from './format/canonical.js';
 export type { RuleSetExport, ExportedRule, ExportedSchema } from './format/types.js';

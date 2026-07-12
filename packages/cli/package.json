@@ -45,6 +45,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
+    "chokidar": "^4.0.1",
     "commander": "^12.1.0",
     "esbuild": "^0.28.1",
     "yaml": "^2.4.5",

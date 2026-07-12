@@ -7,6 +7,7 @@ import { runFnTests } from './commands/test.js';
 import { runPull } from './commands/pull.js';
 import { runPushOne } from './commands/push.js';
 import { runDiffOne } from './commands/diff.js';
+import { runDev, type DevOptions } from './commands/dev.js';
 
 /** `<file>:<line> <message>` when `line` is present, `<file> <message>` otherwise. */
 function formatIssue(issue: Issue): string {
@@ -27,7 +28,7 @@ function resolveDirsOrReport(dirs: string[]): string[] | null {
 const program = new Command('bffless').description('BFFless CLI');
 const rules = program
   .command('rules')
-  .description('Proxy rule sets as code (build, validate, test, pull, push, diff)');
+  .description('Proxy rule sets as code (build, validate, test, pull, push, diff, dev)');
 
 rules
   .command('build')
@@ -234,6 +235,45 @@ rules
     }
     if (hasError) process.exitCode = 2;
     else if (hasDrift) process.exitCode = 1;
+  });
+
+rules
+  .command('dev')
+  .description(
+    'Watch rule-set directories and rerun build → validate → test on every change ' +
+      '(local-only by default — no network). --push additionally syncs a fully green pass ' +
+      'to the server, but only when --name-suffix is also given, so a dev loop can never ' +
+      'touch the bare-named live set.',
+  )
+  .argument('[dirs...]', 'rule-set directories (defaults to .bffless/config.json ruleSets)')
+  .option('--push', 'after each fully green pass, sync the changed set to the server (requires --name-suffix)')
+  .option('--name-suffix <suffix>', 'rename the set to <name>-<suffix> before syncing (required with --push)')
+  .option('--api-url <url>', 'API base URL (overrides BFFLESS_API_URL and config apiUrl)')
+  .option('--api-key <key>', 'API key (overrides BFFLESS_API_KEY; sent as X-API-Key)')
+  .option('--project <idOrName>', 'project UUID, owner/name, or name (overrides config project)')
+  .action(async (dirs: string[], opts: DevOptions) => {
+    const resolved = resolveDirsOrReport(dirs);
+    if (!resolved) {
+      process.exitCode = 1;
+      return;
+    }
+
+    let handle: { close: () => Promise<void> };
+    try {
+      handle = await runDev(resolved, opts, process.cwd());
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exitCode = 1;
+      return;
+    }
+
+    // Long-running: block until Ctrl-C, then close the watcher cleanly and let the
+    // process exit naturally (no process.exit — see resolveDirsOrReport's doc comment).
+    await new Promise<void>((resolve) => {
+      process.once('SIGINT', () => {
+        handle.close().then(resolve, resolve);
+      });
+    });
   });
 
 program.parseAsync().catch((err) => {

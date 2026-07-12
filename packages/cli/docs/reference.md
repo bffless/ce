@@ -250,6 +250,52 @@ rules/api/transform/post/
   directory that already has hand-authored `*.fn.ts` files prints a warning (it does not
   block) so you don't lose track of them.
 
+## `rules dev` — watch mode
+
+```bash
+bffless rules dev [dirs...]
+bffless rules dev --push --name-suffix dev-alice [dirs...]
+```
+
+Watches one or more rule-set directories and reruns the same **build → validate → test**
+pipeline as the standalone commands on every change, without leaving the terminal. Resolves
+`[dirs...]` the same way every other `rules` command does — explicit paths, or the nearest
+`.bffless/config.json`'s `ruleSets` globs when none are given.
+
+**Local-first by default — no network.** Plain `bffless rules dev` never makes an HTTP
+call; it only compiles (writing `dist/`, exactly like `rules build`), validates, and runs
+`*.fn.test.yaml` fixtures. Changes under any set's `dist/` directory are ignored, so the
+loop's own build output never re-triggers itself.
+
+**What one pass runs, per changed set:**
+
+1. `rules build` (compile + write `dist/`) — a compile error stops the pass here.
+2. `rules validate` — any error stops the pass here (warnings don't).
+3. `rules test` (`*.fn.test.yaml` fixtures) — any failed case stops the pass here.
+
+Only a **fully green** pass (build ok, zero validate errors, zero failed tests) is eligible
+to push. Every pass — green or not — prints exactly one timestamped status line:
+
+```
+[12:01:03] reader ✓ build ✓ validate ✓ 3 tests
+[12:01:07] reader ✗ build: rules/api/x/post.rule.yaml: code file not found: missing.js
+```
+
+Editing one set's files only reruns that set (changes are debounced 200ms per set, so a
+burst of saves to one file — or several files in the same set — coalesces into a single
+rerun); other watched sets are untouched. A red pass is logged and the loop keeps watching —
+nothing here ever exits the process except Ctrl-C.
+
+**`--push` (opt-in, requires `--name-suffix`).** Passing `--push` without `--name-suffix` is
+a startup error — dev mode is not allowed to sync to a set's bare (live) name. With both
+flags, every fully green pass additionally runs the equivalent of `rules push --name-suffix
+<suffix>` for the set that just passed, so the synced copy always lives at `<name>-<suffix>`
+(the same preview-deploy pattern `rules push --name-suffix` uses), never the production
+name. `--api-url`/`--api-key`/`--project` behave exactly as they do for `rules push`/`pull`/
+`diff`.
+
+Ctrl-C (`SIGINT`) closes the watcher and exits cleanly.
+
 ## Defaults & elision table
 
 Verbatim from `src/format/defaults.ts` (`RULE_DEFAULTS`) — the compiler injects these when
@@ -426,6 +472,7 @@ that assume they exist:
   used a `$secret: NAME` reference form; what's actually implemented (see the manifest
   reference above) is a plain empty-string placeholder convention (`Authorization: ""`),
   enforced by a build-time check — there is no `$secret:` syntax in this package.
-- **Revisions/rollback, `rules dev` watch mode** — Phase 3 per the design doc; not in this
-  package (TypeScript handlers + bundling — the third Phase 3 item — now exist; see
-  [TypeScript handlers](#typescript-handlers) above).
+- **Revisions/rollback** — Phase 3 per the design doc; not in this package yet (the other
+  two Phase 3 items now exist: TypeScript handlers + bundling, see
+  [TypeScript handlers](#typescript-handlers) above; and watch mode, see
+  [`rules dev`](#rules-dev--watch-mode) above).
