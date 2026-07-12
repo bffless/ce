@@ -267,6 +267,13 @@
       "when": 1783096365744,
       "tag": "0037_fluffy_chimera",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1783821249372,
+      "tag": "0038_faithful_santa_claus",
+      "breakpoints": true
     }
   ]
 }
