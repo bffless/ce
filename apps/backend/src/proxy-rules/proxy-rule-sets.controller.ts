@@ -35,6 +35,8 @@ import {
   ExportProxyRuleSetResponseDto,
   SyncProxyRuleSetDto,
   SyncProxyRuleSetResponseDto,
+  RevisionListResponseDto,
+  RevisionDetailResponseDto,
 } from './dto';
 import { ApiKeyGuard } from '../auth/api-key.guard';
 import { CurrentUser, CurrentUserData } from '../auth/decorators/current-user.decorator';
@@ -148,8 +150,9 @@ export class ProxyRuleSetsController {
   }
 
   // NOTE: declared before GET ':id' — Nest registers routes in declaration
-  // order, so the static '/export' segment must come first to guarantee it is
-  // never shadowed by the plain ':id' route.
+  // order, so the static segments below ('/export', '/revisions',
+  // '/revisions/:revisionId') must come first to guarantee they are never
+  // shadowed by the plain ':id' route.
   @Get(':id/export')
   @ApiOperation({
     summary: 'Export a rule set as the canonical v2 envelope',
@@ -175,6 +178,61 @@ export class ProxyRuleSetsController {
     // RuleSetExport is the runtime shape (db schema types); the DTO class only
     // exists for Swagger — same bridging cast as the other rule responses.
     return envelope as unknown as ExportProxyRuleSetResponseDto;
+  }
+
+  @Get(':id/revisions')
+  @ApiOperation({
+    summary: 'List captured revisions for a rule set',
+    description:
+      'Point-in-time snapshots captured on mutation (sync/import/create/copy/rule edits/rollback), ' +
+      'newest first. `current` is computed by hashing the live rule set state per request and ' +
+      'comparing it against each revision\'s stored contentHash.',
+  })
+  @ApiParam({ name: 'id', type: 'string' })
+  @ApiResponse({
+    status: 200,
+    description: 'Revisions for the rule set, newest first',
+    type: RevisionListResponseDto,
+  })
+  @ApiResponse({ status: 403, description: 'Not authorized' })
+  @ApiResponse({ status: 404, description: 'Rule set not found' })
+  async listRevisions(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: CurrentUserData,
+  ): Promise<RevisionListResponseDto> {
+    return this.proxyRuleSetsService.listRevisions(
+      id,
+      user.id,
+      user.role || 'user',
+      user.apiKeyProjectId,
+    );
+  }
+
+  @Get(':id/revisions/:revisionId')
+  @ApiOperation({
+    summary: 'Get a single captured revision, including its full snapshot',
+  })
+  @ApiParam({ name: 'id', type: 'string' })
+  @ApiParam({ name: 'revisionId', type: 'string' })
+  @ApiResponse({
+    status: 200,
+    description: 'The revision, including its full v2 export envelope snapshot',
+    type: RevisionDetailResponseDto,
+  })
+  @ApiResponse({ status: 403, description: 'Not authorized' })
+  @ApiResponse({ status: 404, description: 'Rule set or revision not found' })
+  async getRevision(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('revisionId', ParseUUIDPipe) revisionId: string,
+    @CurrentUser() user: CurrentUserData,
+  ): Promise<RevisionDetailResponseDto> {
+    return this.proxyRuleSetsService.getRevision(
+      id,
+      revisionId,
+      user.id,
+      user.role || 'user',
+      user.apiKeyProjectId,
+    );
   }
 
   @Get(':id')

@@ -21,7 +21,10 @@ import {
 import { PermissionsService } from '../permissions/permissions.service';
 import { NginxRegenerationService } from '../domains/nginx-regeneration.service';
 import { PipelineSchemasService } from '../pipelines/pipeline-schemas.service';
-import { ProxyRuleSetRevisionsService } from './proxy-rule-set-revisions.service';
+import {
+  ProxyRuleSetRevisionsService,
+  computeRevisionHash,
+} from './proxy-rule-set-revisions.service';
 import {
   CreateProxyRuleSetDto,
   UpdateProxyRuleSetDto,
@@ -31,6 +34,9 @@ import {
   SyncProxyRuleSetDto,
   SyncProxyRuleSetResponseDto,
   SyncRuleRefDto,
+  RevisionListResponseDto,
+  RevisionListItemDto,
+  RevisionDetailResponseDto,
 } from './dto';
 import type {
   PipelineConfig,
@@ -39,7 +45,10 @@ import type {
   ProxyType,
 } from '../db/schema/proxy-rules.schema';
 import type { ProxyRuleSet, ProxyRuleSetSource } from '../db/schema/proxy-rule-sets.schema';
-import type { RevisionTrigger } from '../db/schema/proxy-rule-set-revisions.schema';
+import type {
+  ProxyRuleSetRevision,
+  RevisionTrigger,
+} from '../db/schema/proxy-rule-set-revisions.schema';
 import { ProxyRulesService } from './proxy-rules.service';
 import { collectSchemaIds, remapSchemaIds } from './schema-refs.util';
 import {
@@ -172,6 +181,107 @@ export class ProxyRuleSetsService {
       schemas,
       exportedAt: new Date().toISOString(),
     });
+  }
+
+  /**
+   * List all captured revisions for a rule set, newest first (`GET
+   * :id/revisions`). Same read-level authorization as `exportRuleSet`
+   * (viewer role or higher). `current` is computed by hashing the LIVE
+   * envelope once per call (via
+   * `ProxyRuleSetRevisionsService.buildCurrentEnvelope`, the same assembly
+   * `capture()` uses) and comparing against each revision's stored
+   * `contentHash`.
+   */
+  async listRevisions(
+    ruleSetId: string,
+    userId: string,
+    userRole: string,
+    apiKeyProjectId?: string | null,
+  ): Promise<RevisionListResponseDto> {
+    const ruleSet = await this.findById(ruleSetId);
+    if (!ruleSet) {
+      throw new NotFoundException(`Rule set ${ruleSetId} not found`);
+    }
+
+    await this.permissionsService.requireProjectAccess(
+      ruleSet.projectId,
+      userId,
+      userRole,
+      'viewer',
+      apiKeyProjectId,
+    );
+
+    const revisions = await this.proxyRuleSetRevisionsService.listRevisions(ruleSetId);
+    const liveHash = await this.computeLiveHash(ruleSet);
+
+    return {
+      revisions: revisions.map((revision) => this.toRevisionListItem(revision, liveHash)),
+    };
+  }
+
+  /**
+   * Get a single captured revision plus its full snapshot (`GET
+   * :id/revisions/:revisionId`). Same authorization as `listRevisions`.
+   * 404s when the revision doesn't exist or belongs to another rule set
+   * (`ProxyRuleSetRevisionsService.getRevision` scopes the lookup to
+   * `ruleSetId`, so both cases resolve to `null`).
+   */
+  async getRevision(
+    ruleSetId: string,
+    revisionId: string,
+    userId: string,
+    userRole: string,
+    apiKeyProjectId?: string | null,
+  ): Promise<RevisionDetailResponseDto> {
+    const ruleSet = await this.findById(ruleSetId);
+    if (!ruleSet) {
+      throw new NotFoundException(`Rule set ${ruleSetId} not found`);
+    }
+
+    await this.permissionsService.requireProjectAccess(
+      ruleSet.projectId,
+      userId,
+      userRole,
+      'viewer',
+      apiKeyProjectId,
+    );
+
+    const revision = await this.proxyRuleSetRevisionsService.getRevision(ruleSetId, revisionId);
+    if (!revision) {
+      throw new NotFoundException(`Revision ${revisionId} not found`);
+    }
+
+    const liveHash = await this.computeLiveHash(ruleSet);
+
+    return {
+      ...this.toRevisionListItem(revision, liveHash),
+      snapshot: revision.snapshot as unknown as RevisionDetailResponseDto['snapshot'],
+    };
+  }
+
+  /** Hash of the LIVE envelope for `ruleSet`, for the `current` flag comparison. */
+  private async computeLiveHash(ruleSet: ProxyRuleSet): Promise<string> {
+    const rules = await this.proxyRulesService.getRulesByRuleSetId(ruleSet.id);
+    const liveEnvelope = await this.proxyRuleSetRevisionsService.buildCurrentEnvelope(
+      ruleSet,
+      rules,
+    );
+    return computeRevisionHash(liveEnvelope);
+  }
+
+  private toRevisionListItem(
+    revision: ProxyRuleSetRevision,
+    liveHash: string,
+  ): RevisionListItemDto {
+    return {
+      id: revision.id,
+      createdAt: revision.createdAt.toISOString(),
+      trigger: revision.trigger,
+      contentHash: revision.contentHash,
+      ruleCount: revision.snapshot.rules.length,
+      current: revision.contentHash === liveHash,
+      source: revision.source ?? null,
+    };
   }
 
   /**

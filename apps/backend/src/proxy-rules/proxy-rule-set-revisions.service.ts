@@ -70,39 +70,53 @@ export class ProxyRuleSetRevisionsService {
   ) {}
 
   /**
-   * Assemble the canonical export envelope for `input` (same assembly as
-   * `ProxyRuleSetsService.exportRuleSet`: serialize rules, walk pipeline
-   * configs for referenced schema ids, bundle resolvable same-project
-   * schemas), hash it, and — unless the hash matches the newest existing
-   * revision for this rule set — insert a new revision row and prune history
-   * beyond `REVISION_CAP`.
+   * Assemble the canonical export envelope for `ruleSet`/`rules` — same
+   * assembly as `ProxyRuleSetsService.exportRuleSet`: serialize rules, walk
+   * pipeline configs for referenced schema ids, bundle resolvable
+   * same-project schemas. Shared by `capture()` and by
+   * `ProxyRuleSetsService.listRevisions`/`getRevision`, which hash the
+   * result to compute the `current` flag against the LIVE state — this is
+   * the "minimal helper" the revisions service exposes so the assembly logic
+   * lives in exactly one place.
+   *
+   * Can throw (schema lookups, JSON issues); callers that need best-effort
+   * semantics (`capture`) catch around it themselves.
+   */
+  async buildCurrentEnvelope(ruleSet: ProxyRuleSet, rules: ProxyRule[]): Promise<RuleSetExport> {
+    const serializedRules = rules.map((rule) => serializeRuleForExport(rule));
+
+    const schemas: ExportedSchema[] = [];
+    for (const schemaId of collectSchemaIds(serializedRules)) {
+      const schema = await this.pipelineSchemasService.getById(schemaId);
+      // Skip silently, mirroring exportRuleSet: missing/foreign-project refs
+      // stay unbundled rather than failing the capture.
+      if (!schema || schema.projectId !== ruleSet.projectId) continue;
+      schemas.push({ id: schema.id, name: schema.name, fields: schema.fields });
+    }
+
+    return buildExportEnvelope({
+      ruleSet: {
+        name: ruleSet.name,
+        description: ruleSet.description,
+        environment: ruleSet.environment,
+      },
+      rules: serializedRules,
+      schemas,
+      exportedAt: new Date().toISOString(),
+    });
+  }
+
+  /**
+   * Hash `input`'s current state (via {@link buildCurrentEnvelope}), and —
+   * unless the hash matches the newest existing revision for this rule set —
+   * insert a new revision row and prune history beyond `REVISION_CAP`.
    *
    * Never throws: any failure (including from the schema lookups or the DB)
    * is caught and logged as a warning.
    */
   async capture(input: CaptureInput): Promise<void> {
     try {
-      const serializedRules = input.rules.map((rule) => serializeRuleForExport(rule));
-
-      const schemas: ExportedSchema[] = [];
-      for (const schemaId of collectSchemaIds(serializedRules)) {
-        const schema = await this.pipelineSchemasService.getById(schemaId);
-        // Skip silently, mirroring exportRuleSet: missing/foreign-project refs
-        // stay unbundled rather than failing the capture.
-        if (!schema || schema.projectId !== input.ruleSet.projectId) continue;
-        schemas.push({ id: schema.id, name: schema.name, fields: schema.fields });
-      }
-
-      const envelope = buildExportEnvelope({
-        ruleSet: {
-          name: input.ruleSet.name,
-          description: input.ruleSet.description,
-          environment: input.ruleSet.environment,
-        },
-        rules: serializedRules,
-        schemas,
-        exportedAt: new Date().toISOString(),
-      });
+      const envelope = await this.buildCurrentEnvelope(input.ruleSet, input.rules);
 
       const contentHash = computeRevisionHash(envelope);
 

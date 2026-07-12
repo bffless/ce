@@ -6,3 +6,4 @@ export * from './proxy-rule-set.dto';
 export * from './import-proxy-rule-set.dto';
 export * from './export-proxy-rule-set.dto';
 export * from './sync-proxy-rule-set.dto';
+export * from './rule-set-revision.dto';
