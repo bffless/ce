@@ -15,6 +15,24 @@ import {
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 
+/**
+ * Normalize a multipart/legacy value into string[]: arrays pass through;
+ * a lone string is comma-split (CSV back-compat) and trimmed; empties dropped.
+ * Multer/busboy only yields an array when a multipart field repeats >=2 times
+ * — a single occurrence arrives as a bare string, which this also handles.
+ */
+export function NormalizeStringArray() {
+  return Transform(({ value }) => {
+    if (value === undefined || value === null) return undefined;
+    if (Array.isArray(value)) return value;
+    if (typeof value === 'string') {
+      const parts = value.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
+      return parts.length > 0 ? parts : undefined;
+    }
+    return value; // let @IsArray reject other shapes
+  });
+}
+
 // Enums
 export enum DeploymentSortField {
   CREATED_AT = 'createdAt',
@@ -128,6 +146,7 @@ export class CreateDeploymentDto {
     type: [String],
   })
   @IsOptional()
+  @NormalizeStringArray()
   @IsArray()
   @IsString({ each: true })
   proxyRuleSetNames?: string[];
@@ -138,6 +157,7 @@ export class CreateDeploymentDto {
     type: [String],
   })
   @IsOptional()
+  @NormalizeStringArray()
   @IsArray()
   @IsUUID('4', { each: true })
   proxyRuleSetIds?: string[];
@@ -254,6 +274,7 @@ export class CreateDeploymentZipDto {
     type: [String],
   })
   @IsOptional()
+  @NormalizeStringArray()
   @IsArray()
   @IsString({ each: true })
   proxyRuleSetNames?: string[];
@@ -264,6 +285,7 @@ export class CreateDeploymentZipDto {
     type: [String],
   })
   @IsOptional()
+  @NormalizeStringArray()
   @IsArray()
   @IsUUID('4', { each: true })
   proxyRuleSetIds?: string[];
@@ -797,6 +819,7 @@ export class PrepareBatchUploadDto {
     type: [String],
   })
   @IsOptional()
+  @NormalizeStringArray()
   @IsArray()
   @IsString({ each: true })
   proxyRuleSetNames?: string[];
@@ -807,6 +830,7 @@ export class PrepareBatchUploadDto {
     type: [String],
   })
   @IsOptional()
+  @NormalizeStringArray()
   @IsArray()
   @IsUUID('4', { each: true })
   proxyRuleSetIds?: string[];
@@ -899,6 +923,7 @@ export class FinalizeUploadDto {
     type: [String],
   })
   @IsOptional()
+  @NormalizeStringArray()
   @IsArray()
   @IsString({ each: true })
   proxyRuleSetNames?: string[];
@@ -909,6 +934,7 @@ export class FinalizeUploadDto {
     type: [String],
   })
   @IsOptional()
+  @NormalizeStringArray()
   @IsArray()
   @IsUUID('4', { each: true })
   proxyRuleSetIds?: string[];
