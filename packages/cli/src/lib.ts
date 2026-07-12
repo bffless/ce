@@ -6,6 +6,8 @@
  */
 export { buildRuleSet } from './compile/build.js';
 export type { BuildResult } from './compile/build.js';
+export { bundleHandler } from './compile/bundle.js';
+export type { BundleOptions, BundleOutcome } from './compile/bundle.js';
 export { buildOne } from './commands/build.js';
 export type { BuildOutcome } from './commands/build.js';
 export { validateRuleSet } from './commands/validate.js';

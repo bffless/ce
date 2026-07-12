@@ -163,4 +163,23 @@ describe('runHandlerFile', () => {
     const { result } = await runHandlerFile(file, { request: { body: { x: 41 } } });
     expect(result).toBe(42);
   });
+
+  it('bundles and runs a .fn.ts handler (with a relative import) when setDir is given', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'bffless-harness-ts-'));
+    writeFileSync(path.join(dir, 'util.ts'), 'export function inc(n: number) {\n  return n + 1;\n}\n');
+    const file = path.join(dir, 'handler.fn.ts');
+    writeFileSync(
+      file,
+      "import { inc } from './util.js';\nexport default function handler({ request }) {\n  return inc(request.body.x);\n}\n",
+    );
+    const { result } = await runHandlerFile(file, { request: { body: { x: 41 } } }, { setDir: dir });
+    expect(result).toBe(42);
+  });
+
+  it('a .fn.ts handler without setDir rejects with a clear error (confinement needs the set root)', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'bffless-harness-ts-nosetdir-'));
+    const file = path.join(dir, 'handler.fn.ts');
+    writeFileSync(file, 'export default function handler() {\n  return 1;\n}\n');
+    await expect(runHandlerFile(file, {})).rejects.toThrow(/setDir/);
+  });
 });

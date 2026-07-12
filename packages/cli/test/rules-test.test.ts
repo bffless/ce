@@ -5,6 +5,7 @@ import path from 'node:path';
 import { runFnTests } from '../src/commands/test.js';
 
 const basicDir = path.resolve('test/fixtures/synthetic/basic');
+const tsHandlersDir = path.resolve('test/fixtures/synthetic/ts-handlers');
 
 /** Materialize a throwaway rule set from a { relpath: contents } map and return its dir,
  *  mirroring the `scratchSet` helper in build.test.ts / validate.test.ts. */
@@ -23,6 +24,14 @@ describe('runFnTests — basic fixture', () => {
     const result = await runFnTests(basicDir);
     expect(result.failed).toEqual([]);
     expect(result.passed).toBe(2);
+  });
+});
+
+describe('runFnTests — ts-handlers fixture (.fn.ts handler)', () => {
+  it('bundles the .fn.ts handler (with its relative import) and runs its fixture green', async () => {
+    const result = await runFnTests(tsHandlersDir);
+    expect(result.failed).toEqual([]);
+    expect(result.passed).toBe(1);
   });
 });
 

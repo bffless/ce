@@ -87,7 +87,7 @@ export async function runFnTests(setDir: string): Promise<FnTestRunResult> {
     for (const c of manifest.cases) {
       let outcome: { ok: true; result: unknown } | { ok: false; error: Error };
       try {
-        const { result } = await runHandlerFile(handlerPath, (c.data ?? {}) as HandlerData);
+        const { result } = await runHandlerFile(handlerPath, (c.data ?? {}) as HandlerData, { setDir: absSetDir });
         outcome = { ok: true, result };
       } catch (err) {
         outcome = { ok: false, error: err as Error };

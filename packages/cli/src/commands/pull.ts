@@ -15,7 +15,7 @@
  * Both modes share the output logic: `--output` wins, else
  * `.bffless/proxy-rules/<ruleSet.name>/`; non-empty targets need `--force`.
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { decompileExport, writeDecompiled } from '../compile/decompile.js';
 import { createClient, ApiError, type ClientDeps } from '../api/client.js';
@@ -41,6 +41,17 @@ export interface PullOutcome {
 }
 
 export type PullDeps = ClientDeps;
+
+/** Recursively find every `*.fn.ts` file under `dir` (best-effort — `dir` may not exist yet). */
+function findFnTsFiles(dir: string, out: string[] = []): string[] {
+  if (!existsSync(dir)) return out;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) findFnTsFiles(full, out);
+    else if (entry.isFile() && entry.name.endsWith('.fn.ts')) out.push(full);
+  }
+  return out;
+}
 
 export async function runPull(
   setName: string | undefined,
@@ -99,6 +110,18 @@ export async function runPull(
   let result;
   try {
     result = decompileExport(exp);
+    // Warn (don't block) when the target already holds hand-authored .fn.ts sources: decompile
+    // only ever emits .fn.js (it has no TypeScript source to regenerate from the compiled
+    // export), so an existing .fn.ts here is either about to be left orphaned (non-empty-dir
+    // guard below, without --force) or silently dropped (with --force overwriting other files
+    // in the same directory) — the author should know either way.
+    const existingTs = findFnTsFiles(outDir);
+    if (existingTs.length > 0) {
+      result.warnings.push(
+        `${path.relative(cwd, outDir) || '.'} already has ${existingTs.length} hand-authored .fn.ts handler(s); ` +
+          'decompile only emits .fn.js and will not regenerate TypeScript sources',
+      );
+    }
     await writeDecompiled(result, outDir, { force: opts.force });
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };

@@ -1,0 +1,5 @@
+handler: ./transform.fn.ts
+cases:
+  - name: doubles the input
+    data: { request: { body: { n: 21 } } }
+    expect: { result: { doubled: 42 } }
