@@ -305,6 +305,66 @@ export interface EmailConfigStatusResponse {
   isConfigured: boolean;
 }
 
+// ==================== Revision History & Rollback ====================
+
+// What triggered a revision capture (server: RevisionTrigger).
+export type RevisionTrigger =
+  | 'sync'
+  | 'import'
+  | 'create'
+  | 'copy'
+  | 'set_update'
+  | 'rule_edit'
+  | 'rollback'
+  | 'backfill';
+
+// One captured revision (GET /api/proxy-rule-sets/:id/revisions). Mirrors the
+// server's RevisionListItemDto / CLI's RevisionListItem — keep field names in
+// sync. `current` is computed per request (contentHash === live envelope hash).
+export interface RuleSetRevisionListItem {
+  id: string;
+  createdAt: string;
+  trigger: RevisionTrigger;
+  contentHash: string;
+  ruleCount: number;
+  current: boolean;
+  source?: ProxyRuleSetSource | null;
+}
+
+export interface RuleSetRevisionsResponse {
+  revisions: RuleSetRevisionListItem[]; // newest first
+}
+
+// A rule reference in a sync/rollback response (SyncRuleRefDto).
+export interface SyncRuleRef {
+  pathPattern: string;
+  method: string | null;
+}
+
+// How a bundled schema was resolved during sync/rollback (SyncSchemaResolutionDto).
+export interface SyncSchemaResolution {
+  name: string;
+  action: 'reuse' | 'create';
+  targetSchemaId: string | null;
+  fieldMismatch: boolean;
+}
+
+// Response of the sync endpoint — also the rollback response, since rollback
+// replays the snapshot through the same sync path (SyncProxyRuleSetResponseDto).
+export interface RuleSetSyncResponse {
+  ruleSetId: string | null;
+  created: SyncRuleRef[];
+  updated: SyncRuleRef[];
+  deleted: SyncRuleRef[];
+  unchanged: SyncRuleRef[];
+  pruneCandidates: SyncRuleRef[];
+  schemaResolutions: SyncSchemaResolution[];
+  missingSecrets: string[];
+  warnings: string[];
+  dryRun: boolean;
+  setCreated: boolean;
+}
+
 // List response wrappers
 export interface ProxyRulesListResponse {
   rules: ProxyRule[];
@@ -537,6 +597,28 @@ export const proxyRulesApi = api.injectEndpoints({
       ],
     }),
 
+    // ==================== Revision History & Rollback ====================
+
+    // List captured revisions for a rule set, newest first
+    getRuleSetRevisions: builder.query<RuleSetRevisionsResponse, string>({
+      query: (ruleSetId) => `/api/proxy-rule-sets/${ruleSetId}/revisions`,
+      providesTags: ['ProxyRuleSetRevision'],
+    }),
+
+    // Roll back a rule set to a prior revision (replays the snapshot through
+    // the sync path — see rule-set-revision.dto.ts on the server)
+    rollbackRuleSet: builder.mutation<
+      RuleSetSyncResponse,
+      { id: string; revisionId: string; dryRun?: boolean }
+    >({
+      query: ({ id, revisionId, dryRun }) => ({
+        url: `/api/proxy-rule-sets/${id}/rollback/${revisionId}`,
+        method: 'POST',
+        body: dryRun !== undefined ? { dryRun } : {},
+      }),
+      invalidatesTags: ['ProxyRuleSet', 'ProxyRule', 'ProxyRuleSetRevision'],
+    }),
+
     // ==================== Settings ====================
 
     // Get email configuration status (public endpoint)
@@ -570,6 +652,9 @@ export const {
   useGetRuleLogCountQuery,
   useGetLogDetailQuery,
   useClearRuleLogsMutation,
+  // Revision History & Rollback
+  useGetRuleSetRevisionsQuery,
+  useRollbackRuleSetMutation,
   // Settings
   useGetEmailConfigStatusQuery,
 } = proxyRulesApi;
