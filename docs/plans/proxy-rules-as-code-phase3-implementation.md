@@ -414,7 +414,7 @@ asserting the call is `await`ed inside a try/catch or the promise is handled).
 
 Commit: `feat(backend): capture revisions on rule-level edits`
 
-### - [ ] Task A4 — revisions list/detail endpoints
+### - [x] Task A4 — revisions list/detail endpoints
 
 **Files**:
 - Create `apps/backend/src/proxy-rules/dto/rule-set-revision.dto.ts` (+ barrel export in `dto/index.ts`)
@@ -452,7 +452,7 @@ asserts paths + class guard intact.
 
 Commit: `feat(backend): list/get proxy rule set revision endpoints`
 
-### - [ ] Task A5 — rollback endpoint
+### - [x] Task A5 — rollback endpoint
 
 **Files**:
 - Modify `apps/backend/src/proxy-rules/dto/rule-set-revision.dto.ts` (add `RollbackRuleSetDto { dryRun?: boolean }`)
@@ -491,7 +491,7 @@ warning; exactly one `'rollback'` revision captured. Controller spec: route + gu
 
 Commit: `feat(backend): rollback endpoint replaying revision snapshots through sync`
 
-### - [ ] Task A6 — frontend: revision history + restore UI
+### - [x] Task A6 — frontend: revision history + restore UI
 
 **Files**:
 - Modify `apps/frontend/src/services/api.ts` (add `'ProxyRuleSetRevision'` tag)
@@ -521,7 +521,7 @@ Commit: `feat(frontend): revision history + restore on rule set detail page`
 
 ## Track B — CLI: TS handlers, dev mode, rollback (`repos/ce`, same branch, after Track A)
 
-### - [ ] Task B1 — esbuild bundling core + handler types
+### - [x] Task B1 — esbuild bundling core + handler types
 
 **Files**:
 - Modify `packages/cli/package.json` (add deps `esbuild ^0.25.0`; add exports
@@ -574,7 +574,7 @@ new file), and `git status` shows the root `pnpm-lock.yaml` updated and committe
 
 Commit: `feat(cli): esbuild .fn.ts handler bundling core + bffless/handlers types`
 
-### - [ ] Task B2 — wire .fn.ts into build / validate / test / pull
+### - [x] Task B2 — wire .fn.ts into build / validate / test / pull
 
 **Files**:
 - Modify `packages/cli/src/compile/build.ts` (the two read points), `src/commands/validate.ts`
@@ -616,7 +616,7 @@ Commit: `feat(cli): esbuild .fn.ts handler bundling core + bffless/handlers type
 
 Commit: `feat(cli): .fn.ts handlers in build/validate/test + ts-handlers fixture`
 
-### - [ ] Task B3 — `rules dev` watch mode
+### - [x] Task B3 — `rules dev` watch mode
 
 **Files**:
 - Modify `packages/cli/package.json` (add `chokidar ^4.0.1`; root `pnpm install`)
@@ -800,7 +800,7 @@ Commit: `docs: skills-as-synced-resources evaluation memo (design §3.5)`
 
 ## Track D — docs-public guide (`repos/docs-public`, branch `proxy-rules-as-code-guide`)
 
-### - [ ] Task D1 — "Proxy Rules as Code" recipe
+### - [x] Task D1 — "Proxy Rules as Code" recipe
 
 **Files**:
 - Create `docs/recipes/proxy-rules-as-code.md`
@@ -853,7 +853,7 @@ Commit: `docs: proxy rules as code recipe (CLI, CI sync, PR previews, rollback)`
 
 ## Track E — rules-as-code skill (`repos/skills`, branch `rules-as-code-skill`)
 
-### - [ ] Task E1 — `bffless:rules-as-code` skill
+### - [x] Task E1 — `bffless:rules-as-code` skill
 
 **Files**:
 - Create `plugins/bffless/skills/rules-as-code/SKILL.md`
