@@ -274,4 +274,42 @@ describe('buildRuleSet', () => {
     expect(res.warnings).toEqual([expect.stringContaining('multiple rules share order 2')]);
     expect(res.warnings[0]).toMatch(/api\/a\/get\.rule\.yaml.*api\/c\/get\.rule\.yaml/);
   });
+
+  it('(p) normalizes an absent validator config to {} (backend PipelineValidatorDto.config is required); a set config is untouched', async () => {
+    const dir = scratchSet({
+      'ruleset.yaml': 'name: s\n',
+      'rules/api/x/post.rule.yaml':
+        'pipeline:\n' +
+        '  steps:\n' +
+        '    - name: fn\n' +
+        '      handler: function_handler\n' +
+        '      config: { code: "x" }\n' +
+        '  validators:\n' +
+        '    - type: auth_required\n' + // no config: → must compile to config: {}
+        '    - type: rate_limit\n' +
+        '      config: { maxRequests: 5 }\n',
+    });
+    const res = await buildRuleSet(dir, { exportedAt: EXPORTED_AT });
+    expect(res.export.rules[0].pipelineConfig?.validators).toEqual([
+      { type: 'auth_required', config: {} },
+      { type: 'rate_limit', config: { maxRequests: 5 } },
+    ]);
+  });
+
+  it('(p2) validator config normalization also applies on the verbatim pipelineConfig: path', async () => {
+    const dir = scratchSet({
+      'ruleset.yaml': 'name: s\n',
+      'rules/api/x/post.rule.yaml':
+        'pipelineConfig:\n' +
+        '  name: p\n' +
+        '  steps:\n' +
+        '    - name: fn\n' +
+        '      handlerType: function_handler\n' +
+        '      config: { code: "x" }\n' +
+        '  validators:\n' +
+        '    - type: auth_required\n',
+    });
+    const res = await buildRuleSet(dir, { exportedAt: EXPORTED_AT });
+    expect(res.export.rules[0].pipelineConfig?.validators).toEqual([{ type: 'auth_required', config: {} }]);
+  });
 });

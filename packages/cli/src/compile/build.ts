@@ -320,6 +320,15 @@ export async function buildRuleSet(setDir: string, opts?: { exportedAt?: string 
     if (pipelineConfig) {
       // $file: refs inside pipeline step configs (pipeline sugar path already handled `code:`).
       pipelineConfig = resolveFileRefs(pipelineConfig, setDir, d.manifestDir, d.manifestPath) as PipelineConfig;
+      // The backend's PipelineValidatorDto declares `config` as @IsObject() WITHOUT @IsOptional
+      // (apps/backend/src/proxy-rules/dto/create-proxy-rule.dto.ts), so a validator authored
+      // without `config:` (allowed by the zod manifest schema) would 400 the entire sync on
+      // push. Normalize an absent validator config to `{}` in the compiled output.
+      if (pipelineConfig.validators !== undefined) {
+        pipelineConfig.validators = pipelineConfig.validators.map((v) =>
+          v.config === undefined ? { ...v, config: {} } : v,
+        );
+      }
       // Resolve $schema: refs (and warn on raw UUIDs) in place.
       walkSchemaRefs(pipelineConfig, (ref, set) => {
         if (ref.startsWith('$schema:')) {
