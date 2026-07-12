@@ -896,7 +896,7 @@ Commit: `feat: rules-as-code skill (CLI, CI sync, PR previews, rollback)`
 
 ## Track G — reviews & release
 
-### - [ ] Task G1 — whole-branch adversarial review per repo
+### - [x] Task G1 — whole-branch adversarial review per repo
 
 One review subagent per repo (most capable model): `repos/ce` (Tracks A+B+C+F),
 `repos/docs-public` (D), `repos/skills` (E). Prompt: refute correctness/completeness
