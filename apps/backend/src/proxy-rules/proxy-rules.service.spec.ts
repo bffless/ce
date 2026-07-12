@@ -5,6 +5,7 @@ import { ProxyRulesService } from './proxy-rules.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { NginxRegenerationService } from '../domains/nginx-regeneration.service';
 import { EmailService } from '../email/email.service';
+import { ProxyRuleSetRevisionsService } from './proxy-rule-set-revisions.service';
 
 // Mock the db client - using factory function for hoisting
 jest.mock('../db/client', () => {
@@ -83,6 +84,15 @@ describe('ProxyRulesService', () => {
     sendEmail: jest.fn().mockResolvedValue({ success: true }),
   };
 
+  // Plain-object mock, mirroring the ProxyRuleSetsService spec: this suite only
+  // asserts the CALL SITES (create/update/delete/reorder) invoke the revisions
+  // service with the right trigger/payload — captureIfUnrevisioned/capture
+  // internals are covered by proxy-rule-set-revisions.service.spec.ts.
+  const mockRevisionsService = {
+    capture: jest.fn().mockResolvedValue(undefined),
+    captureIfUnrevisioned: jest.fn().mockResolvedValue(undefined),
+  };
+
   // Helper to create a mock rule (with new schema)
   const createMockRule = (overrides: Record<string, unknown> = {}) => ({
     id: 'rule-1',
@@ -132,6 +142,7 @@ describe('ProxyRulesService', () => {
         { provide: PermissionsService, useValue: mockPermissionsService },
         { provide: NginxRegenerationService, useValue: mockNginxRegenerationService },
         { provide: EmailService, useValue: mockEmailService },
+        { provide: ProxyRuleSetRevisionsService, useValue: mockRevisionsService },
       ],
     }).compile();
 
@@ -636,6 +647,201 @@ describe('ProxyRulesService', () => {
       expect(passedConfig.postSteps[0].config).toEqual({ code: 'new' });
       expect(passedConfig.postSteps[0].isEnabled).toBe(false);
       expect(passedConfig.steps).toHaveLength(2); // steps untouched
+    });
+  });
+
+  describe('revision capture', () => {
+    const ruleSet = createMockRuleSet();
+
+    describe('create', () => {
+      it('backfills the pre-mutation state, then captures a "rule_edit" revision with the freshly-loaded rules', async () => {
+        const createdRule = createMockRule({ id: 'new-rule' });
+        const preMutationRules: unknown[] = []; // set is empty before this create
+        const freshRules = [createdRule];
+
+        mockDb.__setResults([
+          [ruleSet], // rule set lookup (permission check)
+          [], // findRuleByPattern -> no conflict
+          [], // getNextOrder -> order 0
+          preMutationRules, // backfill: pre-mutation getRulesByRuleSetId
+          [createdRule], // insert … returning
+          freshRules, // post-mutation: fresh getRulesByRuleSetId
+        ]);
+
+        await service.create(
+          { ruleSetId: 'rule-set-1', pathPattern: '/api/*', targetUrl: 'https://api.example.com' },
+          'user-1',
+          'admin',
+        );
+
+        expect(mockRevisionsService.captureIfUnrevisioned).toHaveBeenCalledTimes(1);
+        expect(mockRevisionsService.captureIfUnrevisioned).toHaveBeenCalledWith({
+          ruleSet,
+          rules: preMutationRules,
+          userId: 'user-1',
+        });
+
+        expect(mockRevisionsService.capture).toHaveBeenCalledTimes(1);
+        expect(mockRevisionsService.capture).toHaveBeenCalledWith({
+          ruleSet,
+          rules: freshRules,
+          trigger: 'rule_edit',
+          userId: 'user-1',
+        });
+        // Backfill must run BEFORE the post-mutation capture (pre- vs post-mutation state).
+        const backfillOrder = mockRevisionsService.captureIfUnrevisioned.mock.invocationCallOrder[0];
+        const captureOrder = mockRevisionsService.capture.mock.invocationCallOrder[0];
+        expect(backfillOrder).toBeLessThan(captureOrder);
+      });
+
+      it('does not fail the create when the revisions service rejects', async () => {
+        mockRevisionsService.captureIfUnrevisioned.mockRejectedValueOnce(new Error('backfill boom'));
+        mockRevisionsService.capture.mockRejectedValueOnce(new Error('capture boom'));
+
+        const createdRule = createMockRule({ id: 'new-rule' });
+        mockDb.__setResults([[ruleSet], [], [], [], [createdRule], []]);
+
+        await expect(
+          service.create(
+            { ruleSetId: 'rule-set-1', pathPattern: '/api/*', targetUrl: 'https://api.example.com' },
+            'user-1',
+            'admin',
+          ),
+        ).resolves.toMatchObject({ id: 'new-rule' });
+      });
+    });
+
+    describe('update', () => {
+      it('backfills the pre-mutation state, then captures a "rule_edit" revision with the freshly-loaded rules', async () => {
+        const existingRule = createMockRule({ id: 'rule-1', description: 'old' });
+        const updatedRule = createMockRule({ id: 'rule-1', description: 'new' });
+        const preMutationRules = [existingRule];
+        const freshRules = [updatedRule];
+
+        mockDb.__setResults([
+          [existingRule], // findById
+          [ruleSet], // rule set lookup (permission check)
+          preMutationRules, // backfill: pre-mutation getRulesByRuleSetId
+          [updatedRule], // update … returning
+          freshRules, // post-mutation: fresh getRulesByRuleSetId
+        ]);
+
+        await service.update('rule-1', { description: 'new' }, 'user-1', 'admin');
+
+        expect(mockRevisionsService.captureIfUnrevisioned).toHaveBeenCalledTimes(1);
+        expect(mockRevisionsService.captureIfUnrevisioned).toHaveBeenCalledWith({
+          ruleSet,
+          rules: preMutationRules,
+          userId: 'user-1',
+        });
+
+        expect(mockRevisionsService.capture).toHaveBeenCalledTimes(1);
+        expect(mockRevisionsService.capture).toHaveBeenCalledWith({
+          ruleSet,
+          rules: freshRules,
+          trigger: 'rule_edit',
+          userId: 'user-1',
+        });
+      });
+
+      it('does not fail the update when the revisions service rejects', async () => {
+        mockRevisionsService.captureIfUnrevisioned.mockRejectedValueOnce(new Error('backfill boom'));
+        mockRevisionsService.capture.mockRejectedValueOnce(new Error('capture boom'));
+
+        const existingRule = createMockRule({ id: 'rule-1' });
+        const updatedRule = createMockRule({ id: 'rule-1', description: 'new' });
+        mockDb.__setResults([[existingRule], [ruleSet], [existingRule], [updatedRule], []]);
+
+        await expect(
+          service.update('rule-1', { description: 'new' }, 'user-1', 'admin'),
+        ).resolves.toMatchObject({ id: 'rule-1', description: 'new' });
+      });
+    });
+
+    describe('delete', () => {
+      it('backfills the pre-mutation state, then captures a "rule_edit" revision with the freshly-loaded (post-delete) rules', async () => {
+        const existingRule = createMockRule({ id: 'rule-1' });
+        const preMutationRules = [existingRule];
+        const freshRules: unknown[] = []; // deleted rule no longer present
+
+        mockDb.__setResults([
+          [existingRule], // findById
+          [ruleSet], // rule set lookup (permission check)
+          preMutationRules, // backfill: pre-mutation getRulesByRuleSetId
+          freshRules, // post-mutation: fresh getRulesByRuleSetId
+        ]);
+
+        await service.delete('rule-1', 'user-1', 'admin');
+
+        expect(mockRevisionsService.captureIfUnrevisioned).toHaveBeenCalledTimes(1);
+        expect(mockRevisionsService.captureIfUnrevisioned).toHaveBeenCalledWith({
+          ruleSet,
+          rules: preMutationRules,
+          userId: 'user-1',
+        });
+
+        expect(mockRevisionsService.capture).toHaveBeenCalledTimes(1);
+        expect(mockRevisionsService.capture).toHaveBeenCalledWith({
+          ruleSet,
+          rules: freshRules,
+          trigger: 'rule_edit',
+          userId: 'user-1',
+        });
+      });
+
+      it('does not fail the delete when the revisions service rejects', async () => {
+        mockRevisionsService.captureIfUnrevisioned.mockRejectedValueOnce(new Error('backfill boom'));
+        mockRevisionsService.capture.mockRejectedValueOnce(new Error('capture boom'));
+
+        const existingRule = createMockRule({ id: 'rule-1' });
+        mockDb.__setResults([[existingRule], [ruleSet], [existingRule], []]);
+
+        await expect(service.delete('rule-1', 'user-1', 'admin')).resolves.toBeUndefined();
+      });
+    });
+
+    describe('reorder', () => {
+      const ruleA = createMockRule({ id: 'rule-a', order: 0 });
+      const ruleB = createMockRule({ id: 'rule-b', order: 1 });
+
+      it('backfills the pre-mutation state, then captures a "rule_edit" revision with the freshly-loaded (reordered) rules', async () => {
+        const reorderedA = createMockRule({ id: 'rule-a', order: 1 });
+        const reorderedB = createMockRule({ id: 'rule-b', order: 0 });
+
+        mockDb.__setResults([
+          [ruleSet], // rule set lookup (permission check)
+          [ruleA, ruleB], // existingRules (verify membership + pre-mutation snapshot)
+          [reorderedB, reorderedA], // final reload, ordered by `order`
+        ]);
+
+        await service.reorder('rule-set-1', { ruleIds: ['rule-b', 'rule-a'] }, 'user-1', 'admin');
+
+        expect(mockRevisionsService.captureIfUnrevisioned).toHaveBeenCalledTimes(1);
+        expect(mockRevisionsService.captureIfUnrevisioned).toHaveBeenCalledWith({
+          ruleSet,
+          rules: [ruleA, ruleB],
+          userId: 'user-1',
+        });
+
+        expect(mockRevisionsService.capture).toHaveBeenCalledTimes(1);
+        expect(mockRevisionsService.capture).toHaveBeenCalledWith({
+          ruleSet,
+          rules: [reorderedB, reorderedA],
+          trigger: 'rule_edit',
+          userId: 'user-1',
+        });
+      });
+
+      it('does not fail the reorder when the revisions service rejects', async () => {
+        mockRevisionsService.captureIfUnrevisioned.mockRejectedValueOnce(new Error('backfill boom'));
+        mockRevisionsService.capture.mockRejectedValueOnce(new Error('capture boom'));
+
+        mockDb.__setResults([[ruleSet], [ruleA, ruleB], [ruleB, ruleA]]);
+
+        await expect(
+          service.reorder('rule-set-1', { ruleIds: ['rule-b', 'rule-a'] }, 'user-1', 'admin'),
+        ).resolves.toHaveLength(2);
+      });
     });
   });
 });
