@@ -286,7 +286,7 @@ does NOT typecheck (esbuild transpiles only) — documented.
 
 ## Track A — CE backend: revisions + rollback (`repos/ce`, branch `phase3/proxy-rules-as-code`)
 
-### - [ ] Task A1 — revisions schema + capture service
+### - [x] Task A1 — revisions schema + capture service
 
 **Files**:
 - Create `apps/backend/src/db/schema/proxy-rule-set-revisions.schema.ts`
@@ -355,7 +355,7 @@ set.
 
 Commit: `feat(backend): proxy rule set revisions schema + capture service`
 
-### - [ ] Task A2 — capture on set-level mutations (sync/import/create/copy/update)
+### - [x] Task A2 — capture on set-level mutations (sync/import/create/copy/update)
 
 **Files**:
 - Modify `apps/backend/src/proxy-rules/proxy-rule-sets.service.ts`
@@ -390,7 +390,7 @@ specs still pass), tsc clean.
 
 Commit: `feat(backend): capture revisions on sync/import/create/copy/set-update`
 
-### - [ ] Task A3 — capture on rule-level mutations
+### - [x] Task A3 — capture on rule-level mutations
 
 **Files**:
 - Modify `apps/backend/src/proxy-rules/proxy-rules.service.ts`
