@@ -575,7 +575,7 @@ setSecret called with the key.
 
 **Done when**: vitest green.
 
-### - [ ] Task D3 — sync runner + outputs
+### - [x] Task D3 — sync runner + outputs
 
 **Files**: `src/run-sets.ts`, `__tests__/run-sets.test.ts`.
 
@@ -615,7 +615,7 @@ throws with server message; `toOutputs` cases (changed true/false, multi-set CSV
 
 **Done when**: vitest green with no real network.
 
-### - [ ] Task D4 — change report: step summary + PR comment
+### - [x] Task D4 — change report: step summary + PR comment
 
 **Files**: `src/report.ts`, `src/summary.ts`, `src/pr-comment.ts`, tests for each.
 
@@ -642,7 +642,7 @@ marker match, update when a comment contains the marker.
 
 **Done when**: vitest green.
 
-### - [ ] Task D5 — wire `src/index.ts`, README, dist, bundle smoke test
+### - [x] Task D5 — wire `src/index.ts`, README, dist, bundle smoke test
 
 **Files**: `src/index.ts`, `README.md`, `__tests__/dist-smoke.test.ts`, `dist/` (committed).
 
@@ -751,7 +751,7 @@ node -e 'import("<workspace>/repos/ce/packages/cli/dist/format/canonical.js").th
 **Done when**: both sets round-trip `equal:true`, validate clean, everything committed
 (sources only, no dist), raw JSONs still present (deleted in E2).
 
-### - [ ] Task E2 — migrate raw-JSON consumers, delete the three raw exports
+### - [x] Task E2 — migrate raw-JSON consumers, delete the three raw exports
 
 **Files**: `apps/reader/src/lib/enrich.test.ts`; `scripts/check-app-conventions.mjs`;
 `apps/reader/package.json` (add `yaml` devDep); delete
@@ -808,7 +808,7 @@ Also `grep -rn "reader.proxy-rules.json\|studio.proxy-rules.json\|studio-blog.pr
 
 **Done when**: full `pnpm -r test:run` (or per-app equivalents) green with the raw JSONs gone.
 
-### - [ ] Task E3 — docs & skills pass
+### - [x] Task E3 — docs & skills pass
 
 **Files**: `apps/reader/bffless/README.md`, `apps/studio/bffless/README.md`,
 `apps/studio/CLAUDE.md`, `GETTING-STARTED.md`, `docs/app-pipelines-convention.md`,
@@ -838,7 +838,7 @@ GETTING-STARTED.md` shows no stale dashboard instructions for converted apps.
 
 **Done when**: greps clean, both checks green.
 
-### - [ ] Task E4 — deploy workflows: sync step + plural attach migration
+### - [x] Task E4 — deploy workflows: sync step + plural attach migration
 
 **Files**: `.github/workflows/deploy-reader.yml`, `deploy-studio.yml`,
 `deploy-handoff.yml`, `preview-handoff.yml` (plural migration only for the handoff pair).
@@ -879,7 +879,7 @@ comment text → zero hits.
 
 **Done when**: workflows parse, no singular inputs remain anywhere.
 
-### - [ ] Task E5 — reader per-PR previews + close-PR cleanup; studio dry-run preview
+### - [x] Task E5 — reader per-PR previews + close-PR cleanup; studio dry-run preview
 
 **Files**: `preview-reader.yml` (rewrite), new
 `.github/workflows/cleanup-preview-reader.yml`, `preview-studio.yml` (add dry-run report
@@ -997,7 +997,7 @@ checklist item in the PR body); confirm `jq` availability is safe (ubuntu-latest
 **Done when**: three workflows parse; cleanup logic reviewed against the endpoint facts
 (alias-before-set ordering, 404 tolerated).
 
-### - [ ] Task E6 — scheduled drift check
+### - [x] Task E6 — scheduled drift check
 
 **Files**: new `.github/workflows/rules-drift-check.yml`.
 
@@ -1039,7 +1039,7 @@ is deployed (orchestrator step, same caveat as E5).
 
 ## Track F — reviews & release
 
-### - [ ] Task F1 — whole-branch adversarial review per repo
+### - [x] Task F1 — whole-branch adversarial review per repo
 
 One review subagent per repo (ce, artifact-client, upload-artifact, deploy-proxy-rules,
 apps), fresh eyes, prompt = "refute correctness/completeness against
