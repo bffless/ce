@@ -343,7 +343,7 @@ the commit message body.
 
 **Done when**: pack contents correct, dry-run publish clean, `pnpm --filter ./packages/cli test` green.
 
-### - [ ] Task A3 — Deployments DTO plural normalize `@Transform`
+### - [x] Task A3 — Deployments DTO plural normalize `@Transform`
 
 **Files**: `apps/backend/src/deployments/deployments.dto.ts` (4 DTOs:
 `CreateDeploymentDto`, `CreateDeploymentZipDto`, `PrepareBatchUploadDto`,
@@ -441,7 +441,7 @@ arrays; this corrects serialization).
 
 ## Track C — upload-artifact (`repos/upload-artifact`, branch `fix/plural-proxy-rule-sets`) — after B1
 
-### - [ ] Task C1 — pass arrays through; repeated multipart fields; migrate tests
+### - [x] Task C1 — pass arrays through; repeated multipart fields; migrate tests
 
 **Files**: `src/upload.ts`, `__tests__/upload.test.ts`, `package.json` + lockfile
 (temporarily `"@bffless/artifact-client": "file:../artifact-client"`, final commit
@@ -483,7 +483,7 @@ dep `^1.2.0`, `pnpm install`, `pnpm test`, `pnpm build`, commit the regenerated 
 
 ## Track D — deploy-proxy-rules (new repo at `repos/deploy-proxy-rules`)
 
-### - [ ] Task D1 — scaffold
+### - [x] Task D1 — scaffold
 
 **Files** (all new): `package.json`, `tsconfig.json`, `action.yml` (full contract from
 Cross-cutting definitions — freeze input names here), `.gitignore` (`node_modules/`,
@@ -701,7 +701,7 @@ with fresh dist.
 
 ## Track E — apps (`repos/apps`, branch `proxy-rules-phase2` off `pilot/reader-proxy-rules-as-code`)
 
-### - [ ] Task E1 — repo config + studio/studio-blog conversion
+### - [x] Task E1 — repo config + studio/studio-blog conversion
 
 **Files**: new `.bffless/config.json` (repo root); new
 `apps/studio/.bffless/proxy-rules/studio/**` and `.../studio-blog/**` (generated);
