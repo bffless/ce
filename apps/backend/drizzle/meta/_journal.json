@@ -274,6 +274,13 @@
       "when": 1783821249372,
       "tag": "0038_faithful_santa_claus",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1783896812504,
+      "tag": "0039_thick_trish_tilby",
+      "breakpoints": true
     }
   ]
 }

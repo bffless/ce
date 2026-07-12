@@ -3,6 +3,7 @@ import { ProxyRulesController, PipelineLogsController } from './proxy-rules.cont
 import { ProxyRuleSetsController } from './proxy-rule-sets.controller';
 import { ProxyRulesService } from './proxy-rules.service';
 import { ProxyRuleSetsService } from './proxy-rule-sets.service';
+import { ProxyRuleSetRevisionsService } from './proxy-rule-set-revisions.service';
 import { ProxyService } from './proxy.service';
 import { ProxyMiddleware } from './proxy.middleware';
 import { EmailFormHandlerService } from './email-form-handler.service';
@@ -21,8 +22,15 @@ import { ProjectsModule } from '../projects/projects.module';
     forwardRef(() => ProjectsModule),
   ],
   controllers: [ProxyRulesController, PipelineLogsController, ProxyRuleSetsController],
-  providers: [ProxyRulesService, ProxyRuleSetsService, ProxyService, ProxyMiddleware, EmailFormHandlerService],
-  exports: [ProxyRulesService, ProxyRuleSetsService, ProxyService],
+  providers: [
+    ProxyRulesService,
+    ProxyRuleSetsService,
+    ProxyRuleSetRevisionsService,
+    ProxyService,
+    ProxyMiddleware,
+    EmailFormHandlerService,
+  ],
+  exports: [ProxyRulesService, ProxyRuleSetsService, ProxyRuleSetRevisionsService, ProxyService],
 })
 export class ProxyRulesModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {

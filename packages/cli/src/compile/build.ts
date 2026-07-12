@@ -17,6 +17,7 @@ import { relPathToPattern, deriveOrders, METHOD_STEMS, UUID_RE, defaultPipelineN
 import { applyRuleDefaults } from '../format/defaults.js';
 import { canonicalizeExport } from '../format/canonical.js';
 import { walkSchemaRefs } from '../format/schema-refs.js';
+import { bundleHandler } from './bundle.js';
 import type {
   RuleSetExport,
   ExportedRule,
@@ -149,32 +150,45 @@ function resolveFileRefs(value: unknown, setDir: string, manifestDir: string, ma
   return value;
 }
 
-/** Convert authoring `pipeline:` sugar into a canonical `pipelineConfig`. */
-function compilePipeline(
+/** Convert authoring `pipeline:` sugar into a canonical `pipelineConfig`. Async because a
+ *  `code:` ref ending `.ts` is bundled (esbuild, via `bundleHandler`) rather than raw-read —
+ *  see "TypeScript handlers" in reference.md. `$file:` refs (handled separately by
+ *  `resolveFileRefs`) are NOT bundled — TS bundling applies only to this `code:` sugar. */
+async function compilePipeline(
   pipeline: NonNullable<RuleManifest['pipeline']>,
   defaultName: string,
   setDir: string,
   manifestDir: string,
   manifestPath: string,
-): PipelineConfig {
-  const convertSteps = (steps: NonNullable<RuleManifest['pipeline']>['steps']): PipelineStep[] =>
-    steps.map((step) => {
+  warnings: string[],
+): Promise<PipelineConfig> {
+  const convertSteps = async (steps: NonNullable<RuleManifest['pipeline']>['steps']): Promise<PipelineStep[]> => {
+    const converted: PipelineStep[] = [];
+    for (const step of steps) {
       const config: Record<string, unknown> = { ...(step.config ?? {}) };
       if (step.code !== undefined) {
         const file = resolveConfinedPath(setDir, manifestDir, manifestPath, step.code);
         if (!existsSync(file)) throw new Error(`${manifestPath}: code file not found: ${step.code}`);
         assertRealpathConfined(setDir, manifestPath, file, step.code);
-        config.code = readFileSync(file, 'utf8');
+        if (step.code.endsWith('.ts')) {
+          const bundled = await bundleHandler(file, setDir);
+          config.code = bundled.code;
+          warnings.push(...bundled.warnings);
+        } else {
+          config.code = readFileSync(file, 'utf8');
+        }
       }
       const out: PipelineStep = { name: step.name, handlerType: step.handler, config };
       if (step.id !== undefined) out.id = step.id;
       if (step.isEnabled !== undefined) out.isEnabled = step.isEnabled;
-      return out;
-    });
+      converted.push(out);
+    }
+    return converted;
+  };
 
-  const pc: PipelineConfig = { name: pipeline.name ?? defaultName, steps: convertSteps(pipeline.steps) };
+  const pc: PipelineConfig = { name: pipeline.name ?? defaultName, steps: await convertSteps(pipeline.steps) };
   if (pipeline.description !== undefined) pc.description = pipeline.description;
-  if (pipeline.postSteps !== undefined) pc.postSteps = convertSteps(pipeline.postSteps);
+  if (pipeline.postSteps !== undefined) pc.postSteps = await convertSteps(pipeline.postSteps);
   if (pipeline.validators !== undefined) pc.validators = pipeline.validators;
   return pc;
 }
@@ -313,7 +327,14 @@ export async function buildRuleSet(setDir: string, opts?: { exportedAt?: string 
 
     let pipelineConfig: PipelineConfig | undefined;
     if (manifest.pipeline !== undefined) {
-      pipelineConfig = compilePipeline(manifest.pipeline, pipelineDefaultName, setDir, d.manifestDir, d.manifestPath);
+      pipelineConfig = await compilePipeline(
+        manifest.pipeline,
+        pipelineDefaultName,
+        setDir,
+        d.manifestDir,
+        d.manifestPath,
+        warnings,
+      );
     } else if (manifest.pipelineConfig !== undefined) {
       pipelineConfig = resolveFileRefs(manifest.pipelineConfig, setDir, d.manifestDir, d.manifestPath) as PipelineConfig;
     }

@@ -15,6 +15,7 @@ export * from './domain-mappings.schema';
 export * from './ssl-challenges.schema';
 export * from './primary-content.schema';
 export * from './proxy-rules.schema';
+export * from './proxy-rule-set-revisions.schema';
 export * from './domain-redirects.schema';
 export * from './path-redirects.schema';
 export * from './ssl-renewal-history.schema';

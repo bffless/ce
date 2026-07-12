@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mkdtempSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runPull } from '../src/commands/pull.js';
@@ -107,6 +107,43 @@ describe('rules pull — live path', () => {
       deps(happyRoutes(readBasicExpected())),
     );
     expect(forced.ok, forced.error).toBe(true);
+  });
+});
+
+describe('rules pull — .fn.ts warning', () => {
+  it('warns (but does not block) when the target dir already has hand-authored .fn.ts handlers', async () => {
+    const outDir = path.join(scratchDir(), 'out');
+    mkdirSync(outDir, { recursive: true });
+    writeFileSync(path.join(outDir, 'existing.fn.ts'), 'export default function handler() { return 1; }\n', 'utf8');
+
+    const exportFile = path.join(scratchDir(), 'export.json');
+    writeFileSync(exportFile, JSON.stringify(readBasicExpected()), 'utf8');
+
+    const result = await runPull(
+      undefined,
+      { fromFile: exportFile, decompile: true, output: outDir, force: true },
+      '/nowhere',
+      { env: {}, config: null },
+    );
+
+    expect(result.ok, result.error).toBe(true);
+    expect(result.warnings?.some((w) => /\.fn\.ts/.test(w))).toBe(true);
+  });
+
+  it('does not warn when the target dir has no .fn.ts files', async () => {
+    const outDir = path.join(scratchDir(), 'out');
+    const exportFile = path.join(scratchDir(), 'export.json');
+    writeFileSync(exportFile, JSON.stringify(readBasicExpected()), 'utf8');
+
+    const result = await runPull(
+      undefined,
+      { fromFile: exportFile, decompile: true, output: outDir },
+      '/nowhere',
+      { env: {}, config: null },
+    );
+
+    expect(result.ok, result.error).toBe(true);
+    expect(result.warnings?.some((w) => /\.fn\.ts/.test(w))).toBeFalsy();
   });
 });
 

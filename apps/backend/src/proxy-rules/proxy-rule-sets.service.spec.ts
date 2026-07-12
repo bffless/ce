@@ -5,7 +5,17 @@ import { ProxyRulesService } from './proxy-rules.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { NginxRegenerationService } from '../domains/nginx-regeneration.service';
 import { PipelineSchemasService } from '../pipelines/pipeline-schemas.service';
-import { ENVELOPE_KEY_ORDER, RULE_KEY_ORDER } from './export-format.util';
+import {
+  ProxyRuleSetRevisionsService,
+  computeRevisionHash,
+} from './proxy-rule-set-revisions.service';
+import {
+  ENVELOPE_KEY_ORDER,
+  RULE_KEY_ORDER,
+  serializeRuleForExport,
+  type RuleSetExport,
+} from './export-format.util';
+import type { ProxyRuleSetRevision } from '../db/schema/proxy-rule-set-revisions.schema';
 
 // Mock the db client - using factory function for hoisting
 jest.mock('../db/client', () => {
@@ -95,6 +105,18 @@ describe('ProxyRuleSetsService', () => {
     create: jest.fn(),
   };
 
+  // Plain-object mock, per the brief: the DB-mock result slots must not change
+  // for revision internals (capture/captureIfUnrevisioned are exercised in
+  // proxy-rule-set-revisions.service.spec.ts, not here). This spec only
+  // asserts the CALL SITES invoke the service with the right trigger/payload.
+  const mockProxyRuleSetRevisionsService = {
+    capture: jest.fn().mockResolvedValue(undefined),
+    captureIfUnrevisioned: jest.fn().mockResolvedValue(undefined),
+    listRevisions: jest.fn(),
+    getRevision: jest.fn(),
+    buildCurrentEnvelope: jest.fn(),
+  };
+
   const createMockRuleSet = (overrides: Record<string, unknown> = {}) => ({
     id: 'rule-set-1',
     projectId: 'project-1',
@@ -133,6 +155,27 @@ describe('ProxyRuleSetsService', () => {
     ...overrides,
   });
 
+  const createMockRevision = (
+    overrides: Partial<ProxyRuleSetRevision> = {},
+  ): ProxyRuleSetRevision =>
+    ({
+      id: 'revision-1',
+      ruleSetId: 'rule-set-1',
+      snapshot: {
+        version: 2,
+        exportedAt: '2026-01-01T00:00:00.000Z',
+        kind: 'bffless-proxy-rule-set',
+        ruleSet: { name: 'api-backend' },
+        rules: [{ pathPattern: '/api/*', targetUrl: 'https://api.example.com' }],
+      },
+      source: null,
+      trigger: 'sync',
+      contentHash: 'stale-hash',
+      createdBy: 'user-1',
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      ...overrides,
+    }) as ProxyRuleSetRevision;
+
   beforeEach(async () => {
     mockDb.__reset();
     jest.clearAllMocks();
@@ -145,6 +188,7 @@ describe('ProxyRuleSetsService', () => {
         { provide: ProxyRulesService, useValue: mockProxyRulesService },
         { provide: NginxRegenerationService, useValue: mockNginxRegenerationService },
         { provide: PipelineSchemasService, useValue: mockPipelineSchemasService },
+        { provide: ProxyRuleSetRevisionsService, useValue: mockProxyRuleSetRevisionsService },
       ],
     }).compile();
 
@@ -363,6 +407,190 @@ describe('ProxyRuleSetsService', () => {
       const result = await service.exportRuleSet('rule-set-1');
 
       expect(result.ruleSet).toEqual({ name: 'api-backend' });
+    });
+  });
+
+  describe('listRevisions', () => {
+    const liveEnvelope: RuleSetExport = {
+      version: 2,
+      exportedAt: '2026-02-01T00:00:00.000Z',
+      kind: 'bffless-proxy-rule-set',
+      ruleSet: { name: 'api-backend' },
+      rules: [{ pathPattern: '/api/*', targetUrl: 'https://api.example.com' }],
+    };
+    const liveHash = computeRevisionHash(liveEnvelope);
+
+    beforeEach(() => {
+      mockProxyRuleSetRevisionsService.buildCurrentEnvelope.mockResolvedValue(liveEnvelope);
+    });
+
+    it('maps revision rows to RevisionListItem DTOs, newest first, current only for the matching hash', async () => {
+      mockDb.__setResults([[createMockRuleSet()]]);
+      mockProxyRulesService.getRulesByRuleSetId.mockResolvedValue([createMockRule()]);
+      const matching = createMockRevision({
+        id: 'revision-2',
+        contentHash: liveHash,
+        createdAt: new Date('2026-02-01T00:00:00Z'),
+        trigger: 'sync',
+        source: { syncedAt: '2026-02-01T00:00:00.000Z', contentHash: liveHash },
+      });
+      const stale = createMockRevision({
+        id: 'revision-1',
+        contentHash: 'a-different-hash',
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+        trigger: 'create',
+      });
+      // Service returns newest-first already; listRevisions must preserve order.
+      mockProxyRuleSetRevisionsService.listRevisions.mockResolvedValue([matching, stale]);
+
+      const result = await service.listRevisions('rule-set-1', 'user-1', 'user', 'project-1');
+
+      expect(mockProxyRuleSetRevisionsService.listRevisions).toHaveBeenCalledWith('rule-set-1');
+      expect(result.revisions).toEqual([
+        {
+          id: 'revision-2',
+          createdAt: '2026-02-01T00:00:00.000Z',
+          trigger: 'sync',
+          contentHash: liveHash,
+          ruleCount: 1,
+          current: true,
+          source: { syncedAt: '2026-02-01T00:00:00.000Z', contentHash: liveHash },
+        },
+        {
+          id: 'revision-1',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          trigger: 'create',
+          contentHash: 'a-different-hash',
+          ruleCount: 1,
+          current: false,
+          source: null,
+        },
+      ]);
+    });
+
+    it('enforces API key project scope against the rule set project (exportRuleSet parity)', async () => {
+      mockDb.__setResults([[createMockRuleSet()]]);
+      mockProxyRulesService.getRulesByRuleSetId.mockResolvedValue([]);
+      mockProxyRuleSetRevisionsService.listRevisions.mockResolvedValue([]);
+
+      await service.listRevisions('rule-set-1', 'user-1', 'user', 'project-1');
+
+      expect(mockPermissionsService.enforceApiKeyProjectScope).toHaveBeenCalledWith(
+        'project-1',
+        'project-1',
+      );
+      expect(mockPermissionsService.requireProjectAccess).not.toHaveBeenCalled();
+    });
+
+    it('propagates scope-enforcement failures before loading revisions', async () => {
+      mockDb.__setResults([[createMockRuleSet()]]);
+      mockPermissionsService.enforceApiKeyProjectScope.mockImplementationOnce(() => {
+        throw new ForbiddenException('API key is scoped to a different project');
+      });
+
+      await expect(
+        service.listRevisions('rule-set-1', 'user-1', 'user', 'other-project'),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockProxyRuleSetRevisionsService.listRevisions).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException when the rule set does not exist', async () => {
+      mockDb.__setResults([[]]);
+
+      await expect(
+        service.listRevisions('missing-set', 'user-1', 'user'),
+      ).rejects.toThrow(NotFoundException);
+      expect(mockProxyRuleSetRevisionsService.listRevisions).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getRevision', () => {
+    const liveEnvelope: RuleSetExport = {
+      version: 2,
+      exportedAt: '2026-02-01T00:00:00.000Z',
+      kind: 'bffless-proxy-rule-set',
+      ruleSet: { name: 'api-backend' },
+      rules: [],
+    };
+
+    beforeEach(() => {
+      mockProxyRuleSetRevisionsService.buildCurrentEnvelope.mockResolvedValue(liveEnvelope);
+    });
+
+    it('returns the revision item plus its full snapshot', async () => {
+      mockDb.__setResults([[createMockRuleSet()]]);
+      mockProxyRulesService.getRulesByRuleSetId.mockResolvedValue([]);
+      const revision = createMockRevision({ id: 'revision-1', contentHash: 'stale-hash' });
+      mockProxyRuleSetRevisionsService.getRevision.mockResolvedValue(revision);
+
+      const result = await service.getRevision(
+        'rule-set-1',
+        'revision-1',
+        'user-1',
+        'user',
+        'project-1',
+      );
+
+      expect(mockProxyRuleSetRevisionsService.getRevision).toHaveBeenCalledWith(
+        'rule-set-1',
+        'revision-1',
+      );
+      expect(result).toEqual({
+        id: 'revision-1',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        trigger: 'sync',
+        contentHash: 'stale-hash',
+        ruleCount: 1,
+        current: false,
+        source: null,
+        snapshot: revision.snapshot,
+      });
+    });
+
+    it('throws NotFoundException when the rule set does not exist', async () => {
+      mockDb.__setResults([[]]);
+
+      await expect(
+        service.getRevision('missing-set', 'revision-1', 'user-1', 'user'),
+      ).rejects.toThrow(NotFoundException);
+      expect(mockProxyRuleSetRevisionsService.getRevision).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException when the revision is missing or belongs to another rule set', async () => {
+      mockDb.__setResults([[createMockRuleSet()]]);
+      mockProxyRulesService.getRulesByRuleSetId.mockResolvedValue([]);
+      mockProxyRuleSetRevisionsService.getRevision.mockResolvedValue(null);
+
+      await expect(
+        service.getRevision('rule-set-1', 'foreign-revision', 'user-1', 'user', 'project-1'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('enforces API key project scope against the rule set project (exportRuleSet parity)', async () => {
+      mockDb.__setResults([[createMockRuleSet()]]);
+      mockProxyRulesService.getRulesByRuleSetId.mockResolvedValue([]);
+      const revision = createMockRevision({ id: 'revision-1', contentHash: 'stale-hash' });
+      mockProxyRuleSetRevisionsService.getRevision.mockResolvedValue(revision);
+
+      await service.getRevision('rule-set-1', 'revision-1', 'user-1', 'user', 'project-1');
+
+      expect(mockPermissionsService.enforceApiKeyProjectScope).toHaveBeenCalledWith(
+        'project-1',
+        'project-1',
+      );
+      expect(mockPermissionsService.requireProjectAccess).not.toHaveBeenCalled();
+    });
+
+    it('propagates scope-enforcement failures before loading the revision', async () => {
+      mockDb.__setResults([[createMockRuleSet()]]);
+      mockPermissionsService.enforceApiKeyProjectScope.mockImplementationOnce(() => {
+        throw new ForbiddenException('API key is scoped to a different project');
+      });
+
+      await expect(
+        service.getRevision('rule-set-1', 'revision-1', 'user-1', 'user', 'other-project'),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockProxyRuleSetRevisionsService.getRevision).not.toHaveBeenCalled();
     });
   });
 
@@ -635,6 +863,126 @@ describe('ProxyRuleSetsService', () => {
         ),
       ).rejects.toThrow(BadRequestException);
       expect(mockPipelineSchemasService.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('create', () => {
+    const mockProject = { id: 'project-1', name: 'Project One' };
+
+    it('captures a revision with trigger "create" for the new (ruleless) set', async () => {
+      const newRuleSet = createMockRuleSet({ id: 'new-set-id' });
+      mockDb.__setResults([[mockProject], [], [newRuleSet]]);
+
+      const result = await service.create(
+        'project-1',
+        { name: 'api-backend', description: 'API proxy rules', environment: 'production' },
+        'user-1',
+        'admin',
+        'project-1',
+      );
+
+      expect(result).toEqual(newRuleSet);
+      expect(mockProxyRuleSetRevisionsService.capture).toHaveBeenCalledTimes(1);
+      expect(mockProxyRuleSetRevisionsService.capture).toHaveBeenCalledWith({
+        ruleSet: newRuleSet,
+        rules: [],
+        trigger: 'create',
+        userId: 'user-1',
+      });
+    });
+  });
+
+  describe('update', () => {
+    it('captures a revision with trigger "set_update" carrying the current rules', async () => {
+      const existing = createMockRuleSet();
+      const updated = createMockRuleSet({ description: 'new desc' });
+      mockDb.__setResults([[existing], [updated]]);
+      const currentRules = [createMockRule()];
+      mockProxyRulesService.getRulesByRuleSetId.mockResolvedValue(currentRules);
+
+      const result = await service.update(
+        'rule-set-1',
+        { description: 'new desc' },
+        'user-1',
+        'admin',
+        'project-1',
+      );
+
+      expect(result).toEqual(updated);
+      expect(mockProxyRulesService.getRulesByRuleSetId).toHaveBeenCalledWith('rule-set-1');
+      expect(mockProxyRuleSetRevisionsService.capture).toHaveBeenCalledTimes(1);
+      expect(mockProxyRuleSetRevisionsService.capture).toHaveBeenCalledWith({
+        ruleSet: updated,
+        rules: currentRules,
+        trigger: 'set_update',
+        userId: 'user-1',
+      });
+    });
+  });
+
+  describe('copy', () => {
+    it('captures a revision with trigger "copy" carrying the copied rules (not the source set)', async () => {
+      const existingRuleSet = createMockRuleSet();
+      const existingRule = createMockRule();
+      const newRuleSet = createMockRuleSet({ id: 'copy-set-id', name: 'api-backend (Copy)' });
+      const copiedRule = createMockRule({ id: 'copied-rule-1', ruleSetId: 'copy-set-id' });
+
+      mockDb.__setResults([
+        [existingRuleSet], // findById
+        [], // findByName uniqueness probe: no collision
+        [newRuleSet], // insert rule set … returning
+        [copiedRule], // insert rule … returning
+      ]);
+      mockProxyRulesService.getRulesByRuleSetId.mockResolvedValue([existingRule]);
+
+      const result = await service.copy('rule-set-1', 'user-1', 'admin', 'project-1');
+
+      expect(result.id).toBe('copy-set-id');
+      expect(result.rules).toEqual([copiedRule]);
+      expect(mockProxyRuleSetRevisionsService.capture).toHaveBeenCalledTimes(1);
+      expect(mockProxyRuleSetRevisionsService.capture).toHaveBeenCalledWith({
+        ruleSet: newRuleSet,
+        rules: [copiedRule],
+        trigger: 'copy',
+        userId: 'user-1',
+      });
+    });
+  });
+
+  describe('importRuleSet', () => {
+    const mockProject = { id: 'project-1', name: 'Project One' };
+
+    it('captures a revision with trigger "import" carrying the inserted rules', async () => {
+      const newRuleSet = createMockRuleSet({ id: 'imported-set-id', name: 'Imported Set' });
+      const insertedRules = [createMockRule({ id: 'imported-rule-1', ruleSetId: 'imported-set-id' })];
+
+      mockDb.__setResults([
+        [mockProject], // project lookup
+        [], // findByName uniqueness probe: no collision
+        [newRuleSet], // insert rule set … returning
+      ]);
+      mockProxyRulesService.getRulesByRuleSetId.mockResolvedValue(insertedRules);
+
+      const result = await service.importRuleSet(
+        'project-1',
+        {
+          ruleSet: { name: 'Imported Set' },
+          rules: [{ pathPattern: '/api/*', targetUrl: 'https://api.example.com' }],
+        } as unknown as Parameters<typeof service.importRuleSet>[1],
+        'user-1',
+        'admin',
+        'project-1',
+      );
+
+      expect(result.id).toBe('imported-set-id');
+      expect(result.rules).toEqual(insertedRules);
+      expect(mockProxyRuleSetRevisionsService.capture).toHaveBeenCalledTimes(1);
+      expect(mockProxyRuleSetRevisionsService.capture).toHaveBeenCalledWith({
+        ruleSet: newRuleSet,
+        rules: insertedRules,
+        trigger: 'import',
+        userId: 'user-1',
+      });
     });
   });
 
@@ -1138,6 +1486,199 @@ describe('ProxyRuleSetsService', () => {
         },
       ]);
       expect(result.created).toEqual([{ pathPattern: '/api/comments', method: 'GET' }]);
+    });
+
+    describe('revision capture', () => {
+      it('backfills the pre-sync state via captureIfUnrevisioned, then captures a "sync" revision after commit, for an existing set with rules', async () => {
+        const existingSet = createMockRuleSet();
+        const liveRules = [createMockRule()];
+        mockDb.__setResults([[mockProject], [existingSet]]);
+        mockProxyRulesService.getRulesByRuleSetId.mockResolvedValue(liveRules);
+
+        await sync(syncDto());
+
+        // Backfill fires exactly once, with the PRE-sync (live) rule set + rules
+        expect(mockProxyRuleSetRevisionsService.captureIfUnrevisioned).toHaveBeenCalledTimes(1);
+        expect(mockProxyRuleSetRevisionsService.captureIfUnrevisioned).toHaveBeenCalledWith({
+          ruleSet: existingSet,
+          rules: liveRules,
+          userId: 'user-1',
+        });
+
+        // Post-commit sync revision, carrying the post-sync row + reloaded rules
+        expect(mockProxyRuleSetRevisionsService.capture).toHaveBeenCalledTimes(1);
+        const [captureArg] = mockProxyRuleSetRevisionsService.capture.mock.calls[0];
+        expect(captureArg.trigger).toBe('sync');
+        expect(captureArg.userId).toBe('user-1');
+        expect(captureArg.rules).toBe(liveRules);
+        expect(captureArg.ruleSet).toMatchObject({ id: existingSet.id, name: existingSet.name });
+        // Post-sync row carries the freshly-stamped source, not the stale live one
+        expect(captureArg.ruleSet.source.contentHash).toMatch(/^[0-9a-f]{64}$/);
+      });
+
+      it('captures a "sync" revision (no backfill — nothing pre-existing) when the sync creates a brand-new set', async () => {
+        const newRuleSet = createMockRuleSet({ id: 'new-set-id' });
+        mockDb.__setResults([[mockProject], [], [newRuleSet]]);
+        const insertedRules = [createMockRule({ id: 'rule-1', ruleSetId: 'new-set-id' })];
+        mockProxyRulesService.getRulesByRuleSetId.mockResolvedValue(insertedRules);
+
+        await sync(syncDto());
+
+        expect(mockProxyRuleSetRevisionsService.captureIfUnrevisioned).not.toHaveBeenCalled();
+        expect(mockProxyRuleSetRevisionsService.capture).toHaveBeenCalledTimes(1);
+        expect(mockProxyRuleSetRevisionsService.capture).toHaveBeenCalledWith({
+          ruleSet: newRuleSet,
+          rules: insertedRules,
+          trigger: 'sync',
+          userId: 'user-1',
+        });
+      });
+
+      it('does NOT call capture or captureIfUnrevisioned on a dryRun sync of an existing set', async () => {
+        mockDb.__setResults([[mockProject], [createMockRuleSet()]]);
+        mockProxyRulesService.getRulesByRuleSetId.mockResolvedValue([createMockRule()]);
+
+        const result = await sync(syncDto({ options: { dryRun: true } }));
+
+        expect(result.dryRun).toBe(true);
+        expect(mockProxyRuleSetRevisionsService.captureIfUnrevisioned).not.toHaveBeenCalled();
+        expect(mockProxyRuleSetRevisionsService.capture).not.toHaveBeenCalled();
+      });
+    });
+  });
+
+  describe('rollbackToRevision', () => {
+    const mockProject = { id: 'project-1', name: 'Project One' };
+
+    /** Live rules pre-rollback: three rules, only two of which are in the snapshot. */
+    const liveRuleA = () =>
+      createMockRule({ id: 'rule-a', pathPattern: '/api/a', targetUrl: 'https://api.example.com' });
+    const liveRuleB = () =>
+      createMockRule({ id: 'rule-b', pathPattern: '/api/b', targetUrl: 'https://api.example.com' });
+    const liveRuleC = () =>
+      createMockRule({ id: 'rule-c', pathPattern: '/api/c', targetUrl: 'https://api.example.com' });
+
+    const revisionWithSnapshot = (overrides: Record<string, unknown> = {}) =>
+      createMockRevision({
+        id: 'revision-1',
+        snapshot: {
+          version: 2,
+          exportedAt: '2026-01-01T00:00:00.000Z',
+          kind: 'bffless-proxy-rule-set',
+          ruleSet: { name: 'api-backend' },
+          rules: [serializeRuleForExport(liveRuleA()), serializeRuleForExport(liveRuleB())],
+        },
+        ...overrides,
+      });
+
+    const rollback = (
+      ruleSetId: string,
+      revisionId: string,
+      options: { dryRun?: boolean } = {},
+    ) => service.rollbackToRevision(ruleSetId, revisionId, options, 'user-1', 'admin', 'project-1');
+
+    beforeEach(() => {
+      mockPipelineSchemasService.getByProjectId.mockResolvedValue([]);
+    });
+
+    it('throws NotFoundException when the rule set does not exist', async () => {
+      mockDb.__setResults([[]]);
+
+      await expect(rollback('missing-set', 'revision-1')).rejects.toThrow(NotFoundException);
+      expect(mockProxyRuleSetRevisionsService.getRevision).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException when the revision is missing or belongs to another rule set', async () => {
+      mockDb.__setResults([[createMockRuleSet()]]);
+      mockProxyRuleSetRevisionsService.getRevision.mockResolvedValue(null);
+
+      await expect(rollback('rule-set-1', 'foreign-revision')).rejects.toThrow(NotFoundException);
+      expect(mockProxyRuleSetRevisionsService.getRevision).toHaveBeenCalledWith(
+        'rule-set-1',
+        'foreign-revision',
+      );
+    });
+
+    it('replays a 2-rule snapshot over a 3-rule live set: one delete (prune), no create for unchanged rules', async () => {
+      const existingSet = createMockRuleSet();
+      mockDb.__setResults([[existingSet], [mockProject], [existingSet]]);
+      mockProxyRulesService.getRulesByRuleSetId.mockResolvedValue([
+        liveRuleA(),
+        liveRuleB(),
+        liveRuleC(),
+      ]);
+      mockProxyRuleSetRevisionsService.getRevision.mockResolvedValue(revisionWithSnapshot());
+
+      const result = await rollback('rule-set-1', 'revision-1');
+
+      expect(result.created).toEqual([]);
+      expect(result.updated).toEqual([]);
+      expect(result.deleted).toEqual([{ pathPattern: '/api/c', method: null }]);
+      expect(result.unchanged).toEqual(
+        expect.arrayContaining([
+          { pathPattern: '/api/a', method: null },
+          { pathPattern: '/api/b', method: null },
+        ]),
+      );
+      expect(result.dryRun).toBe(false);
+    });
+
+    it('under dryRun, mutates nothing and captures no revision, but still returns the change plan', async () => {
+      const existingSet = createMockRuleSet();
+      mockDb.__setResults([[existingSet], [mockProject], [existingSet]]);
+      mockProxyRulesService.getRulesByRuleSetId.mockResolvedValue([
+        liveRuleA(),
+        liveRuleB(),
+        liveRuleC(),
+      ]);
+      mockProxyRuleSetRevisionsService.getRevision.mockResolvedValue(revisionWithSnapshot());
+
+      const result = await rollback('rule-set-1', 'revision-1', { dryRun: true });
+
+      expect(result.dryRun).toBe(true);
+      expect(result.deleted).toEqual([{ pathPattern: '/api/c', method: null }]);
+      expect(mockDb.transaction).not.toHaveBeenCalled();
+      expect(mockProxyRuleSetRevisionsService.captureIfUnrevisioned).not.toHaveBeenCalled();
+      expect(mockProxyRuleSetRevisionsService.capture).not.toHaveBeenCalled();
+    });
+
+    it('keeps the current rule set name and appends a warning when the snapshot name differs', async () => {
+      const existingSet = createMockRuleSet({ name: 'current-name' });
+      mockDb.__setResults([[existingSet], [mockProject], [existingSet]]);
+      mockProxyRulesService.getRulesByRuleSetId.mockResolvedValue([]);
+      mockProxyRuleSetRevisionsService.getRevision.mockResolvedValue(
+        revisionWithSnapshot({
+          snapshot: {
+            version: 2,
+            exportedAt: '2026-01-01T00:00:00.000Z',
+            kind: 'bffless-proxy-rule-set',
+            ruleSet: { name: 'old-name' },
+            rules: [],
+          },
+        }),
+      );
+
+      const result = await rollback('rule-set-1', 'revision-1');
+
+      expect(result.setCreated).toBe(false);
+      expect(result.warnings.some((w) => w.includes('old-name'))).toBe(true);
+      expect(result.warnings.some((w) => w.includes('current-name'))).toBe(true);
+    });
+
+    it("captures exactly one revision with trigger 'rollback' (not a sync+rollback pair) and reports a self-describing warning", async () => {
+      const existingSet = createMockRuleSet();
+      mockDb.__setResults([[existingSet], [mockProject], [existingSet]]);
+      mockProxyRulesService.getRulesByRuleSetId.mockResolvedValue([liveRuleA(), liveRuleB()]);
+      mockProxyRuleSetRevisionsService.getRevision.mockResolvedValue(
+        revisionWithSnapshot({ id: 'revision-42' }),
+      );
+
+      const result = await rollback('rule-set-1', 'revision-42');
+
+      expect(mockProxyRuleSetRevisionsService.capture).toHaveBeenCalledTimes(1);
+      const [captureArg] = mockProxyRuleSetRevisionsService.capture.mock.calls[0];
+      expect(captureArg.trigger).toBe('rollback');
+      expect(result.warnings.some((w) => w.includes('revision-42'))).toBe(true);
     });
   });
 });

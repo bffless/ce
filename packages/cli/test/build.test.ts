@@ -3,9 +3,11 @@ import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, symlinkSync } from
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { buildRuleSet, uuidv5, SCHEMA_NAMESPACE } from '../src/compile/build.js';
+import { validateHandlerSource } from '../src/lint/patterns.js';
 import type { RuleSetExport } from '../src/format/types.js';
 
 const basicDir = path.resolve('test/fixtures/synthetic/basic');
+const tsHandlersDir = path.resolve('test/fixtures/synthetic/ts-handlers');
 const EXPORTED_AT = '2026-07-11T00:00:00.000Z';
 
 /** Some restricted environments (e.g. certain CI/container setups) can't create symlinks.
@@ -311,5 +313,27 @@ describe('buildRuleSet', () => {
     });
     const res = await buildRuleSet(dir, { exportedAt: EXPORTED_AT });
     expect(res.export.rules[0].pipelineConfig?.validators).toEqual([{ type: 'auth_required', config: {} }]);
+  });
+
+  it('(q) code: <path>.ts is bundled (not raw-read): compiled config.code contains the handler tail and passes lint', async () => {
+    const res = await buildRuleSet(tsHandlersDir, { exportedAt: EXPORTED_AT });
+    const step = res.export.rules[0].pipelineConfig?.steps[0];
+    const code = step?.config.code as string;
+    expect(code).toContain('var handler');
+    expect(validateHandlerSource(code)).toEqual([]);
+    // Bundled output, not the raw TS source (no import/export keywords left over).
+    expect(code).not.toMatch(/\bimport\b|\bexport\b/);
+  });
+
+  it('(r) $file: refs stay raw-read even for a .ts ref (TS bundling applies only to the code: sugar)', async () => {
+    const dir = scratchSet({
+      'ruleset.yaml': 'name: s\n',
+      'rules/api/x/get.rule.yaml':
+        'pipeline:\n  steps:\n    - name: q\n      handler: function_handler\n      config:\n        payload:\n          $file: raw.ts\n',
+      'rules/api/x/raw.ts': 'export const x = 1; // not bundled, just inlined verbatim\n',
+    });
+    const res = await buildRuleSet(dir, { exportedAt: EXPORTED_AT });
+    const step = res.export.rules[0].pipelineConfig?.steps[0];
+    expect(step?.config.payload).toBe('export const x = 1; // not bundled, just inlined verbatim\n');
   });
 });

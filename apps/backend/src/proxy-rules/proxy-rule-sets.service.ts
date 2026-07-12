@@ -22,6 +22,10 @@ import { PermissionsService } from '../permissions/permissions.service';
 import { NginxRegenerationService } from '../domains/nginx-regeneration.service';
 import { PipelineSchemasService } from '../pipelines/pipeline-schemas.service';
 import {
+  ProxyRuleSetRevisionsService,
+  computeRevisionHash,
+} from './proxy-rule-set-revisions.service';
+import {
   CreateProxyRuleSetDto,
   UpdateProxyRuleSetDto,
   ProxyRuleSetResponseDto,
@@ -30,9 +34,21 @@ import {
   SyncProxyRuleSetDto,
   SyncProxyRuleSetResponseDto,
   SyncRuleRefDto,
+  RevisionListResponseDto,
+  RevisionListItemDto,
+  RevisionDetailResponseDto,
 } from './dto';
-import type { PipelineConfig, ProxyHeaderConfig, ProxyType } from '../db/schema/proxy-rules.schema';
-import type { ProxyRuleSetSource } from '../db/schema/proxy-rule-sets.schema';
+import type {
+  PipelineConfig,
+  ProxyHeaderConfig,
+  ProxyRule,
+  ProxyType,
+} from '../db/schema/proxy-rules.schema';
+import type { ProxyRuleSet, ProxyRuleSetSource } from '../db/schema/proxy-rule-sets.schema';
+import type {
+  ProxyRuleSetRevision,
+  RevisionTrigger,
+} from '../db/schema/proxy-rule-set-revisions.schema';
 import { ProxyRulesService } from './proxy-rules.service';
 import { collectSchemaIds, remapSchemaIds } from './schema-refs.util';
 import {
@@ -75,6 +91,7 @@ export class ProxyRuleSetsService {
     private readonly nginxRegenerationService: NginxRegenerationService,
     @Inject(forwardRef(() => PipelineSchemasService))
     private readonly pipelineSchemasService: PipelineSchemasService,
+    private readonly proxyRuleSetRevisionsService: ProxyRuleSetRevisionsService,
   ) {}
 
   /**
@@ -167,6 +184,177 @@ export class ProxyRuleSetsService {
   }
 
   /**
+   * List all captured revisions for a rule set, newest first (`GET
+   * :id/revisions`). Same read-level authorization as `exportRuleSet`
+   * (API key project scope only — any authenticated caller whose API key
+   * scope, if any, matches the rule set's project). `current` is computed by
+   * hashing the LIVE envelope once per call (via
+   * `ProxyRuleSetRevisionsService.buildCurrentEnvelope`, the same assembly
+   * `capture()` uses) and comparing against each revision's stored
+   * `contentHash`.
+   */
+  async listRevisions(
+    ruleSetId: string,
+    userId: string,
+    userRole: string,
+    apiKeyProjectId?: string | null,
+  ): Promise<RevisionListResponseDto> {
+    const ruleSet = await this.findById(ruleSetId);
+    if (!ruleSet) {
+      throw new NotFoundException(`Rule set ${ruleSetId} not found`);
+    }
+
+    this.permissionsService.enforceApiKeyProjectScope(apiKeyProjectId, ruleSet.projectId);
+
+    const revisions = await this.proxyRuleSetRevisionsService.listRevisions(ruleSetId);
+    const liveHash = await this.computeLiveHash(ruleSet);
+
+    return {
+      revisions: revisions.map((revision) => this.toRevisionListItem(revision, liveHash)),
+    };
+  }
+
+  /**
+   * Get a single captured revision plus its full snapshot (`GET
+   * :id/revisions/:revisionId`). Same authorization as `listRevisions`.
+   * 404s when the revision doesn't exist or belongs to another rule set
+   * (`ProxyRuleSetRevisionsService.getRevision` scopes the lookup to
+   * `ruleSetId`, so both cases resolve to `null`).
+   */
+  async getRevision(
+    ruleSetId: string,
+    revisionId: string,
+    userId: string,
+    userRole: string,
+    apiKeyProjectId?: string | null,
+  ): Promise<RevisionDetailResponseDto> {
+    const ruleSet = await this.findById(ruleSetId);
+    if (!ruleSet) {
+      throw new NotFoundException(`Rule set ${ruleSetId} not found`);
+    }
+
+    this.permissionsService.enforceApiKeyProjectScope(apiKeyProjectId, ruleSet.projectId);
+
+    const revision = await this.proxyRuleSetRevisionsService.getRevision(ruleSetId, revisionId);
+    if (!revision) {
+      throw new NotFoundException(`Revision ${revisionId} not found`);
+    }
+
+    const liveHash = await this.computeLiveHash(ruleSet);
+
+    return {
+      ...this.toRevisionListItem(revision, liveHash),
+      snapshot: revision.snapshot as unknown as RevisionDetailResponseDto['snapshot'],
+    };
+  }
+
+  /**
+   * Replay a captured revision's snapshot through `syncRuleSet` (`POST
+   * :id/rollback/:revisionId`) — "history only moves forward", like `git
+   * revert`: rollback never rewrites the past, it applies the OLD state as a
+   * NEW sync.
+   *
+   * 404s exactly like `getRevision` (missing set, or missing/foreign
+   * revision — `ProxyRuleSetRevisionsService.getRevision` scopes the lookup
+   * to `ruleSetId`, so both collapse to `null`). Authorization is enforced by
+   * `syncRuleSet` itself (contributor-level `requireProjectAccess` against
+   * the SET'S OWN `projectId` — never a caller-supplied one), so this method
+   * does no separate permission check before that call.
+   *
+   * The snapshot's `ruleSet.name` is NEVER applied: rollback must not
+   * rename or (re)create a set, so the sync DTO always forces the CURRENT
+   * name, and a warning is appended when the snapshot's name differs.
+   * `options.prune` is always `true` (a rollback restores the snapshot's
+   * rule set exactly — live-only rules are deleted, not left as
+   * pruneCandidates); `dryRun` passes through verbatim.
+   *
+   * Trigger threading: `syncRuleSet`'s own post-commit capture call
+   * defaults to trigger `'sync'`; this method passes the `'rollback'`
+   * override so a non-dryRun rollback captures exactly ONE new revision,
+   * with the right trigger — not a `'sync'` + `'rollback'` pair.
+   *
+   * Inherited limitation (not fixed here): a snapshot of a methods-split set
+   * fails replay with the same 400 `syncRuleSet` gives today; that error
+   * surfaces as-is.
+   */
+  async rollbackToRevision(
+    ruleSetId: string,
+    revisionId: string,
+    options: { dryRun?: boolean },
+    userId: string,
+    userRole: string,
+    apiKeyProjectId?: string | null,
+  ): Promise<SyncProxyRuleSetResponseDto> {
+    const existingSet = await this.findById(ruleSetId);
+    if (!existingSet) {
+      throw new NotFoundException(`Rule set ${ruleSetId} not found`);
+    }
+
+    const revision = await this.proxyRuleSetRevisionsService.getRevision(ruleSetId, revisionId);
+    if (!revision) {
+      throw new NotFoundException(`Revision ${revisionId} not found`);
+    }
+
+    const snapshot = revision.snapshot as unknown as RuleSetExport;
+    const dryRun = options.dryRun ?? false;
+
+    const rollbackWarnings: string[] = [
+      `Rolled back to revision ${revisionId} (captured ${revision.createdAt.toISOString()}, ` +
+        `originally triggered by '${revision.trigger}').`,
+    ];
+    if (snapshot.ruleSet.name !== existingSet.name) {
+      rollbackWarnings.push(
+        `Snapshot rule set name "${snapshot.ruleSet.name}" differs from the current name ` +
+          `"${existingSet.name}"; rollback never renames or creates a rule set, so the current ` +
+          `name was kept.`,
+      );
+    }
+
+    const dto = {
+      ruleSet: { ...snapshot.ruleSet, name: existingSet.name },
+      rules: snapshot.rules,
+      schemas: snapshot.schemas,
+      options: { prune: true, dryRun },
+    } as unknown as SyncProxyRuleSetDto;
+
+    const result = await this.syncRuleSet(
+      existingSet.projectId,
+      dto,
+      userId,
+      userRole,
+      apiKeyProjectId,
+      'rollback',
+    );
+
+    return { ...result, warnings: [...rollbackWarnings, ...result.warnings] };
+  }
+
+  /** Hash of the LIVE envelope for `ruleSet`, for the `current` flag comparison. */
+  private async computeLiveHash(ruleSet: ProxyRuleSet): Promise<string> {
+    const rules = await this.proxyRulesService.getRulesByRuleSetId(ruleSet.id);
+    const liveEnvelope = await this.proxyRuleSetRevisionsService.buildCurrentEnvelope(
+      ruleSet,
+      rules,
+    );
+    return computeRevisionHash(liveEnvelope);
+  }
+
+  private toRevisionListItem(
+    revision: ProxyRuleSetRevision,
+    liveHash: string,
+  ): RevisionListItemDto {
+    return {
+      id: revision.id,
+      createdAt: revision.createdAt.toISOString(),
+      trigger: revision.trigger,
+      contentHash: revision.contentHash,
+      ruleCount: revision.snapshot.rules.length,
+      current: revision.contentHash === liveHash,
+      source: revision.source ?? null,
+    };
+  }
+
+  /**
    * Create a new rule set
    */
   async create(
@@ -212,6 +400,11 @@ export class ProxyRuleSetsService {
       .returning();
 
     this.logger.log(`Created proxy rule set: ${dto.name} for project ${projectId}`);
+
+    // Post-commit, best-effort: a freshly created set has no rules yet, but
+    // capturing establishes revision history from the start (and costs
+    // nothing extra — the hash-dedupe means an empty-set capture is cheap).
+    await this.captureRevisionSafely({ ruleSet, rules: [], trigger: 'create', userId });
 
     return ruleSet;
   }
@@ -262,6 +455,24 @@ export class ProxyRuleSetsService {
       .returning();
 
     this.logger.log(`Updated proxy rule set ${id}`);
+
+    // Post-commit, best-effort: metadata-only change, but still worth a
+    // snapshot (current rules are unaffected by this mutation). Reload is
+    // wrapped too — a failure here must not turn a successful update into a
+    // failed request.
+    try {
+      const currentRules = await this.proxyRulesService.getRulesByRuleSetId(id);
+      await this.captureRevisionSafely({
+        ruleSet: updated,
+        rules: currentRules,
+        trigger: 'set_update',
+        userId,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Failed to reload rules for set_update revision capture on rule set ${id}: ${(error as Error).message}`,
+      );
+    }
 
     return updated;
   }
@@ -341,6 +552,15 @@ export class ProxyRuleSetsService {
     }
 
     this.logger.log(`Copied proxy rule set ${id} to ${newRuleSet.id} with ${copiedRules.length} rules`);
+
+    // Post-commit, best-effort: snapshot the copy's own rules (not the
+    // source set's revisions — the copy is a new set with its own history).
+    await this.captureRevisionSafely({
+      ruleSet: newRuleSet,
+      rules: copiedRules,
+      trigger: 'copy',
+      userId,
+    });
 
     return {
       ...newRuleSet,
@@ -486,6 +706,16 @@ export class ProxyRuleSetsService {
     );
 
     const insertedRules = await this.proxyRulesService.getRulesByRuleSetId(newRuleSet.id);
+
+    // Post-commit, best-effort: an imported set arrives from an external
+    // source (export file / git-synced repo) — capture establishes the
+    // baseline revision for this instance's own history.
+    await this.captureRevisionSafely({
+      ruleSet: newRuleSet,
+      rules: insertedRules,
+      trigger: 'import',
+      userId,
+    });
 
     return {
       ...newRuleSet,
@@ -659,6 +889,11 @@ export class ProxyRuleSetsService {
     userId: string,
     userRole: string,
     apiKeyProjectId?: string | null,
+    // Internal-only: overrides the trigger captured on the post-commit
+    // revision (default `'sync'`). Used by `rollbackToRevision`, which
+    // replays a snapshot THROUGH this method but must capture a `'rollback'`
+    // revision, not a `'sync'` one — never set by the controller.
+    captureTrigger?: RevisionTrigger,
   ): Promise<SyncProxyRuleSetResponseDto> {
     // Verify project exists (import parity)
     const [project] = await db
@@ -725,6 +960,25 @@ export class ProxyRuleSetsService {
     const setCreated = !existing;
     const liveRules = existing ? await this.proxyRulesService.getRulesByRuleSetId(existing.id) : [];
 
+    // Backfill, pre-mutation: sync on an existing set is a destructive path
+    // (rules can be updated/deleted), so if this set predates revision
+    // history entirely, snapshot its current (pre-sync) state first. No-ops
+    // when a revision already exists or the set has no rules. Never runs
+    // under dryRun — a preview must not write anything.
+    if (existing && !dryRun) {
+      try {
+        await this.proxyRuleSetRevisionsService.captureIfUnrevisioned({
+          ruleSet: existing,
+          rules: liveRules,
+          userId,
+        });
+      } catch (error) {
+        this.logger.warn(
+          `Failed to backfill pre-sync revision for rule set ${existing.id}: ${(error as Error).message}`,
+        );
+      }
+    }
+
     let plan: SyncPlan;
     try {
       plan = computeSyncPlan(liveRules, incomingRules, { prune });
@@ -775,6 +1029,10 @@ export class ProxyRuleSetsService {
     );
 
     let ruleSetId = existing?.id ?? '';
+    // Post-sync row for revision capture below — the committed set row,
+    // reconstructed from what we know was written (new-set insert result, or
+    // the existing row merged with the fields the update actually touched).
+    let postSyncRuleSet: ProxyRuleSet | null = null;
     await db.transaction(async (tx) => {
       if (!existing) {
         const [created] = await tx
@@ -788,6 +1046,7 @@ export class ProxyRuleSetsService {
           })
           .returning();
         ruleSetId = created.id;
+        postSyncRuleSet = created;
       } else {
         // Source is re-stamped on EVERY live sync (fresh syncedAt/contentHash),
         // even when all rules are unchanged; description/environment only when
@@ -803,6 +1062,7 @@ export class ProxyRuleSetsService {
           setUpdate.environment = dto.ruleSet.environment;
         }
         await tx.update(proxyRuleSets).set(setUpdate).where(eq(proxyRuleSets.id, existing.id));
+        postSyncRuleSet = { ...existing, ...setUpdate };
       }
 
       for (const entry of plan.toCreate) {
@@ -873,6 +1133,25 @@ export class ProxyRuleSetsService {
         `${plan.toDelete.length} deleted, ${plan.unchanged.length} unchanged` +
         (setCreated ? ' (set created)' : ''),
     );
+
+    // Post-commit, best-effort: snapshot the post-sync state. The hash-dedupe
+    // in capture() means this is a no-op insert when nothing about the rule
+    // set's name/description/environment/rules actually changed.
+    if (postSyncRuleSet) {
+      try {
+        const currentRules = await this.proxyRulesService.getRulesByRuleSetId(ruleSetId);
+        await this.captureRevisionSafely({
+          ruleSet: postSyncRuleSet,
+          rules: currentRules,
+          trigger: captureTrigger ?? 'sync',
+          userId,
+        });
+      } catch (error) {
+        this.logger.warn(
+          `Failed to reload rules for sync revision capture on rule set ${ruleSetId}: ${(error as Error).message}`,
+        );
+      }
+    }
 
     return buildResponse(ruleSetId);
   }
@@ -1138,6 +1417,28 @@ export class ProxyRuleSetsService {
   }
 
   // ==================== Helper Methods ====================
+
+  /**
+   * Best-effort revision capture for a mutation call site. `capture()` never
+   * throws on its own, but this wraps the call anyway (mirroring the
+   * post-commit nginx-regeneration pattern below) so a future change to the
+   * revisions service — or an unexpected error constructing `input` — can
+   * never turn a successful mutation into a failed request.
+   */
+  private async captureRevisionSafely(input: {
+    ruleSet: ProxyRuleSet;
+    rules: ProxyRule[];
+    trigger: RevisionTrigger;
+    userId?: string;
+  }): Promise<void> {
+    try {
+      await this.proxyRuleSetRevisionsService.capture(input);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to capture ${input.trigger} revision for rule set ${input.ruleSet.id}: ${(error as Error).message}`,
+      );
+    }
+  }
 
   private async findById(id: string) {
     const [ruleSet] = await db

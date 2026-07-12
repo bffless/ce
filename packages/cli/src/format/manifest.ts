@@ -59,9 +59,10 @@ const PipelineConfigSchema = z
 
 /**
  * Authoring pipeline step shape — used for `pipeline:`. Uses `handler:` instead of
- * `handlerType:`, and allows an optional `code:` (relative path ending `.js`) as a
- * convenience for supplying handler code out-of-line instead of inline in `config.code`.
- * A step may not set both.
+ * `handlerType:`, and allows an optional `code:` (relative path ending `.js` or `.ts`) as a
+ * convenience for supplying handler code out-of-line instead of inline in `config.code`. A
+ * `.ts` ref is bundled (esbuild) at build time — see "TypeScript handlers" in reference.md;
+ * a `.js` ref is inlined byte-verbatim as before. A step may not set both `code`/`config.code`.
  */
 const PipelineStepManifestSchema = z
   .object({
@@ -69,7 +70,7 @@ const PipelineStepManifestSchema = z
     name: z.string(),
     handler: z.string(),
     config: z.record(z.unknown()).optional(),
-    code: z.string().regex(/\.js$/, 'code must be a relative path ending in .js').optional(),
+    code: z.string().regex(/\.(js|ts)$/, 'code must be a relative path ending in .js or .ts').optional(),
     isEnabled: z.boolean().optional(),
   })
   .strict()

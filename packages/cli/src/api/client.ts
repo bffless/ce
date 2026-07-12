@@ -143,6 +143,10 @@ export class ApiClient {
   put<T>(apiPath: string, body: unknown, lookup?: string): Promise<T> {
     return this.request<T>('PUT', apiPath, { body, lookup });
   }
+
+  post<T>(apiPath: string, body: unknown, lookup?: string): Promise<T> {
+    return this.request<T>('POST', apiPath, { body, lookup });
+  }
 }
 
 /**

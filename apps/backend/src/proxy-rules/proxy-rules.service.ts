@@ -16,8 +16,11 @@ import { ProxyHeaderConfig } from '../db/schema/proxy-rules.schema';
 import { PermissionsService } from '../permissions/permissions.service';
 import { NginxRegenerationService } from '../domains/nginx-regeneration.service';
 import { EmailService } from '../email/email.service';
+import { ProxyRuleSetRevisionsService } from './proxy-rule-set-revisions.service';
 import { CreateProxyRuleDto, UpdateProxyRuleDto, ReorderProxyRulesDto } from './dto';
-import type { PipelineConfig, PipelineStepConfig } from '../db/schema/proxy-rules.schema';
+import type { PipelineConfig, PipelineStepConfig, ProxyRule } from '../db/schema/proxy-rules.schema';
+import type { ProxyRuleSet } from '../db/schema/proxy-rule-sets.schema';
+import type { RevisionTrigger } from '../db/schema/proxy-rule-set-revisions.schema';
 import { methodSignature } from './method-match';
 
 // SSRF protection - blocked hostnames
@@ -53,6 +56,7 @@ export class ProxyRulesService {
     @Inject(forwardRef(() => NginxRegenerationService))
     private readonly nginxRegenerationService: NginxRegenerationService,
     private readonly emailService: EmailService,
+    private readonly proxyRuleSetRevisionsService: ProxyRuleSetRevisionsService,
   ) {
     // Get encryption key from environment (same as used for storage credentials)
     const encryptionKey = this.configService.get<string>('ENCRYPTION_KEY');
@@ -243,6 +247,14 @@ export class ProxyRulesService {
     // Encrypt header config if present
     const headerConfig = dto.headerConfig ? this.encryptHeaderConfig(dto.headerConfig) : null;
 
+    // Backfill, pre-mutation: adding a rule is a destructive path for revision
+    // history purposes (rules can later be edited/deleted), so if this set
+    // predates revision history entirely, snapshot its current (pre-create)
+    // state first. No-ops when a revision already exists or the set has no
+    // rules yet.
+    const preMutationRules = await this.getRulesByRuleSetId(dto.ruleSetId);
+    await this.captureBackfillSafely({ ruleSet, rules: preMutationRules, userId });
+
     const [rule] = await db
       .insert(proxyRules)
       .values({
@@ -279,6 +291,18 @@ export class ProxyRulesService {
     this.logger.log(
       `Created proxy rule: ${dto.pathPattern} -> ${dto.targetUrl} (ruleSet: ${dto.ruleSetId})`,
     );
+
+    // Post-commit, best-effort: capture the fresh (post-create) state. Reload
+    // is wrapped too — a failure here must not turn a successful create into
+    // a failed request.
+    try {
+      const freshRules = await this.getRulesByRuleSetId(dto.ruleSetId);
+      await this.captureRevisionSafely({ ruleSet, rules: freshRules, trigger: 'rule_edit', userId });
+    } catch (error) {
+      this.logger.warn(
+        `Failed to reload rules for rule_edit revision capture on rule set ${dto.ruleSetId}: ${(error as Error).message}`,
+      );
+    }
 
     return this.decryptHeaderConfig(rule);
   }
@@ -395,6 +419,13 @@ export class ProxyRulesService {
       updateData.authTransform = dto.authTransform;
     }
 
+    // Backfill, pre-mutation: updating a rule is a destructive path for
+    // revision history purposes, so if this set predates revision history
+    // entirely, snapshot its current (pre-update) state first. No-ops when a
+    // revision already exists or the set has no rules.
+    const preMutationRules = await this.getRulesByRuleSetId(existing.ruleSetId);
+    await this.captureBackfillSafely({ ruleSet, rules: preMutationRules, userId });
+
     const [updated] = await db
       .update(proxyRules)
       .set(updateData)
@@ -433,6 +464,18 @@ export class ProxyRulesService {
     }
 
     this.logger.log(`Updated proxy rule ${id}`);
+
+    // Post-commit, best-effort: capture the fresh (post-update) state. Reload
+    // is wrapped too — a failure here must not turn a successful update into
+    // a failed request.
+    try {
+      const freshRules = await this.getRulesByRuleSetId(existing.ruleSetId);
+      await this.captureRevisionSafely({ ruleSet, rules: freshRules, trigger: 'rule_edit', userId });
+    } catch (error) {
+      this.logger.warn(
+        `Failed to reload rules for rule_edit revision capture on rule set ${existing.ruleSetId}: ${(error as Error).message}`,
+      );
+    }
 
     return this.decryptHeaderConfig(updated);
   }
@@ -551,6 +594,13 @@ export class ProxyRulesService {
     // Store ruleSetId before deletion for regeneration
     const ruleSetId = existing.ruleSetId;
 
+    // Backfill, pre-mutation: deleting a rule is a destructive path, so if
+    // this set predates revision history entirely, snapshot its current
+    // (pre-delete) state first. No-ops when a revision already exists or the
+    // set has no rules.
+    const preMutationRules = await this.getRulesByRuleSetId(ruleSetId);
+    await this.captureBackfillSafely({ ruleSet, rules: preMutationRules, userId });
+
     await db.delete(proxyRules).where(eq(proxyRules.id, id));
 
     // Regenerate nginx configs for affected domains
@@ -585,6 +635,18 @@ export class ProxyRulesService {
     }
 
     this.logger.log(`Deleted proxy rule ${id}`);
+
+    // Post-commit, best-effort: capture the fresh (post-delete) state. Reload
+    // is wrapped too — a failure here must not turn a successful delete into
+    // a failed request.
+    try {
+      const freshRules = await this.getRulesByRuleSetId(ruleSetId);
+      await this.captureRevisionSafely({ ruleSet, rules: freshRules, trigger: 'rule_edit', userId });
+    } catch (error) {
+      this.logger.warn(
+        `Failed to reload rules for rule_edit revision capture on rule set ${ruleSetId}: ${(error as Error).message}`,
+      );
+    }
   }
 
   /**
@@ -620,7 +682,8 @@ export class ProxyRulesService {
     const existingRules = await db
       .select()
       .from(proxyRules)
-      .where(eq(proxyRules.ruleSetId, ruleSetId));
+      .where(eq(proxyRules.ruleSetId, ruleSetId))
+      .orderBy(asc(proxyRules.order));
 
     const existingIds = new Set(existingRules.map((r) => r.id));
     for (const id of dto.ruleIds) {
@@ -631,6 +694,14 @@ export class ProxyRulesService {
 
     // Store original order for rollback
     const originalOrders = new Map(existingRules.map((r) => [r.id, r.order]));
+
+    // Backfill, pre-mutation: reordering is a destructive path, so if this
+    // set predates revision history entirely, snapshot its current
+    // (pre-reorder) state first. No-ops when a revision already exists or
+    // the set has no rules. Reuses the rules already loaded above (decrypted
+    // for the revision payload) rather than issuing an extra query.
+    const preMutationRules = existingRules.map((rule) => this.decryptHeaderConfig(rule));
+    await this.captureBackfillSafely({ ruleSet, rules: preMutationRules, userId });
 
     // Update order for each rule
     for (let i = 0; i < dto.ruleIds.length; i++) {
@@ -658,7 +729,57 @@ export class ProxyRulesService {
       .where(eq(proxyRules.ruleSetId, ruleSetId))
       .orderBy(asc(proxyRules.order));
 
-    return updated.map((rule) => this.decryptHeaderConfig(rule));
+    const freshRules = updated.map((rule) => this.decryptHeaderConfig(rule));
+
+    // Post-commit, best-effort: capture the fresh (post-reorder) state,
+    // reusing the rules we just reloaded above (no extra query).
+    await this.captureRevisionSafely({ ruleSet, rules: freshRules, trigger: 'rule_edit', userId });
+
+    return freshRules;
+  }
+
+  // ==================== Revision Capture Helpers ====================
+
+  /**
+   * Best-effort revision capture for a rule-level mutation call site.
+   * `capture()` never throws on its own, but this wraps the call anyway
+   * (mirroring `ProxyRuleSetsService.captureRevisionSafely`) so a future
+   * change to the revisions service — or an unexpected error constructing
+   * `input` — can never turn a successful mutation into a failed request.
+   */
+  private async captureRevisionSafely(input: {
+    ruleSet: ProxyRuleSet;
+    rules: ProxyRule[];
+    trigger: RevisionTrigger;
+    userId?: string;
+  }): Promise<void> {
+    try {
+      await this.proxyRuleSetRevisionsService.capture(input);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to capture ${input.trigger} revision for rule set ${input.ruleSet.id}: ${(error as Error).message}`,
+      );
+    }
+  }
+
+  /**
+   * Best-effort pre-mutation backfill for a rule-level mutation call site.
+   * `captureIfUnrevisioned()` never throws on its own, but this wraps the
+   * call anyway (mirroring the defensive wrap added to `syncRuleSet`) so a
+   * failure here never turns a successful mutation into a failed request.
+   */
+  private async captureBackfillSafely(input: {
+    ruleSet: ProxyRuleSet;
+    rules: ProxyRule[];
+    userId?: string;
+  }): Promise<void> {
+    try {
+      await this.proxyRuleSetRevisionsService.captureIfUnrevisioned(input);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to backfill pre-mutation revision for rule set ${input.ruleSet.id}: ${(error as Error).message}`,
+      );
+    }
   }
 
   // ==================== Helper Methods ====================

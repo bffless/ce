@@ -27,6 +27,7 @@ import { ProxyRulesService } from './proxy-rules.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { NginxRegenerationService } from '../domains/nginx-regeneration.service';
 import { PipelineSchemasService } from '../pipelines/pipeline-schemas.service';
+import { ProxyRuleSetRevisionsService } from './proxy-rule-set-revisions.service';
 import {
   RULE_KEY_ORDER as BACKEND_RULE_KEY_ORDER,
   ENVELOPE_KEY_ORDER as BACKEND_ENVELOPE_KEY_ORDER,
@@ -395,6 +396,12 @@ describe('server export ↔ CLI canonicalizer equivalence (#448 drift guard)', (
           useValue: {
             getById: jest.fn((id: string) => Promise.resolve(schemaRows[id] ?? null)),
           },
+        },
+        {
+          // Unused by exportRuleSet (the only method this suite exercises) —
+          // present only to satisfy ProxyRuleSetsService's constructor.
+          provide: ProxyRuleSetRevisionsService,
+          useValue: { capture: jest.fn(), captureIfUnrevisioned: jest.fn() },
         },
       ],
     }).compile();

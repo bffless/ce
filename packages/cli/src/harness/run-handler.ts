@@ -1,6 +1,7 @@
 import * as vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
 import { createUtils } from './utils.js';
+import { bundleHandler } from '../compile/bundle.js';
 
 /**
  * Data passed to a handler as its single argument. Mirrors the shape the CE
@@ -32,6 +33,13 @@ export interface RunHandlerOptions {
   timeout?: number;
   /** Base secret keying `utils.sign`/`utils.verify`. */
   signingSecret?: string;
+  /** vm `filename` for stack traces/error messages (default `'user-function.js'`). Used by
+   *  {@link runHandlerFile} to name the original `.fn.ts` source instead of the bundled
+   *  output, once bundled. */
+  filename?: string;
+  /** Rule set root a `.fn.ts` `file` is confined to when {@link runHandlerFile} bundles it.
+   *  Required only when `file` ends in `.ts`; ignored for `.js`. */
+  setDir?: string;
 }
 
 const MAX_LOGS = 100;
@@ -181,7 +189,7 @@ export async function runHandler(
     })();
   `;
 
-  const script = new vm.Script(wrappedCode, { filename: 'user-function.js' });
+  const script = new vm.Script(wrappedCode, { filename: opts.filename ?? 'user-function.js' });
 
   await new Promise<void>((resolve, reject) => {
     const timeoutId = setTimeout(() => {
@@ -219,12 +227,25 @@ export async function runHandler(
   return { result: toHostRealm(result), logs };
 }
 
-/** Read a handler file and run it via {@link runHandler}. */
+/** Read a handler file and run it via {@link runHandler}. A `.ts` file is bundled first
+ *  (`bundleHandler`, with an inline source map — see `NODE_OPTIONS=--enable-source-maps` in
+ *  reference.md for full line-number mapping) rather than read raw; `opts.setDir` is then
+ *  REQUIRED (the rule set root the bundler confines relative imports to) — a `.ts` file
+ *  without it is a clear, immediate error rather than a confusing bundler failure. The
+ *  bundled code runs with `filename` set to the original `.fn.ts` path, so a thrown error
+ *  names the source file, not the ephemeral bundle. `.js` files are read and run unchanged. */
 export async function runHandlerFile(
   file: string,
   data: HandlerData = {},
   opts: RunHandlerOptions = {},
 ): Promise<HandlerRun> {
+  if (file.endsWith('.ts')) {
+    if (!opts.setDir) {
+      throw new Error(`runHandlerFile: setDir is required to bundle a .ts handler (${file})`);
+    }
+    const { code } = await bundleHandler(file, opts.setDir, { sourcemap: true });
+    return runHandler(code, data, { ...opts, filename: file });
+  }
   const code = await readFile(file, 'utf8');
   return runHandler(code, data, opts);
 }

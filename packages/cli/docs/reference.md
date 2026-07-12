@@ -14,7 +14,7 @@ issue [bffless/ce#446](https://github.com/bffless/ce/issues/446). This README do
 what actually shipped in **Phase 0**: a local compiler/decompiler, a validator, a
 declarative handler-test runner, and the two library exports (`bffless/harness`,
 `bffless/eslint`). Live sync to a BFFless instance is available via `rules pull`, `rules push`,
-and `rules diff` against a running instance. See
+`rules diff`, `rules revisions`, and `rules rollback` against a running instance. See
 [Not yet](#not-yet) below for what's still planned but not built.
 
 Today, a rule set lives only in the database, edited through a UI form or an AI-agent MCP
@@ -158,10 +158,12 @@ config? }[]`, unchanged from the canonical shape.
 
 **Reference forms**, usable inside `pipeline:`/`pipelineConfig:`/`authTransform`/`emailHandlerConfig` values (and inside nested objects/arrays):
 
-- **`code: <path ending .js>`** — authoring-only sugar on a `pipeline:` step, exclusive with
-  a literal `config.code`: inlines the referenced file's contents as `config.code` at build
-  time (byte-verbatim, no newline normalization). This is the `function_handler` body file,
-  e.g. `code: ./pick.fn.js`.
+- **`code: <path ending .js or .ts>`** — authoring-only sugar on a `pipeline:` step, exclusive
+  with a literal `config.code`. This is the `function_handler` body file. A `.js` ref is
+  inlined byte-verbatim (no newline normalization) as `config.code` at build time, e.g.
+  `code: ./pick.fn.js`. A `.ts` ref is **bundled** (esbuild) instead of raw-read — see
+  [TypeScript handlers](#typescript-handlers) below; this is the *only* place TS bundling
+  happens — `$file:` (next bullet) always raw-reads, even for a `.ts` target.
 - **`{ $file: <relative-path> }`** — deep-replaces that object with the referenced file's
   UTF-8 contents, anywhere in a manifest's values (not just `code:`). Used for
   `response_handler` bodies, email templates, long prompts, etc.
@@ -186,6 +188,162 @@ normally the sole source of a rule's HTTP method(s). `method:` inside a method-s
 a build error (`method: GET conflicts with file stem 'post.rule.yaml' (expected POST)`).
 Inside an `any.rule.yaml`, `method:` sets a single-method override and `methods:` sets a
 multi-method list — the two may not both be set on the same rule.
+
+## TypeScript handlers
+
+A `code:` ref ending `.ts` (see the reference-forms table above) is compiled with esbuild
+into a self-contained bundle instead of being read raw — write `function_handler` bodies as
+real TypeScript, with relative imports, instead of a single flat `.fn.js` file:
+
+```
+rules/api/transform/post/
+  rule.yaml              # code: ./transform.fn.ts
+  transform.fn.ts        # export default function handler(ctx) { ... }
+  transform.fn.test.yaml # handler: ./transform.fn.ts — same *.fn.test.yaml format as .fn.js
+  lib/
+    shared.ts            # imported by transform.fn.ts as './lib/shared.js' (or './lib/shared')
+```
+
+**Authoring contract:**
+
+- The entry file must `export default function handler(ctx) {...}` or `export function
+  handler(ctx) {...}`. Neither present is a build-time error (checked before bundling, not
+  deferred to a confusing `handler is not defined` failure).
+- Imports must be **relative** (`./`/`../`) and resolve to a path **confined to the rule
+  set directory** — the same confinement guard `$file:`/`code:` refs already use. A bare
+  specifier (an npm package, e.g. `import { z } from 'zod'`) or a path that escapes the set
+  directory is a build error naming the offending specifier. There is no `node_modules`
+  resolution — every import must be a sibling file inside the rule set.
+- `import type { ... }` from `bffless/handlers` is fine (and recommended — see below): it's
+  a type-only import, erased entirely before bundling, so it never needs to resolve to a
+  real file on disk.
+- **No typechecking happens at build time** — esbuild transpiles the TypeScript syntax
+  away but does not run `tsc`; a type error in a `.fn.ts` file will NOT fail `rules build`.
+  Use your editor/CI's own `tsc --noEmit` over the rule set directory if you want that
+  guarantee.
+- The bundled output (an IIFE, not the raw TS text) is always run through the same
+  prohibited-pattern lint as a `.fn.js` file (`validateHandlerSource` — see
+  [ESLint preset](#eslint-preset) below) — a build error lists any findings. This matters
+  because the raw TS source can look completely clean while an *imported* util is the one
+  touching e.g. `process.env`; the regexes can't see across an `import` statement, only the
+  bundle sees the inlined code.
+- `bffless/handlers` exports the author-facing types (`HandlerContext`, `HandlerRequest`,
+  `HandlerUtils`, `Handler`) mirroring the shape the harness/runtime actually passes into a
+  handler, so a `.fn.ts` file can type its `ctx` parameter without importing internal CLI
+  modules:
+
+  ```ts
+  import type { HandlerContext } from 'bffless/handlers';
+
+  export default function handler(ctx: HandlerContext) {
+    return { path: ctx.request?.path };
+  }
+  ```
+
+- `*.fn.test.yaml` fixtures (see [reference](#fntestyaml-reference) below) work identically
+  for a `.ts` handler — `handler: ./transform.fn.ts` — `rules test` bundles it (with an
+  inline source map) before running it. A thrown error names the original `.fn.ts` file, not
+  the ephemeral bundle; for full line-number-accurate stack traces (not just the filename),
+  run with `NODE_OPTIONS=--enable-source-maps`.
+- `rules pull --decompile` never regenerates TypeScript sources — it only ever writes
+  `.fn.js` (there is no TS source in a compiled export to decompile back to). Pulling into a
+  directory that already has hand-authored `*.fn.ts` files prints a warning (it does not
+  block) so you don't lose track of them.
+
+## `rules dev` — watch mode
+
+```bash
+bffless rules dev [dirs...]
+bffless rules dev --push --name-suffix dev-alice [dirs...]
+```
+
+Watches one or more rule-set directories and reruns the same **build → validate → test**
+pipeline as the standalone commands on every change, without leaving the terminal. Resolves
+`[dirs...]` the same way every other `rules` command does — explicit paths, or the nearest
+`.bffless/config.json`'s `ruleSets` globs when none are given.
+
+**Local-first by default — no network.** Plain `bffless rules dev` never makes an HTTP
+call; it only compiles (writing `dist/`, exactly like `rules build`), validates, and runs
+`*.fn.test.yaml` fixtures. Changes under any set's `dist/` directory are ignored, so the
+loop's own build output never re-triggers itself.
+
+**What one pass runs, per changed set:**
+
+1. `rules build` (compile + write `dist/`) — a compile error stops the pass here.
+2. `rules validate` — any error stops the pass here (warnings don't).
+3. `rules test` (`*.fn.test.yaml` fixtures) — any failed case stops the pass here.
+
+Only a **fully green** pass (build ok, zero validate errors, zero failed tests) is eligible
+to push. Every pass — green or not — prints exactly one timestamped status line:
+
+```
+[12:01:03] reader ✓ build ✓ validate ✓ 3 tests
+[12:01:07] reader ✗ build: rules/api/x/post.rule.yaml: code file not found: missing.js
+```
+
+Editing one set's files only reruns that set (changes are debounced 200ms per set, so a
+burst of saves to one file — or several files in the same set — coalesces into a single
+rerun); other watched sets are untouched. A red pass is logged and the loop keeps watching —
+nothing here ever exits the process except Ctrl-C.
+
+**`--push` (opt-in, requires `--name-suffix`).** Passing `--push` without `--name-suffix` is
+a startup error — dev mode is not allowed to sync to a set's bare (live) name. With both
+flags, every fully green pass additionally runs the equivalent of `rules push --name-suffix
+<suffix>` for the set that just passed, so the synced copy always lives at `<name>-<suffix>`
+(the same preview-deploy pattern `rules push --name-suffix` uses), never the production
+name. `--api-url`/`--api-key`/`--project` behave exactly as they do for `rules push`/`pull`/
+`diff`.
+
+Ctrl-C (`SIGINT`) closes the watcher and exits cleanly.
+
+## `rules revisions` / `rules rollback`
+
+```bash
+bffless rules revisions <set-name>
+bffless rules rollback <set-name> [--to <revisionId>] [--dry-run]
+```
+
+The server captures a point-in-time snapshot of a rule set on every mutation (sync, import,
+create, copy, rule edits, and rollback itself), best-effort and deduped — an unchanged
+`contentHash` doesn't add a new entry, and only the newest 20 are kept. `rules revisions`
+lists them (`GET /api/proxy-rule-sets/:id/revisions`), newest first, as a plain-text table:
+
+```
+ID        AGE      TRIGGER    RULES  CURRENT  SOURCE
+a1b2c3d4  2h ago   sync       12     current  bffless/ce@a1b2c3d
+e5f6a7b8  1d ago   rule_edit  11
+```
+
+- **ID** — the first 8 characters of the revision's uuid (pass the full id, from this table
+  or `rules revisions` output, to `rules rollback --to`).
+- **CURRENT** — set when the revision's stored `contentHash` matches a hash of the live rule
+  set, computed fresh per request (not a stored flag).
+- **SOURCE** — `repo@shortSha` when the revision carries rules-as-code provenance (i.e. it
+  was captured by a `rules push`/CI sync with `source` metadata); blank otherwise.
+
+`rules rollback` replays a captured revision through the same sync endpoint `rules push`
+uses (`POST /api/proxy-rule-sets/:id/rollback/:revisionId`), and prints the response with the
+identical `formatSyncReport` change-report — a rollback IS a sync. It never renames or
+(re)creates the set: the snapshot's own `ruleSet.name` is ignored in favor of the set's
+current name (a warning is appended if they differ), and pruning is always on (`prune:
+true`) so rules absent from the snapshot are removed.
+
+**Target selection.** `--to <revisionId>` targets that revision explicitly (no extra network
+call — it goes straight to the rollback endpoint). Without `--to`, the default is **the
+newest revision with `current: false`** — i.e. "undo the most recent change." If every
+captured revision is already current (nothing to roll back to), the command fails with a
+message pointing at `--to` instead of guessing.
+
+**`--dry-run`** computes and prints the change plan (`{"dryRun": true}` in the request body)
+without writing anything; a non-dry-run rollback additionally captures one new revision with
+trigger `rollback` afterward, so rollback history only ever moves forward (like `git
+revert`) — rolling back a rollback is itself just another rollback.
+
+**Known inherited limitation:** a snapshot of a methods-split rule set (multiple HTTP
+methods sharing one route) fails replay with the same 400 the sync endpoint gives today for
+that shape; the error is surfaced as-is rather than special-cased.
+
+`--api-url`/`--api-key`/`--project` behave exactly as they do for `rules push`/`pull`/`diff`.
 
 ## Defaults & elision table
 
@@ -363,5 +521,8 @@ that assume they exist:
   used a `$secret: NAME` reference form; what's actually implemented (see the manifest
   reference above) is a plain empty-string placeholder convention (`Authorization: ""`),
   enforced by a build-time check — there is no `$secret:` syntax in this package.
-- **Revisions/rollback, TypeScript handlers + bundling, `rules dev` watch mode** — all
-  Phase 3 per the design doc; none exist here.
+
+All three Phase 3 items now exist: TypeScript handlers + bundling (see
+[TypeScript handlers](#typescript-handlers) above), watch mode (see
+[`rules dev`](#rules-dev--watch-mode) above), and revisions/rollback (see
+[`rules revisions` / `rules rollback`](#rules-revisions--rules-rollback) above).

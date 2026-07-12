@@ -30,7 +30,8 @@
     ".": "./dist/index.js",
     "./lib": "./dist/lib.js",
     "./harness": "./dist/harness/run-handler.js",
-    "./eslint": "./dist/lint/eslint-preset.js"
+    "./eslint": "./dist/lint/eslint-preset.js",
+    "./handlers": "./dist/handlers/types.js"
   },
   "files": [
     "dist",
@@ -44,7 +45,9 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
+    "chokidar": "^4.0.1",
     "commander": "^12.1.0",
+    "esbuild": "^0.28.1",
     "yaml": "^2.4.5",
     "zod": "^3.23.8"
   },

@@ -1,0 +1,5 @@
+pipeline:
+  steps:
+    - name: transform
+      handler: function_handler
+      code: ./transform.fn.ts

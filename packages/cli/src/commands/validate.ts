@@ -32,6 +32,7 @@ import type { RuleManifest } from '../format/manifest.js';
 import { walkSchemaRefs } from '../format/schema-refs.js';
 import { METHOD_STEMS } from '../format/routes.js';
 import { buildRuleSet, resolveConfinedPath, assertRealpathConfined } from '../compile/build.js';
+import { bundleHandler } from '../compile/bundle.js';
 import { validateHandlerSource } from '../lint/patterns.js';
 
 export interface Issue {
@@ -96,15 +97,52 @@ function discoverRuleManifests(rulesDir: string, out: DiscoveredManifest[]): voi
   }
 }
 
-/** Recursively find every `*.fn.js` file under `dir`. */
-function discoverFnJsFiles(dir: string, out: string[]): void {
+/** Recursively find every `*.fn.js`/`*.fn.ts` file under `dir`. */
+function discoverFnFiles(dir: string, out: string[]): void {
   if (!existsSync(dir)) return;
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      discoverFnJsFiles(full, out);
-    } else if (entry.isFile() && entry.name.endsWith('.fn.js')) {
+      discoverFnFiles(full, out);
+    } else if (entry.isFile() && /\.fn\.(js|ts)$/.test(entry.name)) {
       out.push(full);
+    }
+  }
+}
+
+/** Lint a `.fn.ts` handler by bundling it first (via `bundleHandler`) — the bundle is what
+ *  actually ships, and raw TS source (e.g. `import { leak } from './util.js'`) is invisible
+ *  to the prohibited-pattern regexes, which only see the entry file's own text. A clean
+ *  bundle is re-linted the normal way (belt-and-suspenders, and future-proof against
+ *  `bundleHandler` ever stopping to lint internally); a bundle that fails `bundleHandler`'s
+ *  own internal lint-and-throw has its per-finding lines parsed back out of the thrown
+ *  message so the reported `Issue`s point at the `.fn.ts` source file, exactly like the
+ *  `.fn.js` path reports one `Issue` per finding. */
+async function lintTsHandler(fnFile: string, setDir: string, errors: Issue[]): Promise<void> {
+  try {
+    const { code } = await bundleHandler(fnFile, setDir);
+    for (const finding of validateHandlerSource(code)) {
+      errors.push({ file: toRel(setDir, fnFile), message: finding.message, line: finding.line });
+    }
+  } catch (err) {
+    const message = (err as Error).message;
+    // bundleHandler formats a validation failure as:
+    //   bundleHandler: bundled output for <file> failed validation:
+    //     <file>:<line>:<col> <message>
+    //     <file>:<line>:<col> <message>
+    // Parse the indented finding lines back into one Issue per finding.
+    const findingLineRe = /^\s*\S+:(\d+):\d+\s+(.+)$/;
+    const parsed = message
+      .split('\n')
+      .slice(1)
+      .map((l) => findingLineRe.exec(l))
+      .filter((m): m is RegExpExecArray => m !== null);
+    if (parsed.length > 0) {
+      for (const m of parsed) errors.push({ file: toRel(setDir, fnFile), message: m[2], line: Number(m[1]) });
+    } else {
+      // Any other bundleHandler failure (e.g. a confinement/import error) — still surface it
+      // as a validate finding pointing at the source file, rather than silently swallowing it.
+      errors.push({ file: toRel(setDir, fnFile), message });
     }
   }
 }
@@ -285,13 +323,18 @@ export async function validateRuleSet(setDir: string): Promise<{ errors: Issue[]
     if (!alreadyKnown) errors.push({ file, message: text });
   }
 
-  // Step 3: sandbox lint over every `.fn.js` under the set, regardless of whether its
-  // referencing manifest was itself valid — a bad manifest elsewhere shouldn't hide a
-  // real prohibited-pattern violation in unrelated handler code.
+  // Step 3: sandbox lint over every `.fn.js`/`.fn.ts` under the set, regardless of whether
+  // its referencing manifest was itself valid — a bad manifest elsewhere shouldn't hide a
+  // real prohibited-pattern violation in unrelated handler code. `.ts` files are bundled
+  // first (see `lintTsHandler`) since the bundle — not the raw TS text — is what ships.
   const fnFiles: string[] = [];
-  discoverFnJsFiles(absSetDir, fnFiles);
+  discoverFnFiles(absSetDir, fnFiles);
   fnFiles.sort();
   for (const fnFile of fnFiles) {
+    if (fnFile.endsWith('.ts')) {
+      await lintTsHandler(fnFile, absSetDir, errors);
+      continue;
+    }
     const code = readFileSync(fnFile, 'utf8');
     for (const finding of validateHandlerSource(code)) {
       errors.push({ file: toRel(absSetDir, fnFile), message: finding.message, line: finding.line });

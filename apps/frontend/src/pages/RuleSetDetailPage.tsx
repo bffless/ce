@@ -23,6 +23,7 @@ import { useProjectRole } from '@/hooks/useProjectRole';
 import { useToast } from '@/hooks/use-toast';
 import { RulesList } from '@/components/proxy-rules/RulesList';
 import { EditRuleSetDialog } from '@/components/proxy-rules/EditRuleSetDialog';
+import { RevisionHistoryPanel } from '@/components/proxy-rules/RevisionHistoryPanel';
 import {
   ManagedFromGitBadge,
   MANAGED_FROM_GIT_WARNING,
@@ -234,6 +235,13 @@ export function RuleSetDetailPage() {
             }
             canEdit={canEdit}
           />
+        </CardContent>
+      </Card>
+
+      {/* Revision History */}
+      <Card>
+        <CardContent className="p-4">
+          <RevisionHistoryPanel ruleSetId={ruleSetId!} canEdit={canEdit} />
         </CardContent>
       </Card>
 

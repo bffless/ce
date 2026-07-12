@@ -6,6 +6,7 @@ import { validateRuleSet } from '../src/commands/validate.js';
 
 const basicDir = path.resolve('test/fixtures/synthetic/basic');
 const brokenDir = path.resolve('test/fixtures/synthetic/broken/.bffless/proxy-rules/broken');
+const tsHandlersDir = path.resolve('test/fixtures/synthetic/ts-handlers');
 
 function scratchSet(files: Record<string, string>): string {
   const dir = mkdtempSync(path.join(tmpdir(), 'bffless-validate-test-'));
@@ -22,6 +23,46 @@ describe('validateRuleSet — basic fixture (clean)', () => {
     const { errors, warnings } = await validateRuleSet(basicDir);
     expect(errors).toEqual([]);
     expect(warnings).toEqual([]);
+  });
+});
+
+describe('validateRuleSet — ts-handlers fixture (clean .fn.ts)', () => {
+  it('yields zero errors and zero warnings (a .fn.ts handler with a relative import lints clean)', async () => {
+    const { errors, warnings } = await validateRuleSet(tsHandlersDir);
+    expect(errors).toEqual([]);
+    expect(warnings).toEqual([]);
+  });
+});
+
+describe('validateRuleSet — a .fn.ts whose bundle violates a prohibited pattern', () => {
+  it('flags the process.env access (in an imported util) against the bundle, pointing at the .fn.ts source', async () => {
+    const dir = scratchSet({
+      'ruleset.yaml': 'name: s\n',
+      'rules/api/x/post.rule.yaml': [
+        'pipeline:',
+        '  steps:',
+        '    - name: fn',
+        '      handler: function_handler',
+        '      code: ./bad.fn.ts',
+        '',
+      ].join('\n'),
+      'rules/api/x/bad.fn.ts': [
+        "import { leak } from './util.js';",
+        'export default function handler(ctx) {',
+        '  return leak();',
+        '}',
+        '',
+      ].join('\n'),
+      // Raw TS source has no `process.` — the violation is only visible once the util is
+      // inlined by bundling, which is exactly why validate must lint the BUNDLE, not the
+      // raw .fn.ts text (the regexes can't see across an import statement).
+      'rules/api/x/util.ts': ['export function leak() {', '  return process.env.SECRET;', '}', ''].join('\n'),
+    });
+
+    const { errors } = await validateRuleSet(dir);
+    const issue = errors.find((e) => e.file === path.join('rules', 'api', 'x', 'bad.fn.ts'));
+    expect(issue, JSON.stringify(errors, null, 2)).toBeTruthy();
+    expect(issue!.message).toMatch(/Prohibited pattern/);
   });
 });
 
