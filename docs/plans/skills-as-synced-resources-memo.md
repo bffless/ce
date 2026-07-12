@@ -38,6 +38,21 @@ publishing `.bffless/skills` as served content (`repos/apps/.github/workflows/de
 scoped with `base-path: .bffless/skills` per the §3.1 caveat), on a wholly separate CI step
 from the rules sync (`deploy-studio.yml:43-54`).
 
+**Deployment-pinning is the default, not an invariant.** Every project carries an optional
+`settings.skillsAlias` (`apps/backend/src/projects/project-ai-settings.service.ts:678-716`,
+admin-facing at `GET`/`PUT :id/ai/skills-alias`,
+`apps/backend/src/projects/projects.controller.ts:273-297`). `resolveSkillsCommitSha`
+(`project-ai-settings.service.ts:724-745`) looks up that alias's current `commitSha` when one is
+set, and `ai.handler.ts:327-336` uses the result in place of the serving deployment's own commit:
+`resolveSkillsCommitSha(context.projectId, context.deployment.commitSha) ?? context.deployment.commitSha`.
+So there are really three skills-resolution modes, not one: (1) `skillsAlias` unset (today's
+default) → deployment-pinned, as described above; (2) `skillsAlias` set → every `ai_handler` step
+in the project resolves skills from *that alias's* commit, project-wide, regardless of which
+deployment or preview alias is actually serving the request; (3) no deployment context → skills
+disabled (`ai.handler.ts:377-380`). Mode (2) already exists in CE today and is off by default —
+but once a project turns it on, per-PR preview scoping of skills (assumed through the rest of
+this memo) is gone: every preview reads the pinned alias's skills, not its own.
+
 **Where they desync.** Because the two transports are independent, four states are
 reachable that git says are impossible:
 
@@ -106,6 +121,13 @@ Two low-surface pieces:
   deployment, is reported the same way rule drift is. This closes the CI-skew and
   live-edit blind spots without touching the runtime resolution path.
 
+Worth flagging: hashing is the first CLI codepath that reads skill file *contents* rather than
+just names or existence. Today, `build`/`validate` never open a skill file: `collectSkillRefs`
+only gathers referenced *names* out of `skills.enabled` (`packages/cli/src/compile/build.ts:212-221`),
+and `rules validate`'s cross-ref (§1) is an `existsSync` presence test
+(`packages/cli/src/commands/validate.ts:356`), never a read. So (c) is cheap, but not literally
+free — it adds a real (if small) file-read-and-hash step to the CLI.
+
 (c) is strictly a superset of (a)'s guarantees and a strict subset of (b)'s surface. It does
 **not** fix atomicity or content-rollback pinning — it only makes them visible.
 
@@ -114,25 +136,39 @@ Two low-surface pieces:
 **Atomicity of rules + skills changes.** Only (b) delivers it: one payload, one transaction,
 rules and their skills apply or fail together. (a) leaves the two-CI-step race intact; (c)
 detects a post-hoc mismatch but a window still exists between the rules sync and the artifact
-upload. For Studio today this window is one workflow's two adjacent steps
-(`deploy-studio.yml:43` then `:56`/`:69`) — small, and a failed skills upload degrades
-gracefully rather than erroring (`ai.handler.ts:373-376`). Atomicity is real but low-stakes
-at current scale.
+upload. For Studio today this window spans the workflow's rules-sync step
+(`deploy-studio.yml:43-54`) and its skills-upload step (`:69-77`), with the app's own
+artifact-upload step (`:56-63`) sandwiched in between them — not two adjacent steps, but small
+regardless — and a failed skills upload degrades gracefully rather than erroring
+(`ai.handler.ts:373-376`). Atomicity is real but low-stakes at current scale.
 
 **Versioning semantics — is deployment-pinning a feature or a bug?** Under (a)/(c) a skill
 version *with the content it serves*: roll an alias back to an old deployment and its
-`ai_handler` prompts revert in lockstep with everything else that commit shipped. Under (b),
-skills live project-scoped and outlive any single deployment — a content rollback would leave
-the newest skills in place. **In real usage today, pinning is the more defensible default.**
-Studio's two skills — `image-prompts` (referenced by `studio`'s
-`api/thumbnail/draft` step, `repos/apps/apps/studio/.bffless/proxy-rules/studio/rules/api/thumbnail/draft/post/rule.yaml:18-21`)
+`ai_handler` prompts revert in lockstep with everything else that commit shipped — **provided
+the project's `skillsAlias` is unset (§1).** When `skillsAlias` *is* set, that guarantee narrows:
+skills follow whichever alias `skillsAlias` names, not the alias actually serving the request, so
+rolling back a different, serving alias no longer touches skills at all — only rolling back (or
+repointing) the pinned skills alias itself does. Under (b), skills live project-scoped and
+outlive any single deployment — a content rollback would leave the newest skills in place. **In
+real usage today, pinning is the more defensible default.** Studio's two skills — `image-prompts`
+(referenced by `studio`'s `api/thumbnail/draft` step,
+`repos/apps/apps/studio/.bffless/proxy-rules/studio/rules/api/thumbnail/draft/post/rule.yaml:18-21`)
 and `bffless-docs` (referenced by `studio-blog`'s `api/blog` step,
-`.../studio-blog/rules/api/blog/post/rule.yaml:135`) — are prompt-shaping content authored
+`.../studio-blog/rules/api/blog/post/rule.yaml:135-138` — `skills:` at :135, the `bffless-docs`
+name at :138) — are prompt-shaping content authored
 in the same repo, same PR, same commit as the rule and the frontend that calls it. A PR
 preview that changes the thumbnail prompt *wants* its skill scoped to that preview's
 deployment, not promoted project-wide the instant `rules push` runs. Project-scoping (b)
 would actively break per-PR skill previews — the headline feature the rules plan exists to
-deliver (§5). No app currently ships skills that need to exist independent of a deployment.
+deliver (§5) — unless (b) were redesigned to be preview-aware (e.g. `project_skills` keyed
+additionally by alias); that's a heavier design than §3.5's sketch and isn't evaluated here, so
+we don't claim (b) as sketched necessarily breaks every possible DB-backed variant, only the one
+under evaluation. No app currently ships skills that need to exist independent of a deployment —
+and to the extent one did, `skillsAlias` (§1) already delivers most of that: a project can pin
+skills to a stable alias today, project-wide, outliving whatever deployment is actually serving
+traffic, with zero schema cost. That reinforces rather than weakens the case against (b): the
+one property (b) chases that isn't already covered by (a)/(c) is *also* already reachable via a
+mechanism CE ships today.
 
 **CE surface cost.** (a) zero. (c) additive-only: a few fields in an already-planned `source`
 jsonb and a comparison in an existing job — no schema table, no change to the runtime
@@ -176,7 +212,11 @@ skills are actually used today (prompt content co-versioned with the rule and fr
 use it), it is exactly what per-PR previews need, and it keeps skills correctly out of the
 revision snapshot. (b) inverts that default, breaks preview-scoped skills, and buys atomicity
 that is low-stakes at current scale — for a new table, a dual-resolution runtime fork, and a
-widening of the revision envelope.
+widening of the revision envelope. This is reinforced by an existing mechanism (§1): CE already
+gives a project an opt-in, zero-schema-cost way to source skills project-wide instead of
+per-deployment — `settings.skillsAlias` — so the one legitimate need (b) targets (skills that
+outlive a deployment) is *already* reachable without a table. A dedicated `project_skills` table
+would only be justified by a need `skillsAlias` genuinely cannot reach (see trigger 2 below).
 
 Treat **(c) drift detection as the pre-approved next increment**, to be pulled in *only* when
 the build-time/same-commit guarantee demonstrably stops being enough — i.e. the first time a
@@ -189,9 +229,15 @@ production. It is cheap, additive-only, and rides infrastructure Phase 2 already
    shared across rule sets or projects (a skill that is genuinely not co-versioned with one
    deployment's content). Today only Studio does, and both its skills are single-set,
    single-repo.
-2. **A skill needs to outlive the deployment that introduced it** — e.g. a skill edited via
-   admin UI/MCP with no corresponding artifact, or a requirement that rolling back content
-   must *not* roll back skills.
+2. **A skill needs to outlive the deployment that introduced it, in a way `skillsAlias` (§1)
+   genuinely can't cover.** `skillsAlias` already lets a project pin skills to a stable alias's
+   commit independent of whichever alias is serving a given request, which covers "rolling back
+   the *serving* alias must not roll back skills" today. What it can't do: materialize skill
+   content with no backing commit at all (e.g. a skill edited via admin UI/MCP that was never
+   part of an uploaded artifact), or give different rule sets/steps in the *same* project
+   different skill provenance simultaneously (`skillsAlias` is one project-wide pin, not
+   per-skill). A genuine need for either is the real trigger — not merely "a skill outlives a
+   deployment," which `skillsAlias` already handles.
 3. **Preview-scoped skills stop being wanted** — if the team decides skill changes should go
    project-wide on `rules push` rather than per-PR-alias, the pinning feature becomes a
    liability and (b)'s project-scoping becomes the right model.
