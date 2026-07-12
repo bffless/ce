@@ -6,6 +6,15 @@ skills-as-synced-resources evaluation, public docs + skill)**.
 
 Date: 2026-07-12
 
+> **STATUS UPDATE 2026-07-12 — PHASE 3 SHIPPED.** Everything below is historical context.
+> Shipped: CE v0.2.3 on j5s.dev (revisions + rollback live-verified on a scratch set),
+> `bffless@0.2.0` on npm (first CI publish via release-please component `bffless`, ce#463/#467),
+> docs-public recipe live (/recipes/proxy-rules-as-code/), skills plugin v1.11.0
+> (`bffless:rules-as-code`). Plan of record with review results:
+> `proxy-rules-as-code-phase3-implementation.md`. Follow-ups filed: ce#464 (generator
+> services bypass revision capture), ce#465 (8-char revision ids vs `--to` UUID), ce#466
+> (stale missingSecrets doc bullet), apps#233/#234 (drift-check pin bump).
+
 ## Where things stand
 
 **Phases 0–1 — DONE** (see `proxy-rules-as-code-phase2-kickoff.md` for that history).
