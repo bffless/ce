@@ -46,6 +46,18 @@ describe('ApiClient', () => {
     expect(calls[0].init?.body).toBe('{"a":1}');
   });
 
+  it('POST serializes the body as JSON, sets X-API-Key and Content-Type', async () => {
+    const { fetchImpl, calls } = stubFetch({ 'POST https://api.test/api/x/rollback/r1': { body: { ok: true } } });
+    const client = new ApiClient({ apiUrl: 'https://api.test', apiKey: 'k-post', fetchImpl });
+    const out = await client.post<{ ok: boolean }>('/api/x/rollback/r1', { dryRun: true });
+    expect(out).toEqual({ ok: true });
+    expect(calls[0].init?.method).toBe('POST');
+    const headers = calls[0].init?.headers as Record<string, string>;
+    expect(headers['X-API-Key']).toBe('k-post');
+    expect(headers['Content-Type']).toBe('application/json');
+    expect(calls[0].init?.body).toBe('{"dryRun":true}');
+  });
+
   it('normalizes a trailing slash on the base URL', async () => {
     const { fetchImpl, calls } = stubFetch({ 'GET https://api.test/api/projects': { body: [] } });
     const client = new ApiClient({ apiUrl: 'https://api.test/', apiKey: 'k', fetchImpl });

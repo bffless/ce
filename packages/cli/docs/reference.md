@@ -14,7 +14,7 @@ issue [bffless/ce#446](https://github.com/bffless/ce/issues/446). This README do
 what actually shipped in **Phase 0**: a local compiler/decompiler, a validator, a
 declarative handler-test runner, and the two library exports (`bffless/harness`,
 `bffless/eslint`). Live sync to a BFFless instance is available via `rules pull`, `rules push`,
-and `rules diff` against a running instance. See
+`rules diff`, `rules revisions`, and `rules rollback` against a running instance. See
 [Not yet](#not-yet) below for what's still planned but not built.
 
 Today, a rule set lives only in the database, edited through a UI form or an AI-agent MCP
@@ -296,6 +296,55 @@ name. `--api-url`/`--api-key`/`--project` behave exactly as they do for `rules p
 
 Ctrl-C (`SIGINT`) closes the watcher and exits cleanly.
 
+## `rules revisions` / `rules rollback`
+
+```bash
+bffless rules revisions <set-name>
+bffless rules rollback <set-name> [--to <revisionId>] [--dry-run]
+```
+
+The server captures a point-in-time snapshot of a rule set on every mutation (sync, import,
+create, copy, rule edits, and rollback itself), best-effort and deduped — an unchanged
+`contentHash` doesn't add a new entry, and only the newest 20 are kept. `rules revisions`
+lists them (`GET /api/proxy-rule-sets/:id/revisions`), newest first, as a plain-text table:
+
+```
+ID        AGE      TRIGGER    RULES  CURRENT  SOURCE
+a1b2c3d4  2h ago   sync       12     current  bffless/ce@a1b2c3d
+e5f6a7b8  1d ago   rule_edit  11
+```
+
+- **ID** — the first 8 characters of the revision's uuid (pass the full id, from this table
+  or `rules revisions` output, to `rules rollback --to`).
+- **CURRENT** — set when the revision's stored `contentHash` matches a hash of the live rule
+  set, computed fresh per request (not a stored flag).
+- **SOURCE** — `repo@shortSha` when the revision carries rules-as-code provenance (i.e. it
+  was captured by a `rules push`/CI sync with `source` metadata); blank otherwise.
+
+`rules rollback` replays a captured revision through the same sync endpoint `rules push`
+uses (`POST /api/proxy-rule-sets/:id/rollback/:revisionId`), and prints the response with the
+identical `formatSyncReport` change-report — a rollback IS a sync. It never renames or
+(re)creates the set: the snapshot's own `ruleSet.name` is ignored in favor of the set's
+current name (a warning is appended if they differ), and pruning is always on (`prune:
+true`) so rules absent from the snapshot are removed.
+
+**Target selection.** `--to <revisionId>` targets that revision explicitly (no extra network
+call — it goes straight to the rollback endpoint). Without `--to`, the default is **the
+newest revision with `current: false`** — i.e. "undo the most recent change." If every
+captured revision is already current (nothing to roll back to), the command fails with a
+message pointing at `--to` instead of guessing.
+
+**`--dry-run`** computes and prints the change plan (`{"dryRun": true}` in the request body)
+without writing anything; a non-dry-run rollback additionally captures one new revision with
+trigger `rollback` afterward, so rollback history only ever moves forward (like `git
+revert`) — rolling back a rollback is itself just another rollback.
+
+**Known inherited limitation:** a snapshot of a methods-split rule set (multiple HTTP
+methods sharing one route) fails replay with the same 400 the sync endpoint gives today for
+that shape; the error is surfaced as-is rather than special-cased.
+
+`--api-url`/`--api-key`/`--project` behave exactly as they do for `rules push`/`pull`/`diff`.
+
 ## Defaults & elision table
 
 Verbatim from `src/format/defaults.ts` (`RULE_DEFAULTS`) — the compiler injects these when
@@ -472,7 +521,8 @@ that assume they exist:
   used a `$secret: NAME` reference form; what's actually implemented (see the manifest
   reference above) is a plain empty-string placeholder convention (`Authorization: ""`),
   enforced by a build-time check — there is no `$secret:` syntax in this package.
-- **Revisions/rollback** — Phase 3 per the design doc; not in this package yet (the other
-  two Phase 3 items now exist: TypeScript handlers + bundling, see
-  [TypeScript handlers](#typescript-handlers) above; and watch mode, see
-  [`rules dev`](#rules-dev--watch-mode) above).
+
+All three Phase 3 items now exist: TypeScript handlers + bundling (see
+[TypeScript handlers](#typescript-handlers) above), watch mode (see
+[`rules dev`](#rules-dev--watch-mode) above), and revisions/rollback (see
+[`rules revisions` / `rules rollback`](#rules-revisions--rules-rollback) above).
