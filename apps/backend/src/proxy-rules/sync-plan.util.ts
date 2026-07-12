@@ -321,8 +321,23 @@ export function computeSyncPlan(
 
   const liveByKey = new Map<string, { row: LiveSyncRule; normalized: NormalizedSyncRule }>();
   for (const row of liveRules) {
+    const key = matchKeyOf(row);
+    // PG's unique index treats NULL methods as distinct, so two live rules can
+    // legally share (pathPattern, null) and differ only by their methods[]
+    // lists. The plan addresses rules by (pathPattern, method) — a last-wins
+    // map here would silently overwrite one variant and orphan the other, so
+    // fail loudly instead. Folding a methods signature into the match key is
+    // the Phase 2 fix.
+    if (liveByKey.has(key)) {
+      throw new Error(
+        `Live rule set has multiple rules for path pattern "${row.pathPattern}" and method ${describeMethod(
+          row.method,
+        )} (method-list variants); sync cannot address them by (pathPattern, method) yet — ` +
+          `edit this set via the dashboard, or give each variant a distinct method`,
+      );
+    }
     // Live rows always carry a concrete order (NOT NULL column); fallback is inert.
-    liveByKey.set(matchKeyOf(row), { row, normalized: normalizeRule(row, 0) });
+    liveByKey.set(key, { row, normalized: normalizeRule(row, 0) });
   }
 
   const plan: SyncPlan = {

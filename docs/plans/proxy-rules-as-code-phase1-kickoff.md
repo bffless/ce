@@ -5,6 +5,16 @@ starting point for **Phase 1 (CE backend: export + sync endpoints)**.
 
 Date: 2026-07-11
 
+> **UPDATE 2026-07-12 — Phase 1 is implemented on `feat/proxy-rules-phase1`** (not yet
+> pushed/merged). All four deliverables landed with per-task adversarial reviews and a
+> final whole-branch review: export endpoint (closes #448), sync endpoint, `source`
+> tracking + migration (`drizzle/0038`) + UI banner + MCP field, and live CLI
+> `pull`/`push`/`diff`. See `proxy-rules-as-code-phase1-implementation.md` for the
+> task-by-task status, commit SHAs, resolved design decisions, and the documented
+> Phase 1 limitations (methods-split sets, non-declarative set metadata, contentHash
+> scope, pre-existing `copy()` plaintext headerConfig follow-up). Next: PR + Phase 2
+> (CI action, apps-repo conversion, PR-preview rule sets).
+
 ## Where things stand
 
 **Phase 0 — DONE, merged.**

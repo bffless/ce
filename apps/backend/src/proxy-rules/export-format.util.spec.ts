@@ -209,11 +209,12 @@ describe('export-format.util', () => {
       expect(serializeRuleForExport(makeRuleRow({ description: 'hi' })).description).toBe('hi');
     });
 
-    it('keeps falsy-but-real values: empty-string description and an empty methods array', () => {
+    it('keeps falsy-but-real values (empty-string description) but drops an empty methods array', () => {
       const out = serializeRuleForExport(makeRuleRow({ description: '', methods: [] }));
       expect(out.description).toBe('');
-      // DB semantics: methods [] means "fall back to method" but it is real data — export it.
-      expect(out.methods).toEqual([]);
+      // methods [] ≡ absent (fall back to method); sync normalizes [] to null,
+      // so exporting [] would be permanent diff drift a push can never fix.
+      expect(out).not.toHaveProperty('methods');
     });
   });
 

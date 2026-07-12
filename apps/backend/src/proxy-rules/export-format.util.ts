@@ -137,6 +137,10 @@ export function serializeRuleForExport(rule: Partial<ProxyRule>): ExportedRule {
         ? sanitizeHeaderConfigForExport(rule.headerConfig)
         : (rule as Record<string, unknown>)[key];
     if (value === null || value === undefined) continue;
+    // methods [] means "fall back to method" (see proxy-rules.schema.ts) — the
+    // same as absent. Sync normalizes [] ≡ null, so exporting a literal []
+    // would be permanent, push-unfixable drift for diff. Drop it.
+    if (key === 'methods' && Array.isArray(value) && value.length === 0) continue;
     out[key] = value;
   }
   return out as unknown as ExportedRule;

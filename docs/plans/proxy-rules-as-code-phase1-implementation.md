@@ -343,13 +343,36 @@ accurate; stub error gone.
 
 ## Status
 
-- [ ] Task 1 — export-format module
-- [ ] Task 2 — export endpoint + equivalence test (#448)
-- [ ] Task 3 — frontend export switch
-- [ ] Task 4 — `source` schema edit (+ operator migration)
-- [ ] Task 5 — sync plan computation
-- [ ] Task 6 — schema resolution by name
-- [ ] Task 7 — sync service + endpoint
-- [ ] Task 8 — UI banner + MCP field
-- [ ] Task 9 — CLI pull/push/diff
-- [ ] Task 10 — final review + verify
+- [x] Task 1 — export-format module (`f2e20ba`; canonical sorting added post-review in `ad2c7e6`)
+- [x] Task 2 — export endpoint + equivalence test (#448) (`ad2c7e6`; CLI-import route via Jest moduleNameMapper)
+- [x] Task 3 — frontend export switch (`e0333c3`)
+- [x] Task 4 — `source` schema edit + DTO (`0114ce9`, `3346e3d`) + operator migration `drizzle/0038` (`7f8561e`)
+- [x] Task 5 — sync plan computation (`8d4e19f`; post-review: add-null guard, CLI-parity proxyType/targetUrl inference, methods [] ≡ null)
+- [x] Task 6 — schema resolution by name (`8a93dc2`; post-review: duplicate-id rejection, strict-under-dryRun pinned)
+- [x] Task 7 — sync service + endpoint (`c444819`; post-review: missingSecrets covers update-path blanks)
+- [x] Task 8 — UI banner + MCP field (`039c390`; post-review: RuleEditorPage save-path warning)
+- [x] Task 9 — CLI pull/push/diff (`ed754e2`; post-review: diff schema-id alignment, targetUrl ''-normalization, validator config {})
+- [x] Task 10 — final whole-branch review + verify (fresh-context adversarial review of
+      `origin/main...HEAD`; verdict "fix-first, then ship" — both fixes taken: fail-loud
+      guard on duplicate live `(pathPattern, null)` match keys from methods-split rules,
+      and `methods: []` dropped at export so it can't become push-unfixable diff drift.
+      Verification: backend 1659 passed / 107 suites, frontend 469 / 42 files,
+      CLI 298 / 20 files, all three `tsc --noEmit` clean.)
+
+## Known limitations (Phase 1, documented not fixed)
+
+- **Methods-split sets can't sync yet.** Two live rules sharing `(pathPattern, method:
+  null)` and differing only by `methods[]` are legal (PG unique index treats NULLs as
+  distinct) but the sync/diff match key can't address them; sync now fails loudly (400)
+  instead of silently overwriting one variant. Phase 2: fold a methods signature into
+  the match key.
+- **Set metadata is not declarative.** Sync writes `description`/`environment` only when
+  provided — removing one from `ruleset.yaml` preserves the live value, and `rules diff`
+  will keep reporting that drift. Workaround: set the field explicitly (empty string) or
+  edit once in the dashboard.
+- **`source.contentHash` is intra-project only** — it covers remapped schema ids, so it
+  is stable within a target project but not reproducible from the git payload alone.
+  Phase 1 drift detection uses `exportsEquivalent`, not the hash.
+- **Pre-existing, filed as follow-up:** `copy()` inserts decrypted `headerConfig` without
+  re-encrypting (plaintext at rest for copies) — present on `main`, not a Phase 1
+  regression.

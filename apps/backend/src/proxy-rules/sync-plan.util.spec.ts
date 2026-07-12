@@ -549,6 +549,19 @@ describe('sync-plan.util', () => {
         }),
       ).not.toThrow();
     });
+
+    it('throws when LIVE rules share a (pathPattern, null) key (method-list variants)', () => {
+      // PG's unique index treats NULL methods as distinct, so a methods-split
+      // set is legal live state. Last-wins matching would silently overwrite
+      // one variant and orphan the other — must fail loudly instead.
+      const liveVariants = [
+        live({ methods: ['GET'] }),
+        live({ id: 'rule-live-2', methods: ['POST'], order: 1 }),
+      ];
+      expect(() => computeSyncPlan(liveVariants, [incoming()], { prune: false })).toThrow(
+        'Live rule set has multiple rules for path pattern "/api/*" and method (any)',
+      );
+    });
   });
 
   describe('plan entry payloads', () => {
