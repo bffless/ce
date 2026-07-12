@@ -1,5 +1,10 @@
 # Proxy Rules as Code — Phase 2 Kickoff & Status Handoff
 
+> **Executed 2026-07-12.** Phase 2 was implemented the same day this doc landed; the
+> open questions below are resolved and the plan of record (decisions, tasks, review
+> results, release-gate checklist) is `proxy-rules-as-code-phase2-implementation.md`.
+> This doc remains as the point-in-time handoff it was written to be.
+
 Status doc for resuming after a context clear. Phases 0 and 1 are shipped; this doc is
 the starting point for **Phase 2 (CI: deploy action, apps conversion, PR previews,
 drift check)**.
