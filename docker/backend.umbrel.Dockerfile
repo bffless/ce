@@ -27,6 +27,7 @@ RUN pnpm install --frozen-lockfile
 # Copy specific files and directories to avoid conflicts with installed node_modules
 COPY apps/backend/src ./apps/backend/src
 COPY apps/backend/tsconfig.json ./apps/backend/
+COPY apps/backend/tsconfig.build.json ./apps/backend/
 COPY apps/backend/nest-cli.json ./apps/backend/
 COPY apps/backend/drizzle.config.ts ./apps/backend/
 COPY apps/backend/drizzle ./apps/backend/drizzle
