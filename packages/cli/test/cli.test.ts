@@ -107,10 +107,10 @@ describe('bffless rules test', () => {
 });
 
 describe('bffless rules pull', () => {
-  it('without --from-file exits 1 with the Phase 1 message', () => {
+  it('without --from-file and without a set name exits 1 with a usage error', () => {
     const result = run(['rules', 'pull']);
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain('live pull requires a server export endpoint (Phase 1)');
+    expect(result.stderr).toContain('a set name is required for a live pull');
   });
 
   it('--from-file <expected.json> --decompile -o <tmp> recreates the authoring layout, and a follow-up build round-trips', () => {

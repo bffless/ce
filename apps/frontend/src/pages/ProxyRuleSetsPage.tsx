@@ -24,37 +24,15 @@ import {
   useGetProjectRuleSetsQuery,
   useDeleteRuleSetMutation,
   useCopyRuleSetMutation,
-  useLazyGetRuleSetQuery,
-  type ProxyRuleSetExport,
-  type ExportedProxyRule,
-  type ExportedSchema,
-  type HeaderConfig,
+  useLazyGetRuleSetExportQuery,
 } from '@/services/proxyRulesApi';
-import { useLazyGetSchemaQuery } from '@/services/pipelineSchemasApi';
 import { useGetProjectQuery } from '@/services/projectsApi';
 import { useProjectRole } from '@/hooks/useProjectRole';
 import { useToast } from '@/hooks/use-toast';
-import { collectSchemaIds } from '@/utils/proxyRuleSchemaRefs';
 import { CreateRuleSetDialog } from '@/components/proxy-rules/CreateRuleSetDialog';
 import { ImportRuleSetDialog } from '@/components/proxy-rules/ImportRuleSetDialog';
 import { RuleSetCard } from '@/components/proxy-rules/RuleSetCard';
 import { routes } from '@/utils/routes';
-
-/**
- * Header `add` values can hold secrets (API keys, bearer tokens). We deliberately
- * do NOT export their values — exports keep the header names but blank the values,
- * so the user re-enters secrets after import. This is a known export/import gap
- * until inline secrets move to project-level `secrets.<name>` references
- * (see stories/tasks/migrate-inline-pipeline-secrets-to-project-secrets.md).
- */
-function sanitizeHeaderConfigForExport(headerConfig: HeaderConfig | null): HeaderConfig | null {
-  if (!headerConfig?.add) return headerConfig;
-  const blankedAdd: Record<string, string> = {};
-  for (const key of Object.keys(headerConfig.add)) {
-    blankedAdd[key] = '';
-  }
-  return { ...headerConfig, add: blankedAdd };
-}
 
 /**
  * ProxyRuleSetsPage - Content for the Proxy Rules tab showing all rule sets.
@@ -93,65 +71,22 @@ export function ProxyRuleSetsPage() {
   const [copyRuleSet, { isLoading: isCopying }] = useCopyRuleSetMutation();
 
   // Export / import
-  const [fetchRuleSet, { isFetching: isExporting }] = useLazyGetRuleSetQuery();
-  const [fetchSchema] = useLazyGetSchemaQuery();
+  const [fetchExport, { isFetching: isExporting }] = useLazyGetRuleSetExportQuery();
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
 
   const handleExport = async (ruleSetId: string) => {
     try {
-      const ruleSet = await fetchRuleSet(ruleSetId).unwrap();
+      // The server assembles the canonical export envelope (bundled schema
+      // definitions, blanked added-header secret values, null-stripping, key
+      // order) — download it verbatim, no client-side reshaping.
+      const envelope = await fetchExport(ruleSetId).unwrap();
 
-      // Bundle the schema definitions the pipelines depend on so the export is
-      // portable across projects. Definitions only (name + fields), no data rows.
-      const schemaIds = [...collectSchemaIds(ruleSet.rules)];
-      const schemas: ExportedSchema[] = [];
-      for (const id of schemaIds) {
-        try {
-          const schema = await fetchSchema(id).unwrap();
-          schemas.push({ id: schema.id, name: schema.name, fields: schema.fields });
-        } catch {
-          // Schema missing/inaccessible — leave it as an unbundled reference
-        }
-      }
-
-      const exportData: ProxyRuleSetExport = {
-        version: 2,
-        exportedAt: new Date().toISOString(),
-        kind: 'bffless-proxy-rule-set',
-        ruleSet: {
-          name: ruleSet.name,
-          description: ruleSet.description,
-          environment: ruleSet.environment,
-        },
-        // Strip server-managed fields; keep only portable rule config
-        rules: ruleSet.rules.map(
-          (rule): ExportedProxyRule => ({
-            pathPattern: rule.pathPattern,
-            method: rule.method,
-            targetUrl: rule.targetUrl,
-            stripPrefix: rule.stripPrefix,
-            order: rule.order,
-            timeout: rule.timeout,
-            preserveHost: rule.preserveHost,
-            forwardCookies: rule.forwardCookies,
-            headerConfig: sanitizeHeaderConfigForExport(rule.headerConfig),
-            authTransform: rule.authTransform,
-            internalRewrite: rule.internalRewrite,
-            proxyType: rule.proxyType,
-            emailHandlerConfig: rule.emailHandlerConfig,
-            pipelineConfig: rule.pipelineConfig,
-            isEnabled: rule.isEnabled,
-            debugEnabled: rule.debugEnabled,
-            description: rule.description,
-          }),
-        ),
-        schemas: schemas.length > 0 ? schemas : undefined,
-      };
-
-      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const blob = new Blob([JSON.stringify(envelope, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
-      const safeName = ruleSet.name.replace(/[^a-zA-Z0-9-_]+/g, '-').replace(/^-+|-+$/g, '');
+      const safeName = envelope.ruleSet.name
+        .replace(/[^a-zA-Z0-9-_]+/g, '-')
+        .replace(/^-+|-+$/g, '');
       link.href = url;
       link.download = `${safeName || 'proxy-rule-set'}.proxy-rules.json`;
       document.body.appendChild(link);
@@ -159,16 +94,17 @@ export function ProxyRuleSetsPage() {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
 
-      const hadSecrets = ruleSet.rules.some(
+      const ruleCount = envelope.rules.length;
+      const schemaCount = envelope.schemas?.length ?? 0;
+      // Blanked `add` entries in the payload mean the live rules had secret values
+      const hadSecrets = envelope.rules.some(
         (rule) => rule.headerConfig?.add && Object.keys(rule.headerConfig.add).length > 0,
       );
       toast({
         title: 'Rule set exported',
         description:
-          `Exported "${ruleSet.name}" with ${ruleSet.rules.length} rule${ruleSet.rules.length !== 1 ? 's' : ''}` +
-          (schemas.length > 0
-            ? ` and ${schemas.length} schema${schemas.length !== 1 ? 's' : ''}.`
-            : '.') +
+          `Exported "${envelope.ruleSet.name}" with ${ruleCount} rule${ruleCount !== 1 ? 's' : ''}` +
+          (schemaCount > 0 ? ` and ${schemaCount} schema${schemaCount !== 1 ? 's' : ''}.` : '.') +
           (hadSecrets ? ' Added-header secret values were not included.' : ''),
       });
     } catch {
@@ -312,6 +248,7 @@ export function ProxyRuleSetsPage() {
                     name={ruleSet.name}
                     description={ruleSet.description}
                     environment={ruleSet.environment}
+                    source={ruleSet.source}
                     isDefault={project?.defaultProxyRuleSetId === ruleSet.id}
                     href={routes.ruleSet(owner!, repo!, ruleSet.id)}
                   />

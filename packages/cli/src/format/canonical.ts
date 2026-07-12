@@ -196,10 +196,22 @@ function diffValue(a: unknown, b: unknown, path: string, diffs: string[]): void 
  * `debugEnabled`) are emitted at all vs. explicit `false`. Absent-means-default is the DB import's
  * own semantics (Task 3), so equivalence must be judged on each rule's defaults-complete form, not
  * raw key presence.
+ *
+ * `targetUrl` gets the same DB-default alignment: the sync/import layer stores an absent
+ * `targetUrl` as `''` for non-pipeline rules (the DB column default — see `normalizeRule` in
+ * `apps/backend/src/proxy-rules/sync-plan.util.ts`) and the server export returns that `''`, so
+ * a rule authored without `targetUrl` (e.g. an email_form_handler) must compare equal to the
+ * live `targetUrl: ""`. `applyRuleDefaults` already fills the pipeline URL for pipeline rules;
+ * for everything else an absent `targetUrl` is normalized to `''` here — comparison-only, the
+ * build output is untouched.
  */
 function normalizeRulesForComparison(rules: unknown): unknown {
   if (!Array.isArray(rules)) return rules;
-  return rules.map((r) => applyRuleDefaults(r as Partial<ExportedRule> & { pathPattern: string }));
+  return rules.map((r) => {
+    const full = applyRuleDefaults(r as Partial<ExportedRule> & { pathPattern: string }) as ExportedRule;
+    if (full.targetUrl === undefined) full.targetUrl = '';
+    return full;
+  });
 }
 
 export function exportsEquivalent(a: RuleSetExport, b: RuleSetExport): { equal: boolean; diffs: string[] } {

@@ -1,16 +1,26 @@
 /**
- * `rules pull` orchestration. Phase 0 only supports pulling from a local export file
- * (`--from-file`) and decompiling it to the authoring layout — there is no server export
- * endpoint yet, so a live pull (no `--from-file`) is a hard error pointing at Phase 1.
+ * `rules pull` orchestration — two modes:
  *
- * `--decompile` is required alongside `--from-file` in Phase 0: it is the only supported
- * output mode (there is no "just fetch the raw export" mode yet), so rather than silently
- * decompiling regardless of the flag, an explicit omission is treated the same as a missing
- * `--from-file` — a clear Phase-0-scope error instead of silently guessing intent.
+ * - **Live pull** (Phase 1): `rules pull <set-name>` resolves the set by name within the
+ *   configured project, fetches `GET /api/proxy-rule-sets/:id/export`, and decompiles the
+ *   envelope to the authoring layout. A live pull ALWAYS decompiles — there is no "raw
+ *   fetch" mode, so no `--decompile` flag is needed (it stays accepted for compatibility
+ *   but is a no-op here).
+ *
+ * - **From-file** (Phase 0, kept 100% backward-compatible): `--from-file <file> --decompile`
+ *   reads a local export JSON instead of the server. `--decompile` remains REQUIRED with
+ *   `--from-file` — the Phase 0 semantics were an explicit-opt-in decompile, and silently
+ *   changing that would surprise existing scripts.
+ *
+ * Both modes share the output logic: `--output` wins, else
+ * `.bffless/proxy-rules/<ruleSet.name>/`; non-empty targets need `--force`.
  */
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { decompileExport, writeDecompiled } from '../compile/decompile.js';
+import { createClient, ApiError, type ClientDeps } from '../api/client.js';
+import { resolveProjectId, resolveRuleSetId, requireProject } from '../api/resolve.js';
+import { findConfig } from '../config.js';
 import type { RuleSetExport } from '../format/types.js';
 
 export interface PullOptions {
@@ -18,6 +28,9 @@ export interface PullOptions {
   decompile?: boolean;
   output?: string;
   force?: boolean;
+  apiUrl?: string;
+  apiKey?: string;
+  project?: string;
 }
 
 export interface PullOutcome {
@@ -27,26 +40,65 @@ export interface PullOutcome {
   error?: string;
 }
 
-export async function runPull(opts: PullOptions, cwd: string): Promise<PullOutcome> {
-  if (!opts.fromFile) {
-    return { ok: false, error: 'live pull requires a server export endpoint (Phase 1)' };
-  }
-  if (!opts.decompile) {
-    return { ok: false, error: '--decompile is required alongside --from-file (Phase 0 supports no other pull output)' };
-  }
+export type PullDeps = ClientDeps;
 
+export async function runPull(
+  setName: string | undefined,
+  opts: PullOptions,
+  cwd: string,
+  deps?: PullDeps,
+): Promise<PullOutcome> {
   let exp: RuleSetExport;
-  try {
-    const raw = readFileSync(path.resolve(cwd, opts.fromFile), 'utf8');
-    exp = JSON.parse(raw) as RuleSetExport;
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+
+  if (opts.fromFile) {
+    if (setName !== undefined) {
+      return {
+        ok: false,
+        error: 'a set name and --from-file are mutually exclusive (--from-file names the source already)',
+      };
+    }
+    if (!opts.decompile) {
+      return {
+        ok: false,
+        error: '--decompile is required alongside --from-file (Phase 0 supports no other pull output)',
+      };
+    }
+    try {
+      const raw = readFileSync(path.resolve(cwd, opts.fromFile), 'utf8');
+      exp = JSON.parse(raw) as RuleSetExport;
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  } else {
+    if (!setName) {
+      return {
+        ok: false,
+        error: 'a set name is required for a live pull (bffless rules pull <set-name>), or use --from-file <file>',
+      };
+    }
+    try {
+      const config = deps?.config !== undefined ? deps.config : (findConfig(cwd)?.config ?? null);
+      const client = createClient(opts, cwd, { ...deps, config });
+      const project = requireProject(opts.project, config?.project);
+      const projectId = await resolveProjectId(client, project);
+      const ruleSetId = await resolveRuleSetId(client, projectId, setName);
+      exp = await client.get<RuleSetExport>(
+        `/api/proxy-rule-sets/${ruleSetId}/export`,
+        `rule set "${setName}" (${ruleSetId}) export`,
+      );
+    } catch (err) {
+      if (err instanceof ApiError || err instanceof Error) return { ok: false, error: err.message };
+      return { ok: false, error: String(err) };
+    }
   }
 
-  const outDir = opts.output ? path.resolve(cwd, opts.output) : path.resolve(cwd, '.bffless', 'proxy-rules', exp.ruleSet.name);
+  const outDir = opts.output
+    ? path.resolve(cwd, opts.output)
+    : path.resolve(cwd, '.bffless', 'proxy-rules', exp.ruleSet.name);
 
-  const result = decompileExport(exp);
+  let result;
   try {
+    result = decompileExport(exp);
     await writeDecompiled(result, outDir, { force: opts.force });
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };

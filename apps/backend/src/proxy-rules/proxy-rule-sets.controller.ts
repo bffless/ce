@@ -32,6 +32,9 @@ import {
   ProxyRuleResponseDto,
   ProxyRulesListResponseDto,
   ImportProxyRuleSetDto,
+  ExportProxyRuleSetResponseDto,
+  SyncProxyRuleSetDto,
+  SyncProxyRuleSetResponseDto,
 } from './dto';
 import { ApiKeyGuard } from '../auth/api-key.guard';
 import { CurrentUser, CurrentUserData } from '../auth/decorators/current-user.decorator';
@@ -108,6 +111,70 @@ export class ProxyRuleSetsController {
       user.role || 'user',
       user.apiKeyProjectId,
     );
+  }
+
+  @Put('project/:projectId/sync')
+  @ApiOperation({
+    summary: 'Idempotently sync a rule set from a rules-as-code payload',
+    description:
+      'Declarative counterpart of import (Phase 1 of proxy-rules-as-code). The payload is the ' +
+      'desired state: rules match live rows on (pathPattern, method); only real differences are ' +
+      'written, live-only rules are deleted only under options.prune, bundled schemas resolve by ' +
+      'name, and blank header add values preserve the live secret. options.dryRun returns the ' +
+      'full change plan without writing. Stamps source (syncedAt/contentHash + caller-supplied ' +
+      'repo/path/gitSha) on the set and regenerates nginx when anything changed.',
+  })
+  @ApiParam({ name: 'projectId', type: 'string' })
+  @ApiResponse({
+    status: 200,
+    description: 'The sync change report (also the dryRun plan)',
+    type: SyncProxyRuleSetResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid payload (duplicate rule keys, forbidden targetUrl, strict schema mismatch)' })
+  @ApiResponse({ status: 403, description: 'Not authorized' })
+  @ApiResponse({ status: 404, description: 'Project not found' })
+  async sync(
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+    @Body() dto: SyncProxyRuleSetDto,
+    @CurrentUser() user: CurrentUserData,
+  ): Promise<SyncProxyRuleSetResponseDto> {
+    return this.proxyRuleSetsService.syncRuleSet(
+      projectId,
+      dto,
+      user.id,
+      user.role || 'user',
+      user.apiKeyProjectId,
+    );
+  }
+
+  // NOTE: declared before GET ':id' — Nest registers routes in declaration
+  // order, so the static '/export' segment must come first to guarantee it is
+  // never shadowed by the plain ':id' route.
+  @Get(':id/export')
+  @ApiOperation({
+    summary: 'Export a rule set as the canonical v2 envelope',
+    description:
+      'Server-side export (closes #448 — the export format is no longer a frontend contract). ' +
+      'Returns the v2 envelope accepted verbatim by the bffless CLI: rule keys in canonical ' +
+      'order (including methods), header add secret values blanked to empty strings, and the ' +
+      'schema definitions referenced by pipeline rules bundled under schemas (omitted when none).',
+  })
+  @ApiParam({ name: 'id', type: 'string' })
+  @ApiResponse({
+    status: 200,
+    description: 'The v2 export envelope',
+    type: ExportProxyRuleSetResponseDto,
+  })
+  @ApiResponse({ status: 403, description: 'Not authorized' })
+  @ApiResponse({ status: 404, description: 'Rule set not found' })
+  async export(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: CurrentUserData,
+  ): Promise<ExportProxyRuleSetResponseDto> {
+    const envelope = await this.proxyRuleSetsService.exportRuleSet(id, user.apiKeyProjectId);
+    // RuleSetExport is the runtime shape (db schema types); the DTO class only
+    // exists for Swagger — same bridging cast as the other rule responses.
+    return envelope as unknown as ExportProxyRuleSetResponseDto;
   }
 
   @Get(':id')

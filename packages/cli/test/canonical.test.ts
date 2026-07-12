@@ -122,4 +122,22 @@ describe('exportsEquivalent', () => {
     expect(r.equal).toBe(false);
     expect(r.diffs.some((d) => d.includes('debugEnabled'))).toBe(true);
   });
+  it('treats an absent targetUrl on a non-pipeline rule as equal to the DB default "" (server stores/export "")', () => {
+    // e.g. an email_form_handler authored without targetUrl: the sync import stores '' (DB
+    // column default — apps/backend sync-plan.util.ts normalizeRule) and the export returns ''.
+    const emailNoTarget: RuleSetExport = {
+      ...structuredClone(mini),
+      rules: [{ pathPattern: '/contact', method: 'POST', emailHandlerConfig: { to: 't@e.com' } } as any],
+    };
+    const emailEmptyTarget = structuredClone(emailNoTarget);
+    (emailEmptyTarget.rules[0] as any).targetUrl = '';
+    expect(exportsEquivalent(emailNoTarget, emailEmptyTarget).equal).toBe(true);
+
+    // A REAL targetUrl difference is still drift.
+    const emailRealTarget = structuredClone(emailNoTarget);
+    (emailRealTarget.rules[0] as any).targetUrl = 'https://mailer.example.com';
+    const r = exportsEquivalent(emailNoTarget, emailRealTarget);
+    expect(r.equal).toBe(false);
+    expect(r.diffs.some((d) => d.includes('targetUrl'))).toBe(true);
+  });
 });

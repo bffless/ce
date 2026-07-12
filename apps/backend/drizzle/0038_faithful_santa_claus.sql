@@ -1,0 +1,1 @@
+ALTER TABLE "proxy_rule_sets" ADD COLUMN "source" jsonb;
