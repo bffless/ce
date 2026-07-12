@@ -10,6 +10,13 @@
       "bump-patch-for-minor-pre-major": true,
       "draft": false,
       "prerelease": false
+    },
+    "packages/cli": {
+      "release-type": "node",
+      "component": "bffless",
+      "include-component-in-tag": true,
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": false
     }
   },
   "changelog-sections": [
