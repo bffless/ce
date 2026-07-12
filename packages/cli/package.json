@@ -1,11 +1,30 @@
 {
   "name": "bffless",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "BFFless CLI — proxy rules as code (build, validate, test, decompile)",
   "type": "module",
-  "license": "O'Saasy",
-  "engines": { "node": ">=18.0.0" },
-  "bin": { "bffless": "./dist/index.js" },
+  "license": "SEE LICENSE IN LICENSE.md",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bffless/ce.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://docs.bffless.app",
+  "bugs": {
+    "url": "https://github.com/bffless/ce/issues"
+  },
+  "keywords": [
+    "bffless",
+    "proxy-rules",
+    "cli",
+    "backend-for-frontend"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "bin": {
+    "bffless": "dist/index.js"
+  },
   "main": "./dist/index.js",
   "exports": {
     ".": "./dist/index.js",
@@ -13,11 +32,16 @@
     "./harness": "./dist/harness/run-handler.js",
     "./eslint": "./dist/lint/eslint-preset.js"
   },
-  "files": ["dist"],
+  "files": [
+    "dist",
+    "LICENSE.md",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "pnpm build && vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepublishOnly": "pnpm build"
   },
   "dependencies": {
     "commander": "^12.1.0",

@@ -95,3 +95,29 @@ jobs:
           api-key: ${{ secrets.ASSET_HOST_KEY }}
           description: 'Storybook component library for ${{ github.head_ref }}@${{ github.event.pull_request.head.sha }}'
           summary-title: Storybook
+
+  cli-tests:
+    name: CLI Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run CLI tests
+        run: pnpm --filter ./packages/cli test

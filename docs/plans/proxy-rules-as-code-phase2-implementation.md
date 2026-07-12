@@ -267,7 +267,7 @@ the actions' final input names — keep D's `action.yml` frozen after D2 or reco
 
 ## Track A — CE (`repos/ce`, branch `feat/proxy-rules-phase2`)
 
-### - [ ] Task A1 — CLI library entry (`bffless/lib`)
+### - [x] Task A1 — CLI library entry (`bffless/lib`)
 
 **Files**: new `packages/cli/src/lib.ts`; modify `packages/cli/package.json` (`exports`);
 new `packages/cli/test/lib.test.ts`.
@@ -306,7 +306,7 @@ via `execFile` and assert stdout `OK`, exit 0 (proves importing lib never runs c
 
 **Done when**: `cd packages/cli && pnpm test` green (build runs first via the test script).
 
-### - [ ] Task A2 — CLI publish readiness + CE CI wiring
+### - [x] Task A2 — CLI publish readiness + CE CI wiring
 
 **Files**: `packages/cli/package.json`, new `packages/cli/LICENSE.md` (copy repo-root
 license file; if the root has none, copy `repos/upload-artifact/LICENSE.md` — same
@@ -394,7 +394,7 @@ main (operator-gated; runs `prepublishOnly` build).
 
 ## Track B — artifact-client (`repos/artifact-client`, branch `fix/plural-proxy-rule-sets`)
 
-### - [ ] Task B1 — plural fields as real arrays + first test suite
+### - [x] Task B1 — plural fields as real arrays + first test suite
 
 **Files**: `src/types.ts`, `src/upload.ts`, new `__tests__/upload.test.ts`.
 
