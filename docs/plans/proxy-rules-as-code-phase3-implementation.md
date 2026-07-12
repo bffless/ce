@@ -907,7 +907,7 @@ content, verify every documented flag/command against the actual CLI source (`gi
 `packages/cli/src/index.ts`), since D/E were written from plan contracts. Fix rounds +
 re-review until clean.
 
-### - [ ] Task G2 — release checklist (operator-gated, in order)
+### - [x] Task G2 — release checklist (operator-gated, in order)
 
 1. **Operator**: `cd repos/ce/apps/backend && pnpm db:generate` (expect one new migration
    creating `proxy_rule_set_revisions`; name suggestion: accept default or
