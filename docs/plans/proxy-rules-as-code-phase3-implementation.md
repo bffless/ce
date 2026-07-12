@@ -655,7 +655,7 @@ before any watcher is created.
 
 Commit: `feat(cli): rules dev watch mode (local-first, opt-in suffixed push)`
 
-### - [ ] Task B4 — `rules revisions` + `rules rollback` commands
+### - [x] Task B4 — `rules revisions` + `rules rollback` commands
 
 **Files**:
 - Modify `packages/cli/src/api/client.ts` (add `post<T>(apiPath, body, lookup?)` — one-liner
@@ -700,7 +700,7 @@ Commit: `feat(cli): rules revisions + rules rollback commands`
 
 ## Track C — ce#459: CI npm publish for the CLI (`repos/ce`, same branch)
 
-### - [ ] Task C1 — release-please package + publish job
+### - [x] Task C1 — release-please package + publish job
 
 **Files**:
 - Modify `release-please-config.json`, `.release-please-manifest.json`
@@ -764,7 +764,7 @@ Commit: `ci: release-please + npm publish for packages/cli (ce#459)`
 
 ## Track F — skills-as-synced-resources memo (`repos/ce`, same branch)
 
-### - [ ] Task F1 — evaluation memo (design §3.5)
+### - [x] Task F1 — evaluation memo (design §3.5)
 
 **Files**:
 - Create `docs/plans/skills-as-synced-resources-memo.md`
