@@ -175,12 +175,18 @@ config? }[]`, unchanged from the canonical shape.
   `schemas/*.schema.yaml`.
 - **`{{secrets.NAME}}`** — a literal placeholder left in any string value (e.g.
   `targetUrl`, a `pipeline:` step's `config`). The compiler only *collects* every referenced
-  secret name (surfaced in `rules build`'s summary line, e.g. `1 secrets referenced`) — it
-  does not resolve or verify them against a live instance; that's a Phase 1 concern (see
-  below).
+  secret name (surfaced in `rules build`'s summary line, e.g. `1 secrets referenced`); it
+  never resolves the value locally. Verification happens server-side on `rules push`: the
+  sync endpoint checks the referenced names against the target project's `project_secrets`
+  and returns any with no matching row as `missingSecrets[]`, which `rules push` renders as a
+  `MISSING SECRETS (n) — set these in the project's secrets: …` line in the change report.
+  It is a **warning, not a failure** (exit `0`) — a fresh set legitimately has unfilled
+  placeholders until someone sets the secrets on the project.
 - **`headerConfig.add` secret placeholders** — committed as an **empty string**
   (`Authorization: ""`), not a `$secret:`/template form; a non-empty value is a hard build
-  error (see the table above).
+  error (see the table above). Blank header names land in the same `missingSecrets[]` list:
+  always for a newly created rule, and for an updated rule only when the live rule has no
+  non-empty value left to preserve.
 
 **The method escape hatch.** The filename/directory stem (`get`, `post`, …, `any`) is
 normally the sole source of a rule's HTTP method(s). `method:` inside a method-stem file
@@ -517,10 +523,12 @@ Per [the design doc's phasing](../../../docs/plans/proxy-rules-as-code.md#6-phas
 following are **planned but not implemented** in this package — do not write CI or docs
 that assume they exist:
 
-- **Secret verification** — the compiler collects `{{secrets.NAME}}` references (see the
-  manifest reference above) but never checks them against a target instance's
-  `project_secrets`; that check (`missingSecrets[]`, `--require-secrets`) is part of the
-  planned sync endpoint.
+- **Failing a push on missing secrets** — secret verification itself shipped: the sync
+  endpoint checks `{{secrets.NAME}}` references (and blank `headerConfig.add` values)
+  against the target project's `project_secrets` and `rules push` reports the misses (see
+  `{{secrets.NAME}}` in the manifest reference above). What does *not* exist is the design
+  doc's `--require-secrets` flag to escalate that warning: a push with unfilled secrets
+  always exits `0` today.
 - **`$secret: NAME` header placeholders** — the design doc's plan for `headerConfig.add`
   used a `$secret: NAME` reference form; what's actually implemented (see the manifest
   reference above) is a plain empty-string placeholder convention (`Authorization: ""`),
