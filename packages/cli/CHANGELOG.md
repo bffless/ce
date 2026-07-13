@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/bffless/ce/compare/bffless-v0.2.1...bffless-v0.2.2) (2026-07-13)
+
+
+### Bug Fixes
+
+* **cli:** let `rules rollback --to` accept the short revision ids the table prints ([#472](https://github.com/bffless/ce/issues/472)) ([fc2ff96](https://github.com/bffless/ce/commit/fc2ff964f41bfd0869c135a26ce9be4188235937)), closes [#465](https://github.com/bffless/ce/issues/465)
+
 ## [0.2.1](https://github.com/bffless/ce/compare/bffless-v0.2.0...bffless-v0.2.1) (2026-07-13)
 
 
