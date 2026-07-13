@@ -267,7 +267,11 @@ rules
       'revision with current: false; --to targets a specific revision id instead.',
   )
   .argument('<set-name>', 'rule set name within the configured project')
-  .option('--to <revisionId>', 'revision id to roll back to (default: newest non-current revision)')
+  .option(
+    '--to <revisionId>',
+    'revision to roll back to — a full uuid or any unique prefix, e.g. the 8-char id ' +
+      '`rules revisions` prints (default: newest non-current revision)',
+  )
   .option('--dry-run', 'compute and print the rollback change plan without writing anything')
   .option('--api-url <url>', 'API base URL (overrides BFFLESS_API_URL and config apiUrl)')
   .option('--api-key <key>', 'API key (overrides BFFLESS_API_KEY; sent as X-API-Key)')
