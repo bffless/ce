@@ -158,7 +158,15 @@ export function decompileExport(exp: RuleSetExport): DecompileResult {
     const segments = patternToRelPath(clone.pathPattern);
     const isCustom = segments === null;
     const baseSegments = isCustom ? ['_custom', slugForPattern(clone.pathPattern)] : segments!;
-    const stem = clone.method ? clone.method.toLowerCase() : 'any';
+    // A `methods:` list is only legal under an `any` stem, so it decides the stem — a rule
+    // carrying both (legacy dual-field rules) would otherwise land in a `<method>` stem whose
+    // manifest the compiler rejects. `methods[]` also wins at match time (backend
+    // method-match.ts), so the redundant `method` this drops is not load-bearing.
+    const stem = clone.methods?.length
+      ? 'any'
+      : clone.method
+        ? clone.method.toLowerCase()
+        : 'any';
 
     // 3. Directory shape iff any function_handler step exists.
     const allSteps: PipelineStep[] = clone.pipelineConfig

@@ -119,6 +119,40 @@ describe('decompileExport', () => {
     expect(manifest.pathPattern).toBe('/api/*.json');
   });
 
+  it('(b2) writes a rule carrying both method and methods under the any stem, and it recompiles', async () => {
+    // The live `handoff` set holds a legacy dual-field rule (bffless/ce#469). `methods[]` wins at
+    // match time (backend method-match.ts), so the only layout that can carry it is an `any` stem
+    // with `methods:` — a method stem would emit a manifest the compiler rejects.
+    const exp: RuleSetExport = {
+      version: 2,
+      exportedAt: EXPORTED_AT,
+      kind: 'bffless-proxy-rule-set',
+      ruleSet: { name: 'dual' },
+      rules: [
+        {
+          pathPattern: '/r/*',
+          method: 'GET',
+          methods: ['GET', 'HEAD'],
+          targetUrl: 'http://b',
+          proxyType: 'external_proxy',
+        },
+      ],
+    };
+    const { files } = decompileExport(exp);
+    const rel = 'rules/r/[...path]/any.rule.yaml';
+    expect([...files.keys()]).toContain(rel);
+    const manifest = parseYaml(files.get(rel)!) as Record<string, unknown>;
+    expect(manifest.methods).toEqual(['GET', 'HEAD']);
+    expect(manifest.method).toBeUndefined();
+
+    // …and the layout the decompiler emitted must survive its own compiler.
+    const dir = mkdtempSync(path.join(tmpdir(), 'bffless-decompile-dual-'));
+    writeFiles(dir, files);
+    const { export: out } = await buildRuleSet(dir, { exportedAt: EXPORTED_AT });
+    expect(out.rules[0].pathPattern).toBe('/r/*');
+    expect(out.rules[0].methods).toEqual(['GET', 'HEAD']);
+  });
+
   it('(d) warns on an unknown schema UUID and leaves it untouched', () => {
     const unknownId = '99999999-8888-4777-8666-555555555555';
     const exp: RuleSetExport = {
