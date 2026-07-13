@@ -91,6 +91,50 @@ describe('rules rollback', () => {
     expect(calls.some((c) => c.url === REVISIONS_URL)).toBe(false);
   });
 
+  it('--to accepts the 8-char short id the revisions table prints, expanding it to the full uuid', async () => {
+    const rollbackUrl = `${API_URL}/api/proxy-rule-sets/${SET_UUID}/rollback/${REV_OLDER_NONCURRENT}`;
+    const { fetchImpl, calls } = stubFetch({
+      ...setListRoute(),
+      [`GET ${REVISIONS_URL}`]: { body: { revisions: threeRevisions() } },
+      [`POST ${rollbackUrl}`]: { body: syncResponse() },
+    });
+    const shortId = REV_OLDER_NONCURRENT.slice(0, 8);
+    const result = await runRollback('basic', { to: shortId }, '/nowhere', { fetchImpl, env, config });
+    expect(result.ok, result.error).toBe(true);
+    expect(result.revisionId).toBe(REV_OLDER_NONCURRENT);
+    // The prefix must never reach the endpoint — the route's ParseUUIDPipe would 400 it.
+    expect(calls.some((c) => c.url.endsWith(`/rollback/${shortId}`))).toBe(false);
+  });
+
+  it('an ambiguous --to prefix fails client-side, naming the matches, with no rollback POST', async () => {
+    const revisions = [
+      { ...threeRevisions()[1], id: 'abcd1111-1111-4111-8111-111111111111' },
+      { ...threeRevisions()[2], id: 'abcd2222-2222-4222-8222-222222222222' },
+    ];
+    const { fetchImpl, calls } = stubFetch({
+      ...setListRoute(),
+      [`GET ${REVISIONS_URL}`]: { body: { revisions } },
+    });
+    const result = await runRollback('basic', { to: 'abcd' }, '/nowhere', { fetchImpl, env, config });
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/ambiguous/i);
+    expect(result.error).toContain('abcd1111-1111-4111-8111-111111111111');
+    expect(result.error).toContain('abcd2222-2222-4222-8222-222222222222');
+    expect(calls.some((c) => (c.init?.method ?? 'GET') === 'POST')).toBe(false);
+  });
+
+  it('a --to prefix matching no revision fails client-side, listing the short ids that do exist', async () => {
+    const { fetchImpl, calls } = stubFetch({
+      ...setListRoute(),
+      [`GET ${REVISIONS_URL}`]: { body: { revisions: threeRevisions() } },
+    });
+    const result = await runRollback('basic', { to: 'deadbeef' }, '/nowhere', { fetchImpl, env, config });
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/not found/i);
+    expect(result.error).toContain(REV_CURRENT.slice(0, 8));
+    expect(calls.some((c) => (c.init?.method ?? 'GET') === 'POST')).toBe(false);
+  });
+
   it('no non-current revision exists: ok false with a helpful message, and no rollback POST is made', async () => {
     const { fetchImpl, calls } = stubFetch({
       ...setListRoute(),

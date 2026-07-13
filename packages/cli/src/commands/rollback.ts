@@ -8,10 +8,15 @@
  * list is already newest-first, so that's simply the first non-current entry — erroring
  * loudly when there isn't one beats guessing (the only non-current revision to roll back to
  * IS the live state, i.e. there's nothing to revert).
+ *
+ * `--to` accepts either a full uuid (used as-is, no extra network call) or any unique prefix
+ * of one — notably the 8-char short id `rules revisions` prints, which is otherwise
+ * unusable because the rollback route guards `:revisionId` with a `ParseUUIDPipe`.
  */
 import { createClient, ApiError, type ClientDeps } from '../api/client.js';
 import { requireProject, resolveProjectId, resolveRuleSetId } from '../api/resolve.js';
 import { findConfig } from '../config.js';
+import { UUID_RE } from '../format/routes.js';
 import type { RevisionListItem, RevisionListResponse, SyncResponse } from '../api/sync-types.js';
 
 export interface RollbackOptions {
@@ -35,6 +40,32 @@ export function pickDefaultRollbackTarget(revisions: RevisionListItem[]): Revisi
   return revisions.find((r) => !r.current) ?? null;
 }
 
+/** Expand a `--to` value to a full revision uuid against the fetched list. A prefix that
+ *  matches exactly one revision wins; zero or several is an error naming the short ids that
+ *  DO exist, so a mistyped or stale id is a one-glance fix. Comparison is case-insensitive
+ *  because a uuid pasted from anywhere may be upper-cased. */
+export function resolveRevisionId(to: string, revisions: RevisionListItem[]): string {
+  if (to === '')
+    throw new Error(
+      '--to needs a revision id (a full uuid or a unique prefix, e.g. the 8-char id from `rules revisions`)',
+    );
+  const prefix = to.toLowerCase();
+  const matches = revisions.filter((r) => r.id.toLowerCase().startsWith(prefix));
+  if (matches.length === 1) return matches[0].id;
+
+  const available = revisions.map((r) => r.id.slice(0, 8));
+  if (matches.length === 0) {
+    throw new Error(
+      `revision "${to}" not found. Available revisions: ` +
+        `${available.length > 0 ? available.join(', ') : '(none captured yet)'}`,
+    );
+  }
+  const candidates = matches.map((r) => r.id).join(', ');
+  throw new Error(
+    `revision "${to}" is ambiguous — matches ${candidates}. Use a longer prefix or the full uuid.`,
+  );
+}
+
 export async function runRollback(
   setName: string,
   opts: RollbackOptions,
@@ -48,24 +79,33 @@ export async function runRollback(
     const projectId = await resolveProjectId(client, project);
     const ruleSetId = await resolveRuleSetId(client, projectId, setName);
 
-    let revisionId = opts.to;
-    if (!revisionId) {
+    // A full uuid goes straight to the rollback endpoint; anything else (a short id, a
+    // partial paste) has to be expanded against the list first — the route's ParseUUIDPipe
+    // rejects a prefix with a 400 before the handler ever runs.
+    const to = opts.to?.trim();
+    let revisionId = to;
+    if (to === undefined || !UUID_RE.test(to)) {
       const { revisions } = await client.get<RevisionListResponse>(
         `/api/proxy-rule-sets/${ruleSetId}/revisions`,
         `rule set "${setName}" (${ruleSetId}) revisions`,
       );
-      const target = pickDefaultRollbackTarget(revisions);
-      if (!target) {
-        return {
-          ok: false,
-          error:
-            `rule set "${setName}" has no non-current revision to roll back to — the current ` +
-            `state already IS the newest captured revision, so there is nothing to revert to. ` +
-            `Pass --to <revisionId> to target a specific revision explicitly (see \`bffless ` +
-            `rules revisions ${setName}\`).`,
-        };
+
+      if (to !== undefined) {
+        revisionId = resolveRevisionId(to, revisions);
+      } else {
+        const target = pickDefaultRollbackTarget(revisions);
+        if (!target) {
+          return {
+            ok: false,
+            error:
+              `rule set "${setName}" has no non-current revision to roll back to — the current ` +
+              `state already IS the newest captured revision, so there is nothing to revert to. ` +
+              `Pass --to <revisionId> to target a specific revision explicitly (see \`bffless ` +
+              `rules revisions ${setName}\`).`,
+          };
+        }
+        revisionId = target.id;
       }
-      revisionId = target.id;
     }
 
     const response = await client.post<SyncResponse>(

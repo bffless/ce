@@ -314,8 +314,9 @@ a1b2c3d4  2h ago   sync       12     current  bffless/ce@a1b2c3d
 e5f6a7b8  1d ago   rule_edit  11
 ```
 
-- **ID** — the first 8 characters of the revision's uuid (pass the full id, from this table
-  or `rules revisions` output, to `rules rollback --to`).
+- **ID** — the first 8 characters of the revision's uuid. Paste it straight into `rules
+  rollback --to`: any unique prefix of a revision's uuid resolves client-side against this
+  same list (an ambiguous prefix errors with the full ids that matched).
 - **CURRENT** — set when the revision's stored `contentHash` matches a hash of the live rule
   set, computed fresh per request (not a stored flag).
 - **SOURCE** — `repo@shortSha` when the revision carries rules-as-code provenance (i.e. it
@@ -328,11 +329,14 @@ identical `formatSyncReport` change-report — a rollback IS a sync. It never re
 current name (a warning is appended if they differ), and pruning is always on (`prune:
 true`) so rules absent from the snapshot are removed.
 
-**Target selection.** `--to <revisionId>` targets that revision explicitly (no extra network
-call — it goes straight to the rollback endpoint). Without `--to`, the default is **the
-newest revision with `current: false`** — i.e. "undo the most recent change." If every
-captured revision is already current (nothing to roll back to), the command fails with a
-message pointing at `--to` instead of guessing.
+**Target selection.** `--to <revisionId>` targets that revision explicitly. A full uuid goes
+straight to the rollback endpoint (no extra network call); anything shorter — the 8-char id
+from the table, or any other unique prefix — is expanded against `/revisions` first, because
+the rollback route parses `:revisionId` as a uuid and would otherwise reject it. A prefix
+matching no revision, or more than one, fails client-side without touching the endpoint.
+Without `--to`, the default is **the newest revision with `current: false`** — i.e. "undo the
+most recent change." If every captured revision is already current (nothing to roll back to),
+the command fails with a message pointing at `--to` instead of guessing.
 
 **`--dry-run`** computes and prints the change plan (`{"dryRun": true}` in the request body)
 without writing anything; a non-dry-run rollback additionally captures one new revision with
