@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/bffless/ce/compare/bffless-v0.2.0...bffless-v0.2.1) (2026-07-13)
+
+
+### Bug Fixes
+
+* **cli:** decompile a dual method/methods rule under the any stem ([#470](https://github.com/bffless/ce/issues/470)) ([dd9474b](https://github.com/bffless/ce/commit/dd9474bf85853142085d8ebb9aab71b8e80a60f3)), closes [#469](https://github.com/bffless/ce/issues/469)
+
 ## [0.2.0](https://github.com/bffless/ce/compare/bffless-v0.1.0...bffless-v0.2.0) (2026-07-12)
 
 
