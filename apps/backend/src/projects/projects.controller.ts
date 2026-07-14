@@ -546,10 +546,13 @@ export class ProjectsController {
 
   @Post()
   @UseGuards(ApiKeyGuard, RolesGuard)
-  @Roles('admin')
+  @Roles('admin', 'user')
   @ApiOperation({ summary: 'Create a new project' })
   @ApiResponse({ status: 201, description: 'Project created', type: ProjectResponseDto })
-  @ApiResponse({ status: 403, description: 'Members cannot create projects' })
+  @ApiResponse({
+    status: 403,
+    description: 'Requires the admin or user global role; members cannot create projects',
+  })
   async createProject(
     @Body() dto: CreateProjectDto,
     @CurrentUser('id') userId: string,
