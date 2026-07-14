@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/bffless/ce/compare/bffless-v0.2.2...bffless-v0.2.3) (2026-07-14)
+
+
+### Bug Fixes
+
+* **backend:** capture a revision when a schema generator writes proxy rules ([#475](https://github.com/bffless/ce/issues/475)) ([480fb74](https://github.com/bffless/ce/commit/480fb747534a10fd2701da5252814f4a27fd1490))
+
 ## [0.2.2](https://github.com/bffless/ce/compare/bffless-v0.2.1...bffless-v0.2.2) (2026-07-13)
 
 

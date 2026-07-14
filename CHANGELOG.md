@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.6](https://github.com/bffless/ce/compare/v0.2.5...v0.2.6) (2026-07-14)
+
+
+### Bug Fixes
+
+* **backend:** capture a revision when a schema generator writes proxy rules ([#475](https://github.com/bffless/ce/issues/475)) ([480fb74](https://github.com/bffless/ce/commit/480fb747534a10fd2701da5252814f4a27fd1490))
+
 ## [0.2.5](https://github.com/bffless/ce/compare/v0.2.4...v0.2.5) (2026-07-13)
 
 
