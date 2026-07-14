@@ -23,6 +23,8 @@ export { runRollback, pickDefaultRollbackTarget } from './commands/rollback.js';
 export type { RollbackOptions, RollbackOutcome } from './commands/rollback.js';
 export { runDev } from './commands/dev.js';
 export type { DevOptions, DevDeps, DevWatcher } from './commands/dev.js';
+export { runInit, SCHEMA_FIELD_TYPES } from './commands/init.js';
+export type { InitOptions, InitOutcome } from './commands/init.js';
 export { decompileExport, writeDecompiled } from './compile/decompile.js';
 export { canonicalizeExport, stringifyExport, exportsEquivalent } from './format/canonical.js';
 export type { RuleSetExport, ExportedRule, ExportedSchema } from './format/types.js';

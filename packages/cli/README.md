@@ -16,6 +16,7 @@ pnpm add -D bffless              # or pin it as a devDependency
 
 ## Commands
 
+- `bffless rules init --schema <name> [dir]` — scaffold `schemas/<name>.schema.yaml` in a rule-set directory (schemas sync by name on push; no pre-created server id needed).
 - `bffless rules build [dirs...]` — compile an authoring rule-set directory to a canonical export JSON.
 - `bffless rules validate [dirs...]` — validate an authoring rule-set directory.
 - `bffless rules test [dirs...]` — run declarative handler fixtures (`*.fn.test.yaml`).
