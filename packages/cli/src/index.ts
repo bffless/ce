@@ -10,6 +10,7 @@ import { runDiffOne } from './commands/diff.js';
 import { runRevisionsList, formatRevisionsTable } from './commands/revisions.js';
 import { runRollback } from './commands/rollback.js';
 import { runDev, type DevOptions } from './commands/dev.js';
+import { runInit } from './commands/init.js';
 
 /** `<file>:<line> <message>` when `line` is present, `<file> <message>` otherwise. */
 function formatIssue(issue: Issue): string {
@@ -30,7 +31,39 @@ function resolveDirsOrReport(dirs: string[]): string[] | null {
 const program = new Command('bffless').description('BFFless CLI');
 const rules = program
   .command('rules')
-  .description('Proxy rule sets as code (build, validate, test, pull, push, diff, revisions, rollback, dev)');
+  .description('Proxy rule sets as code (init, build, validate, test, pull, push, diff, revisions, rollback, dev)');
+
+/** Commander option collector for repeatable flags. */
+function collect(value: string, previous: string[]): string[] {
+  return previous.concat(value);
+}
+
+rules
+  .command('init')
+  .description(
+    'Scaffold authoring files in a rule-set directory. Currently: --schema <name> writes ' +
+      'schemas/<name>.schema.yaml — schemas sync by name on `rules push` (created in the ' +
+      'project when missing), so no pre-created server id is needed.',
+  )
+  .argument('[dir]', 'rule-set directory (defaults to the single .bffless/config.json ruleSets match)')
+  .option('--schema <name>', 'generate schemas/<name>.schema.yaml')
+  .option(
+    '--field <name:type[:required]>',
+    'schema field, repeatable; types: string|number|boolean|email|text|datetime|json',
+    collect,
+    [],
+  )
+  .option('--force', 'overwrite an existing file')
+  .action((dir: string | undefined, opts: { schema?: string; field?: string[]; force?: boolean }) => {
+    const result = runInit(dir, opts, process.cwd());
+    if (!result.ok) {
+      console.error(result.error);
+      process.exitCode = 1;
+      return;
+    }
+    console.log(result.outFile);
+    if (result.hint) console.log(result.hint);
+  });
 
 rules
   .command('build')

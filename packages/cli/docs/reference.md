@@ -121,6 +121,31 @@ file** (`get.rule.yaml`) for a rule with no extracted code, or a **directory**
 its manifest. `rules pull --decompile` picks the directory form automatically, exactly when
 a rule's pipeline has at least one `function_handler` step.
 
+## `rules init` — scaffolding
+
+`rules init --schema <name> [dir]` writes `schemas/<name>.schema.yaml` into a rule-set
+directory (`[dir]` defaults to the nearest config's `ruleSets` — it must resolve to exactly
+one set, since a schema belongs to one set). There is **no chicken-and-egg step**: the
+generated manifest has no `id`, because schemas sync **by name** on `rules push` — the
+server creates a missing schema (assigning its real id) and reuses an existing same-name
+one. Reference it from a rule pipeline as `$schema:<name>`.
+
+```console
+$ npx bffless rules init --schema comments --field author:string:required --field body:text
+/path/to/project/.bffless/proxy-rules/basic/schemas/comments.schema.yaml
+reference it from a rule pipeline as $schema:comments
+```
+
+- `--field <name>:<type>[:required|optional]` — repeatable; types are
+  `string | number | boolean | email | text | datetime | json`. Omitted modifier means
+  optional. With no `--field` at all, the file gets `fields: []` plus a commented example.
+- `--force` — overwrite an existing `schemas/<name>.schema.yaml`.
+
+One sharp edge the generated header comment also warns about: **push never changes the
+fields of an existing live schema** — the live definition wins (a mismatch is a warning,
+or a hard error under `push --strict-schemas`). Settle fields before the first push; after
+that, live field changes happen in the dashboard.
+
 ## Rule manifest reference (`*.rule.yaml` / `rule.yaml`)
 
 Every key is optional except where a stem/escape hatch fills it in; unknown keys are a
