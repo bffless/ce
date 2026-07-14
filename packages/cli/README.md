@@ -31,6 +31,9 @@ when `[dirs...]` is omitted.
 - API URL: `--api-url` > `BFFLESS_API_URL` env > `.bffless/config.json`'s `apiUrl`.
 - API key: `--api-key` > `BFFLESS_API_KEY` env only (never read from config, so it's safe to commit).
 - Project: `--project` > `.bffless/config.json`'s `project` (UUID, `owner/name`, or bare name).
+  Prefer a UUID or `owner/name`: both resolve for any user with a role on the project. A bare
+  name has to be matched against `GET /api/projects`, which lists only the projects the API
+  key's user *created* — so it won't find a project that was merely shared with them.
 
 `.bffless/config.json` (`{ apiUrl?, project?, ruleSets? }`) is discovered by walking up from
 the current directory and is safe to commit — it never holds secrets.
