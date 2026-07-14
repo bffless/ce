@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.4](https://github.com/bffless/ce/compare/bffless-v0.2.3...bffless-v0.2.4) (2026-07-14)
+
+
+### Bug Fixes
+
+* **cli:** resolve owner/name projects via the access-scoped endpoint ([#477](https://github.com/bffless/ce/issues/477)) ([07fafac](https://github.com/bffless/ce/commit/07fafacfc4eb770f72938dc5874e1a22481d6e44))
+
 ## [0.2.3](https://github.com/bffless/ce/compare/bffless-v0.2.2...bffless-v0.2.3) (2026-07-14)
 
 
