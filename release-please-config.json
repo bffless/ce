@@ -6,6 +6,7 @@
     ".": {
       "changelog-path": "CHANGELOG.md",
       "release-type": "node",
+      "package-name": "",
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": true,
       "draft": false,
