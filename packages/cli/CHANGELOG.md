@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.5](https://github.com/bffless/ce/compare/bffless-v0.2.4...bffless-v0.2.5) (2026-07-14)
+
+
+### Features
+
+* **cli:** action-friendly lib — overridable remediation, applyNameSuffix, name on PushOutcome ([#478](https://github.com/bffless/ce/issues/478)) ([adc74b3](https://github.com/bffless/ce/commit/adc74b34e70e765c9c31fa0c58fd0bfa62b11e1d))
+
 ## [0.2.4](https://github.com/bffless/ce/compare/bffless-v0.2.3...bffless-v0.2.4) (2026-07-14)
 
 

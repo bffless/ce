@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.8](https://github.com/bffless/ce/compare/v0.2.7...v0.2.8) (2026-07-14)
+
+
+### Features
+
+* **cli:** action-friendly lib — overridable remediation, applyNameSuffix, name on PushOutcome ([#478](https://github.com/bffless/ce/issues/478)) ([adc74b3](https://github.com/bffless/ce/commit/adc74b34e70e765c9c31fa0c58fd0bfa62b11e1d))
+
+
+### Bug Fixes
+
+* **proxy-rules:** re-encrypt header add secrets when copying a rule set ([#480](https://github.com/bffless/ce/issues/480)) ([5da2242](https://github.com/bffless/ce/commit/5da22428d2134c2e4e3f316f14c31a161256e731)), closes [#452](https://github.com/bffless/ce/issues/452)
+
 ## [0.2.7](https://github.com/bffless/ce/compare/v0.2.6...v0.2.7) (2026-07-14)
 
 
