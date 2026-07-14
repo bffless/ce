@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { runPushOne, formatSyncReport } from '../src/commands/push.js';
+import { runPushOne, formatSyncReport, applyNameSuffix } from '../src/commands/push.js';
 import type { PushDeps } from '../src/commands/push.js';
 import type { SyncResponse, SyncRequestBody } from '../src/api/sync-types.js';
 import { API_URL, PROJECT_UUID, SET_UUID, basicSrcDir, stubFetch } from './live-helpers.js';
@@ -99,6 +99,40 @@ describe('rules push', () => {
     expect(result.report).toContain('[set created]');
   });
 
+  it('outcome.name carries the synced name, suffix applied — no second build needed to learn it', async () => {
+    const plain = await runPushOne(basicSrcDir, {}, '/nowhere', pushDeps(syncResponse()));
+    expect(plain.name).toBe('basic');
+
+    const suffixed = pushDeps(syncResponse());
+    const result = await runPushOne(basicSrcDir, { nameSuffix: 'pr-42' }, '/nowhere', suffixed);
+    expect(result.name).toBe('basic-pr-42');
+    expect(result.name).toBe(suffixed.sentBody().ruleSet.name); // exactly what was synced
+  });
+
+  it('outcome.name survives a failed sync (the set compiled; only the HTTP call failed)', async () => {
+    const d = pushDeps({ status: 500, body: { message: 'boom' } });
+    const result = await runPushOne(basicSrcDir, { nameSuffix: 'pr-9' }, '/nowhere', d);
+    expect(result.ok).toBe(false);
+    expect(result.name).toBe('basic-pr-9');
+  });
+
+  it('remediation overrides re-word the auth and project errors for a non-CLI embedder', async () => {
+    const auth = pushDeps({ status: 401, body: { message: 'Unauthorized' } }, {
+      remediation: { auth: 'Check the `api-key` input on the action.' },
+    });
+    const authResult = await runPushOne(basicSrcDir, {}, '/nowhere', auth);
+    expect(authResult.error).toContain('Check the `api-key` input on the action.');
+    expect(authResult.error).not.toContain('--api-key');
+
+    const noProject = pushDeps(syncResponse(), {
+      config: { apiUrl: API_URL }, // no project in config, none in opts
+      remediation: { project: 'Set the `project` input on the action.' },
+    });
+    const projectResult = await runPushOne(basicSrcDir, {}, '/nowhere', noProject);
+    expect(projectResult.ok).toBe(false);
+    expect(projectResult.error).toBe('no project configured — Set the `project` input on the action.');
+  });
+
   it('pruneCandidates are called out as would-prune hints', async () => {
     const d = pushDeps(syncResponse({ pruneCandidates: [{ pathPattern: '/api/legacy', method: 'DELETE' }] }));
     const result = await runPushOne(basicSrcDir, {}, '/nowhere', d);
@@ -140,6 +174,7 @@ describe('rules push', () => {
     });
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/no ruleset\.yaml/);
+    expect(result.name).toBeUndefined(); // nothing compiled, so there is no name to report
     expect(calls).toHaveLength(0);
   });
 
@@ -192,6 +227,15 @@ describe('rules push', () => {
     const result = await runPushOne(dir, {}, '/nowhere', d);
     expect(result.ok, result.error).toBe(true);
     expect(d.sentBody().rules[0].pipelineConfig?.validators).toEqual([{ type: 'auth_required', config: {} }]);
+  });
+});
+
+describe('applyNameSuffix', () => {
+  it('appends the suffix, and is a no-op for every falsy suffix', () => {
+    expect(applyNameSuffix('basic', 'pr-42')).toBe('basic-pr-42');
+    expect(applyNameSuffix('basic')).toBe('basic');
+    // '' is "unset", not an empty suffix — it must never yield the trailing-dash name "basic-".
+    expect(applyNameSuffix('basic', '')).toBe('basic');
   });
 });
 

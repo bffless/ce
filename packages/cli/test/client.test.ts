@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { ApiClient, ApiError, createClient, type FetchLike } from '../src/api/client.js';
+import { CLI_REMEDIATION, resolveRemediation } from '../src/api/remediation.js';
+import { requireProject } from '../src/api/resolve.js';
 
 interface RecordedCall {
   url: string;
@@ -160,5 +162,47 @@ describe('createClient — precedence and sourcing rules', () => {
     expect(() => createClient({}, '/nowhere', { env: {}, config, fetchImpl: okFetch })).toThrow(
       /--api-key or set BFFLESS_API_KEY.*never read from \.bffless\/config\.json/s,
     );
+  });
+});
+
+describe('remediation overrides', () => {
+  it('an override replaces the CLI wording; unset fields keep the default', () => {
+    const remediation = { apiKey: 'set the `api-key` input on the action' };
+
+    expect(() =>
+      createClient({ apiUrl: 'https://api.test' }, '/nowhere', { env: {}, config: null, remediation }),
+    ).toThrow('no API key configured — set the `api-key` input on the action');
+    // apiUrl was not overridden, so it still names the CLI's own affordances.
+    expect(() => createClient({}, '/nowhere', { env: {}, config: null, remediation })).toThrow(
+      /--api-url.*BFFLESS_API_URL/s,
+    );
+  });
+
+  it('the auth (401/403) hint is overridable and drops every CLI-only affordance', async () => {
+    const client = new ApiClient({
+      apiUrl: 'https://api.test',
+      apiKey: 'bad',
+      fetchImpl: stubFetch({ 'GET https://api.test/api/x': { status: 401 } }).fetchImpl,
+      remediation: { auth: 'The `api-key` input is sent as X-API-Key; check the repo secret.' },
+    });
+    await expect(client.get('/api/x')).rejects.toThrow(
+      /HTTP 401 .*authentication failed.* The `api-key` input is sent as X-API-Key/s,
+    );
+    await expect(client.get('/api/x')).rejects.not.toThrow(/--api-key/);
+  });
+
+  it('requireProject uses the override, and CLI_REMEDIATION when there is none', () => {
+    expect(() => requireProject(undefined, undefined)).toThrow(/--project/);
+    expect(() => requireProject(undefined, undefined, { project: 'set the `project` input' })).toThrow(
+      'no project configured — set the `project` input',
+    );
+    expect(requireProject('flag-project', 'config-project')).toBe('flag-project');
+  });
+
+  it('resolveRemediation merges over the CLI defaults', () => {
+    const merged = resolveRemediation({ project: 'X' });
+    expect(merged.project).toBe('X');
+    expect(merged.apiKey).toBe(CLI_REMEDIATION.apiKey);
+    expect(resolveRemediation()).toEqual(CLI_REMEDIATION);
   });
 });

@@ -13,7 +13,7 @@ export type { BuildOutcome } from './commands/build.js';
 export { validateRuleSet } from './commands/validate.js';
 export type { Issue } from './commands/validate.js';
 export { runFnTests } from './commands/test.js';
-export { runPushOne, formatSyncReport } from './commands/push.js';
+export { runPushOne, formatSyncReport, applyNameSuffix } from './commands/push.js';
 export type { PushOptions, PushOutcome, PushDeps } from './commands/push.js';
 export { runDiffOne } from './commands/diff.js';
 export type { DiffOptions, DiffOutcome } from './commands/diff.js';
@@ -38,3 +38,5 @@ export type {
 } from './api/sync-types.js';
 export { ApiClient, createClient, ApiError } from './api/client.js';
 export type { ClientDeps, FetchLike } from './api/client.js';
+export { CLI_REMEDIATION, resolveRemediation } from './api/remediation.js';
+export type { Remediation } from './api/remediation.js';

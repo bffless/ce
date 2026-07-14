@@ -517,6 +517,37 @@ rules/api/d/post/bad.fn.js:2 Prohibited pattern detected: \bprocess\s*\.
 rules/api/e/post.rule.yaml skill "does-not-exist" not found in ../../skills/
 ```
 
+## Embedding (`bffless/lib`)
+
+`bffless/lib` is the side-effect-free subpath export (`dist/lib.js`) — importing it never
+runs commander, so it is safe to bundle into something that is not a terminal. The
+[deploy-proxy-rules Action](https://github.com/bffless/deploy-proxy-rules) is built on it.
+
+```ts
+import { runPushOne, applyNameSuffix } from 'bffless/lib';
+
+const outcome = await runPushOne(setDir, { nameSuffix: 'pr-42', apiUrl, apiKey, project }, cwd, {
+  // Config/auth errors default to CLI wording ("pass --api-key…"). An embedder with no
+  // flags overrides the fields its own user can act on; the rest keep the default.
+  remediation: {
+    apiKey: 'set the `api-key` input on the action',
+    project: 'set the `project` input on the action',
+    auth: 'The `api-key` input is sent as the X-API-Key header — check the repo secret.',
+  },
+});
+
+outcome.name; // 'my-set-pr-42' — the name actually synced, suffix applied
+```
+
+- **`PushOutcome.name`** is the post-suffix set name, present whenever the set compiled
+  (including when the sync then failed). Read it instead of re-running `buildRuleSet` to
+  learn what a push was called.
+- **`applyNameSuffix(name, suffix)`** is the preview-deploy naming rule (`<name>-<suffix>`,
+  and a no-op when `suffix` is empty or absent) that `runPushOne` applies internally. Use it
+  rather than re-deriving `${name}-${suffix}`, which drifts.
+- **`remediation`** rides on `ClientDeps`, so it applies to every command that takes deps
+  (`runPushOne`, `runDiffOne`, `runRollback`, …). `CLI_REMEDIATION` holds the defaults.
+
 ## Not yet
 
 Per [the design doc's phasing](../../../docs/plans/proxy-rules-as-code.md#6-phasing), the
