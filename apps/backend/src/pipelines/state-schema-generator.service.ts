@@ -5,6 +5,8 @@ import { PermissionsService } from '../permissions/permissions.service';
 import { GenerateStateSchemaDto, GenerateStateSchemaResponseDto } from './dto';
 import type { SchemaField } from '../db/schema/pipeline-schemas.schema';
 import type { PipelineConfig, PipelineStepConfig } from '../db/schema/proxy-rules.schema';
+import type { ProxyRuleSet } from '../db/schema/proxy-rule-sets.schema';
+import { SchemaGeneratorRevisionsService } from './schema-generator-revisions.service';
 import { eq, and } from 'drizzle-orm';
 
 /**
@@ -15,7 +17,10 @@ import { eq, and } from 'drizzle-orm';
 export class StateSchemaGeneratorService {
   private readonly logger = new Logger(StateSchemaGeneratorService.name);
 
-  constructor(private readonly permissionsService: PermissionsService) {}
+  constructor(
+    private readonly permissionsService: PermissionsService,
+    private readonly revisions: SchemaGeneratorRevisionsService,
+  ) {}
 
   /**
    * Generate a state schema with GET and POST pipelines.
@@ -72,7 +77,7 @@ export class StateSchemaGeneratorService {
     this.logger.log(`Created state schema '${dto.name}' (${schema.id})`);
 
     // Use existing rule set or create a new one
-    let ruleSet: { id: string; name: string };
+    let ruleSet: ProxyRuleSet;
 
     if (dto.ruleSetId) {
       // Verify the rule set exists and belongs to this project
@@ -108,6 +113,11 @@ export class StateSchemaGeneratorService {
       ruleSet = newRuleSet;
       this.logger.log(`Created rule set '${ruleSet.name}' (${ruleSet.id})`);
     }
+
+    // Backfill, pre-mutation: adding rules to an existing set is destructive
+    // for revision-history purposes, so snapshot its pre-generate state if it
+    // has none yet. No-ops for the set we just created (it has no rules).
+    await this.revisions.backfill(ruleSet, userId);
 
     // Create GET and POST pipelines
     const pipelines: { id: string; path: string; method: string }[] = [];
@@ -160,6 +170,10 @@ export class StateSchemaGeneratorService {
     });
 
     this.logger.log(`Created ${pipelines.length} pipelines for state schema '${dto.name}'`);
+
+    // Post-write, best-effort: capture the generated state so a later rollback
+    // can't restore a revision that predates these rules and prune them away.
+    await this.revisions.capture(ruleSet, dto.ruleSetId ? 'rule_edit' : 'create', userId);
 
     return {
       schema: {

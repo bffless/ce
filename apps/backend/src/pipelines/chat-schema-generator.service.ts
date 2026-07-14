@@ -6,6 +6,8 @@ import { ProjectAISettingsService, AIProviderType } from '../projects/project-ai
 import { GenerateChatSchemaDto, GenerateChatSchemaResponseDto } from './dto/generate-chat-schema.dto';
 import type { SchemaField } from '../db/schema/pipeline-schemas.schema';
 import type { PipelineConfig, PipelineStepConfig } from '../db/schema/proxy-rules.schema';
+import type { ProxyRuleSet } from '../db/schema/proxy-rule-sets.schema';
+import { SchemaGeneratorRevisionsService } from './schema-generator-revisions.service';
 import { eq, and } from 'drizzle-orm';
 
 /**
@@ -19,6 +21,7 @@ export class ChatSchemaGeneratorService {
   constructor(
     private readonly permissionsService: PermissionsService,
     private readonly projectAISettingsService: ProjectAISettingsService,
+    private readonly revisions: SchemaGeneratorRevisionsService,
   ) {}
 
   /**
@@ -127,7 +130,7 @@ export class ChatSchemaGeneratorService {
     this.logger.log(`Created messages schema '${messagesName}' (${messagesSchema.id})`);
 
     // Use existing rule set or create a new one
-    let ruleSet: { id: string; name: string };
+    let ruleSet: ProxyRuleSet;
 
     if (dto.ruleSetId) {
       // Verify the rule set exists and belongs to this project
@@ -163,6 +166,11 @@ export class ChatSchemaGeneratorService {
       ruleSet = newRuleSet;
       this.logger.log(`Created rule set '${ruleSet.name}' (${ruleSet.id})`);
     }
+
+    // Backfill, pre-mutation: adding rules to an existing set is destructive
+    // for revision-history purposes, so snapshot its pre-generate state if it
+    // has none yet. No-ops for the set we just created (it has no rules).
+    await this.revisions.backfill(ruleSet, userId);
 
     // Create /api/chat pipelines (GET + POST)
     const pipelines: { id: string; path: string; method: string }[] = [];
@@ -212,6 +220,10 @@ export class ChatSchemaGeneratorService {
     pipelines.push({ id: chatRule.id, path: chatPath, method: 'POST' });
 
     this.logger.log(`Created chat pipelines for '${dto.name}'`);
+
+    // Post-write, best-effort: capture the generated state so a later rollback
+    // can't restore a revision that predates these rules and prune them away.
+    await this.revisions.capture(ruleSet, dto.ruleSetId ? 'rule_edit' : 'create', userId);
 
     return {
       conversationsSchema: {

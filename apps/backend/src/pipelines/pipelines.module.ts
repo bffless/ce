@@ -6,6 +6,7 @@ import { PipelineDataService } from './pipeline-data.service';
 import { StateSchemaGeneratorService } from './state-schema-generator.service';
 import { ChatSchemaGeneratorService } from './chat-schema-generator.service';
 import { UploadSchemaGeneratorService } from './upload-schema-generator.service';
+import { SchemaGeneratorRevisionsService } from './schema-generator-revisions.service';
 import { UploadRecordService } from './upload-record.service';
 import {
   PipelineExecutionService,
@@ -18,6 +19,7 @@ import { PermissionsModule } from '../permissions/permissions.module';
 import { SettingsModule } from '../settings/settings.module';
 import { ProjectsModule } from '../projects/projects.module';
 import { CacheRulesModule } from '../cache-rules/cache-rules.module';
+import { ProxyRulesModule } from '../proxy-rules/proxy-rules.module';
 // Step handlers
 import {
   FormHandler,
@@ -85,6 +87,11 @@ import {
     forwardRef(() => ProjectsModule),
     CacheRulesModule,
     forwardRef(() => IntegrationsModule),
+    // forwardRef: ProxyRulesModule already imports PipelinesModule (for the
+    // execution service). The schema generators need the reverse edge —
+    // ProxyRulesService + ProxyRuleSetRevisionsService — to capture a revision
+    // for the rule sets they write.
+    forwardRef(() => ProxyRulesModule),
   ],
   controllers: [
     PipelineSchemasController,
@@ -98,6 +105,8 @@ import {
     StateSchemaGeneratorService,
     ChatSchemaGeneratorService,
     UploadSchemaGeneratorService,
+    // Revision capture shared by the three generators above
+    SchemaGeneratorRevisionsService,
     // Shared upload bookkeeping (used by file_upload + register_upload handlers)
     UploadRecordService,
     // Execution engine
