@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.7](https://github.com/bffless/ce/compare/v0.2.6...v0.2.7) (2026-07-14)
+
+
+### Bug Fixes
+
+* **cli:** resolve owner/name projects via the access-scoped endpoint ([#477](https://github.com/bffless/ce/issues/477)) ([07fafac](https://github.com/bffless/ce/commit/07fafacfc4eb770f72938dc5874e1a22481d6e44))
+
 ## [0.2.6](https://github.com/bffless/ce/compare/v0.2.5...v0.2.6) (2026-07-14)
 
 
