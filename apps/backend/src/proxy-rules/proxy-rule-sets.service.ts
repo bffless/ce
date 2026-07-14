@@ -522,36 +522,39 @@ export class ProxyRuleSetsService {
       })
       .returning();
 
-    // Copy all rules from the original rule set
-    const copiedRules: (typeof proxyRules.$inferSelect)[] = [];
+    // Copy all rules from the original rule set. existingRules arrive DECRYPTED
+    // (getRulesByRuleSetId decrypts header `add` values), so they must be
+    // re-encrypted on the way back into storage — same as importRuleSet.
     for (const rule of existingRules) {
-      const [newRule] = await db
-        .insert(proxyRules)
-        .values({
-          ruleSetId: newRuleSet.id,
-          pathPattern: rule.pathPattern,
-          method: rule.method,
-          methods: rule.methods ?? null,
-          targetUrl: rule.targetUrl,
-          stripPrefix: rule.stripPrefix,
-          order: rule.order,
-          timeout: rule.timeout,
-          preserveHost: rule.preserveHost,
-          forwardCookies: rule.forwardCookies,
-          headerConfig: rule.headerConfig,
-          authTransform: rule.authTransform,
-          internalRewrite: rule.internalRewrite,
-          proxyType: rule.proxyType,
-          emailHandlerConfig: rule.emailHandlerConfig,
-          pipelineConfig: rule.pipelineConfig,
-          isEnabled: rule.isEnabled,
-          description: rule.description,
-        })
-        .returning();
-      copiedRules.push(newRule);
+      await db.insert(proxyRules).values({
+        ruleSetId: newRuleSet.id,
+        pathPattern: rule.pathPattern,
+        method: rule.method,
+        methods: rule.methods ?? null,
+        targetUrl: rule.targetUrl,
+        stripPrefix: rule.stripPrefix,
+        order: rule.order,
+        timeout: rule.timeout,
+        preserveHost: rule.preserveHost,
+        forwardCookies: rule.forwardCookies,
+        headerConfig: this.proxyRulesService.encryptHeaderConfigForStorage(rule.headerConfig),
+        authTransform: rule.authTransform,
+        internalRewrite: rule.internalRewrite,
+        proxyType: rule.proxyType,
+        emailHandlerConfig: rule.emailHandlerConfig,
+        pipelineConfig: rule.pipelineConfig,
+        isEnabled: rule.isEnabled,
+        description: rule.description,
+      });
     }
 
-    this.logger.log(`Copied proxy rule set ${id} to ${newRuleSet.id} with ${copiedRules.length} rules`);
+    this.logger.log(
+      `Copied proxy rule set ${id} to ${newRuleSet.id} with ${existingRules.length} rules`,
+    );
+
+    // Read the rules back decrypted: both the revision snapshot and the API
+    // response carry plaintext header values, not the stored ciphertext.
+    const copiedRules = await this.proxyRulesService.getRulesByRuleSetId(newRuleSet.id);
 
     // Post-commit, best-effort: snapshot the copy's own rules (not the
     // source set's revisions — the copy is a new set with its own history).

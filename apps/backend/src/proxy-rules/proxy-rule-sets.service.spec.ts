@@ -921,24 +921,41 @@ describe('ProxyRuleSetsService', () => {
   });
 
   describe('copy', () => {
-    it('captures a revision with trigger "copy" carrying the copied rules (not the source set)', async () => {
+    /**
+     * Wires the DB-mock slots and the source/read-back halves of
+     * getRulesByRuleSetId for a single-rule copy. The read-back is what the
+     * response and the revision snapshot are built from, so it returns the
+     * DECRYPTED copy of the rule, exactly like the real service.
+     */
+    const arrangeCopy = (sourceRule: ReturnType<typeof createMockRule>) => {
       const existingRuleSet = createMockRuleSet();
-      const existingRule = createMockRule();
       const newRuleSet = createMockRuleSet({ id: 'copy-set-id', name: 'api-backend (Copy)' });
-      const copiedRule = createMockRule({ id: 'copied-rule-1', ruleSetId: 'copy-set-id' });
+      const copiedRule = createMockRule({
+        ...sourceRule,
+        id: 'copied-rule-1',
+        ruleSetId: 'copy-set-id',
+      });
 
       mockDb.__setResults([
         [existingRuleSet], // findById
         [], // findByName uniqueness probe: no collision
         [newRuleSet], // insert rule set … returning
-        [copiedRule], // insert rule … returning
       ]);
-      mockProxyRulesService.getRulesByRuleSetId.mockResolvedValue([existingRule]);
+      mockProxyRulesService.getRulesByRuleSetId
+        .mockResolvedValueOnce([sourceRule]) // source rules (decrypted)
+        .mockResolvedValueOnce([copiedRule]); // read-back of the inserted copies
+
+      return { newRuleSet, copiedRule };
+    };
+
+    it('captures a revision with trigger "copy" carrying the copied rules (not the source set)', async () => {
+      const { newRuleSet, copiedRule } = arrangeCopy(createMockRule());
 
       const result = await service.copy('rule-set-1', 'user-1', 'admin', 'project-1');
 
       expect(result.id).toBe('copy-set-id');
       expect(result.rules).toEqual([copiedRule]);
+      expect(mockProxyRulesService.getRulesByRuleSetId).toHaveBeenNthCalledWith(2, 'copy-set-id');
       expect(mockProxyRuleSetRevisionsService.capture).toHaveBeenCalledTimes(1);
       expect(mockProxyRuleSetRevisionsService.capture).toHaveBeenCalledWith({
         ruleSet: newRuleSet,
@@ -946,6 +963,28 @@ describe('ProxyRuleSetsService', () => {
         trigger: 'copy',
         userId: 'user-1',
       });
+    });
+
+    // Regression: copy() used to insert rule.headerConfig verbatim. Source rules
+    // arrive DECRYPTED from getRulesByRuleSetId, so that stored header `add`
+    // secrets as plaintext at rest (#452).
+    it('re-encrypts header add values before storing the copied rules', async () => {
+      const decryptedHeaderConfig = { add: { 'X-Api-Key': 'super-secret' }, remove: [] };
+      const encryptedHeaderConfig = { add: { 'X-Api-Key': 'iv:ciphertext' }, remove: [] };
+      mockProxyRulesService.encryptHeaderConfigForStorage.mockReturnValueOnce(
+        encryptedHeaderConfig,
+      );
+      arrangeCopy(createMockRule({ headerConfig: decryptedHeaderConfig }));
+
+      await service.copy('rule-set-1', 'user-1', 'admin', 'project-1');
+
+      expect(mockProxyRulesService.encryptHeaderConfigForStorage).toHaveBeenCalledWith(
+        decryptedHeaderConfig,
+      );
+      // values() call 0 is the rule set insert; call 1 is the rule insert.
+      const insertedRule = mockDb.values.mock.calls[1][0] as { headerConfig: unknown };
+      expect(insertedRule.headerConfig).toEqual(encryptedHeaderConfig);
+      expect(insertedRule.headerConfig).not.toEqual(decryptedHeaderConfig);
     });
   });
 
