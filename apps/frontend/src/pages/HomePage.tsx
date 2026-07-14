@@ -67,9 +67,10 @@ export function HomePage() {
   };
 
   // Show onboarding modal if user hasn't completed onboarding
-  // Only show for admin role since they can create repos (the modal guides through repo creation)
+  // Only show for admin/user roles since they can create repos (the modal guides through repo creation)
+  // Members cannot create repos, so skip the modal for them
   useEffect(() => {
-    const canCreateRepos = sessionData?.user?.role === 'admin';
+    const canCreateRepos = sessionData?.user?.role === 'admin' || sessionData?.user?.role === 'user';
     if (sessionData?.user && !hasCompletedOnboarding && canCreateRepos) {
       setShowOnboarding(true);
     }
