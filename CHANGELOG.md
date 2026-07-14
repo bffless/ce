@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.11](https://github.com/bffless/ce/compare/v0.2.10...v0.2.11) (2026-07-14)
+
+
+### Features
+
+* **cli:** add rules init --schema scaffold command ([#486](https://github.com/bffless/ce/issues/486)) ([04a35f2](https://github.com/bffless/ce/commit/04a35f2f3f79c73850fb656b4235e4146d6bfe9d))
+
 ## [0.2.10](https://github.com/bffless/ce/compare/v0.2.9...v0.2.10) (2026-07-14)
 
 
