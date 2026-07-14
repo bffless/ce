@@ -11,10 +11,15 @@
  *
  * Auth is the backend's `ApiKeyGuard`, which reads the `X-API-Key` request header.
  *
+ * The "how to fix it" half of every config/auth error comes from `deps.remediation`, so an
+ * embedder that has no flags (the deploy-proxy-rules Action) can name its own knobs instead
+ * of the CLI's — see api/remediation.ts.
+ *
  * `fetch` is injectable for tests. No retries — a CI drift check or deploy push should fail
  * fast and loudly rather than mask a flaky endpoint.
  */
 import { findConfig, type BfflessConfig } from '../config.js';
+import { resolveRemediation, type Remediation } from './remediation.js';
 
 /** Error thrown for any failed request; `status` is 0 for network-level failures. */
 export class ApiError extends Error {
@@ -41,6 +46,10 @@ export interface ClientDeps {
   /** Pre-loaded config (tests / callers that already ran `findConfig`); when absent the
    *  nearest `.bffless/config.json` above `cwd` is used. */
   config?: BfflessConfig | null;
+  /** Override the "how to fix it" wording of config/auth errors. Unset fields keep the
+   *  CLI's default phrasing — an embedder with no flags should override the ones its user
+   *  can actually act on. */
+  remediation?: Partial<Remediation>;
 }
 
 /** Extract a human-readable message from an error-response body (NestJS `message` field,
@@ -62,11 +71,18 @@ export class ApiClient {
   private readonly base: string;
   private readonly apiKey: string;
   private readonly fetchImpl: FetchLike;
+  private readonly remediation: Remediation;
 
-  constructor(init: { apiUrl: string; apiKey: string; fetchImpl?: FetchLike }) {
+  constructor(init: {
+    apiUrl: string;
+    apiKey: string;
+    fetchImpl?: FetchLike;
+    remediation?: Partial<Remediation>;
+  }) {
     this.base = init.apiUrl.replace(/\/+$/, '');
     this.apiKey = init.apiKey;
     this.fetchImpl = init.fetchImpl ?? ((url, opts) => fetch(url, opts));
+    this.remediation = resolveRemediation(init.remediation);
   }
 
   /** Absolute URL for an API path (path must start with `/`). */
@@ -112,8 +128,7 @@ export class ApiClient {
       if (res.status === 401 || res.status === 403) {
         throw new ApiError(
           `HTTP ${res.status} ${method} ${url}: authentication failed${suffix}. ` +
-            `The API key is sent as the X-API-Key header — pass --api-key or set BFFLESS_API_KEY ` +
-            `to a key with access to this project.`,
+            this.remediation.auth,
           res.status,
           url,
         );
@@ -156,23 +171,18 @@ export class ApiClient {
 export function createClient(flags: ClientFlags, cwd: string, deps?: ClientDeps): ApiClient {
   const env = deps?.env ?? process.env;
   const config = deps?.config !== undefined ? deps.config : (findConfig(cwd)?.config ?? null);
+  const remediation = resolveRemediation(deps?.remediation);
 
   const apiUrl = flags.apiUrl ?? env.BFFLESS_API_URL ?? config?.apiUrl;
   if (!apiUrl) {
-    throw new Error(
-      'no API URL configured — pass --api-url, set BFFLESS_API_URL, ' +
-        'or add "apiUrl" to .bffless/config.json',
-    );
+    throw new Error(`no API URL configured — ${remediation.apiUrl}`);
   }
 
   // Key precedence is flag > env ONLY — never config.json (a committed file; see module doc).
   const apiKey = flags.apiKey ?? env.BFFLESS_API_KEY;
   if (!apiKey) {
-    throw new Error(
-      'no API key configured — pass --api-key or set BFFLESS_API_KEY ' +
-        '(API keys are never read from .bffless/config.json, which is committed to the repo)',
-    );
+    throw new Error(`no API key configured — ${remediation.apiKey}`);
   }
 
-  return new ApiClient({ apiUrl, apiKey, fetchImpl: deps?.fetchImpl });
+  return new ApiClient({ apiUrl, apiKey, fetchImpl: deps?.fetchImpl, remediation: deps?.remediation });
 }

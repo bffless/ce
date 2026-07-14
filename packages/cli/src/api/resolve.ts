@@ -16,6 +16,7 @@
  */
 import { UUID_RE } from '../format/routes.js';
 import { ApiError, type ApiClient } from './client.js';
+import { resolveRemediation, type Remediation } from './remediation.js';
 
 export interface ProjectListItem {
   id: string;
@@ -137,14 +138,16 @@ export async function resolveRuleSetId(
   );
 }
 
-/** The project to operate on: `--project` flag > config `project`. Throws when neither is set. */
-export function requireProject(flagProject: string | undefined, configProject: string | undefined): string {
+/** The project to operate on: `--project` flag > config `project`. Throws when neither is set,
+ *  with `remediation.project` as the fix-it half of the message (see api/remediation.ts). */
+export function requireProject(
+  flagProject: string | undefined,
+  configProject: string | undefined,
+  remediation?: Partial<Remediation>,
+): string {
   const project = flagProject ?? configProject;
   if (!project) {
-    throw new Error(
-      'no project configured — pass --project <uuid|owner/name|name> ' +
-        'or add "project" to .bffless/config.json',
-    );
+    throw new Error(`no project configured — ${resolveRemediation(remediation).project}`);
   }
   return project;
 }

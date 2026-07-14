@@ -75,7 +75,7 @@ export async function runRollback(
   try {
     const config = deps?.config !== undefined ? deps.config : (findConfig(cwd)?.config ?? null);
     const client = createClient(opts, cwd, { ...deps, config });
-    const project = requireProject(opts.project, config?.project);
+    const project = requireProject(opts.project, config?.project, deps?.remediation);
     const projectId = await resolveProjectId(client, project);
     const ruleSetId = await resolveRuleSetId(client, projectId, setName);
 

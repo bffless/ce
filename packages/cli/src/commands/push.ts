@@ -34,10 +34,21 @@ export interface PushDeps extends ClientDeps {
 
 export interface PushOutcome {
   ok: boolean;
+  /** The name the set was (or would have been) synced under — post `nameSuffix`. Present
+   *  whenever the set compiled, including when the sync itself then failed; absent only when
+   *  the compile failed, since there is no name to report until the set has been built. */
+  name?: string;
   /** The rendered change report (present on success). */
   report?: string;
   response?: SyncResponse;
   error?: string;
+}
+
+/** The preview-deploy naming rule: `<name>-<suffix>`, or `name` unchanged when no suffix.
+ *  Exported so embedders label a sync with the same string `runPushOne` sends, rather than
+ *  re-deriving it (and drifting from) this one line. */
+export function applyNameSuffix(name: string, suffix?: string): string {
+  return suffix ? `${name}-${suffix}` : name;
 }
 
 function formatRef(ref: SyncRuleRef): string {
@@ -94,9 +105,8 @@ export async function runPushOne(
   }
 
   const exp = built.export;
-  const ruleSet = opts.nameSuffix
-    ? { ...exp.ruleSet, name: `${exp.ruleSet.name}-${opts.nameSuffix}` }
-    : exp.ruleSet;
+  const name = applyNameSuffix(exp.ruleSet.name, opts.nameSuffix);
+  const ruleSet = name === exp.ruleSet.name ? exp.ruleSet : { ...exp.ruleSet, name };
 
   const source = collectSourceMetadata(setDir, { env: deps?.env, execGit: deps?.execGit });
 
@@ -115,16 +125,16 @@ export async function runPushOne(
   try {
     const config = deps?.config !== undefined ? deps.config : (findConfig(cwd)?.config ?? null);
     const client = createClient(opts, cwd, { ...deps, config });
-    const project = requireProject(opts.project, config?.project);
+    const project = requireProject(opts.project, config?.project, deps?.remediation);
     const projectId = await resolveProjectId(client, project);
     const response = await client.put<SyncResponse>(
       `/api/proxy-rule-sets/project/${projectId}/sync`,
       body,
       `project ${projectId} (sync target)`,
     );
-    return { ok: true, report: formatSyncReport(ruleSet.name, response), response };
+    return { ok: true, name, report: formatSyncReport(name, response), response };
   } catch (err) {
-    if (err instanceof ApiError || err instanceof Error) return { ok: false, error: err.message };
-    return { ok: false, error: String(err) };
+    if (err instanceof ApiError || err instanceof Error) return { ok: false, name, error: err.message };
+    return { ok: false, name, error: String(err) };
   }
 }
