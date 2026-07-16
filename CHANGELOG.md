@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.12](https://github.com/bffless/ce/compare/v0.2.11...v0.2.12) (2026-07-16)
+
+
+### Bug Fixes
+
+* **frontend:** stop keying pipeline step state by optional step.id ([#489](https://github.com/bffless/ce/issues/489)) ([849ab21](https://github.com/bffless/ce/commit/849ab2160b845ca89cdded7c01d0f18ac638f0fd))
+
 ## [0.2.11](https://github.com/bffless/ce/compare/v0.2.10...v0.2.11) (2026-07-14)
 
 
