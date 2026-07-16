@@ -108,6 +108,41 @@ function generateId(): string {
   return `step_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 }
 
+/** React key for a step card. Prefers the wire id so cards survive reorder; steps
+ *  authored outside the UI have no id, so fall back to position. */
+function stepKey(step: PipelineStep, index: number): string {
+  return step.id ?? `idx-${index}`;
+}
+
+function toggleIndex(set: Set<number>, index: number): Set<number> {
+  const next = new Set(set);
+  if (next.has(index)) next.delete(index);
+  else next.add(index);
+  return next;
+}
+
+/** Drop `index`, shifting everything after it down one so expansion stays with its step. */
+function removeIndex(set: Set<number>, index: number): Set<number> {
+  const next = new Set<number>();
+  set.forEach((i) => {
+    if (i < index) next.add(i);
+    else if (i > index) next.add(i - 1);
+  });
+  return next;
+}
+
+/** Swap membership of two positions so an expanded step stays expanded when moved. */
+function swapIndexes(set: Set<number>, a: number, b: number): Set<number> {
+  const next = new Set(set);
+  const hadA = set.has(a);
+  const hadB = set.has(b);
+  next.delete(a);
+  next.delete(b);
+  if (hadA) next.add(b);
+  if (hadB) next.add(a);
+  return next;
+}
+
 // Terminal step types
 type TerminalStepType = 'none' | 'response' | 'proxy';
 
@@ -126,10 +161,13 @@ export function PipelineConfig({
   validators,
   onValidatorsChange,
 }: PipelineConfigProps) {
-  const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
-  const [expandedPostSteps, setExpandedPostSteps] = useState<Set<string>>(new Set());
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-  const [deletePostConfirm, setDeletePostConfirm] = useState<string | null>(null);
+  // Keyed by position, not step.id: `id` is optional on the wire (steps authored
+  // via the CLI or imported JSON have none), so an id-keyed Set collapses every
+  // id-less step onto the same `undefined` entry.
+  const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
+  const [expandedPostSteps, setExpandedPostSteps] = useState<Set<number>>(new Set());
+  const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
+  const [deletePostConfirm, setDeletePostConfirm] = useState<number | null>(null);
   const [terminalExpanded, setTerminalExpanded] = useState(false);
 
   // Direct-to-bucket uploads (presigned_upload) only work on object storage,
@@ -324,47 +362,33 @@ export function PipelineConfig({
       isEnabled: true,
     };
     updateConfig({ steps: [...steps, newStep] });
-    setExpandedSteps((prev) => new Set([...prev, newStep.id]));
+    setExpandedSteps((prev) => new Set([...prev, steps.length]));
   };
 
-  const removeStep = (stepId: string) => {
-    updateConfig({ steps: steps.filter((s) => s.id !== stepId) });
-    setExpandedSteps((prev) => {
-      const next = new Set(prev);
-      next.delete(stepId);
-      return next;
-    });
+  const removeStep = (index: number) => {
+    updateConfig({ steps: steps.filter((_, i) => i !== index) });
+    setExpandedSteps((prev) => removeIndex(prev, index));
     setDeleteConfirm(null);
   };
 
-  const updateStep = (stepId: string, updates: Partial<PipelineStep>) => {
+  const updateStep = (index: number, updates: Partial<PipelineStep>) => {
     updateConfig({
-      steps: steps.map((s) => (s.id === stepId ? { ...s, ...updates } : s)),
+      steps: steps.map((s, i) => (i === index ? { ...s, ...updates } : s)),
     });
   };
 
-  const moveStep = (stepId: string, direction: 'up' | 'down') => {
-    const index = steps.findIndex((s) => s.id === stepId);
-    if (index === -1) return;
-
+  const moveStep = (index: number, direction: 'up' | 'down') => {
     const newIndex = direction === 'up' ? index - 1 : index + 1;
     if (newIndex < 0 || newIndex >= steps.length) return;
 
     const newSteps = [...steps];
     [newSteps[index], newSteps[newIndex]] = [newSteps[newIndex], newSteps[index]];
     updateConfig({ steps: newSteps });
+    setExpandedSteps((prev) => swapIndexes(prev, index, newIndex));
   };
 
-  const toggleExpanded = (stepId: string) => {
-    setExpandedSteps((prev) => {
-      const next = new Set(prev);
-      if (next.has(stepId)) {
-        next.delete(stepId);
-      } else {
-        next.add(stepId);
-      }
-      return next;
-    });
+  const toggleExpanded = (index: number) => {
+    setExpandedSteps((prev) => toggleIndex(prev, index));
   };
 
   // Post-processing step management
@@ -379,47 +403,33 @@ export function PipelineConfig({
       isEnabled: true,
     };
     updateConfig({ postSteps: [...postSteps, newStep] });
-    setExpandedPostSteps((prev) => new Set([...prev, newStep.id]));
+    setExpandedPostSteps((prev) => new Set([...prev, postSteps.length]));
   };
 
-  const removePostStep = (stepId: string) => {
-    updateConfig({ postSteps: postSteps.filter((s) => s.id !== stepId) });
-    setExpandedPostSteps((prev) => {
-      const next = new Set(prev);
-      next.delete(stepId);
-      return next;
-    });
+  const removePostStep = (index: number) => {
+    updateConfig({ postSteps: postSteps.filter((_, i) => i !== index) });
+    setExpandedPostSteps((prev) => removeIndex(prev, index));
     setDeletePostConfirm(null);
   };
 
-  const updatePostStep = (stepId: string, updates: Partial<PipelineStep>) => {
+  const updatePostStep = (index: number, updates: Partial<PipelineStep>) => {
     updateConfig({
-      postSteps: postSteps.map((s) => (s.id === stepId ? { ...s, ...updates } : s)),
+      postSteps: postSteps.map((s, i) => (i === index ? { ...s, ...updates } : s)),
     });
   };
 
-  const movePostStep = (stepId: string, direction: 'up' | 'down') => {
-    const index = postSteps.findIndex((s) => s.id === stepId);
-    if (index === -1) return;
-
+  const movePostStep = (index: number, direction: 'up' | 'down') => {
     const newIndex = direction === 'up' ? index - 1 : index + 1;
     if (newIndex < 0 || newIndex >= postSteps.length) return;
 
     const newPostSteps = [...postSteps];
     [newPostSteps[index], newPostSteps[newIndex]] = [newPostSteps[newIndex], newPostSteps[index]];
     updateConfig({ postSteps: newPostSteps });
+    setExpandedPostSteps((prev) => swapIndexes(prev, index, newIndex));
   };
 
-  const togglePostExpanded = (stepId: string) => {
-    setExpandedPostSteps((prev) => {
-      const next = new Set(prev);
-      if (next.has(stepId)) {
-        next.delete(stepId);
-      } else {
-        next.add(stepId);
-      }
-      return next;
-    });
+  const togglePostExpanded = (index: number) => {
+    setExpandedPostSteps((prev) => toggleIndex(prev, index));
   };
 
   // Previous steps available for post-processing steps (all regular + terminal)
@@ -496,7 +506,8 @@ export function PipelineConfig({
         ) : (
           <div className="space-y-3">
             {steps.map((step, index) => {
-              const isExpanded = expandedSteps.has(step.id);
+              const isExpanded = expandedSteps.has(index);
+              const key = stepKey(step, index);
               // Calculate previous steps for context
               const previousSteps = steps.slice(0, index).map((s) => ({
                 name: s.name || getHandlerDisplayName(s.handlerType),
@@ -504,7 +515,7 @@ export function PipelineConfig({
                 config: s.config,
               }));
               return (
-                <Card key={step.id} className={step.isEnabled === false ? 'opacity-60' : ''}>
+                <Card key={key} className={step.isEnabled === false ? 'opacity-60' : ''}>
                   <CardHeader className="py-3">
                     <div className="flex items-center gap-2">
                       {/* Drag handle placeholder */}
@@ -518,7 +529,7 @@ export function PipelineConfig({
                       {/* Step info - clickable to expand/collapse */}
                       <button
                         type="button"
-                        onClick={() => toggleExpanded(step.id)}
+                        onClick={() => toggleExpanded(index)}
                         className="flex-1 flex items-center gap-2 text-left hover:text-primary"
                       >
                         {isExpanded ? (
@@ -542,7 +553,8 @@ export function PipelineConfig({
                           size="icon"
                           className="h-7 w-7"
                           disabled={index === 0}
-                          onClick={() => moveStep(step.id, 'up')}
+                          aria-label={`Move ${step.name || 'step'} up`}
+                          onClick={() => moveStep(index, 'up')}
                         >
                           <ChevronUp className="h-4 w-4" />
                         </Button>
@@ -552,7 +564,8 @@ export function PipelineConfig({
                           size="icon"
                           className="h-7 w-7"
                           disabled={index === steps.length - 1}
-                          onClick={() => moveStep(step.id, 'down')}
+                          aria-label={`Move ${step.name || 'step'} down`}
+                          onClick={() => moveStep(index, 'down')}
                         >
                           <ChevronDown className="h-4 w-4" />
                         </Button>
@@ -561,7 +574,7 @@ export function PipelineConfig({
                       {/* Enable/disable toggle */}
                       <Switch
                         checked={step.isEnabled !== false}
-                        onCheckedChange={(checked) => updateStep(step.id, { isEnabled: checked })}
+                        onCheckedChange={(checked) => updateStep(index, { isEnabled: checked })}
                       />
 
                       {/* Delete button */}
@@ -570,7 +583,8 @@ export function PipelineConfig({
                         variant="ghost"
                         size="icon"
                         className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                        onClick={() => setDeleteConfirm(step.id)}
+                        aria-label={`Delete ${step.name || 'step'}`}
+                        onClick={() => setDeleteConfirm(index)}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -582,13 +596,13 @@ export function PipelineConfig({
                       {/* Step name */}
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label htmlFor={`step-${step.id}-name`}>
+                          <Label htmlFor={`step-${key}-name`}>
                             Step Name <span className="text-destructive">*</span>
                           </Label>
                           <Input
-                            id={`step-${step.id}-name`}
+                            id={`step-${key}-name`}
                             value={step.name || ''}
-                            onChange={(e) => updateStep(step.id, { name: e.target.value })}
+                            onChange={(e) => updateStep(index, { name: e.target.value })}
                             placeholder={getHandlerDisplayName(step.handlerType).toLowerCase().replace(/\s+/g, '_')}
                             className={!step.name ? 'border-destructive' : ''}
                           />
@@ -597,7 +611,7 @@ export function PipelineConfig({
                           )}
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor={`step-${step.id}-type`}>Handler Type</Label>
+                          <Label htmlFor={`step-${key}-type`}>Handler Type</Label>
                           <Select
                             value={step.handlerType}
                             onValueChange={(v) => {
@@ -605,14 +619,14 @@ export function PipelineConfig({
                               const oldBaseName = getHandlerDisplayName(step.handlerType).toLowerCase().replace(/\s+/g, '_');
                               // Auto-update name if it matches the old auto-generated pattern
                               const isAutoGenerated = !step.name || step.name === oldBaseName || step.name.match(new RegExp(`^${oldBaseName}_\\d+$`));
-                              updateStep(step.id, {
+                              updateStep(index, {
                                 handlerType: newType,
                                 config: {}, // Reset config when type changes
-                                ...(isAutoGenerated ? { name: generateStepName(newType, steps.filter(s => s.id !== step.id)) } : {}),
+                                ...(isAutoGenerated ? { name: generateStepName(newType, steps.filter((_, i) => i !== index)) } : {}),
                               });
                             }}
                           >
-                            <SelectTrigger id={`step-${step.id}-type`}>
+                            <SelectTrigger id={`step-${key}-type`}>
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent className="max-h-[400px]">
@@ -627,7 +641,7 @@ export function PipelineConfig({
                         <div className="space-y-2">
                           <div className="flex items-center gap-2">
                             <Filter className="h-4 w-4 text-muted-foreground" />
-                            <Label htmlFor={`step-${step.id}-condition`}>
+                            <Label htmlFor={`step-${key}-condition`}>
                               Run Condition <span className="text-muted-foreground font-normal">(optional)</span>
                             </Label>
                           </div>
@@ -635,7 +649,7 @@ export function PipelineConfig({
                             value={(step.config as Record<string, unknown>)?.condition as string || ''}
                             onChange={(value) => {
                               const currentConfig = (step.config || {}) as Record<string, unknown>;
-                              updateStep(step.id, {
+                              updateStep(index, {
                                 config: { ...currentConfig, condition: value || undefined },
                               });
                             }}
@@ -656,7 +670,7 @@ export function PipelineConfig({
                           onChange={(newConfig) => {
                             // Preserve the condition field when handler config updates
                             const currentCondition = (step.config as Record<string, unknown>)?.condition;
-                            updateStep(step.id, {
+                            updateStep(index, {
                               config: currentCondition
                                 ? { ...newConfig, condition: currentCondition }
                                 : newConfig,
@@ -875,7 +889,8 @@ data: {"type":"text-delta","value":" world"}
               <span>These steps run after the response is sent to the client. Errors are logged but don't affect the client response.</span>
             </div>
             {postSteps.map((step, index) => {
-              const isExpanded = expandedPostSteps.has(step.id);
+              const isExpanded = expandedPostSteps.has(index);
+              const key = stepKey(step, index);
               // Post-processing steps can reference all regular steps + terminal step + prior post-steps
               const previousPostSteps: PreviousStep[] = [
                 ...previousStepsForPost,
@@ -886,7 +901,7 @@ data: {"type":"text-delta","value":" world"}
                 })),
               ];
               return (
-                <Card key={step.id} className={`border-amber-500/20 ${step.isEnabled === false ? 'opacity-60' : ''}`}>
+                <Card key={key} className={`border-amber-500/20 ${step.isEnabled === false ? 'opacity-60' : ''}`}>
                   <CardHeader className="py-3">
                     <div className="flex items-center gap-2">
                       <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab" />
@@ -895,7 +910,7 @@ data: {"type":"text-delta","value":" world"}
                       </Badge>
                       <button
                         type="button"
-                        onClick={() => togglePostExpanded(step.id)}
+                        onClick={() => togglePostExpanded(index)}
                         className="flex-1 flex items-center gap-2 text-left hover:text-primary"
                       >
                         {isExpanded ? (
@@ -917,7 +932,8 @@ data: {"type":"text-delta","value":" world"}
                           size="icon"
                           className="h-7 w-7"
                           disabled={index === 0}
-                          onClick={() => movePostStep(step.id, 'up')}
+                          aria-label={`Move ${step.name || 'post-processing step'} up`}
+                          onClick={() => movePostStep(index, 'up')}
                         >
                           <ChevronUp className="h-4 w-4" />
                         </Button>
@@ -927,21 +943,23 @@ data: {"type":"text-delta","value":" world"}
                           size="icon"
                           className="h-7 w-7"
                           disabled={index === postSteps.length - 1}
-                          onClick={() => movePostStep(step.id, 'down')}
+                          aria-label={`Move ${step.name || 'post-processing step'} down`}
+                          onClick={() => movePostStep(index, 'down')}
                         >
                           <ChevronDown className="h-4 w-4" />
                         </Button>
                       </div>
                       <Switch
                         checked={step.isEnabled !== false}
-                        onCheckedChange={(checked) => updatePostStep(step.id, { isEnabled: checked })}
+                        onCheckedChange={(checked) => updatePostStep(index, { isEnabled: checked })}
                       />
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon"
                         className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                        onClick={() => setDeletePostConfirm(step.id)}
+                        aria-label={`Delete ${step.name || 'post-processing step'}`}
+                        onClick={() => setDeletePostConfirm(index)}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -951,13 +969,13 @@ data: {"type":"text-delta","value":" world"}
                     <CardContent className="pt-0 space-y-4">
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label htmlFor={`post-step-${step.id}-name`}>
+                          <Label htmlFor={`post-step-${key}-name`}>
                             Step Name <span className="text-destructive">*</span>
                           </Label>
                           <Input
-                            id={`post-step-${step.id}-name`}
+                            id={`post-step-${key}-name`}
                             value={step.name || ''}
-                            onChange={(e) => updatePostStep(step.id, { name: e.target.value })}
+                            onChange={(e) => updatePostStep(index, { name: e.target.value })}
                             placeholder={getHandlerDisplayName(step.handlerType).toLowerCase().replace(/\s+/g, '_')}
                             className={!step.name ? 'border-destructive' : ''}
                           />
@@ -966,22 +984,22 @@ data: {"type":"text-delta","value":" world"}
                           )}
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor={`post-step-${step.id}-type`}>Handler Type</Label>
+                          <Label htmlFor={`post-step-${key}-type`}>Handler Type</Label>
                           <Select
                             value={step.handlerType}
                             onValueChange={(v) => {
                               const newType = v as HandlerType;
                               const oldBaseName = getHandlerDisplayName(step.handlerType).toLowerCase().replace(/\s+/g, '_');
                               const isAutoGenerated = !step.name || step.name === oldBaseName || step.name.match(new RegExp(`^${oldBaseName}_\\d+$`));
-                              const allExistingSteps = [...steps, ...postSteps.filter(s => s.id !== step.id)];
-                              updatePostStep(step.id, {
+                              const allExistingSteps = [...steps, ...postSteps.filter((_, i) => i !== index)];
+                              updatePostStep(index, {
                                 handlerType: newType,
                                 config: {},
                                 ...(isAutoGenerated ? { name: generateStepName(newType, allExistingSteps) } : {}),
                               });
                             }}
                           >
-                            <SelectTrigger id={`post-step-${step.id}-type`}>
+                            <SelectTrigger id={`post-step-${key}-type`}>
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent className="max-h-[400px]">
@@ -995,7 +1013,7 @@ data: {"type":"text-delta","value":" world"}
                       <div className="space-y-2">
                         <div className="flex items-center gap-2">
                           <Filter className="h-4 w-4 text-muted-foreground" />
-                          <Label htmlFor={`post-step-${step.id}-condition`}>
+                          <Label htmlFor={`post-step-${key}-condition`}>
                             Run Condition <span className="text-muted-foreground font-normal">(optional)</span>
                           </Label>
                         </div>
@@ -1003,7 +1021,7 @@ data: {"type":"text-delta","value":" world"}
                           value={(step.config as Record<string, unknown>)?.condition as string || ''}
                           onChange={(value) => {
                             const currentConfig = (step.config || {}) as Record<string, unknown>;
-                            updatePostStep(step.id, {
+                            updatePostStep(index, {
                               config: { ...currentConfig, condition: value || undefined },
                             });
                           }}
@@ -1022,7 +1040,7 @@ data: {"type":"text-delta","value":" world"}
                           config={step.config}
                           onChange={(newConfig) => {
                             const currentCondition = (step.config as Record<string, unknown>)?.condition;
-                            updatePostStep(step.id, {
+                            updatePostStep(index, {
                               config: currentCondition
                                 ? { ...newConfig, condition: currentCondition }
                                 : newConfig,
@@ -1042,7 +1060,7 @@ data: {"type":"text-delta","value":" world"}
       </div>
 
       {/* Delete confirmation dialog */}
-      <AlertDialog open={!!deleteConfirm} onOpenChange={() => setDeleteConfirm(null)}>
+      <AlertDialog open={deleteConfirm !== null} onOpenChange={() => setDeleteConfirm(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Step</AlertDialogTitle>
@@ -1053,7 +1071,7 @@ data: {"type":"text-delta","value":" world"}
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => deleteConfirm && removeStep(deleteConfirm)}
+              onClick={() => deleteConfirm !== null && removeStep(deleteConfirm)}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Delete
@@ -1063,7 +1081,7 @@ data: {"type":"text-delta","value":" world"}
       </AlertDialog>
 
       {/* Delete post-processing step confirmation dialog */}
-      <AlertDialog open={!!deletePostConfirm} onOpenChange={() => setDeletePostConfirm(null)}>
+      <AlertDialog open={deletePostConfirm !== null} onOpenChange={() => setDeletePostConfirm(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Post-Processing Step</AlertDialogTitle>
@@ -1074,7 +1092,7 @@ data: {"type":"text-delta","value":" world"}
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => deletePostConfirm && removePostStep(deletePostConfirm)}
+              onClick={() => deletePostConfirm !== null && removePostStep(deletePostConfirm)}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Delete
