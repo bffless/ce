@@ -178,7 +178,8 @@ async function compilePipeline(
           config.code = readFileSync(file, 'utf8');
         }
       }
-      const out: PipelineStep = { name: step.name, handlerType: step.handler, config };
+      const out: PipelineStep = { handlerType: step.handler, config };
+      if (step.name !== undefined) out.name = step.name;
       if (step.id !== undefined) out.id = step.id;
       if (step.isEnabled !== undefined) out.isEnabled = step.isEnabled;
       converted.push(out);

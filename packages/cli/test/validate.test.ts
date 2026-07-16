@@ -222,3 +222,47 @@ describe('validateRuleSet — skills cross-ref', () => {
     expect(warnings).toEqual([]);
   });
 });
+
+/**
+ * Step `name` is an optional display label server-side (`CreateProxyRuleDto`, `@IsOptional()`),
+ * so a set authored in the dashboard can hold steps that have none. Requiring it here made
+ * `pull --decompile` emit manifests that `validate`/`diff`/`push` then rejected — a set that
+ * was live and serving traffic could not be adopted into git. The round-trip fixtures never
+ * caught it because all three were CLI-authored, and the CLI forced a name.
+ */
+describe('validateRuleSet — pipeline steps without a name', () => {
+  it('accepts a nameless step in `pipeline:` (authoring shape)', async () => {
+    const dir = scratchSet({
+      'ruleset.yaml': 'name: myset\n',
+      'rules/api/x/post.rule.yaml': [
+        'pipeline:',
+        '  steps:',
+        '    - handler: response_handler',
+        '      config:',
+        '        status: 200',
+        '',
+      ].join('\n'),
+    });
+    const { errors, warnings } = await validateRuleSet(dir);
+    expect(errors).toEqual([]);
+    expect(warnings).toEqual([]);
+  });
+
+  it('accepts a nameless step in `pipelineConfig:` (canonical shape)', async () => {
+    const dir = scratchSet({
+      'ruleset.yaml': 'name: myset\n',
+      'rules/api/y/post.rule.yaml': [
+        'pipelineConfig:',
+        '  name: p',
+        '  steps:',
+        '    - handlerType: response_handler',
+        '      config:',
+        '        status: 200',
+        '',
+      ].join('\n'),
+    });
+    const { errors, warnings } = await validateRuleSet(dir);
+    expect(errors).toEqual([]);
+    expect(warnings).toEqual([]);
+  });
+});

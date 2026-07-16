@@ -1,7 +1,8 @@
 export interface SchemaField { name: string; type: string; required?: boolean; [k: string]: unknown }
 export interface ExportedSchema { id: string; name: string; fields: SchemaField[] }
 export interface PipelineValidator { type: 'auth_required' | 'rate_limit'; config?: Record<string, unknown> }
-export interface PipelineStep { id?: string; name: string; handlerType: string; config: Record<string, unknown>; isEnabled?: boolean }
+/** `name` is an optional display label — the server treats it as optional, and dashboard-authored steps may omit it. */
+export interface PipelineStep { id?: string; name?: string; handlerType: string; config: Record<string, unknown>; isEnabled?: boolean }
 export interface PipelineConfig { name: string; description?: string; steps: PipelineStep[]; postSteps?: PipelineStep[]; validators?: PipelineValidator[] }
 export interface HeaderConfig { forward?: string[]; strip?: string[]; add?: Record<string, string> }
 export type ProxyType = 'external_proxy' | 'internal_rewrite' | 'email_form_handler' | 'pipeline';

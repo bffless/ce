@@ -77,14 +77,16 @@ function stepToSugar(
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   if (step.id !== undefined) out.id = step.id;
-  out.name = step.name;
+  if (step.name !== undefined) out.name = step.name;
   out.handler = step.handlerType;
 
   const config: Record<string, unknown> = { ...(step.config ?? {}) };
   if (step.handlerType === 'function_handler' && typeof config.code === 'string') {
     const code = config.code;
     delete config.code;
-    let base = sanitizeFileBase(step.id ?? step.name);
+    // id/name are both optional; a step with neither still needs a stable filename,
+    // and the collision loop below disambiguates if more than one lands on it.
+    let base = sanitizeFileBase(step.id ?? step.name ?? 'handler');
     let fname = `${base}.fn.js`;
     let n = 1;
     while (usedFnNames.has(fname)) {
