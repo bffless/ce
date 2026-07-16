@@ -1,0 +1,96 @@
+{
+  "version": 2,
+  "kind": "bffless-proxy-rule-set",
+  "exportedAt": "2026-07-16T12:00:00.000Z",
+  "ruleSet": {
+    "name": "legacy-unnamed-step",
+    "description": "A set in the shape the dashboard produces, which the CLI did not author. Step `name` is optional server-side, so steps may carry none: here an email_handler step with an id but no name, and a function_handler step with an id but no name (its handler filename must fall back to the id). Guards adoption of pre-existing sets via pull --decompile.",
+    "environment": "production"
+  },
+  "schemas": [
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "name": "signups",
+      "fields": [
+        { "name": "name", "type": "string", "required": true },
+        { "name": "email", "type": "email", "required": true }
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "pathPattern": "/api/signup-form",
+      "targetUrl": "",
+      "stripPrefix": true,
+      "order": 0,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "headerConfig": null,
+      "authTransform": null,
+      "internalRewrite": false,
+      "proxyType": "pipeline",
+      "emailHandlerConfig": null,
+      "isEnabled": true,
+      "debugEnabled": false,
+      "description": null,
+      "pipelineConfig": {
+        "name": "signup form",
+        "description": "validate, store, notify",
+        "steps": [
+          {
+            "id": "step_1700000000000_aaaaaaa",
+            "name": "form_validation",
+            "config": { "fields": { "name": { "type": "string", "required": true } } },
+            "isEnabled": true,
+            "handlerType": "form_handler"
+          },
+          {
+            "id": "step_1700000000001_bbbbbbb",
+            "name": "create record",
+            "config": {
+              "fields": { "name": "input.name", "email": "input.email" },
+              "schemaId": "00000000-0000-4000-8000-000000000001"
+            },
+            "isEnabled": true,
+            "handlerType": "data_create"
+          },
+          {
+            "id": "step_1700000000002_ccccccc",
+            "config": { "to": "someone@example.com", "subject": "New signup" },
+            "isEnabled": true,
+            "handlerType": "email_handler"
+          }
+        ]
+      }
+    },
+    {
+      "pathPattern": "/api/shape",
+      "method": "GET",
+      "targetUrl": "pipeline",
+      "stripPrefix": true,
+      "order": 1,
+      "timeout": 30000,
+      "preserveHost": false,
+      "forwardCookies": false,
+      "headerConfig": null,
+      "authTransform": null,
+      "internalRewrite": false,
+      "proxyType": "pipeline",
+      "emailHandlerConfig": null,
+      "isEnabled": true,
+      "debugEnabled": false,
+      "description": null,
+      "pipelineConfig": {
+        "name": "shape",
+        "steps": [
+          {
+            "id": "shape",
+            "config": { "code": "function handler({ steps }) {\n  return { ok: true };\n}" },
+            "handlerType": "function_handler"
+          }
+        ]
+      }
+    }
+  ]
+}

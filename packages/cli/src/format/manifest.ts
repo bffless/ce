@@ -35,11 +35,17 @@ const PipelineValidatorSchema = z
   })
   .strict();
 
-/** Canonical pipeline step shape (matches `PipelineStep` in src/format/types.ts) — used for `pipelineConfig:`. */
+/**
+ * Canonical pipeline step shape (matches `PipelineStep` in src/format/types.ts) — used for
+ * `pipelineConfig:`. `name` is optional to match the server, which treats it as an optional
+ * display label (`CreateProxyRuleDto`, `@IsOptional()`). Steps authored in the dashboard can
+ * legitimately have none, and requiring it here would make `pull` emit manifests that
+ * `validate`/`diff`/`push` then reject.
+ */
 const PipelineStepCanonicalSchema = z
   .object({
     id: z.string().optional(),
-    name: z.string(),
+    name: z.string().optional(),
     handlerType: z.string(),
     config: z.record(z.unknown()),
     isEnabled: z.boolean().optional(),
@@ -63,11 +69,12 @@ const PipelineConfigSchema = z
  * convenience for supplying handler code out-of-line instead of inline in `config.code`. A
  * `.ts` ref is bundled (esbuild) at build time — see "TypeScript handlers" in reference.md;
  * a `.js` ref is inlined byte-verbatim as before. A step may not set both `code`/`config.code`.
+ * `name` is optional, matching the server — see `PipelineStepCanonicalSchema` above.
  */
 const PipelineStepManifestSchema = z
   .object({
     id: z.string().optional(),
-    name: z.string(),
+    name: z.string().optional(),
     handler: z.string(),
     config: z.record(z.unknown()).optional(),
     code: z.string().regex(/\.(js|ts)$/, 'code must be a relative path ending in .js or .ts').optional(),
