@@ -31,11 +31,16 @@ export interface EmailHandlerConfig {
 
 // Pipeline step configuration
 export interface PipelineStepConfig {
-  id: string;
+  /** Optional: the UI mints one for steps it creates, but steps authored via the
+   *  CLI or imported JSON have none. Matches `id?: string` in the backend schema.
+   *  Steps are referenced by `name` at runtime — never rely on `id` for identity. */
+  id?: string;
   name: string; // Required - used to reference step output in subsequent steps
   handlerType: HandlerType;
   config: Record<string, unknown>;
-  isEnabled: boolean;
+  /** Optional, mirroring the backend schema; absent means enabled. Test with
+   *  `isEnabled !== false`, never `isEnabled === true`. */
+  isEnabled?: boolean;
 }
 
 // Pipeline configuration for pipeline proxy rules
