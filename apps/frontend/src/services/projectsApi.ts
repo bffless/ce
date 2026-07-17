@@ -278,7 +278,11 @@ export const projectsApi = api.injectEndpoints({
     }),
 
     previewProviderModels: builder.mutation<
-      { models: ModelInfo[] },
+      {
+        models: ModelInfo[];
+        live: boolean;
+        fallbackReason?: 'no_key' | 'unsupported_provider' | 'fetch_failed';
+      },
       { projectId: string; provider: AIProviderType; apiKey: string }
     >({
       query: ({ projectId, provider, apiKey }) => ({

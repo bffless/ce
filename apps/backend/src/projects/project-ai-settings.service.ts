@@ -31,6 +31,25 @@ export interface ModelInfo {
 }
 
 /**
+ * Why a model list fell back to the built-in catalog. Only 'fetch_failed' is
+ * an actual problem — the other two are expected states the UI shouldn't alarm
+ * the user about.
+ */
+export type ModelListFallbackReason = 'no_key' | 'unsupported_provider' | 'fetch_failed';
+
+/**
+ * A resolved model list plus whether it came from the provider's live catalog.
+ * `live: false` means these are the built-in suggestions; `fallbackReason` says
+ * why, so callers can distinguish a broken lookup from a provider that simply
+ * has no live listing.
+ */
+export interface ProviderModelList {
+  models: ModelInfo[];
+  live: boolean;
+  fallbackReason?: ModelListFallbackReason;
+}
+
+/**
  * Metadata for AI providers
  */
 export const AI_PROVIDER_METADATA: Record<
@@ -57,12 +76,14 @@ export const AI_PROVIDER_METADATA: Record<
   },
   anthropic: {
     name: 'Anthropic',
-    description: 'Claude Opus 4.6, Sonnet 4.6, and Haiku 4.5',
+    // Fallback only — the live list from /v1/models supersedes this whenever a
+    // key is available (see fetchAnthropicModels). One representative per tier.
+    description: 'Claude Opus 4.8, Sonnet 5, and Haiku 4.5',
     models: [
       // Premium tier
-      { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', tier: 'premium', description: 'Most intelligent for agents and coding' },
+      { id: 'claude-opus-4-8', name: 'Claude Opus 4.8', tier: 'premium', description: 'Most intelligent for agents and coding' },
       // Balanced tier
-      { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', tier: 'balanced', description: 'Best balance of speed and intelligence' },
+      { id: 'claude-sonnet-5', name: 'Claude Sonnet 5', tier: 'balanced', description: 'Best balance of speed and intelligence' },
       // Economy tier
       { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', tier: 'economy', description: 'Fastest with near-frontier intelligence' },
     ],
@@ -450,7 +471,7 @@ export class ProjectAISettingsService {
           // hardcoded metadata if the fetch fails.
           const suggestedModels =
             p.provider === 'anthropic'
-              ? await this.fetchAnthropicModels(config.apiKey)
+              ? (await this.fetchAnthropicModels(config.apiKey)).models
               : meta?.models || [];
 
           return {
@@ -502,10 +523,13 @@ export class ProjectAISettingsService {
    * Falls back to the hardcoded metadata list (no key, unsupported provider, or
    * a failed fetch) so the picker is never empty.
    */
-  async previewProviderModels(provider: AIProviderType, apiKey: string): Promise<ModelInfo[]> {
+  async previewProviderModels(
+    provider: AIProviderType,
+    apiKey: string,
+  ): Promise<ProviderModelList> {
     const fallback = AI_PROVIDER_METADATA[provider]?.models || [];
     if (!apiKey?.trim()) {
-      return fallback;
+      return { models: fallback, live: false, fallbackReason: 'no_key' };
     }
 
     if (provider === 'anthropic') {
@@ -513,7 +537,7 @@ export class ProjectAISettingsService {
     }
 
     // OpenAI/Google live listing not implemented yet — return the static catalog.
-    return fallback;
+    return { models: fallback, live: false, fallbackReason: 'unsupported_provider' };
   }
 
   /**
@@ -524,16 +548,20 @@ export class ProjectAISettingsService {
    * TTL, and any failure falls back to the hardcoded catalog so the UI never
    * ends up with an empty model list.
    */
-  private async fetchAnthropicModels(apiKey: string): Promise<ModelInfo[]> {
-    const fallback = AI_PROVIDER_METADATA.anthropic.models;
+  private async fetchAnthropicModels(apiKey: string): Promise<ProviderModelList> {
+    const fallback: ProviderModelList = {
+      models: AI_PROVIDER_METADATA.anthropic.models,
+      live: false,
+      fallbackReason: 'fetch_failed',
+    };
     if (!apiKey) {
-      return fallback;
+      return { ...fallback, fallbackReason: 'no_key' };
     }
 
     const cacheKey = crypto.createHash('sha256').update(apiKey).digest('hex');
     const cached = this.modelsCache.get(cacheKey);
     if (cached && cached.expires > Date.now()) {
-      return cached.models;
+      return { models: cached.models, live: true };
     }
 
     try {
@@ -576,7 +604,7 @@ export class ProjectAISettingsService {
         models,
         expires: Date.now() + this.MODELS_CACHE_TTL_MS,
       });
-      return models;
+      return { models, live: true };
     } catch (error) {
       this.logger.warn(
         `Anthropic models fetch error; using fallback list: ${(error as Error)?.message}`,
@@ -591,12 +619,23 @@ export class ProjectAISettingsService {
    * claude-haiku-4-5), so the picker is consistent regardless of whether the
    * API returns the aliased or dated id.
    *
-   * Restricted to the modern "family-major-minor-date" shape: older 3.x ids
-   * (e.g. claude-3-5-sonnet-20241022), whose stripped form is NOT a valid
-   * alias, and single-segment ids (claude-opus-4-20250514) are left untouched.
+   * Only strips when the result is a real alias:
+   *  - "family-major-minor-date" always is (claude-haiku-4-5-20251001).
+   *  - "family-major-date" is only from generation 5 on, where the bare form is
+   *    the alias (claude-sonnet-5, claude-fable-5). Generation 4 aliases to a
+   *    "-0" suffix instead (claude-opus-4-20250514 → claude-opus-4-0), so
+   *    stripping would yield the invalid "claude-opus-4" — left untouched.
+   *
+   * Legacy 3.x ids (claude-3-5-sonnet-20241022) match neither shape, since the
+   * family name trails the version, and are likewise left untouched.
    */
   private normalizeAnthropicModelId(id: string): string {
-    return id.replace(/^(claude-(?:opus|sonnet|haiku|fable)-\d+-\d+)-20\d{6}$/, '$1');
+    const match = id.match(/^(claude-(?:opus|sonnet|haiku|fable|mythos)-(\d+)(?:-(\d+))?)-20\d{6}$/);
+    if (!match) return id;
+
+    const [, alias, major, minor] = match;
+    if (minor !== undefined) return alias;
+    return Number(major) >= 5 ? alias : id;
   }
 
   /**
