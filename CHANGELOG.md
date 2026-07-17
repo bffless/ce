@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.13](https://github.com/bffless/ce/compare/v0.2.12...v0.2.13) (2026-07-17)
+
+
+### Bug Fixes
+
+* **cli:** treat pipeline step name as optional, matching the server ([#491](https://github.com/bffless/ce/issues/491)) ([f3f3729](https://github.com/bffless/ce/commit/f3f3729cef320265c724389a37baf7d45290e4ec))
+
 ## [0.2.12](https://github.com/bffless/ce/compare/v0.2.11...v0.2.12) (2026-07-16)
 
 

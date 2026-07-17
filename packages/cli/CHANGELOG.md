@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.7](https://github.com/bffless/ce/compare/bffless-v0.2.6...bffless-v0.2.7) (2026-07-17)
+
+
+### Bug Fixes
+
+* **cli:** treat pipeline step name as optional, matching the server ([#491](https://github.com/bffless/ce/issues/491)) ([f3f3729](https://github.com/bffless/ce/commit/f3f3729cef320265c724389a37baf7d45290e4ec))
+
 ## [0.2.6](https://github.com/bffless/ce/compare/bffless-v0.2.5...bffless-v0.2.6) (2026-07-14)
 
 
