@@ -173,12 +173,14 @@ export class ProjectsController {
   async previewProviderModels(
     @Param('provider') provider: AIProviderEnum,
     @Body() body: { apiKey?: string },
-  ): Promise<{ models: ModelInfoDto[] }> {
-    const models = await this.aiSettingsService.previewProviderModels(
+  ): Promise<{ models: ModelInfoDto[]; live: boolean; fallbackReason?: string }> {
+    const { models, live, fallbackReason } = await this.aiSettingsService.previewProviderModels(
       provider as AIProviderType,
       body?.apiKey ?? '',
     );
-    return { models };
+    // `live: false` means these are the built-in suggestions, not the provider's
+    // catalog — the client surfaces that rather than silently showing stale models.
+    return { models, live, fallbackReason };
   }
 
   @Get(':id/ai/skills')

@@ -579,6 +579,10 @@ function AddProviderDialog({
   const [isDefault, setIsDefault] = useState(isFirstProvider);
   // Live model list fetched with the entered key (overrides the static catalog)
   const [liveModels, setLiveModels] = useState<ModelInfo[] | null>(null);
+  // Set when the provider *has* a live catalog but we couldn't reach it, so the
+  // picker is showing built-in suggestions that may be out of date. Only a
+  // genuine lookup failure sets this — a provider with no live listing doesn't.
+  const [lookupFailed, setLookupFailed] = useState(false);
 
   const [previewModels, { isLoading: isLoadingModels }] = usePreviewProviderModelsMutation();
 
@@ -589,6 +593,7 @@ function AddProviderDialog({
   useEffect(() => {
     if (!selectedProvider || apiKey.trim().length < 8) {
       setLiveModels(null);
+      setLookupFailed(false);
       return;
     }
     const handle = setTimeout(async () => {
@@ -598,9 +603,13 @@ function AddProviderDialog({
           provider: selectedProvider,
           apiKey: apiKey.trim(),
         }).unwrap();
-        setLiveModels(result.models?.length ? result.models : null);
+        setLiveModels(result.live && result.models?.length ? result.models : null);
+        setLookupFailed(result.fallbackReason === 'fetch_failed');
       } catch {
-        setLiveModels(null); // fall back to the static catalog
+        // Fall back to the static catalog, but say so rather than passing stale
+        // models off as the key's real list.
+        setLiveModels(null);
+        setLookupFailed(true);
       }
     }, 500);
     return () => clearTimeout(handle);
@@ -712,13 +721,21 @@ function AddProviderDialog({
                     suggestedModels={modelOptions}
                   />
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {isLoadingModels
-                    ? 'Fetching available models for this key…'
-                    : liveModels
-                      ? 'Showing models available to this API key. You can also type any model ID.'
-                      : 'Choose a suggested model or type any model ID. Can be overridden per-pipeline.'}
-                </p>
+                {lookupFailed && !isLoadingModels ? (
+                  <p className="mt-1 text-xs text-destructive">
+                    Couldn't reach {selectedProviderInfo?.displayName ?? 'the provider'} to list
+                    models for this key, so these are built-in suggestions and may be out of date.
+                    Check the server's outbound network access. You can also type any model ID.
+                  </p>
+                ) : (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {isLoadingModels
+                      ? 'Fetching available models for this key…'
+                      : liveModels
+                        ? 'Showing models available to this API key. You can also type any model ID.'
+                        : 'Choose a suggested model or type any model ID. Can be overridden per-pipeline.'}
+                  </p>
+                )}
               </div>
 
               {/* Only show checkbox when adding additional providers */}
