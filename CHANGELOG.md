@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.15](https://github.com/bffless/ce/compare/v0.2.14...v0.2.15) (2026-07-18)
+
+
+### Features
+
+* **frontend:** support multiple conditional terminal response branches ([#502](https://github.com/bffless/ce/issues/502)) ([38ff133](https://github.com/bffless/ce/commit/38ff13326963abcb9ef8f91b9755ad7f30579a86))
+* **mcp:** add traffic-splitting tools (weights + routing rules) ([#498](https://github.com/bffless/ce/issues/498)) ([9d75429](https://github.com/bffless/ce/commit/9d75429fc09b97dbfaae81c78af2a9ebba15c314)), closes [#497](https://github.com/bffless/ce/issues/497)
+
+
+### Bug Fixes
+
+* **domains:** accept wildcard source domains in the UI and API ([#500](https://github.com/bffless/ce/issues/500)) ([aa42032](https://github.com/bffless/ce/commit/aa420322dedb7b45e820f063669c934028ec20c1))
+* **pipelines:** make the `ne` filter null-safe (IS DISTINCT FROM) ([#501](https://github.com/bffless/ce/issues/501)) ([1df0fa4](https://github.com/bffless/ce/commit/1df0fa47c1acde6fee208a2e9ae2f0255d6848e9))
+
 ## [0.2.14](https://github.com/bffless/ce/compare/v0.2.13...v0.2.14) (2026-07-17)
 
 
