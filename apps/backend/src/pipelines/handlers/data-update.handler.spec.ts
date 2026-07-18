@@ -93,3 +93,30 @@ describe('DataUpdateHandler in operator', () => {
     );
   });
 });
+
+describe('DataUpdateHandler ne operator is null-safe', () => {
+  beforeEach(() => mockDb.__reset());
+
+  it('updates rows missing the key via IS DISTINCT FROM', async () => {
+    // This is what makes a backfill possible at all: `flag ne <value>` has to reach
+    // the rows that predate the flag, which is precisely where it needs writing.
+    const { handler } = buildHandler();
+    mockDb.__queue([{ id: 'i1', data: { guid: 'g1' } }]); // select matches (no `archived` key)
+    mockDb.__queue([{ id: 'i1', data: { guid: 'g1', archived: 'false' } }]); // update .returning()
+
+    const result = await handler.execute(
+      context({}),
+      step({
+        schemaId: 'schema-1',
+        filters: { archived: { op: 'ne', value: 'false' } },
+        fields: { archived: 'false' },
+      }),
+    );
+
+    expect((result.output as { count: number }).count).toBe(1);
+    const { sql, params } = new PgDialect().sqlToQuery(mockDb.where.mock.calls[0][0]);
+    expect(sql.toLowerCase()).toContain('is distinct from');
+    expect(sql).not.toContain('!=');
+    expect(params).toEqual(expect.arrayContaining(['false']));
+  });
+});

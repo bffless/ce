@@ -88,6 +88,29 @@ describe('DataQueryHandler in operator', () => {
   });
 });
 
+describe('DataQueryHandler ne operator is null-safe', () => {
+  beforeEach(() => mockDb.__reset());
+
+  it('emits IS DISTINCT FROM so a row missing the key is kept', async () => {
+    // A bare `!=` compares against NULL for a row whose JSONB lacks the field and
+    // yields NULL, dropping the row. Adding a boolean flag to an existing table
+    // would then hide every pre-existing record from a `flag ne true` query.
+    const { handler } = buildHandler();
+    mockDb.__queue([]);
+    await handler.execute(
+      context({}),
+      step({
+        schemaId: 'schema-1',
+        filters: { archived: { op: 'ne', value: 'true' } },
+      }),
+    );
+    const { sql, params } = selectWhereQuery();
+    expect(sql.toLowerCase()).toContain('is distinct from');
+    expect(sql).not.toContain('!=');
+    expect(params).toEqual(expect.arrayContaining(['true']));
+  });
+});
+
 describe('DataQueryHandler output shape (array vs single object)', () => {
   beforeEach(() => mockDb.__reset());
 
