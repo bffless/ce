@@ -173,6 +173,10 @@ export function ResponseHandlerConfig({ config, onChange, previousSteps = [] }: 
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
+              {/* Keep a non-preset status (e.g. 503 authored via the CLI) visible instead of a blank trigger */}
+              {!STATUS_CODES.some((code) => code.value === String(status)) && (
+                <SelectItem value={String(status)}>{String(status)}</SelectItem>
+              )}
               {STATUS_CODES.map((code) => (
                 <SelectItem key={code.value} value={code.value}>
                   {code.label}
