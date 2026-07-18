@@ -15,6 +15,11 @@ import type { CreateDomainDto, WwwBehavior } from '@/services/domainsApi';
 import { useFeatureFlags } from '@/services/featureFlagsApi';
 import { useGetPrimaryContentProjectsQuery } from '@/services/settingsApi';
 import { PathTypeahead } from './PathTypeahead';
+import {
+  HOSTNAME_PATTERN,
+  SOURCE_DOMAIN_PATTERN,
+  SUBDOMAIN_LABEL_PATTERN,
+} from './domainPatterns';
 
 interface DomainFormProps {
   projectId: string;
@@ -118,30 +123,31 @@ export function DomainForm({
   const validateForm = (): boolean => {
     const newErrors: { domain?: string; path?: string; redirectTarget?: string } = {};
 
-    const domainRegex = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
-
     // Validate domain
     if (domainType === 'subdomain') {
       if (!subdomain) {
         newErrors.domain = 'Subdomain is required';
-      } else if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(subdomain)) {
+      } else if (!SUBDOMAIN_LABEL_PATTERN.test(subdomain)) {
         newErrors.domain =
           'Subdomain must start and end with alphanumeric, can contain hyphens';
       }
     } else if (domainType === 'custom' || domainType === 'redirect') {
       if (!customDomain) {
         newErrors.domain = 'Domain is required';
-      } else if (!domainRegex.test(customDomain)) {
-        newErrors.domain = 'Invalid domain format';
+      } else if (!SOURCE_DOMAIN_PATTERN.test(customDomain)) {
+        newErrors.domain =
+          'Invalid domain format. Use a hostname like example.com, optionally with a leading *. wildcard';
       }
     }
 
-    // Validate redirect target for redirect domains
+    // Validate redirect target for redirect domains. Targets are plain hostnames —
+    // a wildcard is meaningless in a Location: header.
     if (domainType === 'redirect') {
       if (!redirectTarget) {
         newErrors.redirectTarget = 'Redirect target is required';
-      } else if (!domainRegex.test(redirectTarget)) {
-        newErrors.redirectTarget = 'Invalid redirect target format';
+      } else if (!HOSTNAME_PATTERN.test(redirectTarget)) {
+        newErrors.redirectTarget =
+          'Invalid redirect target format. Use a hostname like example.com (no wildcards)';
       } else if (redirectTarget === customDomain) {
         newErrors.redirectTarget = 'Redirect target cannot be the same as the source domain';
       }
@@ -258,8 +264,16 @@ export function DomainForm({
             />
           )}
         </div>
-        {errors.domain && (
+        {errors.domain ? (
           <p className="text-sm text-destructive mt-1">{errors.domain}</p>
+        ) : (
+          domainType !== 'subdomain' && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Start with <code>*.</code> to match every subdomain (e.g.{' '}
+              <code>*.example.com</code>). An exact domain mapping always wins over a
+              wildcard.
+            </p>
+          )
         )}
       </div>
 

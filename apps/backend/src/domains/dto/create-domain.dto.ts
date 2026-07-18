@@ -9,6 +9,12 @@ import {
   Matches,
   ValidateIf,
 } from 'class-validator';
+import {
+  HOSTNAME_PATTERN,
+  INVALID_DOMAIN_MESSAGE,
+  INVALID_REDIRECT_TARGET_MESSAGE,
+  SOURCE_DOMAIN_PATTERN,
+} from './domain-patterns';
 
 export class CreateDomainDto {
   @ApiPropertyOptional({
@@ -37,11 +43,12 @@ export class CreateDomainDto {
   path?: string;
 
   @ApiProperty({
-    description: 'Domain name (e.g., coverage.localhost, docs.example.com)',
+    description:
+      'Domain name (e.g., coverage.localhost, docs.example.com). May use a leading wildcard label to match every subdomain (e.g., *.example.com).',
   })
   @IsString()
-  @Matches(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/, {
-    message: 'Invalid domain format',
+  @Matches(SOURCE_DOMAIN_PATTERN, {
+    message: INVALID_DOMAIN_MESSAGE,
   })
   domain: string;
 
@@ -59,8 +66,8 @@ export class CreateDomainDto {
   })
   @ValidateIf((o) => o.domainType === 'redirect')
   @IsString()
-  @Matches(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/, {
-    message: 'Invalid redirect target domain format',
+  @Matches(HOSTNAME_PATTERN, {
+    message: INVALID_REDIRECT_TARGET_MESSAGE,
   })
   redirectTarget?: string;
 

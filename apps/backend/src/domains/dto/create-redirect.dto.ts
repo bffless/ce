@@ -1,11 +1,15 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsEnum, IsOptional, IsString, IsBoolean, Matches } from 'class-validator';
+import { INVALID_DOMAIN_MESSAGE, SOURCE_DOMAIN_PATTERN } from './domain-patterns';
 
 export class CreateRedirectDto {
-  @ApiProperty({ description: 'Source domain that will redirect' })
+  @ApiProperty({
+    description:
+      'Source domain that will redirect. May use a leading wildcard label (e.g., *.example.com).',
+  })
   @IsString()
-  @Matches(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/, {
-    message: 'Invalid domain format',
+  @Matches(SOURCE_DOMAIN_PATTERN, {
+    message: INVALID_DOMAIN_MESSAGE,
   })
   sourceDomain: string;
 
