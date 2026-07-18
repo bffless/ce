@@ -1,5 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsBoolean, IsEnum, IsIn, IsOptional, IsString, Matches } from 'class-validator';
+import { HOSTNAME_PATTERN, INVALID_REDIRECT_TARGET_MESSAGE } from './domain-patterns';
 
 export class UpdateDomainDto {
   @ApiPropertyOptional({ description: 'Deployment alias' })
@@ -71,8 +72,8 @@ export class UpdateDomainDto {
   })
   @IsOptional()
   @IsString()
-  @Matches(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/, {
-    message: 'Invalid redirect target domain format',
+  @Matches(HOSTNAME_PATTERN, {
+    message: INVALID_REDIRECT_TARGET_MESSAGE,
   })
   redirectTarget?: string;
 
