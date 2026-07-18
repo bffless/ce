@@ -108,7 +108,11 @@ export class DbAggregateHandler implements StepHandler<DbAggregateHandlerConfig>
             filterConditions.push(sql`${fieldPath} = ${String(value)}`);
             break;
           case 'ne':
-            filterConditions.push(sql`${fieldPath} != ${String(value)}`);
+            // IS DISTINCT FROM, not !=: for a row whose JSONB lacks the key, `data->>'f'`
+            // is NULL and a bare `!=` yields NULL, silently EXCLUDING the row. Callers
+            // read `ne` as "everything that isn't this value", which must include rows
+            // where the field was never written (a flag added after the rows existed).
+            filterConditions.push(sql`${fieldPath} IS DISTINCT FROM ${String(value)}`);
             break;
           case 'gt':
             filterConditions.push(sql`(${fieldPath})::numeric > ${Number(value)}`);

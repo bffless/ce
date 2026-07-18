@@ -106,7 +106,9 @@ export class PipelineDataService {
               conditions.push(sql`${fieldPath} = ${value}`);
               break;
             case 'ne':
-              conditions.push(sql`${fieldPath} != ${value}`);
+              // Null-safe, matching the pipeline handlers: a row whose JSONB lacks
+              // the key must count as "not equal", not drop out of the result set.
+              conditions.push(sql`${fieldPath} IS DISTINCT FROM ${value}`);
               break;
             case 'gt':
               conditions.push(sql`(${fieldPath})::numeric > ${Number(value)}`);

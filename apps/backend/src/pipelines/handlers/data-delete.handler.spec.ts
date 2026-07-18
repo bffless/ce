@@ -151,6 +151,31 @@ describe('DataDeleteHandler', () => {
     expect(mockDb.delete).toHaveBeenCalled();
   });
 
+  it('ne is null-safe — a row missing the key is now IN SCOPE for deletion', async () => {
+    // NOTE: this WIDENS a destructive operation. `starred ne true` previously spared
+    // rows that had no `starred` key at all (NULL != 'true' is NULL); it now deletes
+    // them. That is the correct reading of "delete everything that isn't starred" —
+    // a row with no flag is not starred — but any delete-by-query relying on the old
+    // NULL-skipping behaviour to protect partially-populated rows will remove more.
+    const { handler } = buildHandler();
+    mockDb.__queue([{ id: 'no-flag-1' }]); // a legacy row with no `starred` key
+    mockDb.__queue([{ id: 'no-flag-1' }]); // delete .returning()
+
+    const result = await handler.execute(
+      context({}),
+      step({
+        schemaId: 'schema-1',
+        filters: { starred: { op: 'ne', value: 'true' } },
+      }),
+    );
+
+    expect(result.output).toEqual({ count: 1, deletedIds: ['no-flag-1'] });
+    const { sql, params } = selectWhereQuery();
+    expect(sql.toLowerCase()).toContain('is distinct from');
+    expect(sql).not.toContain('!=');
+    expect(params).toContain('true');
+  });
+
   it('returns count 0 without deleting when no rows match the predicate', async () => {
     const { handler } = buildHandler();
     mockDb.__queue([]); // select finds nothing

@@ -86,3 +86,27 @@ describe('DbAggregateHandler in operator', () => {
     );
   });
 });
+
+describe('DbAggregateHandler ne operator is null-safe', () => {
+  beforeEach(() => mockDb.__reset());
+
+  it('counts rows missing the key via IS DISTINCT FROM', async () => {
+    // Badge counts must include records written before the flag existed, otherwise
+    // adding a flag to a populated table silently zeroes every count that filters it.
+    const { handler } = buildHandler();
+    mockDb.__queue([{ result: '3' }]);
+    const result = await handler.execute(
+      context({}),
+      step({
+        schemaId: 'schema-1',
+        operation: 'count',
+        filters: { archived: { op: 'ne', value: 'true' } },
+      }),
+    );
+    expect(result.output).toEqual(expect.objectContaining({ result: 3 }));
+    const { sql, params } = new PgDialect().sqlToQuery(mockDb.where.mock.calls[0][0]);
+    expect(sql.toLowerCase()).toContain('is distinct from');
+    expect(sql).not.toContain('!=');
+    expect(params).toEqual(expect.arrayContaining(['true']));
+  });
+});
