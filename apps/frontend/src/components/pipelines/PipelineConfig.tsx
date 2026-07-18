@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, Fragment } from 'react';
+import { useState, useCallback, useMemo, useRef, Fragment } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -146,6 +146,11 @@ function swapIndexes(set: Set<number>, a: number, b: number): Set<number> {
 // Terminal step types
 type TerminalStepType = 'none' | 'response' | 'proxy';
 
+/** Handler types that produce the HTTP response and end the pipeline. */
+function isTerminalHandler(step: PipelineStep): boolean {
+  return step.handlerType === 'response_handler' || step.handlerType === 'proxy_forward';
+}
+
 /**
  * PipelineConfig - Full pipeline editor component.
  * Allows adding, removing, and reordering steps with their handler configs.
@@ -168,7 +173,8 @@ export function PipelineConfig({
   const [expandedPostSteps, setExpandedPostSteps] = useState<Set<number>>(new Set());
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const [deletePostConfirm, setDeletePostConfirm] = useState<number | null>(null);
-  const [terminalExpanded, setTerminalExpanded] = useState(false);
+  const [deleteTerminalConfirm, setDeleteTerminalConfirm] = useState<number | null>(null);
+  const [expandedTerminalSteps, setExpandedTerminalSteps] = useState<Set<number>>(new Set());
 
   // Direct-to-bucket uploads (presigned_upload) only work on object storage,
   // not local. Disable the option in the picker when storage can't presign.
@@ -184,19 +190,23 @@ export function PipelineConfig({
     ? {}
     : { presigned_upload: 'Requires S3, GCS, MinIO, or Azure storage (not local)' };
 
-  // Separate terminal steps (response_handler, proxy_forward) from regular steps
+  // The trailing contiguous run of response/proxy steps forms the terminal
+  // branches; each may carry a `condition` so the pipeline can answer
+  // differently per outcome (e.g. 503 when a fetch failed, 200 otherwise).
+  // A terminal-type step sitting before a non-terminal step is not part of the
+  // run and stays in the regular list so it remains visible and editable.
   const allSteps = config.steps || [];
-  const terminalStep = allSteps.find(
-    (s) => s.handlerType === 'response_handler' || s.handlerType === 'proxy_forward',
-  );
-  const steps = allSteps.filter(
-    (s) => s.handlerType !== 'response_handler' && s.handlerType !== 'proxy_forward',
-  );
+  let splitIndex = allSteps.length;
+  while (splitIndex > 0 && isTerminalHandler(allSteps[splitIndex - 1])) splitIndex--;
+  const steps = allSteps.slice(0, splitIndex);
+  const terminalSteps = allSteps.slice(splitIndex);
+  const terminalStep = terminalSteps[0];
 
   // Post-processing steps
   const postSteps = config.postSteps || [];
 
-  // Determine current terminal step type
+  // Terminal type drives the single-branch dropdown; with 2+ branches the
+  // dropdown is hidden, so it only needs to reflect the first branch.
   const terminalStepType: TerminalStepType = terminalStep
     ? terminalStep.handlerType === 'proxy_forward'
       ? 'proxy'
@@ -206,35 +216,31 @@ export function PipelineConfig({
   const name = config.name || '';
   const description = config.description || '';
 
-  // Combine steps with terminal step (terminal always goes last)
-  const getAllSteps = useCallback(
-    (regularSteps: PipelineStep[], termStep?: PipelineStep) => {
-      return termStep ? [...regularSteps, termStep] : regularSteps;
-    },
-    [],
-  );
+  // Latest values for the stable branch-edit callbacks below. Handler config
+  // editors emit onChange from a mount-time effect that depends on the
+  // callback's identity, so those callbacks must not be recreated per render.
+  const latest = useRef({ name, description, steps, terminalSteps, postSteps, onChange });
+  latest.current = { name, description, steps, terminalSteps, postSteps, onChange };
 
   const updateConfig = useCallback(
     (updates: Partial<PipelineConfigData>) => {
-      // If updating steps, we need to re-combine with terminal step
-      const newSteps = updates.steps !== undefined
-        ? getAllSteps(updates.steps, terminalStep)
-        : getAllSteps(steps, terminalStep);
+      const combine = (regularSteps: PipelineStep[]) => [...regularSteps, ...terminalSteps];
 
       onChange({
         name,
         description,
-        steps: newSteps,
+        steps: combine(updates.steps !== undefined ? updates.steps : steps),
         postSteps,
         ...updates,
         // Make sure steps is always the combined value
-        ...(updates.steps !== undefined ? { steps: getAllSteps(updates.steps, terminalStep) } : {}),
+        ...(updates.steps !== undefined ? { steps: combine(updates.steps) } : {}),
       });
     },
-    [name, description, steps, postSteps, terminalStep, onChange, getAllSteps],
+    [name, description, steps, postSteps, terminalSteps, onChange],
   );
 
-  // Change terminal step type
+  // Change terminal step type (single-branch mode only — the dropdown is
+  // hidden once there are multiple branches)
   const setTerminalType = useCallback(
     (type: TerminalStepType) => {
       if (type === 'none') {
@@ -245,7 +251,7 @@ export function PipelineConfig({
           steps: steps,
           postSteps,
         });
-        setTerminalExpanded(false);
+        setExpandedTerminalSteps(new Set());
       } else if (type === 'response') {
         // Add or replace with response_handler
         const newTerminalStep: PipelineStep = {
@@ -265,7 +271,7 @@ export function PipelineConfig({
           steps: [...steps, newTerminalStep],
           postSteps,
         });
-        setTerminalExpanded(true);
+        setExpandedTerminalSteps(new Set([0]));
       } else if (type === 'proxy') {
         // Add or replace with proxy_forward
         const newTerminalStep: PipelineStep = {
@@ -286,25 +292,105 @@ export function PipelineConfig({
           steps: [...steps, newTerminalStep],
           postSteps,
         });
-        setTerminalExpanded(true);
+        setExpandedTerminalSteps(new Set([0]));
       }
     },
     [name, description, steps, postSteps, terminalStep, onChange],
   );
 
-  // Update terminal step config
+  const updateTerminalStep = useCallback((index: number, updates: Partial<PipelineStep>) => {
+    const { name, description, steps, terminalSteps, postSteps, onChange } = latest.current;
+    onChange({
+      name,
+      description,
+      steps: [
+        ...steps,
+        ...terminalSteps.map((s, i) => (i === index ? { ...s, ...updates } : s)),
+      ],
+      postSteps,
+    });
+  }, []);
+
+  // Update a branch's handler config, preserving its run condition — the
+  // response/proxy editors emit only the fields they own.
   const updateTerminalConfig = useCallback(
-    (newConfig: ResponseConfig | ProxyConfig) => {
-      if (!terminalStep) return;
-      onChange({
-        name,
-        description,
-        steps: [...steps, { ...terminalStep, config: newConfig as unknown as Record<string, unknown> }],
-        postSteps,
+    (index: number, newConfig: ResponseConfig | ProxyConfig) => {
+      const branch = latest.current.terminalSteps[index];
+      if (!branch) return;
+      const currentCondition = (branch.config as Record<string, unknown>)?.condition;
+      updateTerminalStep(index, {
+        config: (currentCondition
+          ? { ...newConfig, condition: currentCondition }
+          : newConfig) as unknown as Record<string, unknown>,
       });
     },
-    [name, description, steps, postSteps, terminalStep, onChange],
+    [updateTerminalStep],
   );
+
+  // Stable per-branch onChange identities (see `latest` above). Depending on
+  // branch count, not contents: the handlers read current state via `latest`,
+  // and recreating them on every config change would refire the handler
+  // editors' mount effects in a feedback loop.
+  const terminalConfigHandlers = useMemo(
+    () =>
+      terminalSteps.map(
+        (_, i) => (cfg: ResponseConfig | ProxyConfig) => updateTerminalConfig(i, cfg),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [terminalSteps.length, updateTerminalConfig],
+  );
+
+  const addTerminalBranch = useCallback(() => {
+    const { name, description, steps, terminalSteps, postSteps, onChange } = latest.current;
+    const newBranch: PipelineStep = {
+      id: generateId(),
+      name: generateStepName('response_handler', [...steps, ...terminalSteps, ...postSteps]),
+      handlerType: 'response_handler',
+      config: {
+        status: 200,
+        body: '',
+        contentType: 'application/json',
+      },
+      isEnabled: true,
+    };
+    onChange({
+      name,
+      description,
+      steps: [...steps, ...terminalSteps, newBranch],
+      postSteps,
+    });
+    setExpandedTerminalSteps((prev) => new Set([...prev, terminalSteps.length]));
+  }, []);
+
+  const removeTerminalBranch = (index: number) => {
+    onChange({
+      name,
+      description,
+      steps: [...steps, ...terminalSteps.filter((_, i) => i !== index)],
+      postSteps,
+    });
+    setExpandedTerminalSteps((prev) => removeIndex(prev, index));
+    setDeleteTerminalConfirm(null);
+  };
+
+  const moveTerminalBranch = (index: number, direction: 'up' | 'down') => {
+    const newIndex = direction === 'up' ? index - 1 : index + 1;
+    if (newIndex < 0 || newIndex >= terminalSteps.length) return;
+
+    const newTerminalSteps = [...terminalSteps];
+    [newTerminalSteps[index], newTerminalSteps[newIndex]] = [newTerminalSteps[newIndex], newTerminalSteps[index]];
+    onChange({
+      name,
+      description,
+      steps: [...steps, ...newTerminalSteps],
+      postSteps,
+    });
+    setExpandedTerminalSteps((prev) => swapIndexes(prev, index, newIndex));
+  };
+
+  const toggleTerminalExpanded = (index: number) => {
+    setExpandedTerminalSteps((prev) => toggleIndex(prev, index));
+  };
 
   // Calculate previous steps for response (all regular steps)
   const previousStepsForResponse: PreviousStep[] = useMemo(
@@ -432,25 +518,15 @@ export function PipelineConfig({
     setExpandedPostSteps((prev) => toggleIndex(prev, index));
   };
 
-  // Previous steps available for post-processing steps (all regular + terminal)
+  // Previous steps available for post-processing steps (all regular + terminal branches)
   const previousStepsForPost: PreviousStep[] = useMemo(
-    () => [
-      ...steps.map((s) => ({
+    () =>
+      [...steps, ...terminalSteps].map((s) => ({
         name: s.name || getHandlerDisplayName(s.handlerType),
         handlerType: s.handlerType,
         config: s.config,
       })),
-      ...(terminalStep
-        ? [
-            {
-              name: terminalStep.name || getHandlerDisplayName(terminalStep.handlerType),
-              handlerType: terminalStep.handlerType,
-              config: terminalStep.config,
-            },
-          ]
-        : []),
-    ],
-    [steps, terminalStep],
+    [steps, terminalSteps],
   );
 
   return (
@@ -694,107 +770,195 @@ export function PipelineConfig({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Send className="h-4 w-4 text-muted-foreground" />
-            <Label className="text-base">Terminal Step</Label>
+            <Label className="text-base">
+              {terminalSteps.length > 1 ? 'Terminal Branches' : 'Terminal Step'}
+            </Label>
           </div>
-          {!hasImplicitTerminal && (
-            <Select
-              value={terminalStepType}
-              onValueChange={(v) => setTerminalType(v as TerminalStepType)}
-            >
-              <SelectTrigger className="w-[200px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Default Response</SelectItem>
-                <SelectItem value="response">Custom HTTP Response</SelectItem>
-                <SelectItem value="proxy">Forward Request (Proxy)</SelectItem>
-              </SelectContent>
-            </Select>
-          )}
-          {hasImplicitTerminal && (
-            <Badge variant="secondary" className="text-xs">
-              AI Chat (Streaming)
-            </Badge>
-          )}
+          <div className="flex items-center gap-2">
+            {!hasImplicitTerminal && terminalSteps.length <= 1 && (
+              <Select
+                value={terminalStepType}
+                onValueChange={(v) => setTerminalType(v as TerminalStepType)}
+              >
+                <SelectTrigger className="w-[200px]" aria-label="Terminal step type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Default Response</SelectItem>
+                  <SelectItem value="response">Custom HTTP Response</SelectItem>
+                  <SelectItem value="proxy">Forward Request (Proxy)</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+            {!hasImplicitTerminal && terminalSteps.length >= 1 && (
+              <Button type="button" variant="outline" size="sm" onClick={addTerminalBranch}>
+                <Plus className="h-4 w-4 mr-1" />
+                Add Branch
+              </Button>
+            )}
+            {hasImplicitTerminal && (
+              <Badge variant="secondary" className="text-xs">
+                AI Chat (Streaming)
+              </Badge>
+            )}
+          </div>
         </div>
 
-        {terminalStepType === 'response' && terminalStep && (
-          // Custom Response Configuration
-          <Card className="border-primary/20 bg-primary/5">
-            <CardHeader className="py-3">
-              <button
-                type="button"
-                onClick={() => setTerminalExpanded(!terminalExpanded)}
-                className="flex items-center gap-2 text-left hover:text-primary w-full"
-              >
-                {terminalExpanded ? (
-                  <ChevronDown className="h-4 w-4" />
-                ) : (
-                  <ChevronRight className="h-4 w-4" />
-                )}
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Send className="h-4 w-4" />
-                  HTTP Response
-                </CardTitle>
-                <Badge variant="outline" className="text-xs">
-                  Terminal
-                </Badge>
-              </button>
-            </CardHeader>
-            {terminalExpanded && (
-              <CardContent className="pt-0 space-y-4">
-                <AvailableVariables
-                  previousSteps={previousStepsForResponse}
-                  syntax="template"
-                  className="mb-4"
-                />
-                <ResponseHandlerConfig
-                  config={terminalStep.config as Partial<ResponseConfig>}
-                  onChange={updateTerminalConfig}
-                  previousSteps={previousStepsForResponse}
-                />
-              </CardContent>
-            )}
-          </Card>
+        {terminalSteps.length > 1 && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-md px-3 py-2">
+            <Info className="h-3.5 w-3.5 shrink-0" />
+            <span>
+              Branches run in order; the response comes from the last branch whose condition
+              matches. A branch without a condition always matches.
+            </span>
+          </div>
         )}
 
-        {terminalStepType === 'proxy' && terminalStep && (
-          // Proxy Forward Configuration
-          <Card className="border-blue-500/20 bg-blue-500/5">
-            <CardHeader className="py-3">
-              <button
-                type="button"
-                onClick={() => setTerminalExpanded(!terminalExpanded)}
-                className="flex items-center gap-2 text-left hover:text-primary w-full"
-              >
-                {terminalExpanded ? (
-                  <ChevronDown className="h-4 w-4" />
-                ) : (
-                  <ChevronRight className="h-4 w-4" />
-                )}
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Send className="h-4 w-4" />
-                  Forward Request
-                </CardTitle>
-                <Badge variant="outline" className="text-xs bg-blue-500/10">
-                  Proxy
-                </Badge>
-              </button>
-            </CardHeader>
-            {terminalExpanded && (
-              <CardContent className="pt-0 space-y-4">
-                <AvailableVariables
-                  previousSteps={previousStepsForResponse}
-                  syntax="template"
-                  className="mb-4"
-                />
-                <ProxyForwardConfig
-                  config={terminalStep.config as Partial<ProxyConfig>}
-                  onChange={updateTerminalConfig}
-                />
-              </CardContent>
-            )}
-          </Card>
+        {terminalSteps.length >= 1 && (
+          <div className="space-y-3">
+            {terminalSteps.map((branch, index) => {
+              const isProxy = branch.handlerType === 'proxy_forward';
+              const isExpanded = expandedTerminalSteps.has(index);
+              const key = stepKey(branch, index);
+              const branchTitle =
+                branch.name || (isProxy ? 'Forward Request' : 'HTTP Response');
+              const condition = (branch.config as Record<string, unknown>)?.condition as
+                | string
+                | undefined;
+              const showBranchControls = terminalSteps.length > 1;
+              return (
+                <Card
+                  key={key}
+                  className={isProxy ? 'border-blue-500/20 bg-blue-500/5' : 'border-primary/20 bg-primary/5'}
+                >
+                  <CardHeader className="py-3">
+                    <div className="flex items-center gap-2">
+                      {showBranchControls && (
+                        <Badge variant="secondary" className="font-mono">
+                          T{index + 1}
+                        </Badge>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => toggleTerminalExpanded(index)}
+                        className="flex-1 flex items-center gap-2 text-left hover:text-primary min-w-0"
+                      >
+                        {isExpanded ? (
+                          <ChevronDown className="h-4 w-4" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4" />
+                        )}
+                        <CardTitle className="text-sm font-medium flex items-center gap-2">
+                          <Send className="h-4 w-4" />
+                          {branchTitle}
+                        </CardTitle>
+                        <Badge
+                          variant="outline"
+                          className={isProxy ? 'text-xs bg-blue-500/10' : 'text-xs'}
+                        >
+                          {isProxy ? 'Proxy' : 'Terminal'}
+                        </Badge>
+                        {showBranchControls && (
+                          <Badge
+                            variant="secondary"
+                            className="text-xs font-mono max-w-[280px] truncate"
+                            title={condition ? `when ${condition}` : 'always'}
+                          >
+                            {condition ? `when ${condition}` : 'always'}
+                          </Badge>
+                        )}
+                      </button>
+                      {showBranchControls && (
+                        <>
+                          <div className="flex gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              disabled={index === 0}
+                              aria-label={`Move ${branch.name || 'branch'} up`}
+                              onClick={() => moveTerminalBranch(index, 'up')}
+                            >
+                              <ChevronUp className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              disabled={index === terminalSteps.length - 1}
+                              aria-label={`Move ${branch.name || 'branch'} down`}
+                              onClick={() => moveTerminalBranch(index, 'down')}
+                            >
+                              <ChevronDown className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                            aria-label={`Delete ${branch.name || 'branch'}`}
+                            onClick={() => setDeleteTerminalConfirm(index)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </CardHeader>
+                  {isExpanded && (
+                    <CardContent className="pt-0 space-y-4">
+                      {/* Respond When (optional) */}
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Filter className="h-4 w-4 text-muted-foreground" />
+                          <Label htmlFor={`terminal-${key}-condition`}>
+                            Respond When{' '}
+                            <span className="text-muted-foreground font-normal">(optional)</span>
+                          </Label>
+                        </div>
+                        <ExpressionInput
+                          value={condition || ''}
+                          onChange={(value) => {
+                            const currentConfig = (branch.config || {}) as Record<string, unknown>;
+                            updateTerminalStep(index, {
+                              config: { ...currentConfig, condition: value || undefined },
+                            });
+                          }}
+                          placeholder="e.g., steps.fetch.ok or !steps.check_exists"
+                          previousSteps={previousStepsForResponse}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          This response is only used when the expression is truthy. Leave empty to
+                          always respond.
+                        </p>
+                      </div>
+
+                      <AvailableVariables
+                        previousSteps={previousStepsForResponse}
+                        syntax="template"
+                        className="mb-4"
+                      />
+                      {isProxy ? (
+                        <ProxyForwardConfig
+                          config={branch.config as Partial<ProxyConfig>}
+                          onChange={terminalConfigHandlers[index]}
+                        />
+                      ) : (
+                        <ResponseHandlerConfig
+                          config={branch.config as Partial<ResponseConfig>}
+                          onChange={terminalConfigHandlers[index]}
+                          previousSteps={previousStepsForResponse}
+                        />
+                      )}
+                    </CardContent>
+                  )}
+                </Card>
+              );
+            })}
+          </div>
         )}
 
         {terminalStepType === 'none' && !hasImplicitTerminal && (
@@ -1072,6 +1236,30 @@ data: {"type":"text-delta","value":" world"}
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteConfirm !== null && removeStep(deleteConfirm)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete terminal branch confirmation dialog */}
+      <AlertDialog
+        open={deleteTerminalConfirm !== null}
+        onOpenChange={() => setDeleteTerminalConfirm(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Branch</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this response branch? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteTerminalConfirm !== null && removeTerminalBranch(deleteTerminalConfirm)}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Delete

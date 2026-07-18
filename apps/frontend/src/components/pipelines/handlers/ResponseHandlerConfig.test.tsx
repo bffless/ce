@@ -32,6 +32,17 @@ function Harness({
   return <ResponseHandlerConfig config={config} onChange={handleChange} />;
 }
 
+describe('ResponseHandlerConfig status code', () => {
+  it('shows a non-preset stored status instead of blanking it out', () => {
+    const sink = { current: {} as Record<string, unknown> };
+    render(<Harness initial={{ status: 503 }} sink={sink} />);
+
+    expect(screen.getByRole('combobox', { name: /status code/i })).toHaveTextContent('503');
+    // Untouched, so the emitted config must still carry the original value.
+    expect(sink.current.status).toBe(503);
+  });
+});
+
 describe('ResponseHandlerConfig content type', () => {
   it('defaults to application/json', () => {
     render(<Harness />);
