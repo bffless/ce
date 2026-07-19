@@ -245,26 +245,26 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
   const sslExpiry = domain.sslExpiresAt ? formatExpiryDate(domain.sslExpiresAt) : null;
 
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader>
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
             {/* Project name as title for non-redirect domains */}
             {projectName && domain.domainType !== 'redirect' && (
               <p className="text-sm font-medium text-muted-foreground mb-1">
                 {projectName}
               </p>
             )}
-            <div className="flex items-center gap-2">
+            <div className="flex min-w-0 items-center gap-2">
               <a
                 href={fullUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-lg font-semibold hover:underline"
+                className="min-w-0 truncate text-lg font-semibold hover:underline"
               >
                 {domain.domain}
               </a>
-              <ExternalLink className="h-4 w-4 text-muted-foreground" />
+              <ExternalLink className="h-4 w-4 shrink-0 text-muted-foreground" />
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               {domain.domainType === 'subdomain' ? 'Subdomain' : domain.domainType === 'redirect' ? 'Redirect Domain' : 'Custom Domain'}
@@ -288,7 +288,7 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
             )}
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {/* Phase B5: Visibility badge */}
             {visibilityInfo && (
               <Badge
@@ -337,14 +337,14 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
           )}
 
           {/* Phase C: Traffic split indicator - only for non-redirect domains */}
-          {domain.domainType !== 'redirect' && trafficConfig && trafficConfig.weights.length > 0 && (
+          {domain.domainType !== 'redirect' && (trafficConfig?.weights?.length ?? 0) > 0 && (
             <div className="flex items-center gap-2">
               <span className="font-medium flex items-center gap-1">
                 <Split className="h-3 w-3 text-purple-600" />
                 Traffic Split:
               </span>
               <div className="flex flex-wrap gap-1">
-                {trafficConfig.weights.map((w) => (
+                {trafficConfig?.weights?.map((w) => (
                   <Badge key={w.alias} variant="outline" className="text-xs">
                     {w.alias}: {w.weight}%
                   </Badge>
@@ -845,7 +845,7 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
         </div>
       </CardContent>
 
-      <CardFooter className="flex justify-end gap-2">
+      <CardFooter className="flex flex-wrap justify-end gap-2">
         {/* Verify/Re-check DNS button for custom and redirect domains */}
         {/* Hidden when external proxy (Cloudflare) handles DNS/routing */}
         {/* Note: In platform mode, subdomains have wildcard DNS, but custom domains still need manual verification */}

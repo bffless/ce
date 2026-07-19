@@ -4,6 +4,7 @@ import { setFeedSearch } from '@/store/slices/repositoryListSlice';
 import { Input } from '@/components/ui/input';
 import { Search, X } from 'lucide-react';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 export function GlobalSearchBar() {
   const dispatch = useAppDispatch();
@@ -12,6 +13,8 @@ export function GlobalSearchBar() {
 
   // Local state for immediate UI update
   const [localSearch, setLocalSearch] = useState(feedSearch);
+  // The "/" shortcut hint only makes sense where a hardware keyboard is likely
+  const hasKeyboardViewport = useMediaQuery('(min-width: 640px)');
 
   // Debounced value for API call
   const debouncedSearch = useDebouncedValue(localSearch, 300);
@@ -67,7 +70,11 @@ export function GlobalSearchBar() {
       <Input
         ref={inputRef}
         type="search"
-        placeholder="Search all repositories... (press / to focus)"
+        placeholder={
+          hasKeyboardViewport
+            ? 'Search all repositories... (press / to focus)'
+            : 'Search all repositories...'
+        }
         value={localSearch}
         onChange={(e) => setLocalSearch(e.target.value)}
         className="pl-10 pr-10"

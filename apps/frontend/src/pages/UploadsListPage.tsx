@@ -115,7 +115,7 @@ export function UploadsListPage() {
   return (
     <>
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
           <div>
             <CardTitle>Uploads</CardTitle>
             <CardDescription>Manage file uploads and uploaded files</CardDescription>
@@ -166,7 +166,7 @@ export function UploadsListPage() {
                   </h3>
                   <div className="flex items-center gap-2">
                     <Select value={selectedSchemaId} onValueChange={setSelectedSchemaId}>
-                      <SelectTrigger className="w-full">
+                      <SelectTrigger className="w-full min-w-0 flex-1">
                         <SelectValue placeholder="Select a schema to browse uploads..." />
                       </SelectTrigger>
                       <SelectContent>
@@ -179,6 +179,7 @@ export function UploadsListPage() {
                     </Select>
                     <Button
                       variant="outline"
+                      className="shrink-0"
                       disabled={!selectedSchemaId}
                       onClick={() => {
                         if (selectedSchemaId) {

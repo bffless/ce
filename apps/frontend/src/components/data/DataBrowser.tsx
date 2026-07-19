@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { Fragment, useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -352,8 +352,8 @@ export function DataBrowser({ schemaId, fields, canEdit }: DataBrowserProps) {
                   </TableHeader>
                   <TableBody>
                     {records.map((record) => (
-                      <>
-                        <TableRow key={record.id}>
+                      <Fragment key={record.id}>
+                        <TableRow>
                           {canEdit && (
                             <TableCell>
                               <Checkbox
@@ -387,7 +387,9 @@ export function DataBrowser({ schemaId, fields, canEdit }: DataBrowserProps) {
                                     className="flex items-center gap-1 hover:text-foreground text-muted-foreground transition-colors cursor-pointer"
                                     onClick={() => copyToClipboard(record.id)}
                                   >
-                                    <span>{record.id.slice(0, 8)}...</span>
+                                    <span className="whitespace-nowrap font-mono text-xs">
+                                      {record.id.slice(0, 8)}...
+                                    </span>
                                     {copiedId === record.id ? (
                                       <Check className="h-3 w-3 text-green-500" />
                                     ) : (
@@ -452,7 +454,7 @@ export function DataBrowser({ schemaId, fields, canEdit }: DataBrowserProps) {
                             </TableCell>
                           </TableRow>
                         )}
-                      </>
+                      </Fragment>
                     ))}
                   </TableBody>
                 </Table>

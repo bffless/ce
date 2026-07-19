@@ -31,10 +31,10 @@ export function RuleSetCard({
       to={href}
       className="flex items-center justify-between p-4 rounded-lg border hover:bg-accent transition-colors group"
     >
-      <div className="flex items-center gap-4">
-        <Settings className="h-5 w-5 text-muted-foreground" />
-        <div>
-          <div className="flex items-center gap-2">
+      <div className="flex min-w-0 items-center gap-4">
+        <Settings className="h-5 w-5 shrink-0 text-muted-foreground" />
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="font-medium">{name}</span>
             {environment && (
               <Badge variant="outline" className="text-xs">

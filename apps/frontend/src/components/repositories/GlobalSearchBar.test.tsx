@@ -306,14 +306,42 @@ describe('GlobalSearchBar', () => {
     expect(clearButton).toHaveAttribute('type', 'button');
   });
 
-  it('displays keyboard shortcut hint in placeholder', () => {
+  it('hides the keyboard shortcut hint on narrow (touch) viewports', () => {
+    // The global matchMedia mock reports matches: false, i.e. below the sm breakpoint
     render(
       <ReduxWrapper store={store}>
         <GlobalSearchBar />
       </ReduxWrapper>
     );
 
-    const input = screen.getByPlaceholderText(/press \/ to focus/i);
+    const input = screen.getByPlaceholderText('Search all repositories...');
     expect(input).toBeInTheDocument();
+  });
+
+  it('displays keyboard shortcut hint in placeholder on wide viewports', () => {
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: true,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    })) as typeof window.matchMedia;
+
+    try {
+      render(
+        <ReduxWrapper store={store}>
+          <GlobalSearchBar />
+        </ReduxWrapper>
+      );
+
+      const input = screen.getByPlaceholderText(/press \/ to focus/i);
+      expect(input).toBeInTheDocument();
+    } finally {
+      window.matchMedia = originalMatchMedia;
+    }
   });
 });

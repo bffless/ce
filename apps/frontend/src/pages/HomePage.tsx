@@ -69,12 +69,17 @@ export function HomePage() {
   // Show onboarding modal if user hasn't completed onboarding
   // Only show for admin/user roles since they can create repos (the modal guides through repo creation)
   // Members cannot create repos, so skip the modal for them
+  // Also skip when repositories already exist: the local hasCompletedOnboarding flag is
+  // per-browser, so a new device/cleared storage must not re-trigger "create your first
+  // repository" over a workspace that already has repos. Wait for the query to resolve so
+  // the modal never flashes before the count is known.
   useEffect(() => {
     const canCreateRepos = sessionData?.user?.role === 'admin' || sessionData?.user?.role === 'user';
-    if (sessionData?.user && !hasCompletedOnboarding && canCreateRepos) {
+    const hasNoRepos = myRepos !== undefined && (myRepos.total ?? 0) === 0;
+    if (sessionData?.user && !hasCompletedOnboarding && canCreateRepos && hasNoRepos) {
       setShowOnboarding(true);
     }
-  }, [sessionData, hasCompletedOnboarding]);
+  }, [sessionData, hasCompletedOnboarding, myRepos]);
 
   // Check setup status first - redirect to setup if not complete
   if (!isSetupLoading && setupStatus && !setupStatus.isSetupComplete) {
@@ -107,7 +112,7 @@ export function HomePage() {
               />
             </div>
             <div className="text-center md:text-left">
-              <h1 className="text-3xl md:text-4xl font-bold text-[#3a3a3a] dark:text-foreground">
+              <h1 className="text-3xl md:text-4xl font-bold text-foreground">
                 Welcome{user ? `, ${user.email.split('@')[0]}` : ''}
               </h1>
               <p className="mt-2 text-lg text-[#4a4a4a] dark:text-muted-foreground">
