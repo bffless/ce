@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.16](https://github.com/bffless/ce/compare/v0.2.15...v0.2.16) (2026-07-19)
+
+
+### Bug Fixes
+
+* **frontend:** mobile viewport overflow and crashes across admin pages ([#503](https://github.com/bffless/ce/issues/503)) ([cdfcaa9](https://github.com/bffless/ce/commit/cdfcaa9b270f64a3915a37b39a668ba092389e5e))
+
 ## [0.2.15](https://github.com/bffless/ce/compare/v0.2.14...v0.2.15) (2026-07-18)
 
 
