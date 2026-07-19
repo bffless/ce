@@ -34,6 +34,7 @@ const ROUTES: RouteSpec[] = [
   { name: 'repo aliases', path: '/repo/acme/webapp/aliases' },
   { name: 'repo proxy rules', path: '/repo/acme/webapp/proxy-rules' },
   { name: 'repo rule set detail', path: '/repo/acme/webapp/proxy-rules/rs-1' },
+  { name: 'repo rule editor (pipeline)', path: '/repo/acme/webapp/proxy-rules/rs-1/rule-1' },
   { name: 'repo schedules', path: '/repo/acme/webapp/schedules' },
   { name: 'repo data schemas', path: '/repo/acme/webapp/data' },
   { name: 'repo schema detail', path: '/repo/acme/webapp/data/schema-1', dark: true },
@@ -60,6 +61,13 @@ async function assertNoHorizontalOverflow(page: Page, path: string, theme: 'ligh
   await page.goto(path, { waitUntil: 'networkidle' });
   // Give post-load renders (charts, expanding lists) a beat to settle
   await page.waitForTimeout(500);
+
+  if (process.env.MOBILE_SHOTS) {
+    await page.screenshot({
+      path: `test-results/mobile-shots/${path.replace(/\W+/g, '-').replace(/^-|-$/g, '') || 'home'}${theme === 'dark' ? '.dark' : ''}.png`,
+      fullPage: true,
+    });
+  }
 
   const widths = await page.evaluate(() => ({
     scrollWidth: document.documentElement.scrollWidth,
