@@ -36,14 +36,14 @@ export function ManagedFromGitBadge({ source, className }: ManagedFromGitBadgePr
   return (
     <Badge
       variant="outline"
-      className={cn('text-xs font-normal gap-1 items-center', className)}
+      className={cn('max-w-full flex-wrap text-xs font-normal gap-1 items-center', className)}
       title={MANAGED_FROM_GIT_WARNING}
     >
       <GitBranch className="h-3 w-3 shrink-0" aria-hidden="true" />
-      <span>Managed from git</span>
-      {origin && <span className="text-muted-foreground">{origin}</span>}
+      <span className="whitespace-nowrap">Managed from git</span>
+      {origin && <span className="min-w-0 truncate text-muted-foreground">{origin}</span>}
       {source.syncedAt && (
-        <span className="text-muted-foreground">
+        <span className="whitespace-nowrap text-muted-foreground">
           synced {formatRelativeTime(source.syncedAt)}
         </span>
       )}

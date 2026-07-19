@@ -147,7 +147,7 @@ export function RulesList({
           <div
             key={rule.id}
             onClick={canEdit ? () => onRuleClick(rule) : undefined}
-            className={`flex items-center gap-3 p-3 border rounded-md bg-background transition-colors ${
+            className={`flex flex-wrap items-center gap-x-3 gap-y-2 p-3 border rounded-md bg-background transition-colors ${
               canEdit ? 'cursor-pointer hover:bg-accent' : ''
             } ${!rule.isEnabled ? 'opacity-50' : ''}`}
           >
@@ -157,7 +157,7 @@ export function RulesList({
             >
               {rule.order}
             </div>
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 basis-40 min-w-0">
               <div className="flex items-center gap-2 text-sm">
                 <code className="font-mono bg-muted px-2 py-0.5 rounded truncate">
                   {rule.pathPattern}
@@ -229,49 +229,53 @@ export function RulesList({
                 )}
               </div>
             </div>
-            {rule.proxyType === 'pipeline' && rule.debugEnabled && (
-              <LogCountBadge
-                ruleId={rule.id}
-                onClick={(e) => handleViewLogs(rule, e)}
-              />
-            )}
-            {canEdit && (
-              <>
-                {rule.proxyType === 'pipeline' && (
+            {/* Actions wrap to a second line as one group when the rule name
+                would otherwise be crushed at phone widths */}
+            <div className="ml-auto flex items-center gap-1">
+              {rule.proxyType === 'pipeline' && rule.debugEnabled && (
+                <LogCountBadge
+                  ruleId={rule.id}
+                  onClick={(e) => handleViewLogs(rule, e)}
+                />
+              )}
+              {canEdit && (
+                <>
+                  {rule.proxyType === 'pipeline' && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={(e) => handleToggleDebug(rule, e)}
+                      title={rule.debugEnabled ? 'Disable debug logging' : 'Enable debug logging'}
+                      className={rule.debugEnabled ? 'text-purple-500' : ''}
+                    >
+                      <Bug className="h-4 w-4" />
+                    </Button>
+                  )}
+                  <Switch
+                    checked={rule.isEnabled}
+                    onCheckedChange={() => {}}
+                    onClick={(e) => handleToggleEnabled(rule, e)}
+                    title={rule.isEnabled ? 'Disable rule' : 'Enable rule'}
+                  />
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={(e) => handleToggleDebug(rule, e)}
-                    title={rule.debugEnabled ? 'Disable debug logging' : 'Enable debug logging'}
-                    className={rule.debugEnabled ? 'text-purple-500' : ''}
+                    onClick={(e) => handleEditClick(rule, e)}
+                    title="Edit rule"
                   >
-                    <Bug className="h-4 w-4" />
+                    <Edit2 className="h-4 w-4" />
                   </Button>
-                )}
-                <Switch
-                  checked={rule.isEnabled}
-                  onCheckedChange={() => {}}
-                  onClick={(e) => handleToggleEnabled(rule, e)}
-                  title={rule.isEnabled ? 'Disable rule' : 'Enable rule'}
-                />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={(e) => handleEditClick(rule, e)}
-                  title="Edit rule"
-                >
-                  <Edit2 className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={(e) => handleDeleteClick(rule, e)}
-                  title="Delete rule"
-                >
-                  <Trash2 className="h-4 w-4 text-destructive" />
-                </Button>
-              </>
-            )}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={(e) => handleDeleteClick(rule, e)}
+                    title="Delete rule"
+                  >
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
         ))}
       </div>

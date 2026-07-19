@@ -706,7 +706,7 @@ export function ExpandedProxyRuleForm({
       {/* Pipeline Configuration */}
       {isPipeline && (
         <Card>
-          <CardHeader className="flex flex-row items-start justify-between space-y-0">
+          <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
             <div>
               <CardTitle>Pipeline Configuration</CardTitle>
               <CardDescription>Define the steps that process incoming requests</CardDescription>
