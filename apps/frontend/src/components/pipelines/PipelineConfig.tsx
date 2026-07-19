@@ -561,7 +561,7 @@ export function PipelineConfig({
 
       {/* Steps */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <Label className="text-base">Pipeline Steps</Label>
           <Button type="button" variant="outline" size="sm" onClick={addStep}>
             <Plus className="h-4 w-4 mr-1" />
@@ -606,17 +606,18 @@ export function PipelineConfig({
                       <button
                         type="button"
                         onClick={() => toggleExpanded(index)}
-                        className="flex-1 flex items-center gap-2 text-left hover:text-primary"
+                        className="min-w-0 flex-1 flex items-center gap-2 text-left hover:text-primary"
                       >
                         {isExpanded ? (
-                          <ChevronDown className="h-4 w-4" />
+                          <ChevronDown className="h-4 w-4 shrink-0" />
                         ) : (
-                          <ChevronRight className="h-4 w-4" />
+                          <ChevronRight className="h-4 w-4 shrink-0" />
                         )}
-                        <CardTitle className="text-sm font-medium">
+                        <CardTitle className="min-w-0 truncate text-sm font-medium">
                           {step.name || getHandlerDisplayName(step.handlerType)}
                         </CardTitle>
-                        <span className="text-xs text-muted-foreground">
+                        {/* Secondary handler-type hint loses to the step name on phones */}
+                        <span className="hidden min-w-0 truncate text-xs text-muted-foreground sm:inline">
                           {step.name && `(${getHandlerDisplayName(step.handlerType)})`}
                         </span>
                       </button>
@@ -767,14 +768,14 @@ export function PipelineConfig({
 
       {/* Terminal Step Configuration */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Send className="h-4 w-4 text-muted-foreground" />
             <Label className="text-base">
               {terminalSteps.length > 1 ? 'Terminal Branches' : 'Terminal Step'}
             </Label>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {!hasImplicitTerminal && terminalSteps.length <= 1 && (
               <Select
                 value={terminalStepType}
@@ -848,9 +849,9 @@ export function PipelineConfig({
                         ) : (
                           <ChevronRight className="h-4 w-4" />
                         )}
-                        <CardTitle className="text-sm font-medium flex items-center gap-2">
-                          <Send className="h-4 w-4" />
-                          {branchTitle}
+                        <CardTitle className="min-w-0 text-sm font-medium flex items-center gap-2">
+                          <Send className="h-4 w-4 shrink-0" />
+                          <span className="min-w-0 truncate">{branchTitle}</span>
                         </CardTitle>
                         <Badge
                           variant="outline"
@@ -1026,7 +1027,7 @@ data: {"type":"text-delta","value":" world"}
 
       {/* Post-Processing Steps */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <Label className="text-base">Post-Processing Steps</Label>
           <Button type="button" variant="outline" size="sm" onClick={addPostStep}>
             <Plus className="h-4 w-4 mr-1" />
@@ -1075,17 +1076,18 @@ data: {"type":"text-delta","value":" world"}
                       <button
                         type="button"
                         onClick={() => togglePostExpanded(index)}
-                        className="flex-1 flex items-center gap-2 text-left hover:text-primary"
+                        className="min-w-0 flex-1 flex items-center gap-2 text-left hover:text-primary"
                       >
                         {isExpanded ? (
-                          <ChevronDown className="h-4 w-4" />
+                          <ChevronDown className="h-4 w-4 shrink-0" />
                         ) : (
-                          <ChevronRight className="h-4 w-4" />
+                          <ChevronRight className="h-4 w-4 shrink-0" />
                         )}
-                        <CardTitle className="text-sm font-medium">
+                        <CardTitle className="min-w-0 truncate text-sm font-medium">
                           {step.name || getHandlerDisplayName(step.handlerType)}
                         </CardTitle>
-                        <span className="text-xs text-muted-foreground">
+                        {/* Secondary handler-type hint loses to the step name on phones */}
+                        <span className="hidden min-w-0 truncate text-xs text-muted-foreground sm:inline">
                           {step.name && `(${getHandlerDisplayName(step.handlerType)})`}
                         </span>
                       </button>

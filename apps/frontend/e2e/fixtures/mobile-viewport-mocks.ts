@@ -97,7 +97,9 @@ const records = [
 ];
 
 const ruleSets = [
-  { id: 'rs-1', projectId: 'proj-1', name: 'api', description: 'Primary API rule set for the production alias', environment: 'production', source: { repo: 'acme/webapp', path: 'proxy-rules/api.json', syncedAt: daysAgo(2) }, createdAt: daysAgo(80), updatedAt: daysAgo(2) },
+  // Full provenance (repo + gitSha + syncedAt) so ManagedFromGitBadge renders
+  // its widest form — this overflowed cards on real data before it wrapped
+  { id: 'rs-1', projectId: 'proj-1', name: 'studio', description: 'Primary API rule set for the production alias', environment: 'production', source: { repo: 'bffless/apps', path: 'apps/studio/proxy-rules/studio.json', gitSha: '58d7cbf0aa11c2f9d8e7b6a5c4d3e2f1a0b9c8d7', syncedAt: daysAgo(5) }, createdAt: daysAgo(80), updatedAt: daysAgo(2) },
   { id: 'rs-2', projectId: 'proj-1', name: 'staging-experiments', description: null, environment: 'staging', source: null, createdAt: daysAgo(20), updatedAt: daysAgo(4) },
 ];
 const mkRule = (i: number, pathPattern: string, method: string | null, targetUrl: string, proxyType: string, desc: string | null) => ({
@@ -124,12 +126,34 @@ const mkRule = (i: number, pathPattern: string, method: string | null, targetUrl
   createdAt: daysAgo(30),
   updatedAt: daysAgo(2),
 });
+// Realistic pipeline config for the rule editor (steps + terminal), with a
+// long step name to stress the step-row truncation
+const uploadPipelineConfig = {
+  name: 'Upload youtube thumbnail',
+  description: 'Accept a thumbnail upload, store metadata, return the public URL',
+  steps: [
+    {
+      id: 'step-1',
+      name: 'upload-youtube-thumbnail-to-storage',
+      handlerType: 'file_upload_handler',
+      config: { schemaId: 'schema-3', subDir: 'youtube-thumbnail', accessControl: 'authenticated' },
+    },
+    {
+      id: 'step-2',
+      name: 'Return Upload Result',
+      handlerType: 'response_handler',
+      config: { statusCode: 200, body: '{"url":"{{steps.upload-youtube-thumbnail-to-storage.url}}"}' },
+    },
+  ],
+  postSteps: [],
+};
 const rules = [
   mkRule(1, '/api/contact', 'POST', 'pipeline://contact-form', 'pipeline', 'Contact form intake with email notification'),
   mkRule(2, '/api/comments/*', null, 'pipeline://comments', 'pipeline', 'Live comment wall data table access'),
   mkRule(3, '/api/search', 'GET', 'https://search-backend.internal.example.com:9200/indexes/site/query', 'http', null),
   mkRule(4, '/api/chat', 'POST', 'pipeline://ai-chat-streaming-with-long-target-name', 'pipeline', 'Streaming AI chat completion relay'),
 ];
+rules[0].pipelineConfig = uploadPipelineConfig as (typeof rules)[number]['pipelineConfig'];
 
 const users = [
   { id: 'user-1', email: 'admin@example.com', role: 'admin', disabled: false, disabledAt: null, disabledBy: null, createdAt: daysAgo(300), updatedAt: daysAgo(1) },
@@ -213,6 +237,7 @@ const ROUTES: RouteEntry[] = [
   ['GET', /\/api\/aliases\/[^/]+\/[^/]+\/visibility/, { projectId: 'proj-1', alias: 'production', effectiveVisibility: 'public', source: 'alias', aliasOverride: true, projectVisibility: false, effectiveUnauthorizedBehavior: 'redirect_login', effectiveRequiredRole: 'authenticated' }],
   ['GET', /\/api\/proxy-rules\/[^/]+\/logs\/count/, { count: 12 }],
   ['GET', /\/api\/proxy-rules\/[^/]+\/logs/, { logs: [], total: 0 }],
+  ['GET', /\/api\/proxy-rules\/rule-1$/, rules[0]],
   ['GET', /\/api\/repositories\/mine/, repositoriesMine],
   ['GET', /\/api\/repositories\/feed/, repositoriesFeed],
   ['GET', /\/api\/repo\/[^/]+\/[^/]+\/stats/, stats],

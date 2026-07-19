@@ -31,7 +31,8 @@ export function RuleSetCard({
       to={href}
       className="flex items-center justify-between p-4 rounded-lg border hover:bg-accent transition-colors group"
     >
-      <div className="flex min-w-0 items-center gap-4">
+      {/* pr-9 keeps content clear of the actions menu the list page overlays at right-12 */}
+      <div className="flex min-w-0 items-center gap-4 pr-9">
         <Settings className="h-5 w-5 shrink-0 text-muted-foreground" />
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -54,7 +55,7 @@ export function RuleSetCard({
         </div>
       </div>
 
-      <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-foreground transition-colors" />
+      <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground group-hover:text-foreground transition-colors" />
     </Link>
   );
 }
