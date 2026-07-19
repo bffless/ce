@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { TabScroller } from '@/components/common/TabScroller';
 import { AlertCircle, RefreshCw, Settings } from 'lucide-react';
 import { RepositoryStatsHeader } from '@/components/repo/RepositoryStatsHeader';
 import { routes } from '@/utils/routes';
@@ -145,7 +146,8 @@ export function RepositoryLayout() {
 
         {/* Tabs Navigation */}
         <Tabs value={currentTab} className="w-full">
-          <TabsList>
+          <TabScroller>
+            <TabsList>
             <TabsTrigger value="deployments" asChild>
               <Link to={routes.deployments(owner!, repo!)}>Deployments</Link>
             </TabsTrigger>
@@ -167,7 +169,8 @@ export function RepositoryLayout() {
             <TabsTrigger value="uploads" asChild>
               <Link to={`/repo/${owner}/${repo}/uploads`}>Uploads</Link>
             </TabsTrigger>
-          </TabsList>
+            </TabsList>
+          </TabScroller>
         </Tabs>
 
         {/* Tab Content - rendered via Outlet */}

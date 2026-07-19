@@ -13,13 +13,16 @@ interface SchemaFieldsTableProps {
   fields: SchemaField[];
 }
 
+// All field types share one badge weight: the type name is the information,
+// so mixed fill weights would read as false emphasis. "Required" keeps the
+// filled variant since it is the only genuinely load-bearing flag in the table.
 const FIELD_TYPE_LABELS: Record<string, { label: string; variant: 'default' | 'secondary' | 'outline' }> = {
   string: { label: 'String', variant: 'outline' },
   text: { label: 'Text', variant: 'outline' },
-  number: { label: 'Number', variant: 'secondary' },
-  boolean: { label: 'Boolean', variant: 'secondary' },
-  email: { label: 'Email', variant: 'default' },
-  datetime: { label: 'DateTime', variant: 'secondary' },
+  number: { label: 'Number', variant: 'outline' },
+  boolean: { label: 'Boolean', variant: 'outline' },
+  email: { label: 'Email', variant: 'outline' },
+  datetime: { label: 'DateTime', variant: 'outline' },
   json: { label: 'JSON', variant: 'outline' },
 };
 

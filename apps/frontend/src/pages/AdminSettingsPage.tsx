@@ -1,6 +1,7 @@
 import { useNavigate, Link, Outlet, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { TabScroller } from '@/components/common/TabScroller';
 import { ArrowLeft, Settings, Paintbrush, Shield, Mail, Server } from 'lucide-react';
 
 const TABS = [
@@ -52,16 +53,18 @@ export function AdminSettingsPage() {
 
       {/* Tabs Navigation */}
       <Tabs value={currentTab} className="w-full">
-        <TabsList>
-          {TABS.map(({ value, path, label, icon: Icon }) => (
-            <TabsTrigger key={value} value={value} asChild>
-              <Link to={path} className="gap-1.5">
-                <Icon className="h-4 w-4" />
-                {label}
-              </Link>
-            </TabsTrigger>
-          ))}
-        </TabsList>
+        <TabScroller>
+          <TabsList>
+            {TABS.map(({ value, path, label, icon: Icon }) => (
+              <TabsTrigger key={value} value={value} asChild>
+                <Link to={path} className="gap-1.5">
+                  <Icon className="h-4 w-4" />
+                  {label}
+                </Link>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </TabScroller>
       </Tabs>
 
       {/* Tab Content - rendered via Outlet */}

@@ -137,15 +137,15 @@ export function SchemaDetailPage() {
     <>
       <div className="space-y-6">
         {/* Back link and actions */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <Link
             to={`/repo/${owner}/${repo}/data`}
-            className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground"
+            className="inline-flex items-center whitespace-nowrap text-sm text-muted-foreground hover:text-foreground"
           >
             <ArrowLeft className="h-4 w-4 mr-1" />
             Back to Schemas
           </Link>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="outline"
               size="sm"

@@ -7,6 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { TabScroller } from '@/components/common/TabScroller';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -101,7 +102,7 @@ export function ProjectSettingsPage() {
   // Check if current user has admin or owner role.
   // Global admins are treated as project Owner on every project (see docs: authorization.md).
   const isGlobalAdmin = currentUser?.role === 'admin';
-  const userPermission = permissions?.userPermissions.find(
+  const userPermission = permissions?.userPermissions?.find(
     (perm) => perm.userId === currentUser?.id,
   );
   const hasAdminAccess =
@@ -272,7 +273,8 @@ export function ProjectSettingsPage() {
       {/* Content */}
       <div className="p-8 max-w-6xl mx-auto">
         <Tabs value={currentTab} onValueChange={handleTabChange}>
-          <TabsList>
+          <TabScroller>
+            <TabsList>
             <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger value="members">Members</TabsTrigger>
             <TabsTrigger value="invite-links">Invite Links</TabsTrigger>
@@ -285,7 +287,8 @@ export function ProjectSettingsPage() {
             <TabsTrigger value="share-links">Share Links</TabsTrigger>
             <TabsTrigger value="ai">AI</TabsTrigger>
             <TabsTrigger value="integrations">Integrations</TabsTrigger>
-          </TabsList>
+            </TabsList>
+          </TabScroller>
 
           {/* General Tab */}
           <TabsContent value="general" className="space-y-6 mt-6">

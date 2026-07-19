@@ -185,9 +185,9 @@ export function RuleSetDetailPage() {
 
       {/* Rule Set Content */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <CardTitle>{ruleSet.name}</CardTitle>
               {ruleSet.environment && (
                 <Badge variant="outline">{ruleSet.environment}</Badge>

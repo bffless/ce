@@ -199,24 +199,40 @@ function AliasRow({
         )}
       </div>
 
-      {/* Actions */}
-      <div className="flex items-center gap-1 justify-end md:justify-start">
-        <Button variant="ghost" size="sm" className="h-8 px-2" title="View alias" onClick={onView}>
-          <Eye className="h-3 w-3" />
+      {/* Actions - larger touch targets and wider gaps below sm so the
+          destructive delete is not a mis-tap away from edit */}
+      <div className="flex items-center gap-2 justify-end sm:gap-1 md:justify-start">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-11 w-11 p-0 sm:h-8 sm:w-auto sm:px-2"
+          title="View alias"
+          aria-label="View alias"
+          onClick={onView}
+        >
+          <Eye className="h-4 w-4 sm:h-3 sm:w-3" />
         </Button>
         {canEdit && (
           <>
-            <Button variant="ghost" size="sm" className="h-8 px-2" title="Edit alias" onClick={onEdit}>
-              <Pencil className="h-3 w-3" />
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-11 w-11 p-0 sm:h-8 sm:w-auto sm:px-2"
+              title="Edit alias"
+              aria-label="Edit alias"
+              onClick={onEdit}
+            >
+              <Pencil className="h-4 w-4 sm:h-3 sm:w-3" />
             </Button>
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 px-2 text-destructive hover:text-destructive"
+              className="h-11 w-11 p-0 text-destructive hover:text-destructive sm:h-8 sm:w-auto sm:px-2"
               title="Delete alias"
+              aria-label="Delete alias"
               onClick={onDelete}
             >
-              <Trash2 className="h-3 w-3" />
+              <Trash2 className="h-4 w-4 sm:h-3 sm:w-3" />
             </Button>
           </>
         )}

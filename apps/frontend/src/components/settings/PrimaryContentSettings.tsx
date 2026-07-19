@@ -89,7 +89,7 @@ export function PrimaryContentSettings() {
   }, [config]);
 
   // Get selected project's available aliases
-  const selectedProject = projectsData?.projects.find((p) => p.id === projectId);
+  const selectedProject = projectsData?.projects?.find((p) => p.id === projectId);
   const availableAliases = selectedProject?.aliases || [];
 
   // Reset alias when project changes

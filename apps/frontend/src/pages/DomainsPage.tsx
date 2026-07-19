@@ -190,9 +190,9 @@ export function DomainsPage() {
 
   return (
     <div className="container mx-auto py-8">
-      <div className="flex items-center justify-between mb-8">
+      <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold">Domain Mappings</h1>
+          <h1 className="text-2xl font-bold">Domain Mappings</h1>
           <p className="text-muted-foreground mt-1">
             Manage custom domain mappings for your deployments
           </p>
@@ -279,13 +279,14 @@ export function DomainsPage() {
 
       {/* Domain List */}
       {isLoading ? (
-        <div className="grid gap-4">
+        <div className="grid gap-4" role="status" aria-live="polite">
+          <p className="text-sm text-muted-foreground">Loading domain mappings…</p>
           {[1, 2, 3].map((i) => (
             <Skeleton key={i} className="h-48 w-full" />
           ))}
         </div>
       ) : filteredDomains && filteredDomains.length > 0 ? (
-        <div className="grid gap-4">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
           {filteredDomains.map((domain) => {
             const project = projects?.find((p) => p.id === domain.projectId);
             const projectName = project ? `${project.owner}/${project.name}` : undefined;

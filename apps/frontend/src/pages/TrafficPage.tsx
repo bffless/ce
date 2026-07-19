@@ -57,11 +57,11 @@ export function TrafficPage() {
     <div className="container mx-auto px-4 py-8 max-w-7xl">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-[#3a3a3a] dark:text-foreground flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
             <Activity className="h-6 w-6 text-[#d96459]" />
             Traffic
           </h1>
-          <p className="text-sm text-[#4a4a4a] dark:text-muted-foreground mt-1">
+          <p className="text-sm text-muted-foreground mt-1">
             Requests hitting this instance, as the application observes them
           </p>
         </div>
@@ -153,7 +153,7 @@ export function LiveTrafficTab() {
             <CardTitle className="text-base">Live requests</CardTitle>
             <ConnectionBadge state={connection} paused={paused} />
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <div className="flex items-center gap-2">
               <Switch id="show-all" checked={showAll} onCheckedChange={setShowAll} />
               <Label htmlFor="show-all" className="text-sm cursor-pointer">
@@ -177,7 +177,7 @@ export function LiveTrafficTab() {
           </div>
         </div>
         {!showAll && (
-          <p className="text-xs text-[#4a4a4a] dark:text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Showing Unmatched and 4xx/5xx requests only
             {events.length > visibleEvents.length &&
               ` — ${events.length - visibleEvents.length} matched request${events.length - visibleEvents.length === 1 ? '' : 's'} hidden`}
@@ -263,7 +263,7 @@ function ConnectionBadge({ state, paused }: { state: ConnectionState; paused: bo
   }
   if (state === 'connecting') {
     return (
-      <Badge variant="outline" className="text-[#4a4a4a] dark:text-muted-foreground">
+      <Badge variant="outline" className="text-muted-foreground">
         Connecting…
       </Badge>
     );

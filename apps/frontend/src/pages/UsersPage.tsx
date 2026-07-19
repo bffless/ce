@@ -6,6 +6,7 @@ import {
   useDeleteUserMutation,
   useDisableUserMutation,
   useEnableUserMutation,
+  User,
   UserRole,
 } from '@/services/usersApi';
 import {
@@ -377,6 +378,129 @@ export function UsersPage() {
   const invitations = invitationsData?.invitations || [];
   const pendingCount = invitations.filter((i) => !i.acceptedAt && !i.isExpired).length;
 
+  // Shared between the desktop table rows and the mobile card list
+  const renderRoleBadge = (user: User) => (
+    <Badge
+      variant={user.role === 'admin' ? 'default' : user.role === 'member' ? 'outline' : 'secondary'}
+      className={
+        user.role === 'admin'
+          ? 'bg-[#d96459] hover:bg-[#c55449]'
+          : user.role === 'member'
+            ? 'text-muted-foreground'
+            : undefined
+      }
+    >
+      {user.role === 'admin' ? <Shield className="h-3 w-3 mr-1" /> : null}
+      {user.role}
+    </Badge>
+  );
+
+  const renderStatusBadge = (user: User) =>
+    user.disabled ? (
+      <Badge variant="destructive">
+        <UserX className="h-3 w-3 mr-1" />
+        Disabled
+      </Badge>
+    ) : (
+      <Badge variant="outline" className="text-green-600 border-green-600">
+        <UserCheck className="h-3 w-3 mr-1" />
+        Active
+      </Badge>
+    );
+
+  const renderUserActions = (user: User, isCurrentUser: boolean) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="sm" aria-label={`Actions for ${user.email}`}>
+          <MoreHorizontal className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {isCurrentUser ? (
+          <DropdownMenuItem disabled className="text-muted-foreground">
+            Cannot modify your own account
+          </DropdownMenuItem>
+        ) : (
+          <>
+            {user.role !== 'admin' && (
+              <DropdownMenuItem
+                onClick={() => handleRoleChange(user.id, 'admin')}
+                disabled={isUpdatingRole}
+              >
+                <Shield className="h-4 w-4 mr-2" />
+                Make Admin
+              </DropdownMenuItem>
+            )}
+            {user.role !== 'user' && (
+              <DropdownMenuItem
+                onClick={() => handleRoleChange(user.id, 'user')}
+                disabled={isUpdatingRole}
+              >
+                <UserCheck className="h-4 w-4 mr-2" />
+                Make User
+              </DropdownMenuItem>
+            )}
+            {user.role !== 'member' && (
+              <DropdownMenuItem
+                onClick={() => handleRoleChange(user.id, 'member')}
+                disabled={isUpdatingRole}
+              >
+                <UserX className="h-4 w-4 mr-2" />
+                Make Member
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+            {user.disabled ? (
+              <DropdownMenuItem
+                onClick={() => handleToggleDisabled(user.id, true)}
+                disabled={isEnabling}
+              >
+                <UserCheck className="h-4 w-4 mr-2" />
+                Enable Account
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem
+                onClick={() => handleToggleDisabled(user.id, false)}
+                disabled={isDisabling}
+              >
+                <UserX className="h-4 w-4 mr-2" />
+                Disable Account
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => setDeletingUser({ id: user.id, email: user.email })}
+              className="text-destructive focus:text-destructive"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete User
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
+  const renderCopyUserId = (user: User) => (
+    <div className="flex items-center gap-1">
+      <code className="text-xs text-muted-foreground" title={user.id}>
+        {user.id.slice(0, 8)}...
+      </code>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-6 w-6 p-0"
+        onClick={async () => {
+          await navigator.clipboard.writeText(user.id);
+          toast({ title: 'Copied', description: 'User ID copied to clipboard' });
+        }}
+        title="Copy full User ID"
+      >
+        <Copy className="h-3 w-3" />
+      </Button>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -424,7 +548,7 @@ export function UsersPage() {
           <TabsContent value="users">
             <Card>
               <CardHeader>
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <CardTitle>Manage Users</CardTitle>
                     <CardDescription>
@@ -432,7 +556,7 @@ export function UsersPage() {
                     </CardDescription>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="relative">
+                    <div className="relative w-full sm:w-auto">
                       <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                       <Input
                         placeholder="Search by email..."
@@ -441,7 +565,7 @@ export function UsersPage() {
                           setSearch(e.target.value);
                           setPage(1);
                         }}
-                        className="pl-9 w-64"
+                        className="pl-9 w-full sm:w-64"
                       />
                     </div>
                   </div>
@@ -473,6 +597,43 @@ export function UsersPage() {
                   </div>
                 ) : (
                   <>
+                    {/* Mobile: card per user (the table hides Role/Status/Actions off-canvas at phone widths) */}
+                    <div className="space-y-3 sm:hidden">
+                      {users.map((user) => {
+                        const isCurrentUser = user.id === currentUserId;
+                        return (
+                          <div
+                            key={user.id}
+                            className={`rounded-lg border p-4${user.disabled ? ' opacity-60' : ''}`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2 font-medium">
+                                  <span className="truncate">{user.email}</span>
+                                  {isCurrentUser && (
+                                    <Badge variant="outline" className="text-xs">
+                                      You
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="mt-1">{renderCopyUserId(user)}</div>
+                              </div>
+                              {renderUserActions(user, isCurrentUser)}
+                            </div>
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                              {renderRoleBadge(user)}
+                              {renderStatusBadge(user)}
+                              <span className="text-sm text-muted-foreground">
+                                Joined {new Date(user.createdAt).toLocaleDateString()}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Desktop: table */}
+                    <div className="hidden sm:block">
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -502,139 +663,25 @@ export function UsersPage() {
                                   )}
                                 </div>
                               </TableCell>
-                              <TableCell>
-                                <div className="flex items-center gap-1">
-                                  <code className="text-xs text-muted-foreground" title={user.id}>
-                                    {user.id.slice(0, 8)}...
-                                  </code>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-6 w-6 p-0"
-                                    onClick={async () => {
-                                      await navigator.clipboard.writeText(user.id);
-                                      toast({ title: 'Copied', description: 'User ID copied to clipboard' });
-                                    }}
-                                    title="Copy full User ID"
-                                  >
-                                    <Copy className="h-3 w-3" />
-                                  </Button>
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <Badge
-                                  variant={user.role === 'admin' ? 'default' : user.role === 'member' ? 'outline' : 'secondary'}
-                                  className={
-                                    user.role === 'admin'
-                                      ? 'bg-[#d96459] hover:bg-[#c55449]'
-                                      : user.role === 'member'
-                                        ? 'text-muted-foreground'
-                                        : undefined
-                                  }
-                                >
-                                  {user.role === 'admin' ? (
-                                    <Shield className="h-3 w-3 mr-1" />
-                                  ) : null}
-                                  {user.role}
-                                </Badge>
-                              </TableCell>
-                              <TableCell>
-                                {user.disabled ? (
-                                  <Badge variant="destructive">
-                                    <UserX className="h-3 w-3 mr-1" />
-                                    Disabled
-                                  </Badge>
-                                ) : (
-                                  <Badge variant="outline" className="text-green-600 border-green-600">
-                                    <UserCheck className="h-3 w-3 mr-1" />
-                                    Active
-                                  </Badge>
-                                )}
-                              </TableCell>
+                              <TableCell>{renderCopyUserId(user)}</TableCell>
+                              <TableCell>{renderRoleBadge(user)}</TableCell>
+                              <TableCell>{renderStatusBadge(user)}</TableCell>
                               <TableCell className="text-sm text-muted-foreground">
                                 {new Date(user.createdAt).toLocaleDateString()}
                               </TableCell>
                               <TableCell className="text-right">
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="sm">
-                                      <MoreHorizontal className="h-4 w-4" />
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end">
-                                    {isCurrentUser ? (
-                                      <DropdownMenuItem disabled className="text-muted-foreground">
-                                        Cannot modify your own account
-                                      </DropdownMenuItem>
-                                    ) : (
-                                      <>
-                                        {user.role !== 'admin' && (
-                                          <DropdownMenuItem
-                                            onClick={() => handleRoleChange(user.id, 'admin')}
-                                            disabled={isUpdatingRole}
-                                          >
-                                            <Shield className="h-4 w-4 mr-2" />
-                                            Make Admin
-                                          </DropdownMenuItem>
-                                        )}
-                                        {user.role !== 'user' && (
-                                          <DropdownMenuItem
-                                            onClick={() => handleRoleChange(user.id, 'user')}
-                                            disabled={isUpdatingRole}
-                                          >
-                                            <UserCheck className="h-4 w-4 mr-2" />
-                                            Make User
-                                          </DropdownMenuItem>
-                                        )}
-                                        {user.role !== 'member' && (
-                                          <DropdownMenuItem
-                                            onClick={() => handleRoleChange(user.id, 'member')}
-                                            disabled={isUpdatingRole}
-                                          >
-                                            <UserX className="h-4 w-4 mr-2" />
-                                            Make Member
-                                          </DropdownMenuItem>
-                                        )}
-                                        <DropdownMenuSeparator />
-                                        {user.disabled ? (
-                                          <DropdownMenuItem
-                                            onClick={() => handleToggleDisabled(user.id, true)}
-                                            disabled={isEnabling}
-                                          >
-                                            <UserCheck className="h-4 w-4 mr-2" />
-                                            Enable Account
-                                          </DropdownMenuItem>
-                                        ) : (
-                                          <DropdownMenuItem
-                                            onClick={() => handleToggleDisabled(user.id, false)}
-                                            disabled={isDisabling}
-                                          >
-                                            <UserX className="h-4 w-4 mr-2" />
-                                            Disable Account
-                                          </DropdownMenuItem>
-                                        )}
-                                        <DropdownMenuSeparator />
-                                        <DropdownMenuItem
-                                          onClick={() => setDeletingUser({ id: user.id, email: user.email })}
-                                          className="text-destructive focus:text-destructive"
-                                        >
-                                          <Trash2 className="h-4 w-4 mr-2" />
-                                          Delete User
-                                        </DropdownMenuItem>
-                                      </>
-                                    )}
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
+                                {renderUserActions(user, isCurrentUser)}
                               </TableCell>
                             </TableRow>
                           );
                         })}
                       </TableBody>
                     </Table>
+                    </div>
 
                     {/* Pagination */}
                     {meta && meta.totalPages > 1 && (
-                      <div className="flex items-center justify-between mt-4">
+                      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
                         <div className="text-sm text-muted-foreground">
                           Showing {(meta.page - 1) * meta.limit + 1} to{' '}
                           {Math.min(meta.page * meta.limit, meta.total)} of {meta.total} users

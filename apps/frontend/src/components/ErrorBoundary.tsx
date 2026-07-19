@@ -70,10 +70,13 @@ export class ErrorBoundary extends Component<Props, State> {
               </p>
             </div>
 
-            {/* Show error details in development */}
+            {/* Show error details in development, collapsed by default */}
             {process.env.NODE_ENV === 'development' && this.state.error && (
-              <div className="rounded-md bg-muted p-4 text-left">
-                <p className="font-mono text-sm text-destructive break-all">
+              <details className="rounded-md bg-muted p-4 text-left">
+                <summary className="cursor-pointer text-sm font-medium text-muted-foreground">
+                  Show technical details
+                </summary>
+                <p className="mt-2 font-mono text-sm text-destructive break-all">
                   {this.state.error.message}
                 </p>
                 {this.state.errorInfo && (
@@ -81,7 +84,7 @@ export class ErrorBoundary extends Component<Props, State> {
                     {this.state.errorInfo.componentStack}
                   </pre>
                 )}
-              </div>
+              </details>
             )}
 
             <div className="flex justify-center gap-4">
