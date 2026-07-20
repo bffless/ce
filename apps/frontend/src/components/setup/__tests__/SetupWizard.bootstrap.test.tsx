@@ -102,6 +102,9 @@ function renderWizardWithRerender(initialEntries: string[] = ['/setup']) {
 describe('SetupWizard bootstrap-mode step gating', () => {
   beforeEach(() => {
     setMockStatus(undefined);
+    // The wizard persists the claim token in sessionStorage; clear it so a
+    // token stored by one test can't leak into another.
+    sessionStorage.clear();
   });
 
   it('shows the claim step first in bootstrap mode with a required claim', () => {
@@ -120,6 +123,30 @@ describe('SetupWizard bootstrap-mode step gating', () => {
     expect(screen.queryByText(/claim this instance/i)).not.toBeInTheDocument();
     expect(screen.getByText('ADMIN STEP')).toBeInTheDocument();
     expect(store.getState().setup.wizard.claimToken).toBe('platform-relay-token');
+  });
+
+  it('persists the ?token= relay token to sessionStorage', () => {
+    setMockStatus(baseStatus({ bootstrapMode: true, claimRequired: true }));
+    renderWizard(['/setup?token=platform-relay-token']);
+    expect(sessionStorage.getItem('bffless.setup.claimToken')).toBe('platform-relay-token');
+  });
+
+  it('rehydrates the claim token from sessionStorage after a reload (no strand)', () => {
+    // Reproduces the strand: the user entered the token and created the admin,
+    // then reloaded (Redux cleared). claimRequired is now false (an admin
+    // exists), so the claim step does NOT reappear — yet the session-less
+    // cert/apply endpoints still need the token. Rehydrating it from
+    // sessionStorage is what keeps those requests authenticated.
+    sessionStorage.setItem('bffless.setup.claimToken', 'persisted-token');
+    setMockStatus(
+      baseStatus({ bootstrapMode: true, claimRequired: false, hasAdminUser: true })
+    );
+    const store = renderWizard(); // no ?token= in the URL
+    // The claim step is not shown (admin already exists) ...
+    expect(screen.queryByText(/claim this instance/i)).not.toBeInTheDocument();
+    // ... but the token is back in the store, so DomainSslStep/ApplyStep can
+    // send it instead of 401-ing.
+    expect(store.getState().setup.wizard.claimToken).toBe('persisted-token');
   });
 
   it('does not show the claim step when claimRequired is false', () => {

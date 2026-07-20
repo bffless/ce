@@ -49,30 +49,71 @@ export function computeWizardSteps(
   return [...steps, 'admin', 'domain-ssl', 'storage', 'cache', 'email', 'apply'];
 }
 
+// The claim token lives in Redux (in-memory), which a full page reload clears.
+// That strands a user who reloads AFTER creating the admin but BEFORE applying:
+// claimRequired is false once an admin exists, so the claim step won't reappear
+// to re-collect it, yet the (session-less) cert/apply endpoints still require
+// it — a 401 with no way forward. Persisting it in sessionStorage (tab-scoped,
+// auto-cleared on tab close, first-party only) survives the reload. It is no
+// more exposed than it already is in Redux/memory, and it is inert once setup
+// completes.
+const CLAIM_TOKEN_STORAGE_KEY = 'bffless.setup.claimToken';
+
+function readStoredClaimToken(): string | null {
+  try {
+    return sessionStorage.getItem(CLAIM_TOKEN_STORAGE_KEY);
+  } catch {
+    return null; // sessionStorage can throw (privacy mode / disabled)
+  }
+}
+
 export function SetupWizard() {
   const dispatch = useDispatch();
-  const { currentStepId: storedStepId, error } = useSelector(
-    (state: RootState) => state.setup.wizard
-  );
+  const {
+    currentStepId: storedStepId,
+    error,
+    claimToken,
+  } = useSelector((state: RootState) => state.setup.wizard);
   const { data: setupStatus } = useGetSetupStatusQuery();
   const [searchParams] = useSearchParams();
   const urlToken = searchParams.get('token');
 
   // Track if initial sync has been done to prevent continuous auto-advancing
   const hasInitializedRef = useRef(false);
-  // Track if the URL token has already been stashed in the store
+  // Track if the token has already been stashed in the store
   const hasStashedTokenRef = useRef(false);
 
-  // Platform relay: if `?token=` is present in the URL, stash it in the store
-  // (on mount only) so downstream steps (AdminAccountStep) can send it, and so
-  // bootstrap mode's step list skips the claim step entirely.
+  // On mount, seed the claim token into the store from (in priority order) the
+  // `?token=` URL relay (Platform), then sessionStorage (survives a reload —
+  // see CLAIM_TOKEN_STORAGE_KEY). Downstream steps (AdminAccountStep,
+  // DomainSslStep, ApplyStep) read it from the store to authenticate their
+  // session-less requests.
   useEffect(() => {
     if (hasStashedTokenRef.current) return;
     hasStashedTokenRef.current = true;
     if (urlToken) {
       dispatch(setClaimToken(urlToken));
+      return;
+    }
+    const stored = readStoredClaimToken();
+    if (stored) {
+      dispatch(setClaimToken(stored));
     }
   }, [urlToken, dispatch]);
+
+  // Persist the token so a reload doesn't lose it. Cleared explicitly when it
+  // becomes empty; otherwise it clears itself when the tab closes.
+  useEffect(() => {
+    try {
+      if (claimToken) {
+        sessionStorage.setItem(CLAIM_TOKEN_STORAGE_KEY, claimToken);
+      } else {
+        sessionStorage.removeItem(CLAIM_TOKEN_STORAGE_KEY);
+      }
+    } catch {
+      /* sessionStorage unavailable — persistence is best-effort */
+    }
+  }, [claimToken]);
 
   const steps = useMemo(
     () => computeWizardSteps(setupStatus, urlToken),
