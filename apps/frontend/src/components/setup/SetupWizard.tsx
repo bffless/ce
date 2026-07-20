@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useSearchParams } from 'react-router-dom';
 import { RootState } from '@/store';
 import { useGetSetupStatusQuery, SetupStatusResponse } from '@/services/setupApi';
-import { setWizardStep, setClaimToken } from '@/store/slices/setupSlice';
+import { setWizardStep, setStepOrder, setClaimToken, StepId } from '@/store/slices/setupSlice';
 import { SetupProgress } from './SetupProgress';
 import { ClaimStep } from './ClaimStep';
 import { AdminAccountStep } from './AdminAccountStep';
@@ -13,16 +13,6 @@ import { CacheStep } from './CacheStep';
 import { EmailStep } from './EmailStep';
 import { ApplyStep } from './ApplyStep';
 import { CompleteStep } from './CompleteStep';
-
-type StepId =
-  | 'claim'
-  | 'admin'
-  | 'domain-ssl'
-  | 'storage'
-  | 'cache'
-  | 'email'
-  | 'apply'
-  | 'complete';
 
 const STEP_COMPONENTS: Record<StepId, () => JSX.Element | null> = {
   claim: ClaimStep,
@@ -61,7 +51,9 @@ export function computeWizardSteps(
 
 export function SetupWizard() {
   const dispatch = useDispatch();
-  const { currentStep, error } = useSelector((state: RootState) => state.setup.wizard);
+  const { currentStepId: storedStepId, error } = useSelector(
+    (state: RootState) => state.setup.wizard
+  );
   const { data: setupStatus } = useGetSetupStatusQuery();
   const [searchParams] = useSearchParams();
   const urlToken = searchParams.get('token');
@@ -87,6 +79,22 @@ export function SetupWizard() {
     [setupStatus, urlToken]
   );
 
+  // Keep the store's stepOrder in sync with the currently active list. This
+  // is what lets `currentStepId` survive the list changing shape mid-session
+  // (see Critical-1, final review): as long as the id is still present
+  // somewhere in the new list, the reducer leaves it alone regardless of
+  // where it now sits positionally.
+  useEffect(() => {
+    dispatch(setStepOrder(steps));
+  }, [steps, dispatch]);
+
+  // currentStepId is null before any explicit navigation, or if the active
+  // list reshaped out from under a (now-gone) id — fall back to the list's
+  // first step, same as the very first render.
+  const currentIndex = storedStepId ? steps.indexOf(storedStepId) : -1;
+  const currentStepId: StepId = currentIndex !== -1 ? storedStepId! : steps[0];
+  const effectiveIndex = currentIndex !== -1 ? currentIndex : 0;
+
   // Auto-advance to the correct step based on backend state
   // This ONLY runs once on initial mount to handle page refresh scenarios
   useEffect(() => {
@@ -99,26 +107,33 @@ export function SetupWizard() {
     const storageIndex = steps.indexOf('storage');
 
     // Determine what step we should be on based on backend state
-    let targetStep = 1;
+    let targetStepId: StepId = steps[0];
 
-    if (setupStatus.hasAdminUser && adminIndex !== -1) {
-      targetStep = adminIndex + 2; // 1-based position of the step right after 'admin'
+    if (setupStatus.hasAdminUser && adminIndex !== -1 && steps[adminIndex + 1]) {
+      targetStepId = steps[adminIndex + 1]; // the step right after 'admin'
     }
 
-    if (setupStatus.hasAdminUser && setupStatus.storageProvider && storageIndex !== -1) {
-      targetStep = storageIndex + 2; // 1-based position of the step right after 'storage'
+    if (
+      setupStatus.hasAdminUser &&
+      setupStatus.storageProvider &&
+      storageIndex !== -1 &&
+      steps[storageIndex + 1]
+    ) {
+      targetStepId = steps[storageIndex + 1]; // the step right after 'storage'
     }
 
     // Note: We don't auto-advance past cache/email/domain-ssl/apply steps since
     // the backend doesn't track their configuration state in the same way
 
-    // Only advance forward on initial load, never go back (user might be reviewing)
-    if (targetStep > currentStep) {
-      dispatch(setWizardStep(targetStep));
+    // Only advance forward on initial load, never go back (user might be
+    // reviewing) — compared by POSITION in the current list, not id
+    // equality, since a raw id comparison can't express "further along".
+    const targetIndex = steps.indexOf(targetStepId);
+    if (targetIndex > effectiveIndex) {
+      dispatch(setWizardStep(targetStepId));
     }
-  }, [setupStatus, currentStep, dispatch, steps]);
+  }, [setupStatus, effectiveIndex, dispatch, steps]);
 
-  const currentStepId = steps[currentStep - 1] ?? steps[0];
   const StepComponent = STEP_COMPONENTS[currentStepId];
 
   return (
@@ -133,7 +148,7 @@ export function SetupWizard() {
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-lg">
-        <SetupProgress currentStep={currentStep} totalSteps={steps.length} />
+        <SetupProgress currentStep={effectiveIndex + 1} totalSteps={steps.length} />
 
         <div className="bg-card py-8 px-4 shadow-sm sm:rounded-lg sm:px-10 mt-6 border">
           {error && (

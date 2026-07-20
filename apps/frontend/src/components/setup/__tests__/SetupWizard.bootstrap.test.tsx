@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, act } from '@testing-library/react';
 import { Provider } from 'react-redux';
 import { MemoryRouter } from 'react-router-dom';
 import { configureStore } from '@reduxjs/toolkit';
 import { computeWizardSteps, SetupWizard } from '../SetupWizard';
 import { api } from '@/services/api';
-import setupReducer from '@/store/slices/setupSlice';
+import setupReducer, { nextWizardStep } from '@/store/slices/setupSlice';
 import type { SetupStatusResponse } from '@/services/setupApi';
 
 // Sub-steps other than ClaimStep have their own heavy dependencies (API
@@ -71,16 +71,32 @@ function createTestStore() {
   });
 }
 
-function renderWizard(initialEntries: string[] = ['/setup']) {
-  const store = createTestStore();
-  render(
+function wizardTree(store: ReturnType<typeof createTestStore>, initialEntries: string[]) {
+  return (
     <Provider store={store}>
       <MemoryRouter initialEntries={initialEntries}>
         <SetupWizard />
       </MemoryRouter>
     </Provider>
   );
+}
+
+function renderWizard(initialEntries: string[] = ['/setup']) {
+  const store = createTestStore();
+  render(wizardTree(store, initialEntries));
   return store;
+}
+
+// Like renderWizard, but also returns `rerender` so a test can flip the
+// mocked status (simulating a live getSetupStatus refetch landing) and
+// force a re-render against the SAME component instance / store.
+function renderWizardWithRerender(initialEntries: string[] = ['/setup']) {
+  const store = createTestStore();
+  const { rerender } = render(wizardTree(store, initialEntries));
+  return {
+    store,
+    rerender: () => rerender(wizardTree(store, initialEntries)),
+  };
 }
 
 describe('SetupWizard bootstrap-mode step gating', () => {
@@ -143,6 +159,52 @@ describe('SetupWizard bootstrap-mode step gating', () => {
       renderWizard();
 
       expect(screen.getByText('CACHE STEP')).toBeInTheDocument();
+    });
+  });
+
+  describe('Critical-1 regression: claimRequired flipping mid-session must not relocate the user', () => {
+    it('reproduces the failure trace: claim -> admin -> domain-ssl, then the 7->6 shrink must not land on storage', () => {
+      // No `?token=` in the URL — the DigitalOcean console-token flow.
+      setMockStatus(baseStatus({ bootstrapMode: true, claimRequired: true }));
+      const { store, rerender } = renderWizardWithRerender();
+
+      // Initial list is the full 7-step bootstrap list, claim first.
+      expect(screen.getByText(/claim this instance/i)).toBeInTheDocument();
+
+      // ClaimStep's Continue button dispatches nextWizardStep() — simulate
+      // that directly rather than re-deriving ClaimStep's own form/submit
+      // wiring, which is exercised elsewhere.
+      act(() => {
+        store.dispatch(nextWizardStep());
+      });
+      rerender();
+      expect(screen.getByText('ADMIN STEP')).toBeInTheDocument();
+
+      // AdminAccountStep's onSuccess handler dispatches nextWizardStep()
+      // immediately after `initialize()` resolves — BEFORE the invalidated
+      // 'Setup' query's refetch has landed, so this still runs against the
+      // (still 7-item) bootstrap list.
+      act(() => {
+        store.dispatch(nextWizardStep());
+      });
+      rerender();
+      expect(screen.getByText('DOMAIN-SSL STEP')).toBeInTheDocument();
+
+      // Now the refetch lands: hasAdminUser=true, so claimRequired flips
+      // false and the step list shrinks from 7 to 6 (claim drops out) —
+      // every subsequent index shifts left by one.
+      act(() => {
+        setMockStatus(
+          baseStatus({ bootstrapMode: true, claimRequired: false, hasAdminUser: true })
+        );
+      });
+      rerender();
+
+      // BUG (pre-fix): a numeric currentStep=3 into the new 6-item list
+      // resolves to 'storage' (steps[2]), silently relocating the user off
+      // Domain & SSL with bootstrapDomain still unset.
+      expect(screen.getByText('DOMAIN-SSL STEP')).toBeInTheDocument();
+      expect(screen.queryByText('STORAGE STEP')).not.toBeInTheDocument();
     });
   });
 });

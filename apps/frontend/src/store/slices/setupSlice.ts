@@ -1,9 +1,38 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { StorageProvider, EmailProvider } from '@/services/setupApi';
 
+// The full set of step identifiers used anywhere by the setup wizard. Defined
+// here (not in SetupWizard.tsx) so both the slice and the wizard component
+// reference the SAME type: navigation is by step ID, not by numeric index —
+// a numeric `currentStep` against a step list whose shape can change
+// mid-session (bootstrap mode's `claim` step disappearing once
+// `claimRequired` flips false after a live status refetch) silently
+// relocated the user to the wrong step. See Critical-1, final review of the
+// zero-SSH web-bootstrap feature.
+export type StepId =
+  | 'claim'
+  | 'admin'
+  | 'domain-ssl'
+  | 'storage'
+  | 'cache'
+  | 'email'
+  | 'apply'
+  | 'complete';
+
 interface SetupWizardState {
-  // Current step (1-5)
-  currentStep: number;
+  // Wizard navigation. `currentStepId` is the source of truth for "where
+  // the user is": it survives `stepOrder` (the currently active step list,
+  // computed by SetupWizard from live status/URL data) changing shape mid-
+  // session. `null` means "no explicit navigation has happened yet" — the
+  // wizard falls back to `stepOrder[0]`, same as the very first render.
+  //
+  // `stepOrder` mirrors SetupWizard's currently active step list, kept in
+  // sync via `setStepOrder`, so relative navigation (`nextWizardStep` /
+  // `prevWizardStep`, dispatched blind by individual step components that
+  // have no knowledge of the list themselves) can resolve "the next/
+  // previous step" without every step component needing to know the list.
+  currentStepId: StepId | null;
+  stepOrder: StepId[];
 
   // Step 1: Admin account
   adminEmail: string;
@@ -73,7 +102,11 @@ const initialState: SetupState = {
   configuredStorageProvider: null,
 
   wizard: {
-    currentStep: 1,
+    currentStepId: null,
+    // Normal-mode's list is fixed regardless of status/data (see
+    // computeWizardSteps in SetupWizard.tsx), so it's the sensible default
+    // before SetupWizard's own effect syncs the real active list.
+    stepOrder: ['admin', 'storage', 'cache', 'email', 'complete'],
     adminEmail: '',
     adminPassword: '',
     storageProvider: 'minio', // Default to MinIO
@@ -110,23 +143,56 @@ const setupSlice = createSlice({
   name: 'setup',
   initialState,
   reducers: {
-    // Wizard navigation
-    setWizardStep: (state, action: PayloadAction<number>) => {
-      state.wizard.currentStep = action.payload;
+    // Wizard navigation — see StepId's doc comment above for why this is
+    // id-based rather than a raw numeric index.
+
+    // Sync point: called by SetupWizard whenever its computed active step
+    // list changes shape. If the current step id is no longer present in
+    // the new list, resets to "unset" (null) rather than leaving a dangling
+    // id around — the render layer falls back to the new list's first step,
+    // the same defensive fallback used for a never-navigated session.
+    setStepOrder: (state, action: PayloadAction<StepId[]>) => {
+      state.wizard.stepOrder = action.payload;
+      if (
+        state.wizard.currentStepId !== null &&
+        !action.payload.includes(state.wizard.currentStepId)
+      ) {
+        state.wizard.currentStepId = null;
+      }
+    },
+
+    setWizardStep: (state, action: PayloadAction<StepId>) => {
+      state.wizard.currentStepId = action.payload;
     },
 
     nextWizardStep: (state) => {
-      // No upper clamp here: the wizard's step COUNT is mode-dependent (5 steps
-      // normally, up to 7 in bootstrap mode) and is computed by SetupWizard, not
-      // known to this slice. Nothing dispatches nextWizardStep from the final
-      // step of either list, so this is safe.
-      state.wizard.currentStep += 1;
+      const order = state.wizard.stepOrder;
+      const idx = state.wizard.currentStepId ? order.indexOf(state.wizard.currentStepId) : -1;
+      // Unset (never navigated yet) or an id no longer present in the list
+      // (defensive — setStepOrder already resets to null in that case) is
+      // treated as "currently viewing position 0", matching the render
+      // layer's own fallback (`stepOrder[0]`) — so advancing from there
+      // moves to position 1, not back to position 0.
+      const base = idx === -1 ? 0 : idx;
+      const nextIdx = base + 1;
+      // No upper clamp beyond the list's own length: the wizard's step
+      // COUNT is mode-dependent (5 steps normally, up to 7 in bootstrap
+      // mode). Nothing dispatches nextWizardStep from the final step of
+      // either list, so this is safe.
+      if (nextIdx < order.length) {
+        state.wizard.currentStepId = order[nextIdx];
+      }
     },
 
     prevWizardStep: (state) => {
-      if (state.wizard.currentStep > 1) {
-        state.wizard.currentStep -= 1;
+      const order = state.wizard.stepOrder;
+      const idx = state.wizard.currentStepId ? order.indexOf(state.wizard.currentStepId) : -1;
+      const base = idx === -1 ? 0 : idx;
+      if (base > 0) {
+        state.wizard.currentStepId = order[base - 1];
       }
+      // base === 0 (already at/before the first step, or unset): no-op,
+      // matches the old "if currentStep > 1" guard.
     },
 
     // Admin credentials
@@ -274,6 +340,7 @@ const setupSlice = createSlice({
 
 export const {
   setWizardStep,
+  setStepOrder,
   nextWizardStep,
   prevWizardStep,
   setAdminCredentials,
