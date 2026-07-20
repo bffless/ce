@@ -33,9 +33,17 @@ export function DomainSslStep() {
   const handleSubmit = async () => {
     if (!canSubmit || isLoading) return;
     setError(null);
+    // Trim before submit: an untrimmed trailing/leading space passes
+    // `canSubmit`'s truthiness check but fails the backend's hostname regex,
+    // surfacing as an opaque "Invalid domain name" 400.
+    const trimmedDomain = domain.trim();
     try {
-      await uploadCertificates({ domain, certificatePem, privateKeyPem }).unwrap();
-      dispatch(setBootstrapDomain(domain));
+      await uploadCertificates({
+        domain: trimmedDomain,
+        certificatePem,
+        privateKeyPem,
+      }).unwrap();
+      dispatch(setBootstrapDomain(trimmedDomain));
       dispatch(nextWizardStep());
     } catch (err: unknown) {
       const apiError = err as { data?: { message?: string } };

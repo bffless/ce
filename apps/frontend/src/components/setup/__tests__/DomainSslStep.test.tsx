@@ -105,8 +105,29 @@ describe('DomainSslStep', () => {
 
     await waitFor(() => {
       expect(store.getState().setup.wizard.bootstrapDomain).toBe('example.com');
-      expect(store.getState().setup.wizard.currentStep).toBe(2);
+      // Advanced from the initial (unset) position to the next step in the
+      // default stepOrder — see setupSlice.ts's initialState comment.
+      expect(store.getState().setup.wizard.currentStepId).toBe('storage');
     });
+  });
+
+  it('trims leading/trailing whitespace from the domain before submitting', async () => {
+    setHostname('localhost'); // domain starts empty so we control it exactly
+    const store = renderStep();
+
+    fireEvent.change(screen.getByLabelText(/domain/i), { target: { value: '  example.com  ' } });
+    fireEvent.change(screen.getByLabelText(/origin certificate/i), { target: { value: 'CERT' } });
+    fireEvent.change(screen.getByLabelText(/private key/i), { target: { value: 'KEY' } });
+    fireEvent.click(screen.getByRole('button', { name: /install certificate/i }));
+
+    await waitFor(() =>
+      expect(uploadMock).toHaveBeenCalledWith({
+        domain: 'example.com',
+        certificatePem: 'CERT',
+        privateKeyPem: 'KEY',
+      })
+    );
+    expect(store.getState().setup.wizard.bootstrapDomain).toBe('example.com');
   });
 
   it('surfaces the backend error message and does not advance on failure', async () => {
@@ -125,7 +146,7 @@ describe('DomainSslStep', () => {
     await waitFor(() => expect(screen.getByText(message)).toBeInTheDocument());
 
     expect(store.getState().setup.wizard.bootstrapDomain).toBeNull();
-    expect(store.getState().setup.wizard.currentStep).toBe(1);
+    expect(store.getState().setup.wizard.currentStepId).toBeNull();
   });
 
   it('falls back to a generic message when the backend error has none', async () => {

@@ -19,6 +19,15 @@ export function ApplyStep() {
   const [adminUrl, setAdminUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showHint, setShowHint] = useState(false);
+  // Cloudflare is the recommended default (matches DomainSslStep's Origin
+  // Certificate copy), but a direct A-record install with a non-Cloudflare
+  // cert needs 'none' — otherwise port 80 becomes `return 444` with no
+  // ACME-challenge path, permanently breaking certificate renewal.
+  const [proxyMode, setProxyMode] = useState<'cloudflare' | 'none'>('cloudflare');
+  // Captured at apply time so the post-apply screen's Cloudflare-specific
+  // hint reflects what was actually applied, not whatever the (now hidden)
+  // radio selection happens to be.
+  const [appliedProxyMode, setAppliedProxyMode] = useState<'cloudflare' | 'none' | null>(null);
   // No initial value for setInterval's return type: the project's TS
   // strictness rejects useRef<T>() with zero args as "expected 1 argument",
   // so seed it with null and widen the ref type to allow that.
@@ -60,7 +69,8 @@ export function ApplyStep() {
     if (!domain) return;
     setError(null);
     try {
-      const res = await apply({ domain, proxyMode: 'cloudflare' }).unwrap();
+      const res = await apply({ domain, proxyMode }).unwrap();
+      setAppliedProxyMode(proxyMode);
       setAdminUrl(res.adminUrl);
     } catch (err: unknown) {
       const apiError = err as { data?: { message?: string } };
@@ -87,10 +97,12 @@ export function ApplyStep() {
             may be blocking the automatic check — use the link above to continue manually.
           </p>
         )}
-        <p className="text-sm text-muted-foreground">
-          Last step afterwards: set your Cloudflare zone&apos;s SSL/TLS encryption mode to{' '}
-          <strong>Full (strict)</strong> — your origin now has a trusted certificate.
-        </p>
+        {appliedProxyMode === 'cloudflare' && (
+          <p className="text-sm text-muted-foreground">
+            Last step afterwards: set your Cloudflare zone&apos;s SSL/TLS encryption mode to{' '}
+            <strong>Full (strict)</strong> — your origin now has a trusted certificate.
+          </p>
+        )}
       </div>
     );
   }
@@ -103,6 +115,57 @@ export function ApplyStep() {
           This applies <strong>{domain}</strong> as the server&apos;s domain, switches nginx to
           your new certificate, and restarts the backend under its new identity.
         </p>
+      </div>
+
+      <div className="space-y-3">
+        <label
+          className={`flex items-start p-4 border rounded-lg cursor-pointer transition-colors ${
+            proxyMode === 'cloudflare'
+              ? 'border-primary bg-primary/5'
+              : 'border-border hover:bg-muted/50'
+          }`}
+        >
+          <input
+            type="radio"
+            name="proxyMode"
+            value="cloudflare"
+            checked={proxyMode === 'cloudflare'}
+            onChange={() => setProxyMode('cloudflare')}
+            disabled={isLoading}
+            className="mt-1 mr-3"
+          />
+          <div className="flex-1">
+            <span className="font-medium">Cloudflare (recommended)</span>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Traffic is proxied through Cloudflare. Port 80 stays closed to direct connections
+              and nginx trusts Cloudflare&apos;s IP ranges for the visitor&apos;s real IP.
+            </p>
+          </div>
+        </label>
+
+        <label
+          className={`flex items-start p-4 border rounded-lg cursor-pointer transition-colors ${
+            proxyMode === 'none' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'
+          }`}
+        >
+          <input
+            type="radio"
+            name="proxyMode"
+            value="none"
+            checked={proxyMode === 'none'}
+            onChange={() => setProxyMode('none')}
+            disabled={isLoading}
+            className="mt-1 mr-3"
+          />
+          <div className="flex-1">
+            <span className="font-medium">Direct (no proxy)</span>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Use this if your domain points directly at this server (a plain A record, not
+              proxied through Cloudflare). Port 80 redirects to HTTPS and stays reachable for
+              certificate renewal.
+            </p>
+          </div>
+        </label>
       </div>
 
       {error && (

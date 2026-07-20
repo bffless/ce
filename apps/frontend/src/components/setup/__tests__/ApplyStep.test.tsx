@@ -256,6 +256,35 @@ describe('ApplyStep', () => {
     expect(hrefAssignments).toEqual(['https://admin.example.com']);
   });
 
+  it('defaults to cloudflare and shows the Full (strict) reminder afterward', async () => {
+    renderStep('example.com');
+
+    expect(screen.getByRole('radio', { name: /^cloudflare/i })).toBeChecked();
+    expect(screen.getByRole('radio', { name: /^direct/i })).not.toBeChecked();
+
+    fireEvent.click(screen.getByRole('button', { name: /finish setup/i }));
+
+    await waitFor(() =>
+      expect(applyMock).toHaveBeenCalledWith({ domain: 'example.com', proxyMode: 'cloudflare' })
+    );
+    expect(await screen.findByText(/full \(strict\)/i)).toBeInTheDocument();
+  });
+
+  it('lets the user choose "none" and sends it to apply, without the Cloudflare-specific reminder', async () => {
+    renderStep('example.com');
+
+    fireEvent.click(screen.getByRole('radio', { name: /^direct/i }));
+    expect(screen.getByRole('radio', { name: /^direct/i })).toBeChecked();
+
+    fireEvent.click(screen.getByRole('button', { name: /finish setup/i }));
+
+    await waitFor(() =>
+      expect(applyMock).toHaveBeenCalledWith({ domain: 'example.com', proxyMode: 'none' })
+    );
+    expect(await screen.findByText(/switching to/i)).toBeInTheDocument();
+    expect(screen.queryByText(/full \(strict\)/i)).not.toBeInTheDocument();
+  });
+
   it('disables the button when there is no bootstrapDomain', () => {
     renderStep(null);
     expect(screen.getByRole('button', { name: /finish setup/i })).toBeDisabled();
