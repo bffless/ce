@@ -1,7 +1,7 @@
 FROM nginx:alpine
 
-# Install inotify-tools for file watching
-RUN apk add --no-cache inotify-tools
+# Install inotify-tools for file watching, openssl for the bootstrap self-signed cert
+RUN apk add --no-cache inotify-tools openssl
 
 # Copy base nginx config and blocklist
 COPY nginx.conf /etc/nginx/nginx.conf
@@ -17,10 +17,15 @@ COPY errors/ /etc/nginx/error-pages/
 COPY sites-available/main.conf.template /etc/nginx/sites-available/
 COPY sites-available/minio.conf.template /etc/nginx/sites-available/
 COPY sites-available/minio-disabled.conf.template /etc/nginx/sites-available/
+COPY sites-available/bootstrap.conf.template /etc/nginx/sites-available/bootstrap.conf.template
 
 # Copy watcher script
 COPY nginx-reload-watcher.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/nginx-reload-watcher.sh
+
+# Copy main-config renderer (re-runnable: called by entrypoint and by the watcher)
+COPY render-main-conf.sh /usr/local/bin/render-main-conf.sh
+RUN chmod +x /usr/local/bin/render-main-conf.sh
 
 # Copy and set entrypoint
 COPY docker-entrypoint.sh /
