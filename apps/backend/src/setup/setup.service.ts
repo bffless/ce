@@ -43,6 +43,7 @@ import {
   EmailProviderType,
 } from '../email/interfaces/provider-configs.interface';
 import { getImplementedProviders } from '../email/providers';
+import { loadInstanceConfig } from '../bootstrap/instance-config';
 import { DynamicStorageAdapter } from '../storage/dynamic-storage.adapter';
 import { DYNAMIC_STORAGE_ADAPTER, StorageModule } from '../storage/storage.module';
 import { ModuleRef } from '@nestjs/core';
@@ -159,6 +160,14 @@ export class SetupService {
   }
 
   /**
+   * True when SSL/routing/identity is managed externally (Platform/Traefik), meaning
+   * web bootstrap mode must never activate on this instance. Reused by Tasks 5/6 guards.
+   */
+  isPlatformManaged(): boolean {
+    return process.env.PLATFORM_MODE === 'true' || process.env.SSL_MANAGED_EXTERNALLY === 'true';
+  }
+
+  /**
    * Check if system setup is complete
    */
   async getSetupStatus(): Promise<SetupStatusResponseDto> {
@@ -166,15 +175,29 @@ export class SetupService {
       const config = await this.getSystemConfig();
       const adminUsers = await db.select().from(users).where(eq(users.role, 'admin')).limit(1);
 
+      const isSetupComplete = config?.isSetupComplete || false;
+      const hasAdminUser = adminUsers.length > 0;
+
+      // Web bootstrap mode: cert-less installs complete claim -> admin -> domain ->
+      // SSL -> apply entirely in the browser. Never activates on platform-managed
+      // deployments, once instance.json has been applied, or after setup is done.
+      const instance = loadInstanceConfig();
+      const flagOn = await this.featureFlagsService.isEnabled('ENABLE_BOOTSTRAP_SETUP');
+      const bootstrapMode =
+        flagOn && !this.isPlatformManaged() && instance?.state !== 'applied' && !isSetupComplete;
+      const claimRequired = bootstrapMode && !!process.env.ONBOARDING_TOKEN && !hasAdminUser;
+
       return {
-        isSetupComplete: config?.isSetupComplete || false,
+        isSetupComplete,
         storageProvider: config?.storageProvider || undefined,
-        hasAdminUser: adminUsers.length > 0,
+        hasAdminUser,
         // New email provider fields
         emailConfigured: config?.emailConfigured || false,
         emailProvider: config?.emailProvider || undefined,
         // Legacy SMTP field (for backwards compatibility)
         smtpConfigured: config?.smtpConfigured || config?.emailConfigured || false,
+        bootstrapMode,
+        claimRequired,
       };
     } catch (error) {
       this.logger.error('Error checking setup status:', error);

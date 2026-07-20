@@ -310,6 +310,14 @@ export class SetupStatusResponseDto {
 
   @ApiPropertyOptional({ description: 'Whether SMTP is configured (legacy, use emailConfigured)' })
   smtpConfigured?: boolean;
+
+  @ApiProperty({
+    description: 'True when the instance is in web-bootstrap mode (cert-less, pre-apply)',
+  })
+  bootstrapMode: boolean;
+
+  @ApiProperty({ description: 'True when a claim token must accompany admin creation' })
+  claimRequired: boolean;
 }
 
 export class InitializeResponseDto {

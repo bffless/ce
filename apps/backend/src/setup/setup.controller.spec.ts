@@ -41,7 +41,7 @@ describe('SetupController', () => {
 
   describe('getStatus', () => {
     it('should return setup status', async () => {
-      const mockStatus = { isSetupComplete: false };
+      const mockStatus = { isSetupComplete: false, bootstrapMode: false, claimRequired: false };
       jest.spyOn(service, 'getSetupStatus').mockResolvedValue(mockStatus);
 
       const result = await controller.getStatus();
