@@ -62,6 +62,9 @@ nginx-dev/
 ssl/
 *.pem
 
+# Bootstrap instance identity (written by backend, read by nginx)
+bootstrap/
+
 # Production nginx config (copied from nginx-ssl.conf in production)
 docker/nginx-prod.conf
 
