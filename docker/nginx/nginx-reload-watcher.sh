@@ -24,6 +24,12 @@ while true; do
     # inotifywait couldn't watch one of the paths (e.g. still missing despite
     # mkdir -p, or some other transient error). Back off before retrying so
     # this can never become a tight, CPU-burning spin loop.
+    #
+    # Log it: a PERMANENT fault (broken bind mount, bad permissions) retries
+    # here forever, and inotifywait's own stderr is discarded above. Without
+    # this line the watcher would fail silently and invisibly — the old
+    # hot-spin was at least diagnosable from high CPU.
+    echo "⚠️  inotifywait failed (watched path missing or unreadable), retrying in 2s..." >&2
     sleep 2
     continue
   fi
@@ -48,8 +54,10 @@ while true; do
   # cannot itself produce another watched-path change: no infinite loop.
   echo "🔧 Re-rendering nginx config..."
   if ! /usr/local/bin/render-main-conf.sh; then
+    # No backoff needed: the next statement after `continue` is another
+    # blocking inotifywait, so there is no spin to prevent here — unlike the
+    # inotifywait-failure branch above, which returns instantly.
     echo "❌ Render failed, skipping reload"
-    sleep 2
     continue
   fi
 
