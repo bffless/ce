@@ -29,6 +29,9 @@ interface SetupWizardState {
   smtpConfigured: boolean;
   smtpSkipped: boolean;
 
+  // Bootstrap mode: claim token (from ClaimStep, or the `?token=` Platform relay)
+  claimToken: string | null;
+
   // General
   isSubmitting: boolean;
   error: string | null;
@@ -85,6 +88,8 @@ const initialState: SetupState = {
     // Legacy SMTP
     smtpConfigured: false,
     smtpSkipped: false,
+    // Bootstrap mode
+    claimToken: null,
     isSubmitting: false,
     error: null,
   },
@@ -107,9 +112,11 @@ const setupSlice = createSlice({
     },
 
     nextWizardStep: (state) => {
-      if (state.wizard.currentStep < 5) {
-        state.wizard.currentStep += 1;
-      }
+      // No upper clamp here: the wizard's step COUNT is mode-dependent (5 steps
+      // normally, up to 7 in bootstrap mode) and is computed by SetupWizard, not
+      // known to this slice. Nothing dispatches nextWizardStep from the final
+      // step of either list, so this is safe.
+      state.wizard.currentStep += 1;
     },
 
     prevWizardStep: (state) => {
@@ -191,6 +198,11 @@ const setupSlice = createSlice({
       state.wizard.emailSkipped = action.payload;
     },
 
+    // Bootstrap mode: claim token (from ClaimStep input, or the `?token=` Platform relay)
+    setClaimToken: (state, action: PayloadAction<string | null>) => {
+      state.wizard.claimToken = action.payload;
+    },
+
     // Error handling
     setWizardError: (state, action: PayloadAction<string | null>) => {
       state.wizard.error = action.payload;
@@ -270,6 +282,8 @@ export const {
   // Legacy SMTP actions (kept for backwards compatibility)
   setSmtpConfigured,
   setSmtpSkipped,
+  // Bootstrap mode actions
+  setClaimToken,
   setWizardError,
   setIsSubmitting,
   setSetupStatus,

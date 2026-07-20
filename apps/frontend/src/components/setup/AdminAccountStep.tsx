@@ -1,6 +1,5 @@
-import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { useSearchParams } from 'react-router-dom';
 import {
   useInitializeMutation,
   useCheckSetupEmailMutation,
@@ -21,13 +20,14 @@ type EmailStatus = 'idle' | 'checking' | 'valid' | 'exists-can-adopt' | 'exists-
 
 export function AdminAccountStep() {
   const dispatch = useDispatch();
-  const { adminEmail, adminPassword } = useSelector(
+  const { adminEmail, adminPassword, claimToken } = useSelector(
     (state: RootState) => state.setup.wizard
   );
 
-  // Read onboarding token from URL query params
-  const [searchParams] = useSearchParams();
-  const onboardingToken = useMemo(() => searchParams.get('token') || undefined, [searchParams]);
+  // The onboarding/claim token: populated by SetupWizard on mount from `?token=`
+  // (Platform relay), or by ClaimStep in bootstrap mode. Read from the store
+  // rather than the URL directly so both sources funnel through one field.
+  const onboardingToken = claimToken ?? undefined;
 
   // Check for existing session
   const { data: sessionData, isLoading: isSessionLoading } = useGetSessionQuery();
