@@ -8,6 +8,7 @@ describe('BootstrapSetupController', () => {
     validateCertificatePair: jest.fn().mockReturnValue({ sans: ['example.com', '*.example.com'] }),
     saveCertificates: jest.fn(),
     certificatesPresent: jest.fn().mockReturnValue(true),
+    assertStagedCertificateCovers: jest.fn(),
     validateDomain: jest.fn((d: string) => d.toLowerCase()),
   };
   const exitFn = jest.fn();
@@ -17,6 +18,7 @@ describe('BootstrapSetupController', () => {
     svc.assertBootstrapAllowed.mockResolvedValue(undefined);
     svc.validateCertificatePair.mockReturnValue({ sans: ['example.com', '*.example.com'] });
     svc.certificatesPresent.mockReturnValue(true);
+    svc.assertStagedCertificateCovers.mockReturnValue(undefined);
     svc.validateDomain.mockImplementation((d: string) => d.toLowerCase());
     controller = new BootstrapSetupController(svc as any);
     (controller as any).scheduleExit = exitFn; // do not actually exit in tests
@@ -62,6 +64,7 @@ describe('BootstrapSetupController', () => {
         .mockImplementation(() => undefined);
       const res = await controller.apply({ domain: 'example.com', proxyMode: 'cloudflare' });
       expect(svc.assertBootstrapAllowed).toHaveBeenCalled();
+      expect(svc.assertStagedCertificateCovers).toHaveBeenCalledWith('example.com');
       expect(writeSpy).toHaveBeenCalledWith(
         expect.objectContaining({ state: 'applied', primaryDomain: 'example.com', proxyMode: 'cloudflare' }),
       );
@@ -111,6 +114,25 @@ describe('BootstrapSetupController', () => {
       await expect(
         controller.apply({ domain: 'example.com', proxyMode: 'cloudflare' }),
       ).rejects.toThrow(BadRequestException);
+      expect(writeSpy).not.toHaveBeenCalled();
+      expect(exitFn).not.toHaveBeenCalled();
+      writeSpy.mockRestore();
+    });
+
+    it('refuses when the staged fullchain does not cover the domain, before writing config', async () => {
+      // The change-of-mind path: certs uploaded for a different domain after
+      // this one overwrote the generic fullchain.pem, so applying this
+      // domain must be rejected even though certificatesPresent still
+      // passes on the stale wildcard.* files.
+      const writeSpy = jest
+        .spyOn(require('../bootstrap/instance-config'), 'writeInstanceConfig')
+        .mockImplementation(() => undefined);
+      svc.assertStagedCertificateCovers.mockImplementationOnce(() => {
+        throw new BadRequestException('Certificate does not cover example.com');
+      });
+      await expect(
+        controller.apply({ domain: 'example.com', proxyMode: 'cloudflare' }),
+      ).rejects.toThrow(/does not cover/i);
       expect(writeSpy).not.toHaveBeenCalled();
       expect(exitFn).not.toHaveBeenCalled();
       writeSpy.mockRestore();

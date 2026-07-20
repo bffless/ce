@@ -158,28 +158,66 @@ export class BootstrapSetupService {
       throw new BadRequestException('Certificate is not yet valid');
     }
 
-    // GeneralName type 2 is dNSName (RFC 5280). Other SAN types (e.g. type 7,
-    // iPAddress) share the same `.value`/`.ip` shape in node-forge and must
-    // never be treated as a DNS name a hostname check can match against.
+    const sans = this.dnsSans(cert);
+    this.assertSansCover(sans, validatedDomain);
+    return { sans };
+  }
+
+  /**
+   * GeneralName type 2 is dNSName (RFC 5280). Other SAN types (e.g. type 7,
+   * iPAddress) share the same `.value`/`.ip` shape in node-forge and must
+   * never be treated as a DNS name a hostname check can match against.
+   */
+  private dnsSans(cert: forge.pki.Certificate): string[] {
     const sanExt = cert.getExtension('subjectAltName') as
       | { altNames?: { type: number; value: string }[] }
       | undefined;
-    const sans = (sanExt?.altNames || [])
-      .filter((a) => a.type === 2)
-      .map((a) => a.value);
-    // DNS is case-insensitive and cert SANs are commonly issued in mixed
-    // case, so compare against the lowercased, validated domain.
+    return (sanExt?.altNames || []).filter((a) => a.type === 2).map((a) => a.value);
+  }
+
+  /**
+   * DNS is case-insensitive and cert SANs are commonly issued in mixed case,
+   * so compare against the lowercased, validated domain. Requires BOTH the
+   * apex and the wildcard (admin/www/preview subdomains all ride on it).
+   */
+  private assertSansCover(sans: string[], validatedDomain: string): void {
     const lowerSans = sans.map((s) => s.toLowerCase());
-    const covers = (name: string) => lowerSans.includes(name);
-    if (!covers(validatedDomain)) {
+    if (!lowerSans.includes(validatedDomain)) {
       throw new BadRequestException(`Certificate does not cover ${validatedDomain}`);
     }
-    if (!covers(`*.${validatedDomain}`)) {
+    if (!lowerSans.includes(`*.${validatedDomain}`)) {
       throw new BadRequestException(
         `Certificate does not cover the wildcard *.${validatedDomain} (needed for admin/www/preview subdomains)`,
       );
     }
-    return { sans };
+  }
+
+  /**
+   * Re-validates that the staged generic cert (`fullchain.pem` — the file
+   * nginx's apex/www/admin vhosts serve) actually covers `domain`.
+   * certificatesPresent alone can't catch the change-of-mind sequence
+   * "upload certs for A, upload certs for B, apply A": the domain-suffixed
+   * wildcard.A.* files still exist from the first upload, but
+   * fullchain.pem/privkey.pem now hold B's material (saveCertificates
+   * overwrites the generic pair on every upload). Applying A would bring
+   * nginx up serving A's hostnames with B's certificate — cert errors on the
+   * exact URLs the post-apply redirect targets, on a box with no SSH
+   * recovery path. Called by the apply endpoint AFTER certificatesPresent
+   * (so the file is known to exist); any read/parse failure throws rather
+   * than passes.
+   */
+  assertStagedCertificateCovers(domain: string): void {
+    const validatedDomain = this.assertValidDomain(domain);
+    let cert: forge.pki.Certificate;
+    try {
+      const pem = fs.readFileSync(path.join(this.sslDir(), 'fullchain.pem'), 'utf8');
+      cert = forge.pki.certificateFromPem(pem);
+    } catch {
+      throw new BadRequestException(
+        'Installed certificate could not be read — re-install the certificate for this domain',
+      );
+    }
+    this.assertSansCover(this.dnsSans(cert), validatedDomain);
   }
 
   /**

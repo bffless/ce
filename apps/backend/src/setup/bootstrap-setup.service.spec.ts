@@ -444,4 +444,51 @@ describe('BootstrapSetupService', () => {
       await expect(service.assertBootstrapAllowed()).resolves.toBeUndefined();
     });
   });
+
+  describe('assertStagedCertificateCovers', () => {
+    it('passes when the staged fullchain.pem covers the domain', () => {
+      const { certPem, keyPem } = makeCert('example.com', keyA);
+      service.saveCertificates(certPem, keyPem, 'example.com');
+      expect(() => service.assertStagedCertificateCovers('example.com')).not.toThrow();
+    });
+
+    it('rejects the change-of-mind sequence: upload A, upload B, apply A', () => {
+      // saveCertificates overwrites the generic fullchain.pem/privkey.pem on
+      // every upload, but leaves earlier domains' wildcard.* files behind —
+      // so certificatesPresent('example.com') still passes after the
+      // other.com upload while fullchain.pem now holds other.com's cert.
+      // Applying example.com at that point would put nginx up serving
+      // example.com's vhosts with other.com's certificate.
+      const a = makeCert('example.com', keyA);
+      const b = makeCert('other.com', keyB);
+      service.saveCertificates(a.certPem, a.keyPem, 'example.com');
+      service.saveCertificates(b.certPem, b.keyPem, 'other.com');
+
+      expect(service.certificatesPresent('example.com')).toBe(true); // the trap
+      expect(() => service.assertStagedCertificateCovers('example.com')).toThrow(
+        BadRequestException,
+      );
+      expect(() => service.assertStagedCertificateCovers('example.com')).toThrow(
+        /does not cover example\.com/i,
+      );
+      // The most recent upload's domain still applies cleanly.
+      expect(() => service.assertStagedCertificateCovers('other.com')).not.toThrow();
+    });
+
+    it('throws (rather than passes) when fullchain.pem is missing or unparseable', () => {
+      expect(() => service.assertStagedCertificateCovers('example.com')).toThrow(
+        /could not be read/i,
+      );
+      fs.writeFileSync(path.join(sslDir, 'fullchain.pem'), 'not a certificate');
+      expect(() => service.assertStagedCertificateCovers('example.com')).toThrow(
+        /could not be read/i,
+      );
+    });
+
+    it('rejects a path-traversal domain before touching the filesystem', () => {
+      expect(() => service.assertStagedCertificateCovers('../../etc/nginx/evil')).toThrow(
+        /invalid domain/i,
+      );
+    });
+  });
 });

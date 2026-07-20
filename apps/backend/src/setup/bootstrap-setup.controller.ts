@@ -58,6 +58,12 @@ export class BootstrapSetupController {
     if (!this.bootstrap.certificatesPresent(dto.domain)) {
       throw new BadRequestException('Install certificates before applying');
     }
+    // certificatesPresent only proves the four files exist; a later upload
+    // for a different domain overwrites the generic fullchain.pem/privkey.pem
+    // pair that nginx's apex/admin vhosts serve, while this domain's stale
+    // wildcard.* files stick around. Re-verify the staged fullchain actually
+    // covers the domain being applied — see assertStagedCertificateCovers.
+    this.bootstrap.assertStagedCertificateCovers(dto.domain);
     // writeInstanceConfig is called directly by this controller (it isn't
     // reached through validateCertificatePair/saveCertificates/
     // certificatesPresent, which validate the domain as a side effect of
