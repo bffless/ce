@@ -36,8 +36,14 @@ export class BootstrapSetupService {
    * Rejects anything that isn't a plausible hostname. `domain` is user input
    * that gets interpolated into a filename (`wildcard.<domain>.crt/.key`), so
    * this is a path-traversal guard, not just cosmetic validation.
+   *
+   * Returns the validated domain lowercased: DNS is case-insensitive, but the
+   * domain is used verbatim as part of a filename, so `saveCertificates`
+   * writing `wildcard.Example.com.crt` and `certificatesPresent` later
+   * looking for `wildcard.example.com.crt` would silently disagree unless
+   * every call site normalizes through this return value.
    */
-  private assertValidDomain(domain: string): void {
+  private assertValidDomain(domain: string): string {
     if (
       typeof domain !== 'string' ||
       domain.length === 0 ||
@@ -50,6 +56,7 @@ export class BootstrapSetupService {
     ) {
       throw new BadRequestException('Invalid domain name');
     }
+    return domain.toLowerCase();
   }
 
   /**
@@ -82,7 +89,7 @@ export class BootstrapSetupService {
    * partially-populated key object instead of throwing.
    */
   validateCertificatePair(certPem: string, keyPem: string, domain: string): { sans: string[] } {
-    this.assertValidDomain(domain);
+    const validatedDomain = this.assertValidDomain(domain);
 
     let cert: forge.pki.Certificate;
     let key: forge.pki.rsa.PrivateKey;
@@ -121,17 +128,25 @@ export class BootstrapSetupService {
       throw new BadRequestException('Certificate is not yet valid');
     }
 
+    // GeneralName type 2 is dNSName (RFC 5280). Other SAN types (e.g. type 7,
+    // iPAddress) share the same `.value`/`.ip` shape in node-forge and must
+    // never be treated as a DNS name a hostname check can match against.
     const sanExt = cert.getExtension('subjectAltName') as
-      | { altNames?: { value: string }[] }
+      | { altNames?: { type: number; value: string }[] }
       | undefined;
-    const sans = (sanExt?.altNames || []).map((a) => a.value);
-    const covers = (name: string) => sans.includes(name);
-    if (!covers(domain)) {
-      throw new BadRequestException(`Certificate does not cover ${domain}`);
+    const sans = (sanExt?.altNames || [])
+      .filter((a) => a.type === 2)
+      .map((a) => a.value);
+    // DNS is case-insensitive and cert SANs are commonly issued in mixed
+    // case, so compare against the lowercased, validated domain.
+    const lowerSans = sans.map((s) => s.toLowerCase());
+    const covers = (name: string) => lowerSans.includes(name);
+    if (!covers(validatedDomain)) {
+      throw new BadRequestException(`Certificate does not cover ${validatedDomain}`);
     }
-    if (!covers(`*.${domain}`)) {
+    if (!covers(`*.${validatedDomain}`)) {
       throw new BadRequestException(
-        `Certificate does not cover the wildcard *.${domain} (needed for admin/www/preview subdomains)`,
+        `Certificate does not cover the wildcard *.${validatedDomain} (needed for admin/www/preview subdomains)`,
       );
     }
     return { sans };
@@ -149,7 +164,7 @@ export class BootstrapSetupService {
    * see task-5-report.md for the full residual-risk note.
    */
   saveCertificates(certPem: string, keyPem: string, domain: string): void {
-    this.assertValidDomain(domain);
+    const validatedDomain = this.assertValidDomain(domain);
     const dir = this.sslDir();
     fs.mkdirSync(dir, { recursive: true });
 
@@ -168,23 +183,28 @@ export class BootstrapSetupService {
 
     write('fullchain.pem', certPem, 0o644);
     write('privkey.pem', keyPem, 0o600);
-    write(`wildcard.${domain}.crt`, certPem, 0o644);
-    write(`wildcard.${domain}.key`, keyPem, 0o600);
+    write(`wildcard.${validatedDomain}.crt`, certPem, 0o644);
+    write(`wildcard.${validatedDomain}.key`, keyPem, 0o600);
   }
 
   /**
    * Belongs here (not the Task 6 controller) since it reads the same SSL
-   * directory this service owns. Checks the generic pair plus the
-   * domain-specific wildcard cert so the wizard can tell whether bootstrap
-   * has already completed for this domain.
+   * directory this service owns. Checks all four files `saveCertificates`
+   * writes — the generic pair AND the domain-specific wildcard cert/key —
+   * so the wizard can tell whether bootstrap has already completed for this
+   * domain. The four writes are not one transaction, so an interrupted save
+   * must not be reported as complete just because the first three files
+   * landed; omitting the wildcard key here would let the Task 6 apply
+   * endpoint report success while nginx still lacks the key for that vhost.
    */
   certificatesPresent(domain: string): boolean {
-    this.assertValidDomain(domain);
+    const validatedDomain = this.assertValidDomain(domain);
     const dir = this.sslDir();
     return (
       fs.existsSync(path.join(dir, 'fullchain.pem')) &&
       fs.existsSync(path.join(dir, 'privkey.pem')) &&
-      fs.existsSync(path.join(dir, `wildcard.${domain}.crt`))
+      fs.existsSync(path.join(dir, `wildcard.${validatedDomain}.crt`)) &&
+      fs.existsSync(path.join(dir, `wildcard.${validatedDomain}.key`))
     );
   }
 }
