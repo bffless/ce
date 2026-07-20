@@ -32,6 +32,9 @@ interface SetupWizardState {
   // Bootstrap mode: claim token (from ClaimStep, or the `?token=` Platform relay)
   claimToken: string | null;
 
+  // Bootstrap mode: domain chosen in DomainSslStep (consumed by ApplyStep)
+  bootstrapDomain: string | null;
+
   // General
   isSubmitting: boolean;
   error: string | null;
@@ -90,6 +93,7 @@ const initialState: SetupState = {
     smtpSkipped: false,
     // Bootstrap mode
     claimToken: null,
+    bootstrapDomain: null,
     isSubmitting: false,
     error: null,
   },
@@ -203,6 +207,11 @@ const setupSlice = createSlice({
       state.wizard.claimToken = action.payload;
     },
 
+    // Bootstrap mode: domain chosen in DomainSslStep (consumed by ApplyStep)
+    setBootstrapDomain: (state, action: PayloadAction<string | null>) => {
+      state.wizard.bootstrapDomain = action.payload;
+    },
+
     // Error handling
     setWizardError: (state, action: PayloadAction<string | null>) => {
       state.wizard.error = action.payload;
@@ -284,6 +293,7 @@ export const {
   setSmtpSkipped,
   // Bootstrap mode actions
   setClaimToken,
+  setBootstrapDomain,
   setWizardError,
   setIsSubmitting,
   setSetupStatus,
