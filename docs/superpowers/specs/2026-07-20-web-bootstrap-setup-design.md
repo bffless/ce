@@ -116,6 +116,14 @@ Umbrel today is the crudest version of this exact design: both umbrel entrypoint
 - **E2E (Playwright)**: full bootstrap wizard against a cert-less compose stack (self-signed + fixture certs); legacy regression (env-configured install with no `instance.json` behaves byte-identically); Platform-relay simulation (`/setup?token=` skips the claim screen).
 - **Manual**: real droplet — both SSL paths, console-token flow, post-apply redirect, backend identity after self-restart, SSH-fallback path; one k8s workspace pod sanity check; Umbrel device run — wizard from `umbrel.local:5537`, tunnel profile end-to-end, and a legacy `domain.txt` install upgrading cleanly.
 
+**Recovery (final review, Important-2):** Apply is one-way — a typo'd domain or DNS that isn't
+pointed at the box yet leaves it reachable only at an identity you can't reach. The escape hatch
+is SSH (still not required for the happy path): `rm -rf bootstrap/instance.json
+bootstrap/instance.env && docker compose restart backend nginx` drops the applied identity and
+re-enters bootstrap mode (the self-signed marker in `ssl/` from the original first boot is never
+deleted, so `wasEverBootstrapProvisioned()`/`have_bootstrap_marker` still hold). Documented
+prominently in the README's bootstrap subsection.
+
 ## Out of scope
 
 - **Day-2 domain change via UI** — the apply mechanism technically enables it, but v1 targets initial bootstrap only; changing an established instance's domain stays documented-manual (data/cookie/cert implications deserve their own design).
