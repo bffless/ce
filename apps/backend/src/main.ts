@@ -1,3 +1,12 @@
+// MUST stay the first import in this file. It is a side-effect import that
+// hydrates process.env from bootstrap/instance.json (bootstrap-mode domain
+// identity) before AppModule's import graph runs. AppModule's decorator
+// calls AuthModule.forRoot() -> initSuperTokens() at import time (see
+// bootstrap/hydrate.ts for the full ordering argument), so this must resolve
+// before `import { AppModule } from './app.module'` below it — do not move
+// it, and do not let an import-sorter reorder it.
+import './bootstrap/hydrate';
+
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, LogLevel } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
