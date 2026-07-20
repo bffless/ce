@@ -11,6 +11,8 @@ export interface SetupStatusResponse {
   emailConfigured?: boolean;
   emailProvider?: string;
   smtpConfigured?: boolean; // Legacy, use emailConfigured
+  bootstrapMode: boolean;
+  claimRequired: boolean;
 }
 
 // Initialize (create admin user)
@@ -468,6 +470,31 @@ export interface AdoptSessionUserResponse {
   email: string;
 }
 
+// =============================================================================
+// Bootstrap Mode Types (zero-SSH web bootstrap)
+// =============================================================================
+
+export interface UploadCertificatesRequest {
+  domain: string;
+  certificatePem: string;
+  privateKeyPem: string;
+}
+
+export interface UploadCertificatesResponse {
+  saved: boolean;
+  sans: string[];
+}
+
+export interface ApplyBootstrapRequest {
+  domain: string;
+  proxyMode: 'cloudflare' | 'none';
+}
+
+export interface ApplyBootstrapResponse {
+  applying: boolean;
+  adminUrl: string;
+}
+
 // API Endpoints
 export const setupApi = api.injectEndpoints({
   endpoints: (builder) => ({
@@ -710,6 +737,36 @@ export const setupApi = api.injectEndpoints({
       }),
       invalidatesTags: ['Setup'],
     }),
+
+    // ==========================================================================
+    // Bootstrap Mode Endpoints (zero-SSH web bootstrap)
+    // ==========================================================================
+
+    // Upload TLS certificate + key for a domain (bootstrap mode)
+    // Does not invalidate Setup: this only stages certs on disk, it does not
+    // change any field reported by getSetupStatus (bootstrapMode/claimRequired
+    // are unaffected until applyBootstrap runs).
+    uploadCertificates: builder.mutation<UploadCertificatesResponse, UploadCertificatesRequest>({
+      query: (body) => ({
+        url: '/api/setup/certificates',
+        method: 'POST',
+        body,
+      }),
+    }),
+
+    // Apply bootstrap config and restart the backend under the new domain.
+    // Deliberately does NOT invalidate Setup: the backend process exits and
+    // restarts ~500ms later, so an automatic refetch of getSetupStatus would
+    // hit a connection-refused error against the (now stale) origin and could
+    // surface a spurious error in the UI. Task 13's ApplyStep polls the NEW
+    // domain directly instead of relying on cache invalidation here.
+    applyBootstrap: builder.mutation<ApplyBootstrapResponse, ApplyBootstrapRequest>({
+      query: (body) => ({
+        url: '/api/setup/apply',
+        method: 'POST',
+        body,
+      }),
+    }),
   }),
 });
 
@@ -746,4 +803,7 @@ export const {
   // Registration settings hooks
   useGetRegistrationSettingsQuery,
   useUpdateAllowPublicSignupsMutation,
+  // Bootstrap mode hooks
+  useUploadCertificatesMutation,
+  useApplyBootstrapMutation,
 } = setupApi;
