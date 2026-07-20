@@ -1,56 +1,71 @@
 import { CheckCircle } from 'lucide-react';
+import { StepId } from '@/store/slices/setupSlice';
 
 interface SetupProgressProps {
+  /** The wizard's currently-active step list (normal or bootstrap). */
+  steps: StepId[];
+  /** 1-based index of the current step within `steps`. */
   currentStep: number;
-  totalSteps: number;
 }
 
-const steps = [
-  { id: 1, name: 'Admin Account' },
-  { id: 2, name: 'Storage' },
-  { id: 3, name: 'Email' },
-  { id: 4, name: 'Complete' },
-];
+// Human-readable label for every step id. Driven by the ACTUAL computed step
+// list (see SetupWizard.computeWizardSteps) rather than a hardcoded array, so
+// the progress header reflects bootstrap mode's Claim / Domain & SSL / Apply
+// steps instead of silently showing the normal-mode labels in every mode.
+export const STEP_LABELS: Record<StepId, string> = {
+  claim: 'Claim',
+  admin: 'Admin Account',
+  'domain-ssl': 'Domain & SSL',
+  storage: 'Storage',
+  cache: 'Cache',
+  email: 'Email',
+  apply: 'Apply',
+  complete: 'Complete',
+};
 
-export function SetupProgress({ currentStep }: SetupProgressProps) {
+export function SetupProgress({ steps, currentStep }: SetupProgressProps) {
   return (
     <nav aria-label="Progress">
       <ol className="flex items-center justify-center space-x-5">
-        {steps.map((step) => (
-          <li key={step.name} className="flex items-center">
-            {step.id < currentStep ? (
-              // Completed step
-              <span className="flex items-center">
-                <span className="flex-shrink-0 w-10 h-10 flex items-center justify-center bg-primary rounded-full">
-                  <CheckCircle className="w-6 h-6 text-primary-foreground" />
+        {steps.map((stepId, index) => {
+          const position = index + 1; // 1-based, matches currentStep
+          const label = STEP_LABELS[stepId];
+          return (
+            <li key={stepId} className="flex items-center">
+              {position < currentStep ? (
+                // Completed step
+                <span className="flex items-center">
+                  <span className="flex-shrink-0 w-10 h-10 flex items-center justify-center bg-primary rounded-full">
+                    <CheckCircle className="w-6 h-6 text-primary-foreground" />
+                  </span>
+                  <span className="ml-3 text-sm font-medium text-muted-foreground hidden sm:block">
+                    {label}
+                  </span>
                 </span>
-                <span className="ml-3 text-sm font-medium text-muted-foreground hidden sm:block">
-                  {step.name}
+              ) : position === currentStep ? (
+                // Current step
+                <span className="flex items-center">
+                  <span className="flex-shrink-0 w-10 h-10 flex items-center justify-center border-2 border-primary rounded-full">
+                    <span className="text-primary font-bold">{position}</span>
+                  </span>
+                  <span className="ml-3 text-sm font-medium text-primary hidden sm:block">
+                    {label}
+                  </span>
                 </span>
-              </span>
-            ) : step.id === currentStep ? (
-              // Current step
-              <span className="flex items-center">
-                <span className="flex-shrink-0 w-10 h-10 flex items-center justify-center border-2 border-primary rounded-full">
-                  <span className="text-primary font-bold">{step.id}</span>
+              ) : (
+                // Future step
+                <span className="flex items-center">
+                  <span className="flex-shrink-0 w-10 h-10 flex items-center justify-center border-2 border-muted-foreground/30 rounded-full">
+                    <span className="text-muted-foreground">{position}</span>
+                  </span>
+                  <span className="ml-3 text-sm font-medium text-muted-foreground hidden sm:block">
+                    {label}
+                  </span>
                 </span>
-                <span className="ml-3 text-sm font-medium text-primary hidden sm:block">
-                  {step.name}
-                </span>
-              </span>
-            ) : (
-              // Future step
-              <span className="flex items-center">
-                <span className="flex-shrink-0 w-10 h-10 flex items-center justify-center border-2 border-muted-foreground/30 rounded-full">
-                  <span className="text-muted-foreground">{step.id}</span>
-                </span>
-                <span className="ml-3 text-sm font-medium text-muted-foreground hidden sm:block">
-                  {step.name}
-                </span>
-              </span>
-            )}
-          </li>
-        ))}
+              )}
+            </li>
+          );
+        })}
       </ol>
     </nav>
   );

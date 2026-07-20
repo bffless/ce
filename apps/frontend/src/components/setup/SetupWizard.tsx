@@ -148,7 +148,7 @@ export function SetupWizard() {
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-lg">
-        <SetupProgress currentStep={effectiveIndex + 1} totalSteps={steps.length} />
+        <SetupProgress steps={steps} currentStep={effectiveIndex + 1} />
 
         <div className="bg-card py-8 px-4 shadow-sm sm:rounded-lg sm:px-10 mt-6 border">
           {error && (
