@@ -284,6 +284,30 @@ export class SetupService {
   }
 
   /**
+   * Single source of truth for "is web bootstrap mode active right now".
+   * Shared by getSetupStatus (status reporting) and
+   * BootstrapSetupService.assertBootstrapAllowed (endpoint enforcement) so
+   * the two can never disagree: the bootstrap endpoints write into the live
+   * nginx SSL directory and rewrite the instance identity, so they must be
+   * callable exactly when the wizard would be shown — never on a
+   * platform-managed deployment, an already-applied instance, a completed
+   * setup, or a legacy install that was never cert-less.
+   *
+   * `isSetupComplete` may be passed by a caller that already loaded the
+   * system config (getSetupStatus) to avoid a duplicate query; otherwise it
+   * is fetched here.
+   */
+  async isBootstrapModeActive(opts?: { isSetupComplete?: boolean }): Promise<boolean> {
+    if (this.isPlatformManaged()) return false;
+    if (!(await this.featureFlagsService.isEnabled('ENABLE_BOOTSTRAP_SETUP'))) return false;
+    if (loadInstanceConfig()?.state === 'applied') return false;
+    const isSetupComplete =
+      opts?.isSetupComplete ?? ((await this.getSystemConfig())?.isSetupComplete || false);
+    if (isSetupComplete) return false;
+    return this.wasEverBootstrapProvisioned();
+  }
+
+  /**
    * Check if system setup is complete
    */
   async getSetupStatus(): Promise<SetupStatusResponseDto> {
@@ -299,14 +323,8 @@ export class SetupService {
       // deployments, once instance.json has been applied, after setup is done, or
       // on an install that already has real domain/cert configuration (legacy
       // ./setup.sh + certbot installs — see wasEverBootstrapProvisioned()).
-      const instance = loadInstanceConfig();
-      const flagOn = await this.featureFlagsService.isEnabled('ENABLE_BOOTSTRAP_SETUP');
-      const bootstrapMode =
-        flagOn &&
-        !this.isPlatformManaged() &&
-        instance?.state !== 'applied' &&
-        !isSetupComplete &&
-        this.wasEverBootstrapProvisioned();
+      // Same gate the bootstrap endpoints enforce (isBootstrapModeActive).
+      const bootstrapMode = await this.isBootstrapModeActive({ isSetupComplete });
       const claimRequired = bootstrapMode && !!process.env.ONBOARDING_TOKEN && !hasAdminUser;
 
       return {

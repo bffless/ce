@@ -80,6 +80,16 @@ export class BootstrapSetupService {
    * Guard called first by every bootstrap endpoint (Task 6). Platform-managed
    * deployments (Traefik/Platform terminates SSL) must never expose bootstrap
    * mode, regardless of the feature flag.
+   *
+   * The first two checks exist for their specific error messages; the final
+   * isBootstrapModeActive check closes the rest of the gate: an
+   * already-applied instance, a completed setup, or a legacy install that was
+   * never cert-less must not be able to reach the cert-write/apply paths at
+   * all. Without it, any admin session on a working install (the flag
+   * defaults to ON) could clobber the live fullchain.pem/privkey.pem or
+   * rewrite instance.json to a new identity — remotely, with no SSH recovery
+   * path. The endpoints must be callable exactly when getSetupStatus would
+   * report bootstrapMode=true, so both defer to the same SetupService method.
    */
   async assertBootstrapAllowed(): Promise<void> {
     if (this.setupService.isPlatformManaged()) {
@@ -87,6 +97,9 @@ export class BootstrapSetupService {
     }
     if (!(await this.featureFlags.isEnabled('ENABLE_BOOTSTRAP_SETUP'))) {
       throw new BadRequestException('Bootstrap setup is disabled');
+    }
+    if (!(await this.setupService.isBootstrapModeActive())) {
+      throw new ForbiddenException('Bootstrap setup is not active on this instance');
     }
   }
 

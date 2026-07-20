@@ -96,9 +96,10 @@ describe('BootstrapSetupService', () => {
   beforeEach(() => {
     sslDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bffless-ssl-'));
     process.env.SSL_CERT_PATH = sslDir;
-    service = new BootstrapSetupService({ isPlatformManaged: () => false } as any, {
-      isEnabled: () => true,
-    } as any);
+    service = new BootstrapSetupService(
+      { isPlatformManaged: () => false, isBootstrapModeActive: async () => true } as any,
+      { isEnabled: () => true } as any,
+    );
   });
 
   afterEach(() => {
@@ -397,31 +398,49 @@ describe('BootstrapSetupService', () => {
 
   describe('assertBootstrapAllowed', () => {
     it('throws ForbiddenException when platform-managed', async () => {
-      const svc = new BootstrapSetupService({ isPlatformManaged: () => true } as any, {
-        isEnabled: () => true,
-      } as any);
+      const svc = new BootstrapSetupService(
+        { isPlatformManaged: () => true, isBootstrapModeActive: async () => true } as any,
+        { isEnabled: () => true } as any,
+      );
       await expect(svc.assertBootstrapAllowed()).rejects.toThrow(ForbiddenException);
     });
 
     it('checks platform-managed before the feature flag (fails closed on platform)', async () => {
       // Even if the flag is somehow on, platform-managed always wins.
-      const svc = new BootstrapSetupService({ isPlatformManaged: () => true } as any, {
-        isEnabled: () => true,
-      } as any);
+      const svc = new BootstrapSetupService(
+        { isPlatformManaged: () => true, isBootstrapModeActive: async () => true } as any,
+        { isEnabled: () => true } as any,
+      );
       await expect(svc.assertBootstrapAllowed()).rejects.toThrow(
         /platform-managed/i,
       );
     });
 
     it('throws BadRequestException when the flag is disabled', async () => {
-      const svc = new BootstrapSetupService({ isPlatformManaged: () => false } as any, {
-        isEnabled: () => false,
-      } as any);
+      const svc = new BootstrapSetupService(
+        { isPlatformManaged: () => false, isBootstrapModeActive: async () => true } as any,
+        { isEnabled: () => false } as any,
+      );
       await expect(svc.assertBootstrapAllowed()).rejects.toThrow(BadRequestException);
       await expect(svc.assertBootstrapAllowed()).rejects.toThrow(/disabled/i);
     });
 
-    it('resolves without throwing when not platform-managed and the flag is enabled', async () => {
+    it('throws ForbiddenException when bootstrap mode is not active (applied/complete/legacy install)', async () => {
+      // The critical post-review gate: flag ON, not platform-managed, but the
+      // instance is no longer (or never was) in bootstrap mode — an applied
+      // instance, a completed setup, or a legacy certbot install. Without
+      // this, any admin session on a working install could overwrite the
+      // live fullchain.pem/privkey.pem via POST /api/setup/certificates or
+      // rewrite instance.json via POST /api/setup/apply.
+      const svc = new BootstrapSetupService(
+        { isPlatformManaged: () => false, isBootstrapModeActive: async () => false } as any,
+        { isEnabled: () => true } as any,
+      );
+      await expect(svc.assertBootstrapAllowed()).rejects.toThrow(ForbiddenException);
+      await expect(svc.assertBootstrapAllowed()).rejects.toThrow(/not active/i);
+    });
+
+    it('resolves without throwing when not platform-managed, flag enabled, and bootstrap mode active', async () => {
       await expect(service.assertBootstrapAllowed()).resolves.toBeUndefined();
     });
   });

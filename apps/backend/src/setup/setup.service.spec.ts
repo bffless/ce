@@ -306,6 +306,44 @@ describe('SetupService', () => {
       expect(status.bootstrapMode).toBe(true);
       expect(status.claimRequired).toBe(true);
     });
+
+    // --- isBootstrapModeActive called directly (no isSetupComplete hint) ---
+    // --- the path BootstrapSetupService.assertBootstrapAllowed uses to    ---
+    // --- gate the certificate/apply endpoints                             ---
+
+    it('isBootstrapModeActive fetches setup completeness itself when called without a hint', async () => {
+      process.env.BOOTSTRAP_DIR = '/nonexistent-bootstrap-dir';
+      withBootstrapMarker();
+      mockDb.limit.mockResolvedValueOnce([]); // no system config row -> setup incomplete
+
+      await expect(service.isBootstrapModeActive()).resolves.toBe(true);
+    });
+
+    it('isBootstrapModeActive returns false once setup is complete (endpoint gate on a working install)', async () => {
+      // The endpoint-abuse scenario the guard exists for: flag on, marker
+      // present (this WAS a bootstrap install), but setup has since
+      // completed — the certificate/apply endpoints must be dead.
+      process.env.BOOTSTRAP_DIR = '/nonexistent-bootstrap-dir';
+      withBootstrapMarker();
+      mockDb.limit.mockResolvedValueOnce([{ isSetupComplete: true }]);
+
+      await expect(service.isBootstrapModeActive()).resolves.toBe(false);
+    });
+
+    it('isBootstrapModeActive returns false once instance.json is applied, without querying the db', async () => {
+      tmpBootstrapDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bootstrap-status-inst-'));
+      fs.writeFileSync(
+        path.join(tmpBootstrapDir, 'instance.json'),
+        JSON.stringify({ version: 1, state: 'applied', primaryDomain: 'example.com' }),
+      );
+      process.env.BOOTSTRAP_DIR = tmpBootstrapDir;
+      withBootstrapMarker();
+      // No arrangeDb: the applied-state short-circuit must fire before any
+      // system-config query is needed.
+
+      await expect(service.isBootstrapModeActive()).resolves.toBe(false);
+      expect(mockDb.limit).not.toHaveBeenCalled();
+    });
   });
 
   describe('validateOnboardingToken — rate limiting', () => {
