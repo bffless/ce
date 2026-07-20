@@ -7,6 +7,7 @@ import {
   deriveIdentityEnv,
   hydrateProcessEnv,
   writeInstanceConfig,
+  bootstrapDir,
 } from './instance-config';
 
 describe('instance-config', () => {
@@ -51,6 +52,16 @@ describe('instance-config', () => {
     expect(deriveIdentityEnv({ version: 1, state: 'unclaimed' })).toEqual({});
   });
 
+  it('derives nothing from an applied config with no primaryDomain', () => {
+    expect(deriveIdentityEnv({ version: 1, state: 'applied' })).toEqual({});
+  });
+
+  it('derives nothing from an unclaimed config that has a primaryDomain', () => {
+    expect(
+      deriveIdentityEnv({ version: 1, state: 'unclaimed', primaryDomain: 'evil.com' }),
+    ).toEqual({});
+  });
+
   it('round-trips write + load and emits a shell-sourceable instance.env', () => {
     writeInstanceConfig(applied, dir);
     expect(loadInstanceConfig(dir)).toEqual(applied);
@@ -63,7 +74,7 @@ describe('instance-config', () => {
   it('hydrateProcessEnv overwrites process.env from an applied config', () => {
     writeInstanceConfig(applied, dir);
     process.env.PRIMARY_DOMAIN = 'stale.old';
-    hydrateProcessEnv(dir);
+    expect(hydrateProcessEnv(dir)).toEqual(applied);
     expect(process.env.PRIMARY_DOMAIN).toBe('example.com');
     expect(process.env.COOKIE_DOMAIN).toBe('.example.com');
     delete process.env.PRIMARY_DOMAIN;
@@ -73,5 +84,34 @@ describe('instance-config', () => {
     delete process.env.ADMIN_DOMAIN;
     delete process.env.COOKIE_SECURE;
     delete process.env.PROXY_MODE;
+  });
+
+  it('hydrateProcessEnv returns null for a dir with no instance.json', () => {
+    expect(hydrateProcessEnv(dir)).toBeNull();
+  });
+
+  describe('bootstrapDir', () => {
+    let originalBootstrapDir: string | undefined;
+
+    beforeEach(() => {
+      originalBootstrapDir = process.env.BOOTSTRAP_DIR;
+    });
+    afterEach(() => {
+      if (originalBootstrapDir === undefined) {
+        delete process.env.BOOTSTRAP_DIR;
+      } else {
+        process.env.BOOTSTRAP_DIR = originalBootstrapDir;
+      }
+    });
+
+    it('returns BOOTSTRAP_DIR when set', () => {
+      process.env.BOOTSTRAP_DIR = '/custom/bootstrap/path';
+      expect(bootstrapDir()).toBe('/custom/bootstrap/path');
+    });
+
+    it('falls back to ../../bootstrap relative to cwd when unset', () => {
+      delete process.env.BOOTSTRAP_DIR;
+      expect(bootstrapDir()).toBe(path.resolve(process.cwd(), '../../bootstrap'));
+    });
   });
 });
