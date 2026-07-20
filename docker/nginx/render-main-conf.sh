@@ -1,7 +1,8 @@
 #!/bin/sh
 # Re-runnable main-config renderer. Called by docker-entrypoint.sh at start and
 # by nginx-reload-watcher.sh when /etc/nginx/bootstrap/ or certs change.
-# Decides between BOOTSTRAP mode (no domain identity + no certs) and NORMAL mode.
+# Decides between BOOTSTRAP mode and NORMAL mode — see should_bootstrap() below
+# for the exact gate (STATE=applied, with a legacy-install carve-out).
 set -e
 
 SSL_DIR="/etc/nginx/ssl"
@@ -36,7 +37,42 @@ have_certs() {
     [ -f "${SSL_DIR}/fullchain.pem" ] && [ -f "${SSL_DIR}/privkey.pem" ]
 }
 
-if [ "${STATE}" != "applied" ] && ! have_certs; then
+# True once this install's nginx has, at some point, rendered the cert-less
+# bootstrap config below (which creates this file the first time it runs
+# with no real certs present, and never deletes it). Durable for the life of
+# the install: the ssl/ volume is bind-mounted and persists across restarts.
+have_bootstrap_marker() {
+    [ -f "${SSL_DIR}/bootstrap-selfsigned.crt" ]
+}
+
+# Whether to render BOOTSTRAP mode vs NORMAL mode. This used to be
+# `[ "${STATE}" != "applied" ] && ! have_certs`, which had a half-apply
+# window: the web-bootstrap wizard's Domain & SSL step
+# (`POST /api/setup/certificates`) stages real fullchain.pem/privkey.pem
+# BEFORE Apply (`POST /api/setup/apply`, which writes instance.env with
+# STATE=applied) ever runs. The moment those certs land, `have_certs` flips
+# true while STATE is still unset, and the watcher-triggered re-render would
+# fall through to NORMAL MODE and attempt to cut over to sites-enabled/
+# *before* the backend has restarted under its new identity — today that
+# happens to fail closed only because the pre-apply PRIMARY_DOMAIN
+# (docker-compose's `yourdomain.com` placeholder) doesn't match the
+# wildcard cert filename the wizard just wrote; it is not a real guarantee.
+#
+# Fix: gate on STATE=applied, EXCEPT for installs that have never been
+# cert-less at all (no bootstrap marker) — those are genuine legacy
+# installs (`./setup.sh` + certbot run before the container's first boot,
+# so nginx rendered NORMAL from its very first render and this marker was
+# never created) and must keep rendering NORMAL exactly as before, with no
+# instance.env in the picture at all.
+should_bootstrap() {
+    [ "${STATE}" != "applied" ] || return 1
+    if have_certs && ! have_bootstrap_marker; then
+        return 1
+    fi
+    return 0
+}
+
+if should_bootstrap; then
     # ------------------------- BOOTSTRAP MODE -------------------------
     echo "🥾 Bootstrap mode: no domain identity and no certificates"
     mkdir -p /var/www/certbot "${SSL_DIR}"
