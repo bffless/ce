@@ -39,7 +39,7 @@ have_certs() {
 if [ "${STATE}" != "applied" ] && ! have_certs; then
     # ------------------------- BOOTSTRAP MODE -------------------------
     echo "🥾 Bootstrap mode: no domain identity and no certificates"
-    mkdir -p /var/www/acme "${SSL_DIR}"
+    mkdir -p /var/www/certbot "${SSL_DIR}"
 
     if [ ! -f "${SSL_DIR}/bootstrap-selfsigned.crt" ]; then
         echo "🔐 Generating self-signed bootstrap certificate..."
