@@ -239,4 +239,63 @@ describe('SetupService', () => {
       expect(status.claimRequired).toBe(false);
     });
   });
+
+  describe('validateOnboardingToken — rate limiting', () => {
+    beforeEach(() => {
+      process.env.ONBOARDING_TOKEN = 'right-token';
+      (service as any).claimAttempts = { count: 0, windowStart: 0 }; // reset internal state
+    });
+    afterEach(() => delete process.env.ONBOARDING_TOKEN);
+
+    it('locks out after 5 failed attempts', () => {
+      for (let i = 0; i < 5; i++) {
+        expect(() => (service as any).validateOnboardingToken('wrong')).toThrow(/invalid/i);
+      }
+      // 6th attempt — even with the RIGHT token — is rejected as rate-limited
+      expect(() => (service as any).validateOnboardingToken('right-token')).toThrow(/too many/i);
+    });
+
+    it('a successful validation resets the counter', () => {
+      expect(() => (service as any).validateOnboardingToken('wrong')).toThrow();
+      expect(() => (service as any).validateOnboardingToken('right-token')).not.toThrow();
+      expect((service as any).claimAttempts.count).toBe(0);
+    });
+
+    // Exercises the real public entry point (`initialize`) instead of poking
+    // `claimAttempts` directly, so a broken implementation that merely has the
+    // right-shaped field (but isn't actually wired into validateOnboardingToken's
+    // call path) can't pass by coincidence.
+    it('locks out via the public initialize() flow without touching internal state', async () => {
+      const dto = { email: 'admin@example.com', password: 'Sup3rSecret1!', token: 'wrong' } as any;
+      for (let i = 0; i < 5; i++) {
+        await expect(service.initialize(dto)).rejects.toThrow(/invalid/i);
+      }
+      await expect(service.initialize({ ...dto, token: 'right-token' })).rejects.toThrow(
+        /too many/i,
+      );
+    });
+
+    it('resets the window after 15 minutes and allows attempts again', () => {
+      jest.useFakeTimers();
+      try {
+        for (let i = 0; i < 5; i++) {
+          expect(() => (service as any).validateOnboardingToken('wrong')).toThrow(/invalid/i);
+        }
+        // Locked out while still inside the window.
+        expect(() => (service as any).validateOnboardingToken('right-token')).toThrow(
+          /too many/i,
+        );
+
+        // Advance past the 15-minute window.
+        jest.advanceTimersByTime(15 * 60 * 1000 + 1);
+
+        // Window has elapsed — a fresh attempt (even a wrong one) is allowed,
+        // proving the counter reset rather than merely tolerating one more try.
+        expect(() => (service as any).validateOnboardingToken('wrong')).toThrow(/invalid/i);
+        expect((service as any).claimAttempts.count).toBe(1);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+  });
 });
