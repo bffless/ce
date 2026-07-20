@@ -1,13 +1,16 @@
 import { Module } from '@nestjs/common';
 import { SetupController } from './setup.controller';
 import { SetupService } from './setup.service';
+import { BootstrapSetupController } from './bootstrap-setup.controller';
+import { BootstrapSetupService } from './bootstrap-setup.service';
 import { EmailModule } from '../email/email.module';
 import { AuthModule } from '../auth/auth.module';
+import { FeatureFlagsModule } from '../feature-flags/feature-flags.module';
 
 @Module({
-  imports: [EmailModule, AuthModule],
-  controllers: [SetupController],
-  providers: [SetupService],
+  imports: [EmailModule, AuthModule, FeatureFlagsModule],
+  controllers: [SetupController, BootstrapSetupController],
+  providers: [SetupService, BootstrapSetupService],
   exports: [SetupService],
 })
 export class SetupModule {}

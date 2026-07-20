@@ -60,6 +60,23 @@ export class BootstrapSetupService {
   }
 
   /**
+   * Public wrapper around assertValidDomain, for callers (Task 6's apply()
+   * controller) that write the domain into a file or a response themselves
+   * rather than going through validateCertificatePair/saveCertificates/
+   * certificatesPresent (which already validate as a side effect of their
+   * real job). apply() calls writeInstanceConfig directly, and that value
+   * gets written verbatim into instance.env, which the nginx render script
+   * `source`s as shell — so it must be explicitly validated and normalized
+   * (not merely happen to be safe because some other call validated it
+   * first), and normalized the same way saveCertificates/certificatesPresent
+   * already are, so the persisted primaryDomain always matches the
+   * lowercased filenames on disk.
+   */
+  validateDomain(domain: string): string {
+    return this.assertValidDomain(domain);
+  }
+
+  /**
    * Guard called first by every bootstrap endpoint (Task 6). Platform-managed
    * deployments (Traefik/Platform terminates SSL) must never expose bootstrap
    * mode, regardless of the feature flag.

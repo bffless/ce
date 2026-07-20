@@ -9,6 +9,7 @@ import {
   IsOptional,
   IsNumber,
   IsBoolean,
+  IsIn,
 } from 'class-validator';
 
 export enum StorageProvider {
@@ -1003,4 +1004,39 @@ export class UpdateAllowPublicSignupsResponseDto {
 
   @ApiProperty({ description: 'The updated value' })
   allowPublicSignups: boolean;
+}
+
+// =============================================================================
+// Web Bootstrap DTOs (zero-SSH bootstrap mode: certificates + apply)
+// =============================================================================
+
+export class UploadCertificatesDto {
+  @ApiProperty({ description: 'Domain the certificate covers (apex, e.g. example.com)' })
+  @IsString()
+  @IsNotEmpty()
+  domain: string;
+
+  @ApiProperty({ description: 'PEM-encoded certificate (or chain)' })
+  @IsString()
+  @IsNotEmpty()
+  certificatePem: string;
+
+  @ApiProperty({ description: 'PEM-encoded RSA private key' })
+  @IsString()
+  @IsNotEmpty()
+  privateKeyPem: string;
+}
+
+export class ApplyBootstrapDto {
+  @ApiProperty({ description: 'Domain to adopt as the instance primary domain' })
+  @IsString()
+  @IsNotEmpty()
+  domain: string;
+
+  @ApiProperty({
+    description: 'How this instance sits behind a reverse proxy',
+    enum: ['cloudflare', 'none'],
+  })
+  @IsIn(['cloudflare', 'none'])
+  proxyMode: 'cloudflare' | 'none';
 }

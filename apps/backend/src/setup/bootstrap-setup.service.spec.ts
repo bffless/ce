@@ -364,6 +364,37 @@ describe('BootstrapSetupService', () => {
     });
   });
 
+  describe('validateDomain', () => {
+    // Task 6's apply() controller endpoint calls writeInstanceConfig directly
+    // with the domain, and returns it in the adminUrl response — neither of
+    // which goes through validateCertificatePair/saveCertificates/
+    // certificatesPresent's internal validation and normalization. This
+    // public wrapper around the same assertValidDomain used everywhere else
+    // in this service lets the controller explicitly validate+normalize
+    // before either of those things happens, rather than relying on the
+    // side effect of an unrelated call happening to run first.
+    it('returns the domain lowercased', () => {
+      expect(service.validateDomain('Example.COM')).toBe('example.com');
+    });
+
+    it('rejects a domain containing path traversal segments', () => {
+      expect(() => service.validateDomain('../../etc/nginx/evil')).toThrow(BadRequestException);
+      expect(() => service.validateDomain('../../etc/nginx/evil')).toThrow(/invalid domain/i);
+    });
+
+    it('rejects a domain containing shell metacharacters', () => {
+      // instance.env (written by writeInstanceConfig) is sourced as shell by
+      // the nginx render script. A domain string reaching that file must
+      // never carry characters outside a plain hostname's charset.
+      expect(() => service.validateDomain('example.com; rm -rf /')).toThrow(BadRequestException);
+      expect(() => service.validateDomain('example.com$(whoami)')).toThrow(BadRequestException);
+    });
+
+    it('rejects a domain containing a null byte', () => {
+      expect(() => service.validateDomain('example.com\0evil')).toThrow(/invalid domain/i);
+    });
+  });
+
   describe('assertBootstrapAllowed', () => {
     it('throws ForbiddenException when platform-managed', async () => {
       const svc = new BootstrapSetupService({ isPlatformManaged: () => true } as any, {
