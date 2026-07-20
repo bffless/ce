@@ -7,24 +7,74 @@
 #   1. Cert-less boot: port 80 redirects, port 443 serves the bootstrap
 #      wizard over a self-signed cert, and /api/setup/status reports
 #      bootstrapMode:true.
-#   2. Simulated wizard apply: writes certs + bootstrap/instance.json +
-#      bootstrap/instance.env exactly as the backend's apply step does,
-#      and confirms nginx picks up the new identity WITHOUT a restart
-#      (the re-runnable renderer + inotify watcher from docker/nginx/).
-#   3. Backend restart: confirms the backend hydrates the applied identity
-#      from bootstrap/instance.json at process start (apps/backend/src/
-#      bootstrap/hydrate.ts).
+#   2. HTTP-driven wizard apply: drives the REAL wizard mutations over HTTP
+#      against the running stack via curl — the claim-token gate, admin
+#      creation, cert upload, and apply — instead of hand-writing the cert +
+#      instance files to disk. This exercises POST /api/setup/certificates and
+#      POST /api/setup/apply exactly as the browser wizard does (session-less,
+#      claim-token-gated), which is the surface that shipped five live-droplet
+#      defects while every unit test stayed green (ONBOARDING_TOKEN not passed
+#      to the backend via compose, cert/apply session-guarded against a
+#      session-less wizard, ...). It then confirms nginx picks up the new
+#      identity WITHOUT a restart (the re-runnable renderer + inotify watcher
+#      from docker/nginx/).
+#   3. Backend restart: the real apply endpoint exits the backend, Docker's
+#      restart policy revives it, and it hydrates the applied identity from
+#      bootstrap/instance.json at process start (apps/backend/src/bootstrap/
+#      hydrate.ts) — confirmed via the restarted container's logs.
 #
 # Run from the repo root on a docker host:
 #   ./test-bootstrap.sh
 #
-# Safety: this script runs `./setup.sh --bootstrap` and `./start.sh`
-# against the CURRENT directory. Never run it against a checkout whose
-# .env/ssl/bootstrap you care about - it will create/overwrite them and
-# start the full stack. For CI or throwaway verification, run it inside a
-# disposable copy of the repo.
+# Safety: this script creates/overwrites .env, ssl/, and bootstrap/ and starts
+# the full docker stack. To guarantee it NEVER clobbers the real working tree,
+# it first copies the repo into a throwaway `mktemp -d` (excluding the caller's
+# live .env/ssl/bootstrap and heavy node_modules/.git), sets an isolated
+# COMPOSE_PROJECT_NAME, remaps the backend's published port off the commonly
+# occupied :3000, and re-execs itself there. The copy (and its whole docker
+# stack + volumes) is torn down on EXIT via a trap, even on failure. It only
+# ever stops the stack it created (its own project).
 
 set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# Self-relocation into a throwaway copy (safety). Everything below the guard
+# runs inside the sandbox; BOOTSTRAP_SMOKE_SANDBOX marks that we're already in
+# it so the re-exec doesn't recurse.
+# ---------------------------------------------------------------------------
+if [ -z "${BOOTSTRAP_SMOKE_SANDBOX:-}" ]; then
+    origin="$(cd "$(dirname "$0")" && pwd)"
+    sandbox="$(mktemp -d "${TMPDIR:-/tmp}/ce-bootstrap-smoke.XXXXXX")"
+    echo "— relocating into throwaway copy: ${sandbox} —"
+    # Copy the repo, dropping only the heavy trees that the docker stack never
+    # needs (node_modules at any depth, .git). These names never collide with
+    # real source paths, so an unanchored exclude is safe. The stack is
+    # self-contained: pre-built images plus the nginx build context under
+    # docker/.
+    tar -C "$origin" --exclude=node_modules --exclude=.git -cf - . \
+        | tar -C "$sandbox" -xf -
+    # Then remove ONLY the top-level live stack state, so the copy can never
+    # inherit the caller's .env (which would suppress ./setup.sh --bootstrap
+    # and its fresh claim token) or a stale ssl/bootstrap identity. Scoped to
+    # $sandbox/<name> so it can't touch same-named source dirs (e.g.
+    # apps/backend/src/bootstrap).
+    rm -rf "$sandbox/.env" "$sandbox/ssl" "$sandbox/bootstrap"
+    export BOOTSTRAP_SMOKE_SANDBOX="$sandbox"
+    # Isolate compose objects (volumes/network/project) so cleanup only ever
+    # touches the stack this run created.
+    export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-cebootstrapsmoke}"
+    # Pin images built from this branch's HEAD (published :bootstrap tag). The
+    # default :latest images predate — and therefore lack — the bootstrap fixes
+    # under test (claim-token passthrough, session-less cert/apply).
+    export BACKEND_TAG="${BACKEND_TAG:-bootstrap}"
+    export FRONTEND_TAG="${FRONTEND_TAG:-bootstrap}"
+    # Host port 3000 is commonly occupied by an unrelated process. The smoke
+    # test drives everything through nginx (443), so the backend's published
+    # port only has to not collide — remap it in the throwaway copy.
+    sed -i "s/'3000:3000'/'13000:3000'/" "$sandbox/docker-compose.yml"
+    cd "$sandbox"
+    exec bash "$sandbox/test-bootstrap.sh" "$@"
+fi
 
 fail() { echo "❌ $1" >&2; exit 1; }
 ok()   { echo "✅ $1"; }
@@ -74,11 +124,21 @@ cleanup() {
     # Call compose directly instead, covering every profile stop.sh knows
     # about so this cleans up regardless of which profiles start.sh chose.
     docker compose --profile postgres --profile minio --profile redis --profile supertokens down -v >/dev/null 2>&1 || true
+    # Remove the throwaway copy (and the certs generated inside it). cd out of
+    # it first so `rm -rf` isn't operating on our own cwd.
+    if [ -n "${BOOTSTRAP_SMOKE_SANDBOX:-}" ] && [ -d "${BOOTSTRAP_SMOKE_SANDBOX}" ]; then
+        cd / 2>/dev/null || true
+        rm -rf "$BOOTSTRAP_SMOKE_SANDBOX" 2>/dev/null || true
+    fi
     exit "$exit_code"
 }
 trap cleanup EXIT
 
 [ -f .env ] || ./setup.sh --bootstrap
+# Belt-and-suspenders: pin the branch-built images in the compose env file too,
+# so `docker compose` uses them regardless of shell-vs-.env precedence.
+grep -q '^BACKEND_TAG=' .env  || echo "BACKEND_TAG=${BACKEND_TAG}"   >> .env
+grep -q '^FRONTEND_TAG=' .env || echo "FRONTEND_TAG=${FRONTEND_TAG}" >> .env
 mkdir -p bootstrap ssl
 
 info "boot cert-less stack"
@@ -96,38 +156,166 @@ wait_until 60 "backend to report bootstrap mode" -- \
     bash -c 'curl -ks https://localhost/api/setup/status | grep -q "\"bootstrapMode\":true"'
 ok "backend reports bootstrap mode"
 
-info "simulate wizard apply (certs + instance files, as the backend writes them)"
+# ===========================================================================
+# HTTP-driven wizard apply. Everything past this point calls the REAL setup
+# endpoints over HTTPS (through nginx, exactly as the browser wizard does),
+# rather than hand-writing cert/instance files. The wizard is anonymous and
+# session-less, so the mutating endpoints are gated by the claim token
+# (ONBOARDING_TOKEN), not an admin session.
+# ===========================================================================
+BASE="https://localhost"        # nginx :443, self-signed (curl -k)
+DOMAIN="test.local"
+ADMIN_EMAIL="admin@test.local"
+ADMIN_PASSWORD="SmokeTestPass123!"
 
-# Same four files BootstrapSetupService.saveCertificates() writes
-# (apps/backend/src/setup/bootstrap-setup.service.ts): the generic
-# fullchain/privkey pair (used directly by the admin.<domain> vhost) plus
-# the domain-specific wildcard pair (used by the *.{domain} catch-all).
+# Emit a JSON object from key/value + file arguments using python3 (near
+# universal, and it round-trips PEM newlines intact — never hand-escape PEM in
+# shell). Usage: json_kv KEY VALUE [KEY VALUE ...]  ; json_cert_body reads PEM
+# files directly so the multi-line blocks survive verbatim.
+json_cert_body() {  # domain token certfile keyfile
+    python3 -c '
+import json, sys
+domain, token, cert_file, key_file = sys.argv[1:5]
+with open(cert_file) as f: cert = f.read()
+with open(key_file) as f: key = f.read()
+print(json.dumps({
+    "domain": domain,
+    "certificatePem": cert,
+    "privateKeyPem": key,
+    "token": token,
+}))' "$1" "$2" "$3" "$4"
+}
+
+# POST a JSON body (on stdin) and print "<body>\n<http_code>" so callers can
+# split code off the last line. --data-binary @- preserves the body byte-for-
+# byte (no newline mangling).
+post_json() {  # url  (body on stdin)
+    curl -ks -o - -w $'\n%{http_code}' -X POST "$1" \
+        -H 'Content-Type: application/json' --data-binary @-
+}
+
+# ---- 1. status: bootstrapMode:true AND claimRequired:true -----------------
+# claimRequired:true is the Fix A regression guard — it can only be true if
+# ONBOARDING_TOKEN actually reached the backend via compose (getSetupStatus
+# reads process.env.ONBOARDING_TOKEN). If the compose passthrough regresses,
+# claimRequired silently goes false and admin creation is UNGATED on a public
+# IP; this assertion fails loudly instead.
+info "verify bootstrap status + claim requirement"
+CLAIM_TOKEN="$(grep -E '^ONBOARDING_TOKEN=' .env | head -1 | cut -d= -f2-)"
+[ -n "$CLAIM_TOKEN" ] || fail "ONBOARDING_TOKEN missing from generated .env"
+STATUS_JSON="$(curl -ks "${BASE}/api/setup/status")"
+echo "$STATUS_JSON" | grep -q '"bootstrapMode":true' \
+    || fail "status not bootstrapMode:true — got: $STATUS_JSON"
+echo "$STATUS_JSON" | grep -q '"claimRequired":true' \
+    || fail "claimRequired not true — ONBOARDING_TOKEN did not reach the backend (Fix A regression). status: $STATUS_JSON"
+ok "status reports bootstrapMode:true and claimRequired:true (claim token reached backend)"
+
+# ---- generate a REAL RSA cert covering apex + wildcard --------------------
+# node-forge (validateCertificatePair) only accepts RSA; SANs must cover BOTH
+# the apex and *.<domain> (admin/www/preview subdomains ride the wildcard).
+# Generated before the wrong-token probe so that probe carries a well-formed
+# body — proving it's the claim gate that rejects it, not DTO validation.
+info "generate RSA cert for ${DOMAIN} (apex + wildcard SANs)"
+CERT_DIR="${PWD}/.smoke-certs"
+mkdir -p "$CERT_DIR"
 openssl req -x509 -nodes -days 30 -newkey rsa:2048 \
-    -keyout ssl/privkey.pem -out ssl/fullchain.pem \
-    -subj "/CN=test.local" -addext "subjectAltName=DNS:test.local,DNS:*.test.local" 2>/dev/null
-cp ssl/fullchain.pem ssl/wildcard.test.local.crt
-cp ssl/privkey.pem ssl/wildcard.test.local.key
+    -keyout "${CERT_DIR}/key.pem" -out "${CERT_DIR}/cert.pem" \
+    -subj "/CN=${DOMAIN}" \
+    -addext "subjectAltName=DNS:${DOMAIN},DNS:*.${DOMAIN}" 2>/dev/null \
+    || fail "openssl failed to generate the test certificate"
+ok "generated RSA cert with SANs ${DOMAIN} + *.${DOMAIN}"
 
-# Same shape BootstrapSetupService/instance-config.ts's writeInstanceConfig()
-# writes (apps/backend/src/bootstrap/instance-config.ts): instance.json is
-# the full InstanceConfig; instance.env is the shell-sourceable sibling the
-# nginx render script sources (STATE / PRIMARY_DOMAIN / PROXY_MODE only).
-printf '{ "version": 1, "state": "applied", "primaryDomain": "test.local", "proxyMode": "cloudflare", "sslMode": "paste" }\n' > bootstrap/instance.json
-printf 'STATE=applied\nPRIMARY_DOMAIN=test.local\nPROXY_MODE=cloudflare\n' > bootstrap/instance.env
+# ---- 2. claim-token gate on cert upload (Fix C regression guard) ----------
+# The cert/apply endpoints used to be session-guarded; against the session-
+# less wizard every cert upload 401'd. They are now claim-token-gated. Prove
+# the gate rejects a WRONG token (must be 4xx, never 2xx). One failed attempt
+# is well under the 5-attempt rate-limit window, and the correct initialize
+# below resets the counter.
+info "claim-token gate: cert upload with WRONG token must be rejected"
+WRONG_RESP="$(json_cert_body "$DOMAIN" "wrong-${CLAIM_TOKEN}" "${CERT_DIR}/cert.pem" "${CERT_DIR}/key.pem" | post_json "${BASE}/api/setup/certificates")"
+WRONG_CODE="$(printf '%s' "$WRONG_RESP" | tail -n1)"
+case "$WRONG_CODE" in
+    2*) fail "cert upload with a wrong token was ACCEPTED (HTTP ${WRONG_CODE}) — claim gate bypassed (Fix C regression)";;
+esac
+{ [ "$WRONG_CODE" -ge 400 ] && [ "$WRONG_CODE" -lt 500 ]; } 2>/dev/null \
+    || fail "cert upload with wrong token returned HTTP ${WRONG_CODE}, expected a 4xx rejection"
+ok "cert upload with wrong token rejected (HTTP ${WRONG_CODE})"
 
-wait_until 40 "admin vhost to serve after apply (no nginx restart)" -- \
+# ---- 3. initialize the admin with the correct claim token -----------------
+# Retry until 201 (created) or 409 (already created): the only expected
+# transient is SuperTokens not yet ready (5xx). Passing the CORRECT token
+# resets the rate-limit counter, so the earlier wrong-token failure never
+# lingers.
+info "initialize admin with the correct claim token"
+INIT_BODY="$(python3 -c 'import json,sys; print(json.dumps({"email": sys.argv[1], "password": sys.argv[2], "token": sys.argv[3]}))' "$ADMIN_EMAIL" "$ADMIN_PASSWORD" "$CLAIM_TOKEN")"
+INIT_CODE=""
+init_admin() {
+    local resp
+    resp="$(printf '%s' "$INIT_BODY" | post_json "${BASE}/api/setup/initialize")"
+    INIT_CODE="$(printf '%s' "$resp" | tail -n1)"
+    [ "$INIT_CODE" = "201" ] || [ "$INIT_CODE" = "409" ]
+}
+wait_until 90 "admin creation (initialize) to succeed" -- init_admin
+ok "admin created via POST /api/setup/initialize (HTTP ${INIT_CODE})"
+
+# ---- 4/5. upload certs with the CORRECT token -----------------------------
+# THE most important assertion: this exact call 401'd before Fix C. It must
+# now return 200 {"saved":true,...}, and the four cert files must actually
+# land in the SSL dir the backend shares with nginx.
+info "upload certs with the correct claim token (POST /api/setup/certificates)"
+CERT_RESP="$(json_cert_body "$DOMAIN" "$CLAIM_TOKEN" "${CERT_DIR}/cert.pem" "${CERT_DIR}/key.pem" | post_json "${BASE}/api/setup/certificates")"
+CERT_CODE="$(printf '%s' "$CERT_RESP" | tail -n1)"
+CERT_OUT="$(printf '%s' "$CERT_RESP" | sed '$d')"
+# The wizard is an RTK Query client, so ANY 2xx is success — the endpoint
+# returns 201 (NestJS's default for POST; it carries no @HttpCode) with the
+# real contract in the body. What Fix C is about is that this call must NOT be
+# REJECTED (it used to 401 the session-less wizard), so assert a 2xx plus
+# saved:true rather than an exact status code.
+case "$CERT_CODE" in
+    2*) ;;
+    *) fail "cert upload rejected (HTTP ${CERT_CODE}): ${CERT_OUT} — this is the Fix C bug (session-guarded cert upload rejecting the session-less wizard)";;
+esac
+echo "$CERT_OUT" | grep -q '"saved":true' \
+    || fail "cert upload did not return saved:true — got: ${CERT_OUT}"
+ok "certs accepted (HTTP ${CERT_CODE}, saved:true): ${CERT_OUT}"
+
+# Verify inside the backend container (it owns the writes, so this is robust
+# to host-side file permissions on the 0600 keys).
+MISSING="$(docker compose exec -T backend sh -c 'for f in fullchain.pem privkey.pem wildcard.test.local.crt wildcard.test.local.key; do [ -s "/etc/nginx/ssl/$f" ] || echo "$f"; done' 2>/dev/null || echo 'CONTAINER_EXEC_FAILED')"
+[ -z "$MISSING" ] || fail "cert files missing/empty in ssl dir after upload: ${MISSING}"
+ok "four cert files written to the ssl dir by the backend (fullchain/privkey + wildcard.${DOMAIN}.crt/.key)"
+
+# ---- 6. apply the domain identity -----------------------------------------
+info "apply domain identity (POST /api/setup/apply)"
+APPLY_BODY="$(python3 -c 'import json,sys; print(json.dumps({"domain": sys.argv[1], "proxyMode": sys.argv[2], "token": sys.argv[3]}))' "$DOMAIN" "cloudflare" "$CLAIM_TOKEN")"
+APPLY_RESP="$(printf '%s' "$APPLY_BODY" | post_json "${BASE}/api/setup/apply")"
+APPLY_CODE="$(printf '%s' "$APPLY_RESP" | tail -n1)"
+APPLY_OUT="$(printf '%s' "$APPLY_RESP" | sed '$d')"
+# Same 2xx-is-success rationale as the cert upload (apply also carries no
+# @HttpCode, so it returns 201). The real success signals are the body fields.
+case "$APPLY_CODE" in
+    2*) ;;
+    *) fail "apply rejected (HTTP ${APPLY_CODE}): ${APPLY_OUT}";;
+esac
+echo "$APPLY_OUT" | grep -q '"applying":true' \
+    || fail "apply did not return applying:true — got: ${APPLY_OUT}"
+echo "$APPLY_OUT" | grep -q "\"adminUrl\":\"https://admin.${DOMAIN}\"" \
+    || fail "apply adminUrl mismatch — got: ${APPLY_OUT}"
+ok "apply accepted (HTTP ${APPLY_CODE}, applying:true, adminUrl https://admin.${DOMAIN})"
+
+# ---- 7. effects of the real apply -----------------------------------------
+# (a) nginx transitions to the applied identity WITHOUT a restart: the render
+#     script's inotify watcher re-renders on the instance.env the apply
+#     endpoint wrote, and reloads. The admin vhost must then serve 200.
+wait_until 60 "admin vhost to serve after real apply (no nginx restart)" -- \
     bash -c 'curl -ks --resolve admin.test.local:443:127.0.0.1 https://admin.test.local/ -o /dev/null -w "%{http_code}" | grep -q 200'
 ok "nginx transitioned to applied identity without restart"
 
-info "restart backend and confirm it adopts the identity"
-docker compose restart backend >/dev/null
-
-# hydrate.ts logs "[bootstrap] identity hydrated from instance.json: <domain>"
-# at import time (apps/backend/src/bootstrap/hydrate.ts), before Nest/
-# SuperTokens ever read process.env — confirm it via the restarted
-# container's logs rather than a fixed sleep.
-wait_until 60 "backend to log identity hydration" -- \
+# (b) the apply endpoint exits the backend; Docker's restart policy revives it
+#     and hydrate.ts logs the identity at import time (before Nest/SuperTokens
+#     read process.env). Confirm via the restarted container's logs.
+wait_until 90 "backend to restart and log identity hydration" -- \
     bash -c 'docker compose logs backend 2>/dev/null | grep -q "identity hydrated from instance.json"'
-ok "backend adopted instance.json identity on restart"
+ok "backend restarted (via apply) and adopted instance.json identity"
 
-echo "🎉 bootstrap smoke test passed"
+echo "🎉 bootstrap smoke test passed (HTTP-driven cert-upload + apply)"
