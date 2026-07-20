@@ -127,6 +127,7 @@ describe('SetupService', () => {
 
   describe('getSetupStatus — bootstrap fields', () => {
     let tmpBootstrapDir: string | undefined;
+    let tmpSslDir: string | undefined;
 
     // Arranges the two sequential db `.limit()` resolutions that getSetupStatus() awaits,
     // in call order: 1) getSystemConfig() -> systemConfig row(s), 2) admin user lookup -> users row(s).
@@ -134,21 +135,38 @@ describe('SetupService', () => {
       mockDb.limit.mockResolvedValueOnce(configRows).mockResolvedValueOnce(adminRows);
     }
 
+    // Simulates docker/nginx/render-main-conf.sh having rendered bootstrap
+    // mode at least once (see wasEverBootstrapProvisioned()'s doc comment in
+    // setup.service.ts). Every test in this block that expects
+    // bootstrapMode=true (or is isolating a DIFFERENT conjunct while keeping
+    // this one true) must call this first.
+    function withBootstrapMarker() {
+      tmpSslDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bootstrap-status-ssl-'));
+      fs.writeFileSync(path.join(tmpSslDir, 'bootstrap-selfsigned.crt'), 'fake-self-signed');
+      process.env.SSL_CERT_PATH = tmpSslDir;
+    }
+
     afterEach(() => {
       delete process.env.PLATFORM_MODE;
       delete process.env.SSL_MANAGED_EXTERNALLY;
       delete process.env.ONBOARDING_TOKEN;
       delete process.env.BOOTSTRAP_DIR;
+      delete process.env.SSL_CERT_PATH;
 
       if (tmpBootstrapDir) {
         fs.rmSync(tmpBootstrapDir, { recursive: true, force: true });
         tmpBootstrapDir = undefined;
+      }
+      if (tmpSslDir) {
+        fs.rmSync(tmpSslDir, { recursive: true, force: true });
+        tmpSslDir = undefined;
       }
     });
 
     it('reports bootstrapMode=true and claimRequired=true on a fresh unclaimed install with a token', async () => {
       process.env.BOOTSTRAP_DIR = '/nonexistent-bootstrap-dir'; // no applied instance.json
       process.env.ONBOARDING_TOKEN = 'tok-123';
+      withBootstrapMarker();
       arrangeDb([], []); // isSetupComplete=false, hasAdminUser=false
 
       const status = await service.getSetupStatus();
@@ -161,6 +179,7 @@ describe('SetupService', () => {
       process.env.BOOTSTRAP_DIR = '/nonexistent-bootstrap-dir';
       process.env.ONBOARDING_TOKEN = 'tok-123';
       process.env.PLATFORM_MODE = 'true';
+      withBootstrapMarker();
       arrangeDb([], []);
 
       const status = await service.getSetupStatus();
@@ -173,6 +192,7 @@ describe('SetupService', () => {
       process.env.BOOTSTRAP_DIR = '/nonexistent-bootstrap-dir';
       process.env.ONBOARDING_TOKEN = 'tok-123';
       process.env.SSL_MANAGED_EXTERNALLY = 'true';
+      withBootstrapMarker();
       arrangeDb([], []);
 
       const status = await service.getSetupStatus();
@@ -184,6 +204,7 @@ describe('SetupService', () => {
       process.env.BOOTSTRAP_DIR = '/nonexistent-bootstrap-dir';
       process.env.ONBOARDING_TOKEN = 'tok-123';
       mockFeatureFlagsService.isEnabled.mockResolvedValue(false);
+      withBootstrapMarker();
       arrangeDb([], []);
 
       const status = await service.getSetupStatus();
@@ -200,6 +221,7 @@ describe('SetupService', () => {
       );
       process.env.BOOTSTRAP_DIR = tmpBootstrapDir;
       process.env.ONBOARDING_TOKEN = 'tok-123';
+      withBootstrapMarker();
       arrangeDb([], []);
 
       const status = await service.getSetupStatus();
@@ -210,6 +232,7 @@ describe('SetupService', () => {
     it('reports bootstrapMode=false when setup is already complete (all other conjuncts true)', async () => {
       process.env.BOOTSTRAP_DIR = '/nonexistent-bootstrap-dir';
       process.env.ONBOARDING_TOKEN = 'tok-123';
+      withBootstrapMarker();
       arrangeDb([{ isSetupComplete: true }], []);
 
       const status = await service.getSetupStatus();
@@ -220,6 +243,7 @@ describe('SetupService', () => {
     it('reports claimRequired=false when ONBOARDING_TOKEN is not set, even though bootstrapMode is true', async () => {
       process.env.BOOTSTRAP_DIR = '/nonexistent-bootstrap-dir';
       // ONBOARDING_TOKEN intentionally left unset
+      withBootstrapMarker();
       arrangeDb([], []);
 
       const status = await service.getSetupStatus();
@@ -231,12 +255,56 @@ describe('SetupService', () => {
     it('reports claimRequired=false when an admin user already exists, even though bootstrapMode is true', async () => {
       process.env.BOOTSTRAP_DIR = '/nonexistent-bootstrap-dir';
       process.env.ONBOARDING_TOKEN = 'tok-123';
+      withBootstrapMarker();
       arrangeDb([], [{ id: 'admin-1', role: 'admin' }]);
 
       const status = await service.getSetupStatus();
 
       expect(status.bootstrapMode).toBe(true);
       expect(status.claimRequired).toBe(false);
+    });
+
+    // --- Critical-2 (final review): legacy/env-configured installs must ---
+    // --- never report bootstrapMode=true, even before the DB wizard runs ---
+
+    it('reports bootstrapMode=false on a legacy install that never entered cert-less bootstrap (no self-signed marker), even though setup is incomplete', async () => {
+      // Simulates: user ran `./setup.sh` interactively with a real domain +
+      // Let's Encrypt certs, then `./start.sh`. nginx's very first render
+      // already has real certs, so it renders NORMAL mode immediately and
+      // never creates bootstrap-selfsigned.crt. The DB wizard (admin user,
+      // storage, ...) hasn't run yet, so isSetupComplete is still false —
+      // but bootstrapMode must be false regardless, or the wizard's
+      // Domain & SSL step would demand a wildcard SAN a plain LE cert
+      // doesn't have, and completing it would overwrite the working certs.
+      process.env.BOOTSTRAP_DIR = '/nonexistent-bootstrap-dir';
+      process.env.ONBOARDING_TOKEN = 'tok-123';
+      const emptySslDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bootstrap-status-nomark-'));
+      process.env.SSL_CERT_PATH = emptySslDir; // no bootstrap-selfsigned.crt here
+      arrangeDb([], []);
+
+      try {
+        const status = await service.getSetupStatus();
+
+        expect(status.bootstrapMode).toBe(false);
+        expect(status.claimRequired).toBe(false);
+      } finally {
+        fs.rmSync(emptySslDir, { recursive: true, force: true });
+      }
+    });
+
+    it('reports bootstrapMode=true on a genuinely bare install (self-signed marker present), even before the DB wizard runs', async () => {
+      // Simulates: a fresh cert-less bootstrap install (DO 1-click / manual
+      // `./setup.sh --bootstrap`). nginx's first render had no certs, so it
+      // created bootstrap-selfsigned.crt and stayed in bootstrap mode.
+      process.env.BOOTSTRAP_DIR = '/nonexistent-bootstrap-dir';
+      process.env.ONBOARDING_TOKEN = 'tok-123';
+      withBootstrapMarker();
+      arrangeDb([], []);
+
+      const status = await service.getSetupStatus();
+
+      expect(status.bootstrapMode).toBe(true);
+      expect(status.claimRequired).toBe(true);
     });
   });
 

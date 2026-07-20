@@ -13,6 +13,8 @@ import { db } from '../db/client';
 import { systemConfig, users } from '../db/schema';
 import { eq } from 'drizzle-orm';
 import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
 import EmailPassword from 'supertokens-node/recipe/emailpassword';
 import { createUserIdMapping, listUsersByAccountInfo, getUserIdMapping } from 'supertokens-node';
 import {
@@ -234,6 +236,54 @@ export class SetupService {
   }
 
   /**
+   * Same SSL directory resolution as `BootstrapSetupService.sslDir()` /
+   * `ssl-certificate.service.ts` `getSslPath()`: `SSL_CERT_PATH` env override,
+   * else the default nginx SSL volume path. Duplicated intentionally (same
+   * rationale as `bootstrap-setup.service.ts`'s own comment) rather than
+   * importing across modules for a single path string.
+   */
+  private sslDir(): string {
+    return process.env.SSL_CERT_PATH || '/etc/nginx/ssl';
+  }
+
+  /**
+   * True iff this install's nginx has, at some point, rendered the cert-less
+   * bootstrap config. `docker/nginx/render-main-conf.sh` creates
+   * `bootstrap-selfsigned.crt` the FIRST time it runs with no real certs
+   * present, and never deletes it — so its presence in the (bind-mounted,
+   * persistent) ssl/ volume is a durable marker of "this instance was, at
+   * some point, cert-less."
+   *
+   * This is the signal that closes Critical-2 (final review): an install
+   * that ran `./setup.sh` interactively with a real domain + Let's Encrypt
+   * certs BEFORE its first container start never renders bootstrap mode at
+   * all (certs are already present on nginx's very first render), so this
+   * marker is never created for it — `bootstrapMode` correctly reports
+   * `false` even though `isSetupComplete` is still false (the DB wizard
+   * hasn't run yet). A genuine cert-less bootstrap install DOES create the
+   * marker on first boot, and it stays true for the rest of that install's
+   * life, including after the wizard's Domain & SSL step stages real certs
+   * (see below).
+   *
+   * Deliberately NOT keyed on live `PRIMARY_DOMAIN`/cert-file presence
+   * directly: both can flip mid-bootstrap-session — the wizard's
+   * `POST /api/setup/certificates` (Domain & SSL step) writes real
+   * `fullchain.pem`/`privkey.pem` to this exact directory BEFORE
+   * `POST /api/setup/apply` ever runs — and several later wizard steps
+   * (`configureStorage`, `saveCacheConfig`, `configureEmail`, ...)
+   * invalidate the frontend's cached setup status, forcing a refetch. Keying
+   * `bootstrapMode` on live cert presence would flip it to `false` the
+   * moment those certs land, reproducing exactly the Critical-1 class of
+   * bug (the wizard's visible step list changing shape out from under an
+   * in-progress session) — just triggered by this conjunct instead of by
+   * `hasAdminUser`. This marker file, by contrast, is written once at first
+   * boot and never cleared, so it cannot flip during a live session.
+   */
+  private wasEverBootstrapProvisioned(): boolean {
+    return fs.existsSync(path.join(this.sslDir(), 'bootstrap-selfsigned.crt'));
+  }
+
+  /**
    * Check if system setup is complete
    */
   async getSetupStatus(): Promise<SetupStatusResponseDto> {
@@ -246,11 +296,17 @@ export class SetupService {
 
       // Web bootstrap mode: cert-less installs complete claim -> admin -> domain ->
       // SSL -> apply entirely in the browser. Never activates on platform-managed
-      // deployments, once instance.json has been applied, or after setup is done.
+      // deployments, once instance.json has been applied, after setup is done, or
+      // on an install that already has real domain/cert configuration (legacy
+      // ./setup.sh + certbot installs — see wasEverBootstrapProvisioned()).
       const instance = loadInstanceConfig();
       const flagOn = await this.featureFlagsService.isEnabled('ENABLE_BOOTSTRAP_SETUP');
       const bootstrapMode =
-        flagOn && !this.isPlatformManaged() && instance?.state !== 'applied' && !isSetupComplete;
+        flagOn &&
+        !this.isPlatformManaged() &&
+        instance?.state !== 'applied' &&
+        !isSetupComplete &&
+        this.wasEverBootstrapProvisioned();
       const claimRequired = bootstrapMode && !!process.env.ONBOARDING_TOKEN && !hasAdminUser;
 
       return {
