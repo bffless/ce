@@ -5,6 +5,7 @@ describe('BootstrapSetupController', () => {
   let controller: BootstrapSetupController;
   const svc = {
     assertBootstrapAllowed: jest.fn(),
+    validateClaimToken: jest.fn(),
     validateCertificatePair: jest.fn().mockReturnValue({ sans: ['example.com', '*.example.com'] }),
     saveCertificates: jest.fn(),
     certificatesPresent: jest.fn().mockReturnValue(true),
@@ -16,6 +17,7 @@ describe('BootstrapSetupController', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     svc.assertBootstrapAllowed.mockResolvedValue(undefined);
+    svc.validateClaimToken.mockReturnValue(undefined);
     svc.validateCertificatePair.mockReturnValue({ sans: ['example.com', '*.example.com'] });
     svc.certificatesPresent.mockReturnValue(true);
     svc.assertStagedCertificateCovers.mockReturnValue(undefined);
@@ -35,6 +37,35 @@ describe('BootstrapSetupController', () => {
       expect(svc.validateCertificatePair).toHaveBeenCalledWith('CERT', 'KEY', 'example.com');
       expect(svc.saveCertificates).toHaveBeenCalledWith('CERT', 'KEY', 'example.com');
       expect(res).toEqual({ saved: true, sans: ['example.com', '*.example.com'] });
+    });
+
+    it('validates the claim token (after the mode gate, before any cert work)', async () => {
+      await controller.uploadCertificates({
+        domain: 'example.com',
+        certificatePem: 'CERT',
+        privateKeyPem: 'KEY',
+        token: 'claim-123',
+      });
+      expect(svc.validateClaimToken).toHaveBeenCalledWith('claim-123');
+    });
+
+    it('rejects a bad claim token before touching the cert (session-less auth gate)', async () => {
+      // The wizard is session-less, so the token IS the auth boundary. A bad
+      // token must 401 before the cert is parsed or written — otherwise an
+      // unauthenticated caller on a public IP could install certs.
+      svc.validateClaimToken.mockImplementationOnce(() => {
+        throw new BadRequestException('Invalid onboarding token');
+      });
+      await expect(
+        controller.uploadCertificates({
+          domain: 'example.com',
+          certificatePem: 'CERT',
+          privateKeyPem: 'KEY',
+          token: 'wrong',
+        }),
+      ).rejects.toThrow('Invalid onboarding token');
+      expect(svc.validateCertificatePair).not.toHaveBeenCalled();
+      expect(svc.saveCertificates).not.toHaveBeenCalled();
     });
 
     it('never validates or saves certificates when the bootstrap guard rejects (order matters)', async () => {
@@ -69,7 +100,24 @@ describe('BootstrapSetupController', () => {
         expect.objectContaining({ state: 'applied', primaryDomain: 'example.com', proxyMode: 'cloudflare' }),
       );
       expect(res).toEqual({ applying: true, adminUrl: 'https://admin.example.com' });
+      expect(svc.validateClaimToken).toHaveBeenCalledWith(undefined);
       expect(exitFn).toHaveBeenCalled();
+      writeSpy.mockRestore();
+    });
+
+    it('rejects a bad claim token before applying or scheduling exit', async () => {
+      const writeSpy = jest
+        .spyOn(require('../bootstrap/instance-config'), 'writeInstanceConfig')
+        .mockImplementation(() => undefined);
+      svc.validateClaimToken.mockImplementationOnce(() => {
+        throw new BadRequestException('Invalid onboarding token');
+      });
+      await expect(
+        controller.apply({ domain: 'example.com', proxyMode: 'cloudflare', token: 'wrong' }),
+      ).rejects.toThrow('Invalid onboarding token');
+      expect(svc.certificatesPresent).not.toHaveBeenCalled();
+      expect(writeSpy).not.toHaveBeenCalled();
+      expect(exitFn).not.toHaveBeenCalled();
       writeSpy.mockRestore();
     });
 

@@ -102,6 +102,29 @@ describe('BootstrapSetupService', () => {
     );
   });
 
+  describe('validateClaimToken', () => {
+    it('delegates to SetupService.validateOnboardingToken with the supplied token', () => {
+      const validateOnboardingToken = jest.fn();
+      const svc = new BootstrapSetupService(
+        { validateOnboardingToken } as any,
+        { isEnabled: () => true } as any,
+      );
+      svc.validateClaimToken('claim-abc');
+      expect(validateOnboardingToken).toHaveBeenCalledWith('claim-abc');
+    });
+
+    it('propagates the validator throwing on a bad token', () => {
+      const validateOnboardingToken = jest.fn(() => {
+        throw new Error('Invalid onboarding token');
+      });
+      const svc = new BootstrapSetupService(
+        { validateOnboardingToken } as any,
+        { isEnabled: () => true } as any,
+      );
+      expect(() => svc.validateClaimToken('wrong')).toThrow('Invalid onboarding token');
+    });
+  });
+
   afterEach(() => {
     fs.rmSync(sslDir, { recursive: true, force: true });
     delete process.env.SSL_CERT_PATH;

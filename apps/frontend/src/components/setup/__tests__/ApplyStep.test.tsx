@@ -4,7 +4,7 @@ import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import { ApplyStep } from '../ApplyStep';
 import { api } from '@/services/api';
-import setupReducer, { setBootstrapDomain } from '@/store/slices/setupSlice';
+import setupReducer, { setBootstrapDomain, setClaimToken } from '@/store/slices/setupSlice';
 
 const applyMock = vi.fn();
 const useApplyBootstrapMutationMock = vi.fn();
@@ -28,6 +28,9 @@ function createTestStore(bootstrapDomain: string | null = 'example.com') {
   if (bootstrapDomain !== null) {
     store.dispatch(setBootstrapDomain(bootstrapDomain));
   }
+  // Seed the claim token the way the claim step would: apply is token-gated
+  // (session-less wizard), so ApplyStep forwards it alongside domain/proxyMode.
+  store.dispatch(setClaimToken('claim-xyz'));
   return store;
 }
 
@@ -95,7 +98,7 @@ describe('ApplyStep', () => {
     fireEvent.click(screen.getByRole('button', { name: /finish setup/i }));
 
     await waitFor(() =>
-      expect(applyMock).toHaveBeenCalledWith({ domain: 'example.com', proxyMode: 'cloudflare' })
+      expect(applyMock).toHaveBeenCalledWith({ domain: 'example.com', proxyMode: 'cloudflare', token: 'claim-xyz' })
     );
 
     expect(await screen.findByText(/switching to/i)).toBeInTheDocument();
@@ -265,7 +268,7 @@ describe('ApplyStep', () => {
     fireEvent.click(screen.getByRole('button', { name: /finish setup/i }));
 
     await waitFor(() =>
-      expect(applyMock).toHaveBeenCalledWith({ domain: 'example.com', proxyMode: 'cloudflare' })
+      expect(applyMock).toHaveBeenCalledWith({ domain: 'example.com', proxyMode: 'cloudflare', token: 'claim-xyz' })
     );
     expect(await screen.findByText(/full \(strict\)/i)).toBeInTheDocument();
   });
@@ -279,7 +282,7 @@ describe('ApplyStep', () => {
     fireEvent.click(screen.getByRole('button', { name: /finish setup/i }));
 
     await waitFor(() =>
-      expect(applyMock).toHaveBeenCalledWith({ domain: 'example.com', proxyMode: 'none' })
+      expect(applyMock).toHaveBeenCalledWith({ domain: 'example.com', proxyMode: 'none', token: 'claim-xyz' })
     );
     expect(await screen.findByText(/switching to/i)).toBeInTheDocument();
     expect(screen.queryByText(/full \(strict\)/i)).not.toBeInTheDocument();

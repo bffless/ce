@@ -24,6 +24,22 @@ export class BootstrapSetupService {
   ) {}
 
   /**
+   * Claim-token check for the cert/apply endpoints. The setup wizard is a
+   * fully anonymous, session-less flow (every setup step is public), so these
+   * endpoints cannot be admin-session-guarded — there is never a session to
+   * present. Instead they reuse the SAME rate-limited claim token that gates
+   * admin creation, which is the real security boundary on a public IP.
+   *
+   * Delegates to the existing validator: throws UnauthorizedException on a
+   * wrong token (after the rate-limit window), and is OPEN when no
+   * ONBOARDING_TOKEN is configured (LAN/Umbrel profile) — identical semantics
+   * to admin creation, so the two can never disagree.
+   */
+  validateClaimToken(token?: string): void {
+    this.setupService.validateOnboardingToken(token);
+  }
+
+  /**
    * Same resolution as `ssl-certificate.service.ts` `getSslPath()` (line ~1039):
    * `SSL_CERT_PATH` env override, else the default nginx SSL volume path.
    * Duplicated intentionally rather than importing the 1000+ line ACME service.

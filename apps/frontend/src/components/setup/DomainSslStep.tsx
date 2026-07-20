@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
+import { RootState } from '@/store';
 import { useUploadCertificatesMutation } from '@/services/setupApi';
 import { setBootstrapDomain, nextWizardStep, prevWizardStep } from '@/store/slices/setupSlice';
 import { Button } from '@/components/ui/button';
@@ -22,6 +23,10 @@ function guessDomain(): string {
 
 export function DomainSslStep() {
   const dispatch = useDispatch();
+  // The setup wizard is session-less; cert upload is gated by the claim token
+  // collected at the claim step (or relayed via ?token=). Undefined on
+  // LAN/Umbrel profiles with no token, where the backend check is open.
+  const claimToken = useSelector((s: RootState) => s.setup.wizard.claimToken);
   const [domain, setDomain] = useState(() => guessDomain());
   const [certificatePem, setCertificatePem] = useState('');
   const [privateKeyPem, setPrivateKeyPem] = useState('');
@@ -42,6 +47,7 @@ export function DomainSslStep() {
         domain: trimmedDomain,
         certificatePem,
         privateKeyPem,
+        token: claimToken ?? undefined,
       }).unwrap();
       dispatch(setBootstrapDomain(trimmedDomain));
       dispatch(nextWizardStep());

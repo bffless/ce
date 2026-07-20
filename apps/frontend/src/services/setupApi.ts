@@ -478,6 +478,9 @@ export interface UploadCertificatesRequest {
   domain: string;
   certificatePem: string;
   privateKeyPem: string;
+  // Claim token. The setup wizard is session-less, so cert upload is gated by
+  // the same token that gated admin creation (sent from the store's claimToken).
+  token?: string;
 }
 
 export interface UploadCertificatesResponse {
@@ -488,6 +491,8 @@ export interface UploadCertificatesResponse {
 export interface ApplyBootstrapRequest {
   domain: string;
   proxyMode: 'cloudflare' | 'none';
+  // Claim token — see UploadCertificatesRequest.token.
+  token?: string;
 }
 
 export interface ApplyBootstrapResponse {

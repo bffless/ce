@@ -1,9 +1,6 @@
-import { BadRequestException, Body, Controller, Logger, Post, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Logger, Post } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { BootstrapSetupService } from './bootstrap-setup.service';
-import { SessionAuthGuard } from '../auth/session-auth.guard';
-import { RolesGuard } from '../auth/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
 import { writeInstanceConfig } from '../bootstrap/instance-config';
 import { ApplyBootstrapDto, UploadCertificatesDto } from './setup.dto';
 
@@ -27,8 +24,6 @@ export class BootstrapSetupController {
   }
 
   @Post('certificates')
-  @UseGuards(SessionAuthGuard, RolesGuard)
-  @Roles('admin')
   @ApiOperation({ summary: 'Validate and install SSL certificate pair (bootstrap mode)' })
   async uploadCertificates(
     @Body() dto: UploadCertificatesDto,
@@ -38,6 +33,11 @@ export class BootstrapSetupController {
     // or file work, ensures a platform-managed/flag-disabled deployment is
     // refused without doing any of that work.
     await this.bootstrap.assertBootstrapAllowed();
+    // Auth: the setup wizard is anonymous/session-less, so these endpoints
+    // are claim-token-gated (the same rate-limited token that gates admin
+    // creation), not admin-session-guarded. Runs after the mode gate, before
+    // any cert parsing or disk writes.
+    this.bootstrap.validateClaimToken(dto.token);
     const { sans } = this.bootstrap.validateCertificatePair(
       dto.certificatePem,
       dto.privateKeyPem,
@@ -48,13 +48,13 @@ export class BootstrapSetupController {
   }
 
   @Post('apply')
-  @UseGuards(SessionAuthGuard, RolesGuard)
-  @Roles('admin')
   @ApiOperation({ summary: 'Apply domain identity and restart into HTTPS mode (bootstrap mode)' })
   async apply(@Body() dto: ApplyBootstrapDto): Promise<{ applying: true; adminUrl: string }> {
-    // Same ordering requirement as uploadCertificates: the guard runs first,
-    // before the certificate presence check or any filesystem/response work.
+    // Same ordering as uploadCertificates: mode gate first, then the
+    // claim-token auth gate, before the certificate presence check or any
+    // filesystem/response work.
     await this.bootstrap.assertBootstrapAllowed();
+    this.bootstrap.validateClaimToken(dto.token);
     if (!this.bootstrap.certificatesPresent(dto.domain)) {
       throw new BadRequestException('Install certificates before applying');
     }

@@ -4,7 +4,7 @@ import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import { DomainSslStep } from '../DomainSslStep';
 import { api } from '@/services/api';
-import setupReducer from '@/store/slices/setupSlice';
+import setupReducer, { setClaimToken } from '@/store/slices/setupSlice';
 
 const uploadMock = vi.fn();
 const useUploadCertificatesMutationMock = vi.fn();
@@ -27,8 +27,9 @@ function createTestStore() {
   });
 }
 
-function renderStep() {
+function renderStep(claimToken?: string) {
   const store = createTestStore();
+  if (claimToken) store.dispatch(setClaimToken(claimToken));
   render(
     <Provider store={store}>
       <DomainSslStep />
@@ -87,9 +88,13 @@ describe('DomainSslStep', () => {
     expect(screen.getByLabelText(/domain/i)).toHaveValue('');
   });
 
-  it('submits exactly {domain, certificatePem, privateKeyPem} and advances on success', async () => {
+  it('submits {domain, certificatePem, privateKeyPem, claim token} and advances on success', async () => {
     setHostname('admin.example.com');
-    const store = renderStep();
+    // Seed the claim token as the claim step would: the wizard is session-less,
+    // so cert upload carries the token as its auth (see Option C — token-gated
+    // cert/apply). Asserting it explicitly proves the store value is forwarded,
+    // not just that undefined is tolerated.
+    const store = renderStep('claim-xyz');
 
     fireEvent.change(screen.getByLabelText(/origin certificate/i), { target: { value: 'CERT' } });
     fireEvent.change(screen.getByLabelText(/private key/i), { target: { value: 'KEY' } });
@@ -100,6 +105,7 @@ describe('DomainSslStep', () => {
         domain: 'example.com',
         certificatePem: 'CERT',
         privateKeyPem: 'KEY',
+        token: 'claim-xyz',
       })
     );
 

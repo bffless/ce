@@ -15,6 +15,8 @@ const HINT_DELAY_MS = 30000;
 
 export function ApplyStep() {
   const domain = useSelector((s: RootState) => s.setup.wizard.bootstrapDomain);
+  // Session-less wizard: apply is gated by the claim token, same as cert upload.
+  const claimToken = useSelector((s: RootState) => s.setup.wizard.claimToken);
   const [apply, { isLoading }] = useApplyBootstrapMutation();
   const [adminUrl, setAdminUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -69,7 +71,7 @@ export function ApplyStep() {
     if (!domain) return;
     setError(null);
     try {
-      const res = await apply({ domain, proxyMode }).unwrap();
+      const res = await apply({ domain, proxyMode, token: claimToken ?? undefined }).unwrap();
       setAppliedProxyMode(proxyMode);
       setAdminUrl(res.adminUrl);
     } catch (err: unknown) {

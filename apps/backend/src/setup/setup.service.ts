@@ -166,7 +166,12 @@ export class SetupService {
    * that toggle the env var per-case behave as expected. In production this env var
    * is static for the lifetime of the process, so this is not a behavior change.
    */
-  private validateOnboardingToken(providedToken?: string): void {
+  // Public so the bootstrap cert/apply endpoints can reuse the SAME
+  // rate-limited claim-token check that gates admin creation. Those endpoints
+  // run inside the anonymous, session-less setup wizard (every setup step is
+  // public), so they are token-gated rather than session-gated — see
+  // BootstrapSetupService.validateClaimToken and the bootstrap controller.
+  validateOnboardingToken(providedToken?: string): void {
     const expectedToken = process.env.ONBOARDING_TOKEN;
 
     // If no token configured in environment, skip validation (CE mode)

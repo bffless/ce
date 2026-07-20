@@ -1025,6 +1025,17 @@ export class UploadCertificatesDto {
   @IsString()
   @IsNotEmpty()
   privateKeyPem: string;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'Claim token (ONBOARDING_TOKEN). Required whenever the instance was ' +
+      'provisioned with a token — the setup wizard is session-less, so this ' +
+      'gates cert upload the same way it gates admin creation.',
+  })
+  @IsOptional()
+  @IsString()
+  token?: string;
 }
 
 export class ApplyBootstrapDto {
@@ -1039,4 +1050,15 @@ export class ApplyBootstrapDto {
   })
   @IsIn(['cloudflare', 'none'])
   proxyMode: 'cloudflare' | 'none';
+
+  @ApiProperty({
+    required: false,
+    description:
+      'Claim token (ONBOARDING_TOKEN). Required whenever the instance was ' +
+      'provisioned with a token — the setup wizard is session-less, so this ' +
+      'gates apply the same way it gates admin creation.',
+  })
+  @IsOptional()
+  @IsString()
+  token?: string;
 }
