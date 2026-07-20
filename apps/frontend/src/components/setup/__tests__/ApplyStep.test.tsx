@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-library/react';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import { ApplyStep } from '../ApplyStep';
@@ -43,15 +43,30 @@ function renderStep(bootstrapDomain: string | null = 'example.com') {
 
 // window.location is shared, mutable global state (see DomainSslStep.test.tsx).
 // Save the real descriptor once and restore it after every test. We also
-// stub `href` as a plain writable property so a redirect assignment in the
-// component never triggers jsdom's "Not implemented: navigation" noise.
+// stub `href` as an accessor (rather than a plain writable property) so a
+// redirect assignment in the component never triggers jsdom's "Not
+// implemented: navigation" noise, AND so tests can count how many times the
+// component actually assigns `href` (needed for the overlap-guard regression
+// test below, where reading the final value alone can't distinguish one
+// assignment from two identical ones).
 const originalLocationDescriptor = Object.getOwnPropertyDescriptor(window, 'location')!;
+let hrefAssignments: string[];
 
 function stubLocation() {
+  hrefAssignments = [];
+  let currentHref = 'https://old-origin.example/setup';
   Object.defineProperty(window, 'location', {
     configurable: true,
-    writable: true,
-    value: { ...window.location, href: 'https://old-origin.example/setup' },
+    value: {
+      ...window.location,
+      get href() {
+        return currentHref;
+      },
+      set href(value: string) {
+        hrefAssignments.push(value);
+        currentHref = value;
+      },
+    },
   });
 }
 
@@ -140,6 +155,10 @@ describe('ApplyStep', () => {
     // No further polling after a successful redirect.
     await vi.advanceTimersByTimeAsync(9000);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    // The redirect-once guard doesn't break the happy path: exactly one
+    // assignment, not zero and not more than one.
+    expect(hrefAssignments).toEqual(['https://admin.example.com']);
   });
 
   it('clears the polling interval on unmount', async () => {
@@ -166,6 +185,75 @@ describe('ApplyStep', () => {
     // No additional calls after unmount — the interval must be cleared, not
     // left polling a dead component forever.
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders a clickable admin URL link in the switching state as a manual escape hatch', async () => {
+    renderStep('example.com');
+
+    fireEvent.click(screen.getByRole('button', { name: /finish setup/i }));
+
+    await waitFor(() => expect(screen.getByText(/switching to/i)).toBeInTheDocument());
+
+    const link = screen.getByRole('link', { name: /open/i });
+    expect(link).toHaveAttribute('href', 'https://admin.example.com');
+  });
+
+  it('shows a manual-continue hint after about 30 seconds of failing polls, not before', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const fetchMock = vi.fn().mockRejectedValue(new Error('still restarting'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderStep('example.com');
+    fireEvent.click(screen.getByRole('button', { name: /finish setup/i }));
+    await waitFor(() => expect(screen.getByText(/switching to/i)).toBeInTheDocument());
+
+    // Just under 30s of failing polls: no hint yet.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(27000);
+    });
+    expect(screen.queryByText(/taking longer than expected/i)).not.toBeInTheDocument();
+
+    // At 30s: the hint appears.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+    expect(screen.getByText(/taking longer than expected/i)).toBeInTheDocument();
+  });
+
+  it('guards against overlapping poll resolutions producing more than one redirect', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let resolveFirst!: (value: { ok: boolean }) => void;
+    let resolveSecond!: (value: { ok: boolean }) => void;
+    const firstPoll = new Promise<{ ok: boolean }>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const secondPoll = new Promise<{ ok: boolean }>((resolve) => {
+      resolveSecond = resolve;
+    });
+    const fetchMock = vi.fn();
+    fetchMock.mockReturnValueOnce(firstPoll);
+    fetchMock.mockReturnValueOnce(secondPoll);
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderStep('example.com');
+    fireEvent.click(screen.getByRole('button', { name: /finish setup/i }));
+    await waitFor(() => expect(screen.getByText(/switching to/i)).toBeInTheDocument());
+
+    // Two ticks fire while the first poll is still in flight — simulates a
+    // slow in-flight poll overlapping with a later tick, the scenario the
+    // unguarded async interval callback didn't handle.
+    await vi.advanceTimersByTimeAsync(3000);
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(hrefAssignments).toEqual([]);
+
+    // Both polls now resolve ok "simultaneously". Without the guard both
+    // would assign window.location.href.
+    resolveFirst({ ok: true });
+    resolveSecond({ ok: true });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(hrefAssignments).toEqual(['https://admin.example.com']);
   });
 
   it('disables the button when there is no bootstrapDomain', () => {
