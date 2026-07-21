@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as acme from 'acme-client';
 import * as forge from 'node-forge';
 import { readFile, writeFile, mkdir, access, unlink } from 'fs/promises';
+import * as fs from 'fs';
+import { X509Certificate } from 'crypto';
 import { promises as dns } from 'dns';
 import { join } from 'path';
 import { eq, and } from 'drizzle-orm';
@@ -44,6 +46,9 @@ export class SslCertificateService {
   private readonly mockMode: boolean;
   // Track mock certificates (domain -> expiry date)
   private mockCertificates: Map<string, Date> = new Map();
+  // The forge-generated key matching the most recently minted mock primary
+  // certificate — set by selfSignWithForge, consumed by issueMockPrimaryCertificate.
+  private mockPrimaryKeyPem: string | null = null;
 
   constructor() {
     this.mockMode = process.env.MOCK_SSL === 'true';
@@ -86,11 +91,14 @@ export class SslCertificateService {
     }
 
     try {
-      // Use Let's Encrypt staging for development, production for prod
+      // Use an explicit override when present (e.g. a local Pebble ACME server
+      // for bootstrap testing); otherwise Let's Encrypt staging for
+      // development, production for prod.
       const directoryUrl =
-        process.env.NODE_ENV === 'production'
+        process.env.ACME_DIRECTORY_URL ||
+        (process.env.NODE_ENV === 'production'
           ? acme.directory.letsencrypt.production
-          : acme.directory.letsencrypt.staging;
+          : acme.directory.letsencrypt.staging);
 
       // Load or generate account key
       this.accountKey = await this.getOrCreateAccountKey();
@@ -100,14 +108,13 @@ export class SslCertificateService {
         accountKey: this.accountKey,
       });
 
-      // Register account if needed
+      // Register account if needed. Bootstrap installs run before any admin
+      // email has been configured, so a missing CERTBOT_EMAIL is not fatal —
+      // Let's Encrypt permits contact-less accounts.
       const email = process.env.CERTBOT_EMAIL;
-      if (!email) {
-        throw new Error('CERTBOT_EMAIL environment variable is not set');
-      }
       await this.acmeClient.createAccount({
         termsOfServiceAgreed: true,
-        contact: [`mailto:${email}`],
+        ...(email ? { contact: [`mailto:${email}`] } : {}),
       });
 
       this.initialized = true;
@@ -481,6 +488,191 @@ export class SslCertificateService {
         error: error instanceof Error ? error.message : 'Unknown error',
       };
     }
+  }
+
+  /**
+   * Primary-domain issuance for the bootstrap wizard's direct + Let's Encrypt
+   * path — the method the 2026-07-20 spec deferred. HTTP-01 only, so it covers
+   * the fixed SAN set [apex, www, admin], NOT the wildcard (ACME requires
+   * DNS-01 for wildcards); the cert is additionally copied to the
+   * wildcard.<domain>.crt/.key filenames so the nginx render contract
+   * (Task 4) holds — preview subdomains serve it with a hostname mismatch
+   * until the optional DNS-01 wildcard flow replaces the copies.
+   */
+  async requestPrimaryDomainCertificate(domain: string): Promise<{
+    success: boolean;
+    error?: string;
+    expiresAt?: Date;
+    sans?: string[];
+  }> {
+    const sans = [domain, `www.${domain}`, `admin.${domain}`];
+
+    // Idempotency: bootstrap wizard retries (and the renewal cron far from
+    // expiry) must not burn LE rate limit re-issuing a cert we already hold.
+    const staged = this.stagedPrimaryCertificate(sans);
+    if (staged) {
+      this.logger.log(`Primary cert already covers [${sans.join(', ')}] — reusing`);
+      return { success: true, expiresAt: staged.expiresAt, sans };
+    }
+
+    if (this.mockMode) {
+      return this.issueMockPrimaryCertificate(domain, sans);
+    }
+    if (!this.acmeClient) {
+      return { success: false, error: 'ACME client not initialized' };
+    }
+
+    try {
+      const order = await this.acmeClient.createOrder({
+        identifiers: sans.map((d) => ({ type: 'dns', value: d })),
+      });
+      const authorizations = await this.acmeClient.getAuthorizations(order);
+      for (const authz of authorizations) {
+        const challenge = authz.challenges.find((c) => c.type === 'http-01');
+        if (!challenge) {
+          throw new Error(`HTTP-01 challenge not available for ${authz.identifier.value}`);
+        }
+        const keyAuth = await this.acmeClient.getChallengeKeyAuthorization(challenge);
+        await this.writeHttpChallenge(challenge.token, keyAuth);
+        this.logger.log(`Completing HTTP-01 challenge for ${authz.identifier.value}`);
+        await this.acmeClient.completeChallenge(challenge);
+        await this.acmeClient.waitForValidStatus(challenge);
+        await this.removeHttpChallenge(challenge.token);
+      }
+
+      const [key, csr] = await acme.crypto.createCsr({
+        commonName: domain,
+        altNames: [`www.${domain}`, `admin.${domain}`],
+      });
+      const finalizedOrder = await this.acmeClient.finalizeOrder(order, csr);
+      let validOrder = finalizedOrder;
+      let attempts = 0;
+      const maxAttempts = 30; // Wait up to 30 seconds
+      while (validOrder.status === 'processing' && attempts < maxAttempts) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        validOrder = await this.acmeClient.getOrder(order);
+        attempts++;
+      }
+      if (validOrder.status !== 'valid') {
+        throw new Error(`Order did not become valid. Final status: ${validOrder.status}`);
+      }
+      const certificate = await this.acmeClient.getCertificate(validOrder);
+      await this.savePrimaryCertificate(domain, certificate, key);
+      const expiresAt = this.parseCertificateExpiry(certificate);
+      this.logger.log(`Primary domain certificate issued for [${sans.join(', ')}]`);
+      return { success: true, expiresAt, sans };
+    } catch (error) {
+      this.logger.error(`Primary domain issuance failed for ${domain}: ${error}`);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
+
+  /** Days until fullchain.pem expires; null when absent/unparseable (used by the Task 8 renewal cron). */
+  getPrimaryCertificateExpiryDays(): number | null {
+    try {
+      const pem = fs.readFileSync(join(this.getSslPath(), 'fullchain.pem'));
+      const cert = new X509Certificate(pem);
+      return Math.floor((new Date(cert.validTo).getTime() - Date.now()) / 86_400_000);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Returns the currently staged fullchain.pem's expiry when it already
+   * covers every requested SAN with more than 30 days left — signals the
+   * caller to skip re-issuance entirely.
+   */
+  private stagedPrimaryCertificate(sans: string[]): { expiresAt: Date } | null {
+    try {
+      const pem = fs.readFileSync(join(this.getSslPath(), 'fullchain.pem'));
+      const cert = new X509Certificate(pem);
+      const certSans = (cert.subjectAltName ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s.startsWith('DNS:'))
+        .map((s) => s.slice(4));
+      const covers = sans.every((s) => certSans.includes(s));
+      const expiresAt = new Date(cert.validTo);
+      const daysLeft = (expiresAt.getTime() - Date.now()) / 86_400_000;
+      return covers && daysLeft > 30 ? { expiresAt } : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async savePrimaryCertificate(
+    domain: string,
+    certificate: string,
+    key: Buffer,
+  ): Promise<void> {
+    const sslPath = this.getSslPath();
+    await mkdir(sslPath, { recursive: true });
+    await writeFile(join(sslPath, 'fullchain.pem'), certificate, { mode: 0o644 });
+    await writeFile(join(sslPath, 'privkey.pem'), key, { mode: 0o600 });
+    // The wildcard.* files are only a COPY of the primary cert (render-contract
+    // filler for Task 4's nginx template). If a REAL DNS-01 wildcard is
+    // installed — its SANs include *.<domain>, which an HTTP-01 primary cert
+    // can never carry — a primary renewal must not clobber it. Detection is
+    // content-based (does the installed wildcard.crt itself carry the
+    // *.<domain> SAN), which also correctly covers the mock path: a freshly
+    // mock-issued primary cert has no prior wildcard.crt on disk yet, so the
+    // guard is a no-op the first time and only ever blocks when a genuinely
+    // wildcard-carrying cert is already staged.
+    if (!this.installedWildcardIsReal(domain)) {
+      await writeFile(join(sslPath, `wildcard.${domain}.crt`), certificate, { mode: 0o644 });
+      await writeFile(join(sslPath, `wildcard.${domain}.key`), key, { mode: 0o600 });
+    }
+  }
+
+  /** True when wildcard.<domain>.crt exists and genuinely covers *.<domain>. */
+  private installedWildcardIsReal(domain: string): boolean {
+    try {
+      const pem = fs.readFileSync(join(this.getSslPath(), `wildcard.${domain}.crt`));
+      const cert = new X509Certificate(pem);
+      return (cert.subjectAltName ?? '').includes(`DNS:*.${domain}`);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * MOCK_SSL=true: mint a 90-day self-signed cert covering the SAN set plus
+   * the wildcard, via node-forge (already a dependency of this file) — no
+   * ACME server or openssl binary needed, so this powers Playwright E2E and
+   * the jest suite. The key returned by selfSignWithForge is the one that
+   * matches the minted cert; it must be saved verbatim rather than paired
+   * with a freshly generated CSR key (which would not match the cert).
+   */
+  private async issueMockPrimaryCertificate(
+    domain: string,
+    sans: string[],
+  ): Promise<{ success: boolean; expiresAt?: Date; sans?: string[] }> {
+    const certPem = this.selfSignWithForge(domain, [...sans, `*.${domain}`]);
+    await this.savePrimaryCertificate(domain, certPem, Buffer.from(this.mockPrimaryKeyPem!));
+    const expiresAt = new Date(Date.now() + 90 * 86_400_000);
+    this.mockCertificates.set(domain, expiresAt);
+    this.logger.log(`[MOCK] Primary domain certificate issued for [${sans.join(', ')}]`);
+    return { success: true, expiresAt, sans };
+  }
+
+  /** Self-signs a cert for `domain` with the given SANs; stashes the matching key in mockPrimaryKeyPem. */
+  private selfSignWithForge(domain: string, altNames: string[]): string {
+    const keys = forge.pki.rsa.generateKeyPair(2048);
+    const cert = forge.pki.createCertificate();
+    cert.publicKey = keys.publicKey;
+    cert.serialNumber = '01';
+    cert.validity.notBefore = new Date();
+    cert.validity.notAfter = new Date(Date.now() + 90 * 86_400_000);
+    const attrs = [{ name: 'commonName', value: domain }];
+    cert.setSubject(attrs);
+    cert.setIssuer(attrs);
+    cert.setExtensions([
+      { name: 'subjectAltName', altNames: altNames.map((v) => ({ type: 2, value: v })) },
+    ]);
+    cert.sign(keys.privateKey, forge.md.sha256.create());
+    this.mockPrimaryKeyPem = forge.pki.privateKeyToPem(keys.privateKey);
+    return forge.pki.certificateToPem(cert);
   }
 
   /**
