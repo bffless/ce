@@ -8,6 +8,7 @@ import {
   hydrateProcessEnv,
   writeInstanceConfig,
   bootstrapDir,
+  deriveKnobs,
 } from './instance-config';
 
 describe('instance-config', () => {
@@ -112,6 +113,61 @@ describe('instance-config', () => {
     it('falls back to ../../bootstrap relative to cwd when unset', () => {
       delete process.env.BOOTSTRAP_DIR;
       expect(bootstrapDir()).toBe(path.resolve(process.cwd(), '../../bootstrap'));
+    });
+  });
+
+  describe('instance-config v2', () => {
+    const v2Custom: InstanceConfig = {
+      version: 2,
+      state: 'applied',
+      primaryDomain: 'example.com',
+      proxyMode: 'proxy',
+      sslMode: 'paste',
+      port80: 'redirect',
+      realIp: { header: 'X-Forwarded-For', ranges: ['151.101.0.0/16', '2a04:4e40::/32'] },
+    };
+
+    it('loads version 2 files', () => {
+      writeInstanceConfig(v2Custom, dir);
+      expect(loadInstanceConfig(dir)).toEqual(v2Custom);
+    });
+
+    it('derives knobs from a v1 cloudflare config (forward-read)', () => {
+      const v1: InstanceConfig = {
+        version: 1, state: 'applied', primaryDomain: 'example.com',
+        proxyMode: 'cloudflare', sslMode: 'paste',
+      };
+      expect(deriveKnobs(v1)).toEqual({ port80: 'closed', realIp: { preset: 'cloudflare' } });
+    });
+
+    it('derives knobs from a v1 none config (forward-read)', () => {
+      const v1: InstanceConfig = { version: 1, state: 'applied', primaryDomain: 'x.com', proxyMode: 'none' };
+      expect(deriveKnobs(v1)).toEqual({ port80: 'redirect', realIp: null });
+    });
+
+    it('explicit knobs win over preset defaults', () => {
+      expect(deriveKnobs({ ...v2Custom, proxyMode: 'cloudflare' }).port80).toBe('redirect');
+    });
+
+    it('writes resolved knobs into instance.env (custom realIp quoted)', () => {
+      writeInstanceConfig(v2Custom, dir);
+      const env = fs.readFileSync(path.join(dir, 'instance.env'), 'utf8');
+      expect(env).toContain('SSL_MODE=paste');
+      expect(env).toContain('PORT80=redirect');
+      expect(env).toContain('REALIP_MODE=custom');
+      expect(env).toContain('REALIP_HEADER=X-Forwarded-For');
+      expect(env).toContain('REALIP_RANGES="151.101.0.0/16 2a04:4e40::/32"');
+    });
+
+    it('writes REALIP_MODE=cloudflare for the cloudflare preset', () => {
+      writeInstanceConfig(
+        { version: 2, state: 'applied', primaryDomain: 'x.com', proxyMode: 'cloudflare', sslMode: 'paste' },
+        dir,
+      );
+      const env = fs.readFileSync(path.join(dir, 'instance.env'), 'utf8');
+      expect(env).toContain('PORT80=closed');
+      expect(env).toContain('REALIP_MODE=cloudflare');
+      expect(env).not.toContain('REALIP_HEADER');
     });
   });
 });

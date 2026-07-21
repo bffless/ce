@@ -3,13 +3,49 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+export type ProxyMode = 'cloudflare' | 'proxy' | 'none';
+export type SslMode = 'paste' | 'letsencrypt';
+export type Port80Mode = 'closed' | 'redirect';
+export type RealIpConfig = null | { preset: 'cloudflare' } | { header: string; ranges: string[] };
+
+// Reserved, never written by the wizard and rejected by ApplyBootstrapDto:
+// proxyMode 'cloudflare-tunnel' and sslMode 'external' — held for the deferred
+// Umbrel/tunnel profile so it can land without a schema version bump.
 export interface InstanceConfig {
-  version: 1;
+  version: 1 | 2;
   state: 'unclaimed' | 'applied';
   primaryDomain?: string;
-  proxyMode?: 'cloudflare' | 'none';
-  sslMode?: 'paste' | 'letsencrypt';
+  proxyMode?: ProxyMode;
+  sslMode?: SslMode;
+  port80?: Port80Mode;   // v2; derived from proxyMode when absent (v1 files)
+  realIp?: RealIpConfig; // v2; derived from proxyMode when absent (v1 files)
   platformIp?: string;
+}
+
+export interface ResolvedKnobs {
+  port80: Port80Mode;
+  realIp: RealIpConfig;
+}
+
+// v1 files carry only proxyMode; the preset label determines the knobs. A v2
+// file may still omit a knob (apply fills them in, but readers stay defensive).
+export function deriveKnobs(cfg: InstanceConfig): ResolvedKnobs {
+  const port80: Port80Mode =
+    cfg.port80 ?? (cfg.proxyMode === 'cloudflare' ? 'closed' : 'redirect');
+  const realIp: RealIpConfig =
+    cfg.realIp !== undefined
+      ? cfg.realIp
+      : cfg.proxyMode === 'cloudflare'
+        ? { preset: 'cloudflare' }
+        : null;
+  return { port80, realIp };
+}
+
+export interface AppliedConfig {
+  proxyMode: ProxyMode;
+  sslMode: SslMode;
+  port80: Port80Mode;
+  realIp: RealIpConfig;
 }
 
 export function bootstrapDir(): string {
@@ -20,7 +56,7 @@ export function loadInstanceConfig(dir: string = bootstrapDir()): InstanceConfig
   try {
     const raw = fs.readFileSync(path.join(dir, 'instance.json'), 'utf8');
     const parsed = JSON.parse(raw);
-    if (parsed?.version !== 1 || !parsed?.state) return null;
+    if ((parsed?.version !== 1 && parsed?.version !== 2) || !parsed?.state) return null;
     return parsed as InstanceConfig;
   } catch {
     return null;
@@ -58,10 +94,22 @@ export function writeInstanceConfig(cfg: InstanceConfig, dir: string = bootstrap
   fs.renameSync(jsonTmp, path.join(dir, 'instance.json'));
 
   // Shell-sourceable sibling so the nginx render script needs no JSON parser.
+  const knobs = deriveKnobs(cfg);
+  const realIpMode =
+    knobs.realIp === null ? 'off' : 'preset' in knobs.realIp ? 'cloudflare' : 'custom';
   const lines = [
     `STATE=${cfg.state}`,
     cfg.primaryDomain ? `PRIMARY_DOMAIN=${cfg.primaryDomain}` : '',
     cfg.proxyMode ? `PROXY_MODE=${cfg.proxyMode}` : '',
+    cfg.sslMode ? `SSL_MODE=${cfg.sslMode}` : '',
+    `PORT80=${knobs.port80}`,
+    `REALIP_MODE=${realIpMode}`,
+    realIpMode === 'custom' && knobs.realIp && 'header' in knobs.realIp
+      ? `REALIP_HEADER=${knobs.realIp.header}`
+      : '',
+    realIpMode === 'custom' && knobs.realIp && 'ranges' in knobs.realIp
+      ? `REALIP_RANGES="${knobs.realIp.ranges.join(' ')}"`
+      : '',
   ].filter(Boolean);
   const envTmp = path.join(dir, 'instance.env.tmp');
   fs.writeFileSync(envTmp, lines.join('\n') + '\n');
