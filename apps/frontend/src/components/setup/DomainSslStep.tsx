@@ -21,12 +21,25 @@ function guessDomain(): string {
   return hostname.replace(/^(admin|www)\./, '');
 }
 
+// When the wizard is reached over a bare IP (the DigitalOcean / non-Cloudflare
+// path), that IP is exactly what the user must point their A records at, so
+// surface it. On the domain-first path the hostname is the domain (DNS is
+// already set), so there's nothing useful to show and we fall back to generic
+// wording. We can't ask the backend for its public IP here: getPlatformIp()
+// resolves PRIMARY_DOMAIN via DNS, which is the very thing that doesn't resolve
+// yet in bootstrap mode.
+function serverIpHint(): string | null {
+  const hostname = window.location.hostname;
+  return /^\d+\.\d+\.\d+\.\d+$/.test(hostname) ? hostname : null;
+}
+
 export function DomainSslStep() {
   const dispatch = useDispatch();
   // The setup wizard is session-less; cert upload is gated by the claim token
   // collected at the claim step (or relayed via ?token=). Undefined on
   // LAN/Umbrel profiles with no token, where the backend check is open.
   const claimToken = useSelector((s: RootState) => s.setup.wizard.claimToken);
+  const serverIp = serverIpHint();
   const [domain, setDomain] = useState(() => guessDomain());
   const [certificatePem, setCertificatePem] = useState('');
   const [privateKeyPem, setPrivateKeyPem] = useState('');
@@ -64,6 +77,43 @@ export function DomainSslStep() {
     <div className="space-y-6">
       <div>
         <h3 className="text-lg font-medium text-foreground">Domain &amp; SSL</h3>
+
+        <div className="mt-3 rounded-md border border-border bg-muted/40 p-3">
+          <p className="text-sm font-medium text-foreground">
+            1. Point your domain at this server
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            At your DNS provider, create two <strong>A records</strong>
+            {serverIp ? (
+              <>
+                {' '}
+                pointing to this server&apos;s IP{' '}
+                <code className="bg-muted px-1 rounded">{serverIp}</code>:
+              </>
+            ) : (
+              <> pointing to this server&apos;s public IP address:</>
+            )}
+          </p>
+          <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
+            <li>
+              <code className="bg-muted px-1 rounded">@</code> (apex, e.g.{' '}
+              <code className="bg-muted px-1 rounded">yourdomain.com</code>)
+            </li>
+            <li>
+              <code className="bg-muted px-1 rounded">*</code> (wildcard) — this is what makes{' '}
+              <code className="bg-muted px-1 rounded">admin.</code>,{' '}
+              <code className="bg-muted px-1 rounded">www.</code> and preview subdomains resolve
+            </li>
+          </ul>
+          <p className="mt-2 text-sm text-muted-foreground">
+            On <strong>Cloudflare</strong>, set both records to <strong>Proxied</strong> (orange
+            cloud). Do this <strong>before you finish</strong> — the last step redirects to{' '}
+            <code className="bg-muted px-1 rounded">admin.yourdomain</code>, which only works once
+            DNS resolves.
+          </p>
+        </div>
+
+        <p className="mt-3 text-sm font-medium text-foreground">2. Provide your certificate</p>
         <p className="mt-1 text-sm text-muted-foreground">
           Paste a <strong>Cloudflare Origin Certificate</strong> for your domain. In the
           Cloudflare dashboard, go to{' '}

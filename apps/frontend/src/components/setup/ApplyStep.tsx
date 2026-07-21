@@ -26,6 +26,12 @@ export function ApplyStep() {
   // cert needs 'none' — otherwise port 80 becomes `return 444` with no
   // ACME-challenge path, permanently breaking certificate renewal.
   const [proxyMode, setProxyMode] = useState<'cloudflare' | 'none'>('cloudflare');
+  // Require an explicit "DNS is already pointed at this server" confirmation
+  // before applying. If a user applies BEFORE creating the A records, the
+  // post-apply redirect to admin.<domain> fails to resolve — and the browser
+  // caches that NXDOMAIN, so even adding the records afterwards leaves them
+  // stuck until a DNS-cache flush. Gating apply on this prevents the trap.
+  const [dnsConfirmed, setDnsConfirmed] = useState(false);
   // Captured at apply time so the post-apply screen's Cloudflare-specific
   // hint reflects what was actually applied, not whatever the (now hidden)
   // radio selection happens to be.
@@ -95,8 +101,11 @@ export function ApplyStep() {
         </p>
         {showHint && (
           <p className="text-sm text-muted-foreground">
-            This is taking longer than expected. DNS may still be propagating, or your browser
-            may be blocking the automatic check — use the link above to continue manually.
+            This is taking longer than expected. Make sure your domain&apos;s DNS points to this
+            server — an <strong>A record</strong> for <code className="bg-muted px-1 rounded">@</code>{' '}
+            and <code className="bg-muted px-1 rounded">*</code> (wildcard) at your server&apos;s IP.
+            DNS may still be propagating, or your browser may be blocking the automatic check — use
+            the link above to continue manually.
           </p>
         )}
         {appliedProxyMode === 'cloudflare' && (
@@ -170,13 +179,39 @@ export function ApplyStep() {
         </label>
       </div>
 
+      <label className="flex items-start p-4 border border-border rounded-lg cursor-pointer hover:bg-muted/50">
+        <input
+          type="checkbox"
+          checked={dnsConfirmed}
+          onChange={(e) => setDnsConfirmed(e.target.checked)}
+          disabled={isLoading}
+          className="mt-1 mr-3"
+        />
+        <div className="flex-1">
+          <span className="font-medium">
+            I&apos;ve pointed <code className="bg-muted px-1 rounded">{domain || 'my domain'}</code>{' '}
+            at this server
+          </span>
+          <p className="mt-1 text-sm text-muted-foreground">
+            A records for <code className="bg-muted px-1 rounded">@</code> and{' '}
+            <code className="bg-muted px-1 rounded">*</code> already resolve to this server. Applying
+            before DNS is live leaves your browser stuck on a cached lookup for{' '}
+            <code className="bg-muted px-1 rounded">admin.{domain || 'yourdomain'}</code>.
+          </p>
+        </div>
+      </label>
+
       {error && (
         <div className="flex items-center p-4 rounded-md bg-destructive/10 border border-destructive/20">
           <span className="text-sm text-destructive">{error}</span>
         </div>
       )}
 
-      <Button className="w-full" disabled={!domain || isLoading} onClick={finish}>
+      <Button
+        className="w-full"
+        disabled={!domain || !dnsConfirmed || isLoading}
+        onClick={finish}
+      >
         {isLoading ? (
           <>
             <Loader2 className="w-4 h-4 mr-2 animate-spin" />

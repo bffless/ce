@@ -95,6 +95,7 @@ describe('ApplyStep', () => {
   it('applies with the stored domain and shows the switching state with the Full (strict) reminder', async () => {
     renderStep('example.com');
 
+    fireEvent.click(screen.getByRole('checkbox')); // DNS-confirmed gate
     fireEvent.click(screen.getByRole('button', { name: /finish setup/i }));
 
     await waitFor(() =>
@@ -112,6 +113,7 @@ describe('ApplyStep', () => {
     });
     renderStep('example.com');
 
+    fireEvent.click(screen.getByRole('checkbox')); // DNS-confirmed gate
     fireEvent.click(screen.getByRole('button', { name: /finish setup/i }));
 
     await waitFor(() => expect(screen.getByText(message)).toBeInTheDocument());
@@ -122,6 +124,7 @@ describe('ApplyStep', () => {
     applyMock.mockReturnValue({ unwrap: () => Promise.reject({}) });
     renderStep('example.com');
 
+    fireEvent.click(screen.getByRole('checkbox')); // DNS-confirmed gate
     fireEvent.click(screen.getByRole('button', { name: /finish setup/i }));
 
     await waitFor(() => expect(screen.getByText(/apply failed/i)).toBeInTheDocument());
@@ -137,6 +140,7 @@ describe('ApplyStep', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     renderStep('example.com');
+    fireEvent.click(screen.getByRole('checkbox')); // DNS-confirmed gate
     fireEvent.click(screen.getByRole('button', { name: /finish setup/i }));
 
     await waitFor(() => expect(screen.getByText(/switching to/i)).toBeInTheDocument());
@@ -176,6 +180,7 @@ describe('ApplyStep', () => {
       </Provider>
     );
 
+    fireEvent.click(screen.getByRole('checkbox')); // DNS-confirmed gate
     fireEvent.click(screen.getByRole('button', { name: /finish setup/i }));
     await waitFor(() => expect(screen.getByText(/switching to/i)).toBeInTheDocument());
 
@@ -193,6 +198,7 @@ describe('ApplyStep', () => {
   it('renders a clickable admin URL link in the switching state as a manual escape hatch', async () => {
     renderStep('example.com');
 
+    fireEvent.click(screen.getByRole('checkbox')); // DNS-confirmed gate
     fireEvent.click(screen.getByRole('button', { name: /finish setup/i }));
 
     await waitFor(() => expect(screen.getByText(/switching to/i)).toBeInTheDocument());
@@ -207,6 +213,7 @@ describe('ApplyStep', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     renderStep('example.com');
+    fireEvent.click(screen.getByRole('checkbox')); // DNS-confirmed gate
     fireEvent.click(screen.getByRole('button', { name: /finish setup/i }));
     await waitFor(() => expect(screen.getByText(/switching to/i)).toBeInTheDocument());
 
@@ -239,6 +246,7 @@ describe('ApplyStep', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     renderStep('example.com');
+    fireEvent.click(screen.getByRole('checkbox')); // DNS-confirmed gate
     fireEvent.click(screen.getByRole('button', { name: /finish setup/i }));
     await waitFor(() => expect(screen.getByText(/switching to/i)).toBeInTheDocument());
 
@@ -265,6 +273,7 @@ describe('ApplyStep', () => {
     expect(screen.getByRole('radio', { name: /^cloudflare/i })).toBeChecked();
     expect(screen.getByRole('radio', { name: /^direct/i })).not.toBeChecked();
 
+    fireEvent.click(screen.getByRole('checkbox')); // DNS-confirmed gate
     fireEvent.click(screen.getByRole('button', { name: /finish setup/i }));
 
     await waitFor(() =>
@@ -279,6 +288,7 @@ describe('ApplyStep', () => {
     fireEvent.click(screen.getByRole('radio', { name: /^direct/i }));
     expect(screen.getByRole('radio', { name: /^direct/i })).toBeChecked();
 
+    fireEvent.click(screen.getByRole('checkbox')); // DNS-confirmed gate
     fireEvent.click(screen.getByRole('button', { name: /finish setup/i }));
 
     await waitFor(() =>
@@ -291,6 +301,22 @@ describe('ApplyStep', () => {
   it('disables the button when there is no bootstrapDomain', () => {
     renderStep(null);
     expect(screen.getByRole('button', { name: /finish setup/i })).toBeDisabled();
+  });
+
+  it('disables Finish until the DNS-confirmation checkbox is ticked, and does not apply before then', () => {
+    // Guards the NXDOMAIN-cache trap: apply must be blocked until the user
+    // confirms DNS already resolves to this server.
+    renderStep('example.com');
+    const button = screen.getByRole('button', { name: /finish setup/i });
+    expect(button).toBeDisabled();
+    // Clicking a disabled button must not fire apply.
+    fireEvent.click(button);
+    expect(applyMock).not.toHaveBeenCalled();
+    // Tick the confirmation → enabled → apply fires.
+    fireEvent.click(screen.getByRole('checkbox'));
+    expect(button).not.toBeDisabled();
+    fireEvent.click(button);
+    expect(applyMock).toHaveBeenCalled();
   });
 
   it('disables the button while the mutation is loading', () => {

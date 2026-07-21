@@ -88,6 +88,23 @@ describe('DomainSslStep', () => {
     expect(screen.getByLabelText(/domain/i)).toHaveValue('');
   });
 
+  it('shows DNS A-record instructions, surfacing the server IP on the bare-IP path', () => {
+    setHostname('203.0.113.10');
+    renderStep();
+    // The instruction to create A records must be present (the gap this fixes).
+    expect(screen.getByText(/point your domain at this server/i)).toBeInTheDocument();
+    expect(screen.getByText(/A records/i)).toBeInTheDocument();
+    // On the bare-IP path the server's own IP is the target, so show it.
+    expect(screen.getByText('203.0.113.10')).toBeInTheDocument();
+  });
+
+  it('gives generic IP wording (no bare IP shown) on the domain-first path', () => {
+    setHostname('admin.example.com');
+    renderStep();
+    expect(screen.getByText(/point your domain at this server/i)).toBeInTheDocument();
+    expect(screen.getByText(/public IP address/i)).toBeInTheDocument();
+  });
+
   it('submits {domain, certificatePem, privateKeyPem, claim token} and advances on success', async () => {
     setHostname('admin.example.com');
     // Seed the claim token as the claim step would: the wizard is session-less,
