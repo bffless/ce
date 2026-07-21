@@ -54,11 +54,13 @@ export interface AppliedConfig {
 // the nginx container). writeInstanceConfig always double-quotes the header
 // when it writes REALIP_HEADER, but that alone isn't sufficient defense: a
 // value containing `&` or `|` would still be shell-control characters if the
-// value were ever concatenated unquoted elsewhere, so the character set
-// excludes them (and $, `, ', ", % — all legal in RFC 9110 token names but
-// dangerous in a shell context) as belt-and-suspenders on top of quoting.
-// Callers layering semantic validation (CIDR correctness etc.) do so on top
-// of this, not instead of it.
+// value were ever concatenated unquoted elsewhere, so the character set is
+// deliberately narrower than RFC 9110's tchar grammar. Characters that are
+// shell-dangerous even inside a double-quoted assignment — `$`, backtick, and
+// the control operators `&` and `|` — are excluded, even though some are valid
+// tchar characters. The value is additionally written double-quoted in
+// instance.env. Callers layering semantic validation (CIDR correctness etc.)
+// do so on top of this, not instead of it.
 export const SHELL_SAFE_HEADER_RE = /^[A-Za-z0-9!#*+.^_~-]+$/;
 export const SHELL_SAFE_RANGE_RE = /^[0-9A-Fa-f:./]+$/;
 

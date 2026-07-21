@@ -323,13 +323,15 @@ export class BootstrapSetupService {
    * client spoof X-Forwarded-For into rate limiting and logs.
    *
    * Header check deliberately reuses instance-config.ts's
-   * SHELL_SAFE_HEADER_RE rather than the full RFC 9110 token charset: a token
-   * value is legally allowed to contain `$`, backtick, `'`, `"`, `&`, and
-   * `|`, but writeInstanceConfig writes the header into a double-quoted
-   * shell assignment (`REALIP_HEADER="..."`) in instance.env (sourced by sh
-   * in the nginx container). Quoting alone stops most of that set, but `&`
-   * and `|` are shell control operators that can matter outside a quoted
-   * context too, so SHELL_SAFE_HEADER_RE excludes them (and the rest) as a
+   * SHELL_SAFE_HEADER_RE rather than the full RFC 9110 token charset: the
+   * character set is deliberately narrower than RFC 9110's tchar grammar,
+   * excluding characters that are shell-dangerous even inside a double-quoted
+   * assignment — `$`, backtick, and the control operators `&` and `|` — even
+   * though some are valid tchar characters. The header is written into a
+   * double-quoted shell assignment (`REALIP_HEADER="..."`) in instance.env
+   * (sourced by sh in the nginx container). Quoting alone stops most shell
+   * interpolation, but `&` and `|` are control operators that can matter
+   * outside a quoted context too, so SHELL_SAFE_HEADER_RE excludes them as a
    * second, independent layer — a DTO that accepted those characters would
    * otherwise only be caught at write time, deep inside a different layer.
    * Validating with the stricter, shell-safe set here means a rejection

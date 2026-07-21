@@ -251,7 +251,7 @@ describe('instance-config', () => {
         primaryDomain: 'x.com',
         proxyMode: 'proxy',
         sslMode: 'paste',
-        realIp: { header: 'X-Real&touch /tmp/x', ranges: ['0.0.0.0/0'] },
+        realIp: { header: 'X-Real&Header', ranges: ['0.0.0.0/0'] },
       };
       expect(() => writeInstanceConfig(unsafe, dir)).toThrow(/unsafe characters/);
       expect(fs.existsSync(path.join(dir, 'instance.json'))).toBe(false);
@@ -265,7 +265,7 @@ describe('instance-config', () => {
         primaryDomain: 'x.com',
         proxyMode: 'proxy',
         sslMode: 'paste',
-        realIp: { header: 'X-Real|touch /tmp/x', ranges: ['0.0.0.0/0'] },
+        realIp: { header: 'X-Real|Header', ranges: ['0.0.0.0/0'] },
       };
       expect(() => writeInstanceConfig(unsafe, dir)).toThrow(/unsafe characters/);
       expect(fs.existsSync(path.join(dir, 'instance.json'))).toBe(false);
@@ -273,13 +273,13 @@ describe('instance-config', () => {
     });
 
     it('assertShellSafeRealIp rejects header with "&"', () => {
-      expect(() => assertShellSafeRealIp('X-Real&touch /tmp/x', [])).toThrow(
+      expect(() => assertShellSafeRealIp('X-Real&Header', [])).toThrow(
         /unsafe characters/,
       );
     });
 
     it('assertShellSafeRealIp rejects header with "|"', () => {
-      expect(() => assertShellSafeRealIp('X-Real|touch /tmp/x', [])).toThrow(
+      expect(() => assertShellSafeRealIp('X-Real|Header', [])).toThrow(
         /unsafe characters/,
       );
     });
