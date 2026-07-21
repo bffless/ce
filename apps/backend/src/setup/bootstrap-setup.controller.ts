@@ -27,7 +27,7 @@ export class BootstrapSetupController {
   @ApiOperation({ summary: 'Validate and install SSL certificate pair (bootstrap mode)' })
   async uploadCertificates(
     @Body() dto: UploadCertificatesDto,
-  ): Promise<{ saved: true; sans: string[] }> {
+  ): Promise<{ saved: true; sans: string[]; wildcardCovered: boolean }> {
     // Must be awaited: assertBootstrapAllowed is async (it calls the async
     // FeatureFlagsService.isEnabled). Awaiting first, before any validation
     // or file work, ensures a platform-managed/flag-disabled deployment is
@@ -38,13 +38,14 @@ export class BootstrapSetupController {
     // creation), not admin-session-guarded. Runs after the mode gate, before
     // any cert parsing or disk writes.
     this.bootstrap.validateClaimToken(dto.token);
-    const { sans } = this.bootstrap.validateCertificatePair(
+    const { sans, wildcardCovered } = this.bootstrap.validateCertificatePair(
       dto.certificatePem,
       dto.privateKeyPem,
       dto.domain,
+      dto.servingMode,
     );
     this.bootstrap.saveCertificates(dto.certificatePem, dto.privateKeyPem, dto.domain);
-    return { saved: true, sans };
+    return { saved: true, sans, wildcardCovered };
   }
 
   @Post('apply')
@@ -63,7 +64,7 @@ export class BootstrapSetupController {
     // pair that nginx's apex/admin vhosts serve, while this domain's stale
     // wildcard.* files stick around. Re-verify the staged fullchain actually
     // covers the domain being applied — see assertStagedCertificateCovers.
-    this.bootstrap.assertStagedCertificateCovers(dto.domain);
+    this.bootstrap.assertStagedCertificateCovers(dto.domain, dto.proxyMode);
     // writeInstanceConfig is called directly by this controller (it isn't
     // reached through validateCertificatePair/saveCertificates/
     // certificatesPresent, which validate the domain as a side effect of

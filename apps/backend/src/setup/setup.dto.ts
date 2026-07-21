@@ -1040,6 +1040,10 @@ export class UploadCertificatesDto {
   @IsOptional()
   @IsString()
   token?: string;
+
+  @ApiProperty({ description: 'Serving path — drives the SAN policy', enum: ['cloudflare', 'proxy', 'none'] })
+  @IsIn(['cloudflare', 'proxy', 'none'])
+  servingMode: 'cloudflare' | 'proxy' | 'none';
 }
 
 export class RealIpDto {

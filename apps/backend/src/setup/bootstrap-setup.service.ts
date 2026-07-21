@@ -1,13 +1,19 @@
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
-import * as forge from 'node-forge';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import { X509Certificate, createPrivateKey } from 'crypto';
 import { isIP } from 'net';
 import { SetupService } from './setup.service';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 import { ApplyBootstrapDto } from './setup.dto';
-import { AppliedConfig, Port80Mode, RealIpConfig, SHELL_SAFE_HEADER_RE } from '../bootstrap/instance-config';
+import {
+  AppliedConfig,
+  Port80Mode,
+  ProxyMode,
+  RealIpConfig,
+  SHELL_SAFE_HEADER_RE,
+} from '../bootstrap/instance-config';
 
 /**
  * Plausible-hostname check for a bootstrap domain. This value is user-supplied
@@ -138,91 +144,88 @@ export class BootstrapSetupService {
    * recovery path in bootstrap mode — so every failure mode here must throw
    * rather than silently pass.
    *
-   * Only RSA key pairs are supported. node-forge's `certificateFromPem` /
-   * `privateKeyFromPem` both throw on EC (P-256/P-384) material — verified
-   * empirically, not assumed — so a mismatched or well-formed-but-EC pair
-   * never reaches the modulus comparison below; it's rejected up front by
-   * the parse try/catch. The explicit RSA-shape check further down is
-   * defense-in-depth in case a future forge version starts returning a
-   * partially-populated key object instead of throwing.
+   * Uses `node:crypto`'s `X509Certificate`/`createPrivateKey` rather than
+   * node-forge, so browser-trusted ECDSA (P-256/P-384) certs are accepted
+   * alongside RSA — forge can only parse RSA material.
    */
-  validateCertificatePair(certPem: string, keyPem: string, domain: string): { sans: string[] } {
+  validateCertificatePair(
+    certPem: string,
+    keyPem: string,
+    domain: string,
+    servingMode: ProxyMode,
+  ): { sans: string[]; wildcardCovered: boolean } {
     const validatedDomain = this.assertValidDomain(domain);
 
-    let cert: forge.pki.Certificate;
-    let key: forge.pki.rsa.PrivateKey;
+    let cert: X509Certificate;
+    let key: ReturnType<typeof createPrivateKey>;
     try {
-      cert = forge.pki.certificateFromPem(certPem);
-      key = forge.pki.privateKeyFromPem(keyPem) as forge.pki.rsa.PrivateKey;
+      cert = new X509Certificate(certPem);
     } catch {
-      throw new BadRequestException(
-        'Could not parse certificate or private key PEM (only RSA is supported)',
-      );
+      throw new BadRequestException('Could not parse certificate PEM');
+    }
+    try {
+      key = createPrivateKey(keyPem);
+    } catch {
+      throw new BadRequestException('Could not parse private key PEM');
     }
 
-    const certPublicKey = cert.publicKey as forge.pki.rsa.PublicKey;
-    if (
-      !certPublicKey ||
-      typeof certPublicKey.n === 'undefined' ||
-      !key ||
-      typeof key.n === 'undefined'
-    ) {
-      // Defense-in-depth: should be unreachable given the parse behavior
-      // above, but never treat an unknown key shape as "matching".
-      throw new BadRequestException('Only RSA certificates and keys are supported');
-    }
-
-    const modulusMatches = certPublicKey.n.toString(16) === key.n.toString(16);
-    const exponentMatches = certPublicKey.e.toString(16) === key.e.toString(16);
-    if (!modulusMatches || !exponentMatches) {
+    // Works for RSA and EC alike — this replaces the old modulus comparison
+    // (node-forge, RSA-only) so browser-trusted ECDSA certs stop being rejected.
+    if (!cert.checkPrivateKey(key)) {
       throw new BadRequestException('Private key does not match the certificate');
     }
 
-    const now = new Date();
-    if (now > cert.validity.notAfter) {
+    const now = Date.now();
+    if (now > new Date(cert.validTo).getTime()) {
       throw new BadRequestException('Certificate is expired');
     }
-    if (now < cert.validity.notBefore) {
+    if (now < new Date(cert.validFrom).getTime()) {
       throw new BadRequestException('Certificate is not yet valid');
     }
 
     const sans = this.dnsSans(cert);
-    this.assertSansCover(sans, validatedDomain);
-    return { sans };
+    const wildcardCovered = this.checkSansCover(sans, validatedDomain, servingMode);
+    return { sans, wildcardCovered };
   }
 
   /**
-   * GeneralName type 2 is dNSName (RFC 5280). Other SAN types (e.g. type 7,
-   * iPAddress) share the same `.value`/`.ip` shape in node-forge and must
-   * never be treated as a DNS name a hostname check can match against.
+   * X509Certificate.subjectAltName is a comma-separated string like
+   * "DNS:example.com, DNS:*.example.com, IP Address:1.2.3.4" — only DNS
+   * entries are hostnames a policy check may match against.
    */
-  private dnsSans(cert: forge.pki.Certificate): string[] {
-    const sanExt = cert.getExtension('subjectAltName') as
-      | { altNames?: { type: number; value: string }[] }
-      | undefined;
-    return (sanExt?.altNames || []).filter((a) => a.type === 2).map((a) => a.value);
+  private dnsSans(cert: X509Certificate): string[] {
+    return (cert.subjectAltName ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.startsWith('DNS:'))
+      .map((s) => s.slice(4));
   }
 
   /**
-   * DNS is case-insensitive and cert SANs are commonly issued in mixed case,
-   * so compare against the lowercased, validated domain. Requires BOTH the
-   * apex and the wildcard (admin/www/preview subdomains all ride on it).
+   * SAN policy (spec §4): apex always hard-required. The wildcard is
+   * hard-required only on the Cloudflare path (Origin Certs include it for
+   * free and the wizard copy demands it); on proxy/none paths a missing
+   * wildcard degrades preview subdomains, which the UI explains — so it is
+   * reported, not enforced. Returns whether the wildcard is covered.
    */
-  private assertSansCover(sans: string[], validatedDomain: string): void {
+  private checkSansCover(sans: string[], validatedDomain: string, servingMode: ProxyMode): boolean {
     const lowerSans = sans.map((s) => s.toLowerCase());
     if (!lowerSans.includes(validatedDomain)) {
       throw new BadRequestException(`Certificate does not cover ${validatedDomain}`);
     }
-    if (!lowerSans.includes(`*.${validatedDomain}`)) {
+    const wildcardCovered = lowerSans.includes(`*.${validatedDomain}`);
+    if (!wildcardCovered && servingMode === 'cloudflare') {
       throw new BadRequestException(
-        `Certificate does not cover the wildcard *.${validatedDomain} (needed for admin/www/preview subdomains)`,
+        `Certificate does not cover the wildcard *.${validatedDomain} — include it when creating the Origin Certificate`,
       );
     }
+    return wildcardCovered;
   }
 
   /**
    * Re-validates that the staged generic cert (`fullchain.pem` — the file
-   * nginx's apex/www/admin vhosts serve) actually covers `domain`.
+   * nginx's apex/www/admin vhosts serve) actually covers `domain`, under the
+   * same path-aware SAN policy as validateCertificatePair.
    * certificatesPresent alone can't catch the change-of-mind sequence
    * "upload certs for A, upload certs for B, apply A": the domain-suffixed
    * wildcard.A.* files still exist from the first upload, but
@@ -234,18 +237,17 @@ export class BootstrapSetupService {
    * (so the file is known to exist); any read/parse failure throws rather
    * than passes.
    */
-  assertStagedCertificateCovers(domain: string): void {
+  assertStagedCertificateCovers(domain: string, servingMode: ProxyMode): void {
     const validatedDomain = this.assertValidDomain(domain);
-    let cert: forge.pki.Certificate;
+    let cert: X509Certificate;
     try {
-      const pem = fs.readFileSync(path.join(this.sslDir(), 'fullchain.pem'), 'utf8');
-      cert = forge.pki.certificateFromPem(pem);
+      cert = new X509Certificate(fs.readFileSync(path.join(this.sslDir(), 'fullchain.pem')));
     } catch {
       throw new BadRequestException(
         'Installed certificate could not be read — re-install the certificate for this domain',
       );
     }
-    this.assertSansCover(this.dnsSans(cert), validatedDomain);
+    this.checkSansCover(this.dnsSans(cert), validatedDomain, servingMode);
   }
 
   /**

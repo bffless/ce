@@ -6,7 +6,9 @@ describe('BootstrapSetupController', () => {
   const svc = {
     assertBootstrapAllowed: jest.fn(),
     validateClaimToken: jest.fn(),
-    validateCertificatePair: jest.fn().mockReturnValue({ sans: ['example.com', '*.example.com'] }),
+    validateCertificatePair: jest
+      .fn()
+      .mockReturnValue({ sans: ['example.com', '*.example.com'], wildcardCovered: true }),
     saveCertificates: jest.fn(),
     certificatesPresent: jest.fn().mockReturnValue(true),
     assertStagedCertificateCovers: jest.fn(),
@@ -30,7 +32,10 @@ describe('BootstrapSetupController', () => {
     jest.clearAllMocks();
     svc.assertBootstrapAllowed.mockResolvedValue(undefined);
     svc.validateClaimToken.mockReturnValue(undefined);
-    svc.validateCertificatePair.mockReturnValue({ sans: ['example.com', '*.example.com'] });
+    svc.validateCertificatePair.mockReturnValue({
+      sans: ['example.com', '*.example.com'],
+      wildcardCovered: true,
+    });
     svc.certificatesPresent.mockReturnValue(true);
     svc.assertStagedCertificateCovers.mockReturnValue(undefined);
     svc.validateDomain.mockImplementation((d: string) => d.toLowerCase());
@@ -45,11 +50,12 @@ describe('BootstrapSetupController', () => {
         domain: 'example.com',
         certificatePem: 'CERT',
         privateKeyPem: 'KEY',
+        servingMode: 'cloudflare',
       });
       expect(svc.assertBootstrapAllowed).toHaveBeenCalled();
-      expect(svc.validateCertificatePair).toHaveBeenCalledWith('CERT', 'KEY', 'example.com');
+      expect(svc.validateCertificatePair).toHaveBeenCalledWith('CERT', 'KEY', 'example.com', 'cloudflare');
       expect(svc.saveCertificates).toHaveBeenCalledWith('CERT', 'KEY', 'example.com');
-      expect(res).toEqual({ saved: true, sans: ['example.com', '*.example.com'] });
+      expect(res).toEqual({ saved: true, sans: ['example.com', '*.example.com'], wildcardCovered: true });
     });
 
     it('validates the claim token (after the mode gate, before any cert work)', async () => {
@@ -57,6 +63,7 @@ describe('BootstrapSetupController', () => {
         domain: 'example.com',
         certificatePem: 'CERT',
         privateKeyPem: 'KEY',
+        servingMode: 'cloudflare',
         token: 'claim-123',
       });
       expect(svc.validateClaimToken).toHaveBeenCalledWith('claim-123');
@@ -74,6 +81,7 @@ describe('BootstrapSetupController', () => {
           domain: 'example.com',
           certificatePem: 'CERT',
           privateKeyPem: 'KEY',
+          servingMode: 'cloudflare',
           token: 'wrong',
         }),
       ).rejects.toThrow('Invalid onboarding token');
@@ -94,6 +102,7 @@ describe('BootstrapSetupController', () => {
           domain: 'example.com',
           certificatePem: 'CERT',
           privateKeyPem: 'KEY',
+          servingMode: 'cloudflare',
         }),
       ).rejects.toThrow('Bootstrap setup is disabled');
       expect(svc.validateCertificatePair).not.toHaveBeenCalled();
@@ -108,7 +117,7 @@ describe('BootstrapSetupController', () => {
         .mockImplementation(() => undefined);
       const res = await controller.apply({ domain: 'example.com', proxyMode: 'cloudflare', sslMode: 'paste' });
       expect(svc.assertBootstrapAllowed).toHaveBeenCalled();
-      expect(svc.assertStagedCertificateCovers).toHaveBeenCalledWith('example.com');
+      expect(svc.assertStagedCertificateCovers).toHaveBeenCalledWith('example.com', 'cloudflare');
       expect(writeSpy).toHaveBeenCalledWith(
         expect.objectContaining({ state: 'applied', primaryDomain: 'example.com', proxyMode: 'cloudflare' }),
       );

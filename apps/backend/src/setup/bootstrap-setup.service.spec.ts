@@ -1,5 +1,6 @@
 import * as forge from 'node-forge';
 import * as crypto from 'crypto';
+import { generateKeyPairSync } from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -41,48 +42,68 @@ function makeCert(domain: string, keys: forge.pki.rsa.KeyPair, opts: MakeCertOpt
 }
 
 function makeEcPair(domain: string) {
-  // Cloudflare Origin Certificates can be ECDSA (P-256). node-forge cannot
-  // parse EC certs/keys at all (verified separately) so these must be
-  // rejected via the generic parse-failure path, never falsely matched.
+  // Cloudflare Origin Certificates can be ECDSA (P-256). Used below to prove
+  // a private key of a different algorithm than the certificate's public key
+  // (RSA cert + EC key) is rejected by X509Certificate#checkPrivateKey as a
+  // mismatch, not falsely treated as a match.
   const { privateKey } = crypto.generateKeyPairSync('ec', {
     namedCurve: 'prime256v1',
     publicKeyEncoding: { type: 'spki', format: 'pem' },
     privateKeyEncoding: { type: 'sec1', format: 'pem' },
   });
   const ecKeyPem = privateKey;
-
-  // Self-signed EC cert via a throwaway openssl-free approach isn't available
-  // without an external binary, so pair the EC key with a structurally valid
-  // but unrelated RSA cert PEM shape is not meaningful here — instead we only
-  // need to prove the EC *private key* alone fails to parse via forge, which
-  // is the exact code path `validateCertificatePair` depends on.
   return { ecKeyPem, domain };
 }
 
-// A real, self-signed EC (P-256 / prime256v1) certificate for `example.com`,
-// generated once via `openssl ecparam -genkey -name prime256v1 -noout` +
-// `openssl req -new -x509 ... -subj "/CN=example.com"` and embedded verbatim
-// rather than shelling out to `openssl` from the test itself, so the suite
-// has no external-binary dependency at run time. Confirmed empirically (see
-// task-5-report.md) that `forge.pki.certificateFromPem` throws
-// `Cannot read public key. OID is not RSA.` on this exact PEM — this constant
-// is what backs the "EC certificate parse path" test below.
+// Real, self-signed ECDSA (P-256 / prime256v1) fixtures for `example.com`,
+// generated once via openssl and embedded verbatim so the suite has no
+// external-binary dependency at run time:
+//
+//   openssl ecparam -genkey -name prime256v1 -noout -out ec.key
+//   openssl req -new -x509 -key ec.key -days 3650 -subj "/CN=example.com" \
+//     -addext "subjectAltName=DNS:example.com,DNS:*.example.com" -out ec.crt
+//
+//   openssl ecparam -genkey -name prime256v1 -noout -out apex.key
+//   openssl req -new -x509 -key apex.key -days 3650 -subj "/CN=example.com" \
+//     -addext "subjectAltName=DNS:example.com" -out apex.crt
+//
+// EC_CERT_PEM/EC_KEY_PEM cover apex + wildcard; APEX_ONLY_CERT_PEM/
+// APEX_ONLY_KEY_PEM cover only the apex — used to prove the wildcard SAN is
+// hard-required on the cloudflare path but merely reported elsewhere.
 const EC_CERT_PEM = `-----BEGIN CERTIFICATE-----
-MIIBgTCCASegAwIBAgIUKmhF7WR7Y3xIfRFyfW9gG45uStgwCgYIKoZIzj0EAwIw
-FjEUMBIGA1UEAwwLZXhhbXBsZS5jb20wHhcNMjYwNzIwMTQ1NTE1WhcNMjcwNzIw
-MTQ1NTE1WjAWMRQwEgYDVQQDDAtleGFtcGxlLmNvbTBZMBMGByqGSM49AgEGCCqG
-SM49AwEHA0IABDRSt788SojMy6y0IKaC3LoZUch74Vg08N0weswkM2G6B1MBGbRV
-k+VYAXCOI/D05MlrWsMxb2GrrPgP74WW3XGjUzBRMB0GA1UdDgQWBBQ3K54+IawQ
-Y0tW9wy6y+ESqL6RGDAfBgNVHSMEGDAWgBQ3K54+IawQY0tW9wy6y+ESqL6RGDAP
-BgNVHRMBAf8EBTADAQH/MAoGCCqGSM49BAMCA0gAMEUCIBd1IorONXCXDvnIcVGh
-qDrq0qvtfxGa53H/Y/08m3kIAiEAqf2J97+yZQg0A9AjPmwCAGXrGz77sdKp96tC
-KY2GHzM=
+MIIBqDCCAU6gAwIBAgIUFL7EtsweU3frcZOVi/ArXQeaecUwCgYIKoZIzj0EAwIw
+FjEUMBIGA1UEAwwLZXhhbXBsZS5jb20wHhcNMjYwNzIxMjIzODU5WhcNMzYwNzE4
+MjIzODU5WjAWMRQwEgYDVQQDDAtleGFtcGxlLmNvbTBZMBMGByqGSM49AgEGCCqG
+SM49AwEHA0IABEG/bLtYcQ/mpD8aYxF+JIyItUVXJazIgYUbEOUcp5GEmQIG4Rqu
+rEd+yxN4GPtapWsPEa0QFZ/swnu9TAzb7v+jejB4MB0GA1UdDgQWBBSE4+AGe43O
+oVU5vkKchLWKdm+ndTAfBgNVHSMEGDAWgBSE4+AGe43OoVU5vkKchLWKdm+ndTAP
+BgNVHRMBAf8EBTADAQH/MCUGA1UdEQQeMByCC2V4YW1wbGUuY29tgg0qLmV4YW1w
+bGUuY29tMAoGCCqGSM49BAMCA0gAMEUCIAolSpleR+KSijE0BgEZ871Hp1ySvcuf
+6EEX0Jm8K56SAiEAqDNp0eYmUqQ1yOTTBFrHWnY8dxnlUuoJlxFaVya3zoo=
 -----END CERTIFICATE-----`;
 
-const EC_CERT_KEY_PEM = `-----BEGIN EC PRIVATE KEY-----
-MHcCAQEEIB55hsR+S1tZfQFdmudeJk49hNIi28VrwEP0LS2lbp/3oAoGCCqGSM49
-AwEHoUQDQgAENFK3vzxKiMzLrLQgpoLcuhlRyHvhWDTw3TB6zCQzYboHUwEZtFWT
-5VgBcI4j8PTkyWtawzFvYaus+A/vhZbdcQ==
+const EC_KEY_PEM = `-----BEGIN EC PRIVATE KEY-----
+MHcCAQEEIGTNXUHJNsloG2lucbq4JY9EDXAv5VciWItfmslObPPIoAoGCCqGSM49
+AwEHoUQDQgAEQb9su1hxD+akPxpjEX4kjIi1RVclrMiBhRsQ5RynkYSZAgbhGq6s
+R37LE3gY+1qlaw8RrRAVn+zCe71MDNvu/w==
+-----END EC PRIVATE KEY-----`;
+
+const APEX_ONLY_CERT_PEM = `-----BEGIN CERTIFICATE-----
+MIIBmTCCAT+gAwIBAgIUPGdm6HzDeGIHJI0oSXoCzY4cbFcwCgYIKoZIzj0EAwIw
+FjEUMBIGA1UEAwwLZXhhbXBsZS5jb20wHhcNMjYwNzIxMjIzODU5WhcNMzYwNzE4
+MjIzODU5WjAWMRQwEgYDVQQDDAtleGFtcGxlLmNvbTBZMBMGByqGSM49AgEGCCqG
+SM49AwEHA0IABOH1D6KAwWmLGm43nPURXUyr131K8788CnAJAF/zVzYqS44MduRC
+BL8yx6PPvO4k1qvdHqW5dbdoBivXbRVtlyejazBpMB0GA1UdDgQWBBTJZ4GNqvv3
+6IIT/wHsHEUlybr3azAfBgNVHSMEGDAWgBTJZ4GNqvv36IIT/wHsHEUlybr3azAP
+BgNVHRMBAf8EBTADAQH/MBYGA1UdEQQPMA2CC2V4YW1wbGUuY29tMAoGCCqGSM49
+BAMCA0gAMEUCIQDlclkitO3/VC9s9KrtY9QxK5J0xkC4EdXsxU9MeGR0WwIgTSXz
+qEKzySvmokG9dpqwJYCLYdgSTHiR3T3O31Z2OBo=
+-----END CERTIFICATE-----`;
+
+const APEX_ONLY_KEY_PEM = `-----BEGIN EC PRIVATE KEY-----
+MHcCAQEEIIkoTrvUHs3Zh2dHNk0mEuVvMx57IPX5dtfHhp4wuM6WoAoGCCqGSM49
+AwEHoUQDQgAE4fUPooDBaYsabjec9RFdTKvXfUrzvzwKcAkAX/NXNipLjgx25EIE
+vzLHo8+87iTWq90epbl1t2gGK9dtFW2XJw==
 -----END EC PRIVATE KEY-----`;
 
 describe('BootstrapSetupService', () => {
@@ -146,101 +167,78 @@ describe('BootstrapSetupService', () => {
   describe('validateCertificatePair', () => {
     it('accepts a matching pair with apex + wildcard SANs', () => {
       const { certPem, keyPem } = makeCert('example.com', keyA);
-      const result = service.validateCertificatePair(certPem, keyPem, 'example.com');
+      const result = service.validateCertificatePair(certPem, keyPem, 'example.com', 'cloudflare');
       expect(result.sans).toEqual(expect.arrayContaining(['example.com', '*.example.com']));
+      expect(result.wildcardCovered).toBe(true);
     });
 
     it('rejects a key that does not match the cert', () => {
       const a = makeCert('example.com', keyA);
       const b = makeCert('example.com', keyB);
-      expect(() => service.validateCertificatePair(a.certPem, b.keyPem, 'example.com')).toThrow(
-        BadRequestException,
-      );
-      expect(() => service.validateCertificatePair(a.certPem, b.keyPem, 'example.com')).toThrow(
-        /does not match/i,
-      );
+      expect(() =>
+        service.validateCertificatePair(a.certPem, b.keyPem, 'example.com', 'cloudflare'),
+      ).toThrow(BadRequestException);
+      expect(() =>
+        service.validateCertificatePair(a.certPem, b.keyPem, 'example.com', 'cloudflare'),
+      ).toThrow(/does not match/i);
     });
 
-    it('rejects a cert whose SANs do not cover the wildcard', () => {
+    it('rejects a cert whose SANs do not cover the wildcard (cloudflare policy)', () => {
       const { certPem, keyPem } = makeCert('example.com', keyA, { includeWildcard: false });
-      expect(() => service.validateCertificatePair(certPem, keyPem, 'example.com')).toThrow(
-        /wildcard/i,
-      );
+      expect(() =>
+        service.validateCertificatePair(certPem, keyPem, 'example.com', 'cloudflare'),
+      ).toThrow(/wildcard/i);
     });
 
     it('rejects a cert whose SANs do not cover the apex domain', () => {
       const { certPem, keyPem } = makeCert('example.com', keyA, { includeApex: false });
-      expect(() => service.validateCertificatePair(certPem, keyPem, 'example.com')).toThrow(
-        BadRequestException,
-      );
-      expect(() => service.validateCertificatePair(certPem, keyPem, 'example.com')).toThrow(
-        /does not cover example\.com/i,
-      );
+      expect(() =>
+        service.validateCertificatePair(certPem, keyPem, 'example.com', 'cloudflare'),
+      ).toThrow(BadRequestException);
+      expect(() =>
+        service.validateCertificatePair(certPem, keyPem, 'example.com', 'cloudflare'),
+      ).toThrow(/does not cover example\.com/i);
     });
 
     it('rejects an expired cert', () => {
       const { certPem, keyPem } = makeCert('example.com', keyA, { expired: true });
-      expect(() => service.validateCertificatePair(certPem, keyPem, 'example.com')).toThrow(
-        /expired/i,
-      );
+      expect(() =>
+        service.validateCertificatePair(certPem, keyPem, 'example.com', 'cloudflare'),
+      ).toThrow(/expired/i);
     });
 
     it('rejects a not-yet-valid cert', () => {
       const { certPem, keyPem } = makeCert('example.com', keyA, { notYetValid: true });
-      expect(() => service.validateCertificatePair(certPem, keyPem, 'example.com')).toThrow(
-        /not yet valid/i,
-      );
+      expect(() =>
+        service.validateCertificatePair(certPem, keyPem, 'example.com', 'cloudflare'),
+      ).toThrow(/not yet valid/i);
     });
 
     it('rejects garbage PEM', () => {
       expect(() =>
-        service.validateCertificatePair('not a cert', 'not a key', 'example.com'),
+        service.validateCertificatePair('not a cert', 'not a key', 'example.com', 'cloudflare'),
       ).toThrow(BadRequestException);
     });
 
-    it('rejects an EC (non-RSA) private key rather than falsely matching it', () => {
-      // This is the security-critical case: if forge ever returned an object
-      // with `.n === undefined` for both an EC cert's public key AND an EC
-      // private key instead of throwing, `undefined === undefined` would
-      // falsely pass the modulus comparison. Empirically, forge throws on
-      // EC private keys (both SEC1 and PKCS8) before comparison is reached,
-      // so this must surface as a parse failure, not a match.
+    it('rejects a mismatched key of a different algorithm (RSA cert, EC key)', () => {
+      // Security-critical case: checkPrivateKey must report a mismatch
+      // (never falsely "match") when the certificate's public key and the
+      // supplied private key are different algorithms entirely.
       const { certPem } = makeCert('example.com', keyA);
       const { ecKeyPem } = makeEcPair('example.com');
       let caught: unknown;
       try {
-        service.validateCertificatePair(certPem, ecKeyPem, 'example.com');
+        service.validateCertificatePair(certPem, ecKeyPem, 'example.com', 'cloudflare');
       } catch (e) {
         caught = e;
       }
-      // Must be exactly a BadRequestException (a controlled rejection), not
-      // an unhandled TypeError from reading `.n` off an undefined key shape
-      // and not a silent pass.
       expect(caught).toBeInstanceOf(BadRequestException);
     });
 
-    it('rejects an EC certificate (not just an EC key) via the parse-failure path', () => {
-      // Covers the other half of "EC material is rejected": a full EC
-      // self-signed cert/key pair (both P-256), not only an EC private key
-      // paired with an RSA cert. `EC_CERT_PEM`/`EC_CERT_KEY_PEM` are a real
-      // cert generated with openssl (see comment above); forge is confirmed
-      // to throw `Cannot read public key. OID is not RSA.` on this exact
-      // PEM when parsing the certificate, so this must fail closed via the
-      // generic parse-failure message, not proceed to any comparison.
-      expect(() =>
-        service.validateCertificatePair(EC_CERT_PEM, EC_CERT_KEY_PEM, 'example.com'),
-      ).toThrow(BadRequestException);
-      expect(() =>
-        service.validateCertificatePair(EC_CERT_PEM, EC_CERT_KEY_PEM, 'example.com'),
-      ).toThrow(/could not parse certificate or private key/i);
-    });
-
     it('ignores non-DNS SAN entries (e.g. an IP SAN) when checking domain coverage', () => {
-      // GeneralName type 2 is dNSName; type 7 is iPAddress. Both share a
-      // similar altName object shape in node-forge, so a naive `.map(a =>
-      // a.value)` would risk treating an IP SAN as a domain-ish string.
-      // Build a cert whose SAN list mixes a DNS apex + wildcard with an IP
-      // SAN, and confirm only the DNS entries are considered.
+      // GeneralName type 2 is dNSName; type 7 is iPAddress. Both show up in
+      // X509Certificate#subjectAltName's comma-separated string, so a naive
+      // split would risk treating an IP SAN as a domain-ish string.
       const cert = forge.pki.createCertificate();
       cert.publicKey = keyA.publicKey;
       cert.serialNumber = '01';
@@ -263,7 +261,7 @@ describe('BootstrapSetupService', () => {
       const certPem = forge.pki.certificateToPem(cert);
       const keyPem = forge.pki.privateKeyToPem(keyA.privateKey);
 
-      const result = service.validateCertificatePair(certPem, keyPem, 'example.com');
+      const result = service.validateCertificatePair(certPem, keyPem, 'example.com', 'cloudflare');
       expect(result.sans).toEqual(['example.com', '*.example.com']);
       expect(result.sans).not.toContain('127.0.0.1');
     });
@@ -271,7 +269,7 @@ describe('BootstrapSetupService', () => {
     it('treats domain and SAN comparison as case-insensitive (mixed-case input domain)', () => {
       const { certPem, keyPem } = makeCert('example.com', keyA);
       // Cert SANs are lowercase but the caller passes a mixed-case domain.
-      const result = service.validateCertificatePair(certPem, keyPem, 'Example.com');
+      const result = service.validateCertificatePair(certPem, keyPem, 'Example.com', 'cloudflare');
       expect(result.sans).toEqual(expect.arrayContaining(['example.com', '*.example.com']));
     });
 
@@ -279,32 +277,62 @@ describe('BootstrapSetupService', () => {
       // Some issuers emit SAN entries in mixed/upper case. A lowercase input
       // domain must still match against upper-case SAN values.
       const { certPem, keyPem } = makeCert('EXAMPLE.COM', keyA);
-      const result = service.validateCertificatePair(certPem, keyPem, 'example.com');
+      const result = service.validateCertificatePair(certPem, keyPem, 'example.com', 'cloudflare');
       expect(result.sans).toEqual(expect.arrayContaining(['EXAMPLE.COM', '*.EXAMPLE.COM']));
     });
 
     it('rejects a domain containing path traversal segments', () => {
       const { certPem, keyPem } = makeCert('example.com', keyA);
       expect(() =>
-        service.validateCertificatePair(certPem, keyPem, '../../etc/nginx/evil'),
+        service.validateCertificatePair(certPem, keyPem, '../../etc/nginx/evil', 'cloudflare'),
       ).toThrow(BadRequestException);
       expect(() =>
-        service.validateCertificatePair(certPem, keyPem, '../../etc/nginx/evil'),
+        service.validateCertificatePair(certPem, keyPem, '../../etc/nginx/evil', 'cloudflare'),
       ).toThrow(/invalid domain/i);
     });
 
     it('rejects a domain containing a null byte', () => {
       const { certPem, keyPem } = makeCert('example.com', keyA);
       expect(() =>
-        service.validateCertificatePair(certPem, keyPem, 'example.com\0evil'),
+        service.validateCertificatePair(certPem, keyPem, 'example.com\0evil', 'cloudflare'),
       ).toThrow(/invalid domain/i);
     });
 
     it('rejects a domain containing a slash', () => {
       const { certPem, keyPem } = makeCert('example.com', keyA);
-      expect(() => service.validateCertificatePair(certPem, keyPem, 'example.com/evil')).toThrow(
-        /invalid domain/i,
-      );
+      expect(() =>
+        service.validateCertificatePair(certPem, keyPem, 'example.com/evil', 'cloudflare'),
+      ).toThrow(/invalid domain/i);
+    });
+  });
+
+  describe('validateCertificatePair (path-aware, ECDSA)', () => {
+    it('accepts an ECDSA pair covering apex + wildcard (cloudflare policy)', () => {
+      const res = service.validateCertificatePair(EC_CERT_PEM, EC_KEY_PEM, 'example.com', 'cloudflare');
+      expect(res.wildcardCovered).toBe(true);
+      expect(res.sans).toEqual(expect.arrayContaining(['example.com', '*.example.com']));
+    });
+
+    it('hard-requires the wildcard SAN only on the cloudflare path', () => {
+      expect(() =>
+        service.validateCertificatePair(APEX_ONLY_CERT_PEM, APEX_ONLY_KEY_PEM, 'example.com', 'cloudflare'),
+      ).toThrow(/wildcard/);
+      const res = service.validateCertificatePair(APEX_ONLY_CERT_PEM, APEX_ONLY_KEY_PEM, 'example.com', 'none');
+      expect(res.wildcardCovered).toBe(false);
+    });
+
+    it('always hard-requires the apex', () => {
+      expect(() =>
+        service.validateCertificatePair(EC_CERT_PEM, EC_KEY_PEM, 'other.com', 'none'),
+      ).toThrow(/does not cover other.com/);
+    });
+
+    it('rejects a mismatched key (EC cert, different EC key)', () => {
+      const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+      const otherKeyPem = privateKey.export({ type: 'pkcs8', format: 'pem' }) as string;
+      expect(() =>
+        service.validateCertificatePair(EC_CERT_PEM, otherKeyPem, 'example.com', 'none'),
+      ).toThrow(/does not match/);
     });
   });
 
@@ -485,7 +513,7 @@ describe('BootstrapSetupService', () => {
     it('passes when the staged fullchain.pem covers the domain', () => {
       const { certPem, keyPem } = makeCert('example.com', keyA);
       service.saveCertificates(certPem, keyPem, 'example.com');
-      expect(() => service.assertStagedCertificateCovers('example.com')).not.toThrow();
+      expect(() => service.assertStagedCertificateCovers('example.com', 'cloudflare')).not.toThrow();
     });
 
     it('rejects the change-of-mind sequence: upload A, upload B, apply A', () => {
@@ -501,29 +529,38 @@ describe('BootstrapSetupService', () => {
       service.saveCertificates(b.certPem, b.keyPem, 'other.com');
 
       expect(service.certificatesPresent('example.com')).toBe(true); // the trap
-      expect(() => service.assertStagedCertificateCovers('example.com')).toThrow(
+      expect(() => service.assertStagedCertificateCovers('example.com', 'cloudflare')).toThrow(
         BadRequestException,
       );
-      expect(() => service.assertStagedCertificateCovers('example.com')).toThrow(
+      expect(() => service.assertStagedCertificateCovers('example.com', 'cloudflare')).toThrow(
         /does not cover example\.com/i,
       );
       // The most recent upload's domain still applies cleanly.
-      expect(() => service.assertStagedCertificateCovers('other.com')).not.toThrow();
+      expect(() => service.assertStagedCertificateCovers('other.com', 'cloudflare')).not.toThrow();
     });
 
     it('throws (rather than passes) when fullchain.pem is missing or unparseable', () => {
-      expect(() => service.assertStagedCertificateCovers('example.com')).toThrow(
+      expect(() => service.assertStagedCertificateCovers('example.com', 'cloudflare')).toThrow(
         /could not be read/i,
       );
       fs.writeFileSync(path.join(sslDir, 'fullchain.pem'), 'not a certificate');
-      expect(() => service.assertStagedCertificateCovers('example.com')).toThrow(
+      expect(() => service.assertStagedCertificateCovers('example.com', 'cloudflare')).toThrow(
         /could not be read/i,
       );
     });
 
     it('rejects a path-traversal domain before touching the filesystem', () => {
-      expect(() => service.assertStagedCertificateCovers('../../etc/nginx/evil')).toThrow(
+      expect(() => service.assertStagedCertificateCovers('../../etc/nginx/evil', 'cloudflare')).toThrow(
         /invalid domain/i,
+      );
+    });
+
+    it('reports (rather than throws) a missing wildcard on the non-cloudflare path', () => {
+      const { certPem, keyPem } = makeCert('example.com', keyA, { includeWildcard: false });
+      service.saveCertificates(certPem, keyPem, 'example.com');
+      expect(() => service.assertStagedCertificateCovers('example.com', 'none')).not.toThrow();
+      expect(() => service.assertStagedCertificateCovers('example.com', 'cloudflare')).toThrow(
+        /wildcard/i,
       );
     });
   });
