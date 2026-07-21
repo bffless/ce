@@ -125,6 +125,18 @@ describe('BootstrapSetupService', () => {
     });
   });
 
+  describe('finalizeSetup', () => {
+    it('delegates to SetupService.finalizeBootstrapSetup', async () => {
+      const finalizeBootstrapSetup = jest.fn().mockResolvedValue(undefined);
+      const svc = new BootstrapSetupService(
+        { finalizeBootstrapSetup } as any,
+        { isEnabled: () => true } as any,
+      );
+      await svc.finalizeSetup();
+      expect(finalizeBootstrapSetup).toHaveBeenCalled();
+    });
+  });
+
   afterEach(() => {
     fs.rmSync(sslDir, { recursive: true, force: true });
     delete process.env.SSL_CERT_PATH;

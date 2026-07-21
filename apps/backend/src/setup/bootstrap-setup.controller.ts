@@ -72,6 +72,11 @@ export class BootstrapSetupController {
     // script) and echoed into the adminUrl response can never carry
     // anything other than a plausible, lowercased hostname.
     const domain = this.bootstrap.validateDomain(dto.domain);
+    // Mark setup complete BEFORE writing instance.json + exiting: apply is the
+    // bootstrap flow's terminal step, so the restarted backend should land the
+    // user at login, not back in the normal-mode wizard. Must persist before
+    // the process exit below (awaited here, exit is a deferred timer).
+    await this.bootstrap.finalizeSetup();
     writeInstanceConfig({
       version: 1,
       state: 'applied',

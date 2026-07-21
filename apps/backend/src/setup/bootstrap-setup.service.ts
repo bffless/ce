@@ -40,6 +40,15 @@ export class BootstrapSetupService {
   }
 
   /**
+   * Mark setup complete as part of apply — the bootstrap flow's terminal step.
+   * Without this the restarted backend bounces the user back into the wizard
+   * (see SetupService.finalizeBootstrapSetup).
+   */
+  async finalizeSetup(): Promise<void> {
+    await this.setupService.finalizeBootstrapSetup();
+  }
+
+  /**
    * Same resolution as `ssl-certificate.service.ts` `getSslPath()` (line ~1039):
    * `SSL_CERT_PATH` env override, else the default nginx SSL volume path.
    * Duplicated intentionally rather than importing the 1000+ line ACME service.

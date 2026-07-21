@@ -11,6 +11,7 @@ describe('BootstrapSetupController', () => {
     certificatesPresent: jest.fn().mockReturnValue(true),
     assertStagedCertificateCovers: jest.fn(),
     validateDomain: jest.fn((d: string) => d.toLowerCase()),
+    finalizeSetup: jest.fn(),
   };
   const exitFn = jest.fn();
 
@@ -22,6 +23,7 @@ describe('BootstrapSetupController', () => {
     svc.certificatesPresent.mockReturnValue(true);
     svc.assertStagedCertificateCovers.mockReturnValue(undefined);
     svc.validateDomain.mockImplementation((d: string) => d.toLowerCase());
+    svc.finalizeSetup.mockResolvedValue(undefined);
     controller = new BootstrapSetupController(svc as any);
     (controller as any).scheduleExit = exitFn; // do not actually exit in tests
   });
@@ -101,6 +103,9 @@ describe('BootstrapSetupController', () => {
       );
       expect(res).toEqual({ applying: true, adminUrl: 'https://admin.example.com' });
       expect(svc.validateClaimToken).toHaveBeenCalledWith(undefined);
+      // Setup is marked complete as part of apply, so the restarted backend
+      // lands the user at login instead of back in the wizard.
+      expect(svc.finalizeSetup).toHaveBeenCalled();
       expect(exitFn).toHaveBeenCalled();
       writeSpy.mockRestore();
     });

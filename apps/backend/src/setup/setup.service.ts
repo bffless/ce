@@ -1056,6 +1056,28 @@ export class SetupService {
   }
 
   /**
+   * Mark setup complete at the end of the web-bootstrap flow (called by the
+   * apply endpoint). The bootstrap wizard's terminal step is "apply", not the
+   * normal flow's explicit "Complete" step — without this the DB never records
+   * isSetupComplete, so after the backend restarts under its new identity the
+   * user is bounced BACK into the (now normal-mode) wizard at the Cache step to
+   * redo storage/cache/email, instead of landing at login. Idempotent and
+   * lenient (no storage prerequisite): reaching apply is itself the user's
+   * explicit "I'm done", and storage falls back to the env default when the
+   * step was skipped. Distinct from completeSetup(), which stays strict for the
+   * normal flow.
+   */
+  async finalizeBootstrapSetup(): Promise<void> {
+    const config = await this.getSystemConfig();
+    if (!config || config.isSetupComplete) return; // nothing to do / already complete
+    await db
+      .update(systemConfig)
+      .set({ isSetupComplete: true, updatedAt: new Date() })
+      .where(eq(systemConfig.id, config.id));
+    this.logger.log('[bootstrap] setup marked complete at apply');
+  }
+
+  /**
    * Get decrypted storage configuration mapped to adapter format
    */
   async getStorageConfig(): Promise<any> {
