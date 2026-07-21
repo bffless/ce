@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as Handlebars from 'handlebars';
 import { readFile, writeFile, unlink, access } from 'fs/promises';
+import { existsSync } from 'fs';
 import { join } from 'path';
 import { DomainMapping, AuthTransformConfig } from '../db/schema';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
@@ -834,6 +835,27 @@ ${spaFallback}
    */
   getNginxSitesPath(): string {
     return process.env.NGINX_SITES_PATH || '/etc/nginx/sites-enabled';
+  }
+
+  /**
+   * True in web-bootstrap mode: nginx owns SSL (CE, not Platform/external
+   * proxy) but the real certificate isn't present yet. In that state the
+   * cert-less bootstrap server block rendered by docker/nginx/render-main-conf.sh
+   * is the only 443 listener and serves every host via a self-signed cert.
+   *
+   * The dynamic configs this service writes into sites-enabled/ (welcome page,
+   * primary/domain blocks) hardcode `ssl_certificate /etc/nginx/ssl/fullchain.pem`
+   * — a file that does not exist in bootstrap mode. nginx includes
+   * sites-enabled/*.conf, so emitting one there makes nginx fail to load the
+   * cert and crash-loop on (re)start. Callers must skip those writes while this
+   * returns true.
+   */
+  isCertlessBootstrapMode(): boolean {
+    // Platform/external-proxy deployments don't have nginx terminate TLS, so a
+    // missing fullchain.pem is irrelevant there — never treat them as bootstrap.
+    if (!this.shouldNginxHandleSsl()) return false;
+    const sslDir = process.env.SSL_CERT_PATH || '/etc/nginx/ssl';
+    return !existsSync(join(sslDir, 'fullchain.pem'));
   }
 
   // =====================

@@ -152,6 +152,44 @@ server {
     expect(service).toBeDefined();
   });
 
+  describe('isCertlessBootstrapMode', () => {
+    // existsSync is imported from 'fs' (not the mocked 'fs/promises'), so spy on
+    // the real module. Under CommonJS the service calls it as fs.existsSync, so
+    // spying on the module object intercepts it.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const nodeFs = require('fs');
+    let existsSpy: jest.SpyInstance;
+    let savedPlatformMode: string | undefined;
+
+    beforeEach(() => {
+      savedPlatformMode = process.env.PLATFORM_MODE;
+      delete process.env.PLATFORM_MODE; // CE mode (nginx owns SSL) by default
+    });
+    afterEach(() => {
+      existsSpy?.mockRestore();
+      if (savedPlatformMode === undefined) delete process.env.PLATFORM_MODE;
+      else process.env.PLATFORM_MODE = savedPlatformMode;
+    });
+
+    it('is true in CE mode when fullchain.pem is absent (web-bootstrap)', () => {
+      existsSpy = jest.spyOn(nodeFs, 'existsSync').mockReturnValue(false);
+      expect(service.isCertlessBootstrapMode()).toBe(true);
+    });
+
+    it('is false when fullchain.pem exists (normal CE install)', () => {
+      existsSpy = jest.spyOn(nodeFs, 'existsSync').mockReturnValue(true);
+      expect(service.isCertlessBootstrapMode()).toBe(false);
+    });
+
+    it('is false in PLATFORM_MODE even without a cert (nginx does not own SSL there)', () => {
+      process.env.PLATFORM_MODE = 'true';
+      // Even if the cert is absent, platform pods terminate TLS at Traefik, so a
+      // missing fullchain.pem must NOT be read as bootstrap mode.
+      existsSpy = jest.spyOn(nodeFs, 'existsSync').mockReturnValue(false);
+      expect(service.isCertlessBootstrapMode()).toBe(false);
+    });
+  });
+
   describe('onModuleInit', () => {
     it('should load templates on init', async () => {
       expect(mockReadFile).toHaveBeenCalledTimes(3);
