@@ -295,12 +295,13 @@ describe('BootstrapSetupController', () => {
   });
 
   describe('LE endpoints', () => {
-    it('dns-preflight gates then delegates', async () => {
+    it('dns-preflight gates then delegates with the validated domain', async () => {
       preflight.run.mockResolvedValue({ ok: true, checks: [] });
-      const res = await controller.dnsPreflight({ domain: 'example.com', token: 't' });
+      const res = await controller.dnsPreflight({ domain: 'Example.com', token: 't' });
       expect(svc.assertBootstrapAllowed).toHaveBeenCalled();
       expect(svc.validateClaimToken).toHaveBeenCalledWith('t');
-      expect(svc.validateDomain).toHaveBeenCalledWith('example.com');
+      expect(svc.validateDomain).toHaveBeenCalledWith('Example.com');
+      expect(preflight.run).toHaveBeenCalledWith('example.com');
       expect(res.ok).toBe(true);
     });
 
@@ -312,12 +313,14 @@ describe('BootstrapSetupController', () => {
       expect(sslCert.requestPrimaryDomainCertificate).not.toHaveBeenCalled();
     });
 
-    it('issue-certificate returns SANs on success', async () => {
+    it('issue-certificate returns SANs on success, delegating with the validated domain', async () => {
       preflight.run.mockResolvedValue({ ok: true, checks: [] });
       sslCert.requestPrimaryDomainCertificate.mockResolvedValue({
         success: true, sans: ['example.com', 'www.example.com', 'admin.example.com'],
       });
-      const res = await controller.issueCertificate({ domain: 'example.com' });
+      const res = await controller.issueCertificate({ domain: 'Example.com' });
+      expect(svc.validateDomain).toHaveBeenCalledWith('Example.com');
+      expect(sslCert.requestPrimaryDomainCertificate).toHaveBeenCalledWith('example.com');
       expect(res).toEqual({ issued: true, sans: ['example.com', 'www.example.com', 'admin.example.com'] });
     });
 
@@ -327,17 +330,24 @@ describe('BootstrapSetupController', () => {
       await expect(controller.issueCertificate({ domain: 'example.com' })).rejects.toThrow(/rateLimited/);
     });
 
-    it('wildcard start/complete delegate with the validated domain', async () => {
-      svc.validateDomain.mockReturnValue('example.com');
+    it('wildcard start delegates with the validated domain', async () => {
       sslCert.startWildcardCertificateRequest.mockResolvedValue({
         domain: 'example.com', recordName: '_acme-challenge.example.com',
-        recordValue: 'v1', recordValues: ['v1', 'v2'], token: 'tok', expiresAt: new Date('2026-08-01'),
+        recordValue: 'v1', recordValues: ['v1', 'v2'], token: 'tok', expiresAt: new Date('2026-08-01T00:00:00Z'),
       });
       const start = await controller.wildcardStart({ domain: 'Example.com' });
+      expect(svc.validateDomain).toHaveBeenCalledWith('Example.com');
+      expect(sslCert.startWildcardCertificateRequest).toHaveBeenCalledWith('example.com');
       expect(start.recordName).toBe('_acme-challenge.example.com');
       expect(start.recordValues).toEqual(['v1', 'v2']);
+      expect(start.expiresAt).toBe('2026-08-01T00:00:00.000Z');
+    });
+
+    it('wildcard complete delegates with the validated domain', async () => {
       sslCert.completeWildcardCertificateRequest.mockResolvedValue({ success: true });
-      const done = await controller.wildcardComplete({ domain: 'example.com' });
+      const done = await controller.wildcardComplete({ domain: 'Example.com' });
+      expect(svc.validateDomain).toHaveBeenCalledWith('Example.com');
+      expect(sslCert.completeWildcardCertificateRequest).toHaveBeenCalledWith('example.com');
       expect(done.success).toBe(true);
     });
   });

@@ -102,7 +102,7 @@ export class BootstrapSetupController {
   }
 
   @Post('dns-preflight')
-  @ApiOperation({ summary: "Check DNS + port-80 reachability for the LE path (bootstrap mode)" })
+  @ApiOperation({ summary: 'Check DNS + port-80 reachability for the LE path (bootstrap mode)' })
   async dnsPreflight(@Body() dto: BootstrapDomainActionDto): Promise<PreflightResult> {
     await this.bootstrap.assertBootstrapAllowed();
     this.bootstrap.validateClaimToken(dto.token);
