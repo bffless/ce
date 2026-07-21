@@ -30,6 +30,8 @@ export interface ResolvedKnobs {
 // v1 files carry only proxyMode; the preset label determines the knobs. A v2
 // file may still omit a knob (apply fills them in, but readers stay defensive).
 export function deriveKnobs(cfg: InstanceConfig): ResolvedKnobs {
+  // port80 uses ?? (no null variant), while realIp checks !== undefined because
+  // explicit null is a meaningful "no realip" choice that must not be re-derived.
   const port80: Port80Mode =
     cfg.port80 ?? (cfg.proxyMode === 'cloudflare' ? 'closed' : 'redirect');
   const realIp: RealIpConfig =
@@ -46,6 +48,25 @@ export interface AppliedConfig {
   sslMode: SslMode;
   port80: Port80Mode;
   realIp: RealIpConfig;
+}
+
+// Shell-safety gate for values that ride in instance.env (source'd by sh in
+// the nginx container). Deliberately stricter than RFC 9110 tokens: $, `, ',
+// and " are legal in HTTP header names but dangerous inside a double-quoted
+// shell assignment, so they are excluded here. Callers layering semantic
+// validation (CIDR correctness etc.) do so on top of this, not instead of it.
+export const SHELL_SAFE_HEADER_RE = /^[A-Za-z0-9!#%&*+.^_|~-]+$/;
+export const SHELL_SAFE_RANGE_RE = /^[0-9A-Fa-f:./]+$/;
+
+export function assertShellSafeRealIp(header: string, ranges: string[]): void {
+  if (!SHELL_SAFE_HEADER_RE.test(header)) {
+    throw new Error(`Real-IP header contains unsafe characters: ${JSON.stringify(header)}`);
+  }
+  for (const range of ranges) {
+    if (!SHELL_SAFE_RANGE_RE.test(range)) {
+      throw new Error(`Real-IP range contains unsafe characters: ${JSON.stringify(range)}`);
+    }
+  }
 }
 
 export function bootstrapDir(): string {
@@ -88,20 +109,29 @@ export function hydrateProcessEnv(dir: string = bootstrapDir()): InstanceConfig 
 }
 
 export function writeInstanceConfig(cfg: InstanceConfig, dir: string = bootstrapDir()): void {
+  // Validate shell-safety of custom realIp before writing any files.
+  const knobs = deriveKnobs(cfg);
+  if (
+    knobs.realIp &&
+    'header' in knobs.realIp &&
+    'ranges' in knobs.realIp
+  ) {
+    assertShellSafeRealIp(knobs.realIp.header, knobs.realIp.ranges);
+  }
+
   fs.mkdirSync(dir, { recursive: true });
   const jsonTmp = path.join(dir, 'instance.json.tmp');
   fs.writeFileSync(jsonTmp, JSON.stringify(cfg, null, 2) + '\n');
   fs.renameSync(jsonTmp, path.join(dir, 'instance.json'));
 
   // Shell-sourceable sibling so the nginx render script needs no JSON parser.
-  const knobs = deriveKnobs(cfg);
   const realIpMode =
     knobs.realIp === null ? 'off' : 'preset' in knobs.realIp ? 'cloudflare' : 'custom';
   const lines = [
     `STATE=${cfg.state}`,
     cfg.primaryDomain ? `PRIMARY_DOMAIN=${cfg.primaryDomain}` : '',
     cfg.proxyMode ? `PROXY_MODE=${cfg.proxyMode}` : '',
-    cfg.sslMode ? `SSL_MODE=${cfg.sslMode}` : '',
+    `SSL_MODE=${cfg.sslMode ?? 'paste'}`,
     `PORT80=${knobs.port80}`,
     `REALIP_MODE=${realIpMode}`,
     realIpMode === 'custom' && knobs.realIp && 'header' in knobs.realIp

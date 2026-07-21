@@ -9,6 +9,9 @@ import {
   writeInstanceConfig,
   bootstrapDir,
   deriveKnobs,
+  assertShellSafeRealIp,
+  SHELL_SAFE_HEADER_RE,
+  SHELL_SAFE_RANGE_RE,
 } from './instance-config';
 
 describe('instance-config', () => {
@@ -168,6 +171,92 @@ describe('instance-config', () => {
       expect(env).toContain('PORT80=closed');
       expect(env).toContain('REALIP_MODE=cloudflare');
       expect(env).not.toContain('REALIP_HEADER');
+    });
+
+    it('always writes SSL_MODE, defaulting to paste when absent', () => {
+      writeInstanceConfig(
+        { version: 2, state: 'applied', primaryDomain: 'x.com', proxyMode: 'none' },
+        dir,
+      );
+      const env = fs.readFileSync(path.join(dir, 'instance.env'), 'utf8');
+      expect(env).toContain('SSL_MODE=paste');
+    });
+
+    it('writes REALIP_MODE=off for proxyMode=none', () => {
+      writeInstanceConfig(
+        { version: 2, state: 'applied', primaryDomain: 'x.com', proxyMode: 'none', sslMode: 'paste' },
+        dir,
+      );
+      const env = fs.readFileSync(path.join(dir, 'instance.env'), 'utf8');
+      expect(env).toContain('REALIP_MODE=off');
+      expect(env).not.toContain('REALIP_HEADER');
+      expect(env).not.toContain('REALIP_RANGES');
+    });
+
+    it('rejects custom realIp with unsafe header characters (newline)', () => {
+      const unsafe: InstanceConfig = {
+        version: 2,
+        state: 'applied',
+        primaryDomain: 'x.com',
+        proxyMode: 'proxy',
+        sslMode: 'paste',
+        realIp: { header: 'X-Forwarded-For\nset_real_ip_from 0.0.0.0/0', ranges: ['0.0.0.0/0'] },
+      };
+      expect(() => writeInstanceConfig(unsafe, dir)).toThrow(/unsafe characters/);
+      expect(fs.existsSync(path.join(dir, 'instance.json'))).toBe(false);
+      expect(fs.existsSync(path.join(dir, 'instance.env'))).toBe(false);
+    });
+
+    it('rejects custom realIp with unsafe header characters (backtick)', () => {
+      const unsafe: InstanceConfig = {
+        version: 2,
+        state: 'applied',
+        primaryDomain: 'x.com',
+        proxyMode: 'proxy',
+        sslMode: 'paste',
+        realIp: { header: 'X-`Forwarded-For', ranges: ['0.0.0.0/0'] },
+      };
+      expect(() => writeInstanceConfig(unsafe, dir)).toThrow(/unsafe characters/);
+      expect(fs.existsSync(path.join(dir, 'instance.json'))).toBe(false);
+      expect(fs.existsSync(path.join(dir, 'instance.env'))).toBe(false);
+    });
+
+    it('rejects custom realIp with unsafe range characters', () => {
+      const unsafe: InstanceConfig = {
+        version: 2,
+        state: 'applied',
+        primaryDomain: 'x.com',
+        proxyMode: 'proxy',
+        sslMode: 'paste',
+        realIp: { header: 'X-Forwarded-For', ranges: ['0.0.0.0/0; rm -rf /'] },
+      };
+      expect(() => writeInstanceConfig(unsafe, dir)).toThrow(/unsafe characters/);
+      expect(fs.existsSync(path.join(dir, 'instance.json'))).toBe(false);
+      expect(fs.existsSync(path.join(dir, 'instance.env'))).toBe(false);
+    });
+
+    it('accepts valid custom realIp', () => {
+      writeInstanceConfig(v2Custom, dir);
+      const env = fs.readFileSync(path.join(dir, 'instance.env'), 'utf8');
+      expect(env).toContain('REALIP_MODE=custom');
+      expect(env).toContain('REALIP_HEADER=X-Forwarded-For');
+      expect(env).toContain('REALIP_RANGES="151.101.0.0/16 2a04:4e40::/32"');
+    });
+
+    it('passes assertShellSafeRealIp for valid header and ranges', () => {
+      expect(() =>
+        assertShellSafeRealIp('X-Forwarded-For', ['0.0.0.0/0', '2a04:4e40::/32']),
+      ).not.toThrow();
+    });
+
+    it('fails assertShellSafeRealIp for header with dangerous char ($)', () => {
+      expect(() => assertShellSafeRealIp('X-$Forwarded', [])).toThrow(/unsafe characters/);
+    });
+
+    it('fails assertShellSafeRealIp for range with dangerous char (;)', () => {
+      expect(() => assertShellSafeRealIp('X-Forwarded-For', ['0.0.0.0/0;'])).toThrow(
+        /unsafe characters/,
+      );
     });
   });
 });
