@@ -1,3 +1,4 @@
+import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -158,7 +159,7 @@ describe('instance-config', () => {
       expect(env).toContain('SSL_MODE=paste');
       expect(env).toContain('PORT80=redirect');
       expect(env).toContain('REALIP_MODE=custom');
-      expect(env).toContain('REALIP_HEADER=X-Forwarded-For');
+      expect(env).toContain('REALIP_HEADER="X-Forwarded-For"');
       expect(env).toContain('REALIP_RANGES="151.101.0.0/16 2a04:4e40::/32"');
     });
 
@@ -239,8 +240,61 @@ describe('instance-config', () => {
       writeInstanceConfig(v2Custom, dir);
       const env = fs.readFileSync(path.join(dir, 'instance.env'), 'utf8');
       expect(env).toContain('REALIP_MODE=custom');
-      expect(env).toContain('REALIP_HEADER=X-Forwarded-For');
+      expect(env).toContain('REALIP_HEADER="X-Forwarded-For"');
       expect(env).toContain('REALIP_RANGES="151.101.0.0/16 2a04:4e40::/32"');
+    });
+
+    it('rejects custom realIp header containing "&" (shell control operator)', () => {
+      const unsafe: InstanceConfig = {
+        version: 2,
+        state: 'applied',
+        primaryDomain: 'x.com',
+        proxyMode: 'proxy',
+        sslMode: 'paste',
+        realIp: { header: 'X-Real&touch /tmp/x', ranges: ['0.0.0.0/0'] },
+      };
+      expect(() => writeInstanceConfig(unsafe, dir)).toThrow(/unsafe characters/);
+      expect(fs.existsSync(path.join(dir, 'instance.json'))).toBe(false);
+      expect(fs.existsSync(path.join(dir, 'instance.env'))).toBe(false);
+    });
+
+    it('rejects custom realIp header containing "|" (shell control operator)', () => {
+      const unsafe: InstanceConfig = {
+        version: 2,
+        state: 'applied',
+        primaryDomain: 'x.com',
+        proxyMode: 'proxy',
+        sslMode: 'paste',
+        realIp: { header: 'X-Real|touch /tmp/x', ranges: ['0.0.0.0/0'] },
+      };
+      expect(() => writeInstanceConfig(unsafe, dir)).toThrow(/unsafe characters/);
+      expect(fs.existsSync(path.join(dir, 'instance.json'))).toBe(false);
+      expect(fs.existsSync(path.join(dir, 'instance.env'))).toBe(false);
+    });
+
+    it('assertShellSafeRealIp rejects header with "&"', () => {
+      expect(() => assertShellSafeRealIp('X-Real&touch /tmp/x', [])).toThrow(
+        /unsafe characters/,
+      );
+    });
+
+    it('assertShellSafeRealIp rejects header with "|"', () => {
+      expect(() => assertShellSafeRealIp('X-Real|touch /tmp/x', [])).toThrow(
+        /unsafe characters/,
+      );
+    });
+
+    it('sources a written instance.env in a subshell and round-trips a valid REALIP_HEADER literally, with no injected side effect', () => {
+      writeInstanceConfig(v2Custom, dir);
+      const envPath = path.join(dir, 'instance.env');
+      const sideEffectMarker = path.join(dir, 'pwned');
+      const output = execFileSync(
+        'sh',
+        ['-c', `. ${envPath} >/dev/null 2>&1; printf "%s" "$REALIP_HEADER"`],
+        { encoding: 'utf8' },
+      );
+      expect(output).toBe(v2Custom.realIp && 'header' in v2Custom.realIp ? v2Custom.realIp.header : '');
+      expect(fs.existsSync(sideEffectMarker)).toBe(false);
     });
 
     it('passes assertShellSafeRealIp for valid header and ranges', () => {

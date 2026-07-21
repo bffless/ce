@@ -51,11 +51,15 @@ export interface AppliedConfig {
 }
 
 // Shell-safety gate for values that ride in instance.env (source'd by sh in
-// the nginx container). Deliberately stricter than RFC 9110 tokens: $, `, ',
-// and " are legal in HTTP header names but dangerous inside a double-quoted
-// shell assignment, so they are excluded here. Callers layering semantic
-// validation (CIDR correctness etc.) do so on top of this, not instead of it.
-export const SHELL_SAFE_HEADER_RE = /^[A-Za-z0-9!#%&*+.^_|~-]+$/;
+// the nginx container). writeInstanceConfig always double-quotes the header
+// when it writes REALIP_HEADER, but that alone isn't sufficient defense: a
+// value containing `&` or `|` would still be shell-control characters if the
+// value were ever concatenated unquoted elsewhere, so the character set
+// excludes them (and $, `, ', ", % — all legal in RFC 9110 token names but
+// dangerous in a shell context) as belt-and-suspenders on top of quoting.
+// Callers layering semantic validation (CIDR correctness etc.) do so on top
+// of this, not instead of it.
+export const SHELL_SAFE_HEADER_RE = /^[A-Za-z0-9!#*+.^_~-]+$/;
 export const SHELL_SAFE_RANGE_RE = /^[0-9A-Fa-f:./]+$/;
 
 export function assertShellSafeRealIp(header: string, ranges: string[]): void {
@@ -135,7 +139,7 @@ export function writeInstanceConfig(cfg: InstanceConfig, dir: string = bootstrap
     `PORT80=${knobs.port80}`,
     `REALIP_MODE=${realIpMode}`,
     realIpMode === 'custom' && knobs.realIp && 'header' in knobs.realIp
-      ? `REALIP_HEADER=${knobs.realIp.header}`
+      ? `REALIP_HEADER="${knobs.realIp.header}"`
       : '',
     realIpMode === 'custom' && knobs.realIp && 'ranges' in knobs.realIp
       ? `REALIP_RANGES="${knobs.realIp.ranges.join(' ')}"`

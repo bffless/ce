@@ -324,13 +324,17 @@ export class BootstrapSetupService {
    *
    * Header check deliberately reuses instance-config.ts's
    * SHELL_SAFE_HEADER_RE rather than the full RFC 9110 token charset: a token
-   * value is legally allowed to contain `$`, backtick, `'`, and `"`, but
-   * writeInstanceConfig interpolates the header verbatim into a
-   * double-quoted shell assignment in instance.env (sourced by sh in the
-   * nginx container) — so a DTO that accepted those characters would only
-   * fail later, at write time, deep inside a different layer. Validating
-   * with the stricter, shell-safe set here means a rejection always happens
-   * at the API boundary with this endpoint's own error message.
+   * value is legally allowed to contain `$`, backtick, `'`, `"`, `&`, and
+   * `|`, but writeInstanceConfig writes the header into a double-quoted
+   * shell assignment (`REALIP_HEADER="..."`) in instance.env (sourced by sh
+   * in the nginx container). Quoting alone stops most of that set, but `&`
+   * and `|` are shell control operators that can matter outside a quoted
+   * context too, so SHELL_SAFE_HEADER_RE excludes them (and the rest) as a
+   * second, independent layer — a DTO that accepted those characters would
+   * otherwise only be caught at write time, deep inside a different layer.
+   * Validating with the stricter, shell-safe set here means a rejection
+   * always happens at the API boundary with this endpoint's own error
+   * message.
    */
   validateApplyConfig(dto: ApplyBootstrapDto): AppliedConfig {
     if (dto.sslMode === 'letsencrypt') {
