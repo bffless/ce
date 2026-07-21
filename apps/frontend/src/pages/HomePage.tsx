@@ -172,7 +172,7 @@ export function HomePage() {
                 {missingWildcard ? (
                   'To enable HTTPS for your deployments, you need to configure a wildcard SSL certificate. This requires adding DNS TXT records to verify domain ownership.'
                 ) : (
-                  `Wildcard certificate expires in ${certStatus?.daysUntilExpiry} days — renew it in Settings → SSL`
+                  `Wildcard certificate expires in ${certStatus?.daysUntilExpiry} days — renew it from the SSL settings below.`
                 )}
               </p>
               <div className="flex items-center gap-3">

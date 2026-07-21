@@ -78,6 +78,7 @@ jest.mock('../db/client', () => {
 
 jest.mock('../bootstrap/instance-config');
 
+import { Logger } from '@nestjs/common';
 import { SslRenewalService } from './ssl-renewal.service';
 import { SslCertificateService } from './ssl-certificate.service';
 import { SslInfoService } from './ssl-info.service';
@@ -256,10 +257,11 @@ describe('SslRenewalService', () => {
       expect(email.sendEmail).not.toHaveBeenCalled();
     });
 
-    it('does not send the wildcard-specific reminder for a non-DNS-API failure', async () => {
+    it('does not send the wildcard-specific reminder for a non-DNS-API failure, but the generic digest still fires', async () => {
       // A generic ACME failure still goes through the ordinary
-      // sendFailureNotifications path (asserted separately below) — this
-      // test only asserts the *wildcard reminder* is DNS-API-failure-scoped.
+      // sendFailureNotifications path — this test asserts both halves: the
+      // *wildcard reminder* is DNS-API-failure-scoped (not sent), AND the
+      // failure still reaches the generic digest (not silently dropped).
       sslCert.renewWildcardCertificate.mockResolvedValue({
         success: false,
         error: 'Some other unrelated failure',
@@ -271,6 +273,32 @@ describe('SslRenewalService', () => {
       expect(email.sendEmail).not.toHaveBeenCalledWith(
         expect.objectContaining({ subject: expect.stringMatching(/wildcard/i) }),
       );
+      expect(email.sendEmail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'admin@example.com',
+          subject: expect.stringMatching(/renewal/i),
+          // baseDomain comes from process.env.PRIMARY_DOMAIN, defaulting to
+          // "localhost" when unset (as it is in this spec file).
+          text: expect.stringContaining('*.localhost'),
+        }),
+      );
+    });
+
+    it('logs an error and does not set the throttle timestamp when the reminder email send fails', async () => {
+      const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+      settingsStore['notification_email'] = 'admin@example.com';
+      email.sendEmail.mockResolvedValue({ success: false, error: 'SMTP outage' });
+
+      await service.checkAndRenewCertificates();
+
+      expect(email.sendEmail).toHaveBeenCalledWith(
+        expect.objectContaining({ subject: expect.stringMatching(/wildcard/i) }),
+      );
+      expect(settingsStore['wildcard_reminder_last_sent']).toBeUndefined();
+      // sendWildcardExpiryReminder builds its own baseDomain independently
+      // (defaults to '' rather than 'localhost' when PRIMARY_DOMAIN is
+      // unset), so just assert the message names the wildcard + the error.
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringMatching(/wildcard.*SMTP outage/is));
     });
   });
 

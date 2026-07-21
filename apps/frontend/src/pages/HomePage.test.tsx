@@ -93,7 +93,9 @@ describe('HomePage — wildcard SSL banner', () => {
 
     expect(screen.getByText('Wildcard Certificate Expiring Soon')).toBeInTheDocument();
     expect(
-      screen.getByText('Wildcard certificate expires in 12 days — renew it in Settings → SSL'),
+      screen.getByText(
+        'Wildcard certificate expires in 12 days — renew it from the SSL settings below.',
+      ),
     ).toBeInTheDocument();
   });
 

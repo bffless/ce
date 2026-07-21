@@ -82,9 +82,15 @@ export class SslRenewalService {
       // integration" failure is excluded here — it recurs every run until the
       // wildcard is manually renewed, and it already gets its own throttled
       // reminder (sendWildcardExpiryReminder) rather than piling into the
-      // generic failure digest every single day.
+      // generic failure digest every single day. The exclusion is scoped to
+      // *the wildcard result specifically* (domain starts with "*.") so a
+      // non-wildcard cert that happens to share error wording still reaches
+      // the digest, and so a wildcard failure for any other reason still
+      // reaches the digest too.
       const notifiableFailures = results.filter(
-        (r) => r.status === 'failed' && !r.error?.includes('DNS API integration'),
+        (r) =>
+          r.status === 'failed' &&
+          !(r.domain.startsWith('*.') && r.error?.includes('DNS API integration')),
       );
       if (notifiableFailures.length > 0) {
         await this.sendFailureNotifications(notifiableFailures);
@@ -404,6 +410,10 @@ export class SslRenewalService {
     });
     if (result.success) {
       await this.updateSetting('wildcard_reminder_last_sent', new Date().toISOString());
+    } else {
+      this.logger.error(
+        `Failed to send wildcard expiry reminder for *.${baseDomain}: ${result.error}`,
+      );
     }
   }
 
