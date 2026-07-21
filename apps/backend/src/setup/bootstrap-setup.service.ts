@@ -3,8 +3,11 @@ import * as forge from 'node-forge';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import { isIP } from 'net';
 import { SetupService } from './setup.service';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
+import { ApplyBootstrapDto } from './setup.dto';
+import { AppliedConfig, Port80Mode, RealIpConfig, SHELL_SAFE_HEADER_RE } from '../bootstrap/instance-config';
 
 /**
  * Plausible-hostname check for a bootstrap domain. This value is user-supplied
@@ -299,5 +302,74 @@ export class BootstrapSetupService {
       fs.existsSync(path.join(dir, `wildcard.${validatedDomain}.crt`)) &&
       fs.existsSync(path.join(dir, `wildcard.${validatedDomain}.key`))
     );
+  }
+
+  private isValidCidr(range: string): boolean {
+    const parts = range.split('/');
+    if (parts.length !== 2) return false;
+    const [addr, prefixStr] = parts;
+    const family = isIP(addr);
+    if (family === 0) return false;
+    if (!/^\d{1,3}$/.test(prefixStr)) return false;
+    const prefix = parseInt(prefixStr, 10);
+    return prefix >= 0 && prefix <= (family === 4 ? 32 : 128);
+  }
+
+  /**
+   * Combo validation + knob resolution for apply (spec §3). Every rule exists
+   * to prevent a config that "works today, dies later" from ever being
+   * written: a closed-port-80 LE install passes its first render but fails
+   * its first renewal; a realIp trust list on a direct install lets any
+   * client spoof X-Forwarded-For into rate limiting and logs.
+   *
+   * Header check deliberately reuses instance-config.ts's
+   * SHELL_SAFE_HEADER_RE rather than the full RFC 9110 token charset: a token
+   * value is legally allowed to contain `$`, backtick, `'`, and `"`, but
+   * writeInstanceConfig interpolates the header verbatim into a
+   * double-quoted shell assignment in instance.env (sourced by sh in the
+   * nginx container) — so a DTO that accepted those characters would only
+   * fail later, at write time, deep inside a different layer. Validating
+   * with the stricter, shell-safe set here means a rejection always happens
+   * at the API boundary with this endpoint's own error message.
+   */
+  validateApplyConfig(dto: ApplyBootstrapDto): AppliedConfig {
+    if (dto.sslMode === 'letsencrypt') {
+      if (dto.proxyMode !== 'none') {
+        throw new BadRequestException(
+          'Let\'s Encrypt requires direct serving (proxyMode "none") — a proxy in front should issue its own origin certificate',
+        );
+      }
+      if (dto.port80 === 'closed') {
+        throw new BadRequestException(
+          'Port 80 must stay open (redirect) with Let\'s Encrypt — renewal uses HTTP-01 challenges',
+        );
+      }
+    }
+    if (dto.port80 === 'closed' && dto.proxyMode === 'none') {
+      throw new BadRequestException('Closing port 80 requires a proxy/CDN in front');
+    }
+    if (dto.realIp) {
+      if (dto.proxyMode !== 'proxy') {
+        throw new BadRequestException('Custom real-IP trust is only valid with proxyMode "proxy"');
+      }
+      if (!SHELL_SAFE_HEADER_RE.test(dto.realIp.header)) {
+        throw new BadRequestException('Real-IP header must be a valid HTTP header name');
+      }
+      for (const range of dto.realIp.ranges) {
+        if (!this.isValidCidr(range)) {
+          throw new BadRequestException(`Invalid CIDR range: ${range}`);
+        }
+      }
+    }
+
+    const port80: Port80Mode =
+      dto.port80 ?? (dto.proxyMode === 'cloudflare' ? 'closed' : 'redirect');
+    const realIp: RealIpConfig =
+      dto.proxyMode === 'cloudflare'
+        ? { preset: 'cloudflare' }
+        : dto.proxyMode === 'proxy' && dto.realIp
+          ? { header: dto.realIp.header, ranges: dto.realIp.ranges }
+          : null;
+    return { proxyMode: dto.proxyMode, sslMode: dto.sslMode, port80, realIp };
   }
 }

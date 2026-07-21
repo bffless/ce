@@ -72,17 +72,23 @@ export class BootstrapSetupController {
     // script) and echoed into the adminUrl response can never carry
     // anything other than a plausible, lowercased hostname.
     const domain = this.bootstrap.validateDomain(dto.domain);
+    // Combo validation + knob resolution (proxyMode/sslMode/port80/realIp) —
+    // throws BadRequestException on any illegal combination before anything
+    // is written or the process is marked for restart.
+    const applied = this.bootstrap.validateApplyConfig(dto);
     // Mark setup complete BEFORE writing instance.json + exiting: apply is the
     // bootstrap flow's terminal step, so the restarted backend should land the
     // user at login, not back in the normal-mode wizard. Must persist before
     // the process exit below (awaited here, exit is a deferred timer).
     await this.bootstrap.finalizeSetup();
     writeInstanceConfig({
-      version: 1,
+      version: 2,
       state: 'applied',
       primaryDomain: domain,
-      proxyMode: dto.proxyMode,
-      sslMode: 'paste',
+      proxyMode: applied.proxyMode,
+      sslMode: applied.sslMode,
+      port80: applied.port80,
+      realIp: applied.realIp,
     });
     this.scheduleExit();
     return { applying: true, adminUrl: `https://admin.${domain}` };

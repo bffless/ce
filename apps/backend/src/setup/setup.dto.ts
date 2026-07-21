@@ -10,7 +10,11 @@ import {
   IsNumber,
   IsBoolean,
   IsIn,
+  ValidateNested,
+  IsArray,
+  ArrayNotEmpty,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export enum StorageProvider {
   LOCAL = 'local',
@@ -1038,6 +1042,19 @@ export class UploadCertificatesDto {
   token?: string;
 }
 
+export class RealIpDto {
+  @ApiProperty({ description: 'Header carrying the visitor IP (e.g. X-Forwarded-For)' })
+  @IsString()
+  @IsNotEmpty()
+  header: string;
+
+  @ApiProperty({ description: 'Trusted proxy egress ranges, CIDR notation', type: [String] })
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsString({ each: true })
+  ranges: string[];
+}
+
 export class ApplyBootstrapDto {
   @ApiProperty({ description: 'Domain to adopt as the instance primary domain' })
   @IsString()
@@ -1045,11 +1062,30 @@ export class ApplyBootstrapDto {
   domain: string;
 
   @ApiProperty({
-    description: 'How this instance sits behind a reverse proxy',
-    enum: ['cloudflare', 'none'],
+    description: 'How traffic reaches this server',
+    enum: ['cloudflare', 'proxy', 'none'],
   })
-  @IsIn(['cloudflare', 'none'])
-  proxyMode: 'cloudflare' | 'none';
+  @IsIn(['cloudflare', 'proxy', 'none'], {
+    message:
+      'proxyMode must be cloudflare, proxy, or none' +
+      " (Cloudflare Tunnel setup isn't supported in the web wizard yet)",
+  })
+  proxyMode: 'cloudflare' | 'proxy' | 'none';
+
+  @ApiProperty({ description: 'Where the certificate came from', enum: ['paste', 'letsencrypt'] })
+  @IsIn(['paste', 'letsencrypt'])
+  sslMode: 'paste' | 'letsencrypt';
+
+  @ApiProperty({ required: false, enum: ['closed', 'redirect'], description: 'Port-80 behavior; defaults from proxyMode' })
+  @IsOptional()
+  @IsIn(['closed', 'redirect'])
+  port80?: 'closed' | 'redirect';
+
+  @ApiProperty({ required: false, type: RealIpDto, description: 'Custom real-IP trust (proxy mode only)' })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => RealIpDto)
+  realIp?: RealIpDto;
 
   @ApiProperty({
     required: false,

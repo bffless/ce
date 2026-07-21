@@ -11,6 +11,17 @@ describe('BootstrapSetupController', () => {
     certificatesPresent: jest.fn().mockReturnValue(true),
     assertStagedCertificateCovers: jest.fn(),
     validateDomain: jest.fn((d: string) => d.toLowerCase()),
+    validateApplyConfig: jest.fn((dto: any) => ({
+      proxyMode: dto.proxyMode,
+      sslMode: dto.sslMode,
+      port80: dto.port80 ?? (dto.proxyMode === 'cloudflare' ? 'closed' : 'redirect'),
+      realIp:
+        dto.proxyMode === 'cloudflare'
+          ? { preset: 'cloudflare' }
+          : dto.realIp
+            ? { header: dto.realIp.header, ranges: dto.realIp.ranges }
+            : null,
+    })),
     finalizeSetup: jest.fn(),
   };
   const exitFn = jest.fn();
@@ -95,7 +106,7 @@ describe('BootstrapSetupController', () => {
       const writeSpy = jest
         .spyOn(require('../bootstrap/instance-config'), 'writeInstanceConfig')
         .mockImplementation(() => undefined);
-      const res = await controller.apply({ domain: 'example.com', proxyMode: 'cloudflare' });
+      const res = await controller.apply({ domain: 'example.com', proxyMode: 'cloudflare', sslMode: 'paste' });
       expect(svc.assertBootstrapAllowed).toHaveBeenCalled();
       expect(svc.assertStagedCertificateCovers).toHaveBeenCalledWith('example.com');
       expect(writeSpy).toHaveBeenCalledWith(
@@ -110,6 +121,35 @@ describe('BootstrapSetupController', () => {
       writeSpy.mockRestore();
     });
 
+    it('writes the v2 instance config shape (proxyMode/sslMode/port80/realIp) for a custom realIp proxy install', async () => {
+      // v2 apply: validateApplyConfig resolves the knobs, and the controller
+      // must pass all four through to writeInstanceConfig rather than the
+      // old v1 shape (version 1, proxyMode/sslMode only).
+      const writeSpy = jest
+        .spyOn(require('../bootstrap/instance-config'), 'writeInstanceConfig')
+        .mockImplementation(() => undefined);
+      const res = await controller.apply({
+        domain: 'example.com',
+        proxyMode: 'proxy',
+        sslMode: 'paste',
+        realIp: { header: 'True-Client-IP', ranges: ['151.101.0.0/16'] },
+      });
+      expect(svc.validateApplyConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ proxyMode: 'proxy', sslMode: 'paste' }),
+      );
+      expect(writeSpy).toHaveBeenCalledWith({
+        version: 2,
+        state: 'applied',
+        primaryDomain: 'example.com',
+        proxyMode: 'proxy',
+        sslMode: 'paste',
+        port80: 'redirect',
+        realIp: { header: 'True-Client-IP', ranges: ['151.101.0.0/16'] },
+      });
+      expect(res).toEqual({ applying: true, adminUrl: 'https://admin.example.com' });
+      writeSpy.mockRestore();
+    });
+
     it('rejects a bad claim token before applying or scheduling exit', async () => {
       const writeSpy = jest
         .spyOn(require('../bootstrap/instance-config'), 'writeInstanceConfig')
@@ -118,7 +158,7 @@ describe('BootstrapSetupController', () => {
         throw new BadRequestException('Invalid onboarding token');
       });
       await expect(
-        controller.apply({ domain: 'example.com', proxyMode: 'cloudflare', token: 'wrong' }),
+        controller.apply({ domain: 'example.com', proxyMode: 'cloudflare', sslMode: 'paste', token: 'wrong' }),
       ).rejects.toThrow('Invalid onboarding token');
       expect(svc.certificatesPresent).not.toHaveBeenCalled();
       expect(writeSpy).not.toHaveBeenCalled();
@@ -137,7 +177,7 @@ describe('BootstrapSetupController', () => {
       const writeSpy = jest
         .spyOn(require('../bootstrap/instance-config'), 'writeInstanceConfig')
         .mockImplementation(() => undefined);
-      const res = await controller.apply({ domain: 'Example.COM', proxyMode: 'none' });
+      const res = await controller.apply({ domain: 'Example.COM', proxyMode: 'none', sslMode: 'paste' });
       expect(svc.validateDomain).toHaveBeenCalledWith('Example.COM');
       expect(writeSpy).toHaveBeenCalledWith(expect.objectContaining({ primaryDomain: 'example.com' }));
       expect(res.adminUrl).toBe('https://admin.example.com');
@@ -152,7 +192,7 @@ describe('BootstrapSetupController', () => {
         throw new BadRequestException('Invalid domain name');
       });
       await expect(
-        controller.apply({ domain: 'example.com; rm -rf /', proxyMode: 'none' }),
+        controller.apply({ domain: 'example.com; rm -rf /', proxyMode: 'none', sslMode: 'paste' }),
       ).rejects.toThrow(BadRequestException);
       expect(writeSpy).not.toHaveBeenCalled();
       expect(exitFn).not.toHaveBeenCalled();
@@ -165,7 +205,7 @@ describe('BootstrapSetupController', () => {
         .mockImplementation(() => undefined);
       svc.certificatesPresent.mockReturnValueOnce(false);
       await expect(
-        controller.apply({ domain: 'example.com', proxyMode: 'cloudflare' }),
+        controller.apply({ domain: 'example.com', proxyMode: 'cloudflare', sslMode: 'paste' }),
       ).rejects.toThrow(BadRequestException);
       expect(writeSpy).not.toHaveBeenCalled();
       expect(exitFn).not.toHaveBeenCalled();
@@ -184,7 +224,7 @@ describe('BootstrapSetupController', () => {
         throw new BadRequestException('Certificate does not cover example.com');
       });
       await expect(
-        controller.apply({ domain: 'example.com', proxyMode: 'cloudflare' }),
+        controller.apply({ domain: 'example.com', proxyMode: 'cloudflare', sslMode: 'paste' }),
       ).rejects.toThrow(/does not cover/i);
       expect(writeSpy).not.toHaveBeenCalled();
       expect(exitFn).not.toHaveBeenCalled();
@@ -197,7 +237,7 @@ describe('BootstrapSetupController', () => {
       // without touching the filesystem at all.
       svc.assertBootstrapAllowed.mockRejectedValueOnce(new Error('Not available on platform-managed deployments'));
       await expect(
-        controller.apply({ domain: 'example.com', proxyMode: 'cloudflare' }),
+        controller.apply({ domain: 'example.com', proxyMode: 'cloudflare', sslMode: 'paste' }),
       ).rejects.toThrow('Not available on platform-managed deployments');
       expect(svc.certificatesPresent).not.toHaveBeenCalled();
       expect(svc.validateDomain).not.toHaveBeenCalled();

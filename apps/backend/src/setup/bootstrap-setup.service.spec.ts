@@ -5,6 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { BootstrapSetupService } from './bootstrap-setup.service';
+import { ApplyBootstrapDto } from './setup.dto';
 
 interface MakeCertOpts {
   includeApex?: boolean;
@@ -524,6 +525,72 @@ describe('BootstrapSetupService', () => {
       expect(() => service.assertStagedCertificateCovers('../../etc/nginx/evil')).toThrow(
         /invalid domain/i,
       );
+    });
+  });
+
+  describe('validateApplyConfig', () => {
+    const base = { domain: 'example.com', token: undefined };
+
+    it('resolves cloudflare preset defaults', () => {
+      const cfg = service.validateApplyConfig({ ...base, proxyMode: 'cloudflare', sslMode: 'paste' } as ApplyBootstrapDto);
+      expect(cfg).toEqual({
+        proxyMode: 'cloudflare', sslMode: 'paste', port80: 'closed', realIp: { preset: 'cloudflare' },
+      });
+    });
+
+    it('resolves direct + letsencrypt', () => {
+      const cfg = service.validateApplyConfig({ ...base, proxyMode: 'none', sslMode: 'letsencrypt' } as ApplyBootstrapDto);
+      expect(cfg).toEqual({ proxyMode: 'none', sslMode: 'letsencrypt', port80: 'redirect', realIp: null });
+    });
+
+    it('rejects letsencrypt behind a proxy', () => {
+      expect(() =>
+        service.validateApplyConfig({ ...base, proxyMode: 'proxy', sslMode: 'letsencrypt' } as ApplyBootstrapDto),
+      ).toThrow(BadRequestException);
+    });
+
+    it('rejects closed port 80 on a direct install', () => {
+      expect(() =>
+        service.validateApplyConfig({ ...base, proxyMode: 'none', sslMode: 'paste', port80: 'closed' } as ApplyBootstrapDto),
+      ).toThrow(BadRequestException);
+    });
+
+    it('rejects custom realIp outside proxy mode', () => {
+      expect(() =>
+        service.validateApplyConfig({
+          ...base, proxyMode: 'cloudflare', sslMode: 'paste',
+          realIp: { header: 'X-Forwarded-For', ranges: ['1.2.3.0/24'] },
+        } as ApplyBootstrapDto),
+      ).toThrow(BadRequestException);
+    });
+
+    it('accepts valid custom realIp for proxy mode (v4 + v6 CIDRs)', () => {
+      const cfg = service.validateApplyConfig({
+        ...base, proxyMode: 'proxy', sslMode: 'paste',
+        realIp: { header: 'True-Client-IP', ranges: ['151.101.0.0/16', '2a04:4e40::/32'] },
+      } as ApplyBootstrapDto);
+      expect(cfg.realIp).toEqual({ header: 'True-Client-IP', ranges: ['151.101.0.0/16', '2a04:4e40::/32'] });
+      expect(cfg.port80).toBe('redirect');
+    });
+
+    it.each([
+      ['not-a-cidr'], ['1.2.3.4'], ['1.2.3.0/33'], ['1.2.3.0/24; rm -rf /'], ['2a04:4e40::/129'],
+    ])('rejects malformed CIDR %s', (range) => {
+      expect(() =>
+        service.validateApplyConfig({
+          ...base, proxyMode: 'proxy', sslMode: 'paste',
+          realIp: { header: 'X-Forwarded-For', ranges: [range] },
+        } as ApplyBootstrapDto),
+      ).toThrow(BadRequestException);
+    });
+
+    it('rejects a header that is not an HTTP token', () => {
+      expect(() =>
+        service.validateApplyConfig({
+          ...base, proxyMode: 'proxy', sslMode: 'paste',
+          realIp: { header: 'X-Forwarded-For\nset_real_ip_from 0.0.0.0/0', ranges: ['1.2.3.0/24'] },
+        } as ApplyBootstrapDto),
+      ).toThrow(BadRequestException);
     });
   });
 });
