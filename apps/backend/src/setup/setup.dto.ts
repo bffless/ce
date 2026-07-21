@@ -1059,6 +1059,18 @@ export class RealIpDto {
   ranges: string[];
 }
 
+export class BootstrapDomainActionDto {
+  @ApiProperty({ description: 'Primary domain' })
+  @IsString()
+  @IsNotEmpty()
+  domain: string;
+
+  @ApiProperty({ required: false, description: 'Claim token (ONBOARDING_TOKEN)' })
+  @IsOptional()
+  @IsString()
+  token?: string;
+}
+
 export class ApplyBootstrapDto {
   @ApiProperty({ description: 'Domain to adopt as the instance primary domain' })
   @IsString()

@@ -1,15 +1,21 @@
 import { BadRequestException, Body, Controller, Logger, Post } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { BootstrapSetupService } from './bootstrap-setup.service';
+import { BootstrapDnsPreflightService, PreflightResult } from './bootstrap-dns-preflight.service';
+import { SslCertificateService } from '../domains/ssl-certificate.service';
 import { writeInstanceConfig } from '../bootstrap/instance-config';
-import { ApplyBootstrapDto, UploadCertificatesDto } from './setup.dto';
+import { ApplyBootstrapDto, BootstrapDomainActionDto, UploadCertificatesDto } from './setup.dto';
 
 @ApiTags('Setup')
 @Controller('api/setup')
 export class BootstrapSetupController {
   private readonly logger = new Logger(BootstrapSetupController.name);
 
-  constructor(private readonly bootstrap: BootstrapSetupService) {}
+  constructor(
+    private readonly bootstrap: BootstrapSetupService,
+    private readonly preflight: BootstrapDnsPreflightService,
+    private readonly sslCert: SslCertificateService,
+  ) {}
 
   // Overridable in tests (assigned as an own property on the instance, which
   // shadows this prototype method — see the controller spec). Exit lets
@@ -93,5 +99,69 @@ export class BootstrapSetupController {
     });
     this.scheduleExit();
     return { applying: true, adminUrl: `https://admin.${domain}` };
+  }
+
+  @Post('dns-preflight')
+  @ApiOperation({ summary: "Check DNS + port-80 reachability for the LE path (bootstrap mode)" })
+  async dnsPreflight(@Body() dto: BootstrapDomainActionDto): Promise<PreflightResult> {
+    await this.bootstrap.assertBootstrapAllowed();
+    this.bootstrap.validateClaimToken(dto.token);
+    const domain = this.bootstrap.validateDomain(dto.domain);
+    return this.preflight.run(domain);
+  }
+
+  @Post('issue-certificate')
+  @ApiOperation({ summary: "Issue the primary-domain Let's Encrypt certificate (bootstrap mode)" })
+  async issueCertificate(
+    @Body() dto: BootstrapDomainActionDto,
+  ): Promise<{ issued: true; sans: string[] }> {
+    await this.bootstrap.assertBootstrapAllowed();
+    this.bootstrap.validateClaimToken(dto.token);
+    const domain = this.bootstrap.validateDomain(dto.domain);
+    // Server-side re-check — the client's claim that preflight passed is
+    // advisory only. Cheap (one token write + three HTTP GETs) relative to
+    // burning an LE validation failure.
+    const check = await this.preflight.run(domain);
+    if (!check.ok) {
+      throw new BadRequestException(
+        'DNS preflight failed — the domain does not route to this server yet',
+      );
+    }
+    await this.sslCert.initialize();
+    const result = await this.sslCert.requestPrimaryDomainCertificate(domain);
+    if (!result.success) {
+      throw new BadRequestException(`Certificate issuance failed: ${result.error}`);
+    }
+    return { issued: true, sans: result.sans ?? [] };
+  }
+
+  @Post('wildcard/start')
+  @ApiOperation({ summary: 'Start the optional DNS-01 wildcard (bootstrap mode)' })
+  async wildcardStart(
+    @Body() dto: BootstrapDomainActionDto,
+  ): Promise<{ recordName: string; recordValues: string[]; expiresAt: string }> {
+    await this.bootstrap.assertBootstrapAllowed();
+    this.bootstrap.validateClaimToken(dto.token);
+    const domain = this.bootstrap.validateDomain(dto.domain);
+    await this.sslCert.initialize();
+    const challenge = await this.sslCert.startWildcardCertificateRequest(domain);
+    return {
+      recordName: challenge.recordName,
+      recordValues: challenge.recordValues,
+      expiresAt: challenge.expiresAt.toISOString(),
+    };
+  }
+
+  @Post('wildcard/complete')
+  @ApiOperation({ summary: 'Verify TXT records and issue the wildcard (bootstrap mode)' })
+  async wildcardComplete(
+    @Body() dto: BootstrapDomainActionDto,
+  ): Promise<{ success: boolean; error?: string }> {
+    await this.bootstrap.assertBootstrapAllowed();
+    this.bootstrap.validateClaimToken(dto.token);
+    const domain = this.bootstrap.validateDomain(dto.domain);
+    await this.sslCert.initialize();
+    const result = await this.sslCert.completeWildcardCertificateRequest(domain);
+    return { success: result.success, error: result.error };
   }
 }
