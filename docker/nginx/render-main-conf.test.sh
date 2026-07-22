@@ -95,5 +95,14 @@ run_render
 assert_contains "$ETC/sites-available/main.conf" "ssl_certificate $ETC/ssl/bootstrap-selfsigned.crt;" 'selfsigned: admin vhost uses self-signed cert'
 assert_contains "$ETC/sites-available/main.conf" 'bootstrap-selfsigned.key' 'selfsigned: self-signed key referenced'
 assert_not_contains "$ETC/sites-available/main.conf" 'fullchain.pem' 'selfsigned: no fullchain reference'
+# The render must materialize fullchain.pem/privkey.pem (copies of the
+# self-signed pair) so ANY backend-generated vhost that references the root
+# fullchain.pem path resolves instead of crash-looping nginx on a selfsigned
+# install — even though main.conf itself points at bootstrap-selfsigned.
+if [ -f "$ETC/ssl/fullchain.pem" ] && [ -f "$ETC/ssl/privkey.pem" ]; then
+    echo 'ok: selfsigned: fullchain.pem/privkey.pem materialized from the self-signed pair'
+else
+    echo 'FAIL: selfsigned: fullchain.pem/privkey.pem not materialized'; FAILURES=$((FAILURES+1))
+fi
 
 [ "$FAILURES" -eq 0 ] && echo 'ALL RENDER TESTS PASSED' || { echo "$FAILURES FAILURES"; exit 1; }

@@ -134,6 +134,15 @@ if [ "${SSL_MODE}" = "selfsigned" ]; then
         exit 1
     fi
     echo "✅ Serving the built-in self-signed certificate (a proxy terminates browser TLS)"
+    # Backend-generated vhost configs (primary-content, custom/subdomain blocks)
+    # can reference /etc/nginx/ssl/fullchain.pem directly. On a selfsigned
+    # install that file otherwise never exists, so any such config makes nginx
+    # crash-loop on load. Materialize fullchain.pem/privkey.pem as a copy of the
+    # self-signed pair so EVERY reference resolves to the cert we intend to
+    # serve — regardless of which generator emitted it. This is the robust
+    # catch-all; the per-vhost primaryCertPaths() awareness is belt-and-braces.
+    cp -f "${SSL_DIR}/bootstrap-selfsigned.crt" "${SSL_DIR}/fullchain.pem"
+    cp -f "${SSL_DIR}/bootstrap-selfsigned.key" "${SSL_DIR}/privkey.pem"
     PRIMARY_CERT="${SSL_DIR}/bootstrap-selfsigned.crt"
     PRIMARY_KEY="${SSL_DIR}/bootstrap-selfsigned.key"
     WILDCARD_CERT="${SSL_DIR}/bootstrap-selfsigned.crt"
