@@ -1088,9 +1088,9 @@ export class ApplyBootstrapDto {
   })
   proxyMode: 'cloudflare' | 'proxy' | 'none';
 
-  @ApiProperty({ description: 'Where the certificate came from', enum: ['paste', 'letsencrypt'] })
-  @IsIn(['paste', 'letsencrypt'])
-  sslMode: 'paste' | 'letsencrypt';
+  @ApiProperty({ description: 'Where the certificate came from', enum: ['paste', 'letsencrypt', 'selfsigned'] })
+  @IsIn(['paste', 'letsencrypt', 'selfsigned'])
+  sslMode: 'paste' | 'letsencrypt' | 'selfsigned';
 
   @ApiProperty({ required: false, enum: ['closed', 'redirect'], description: 'Port-80 behavior; defaults from proxyMode' })
   @IsOptional()

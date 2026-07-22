@@ -348,9 +348,13 @@ export class BootstrapSetupService {
    */
   validateApplyConfig(dto: ApplyBootstrapDto): AppliedConfig {
     if (dto.sslMode === 'letsencrypt') {
-      if (dto.proxyMode !== 'none') {
+      // LE is HTTP-01, so it needs port 80 reachable — directly (proxyMode
+      // 'none') or through a CDN that passes ACME challenges to the origin
+      // (proxyMode 'proxy', e.g. Bunny). Not on Cloudflare, which terminates
+      // TLS and expects its own Origin Certificate.
+      if (dto.proxyMode !== 'none' && dto.proxyMode !== 'proxy') {
         throw new BadRequestException(
-          'Let\'s Encrypt requires direct serving (proxyMode "none") — a proxy in front should issue its own origin certificate',
+          'Let\'s Encrypt needs direct serving or a CDN that passes ACME through — not Cloudflare (use its Origin Certificate)',
         );
       }
       if (dto.port80 === 'closed') {
@@ -358,6 +362,14 @@ export class BootstrapSetupService {
           'Port 80 must stay open (redirect) with Let\'s Encrypt — renewal uses HTTP-01 challenges',
         );
       }
+    }
+    if (dto.sslMode === 'selfsigned' && dto.proxyMode !== 'proxy') {
+      // The box keeps serving its self-signed cert; only valid behind a proxy
+      // that terminates browser TLS. A browser hitting a direct box, or
+      // Cloudflare's Origin-Cert flow, would not accept it.
+      throw new BadRequestException(
+        'Keeping the self-signed certificate is only valid behind another CDN/WAF (proxyMode "proxy")',
+      );
     }
     if (dto.port80 === 'closed' && dto.proxyMode === 'none') {
       throw new BadRequestException('Closing port 80 requires a proxy/CDN in front');

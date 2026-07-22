@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 export type ProxyMode = 'cloudflare' | 'proxy' | 'none';
-export type SslMode = 'paste' | 'letsencrypt';
+export type SslMode = 'paste' | 'letsencrypt' | 'selfsigned';
 export type Port80Mode = 'closed' | 'redirect';
 export type RealIpConfig = null | { preset: 'cloudflare' } | { header: string; ranges: string[] };
 

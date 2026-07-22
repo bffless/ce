@@ -591,9 +591,9 @@ describe('BootstrapSetupService', () => {
       expect(cfg).toEqual({ proxyMode: 'none', sslMode: 'letsencrypt', port80: 'redirect', realIp: null });
     });
 
-    it('rejects letsencrypt behind a proxy', () => {
+    it('rejects letsencrypt on cloudflare (needs its own Origin Certificate)', () => {
       expect(() =>
-        service.validateApplyConfig({ ...base, proxyMode: 'proxy', sslMode: 'letsencrypt' } as ApplyBootstrapDto),
+        service.validateApplyConfig({ ...base, proxyMode: 'cloudflare', sslMode: 'letsencrypt' } as ApplyBootstrapDto),
       ).toThrow(BadRequestException);
     });
 
@@ -639,6 +639,39 @@ describe('BootstrapSetupService', () => {
           realIp: { header: 'X-Forwarded-For\nset_real_ip_from 0.0.0.0/0', ranges: ['1.2.3.0/24'] },
         } as ApplyBootstrapDto),
       ).toThrow(BadRequestException);
+    });
+
+    it('resolves proxy + selfsigned (the default CDN case)', () => {
+      const cfg = service.validateApplyConfig({
+        domain: 'example.com', proxyMode: 'proxy', sslMode: 'selfsigned',
+      } as ApplyBootstrapDto);
+      expect(cfg).toEqual({ proxyMode: 'proxy', sslMode: 'selfsigned', port80: 'redirect', realIp: null });
+    });
+
+    it('allows letsencrypt on the proxy path (CDN ACME pass-through)', () => {
+      const cfg = service.validateApplyConfig({
+        domain: 'example.com', proxyMode: 'proxy', sslMode: 'letsencrypt',
+      } as ApplyBootstrapDto);
+      expect(cfg.sslMode).toBe('letsencrypt');
+      expect(cfg.port80).toBe('redirect');
+    });
+
+    it('rejects selfsigned on the direct path (browser would see the warning)', () => {
+      expect(() => service.validateApplyConfig({
+        domain: 'example.com', proxyMode: 'none', sslMode: 'selfsigned',
+      } as ApplyBootstrapDto)).toThrow(BadRequestException);
+    });
+
+    it('rejects selfsigned on the cloudflare path', () => {
+      expect(() => service.validateApplyConfig({
+        domain: 'example.com', proxyMode: 'cloudflare', sslMode: 'selfsigned',
+      } as ApplyBootstrapDto)).toThrow(BadRequestException);
+    });
+
+    it('rejects letsencrypt with port 80 closed even on the proxy path', () => {
+      expect(() => service.validateApplyConfig({
+        domain: 'example.com', proxyMode: 'proxy', sslMode: 'letsencrypt', port80: 'closed',
+      } as ApplyBootstrapDto)).toThrow(/Port 80 must stay open/);
     });
   });
 });
