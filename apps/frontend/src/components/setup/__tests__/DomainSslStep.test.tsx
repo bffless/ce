@@ -116,6 +116,34 @@ describe('DomainSslStep', () => {
     expect(screen.getByText(/gray cloud/i)).toBeInTheDocument();
   });
 
+  it('normalizes a pasted URL/www domain to the bare apex on blur', async () => {
+    const user = userEvent.setup();
+    renderWithStore(<DomainSslStep />);
+    await user.click(screen.getByLabelText(/cloudflare/i));
+    await user.click(screen.getByRole('button', { name: /next/i }));
+
+    const input = screen.getByLabelText(/domain/i);
+    await user.clear(input); // field pre-fills from the hostname; start clean
+    await user.type(input, 'https://www.example.com/');
+    await user.tab(); // blur
+    expect(input).toHaveValue('example.com');
+    expect(screen.getByRole('button', { name: /next/i })).toBeEnabled();
+  });
+
+  it('blocks Next and shows an error for a non-root domain', async () => {
+    const user = userEvent.setup();
+    renderWithStore(<DomainSslStep />);
+    await user.click(screen.getByLabelText(/cloudflare/i));
+    await user.click(screen.getByRole('button', { name: /next/i }));
+
+    const input = screen.getByLabelText(/domain/i);
+    await user.clear(input); // field pre-fills from the hostname; start clean
+    await user.type(input, 'notadomain');
+    expect(screen.getByRole('button', { name: /next/i })).toBeDisabled();
+    await user.tab(); // blur reveals the inline error
+    expect(screen.getByText(/root domain like example\.com/i)).toBeInTheDocument();
+  });
+
   it('LE path gates Next on a passing preflight', async () => {
     const user = userEvent.setup();
     preflightMock.mockReturnValue({

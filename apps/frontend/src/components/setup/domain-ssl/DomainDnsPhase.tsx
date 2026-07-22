@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '@/store';
 import { useDnsPreflightMutation, DnsPreflightResponse } from '@/services/setupApi';
 import { setDnsPreflightPassed } from '@/store/slices/setupSlice';
+import { normalizeDomain, domainError } from '@/lib/normalizeDomain';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -25,11 +26,18 @@ export function DomainDnsPhase({ domain, setDomain, serverIp, onBack, onNext }: 
   const [preflight, { isLoading: checking }] = useDnsPreflightMutation();
   const [result, setResult] = useState<DnsPreflightResponse | null>(null);
   const [checkError, setCheckError] = useState<string | null>(null);
+  // Show the domain-format error only after the field has been left, so it
+  // doesn't flash while the user is still mid-type (e.g. "example" before the
+  // TLD). Next stays gated on validity regardless of touched.
+  const [domainTouched, setDomainTouched] = useState(false);
+
+  const normalized = normalizeDomain(domain);
+  const domErr = domainTouched ? domainError(normalized) : null;
 
   const runCheck = async () => {
     setCheckError(null);
     try {
-      const res = await preflight({ domain: domain.trim(), token: claimToken ?? undefined }).unwrap();
+      const res = await preflight({ domain: normalized, token: claimToken ?? undefined }).unwrap();
       setResult(res);
       dispatch(setDnsPreflightPassed(res.ok));
     } catch (err: unknown) {
@@ -39,7 +47,15 @@ export function DomainDnsPhase({ domain, setDomain, serverIp, onBack, onNext }: 
   };
 
   const ipText = serverIp ?? "this server's public IP";
-  const canNext = domain.trim().length > 0 && (!isLetsEncrypt || dnsPreflightPassed);
+  const canNext =
+    normalized.length > 0 && !domainError(normalized) && (!isLetsEncrypt || dnsPreflightPassed);
+
+  // Clean the field to a bare apex the moment focus leaves it, so a pasted
+  // "https://www.example.com/" becomes "example.com" everywhere downstream.
+  const handleBlur = () => {
+    setDomainTouched(true);
+    if (normalized !== domain) setDomain(normalized);
+  };
 
   return (
     <div className="space-y-6">
@@ -49,9 +65,7 @@ export function DomainDnsPhase({ domain, setDomain, serverIp, onBack, onNext }: 
           <p className="mt-2 text-sm text-muted-foreground">
             In Cloudflare DNS, create two <strong>A records</strong> — <code className="bg-muted px-1 rounded">@</code> and{' '}
             <code className="bg-muted px-1 rounded">*</code> — pointing at <code className="bg-muted px-1 rounded">{ipText}</code>,
-            both set to <strong>Proxied</strong> (orange cloud). Set the zone&apos;s SSL/TLS mode to{' '}
-            <strong>Full (strict)</strong> — the Origin Certificate you paste next is issued by Cloudflare, so
-            strict validation works right away.
+            both set to <strong>Proxied</strong> (orange cloud).
           </p>
         )}
         {servingMode === 'proxy' && (
@@ -78,10 +92,13 @@ export function DomainDnsPhase({ domain, setDomain, serverIp, onBack, onNext }: 
           id="bootstrap-domain"
           value={domain}
           onChange={(e) => { setDomain(e.target.value); setResult(null); dispatch(setDnsPreflightPassed(false)); }}
+          onBlur={handleBlur}
           placeholder="example.com"
           className="mt-1"
           autoComplete="off"
+          aria-invalid={domErr ? true : undefined}
         />
+        {domErr && <p className="mt-1 text-sm text-destructive">{domErr}</p>}
       </div>
 
       {isLetsEncrypt && (
@@ -110,7 +127,7 @@ export function DomainDnsPhase({ domain, setDomain, serverIp, onBack, onNext }: 
               DNS changes can take a few minutes to propagate — check again shortly.
             </p>
           )}
-          <Button variant="outline" size="sm" onClick={runCheck} disabled={checking || !domain.trim()}>
+          <Button variant="outline" size="sm" onClick={runCheck} disabled={checking || !normalized || !!domainError(normalized)}>
             {checking ? (<><Loader2 className="w-4 h-4 mr-2 animate-spin" />Checking…</>) : result ? 'Check again' : 'Check DNS'}
           </Button>
         </div>
@@ -118,7 +135,18 @@ export function DomainDnsPhase({ domain, setDomain, serverIp, onBack, onNext }: 
 
       <div className="flex justify-between">
         <Button variant="outline" onClick={onBack}>Back</Button>
-        <Button onClick={onNext} disabled={!canNext}>Next</Button>
+        <Button
+          onClick={() => {
+            // Belt-and-suspenders: normalize even if the user never blurred
+            // (e.g. hit Next straight after typing), so the cert + apply steps
+            // always receive the bare apex.
+            if (normalized !== domain) setDomain(normalized);
+            onNext();
+          }}
+          disabled={!canNext}
+        >
+          Next
+        </Button>
       </div>
     </div>
   );

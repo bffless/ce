@@ -31,8 +31,9 @@ const COPY: Record<ServingMode, { title: string; certLabel: string; body: JSX.El
       <>
         Paste a <strong>Cloudflare Origin Certificate</strong> for your domain. In the Cloudflare
         dashboard: <strong>SSL/TLS → Origin Server → Create Certificate</strong>; include{' '}
-        <code className="bg-muted px-1 rounded">*.yourdomain</code> alongside the apex. Keep the
-        zone&apos;s SSL/TLS mode on <strong>Full</strong> until the wizard finishes.
+        <code className="bg-muted px-1 rounded">*.yourdomain</code> alongside the apex. Then set the
+        zone&apos;s SSL/TLS mode to <strong>Full (strict)</strong> — Cloudflare trusts this Origin
+        Certificate, so strict validation works right away.
       </>
     ),
   },
