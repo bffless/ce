@@ -268,6 +268,11 @@ describe('CertificatePhase', () => {
     await user.click(screen.getByRole('button', { name: /add a wildcard/i }));
     expect(await screen.findByText('_acme-challenge.example.com')).toBeInTheDocument();
     expect(screen.getByText('abc')).toBeInTheDocument();
+    // The record is presented as labeled Name/Value fields (not two bare lines),
+    // with the host-only form spelled out for providers that append the domain.
+    expect(screen.getByText('Name / Host')).toBeInTheDocument();
+    expect(screen.getByText('Value')).toBeInTheDocument();
+    expect(screen.getByText('_acme-challenge')).toBeInTheDocument();
   });
 
   it('LE wildcard verify completes and advances with wildcardIssued=true', async () => {

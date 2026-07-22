@@ -40,6 +40,14 @@ export function LetsEncryptForm({ domain, onBack }: Props) {
   const [wildcardRecord, setWildcardRecord] = useState<WildcardRecord | null>(null);
   const [wildcardError, setWildcardError] = useState<string | null>(null);
 
+  // The Host/Name field on most DNS UIs wants only the label before the base
+  // domain (they append the domain themselves), e.g. "_acme-challenge" rather
+  // than the full "_acme-challenge.example.com".
+  const suffix = `.${domain}`;
+  const wildcardHost = wildcardRecord?.recordName.endsWith(suffix)
+    ? wildcardRecord.recordName.slice(0, -suffix.length)
+    : (wildcardRecord?.recordName ?? '');
+
   const finish = (wildcardIssued: boolean) => {
     dispatch(setBootstrapDomain(domain));
     dispatch(setWildcardIssued(wildcardIssued));
@@ -167,11 +175,27 @@ export function LetsEncryptForm({ domain, onBack }: Props) {
               <p className="text-sm text-foreground">
                 Create this <strong>TXT</strong> record at your DNS provider:
               </p>
-              <div className="text-sm font-mono bg-muted rounded p-2 space-y-1">
-                <div>{wildcardRecord.recordName}</div>
-                {wildcardRecord.recordValues.map((v) => (
-                  <div key={v}>{v}</div>
-                ))}
+              <div className="rounded border border-border divide-y divide-border text-sm">
+                <div className="p-2 space-y-0.5">
+                  <div className="text-xs font-medium text-muted-foreground">Type</div>
+                  <div className="font-mono">TXT</div>
+                </div>
+                <div className="p-2 space-y-0.5">
+                  <div className="text-xs font-medium text-muted-foreground">Name / Host</div>
+                  <div className="font-mono break-all">{wildcardRecord.recordName}</div>
+                  <p className="text-xs text-muted-foreground">
+                    Many providers (Namecheap, GoDaddy, Cloudflare) add your domain automatically —
+                    there, enter just{' '}
+                    <code className="bg-background px-1 rounded">{wildcardHost}</code> in the Host
+                    field.
+                  </p>
+                </div>
+                <div className="p-2 space-y-0.5">
+                  <div className="text-xs font-medium text-muted-foreground">Value</div>
+                  {wildcardRecord.recordValues.map((v) => (
+                    <div key={v} className="font-mono break-all">{v}</div>
+                  ))}
+                </div>
               </div>
               {wildcardError && <p className="text-sm text-destructive">{wildcardError}</p>}
               <div className="flex gap-2">

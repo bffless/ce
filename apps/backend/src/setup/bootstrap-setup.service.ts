@@ -78,19 +78,25 @@ export class BootstrapSetupService {
    * every call site normalizes through this return value.
    */
   private assertValidDomain(domain: string): string {
+    // Trim first: a leading/trailing space is an accidental paste artifact
+    // (e.g. "example.com "), not a different domain, and rejecting it outright
+    // surfaced as an opaque 400 on issue-certificate/apply. Trimming normalizes
+    // it; the strict checks below still reject genuinely malformed input
+    // (internal whitespace fails HOSTNAME_RE, so typos aren't silently accepted).
+    const d = typeof domain === 'string' ? domain.trim() : domain;
     if (
-      typeof domain !== 'string' ||
-      domain.length === 0 ||
-      domain.length > 253 ||
-      domain.includes('/') ||
-      domain.includes('\\') ||
-      domain.includes('..') ||
-      domain.includes('\0') ||
-      !HOSTNAME_RE.test(domain)
+      typeof d !== 'string' ||
+      d.length === 0 ||
+      d.length > 253 ||
+      d.includes('/') ||
+      d.includes('\\') ||
+      d.includes('..') ||
+      d.includes('\0') ||
+      !HOSTNAME_RE.test(d)
     ) {
       throw new BadRequestException('Invalid domain name');
     }
-    return domain.toLowerCase();
+    return d.toLowerCase();
   }
 
   /**

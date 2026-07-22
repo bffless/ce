@@ -442,6 +442,17 @@ describe('BootstrapSetupService', () => {
       expect(service.validateDomain('Example.COM')).toBe('example.com');
     });
 
+    it('trims surrounding whitespace instead of rejecting it', () => {
+      // A trailing space is an accidental paste artifact ("example.com "), not a
+      // different domain — it must normalize, not 400 the issue-certificate call.
+      expect(service.validateDomain('  example.com  ')).toBe('example.com');
+      expect(service.validateDomain('example.com\n')).toBe('example.com');
+    });
+
+    it('still rejects internal whitespace (a real typo, not trimmable)', () => {
+      expect(() => service.validateDomain('exa mple.com')).toThrow(/invalid domain/i);
+    });
+
     it('rejects a domain containing path traversal segments', () => {
       expect(() => service.validateDomain('../../etc/nginx/evil')).toThrow(BadRequestException);
       expect(() => service.validateDomain('../../etc/nginx/evil')).toThrow(/invalid domain/i);
