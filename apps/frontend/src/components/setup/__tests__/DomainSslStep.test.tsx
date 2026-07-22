@@ -1,19 +1,24 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, cleanup } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import { DomainSslStep } from '../DomainSslStep';
 import { api } from '@/services/api';
-import setupReducer, { setClaimToken } from '@/store/slices/setupSlice';
+import setupReducer, { ServingMode, BootstrapSslMode, setServingMode, setBootstrapSslMode } from '@/store/slices/setupSlice';
 
-const uploadMock = vi.fn();
-const useUploadCertificatesMutationMock = vi.fn();
+// DomainDnsPhase's LE preflight path drives useDnsPreflightMutation — mocked
+// the same way ApplyStep.test.tsx / the old DomainSslStep.test.tsx mock their
+// RTK Query hooks (this codebase has no MSW harness; hooks are mocked
+// directly rather than intercepting network calls).
+const preflightMock = vi.fn();
+const useDnsPreflightMutationMock = vi.fn();
 
 vi.mock('@/services/setupApi', async (importOriginal) => {
   const mod = await importOriginal<typeof import('@/services/setupApi')>();
   return {
     ...mod,
-    useUploadCertificatesMutation: () => useUploadCertificatesMutationMock(),
+    useDnsPreflightMutation: () => useDnsPreflightMutationMock(),
   };
 });
 
@@ -27,21 +32,28 @@ function createTestStore() {
   });
 }
 
-function renderStep(claimToken?: string) {
+// Renders DomainSslStep wrapped in a fresh store, optionally preloaded past
+// phase 1 (serving choice) — via the same reducer actions ServingChoicePhase
+// itself would dispatch — so a test can start directly on the dns phase.
+// Mirrors the brief's `renderWithStore(<X/>, overrides)` helper, adapted to
+// this repo's real (non-MSW, dispatch-based) test harness.
+function renderWithStore(
+  ui: React.ReactElement,
+  wizardOverrides: Partial<{ servingMode: ServingMode | null; bootstrapSslMode: BootstrapSslMode | null }> = {}
+) {
   const store = createTestStore();
-  if (claimToken) store.dispatch(setClaimToken(claimToken));
-  render(
-    <Provider store={store}>
-      <DomainSslStep />
-    </Provider>
-  );
+  if (wizardOverrides.servingMode !== undefined && wizardOverrides.servingMode !== null) {
+    store.dispatch(setServingMode(wizardOverrides.servingMode));
+  }
+  if (wizardOverrides.bootstrapSslMode !== undefined) {
+    store.dispatch(setBootstrapSslMode(wizardOverrides.bootstrapSslMode));
+  }
+  render(<Provider store={store}>{ui}</Provider>);
   return store;
 }
 
-// window.location is shared, mutable global state. Save the real descriptor
-// once and restore it after every test so a stubbed hostname here can never
-// leak into another test file in the same run (47 files / 519 tests share a
-// worker pool).
+// window.location is shared, mutable global state (see the old
+// DomainSslStep.test.tsx / ApplyStep.test.tsx). Save + restore per test.
 const originalLocationDescriptor = Object.getOwnPropertyDescriptor(window, 'location')!;
 
 function setHostname(hostname: string) {
@@ -54,163 +66,129 @@ function setHostname(hostname: string) {
 
 afterEach(() => {
   Object.defineProperty(window, 'location', originalLocationDescriptor);
+  cleanup();
 });
 
 beforeEach(() => {
-  uploadMock.mockReset();
-  uploadMock.mockReturnValue({ unwrap: () => Promise.resolve({ saved: true, sans: [] }) });
-  useUploadCertificatesMutationMock.mockReset();
-  useUploadCertificatesMutationMock.mockReturnValue([uploadMock, { isLoading: false }]);
+  setHostname('admin.example.com');
+  preflightMock.mockReset();
+  preflightMock.mockReturnValue({
+    unwrap: () =>
+      Promise.resolve({
+        ok: true,
+        checks: [{ host: 'example.com', resolvedIps: ['203.0.113.10'], probeOk: true }],
+      }),
+  });
+  useDnsPreflightMutationMock.mockReset();
+  useDnsPreflightMutationMock.mockReturnValue([preflightMock, { isLoading: false }]);
 });
 
 describe('DomainSslStep', () => {
-  it('pre-fills domain from hostname, stripping a leading admin.', () => {
+  it('starts on the serving choice and requires a selection', () => {
+    renderWithStore(<DomainSslStep />);
+    expect(screen.getByText(/how does traffic reach this server/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /next/i })).toBeDisabled();
+  });
+
+  it('direct requires the cert sub-choice before advancing', async () => {
+    const user = userEvent.setup();
+    renderWithStore(<DomainSslStep />);
+    await user.click(screen.getByLabelText(/directly/i));
+    expect(screen.getByRole('button', { name: /next/i })).toBeDisabled();
+    await user.click(screen.getByLabelText(/let's encrypt/i));
+    expect(screen.getByRole('button', { name: /next/i })).toBeEnabled();
+  });
+
+  it('cloudflare path shows orange-cloud DNS copy on the dns phase', async () => {
+    const user = userEvent.setup();
+    renderWithStore(<DomainSslStep />);
+    await user.click(screen.getByLabelText(/cloudflare/i));
+    await user.click(screen.getByRole('button', { name: /next/i }));
+    expect(screen.getByText(/proxied/i)).toBeInTheDocument();
+  });
+
+  it('direct path shows gray-cloud DNS copy on the dns phase', async () => {
+    const user = userEvent.setup();
+    renderWithStore(<DomainSslStep />);
+    await user.click(screen.getByLabelText(/directly/i));
+    await user.click(screen.getByLabelText(/let's encrypt/i));
+    await user.click(screen.getByRole('button', { name: /next/i }));
+    expect(screen.getByText(/gray cloud/i)).toBeInTheDocument();
+  });
+
+  it('LE path gates Next on a passing preflight', async () => {
+    const user = userEvent.setup();
+    preflightMock.mockReturnValue({
+      unwrap: () =>
+        Promise.resolve({
+          ok: false,
+          checks: [
+            { host: 'example.com', resolvedIps: [], probeOk: false, error: 'Hostname does not resolve yet' },
+          ],
+        }),
+    });
+    renderWithStore(<DomainSslStep />, { servingMode: 'none', bootstrapSslMode: 'letsencrypt' });
+
+    // The helper preloads the store so the component starts on the dns phase.
+    expect(screen.getByLabelText(/domain/i)).toBeInTheDocument();
+    await user.clear(screen.getByLabelText(/domain/i));
+    await user.type(screen.getByLabelText(/domain/i), 'example.com');
+    await user.click(screen.getByRole('button', { name: /check dns/i }));
+
+    expect(await screen.findByText(/does not resolve yet/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /next/i })).toBeDisabled();
+  });
+
+  it('LE path enables Next once the preflight passes', async () => {
+    const user = userEvent.setup();
+    renderWithStore(<DomainSslStep />, { servingMode: 'none', bootstrapSslMode: 'letsencrypt' });
+
+    await user.clear(screen.getByLabelText(/domain/i));
+    await user.type(screen.getByLabelText(/domain/i), 'example.com');
+    expect(screen.getByRole('button', { name: /next/i })).toBeDisabled();
+
+    await user.click(screen.getByRole('button', { name: /check dns/i }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /next/i })).toBeEnabled());
+  });
+
+  it('paste (non-LE) direct path does not show the preflight checklist', async () => {
+    const user = userEvent.setup();
+    renderWithStore(<DomainSslStep />);
+    await user.click(screen.getByLabelText(/directly/i));
+    await user.click(screen.getByLabelText(/paste my own certificate/i));
+    await user.click(screen.getByRole('button', { name: /next/i }));
+    expect(screen.queryByRole('button', { name: /check dns/i })).not.toBeInTheDocument();
+  });
+
+  it('the dns phase Back button returns to the serving choice', async () => {
+    const user = userEvent.setup();
+    renderWithStore(<DomainSslStep />);
+    await user.click(screen.getByLabelText(/cloudflare/i));
+    await user.click(screen.getByRole('button', { name: /next/i }));
+    expect(screen.getByText(/point your domain at/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /back/i }));
+    expect(screen.getByText(/how does traffic reach this server/i)).toBeInTheDocument();
+  });
+
+  it('pre-fills domain from hostname, stripping a leading admin.', async () => {
     setHostname('admin.example.com');
-    renderStep();
+    const user = userEvent.setup();
+    renderWithStore(<DomainSslStep />);
+    await user.click(screen.getByLabelText(/cloudflare/i));
+    await user.click(screen.getByRole('button', { name: /next/i }));
     expect(screen.getByLabelText(/domain/i)).toHaveValue('example.com');
   });
 
-  it('pre-fills domain from hostname, stripping a leading www.', () => {
-    setHostname('www.example.com');
-    renderStep();
-    expect(screen.getByLabelText(/domain/i)).toHaveValue('example.com');
-  });
-
-  it('leaves domain empty when arriving via a bare IP', () => {
+  it('leaves domain empty when arriving via a bare IP, and surfaces the server IP', async () => {
     setHostname('203.0.113.10');
-    renderStep();
+    const user = userEvent.setup();
+    renderWithStore(<DomainSslStep />);
+    await user.click(screen.getByLabelText(/directly/i));
+    await user.click(screen.getByLabelText(/let's encrypt/i));
+    await user.click(screen.getByRole('button', { name: /next/i }));
     expect(screen.getByLabelText(/domain/i)).toHaveValue('');
-  });
-
-  it('leaves domain empty when arriving via localhost', () => {
-    setHostname('localhost');
-    renderStep();
-    expect(screen.getByLabelText(/domain/i)).toHaveValue('');
-  });
-
-  it('shows DNS A-record instructions, surfacing the server IP on the bare-IP path', () => {
-    setHostname('203.0.113.10');
-    renderStep();
-    // The instruction to create A records must be present (the gap this fixes).
-    expect(screen.getByText(/point your domain at this server/i)).toBeInTheDocument();
-    expect(screen.getByText(/A records/i)).toBeInTheDocument();
-    // On the bare-IP path the server's own IP is the target, so show it.
     expect(screen.getByText('203.0.113.10')).toBeInTheDocument();
-  });
-
-  it('gives generic IP wording (no bare IP shown) on the domain-first path', () => {
-    setHostname('admin.example.com');
-    renderStep();
-    expect(screen.getByText(/point your domain at this server/i)).toBeInTheDocument();
-    expect(screen.getByText(/public IP address/i)).toBeInTheDocument();
-  });
-
-  it('submits {domain, certificatePem, privateKeyPem, claim token} and advances on success', async () => {
-    setHostname('admin.example.com');
-    // Seed the claim token as the claim step would: the wizard is session-less,
-    // so cert upload carries the token as its auth (see Option C — token-gated
-    // cert/apply). Asserting it explicitly proves the store value is forwarded,
-    // not just that undefined is tolerated.
-    const store = renderStep('claim-xyz');
-
-    fireEvent.change(screen.getByLabelText(/origin certificate/i), { target: { value: 'CERT' } });
-    fireEvent.change(screen.getByLabelText(/private key/i), { target: { value: 'KEY' } });
-    fireEvent.click(screen.getByRole('button', { name: /install certificate/i }));
-
-    await waitFor(() =>
-      expect(uploadMock).toHaveBeenCalledWith({
-        domain: 'example.com',
-        certificatePem: 'CERT',
-        privateKeyPem: 'KEY',
-        token: 'claim-xyz',
-      })
-    );
-
-    await waitFor(() => {
-      expect(store.getState().setup.wizard.bootstrapDomain).toBe('example.com');
-      // Advanced from the initial (unset) position to the next step in the
-      // default stepOrder — see setupSlice.ts's initialState comment.
-      expect(store.getState().setup.wizard.currentStepId).toBe('storage');
-    });
-  });
-
-  it('trims leading/trailing whitespace from the domain before submitting', async () => {
-    setHostname('localhost'); // domain starts empty so we control it exactly
-    const store = renderStep();
-
-    fireEvent.change(screen.getByLabelText(/domain/i), { target: { value: '  example.com  ' } });
-    fireEvent.change(screen.getByLabelText(/origin certificate/i), { target: { value: 'CERT' } });
-    fireEvent.change(screen.getByLabelText(/private key/i), { target: { value: 'KEY' } });
-    fireEvent.click(screen.getByRole('button', { name: /install certificate/i }));
-
-    await waitFor(() =>
-      expect(uploadMock).toHaveBeenCalledWith({
-        domain: 'example.com',
-        certificatePem: 'CERT',
-        privateKeyPem: 'KEY',
-      })
-    );
-    expect(store.getState().setup.wizard.bootstrapDomain).toBe('example.com');
-  });
-
-  it('surfaces the backend error message and does not advance on failure', async () => {
-    setHostname('admin.example.com');
-    const message =
-      'Certificate does not cover *.example.com — recreate it in Cloudflare with both example.com and *.example.com as hostnames.';
-    uploadMock.mockReturnValue({
-      unwrap: () => Promise.reject({ data: { message } }),
-    });
-    const store = renderStep();
-
-    fireEvent.change(screen.getByLabelText(/origin certificate/i), { target: { value: 'CERT' } });
-    fireEvent.change(screen.getByLabelText(/private key/i), { target: { value: 'KEY' } });
-    fireEvent.click(screen.getByRole('button', { name: /install certificate/i }));
-
-    await waitFor(() => expect(screen.getByText(message)).toBeInTheDocument());
-
-    expect(store.getState().setup.wizard.bootstrapDomain).toBeNull();
-    expect(store.getState().setup.wizard.currentStepId).toBeNull();
-  });
-
-  it('falls back to a generic message when the backend error has none', async () => {
-    setHostname('admin.example.com');
-    uploadMock.mockReturnValue({ unwrap: () => Promise.reject({}) });
-    renderStep();
-
-    fireEvent.change(screen.getByLabelText(/origin certificate/i), { target: { value: 'CERT' } });
-    fireEvent.change(screen.getByLabelText(/private key/i), { target: { value: 'KEY' } });
-    fireEvent.click(screen.getByRole('button', { name: /install certificate/i }));
-
-    await waitFor(() =>
-      expect(screen.getByText(/certificate validation failed/i)).toBeInTheDocument()
-    );
-  });
-
-  it('disables the submit button until domain, cert, and key are all present', () => {
-    setHostname('localhost'); // domain starts empty
-    renderStep();
-
-    const submit = screen.getByRole('button', { name: /install certificate/i });
-    expect(submit).toBeDisabled();
-
-    fireEvent.change(screen.getByLabelText(/domain/i), { target: { value: 'example.com' } });
-    expect(submit).toBeDisabled();
-
-    fireEvent.change(screen.getByLabelText(/origin certificate/i), { target: { value: 'CERT' } });
-    expect(submit).toBeDisabled();
-
-    fireEvent.change(screen.getByLabelText(/private key/i), { target: { value: 'KEY' } });
-    expect(submit).not.toBeDisabled();
-  });
-
-  it('disables the submit button while the mutation is loading', () => {
-    useUploadCertificatesMutationMock.mockReturnValue([uploadMock, { isLoading: true }]);
-    setHostname('admin.example.com');
-    renderStep();
-
-    fireEvent.change(screen.getByLabelText(/origin certificate/i), { target: { value: 'CERT' } });
-    fireEvent.change(screen.getByLabelText(/private key/i), { target: { value: 'KEY' } });
-
-    expect(screen.getByRole('button', { name: /validating/i })).toBeDisabled();
   });
 });
