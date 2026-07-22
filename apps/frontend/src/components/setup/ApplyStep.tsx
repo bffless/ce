@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { RootState } from '@/store';
 import { useApplyBootstrapMutation } from '@/services/setupApi';
+import { ServingMode, BootstrapSslMode } from '@/store/slices/setupSlice';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 
@@ -13,29 +14,63 @@ import { Loader2 } from 'lucide-react';
 const POLL_INTERVAL_MS = 3000;
 const HINT_DELAY_MS = 30000;
 
+const SERVING_LABELS: Record<ServingMode, string> = {
+  cloudflare: 'Through Cloudflare',
+  proxy: 'Through another CDN or WAF',
+  none: 'Directly (A record to this server)',
+};
+
+const SSL_LABELS: Record<BootstrapSslMode, string> = {
+  paste: 'Pasted certificate',
+  letsencrypt: "Let's Encrypt (auto-renews)",
+};
+
 export function ApplyStep() {
   const domain = useSelector((s: RootState) => s.setup.wizard.bootstrapDomain);
   // Session-less wizard: apply is gated by the claim token, same as cert upload.
   const claimToken = useSelector((s: RootState) => s.setup.wizard.claimToken);
+  // The serving choice was made up front in DomainSslStep — this step only
+  // summarizes it and applies it, it no longer offers a proxyMode radio.
+  const servingMode = useSelector((s: RootState) => s.setup.wizard.servingMode);
+  const bootstrapSslMode = useSelector((s: RootState) => s.setup.wizard.bootstrapSslMode);
+  const bootstrapPort80 = useSelector((s: RootState) => s.setup.wizard.bootstrapPort80);
+  const bootstrapRealIp = useSelector((s: RootState) => s.setup.wizard.bootstrapRealIp);
+  const dnsPreflightPassed = useSelector((s: RootState) => s.setup.wizard.dnsPreflightPassed);
+  const wildcardIssued = useSelector((s: RootState) => s.setup.wizard.wildcardIssued);
+
   const [apply, { isLoading }] = useApplyBootstrapMutation();
   const [adminUrl, setAdminUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showHint, setShowHint] = useState(false);
-  // Cloudflare is the recommended default (matches DomainSslStep's Origin
-  // Certificate copy), but a direct A-record install with a non-Cloudflare
-  // cert needs 'none' — otherwise port 80 becomes `return 444` with no
-  // ACME-challenge path, permanently breaking certificate renewal.
-  const [proxyMode, setProxyMode] = useState<'cloudflare' | 'none'>('cloudflare');
+
+  const sslMode: BootstrapSslMode = bootstrapSslMode ?? 'paste';
+  const isLetsEncrypt = sslMode === 'letsencrypt';
+  // Port 80 handling, resolved the same way bootstrap-setup.service's
+  // validateApplyConfig defaults it server-side: closed for cloudflare
+  // (nothing needs it — the ACME challenge, if any, is served through the
+  // proxy), open/redirect otherwise (proxy/none both need it reachable, the
+  // latter for Let's Encrypt HTTP-01 renewal).
+  const resolvedPort80 = bootstrapPort80 ?? (servingMode === 'cloudflare' ? 'closed' : 'redirect');
+  // Visitor-IP restore: cloudflare always trusts Cloudflare's ranges (preset,
+  // no user input needed), proxy mode only restores it when a custom
+  // header/ranges were configured, and direct serving has nothing in front
+  // to restore from.
+  const realIpOn = servingMode === 'cloudflare' || (servingMode === 'proxy' && !!bootstrapRealIp);
+
   // Require an explicit "DNS is already pointed at this server" confirmation
-  // before applying. If a user applies BEFORE creating the A records, the
-  // post-apply redirect to admin.<domain> fails to resolve — and the browser
-  // caches that NXDOMAIN, so even adding the records afterwards leaves them
-  // stuck until a DNS-cache flush. Gating apply on this prevents the trap.
-  const [dnsConfirmed, setDnsConfirmed] = useState(false);
+  // before applying — UNLESS the Let's Encrypt path already proved it via
+  // the DNS preflight check earlier in the wizard, in which case asking
+  // again is redundant. If a user applies BEFORE DNS is live, the post-apply
+  // redirect to admin.<domain> fails to resolve — and the browser caches
+  // that NXDOMAIN, so even adding the records afterwards leaves them stuck
+  // until a DNS-cache flush. Gating apply on this prevents the trap.
+  const [dnsConfirmed, setDnsConfirmed] = useState(isLetsEncrypt && dnsPreflightPassed);
   // Captured at apply time so the post-apply screen's Cloudflare-specific
-  // hint reflects what was actually applied, not whatever the (now hidden)
-  // radio selection happens to be.
-  const [appliedProxyMode, setAppliedProxyMode] = useState<'cloudflare' | 'none' | null>(null);
+  // hint reflects what was actually applied, not whatever the store's
+  // servingMode happens to be by the time this renders (it shouldn't
+  // change, but this keeps the two decoupled the same way the old
+  // appliedProxyMode did).
+  const [appliedServingMode, setAppliedServingMode] = useState<ServingMode | null>(null);
   // No initial value for setInterval's return type: the project's TS
   // strictness rejects useRef<T>() with zero args as "expected 1 argument",
   // so seed it with null and widen the ref type to allow that.
@@ -74,11 +109,18 @@ export function ApplyStep() {
   }, [adminUrl]);
 
   const finish = async () => {
-    if (!domain) return;
+    if (!domain || !servingMode) return;
     setError(null);
     try {
-      const res = await apply({ domain, proxyMode, token: claimToken ?? undefined }).unwrap();
-      setAppliedProxyMode(proxyMode);
+      const res = await apply({
+        domain,
+        proxyMode: servingMode,
+        sslMode: bootstrapSslMode ?? 'paste',
+        port80: bootstrapPort80 ?? undefined,
+        realIp: bootstrapRealIp ?? undefined,
+        token: claimToken ?? undefined,
+      }).unwrap();
+      setAppliedServingMode(servingMode);
       setAdminUrl(res.adminUrl);
     } catch (err: unknown) {
       const apiError = err as { data?: { message?: string } };
@@ -108,7 +150,7 @@ export function ApplyStep() {
             the link above to continue manually.
           </p>
         )}
-        {appliedProxyMode === 'cloudflare' && (
+        {appliedServingMode === 'cloudflare' && (
           <p className="text-sm text-muted-foreground">
             Last step afterwards: set your Cloudflare zone&apos;s SSL/TLS encryption mode to{' '}
             <strong>Full (strict)</strong> — your origin now has a trusted certificate.
@@ -128,78 +170,60 @@ export function ApplyStep() {
         </p>
       </div>
 
-      <div className="space-y-3">
-        <label
-          className={`flex items-start p-4 border rounded-lg cursor-pointer transition-colors ${
-            proxyMode === 'cloudflare'
-              ? 'border-primary bg-primary/5'
-              : 'border-border hover:bg-muted/50'
-          }`}
-        >
-          <input
-            type="radio"
-            name="proxyMode"
-            value="cloudflare"
-            checked={proxyMode === 'cloudflare'}
-            onChange={() => setProxyMode('cloudflare')}
-            disabled={isLoading}
-            className="mt-1 mr-3"
-          />
-          <div className="flex-1">
-            <span className="font-medium">Cloudflare (recommended)</span>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Traffic is proxied through Cloudflare. Port 80 stays closed to direct connections
-              and nginx trusts Cloudflare&apos;s IP ranges for the visitor&apos;s real IP.
-            </p>
-          </div>
-        </label>
-
-        <label
-          className={`flex items-start p-4 border rounded-lg cursor-pointer transition-colors ${
-            proxyMode === 'none' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'
-          }`}
-        >
-          <input
-            type="radio"
-            name="proxyMode"
-            value="none"
-            checked={proxyMode === 'none'}
-            onChange={() => setProxyMode('none')}
-            disabled={isLoading}
-            className="mt-1 mr-3"
-          />
-          <div className="flex-1">
-            <span className="font-medium">Direct (no proxy)</span>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Use this if your domain points directly at this server (a plain A record, not
-              proxied through Cloudflare). Port 80 redirects to HTTPS and stays reachable for
-              certificate renewal.
-            </p>
-          </div>
-        </label>
+      <div className="space-y-2 p-4 border border-border rounded-lg bg-muted/30">
+        <p className="text-sm">
+          <span className="font-medium">Serving: </span>
+          {servingMode ? SERVING_LABELS[servingMode] : 'Not set'}
+        </p>
+        <p className="text-sm">
+          <span className="font-medium">Certificate: </span>
+          {SSL_LABELS[sslMode]}
+        </p>
+        <p className="text-sm">
+          <span className="font-medium">Port 80: </span>
+          {resolvedPort80 === 'closed' ? 'Closed' : 'Open (redirects to HTTPS)'}
+        </p>
+        <p className="text-sm">
+          <span className="font-medium">Visitor IP restore: </span>
+          {realIpOn ? 'On' : 'Off'}
+        </p>
+        {isLetsEncrypt && (
+          <p className="text-sm">
+            <span className="font-medium">Wildcard: </span>
+            {wildcardIssued ? 'issued ✓' : 'skipped (previews will warn)'}
+          </p>
+        )}
       </div>
 
-      <label className="flex items-start p-4 border border-border rounded-lg cursor-pointer hover:bg-muted/50">
-        <input
-          type="checkbox"
-          checked={dnsConfirmed}
-          onChange={(e) => setDnsConfirmed(e.target.checked)}
-          disabled={isLoading}
-          className="mt-1 mr-3"
-        />
-        <div className="flex-1">
-          <span className="font-medium">
-            I&apos;ve pointed <code className="bg-muted px-1 rounded">{domain || 'my domain'}</code>{' '}
-            at this server
+      {isLetsEncrypt && dnsPreflightPassed ? (
+        <div className="flex items-start p-4 border border-border rounded-lg">
+          <span className="font-medium text-foreground">
+            DNS was verified during the DNS check ✓
           </span>
-          <p className="mt-1 text-sm text-muted-foreground">
-            A records for <code className="bg-muted px-1 rounded">@</code> and{' '}
-            <code className="bg-muted px-1 rounded">*</code> already resolve to this server. Applying
-            before DNS is live leaves your browser stuck on a cached lookup for{' '}
-            <code className="bg-muted px-1 rounded">admin.{domain || 'yourdomain'}</code>.
-          </p>
         </div>
-      </label>
+      ) : (
+        <label className="flex items-start p-4 border border-border rounded-lg cursor-pointer hover:bg-muted/50">
+          <input
+            type="checkbox"
+            checked={dnsConfirmed}
+            onChange={(e) => setDnsConfirmed(e.target.checked)}
+            disabled={isLoading}
+            className="mt-1 mr-3"
+          />
+          <div className="flex-1">
+            <span className="font-medium">
+              I&apos;ve pointed <code className="bg-muted px-1 rounded">{domain || 'my domain'}</code>{' '}
+              at this server
+            </span>
+            <p className="mt-1 text-sm text-muted-foreground">
+              A records for <code className="bg-muted px-1 rounded">@</code> and{' '}
+              <code className="bg-muted px-1 rounded">*</code> already resolve to this server. Applying
+              before DNS is live leaves your browser stuck on a cached lookup for{' '}
+              <code className="bg-muted px-1 rounded">admin.{domain || 'yourdomain'}</code>.
+            </p>
+          </div>
+        </label>
+      )}
 
       {error && (
         <div className="flex items-center p-4 rounded-md bg-destructive/10 border border-destructive/20">
@@ -209,7 +233,7 @@ export function ApplyStep() {
 
       <Button
         className="w-full"
-        disabled={!domain || !dnsConfirmed || isLoading}
+        disabled={!domain || !servingMode || !dnsConfirmed || isLoading}
         onClick={finish}
       >
         {isLoading ? (

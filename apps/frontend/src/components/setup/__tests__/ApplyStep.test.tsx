@@ -4,7 +4,18 @@ import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import { ApplyStep } from '../ApplyStep';
 import { api } from '@/services/api';
-import setupReducer, { setBootstrapDomain, setClaimToken } from '@/store/slices/setupSlice';
+import setupReducer, {
+  setBootstrapDomain,
+  setClaimToken,
+  setServingMode,
+  setBootstrapSslMode,
+  setBootstrapPort80,
+  setBootstrapRealIp,
+  setDnsPreflightPassed,
+  setWildcardIssued,
+  ServingMode,
+  BootstrapSslMode,
+} from '@/store/slices/setupSlice';
 
 const applyMock = vi.fn();
 const useApplyBootstrapMutationMock = vi.fn();
@@ -17,7 +28,17 @@ vi.mock('@/services/setupApi', async (importOriginal) => {
   };
 });
 
-function createTestStore(bootstrapDomain: string | null = 'example.com') {
+interface StoreOverrides {
+  bootstrapDomain?: string | null;
+  servingMode?: ServingMode;
+  bootstrapSslMode?: BootstrapSslMode;
+  bootstrapPort80?: 'closed' | 'redirect';
+  bootstrapRealIp?: { header: string; ranges: string[] };
+  dnsPreflightPassed?: boolean;
+  wildcardIssued?: boolean;
+}
+
+function createTestStore(overrides: StoreOverrides = {}) {
   const store = configureStore({
     reducer: {
       [api.reducerPath]: api.reducer,
@@ -25,22 +46,40 @@ function createTestStore(bootstrapDomain: string | null = 'example.com') {
     },
     middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(api.middleware),
   });
+  const bootstrapDomain = overrides.bootstrapDomain ?? 'example.com';
   if (bootstrapDomain !== null) {
     store.dispatch(setBootstrapDomain(bootstrapDomain));
   }
   // Seed the claim token the way the claim step would: apply is token-gated
   // (session-less wizard), so ApplyStep forwards it alongside domain/proxyMode.
   store.dispatch(setClaimToken('claim-xyz'));
+
+  // setServingMode resets sslMode/port80/realIp/dnsPreflightPassed/wildcardIssued,
+  // so it must be dispatched BEFORE any of those overrides.
+  if (overrides.servingMode) {
+    store.dispatch(setServingMode(overrides.servingMode));
+  }
+  if (overrides.bootstrapSslMode) {
+    store.dispatch(setBootstrapSslMode(overrides.bootstrapSslMode));
+  }
+  if (overrides.bootstrapPort80) {
+    store.dispatch(setBootstrapPort80(overrides.bootstrapPort80));
+  }
+  if (overrides.bootstrapRealIp) {
+    store.dispatch(setBootstrapRealIp(overrides.bootstrapRealIp));
+  }
+  if (overrides.dnsPreflightPassed) {
+    store.dispatch(setDnsPreflightPassed(overrides.dnsPreflightPassed));
+  }
+  if (overrides.wildcardIssued) {
+    store.dispatch(setWildcardIssued(overrides.wildcardIssued));
+  }
   return store;
 }
 
-function renderStep(bootstrapDomain: string | null = 'example.com') {
-  const store = createTestStore(bootstrapDomain);
-  render(
-    <Provider store={store}>
-      <ApplyStep />
-    </Provider>
-  );
+function renderWithStore(ui: React.ReactElement, overrides: StoreOverrides = {}) {
+  const store = createTestStore(overrides);
+  render(<Provider store={store}>{ui}</Provider>);
   return store;
 }
 
@@ -92,18 +131,128 @@ beforeEach(() => {
 });
 
 describe('ApplyStep', () => {
-  it('applies with the stored domain and shows the switching state with the Full (strict) reminder', async () => {
-    renderStep('example.com');
+  it('shows a summary of the serving choice, no radio', () => {
+    renderWithStore(<ApplyStep />, {
+      bootstrapDomain: 'example.com',
+      servingMode: 'proxy',
+      bootstrapSslMode: 'paste',
+    });
+    expect(screen.getByText(/another cdn or waf/i)).toBeInTheDocument();
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+  });
 
-    fireEvent.click(screen.getByRole('checkbox')); // DNS-confirmed gate
+  it('LE path pre-satisfies the DNS confirmation', () => {
+    renderWithStore(<ApplyStep />, {
+      bootstrapDomain: 'example.com',
+      servingMode: 'none',
+      bootstrapSslMode: 'letsencrypt',
+      dnsPreflightPassed: true,
+    });
+    expect(screen.getByRole('button', { name: /finish setup/i })).toBeEnabled();
+    expect(screen.getByText(/verified during the dns check/i)).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+  });
+
+  it('sends the v2 apply body, including port80 and realIp', async () => {
+    renderWithStore(<ApplyStep />, {
+      bootstrapDomain: 'example.com',
+      servingMode: 'proxy',
+      bootstrapSslMode: 'paste',
+      bootstrapPort80: 'closed',
+      bootstrapRealIp: { header: 'True-Client-IP', ranges: ['1.2.3.0/24'] },
+    });
+    fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.click(screen.getByRole('button', { name: /finish setup/i }));
 
     await waitFor(() =>
-      expect(applyMock).toHaveBeenCalledWith({ domain: 'example.com', proxyMode: 'cloudflare', token: 'claim-xyz' })
+      expect(applyMock).toHaveBeenCalledWith({
+        domain: 'example.com',
+        proxyMode: 'proxy',
+        sslMode: 'paste',
+        port80: 'closed',
+        realIp: { header: 'True-Client-IP', ranges: ['1.2.3.0/24'] },
+        token: 'claim-xyz',
+      })
     );
+  });
+
+  it('sends undefined port80/realIp when not set in the store', async () => {
+    renderWithStore(<ApplyStep />, {
+      bootstrapDomain: 'example.com',
+      servingMode: 'cloudflare',
+      bootstrapSslMode: 'paste',
+    });
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: /finish setup/i }));
+
+    await waitFor(() =>
+      expect(applyMock).toHaveBeenCalledWith({
+        domain: 'example.com',
+        proxyMode: 'cloudflare',
+        sslMode: 'paste',
+        port80: undefined,
+        realIp: undefined,
+        token: 'claim-xyz',
+      })
+    );
+  });
+
+  it('keeps the Full (strict) hint cloudflare-only', async () => {
+    renderWithStore(<ApplyStep />, {
+      bootstrapDomain: 'example.com',
+      servingMode: 'none',
+      bootstrapSslMode: 'paste',
+    });
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: /finish setup/i }));
+
+    expect(await screen.findByText(/switching to/i)).toBeInTheDocument();
+    expect(screen.queryByText(/full \(strict\)/i)).not.toBeInTheDocument();
+  });
+
+  it('shows the Full (strict) hint when the applied serving mode is cloudflare', async () => {
+    renderWithStore(<ApplyStep />, {
+      bootstrapDomain: 'example.com',
+      servingMode: 'cloudflare',
+      bootstrapSslMode: 'paste',
+    });
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: /finish setup/i }));
 
     expect(await screen.findByText(/switching to/i)).toBeInTheDocument();
     expect(screen.getByText(/full \(strict\)/i)).toBeInTheDocument();
+  });
+
+  it('shows the wildcard status for Let\'s Encrypt: issued', () => {
+    renderWithStore(<ApplyStep />, {
+      bootstrapDomain: 'example.com',
+      servingMode: 'none',
+      bootstrapSslMode: 'letsencrypt',
+      dnsPreflightPassed: true,
+      wildcardIssued: true,
+    });
+    expect(screen.getByText(/wildcard/i)).toBeInTheDocument();
+    expect(screen.getByText(/issued/i)).toBeInTheDocument();
+  });
+
+  it('shows the wildcard status for Let\'s Encrypt: skipped', () => {
+    renderWithStore(<ApplyStep />, {
+      bootstrapDomain: 'example.com',
+      servingMode: 'none',
+      bootstrapSslMode: 'letsencrypt',
+      dnsPreflightPassed: true,
+      wildcardIssued: false,
+    });
+    expect(screen.getByText(/skipped/i)).toBeInTheDocument();
+  });
+
+  it('does not show wildcard status for a paste ssl mode', () => {
+    renderWithStore(<ApplyStep />, {
+      bootstrapDomain: 'example.com',
+      servingMode: 'cloudflare',
+      bootstrapSslMode: 'paste',
+    });
+    expect(screen.queryByText(/wildcard/i)).not.toBeInTheDocument();
   });
 
   it('surfaces the backend error message and does not enter the switching state', async () => {
@@ -111,9 +260,13 @@ describe('ApplyStep', () => {
     applyMock.mockReturnValue({
       unwrap: () => Promise.reject({ data: { message } }),
     });
-    renderStep('example.com');
+    renderWithStore(<ApplyStep />, {
+      bootstrapDomain: 'example.com',
+      servingMode: 'cloudflare',
+      bootstrapSslMode: 'paste',
+    });
 
-    fireEvent.click(screen.getByRole('checkbox')); // DNS-confirmed gate
+    fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.click(screen.getByRole('button', { name: /finish setup/i }));
 
     await waitFor(() => expect(screen.getByText(message)).toBeInTheDocument());
@@ -122,9 +275,13 @@ describe('ApplyStep', () => {
 
   it('falls back to a generic message when the backend error has none', async () => {
     applyMock.mockReturnValue({ unwrap: () => Promise.reject({}) });
-    renderStep('example.com');
+    renderWithStore(<ApplyStep />, {
+      bootstrapDomain: 'example.com',
+      servingMode: 'cloudflare',
+      bootstrapSslMode: 'paste',
+    });
 
-    fireEvent.click(screen.getByRole('checkbox')); // DNS-confirmed gate
+    fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.click(screen.getByRole('button', { name: /finish setup/i }));
 
     await waitFor(() => expect(screen.getByText(/apply failed/i)).toBeInTheDocument());
@@ -139,8 +296,12 @@ describe('ApplyStep', () => {
     fetchMock.mockResolvedValueOnce({ ok: true });
     vi.stubGlobal('fetch', fetchMock);
 
-    renderStep('example.com');
-    fireEvent.click(screen.getByRole('checkbox')); // DNS-confirmed gate
+    renderWithStore(<ApplyStep />, {
+      bootstrapDomain: 'example.com',
+      servingMode: 'cloudflare',
+      bootstrapSslMode: 'paste',
+    });
+    fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.click(screen.getByRole('button', { name: /finish setup/i }));
 
     await waitFor(() => expect(screen.getByText(/switching to/i)).toBeInTheDocument());
@@ -173,14 +334,18 @@ describe('ApplyStep', () => {
     const fetchMock = vi.fn().mockRejectedValue(new Error('still restarting'));
     vi.stubGlobal('fetch', fetchMock);
 
-    const store = createTestStore('example.com');
+    const store = createTestStore({
+      bootstrapDomain: 'example.com',
+      servingMode: 'cloudflare',
+      bootstrapSslMode: 'paste',
+    });
     const { unmount } = render(
       <Provider store={store}>
         <ApplyStep />
       </Provider>
     );
 
-    fireEvent.click(screen.getByRole('checkbox')); // DNS-confirmed gate
+    fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.click(screen.getByRole('button', { name: /finish setup/i }));
     await waitFor(() => expect(screen.getByText(/switching to/i)).toBeInTheDocument());
 
@@ -196,9 +361,13 @@ describe('ApplyStep', () => {
   });
 
   it('renders a clickable admin URL link in the switching state as a manual escape hatch', async () => {
-    renderStep('example.com');
+    renderWithStore(<ApplyStep />, {
+      bootstrapDomain: 'example.com',
+      servingMode: 'cloudflare',
+      bootstrapSslMode: 'paste',
+    });
 
-    fireEvent.click(screen.getByRole('checkbox')); // DNS-confirmed gate
+    fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.click(screen.getByRole('button', { name: /finish setup/i }));
 
     await waitFor(() => expect(screen.getByText(/switching to/i)).toBeInTheDocument());
@@ -212,8 +381,12 @@ describe('ApplyStep', () => {
     const fetchMock = vi.fn().mockRejectedValue(new Error('still restarting'));
     vi.stubGlobal('fetch', fetchMock);
 
-    renderStep('example.com');
-    fireEvent.click(screen.getByRole('checkbox')); // DNS-confirmed gate
+    renderWithStore(<ApplyStep />, {
+      bootstrapDomain: 'example.com',
+      servingMode: 'cloudflare',
+      bootstrapSslMode: 'paste',
+    });
+    fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.click(screen.getByRole('button', { name: /finish setup/i }));
     await waitFor(() => expect(screen.getByText(/switching to/i)).toBeInTheDocument());
 
@@ -245,8 +418,12 @@ describe('ApplyStep', () => {
     fetchMock.mockReturnValueOnce(secondPoll);
     vi.stubGlobal('fetch', fetchMock);
 
-    renderStep('example.com');
-    fireEvent.click(screen.getByRole('checkbox')); // DNS-confirmed gate
+    renderWithStore(<ApplyStep />, {
+      bootstrapDomain: 'example.com',
+      servingMode: 'cloudflare',
+      bootstrapSslMode: 'paste',
+    });
+    fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.click(screen.getByRole('button', { name: /finish setup/i }));
     await waitFor(() => expect(screen.getByText(/switching to/i)).toBeInTheDocument());
 
@@ -267,46 +444,23 @@ describe('ApplyStep', () => {
     expect(hrefAssignments).toEqual(['https://admin.example.com']);
   });
 
-  it('defaults to cloudflare and shows the Full (strict) reminder afterward', async () => {
-    renderStep('example.com');
-
-    expect(screen.getByRole('radio', { name: /^cloudflare/i })).toBeChecked();
-    expect(screen.getByRole('radio', { name: /^direct/i })).not.toBeChecked();
-
-    fireEvent.click(screen.getByRole('checkbox')); // DNS-confirmed gate
-    fireEvent.click(screen.getByRole('button', { name: /finish setup/i }));
-
-    await waitFor(() =>
-      expect(applyMock).toHaveBeenCalledWith({ domain: 'example.com', proxyMode: 'cloudflare', token: 'claim-xyz' })
-    );
-    expect(await screen.findByText(/full \(strict\)/i)).toBeInTheDocument();
-  });
-
-  it('lets the user choose "none" and sends it to apply, without the Cloudflare-specific reminder', async () => {
-    renderStep('example.com');
-
-    fireEvent.click(screen.getByRole('radio', { name: /^direct/i }));
-    expect(screen.getByRole('radio', { name: /^direct/i })).toBeChecked();
-
-    fireEvent.click(screen.getByRole('checkbox')); // DNS-confirmed gate
-    fireEvent.click(screen.getByRole('button', { name: /finish setup/i }));
-
-    await waitFor(() =>
-      expect(applyMock).toHaveBeenCalledWith({ domain: 'example.com', proxyMode: 'none', token: 'claim-xyz' })
-    );
-    expect(await screen.findByText(/switching to/i)).toBeInTheDocument();
-    expect(screen.queryByText(/full \(strict\)/i)).not.toBeInTheDocument();
-  });
-
   it('disables the button when there is no bootstrapDomain', () => {
-    renderStep(null);
+    renderWithStore(<ApplyStep />, {
+      bootstrapDomain: null,
+      servingMode: 'cloudflare',
+      bootstrapSslMode: 'paste',
+    });
     expect(screen.getByRole('button', { name: /finish setup/i })).toBeDisabled();
   });
 
   it('disables Finish until the DNS-confirmation checkbox is ticked, and does not apply before then', () => {
     // Guards the NXDOMAIN-cache trap: apply must be blocked until the user
     // confirms DNS already resolves to this server.
-    renderStep('example.com');
+    renderWithStore(<ApplyStep />, {
+      bootstrapDomain: 'example.com',
+      servingMode: 'cloudflare',
+      bootstrapSslMode: 'paste',
+    });
     const button = screen.getByRole('button', { name: /finish setup/i });
     expect(button).toBeDisabled();
     // Clicking a disabled button must not fire apply.
@@ -321,7 +475,11 @@ describe('ApplyStep', () => {
 
   it('disables the button while the mutation is loading', () => {
     useApplyBootstrapMutationMock.mockReturnValue([applyMock, { isLoading: true }]);
-    renderStep('example.com');
+    renderWithStore(<ApplyStep />, {
+      bootstrapDomain: 'example.com',
+      servingMode: 'cloudflare',
+      bootstrapSslMode: 'paste',
+    });
     expect(screen.getByRole('button')).toBeDisabled();
   });
 });
