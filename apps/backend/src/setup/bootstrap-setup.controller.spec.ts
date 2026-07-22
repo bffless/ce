@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { BootstrapSetupController } from './bootstrap-setup.controller';
+import { ApplyBootstrapDto } from './setup.dto';
 
 describe('BootstrapSetupController', () => {
   let controller: BootstrapSetupController;
@@ -262,6 +263,26 @@ describe('BootstrapSetupController', () => {
       expect(svc.certificatesPresent).not.toHaveBeenCalled();
       expect(svc.validateDomain).not.toHaveBeenCalled();
       expect(exitFn).not.toHaveBeenCalled();
+    });
+
+    it('applies a selfsigned proxy install without requiring staged certs', async () => {
+      const writeSpy = jest
+        .spyOn(require('../bootstrap/instance-config'), 'writeInstanceConfig')
+        .mockImplementation(() => undefined);
+      svc.validateDomain.mockReturnValue('example.com');
+      svc.validateApplyConfig.mockReturnValue({
+        proxyMode: 'proxy', sslMode: 'selfsigned', port80: 'redirect', realIp: null,
+      });
+      const res = await controller.apply({
+        domain: 'example.com', proxyMode: 'proxy', sslMode: 'selfsigned',
+      } as ApplyBootstrapDto);
+      expect(svc.certificatesPresent).not.toHaveBeenCalled();
+      expect(svc.assertStagedCertificateCovers).not.toHaveBeenCalled();
+      expect(writeSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ version: 2, state: 'applied', sslMode: 'selfsigned', proxyMode: 'proxy' }),
+      );
+      expect(res.adminUrl).toBe('https://admin.example.com');
+      writeSpy.mockRestore();
     });
   });
 

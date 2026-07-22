@@ -62,15 +62,21 @@ export class BootstrapSetupController {
     // filesystem/response work.
     await this.bootstrap.assertBootstrapAllowed();
     this.bootstrap.validateClaimToken(dto.token);
-    if (!this.bootstrap.certificatesPresent(dto.domain)) {
-      throw new BadRequestException('Install certificates before applying');
+    // Self-signed keeps serving the built-in bootstrap cert (behind a
+    // TLS-terminating proxy) — there is deliberately no staged fullchain to
+    // check. Every other mode stages a real cert (paste) or has one issued
+    // (letsencrypt, via issue-certificate) before apply.
+    if (dto.sslMode !== 'selfsigned') {
+      if (!this.bootstrap.certificatesPresent(dto.domain)) {
+        throw new BadRequestException('Install certificates before applying');
+      }
+      // certificatesPresent only proves the four files exist; a later upload
+      // for a different domain overwrites the generic fullchain.pem/privkey.pem
+      // pair that nginx's apex/admin vhosts serve, while this domain's stale
+      // wildcard.* files stick around. Re-verify the staged fullchain actually
+      // covers the domain being applied — see assertStagedCertificateCovers.
+      this.bootstrap.assertStagedCertificateCovers(dto.domain, dto.proxyMode);
     }
-    // certificatesPresent only proves the four files exist; a later upload
-    // for a different domain overwrites the generic fullchain.pem/privkey.pem
-    // pair that nginx's apex/admin vhosts serve, while this domain's stale
-    // wildcard.* files stick around. Re-verify the staged fullchain actually
-    // covers the domain being applied — see assertStagedCertificateCovers.
-    this.bootstrap.assertStagedCertificateCovers(dto.domain, dto.proxyMode);
     // writeInstanceConfig is called directly by this controller (it isn't
     // reached through validateCertificatePair/saveCertificates/
     // certificatesPresent, which validate the domain as a side effect of
