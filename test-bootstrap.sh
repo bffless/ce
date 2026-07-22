@@ -157,6 +157,30 @@ wait_until 60 "backend to report bootstrap mode" -- \
 ok "backend reports bootstrap mode"
 
 # ===========================================================================
+# Restart-in-bootstrap-mode leg (memory-note lesson). A bootstrap-mode nginx
+# restart while still UNCLAIMED (no domain ever applied) is a real crash
+# class that first-boot-clean runs mask: the self-signed cert + bootstrap
+# main.conf are only ever WRITTEN on the render that finds them absent; a
+# restart re-runs the entrypoint against a filesystem that may already carry
+# leftover dynamic config from a previous run. This exact class of bug
+# (NginxStartupService writing a welcome-page config with a hardcoded
+# fullchain.pem path while genuinely cert-less) crash-looped nginx on the
+# real DO droplet after a `down -v` + restart (Fix E, commit 23f7fd8) even
+# though every earlier smoke run — always first-boot-clean — stayed green.
+# Restart nginx here, while the stack is still unclaimed, and prove it comes
+# back up still serving the bootstrap wizard.
+# ===========================================================================
+info "restart nginx while still in unclaimed bootstrap mode"
+docker compose restart nginx >/dev/null
+wait_until 60 "nginx container to be running again after the in-bootstrap restart" -- \
+    bash -c 'docker compose ps nginx --format "{{.State}}" | grep -q running'
+wait_until 60 "bootstrap wizard to keep serving over https after the restart" -- \
+    bash -c 'curl -ks -o /dev/null -w "%{http_code}" https://localhost/ | grep -q 200'
+wait_until 60 "backend to keep reporting bootstrap mode after the restart" -- \
+    bash -c 'curl -ks https://localhost/api/setup/status | grep -q "\"bootstrapMode\":true"'
+ok "nginx survived a restart while still in unclaimed bootstrap mode"
+
+# ===========================================================================
 # HTTP-driven wizard apply. Everything past this point calls the REAL setup
 # endpoints over HTTPS (through nginx, exactly as the browser wizard does),
 # rather than hand-writing cert/instance files. The wizard is anonymous and
@@ -318,4 +342,139 @@ wait_until 90 "backend to restart and log identity hydration" -- \
     bash -c 'docker compose logs backend 2>/dev/null | grep -q "identity hydrated from instance.json"'
 ok "backend restarted (via apply) and adopted instance.json identity"
 
-echo "🎉 bootstrap smoke test passed (HTTP-driven cert-upload + apply)"
+# ===========================================================================
+# v1 regression leg. A legacy install's instance.env (written before the
+# knob rework in Task 1 of the bootstrap-domain-ssl-model plan) carries only
+# STATE=applied / PRIMARY_DOMAIN / PROXY_MODE — none of the newer
+# PORT80/REALIP_MODE/SSL_MODE keys. render-main-conf.sh must still derive
+# PROXY_MODE=cloudflare -> closed port 80 (`return 444;`) + Cloudflare
+# real-IP trust exactly as it always has.
+#
+# docker/nginx/render-main-conf.test.sh (the host harness, run separately as
+# part of this task's own verification step) already asserts this exact
+# derivation against a fake NGINX_ETC tree. This leg proves the SAME
+# derivation inside the REAL, already-running nginx container built from the
+# actual image under test — the thing the host harness structurally cannot
+# do (it never builds or runs the Dockerfile). Runs last, against the
+# already-applied stack, since it intentionally clobbers instance.env and
+# nothing downstream depends on the prior (cloudflare/test.local) state.
+# ===========================================================================
+info "v1 regression: legacy env-only instance.env inside the running nginx container"
+# Written via `docker compose exec backend` (which mounts ./bootstrap rw and
+# runs as root), NOT a host-side redirect: the real apply() above already
+# had the backend write instance.json/instance.env as the container's root
+# user, so the host's unprivileged user cannot overwrite the bind-mounted
+# file directly (`> bootstrap/instance.env` from the host fails with
+# "Permission denied" — caught by an earlier real run of this leg).
+docker compose exec -T backend sh -c "printf 'STATE=applied\nPRIMARY_DOMAIN=%s\nPROXY_MODE=cloudflare\n' '${DOMAIN}' > /app/bootstrap/instance.env" \
+    || fail "v1-regression: could not write a legacy env-only instance.env via the backend container"
+docker compose exec -T nginx /usr/local/bin/render-main-conf.sh >/dev/null \
+    || fail "v1-regression: render-main-conf.sh failed inside the nginx container on a legacy env-only instance.env"
+docker compose exec -T nginx sh -c 'grep -qF "return 444;" /etc/nginx/sites-available/main.conf' \
+    || fail "v1-regression: legacy env-only instance.env did not close port 80 (return 444) inside the container"
+docker compose exec -T nginx sh -c 'grep -qF "real_ip_header CF-Connecting-IP;" /etc/nginx/cloudflare-realip.conf' \
+    || fail "v1-regression: legacy env-only instance.env did not derive the Cloudflare real-IP header inside the container"
+ok "v1 regression: legacy env-only instance.env (no knob keys) derives return 444 + CF realip inside the real nginx image"
+
+echo "🎉 bootstrap smoke test passed (HTTP-driven cert-upload + apply + restart + v1-regression)"
+
+# ===========================================================================
+# LE-path leg (opt-in: RUN_LE_LEG=1). Drives dns-preflight, issue-certificate
+# and apply for the direct + Let's Encrypt path (proxyMode 'none', sslMode
+# 'letsencrypt'), and asserts the rendered nginx config carries the ACME
+# challenge location. Off by default because it is materially heavier than
+# everything above it:
+#
+#   - A real install can only ever apply() ONCE — the moment STATE flips to
+#     'applied', SetupService.isBootstrapModeActive() permanently closes
+#     bootstrap mode (state != 'applied' is one of its conjuncts), so this
+#     CANNOT reuse the stack above, which already applied proxyMode
+#     cloudflare for $DOMAIN. It needs its own fresh, cert-less boot.
+#   - issue-certificate does a server-side DNS+HTTP self-probe of the
+#     domain before issuing (same BootstrapDnsPreflightService used by
+#     dns-preflight), so the test domain must actually resolve to something
+#     that serves /.well-known/acme-challenge/. There is no real DNS here,
+#     so this pins the domain via the BACKEND container's /etc/hosts (the
+#     probe runs from the backend) at nginx's address on the compose
+#     network — a hosts-file pin, exactly as the brief specifies.
+#
+# Run explicitly when you have a few extra minutes (CI or a droplet):
+#   RUN_LE_LEG=1 ./test-bootstrap.sh
+# ===========================================================================
+if [ "${RUN_LE_LEG:-0}" = "1" ]; then
+    info "LE-path leg: tearing down the applied stack, booting a fresh cert-less one"
+    docker compose --profile postgres --profile minio --profile redis --profile supertokens down -v >/dev/null 2>&1
+    rm -rf bootstrap ssl .smoke-certs
+    mkdir -p bootstrap ssl
+    ./start.sh
+    wait_until 60 "LE-path: fresh stack's bootstrap wizard to serve on 443" -- \
+        bash -c 'curl -ks -o /dev/null -w "%{http_code}" https://localhost/ | grep -q 200'
+    ok "LE-path leg: fresh cert-less stack booted"
+
+    LE_DOMAIN="bootstrap-le-test.local"
+    LE_CLAIM_TOKEN="$(grep -E '^ONBOARDING_TOKEN=' .env | head -1 | cut -d= -f2-)"
+    [ -n "$LE_CLAIM_TOKEN" ] || fail "LE-path: ONBOARDING_TOKEN missing from the fresh .env"
+
+    # ---- 1. dns-preflight against an unresolvable domain: the endpoint
+    # itself must still succeed (2xx) and report the failure IN THE BODY —
+    # "still exits 0 for the leg" means this shell leg passes as long as the
+    # API behaves correctly, not that DNS happened to resolve. ----
+    info "LE-path: dns-preflight against an unresolvable domain must report ok:false"
+    PREFLIGHT_BODY="$(python3 -c 'import json,sys; print(json.dumps({"domain": sys.argv[1], "token": sys.argv[2]}))' "definitely-unresolvable.invalid" "$LE_CLAIM_TOKEN")"
+    PREFLIGHT_RESP="$(printf '%s' "$PREFLIGHT_BODY" | post_json "${BASE}/api/setup/dns-preflight")"
+    PREFLIGHT_CODE="$(printf '%s' "$PREFLIGHT_RESP" | tail -n1)"
+    PREFLIGHT_OUT="$(printf '%s' "$PREFLIGHT_RESP" | sed '$d')"
+    case "$PREFLIGHT_CODE" in
+        2*) ;;
+        *) fail "dns-preflight against an unresolvable domain returned HTTP ${PREFLIGHT_CODE} (expected 2xx with ok:false): ${PREFLIGHT_OUT}";;
+    esac
+    echo "$PREFLIGHT_OUT" | grep -q '"ok":false' \
+        || fail "dns-preflight against an unresolvable domain did not report ok:false: ${PREFLIGHT_OUT}"
+    ok "LE-path: dns-preflight correctly reports ok:false for an unresolvable domain (leg still exits 0)"
+
+    # ---- 2. pin LE_DOMAIN to nginx via the backend container's /etc/hosts,
+    # then issue-certificate (MOCK_SSL — no real network ACME needed; the
+    # server-side preflight re-check still does a real DNS+HTTP self-probe,
+    # which is exactly what the hosts pin satisfies). ----
+    info "LE-path: pin ${LE_DOMAIN} to nginx in the backend container's /etc/hosts"
+    NGINX_IP="$(docker compose exec -T backend getent hosts nginx | awk '{print $1}' | head -1)"
+    [ -n "$NGINX_IP" ] || fail "LE-path: could not resolve nginx's container IP from inside the backend container"
+    docker compose exec -T backend sh -c "echo '${NGINX_IP} ${LE_DOMAIN} www.${LE_DOMAIN} admin.${LE_DOMAIN}' >> /etc/hosts"
+    ok "LE-path: ${LE_DOMAIN} resolves to nginx (${NGINX_IP}) inside the backend container"
+
+    info "LE-path: MOCK_SSL issue-certificate for ${LE_DOMAIN}"
+    ISSUE_BODY="$(python3 -c 'import json,sys; print(json.dumps({"domain": sys.argv[1], "token": sys.argv[2]}))' "$LE_DOMAIN" "$LE_CLAIM_TOKEN")"
+    ISSUE_RESP="$(printf '%s' "$ISSUE_BODY" | post_json "${BASE}/api/setup/issue-certificate")"
+    ISSUE_CODE="$(printf '%s' "$ISSUE_RESP" | tail -n1)"
+    ISSUE_OUT="$(printf '%s' "$ISSUE_RESP" | sed '$d')"
+    case "$ISSUE_CODE" in
+        2*) ;;
+        *) fail "LE-path: issue-certificate rejected (HTTP ${ISSUE_CODE}): ${ISSUE_OUT}";;
+    esac
+    echo "$ISSUE_OUT" | grep -q '"issued":true' \
+        || fail "LE-path: issue-certificate did not return issued:true: ${ISSUE_OUT}"
+    ok "LE-path: certificate issued (MOCK_SSL) for ${LE_DOMAIN}: ${ISSUE_OUT}"
+
+    # ---- 3. apply with {proxyMode:'none', sslMode:'letsencrypt'} ----
+    info "LE-path: apply direct + Let's Encrypt"
+    LE_APPLY_BODY="$(python3 -c 'import json,sys; print(json.dumps({"domain": sys.argv[1], "proxyMode": "none", "sslMode": "letsencrypt", "token": sys.argv[2]}))' "$LE_DOMAIN" "$LE_CLAIM_TOKEN")"
+    LE_APPLY_RESP="$(printf '%s' "$LE_APPLY_BODY" | post_json "${BASE}/api/setup/apply")"
+    LE_APPLY_CODE="$(printf '%s' "$LE_APPLY_RESP" | tail -n1)"
+    LE_APPLY_OUT="$(printf '%s' "$LE_APPLY_RESP" | sed '$d')"
+    case "$LE_APPLY_CODE" in
+        2*) ;;
+        *) fail "LE-path: apply rejected (HTTP ${LE_APPLY_CODE}): ${LE_APPLY_OUT}";;
+    esac
+    ok "LE-path: apply accepted: ${LE_APPLY_OUT}"
+
+    # ---- 4. backend restarts under the new identity; nginx must render the
+    # ACME challenge location (direct/none mode defaults PORT80=redirect,
+    # which is what puts /.well-known/acme-challenge/ in main.conf). ----
+    wait_until 90 "LE-path: backend to restart under the new identity" -- \
+        bash -c 'docker compose logs backend 2>/dev/null | grep -q "identity hydrated from instance.json"'
+    wait_until 60 "LE-path: nginx to render the ACME challenge location" -- \
+        bash -c "docker compose exec -T nginx sh -c 'grep -qF \"/.well-known/acme-challenge/\" /etc/nginx/sites-available/main.conf'"
+    ok "LE-path leg passed: direct + Let's Encrypt apply renders the ACME challenge location"
+else
+    info "skipping LE-path leg (set RUN_LE_LEG=1 to run it — needs a second full stack boot + container-network DNS pinning; intended for CI/droplet where the extra minutes are cheap)"
+fi

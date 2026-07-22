@@ -91,3 +91,28 @@ describe('SslCertificateService.requestPrimaryDomainCertificate', () => {
     expect(days).toBeGreaterThan(80); // mock certs are minted for 90 days
   });
 });
+
+// ---------------------------------------------------------------------------
+// Pebble-gated integration test: exercises the REAL ACME (acme-client) path
+// against a locally-running Pebble server (docker-compose.pebble.yml), not
+// the MOCK_SSL forge stub above. Skipped unless PEBBLE=1, because it needs a
+// live ACME server + HTTP-01 challenge reachability (Pebble's challtestsrv
+// looping the challenge hostname back to nginx's port 80). This is the one
+// piece of the bootstrap-ssl feature that unit tests structurally cannot
+// cover — MOCK_SSL exists specifically to bypass this exact code path.
+//
+// Run it with a Pebble stack up:
+//   docker compose -f docker-compose.yml -f docker-compose.pebble.yml up -d pebble challtestsrv
+//   curl -X POST http://localhost:8055/set-default-ipv4 -d '{"ip":"<nginx container IP>"}'
+//   PEBBLE=1 ACME_DIRECTORY_URL=https://localhost:14000/dir pnpm test -- ssl-certificate
+const maybe = process.env.PEBBLE === '1' ? describe : describe.skip;
+maybe('requestPrimaryDomainCertificate against Pebble', () => {
+  it('issues a real cert for the fixed SAN set', async () => {
+    delete process.env.MOCK_SSL;
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+    const service = new SslCertificateService();
+    await service.initialize();
+    const res = await service.requestPrimaryDomainCertificate('bootstrap-test.example');
+    expect(res.success).toBe(true);
+  }, 120_000);
+});
