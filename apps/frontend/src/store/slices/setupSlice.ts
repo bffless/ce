@@ -1,6 +1,17 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { StorageProvider, EmailProvider } from '@/services/setupApi';
 
+// How the instance's TLS/edge traffic is served, chosen in DomainSslStep.
+// - 'cloudflare': orange-clouded behind Cloudflare (Cloudflare terminates TLS)
+// - 'proxy': another TLS-terminating reverse proxy in front (e.g. a load balancer)
+// - 'none': this box terminates TLS directly (Let's Encrypt or pasted cert)
+export type ServingMode = 'cloudflare' | 'proxy' | 'none';
+
+// How bootstrap mode obtains its TLS certificate.
+// - 'paste': user pastes an existing cert/key (UploadCertificatesRequest)
+// - 'letsencrypt': backend issues one directly (issueCertificate/wildcard flow)
+export type BootstrapSslMode = 'paste' | 'letsencrypt';
+
 // The full set of step identifiers used anywhere by the setup wizard. Defined
 // here (not in SetupWizard.tsx) so both the slice and the wizard component
 // reference the SAME type: navigation is by step ID, not by numeric index —
@@ -63,6 +74,25 @@ interface SetupWizardState {
 
   // Bootstrap mode: domain chosen in DomainSslStep (consumed by ApplyStep)
   bootstrapDomain: string | null;
+
+  // Bootstrap mode: how traffic reaches this instance (DomainSslStep),
+  // driving which of the four serving paths ApplyStep exercises.
+  servingMode: ServingMode | null;
+  // Bootstrap mode: how the TLS cert is obtained. Preset by setServingMode
+  // (see its reducer) and adjustable afterward once servingMode is set.
+  bootstrapSslMode: BootstrapSslMode | null;
+  // Bootstrap mode: port 80 handling for direct (servingMode 'none') Let's
+  // Encrypt HTTP-01 issuance.
+  bootstrapPort80: 'closed' | 'redirect' | null;
+  // Bootstrap mode: real client IP recovery header/ranges when behind a
+  // reverse proxy (servingMode 'proxy').
+  bootstrapRealIp: { header: string; ranges: string[] } | null;
+  // Bootstrap mode: whether the DNS preflight check (dnsPreflight mutation)
+  // has passed for the chosen domain.
+  dnsPreflightPassed: boolean;
+  // Bootstrap mode: whether the wildcard certificate flow (startWildcard/
+  // completeWildcard) has finished issuing.
+  wildcardIssued: boolean;
 
   // General
   isSubmitting: boolean;
@@ -127,6 +157,12 @@ const initialState: SetupState = {
     // Bootstrap mode
     claimToken: null,
     bootstrapDomain: null,
+    servingMode: null,
+    bootstrapSslMode: null,
+    bootstrapPort80: null,
+    bootstrapRealIp: null,
+    dnsPreflightPassed: false,
+    wildcardIssued: false,
     isSubmitting: false,
     error: null,
   },
@@ -278,6 +314,44 @@ const setupSlice = createSlice({
       state.wizard.bootstrapDomain = action.payload;
     },
 
+    // Bootstrap mode: how traffic reaches this instance. Presets sslMode
+    // ('paste' for cloudflare/proxy — both expect a cert the user already
+    // has; null for 'none' — direct requires an explicit LE-vs-BYO choice)
+    // and clears every downstream choice made under the previous mode, since
+    // none of them are guaranteed valid once the serving path changes.
+    setServingMode: (state, action: PayloadAction<ServingMode>) => {
+      state.wizard.servingMode = action.payload;
+      state.wizard.bootstrapSslMode =
+        action.payload === 'none' ? null : 'paste';
+      state.wizard.bootstrapPort80 = null;
+      state.wizard.bootstrapRealIp = null;
+      state.wizard.dnsPreflightPassed = false;
+      state.wizard.wildcardIssued = false;
+    },
+
+    setBootstrapSslMode: (state, action: PayloadAction<BootstrapSslMode | null>) => {
+      state.wizard.bootstrapSslMode = action.payload;
+    },
+
+    setBootstrapPort80: (state, action: PayloadAction<'closed' | 'redirect' | null>) => {
+      state.wizard.bootstrapPort80 = action.payload;
+    },
+
+    setBootstrapRealIp: (
+      state,
+      action: PayloadAction<{ header: string; ranges: string[] } | null>
+    ) => {
+      state.wizard.bootstrapRealIp = action.payload;
+    },
+
+    setDnsPreflightPassed: (state, action: PayloadAction<boolean>) => {
+      state.wizard.dnsPreflightPassed = action.payload;
+    },
+
+    setWildcardIssued: (state, action: PayloadAction<boolean>) => {
+      state.wizard.wildcardIssued = action.payload;
+    },
+
     // Error handling
     setWizardError: (state, action: PayloadAction<string | null>) => {
       state.wizard.error = action.payload;
@@ -361,6 +435,12 @@ export const {
   // Bootstrap mode actions
   setClaimToken,
   setBootstrapDomain,
+  setServingMode,
+  setBootstrapSslMode,
+  setBootstrapPort80,
+  setBootstrapRealIp,
+  setDnsPreflightPassed,
+  setWildcardIssued,
   setWizardError,
   setIsSubmitting,
   setSetupStatus,
