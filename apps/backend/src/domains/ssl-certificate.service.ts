@@ -9,6 +9,7 @@ import { join } from 'path';
 import { eq, and } from 'drizzle-orm';
 import { db } from '../db/client';
 import { sslChallenges, SslChallenge } from '../db/schema';
+import { certPemHasWildcardSan } from './ssl-cert-utils';
 
 export interface DnsChallenge {
   domain: string;
@@ -629,8 +630,7 @@ export class SslCertificateService {
   private installedWildcardIsReal(domain: string): boolean {
     try {
       const pem = fs.readFileSync(join(this.getSslPath(), `wildcard.${domain}.crt`));
-      const cert = new X509Certificate(pem);
-      return (cert.subjectAltName ?? '').includes(`DNS:*.${domain}`);
+      return certPemHasWildcardSan(pem, domain);
     } catch {
       return false;
     }
@@ -806,6 +806,20 @@ export class SslCertificateService {
       await access(keyPath);
 
       const certPem = await readFile(certPath, 'utf-8');
+
+      // A wildcard.<domain>.crt on disk is not necessarily a real wildcard:
+      // requestPrimaryDomainCertificate copies the HTTP-01 primary cert to
+      // this same filename as render-contract filler when the user skips
+      // the optional DNS-01 wildcard step. That copy can never carry the
+      // *.<domain> SAN, so without this check it gets reported as "a
+      // wildcard exists" — which then makes the renewal cron try (and fail)
+      // to renew a wildcard that was never really issued. Only a
+      // genuinely-SAN-carrying cert (real DNS-01 issuance, or a pasted
+      // Cloudflare Origin cert) counts as "exists".
+      if (!certPemHasWildcardSan(certPem, baseDomain)) {
+        return { exists: false };
+      }
+
       const certInfo = this.parseCertificateInfo(certPem);
 
       return {

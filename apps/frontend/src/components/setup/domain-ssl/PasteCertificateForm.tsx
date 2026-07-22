@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Loader2 } from 'lucide-react';
+import { validateRealIp } from '@/lib/validateRealIp';
 
 interface Props {
   domain: string;
@@ -76,6 +77,8 @@ export function PasteCertificateForm({ domain, onBack }: Props) {
   const [uploadCertificates, { isLoading }] = useUploadCertificatesMutation();
   const [error, setError] = useState<string | null>(null);
   const [wildcardWarning, setWildcardWarning] = useState(false);
+  const [rangesError, setRangesError] = useState<string | null>(null);
+  const [headerError, setHeaderError] = useState<string | null>(null);
 
   const finish = () => {
     dispatch(setBootstrapDomain(domain));
@@ -84,23 +87,26 @@ export function PasteCertificateForm({ domain, onBack }: Props) {
 
   const submit = async () => {
     setError(null);
+    setRangesError(null);
+    setHeaderError(null);
 
     // Proxy-only knobs must land in the store BEFORE (or alongside) the
-    // upload call, so the later Apply step reads them back out.
+    // upload call, so the later Apply step reads them back out. Validate
+    // here first (mirroring the backend's validateApplyConfig rules) so a
+    // bad CIDR or unsafe header is caught inline rather than surfacing as a
+    // 400 at the final Apply step, which has no Back button.
     if (mode === 'proxy') {
-      dispatch(
-        setBootstrapRealIp(
-          rangesText.trim()
-            ? {
-                header: header.trim() || 'X-Forwarded-For',
-                ranges: rangesText
-                  .split('\n')
-                  .map((r) => r.trim())
-                  .filter(Boolean),
-              }
-            : null
-        )
-      );
+      if (rangesText.trim()) {
+        const result = validateRealIp(rangesText, header);
+        if (result.rangesError || result.headerError) {
+          setRangesError(result.rangesError);
+          setHeaderError(result.headerError);
+          return;
+        }
+        dispatch(setBootstrapRealIp({ header: result.header, ranges: result.ranges }));
+      } else {
+        dispatch(setBootstrapRealIp(null));
+      }
       dispatch(setBootstrapPort80(closePort80 ? 'closed' : null));
     }
 
@@ -170,21 +176,31 @@ export function PasteCertificateForm({ domain, onBack }: Props) {
               <Textarea
                 id="realip-ranges"
                 value={rangesText}
-                onChange={(e) => setRangesText(e.target.value)}
+                onChange={(e) => {
+                  setRangesText(e.target.value);
+                  setRangesError(null);
+                }}
                 placeholder={'151.101.0.0/16\n2a04:4e40::/32'}
                 rows={4}
                 className="mt-1 font-mono text-xs"
+                aria-invalid={rangesError ? true : undefined}
               />
+              {rangesError && <p className="mt-1 text-sm text-destructive">{rangesError}</p>}
             </div>
             <div>
               <Label htmlFor="realip-header">Header carrying the visitor IP</Label>
               <Input
                 id="realip-header"
                 value={header}
-                onChange={(e) => setHeader(e.target.value)}
+                onChange={(e) => {
+                  setHeader(e.target.value);
+                  setHeaderError(null);
+                }}
                 placeholder="X-Forwarded-For"
                 className="mt-1"
+                aria-invalid={headerError ? true : undefined}
               />
+              {headerError && <p className="mt-1 text-sm text-destructive">{headerError}</p>}
             </div>
           </div>
         </details>

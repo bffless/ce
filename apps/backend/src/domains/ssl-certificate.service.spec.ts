@@ -92,6 +92,60 @@ describe('SslCertificateService.requestPrimaryDomainCertificate', () => {
   });
 });
 
+describe('SslCertificateService.checkWildcardCertificate', () => {
+  let sslDir: string;
+
+  beforeEach(() => {
+    sslDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bffless-ssl-'));
+    process.env.SSL_CERT_PATH = sslDir;
+    // Exercise the real (non-mock) file-reading branch — checkWildcardCertificate's
+    // mock-mode branch reads from an in-memory map and never touches disk, so
+    // it can't exercise the SAN gate under test here.
+    delete process.env.MOCK_SSL;
+  });
+  afterEach(() => {
+    delete process.env.SSL_CERT_PATH;
+    delete process.env.MOCK_SSL;
+    fs.rmSync(sslDir, { recursive: true, force: true });
+  });
+
+  it('reports exists:false for a wildcard.<domain>.crt that is only a primary-cert copy (no *.<domain> SAN)', async () => {
+    // Mirrors what requestPrimaryDomainCertificate writes when the optional
+    // DNS-01 wildcard step is skipped: the SAN set is [apex, www, admin],
+    // never *.<domain> (HTTP-01 cannot issue wildcards).
+    const { certPem, keyPem } = makeCert('example.com', [
+      'example.com',
+      'www.example.com',
+      'admin.example.com',
+    ]);
+    fs.writeFileSync(path.join(sslDir, 'wildcard.example.com.crt'), certPem);
+    fs.writeFileSync(path.join(sslDir, 'wildcard.example.com.key'), keyPem);
+
+    const service = new SslCertificateService();
+    const result = await service.checkWildcardCertificate('example.com');
+
+    expect(result).toEqual({ exists: false });
+  });
+
+  it('reports exists:true for a wildcard.<domain>.crt that genuinely carries the *.<domain> SAN (real DNS-01 or pasted Cloudflare Origin cert)', async () => {
+    fs.writeFileSync(path.join(sslDir, 'wildcard.example.com.crt'), REAL_WILDCARD_CERT_PEM);
+    fs.writeFileSync(path.join(sslDir, 'wildcard.example.com.key'), REAL_WILDCARD_KEY_PEM);
+
+    const service = new SslCertificateService();
+    const result = await service.checkWildcardCertificate('example.com');
+
+    expect(result.exists).toBe(true);
+    expect(result.expiresAt).toBeInstanceOf(Date);
+  });
+
+  it('reports exists:false when no wildcard.<domain>.crt file exists at all', async () => {
+    const service = new SslCertificateService();
+    const result = await service.checkWildcardCertificate('example.com');
+
+    expect(result).toEqual({ exists: false });
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Pebble-gated integration test: exercises the REAL ACME (acme-client) path
 // against a locally-running Pebble server (docker-compose.pebble.yml), not

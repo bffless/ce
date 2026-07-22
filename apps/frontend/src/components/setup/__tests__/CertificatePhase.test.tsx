@@ -176,6 +176,65 @@ describe('CertificatePhase', () => {
     expect(store.getState().setup.wizard.bootstrapRealIp).toBeNull();
   });
 
+  it('proxy path blocks submit on an invalid CIDR range and shows an inline error, without dispatching or uploading', async () => {
+    const user = userEvent.setup();
+    const store = renderWithStore(<CertificatePhase domain="example.com" onBack={noop} />, {
+      servingMode: 'proxy',
+    });
+
+    await user.type(screen.getByLabelText(/^origin certificate/i), 'CERT-PEM');
+    await user.type(screen.getByLabelText(/private key/i), 'KEY-PEM');
+    await user.click(screen.getByText(/restore visitor ips/i));
+    // No prefix — the classic "looks like a CIDR but isn't" mistake.
+    await user.type(screen.getByLabelText(/trusted ranges/i), '10.0.0.1');
+    await user.click(screen.getByRole('button', { name: /upload certificate/i }));
+
+    expect(await screen.findByText(/invalid cidr range/i)).toBeInTheDocument();
+    expect(uploadMock).not.toHaveBeenCalled();
+    expect(store.getState().setup.wizard.bootstrapRealIp).toBeNull();
+  });
+
+  it('proxy path blocks submit on a header containing a space and shows an inline error, without dispatching or uploading', async () => {
+    const user = userEvent.setup();
+    const store = renderWithStore(<CertificatePhase domain="example.com" onBack={noop} />, {
+      servingMode: 'proxy',
+    });
+
+    await user.type(screen.getByLabelText(/^origin certificate/i), 'CERT-PEM');
+    await user.type(screen.getByLabelText(/private key/i), 'KEY-PEM');
+    await user.click(screen.getByText(/restore visitor ips/i));
+    await user.type(screen.getByLabelText(/trusted ranges/i), '151.101.0.0/16');
+    await user.type(screen.getByLabelText(/header carrying the visitor ip/i), 'X Forwarded For');
+    await user.click(screen.getByRole('button', { name: /upload certificate/i }));
+
+    expect(await screen.findByText(/valid http header name/i)).toBeInTheDocument();
+    expect(uploadMock).not.toHaveBeenCalled();
+    expect(store.getState().setup.wizard.bootstrapRealIp).toBeNull();
+  });
+
+  it('proxy path proceeds and dispatches realIp when ranges + header are valid', async () => {
+    const user = userEvent.setup();
+    const store = renderWithStore(<CertificatePhase domain="example.com" onBack={noop} />, {
+      servingMode: 'proxy',
+    });
+
+    await user.type(screen.getByLabelText(/^origin certificate/i), 'CERT-PEM');
+    await user.type(screen.getByLabelText(/private key/i), 'KEY-PEM');
+    await user.click(screen.getByText(/restore visitor ips/i));
+    await user.type(
+      screen.getByLabelText(/trusted ranges/i),
+      '151.101.0.0/16{enter}2a04:4e40::/32'
+    );
+    await user.type(screen.getByLabelText(/header carrying the visitor ip/i), 'CF-Connecting-IP');
+    await user.click(screen.getByRole('button', { name: /upload certificate/i }));
+
+    expect(uploadMock).toHaveBeenCalled();
+    expect(store.getState().setup.wizard.bootstrapRealIp).toEqual({
+      header: 'CF-Connecting-IP',
+      ranges: ['151.101.0.0/16', '2a04:4e40::/32'],
+    });
+  });
+
   it('BYO path warns but proceeds without a wildcard SAN', async () => {
     const user = userEvent.setup();
     uploadMock.mockReturnValue({

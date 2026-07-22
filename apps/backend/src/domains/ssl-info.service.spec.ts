@@ -8,7 +8,12 @@ jest.mock('fs/promises', () => ({
   access: jest.fn(),
 }));
 
-// Mock crypto X509Certificate
+// Mock crypto X509Certificate. subjectAltName carries the *.localhost SAN
+// (baseDomain defaults to 'localhost' when PRIMARY_DOMAIN is unset, as it is
+// in this spec) so the default mock represents a genuine wildcard cert —
+// tests below override it per-case to exercise the SAN-gating in
+// getWildcardCertInfo.
+let mockSubjectAltName = 'DNS:*.localhost, DNS:localhost';
 const mockX509Certificate = {
   validTo: new Date('2025-06-01T00:00:00Z').toISOString(),
   validFrom: new Date('2024-01-01T00:00:00Z').toISOString(),
@@ -16,6 +21,9 @@ const mockX509Certificate = {
   issuer: 'O=Let\'s Encrypt, CN=R3',
   serialNumber: '1234567890ABCDEF',
   fingerprint256: 'AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99',
+  get subjectAltName() {
+    return mockSubjectAltName;
+  },
 };
 
 jest.mock('crypto', () => ({
@@ -35,6 +43,7 @@ describe('SslInfoService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    mockSubjectAltName = 'DNS:*.localhost, DNS:localhost';
     mockReadFile = fs.readFile as jest.MockedFunction<typeof fs.readFile>;
     mockAccess = fs.access as jest.MockedFunction<typeof fs.access>;
 
@@ -150,6 +159,29 @@ describe('SslInfoService', () => {
       const result = await service.getWildcardCertInfo();
 
       expect(result).toBeNull();
+    });
+
+    it('should return null when wildcard.<domain>.crt exists but lacks the *.<domain> SAN (a primary-cert copy, not a real wildcard)', async () => {
+      // requestPrimaryDomainCertificate copies the HTTP-01 primary cert to
+      // wildcard.<domain>.crt as render-contract filler when the optional
+      // DNS-01 wildcard step is skipped — that copy's SAN set is just
+      // [apex, www, admin], never *.<domain>.
+      mockSubjectAltName = 'DNS:localhost, DNS:www.localhost, DNS:admin.localhost';
+      mockReadFile.mockResolvedValueOnce(DUMMY_CERT_PEM);
+
+      const result = await service.getWildcardCertInfo();
+
+      expect(result).toBeNull();
+    });
+
+    it('should still return wildcard info when wildcard.<domain>.crt genuinely carries the *.<domain> SAN (real DNS-01 or pasted Cloudflare Origin cert)', async () => {
+      mockSubjectAltName = 'DNS:*.localhost, DNS:localhost';
+      mockReadFile.mockResolvedValueOnce(DUMMY_CERT_PEM);
+
+      const result = await service.getWildcardCertInfo();
+
+      expect(result).not.toBeNull();
+      expect(result?.type).toBe('wildcard');
     });
   });
 
