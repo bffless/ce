@@ -110,6 +110,10 @@ test.describe('bootstrap wizard — Domain & SSL adaptive paths', () => {
     await gotoDomainSslStep(page);
 
     await page.getByRole('radio', { name: 'Through another CDN or WAF' }).check();
+    // setServingMode presets bootstrapSslMode to 'selfsigned' for proxy mode
+    // (setupSlice.ts) — this scenario is explicitly the paste path, so pick
+    // it explicitly rather than relying on the preselected default.
+    await page.getByRole('radio', { name: 'Paste my own certificate' }).check();
     await page.getByRole('button', { name: 'Next' }).click();
 
     await page.getByLabel('Domain').fill(domain);
@@ -246,5 +250,60 @@ test.describe('bootstrap wizard — Domain & SSL adaptive paths', () => {
     await mockApply(page, domain);
     await page.getByRole('button', { name: 'Finish setup' }).click();
     await expect(page.getByText(`Switching to https://admin.${domain}…`)).toBeVisible();
+  });
+
+  test('Proxy + self-signed: keep the built-in certificate, no cert upload', async ({ page }) => {
+    const domain = 'proxy-selfsigned-bootstrap.example.com';
+    await gotoDomainSslStep(page);
+
+    await page.getByRole('radio', { name: 'Through another CDN or WAF' }).check();
+    // setServingMode presets bootstrapSslMode to 'selfsigned' for proxy mode
+    // (setupSlice.ts) — confirm it's already selected, not something this
+    // test has to pick.
+    await expect(
+      page.getByRole('radio', { name: 'Keep the built-in certificate (recommended)' })
+    ).toBeChecked();
+    await page.getByRole('button', { name: 'Next' }).click();
+
+    await page.getByLabel('Domain').fill(domain);
+    await page.getByRole('button', { name: 'Next' }).click();
+
+    // Self-signed cert phase: SelfSignedConfirm, not a cert-upload form —
+    // Continue just confirms and advances, nothing to paste.
+    await expect(page.getByRole('heading', { name: 'Keep the built-in certificate' })).toBeVisible();
+    await page.getByRole('button', { name: 'Continue' }).click();
+
+    await passThroughStorageCacheEmail(page);
+
+    await expect(page.getByText('Serving: Through another CDN or WAF')).toBeVisible();
+    await expect(page.getByText('Certificate: Built-in certificate (self-signed)')).toBeVisible();
+    // Proxy mode defaults port 80 to open (redirect) unless explicitly closed.
+    await expect(page.getByText('Port 80: Open (redirects to HTTPS)')).toBeVisible();
+    // No real-IP ranges configured in this scenario.
+    await expect(page.getByText('Visitor IP restore: Off')).toBeVisible();
+    // Not a Let's Encrypt path, so the wildcard summary line must not render.
+    await expect(page.getByText('Wildcard:')).toHaveCount(0);
+
+    let applyBody: unknown = null;
+    await page.route('**/api/setup/apply', async (route) => {
+      applyBody = route.request().postDataJSON();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ applying: true, adminUrl: `https://admin.${domain}` }),
+      });
+    });
+
+    const dnsCheckbox = page.getByRole('checkbox', { name: /I've pointed/ });
+    if (await dnsCheckbox.isVisible()) {
+      await dnsCheckbox.check();
+    }
+    await page.getByRole('button', { name: 'Finish setup' }).click();
+    await expect(page.getByText(`Switching to https://admin.${domain}…`)).toBeVisible();
+
+    // The body sent to /api/setup/apply is the single source of truth the
+    // backend acts on — assert it directly rather than trusting the summary
+    // UI alone (the same regression class this file's header doc mentions).
+    expect(applyBody).toMatchObject({ domain, proxyMode: 'proxy', sslMode: 'selfsigned' });
   });
 });
