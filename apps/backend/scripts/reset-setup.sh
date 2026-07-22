@@ -17,7 +17,9 @@
 #   2. Delete all objects from MinIO storage bucket
 #   3. Clear SuperTokens session/user data
 #   4. Clean up nginx config files (domain-*.conf, redirect-*.conf, primary-content.conf)
-#   5. Re-run database migrations
+#   5. Reset web-bootstrap state (bootstrap/instance.*, staged certs) so an
+#      already-applied instance drops back into the browser setup wizard
+#   6. Re-run database migrations
 
 set -e
 
@@ -31,6 +33,9 @@ NC='\033[0m' # No Color
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# Repo root: bootstrap/ and ssl/ are bind-mounted there (NOT docker volumes, so
+# `docker compose down -v` never clears them — see reset_bootstrap_state).
+REPO_ROOT="$(cd "$PROJECT_ROOT/../.." && pwd)"
 
 # Database configuration
 DB_NAME="${DB_NAME:-assethost}"
@@ -88,6 +93,7 @@ print_warning() {
   echo "    • All proxy rules and domain mappings"
   echo "    • All nginx config files (domain/redirect configs)"
   echo "    • All system configuration"
+  echo "    • Web-bootstrap state (applied domain + installed certificates)"
   echo ""
   echo "  This action CANNOT be undone."
   echo ""
@@ -116,7 +122,7 @@ detect_containers() {
 
 # Reset PostgreSQL using Docker
 reset_postgres_docker() {
-  echo -e "${YELLOW}[1/5] Resetting PostgreSQL...${NC}"
+  echo -e "${YELLOW}[1/6] Resetting PostgreSQL...${NC}"
   echo "  Using Docker container: $POSTGRES_CONTAINER"
 
   docker exec "$POSTGRES_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -c "
@@ -157,7 +163,7 @@ reset_postgres_docker() {
 
 # Reset PostgreSQL using local psql
 reset_postgres_local() {
-  echo -e "${YELLOW}[1/5] Resetting PostgreSQL...${NC}"
+  echo -e "${YELLOW}[1/6] Resetting PostgreSQL...${NC}"
   echo "  Using local PostgreSQL: $DB_HOST:$DB_PORT"
 
   PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" << EOF
@@ -181,7 +187,7 @@ EOF
 
 # Reset SuperTokens data
 reset_supertokens() {
-  echo -e "${YELLOW}[2/5] Resetting SuperTokens...${NC}"
+  echo -e "${YELLOW}[2/6] Resetting SuperTokens...${NC}"
 
   if [ -n "$POSTGRES_CONTAINER" ]; then
     docker exec -i "$POSTGRES_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" < "$SCRIPT_DIR/reset-supertokens-users.sql" 2>/dev/null || true
@@ -194,7 +200,7 @@ reset_supertokens() {
 
 # Reset MinIO storage
 reset_minio() {
-  echo -e "${YELLOW}[3/5] Resetting MinIO storage...${NC}"
+  echo -e "${YELLOW}[3/6] Resetting MinIO storage...${NC}"
 
   if [ -n "$MINIO_CONTAINER" ]; then
     echo "  Using Docker container: $MINIO_CONTAINER"
@@ -223,7 +229,7 @@ reset_minio() {
 
 # Reset nginx config files
 reset_nginx_configs() {
-  echo -e "${YELLOW}[4/5] Resetting nginx configs...${NC}"
+  echo -e "${YELLOW}[4/6] Resetting nginx configs...${NC}"
 
   if [ -n "$NGINX_CONTAINER" ]; then
     echo "  Using Docker container: $NGINX_CONTAINER"
@@ -248,9 +254,41 @@ reset_nginx_configs() {
   fi
 }
 
+# Reset web-bootstrap state (returns an applied instance to bootstrap mode)
+reset_bootstrap_state() {
+  echo -e "${YELLOW}[5/6] Resetting web-bootstrap state...${NC}"
+
+  local bootstrap_dir="${BOOTSTRAP_DIR_HOST:-$REPO_ROOT/bootstrap}"
+  local ssl_dir="${SSL_DIR_HOST:-$REPO_ROOT/ssl}"
+
+  # The applied domain identity. Removing these drops the instance back to
+  # bootstrap mode; the nginx watcher sees the delete and re-renders.
+  rm -f "$bootstrap_dir/instance.json" "$bootstrap_dir/instance.env" 2>/dev/null || true
+
+  # Certificates staged by the wizard's Domain & SSL step. Deliberately KEEPS
+  # bootstrap-selfsigned.* : it is the marker the backend uses to decide the
+  # instance is in bootstrap mode, and it is the cert nginx serves on 443 until
+  # a real one is installed. Deleting it would flip the wizard to normal mode.
+  rm -f "$ssl_dir"/fullchain.pem "$ssl_dir"/privkey.pem 2>/dev/null || true
+  rm -f "$ssl_dir"/wildcard.*.crt "$ssl_dir"/wildcard.*.key 2>/dev/null || true
+
+  echo "  Cleared instance.json/instance.env and staged certificates"
+
+  # The backend hydrates its domain identity from instance.json at boot, so a
+  # running process keeps the OLD identity until restarted.
+  if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^assethost-backend$"; then
+    docker restart assethost-backend >/dev/null 2>&1 && \
+      echo "  Restarted backend (re-hydrates without instance.json)" || \
+      echo -e "${YELLOW}  (backend restart skipped)${NC}"
+  else
+    echo -e "${YELLOW}  (backend container not found - restart it manually to revert its identity)${NC}"
+  fi
+  echo ""
+}
+
 # Run database migrations
 run_migrations() {
-  echo -e "${YELLOW}[5/5] Running database migrations...${NC}"
+  echo -e "${YELLOW}[6/6] Running database migrations...${NC}"
 
   cd "$PROJECT_ROOT"
   if pnpm db:migrate 2>/dev/null; then
@@ -307,6 +345,9 @@ main() {
   # Reset nginx configs
   reset_nginx_configs
 
+  # Reset web-bootstrap state
+  reset_bootstrap_state
+
   # Run migrations
   run_migrations
 
@@ -317,7 +358,9 @@ main() {
   echo -e "  The platform has been reset to a fresh state."
   echo -e ""
   echo -e "  Next steps:"
-  echo -e "    1. Open your browser to your domain"
+  echo -e "    1. Open your browser to your domain (or https://<server-ip> if the"
+  echo -e "       instance was reset back to bootstrap mode - expect a certificate"
+  echo -e "       warning there, it is the temporary self-signed cert)"
   echo -e "    2. Complete the setup wizard"
   echo -e "${GREEN}"
   echo -e "===============================================================================${NC}"
