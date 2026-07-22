@@ -866,6 +866,13 @@ ${spaFallback}
     // Platform/external-proxy deployments don't have nginx terminate TLS, so a
     // missing fullchain.pem is irrelevant there — never treat them as bootstrap.
     if (!this.shouldNginxHandleSsl()) return false;
+    // A *deliberate*, applied proxy+selfsigned install never has fullchain.pem
+    // but is NOT cert-less bootstrap — it serves bootstrap-selfsigned.crt (via
+    // primaryCertPaths()). Treating it as bootstrap would skip generating the
+    // apex landing/placeholder page, so the apex falls through to the wildcard
+    // default_server (a 404, or a CDN-cached bootstrap admin SPA). Generate the
+    // welcome/primary configs for it, using the self-signed cert paths.
+    if (this.isSelfSignedMode()) return false;
     const sslDir = process.env.SSL_CERT_PATH || '/etc/nginx/ssl';
     return !existsSync(join(sslDir, 'fullchain.pem'));
   }

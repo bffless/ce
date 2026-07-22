@@ -196,6 +196,22 @@ server {
       existsSpy = jest.spyOn(nodeFs, 'existsSync').mockReturnValue(false);
       expect(service.isCertlessBootstrapMode()).toBe(false);
     });
+
+    it('is false for an applied self-signed install even without fullchain.pem', () => {
+      // A proxy+selfsigned install deliberately has no fullchain.pem but IS
+      // applied and serves bootstrap-selfsigned.crt. It must NOT read as
+      // cert-less bootstrap, or the apex welcome/placeholder config is skipped
+      // and the apex falls through to the wildcard default_server.
+      (loadInstanceConfig as jest.Mock).mockReturnValueOnce({
+        version: 2,
+        state: 'applied',
+        primaryDomain: 'example.com',
+        proxyMode: 'proxy',
+        sslMode: 'selfsigned',
+      });
+      existsSpy = jest.spyOn(nodeFs, 'existsSync').mockReturnValue(false);
+      expect(service.isCertlessBootstrapMode()).toBe(false);
+    });
   });
 
   describe('onModuleInit', () => {
