@@ -65,6 +65,10 @@ export class SslRenewalService {
       const primaryResult = await this.checkAndRenewPrimary(thresholdDays);
       if (primaryResult) results.push(primaryResult);
 
+      // 1c. Pasted primary cert — cannot auto-renew (the box can't re-fetch a
+      // CDN origin cert or a BYO cert). Warn before it silently expires.
+      await this.checkAndRemindPrimaryPaste(thresholdDays);
+
       // 2. Check individual domain certificates
       const domainResults = await this.checkAndRenewDomains(thresholdDays);
       results.push(...domainResults);
@@ -205,6 +209,44 @@ export class SslRenewalService {
       error: result.error,
       newExpiresAt: result.expiresAt,
     };
+  }
+
+  /**
+   * A pasted primary cert (Cloudflare Origin, another CDN's origin cert, or a
+   * BYO cert on a direct box) can't auto-renew — the box has nothing to
+   * re-fetch. Send a throttled reminder so it doesn't expire silently.
+   * Explicitly skips 'letsencrypt' (auto-renews via checkAndRenewPrimary) and
+   * 'selfsigned' (behind a verify-off proxy; its expiry is irrelevant).
+   */
+  private async checkAndRemindPrimaryPaste(thresholdDays: number): Promise<void> {
+    const cfg = loadInstanceConfig();
+    if (cfg?.state !== 'applied' || cfg.sslMode !== 'paste' || !cfg.primaryDomain) return;
+    const daysLeft = this.sslCertificateService.getPrimaryCertificateExpiryDays();
+    if (daysLeft === null || daysLeft > thresholdDays) return;
+
+    const last = await this.getSetting('primary_cert_reminder_last_sent');
+    if (last && Date.now() - new Date(last).getTime() < 7 * 86_400_000) return;
+    const to = await this.getReminderRecipient();
+    if (!to) {
+      this.logger.warn('Primary cert expiring but no reminder recipient (no notification_email, no admin user)');
+      return;
+    }
+    const domain = cfg.primaryDomain;
+    const result = await this.emailService.sendEmail({
+      to,
+      subject: `Action needed: the certificate for ${domain} expires in ${daysLeft} days`,
+      html:
+        `<p>The certificate for <strong>${domain}</strong> expires in <strong>${daysLeft} days</strong> ` +
+        `and cannot renew automatically (it was pasted in, not issued here).</p>` +
+        `<p>Replace it before then: copy a fresh certificate into the server's <code>ssl/</code> ` +
+        `directory, or re-run setup. If your server is reachable for Let's Encrypt, switching to ` +
+        `an auto-renewing certificate avoids this in future.</p>`,
+    });
+    if (result.success) {
+      await this.updateSetting('primary_cert_reminder_last_sent', new Date().toISOString());
+    } else {
+      this.logger.error(`Failed to send primary cert expiry reminder for ${domain}: ${result.error}`);
+    }
   }
 
   /**

@@ -302,6 +302,53 @@ describe('SslRenewalService', () => {
     });
   });
 
+  describe('paste primary-cert expiry reminder', () => {
+    it('emails when a pasted primary cert is within the threshold', async () => {
+      (loadInstanceConfig as jest.Mock).mockReturnValue({
+        version: 2, state: 'applied', primaryDomain: 'example.com', proxyMode: 'none', sslMode: 'paste',
+      });
+      sslCert.getPrimaryCertificateExpiryDays.mockReturnValue(12);
+      settingsStore['notification_email'] = 'admin@example.com';
+      await service.checkAndRenewCertificates();
+      expect(email.sendEmail).toHaveBeenCalledWith(
+        expect.objectContaining({ to: 'admin@example.com', subject: expect.stringMatching(/certificate .* expires/i) }),
+      );
+    });
+
+    it('does not remind for a letsencrypt primary cert (it auto-renews)', async () => {
+      (loadInstanceConfig as jest.Mock).mockReturnValue({
+        version: 2, state: 'applied', primaryDomain: 'example.com', proxyMode: 'none', sslMode: 'letsencrypt',
+      });
+      sslCert.getPrimaryCertificateExpiryDays.mockReturnValue(12);
+      sslCert.requestPrimaryDomainCertificate.mockResolvedValue({ success: true, expiresAt: new Date() });
+      await service.checkAndRenewCertificates();
+      // the LE path renews; it must not ALSO send the paste reminder
+      expect(email.sendEmail).not.toHaveBeenCalledWith(
+        expect.objectContaining({ subject: expect.stringMatching(/certificate .* expires/i) }),
+      );
+    });
+
+    it('does not remind for a selfsigned install', async () => {
+      (loadInstanceConfig as jest.Mock).mockReturnValue({
+        version: 2, state: 'applied', primaryDomain: 'example.com', proxyMode: 'proxy', sslMode: 'selfsigned',
+      });
+      sslCert.getPrimaryCertificateExpiryDays.mockReturnValue(5);
+      await service.checkAndRenewCertificates();
+      expect(email.sendEmail).not.toHaveBeenCalled();
+    });
+
+    it('does not re-send within 7 days', async () => {
+      (loadInstanceConfig as jest.Mock).mockReturnValue({
+        version: 2, state: 'applied', primaryDomain: 'example.com', proxyMode: 'none', sslMode: 'paste',
+      });
+      sslCert.getPrimaryCertificateExpiryDays.mockReturnValue(12);
+      settingsStore['notification_email'] = 'admin@example.com';
+      settingsStore['primary_cert_reminder_last_sent'] = new Date().toISOString();
+      await service.checkAndRenewCertificates();
+      expect(email.sendEmail).not.toHaveBeenCalled();
+    });
+  });
+
   describe('sendFailureNotifications', () => {
     it('emails the recipient with one line per failed custom-domain renewal', async () => {
       settingsStore['notification_email'] = 'admin@example.com';
