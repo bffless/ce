@@ -22,7 +22,7 @@ setup_etc() { # $1 = instance.env content
         -out "$ETC/ssl/fullchain.pem" -subj "/CN=test" 2>/dev/null
     cp "$ETC/ssl/fullchain.pem" "$ETC/ssl/wildcard.example.com.crt"
     cp "$ETC/ssl/privkey.pem" "$ETC/ssl/wildcard.example.com.key"
-    touch "$ETC/ssl/bootstrap-selfsigned.crt"
+    touch "$ETC/ssl/bootstrap-selfsigned.crt" "$ETC/ssl/bootstrap-selfsigned.key"
     printf '%s\n' "$1" > "$ETC/bootstrap/instance.env"
 }
 
@@ -70,6 +70,7 @@ REALIP_MODE=off'
 run_render
 assert_contains     "$ETC/sites-available/main.conf" '/.well-known/acme-challenge/' 'direct: ACME location present'
 assert_not_contains "$ETC/cloudflare-realip.conf"    'set_real_ip_from'             'direct: realip inactive'
+assert_contains     "$ETC/sites-available/main.conf" "ssl_certificate $ETC/ssl/fullchain.pem;" 'direct: admin vhost uses fullchain.pem by default'
 
 # --- legacy env-only install (no knobs in instance.env): derives from PROXY_MODE ---
 setup_etc 'STATE=applied
@@ -78,5 +79,21 @@ PROXY_MODE=cloudflare'
 run_render
 assert_contains "$ETC/sites-available/main.conf" 'return 444;' 'legacy v1 env: cloudflare derives closed port 80'
 assert_contains "$ETC/cloudflare-realip.conf" 'real_ip_header CF-Connecting-IP;' 'legacy v1 env: cloudflare derives CF realip'
+
+# --- proxy + selfsigned: serves the built-in self-signed cert, no fullchain ---
+setup_etc 'STATE=applied
+PRIMARY_DOMAIN=example.com
+PROXY_MODE=proxy
+SSL_MODE=selfsigned
+PORT80=redirect
+REALIP_MODE=off'
+# setup_etc mints fullchain.pem/wildcard.* by default — remove them so this
+# genuinely proves selfsigned does NOT require a real cert.
+rm -f "$ETC/ssl/fullchain.pem" "$ETC/ssl/privkey.pem" \
+      "$ETC/ssl/wildcard.example.com.crt" "$ETC/ssl/wildcard.example.com.key"
+run_render
+assert_contains "$ETC/sites-available/main.conf" "ssl_certificate $ETC/ssl/bootstrap-selfsigned.crt;" 'selfsigned: admin vhost uses self-signed cert'
+assert_contains "$ETC/sites-available/main.conf" 'bootstrap-selfsigned.key' 'selfsigned: self-signed key referenced'
+assert_not_contains "$ETC/sites-available/main.conf" 'fullchain.pem' 'selfsigned: no fullchain reference'
 
 [ "$FAILURES" -eq 0 ] && echo 'ALL RENDER TESTS PASSED' || { echo "$FAILURES FAILURES"; exit 1; }

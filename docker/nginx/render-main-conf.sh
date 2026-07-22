@@ -121,26 +121,45 @@ if [ -z "${PRIMARY_DOMAIN}" ]; then
 fi
 echo "🔧 Rendering nginx config for PRIMARY_DOMAIN: ${PRIMARY_DOMAIN} (PROXY_MODE=${PROXY_MODE})"
 
-# --- certificates (path selection is file-driven, not vendor-driven) ---
-if [ -f "${SSL_DIR}/fullchain.pem" ] && [ -f "${SSL_DIR}/privkey.pem" ]; then
-    echo "✅ SSL certificates found (fullchain.pem, privkey.pem)"
+# --- certificates (path selection is knob/file-driven, not vendor-driven) ---
+PRIMARY_CERT="${SSL_DIR}/fullchain.pem"
+PRIMARY_KEY="${SSL_DIR}/privkey.pem"
+if [ "${SSL_MODE}" = "selfsigned" ]; then
+    # Behind a proxy/CDN that terminates browser TLS and does not validate the
+    # origin certificate (e.g. Bunny's default), the origin keeps serving the
+    # built-in self-signed cert — no real cert is ever pasted or issued. Serve
+    # it for both the admin and wildcard vhosts.
+    if [ ! -f "${SSL_DIR}/bootstrap-selfsigned.crt" ] || [ ! -f "${SSL_DIR}/bootstrap-selfsigned.key" ]; then
+        echo "❌ SSL_MODE=selfsigned but bootstrap-selfsigned.crt/.key is missing"
+        exit 1
+    fi
+    echo "✅ Serving the built-in self-signed certificate (a proxy terminates browser TLS)"
+    PRIMARY_CERT="${SSL_DIR}/bootstrap-selfsigned.crt"
+    PRIMARY_KEY="${SSL_DIR}/bootstrap-selfsigned.key"
+    WILDCARD_CERT="${SSL_DIR}/bootstrap-selfsigned.crt"
+    WILDCARD_KEY="${SSL_DIR}/bootstrap-selfsigned.key"
 else
-    echo "❌ SSL certificates not found (fullchain.pem/privkey.pem required)"
-    exit 1
+    if [ -f "${SSL_DIR}/fullchain.pem" ] && [ -f "${SSL_DIR}/privkey.pem" ]; then
+        echo "✅ SSL certificates found (fullchain.pem, privkey.pem)"
+    else
+        echo "❌ SSL certificates not found (fullchain.pem/privkey.pem required)"
+        exit 1
+    fi
+    if [ -f "${SSL_DIR}/wildcard.${PRIMARY_DOMAIN}.crt" ] && [ -f "${SSL_DIR}/wildcard.${PRIMARY_DOMAIN}.key" ]; then
+        WILDCARD_CERT="${SSL_DIR}/wildcard.${PRIMARY_DOMAIN}.crt"
+        WILDCARD_KEY="${SSL_DIR}/wildcard.${PRIMARY_DOMAIN}.key"
+    elif [ "${PROXY_MODE}" = "cloudflare" ]; then
+        # Legacy CF installs predating the wildcard.* copies: Origin Certs carry
+        # the *.domain SAN, so the generic pair can serve the wildcard vhost.
+        echo "ℹ️  No separate wildcard cert — using main certificate (Cloudflare Origin Cert)"
+        WILDCARD_CERT="${SSL_DIR}/fullchain.pem"
+        WILDCARD_KEY="${SSL_DIR}/privkey.pem"
+    else
+        echo "❌ Wildcard certificate not found (wildcard.${PRIMARY_DOMAIN}.crt/.key)"
+        exit 1
+    fi
 fi
-if [ -f "${SSL_DIR}/wildcard.${PRIMARY_DOMAIN}.crt" ] && [ -f "${SSL_DIR}/wildcard.${PRIMARY_DOMAIN}.key" ]; then
-    WILDCARD_CERT="${SSL_DIR}/wildcard.${PRIMARY_DOMAIN}.crt"
-    WILDCARD_KEY="${SSL_DIR}/wildcard.${PRIMARY_DOMAIN}.key"
-elif [ "${PROXY_MODE}" = "cloudflare" ]; then
-    # Legacy CF installs predating the wildcard.* copies: Origin Certs carry
-    # the *.domain SAN, so the generic pair can serve the wildcard vhost.
-    echo "ℹ️  No separate wildcard cert — using main certificate (Cloudflare Origin Cert)"
-    WILDCARD_CERT="${SSL_DIR}/fullchain.pem"
-    WILDCARD_KEY="${SSL_DIR}/privkey.pem"
-else
-    echo "❌ Wildcard certificate not found (wildcard.${PRIMARY_DOMAIN}.crt/.key)"
-    exit 1
-fi
+export PRIMARY_CERT PRIMARY_KEY
 
 # --- port 80 (knob: PORT80) ---
 if [ "${PORT80}" = "closed" ]; then
@@ -203,7 +222,7 @@ export WILDCARD_CERT WILDCARD_KEY PORT80_ACTION ACME_LOCATION
 echo "📝 Generating base nginx configuration..."
 # shellcheck disable=SC2016 # single quotes are intentional: envsubst's variable-list
 # argument wants the literal ${VAR} tokens, not shell-expanded values.
-envsubst '${PRIMARY_DOMAIN} ${WILDCARD_CERT} ${WILDCARD_KEY} ${PORT80_ACTION} ${ACME_LOCATION}' \
+envsubst '${PRIMARY_DOMAIN} ${PRIMARY_CERT} ${PRIMARY_KEY} ${WILDCARD_CERT} ${WILDCARD_KEY} ${PORT80_ACTION} ${ACME_LOCATION}' \
     < "${SITES_AVAILABLE}/main.conf.template" > "${SITES_AVAILABLE}/main.conf"
 
 # Conditionally generate MinIO configuration
