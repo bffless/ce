@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { useDispatch } from 'react-redux';
+import { useEffect, useState } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import { RootState } from '@/store';
 import { setBootstrapRealIp, setBootstrapPort80 } from '@/store/slices/setupSlice';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,11 +14,26 @@ import { validateRealIp } from '@/lib/validateRealIp';
 // hard-blocking; the backend combo-validation is the authoritative gate.
 export function ProxyOptions() {
   const dispatch = useDispatch();
+  const bootstrapSslMode = useSelector((s: RootState) => s.setup.wizard.bootstrapSslMode);
   const [rangesText, setRangesText] = useState('');
   const [header, setHeader] = useState('');
   const [closePort80, setClosePort80] = useState(false);
   const [rangesError, setRangesError] = useState<string | null>(null);
   const [headerError, setHeaderError] = useState<string | null>(null);
+
+  // Let's Encrypt is HTTP-01 and needs port 80 open (validateApplyConfig
+  // rejects port80:'closed' with sslMode:'letsencrypt'), and Apply has no
+  // Back button — so a stale 'closed' picked under selfsigned/paste before
+  // switching the sub-choice to letsencrypt would otherwise be a dead-end at
+  // Apply. Clear it (store + local checkbox) whenever the mode becomes
+  // letsencrypt; the checkbox itself is also hidden below in that mode.
+  useEffect(() => {
+    if (bootstrapSslMode === 'letsencrypt') {
+      setClosePort80(false);
+      dispatch(setBootstrapPort80(null));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bootstrapSslMode]);
 
   const applyRealIp = (nextRanges: string, nextHeader: string) => {
     setRangesError(null);
@@ -72,15 +88,17 @@ export function ProxyOptions() {
           </div>
         </div>
       </details>
-      <label className="flex items-start text-sm cursor-pointer">
-        <input
-          type="checkbox"
-          checked={closePort80}
-          onChange={(e) => { setClosePort80(e.target.checked); dispatch(setBootstrapPort80(e.target.checked ? 'closed' : null)); }}
-          className="mt-0.5 mr-2"
-        />
-        <span>Close port 80 — my CDN connects to this origin over HTTPS only</span>
-      </label>
+      {bootstrapSslMode !== 'letsencrypt' && (
+        <label className="flex items-start text-sm cursor-pointer">
+          <input
+            type="checkbox"
+            checked={closePort80}
+            onChange={(e) => { setClosePort80(e.target.checked); dispatch(setBootstrapPort80(e.target.checked ? 'closed' : null)); }}
+            className="mt-0.5 mr-2"
+          />
+          <span>Close port 80 — my CDN connects to this origin over HTTPS only</span>
+        </label>
+      )}
     </div>
   );
 }

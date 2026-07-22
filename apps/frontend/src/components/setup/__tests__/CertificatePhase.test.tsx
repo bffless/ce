@@ -376,6 +376,37 @@ describe('CertificatePhase', () => {
     expect(screen.getByRole('button', { name: /verify/i })).toBeInTheDocument();
   });
 
+  // Regression (whole-branch review Finding 2): CertificatePhase renders
+  // ProxyOptions for all three proxy cert sub-modes, including letsencrypt.
+  // LE is HTTP-01 and needs port 80 open — validateApplyConfig rejects
+  // port80:'closed' with sslMode:'letsencrypt' — and Apply has no Back
+  // button, so building that combo in the wizard was a dead-end at Apply.
+  it('proxy + letsencrypt hides the close-port-80 checkbox', () => {
+    renderWithStore(<CertificatePhase domain="example.com" onBack={noop} />, {
+      servingMode: 'proxy',
+      bootstrapSslMode: 'letsencrypt',
+    });
+    expect(screen.queryByText(/close port 80/i)).not.toBeInTheDocument();
+    // The rest of ProxyOptions (visitor-IP restore) still renders.
+    expect(screen.getByText(/restore visitor ips/i)).toBeInTheDocument();
+  });
+
+  it('switching the proxy sub-choice to letsencrypt clears a stale close-port-80 selection', async () => {
+    const user = userEvent.setup();
+    const store = renderWithStore(<CertificatePhase domain="example.com" onBack={noop} />, {
+      servingMode: 'proxy',
+      bootstrapSslMode: 'selfsigned',
+    });
+
+    await user.click(screen.getByLabelText(/close port 80/i));
+    expect(store.getState().setup.wizard.bootstrapPort80).toBe('closed');
+
+    store.dispatch(setBootstrapSslMode('letsencrypt'));
+
+    await waitFor(() => expect(store.getState().setup.wizard.bootstrapPort80).toBeNull());
+    expect(screen.queryByText(/close port 80/i)).not.toBeInTheDocument();
+  });
+
   it('LE wildcard skip advances with wildcardIssued=false', async () => {
     const user = userEvent.setup();
     const store = renderWithStore(<CertificatePhase domain="example.com" onBack={noop} />, {

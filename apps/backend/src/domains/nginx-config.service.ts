@@ -7,6 +7,7 @@ import { join } from 'path';
 import { DomainMapping, AuthTransformConfig } from '../db/schema';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 import { EdgeBlocklistService } from './edge-blocklist.service';
+import { loadInstanceConfig } from '../bootstrap/instance-config';
 
 /**
  * Proxy rule with auth transformation for nginx-level rendering.
@@ -225,6 +226,13 @@ export class NginxConfigService implements OnModuleInit {
         sslEnabled = true;
         subdomainSslCertPath = '/etc/nginx/ssl/fullchain.pem';
         subdomainSslKeyPath = '/etc/nginx/ssl/privkey.pem';
+      } else if (this.isSelfSignedMode()) {
+        // Proxy + self-signed install: no fullchain.pem exists, but the box
+        // still serves the bootstrap self-signed cert behind the CDN, so an
+        // explicit subdomain mapping can serve HTTPS with it too.
+        sslEnabled = true;
+        subdomainSslCertPath = '/etc/nginx/ssl/bootstrap-selfsigned.crt';
+        subdomainSslKeyPath = '/etc/nginx/ssl/bootstrap-selfsigned.key';
       } else {
         sslEnabled = false;
         this.logger.debug(
@@ -844,11 +852,15 @@ ${spaFallback}
    * is the only 443 listener and serves every host via a self-signed cert.
    *
    * The dynamic configs this service writes into sites-enabled/ (welcome page,
-   * primary/domain blocks) hardcode `ssl_certificate /etc/nginx/ssl/fullchain.pem`
-   * — a file that does not exist in bootstrap mode. nginx includes
-   * sites-enabled/*.conf, so emitting one there makes nginx fail to load the
-   * cert and crash-loop on (re)start. Callers must skip those writes while this
-   * returns true.
+   * primary/domain blocks) resolve their cert path via `primaryCertPaths()`,
+   * which still points at `/etc/nginx/ssl/fullchain.pem` for every sslMode
+   * except 'selfsigned' — a file that does not exist yet in this transient
+   * bootstrap-before-cert state. nginx includes sites-enabled/*.conf, so
+   * emitting one there makes nginx fail to load the cert and crash-loop on
+   * (re)start. Callers must skip those writes while this returns true.
+   * (A *deliberate*, permanent proxy+selfsigned install is a different state —
+   * see `isSelfSignedMode()` / `primaryCertPaths()` — where the cert path is
+   * redirected to the bootstrap self-signed pair instead of being skipped.)
    */
   isCertlessBootstrapMode(): boolean {
     // Platform/external-proxy deployments don't have nginx terminate TLS, so a
@@ -856,6 +868,25 @@ ${spaFallback}
     if (!this.shouldNginxHandleSsl()) return false;
     const sslDir = process.env.SSL_CERT_PATH || '/etc/nginx/ssl';
     return !existsSync(join(sslDir, 'fullchain.pem'));
+  }
+
+  /**
+   * A proxy+selfsigned install deliberately has NO fullchain.pem — the box keeps
+   * serving the bootstrap self-signed cert (the CDN terminates browser TLS). Any
+   * dynamic vhost this service emits must reference that cert, not the absent
+   * fullchain.pem, or nginx crash-loops on restart. Mirrors
+   * docker/nginx/render-main-conf.sh's SSL_MODE=selfsigned branch.
+   */
+  private isSelfSignedMode(): boolean {
+    return loadInstanceConfig()?.sslMode === 'selfsigned';
+  }
+
+  /** Cert/key the CE primary/www/root/subdomain vhosts serve: the real
+   *  fullchain.pem normally, the built-in self-signed pair for a selfsigned install. */
+  private primaryCertPaths(): { cert: string; key: string } {
+    return this.isSelfSignedMode()
+      ? { cert: '/etc/nginx/ssl/bootstrap-selfsigned.crt', key: '/etc/nginx/ssl/bootstrap-selfsigned.key' }
+      : { cert: '/etc/nginx/ssl/fullchain.pem', key: '/etc/nginx/ssl/privkey.pem' };
   }
 
   // =====================
@@ -1218,9 +1249,10 @@ ${serverBlocks}`;
         : '';
 
     // Common SSL settings
+    const { cert, key } = this.primaryCertPaths();
     const sslSettings = `
-    ssl_certificate /etc/nginx/ssl/fullchain.pem;
-    ssl_certificate_key /etc/nginx/ssl/privkey.pem;
+    ssl_certificate ${cert};
+    ssl_certificate_key ${key};
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers HIGH:!aNULL:!MD5;`;
 
@@ -1538,6 +1570,7 @@ ${this.buildEdgeBlocklistRules('403')}
    * CE mode: nginx handles SSL directly on port 443
    */
   private generateCEWelcomePageConfig(baseDomain: string): string {
+    const { cert, key } = this.primaryCertPaths();
     return `# Primary Content Configuration - Welcome Page
 # Generated: ${new Date().toISOString()}
 # Status: Disabled - showing welcome page
@@ -1548,8 +1581,8 @@ server {
     http2 on;
     server_name ${baseDomain};
 
-    ssl_certificate /etc/nginx/ssl/fullchain.pem;
-    ssl_certificate_key /etc/nginx/ssl/privkey.pem;
+    ssl_certificate ${cert};
+    ssl_certificate_key ${key};
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers HIGH:!aNULL:!MD5;
 ${this.buildEdgeBlocklistRules('444')}
@@ -1564,8 +1597,8 @@ server {
     http2 on;
     server_name www.${baseDomain};
 
-    ssl_certificate /etc/nginx/ssl/fullchain.pem;
-    ssl_certificate_key /etc/nginx/ssl/privkey.pem;
+    ssl_certificate ${cert};
+    ssl_certificate_key ${key};
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers HIGH:!aNULL:!MD5;
 

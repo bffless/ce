@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { NginxConfigService } from './nginx-config.service';
 import { EdgeBlocklistService } from './edge-blocklist.service';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
+import { loadInstanceConfig } from '../bootstrap/instance-config';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -12,6 +13,13 @@ jest.mock('fs/promises', () => ({
   writeFile: jest.fn(),
   unlink: jest.fn(),
   access: jest.fn(),
+}));
+
+// Mock instance-config's loadInstanceConfig (pure function reading instance.json).
+// Defaults to null (no instance.json / legacy env-only install); tests override
+// per-case to simulate a self-signed or non-self-signed applied install.
+jest.mock('../bootstrap/instance-config', () => ({
+  loadInstanceConfig: jest.fn().mockReturnValue(null),
 }));
 
 // Mock FeatureFlagsService
@@ -604,6 +612,90 @@ server {
       expect(config).toContain('@spa_fallback');
       // BFFless auth relay proxied (not swallowed by SPA fallback)
       expect(config).toContain('location /_bffless/auth/');
+    });
+  });
+
+  describe('primary domain SSL cert path (self-signed awareness)', () => {
+    // Regression (whole-branch review Finding 1): a proxy+selfsigned install has
+    // no fullchain.pem — only docker/nginx/render-main-conf.sh's
+    // bootstrap-selfsigned.crt/.key. generateCEPrimaryDomainConfig used to
+    // hardcode fullchain.pem unconditionally, so configuring PRIMARY CONTENT on
+    // such an install wrote an nginx vhost referencing a file that will never
+    // exist — the next nginx restart crash-loops the whole box.
+    const mockProject = { owner: 'testowner', name: 'testrepo' };
+    const primaryDomainMapping = {
+      id: 'domain-primary',
+      projectId: 'proj-1',
+      domain: 'example.com',
+      domainType: 'custom' as const,
+      alias: 'production',
+      path: '/dist',
+      sslEnabled: true,
+      isActive: true,
+      isPublic: null,
+      unauthorizedBehavior: null,
+      requiredRole: null,
+      dnsVerified: true,
+      createdBy: 'user-1',
+      createdAt: new Date('2024-01-01'),
+      updatedAt: new Date('2024-01-01'),
+      sslExpiresAt: null,
+      dnsVerifiedAt: null,
+      nginxConfigPath: null,
+      autoRenewSsl: true,
+      sslRenewedAt: null,
+      sslRenewalStatus: null,
+      sslRenewalError: null,
+      stickySessionsEnabled: true,
+      stickySessionDuration: 86400,
+      isSpa: false,
+      isPrimary: true,
+      wwwBehavior: null,
+      redirectTarget: null,
+      redirectType: '301' as const,
+    };
+
+    afterEach(() => {
+      (loadInstanceConfig as jest.Mock).mockReturnValue(null);
+    });
+
+    it('emits the bootstrap self-signed cert (not fullchain.pem) when instance.json says sslMode=selfsigned', async () => {
+      (loadInstanceConfig as jest.Mock).mockReturnValue({
+        version: 2,
+        state: 'applied',
+        sslMode: 'selfsigned',
+      });
+
+      const config = await service.generateConfig(primaryDomainMapping, mockProject);
+
+      expect(config).toContain('ssl_certificate /etc/nginx/ssl/bootstrap-selfsigned.crt;');
+      expect(config).toContain('ssl_certificate_key /etc/nginx/ssl/bootstrap-selfsigned.key;');
+      expect(config).not.toContain('fullchain.pem');
+      expect(config).not.toContain('privkey.pem');
+    });
+
+    it('emits fullchain.pem (unchanged) when instance.json says sslMode=paste', async () => {
+      (loadInstanceConfig as jest.Mock).mockReturnValue({
+        version: 2,
+        state: 'applied',
+        sslMode: 'paste',
+      });
+
+      const config = await service.generateConfig(primaryDomainMapping, mockProject);
+
+      expect(config).toContain('ssl_certificate /etc/nginx/ssl/fullchain.pem;');
+      expect(config).toContain('ssl_certificate_key /etc/nginx/ssl/privkey.pem;');
+      expect(config).not.toContain('bootstrap-selfsigned');
+    });
+
+    it('emits fullchain.pem (unchanged) when there is no instance.json (legacy env-only install)', async () => {
+      (loadInstanceConfig as jest.Mock).mockReturnValue(null);
+
+      const config = await service.generateConfig(primaryDomainMapping, mockProject);
+
+      expect(config).toContain('ssl_certificate /etc/nginx/ssl/fullchain.pem;');
+      expect(config).toContain('ssl_certificate_key /etc/nginx/ssl/privkey.pem;');
+      expect(config).not.toContain('bootstrap-selfsigned');
     });
   });
 
