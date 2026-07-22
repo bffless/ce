@@ -23,6 +23,7 @@ const SERVING_LABELS: Record<ServingMode, string> = {
 const SSL_LABELS: Record<BootstrapSslMode, string> = {
   paste: 'Pasted certificate',
   letsencrypt: "Let's Encrypt (auto-renews)",
+  selfsigned: 'Built-in certificate (self-signed)',
 };
 
 export function ApplyStep() {

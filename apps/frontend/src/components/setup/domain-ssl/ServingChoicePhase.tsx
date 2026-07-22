@@ -12,7 +12,7 @@ const CHOICES: { mode: ServingMode; title: string; body: string }[] = [
   {
     mode: 'proxy',
     title: 'Through another CDN or WAF',
-    body: "Fastly, Bunny, a corporate WAF — anything that terminates TLS in front of this server. You paste that service's origin certificate.",
+    body: "Fastly, Bunny, a corporate WAF — anything that terminates TLS in front of this server. Most don't validate the origin, so this server can keep its built-in certificate with nothing to maintain.",
   },
   {
     mode: 'none',
@@ -97,6 +97,35 @@ export function ServingChoicePhase({ onNext }: { onNext: () => void }) {
               </p>
             </div>
           </label>
+        </div>
+      )}
+
+      {servingMode === 'proxy' && (
+        <div className="ml-6 space-y-3">
+          <p className="text-sm font-medium text-foreground">Certificate for the origin</p>
+          {([
+            ['selfsigned', 'Keep the built-in certificate (recommended)',
+              "Zero maintenance. Works with CDNs that don't validate the origin certificate (the common default). The link from your CDN to this server is encrypted but unauthenticated — if you turn on your CDN's origin verification, pick one of the options below instead."],
+            ['letsencrypt', 'Auto-issue with Let\'s Encrypt',
+              'A real auto-renewing certificate on this server. Needs your CDN to pass ACME challenges through to the origin (or the origin reachable on port 80).'],
+            ['paste', 'Paste my own certificate',
+              "Paste your CDN's origin certificate or any browser-trusted cert. You'll re-paste when it expires."],
+          ] as const).map(([mode, title, body]) => (
+            <label key={mode} className="flex items-start p-3 border border-border rounded-lg cursor-pointer hover:bg-muted/50">
+              <input
+                type="radio"
+                name="bootstrapSslMode"
+                checked={bootstrapSslMode === mode}
+                onChange={() => dispatch(setBootstrapSslMode(mode))}
+                className="mt-1 mr-3"
+                aria-label={title}
+              />
+              <div className="flex-1">
+                <span className="font-medium">{title}</span>
+                <p className="mt-1 text-sm text-muted-foreground">{body}</p>
+              </div>
+            </label>
+          ))}
         </div>
       )}
 

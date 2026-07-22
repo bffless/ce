@@ -10,7 +10,9 @@ export type ServingMode = 'cloudflare' | 'proxy' | 'none';
 // How bootstrap mode obtains its TLS certificate.
 // - 'paste': user pastes an existing cert/key (UploadCertificatesRequest)
 // - 'letsencrypt': backend issues one directly (issueCertificate/wildcard flow)
-export type BootstrapSslMode = 'paste' | 'letsencrypt';
+// - 'selfsigned': keep the server's built-in self-signed cert (proxy default —
+//   most CDNs/WAFs don't validate the origin certificate)
+export type BootstrapSslMode = 'paste' | 'letsencrypt' | 'selfsigned';
 
 // The full set of step identifiers used anywhere by the setup wizard. Defined
 // here (not in SetupWizard.tsx) so both the slice and the wizard component
@@ -315,14 +317,18 @@ const setupSlice = createSlice({
     },
 
     // Bootstrap mode: how traffic reaches this instance. Presets sslMode
-    // ('paste' for cloudflare/proxy — both expect a cert the user already
-    // has; null for 'none' — direct requires an explicit LE-vs-BYO choice)
-    // and clears every downstream choice made under the previous mode, since
+    // ('paste' for cloudflare — it expects a cert the user already has;
+    // 'selfsigned' for proxy — most CDNs/WAFs don't validate the origin
+    // certificate, so the built-in one is a fine default, adjustable below;
+    // null for 'none' — direct requires an explicit LE-vs-BYO choice) and
+    // clears every downstream choice made under the previous mode, since
     // none of them are guaranteed valid once the serving path changes.
     setServingMode: (state, action: PayloadAction<ServingMode>) => {
       state.wizard.servingMode = action.payload;
       state.wizard.bootstrapSslMode =
-        action.payload === 'none' ? null : 'paste';
+        action.payload === 'proxy' ? 'selfsigned'
+        : action.payload === 'cloudflare' ? 'paste'
+        : null; // 'none' — user picks LE or paste
       state.wizard.bootstrapPort80 = null;
       state.wizard.bootstrapRealIp = null;
       state.wizard.dnsPreflightPassed = false;

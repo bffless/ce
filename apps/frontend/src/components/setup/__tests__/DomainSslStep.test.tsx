@@ -219,4 +219,14 @@ describe('DomainSslStep', () => {
     expect(screen.getByLabelText(/domain/i)).toHaveValue('');
     expect(screen.getByText('203.0.113.10')).toBeInTheDocument();
   });
+
+  it('proxy path offers three cert options, defaulting to keep-self-signed', async () => {
+    const user = userEvent.setup();
+    renderWithStore(<DomainSslStep />);
+    await user.click(screen.getByLabelText(/another cdn or waf/i));
+    expect(screen.getByLabelText(/keep the built-in certificate/i)).toBeChecked();
+    expect(screen.getByLabelText(/auto-issue with let's encrypt/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/paste my own certificate/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /next/i })).toBeEnabled();
+  });
 });

@@ -21,10 +21,10 @@ describe('setupSlice - bootstrap SSL wizard state', () => {
     expect(state.wizard.dnsPreflightPassed).toBe(false);
   });
 
-  it('setServingMode presets sslMode to paste for proxy mode too', () => {
+  it('setServingMode presets the proxy path to selfsigned', () => {
     const state = reducer(undefined, setServingMode('proxy'));
     expect(state.wizard.servingMode).toBe('proxy');
-    expect(state.wizard.bootstrapSslMode).toBe('paste');
+    expect(state.wizard.bootstrapSslMode).toBe('selfsigned');
   });
 
   it('setServingMode clears bootstrapPort80 and wildcardIssued on mode change', () => {
