@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
@@ -118,10 +118,55 @@ describe('CertificatePhase', () => {
   });
 
   it('proxy path renders neutral copy and the visitor-IP option', () => {
-    renderWithStore(<CertificatePhase domain="example.com" onBack={noop} />, { servingMode: 'proxy' });
+    // servingMode 'proxy' now defaults bootstrapSslMode to 'selfsigned'
+    // (Task 5); explicitly select 'paste' here to exercise the
+    // PasteCertificateForm cert-upload path.
+    renderWithStore(<CertificatePhase domain="example.com" onBack={noop} />, {
+      servingMode: 'proxy',
+      bootstrapSslMode: 'paste',
+    });
     expect(screen.getByText(/your cdn's origin certificate/i)).toBeInTheDocument();
     expect(screen.getByText(/restore visitor ips/i)).toBeInTheDocument();
     expect(screen.queryByText(/cloudflare dashboard/i)).not.toBeInTheDocument();
+  });
+
+  it('proxy + selfsigned shows a confirm view (no cert upload) and advances', async () => {
+    const user = userEvent.setup();
+    const store = renderWithStore(<CertificatePhase domain="example.com" onBack={noop} />, {
+      servingMode: 'proxy',
+      bootstrapSslMode: 'selfsigned',
+    });
+    expect(screen.queryByLabelText(/certificate.*pem/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/built-in certificate/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /continue/i }));
+    expect(store.getState().setup.wizard.bootstrapDomain).toBe('example.com');
+  });
+
+  it('proxy path shows the visitor-IP / port-80 options for the self-signed mode too', () => {
+    renderWithStore(<CertificatePhase domain="example.com" onBack={noop} />, {
+      servingMode: 'proxy',
+      bootstrapSslMode: 'selfsigned',
+    });
+    expect(screen.getByText(/restore visitor ips/i)).toBeInTheDocument();
+    expect(screen.getByText(/close port 80/i)).toBeInTheDocument();
+  });
+
+  it('proxy options dispatch a valid realIp to the store', async () => {
+    const user = userEvent.setup();
+    const store = renderWithStore(<CertificatePhase domain="example.com" onBack={noop} />, {
+      servingMode: 'proxy',
+      bootstrapSslMode: 'selfsigned',
+    });
+    // Details starts collapsed — open it before the fields inside are queryable.
+    await user.click(screen.getByText(/restore visitor ips/i));
+    await user.type(screen.getByLabelText(/trusted ranges/i), '151.101.0.0/16');
+    await user.type(screen.getByLabelText(/header carrying/i), 'True-Client-IP');
+    await waitFor(() =>
+      expect(store.getState().setup.wizard.bootstrapRealIp).toEqual({
+        header: 'True-Client-IP',
+        ranges: ['151.101.0.0/16'],
+      })
+    );
   });
 
   it('none/paste path renders browser-trusted copy with no visitor-IP option', () => {
@@ -137,6 +182,7 @@ describe('CertificatePhase', () => {
     const user = userEvent.setup();
     const store = renderWithStore(<CertificatePhase domain="example.com" onBack={noop} />, {
       servingMode: 'proxy',
+      bootstrapSslMode: 'paste',
     });
 
     await user.type(screen.getByLabelText(/^origin certificate/i), 'CERT-PEM');
@@ -167,6 +213,7 @@ describe('CertificatePhase', () => {
     const user = userEvent.setup();
     const store = renderWithStore(<CertificatePhase domain="example.com" onBack={noop} />, {
       servingMode: 'proxy',
+      bootstrapSslMode: 'paste',
     });
 
     await user.type(screen.getByLabelText(/^origin certificate/i), 'CERT-PEM');
@@ -176,10 +223,18 @@ describe('CertificatePhase', () => {
     expect(store.getState().setup.wizard.bootstrapRealIp).toBeNull();
   });
 
-  it('proxy path blocks submit on an invalid CIDR range and shows an inline error, without dispatching or uploading', async () => {
+  // NOTE: PasteCertificateForm previously HARD-BLOCKED submit on an invalid
+  // realIp (the validation lived inside its own submit()). Since ProxyOptions
+  // was extracted as an independent, always-mounted control (Task 6), the
+  // realIp fields are OPTIONAL: invalid input shows an inline error and is
+  // dispatched as null (not applied), but no longer blocks the surrounding
+  // cert form's own submit — the backend's combo-validation at Apply time is
+  // the authoritative gate. These two tests are updated accordingly.
+  it('proxy path shows an inline error for an invalid CIDR range but still allows the cert upload to proceed', async () => {
     const user = userEvent.setup();
     const store = renderWithStore(<CertificatePhase domain="example.com" onBack={noop} />, {
       servingMode: 'proxy',
+      bootstrapSslMode: 'paste',
     });
 
     await user.type(screen.getByLabelText(/^origin certificate/i), 'CERT-PEM');
@@ -187,17 +242,21 @@ describe('CertificatePhase', () => {
     await user.click(screen.getByText(/restore visitor ips/i));
     // No prefix — the classic "looks like a CIDR but isn't" mistake.
     await user.type(screen.getByLabelText(/trusted ranges/i), '10.0.0.1');
-    await user.click(screen.getByRole('button', { name: /upload certificate/i }));
 
     expect(await screen.findByText(/invalid cidr range/i)).toBeInTheDocument();
-    expect(uploadMock).not.toHaveBeenCalled();
+    expect(store.getState().setup.wizard.bootstrapRealIp).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: /upload certificate/i }));
+
+    expect(uploadMock).toHaveBeenCalled();
     expect(store.getState().setup.wizard.bootstrapRealIp).toBeNull();
   });
 
-  it('proxy path blocks submit on a header containing a space and shows an inline error, without dispatching or uploading', async () => {
+  it('proxy path shows an inline error for a header containing a space but still allows the cert upload to proceed', async () => {
     const user = userEvent.setup();
     const store = renderWithStore(<CertificatePhase domain="example.com" onBack={noop} />, {
       servingMode: 'proxy',
+      bootstrapSslMode: 'paste',
     });
 
     await user.type(screen.getByLabelText(/^origin certificate/i), 'CERT-PEM');
@@ -205,10 +264,13 @@ describe('CertificatePhase', () => {
     await user.click(screen.getByText(/restore visitor ips/i));
     await user.type(screen.getByLabelText(/trusted ranges/i), '151.101.0.0/16');
     await user.type(screen.getByLabelText(/header carrying the visitor ip/i), 'X Forwarded For');
-    await user.click(screen.getByRole('button', { name: /upload certificate/i }));
 
     expect(await screen.findByText(/valid http header name/i)).toBeInTheDocument();
-    expect(uploadMock).not.toHaveBeenCalled();
+    expect(store.getState().setup.wizard.bootstrapRealIp).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: /upload certificate/i }));
+
+    expect(uploadMock).toHaveBeenCalled();
     expect(store.getState().setup.wizard.bootstrapRealIp).toBeNull();
   });
 
@@ -216,6 +278,7 @@ describe('CertificatePhase', () => {
     const user = userEvent.setup();
     const store = renderWithStore(<CertificatePhase domain="example.com" onBack={noop} />, {
       servingMode: 'proxy',
+      bootstrapSslMode: 'paste',
     });
 
     await user.type(screen.getByLabelText(/^origin certificate/i), 'CERT-PEM');
