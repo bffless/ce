@@ -50,7 +50,8 @@ export function DomainDnsPhase({ domain, setDomain, serverIp, onBack, onNext }: 
             In Cloudflare DNS, create two <strong>A records</strong> — <code className="bg-muted px-1 rounded">@</code> and{' '}
             <code className="bg-muted px-1 rounded">*</code> — pointing at <code className="bg-muted px-1 rounded">{ipText}</code>,
             both set to <strong>Proxied</strong> (orange cloud). Set the zone&apos;s SSL/TLS mode to{' '}
-            <strong>Full</strong> now; the wizard reminds you to switch to <strong>Full (strict)</strong> at the end.
+            <strong>Full (strict)</strong> — the Origin Certificate you paste next is issued by Cloudflare, so
+            strict validation works right away.
           </p>
         )}
         {servingMode === 'proxy' && (

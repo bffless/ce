@@ -197,32 +197,6 @@ describe('ApplyStep', () => {
     );
   });
 
-  it('keeps the Full (strict) hint cloudflare-only', async () => {
-    renderWithStore(<ApplyStep />, {
-      bootstrapDomain: 'example.com',
-      servingMode: 'none',
-      bootstrapSslMode: 'paste',
-    });
-    fireEvent.click(screen.getByRole('checkbox'));
-    fireEvent.click(screen.getByRole('button', { name: /finish setup/i }));
-
-    expect(await screen.findByText(/switching to/i)).toBeInTheDocument();
-    expect(screen.queryByText(/full \(strict\)/i)).not.toBeInTheDocument();
-  });
-
-  it('shows the Full (strict) hint when the applied serving mode is cloudflare', async () => {
-    renderWithStore(<ApplyStep />, {
-      bootstrapDomain: 'example.com',
-      servingMode: 'cloudflare',
-      bootstrapSslMode: 'paste',
-    });
-    fireEvent.click(screen.getByRole('checkbox'));
-    fireEvent.click(screen.getByRole('button', { name: /finish setup/i }));
-
-    expect(await screen.findByText(/switching to/i)).toBeInTheDocument();
-    expect(screen.getByText(/full \(strict\)/i)).toBeInTheDocument();
-  });
-
   it('shows the wildcard status for Let\'s Encrypt: issued', () => {
     renderWithStore(<ApplyStep />, {
       bootstrapDomain: 'example.com',
@@ -288,12 +262,14 @@ describe('ApplyStep', () => {
     expect(screen.queryByText(/switching to/i)).not.toBeInTheDocument();
   });
 
-  it('polls the new origin, keeps polling through failures, and redirects only once a poll succeeds', async () => {
+  it('polls the new origin, keeps polling while unreachable, and redirects once it responds', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const fetchMock = vi.fn();
-    // First poll: rejects (network/DNS not ready). Second poll: resolves ok.
+    // First poll: rejects (network/DNS not ready). Second poll: resolves — a
+    // no-cors probe yields an opaque response we never read, so any resolution
+    // means the new origin is reachable and we redirect.
     fetchMock.mockRejectedValueOnce(new Error('network error'));
-    fetchMock.mockResolvedValueOnce({ ok: true });
+    fetchMock.mockResolvedValueOnce({});
     vi.stubGlobal('fetch', fetchMock);
 
     renderWithStore(<ApplyStep />, {
@@ -311,11 +287,11 @@ describe('ApplyStep', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith(
       'https://admin.example.com/api/setup/status',
-      { mode: 'cors' }
+      { mode: 'no-cors' }
     );
     expect(window.location.href).toBe('https://old-origin.example/setup');
 
-    // Second poll tick: fetch resolves ok, redirect happens.
+    // Second poll tick: fetch resolves (opaque), redirect happens.
     await vi.advanceTimersByTimeAsync(3000);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(window.location.href).toBe('https://admin.example.com');
@@ -405,12 +381,12 @@ describe('ApplyStep', () => {
 
   it('guards against overlapping poll resolutions producing more than one redirect', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    let resolveFirst!: (value: { ok: boolean }) => void;
-    let resolveSecond!: (value: { ok: boolean }) => void;
-    const firstPoll = new Promise<{ ok: boolean }>((resolve) => {
+    let resolveFirst!: (value: unknown) => void;
+    let resolveSecond!: (value: unknown) => void;
+    const firstPoll = new Promise<unknown>((resolve) => {
       resolveFirst = resolve;
     });
-    const secondPoll = new Promise<{ ok: boolean }>((resolve) => {
+    const secondPoll = new Promise<unknown>((resolve) => {
       resolveSecond = resolve;
     });
     const fetchMock = vi.fn();
@@ -435,10 +411,10 @@ describe('ApplyStep', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(hrefAssignments).toEqual([]);
 
-    // Both polls now resolve ok "simultaneously". Without the guard both
+    // Both polls now resolve "simultaneously". Without the guard both
     // would assign window.location.href.
-    resolveFirst({ ok: true });
-    resolveSecond({ ok: true });
+    resolveFirst({});
+    resolveSecond({});
     await vi.advanceTimersByTimeAsync(0);
 
     expect(hrefAssignments).toEqual(['https://admin.example.com']);

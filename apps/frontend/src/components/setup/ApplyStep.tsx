@@ -65,18 +65,12 @@ export function ApplyStep() {
   // that NXDOMAIN, so even adding the records afterwards leaves them stuck
   // until a DNS-cache flush. Gating apply on this prevents the trap.
   const [dnsConfirmed, setDnsConfirmed] = useState(isLetsEncrypt && dnsPreflightPassed);
-  // Captured at apply time so the post-apply screen's Cloudflare-specific
-  // hint reflects what was actually applied, not whatever the store's
-  // servingMode happens to be by the time this renders (it shouldn't
-  // change, but this keeps the two decoupled the same way the old
-  // appliedProxyMode did).
-  const [appliedServingMode, setAppliedServingMode] = useState<ServingMode | null>(null);
   // No initial value for setInterval's return type: the project's TS
   // strictness rejects useRef<T>() with zero args as "expected 1 argument",
   // so seed it with null and widen the ref type to allow that.
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Guards against a slow in-flight poll and a later tick both observing
-  // res.ok: only the first to see doneRef === false may redirect.
+  // Guards against a slow in-flight poll and a later tick both resolving:
+  // only the first to see doneRef === false may redirect.
   const doneRef = useRef(false);
 
   useEffect(() => {
@@ -87,14 +81,20 @@ export function ApplyStep() {
     pollRef.current = setInterval(async () => {
       if (doneRef.current) return;
       try {
-        const res = await fetch(`${adminUrl}/api/setup/status`, { mode: 'cors' });
+        // Readiness probe only — we never read the response, we just need to
+        // know the new origin answers. A `cors` fetch is BLOCKED here: this
+        // page is still on the bare IP (a different origin than adminUrl), and
+        // the restarted backend's CORS allowlist is the domain, not the IP —
+        // so res.ok was never readable and the redirect never fired (#510).
+        // `no-cors` yields an opaque response but still RESOLVES the moment the
+        // server answers, and rejects while it's still down / DNS is still
+        // propagating — exactly the reachability signal we need.
+        await fetch(`${adminUrl}/api/setup/status`, { mode: 'no-cors' });
         if (doneRef.current) return;
-        if (res.ok) {
-          doneRef.current = true;
-          if (pollRef.current) clearInterval(pollRef.current);
-          window.location.href = adminUrl;
-          return;
-        }
+        doneRef.current = true;
+        if (pollRef.current) clearInterval(pollRef.current);
+        window.location.href = adminUrl;
+        return;
       } catch {
         /* backend still restarting / DNS still propagating — keep polling */
       }
@@ -120,7 +120,6 @@ export function ApplyStep() {
         realIp: bootstrapRealIp ?? undefined,
         token: claimToken ?? undefined,
       }).unwrap();
-      setAppliedServingMode(servingMode);
       setAdminUrl(res.adminUrl);
     } catch (err: unknown) {
       const apiError = err as { data?: { message?: string } };
@@ -146,14 +145,7 @@ export function ApplyStep() {
             This is taking longer than expected. Make sure your domain&apos;s DNS points to this
             server — an <strong>A record</strong> for <code className="bg-muted px-1 rounded">@</code>{' '}
             and <code className="bg-muted px-1 rounded">*</code> (wildcard) at your server&apos;s IP.
-            DNS may still be propagating, or your browser may be blocking the automatic check — use
-            the link above to continue manually.
-          </p>
-        )}
-        {appliedServingMode === 'cloudflare' && (
-          <p className="text-sm text-muted-foreground">
-            Last step afterwards: set your Cloudflare zone&apos;s SSL/TLS encryption mode to{' '}
-            <strong>Full (strict)</strong> — your origin now has a trusted certificate.
+            DNS may still be propagating — use the link above to continue manually.
           </p>
         )}
       </div>

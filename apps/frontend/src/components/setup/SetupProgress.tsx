@@ -33,22 +33,24 @@ export function SetupProgress({ steps, currentStep }: SetupProgressProps) {
           return (
             <li key={stepId} className="flex items-center">
               {position < currentStep ? (
-                // Completed step
+                // Completed step — a light outlined check, so it reads as
+                // "done" without out-competing the current step for attention.
                 <span className="flex items-center">
-                  <span className="flex-shrink-0 w-10 h-10 flex items-center justify-center bg-primary rounded-full">
-                    <CheckCircle className="w-6 h-6 text-primary-foreground" />
+                  <span className="flex-shrink-0 w-10 h-10 flex items-center justify-center border-2 border-primary bg-primary/10 rounded-full">
+                    <CheckCircle className="w-6 h-6 text-primary" />
                   </span>
                   <span className="ml-3 text-sm font-medium text-muted-foreground hidden sm:block">
                     {label}
                   </span>
                 </span>
               ) : position === currentStep ? (
-                // Current step
+                // Current step — the solid, filled circle, so "you are here"
+                // is the boldest thing in the row (completed steps are lighter).
                 <span className="flex items-center">
-                  <span className="flex-shrink-0 w-10 h-10 flex items-center justify-center border-2 border-primary rounded-full">
-                    <span className="text-primary font-bold">{position}</span>
+                  <span className="flex-shrink-0 w-10 h-10 flex items-center justify-center bg-primary rounded-full">
+                    <span className="text-primary-foreground font-bold">{position}</span>
                   </span>
-                  <span className="ml-3 text-sm font-medium text-primary hidden sm:block">
+                  <span className="ml-3 text-sm font-semibold text-primary hidden sm:block">
                     {label}
                   </span>
                 </span>
