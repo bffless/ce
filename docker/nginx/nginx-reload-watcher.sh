@@ -46,11 +46,13 @@ while true; do
   #
   # Feedback-loop check: render-main-conf.sh writes sites-available/*.conf
   # and /etc/nginx/cloudflare-realip.conf, neither of which is a watched
-  # path, so those writes cannot re-trigger this watcher. Its only write into
-  # a watched directory is the bootstrap self-signed cert into ssl/, and that
-  # is guarded by `[ ! -f .../bootstrap-selfsigned.crt ]` — idempotent after
-  # the first run (which normally already happened via docker-entrypoint.sh
-  # before this watcher even starts). So a render triggered by this watcher
+  # path, so those writes cannot re-trigger this watcher. Its writes into a
+  # watched directory (ssl/) are all guarded by `[ ! -f ... ]` existence
+  # checks — the bootstrap self-signed cert (idempotent after the first run,
+  # which normally already happened via docker-entrypoint.sh before this
+  # watcher even starts) AND, in SSL_MODE=selfsigned, the fullchain.pem/
+  # privkey.pem materialization (guarded so it never overwrites a staged
+  # pasted cert already sitting there). So a render triggered by this watcher
   # cannot itself produce another watched-path change: no infinite loop.
   echo "🔧 Re-rendering nginx config..."
   if ! /usr/local/bin/render-main-conf.sh; then

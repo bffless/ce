@@ -141,8 +141,20 @@ if [ "${SSL_MODE}" = "selfsigned" ]; then
     # self-signed pair so EVERY reference resolves to the cert we intend to
     # serve — regardless of which generator emitted it. This is the robust
     # catch-all; the per-vhost primaryCertPaths() awareness is belt-and-braces.
-    cp -f "${SSL_DIR}/bootstrap-selfsigned.crt" "${SSL_DIR}/fullchain.pem"
-    cp -f "${SSL_DIR}/bootstrap-selfsigned.key" "${SSL_DIR}/privkey.pem"
+    #
+    # Guarded to ONLY-IF-MISSING: the admin can stage a pasted certificate
+    # (backend saveCertificates() writes it straight to fullchain.pem/privkey.pem)
+    # before switching SSL_MODE away from selfsigned. The nginx-reload-watcher
+    # fires on that write and re-runs this script while instance.env still says
+    # SSL_MODE=selfsigned — i.e. before "apply" flips the mode. An unconditional
+    # cp here would clobber the staged cert back to self-signed on every such
+    # re-render, so apply's assertStagedCertificateCovers check would always
+    # fail. Only materialize when the files don't already exist, so a staged
+    # cert survives until apply actually switches the mode.
+    if [ ! -f "${SSL_DIR}/fullchain.pem" ] || [ ! -f "${SSL_DIR}/privkey.pem" ]; then
+        cp -f "${SSL_DIR}/bootstrap-selfsigned.crt" "${SSL_DIR}/fullchain.pem"
+        cp -f "${SSL_DIR}/bootstrap-selfsigned.key" "${SSL_DIR}/privkey.pem"
+    fi
     PRIMARY_CERT="${SSL_DIR}/bootstrap-selfsigned.crt"
     PRIMARY_KEY="${SSL_DIR}/bootstrap-selfsigned.key"
     WILDCARD_CERT="${SSL_DIR}/bootstrap-selfsigned.crt"

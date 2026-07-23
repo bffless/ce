@@ -99,10 +99,34 @@ assert_not_contains "$ETC/sites-available/main.conf" 'fullchain.pem' 'selfsigned
 # self-signed pair) so ANY backend-generated vhost that references the root
 # fullchain.pem path resolves instead of crash-looping nginx on a selfsigned
 # install — even though main.conf itself points at bootstrap-selfsigned.
-if [ -f "$ETC/ssl/fullchain.pem" ] && [ -f "$ETC/ssl/privkey.pem" ]; then
+if [ -f "$ETC/ssl/fullchain.pem" ] && [ -f "$ETC/ssl/privkey.pem" ] \
+   && cmp -s "$ETC/ssl/fullchain.pem" "$ETC/ssl/bootstrap-selfsigned.crt" \
+   && cmp -s "$ETC/ssl/privkey.pem" "$ETC/ssl/bootstrap-selfsigned.key"; then
     echo 'ok: selfsigned: fullchain.pem/privkey.pem materialized from the self-signed pair'
 else
-    echo 'FAIL: selfsigned: fullchain.pem/privkey.pem not materialized'; FAILURES=$((FAILURES+1))
+    echo 'FAIL: selfsigned: fullchain.pem/privkey.pem not materialized (or does not match the self-signed pair)'; FAILURES=$((FAILURES+1))
 fi
+
+# --- selfsigned + a STAGED cert already in place: a re-render triggered by
+# the reload watcher (e.g. right after the backend's saveCertificates() writes
+# a pasted cert, but before "apply" has flipped SSL_MODE away from selfsigned)
+# must NOT clobber it. Regression test: the old unguarded `cp -f` destroyed
+# the staged cert here, which made apply's assertStagedCertificateCovers()
+# check fail every time — this test fails against that code.
+setup_etc 'STATE=applied
+PRIMARY_DOMAIN=example.com
+PROXY_MODE=proxy
+SSL_MODE=selfsigned
+PORT80=redirect
+REALIP_MODE=off'
+printf 'STAGED-REAL-CERT\n' > "$ETC/ssl/fullchain.pem"
+printf 'STAGED-REAL-KEY\n' > "$ETC/ssl/privkey.pem"
+run_render
+assert_contains "$ETC/ssl/fullchain.pem" 'STAGED-REAL-CERT' 'selfsigned: staged fullchain.pem survives a re-render'
+assert_contains "$ETC/ssl/privkey.pem"   'STAGED-REAL-KEY'  'selfsigned: staged privkey.pem survives a re-render'
+# The admin/wildcard vhosts must still SERVE the self-signed cert directly
+# (not the now-foreign staged fullchain.pem) — only the materialization of
+# fullchain.pem itself is guarded, PRIMARY_CERT/WILDCARD_CERT are unaffected.
+assert_contains "$ETC/sites-available/main.conf" "ssl_certificate $ETC/ssl/bootstrap-selfsigned.crt;" 'selfsigned: admin vhost still serves self-signed cert with a staged fullchain present'
 
 [ "$FAILURES" -eq 0 ] && echo 'ALL RENDER TESTS PASSED' || { echo "$FAILURES FAILURES"; exit 1; }
