@@ -90,6 +90,8 @@ export function PrimarySslManager() {
         onCertStaged={() => {
           /* no-op: ApplyPanel reads the latest editorState on Apply click */
         }}
+        isCurrentlyLetsEncrypt={data?.sslMode === 'letsencrypt'}
+        currentCertDaysLeft={data?.cert?.daysUntilExpiry ?? null}
       />
       <ApplyPanel config={config} disabled={false} />
       <RollbackPanel pendingRevert={data?.pendingRevert ?? null} />

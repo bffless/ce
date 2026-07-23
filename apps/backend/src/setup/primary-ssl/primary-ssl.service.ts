@@ -100,7 +100,7 @@ export class PrimarySslService {
     );
   }
 
-  async issueLetsEncrypt(): Promise<{ issued: boolean; sans: string[] }> {
+  async issueLetsEncrypt(): Promise<{ issued: boolean; sans: string[]; reused: boolean }> {
     this.assertEnabled();
     const domain = this.requireDomain();
     if (this.snap.readPendingRevert()) {
@@ -117,7 +117,7 @@ export class PrimarySslService {
     if (!res.success) {
       throw new BadRequestException(res.error || 'Certificate issuance failed');
     }
-    return { issued: true, sans: res.sans ?? [] };
+    return { issued: true, sans: res.sans ?? [], reused: res.reused ?? false };
   }
 
   async apply(dto: PrimarySslApplyDto): Promise<{ applied: true; kind: 'cert-only' | 'serving'; deadlineMs?: number }> {

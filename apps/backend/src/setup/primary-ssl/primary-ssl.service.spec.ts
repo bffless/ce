@@ -152,6 +152,18 @@ describe('PrimarySslService.issueLetsEncrypt', () => {
     expect(d.ssl.requestPrimaryDomainCertificate).toHaveBeenCalledWith('a.com');
     expect(r.issued).toBe(true);
   });
+  it('surfaces reused: true when the underlying call reports the cert was reused (no-op re-issue)', async () => {
+    const { d, svc } = build();
+    d.ssl.requestPrimaryDomainCertificate.mockResolvedValue({ success: true, sans: ['a.com'], reused: true });
+    const r = await svc.issueLetsEncrypt();
+    expect(r.reused).toBe(true);
+  });
+  it('surfaces reused: false when the underlying call actually issued/renewed', async () => {
+    const { d, svc } = build();
+    d.ssl.requestPrimaryDomainCertificate.mockResolvedValue({ success: true, sans: ['a.com'], reused: false });
+    const r = await svc.issueLetsEncrypt();
+    expect(r.reused).toBe(false);
+  });
   it('snapshots BEFORE issuing so the OLD cert is the rollback baseline', async () => {
     const { d, svc } = build();
     d.ssl.requestPrimaryDomainCertificate.mockResolvedValue({ success: true, sans: ['a.com'] });

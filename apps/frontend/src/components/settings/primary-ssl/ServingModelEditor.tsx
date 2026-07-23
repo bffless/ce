@@ -41,10 +41,16 @@ export function ServingModelEditor({
   value,
   onChange,
   onCertStaged,
+  currentCertDaysLeft = null,
+  isCurrentlyLetsEncrypt = false,
 }: {
   value: EditorState;
   onChange: (v: EditorState) => void;
   onCertStaged: () => void;
+  /** Days left on the currently-served cert, when known (used to gate "Renew now"). */
+  currentCertDaysLeft?: number | null;
+  /** True when the LIVE status already reports sslMode === 'letsencrypt' (as opposed to the editor merely staging a switch to it). */
+  isCurrentlyLetsEncrypt?: boolean;
 }) {
   const { toast } = useToast();
   const [stageCertificate, { isLoading: isStaging }] = useStagePrimaryCertificateMutation();
@@ -88,8 +94,12 @@ export function ServingModelEditor({
 
   const handleIssue = async () => {
     try {
-      await issueLetsEncrypt().unwrap();
-      toast({ title: "Let's Encrypt issued", description: 'Certificate is ready to apply.' });
+      const result = await issueLetsEncrypt().unwrap();
+      if (result.reused) {
+        toast({ title: 'Certificate already valid', description: "Nothing to renew — it renews automatically." });
+      } else {
+        toast({ title: 'New certificate issued', description: 'Certificate is ready to apply.' });
+      }
     } catch (error: unknown) {
       toast({ title: 'Error', description: errorMessage(error, "Failed to issue Let's Encrypt certificate"), variant: 'destructive' });
     }
@@ -146,7 +156,31 @@ export function ServingModelEditor({
         </div>
       )}
 
-      {value.sslMode === 'letsencrypt' && (
+      {value.sslMode === 'letsencrypt' && isCurrentlyLetsEncrypt && (
+        <div className="space-y-4">
+          <p className="text-sm text-foreground">
+            Let&apos;s Encrypt is active — covers your apex, www, and admin hostnames. Renews automatically.
+            {typeof currentCertDaysLeft === 'number' && ` ${currentCertDaysLeft} days left.`}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Wildcard (*.yourdomain) is issued separately via DNS-01 under Domains → SSL — this does not renew it.
+          </p>
+          <div className="flex gap-2 items-center">
+            <Button
+              variant="outline"
+              onClick={handleIssue}
+              disabled={isIssuing || (currentCertDaysLeft != null && currentCertDaysLeft > 30)}
+            >
+              {isIssuing ? 'Renewing…' : 'Renew now'}
+            </Button>
+            {currentCertDaysLeft != null && currentCertDaysLeft > 30 && (
+              <p className="text-sm text-muted-foreground">Not due yet — renews automatically at 30 days.</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {value.sslMode === 'letsencrypt' && !isCurrentlyLetsEncrypt && (
         <div className="space-y-4">
           <div className="flex gap-2">
             <Button variant="outline" onClick={handlePreflight} disabled={isPreflighting}>

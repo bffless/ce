@@ -505,6 +505,7 @@ export class SslCertificateService {
     error?: string;
     expiresAt?: Date;
     sans?: string[];
+    reused?: boolean;
   }> {
     const sans = [domain, `www.${domain}`, `admin.${domain}`];
 
@@ -513,7 +514,7 @@ export class SslCertificateService {
     const staged = this.stagedPrimaryCertificate(sans);
     if (staged) {
       this.logger.log(`Primary cert already covers [${sans.join(', ')}] — reusing`);
-      return { success: true, expiresAt: staged.expiresAt, sans };
+      return { success: true, expiresAt: staged.expiresAt, sans, reused: true };
     }
 
     if (this.mockMode) {

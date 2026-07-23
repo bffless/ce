@@ -8,6 +8,19 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { useGetPrimarySslStatusQuery } from '@/services/primarySslApi';
 import { Shield } from 'lucide-react';
+import type { PrimarySslStatus } from '@/services/primarySslApi';
+
+const TRAFFIC_LABELS: Record<NonNullable<PrimarySslStatus['proxyMode']>, string> = {
+  none: 'Directly',
+  cloudflare: 'Through Cloudflare',
+  proxy: 'Through a CDN or WAF',
+};
+
+const CERTIFICATE_LABELS: Record<NonNullable<PrimarySslStatus['sslMode']>, string> = {
+  letsencrypt: "Let's Encrypt",
+  paste: 'Pasted (bring-your-own)',
+  selfsigned: 'Self-signed (built-in)',
+};
 
 export function CurrentSslStatus() {
   const { data, isLoading } = useGetPrimarySslStatusQuery();
@@ -60,32 +73,30 @@ export function CurrentSslStatus() {
       <CardContent className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="text-sm font-medium">Serving Mode</label>
-            <p className="text-sm text-foreground mt-1 capitalize">
-              {data.sslMode}
+            <label className="text-sm font-medium">Traffic</label>
+            <p className="text-sm text-foreground mt-1">
+              {data.proxyMode ? TRAFFIC_LABELS[data.proxyMode] : '—'}
             </p>
           </div>
 
-          {data.sslMode === 'selfsigned' ? (
-            <div>
-              <label className="text-sm font-medium">Certificate</label>
-              <p className="text-sm text-foreground mt-1">
-                Self-signed (built-in)
-              </p>
-            </div>
-          ) : (
-            data.cert && (
-              <div>
-                <label className="text-sm font-medium">Certificate Expiry</label>
-                <p className="text-sm text-foreground mt-1">
-                  {data.cert.daysUntilExpiry} days
-                </p>
-              </div>
-            )
-          )}
+          <div>
+            <label className="text-sm font-medium">Certificate</label>
+            <p className="text-sm text-foreground mt-1">
+              {data.sslMode ? CERTIFICATE_LABELS[data.sslMode] : '—'}
+            </p>
+          </div>
         </div>
 
-        {data.wildcardCovered && (
+        {data.sslMode !== 'selfsigned' && data.cert && (
+          <div>
+            <label className="text-sm font-medium">Certificate Expiry</label>
+            <p className="text-sm text-foreground mt-1">
+              Expires in {data.cert.daysUntilExpiry} days
+            </p>
+          </div>
+        )}
+
+        {data.wildcardCovered && data.sslMode !== 'selfsigned' && (
           <div>
             <Badge>Wildcard Covered</Badge>
           </div>

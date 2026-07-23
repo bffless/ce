@@ -77,10 +77,12 @@ describe('SslCertificateService.requestPrimaryDomainCertificate', () => {
 
   it('is idempotent — a second call reuses the staged cert', async () => {
     const service = new SslCertificateService();
-    await service.requestPrimaryDomainCertificate('example.com');
+    const first = await service.requestPrimaryDomainCertificate('example.com');
+    expect(first.reused).toBeFalsy();
     const firstCert = fs.readFileSync(path.join(sslDir, 'fullchain.pem'), 'utf8');
     const res = await service.requestPrimaryDomainCertificate('example.com');
     expect(res.success).toBe(true);
+    expect(res.reused).toBe(true);
     expect(fs.readFileSync(path.join(sslDir, 'fullchain.pem'), 'utf8')).toBe(firstCert);
   });
 

@@ -40,7 +40,7 @@ export const primarySslApi = api.injectEndpoints({
     stagePrimaryCertificate: builder.mutation<{ sans: string[]; wildcardCovered: boolean }, PrimarySslPasteBody>({
       query: (body) => ({ url: '/api/admin/ssl/certificate', method: 'POST', body }),
     }),
-    issuePrimaryLetsEncrypt: builder.mutation<{ issued: boolean; sans: string[] }, void>({
+    issuePrimaryLetsEncrypt: builder.mutation<{ issued: boolean; sans: string[]; reused: boolean }, void>({
       query: () => ({ url: '/api/admin/ssl/letsencrypt', method: 'POST' }),
     }),
     applyPrimarySsl: builder.mutation<{ applied: true; kind: 'cert-only' | 'serving'; deadlineMs?: number }, PrimarySslApplyBody>({
