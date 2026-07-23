@@ -185,6 +185,56 @@ describe('SslInfoService', () => {
     });
   });
 
+  describe('getServedPrimaryCertInfo', () => {
+    it('should return cert info parsed from <sslDir>/fullchain.pem', async () => {
+      mockReadFile.mockResolvedValueOnce(DUMMY_CERT_PEM);
+
+      const result = await service.getServedPrimaryCertInfo();
+
+      expect(result).not.toBeNull();
+      expect(result?.type).toBe('individual');
+      expect(mockReadFile).toHaveBeenCalledWith(
+        expect.stringContaining('fullchain.pem'),
+        'utf-8',
+      );
+    });
+
+    it('should return null if fullchain.pem is missing', async () => {
+      mockReadFile.mockRejectedValueOnce(new Error('ENOENT'));
+
+      const result = await service.getServedPrimaryCertInfo();
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null if fullchain.pem is unparseable', async () => {
+      mockReadFile.mockResolvedValueOnce('not a cert');
+      const { X509Certificate } = jest.requireMock('crypto') as { X509Certificate: jest.Mock };
+      X509Certificate.mockImplementationOnce(() => {
+        throw new Error('bad cert');
+      });
+
+      const result = await service.getServedPrimaryCertInfo();
+
+      expect(result).toBeNull();
+    });
+
+    it('should read from SSL_CERT_PATH when set', async () => {
+      const prev = process.env.SSL_CERT_PATH;
+      process.env.SSL_CERT_PATH = '/custom/ssl/dir';
+      mockReadFile.mockResolvedValueOnce(DUMMY_CERT_PEM);
+
+      await service.getServedPrimaryCertInfo();
+
+      expect(mockReadFile).toHaveBeenCalledWith(
+        '/custom/ssl/dir/fullchain.pem',
+        'utf-8',
+      );
+      if (prev === undefined) delete process.env.SSL_CERT_PATH;
+      else process.env.SSL_CERT_PATH = prev;
+    });
+  });
+
   describe('getAppDomainCertInfo', () => {
     it('should return certificate info for app domain', async () => {
       mockReadFile.mockResolvedValueOnce(DUMMY_CERT_PEM);

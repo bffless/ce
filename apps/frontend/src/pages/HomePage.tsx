@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux';
 import { useGetSessionQuery } from '@/services/authApi';
 import { useGetSetupStatusQuery } from '@/services/setupApi';
 import { useGetWildcardCertificateStatusQuery } from '@/services/domainsApi';
+import { useGetPrimarySslStatusQuery } from '@/services/primarySslApi';
 import { useFeatureFlags } from '@/services/featureFlagsApi';
 import { useGetMyRepositoriesQuery } from '@/services/repositoriesApi';
 import { RootState } from '@/store';
@@ -42,6 +43,18 @@ export function HomePage() {
     skip: !flagsReady || !isBannerEnabled || !isWildcardSslEnabled,
   });
 
+  // Primary SSL status tells us the serving mode (proxy/CDN vs direct) so the
+  // wildcard-cert nag can be suppressed when the origin doesn't need its own
+  // wildcard cert (edge terminates TLS, or origin is intentionally
+  // self-signed behind a verify-off CDN/WAF). Skipped for non-admins or when
+  // the feature flag is off — the endpoint 403s otherwise.
+  const isPrimarySslManagementEnabled = isEnabled('ENABLE_PRIMARY_SSL_MANAGEMENT');
+  const { data: primaryStatus } = useGetPrimarySslStatusQuery(undefined, {
+    skip: !flagsReady || sessionData?.user?.role !== 'admin' || !isPrimarySslManagementEnabled,
+  });
+  const behindEdge =
+    !!primaryStatus && (primaryStatus.proxyMode !== 'none' || primaryStatus.sslMode === 'selfsigned');
+
   const [isBannerDismissed, setIsBannerDismissed] = useState(() =>
     localStorage.getItem(SSL_BANNER_DISMISSED_KEY) === 'true'
   );
@@ -79,7 +92,8 @@ export function HomePage() {
     user?.role === 'admin' &&
     isBannerEnabled &&
     isWildcardSslEnabled &&
-    ((missingWildcard && !isBannerDismissed) || showExpiryBanner);
+    ((missingWildcard && !isBannerDismissed) || showExpiryBanner) &&
+    !behindEdge;
 
   const dismissBanner = () => {
     localStorage.setItem(SSL_BANNER_DISMISSED_KEY, 'true');

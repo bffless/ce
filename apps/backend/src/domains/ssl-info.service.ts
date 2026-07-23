@@ -81,6 +81,25 @@ export class SslInfoService {
   }
 
   /**
+   * Get SSL certificate info for the cert nginx actually serves on the
+   * primary domain — <SSL_CERT_PATH>/fullchain.pem — as distinct from
+   * getWildcardCertInfo() (wildcard.<domain>.crt), which may be a stale/
+   * leftover file unrelated to what's currently being served (e.g. a
+   * self-signed install that once had a Let's Encrypt wildcard on disk).
+   */
+  async getServedPrimaryCertInfo(): Promise<SslCertificateInfo | null> {
+    const certPath = join(this.getSslPath(), 'fullchain.pem');
+
+    try {
+      const certContent = await readFile(certPath, 'utf-8');
+      return this.parseCertificate(certContent, 'individual');
+    } catch (error) {
+      this.logger.warn(`Served primary certificate not found or unparseable: ${error}`);
+      return null;
+    }
+  }
+
+  /**
    * Get SSL certificate info for system app domains
    * These domains have individual certificates (not wildcard)
    */

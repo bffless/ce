@@ -88,15 +88,32 @@ export function ServingModelEditor({
     <div className="space-y-6">
       <ServingChoiceCards
         value={value.servingMode}
-        onChange={(mode) => onChange({ ...value, servingMode: mode, sslMode: presetSslFor(mode) })}
+        onChange={(mode) => {
+          const sslMode = presetSslFor(mode);
+          onChange({
+            ...value,
+            servingMode: mode,
+            sslMode,
+            // Let's Encrypt is HTTP-01 and needs port 80 open — mirrors the
+            // setup wizard's ProxyOptions, which clears a stale 'closed'
+            // pick the same way when the mode becomes letsencrypt.
+            port80: sslMode === 'letsencrypt' ? 'redirect' : value.port80,
+          });
+        }}
       />
 
       {value.servingMode !== 'cloudflare' && (
         <div className="space-y-4 pl-1">
-          <Port80Choice
-            value={value.port80}
-            onChange={(port80) => onChange({ ...value, port80 })}
-          />
+          {value.sslMode === 'letsencrypt' ? (
+            <p className="text-sm text-muted-foreground">
+              Port 80 stays open so Let&apos;s Encrypt can validate over HTTP-01.
+            </p>
+          ) : (
+            <Port80Choice
+              value={value.port80}
+              onChange={(port80) => onChange({ ...value, port80 })}
+            />
+          )}
           <RealIpFields
             header={value.realIp?.header ?? ''}
             ranges={value.realIp?.ranges ?? ''}

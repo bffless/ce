@@ -66,13 +66,22 @@ export function CurrentSslStatus() {
             </p>
           </div>
 
-          {data.cert && (
+          {data.sslMode === 'selfsigned' ? (
             <div>
-              <label className="text-sm font-medium">Certificate Expiry</label>
+              <label className="text-sm font-medium">Certificate</label>
               <p className="text-sm text-foreground mt-1">
-                {data.cert.daysUntilExpiry} days
+                Self-signed (built-in)
               </p>
             </div>
+          ) : (
+            data.cert && (
+              <div>
+                <label className="text-sm font-medium">Certificate Expiry</label>
+                <p className="text-sm text-foreground mt-1">
+                  {data.cert.daysUntilExpiry} days
+                </p>
+              </div>
+            )
           )}
         </div>
 

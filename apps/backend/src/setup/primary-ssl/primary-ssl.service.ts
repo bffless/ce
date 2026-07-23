@@ -45,7 +45,12 @@ export class PrimarySslService {
   async getStatus(): Promise<PrimarySslStatus> {
     this.assertEnabled();
     const cfg = loadInstanceConfig();
-    const cert = await this.info.getWildcardCertInfo().catch(() => null);
+    // The card shows the cert nginx is actually SERVING, not whatever
+    // wildcard.<domain>.crt happens to sit on disk (that file can be a
+    // leftover from an earlier SSL mode). Wildcard coverage is reported
+    // separately and independently below.
+    const cert = await this.info.getServedPrimaryCertInfo().catch(() => null);
+    const wildcardCert = await this.info.getWildcardCertInfo().catch(() => null);
     const pending = this.snap.readPendingRevert();
     return {
       domain: cfg?.primaryDomain ?? null,
@@ -54,7 +59,7 @@ export class PrimarySslService {
       port80: cfg?.port80 ?? null,
       realIp: cfg?.realIp ?? null,
       cert,
-      wildcardCovered: !!cert,
+      wildcardCovered: !!wildcardCert,
       pendingRevert: pending ? { deadlineMs: pending.deadlineMs } : null,
     };
   }

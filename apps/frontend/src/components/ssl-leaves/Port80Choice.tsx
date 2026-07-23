@@ -26,7 +26,7 @@ export function Port80Choice({
           onChange={() => onChange('closed')}
           className="mt-0.5 mr-2"
         />
-        <span>Close port 80 — my CDN connects to this origin over HTTPS only</span>
+        <span>Close port 80 — serve HTTPS (443) only (no HTTP→HTTPS redirect)</span>
       </label>
     </div>
   );

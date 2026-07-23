@@ -12,7 +12,10 @@ const makeDeps = () => ({
   },
   ssl: { requestPrimaryDomainCertificate: jest.fn() },
   preflight: { run: jest.fn().mockResolvedValue({ ok: true, checks: [] }) },
-  info: { getWildcardCertInfo: jest.fn().mockResolvedValue({ type: 'wildcard', expiresAt: new Date(), isValid: true }) },
+  info: {
+    getWildcardCertInfo: jest.fn().mockResolvedValue({ type: 'wildcard', expiresAt: new Date(), isValid: true }),
+    getServedPrimaryCertInfo: jest.fn().mockResolvedValue({ type: 'individual', expiresAt: new Date(), isValid: true }),
+  },
   snap: { snapshot: jest.fn(), snapshotIfAbsent: jest.fn(), clearSnapshot: jest.fn(), restore: jest.fn(), hasSnapshot: jest.fn().mockReturnValue(false), writePendingRevert: jest.fn(), readPendingRevert: jest.fn().mockReturnValue(null), clearPendingRevert: jest.fn() },
 });
 
@@ -38,6 +41,31 @@ describe('PrimarySslService', () => {
     expect(s.domain).toBe(domain);
     expect(s.sslMode).toBe('paste');
     expect(s.cert).not.toBeNull();
+  });
+
+  it('getStatus.cert comes from getServedPrimaryCertInfo (the SERVED cert), not getWildcardCertInfo', async () => {
+    const { d, svc } = build();
+    const served = { type: 'individual', commonName: 'served.a.com', expiresAt: new Date(), isValid: true };
+    d.info.getServedPrimaryCertInfo.mockResolvedValue(served);
+    const s = await svc.getStatus();
+    expect(s.cert).toEqual(served);
+  });
+
+  it('getStatus.wildcardCovered reflects getWildcardCertInfo independently of the served cert', async () => {
+    const { d, svc } = build();
+    // served cert present, no wildcard cert file -> not covered
+    d.info.getServedPrimaryCertInfo.mockResolvedValue({ type: 'individual', expiresAt: new Date(), isValid: true });
+    d.info.getWildcardCertInfo.mockResolvedValue(null);
+    let s = await svc.getStatus();
+    expect(s.wildcardCovered).toBe(false);
+    expect(s.cert).not.toBeNull();
+
+    // served cert missing/unparseable, wildcard cert present -> covered, but no served cert
+    d.info.getServedPrimaryCertInfo.mockResolvedValue(null);
+    d.info.getWildcardCertInfo.mockResolvedValue({ type: 'wildcard', expiresAt: new Date(), isValid: true });
+    s = await svc.getStatus();
+    expect(s.wildcardCovered).toBe(true);
+    expect(s.cert).toBeNull();
   });
 
   it('stagePaste validates then saves for the fixed domain, snapshotting the OLD cert first', () => {

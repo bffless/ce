@@ -11,6 +11,7 @@ const mockGetSession = vi.fn();
 const mockGetSetupStatus = vi.fn();
 const mockGetWildcardStatus = vi.fn();
 const mockGetMyRepositories = vi.fn();
+const mockGetPrimarySslStatus = vi.fn();
 
 vi.mock('@/services/authApi', () => ({
   useGetSessionQuery: () => mockGetSession(),
@@ -24,11 +25,17 @@ vi.mock('@/services/domainsApi', () => ({
   useGetWildcardCertificateStatusQuery: () => mockGetWildcardStatus(),
 }));
 
+vi.mock('@/services/primarySslApi', () => ({
+  useGetPrimarySslStatusQuery: () => mockGetPrimarySslStatus(),
+}));
+
 vi.mock('@/services/featureFlagsApi', () => ({
   useFeatureFlags: () => ({
     isReady: true,
     isEnabled: (flag: string) =>
-      flag === 'ENABLE_WILDCARD_SSL_BANNER' || flag === 'ENABLE_WILDCARD_SSL',
+      flag === 'ENABLE_WILDCARD_SSL_BANNER' ||
+      flag === 'ENABLE_WILDCARD_SSL' ||
+      flag === 'ENABLE_PRIMARY_SSL_MANAGEMENT',
   }),
 }));
 
@@ -78,6 +85,7 @@ describe('HomePage — wildcard SSL banner', () => {
     });
     mockGetSetupStatus.mockReturnValue({ data: { isSetupComplete: true }, isLoading: false });
     mockGetMyRepositories.mockReturnValue({ data: { total: 0 } });
+    mockGetPrimarySslStatus.mockReturnValue({ data: undefined });
   });
 
   it('shows the "missing wildcard" banner when no certificate exists (existing behavior)', () => {
@@ -129,5 +137,37 @@ describe('HomePage — wildcard SSL banner', () => {
     renderHomePage();
 
     expect(screen.getByText('Wildcard Certificate Expiring Soon')).toBeInTheDocument();
+  });
+
+  it('suppresses the "missing wildcard" banner when primary SSL status reports proxyMode "proxy" (behind a CDN/WAF)', () => {
+    mockGetWildcardStatus.mockReturnValue({ data: { exists: false } });
+    mockGetPrimarySslStatus.mockReturnValue({ data: { proxyMode: 'proxy', sslMode: 'letsencrypt' } });
+    renderHomePage();
+
+    expect(screen.queryByText('Wildcard SSL Certificate Required')).not.toBeInTheDocument();
+  });
+
+  it('suppresses the banner when primary SSL status reports sslMode "selfsigned" (origin cert unverified by the edge)', () => {
+    mockGetWildcardStatus.mockReturnValue({ data: { exists: false } });
+    mockGetPrimarySslStatus.mockReturnValue({ data: { proxyMode: 'none', sslMode: 'selfsigned' } });
+    renderHomePage();
+
+    expect(screen.queryByText('Wildcard SSL Certificate Required')).not.toBeInTheDocument();
+  });
+
+  it('still shows the banner when primary SSL status is proxyMode "none" + sslMode "letsencrypt" (direct origin, needs its own wildcard)', () => {
+    mockGetWildcardStatus.mockReturnValue({ data: { exists: false } });
+    mockGetPrimarySslStatus.mockReturnValue({ data: { proxyMode: 'none', sslMode: 'letsencrypt' } });
+    renderHomePage();
+
+    expect(screen.getByText('Wildcard SSL Certificate Required')).toBeInTheDocument();
+  });
+
+  it('still shows the banner (unchanged behavior) when primary SSL status is undefined (flag off, non-admin, or query error)', () => {
+    mockGetWildcardStatus.mockReturnValue({ data: { exists: false } });
+    mockGetPrimarySslStatus.mockReturnValue({ data: undefined });
+    renderHomePage();
+
+    expect(screen.getByText('Wildcard SSL Certificate Required')).toBeInTheDocument();
   });
 });
