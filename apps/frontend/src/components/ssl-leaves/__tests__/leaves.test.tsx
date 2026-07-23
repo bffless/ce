@@ -36,4 +36,11 @@ describe('ssl leaves', () => {
     });
     expect(onChange).toHaveBeenCalledWith({ header: 'X-Forwarded-For', ranges: '' });
   });
+  it('RealIpFields renders rangesError under the ranges textarea and marks it aria-invalid', () => {
+    const onChange = vi.fn();
+    render(<RealIpFields header="" ranges="" onChange={onChange} rangesError="bad" />);
+    const rangesInput = screen.getByLabelText(/trusted ranges/i);
+    expect(rangesInput).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByText('bad')).toBeInTheDocument();
+  });
 });

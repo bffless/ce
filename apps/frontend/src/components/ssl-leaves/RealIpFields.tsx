@@ -11,7 +11,13 @@ export function RealIpFields({
   header,
   ranges,
   onChange,
-}: RealIpFieldsValue & { onChange: (v: RealIpFieldsValue) => void }) {
+  headerError,
+  rangesError,
+}: RealIpFieldsValue & {
+  onChange: (v: RealIpFieldsValue) => void;
+  headerError?: string | null;
+  rangesError?: string | null;
+}) {
   return (
     <details className="rounded-md border border-border p-3">
       <summary className="text-sm font-medium cursor-pointer">Restore visitor IPs (optional)</summary>
@@ -29,7 +35,9 @@ export function RealIpFields({
             placeholder={'151.101.0.0/16\n2a04:4e40::/32'}
             rows={4}
             className="mt-1 font-mono text-xs"
+            aria-invalid={!!rangesError}
           />
+          {rangesError && <p className="mt-1 text-sm text-destructive">{rangesError}</p>}
         </div>
         <div>
           <Label htmlFor="realip-header">Header carrying the visitor IP</Label>
@@ -39,7 +47,9 @@ export function RealIpFields({
             onChange={(e) => onChange({ header: e.target.value, ranges })}
             placeholder="X-Forwarded-For"
             className="mt-1"
+            aria-invalid={!!headerError}
           />
+          {headerError && <p className="mt-1 text-sm text-destructive">{headerError}</p>}
         </div>
       </div>
     </details>

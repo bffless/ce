@@ -60,13 +60,9 @@ export function ProxyOptions() {
           setHeader(nextHeader);
           applyRealIp(nextRanges, nextHeader);
         }}
+        headerError={headerError}
+        rangesError={rangesError}
       />
-      {(rangesError || headerError) && (
-        <div className="-mt-2 space-y-1">
-          {rangesError && <p className="text-sm text-destructive">{rangesError}</p>}
-          {headerError && <p className="text-sm text-destructive">{headerError}</p>}
-        </div>
-      )}
       {bootstrapSslMode !== 'letsencrypt' && (
         <label className="flex items-start text-sm cursor-pointer">
           <input
