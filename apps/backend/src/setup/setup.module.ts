@@ -8,10 +8,15 @@ import { SslCertificateService } from '../domains/ssl-certificate.service';
 import { EmailModule } from '../email/email.module';
 import { AuthModule } from '../auth/auth.module';
 import { FeatureFlagsModule } from '../feature-flags/feature-flags.module';
+import { DomainsModule } from '../domains/domains.module';
+import { PrimarySslController } from './primary-ssl/primary-ssl.controller';
+import { PrimarySslService } from './primary-ssl/primary-ssl.service';
+import { PrimarySslSnapshotService } from './primary-ssl/primary-ssl-snapshot.service';
+import { PrimarySslRevertService } from './primary-ssl/primary-ssl-revert.service';
 
 @Module({
-  imports: [EmailModule, AuthModule, FeatureFlagsModule],
-  controllers: [SetupController, BootstrapSetupController],
+  imports: [EmailModule, AuthModule, FeatureFlagsModule, DomainsModule],
+  controllers: [SetupController, BootstrapSetupController, PrimarySslController],
   providers: [
     SetupService,
     BootstrapSetupService,
@@ -24,6 +29,9 @@ import { FeatureFlagsModule } from '../feature-flags/feature-flags.module';
     // all durable state through the filesystem (acme-account.key, certs)
     // and the `ssl_challenges` DB table, not through in-memory state.
     SslCertificateService,
+    PrimarySslService,
+    PrimarySslSnapshotService,
+    PrimarySslRevertService,
   ],
   exports: [SetupService],
 })
