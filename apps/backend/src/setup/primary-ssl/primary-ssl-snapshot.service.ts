@@ -34,8 +34,24 @@ export class PrimarySslSnapshotService {
     }
   }
 
+  // Snapshot the current live SSL state only if no snapshot already exists this
+  // change cycle. This is the safe entry point for cert-writing operations: the
+  // FIRST call in a cycle captures the last known-good (pre-change) cert, and
+  // every later call (e.g. apply after a stage/issue) is a no-op so the good
+  // baseline is preserved for rollback. Never overwrites an existing snapshot.
+  snapshotIfAbsent(): void {
+    if (!this.hasSnapshot()) this.snapshot();
+  }
+
   hasSnapshot(): boolean {
     return fs.existsSync(path.join(this.snapDir(), 'instance.json'));
+  }
+
+  // Drop the rollback baseline without restoring it. Called once a change is
+  // confirmed/committed so a later rollback cannot undo it. Same removal that
+  // restore() performs at its end.
+  clearSnapshot(): void {
+    fs.rmSync(this.snapDir(), { recursive: true, force: true });
   }
 
   restore(): void {
@@ -52,7 +68,7 @@ export class PrimarySslSnapshotService {
       if (fs.existsSync(src)) fs.copyFileSync(src, path.join(this.sslDir(), f));
     }
     writeInstanceConfig(cfg);
-    fs.rmSync(snap, { recursive: true, force: true });
+    this.clearSnapshot();
   }
 
   writePendingRevert(p: { deadlineMs: number; appliedAt: number }): void {

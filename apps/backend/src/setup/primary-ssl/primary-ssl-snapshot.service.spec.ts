@@ -32,6 +32,33 @@ describe('PrimarySslSnapshotService', () => {
     expect(svc.hasSnapshot()).toBe(false);
   });
 
+  it('snapshotIfAbsent snapshots when no snapshot exists', () => {
+    expect(svc.hasSnapshot()).toBe(false);
+    svc.snapshotIfAbsent();
+    expect(svc.hasSnapshot()).toBe(true);
+  });
+
+  it('snapshotIfAbsent is a no-op when a snapshot already exists (first bytes survive)', () => {
+    svc.snapshotIfAbsent();
+    // Live cert changes AFTER the first snapshot; a second snapshotIfAbsent must
+    // NOT recapture it — the original pre-change bytes must survive.
+    fs.writeFileSync(path.join(sslDir, 'fullchain.pem'), 'NEW');
+    svc.snapshotIfAbsent();
+    svc.restore();
+    expect(fs.readFileSync(path.join(sslDir, 'fullchain.pem'), 'utf8')).toBe('ORIG-fullchain.pem');
+  });
+
+  it('clearSnapshot removes the snapshot without restoring it', () => {
+    svc.snapshot();
+    expect(svc.hasSnapshot()).toBe(true);
+    // mutate live state, then clear (not restore)
+    fs.writeFileSync(path.join(sslDir, 'fullchain.pem'), 'NEW');
+    svc.clearSnapshot();
+    expect(svc.hasSnapshot()).toBe(false);
+    // clearing does not touch the live cert
+    expect(fs.readFileSync(path.join(sslDir, 'fullchain.pem'), 'utf8')).toBe('NEW');
+  });
+
   it('round-trips the pending-revert record', () => {
     expect(svc.readPendingRevert()).toBeNull();
     svc.writePendingRevert({ deadlineMs: 1000, appliedAt: 500 });

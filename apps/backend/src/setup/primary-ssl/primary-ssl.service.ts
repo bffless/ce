@@ -67,9 +67,15 @@ export class PrimarySslService {
   stagePaste(dto: PrimarySslPasteDto): { sans: string[]; wildcardCovered: boolean } {
     this.assertEnabled();
     const domain = this.requireDomain();
+    if (this.snap.readPendingRevert()) {
+      throw new BadRequestException('A serving change is pending confirmation; confirm or roll it back first');
+    }
     const result = this.bootstrap.validateCertificatePair(
       dto.certificatePem, dto.privateKeyPem, domain, dto.servingMode as ProxyMode,
     );
+    // Capture the OLD live cert BEFORE saveCertificates overwrites it, so a later
+    // rollback restores the pre-change cert (not the one we're about to write).
+    this.snap.snapshotIfAbsent();
     this.bootstrap.saveCertificates(dto.certificatePem, dto.privateKeyPem, domain);
     return result;
   }
@@ -92,7 +98,12 @@ export class PrimarySslService {
   async issueLetsEncrypt(): Promise<{ issued: boolean; sans: string[] }> {
     this.assertEnabled();
     const domain = this.requireDomain();
-    this.snap.snapshot();
+    if (this.snap.readPendingRevert()) {
+      throw new BadRequestException('A serving change is pending confirmation; confirm or roll it back first');
+    }
+    // Capture the current live cert BEFORE issuance overwrites it, only if a
+    // snapshot doesn't already exist this change cycle.
+    this.snap.snapshotIfAbsent();
     const pre = await this.preflightSvc.run(domain);
     if (!pre.ok) {
       throw new BadRequestException('DNS/port-80 preflight failed; not requesting a certificate');
@@ -134,7 +145,10 @@ export class PrimarySslService {
     };
     const serving = this.isReachabilityChange(cur, next);
 
-    this.snap.snapshot();
+    // Reuse the snapshot taken by a prior stage/issue (which holds the OLD cert).
+    // For a pure serving change with no prior cert op, this snapshots the current
+    // known-good state so a serving rollback can restore it.
+    this.snap.snapshotIfAbsent();
     writeInstanceConfig(next); // watcher re-renders main.conf + reloads (~3s); no restart
 
     if (serving) {
@@ -148,6 +162,9 @@ export class PrimarySslService {
   confirm(): void {
     this.assertEnabled();
     this.snap.clearPendingRevert();
+    // A confirmed change is committed: drop the rollback baseline so a later
+    // rollback cannot undo it.
+    this.snap.clearSnapshot();
   }
 
   rollback(): void {
