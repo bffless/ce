@@ -66,3 +66,55 @@ describe('PrimarySslService', () => {
     expect(() => svc.stagePaste({ certificatePem: 'C', privateKeyPem: 'K', servingMode: 'none' } as any)).toThrow(ForbiddenException);
   });
 });
+
+describe('PrimarySslService.apply classification', () => {
+  it('cert-only change writes config, no pending revert', async () => {
+    const { d, svc } = build();
+    const r = await svc.apply({ proxyMode: 'none', sslMode: 'letsencrypt', port80: 'redirect', realIp: undefined } as any);
+    expect(r.kind).toBe('cert-only');
+    expect(d.snap.snapshot).toHaveBeenCalled();
+    expect(d.snap.writePendingRevert).not.toHaveBeenCalled();
+  });
+
+  it('serving change writes a pending revert with a deadline', async () => {
+    process.env.SSL_SERVING_CONFIRM_TIMEOUT_MS = '1000';
+    const { d, svc } = build();
+    const r = await svc.apply({ proxyMode: 'cloudflare', sslMode: 'paste', port80: 'redirect', realIp: undefined } as any);
+    expect(r.kind).toBe('serving');
+    expect(d.snap.writePendingRevert).toHaveBeenCalled();
+    expect(typeof r.deadlineMs).toBe('number');
+    delete process.env.SSL_SERVING_CONFIRM_TIMEOUT_MS;
+  });
+
+  it('rejects a second apply while a serving revert is pending', async () => {
+    const { d, svc } = build();
+    d.snap.readPendingRevert.mockReturnValue({ deadlineMs: Date.now() + 1000, appliedAt: Date.now() });
+    await expect(svc.apply({ proxyMode: 'none', sslMode: 'paste' } as any)).rejects.toThrow();
+  });
+
+  it('confirm clears the pending revert; rollback restores', () => {
+    const { d, svc } = build();
+    svc.confirm();
+    expect(d.snap.clearPendingRevert).toHaveBeenCalled();
+    svc.rollback();
+    expect(d.snap.restore).toHaveBeenCalled();
+  });
+});
+
+describe('PrimarySslService.issueLetsEncrypt', () => {
+  it('snapshots, preflights, then requests the cert', async () => {
+    const { d, svc } = build();
+    d.ssl.requestPrimaryDomainCertificate.mockResolvedValue({ success: true, sans: ['a.com'] });
+    const r = await svc.issueLetsEncrypt();
+    expect(d.snap.snapshot).toHaveBeenCalled();
+    expect(d.preflight.run).toHaveBeenCalledWith('a.com');
+    expect(d.ssl.requestPrimaryDomainCertificate).toHaveBeenCalledWith('a.com');
+    expect(r.issued).toBe(true);
+  });
+  it('throws when preflight fails, without requesting a cert', async () => {
+    const { d, svc } = build();
+    d.preflight.run.mockResolvedValue({ ok: false, checks: [] });
+    await expect(svc.issueLetsEncrypt()).rejects.toThrow();
+    expect(d.ssl.requestPrimaryDomainCertificate).not.toHaveBeenCalled();
+  });
+});
