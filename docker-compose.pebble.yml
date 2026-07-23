@@ -1,0 +1,48 @@
+# ACME test server for the direct + Let's Encrypt bootstrap path. Pebble is
+# Let's Encrypt's own integration-test ACME server: real HTTP-01 validation
+# logic, no rate limits, no real internet-facing domain required.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.pebble.yml up -d
+#
+# Backend must run with:
+#   ACME_DIRECTORY_URL=https://pebble:14000/dir
+#   NODE_TLS_REJECT_UNAUTHORIZED=0   # Pebble's directory cert is self-signed (test-only!)
+#
+# Pebble resolves challenge hostnames via its -dnsserver flag -> challtestsrv,
+# whose default A record is set to the nginx container so HTTP-01 loops back
+# through the real bootstrap port-80 server block (docker/nginx/sites-available/
+# bootstrap.conf.template's /.well-known/acme-challenge/ location, proxied to
+# the shared acme-webroot volume nginx and the backend both mount).
+#
+# Before an LE test run, point the test domain at nginx by setting
+# challtestsrv's default A record to nginx's container IP on the compose
+# network (find it with `docker compose exec nginx hostname -i`, or just use
+# the nginx service DNS name that challtestsrv already resolves via Docker's
+# embedded DNS if you configure -defaultIPv4 directly):
+#
+#   curl -X POST http://localhost:8055/set-default-ipv4 -d '{"ip":"<nginx container IP>"}'
+#
+# Then request against the Pebble directory, e.g. from inside the backend
+# container (or via the Pebble-gated spec, see ssl-certificate.service.spec.ts):
+#   PEBBLE=1 ACME_DIRECTORY_URL=https://localhost:14000/dir pnpm test -- ssl-certificate
+services:
+  pebble:
+    image: ghcr.io/letsencrypt/pebble:latest
+    command: -config /test/config/pebble-config.json -dnsserver challtestsrv:8053
+    environment:
+      PEBBLE_VA_NOSLEEP: '1'
+    ports:
+      - '14000:14000'
+    depends_on:
+      - challtestsrv
+    networks:
+      - assethost-network
+
+  challtestsrv:
+    image: ghcr.io/letsencrypt/pebble-challtestsrv:latest
+    command: -defaultIPv4 "" -defaultIPv6 ""
+    ports:
+      - '8055:8055'
+    networks:
+      - assethost-network

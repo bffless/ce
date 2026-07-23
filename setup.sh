@@ -11,6 +11,13 @@
 #   --help              Show this help message
 #   --non-interactive   Use environment variables instead of prompts
 #   --force             Overwrite existing .env file without prompting
+#   --bootstrap         Fully non-interactive, cert-less, domain-less setup for
+#                        zero-SSH first boot (e.g. a DO 1-Click image). Generates
+#                        all infra secrets and a claim token (ONBOARDING_TOKEN),
+#                        leaves PRIMARY_DOMAIN empty (identity arrives later via
+#                        the web wizard's instance.json), and exits without
+#                        touching SSL. Combine with --force to reset an existing
+#                        .env. Implies --non-interactive.
 #
 # Environment variables (for --non-interactive mode):
 #   PRIMARY_DOMAIN      - Your domain (default: localhost)
@@ -59,6 +66,7 @@ DEFAULT_POSTGRES_PORT="5432"
 # Script state
 INTERACTIVE=true
 FORCE_OVERWRITE=false
+BOOTSTRAP_MODE=false
 PROJECT_DIR=""
 SSL_GENERATED=false
 SMTP_CONFIGURED=false
@@ -1576,6 +1584,10 @@ print_help() {
     echo "  --help              Show this help message"
     echo "  --non-interactive   Use environment variables instead of prompts"
     echo "  --force             Overwrite existing .env file without prompting"
+    echo "  --bootstrap         Non-interactive, cert-less, domain-less setup for"
+    echo "                      zero-SSH first boot (generates secrets + a claim"
+    echo "                      token, leaves PRIMARY_DOMAIN empty). Implies"
+    echo "                      --non-interactive."
     echo ""
     echo "Environment variables (for --non-interactive mode):"
     echo "  PRIMARY_DOMAIN      Your domain (default: localhost)"
@@ -1609,6 +1621,9 @@ print_help() {
     echo ""
     echo "  # Force overwrite existing .env"
     echo "  ./setup.sh --force"
+    echo ""
+    echo "  # Zero-SSH bootstrap (cert-less, domain-less; used by 1-Click images)"
+    echo "  ./setup.sh --bootstrap"
     echo ""
     echo "  # After setup, use external PostgreSQL (edit .env then run start.sh):"
     echo "  # ENABLE_POSTGRES=false"
@@ -1651,6 +1666,71 @@ cleanup_previous_install() {
 }
 
 # =============================================================================
+# Bootstrap Mode (non-interactive, cert-less, domain-less first boot)
+# =============================================================================
+#
+# Used by zero-SSH images (e.g. the DO 1-Click) to get a box booted straight
+# into the web wizard. Reuses the same secret-generation and .env-writing
+# functions as the interactive flow below - it does not duplicate their logic.
+# Identity (PRIMARY_DOMAIN) is intentionally left blank; it arrives later via
+# instance.json when the operator completes the wizard in a browser. Prompts
+# for nothing and never touches SSL.
+
+run_bootstrap_mode() {
+    print_header
+    check_prerequisites
+    check_existing_env          # respects --force semantics; aborts if .env exists without it
+
+    PRIMARY_DOMAIN=""           # identity comes later from the web wizard via instance.json
+    POSTGRES_PASSWORD=$(generate_password 32)
+    MINIO_ROOT_USER="$DEFAULT_MINIO_USER"
+    MINIO_ROOT_PASSWORD=$(generate_password 32)
+    REDIS_PASSWORD=$(generate_password 32)
+    generate_secrets
+
+    # create_env_file derives cookie/frontend values from PRIMARY_DOMAIN; with an
+    # empty domain we want the localhost-safe branch - set it explicitly for the
+    # duration of this call only (shell functions revert prefix assignments once
+    # the call returns), then blank it back out in the written .env:
+    PRIMARY_DOMAIN="localhost" create_env_file
+    set_env_var "PRIMARY_DOMAIN" ""      # blank until applied via the wizard
+
+    # Claim token (the web wizard's ONBOARDING_TOKEN), generated fresh at
+    # runtime - never a fixed/baked value.
+    CLAIM_TOKEN=$(generate_hex_secret 16)
+    {
+        echo ""
+        echo "# Web-bootstrap claim token (shown in the server's login banner)"
+        echo "ONBOARDING_TOKEN=${CLAIM_TOKEN}"
+    } >> .env
+
+    mkdir -p bootstrap ssl
+    verify_configuration
+
+    echo ""
+    print_success "Bootstrap configuration ready"
+    echo ""
+    printf "  ${BOLD}Claim token:${NC} ${YELLOW}${CLAIM_TOKEN}${NC}\n"
+    echo ""
+    printf "${BOLD}Next Steps:${NC}\n"
+    echo ""
+    printf "  ${CYAN}1.${NC} Start the platform:\n"
+    echo ""
+    printf "     ${YELLOW}./start.sh${NC}\n"
+    echo ""
+    printf "  ${CYAN}2.${NC} Point your domain at this server:\n"
+    echo ""
+    echo "     Cloudflare: A records for @ and *, SSL/TLS mode: Full"
+    echo ""
+    printf "  ${CYAN}3.${NC} Open the setup wizard and enter the claim token above:\n"
+    echo ""
+    printf "     ${YELLOW}https://admin.<your-domain>${NC}\n"
+    printf "     ${DIM}(or https://<server-ip> - expect a browser certificate warning)${NC}\n"
+    echo ""
+    exit 0
+}
+
+# =============================================================================
 # Main
 # =============================================================================
 
@@ -1668,6 +1748,10 @@ main() {
             --force)
                 FORCE_OVERWRITE=true
                 ;;
+            --bootstrap)
+                INTERACTIVE=false
+                BOOTSTRAP_MODE=true
+                ;;
             *)
                 print_error "Unknown option: $1"
                 echo "Use --help for usage information"
@@ -1676,6 +1760,10 @@ main() {
         esac
         shift
     done
+
+    if [ "$BOOTSTRAP_MODE" = true ]; then
+        run_bootstrap_mode
+    fi
 
     # Print header
     print_header

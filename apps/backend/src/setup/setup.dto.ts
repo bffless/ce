@@ -9,7 +9,12 @@ import {
   IsOptional,
   IsNumber,
   IsBoolean,
+  IsIn,
+  ValidateNested,
+  IsArray,
+  ArrayNotEmpty,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export enum StorageProvider {
   LOCAL = 'local',
@@ -310,6 +315,14 @@ export class SetupStatusResponseDto {
 
   @ApiPropertyOptional({ description: 'Whether SMTP is configured (legacy, use emailConfigured)' })
   smtpConfigured?: boolean;
+
+  @ApiProperty({
+    description: 'True when the instance is in web-bootstrap mode (cert-less, pre-apply)',
+  })
+  bootstrapMode: boolean;
+
+  @ApiProperty({ description: 'True when a claim token must accompany admin creation' })
+  claimRequired: boolean;
 }
 
 export class InitializeResponseDto {
@@ -995,4 +1008,109 @@ export class UpdateAllowPublicSignupsResponseDto {
 
   @ApiProperty({ description: 'The updated value' })
   allowPublicSignups: boolean;
+}
+
+// =============================================================================
+// Web Bootstrap DTOs (zero-SSH bootstrap mode: certificates + apply)
+// =============================================================================
+
+export class UploadCertificatesDto {
+  @ApiProperty({ description: 'Domain the certificate covers (apex, e.g. example.com)' })
+  @IsString()
+  @IsNotEmpty()
+  domain: string;
+
+  @ApiProperty({ description: 'PEM-encoded certificate (or chain)' })
+  @IsString()
+  @IsNotEmpty()
+  certificatePem: string;
+
+  @ApiProperty({ description: 'PEM-encoded RSA private key' })
+  @IsString()
+  @IsNotEmpty()
+  privateKeyPem: string;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'Claim token (ONBOARDING_TOKEN). Required whenever the instance was ' +
+      'provisioned with a token — the setup wizard is session-less, so this ' +
+      'gates cert upload the same way it gates admin creation.',
+  })
+  @IsOptional()
+  @IsString()
+  token?: string;
+
+  @ApiProperty({ description: 'Serving path — drives the SAN policy', enum: ['cloudflare', 'proxy', 'none'] })
+  @IsIn(['cloudflare', 'proxy', 'none'])
+  servingMode: 'cloudflare' | 'proxy' | 'none';
+}
+
+export class RealIpDto {
+  @ApiProperty({ description: 'Header carrying the visitor IP (e.g. X-Forwarded-For)' })
+  @IsString()
+  @IsNotEmpty()
+  header: string;
+
+  @ApiProperty({ description: 'Trusted proxy egress ranges, CIDR notation', type: [String] })
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsString({ each: true })
+  ranges: string[];
+}
+
+export class BootstrapDomainActionDto {
+  @ApiProperty({ description: 'Primary domain' })
+  @IsString()
+  @IsNotEmpty()
+  domain: string;
+
+  @ApiProperty({ required: false, description: 'Claim token (ONBOARDING_TOKEN)' })
+  @IsOptional()
+  @IsString()
+  token?: string;
+}
+
+export class ApplyBootstrapDto {
+  @ApiProperty({ description: 'Domain to adopt as the instance primary domain' })
+  @IsString()
+  @IsNotEmpty()
+  domain: string;
+
+  @ApiProperty({
+    description: 'How traffic reaches this server',
+    enum: ['cloudflare', 'proxy', 'none'],
+  })
+  @IsIn(['cloudflare', 'proxy', 'none'], {
+    message:
+      'proxyMode must be cloudflare, proxy, or none' +
+      " (Cloudflare Tunnel setup isn't supported in the web wizard yet)",
+  })
+  proxyMode: 'cloudflare' | 'proxy' | 'none';
+
+  @ApiProperty({ description: 'Where the certificate came from', enum: ['paste', 'letsencrypt', 'selfsigned'] })
+  @IsIn(['paste', 'letsencrypt', 'selfsigned'])
+  sslMode: 'paste' | 'letsencrypt' | 'selfsigned';
+
+  @ApiProperty({ required: false, enum: ['closed', 'redirect'], description: 'Port-80 behavior; defaults from proxyMode' })
+  @IsOptional()
+  @IsIn(['closed', 'redirect'])
+  port80?: 'closed' | 'redirect';
+
+  @ApiProperty({ required: false, type: RealIpDto, description: 'Custom real-IP trust (proxy mode only)' })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => RealIpDto)
+  realIp?: RealIpDto;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'Claim token (ONBOARDING_TOKEN). Required whenever the instance was ' +
+      'provisioned with a token — the setup wizard is session-less, so this ' +
+      'gates apply the same way it gates admin creation.',
+  })
+  @IsOptional()
+  @IsString()
+  token?: string;
 }

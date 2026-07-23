@@ -90,7 +90,8 @@ services:
       - '443:443'
     volumes:
       - ./docker/nginx/sites-enabled:/etc/nginx/sites-enabled # Dynamic domains
-      - ./ssl:/etc/nginx/ssl:ro # SSL certificates
+      - ./ssl:/etc/nginx/ssl # SSL certificates (read/write - bootstrap self-signed cert generation)
+      - ./bootstrap:/etc/nginx/bootstrap:ro # Bootstrap instance identity (written by backend)
       - frontend-dist:/usr/share/nginx/html:ro # Frontend static files
       - acme-webroot:/var/www/certbot:ro # ACME challenges (read-only)
     environment:
@@ -302,6 +303,14 @@ services:
       NODE_OPTIONS: '--max-old-space-size=256'
       NODE_ENV: production
       PORT: 3000
+      BOOTSTRAP_DIR: /app/bootstrap
+      # Web-bootstrap claim token. setup.sh --bootstrap writes ONBOARDING_TOKEN
+      # to .env; without this passthrough the backend never sees it, so
+      # claimRequired stays false and — because validateOnboardingToken treats
+      # an unset token as "open" — admin creation is UNGATED on a public IP.
+      # (Historically Platform-only, injected via k8s secret; compose is the
+      # first non-Platform path that needs it.)
+      ONBOARDING_TOKEN: ${ONBOARDING_TOKEN:-}
       # Log level: error,warn,log (default) or error,warn,log,debug for verbose
       LOG_LEVEL: ${LOG_LEVEL:-error,warn,log}
       DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:${POSTGRES_PASSWORD:-changeme}@postgres:5432/assethost}
@@ -411,6 +420,7 @@ services:
       - backend-uploads:/app/apps/backend/uploads
       - ./docker/nginx/sites-enabled:/etc/nginx/sites-enabled # Write dynamic configs
       - ./ssl:/etc/nginx/ssl # SSL certificates (read/write)
+      - ./bootstrap:/app/bootstrap # Bootstrap instance identity (read/write)
       - acme-webroot:/var/www/certbot # ACME challenges (read/write)
     networks:
       - assethost-network

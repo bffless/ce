@@ -322,6 +322,27 @@ export const FLAG_DEFINITIONS: Record<string, FlagDefinition> = {
     exposeToClient: true,
   },
 
+  ENABLE_PRIMARY_SSL_MANAGEMENT: {
+    envKey: 'FEATURE_PRIMARY_SSL_MANAGEMENT',
+    defaultValue: true,
+    type: 'boolean',
+    description:
+      'Show the day-2 Admin → Settings → SSL page for managing the primary instance certificate and serving model. Disable when a PaaS/Traefik edge terminates SSL.',
+    category: 'features',
+    exposeToClient: true,
+  },
+
+  ENABLE_BOOTSTRAP_SETUP: {
+    envKey: 'FEATURE_BOOTSTRAP_SETUP',
+    defaultValue: true,
+    type: 'boolean',
+    description:
+      'Web-based bootstrap setup wizard for cert-less installs (domain + SSL configured in browser). ' +
+      'Disable on platform-managed deployments.',
+    category: 'features',
+    exposeToClient: true,
+  },
+
   ENABLE_DNS_SETUP_INSTRUCTIONS: {
     envKey: 'FEATURE_DNS_SETUP_INSTRUCTIONS',
     defaultValue: true,

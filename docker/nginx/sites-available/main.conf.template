@@ -1,10 +1,15 @@
-# HTTP server - redirect to HTTPS
+# HTTP server — behavior driven by the PORT80 knob (rendered by render-main-conf.sh):
+#   closed   → return 444 (a proxy/CDN owns port 80 at its edge)
+#   redirect → serve ACME challenges from the shared webroot, 301 everything else
 server {
     listen 80;
     server_name _;
 
-    # HTTP action (redirect to HTTPS or drop connection based on PROXY_MODE)
-    ${PORT80_ACTION}
+    ${ACME_LOCATION}
+
+    location / {
+        ${PORT80_ACTION}
+    }
 }
 
 # Wildcard subdomain routing for preview aliases
@@ -92,8 +97,8 @@ server {
     index index.html;
 
     # SSL certificates
-    ssl_certificate /etc/nginx/ssl/fullchain.pem;
-    ssl_certificate_key /etc/nginx/ssl/privkey.pem;
+    ssl_certificate ${PRIMARY_CERT};
+    ssl_certificate_key ${PRIMARY_KEY};
 
     # SSL configuration
     ssl_protocols TLSv1.2 TLSv1.3;

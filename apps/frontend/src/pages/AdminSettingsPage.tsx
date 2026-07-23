@@ -2,13 +2,15 @@ import { useNavigate, Link, Outlet, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TabScroller } from '@/components/common/TabScroller';
-import { ArrowLeft, Settings, Paintbrush, Shield, Mail, Server } from 'lucide-react';
+import { ArrowLeft, Settings, Paintbrush, Shield, Mail, Server, Lock } from 'lucide-react';
+import { useFeatureFlags } from '@/services/featureFlagsApi';
 
 const TABS = [
   { value: 'general', path: '/admin/settings', label: 'General', icon: Paintbrush },
   { value: 'auth', path: '/admin/settings/auth', label: 'Authentication', icon: Shield },
   { value: 'email', path: '/admin/settings/email', label: 'Email', icon: Mail },
   { value: 'infrastructure', path: '/admin/settings/infrastructure', label: 'Infrastructure', icon: Server },
+  { value: 'ssl', path: '/admin/settings/ssl', label: 'SSL', icon: Lock },
 ] as const;
 
 /**
@@ -19,6 +21,7 @@ const TABS = [
 export function AdminSettingsPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { isEnabled } = useFeatureFlags();
 
   // Determine current tab from pathname
   const pathAfterSettings = location.pathname.replace('/admin/settings', '');
@@ -28,7 +31,13 @@ export function AdminSettingsPage() {
       ? 'email'
       : pathAfterSettings.startsWith('/auth')
         ? 'auth'
-        : 'general';
+        : pathAfterSettings.startsWith('/ssl')
+          ? 'ssl'
+          : 'general';
+
+  const visibleTabs = TABS.filter(
+    (tab) => tab.value !== 'ssl' || isEnabled('ENABLE_PRIMARY_SSL_MANAGEMENT'),
+  );
 
   return (
     <div className="max-w-5xl mx-auto p-6 space-y-6">
@@ -55,7 +64,7 @@ export function AdminSettingsPage() {
       <Tabs value={currentTab} className="w-full">
         <TabScroller>
           <TabsList>
-            {TABS.map(({ value, path, label, icon: Icon }) => (
+            {visibleTabs.map(({ value, path, label, icon: Icon }) => (
               <TabsTrigger key={value} value={value} asChild>
                 <Link to={path} className="gap-1.5">
                   <Icon className="h-4 w-4" />

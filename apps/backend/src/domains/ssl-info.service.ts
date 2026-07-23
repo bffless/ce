@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { X509Certificate } from 'crypto';
 import { readFile, access } from 'fs/promises';
 import { join } from 'path';
+import { certPemHasWildcardSan } from './ssl-cert-utils';
 
 export interface SslCertificateInfo {
   type: 'wildcard' | 'individual';
@@ -56,9 +57,44 @@ export class SslInfoService {
 
     try {
       const certContent = await readFile(certPath, 'utf-8');
+
+      // wildcard.<domain>.crt may only be a COPY of the HTTP-01 primary cert
+      // (SslCertificateService.requestPrimaryDomainCertificate writes it as
+      // render-contract filler when the user skips the optional DNS-01
+      // wildcard step). That copy never carries the *.<domain> SAN, so
+      // treat it as "no wildcard installed" rather than a real one —
+      // otherwise the renewal cron (which reads this method) tries to renew
+      // a wildcard that doesn't actually exist. A genuine DNS-01 issuance or
+      // pasted Cloudflare Origin cert does carry the SAN and still counts.
+      if (!certPemHasWildcardSan(certContent, baseDomain)) {
+        this.logger.debug(
+          `wildcard.${baseDomain}.crt exists but lacks the *.${baseDomain} SAN (primary-cert copy) — reporting no wildcard`,
+        );
+        return null;
+      }
+
       return this.parseCertificate(certContent, 'wildcard');
     } catch (error) {
       this.logger.warn(`Wildcard certificate not found: ${error}`);
+      return null;
+    }
+  }
+
+  /**
+   * Get SSL certificate info for the cert nginx actually serves on the
+   * primary domain — <SSL_CERT_PATH>/fullchain.pem — as distinct from
+   * getWildcardCertInfo() (wildcard.<domain>.crt), which may be a stale/
+   * leftover file unrelated to what's currently being served (e.g. a
+   * self-signed install that once had a Let's Encrypt wildcard on disk).
+   */
+  async getServedPrimaryCertInfo(): Promise<SslCertificateInfo | null> {
+    const certPath = join(this.getSslPath(), 'fullchain.pem');
+
+    try {
+      const certContent = await readFile(certPath, 'utf-8');
+      return this.parseCertificate(certContent, 'individual');
+    } catch (error) {
+      this.logger.warn(`Served primary certificate not found or unparseable: ${error}`);
       return null;
     }
   }

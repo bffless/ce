@@ -36,6 +36,22 @@ if (isMultiTenant && !process.env.ORGANIZATION_ID && !process.env.TENANT_ID) {
   throw new Error('ORGANIZATION_ID (or TENANT_ID) is required when SUPERTOKENS_MULTI_TENANT=true');
 }
 
+/**
+ * docker-compose injects `COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}` — with no
+ * COOKIE_DOMAIN set in `.env` (e.g. a domain-less bootstrap install), that
+ * resolves to an empty string, NOT undefined. SuperTokens'
+ * `normaliseSessionScopeOrThrowError` throws `Please provide a valid
+ * sessionScope` on an empty-string scope, which crash-loops the backend at
+ * boot (nginx 502s every request, including `/api/setup/status`, so the
+ * bootstrap wizard is unreachable). Treat empty/whitespace-only as "not
+ * set" (undefined) — SuperTokens accepts that, and it's the correct
+ * semantic for a domain-less install anyway.
+ */
+export function resolveCookieDomain(raw: string | undefined): string | undefined {
+  const trimmed = raw?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
 export function initSuperTokens() {
   supertokens.init({
     framework: 'express',
@@ -127,7 +143,7 @@ export function initSuperTokens() {
               ? 'none'
               : 'lax',
         // Set cookie domain to work across subdomains (e.g., www.yourdomain.com and yourdomain.com)
-        cookieDomain: process.env.COOKIE_DOMAIN,
+        cookieDomain: resolveCookieDomain(process.env.COOKIE_DOMAIN),
         // Force cookie-based sessions (not header-based)
         getTokenTransferMethod: () => 'cookie',
         // Disable anti-CSRF for easier API integration (session hijacking protection via secure cookies)

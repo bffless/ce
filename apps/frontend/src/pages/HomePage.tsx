@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux';
 import { useGetSessionQuery } from '@/services/authApi';
 import { useGetSetupStatusQuery } from '@/services/setupApi';
 import { useGetWildcardCertificateStatusQuery } from '@/services/domainsApi';
+import { useGetPrimarySslStatusQuery } from '@/services/primarySslApi';
 import { useFeatureFlags } from '@/services/featureFlagsApi';
 import { useGetMyRepositoriesQuery } from '@/services/repositoriesApi';
 import { RootState } from '@/store';
@@ -42,9 +43,40 @@ export function HomePage() {
     skip: !flagsReady || !isBannerEnabled || !isWildcardSslEnabled,
   });
 
+  // Primary SSL status tells us the serving mode (proxy/CDN vs direct) so the
+  // wildcard-cert nag can be suppressed when the origin doesn't need its own
+  // wildcard cert (edge terminates TLS, or origin is intentionally
+  // self-signed behind a verify-off CDN/WAF). Skipped for non-admins or when
+  // the feature flag is off — the endpoint 403s otherwise.
+  const isPrimarySslManagementEnabled = isEnabled('ENABLE_PRIMARY_SSL_MANAGEMENT');
+  const { data: primaryStatus } = useGetPrimarySslStatusQuery(undefined, {
+    skip: !flagsReady || sessionData?.user?.role !== 'admin' || !isPrimarySslManagementEnabled,
+  });
+  const behindEdge =
+    !!primaryStatus && (primaryStatus.proxyMode !== 'none' || primaryStatus.sslMode === 'selfsigned');
+
   const [isBannerDismissed, setIsBannerDismissed] = useState(() =>
     localStorage.getItem(SSL_BANNER_DISMISSED_KEY) === 'true'
   );
+
+  // Expiring-wildcard variant of the banner. Its dismissal key is scoped to
+  // the current cert's expiresAt, so a newly-issued/renewed cert (a new
+  // expiresAt) automatically re-arms the banner instead of staying dismissed
+  // forever. certStatus loads asynchronously, so the dismissed flag is synced
+  // from localStorage once expiresAt is known rather than at mount.
+  const wildcardExpiring =
+    certStatus?.exists === true &&
+    typeof certStatus.daysUntilExpiry === 'number' &&
+    certStatus.daysUntilExpiry <= 30;
+  const expiryDismissKey = `ssl-banner-expiry-dismissed-${certStatus?.expiresAt ?? ''}`;
+  const [isExpiryBannerDismissed, setIsExpiryBannerDismissed] = useState(false);
+
+  useEffect(() => {
+    if (certStatus?.expiresAt) {
+      setIsExpiryBannerDismissed(localStorage.getItem(expiryDismissKey) === 'true');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- expiryDismissKey is derived from certStatus?.expiresAt
+  }, [certStatus?.expiresAt]);
 
   const user = sessionData?.user;
   // Show the Repositories card when the user has at least one non-guest repo
@@ -54,16 +86,23 @@ export function HomePage() {
   const { data: myRepos } = useGetMyRepositoriesQuery(undefined, { skip: !user });
   const showRepositoriesCard = (myRepos?.total ?? 0) > 0;
 
+  const missingWildcard = certStatus?.exists === false;
+  const showExpiryBanner = wildcardExpiring && !isExpiryBannerDismissed;
   const showSslBanner =
     user?.role === 'admin' &&
     isBannerEnabled &&
     isWildcardSslEnabled &&
-    certStatus?.exists === false &&
-    !isBannerDismissed;
+    ((missingWildcard && !isBannerDismissed) || showExpiryBanner) &&
+    !behindEdge;
 
   const dismissBanner = () => {
     localStorage.setItem(SSL_BANNER_DISMISSED_KEY, 'true');
     setIsBannerDismissed(true);
+  };
+
+  const dismissExpiryBanner = () => {
+    localStorage.setItem(expiryDismissKey, 'true');
+    setIsExpiryBannerDismissed(true);
   };
 
   // Show onboarding modal if user hasn't completed onboarding
@@ -140,19 +179,22 @@ export function HomePage() {
           <Alert className="bg-white border-[#d96459]/30 dark:bg-card dark:border-[#d96459]/50">
             <ShieldAlert className="h-4 w-4 text-[#d96459]" />
             <AlertTitle className="text-[#3a3a3a] dark:text-foreground">
-              Wildcard SSL Certificate Required
+              {missingWildcard ? 'Wildcard SSL Certificate Required' : 'Wildcard Certificate Expiring Soon'}
             </AlertTitle>
             <AlertDescription className="text-[#4a4a4a] dark:text-muted-foreground">
               <p className="mb-2">
-                To enable HTTPS for your deployments, you need to configure a wildcard SSL
-                certificate. This requires adding DNS TXT records to verify domain ownership.
+                {missingWildcard ? (
+                  'To enable HTTPS for your deployments, you need to configure a wildcard SSL certificate. This requires adding DNS TXT records to verify domain ownership.'
+                ) : (
+                  `Wildcard certificate expires in ${certStatus?.daysUntilExpiry} days — renew it from the SSL settings below.`
+                )}
               </p>
               <div className="flex items-center gap-3">
                 <Button asChild size="sm" className="bg-[#d96459] hover:bg-[#c55449] text-white">
                   <Link to="/domains">Configure SSL</Link>
                 </Button>
                 <button
-                  onClick={dismissBanner}
+                  onClick={missingWildcard ? dismissBanner : dismissExpiryBanner}
                   className="text-sm text-[#4a4a4a] hover:text-[#3a3a3a] dark:text-muted-foreground dark:hover:text-foreground underline"
                 >
                   Dismiss
@@ -160,7 +202,7 @@ export function HomePage() {
               </div>
             </AlertDescription>
             <button
-              onClick={dismissBanner}
+              onClick={missingWildcard ? dismissBanner : dismissExpiryBanner}
               className="absolute top-3 right-3 text-[#4a4a4a] hover:text-[#3a3a3a] dark:text-muted-foreground dark:hover:text-foreground"
               aria-label="Dismiss"
             >

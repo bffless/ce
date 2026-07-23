@@ -35,6 +35,24 @@ Full documentation is available at [docs.bffless.app](https://docs.bffless.app/)
 | [Reference](https://docs.bffless.app/category/reference/)             | API, Architecture, Database Schema, Security                                                           |
 | [Troubleshooting](https://docs.bffless.app/troubleshooting/)          | Common issues and solutions                                                                            |
 
+## Setup
+
+### Web bootstrap setup (no SSH)
+
+A cert-less install boots into **bootstrap mode**: run `./setup.sh --bootstrap && ./start.sh`,
+then finish everything in the browser — claim token, admin account, domain, and SSL
+certificate — at `https://admin.<your-domain>` (Cloudflare zone on SSL mode **Full**) or
+`https://<server-ip>`. Design: `docs/superpowers/specs/2026-07-20-web-bootstrap-setup-design.md`.
+
+**Recovery from a bad apply:** the final "Finish setup" step is one-way — if you typo the
+domain or DNS isn't pointed at the box yet, the server restarts under an identity you can't
+reach. Undo it over SSH and the box comes back up in bootstrap mode:
+
+```bash
+rm -rf bootstrap/instance.json bootstrap/instance.env
+docker compose restart backend nginx
+```
+
 ## Technology Stack
 
 **Backend:** NestJS, TypeScript, PostgreSQL, Drizzle ORM, SuperTokens

@@ -655,6 +655,20 @@ export class NginxStartupService implements OnModuleInit {
    * number of configs written (0 or 1).
    */
   private async regeneratePrimaryContentConfig(): Promise<number> {
+    // Web-bootstrap mode: nginx owns SSL but there is no real certificate yet,
+    // so the cert-less bootstrap server block is the only 443 listener. A
+    // welcome-page config here would emit `ssl_certificate .../fullchain.pem`
+    // (a non-existent file) into sites-enabled/, which nginx includes — making
+    // it crash-loop on restart. Skip generating it, and remove any stale one
+    // left from a previous booted-with-certs state so a restart stays safe.
+    if (this.nginxConfigService.isCertlessBootstrapMode()) {
+      this.logger.log(
+        'Bootstrap mode (no SSL certificate yet) - skipping welcome page config',
+      );
+      await this.cleanupLegacyPrimaryContentConfig();
+      return 0;
+    }
+
     // Check if a primary domain mapping exists (unified system)
     const [primaryDomainMapping] = await db
       .select()

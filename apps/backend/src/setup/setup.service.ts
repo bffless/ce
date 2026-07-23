@@ -3,6 +3,7 @@ import {
   BadRequestException,
   ConflictException,
   InternalServerErrorException,
+  UnauthorizedException,
   Logger,
   Inject,
   Optional,
@@ -12,6 +13,8 @@ import { db } from '../db/client';
 import { systemConfig, users } from '../db/schema';
 import { eq } from 'drizzle-orm';
 import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
 import EmailPassword from 'supertokens-node/recipe/emailpassword';
 import { createUserIdMapping, listUsersByAccountInfo, getUserIdMapping } from 'supertokens-node';
 import {
@@ -43,6 +46,7 @@ import {
   EmailProviderType,
 } from '../email/interfaces/provider-configs.interface';
 import { getImplementedProviders } from '../email/providers';
+import { loadInstanceConfig } from '../bootstrap/instance-config';
 import { DynamicStorageAdapter } from '../storage/dynamic-storage.adapter';
 import { DYNAMIC_STORAGE_ADAPTER, StorageModule } from '../storage/storage.module';
 import { ModuleRef } from '@nestjs/core';
@@ -81,6 +85,20 @@ export class SetupService {
 
   // Onboarding token from environment (for secure workspace setup)
   private readonly onboardingToken: string | null;
+
+  // Claim-token rate limiting: 5 failed attempts within a 15-minute fixed
+  // window locks out further attempts (even a correct token) until the
+  // window elapses. In-memory only — a k8s deployment with multiple backend
+  // replicas does NOT share this counter across pods, so an attacker who
+  // gets routed to different replicas could effectively get more than 5
+  // guesses. This is acceptable for CE: the token is short-lived and
+  // delivered out-of-band (Platform relays the correct token via the setup
+  // URL), so rate limiting here only ever throttles genuinely failed
+  // (brute-force) attempts — it is defense-in-depth on top of the token
+  // itself being unguessable, not the sole line of defense.
+  private claimAttempts = { count: 0, windowStart: 0 };
+  private static readonly CLAIM_MAX_ATTEMPTS = 5;
+  private static readonly CLAIM_WINDOW_MS = 15 * 60 * 1000;
 
   constructor(
     private configService: ConfigService,
@@ -137,25 +155,161 @@ export class SetupService {
    * - If ONBOARDING_TOKEN is set in env, the provided token must match
    * - If ONBOARDING_TOKEN is not set, validation is skipped (CE mode backwards compatibility)
    * - This prevents unauthorized users from claiming admin access to new workspaces
+   * - Rate-limited: 5 failed attempts within a 15-minute window locks out further
+   *   attempts (including a correct token) until the window elapses. A successful
+   *   validation resets the counter. See `claimAttempts` field comment for the
+   *   in-memory/multi-replica caveat.
+   *
+   * Reads `process.env.ONBOARDING_TOKEN` directly (rather than the `onboardingToken`
+   * field cached at construction time) so it stays consistent with how
+   * `getSetupStatus()` computes `claimRequired` from the same env var, and so tests
+   * that toggle the env var per-case behave as expected. In production this env var
+   * is static for the lifetime of the process, so this is not a behavior change.
    */
-  private validateOnboardingToken(providedToken?: string): void {
+  // Public so the bootstrap cert/apply endpoints can reuse the SAME
+  // rate-limited claim-token check that gates admin creation. Those endpoints
+  // run inside the anonymous, session-less setup wizard (every setup step is
+  // public), so they are token-gated rather than session-gated — see
+  // BootstrapSetupService.validateClaimToken and the bootstrap controller.
+  validateOnboardingToken(providedToken?: string): void {
+    const expectedToken = process.env.ONBOARDING_TOKEN;
+
     // If no token configured in environment, skip validation (CE mode)
-    if (!this.onboardingToken) {
+    if (!expectedToken) {
       return;
+    }
+
+    const now = Date.now();
+
+    // Fixed 15-minute window: only reset once it has fully elapsed since the
+    // first failure that opened it. Gated on `count > 0` (rather than
+    // comparing `windowStart` to a 0 sentinel) so the reset logic doesn't
+    // depend on `Date.now()` being far from the epoch — a sentinel-based
+    // check would work in production (real timestamps are always far past
+    // epoch) but silently do the wrong thing under mocked/fake clocks that
+    // start near 0, which is exactly the kind of bug that only shows up in
+    // tests.
+    if (
+      this.claimAttempts.count > 0 &&
+      now - this.claimAttempts.windowStart > SetupService.CLAIM_WINDOW_MS
+    ) {
+      this.claimAttempts = { count: 0, windowStart: 0 };
+    }
+
+    if (this.claimAttempts.count >= SetupService.CLAIM_MAX_ATTEMPTS) {
+      throw new UnauthorizedException('Too many attempts, try again later');
     }
 
     // Token is configured, so it must be provided and match
     if (!providedToken) {
+      this.recordFailedClaimAttempt(now);
       throw new BadRequestException(
         'Onboarding token is required. Please use the setup link provided during workspace provisioning.',
       );
     }
 
-    if (providedToken !== this.onboardingToken) {
+    if (providedToken !== expectedToken) {
+      this.recordFailedClaimAttempt(now);
       throw new BadRequestException(
         'Invalid onboarding token. Please use the correct setup link.',
       );
     }
+
+    // Successful validation resets the counter.
+    this.claimAttempts = { count: 0, windowStart: 0 };
+  }
+
+  /**
+   * Record a failed claim-token attempt for rate limiting. Only stamps
+   * `windowStart` on the first failure of a window, so subsequent failures
+   * within the same window don't push the window forward (fixed window, not
+   * sliding).
+   */
+  private recordFailedClaimAttempt(now: number): void {
+    if (this.claimAttempts.count === 0) {
+      this.claimAttempts.windowStart = now;
+    }
+    this.claimAttempts.count += 1;
+  }
+
+  /**
+   * True when SSL/routing/identity is managed externally (Platform/Traefik), meaning
+   * web bootstrap mode must never activate on this instance. Reused by Tasks 5/6 guards.
+   */
+  isPlatformManaged(): boolean {
+    return process.env.PLATFORM_MODE === 'true' || process.env.SSL_MANAGED_EXTERNALLY === 'true';
+  }
+
+  /**
+   * Same SSL directory resolution as `BootstrapSetupService.sslDir()` /
+   * `ssl-certificate.service.ts` `getSslPath()`: `SSL_CERT_PATH` env override,
+   * else the default nginx SSL volume path. Duplicated intentionally (same
+   * rationale as `bootstrap-setup.service.ts`'s own comment) rather than
+   * importing across modules for a single path string.
+   */
+  private sslDir(): string {
+    return process.env.SSL_CERT_PATH || '/etc/nginx/ssl';
+  }
+
+  /**
+   * True iff this install's nginx has, at some point, rendered the cert-less
+   * bootstrap config. `docker/nginx/render-main-conf.sh` creates
+   * `bootstrap-selfsigned.crt` the FIRST time it runs with no real certs
+   * present, and never deletes it — so its presence in the (bind-mounted,
+   * persistent) ssl/ volume is a durable marker of "this instance was, at
+   * some point, cert-less."
+   *
+   * This is the signal that closes Critical-2 (final review): an install
+   * that ran `./setup.sh` interactively with a real domain + Let's Encrypt
+   * certs BEFORE its first container start never renders bootstrap mode at
+   * all (certs are already present on nginx's very first render), so this
+   * marker is never created for it — `bootstrapMode` correctly reports
+   * `false` even though `isSetupComplete` is still false (the DB wizard
+   * hasn't run yet). A genuine cert-less bootstrap install DOES create the
+   * marker on first boot, and it stays true for the rest of that install's
+   * life, including after the wizard's Domain & SSL step stages real certs
+   * (see below).
+   *
+   * Deliberately NOT keyed on live `PRIMARY_DOMAIN`/cert-file presence
+   * directly: both can flip mid-bootstrap-session — the wizard's
+   * `POST /api/setup/certificates` (Domain & SSL step) writes real
+   * `fullchain.pem`/`privkey.pem` to this exact directory BEFORE
+   * `POST /api/setup/apply` ever runs — and several later wizard steps
+   * (`configureStorage`, `saveCacheConfig`, `configureEmail`, ...)
+   * invalidate the frontend's cached setup status, forcing a refetch. Keying
+   * `bootstrapMode` on live cert presence would flip it to `false` the
+   * moment those certs land, reproducing exactly the Critical-1 class of
+   * bug (the wizard's visible step list changing shape out from under an
+   * in-progress session) — just triggered by this conjunct instead of by
+   * `hasAdminUser`. This marker file, by contrast, is written once at first
+   * boot and never cleared, so it cannot flip during a live session.
+   */
+  private wasEverBootstrapProvisioned(): boolean {
+    return fs.existsSync(path.join(this.sslDir(), 'bootstrap-selfsigned.crt'));
+  }
+
+  /**
+   * Single source of truth for "is web bootstrap mode active right now".
+   * Shared by getSetupStatus (status reporting) and
+   * BootstrapSetupService.assertBootstrapAllowed (endpoint enforcement) so
+   * the two can never disagree: the bootstrap endpoints write into the live
+   * nginx SSL directory and rewrite the instance identity, so they must be
+   * callable exactly when the wizard would be shown — never on a
+   * platform-managed deployment, an already-applied instance, a completed
+   * setup, or a legacy install that was never cert-less.
+   *
+   * `isSetupComplete` may be passed by a caller that already loaded the
+   * system config (getSetupStatus) to avoid a duplicate query; otherwise it
+   * is fetched here.
+   */
+  async isBootstrapModeActive(opts?: { isSetupComplete?: boolean }): Promise<boolean> {
+    if (this.isPlatformManaged()) return false;
+    if (!(await this.featureFlagsService.isEnabled('ENABLE_BOOTSTRAP_SETUP'))) return false;
+    if (loadInstanceConfig()?.state === 'applied') return false;
+    const isSetupComplete =
+      opts?.isSetupComplete ?? ((await this.getSystemConfig())?.isSetupComplete || false);
+    if (isSetupComplete) return false;
+    return this.wasEverBootstrapProvisioned();
   }
 
   /**
@@ -166,15 +320,29 @@ export class SetupService {
       const config = await this.getSystemConfig();
       const adminUsers = await db.select().from(users).where(eq(users.role, 'admin')).limit(1);
 
+      const isSetupComplete = config?.isSetupComplete || false;
+      const hasAdminUser = adminUsers.length > 0;
+
+      // Web bootstrap mode: cert-less installs complete claim -> admin -> domain ->
+      // SSL -> apply entirely in the browser. Never activates on platform-managed
+      // deployments, once instance.json has been applied, after setup is done, or
+      // on an install that already has real domain/cert configuration (legacy
+      // ./setup.sh + certbot installs — see wasEverBootstrapProvisioned()).
+      // Same gate the bootstrap endpoints enforce (isBootstrapModeActive).
+      const bootstrapMode = await this.isBootstrapModeActive({ isSetupComplete });
+      const claimRequired = bootstrapMode && !!process.env.ONBOARDING_TOKEN && !hasAdminUser;
+
       return {
-        isSetupComplete: config?.isSetupComplete || false,
+        isSetupComplete,
         storageProvider: config?.storageProvider || undefined,
-        hasAdminUser: adminUsers.length > 0,
+        hasAdminUser,
         // New email provider fields
         emailConfigured: config?.emailConfigured || false,
         emailProvider: config?.emailProvider || undefined,
         // Legacy SMTP field (for backwards compatibility)
         smtpConfigured: config?.smtpConfigured || config?.emailConfigured || false,
+        bootstrapMode,
+        claimRequired,
       };
     } catch (error) {
       this.logger.error('Error checking setup status:', error);
@@ -885,6 +1053,28 @@ export class SetupService {
   async getSystemConfig() {
     const configs = await db.select().from(systemConfig).limit(1);
     return configs.length > 0 ? configs[0] : null;
+  }
+
+  /**
+   * Mark setup complete at the end of the web-bootstrap flow (called by the
+   * apply endpoint). The bootstrap wizard's terminal step is "apply", not the
+   * normal flow's explicit "Complete" step — without this the DB never records
+   * isSetupComplete, so after the backend restarts under its new identity the
+   * user is bounced BACK into the (now normal-mode) wizard at the Cache step to
+   * redo storage/cache/email, instead of landing at login. Idempotent and
+   * lenient (no storage prerequisite): reaching apply is itself the user's
+   * explicit "I'm done", and storage falls back to the env default when the
+   * step was skipped. Distinct from completeSetup(), which stays strict for the
+   * normal flow.
+   */
+  async finalizeBootstrapSetup(): Promise<void> {
+    const config = await this.getSystemConfig();
+    if (!config || config.isSetupComplete) return; // nothing to do / already complete
+    await db
+      .update(systemConfig)
+      .set({ isSetupComplete: true, updatedAt: new Date() })
+      .where(eq(systemConfig.id, config.id));
+    this.logger.log('[bootstrap] setup marked complete at apply');
   }
 
   /**

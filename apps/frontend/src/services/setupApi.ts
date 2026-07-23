@@ -1,4 +1,5 @@
 import { api } from './api';
+import type { ServingMode, BootstrapSslMode } from '@/store/slices/setupSlice';
 
 // Storage provider types matching backend
 export type StorageProvider = 'local' | 'minio' | 's3' | 'gcs' | 'azure' | 'managed';
@@ -11,6 +12,8 @@ export interface SetupStatusResponse {
   emailConfigured?: boolean;
   emailProvider?: string;
   smtpConfigured?: boolean; // Legacy, use emailConfigured
+  bootstrapMode: boolean;
+  claimRequired: boolean;
 }
 
 // Initialize (create admin user)
@@ -468,6 +471,98 @@ export interface AdoptSessionUserResponse {
   email: string;
 }
 
+// =============================================================================
+// Bootstrap Mode Types (zero-SSH web bootstrap)
+// =============================================================================
+
+export interface UploadCertificatesRequest {
+  domain: string;
+  certificatePem: string;
+  privateKeyPem: string;
+  // How traffic reaches this instance — determines how the uploaded cert is
+  // validated/applied (e.g. whether a wildcard SAN is required).
+  servingMode: ServingMode;
+  // Claim token. The setup wizard is session-less, so cert upload is gated by
+  // the same token that gated admin creation (sent from the store's claimToken).
+  token?: string;
+}
+
+export interface UploadCertificatesResponse {
+  saved: boolean;
+  sans: string[];
+  // Whether the uploaded certificate's SANs cover the wildcard needed for
+  // this domain (e.g. subdomain-based project routing).
+  wildcardCovered: boolean;
+}
+
+export interface ApplyBootstrapRequest {
+  domain: string;
+  proxyMode: ServingMode;
+  sslMode: BootstrapSslMode;
+  // Port 80 handling — only meaningful for direct (proxyMode 'none') mode.
+  port80?: 'closed' | 'redirect';
+  // Real client IP recovery — only meaningful for proxy mode.
+  realIp?: { header: string; ranges: string[] };
+  // Claim token — see UploadCertificatesRequest.token.
+  token?: string;
+}
+
+export interface ApplyBootstrapResponse {
+  applying: boolean;
+  adminUrl: string;
+}
+
+// DNS preflight: confirms the domain (and any required subdomains) resolve
+// to this instance before attempting certificate issuance.
+export interface DnsPreflightRequest {
+  domain: string;
+  token?: string;
+}
+
+export interface DnsPreflightResponse {
+  ok: boolean;
+  checks: {
+    host: string;
+    resolvedIps: string[];
+    probeOk: boolean;
+    error?: string;
+  }[];
+}
+
+// Direct Let's Encrypt issuance (servingMode 'none', bootstrapSslMode 'letsencrypt').
+export interface IssueCertificateRequest {
+  domain: string;
+  token?: string;
+}
+
+export interface IssueCertificateResponse {
+  issued: boolean;
+  sans: string[];
+}
+
+// Wildcard certificate issuance via DNS-01 challenge (multi-step: start
+// returns the DNS TXT record to create, complete polls/finalizes issuance).
+export interface WildcardStartRequest {
+  domain: string;
+  token?: string;
+}
+
+export interface WildcardStartResponse {
+  recordName: string;
+  recordValues: string[];
+  expiresAt: string;
+}
+
+export interface WildcardCompleteRequest {
+  domain: string;
+  token?: string;
+}
+
+export interface WildcardCompleteResponse {
+  success: boolean;
+  error?: string;
+}
+
 // API Endpoints
 export const setupApi = api.injectEndpoints({
   endpoints: (builder) => ({
@@ -710,6 +805,61 @@ export const setupApi = api.injectEndpoints({
       }),
       invalidatesTags: ['Setup'],
     }),
+
+    // ==========================================================================
+    // Bootstrap Mode Endpoints (zero-SSH web bootstrap)
+    // ==========================================================================
+
+    // Upload TLS certificate + key for a domain (bootstrap mode)
+    // Does not invalidate Setup: this only stages certs on disk, it does not
+    // change any field reported by getSetupStatus (bootstrapMode/claimRequired
+    // are unaffected until applyBootstrap runs).
+    uploadCertificates: builder.mutation<UploadCertificatesResponse, UploadCertificatesRequest>({
+      query: (body) => ({
+        url: '/api/setup/certificates',
+        method: 'POST',
+        body,
+      }),
+    }),
+
+    // Apply bootstrap config and restart the backend under the new domain.
+    // Deliberately does NOT invalidate Setup: the backend process exits and
+    // restarts ~500ms later, so an automatic refetch of getSetupStatus would
+    // hit a connection-refused error against the (now stale) origin and could
+    // surface a spurious error in the UI. Task 13's ApplyStep polls the NEW
+    // domain directly instead of relying on cache invalidation here.
+    applyBootstrap: builder.mutation<ApplyBootstrapResponse, ApplyBootstrapRequest>({
+      query: (body) => ({
+        url: '/api/setup/apply',
+        method: 'POST',
+        body,
+      }),
+    }),
+
+    // Check the domain (and required subdomains) resolve to this instance
+    // before attempting certificate issuance. Does not invalidate Setup:
+    // read-only, changes nothing getSetupStatus reports.
+    dnsPreflight: builder.mutation<DnsPreflightResponse, DnsPreflightRequest>({
+      query: (body) => ({ url: '/api/setup/dns-preflight', method: 'POST', body }),
+    }),
+
+    // Issue a direct Let's Encrypt certificate (servingMode 'none'). Does not
+    // invalidate Setup: staged like uploadCertificates, applied by applyBootstrap.
+    issueCertificate: builder.mutation<IssueCertificateResponse, IssueCertificateRequest>({
+      query: (body) => ({ url: '/api/setup/issue-certificate', method: 'POST', body }),
+    }),
+
+    // Start wildcard certificate issuance via DNS-01 — returns the TXT
+    // record the user must create. Does not invalidate Setup.
+    startWildcard: builder.mutation<WildcardStartResponse, WildcardStartRequest>({
+      query: (body) => ({ url: '/api/setup/wildcard/start', method: 'POST', body }),
+    }),
+
+    // Finalize wildcard certificate issuance once the DNS-01 TXT record is
+    // in place. Does not invalidate Setup.
+    completeWildcard: builder.mutation<WildcardCompleteResponse, WildcardCompleteRequest>({
+      query: (body) => ({ url: '/api/setup/wildcard/complete', method: 'POST', body }),
+    }),
   }),
 });
 
@@ -746,4 +896,11 @@ export const {
   // Registration settings hooks
   useGetRegistrationSettingsQuery,
   useUpdateAllowPublicSignupsMutation,
+  // Bootstrap mode hooks
+  useUploadCertificatesMutation,
+  useApplyBootstrapMutation,
+  useDnsPreflightMutation,
+  useIssueCertificateMutation,
+  useStartWildcardMutation,
+  useCompleteWildcardMutation,
 } = setupApi;

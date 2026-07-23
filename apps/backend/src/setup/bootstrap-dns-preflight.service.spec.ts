@@ -1,0 +1,49 @@
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { BootstrapDnsPreflightService } from './bootstrap-dns-preflight.service';
+
+describe('BootstrapDnsPreflightService', () => {
+  let webroot: string;
+  let service: BootstrapDnsPreflightService;
+
+  beforeEach(() => {
+    webroot = fs.mkdtempSync(path.join(os.tmpdir(), 'bffless-webroot-'));
+    process.env.CERTBOT_WEBROOT = webroot;
+    service = new BootstrapDnsPreflightService();
+  });
+  afterEach(() => {
+    delete process.env.CERTBOT_WEBROOT;
+    fs.rmSync(webroot, { recursive: true, force: true });
+  });
+
+  it('passes when every host serves the probe token back', async () => {
+    jest.spyOn(service as never, 'resolveA' as never).mockResolvedValue(['203.0.113.7'] as never);
+    jest
+      .spyOn(service as never, 'fetchProbe' as never)
+      .mockImplementation((async (_host: string, _token: string, content: string) => content) as never);
+    const res = await service.run('example.com');
+    expect(res.ok).toBe(true);
+    expect(res.checks.map((c) => c.host)).toEqual(['example.com', 'www.example.com', 'admin.example.com']);
+    expect(res.checks.every((c) => c.probeOk)).toBe(true);
+  });
+
+  it('fails a host whose probe returns wrong content, keeps others green', async () => {
+    jest.spyOn(service as never, 'resolveA' as never).mockResolvedValue([] as never);
+    jest
+      .spyOn(service as never, 'fetchProbe' as never)
+      .mockImplementation((async (host: string, _t: string, content: string) =>
+        host === 'www.example.com' ? 'someone else answered' : content) as never);
+    const res = await service.run('example.com');
+    expect(res.ok).toBe(false);
+    expect(res.checks.find((c) => c.host === 'www.example.com')!.probeOk).toBe(false);
+    expect(res.checks.find((c) => c.host === 'example.com')!.probeOk).toBe(true);
+  });
+
+  it('cleans up the probe file from the webroot', async () => {
+    jest.spyOn(service as never, 'resolveA' as never).mockResolvedValue([] as never);
+    jest.spyOn(service as never, 'fetchProbe' as never).mockRejectedValue(new Error('unreachable') as never);
+    await service.run('example.com');
+    expect(fs.readdirSync(path.join(webroot, '.well-known', 'acme-challenge'))).toEqual([]);
+  });
+});

@@ -62,6 +62,11 @@ nginx-dev/
 ssl/
 *.pem
 
+# Bootstrap instance identity (written by backend, read by nginx).
+# Anchored to the repo root: an unanchored `bootstrap/` matches at any depth
+# and would silently hide new files under apps/backend/src/bootstrap/.
+/bootstrap/
+
 # Production nginx config (copied from nginx-ssl.conf in production)
 docker/nginx-prod.conf
 

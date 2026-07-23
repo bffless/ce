@@ -1,0 +1,50 @@
+# Bootstrap mode — no domain configured yet.
+# Port 80: ACME webroot + redirect only (never serves the wizard or secrets).
+server {
+    listen 80 default_server;
+    server_name _;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# Port 443: serve the admin SPA + API for ANY host (bare IP, or the user's
+# domain proxied through Cloudflare in "Full" mode against our self-signed cert).
+server {
+    listen 443 ssl default_server;
+    http2 on;
+    server_name _;
+
+    ssl_certificate /etc/nginx/ssl/bootstrap-selfsigned.crt;
+    ssl_certificate_key /etc/nginx/ssl/bootstrap-selfsigned.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    root /usr/share/nginx/html;
+    index index.html;
+    client_max_body_size 10M;
+
+    location /api {
+        proxy_pass http://backend:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /auth {
+        proxy_pass http://backend:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
