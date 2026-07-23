@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { ServingChoiceCards, type ServingMode } from '@/components/ssl-leaves/ServingChoiceCards';
 import { Port80Choice } from '@/components/ssl-leaves/Port80Choice';
@@ -51,6 +51,17 @@ export function ServingModelEditor({
   const [issueLetsEncrypt, { isLoading: isIssuing }] = useIssuePrimaryLetsEncryptMutation();
   const [runPreflight, { isLoading: isPreflighting }] = usePrimarySslPreflightMutation();
   const [preflightResult, setPreflightResult] = useState<PreflightResult | null>(null);
+
+  // Reactively enforce the LE/port-80 invariant (fully mirrors the wizard's
+  // ProxyOptions useEffect): Let's Encrypt is HTTP-01 and needs port 80 open,
+  // so a stale/legacy EditorState seeded with letsencrypt + 'closed' (which the
+  // Port80Choice control is hidden for, so the user couldn't fix it) is
+  // corrected here rather than dead-ending on the backend's 400 at Apply.
+  useEffect(() => {
+    if (value.sslMode === 'letsencrypt' && value.port80 === 'closed') {
+      onChange({ ...value, port80: 'redirect' });
+    }
+  }, [value.sslMode, value.port80]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleStage = async () => {
     try {

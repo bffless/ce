@@ -48,6 +48,20 @@ describe('ServingModelEditor', () => {
     expect(screen.getByRole('radio', { name: /close port 80/i })).toBeInTheDocument();
   });
 
+  it('reactively forces port80 to redirect when seeded with letsencrypt + closed', () => {
+    const onChange = vi.fn();
+    render(
+      <ServingModelEditor
+        value={{ ...base, servingMode: 'none', sslMode: 'letsencrypt', port80: 'closed' }}
+        onChange={onChange}
+        onCertStaged={vi.fn()}
+      />,
+    );
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ sslMode: 'letsencrypt', port80: 'redirect' }),
+    );
+  });
+
   it('switching to a serving mode that presets letsencrypt forces port80 to redirect in the onChange payload', () => {
     const onChange = vi.fn();
     render(
