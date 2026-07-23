@@ -5,11 +5,7 @@ import {
   useRollbackPrimarySslMutation,
 } from '@/services/primarySslApi';
 import { useToast } from '@/hooks/use-toast';
-
-function errorMessage(error: unknown, fallback: string): string {
-  const err = error as { data?: { message?: string } };
-  return err?.data?.message || fallback;
-}
+import { errorMessage } from './toastError';
 
 function formatRemaining(remainingMs: number): string {
   const totalSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
@@ -37,11 +33,13 @@ export function RollbackPanel({
       setRemainingMs(pendingRevert.deadlineMs - Date.now());
     }, 1000);
     return () => clearInterval(interval);
-  }, [pendingRevert]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingRevert?.deadlineMs]);
 
   const handleConfirm = async () => {
     try {
       await confirmPrimarySsl().unwrap();
+      toast({ title: 'Changes kept', description: 'The SSL configuration will not be auto-reverted.' });
     } catch (error: unknown) {
       toast({ title: 'Error', description: errorMessage(error, 'Failed to confirm changes'), variant: 'destructive' });
     }
@@ -50,6 +48,7 @@ export function RollbackPanel({
   const handleRollback = async () => {
     try {
       await rollbackPrimarySsl().unwrap();
+      toast({ title: 'Restored', description: 'Previous SSL configuration restored.' });
     } catch (error: unknown) {
       toast({ title: 'Error', description: errorMessage(error, 'Failed to restore previous configuration'), variant: 'destructive' });
     }

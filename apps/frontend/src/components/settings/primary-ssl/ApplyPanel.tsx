@@ -1,11 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { useApplyPrimarySslMutation, type PrimarySslApplyBody } from '@/services/primarySslApi';
 import { useToast } from '@/hooks/use-toast';
-
-function errorMessage(error: unknown, fallback: string): string {
-  const err = error as { data?: { message?: string } };
-  return err?.data?.message || fallback;
-}
+import { errorMessage } from './toastError';
 
 export function ApplyPanel({
   config,
