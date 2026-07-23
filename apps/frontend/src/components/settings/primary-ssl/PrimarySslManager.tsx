@@ -17,13 +17,14 @@ const DEFAULT_EDITOR_STATE: EditorState = {
 
 /**
  * Splits the ranges textarea into individual CIDR strings. Mirrors
- * validateRealIp.ts's splitting (newline-delimited, trimmed, empties
- * dropped) so the config built here matches what the ranges field would
- * validate against server-side.
+ * validateRealIp.ts's splitting (comma/newline/whitespace-delimited,
+ * trimmed, empties dropped) so the config built here matches what the
+ * ranges field would validate against server-side.
  */
-function splitRanges(rangesText: string): string[] {
+// eslint-disable-next-line react-refresh/only-export-components -- exported for unit testing (see PrimarySslManager.test.tsx)
+export function splitRanges(rangesText: string): string[] {
   return rangesText
-    .split(/[\n,]+/)
+    .split(/[\s,]+/)
     .map((r) => r.trim())
     .filter(Boolean);
 }
@@ -32,7 +33,8 @@ function usesRealIp(servingMode: EditorState['servingMode']): boolean {
   return servingMode !== 'cloudflare';
 }
 
-function toApplyBody(editor: EditorState): PrimarySslApplyBody {
+// eslint-disable-next-line react-refresh/only-export-components -- exported for unit testing (see PrimarySslManager.test.tsx)
+export function toApplyBody(editor: EditorState): PrimarySslApplyBody {
   const body: PrimarySslApplyBody = {
     proxyMode: editor.servingMode,
     sslMode: editor.sslMode,
