@@ -47,4 +47,22 @@ describe('PrimarySslService', () => {
     expect(d.bootstrap.saveCertificates).toHaveBeenCalledWith('C', 'K', domain);
     expect(res.wildcardCovered).toBe(true);
   });
+
+  it('getStatus throws in platform mode', async () => {
+    process.env.PLATFORM_MODE = 'true';
+    const { svc } = build();
+    await expect(svc.getStatus()).rejects.toThrow(ForbiddenException);
+  });
+
+  it('preflight throws in platform mode', async () => {
+    process.env.PLATFORM_MODE = 'true';
+    const { svc } = build();
+    await expect(svc.preflight()).rejects.toThrow(ForbiddenException);
+  });
+
+  it('stagePaste throws in platform mode', () => {
+    process.env.PLATFORM_MODE = 'true';
+    const { svc } = build();
+    expect(() => svc.stagePaste({ certificatePem: 'C', privateKeyPem: 'K', servingMode: 'none' } as any)).toThrow(ForbiddenException);
+  });
 });
