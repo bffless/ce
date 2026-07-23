@@ -124,8 +124,8 @@ export function PasteCertificateForm({ domain, onBack }: Props) {
         <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-4 space-y-3">
           <p className="text-sm text-foreground">
             This certificate doesn&apos;t cover a wildcard SAN. Preview subdomains will show a
-            certificate warning until you add one — you can paste a wildcard-covering certificate
-            later in Settings → SSL.
+            certificate warning until you add one — you can manage the primary certificate later
+            under Admin → Settings → SSL.
           </p>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setWildcardWarning(false)}>

@@ -300,6 +300,100 @@ describe('SslRenewalService', () => {
       // unset), so just assert the message names the wildcard + the error.
       expect(errorSpy).toHaveBeenCalledWith(expect.stringMatching(/wildcard.*SMTP outage/is));
     });
+
+    it('points the reminder body at Admin → Settings → SSL', async () => {
+      settingsStore['notification_email'] = 'admin@example.com';
+
+      await service.checkAndRenewCertificates();
+
+      expect(email.sendEmail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          html: expect.stringContaining('Admin → Settings → SSL'),
+        }),
+      );
+    });
+
+    // M1 (review finding): a Cloudflare/paste install whose pasted origin
+    // cert happens to carry a real *.<domain> SAN gets copied onto the
+    // wildcard.<domain>.crt render-contract filename (see
+    // ssl-certificate.service.ts) and so passes getWildcardCertInfo's
+    // "genuinely covers the SAN" check — but it was never DNS-01 issued here
+    // and can't auto-renew via this path. Without gating, such an install
+    // would get BOTH the paste reminder (checkAndRemindPrimaryPaste) AND this
+    // wildcard reminder, the latter with DNS-01 TXT-record instructions that
+    // make no sense for a pasted origin cert. Only a genuinely LE-managed
+    // instance (sslMode: 'letsencrypt') should reach this reminder.
+    it('does NOT send the wildcard reminder (or attempt renewal) for a paste/cloudflare install', async () => {
+      (loadInstanceConfig as jest.Mock).mockReturnValue({
+        version: 2,
+        state: 'applied',
+        primaryDomain: 'example.com',
+        proxyMode: 'cloudflare',
+        sslMode: 'paste',
+      });
+      settingsStore['notification_email'] = 'admin@example.com';
+
+      await service.checkAndRenewCertificates();
+
+      expect(sslCert.renewWildcardCertificate).not.toHaveBeenCalled();
+      expect(email.sendEmail).not.toHaveBeenCalledWith(
+        expect.objectContaining({ subject: expect.stringMatching(/wildcard/i) }),
+      );
+    });
+
+    it('does NOT send the wildcard reminder for a selfsigned install', async () => {
+      (loadInstanceConfig as jest.Mock).mockReturnValue({
+        version: 2,
+        state: 'applied',
+        primaryDomain: 'example.com',
+        proxyMode: 'proxy',
+        sslMode: 'selfsigned',
+      });
+      settingsStore['notification_email'] = 'admin@example.com';
+
+      await service.checkAndRenewCertificates();
+
+      expect(sslCert.renewWildcardCertificate).not.toHaveBeenCalled();
+      expect(email.sendEmail).not.toHaveBeenCalledWith(
+        expect.objectContaining({ subject: expect.stringMatching(/wildcard/i) }),
+      );
+    });
+
+    it('DOES still send the wildcard reminder for a genuinely letsencrypt-managed install', async () => {
+      (loadInstanceConfig as jest.Mock).mockReturnValue({
+        version: 2,
+        state: 'applied',
+        primaryDomain: 'example.com',
+        proxyMode: 'none',
+        sslMode: 'letsencrypt',
+      });
+      settingsStore['notification_email'] = 'admin@example.com';
+
+      await service.checkAndRenewCertificates();
+
+      expect(sslCert.renewWildcardCertificate).toHaveBeenCalled();
+      expect(email.sendEmail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'admin@example.com',
+          subject: expect.stringMatching(/wildcard/i),
+        }),
+      );
+    });
+
+    it('DOES still send the wildcard reminder for a legacy env-only install (no instance.json)', async () => {
+      (loadInstanceConfig as jest.Mock).mockReturnValue(null);
+      settingsStore['notification_email'] = 'admin@example.com';
+
+      await service.checkAndRenewCertificates();
+
+      expect(sslCert.renewWildcardCertificate).toHaveBeenCalled();
+      expect(email.sendEmail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'admin@example.com',
+          subject: expect.stringMatching(/wildcard/i),
+        }),
+      );
+    });
   });
 
   describe('paste primary-cert expiry reminder', () => {
@@ -312,6 +406,21 @@ describe('SslRenewalService', () => {
       await service.checkAndRenewCertificates();
       expect(email.sendEmail).toHaveBeenCalledWith(
         expect.objectContaining({ to: 'admin@example.com', subject: expect.stringMatching(/certificate .* expires/i) }),
+      );
+    });
+
+    it('points the paste reminder body at Admin → Settings → SSL for re-paste/re-issue', async () => {
+      (loadInstanceConfig as jest.Mock).mockReturnValue({
+        version: 2, state: 'applied', primaryDomain: 'example.com', proxyMode: 'cloudflare', sslMode: 'paste',
+      });
+      sslCert.getPrimaryCertificateExpiryDays.mockReturnValue(12);
+      settingsStore['notification_email'] = 'admin@example.com';
+      await service.checkAndRenewCertificates();
+      expect(email.sendEmail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'admin@example.com',
+          html: expect.stringMatching(/re-paste or re-issue.*Admin → Settings → SSL/is),
+        }),
       );
     });
 

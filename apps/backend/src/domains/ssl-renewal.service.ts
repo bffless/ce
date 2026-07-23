@@ -110,6 +110,23 @@ export class SslRenewalService {
    * Check and renew wildcard certificate if needed
    */
   private async checkAndRenewWildcard(thresholdDays: number): Promise<RenewalResult | null> {
+    // M1 (review finding): a paste/cloudflare/selfsigned install's
+    // wildcard.<domain>.crt is just the pasted primary/origin cert copied
+    // onto the render-contract filename (see
+    // SslCertificateService.savePrimaryCertificate) — even when that copy
+    // genuinely carries a *.<domain> SAN (e.g. a Cloudflare Origin CA cert),
+    // it was never DNS-01 issued here and can't auto-renew via this path.
+    // checkAndRemindPrimaryPaste already reminds the admin to re-paste, so
+    // without this gate a Cloudflare/paste install could get BOTH reminders —
+    // the second with DNS-01 TXT-record instructions that make no sense for
+    // a pasted origin cert. Only skip when instance.json is present AND
+    // explicitly non-LE; a legacy env-only install (no instance.json) still
+    // goes through this path unchanged.
+    const instanceCfg = loadInstanceConfig();
+    if (instanceCfg?.state === 'applied' && instanceCfg.sslMode !== 'letsencrypt') {
+      return null;
+    }
+
     // Check if wildcard auto-renew is enabled
     const wildcardAutoRenew = await this.getSetting('wildcard_auto_renew');
     if (wildcardAutoRenew === 'false') {
@@ -238,9 +255,9 @@ export class SslRenewalService {
       html:
         `<p>The certificate for <strong>${domain}</strong> expires in <strong>${daysLeft} days</strong> ` +
         `and cannot renew automatically (it was pasted in, not issued here).</p>` +
-        `<p>Replace it before then: copy a fresh certificate into the server's <code>ssl/</code> ` +
-        `directory, or re-run setup. If your server is reachable for Let's Encrypt, switching to ` +
-        `an auto-renewing certificate avoids this in future.</p>`,
+        `<p>Re-paste or re-issue it under <strong>Admin → Settings → SSL</strong> on ` +
+        `<a href="https://admin.${domain}">admin.${domain}</a> before then. If your server is reachable ` +
+        `for Let's Encrypt, switching to an auto-renewing certificate there avoids this in future.</p>`,
     });
     if (result.success) {
       await this.updateSetting('primary_cert_reminder_last_sent', new Date().toISOString());
@@ -445,9 +462,9 @@ export class SslRenewalService {
         `<p>The wildcard certificate for <strong>*.${baseDomain}</strong> expires in ` +
         `<strong>${daysUntilExpiry} days</strong> and cannot renew automatically ` +
         `(DNS-01 wildcards need manual TXT records).</p>` +
-        `<p>Renew it in <strong>Settings → SSL → Wildcard certificate</strong> on ` +
-        `<a href="https://admin.${baseDomain}">admin.${baseDomain}</a> — the flow shows the ` +
-        `TXT records to add and verifies them for you.</p>` +
+        `<p>Renew it under <strong>Admin → Settings → SSL</strong> on ` +
+        `<a href="https://admin.${baseDomain}">admin.${baseDomain}</a> — re-running the wildcard ` +
+        `step gives you fresh TXT records to add and verify.</p>` +
         `<p>Until renewed, preview subdomains will show certificate warnings after expiry.</p>`,
     });
     if (result.success) {

@@ -315,6 +315,7 @@ describe('CertificatePhase', () => {
     expect(
       await screen.findByText(/preview subdomains will show a certificate warning/i)
     ).toBeInTheDocument();
+    expect(screen.getByText(/Admin → Settings → SSL/i)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /continue anyway/i }));
     expect(store.getState().setup.wizard.bootstrapDomain).toBe('example.com');
   });
