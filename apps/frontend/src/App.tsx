@@ -26,6 +26,7 @@ import { GeneralTab } from '@/pages/admin-settings/GeneralTab';
 import { AuthTab } from '@/pages/admin-settings/AuthTab';
 import { EmailTab } from '@/pages/admin-settings/EmailTab';
 import { InfrastructureTab } from '@/pages/admin-settings/InfrastructureTab';
+import { SslTab } from '@/pages/admin-settings/SslTab';
 import { DomainsPage } from '@/pages/DomainsPage';
 import { TrafficPage } from '@/pages/TrafficPage';
 import { HomePage } from '@/pages/HomePage';
@@ -89,6 +90,7 @@ function App() {
           <Route path="auth" element={<AuthTab />} />
           <Route path="email" element={<EmailTab />} />
           <Route path="infrastructure" element={<InfrastructureTab />} />
+          <Route path="ssl" element={<SslTab />} />
         </Route>
 
         {/* Repository list */}
