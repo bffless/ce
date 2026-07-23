@@ -129,8 +129,8 @@ On apply, the requested change is diffed against the current `instance.json` + c
 - Umbrel / `cloudflare-tunnel` (`sslMode:'external'`) — remains reserved/unselectable.
 - DNS-provider API auto-renew for wildcards (unchanged; existing reminder-only).
 
-## Open questions for reviewer
+## Resolved decisions (reviewer, 2026-07-23)
 
-- Feature-flag name: new `ENABLE_PRIMARY_SSL_MANAGEMENT`, or reuse `ENABLE_WILDCARD_SSL`? (Spec assumes a new, dedicated flag defaulting `true`.)
-- Default auto-revert window: 5 minutes proposed — reasonable for a human to notice a broken tab and re-confirm on the working one?
-- Should this land in PR #508 (already large, draft) or a stacked follow-up PR? (Recommendation: stacked follow-up — #508 is the bootstrap flow; this is a distinct day-2 surface.)
+- **Feature flag:** new dedicated **`ENABLE_PRIMARY_SSL_MANAGEMENT`**, `exposeToClient: true`, default `true`. Backend endpoints additionally hard-refuse on `PLATFORM_MODE`/`SSL_MANAGED_EXTERNALLY` regardless of the flag.
+- **Auto-revert window:** default **5 minutes** (env-overridable via `SSL_SERVING_CONFIRM_TIMEOUT`).
+- **Lands in PR #508** (same branch `specs/do-one-click-and-web-bootstrap`), not a stacked follow-up.
