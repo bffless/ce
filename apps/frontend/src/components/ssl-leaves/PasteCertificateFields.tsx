@@ -9,12 +9,17 @@ export interface PasteCertificateFieldsValue {
 export function PasteCertificateFields({
   certificatePem,
   privateKeyPem,
+  certLabel = 'Certificate (PEM)',
   onChange,
-}: PasteCertificateFieldsValue & { onChange: (v: PasteCertificateFieldsValue) => void }) {
+}: PasteCertificateFieldsValue & {
+  /** Cert-field label. Callers whose copy varies by serving mode (e.g. "Origin Certificate (PEM)") pass it in; defaults to the generic label. */
+  certLabel?: string;
+  onChange: (v: PasteCertificateFieldsValue) => void;
+}) {
   return (
     <div className="space-y-4">
       <div>
-        <Label htmlFor="cert-pem">Certificate (PEM)</Label>
+        <Label htmlFor="cert-pem">{certLabel}</Label>
         <Textarea
           id="cert-pem"
           value={certificatePem}

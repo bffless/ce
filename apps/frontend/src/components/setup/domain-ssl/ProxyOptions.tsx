@@ -2,10 +2,8 @@ import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '@/store';
 import { setBootstrapRealIp, setBootstrapPort80 } from '@/store/slices/setupSlice';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { validateRealIp } from '@/lib/validateRealIp';
+import { RealIpFields } from '@/components/ssl-leaves/RealIpFields';
 
 // Proxy-only origin knobs, shared by all three proxy cert modes (self-signed,
 // Let's Encrypt, paste). Dispatches to the store on change so the Apply step
@@ -54,40 +52,21 @@ export function ProxyOptions() {
 
   return (
     <div className="space-y-4">
-      <details className="rounded-md border border-border p-3">
-        <summary className="text-sm font-medium cursor-pointer">Restore visitor IPs (optional)</summary>
-        <div className="mt-3 space-y-3">
-          <p className="text-sm text-muted-foreground">
-            Skip this and everything works — logs and rate limiting will just see your CDN&apos;s IPs
-            instead of visitors&apos;. To restore real IPs, paste your CDN&apos;s egress ranges.
-          </p>
-          <div>
-            <Label htmlFor="realip-ranges">Trusted ranges (CIDR, one per line)</Label>
-            <Textarea
-              id="realip-ranges"
-              value={rangesText}
-              onChange={(e) => { setRangesText(e.target.value); applyRealIp(e.target.value, header); }}
-              placeholder={'151.101.0.0/16\n2a04:4e40::/32'}
-              rows={4}
-              className="mt-1 font-mono text-xs"
-              aria-invalid={rangesError ? true : undefined}
-            />
-            {rangesError && <p className="mt-1 text-sm text-destructive">{rangesError}</p>}
-          </div>
-          <div>
-            <Label htmlFor="realip-header">Header carrying the visitor IP</Label>
-            <Input
-              id="realip-header"
-              value={header}
-              onChange={(e) => { setHeader(e.target.value); applyRealIp(rangesText, e.target.value); }}
-              placeholder="X-Forwarded-For"
-              className="mt-1"
-              aria-invalid={headerError ? true : undefined}
-            />
-            {headerError && <p className="mt-1 text-sm text-destructive">{headerError}</p>}
-          </div>
+      <RealIpFields
+        header={header}
+        ranges={rangesText}
+        onChange={({ header: nextHeader, ranges: nextRanges }) => {
+          setRangesText(nextRanges);
+          setHeader(nextHeader);
+          applyRealIp(nextRanges, nextHeader);
+        }}
+      />
+      {(rangesError || headerError) && (
+        <div className="-mt-2 space-y-1">
+          {rangesError && <p className="text-sm text-destructive">{rangesError}</p>}
+          {headerError && <p className="text-sm text-destructive">{headerError}</p>}
         </div>
-      </details>
+      )}
       {bootstrapSslMode !== 'letsencrypt' && (
         <label className="flex items-start text-sm cursor-pointer">
           <input

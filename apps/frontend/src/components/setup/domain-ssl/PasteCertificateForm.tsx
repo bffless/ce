@@ -8,9 +8,8 @@ import {
   nextWizardStep,
 } from '@/store/slices/setupSlice';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Loader2 } from 'lucide-react';
+import { PasteCertificateFields } from '@/components/ssl-leaves/PasteCertificateFields';
 
 interface Props {
   domain: string;
@@ -109,28 +108,15 @@ export function PasteCertificateForm({ domain, onBack }: Props) {
         <p className="mt-2 text-sm text-muted-foreground">{copy.body}</p>
       </div>
 
-      <div>
-        <Label htmlFor="cert-pem">{copy.certLabel}</Label>
-        <Textarea
-          id="cert-pem"
-          value={certificatePem}
-          onChange={(e) => setCertificatePem(e.target.value)}
-          placeholder="-----BEGIN CERTIFICATE-----"
-          rows={6}
-          className="mt-1 font-mono text-xs"
-        />
-      </div>
-      <div>
-        <Label htmlFor="key-pem">Private Key (PEM)</Label>
-        <Textarea
-          id="key-pem"
-          value={privateKeyPem}
-          onChange={(e) => setPrivateKeyPem(e.target.value)}
-          placeholder="-----BEGIN PRIVATE KEY-----"
-          rows={6}
-          className="mt-1 font-mono text-xs"
-        />
-      </div>
+      <PasteCertificateFields
+        certificatePem={certificatePem}
+        privateKeyPem={privateKeyPem}
+        certLabel={copy.certLabel}
+        onChange={({ certificatePem, privateKeyPem }) => {
+          setCertificatePem(certificatePem);
+          setPrivateKeyPem(privateKeyPem);
+        }}
+      />
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
