@@ -218,6 +218,7 @@ export const api = createApi({
     'Blocklist',
     'BlocklistSettings',
     'PipelineSchedule',
+    'PrimarySsl',
   ],
   endpoints: () => ({}),
 });
