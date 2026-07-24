@@ -48,6 +48,24 @@ describe('ApplyPanel', () => {
     );
   });
 
+  it('shows the countdown-started notice with cert copy for a cert-only result carrying a deadline', async () => {
+    apply.mockReturnValue({
+      unwrap: () => Promise.resolve({ applied: true, kind: 'cert-only', deadlineMs: Date.now() + 60000 }),
+    });
+    render(<ApplyPanel config={config} disabled={false} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /apply changes/i }));
+
+    await waitFor(() =>
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Applied — confirmation required',
+          description: expect.stringContaining('new certificate'),
+        }),
+      ),
+    );
+  });
+
   it('shows the success toast for a cert-only result', async () => {
     apply.mockReturnValue({ unwrap: () => Promise.resolve({ applied: true, kind: 'cert-only' }) });
     render(<ApplyPanel config={config} disabled={false} />);
