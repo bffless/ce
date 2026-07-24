@@ -262,14 +262,16 @@ describe('ApplyStep', () => {
     expect(screen.queryByText(/switching to/i)).not.toBeInTheDocument();
   });
 
-  it('polls the new origin, keeps polling while unreachable, and redirects once it responds', async () => {
+  it('polls readiness on the new origin, ignores not-ready answers, and redirects once ready', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const fetchMock = vi.fn();
-    // First poll: rejects (network/DNS not ready). Second poll: resolves — a
-    // no-cors probe yields an opaque response we never read, so any resolution
-    // means the new origin is reachable and we redirect.
+    // First poll: rejects (network/DNS not ready, or cross-origin 502 whose
+    // missing ACAO header makes the read throw). Second poll: reachable but
+    // not ready (same-origin nginx 502 → readable !ok) — must NOT redirect.
+    // Third poll: backend up (readable 200) — redirect.
     fetchMock.mockRejectedValueOnce(new Error('network error'));
-    fetchMock.mockResolvedValueOnce({});
+    fetchMock.mockResolvedValueOnce({ ok: false });
+    fetchMock.mockResolvedValueOnce({ ok: true });
     vi.stubGlobal('fetch', fetchMock);
 
     renderWithStore(<ApplyStep />, {
@@ -285,20 +287,24 @@ describe('ApplyStep', () => {
     // First poll tick: fetch rejects, no redirect yet.
     await vi.advanceTimersByTimeAsync(3000);
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledWith(
-      'https://admin.example.com/api/setup/status',
-      { mode: 'no-cors' }
-    );
+    expect(fetchMock).toHaveBeenCalledWith('https://admin.example.com/api/setup/ready');
     expect(window.location.href).toBe('https://old-origin.example/setup');
 
-    // Second poll tick: fetch resolves (opaque), redirect happens.
+    // Second poll tick: reachable 502 (ok:false) — still no redirect. This is
+    // the ~20s restart window where nginx is up but the backend is dead; the
+    // old no-cors probe redirected here (opaque responses resolve on 502).
     await vi.advanceTimersByTimeAsync(3000);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(window.location.href).toBe('https://old-origin.example/setup');
+
+    // Third poll tick: ready — redirect happens.
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(window.location.href).toBe('https://admin.example.com');
 
     // No further polling after a successful redirect.
     await vi.advanceTimersByTimeAsync(9000);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
 
     // The redirect-once guard doesn't break the happy path: exactly one
     // assignment, not zero and not more than one.
@@ -413,8 +419,8 @@ describe('ApplyStep', () => {
 
     // Both polls now resolve "simultaneously". Without the guard both
     // would assign window.location.href.
-    resolveFirst({});
-    resolveSecond({});
+    resolveFirst({ ok: true });
+    resolveSecond({ ok: true });
     await vi.advanceTimersByTimeAsync(0);
 
     expect(hrefAssignments).toEqual(['https://admin.example.com']);

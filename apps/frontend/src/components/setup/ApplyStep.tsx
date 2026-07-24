@@ -82,20 +82,25 @@ export function ApplyStep() {
     pollRef.current = setInterval(async () => {
       if (doneRef.current) return;
       try {
-        // Readiness probe only — we never read the response, we just need to
-        // know the new origin answers. A `cors` fetch is BLOCKED here: this
-        // page is still on the bare IP (a different origin than adminUrl), and
-        // the restarted backend's CORS allowlist is the domain, not the IP —
-        // so res.ok was never readable and the redirect never fired (#510).
-        // `no-cors` yields an opaque response but still RESOLVES the moment the
-        // server answers, and rejects while it's still down / DNS is still
-        // propagating — exactly the reachability signal we need.
-        await fetch(`${adminUrl}/api/setup/status`, { mode: 'no-cors' });
-        if (doneRef.current) return;
-        doneRef.current = true;
-        if (pollRef.current) clearInterval(pollRef.current);
-        window.location.href = adminUrl;
-        return;
+        // Readiness probe. Reachability alone is a FALSE signal here: nginx
+        // (separate container) never goes down during the apply restart and
+        // answers 502 while the backend is dead — and an opaque no-cors fetch
+        // resolves on that 502, which used to redirect ~17s early into an
+        // "invalid credentials" login. /api/setup/ready replies with
+        // Access-Control-Allow-Origin: *, so this plain fetch is readable
+        // from ANY origin (bare-IP page included) and res.ok only goes true
+        // once the backend is genuinely up (Nest listens only after full
+        // bootstrap, so login works). While it isn't: cross-origin the 502
+        // lacks the ACAO header and the fetch throws; same-origin it reads
+        // as !ok. Either way we keep polling.
+        const res = await fetch(`${adminUrl}/api/setup/ready`);
+        if (res.ok) {
+          if (doneRef.current) return;
+          doneRef.current = true;
+          if (pollRef.current) clearInterval(pollRef.current);
+          window.location.href = adminUrl;
+          return;
+        }
       } catch {
         /* backend still restarting / DNS still propagating — keep polling */
       }
