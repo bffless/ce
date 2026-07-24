@@ -154,6 +154,7 @@ export class PrimarySslService {
     const next: InstanceConfig = {
       version: 2,
       state: 'applied',
+      origin: cur.origin,
       primaryDomain: cur.primaryDomain,
       proxyMode: applied.proxyMode,
       sslMode: applied.sslMode,

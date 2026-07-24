@@ -149,6 +149,18 @@ describe('BootstrapSetupController', () => {
       writeSpy.mockRestore();
     });
 
+    it('apply stamps origin wizard so the install graduates from env adoption', async () => {
+      // Identity change (apply) is the graduation event: an install adopted
+      // from a legacy .env (origin:'env') must become wizard-owned once the
+      // wizard writes a new identity, per the graduation rule in the plan.
+      const writeSpy = jest
+        .spyOn(require('../bootstrap/instance-config'), 'writeInstanceConfig')
+        .mockImplementation(() => undefined);
+      await controller.apply({ domain: 'example.com', proxyMode: 'cloudflare', sslMode: 'paste' });
+      expect(writeSpy).toHaveBeenCalledWith(expect.objectContaining({ origin: 'wizard' }));
+      writeSpy.mockRestore();
+    });
+
     it('writes the v2 instance config shape (proxyMode/sslMode/port80/realIp) for a custom realIp proxy install', async () => {
       // v2 apply: validateApplyConfig resolves the knobs, and the controller
       // must pass all four through to writeInstanceConfig rather than the
@@ -168,6 +180,7 @@ describe('BootstrapSetupController', () => {
       expect(writeSpy).toHaveBeenCalledWith({
         version: 2,
         state: 'applied',
+        origin: 'wizard',
         primaryDomain: 'example.com',
         proxyMode: 'proxy',
         sslMode: 'paste',

@@ -112,6 +112,7 @@ export class BootstrapSetupController {
     writeInstanceConfig({
       version: 2,
       state: 'applied',
+      origin: 'wizard',
       primaryDomain: domain,
       proxyMode: applied.proxyMode,
       sslMode: applied.sslMode,
