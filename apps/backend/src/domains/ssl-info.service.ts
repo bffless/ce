@@ -3,6 +3,7 @@ import { X509Certificate } from 'crypto';
 import { readFile, access } from 'fs/promises';
 import { join } from 'path';
 import { certPemHasWildcardSan } from './ssl-cert-utils';
+import { sslStagingDir } from '../setup/ssl-staging';
 
 export interface SslCertificateInfo {
   type: 'wildcard' | 'individual';
@@ -106,10 +107,7 @@ export class SslInfoService {
    */
   async getStagedPrimaryCertInfo(): Promise<SslCertificateInfo | null> {
     try {
-      const certContent = await readFile(
-        join(this.getSslPath(), 'staging', 'fullchain.pem'),
-        'utf-8',
-      );
+      const certContent = await readFile(join(sslStagingDir(), 'fullchain.pem'), 'utf-8');
       return this.parseCertificate(certContent, 'individual');
     } catch {
       return null;

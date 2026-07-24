@@ -5,6 +5,7 @@ import {
   sslLiveDir,
   sslStagingDir,
   stagingPopulated,
+  stagingPartiallyPopulated,
   promoteStagedCertificates,
   discardStagedCertificates,
 } from './ssl-staging';
@@ -38,6 +39,19 @@ describe('ssl-staging', () => {
     expect(stagingPopulated()).toBe(false);
     stage('privkey.pem');
     expect(stagingPopulated()).toBe(true);
+  });
+
+  it('stagingPartiallyPopulated is true iff exactly one of the pair is staged (XOR)', () => {
+    expect(stagingPartiallyPopulated()).toBe(false); // neither
+    stage('fullchain.pem');
+    expect(stagingPartiallyPopulated()).toBe(true); // fullchain only
+    stage('privkey.pem');
+    expect(stagingPartiallyPopulated()).toBe(false); // both — fully populated
+  });
+
+  it('stagingPartiallyPopulated is true when only privkey.pem is staged (the other order)', () => {
+    stage('privkey.pem');
+    expect(stagingPartiallyPopulated()).toBe(true);
   });
 
   it('promote moves every staged file into the live dir and clears staging', () => {

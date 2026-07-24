@@ -4,7 +4,7 @@ import { BootstrapSetupService } from './bootstrap-setup.service';
 import { BootstrapDnsPreflightService, PreflightResult } from './bootstrap-dns-preflight.service';
 import { SslCertificateService } from '../domains/ssl-certificate.service';
 import { writeInstanceConfig } from '../bootstrap/instance-config';
-import { discardStagedCertificates, promoteStagedCertificates } from './ssl-staging';
+import { discardStagedCertificates, promoteStagedCertificates, stagingPartiallyPopulated } from './ssl-staging';
 import { ApplyBootstrapDto, BootstrapDomainActionDto, UploadCertificatesDto } from './setup.dto';
 
 @ApiTags('Setup')
@@ -68,6 +68,12 @@ export class BootstrapSetupController {
     // check. Every other mode stages a real cert (paste) or has one issued
     // (letsencrypt, via issue-certificate) before apply.
     if (dto.sslMode !== 'selfsigned') {
+      // A torn stage (only one of fullchain.pem/privkey.pem present) must
+      // fail loudly rather than silently no-op-ing through promote — see
+      // stagingPartiallyPopulated's doc comment.
+      if (stagingPartiallyPopulated()) {
+        throw new BadRequestException('Staged certificate is incomplete — discard it and stage again');
+      }
       if (!this.bootstrap.certificatesPresent(dto.domain)) {
         throw new BadRequestException('Install certificates before applying');
       }

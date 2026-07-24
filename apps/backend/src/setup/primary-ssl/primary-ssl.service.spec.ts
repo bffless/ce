@@ -31,6 +31,7 @@ jest.mock('../../bootstrap/instance-config', () => ({
 
 jest.mock('../ssl-staging', () => ({
   stagingPopulated: jest.fn().mockReturnValue(false),
+  stagingPartiallyPopulated: jest.fn().mockReturnValue(false),
   promoteStagedCertificates: jest.fn().mockReturnValue([]),
   discardStagedCertificates: jest.fn(),
 }));
@@ -42,8 +43,20 @@ beforeEach(() => {
   // Module mocks persist across tests (no global resetMocks), so re-baseline
   // the staging module's defaults here — same reason mockCur is reset above.
   (staging.stagingPopulated as jest.Mock).mockReset().mockReturnValue(false);
-  (staging.promoteStagedCertificates as jest.Mock).mockReset().mockReturnValue([]);
-  (staging.discardStagedCertificates as jest.Mock).mockReset();
+  (staging.stagingPartiallyPopulated as jest.Mock).mockReset().mockReturnValue(false);
+  // Stateful (M1): promote/discard flip stagingPopulated() back to false when
+  // invoked, mirroring the real ssl-staging.ts module (a promoted or
+  // discarded stage is no longer populated). This makes certAffecting's
+  // ordering (must read stagingPopulated() BEFORE promote/discard runs)
+  // test-observable — computing it after would silently see `false` here,
+  // just as it would against the real filesystem.
+  (staging.promoteStagedCertificates as jest.Mock).mockReset().mockImplementation(() => {
+    (staging.stagingPopulated as jest.Mock).mockReturnValue(false);
+    return [];
+  });
+  (staging.discardStagedCertificates as jest.Mock).mockReset().mockImplementation(() => {
+    (staging.stagingPopulated as jest.Mock).mockReturnValue(false);
+  });
 });
 
 describe('PrimarySslService', () => {
@@ -199,6 +212,17 @@ describe('PrimarySslService.apply classification', () => {
     const res = await svc.apply({ proxyMode: 'none', sslMode: 'paste', port80: 'redirect' } as any);
     expect(res.deadlineMs).toBeDefined();
     expect(d.snap.writePendingRevert).toHaveBeenCalled();
+  });
+
+  it('rejects apply when staging is partially populated (torn stage), before promoting', async () => {
+    const { d, svc } = build();
+    (staging.stagingPartiallyPopulated as jest.Mock).mockReturnValue(true);
+    await expect(
+      svc.apply({ proxyMode: 'none', sslMode: 'paste', port80: 'redirect' } as any),
+    ).rejects.toThrow(/incomplete/i);
+    expect(staging.promoteStagedCertificates).not.toHaveBeenCalled();
+    expect(staging.discardStagedCertificates).not.toHaveBeenCalled();
+    expect(d.snap.snapshotForChangeCycle).not.toHaveBeenCalled();
   });
 
   it('discardStaged clears the staging dir', () => {

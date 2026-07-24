@@ -14,7 +14,7 @@ import {
   RealIpConfig,
   SHELL_SAFE_HEADER_RE,
 } from '../bootstrap/instance-config';
-import { sslLiveDir, sslStagingDir } from './ssl-staging';
+import { sslLiveDir, sslStagingDir, discardStagedCertificates } from './ssl-staging';
 
 /**
  * Plausible-hostname check for a bootstrap domain. This value is user-supplied
@@ -270,6 +270,13 @@ export class BootstrapSetupService {
    */
   saveCertificates(certPem: string, keyPem: string, domain: string): void {
     const validatedDomain = this.assertValidDomain(domain);
+    // A stage overwrites any prior stage — no accumulation. Without this, a
+    // stale staged file from an earlier (possibly abandoned) stage can
+    // survive alongside this upload's files, e.g. a stale wildcard.<domain>
+    // pair from a paste sitting next to a freshly-issued LE pair — mixed
+    // fullchain/privkey + wildcard.* material that promoteStagedCertificates
+    // would then promote as if it were one coherent set.
+    discardStagedCertificates();
     // #514: user-driven writes are provisional — they land in staging/ and
     // only apply() promotes them into the watched live dir.
     const dir = sslStagingDir();

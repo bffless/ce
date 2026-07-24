@@ -30,6 +30,20 @@ export function stagingPopulated(): boolean {
 }
 
 /**
+ * True when exactly ONE of fullchain.pem / privkey.pem is staged — a torn
+ * stage (interrupted write, manual tampering) that is neither "nothing
+ * staged" nor a usable pair. Callers must reject this loudly rather than
+ * silently treating it as unpopulated: apply()'s stagingPopulated() check
+ * alone would just no-op promote/skip, quietly discarding the caller's
+ * belief that a cert was staged.
+ */
+export function stagingPartiallyPopulated(): boolean {
+  const hasFullchain = fs.existsSync(path.join(sslStagingDir(), 'fullchain.pem'));
+  const hasPrivkey = fs.existsSync(path.join(sslStagingDir(), 'privkey.pem'));
+  return hasFullchain !== hasPrivkey;
+}
+
+/**
  * Promote staging → live: rename every staged regular file over its live
  * counterpart, then drop the staging dir. Dotfiles are skipped — a crashed
  * atomic write can leave a `.<name>.<pid>-<rand>.tmp` behind, and promoting

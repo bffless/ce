@@ -10,7 +10,7 @@ import { eq, and } from 'drizzle-orm';
 import { db } from '../db/client';
 import { sslChallenges, SslChallenge } from '../db/schema';
 import { certPemHasWildcardSan } from './ssl-cert-utils';
-import { sslStagingDir } from '../setup/ssl-staging';
+import { sslStagingDir, discardStagedCertificates } from '../setup/ssl-staging';
 
 export interface DnsChallenge {
   domain: string;
@@ -599,9 +599,17 @@ export class SslCertificateService {
     sans: string[],
     target: 'live' | 'staging',
   ): { expiresAt: Date } | null {
+    // A staged fullchain.pem only counts as a usable candidate when its
+    // matching privkey.pem is also staged — a torn/partial stage (fullchain
+    // written, privkey not yet) must fall through to the live candidate
+    // instead of being reported as reusable (see stagingPartiallyPopulated).
+    const stagedFullchainUsable = fs.existsSync(join(sslStagingDir(), 'privkey.pem'));
     const candidates =
       target === 'staging'
-        ? [join(sslStagingDir(), 'fullchain.pem'), join(this.getSslPath(), 'fullchain.pem')]
+        ? [
+            ...(stagedFullchainUsable ? [join(sslStagingDir(), 'fullchain.pem')] : []),
+            join(this.getSslPath(), 'fullchain.pem'),
+          ]
         : [join(this.getSslPath(), 'fullchain.pem')];
     for (const certPath of candidates) {
       try {
@@ -629,6 +637,14 @@ export class SslCertificateService {
     target: 'live' | 'staging' = 'live',
   ): Promise<void> {
     const dir = target === 'staging' ? sslStagingDir() : this.getSslPath();
+    if (target === 'staging') {
+      // A stage overwrites any prior stage — no accumulation (#514 F1). Left
+      // unguarded, a stale staged wildcard pair from an earlier abandoned
+      // stage (e.g. a paste) could survive alongside this issuance's fresh
+      // generic pair and get promoted together as if it were one coherent
+      // set. The live dir is never touched here.
+      discardStagedCertificates();
+    }
     await mkdir(dir, { recursive: true });
     await writeFile(join(dir, 'fullchain.pem'), certificate, { mode: 0o644 });
     await writeFile(join(dir, 'privkey.pem'), key, { mode: 0o600 });

@@ -6,7 +6,12 @@ import { SslInfoService, SslCertificateInfo } from '../../domains/ssl-info.servi
 import { PrimarySslSnapshotService } from './primary-ssl-snapshot.service';
 import { loadInstanceConfig, writeInstanceConfig, InstanceConfig, ProxyMode } from '../../bootstrap/instance-config';
 import { PrimarySslPasteDto, PrimarySslApplyDto } from './primary-ssl.dto';
-import { discardStagedCertificates, promoteStagedCertificates, stagingPopulated } from '../ssl-staging';
+import {
+  discardStagedCertificates,
+  promoteStagedCertificates,
+  stagingPopulated,
+  stagingPartiallyPopulated,
+} from '../ssl-staging';
 
 export interface PrimarySslStatus {
   domain: string | null;
@@ -124,6 +129,13 @@ export class PrimarySslService {
     this.assertEnabled();
     if (this.snap.readPendingRevert()) {
       throw new BadRequestException('A serving change is pending confirmation; confirm or roll it back first');
+    }
+    // A torn stage (only one of fullchain.pem/privkey.pem present — an
+    // interrupted write or manual tampering) must fail loudly rather than
+    // silently no-op: stagingPopulated() alone would just treat it as
+    // "nothing staged" and quietly skip promotion.
+    if (stagingPartiallyPopulated()) {
+      throw new BadRequestException('Staged certificate is incomplete — discard it and stage again');
     }
     const cur = loadInstanceConfig();
     if (!cur?.primaryDomain) throw new BadRequestException('No primary domain is configured yet');

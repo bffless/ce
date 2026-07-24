@@ -7,6 +7,7 @@ import * as path from 'path';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { BootstrapSetupService } from './bootstrap-setup.service';
 import { ApplyBootstrapDto } from './setup.dto';
+import { promoteStagedCertificates } from './ssl-staging';
 
 interface MakeCertOpts {
   includeApex?: boolean;
@@ -535,16 +536,22 @@ describe('BootstrapSetupService', () => {
       expect(() => service.assertStagedCertificateCovers('example.com', 'cloudflare')).not.toThrow();
     });
 
-    it('rejects the change-of-mind sequence: upload A, upload B, apply A', () => {
-      // saveCertificates overwrites the generic fullchain.pem/privkey.pem on
-      // every upload, but leaves earlier domains' wildcard.* files behind —
-      // so certificatesPresent('example.com') still passes after the
-      // other.com upload while fullchain.pem now holds other.com's cert.
+    it('rejects the change-of-mind sequence: upload A, apply A (promotes to live), upload B, apply A again', () => {
+      // #514 F1: saveCertificates now clears any PRIOR STAGE before writing,
+      // so the classic "upload A, upload B" trap can no longer arise purely
+      // within staging/ (the B upload wipes A's staged files outright). The
+      // trap still arises across live + staging: promote A to live (a real
+      // apply()), then upload B for a different domain — live keeps A's
+      // wildcard.* files while staging's generic pair now holds B's
+      // material. certificatesPresent('example.com') still passes on the
+      // leftover live wildcard.example.com.* files while fullchain.pem
+      // (staging, unioned in by certificatesPresent) now holds B's cert.
       // Applying example.com at that point would put nginx up serving
       // example.com's vhosts with other.com's certificate.
       const a = makeCert('example.com', keyA);
       const b = makeCert('other.com', keyB);
       service.saveCertificates(a.certPem, a.keyPem, 'example.com');
+      promoteStagedCertificates(); // simulate apply() promoting A to live
       service.saveCertificates(b.certPem, b.keyPem, 'other.com');
 
       expect(service.certificatesPresent('example.com')).toBe(true); // the trap
@@ -594,6 +601,25 @@ describe('BootstrapSetupService', () => {
         expect(fs.existsSync(path.join(stagingDir(), f))).toBe(true);
         expect(fs.existsSync(path.join(sslDir, f))).toBe(false);
       }
+    });
+
+    it('saveCertificates clears any prior stage before writing (#514 F1) — no accumulation', () => {
+      const { certPem, keyPem } = makeCert('example.com', keyA);
+      // Seed a junk file plus a stale pair from an earlier, abandoned stage.
+      fs.mkdirSync(stagingDir(), { recursive: true });
+      fs.writeFileSync(path.join(stagingDir(), 'junk.txt'), 'JUNK');
+      fs.writeFileSync(path.join(stagingDir(), 'wildcard.stale.com.crt'), 'STALE');
+      fs.writeFileSync(path.join(stagingDir(), 'wildcard.stale.com.key'), 'STALE');
+
+      service.saveCertificates(certPem, keyPem, 'example.com');
+
+      const files = fs.readdirSync(stagingDir()).sort();
+      expect(files).toEqual([
+        'fullchain.pem',
+        'privkey.pem',
+        'wildcard.example.com.crt',
+        'wildcard.example.com.key',
+      ]);
     });
 
     it('certificatesPresent is a per-file union of staging and live', () => {

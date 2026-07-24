@@ -6,6 +6,7 @@ import * as staging from './ssl-staging';
 jest.mock('./ssl-staging', () => ({
   promoteStagedCertificates: jest.fn().mockReturnValue([]),
   discardStagedCertificates: jest.fn(),
+  stagingPartiallyPopulated: jest.fn().mockReturnValue(false),
 }));
 
 describe('BootstrapSetupController', () => {
@@ -253,6 +254,20 @@ describe('BootstrapSetupController', () => {
       await expect(
         controller.apply({ domain: 'example.com', proxyMode: 'cloudflare', sslMode: 'paste' }),
       ).rejects.toThrow(/does not cover/i);
+      expect(writeSpy).not.toHaveBeenCalled();
+      expect(exitFn).not.toHaveBeenCalled();
+      writeSpy.mockRestore();
+    });
+
+    it('refuses when staging is partially populated (torn stage), before checking cert presence or writing config', async () => {
+      const writeSpy = jest
+        .spyOn(require('../bootstrap/instance-config'), 'writeInstanceConfig')
+        .mockImplementation(() => undefined);
+      (staging.stagingPartiallyPopulated as jest.Mock).mockReturnValueOnce(true);
+      await expect(
+        controller.apply({ domain: 'example.com', proxyMode: 'cloudflare', sslMode: 'paste' }),
+      ).rejects.toThrow(/incomplete/i);
+      expect(svc.certificatesPresent).not.toHaveBeenCalled();
       expect(writeSpy).not.toHaveBeenCalled();
       expect(exitFn).not.toHaveBeenCalled();
       writeSpy.mockRestore();
