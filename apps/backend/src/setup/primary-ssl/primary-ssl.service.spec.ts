@@ -1,6 +1,7 @@
 import { ForbiddenException } from '@nestjs/common';
 import { PrimarySslService } from './primary-ssl.service';
 import * as staging from '../ssl-staging';
+import { writeInstanceConfig } from '../../bootstrap/instance-config';
 
 const domain = 'a.com';
 
@@ -229,6 +230,24 @@ describe('PrimarySslService.apply classification', () => {
     const { svc } = build();
     expect(svc.discardStaged()).toEqual({ discarded: true });
     expect(staging.discardStagedCertificates).toHaveBeenCalled();
+  });
+
+  it('apply preserves origin: env from the loaded config in the written instance config (env-adopted installs)', async () => {
+    const { svc } = build();
+    const dto = { proxyMode: 'cloudflare', sslMode: 'paste', port80: 'redirect', realIp: undefined } as any;
+    mockCur.proxyMode = 'cloudflare'; // no reachability change; mirrors the "cert-only change behind a proxy" case above
+
+    // No origin on the loaded config -> the written config carries origin: undefined
+    await svc.apply(dto);
+    const calls = (writeInstanceConfig as jest.Mock).mock.calls;
+    const noOriginWrite = calls[calls.length - 1][0];
+    expect(noOriginWrite.origin).toBeUndefined();
+
+    // Loaded config has origin: 'env' (day-2 apply on an env-adopted install) -> preserved in the write
+    mockCur.origin = 'env';
+    await svc.apply(dto);
+    const envOriginWrite = calls[calls.length - 1][0];
+    expect(envOriginWrite).toEqual(expect.objectContaining({ origin: 'env' }));
   });
 
   it('serving change writes a pending revert with a deadline and does not mark applied', async () => {
