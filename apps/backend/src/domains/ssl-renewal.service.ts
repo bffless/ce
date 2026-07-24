@@ -209,8 +209,16 @@ export class SslRenewalService {
       return { domain: cfg.primaryDomain, status: 'skipped' };
     }
     this.logger.log(`Primary LE cert expires in ${daysLeft} days, renewing…`);
+    // Env-adopted installs (legacy certbot certs) may carry SANs the wizard
+    // set doesn't (minio.<domain>) — renew with them preserved (spec §4).
+    const currentSans =
+      cfg.origin === 'env'
+        ? (this.sslCertificateService.getPrimaryCertificateSans() ?? undefined)
+        : undefined;
+    // target stays defaulted to 'live' — the renewal cron writes the live cert.
     const result = await this.sslCertificateService.requestPrimaryDomainCertificate(
       cfg.primaryDomain,
+      currentSans ? { extraSans: currentSans } : {},
     );
     await this.logRenewal({
       certificateType: 'individual',
