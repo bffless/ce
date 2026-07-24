@@ -106,7 +106,11 @@ export function sniffSslMode(
   try {
     const pem = fs.readFileSync(path.join(dir, 'fullchain.pem'));
     const cert = new X509Certificate(pem);
-    if (/O=Let's Encrypt/.test(cert.issuer)) return 'letsencrypt';
+    // Anchor to a whole RDN line: node renders X509Certificate.issuer as one
+    // RDN per line ("O=Let's Encrypt\nCN=R11"), so match the O= line exactly
+    // (multiline ^…$) rather than a loose substring that a crafted issuer
+    // string containing "O=Let's Encrypt" as a fragment could satisfy.
+    if (/^O=Let's Encrypt$/m.test(cert.issuer)) return 'letsencrypt';
   } catch {
     // missing/unreadable → paste
   }
@@ -148,9 +152,42 @@ export function deriveAdoptedConfig(
   return cfg;
 }
 
+// First-adoption legacy gate (spec §2, C1). A fresh web-bootstrap install
+// (`setup.sh --bootstrap`) also boots with PRIMARY_DOMAIN set — docker-compose's
+// `PRIMARY_DOMAIN: ${PRIMARY_DOMAIN:-yourdomain.com}` substitutes for an empty
+// value too, so the backend sees `yourdomain.com` even though `.env` left it
+// blank — but it is cert-less and has already rendered bootstrap mode. Adopting
+// it would write state:'applied', kill the wizard (isBootstrapModeActive → false)
+// and cut nginx over to NORMAL mode for a domain with no certs. Only a genuine
+// legacy `setup.sh` install (real certs on disk, never bootstrap-rendered) is
+// adoptable on first boot. This mirrors render-main-conf.sh's should_bootstrap()
+// legacy carve-out — see its comment. Applies to first adoption ONLY: an
+// existing origin:'env' file keeps re-syncing regardless (re-sync is not gated).
+function isLegacyEnvInstall(ssl: string, primaryDomain: string): boolean {
+  // (3) Belt-and-braces: docker-compose.yml's `${PRIMARY_DOMAIN:-yourdomain.com}`
+  //     default means an unset/blank PRIMARY_DOMAIN surfaces as this placeholder;
+  //     it is never a real legacy identity, so refuse it outright.
+  if (primaryDomain === 'yourdomain.com') return false;
+  // (1) Real certs present: every non-localhost legacy setup.sh install has run
+  //     certbot / pasted CF origin certs into ssl/; a fresh bootstrap boot has not.
+  if (
+    !fs.existsSync(path.join(ssl, 'fullchain.pem')) ||
+    !fs.existsSync(path.join(ssl, 'privkey.pem'))
+  ) {
+    return false;
+  }
+  // (2) No bootstrap marker: its presence means this install has rendered
+  //     bootstrap mode at least once (render-main-conf.sh writes it and never
+  //     deletes it) — i.e. NOT legacy. This protects the mid-wizard-restart
+  //     window where the certificate step has staged real certs before Apply ran.
+  if (fs.existsSync(path.join(ssl, 'bootstrap-selfsigned.crt'))) return false;
+  return true;
+}
+
 // Boot-time adoption/re-sync for legacy env installs (spec §§2–3). Rules:
-//   - no instance.json + env identity present → write an adopted file
-//   - origin:'env' file → re-derive from env, rewrite only if changed
+//   - no instance.json + env identity present + legacy gate passes → adopt
+//   - origin:'env' file → re-derive from env, rewrite only if changed; if env
+//     is no longer adoptable, delete the now-stale derived files
 //   - wizard file (origin absent/'wizard') or corrupt file → never touched
 // For origin:'env', .env is truth and the files are derived caches — which is
 // also why hydrateProcessEnv skips its process.env override for them.
@@ -179,7 +216,33 @@ export function adoptOrResyncEnvInstall(
       return null;
     }
     const derived = deriveAdoptedConfig(env, ssl);
-    if (!derived) return null;
+    if (!derived) {
+      // I3: an already-adopted install whose .env has become non-adoptable
+      // (domain removed/localhost, or PLATFORM_MODE/SSL_MANAGED_EXTERNALLY now
+      // true). The derived files are a stale cache still steering nginx +
+      // renewal, so delete them rather than silently leaving state:'applied'
+      // behind. Only ever touches origin:'env' files (wizard files returned
+      // above).
+      if (existing?.origin === 'env') {
+        console.warn(
+          `[bootstrap] .env is no longer adoptable (domain removed/localhost or platform mode) — ` +
+            `deleting the stale env-origin instance.json/instance.env so nginx + renewal fall back to env`,
+        );
+        for (const f of ['instance.json', 'instance.env']) {
+          try {
+            fs.unlinkSync(path.join(dir, f));
+          } catch (e) {
+            if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
+          }
+        }
+      }
+      return null;
+    }
+    // First-adoption gate: only genuine legacy installs get adopted. An existing
+    // origin:'env' file re-syncs unconditionally (it already proved adoptable).
+    if (!existing && !isLegacyEnvInstall(ssl, derived.primaryDomain!)) {
+      return null;
+    }
     if (existing && JSON.stringify(existing) === JSON.stringify(derived)) return existing;
     writeInstanceConfig(derived, dir);
     console.log(

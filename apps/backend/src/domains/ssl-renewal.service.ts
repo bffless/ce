@@ -120,8 +120,12 @@ export class SslRenewalService {
     // without this gate a Cloudflare/paste install could get BOTH reminders —
     // the second with DNS-01 TXT-record instructions that make no sense for
     // a pasted origin cert. Only skip when instance.json is present AND
-    // explicitly non-LE; a legacy env-only install (no instance.json) still
-    // goes through this path unchanged.
+    // explicitly non-LE. Legacy env-only installs are now adopted on first boot
+    // (adoptOrResyncEnvInstall writes instance.json with a sniffed sslMode), so
+    // a paste-adopted install has instance.json here and takes the reminder
+    // path instead (via checkAndRemindPrimaryPaste) — intended. Only a
+    // pre-adoption install with no bootstrap dir mounted still falls through
+    // this path unchanged.
     const instanceCfg = loadInstanceConfig();
     if (instanceCfg?.state === 'applied' && instanceCfg.sslMode !== 'letsencrypt') {
       return null;

@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { BootstrapSetupService } from '../bootstrap-setup.service';
 import { SslCertificateService } from '../../domains/ssl-certificate.service';
 import { BootstrapDnsPreflightService, PreflightResult } from '../bootstrap-dns-preflight.service';
@@ -27,6 +27,8 @@ export interface PrimarySslStatus {
 
 @Injectable()
 export class PrimarySslService {
+  private readonly logger = new Logger(PrimarySslService.name);
+
   constructor(
     private readonly bootstrap: BootstrapSetupService,
     private readonly ssl: SslCertificateService,
@@ -171,6 +173,24 @@ export class PrimarySslService {
     // changes. Behind Cloudflare/proxy the origin cert isn't user-facing, so
     // those stay manual-rollback-only (ce#511).
     const needsConfirm = serving || (certAffecting && next.proxyMode === 'none');
+
+    // I1: on an env-adopted install (.env is authoritative, this file is a
+    // derived cache re-synced every boot from adoptOrResyncEnvInstall), the
+    // boot re-sync re-derives the config from .env and drops any knob .env
+    // cannot express — proxyMode is re-read from PROXY_MODE, but port80/realIp
+    // are omitted entirely (v1-style). So a UI-applied change to those reverts
+    // silently on the next restart. Warn loudly rather than pretend it stuck;
+    // apply()'s response has no warnings field to surface it in, so this is
+    // log-only (graduation to a persisted wizard write stays wizard-only for now).
+    if (cur.origin === 'env') {
+      this.logger.warn(
+        `Applying primary-SSL changes to an env-adopted install (origin:'env'): .env stays ` +
+          `authoritative, so the next boot re-sync will overwrite these from .env — ` +
+          `proxyMode=${next.proxyMode}, port80=${next.port80}, realIp=${JSON.stringify(next.realIp)} ` +
+          `(port80/realIp are not representable in .env and will revert). Manage identity/SSL via ` +
+          `the wizard to persist them.`,
+      );
+    }
 
     // Snapshot the live pre-change state, THEN promote staging over it — the
     // ordering is now structurally correct instead of call-order discipline.

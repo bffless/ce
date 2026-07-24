@@ -500,6 +500,11 @@ export class SslCertificateService {
    * wildcard.<domain>.crt/.key filenames so the nginx render contract
    * (Task 4) holds — preview subdomains serve it with a hostname mismatch
    * until the optional DNS-01 wildcard flow replaces the copies.
+   *
+   * `extraSans` widens the SAN set beyond the fixed [apex, www, admin] union:
+   * the renewal cron passes the current cert's SANs for an env-adopted legacy
+   * certbot install (spec §4) so a renewal never drops names it already carried
+   * (e.g. minio.<domain>). The union is de-duplicated below.
    */
   async requestPrimaryDomainCertificate(
     domain: string,
@@ -515,7 +520,10 @@ export class SslCertificateService {
     // Renewal of an env-adopted install passes the current cert's SANs so we
     // never drop names the legacy certbot cert carried (e.g. minio.<domain>).
     // The union (defaults first, deduped) feeds the target-scoped
-    // stagedPrimaryCertificate reuse check unchanged.
+    // stagedPrimaryCertificate reuse check unchanged. The ACME order
+    // authorizes every name together, so if any single default SAN can't
+    // HTTP-01 validate the whole order fails — deliberate (a partial cert that
+    // silently dropped apex/www/admin would be worse than a loud failure).
     const sans = Array.from(
       new Set([domain, `www.${domain}`, `admin.${domain}`, ...(opts.extraSans ?? [])]),
     );
