@@ -145,17 +145,18 @@ shell-safety validation included).
   on `.env` identity is ignored; if a later boot finds `.env` identity that
   diverges from a wizard-origin file, log a loud warning naming both values and
   which one wins.
-- **Day-2 primary-SSL on an `origin:'env'` install (I1).** The day-2 primary-SSL
-  apply path (`primary-ssl.service.ts`) *does* run on env-origin installs and
-  preserves `origin:'env'` on its write — but the next boot re-sync re-derives
-  the config from `.env` and drops any knob `.env` can't express (`proxyMode` is
-  re-read from `PROXY_MODE`, while `port80`/`realIp` are omitted v1-style). So a
-  UI-applied `proxyMode`/`port80`/`realIp` change silently reverts on restart.
-  Decision (this spec): **warn loudly** — apply logs which knobs will revert;
-  it invents no new response field. **Graduation stays wizard-apply-only for
-  now**: to persist those knobs the operator must manage identity/SSL via the
-  wizard (which stamps `origin:'wizard'`). A full graduation-on-apply redesign
-  is deferred.
+- **Day-2 primary-SSL on an `origin:'env'` install (I1) — apply GRADUATES it.**
+  The day-2 primary-SSL apply path (`primary-ssl.service.ts`) *does* run on
+  env-origin installs. It is an admin-UI identity/SSL change, so by the
+  Graduation rule above it stamps `origin:'wizard'` on its write — the install
+  becomes UI-managed and the next boot re-sync no longer treats `.env` as
+  authoritative for identity. This is **option (a)** of the seam flagged in PR
+  review, chosen once #520 made the day-2 panel genuinely usable: silently
+  reverting a UI-applied `proxyMode`/`port80`/`realIp` change on the next reboot
+  (the earlier warn-only stance) is no longer acceptable. apply() logs a clear
+  graduation notice; the boot-time divergence warning (above) is the safety net
+  if the operator keeps editing `.env` afterwards. Mechanical rewrites
+  (snapshot/restore) still preserve `origin` — only an actual apply graduates.
 
 ### 4. Renewal takeover
 
@@ -178,7 +179,7 @@ shell-safety validation included).
 
 | Scenario | Behavior |
 | --- | --- |
-| Legacy env-only install, upgraded image + current compose file | Adopted on first boot; renewal/reminders activate; `.env` edits keep working via re-sync. |
+| Legacy env-only install, upgraded image + current compose file | Adopted on first boot; renewal/reminders activate; `.env` edits keep working via re-sync — until a day-2 primary-SSL apply graduates the install to `origin:'wizard'` (I1), after which identity is UI-managed and `.env` identity edits no longer apply. |
 | Legacy install, upgraded image but **old `docker-compose.yml`** (no `./bootstrap` mount / `BOOTSTRAP_DIR`) | Backend writes inside the container FS: ephemeral, invisible to nginx. Nginx keeps rendering from env with identical values. Degraded but correct; log an info line. |
 | Existing wizard install | No `origin` field ⇒ `'wizard'` default ⇒ zero behavior change. |
 | **Rollback** to a pre-adoption image | Adoption never touches `.env`; old images ignore `bootstrap/` files entirely. Fully reversible. |
