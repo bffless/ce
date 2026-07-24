@@ -1,4 +1,4 @@
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, Logger } from '@nestjs/common';
 import { PrimarySslService } from './primary-ssl.service';
 import * as staging from '../ssl-staging';
 import { writeInstanceConfig } from '../../bootstrap/instance-config';
@@ -248,6 +248,27 @@ describe('PrimarySslService.apply classification', () => {
     await svc.apply(dto);
     const envOriginWrite = calls[calls.length - 1][0];
     expect(envOriginWrite).toEqual(expect.objectContaining({ origin: 'env' }));
+  });
+
+  it('warns that non-representable knobs revert on an env-origin install, and not on wizard-origin (I1)', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    try {
+      const { svc } = build();
+      // No reachability change (proxyMode matches cur) so apply commits cleanly.
+      mockCur.proxyMode = 'cloudflare';
+      const dto = { proxyMode: 'cloudflare', sslMode: 'paste', port80: 'redirect', realIp: undefined } as any;
+
+      mockCur.origin = 'env';
+      await svc.apply(dto);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("origin:'env'"));
+
+      warn.mockClear();
+      mockCur.origin = 'wizard';
+      await svc.apply(dto);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('serving change writes a pending revert with a deadline and does not mark applied', async () => {
