@@ -16,7 +16,7 @@ const makeDeps = () => ({
     getWildcardCertInfo: jest.fn().mockResolvedValue({ type: 'wildcard', expiresAt: new Date(), isValid: true }),
     getServedPrimaryCertInfo: jest.fn().mockResolvedValue({ type: 'individual', expiresAt: new Date(), isValid: true }),
   },
-  snap: { snapshot: jest.fn(), snapshotIfAbsent: jest.fn(), clearSnapshot: jest.fn(), restore: jest.fn(), hasSnapshot: jest.fn().mockReturnValue(false), writePendingRevert: jest.fn(), readPendingRevert: jest.fn().mockReturnValue(null), clearPendingRevert: jest.fn() },
+  snap: { snapshot: jest.fn(), snapshotForChangeCycle: jest.fn(), clearSnapshot: jest.fn(), restore: jest.fn(), hasSnapshot: jest.fn().mockReturnValue(false), writePendingRevert: jest.fn(), readPendingRevert: jest.fn().mockReturnValue(null), clearPendingRevert: jest.fn() },
 });
 
 jest.mock('../../bootstrap/instance-config', () => ({
@@ -75,8 +75,8 @@ describe('PrimarySslService', () => {
     expect(d.bootstrap.saveCertificates).toHaveBeenCalledWith('C', 'K', domain);
     expect(res.wildcardCovered).toBe(true);
     // The snapshot must be taken BEFORE the cert is overwritten.
-    expect(d.snap.snapshotIfAbsent).toHaveBeenCalled();
-    const snapOrder = d.snap.snapshotIfAbsent.mock.invocationCallOrder[0];
+    expect(d.snap.snapshotForChangeCycle).toHaveBeenCalled();
+    const snapOrder = d.snap.snapshotForChangeCycle.mock.invocationCallOrder[0];
     const saveOrder = d.bootstrap.saveCertificates.mock.invocationCallOrder[0];
     expect(snapOrder).toBeLessThan(saveOrder);
   });
@@ -112,7 +112,7 @@ describe('PrimarySslService.apply classification', () => {
     const { d, svc } = build();
     const r = await svc.apply({ proxyMode: 'none', sslMode: 'letsencrypt', port80: 'redirect', realIp: undefined } as any);
     expect(r.kind).toBe('cert-only');
-    expect(d.snap.snapshotIfAbsent).toHaveBeenCalled();
+    expect(d.snap.snapshotForChangeCycle).toHaveBeenCalled();
     expect(d.snap.writePendingRevert).not.toHaveBeenCalled();
   });
 
@@ -147,7 +147,7 @@ describe('PrimarySslService.issueLetsEncrypt', () => {
     const { d, svc } = build();
     d.ssl.requestPrimaryDomainCertificate.mockResolvedValue({ success: true, sans: ['a.com'] });
     const r = await svc.issueLetsEncrypt();
-    expect(d.snap.snapshotIfAbsent).toHaveBeenCalled();
+    expect(d.snap.snapshotForChangeCycle).toHaveBeenCalled();
     expect(d.preflight.run).toHaveBeenCalledWith('a.com');
     expect(d.ssl.requestPrimaryDomainCertificate).toHaveBeenCalledWith('a.com');
     expect(r.issued).toBe(true);
@@ -168,7 +168,7 @@ describe('PrimarySslService.issueLetsEncrypt', () => {
     const { d, svc } = build();
     d.ssl.requestPrimaryDomainCertificate.mockResolvedValue({ success: true, sans: ['a.com'] });
     await svc.issueLetsEncrypt();
-    const snapOrder = d.snap.snapshotIfAbsent.mock.invocationCallOrder[0];
+    const snapOrder = d.snap.snapshotForChangeCycle.mock.invocationCallOrder[0];
     const issueOrder = d.ssl.requestPrimaryDomainCertificate.mock.invocationCallOrder[0];
     expect(snapOrder).toBeLessThan(issueOrder);
   });
@@ -182,7 +182,7 @@ describe('PrimarySslService.issueLetsEncrypt', () => {
     const { d, svc } = build();
     d.snap.readPendingRevert.mockReturnValue({ deadlineMs: Date.now() + 1000, appliedAt: Date.now() });
     await expect(svc.issueLetsEncrypt()).rejects.toThrow();
-    expect(d.snap.snapshotIfAbsent).not.toHaveBeenCalled();
+    expect(d.snap.snapshotForChangeCycle).not.toHaveBeenCalled();
     expect(d.ssl.requestPrimaryDomainCertificate).not.toHaveBeenCalled();
   });
 });

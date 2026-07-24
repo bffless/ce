@@ -80,7 +80,7 @@ export class PrimarySslService {
     );
     // Capture the OLD live cert BEFORE saveCertificates overwrites it, so a later
     // rollback restores the pre-change cert (not the one we're about to write).
-    this.snap.snapshotIfAbsent();
+    this.snap.snapshotForChangeCycle();
     this.bootstrap.saveCertificates(dto.certificatePem, dto.privateKeyPem, domain);
     return result;
   }
@@ -108,7 +108,7 @@ export class PrimarySslService {
     }
     // Capture the current live cert BEFORE issuance overwrites it, only if a
     // snapshot doesn't already exist this change cycle.
-    this.snap.snapshotIfAbsent();
+    this.snap.snapshotForChangeCycle();
     const pre = await this.preflightSvc.run(domain);
     if (!pre.ok) {
       throw new BadRequestException('DNS/port-80 preflight failed; not requesting a certificate');
@@ -153,7 +153,7 @@ export class PrimarySslService {
     // Reuse the snapshot taken by a prior stage/issue (which holds the OLD cert).
     // For a pure serving change with no prior cert op, this snapshots the current
     // known-good state so a serving rollback can restore it.
-    this.snap.snapshotIfAbsent();
+    this.snap.snapshotForChangeCycle();
     writeInstanceConfig(next); // watcher re-renders main.conf + reloads (~3s); no restart
 
     if (serving) {

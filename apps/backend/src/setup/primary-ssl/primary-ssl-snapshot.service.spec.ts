@@ -32,18 +32,18 @@ describe('PrimarySslSnapshotService', () => {
     expect(svc.hasSnapshot()).toBe(false);
   });
 
-  it('snapshotIfAbsent snapshots when no snapshot exists', () => {
+  it('snapshotForChangeCycle snapshots when no snapshot exists', () => {
     expect(svc.hasSnapshot()).toBe(false);
-    svc.snapshotIfAbsent();
+    svc.snapshotForChangeCycle();
     expect(svc.hasSnapshot()).toBe(true);
   });
 
-  it('snapshotIfAbsent is a no-op when a snapshot already exists (first bytes survive)', () => {
-    svc.snapshotIfAbsent();
-    // Live cert changes AFTER the first snapshot; a second snapshotIfAbsent must
+  it('snapshotForChangeCycle is a no-op when a snapshot already exists (first bytes survive)', () => {
+    svc.snapshotForChangeCycle();
+    // Live cert changes AFTER the first snapshot; a second snapshotForChangeCycle must
     // NOT recapture it — the original pre-change bytes must survive.
     fs.writeFileSync(path.join(sslDir, 'fullchain.pem'), 'NEW');
-    svc.snapshotIfAbsent();
+    svc.snapshotForChangeCycle();
     svc.restore();
     expect(fs.readFileSync(path.join(sslDir, 'fullchain.pem'), 'utf8')).toBe('ORIG-fullchain.pem');
   });
@@ -65,5 +65,39 @@ describe('PrimarySslSnapshotService', () => {
     expect(svc.readPendingRevert()).toEqual({ deadlineMs: 1000, appliedAt: 500 });
     svc.clearPendingRevert();
     expect(svc.readPendingRevert()).toBeNull();
+  });
+
+  it('markApplied/isApplied round-trip; markApplied without a snapshot is a no-op', () => {
+    expect(svc.isApplied()).toBe(false);
+    svc.markApplied(); // no snapshot yet — must not create the marker
+    expect(svc.isApplied()).toBe(false);
+    svc.snapshot();
+    svc.markApplied();
+    expect(svc.isApplied()).toBe(true);
+  });
+
+  it('snapshot(), clearSnapshot(), and restore() all clear the applied marker', () => {
+    svc.snapshot(); svc.markApplied();
+    svc.snapshot(); // fresh snapshot = new cycle
+    expect(svc.isApplied()).toBe(false);
+    svc.markApplied();
+    svc.clearSnapshot();
+    expect(svc.isApplied()).toBe(false);
+    svc.snapshot(); svc.markApplied();
+    svc.restore();
+    expect(svc.isApplied()).toBe(false);
+  });
+
+  it('snapshotForChangeCycle re-baselines over an applied snapshot (rollback restores the LATEST pre-change bytes)', () => {
+    // cycle 1: stage + cert-only apply of cert A over the original
+    svc.snapshotForChangeCycle();               // baseline = ORIG
+    fs.writeFileSync(path.join(sslDir, 'fullchain.pem'), 'CERT-A');
+    svc.markApplied();                          // cert-only apply committed
+    // cycle 2: staging cert B must re-baseline to A, not keep ORIG
+    svc.snapshotForChangeCycle();
+    expect(svc.isApplied()).toBe(false);
+    fs.writeFileSync(path.join(sslDir, 'fullchain.pem'), 'CERT-B');
+    svc.restore();
+    expect(fs.readFileSync(path.join(sslDir, 'fullchain.pem'), 'utf8')).toBe('CERT-A');
   });
 });

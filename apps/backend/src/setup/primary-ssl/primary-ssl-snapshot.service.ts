@@ -34,13 +34,30 @@ export class PrimarySslSnapshotService {
     }
   }
 
-  // Snapshot the current live SSL state only if no snapshot already exists this
-  // change cycle. This is the safe entry point for cert-writing operations: the
-  // FIRST call in a cycle captures the last known-good (pre-change) cert, and
-  // every later call (e.g. apply after a stage/issue) is a no-op so the good
-  // baseline is preserved for rollback. Never overwrites an existing snapshot.
-  snapshotIfAbsent(): void {
-    if (!this.hasSnapshot()) this.snapshot();
+  // Safe entry point for cert-writing operations. The FIRST call in a change
+  // cycle captures the last known-good (pre-change) state, and later calls in
+  // the SAME cycle are no-ops so an apply after a stage/issue can't clobber
+  // the good baseline with the staged cert. A snapshot left over from an
+  // already-committed change (markApplied) is stale: re-baseline over it so
+  // rollback targets the most recent pre-change state, not the pre-chain one.
+  snapshotForChangeCycle(): void {
+    if (!this.hasSnapshot() || this.isApplied()) this.snapshot();
+  }
+
+  private appliedMarkerPath(): string {
+    return path.join(this.snapDir(), 'applied');
+  }
+
+  // Mark the current snapshot as belonging to an already-committed cert-only
+  // change (one that got no confirm window). The marker lives inside the
+  // snapshot dir, so snapshot()/restore()/clearSnapshot() wipe it with the
+  // snapshot itself.
+  markApplied(): void {
+    if (this.hasSnapshot()) fs.writeFileSync(this.appliedMarkerPath(), '');
+  }
+
+  isApplied(): boolean {
+    return fs.existsSync(this.appliedMarkerPath());
   }
 
   hasSnapshot(): boolean {
