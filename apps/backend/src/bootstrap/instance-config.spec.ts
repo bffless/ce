@@ -13,6 +13,7 @@ import {
   assertShellSafeRealIp,
   SHELL_SAFE_HEADER_RE,
   SHELL_SAFE_RANGE_RE,
+  sniffSslMode,
 } from './instance-config';
 
 describe('instance-config', () => {
@@ -311,6 +312,47 @@ describe('instance-config', () => {
       expect(() => assertShellSafeRealIp('X-Forwarded-For', ['0.0.0.0/0;'])).toThrow(
         /unsafe characters/,
       );
+    });
+  });
+
+  describe('sniffSslMode', () => {
+    let sslTmp: string;
+    beforeEach(() => {
+      sslTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bffless-ssl-'));
+    });
+    afterEach(() => {
+      fs.rmSync(sslTmp, { recursive: true, force: true });
+    });
+
+    function mintCert(subj: string): void {
+      execFileSync('openssl', [
+        'req', '-x509', '-nodes', '-days', '2', '-newkey', 'rsa:2048',
+        '-keyout', path.join(sslTmp, 'privkey.pem'),
+        '-out', path.join(sslTmp, 'fullchain.pem'),
+        '-subj', subj,
+      ], { stdio: 'ignore' });
+    }
+
+    it('returns letsencrypt for an LE-issued cert when PROXY_MODE is not cloudflare', () => {
+      mintCert("/O=Let's Encrypt/CN=R11");
+      expect(sniffSslMode(sslTmp, 'none')).toBe('letsencrypt');
+      expect(sniffSslMode(sslTmp, undefined)).toBe('letsencrypt'); // unset counts as not-cloudflare
+    });
+
+    it('returns paste for an LE cert behind cloudflare', () => {
+      mintCert("/O=Let's Encrypt/CN=R11");
+      expect(sniffSslMode(sslTmp, 'cloudflare')).toBe('paste');
+    });
+
+    it('returns paste for a non-LE issuer (Cloudflare Origin style)', () => {
+      mintCert('/O=CloudFlare, Inc./CN=CloudFlare Origin Certificate');
+      expect(sniffSslMode(sslTmp, 'none')).toBe('paste');
+    });
+
+    it('returns paste when fullchain.pem is missing or unparseable', () => {
+      expect(sniffSslMode(sslTmp, 'none')).toBe('paste');
+      fs.writeFileSync(path.join(sslTmp, 'fullchain.pem'), 'not a pem');
+      expect(sniffSslMode(sslTmp, 'none')).toBe('paste');
     });
   });
 });

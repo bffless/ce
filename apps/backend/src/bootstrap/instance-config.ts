@@ -1,5 +1,6 @@
 // Pure Node module — NO NestJS imports. It runs at the very top of main.ts,
 // before Nest (and therefore before SuperTokens/CORS) reads process.env.
+import { X509Certificate } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -14,6 +15,12 @@ export type RealIpConfig = null | { preset: 'cloudflare' } | { header: string; r
 export interface InstanceConfig {
   version: 1 | 2;
   state: 'unclaimed' | 'applied';
+  // Who owns this file. 'wizard': the web wizard / admin UI wrote it — file is
+  // truth, hydration overrides process.env (absent = 'wizard': all files
+  // written before this field existed are wizard files). 'env': adopted from a
+  // legacy .env install — .env is truth and this file is a derived cache,
+  // re-synced on every boot by adoptOrResyncEnvInstall().
+  origin?: 'wizard' | 'env';
   primaryDomain?: string;
   proxyMode?: ProxyMode;
   sslMode?: SslMode;
@@ -77,6 +84,33 @@ export function assertShellSafeRealIp(header: string, ranges: string[]): void {
 
 export function bootstrapDir(): string {
   return process.env.BOOTSTRAP_DIR || path.resolve(process.cwd(), '../../bootstrap');
+}
+
+export function sslDir(): string {
+  return process.env.SSL_CERT_PATH || '/etc/nginx/ssl';
+}
+
+// Adoption-time sslMode inference for legacy env-only installs (spec §2): an
+// LE-issued primary cert on a non-cloudflare install means the operator used
+// the setup.sh certbot path, whose renewal is broken by default (one-time
+// copy into ssl/, standalone renew can't bind port 80) — adopt as
+// 'letsencrypt' so the in-app renewer takes over. Everything else (CF origin
+// certs, unknown issuers, missing/unreadable cert) adopts as 'paste'.
+// Unset PROXY_MODE counts as not-cloudflare, matching render-main-conf.sh's
+// derivation. Never throws: sniff failure must not prevent boot.
+export function sniffSslMode(
+  dir: string = sslDir(),
+  envProxyMode: string | undefined = process.env.PROXY_MODE,
+): SslMode {
+  if (envProxyMode === 'cloudflare') return 'paste';
+  try {
+    const pem = fs.readFileSync(path.join(dir, 'fullchain.pem'));
+    const cert = new X509Certificate(pem);
+    if (/O=Let's Encrypt/.test(cert.issuer)) return 'letsencrypt';
+  } catch {
+    // missing/unreadable → paste
+  }
+  return 'paste';
 }
 
 export function loadInstanceConfig(dir: string = bootstrapDir()): InstanceConfig | null {
