@@ -92,6 +92,42 @@ describe('SslCertificateService.requestPrimaryDomainCertificate', () => {
     const days = service.getPrimaryCertificateExpiryDays();
     expect(days).toBeGreaterThan(80); // mock certs are minted for 90 days
   });
+
+  describe('target (#514)', () => {
+    it("target 'staging' writes the issued cert under staging/, not live", async () => {
+      const service = new SslCertificateService();
+      const res = await service.requestPrimaryDomainCertificate('example.com', { target: 'staging' });
+      expect(res.success).toBe(true);
+      expect(fs.existsSync(path.join(sslDir, 'staging', 'fullchain.pem'))).toBe(true);
+      expect(fs.existsSync(path.join(sslDir, 'staging', 'privkey.pem'))).toBe(true);
+      expect(fs.existsSync(path.join(sslDir, 'fullchain.pem'))).toBe(false);
+    });
+
+    it('default target writes live (renewal-cron contract)', async () => {
+      const service = new SslCertificateService();
+      const res = await service.requestPrimaryDomainCertificate('example.com');
+      expect(res.success).toBe(true);
+      expect(fs.existsSync(path.join(sslDir, 'fullchain.pem'))).toBe(true);
+      expect(fs.existsSync(path.join(sslDir, 'staging'))).toBe(false);
+    });
+
+    it("a valid STAGED cert does NOT satisfy the reuse check for target 'live'", async () => {
+      const service = new SslCertificateService();
+      // Stage a valid covering cert...
+      await service.requestPrimaryDomainCertificate('example.com', { target: 'staging' });
+      // ...then a live-target request must still issue (not report reused).
+      const res = await service.requestPrimaryDomainCertificate('example.com');
+      expect(res.reused).toBeFalsy();
+      expect(fs.existsSync(path.join(sslDir, 'fullchain.pem'))).toBe(true);
+    });
+
+    it("a valid staged cert IS reused for target 'staging'", async () => {
+      const service = new SslCertificateService();
+      await service.requestPrimaryDomainCertificate('example.com', { target: 'staging' });
+      const res = await service.requestPrimaryDomainCertificate('example.com', { target: 'staging' });
+      expect(res.reused).toBe(true);
+    });
+  });
 });
 
 describe('SslCertificateService.checkWildcardCertificate', () => {
