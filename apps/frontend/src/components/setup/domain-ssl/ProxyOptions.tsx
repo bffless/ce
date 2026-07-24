@@ -4,6 +4,7 @@ import { RootState } from '@/store';
 import { setBootstrapRealIp, setBootstrapPort80 } from '@/store/slices/setupSlice';
 import { validateRealIp } from '@/lib/validateRealIp';
 import { RealIpFields } from '@/components/ssl-leaves/RealIpFields';
+import { Port80Choice } from '@/components/ssl-leaves/Port80Choice';
 
 // Proxy-only origin knobs, shared by all three proxy cert modes (self-signed,
 // Let's Encrypt, paste). Dispatches to the store on change so the Apply step
@@ -15,7 +16,10 @@ export function ProxyOptions() {
   const bootstrapSslMode = useSelector((s: RootState) => s.setup.wizard.bootstrapSslMode);
   const [rangesText, setRangesText] = useState('');
   const [header, setHeader] = useState('');
-  const [closePort80, setClosePort80] = useState(false);
+  // Explicit 'redirect' mirrors the backend's null→redirect resolution for
+  // proxy mode (validateApplyConfig), so swapping the old checkbox's
+  // unchecked/null state for this default is behavior-preserving (#513).
+  const [port80, setPort80] = useState<'closed' | 'redirect'>('redirect');
   const [rangesError, setRangesError] = useState<string | null>(null);
   const [headerError, setHeaderError] = useState<string | null>(null);
 
@@ -23,11 +27,11 @@ export function ProxyOptions() {
   // rejects port80:'closed' with sslMode:'letsencrypt'), and Apply has no
   // Back button — so a stale 'closed' picked under selfsigned/paste before
   // switching the sub-choice to letsencrypt would otherwise be a dead-end at
-  // Apply. Clear it (store + local checkbox) whenever the mode becomes
-  // letsencrypt; the checkbox itself is also hidden below in that mode.
+  // Apply. Clear it (store + local state) whenever the mode becomes
+  // letsencrypt; the control itself is also hidden below in that mode.
   useEffect(() => {
     if (bootstrapSslMode === 'letsencrypt') {
-      setClosePort80(false);
+      setPort80('redirect');
       dispatch(setBootstrapPort80(null));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -63,16 +67,18 @@ export function ProxyOptions() {
         headerError={headerError}
         rangesError={rangesError}
       />
-      {bootstrapSslMode !== 'letsencrypt' && (
-        <label className="flex items-start text-sm cursor-pointer">
-          <input
-            type="checkbox"
-            checked={closePort80}
-            onChange={(e) => { setClosePort80(e.target.checked); dispatch(setBootstrapPort80(e.target.checked ? 'closed' : null)); }}
-            className="mt-0.5 mr-2"
-          />
-          <span>Close port 80 — my CDN connects to this origin over HTTPS only</span>
-        </label>
+      {bootstrapSslMode !== 'letsencrypt' ? (
+        <Port80Choice
+          value={port80}
+          onChange={(v) => {
+            setPort80(v);
+            dispatch(setBootstrapPort80(v));
+          }}
+        />
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          Port 80 stays open so Let&apos;s Encrypt can validate over HTTP-01.
+        </p>
       )}
     </div>
   );
