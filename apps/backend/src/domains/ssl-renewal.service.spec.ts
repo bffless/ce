@@ -107,7 +107,7 @@ const certInfo = (overrides: Partial<SslCertificateInfo> = {}): SslCertificateIn
 describe('SslRenewalService', () => {
   let service: SslRenewalService;
   let sslCert: jest.Mocked<Pick<SslCertificateService,
-    'getPrimaryCertificateExpiryDays' | 'requestPrimaryDomainCertificate' | 'renewWildcardCertificate' | 'requestCustomDomainCertificate'
+    'getPrimaryCertificateExpiryDays' | 'requestPrimaryDomainCertificate' | 'renewWildcardCertificate' | 'requestCustomDomainCertificate' | 'getPrimaryCertificateSans'
   >>;
   let sslInfo: jest.Mocked<Pick<SslInfoService, 'getWildcardCertInfo' | 'getDomainSslInfo'>>;
   let email: jest.Mocked<Pick<EmailService, 'sendEmail'>>;
@@ -124,6 +124,7 @@ describe('SslRenewalService', () => {
       requestPrimaryDomainCertificate: jest.fn(),
       renewWildcardCertificate: jest.fn(),
       requestCustomDomainCertificate: jest.fn(),
+      getPrimaryCertificateSans: jest.fn().mockReturnValue(null),
     };
     sslInfo = {
       getWildcardCertInfo: jest.fn().mockResolvedValue(null),
@@ -165,7 +166,50 @@ describe('SslRenewalService', () => {
 
       await service.checkAndRenewCertificates();
 
-      expect(sslCert.requestPrimaryDomainCertificate).toHaveBeenCalledWith('example.com');
+      expect(sslCert.requestPrimaryDomainCertificate).toHaveBeenCalledWith('example.com', {});
+    });
+
+    it('renews an env-adopted install with the current cert SAN list preserved', async () => {
+      (loadInstanceConfig as jest.Mock).mockReturnValue({
+        version: 2,
+        state: 'applied',
+        origin: 'env',
+        primaryDomain: 'example.com',
+        proxyMode: 'none',
+        sslMode: 'letsencrypt',
+      });
+      sslCert.getPrimaryCertificateExpiryDays.mockReturnValue(5);
+      sslCert.getPrimaryCertificateSans.mockReturnValue([
+        'example.com',
+        'www.example.com',
+        'admin.example.com',
+        'minio.example.com',
+      ]);
+      sslCert.requestPrimaryDomainCertificate.mockResolvedValue({ success: true });
+
+      await service.checkAndRenewCertificates();
+
+      expect(sslCert.requestPrimaryDomainCertificate).toHaveBeenCalledWith(
+        'example.com',
+        { extraSans: ['example.com', 'www.example.com', 'admin.example.com', 'minio.example.com'] },
+      );
+    });
+
+    it('renews a wizard install without a SAN override', async () => {
+      (loadInstanceConfig as jest.Mock).mockReturnValue({
+        version: 2,
+        state: 'applied',
+        primaryDomain: 'example.com',
+        proxyMode: 'none',
+        sslMode: 'letsencrypt',
+      });
+      sslCert.getPrimaryCertificateExpiryDays.mockReturnValue(5);
+      sslCert.requestPrimaryDomainCertificate.mockResolvedValue({ success: true });
+
+      await service.checkAndRenewCertificates();
+
+      expect(sslCert.requestPrimaryDomainCertificate).toHaveBeenCalledWith('example.com', {});
+      expect(sslCert.getPrimaryCertificateSans).not.toHaveBeenCalled();
     });
 
     it('skips primary renewal when sslMode is paste', async () => {

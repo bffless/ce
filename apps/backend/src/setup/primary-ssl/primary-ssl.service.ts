@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { BootstrapSetupService } from '../bootstrap-setup.service';
 import { SslCertificateService } from '../../domains/ssl-certificate.service';
 import { BootstrapDnsPreflightService, PreflightResult } from '../bootstrap-dns-preflight.service';
@@ -27,6 +27,8 @@ export interface PrimarySslStatus {
 
 @Injectable()
 export class PrimarySslService {
+  private readonly logger = new Logger(PrimarySslService.name);
+
   constructor(
     private readonly bootstrap: BootstrapSetupService,
     private readonly ssl: SslCertificateService,
@@ -154,6 +156,11 @@ export class PrimarySslService {
     const next: InstanceConfig = {
       version: 2,
       state: 'applied',
+      // Day-2 identity/SSL apply is a graduation event: the install becomes
+      // UI-managed regardless of how it was set up. A prior origin:'env'
+      // adoption is promoted to 'wizard' here so the boot re-sync stops
+      // treating .env as authoritative for identity (spec §3).
+      origin: 'wizard',
       primaryDomain: cur.primaryDomain,
       proxyMode: applied.proxyMode,
       sslMode: applied.sslMode,
@@ -170,6 +177,20 @@ export class PrimarySslService {
     // changes. Behind Cloudflare/proxy the origin cert isn't user-facing, so
     // those stay manual-rollback-only (ce#511).
     const needsConfirm = serving || (certAffecting && next.proxyMode === 'none');
+
+    // Graduation notice (spec §3): an env-adopted install (origin:'env') that
+    // reaches a day-2 primary-SSL apply is promoted to UI-managed identity in
+    // `next` above. Say so loudly — .env identity edits no longer apply, and
+    // the boot-time divergence warning is the safety net if the operator keeps
+    // editing .env after this point.
+    if (cur.origin === 'env') {
+      this.logger.warn(
+        `Primary-SSL apply on an env-adopted install (origin:'env') graduated it to ` +
+          `UI-managed identity: bootstrap/instance.json is now authoritative and .env ` +
+          `identity edits (PRIMARY_DOMAIN/PROXY_MODE/…) no longer apply. Manage identity and ` +
+          `SSL via the admin UI from now on.`,
+      );
+    }
 
     // Snapshot the live pre-change state, THEN promote staging over it — the
     // ordering is now structurally correct instead of call-order discipline.

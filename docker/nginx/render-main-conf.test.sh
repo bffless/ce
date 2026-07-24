@@ -129,4 +129,37 @@ assert_contains "$ETC/ssl/privkey.pem"   'STAGED-REAL-KEY'  'selfsigned: staged 
 # fullchain.pem itself is guarded, PRIMARY_CERT/WILDCARD_CERT are unaffected.
 assert_contains "$ETC/sites-available/main.conf" "ssl_certificate $ETC/ssl/bootstrap-selfsigned.crt;" 'selfsigned: admin vhost still serves self-signed cert with a staged fullchain present'
 
+# --- adoption parity: an env-adopted instance.env must render main.conf
+# byte-identically to the pure-env legacy render it replaces (spec §2:
+# adoption changes nothing nginx serves). Paths embed $ETC, so normalize. ---
+setup_etc 'STATE=applied
+PRIMARY_DOMAIN=example.com
+PROXY_MODE=none
+SSL_MODE=letsencrypt'
+run_render
+ADOPTED_CONF="$(mktemp)"
+sed "s|$ETC|@ETC@|g" "$ETC/sites-available/main.conf" > "$ADOPTED_CONF"
+
+# pure-env legacy install: certs present, NO instance.env, NO bootstrap
+# marker (a genuine pre-wizard install never rendered bootstrap mode).
+ETC="$(mktemp -d)"
+mkdir -p "$ETC/ssl" "$ETC/bootstrap" "$ETC/sites-available"
+cp "$HERE/sites-available/"*.template "$ETC/sites-available/"
+openssl req -x509 -nodes -days 2 -newkey rsa:2048 -keyout "$ETC/ssl/privkey.pem" \
+    -out "$ETC/ssl/fullchain.pem" -subj "/CN=test" 2>/dev/null
+cp "$ETC/ssl/fullchain.pem" "$ETC/ssl/wildcard.example.com.crt"
+cp "$ETC/ssl/privkey.pem" "$ETC/ssl/wildcard.example.com.key"
+( NGINX_ETC="$ETC" CERTBOT_ROOT="$ETC/certbot" PRIMARY_DOMAIN=example.com PROXY_MODE=none \
+    sh "$HERE/render-main-conf.sh" >/dev/null )
+LEGACY_CONF="$(mktemp)"
+sed "s|$ETC|@ETC@|g" "$ETC/sites-available/main.conf" > "$LEGACY_CONF"
+
+if diff -u "$LEGACY_CONF" "$ADOPTED_CONF" >/dev/null; then
+    echo "ok: adoption parity: adopted instance.env renders identically to pure env"
+else
+    echo "FAIL: adoption parity: adopted vs pure-env main.conf differ:"
+    diff -u "$LEGACY_CONF" "$ADOPTED_CONF" || true
+    FAILURES=$((FAILURES+1))
+fi
+
 [ "$FAILURES" -eq 0 ] && echo 'ALL RENDER TESTS PASSED' || { echo "$FAILURES FAILURES"; exit 1; }

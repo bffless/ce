@@ -478,3 +478,54 @@ if [ "${RUN_LE_LEG:-0}" = "1" ]; then
 else
     info "skipping LE-path leg (set RUN_LE_LEG=1 to run it — needs a second full stack boot + container-network DNS pinning; intended for CI/droplet where the extra minutes are cheap)"
 fi
+
+# ===========================================================================
+# Legacy-upgrade leg (opt-in: RUN_LEGACY_LEG=1). Simulates a pre-wizard
+# env-only install (identity in .env, certs in ssl/, empty bootstrap/) being
+# upgraded to this image: first boot must ADOPT it into bootstrap/
+# instance.json with origin:'env', and a later .env edit + container
+# recreate must RE-SYNC the file (spec §§2–3). Opt-in because it needs its
+# own fresh stack boot, like the LE leg.
+#   RUN_LEGACY_LEG=1 ./test-bootstrap.sh
+# ===========================================================================
+if [ "${RUN_LEGACY_LEG:-0}" = "1" ]; then
+    info "legacy leg: tearing down, building a hand-made legacy env install"
+    docker compose --profile postgres --profile minio --profile redis --profile supertokens down -v >/dev/null 2>&1
+    rm -rf bootstrap ssl
+    mkdir -p bootstrap ssl
+
+    LEGACY_DOMAIN="legacy-test.local"
+    # Legacy identity in .env, exactly as interactive setup.sh writes it.
+    sed -i "s/^PRIMARY_DOMAIN=.*/PRIMARY_DOMAIN=${LEGACY_DOMAIN}/" .env
+    sed -i "s|^FRONTEND_URL=.*|FRONTEND_URL=https://www.${LEGACY_DOMAIN}|" .env
+    grep -q '^PROXY_MODE=' .env && sed -i 's/^PROXY_MODE=.*/PROXY_MODE=cloudflare/' .env || echo 'PROXY_MODE=cloudflare' >> .env
+    # Legacy certs: self-signed stand-ins (non-LE issuer → must adopt as paste).
+    openssl req -x509 -nodes -days 2 -newkey rsa:2048 -keyout ssl/privkey.pem \
+        -out ssl/fullchain.pem -subj "/CN=${LEGACY_DOMAIN}" 2>/dev/null
+    cp ssl/fullchain.pem "ssl/wildcard.${LEGACY_DOMAIN}.crt"
+    cp ssl/privkey.pem "ssl/wildcard.${LEGACY_DOMAIN}.key"
+
+    ./start.sh
+    wait_until 90 "legacy leg: backend to adopt the env identity" -- \
+        bash -c 'docker compose logs backend 2>/dev/null | grep -q "adopted env identity into instance.json"'
+    grep -q '"origin": "env"' bootstrap/instance.json \
+        || fail "legacy leg: adopted instance.json missing origin:env: $(cat bootstrap/instance.json)"
+    grep -q "\"primaryDomain\": \"${LEGACY_DOMAIN}\"" bootstrap/instance.json \
+        || fail "legacy leg: adopted instance.json has wrong domain: $(cat bootstrap/instance.json)"
+    grep -q '"sslMode": "paste"' bootstrap/instance.json \
+        || fail "legacy leg: self-signed legacy cert must adopt as paste: $(cat bootstrap/instance.json)"
+    grep -q "PRIMARY_DOMAIN=${LEGACY_DOMAIN}" bootstrap/instance.env \
+        || fail "legacy leg: instance.env not written for nginx"
+    ok "legacy leg: env install adopted (origin:env, sslMode:paste)"
+
+    # .env edit must still work: recreate the backend (compose re-reads .env)
+    # and the file must follow.
+    RENAMED_DOMAIN="renamed-test.local"
+    sed -i "s/^PRIMARY_DOMAIN=.*/PRIMARY_DOMAIN=${RENAMED_DOMAIN}/" .env
+    docker compose up -d backend >/dev/null 2>&1
+    wait_until 90 "legacy leg: re-sync after .env edit" -- \
+        bash -c "grep -q '\"primaryDomain\": \"${RENAMED_DOMAIN}\"' bootstrap/instance.json"
+    ok "legacy leg passed: .env edit re-synced instance.json (env stays authoritative)"
+else
+    info "skipping legacy-upgrade leg (set RUN_LEGACY_LEG=1 to run it — needs its own fresh stack boot)"
+fi

@@ -162,6 +162,57 @@ describe('SslCertificateService.requestPrimaryDomainCertificate', () => {
       expect(fs.existsSync(path.join(sslDir, 'staging', 'privkey.pem'))).toBe(true);
     });
   });
+
+  it('unions extraSans with the default SAN set, deduped, defaults first', async () => {
+    const service = new SslCertificateService();
+    const result = await service.requestPrimaryDomainCertificate('example.com', {
+      extraSans: ['example.com', 'minio.example.com', 'www.example.com'],
+    });
+    expect(result.success).toBe(true);
+    expect(result.sans).toEqual([
+      'example.com',
+      'www.example.com',
+      'admin.example.com',
+      'minio.example.com',
+    ]);
+  });
+});
+
+describe('SslCertificateService.getPrimaryCertificateSans', () => {
+  let sslDir: string;
+
+  beforeEach(() => {
+    sslDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bffless-ssl-'));
+    process.env.SSL_CERT_PATH = sslDir;
+  });
+  afterEach(() => {
+    delete process.env.SSL_CERT_PATH;
+    fs.rmSync(sslDir, { recursive: true, force: true });
+  });
+
+  it('reads DNS SANs from fullchain.pem', () => {
+    // Mint a real cert carrying legacy certbot-style SANs (apex, www, minio —
+    // no admin) into the temp SSL_CERT_PATH dir, via the same forge helper
+    // pattern used elsewhere in this file.
+    const { certPem } = makeCert('example.com', [
+      'example.com',
+      'www.example.com',
+      'minio.example.com',
+    ]);
+    fs.writeFileSync(path.join(sslDir, 'fullchain.pem'), certPem);
+
+    const service = new SslCertificateService();
+    expect(service.getPrimaryCertificateSans()).toEqual([
+      'example.com',
+      'www.example.com',
+      'minio.example.com',
+    ]);
+  });
+
+  it('returns null when the cert is missing', () => {
+    const service = new SslCertificateService();
+    expect(service.getPrimaryCertificateSans()).toBeNull();
+  });
 });
 
 describe('SslCertificateService.checkWildcardCertificate', () => {

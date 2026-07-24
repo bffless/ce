@@ -1,5 +1,6 @@
 // Pure Node module — NO NestJS imports. It runs at the very top of main.ts,
 // before Nest (and therefore before SuperTokens/CORS) reads process.env.
+import { X509Certificate } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -14,6 +15,12 @@ export type RealIpConfig = null | { preset: 'cloudflare' } | { header: string; r
 export interface InstanceConfig {
   version: 1 | 2;
   state: 'unclaimed' | 'applied';
+  // Who owns this file. 'wizard': the web wizard / admin UI wrote it — file is
+  // truth, hydration overrides process.env (absent = 'wizard': all files
+  // written before this field existed are wizard files). 'env': adopted from a
+  // legacy .env install — .env is truth and this file is a derived cache,
+  // re-synced on every boot by adoptOrResyncEnvInstall().
+  origin?: 'wizard' | 'env';
   primaryDomain?: string;
   proxyMode?: ProxyMode;
   sslMode?: SslMode;
@@ -79,6 +86,175 @@ export function bootstrapDir(): string {
   return process.env.BOOTSTRAP_DIR || path.resolve(process.cwd(), '../../bootstrap');
 }
 
+export function sslDir(): string {
+  return process.env.SSL_CERT_PATH || '/etc/nginx/ssl';
+}
+
+// Adoption-time sslMode inference for legacy env-only installs (spec §2): an
+// LE-issued primary cert on a non-cloudflare install means the operator used
+// the setup.sh certbot path, whose renewal is broken by default (one-time
+// copy into ssl/, standalone renew can't bind port 80) — adopt as
+// 'letsencrypt' so the in-app renewer takes over. Everything else (CF origin
+// certs, unknown issuers, missing/unreadable cert) adopts as 'paste'.
+// Unset PROXY_MODE counts as not-cloudflare, matching render-main-conf.sh's
+// derivation. Never throws: sniff failure must not prevent boot.
+export function sniffSslMode(
+  dir: string = sslDir(),
+  envProxyMode: string | undefined = process.env.PROXY_MODE,
+): SslMode {
+  if (envProxyMode === 'cloudflare') return 'paste';
+  try {
+    const pem = fs.readFileSync(path.join(dir, 'fullchain.pem'));
+    const cert = new X509Certificate(pem);
+    // Anchor to a whole RDN line: node renders X509Certificate.issuer as one
+    // RDN per line ("O=Let's Encrypt\nCN=R11"), so match the O= line exactly
+    // (multiline ^…$) rather than a loose substring that a crafted issuer
+    // string containing "O=Let's Encrypt" as a fragment could satisfy.
+    if (/^O=Let's Encrypt$/m.test(cert.issuer)) return 'letsencrypt';
+  } catch {
+    // missing/unreadable → paste
+  }
+  return 'paste';
+}
+
+// Identity as expressed by a legacy .env install (docker-compose passes .env
+// into the backend's environment). Null = not an adoptable install: no/localhost
+// domain, or a platform workspace (identity is platform-managed there — same
+// check as SetupService.isPlatformManaged).
+export function envIdentity(
+  env: NodeJS.ProcessEnv = process.env,
+): { primaryDomain: string; proxyMode?: ProxyMode } | null {
+  if (env.PLATFORM_MODE === 'true' || env.SSL_MANAGED_EXTERNALLY === 'true') return null;
+  const d = env.PRIMARY_DOMAIN;
+  if (!d || d === 'localhost') return null;
+  const pm = env.PROXY_MODE;
+  const proxyMode = pm === 'cloudflare' || pm === 'proxy' || pm === 'none' ? pm : undefined;
+  return { primaryDomain: d, proxyMode };
+}
+
+// The instance.json a legacy env install maps to. Knobs (port80/realIp) are
+// deliberately omitted (v1-style): deriveKnobs and render-main-conf.sh's env
+// fallback derive identical values, so adoption changes nothing nginx renders.
+export function deriveAdoptedConfig(
+  env: NodeJS.ProcessEnv = process.env,
+  ssl: string = sslDir(),
+): InstanceConfig | null {
+  const id = envIdentity(env);
+  if (!id) return null;
+  const cfg: InstanceConfig = {
+    version: 2,
+    state: 'applied',
+    origin: 'env',
+    primaryDomain: id.primaryDomain,
+    sslMode: sniffSslMode(ssl, env.PROXY_MODE),
+  };
+  if (id.proxyMode) cfg.proxyMode = id.proxyMode;
+  return cfg;
+}
+
+// First-adoption legacy gate (spec §2, C1). A fresh web-bootstrap install
+// (`setup.sh --bootstrap`) also boots with PRIMARY_DOMAIN set — docker-compose's
+// `PRIMARY_DOMAIN: ${PRIMARY_DOMAIN:-yourdomain.com}` substitutes for an empty
+// value too, so the backend sees `yourdomain.com` even though `.env` left it
+// blank — but it is cert-less and has already rendered bootstrap mode. Adopting
+// it would write state:'applied', kill the wizard (isBootstrapModeActive → false)
+// and cut nginx over to NORMAL mode for a domain with no certs. Only a genuine
+// legacy `setup.sh` install (real certs on disk, never bootstrap-rendered) is
+// adoptable on first boot. This mirrors render-main-conf.sh's should_bootstrap()
+// legacy carve-out — see its comment. Applies to first adoption ONLY: an
+// existing origin:'env' file keeps re-syncing regardless (re-sync is not gated).
+function isLegacyEnvInstall(ssl: string, primaryDomain: string): boolean {
+  // (3) Belt-and-braces: docker-compose.yml's `${PRIMARY_DOMAIN:-yourdomain.com}`
+  //     default means an unset/blank PRIMARY_DOMAIN surfaces as this placeholder;
+  //     it is never a real legacy identity, so refuse it outright.
+  if (primaryDomain === 'yourdomain.com') return false;
+  // (1) Real certs present: every non-localhost legacy setup.sh install has run
+  //     certbot / pasted CF origin certs into ssl/; a fresh bootstrap boot has not.
+  if (
+    !fs.existsSync(path.join(ssl, 'fullchain.pem')) ||
+    !fs.existsSync(path.join(ssl, 'privkey.pem'))
+  ) {
+    return false;
+  }
+  // (2) No bootstrap marker: its presence means this install has rendered
+  //     bootstrap mode at least once (render-main-conf.sh writes it and never
+  //     deletes it) — i.e. NOT legacy. This protects the mid-wizard-restart
+  //     window where the certificate step has staged real certs before Apply ran.
+  if (fs.existsSync(path.join(ssl, 'bootstrap-selfsigned.crt'))) return false;
+  return true;
+}
+
+// Boot-time adoption/re-sync for legacy env installs (spec §§2–3). Rules:
+//   - no instance.json + env identity present + legacy gate passes → adopt
+//   - origin:'env' file → re-derive from env, rewrite only if changed; if env
+//     is no longer adoptable, delete the now-stale derived files
+//   - wizard file (origin absent/'wizard') or corrupt file → never touched
+// For origin:'env', .env is truth and the files are derived caches — which is
+// also why hydrateProcessEnv skips its process.env override for them.
+// Must never throw: any failure degrades to today's env-only behavior.
+export function adoptOrResyncEnvInstall(
+  dir: string = bootstrapDir(),
+  env: NodeJS.ProcessEnv = process.env,
+  ssl: string = sslDir(),
+): InstanceConfig | null {
+  try {
+    const jsonPath = path.join(dir, 'instance.json');
+    const exists = fs.existsSync(jsonPath);
+    const existing = loadInstanceConfig(dir);
+    if (exists && !existing) {
+      console.warn('[bootstrap] instance.json present but unreadable — leaving it untouched');
+      return null;
+    }
+    if (existing && existing.origin !== 'env') {
+      const d = env.PRIMARY_DOMAIN;
+      if (d && d !== 'localhost' && d !== existing.primaryDomain) {
+        console.warn(
+          `[bootstrap] .env PRIMARY_DOMAIN=${d} differs from wizard-managed instance.json ` +
+            `(${existing.primaryDomain}); instance.json wins — change identity via the admin UI`,
+        );
+      }
+      return null;
+    }
+    const derived = deriveAdoptedConfig(env, ssl);
+    if (!derived) {
+      // I3: an already-adopted install whose .env has become non-adoptable
+      // (domain removed/localhost, or PLATFORM_MODE/SSL_MANAGED_EXTERNALLY now
+      // true). The derived files are a stale cache still steering nginx +
+      // renewal, so delete them rather than silently leaving state:'applied'
+      // behind. Only ever touches origin:'env' files (wizard files returned
+      // above).
+      if (existing?.origin === 'env') {
+        console.warn(
+          `[bootstrap] .env is no longer adoptable (domain removed/localhost or platform mode) — ` +
+            `deleting the stale env-origin instance.json/instance.env so nginx + renewal fall back to env`,
+        );
+        for (const f of ['instance.json', 'instance.env']) {
+          try {
+            fs.unlinkSync(path.join(dir, f));
+          } catch (e) {
+            if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
+          }
+        }
+      }
+      return null;
+    }
+    // First-adoption gate: only genuine legacy installs get adopted. An existing
+    // origin:'env' file re-syncs unconditionally (it already proved adoptable).
+    if (!existing && !isLegacyEnvInstall(ssl, derived.primaryDomain!)) {
+      return null;
+    }
+    if (existing && JSON.stringify(existing) === JSON.stringify(derived)) return existing;
+    writeInstanceConfig(derived, dir);
+    console.log(
+      `[bootstrap] ${existing ? 're-synced' : 'adopted'} env identity into instance.json: ${derived.primaryDomain}`,
+    );
+    return derived;
+  } catch (err) {
+    console.warn(`[bootstrap] env adoption skipped: ${(err as Error).message}`);
+    return null;
+  }
+}
+
 export function loadInstanceConfig(dir: string = bootstrapDir()): InstanceConfig | null {
   try {
     const raw = fs.readFileSync(path.join(dir, 'instance.json'), 'utf8');
@@ -110,7 +286,12 @@ export function deriveIdentityEnv(cfg: InstanceConfig): Record<string, string> {
 export function hydrateProcessEnv(dir: string = bootstrapDir()): InstanceConfig | null {
   const cfg = loadInstanceConfig(dir);
   if (!cfg) return null;
-  Object.assign(process.env, deriveIdentityEnv(cfg));
+  // origin:'env' — .env is truth and already lives in process.env; assigning
+  // the file's values would resurrect stale identity on the first boot after
+  // an .env edit (SuperTokens captures env before re-sync could correct it).
+  if (cfg.origin !== 'env') {
+    Object.assign(process.env, deriveIdentityEnv(cfg));
+  }
   return cfg;
 }
 

@@ -88,6 +88,19 @@ describe('PrimarySslSnapshotService', () => {
     expect(svc.isApplied()).toBe(false);
   });
 
+  it('re-baselining preserves an env origin instead of graduating it', () => {
+    // Mechanical rewrites (snapshot/restore) must not perform the graduation
+    // that only the wizard apply endpoint is allowed to do — an env-adopted
+    // install's origin must ride along through the snapshot round trip.
+    writeInstanceConfig(
+      { version: 2, state: 'applied', origin: 'env', primaryDomain: 'a.com', proxyMode: 'none', sslMode: 'paste' },
+      dir,
+    );
+    svc.snapshot();
+    svc.restore();
+    expect(loadInstanceConfig(dir)!.origin).toBe('env');
+  });
+
   it('snapshotForChangeCycle re-baselines over an applied snapshot (rollback restores the LATEST pre-change bytes)', () => {
     // cycle 1: stage + cert-only apply of cert A over the original
     svc.snapshotForChangeCycle();               // baseline = ORIG

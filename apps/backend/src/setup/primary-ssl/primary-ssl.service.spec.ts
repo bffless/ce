@@ -1,6 +1,7 @@
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, Logger } from '@nestjs/common';
 import { PrimarySslService } from './primary-ssl.service';
 import * as staging from '../ssl-staging';
+import { writeInstanceConfig } from '../../bootstrap/instance-config';
 
 const domain = 'a.com';
 
@@ -229,6 +230,49 @@ describe('PrimarySslService.apply classification', () => {
     const { svc } = build();
     expect(svc.discardStaged()).toEqual({ discarded: true });
     expect(staging.discardStagedCertificates).toHaveBeenCalled();
+  });
+
+  it('apply stamps origin: wizard, graduating an env-adopted install to UI-managed identity', async () => {
+    const { svc } = build();
+    const dto = { proxyMode: 'cloudflare', sslMode: 'paste', port80: 'redirect', realIp: undefined } as any;
+    mockCur.proxyMode = 'cloudflare'; // no reachability change; mirrors the "cert-only change behind a proxy" case above
+
+    // A wizard (origin-absent) install stays wizard-owned; the write makes it explicit.
+    await svc.apply(dto);
+    const calls = (writeInstanceConfig as jest.Mock).mock.calls;
+    const wizardWrite = calls[calls.length - 1][0];
+    expect(wizardWrite.origin).toBe('wizard');
+
+    // Day-2 apply on an env-adopted install (origin:'env') GRADUATES it: the
+    // written config becomes origin:'wizard' so the boot re-sync no longer
+    // treats .env as authoritative for identity (spec §3).
+    mockCur.origin = 'env';
+    await svc.apply(dto);
+    const graduatedWrite = calls[calls.length - 1][0];
+    expect(graduatedWrite).toEqual(expect.objectContaining({ origin: 'wizard' }));
+  });
+
+  it('logs a graduation notice on an env-origin install, and not on a wizard-origin install', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    try {
+      const { svc } = build();
+      // No reachability change (proxyMode matches cur) so apply commits cleanly.
+      mockCur.proxyMode = 'cloudflare';
+      const dto = { proxyMode: 'cloudflare', sslMode: 'paste', port80: 'redirect', realIp: undefined } as any;
+
+      // env-origin apply graduates the install -> a graduation notice is logged.
+      mockCur.origin = 'env';
+      await svc.apply(dto);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('graduated'));
+
+      // wizard-origin apply is unchanged -> nothing to graduate, no notice.
+      warn.mockClear();
+      mockCur.origin = 'wizard';
+      await svc.apply(dto);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('serving change writes a pending revert with a deadline and does not mark applied', async () => {

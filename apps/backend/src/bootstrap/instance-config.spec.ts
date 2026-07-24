@@ -13,6 +13,8 @@ import {
   assertShellSafeRealIp,
   SHELL_SAFE_HEADER_RE,
   SHELL_SAFE_RANGE_RE,
+  sniffSslMode,
+  adoptOrResyncEnvInstall,
 } from './instance-config';
 
 describe('instance-config', () => {
@@ -311,6 +313,252 @@ describe('instance-config', () => {
       expect(() => assertShellSafeRealIp('X-Forwarded-For', ['0.0.0.0/0;'])).toThrow(
         /unsafe characters/,
       );
+    });
+  });
+
+  describe('sniffSslMode', () => {
+    let sslTmp: string;
+    let savedProxyMode: string | undefined;
+
+    beforeEach(() => {
+      sslTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bffless-ssl-'));
+      savedProxyMode = process.env.PROXY_MODE;
+    });
+    afterEach(() => {
+      fs.rmSync(sslTmp, { recursive: true, force: true });
+      if (savedProxyMode === undefined) {
+        delete process.env.PROXY_MODE;
+      } else {
+        process.env.PROXY_MODE = savedProxyMode;
+      }
+    });
+
+    function mintCert(subj: string): void {
+      execFileSync('openssl', [
+        'req', '-x509', '-nodes', '-days', '2', '-newkey', 'rsa:2048',
+        '-keyout', path.join(sslTmp, 'privkey.pem'),
+        '-out', path.join(sslTmp, 'fullchain.pem'),
+        '-subj', subj,
+      ], { stdio: 'ignore' });
+    }
+
+    it('returns letsencrypt for an LE-issued cert when PROXY_MODE is not cloudflare', () => {
+      mintCert("/O=Let's Encrypt/CN=R11");
+      expect(sniffSslMode(sslTmp, 'none')).toBe('letsencrypt');
+      // Test with PROXY_MODE unset hermetically (omit arg to not trigger default at call time)
+      const saved = process.env.PROXY_MODE;
+      try {
+        delete process.env.PROXY_MODE;
+        expect(sniffSslMode(sslTmp)).toBe('letsencrypt'); // unset counts as not-cloudflare
+      } finally {
+        if (saved !== undefined) {
+          process.env.PROXY_MODE = saved;
+        }
+      }
+    });
+
+    it('returns paste for an LE cert behind cloudflare', () => {
+      mintCert("/O=Let's Encrypt/CN=R11");
+      expect(sniffSslMode(sslTmp, 'cloudflare')).toBe('paste');
+    });
+
+    it('returns paste for a non-LE issuer (Cloudflare Origin style)', () => {
+      mintCert('/O=CloudFlare, Inc./CN=CloudFlare Origin Certificate');
+      expect(sniffSslMode(sslTmp, 'none')).toBe('paste');
+    });
+
+    it('returns paste when fullchain.pem is missing or unparseable', () => {
+      expect(sniffSslMode(sslTmp, 'none')).toBe('paste');
+      fs.writeFileSync(path.join(sslTmp, 'fullchain.pem'), 'not a pem');
+      expect(sniffSslMode(sslTmp, 'none')).toBe('paste');
+    });
+  });
+
+  describe('env adoption & re-sync', () => {
+    let sslTmp: string;
+    let envBackup: NodeJS.ProcessEnv;
+
+    const legacyEnv = (over: Record<string, string | undefined> = {}): NodeJS.ProcessEnv =>
+      ({ PRIMARY_DOMAIN: 'legacy.com', PROXY_MODE: 'cloudflare', ...over } as NodeJS.ProcessEnv);
+
+    // A genuine legacy setup.sh install has real certs in ssl/ and no bootstrap
+    // marker — the C1 first-adoption gate. Mint a throwaway self-signed pair
+    // (non-LE subject so sniffSslMode stays 'paste').
+    const mintCerts = (dir: string): void => {
+      execFileSync('openssl', [
+        'req', '-x509', '-nodes', '-days', '2', '-newkey', 'rsa:2048',
+        '-keyout', path.join(dir, 'privkey.pem'),
+        '-out', path.join(dir, 'fullchain.pem'),
+        '-subj', '/CN=legacy.com',
+      ], { stdio: 'ignore' });
+    };
+
+    beforeEach(() => {
+      envBackup = { ...process.env };
+      sslTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bffless-ssl-'));
+    });
+    afterEach(() => {
+      process.env = envBackup;
+      fs.rmSync(sslTmp, { recursive: true, force: true });
+    });
+
+    it('adopts a legacy env install: applied, origin env, no knobs, sniffed sslMode', () => {
+      mintCerts(sslTmp);
+      const cfg = adoptOrResyncEnvInstall(dir, legacyEnv(), sslTmp);
+      expect(cfg).toMatchObject({
+        version: 2, state: 'applied', origin: 'env',
+        primaryDomain: 'legacy.com', proxyMode: 'cloudflare', sslMode: 'paste',
+      });
+      expect(cfg!.port80).toBeUndefined();
+      expect(cfg!.realIp).toBeUndefined();
+      const onDisk = loadInstanceConfig(dir);
+      expect(onDisk).toEqual(cfg);
+      expect(fs.readFileSync(path.join(dir, 'instance.env'), 'utf8')).toContain('PRIMARY_DOMAIN=legacy.com');
+    });
+
+    it('omits proxyMode when PROXY_MODE is unset or unknown', () => {
+      mintCerts(sslTmp);
+      const cfg = adoptOrResyncEnvInstall(dir, legacyEnv({ PROXY_MODE: undefined }), sslTmp);
+      expect(cfg!.proxyMode).toBeUndefined();
+      fs.rmSync(path.join(dir, 'instance.json'));
+      const cfg2 = adoptOrResyncEnvInstall(dir, legacyEnv({ PROXY_MODE: 'bogus' }), sslTmp);
+      expect(cfg2!.proxyMode).toBeUndefined();
+    });
+
+    it('skips adoption for localhost, missing domain, and platform mode', () => {
+      expect(adoptOrResyncEnvInstall(dir, legacyEnv({ PRIMARY_DOMAIN: 'localhost' }), sslTmp)).toBeNull();
+      expect(adoptOrResyncEnvInstall(dir, legacyEnv({ PRIMARY_DOMAIN: undefined }), sslTmp)).toBeNull();
+      expect(adoptOrResyncEnvInstall(dir, legacyEnv({ PLATFORM_MODE: 'true' }), sslTmp)).toBeNull();
+      expect(adoptOrResyncEnvInstall(dir, legacyEnv({ SSL_MANAGED_EXTERNALLY: 'true' }), sslTmp)).toBeNull();
+      expect(fs.existsSync(path.join(dir, 'instance.json'))).toBe(false);
+    });
+
+    it('never touches a wizard-origin file (explicit or absent origin)', () => {
+      writeInstanceConfig({ version: 2, state: 'applied', primaryDomain: 'wizard.com', proxyMode: 'none', sslMode: 'paste' }, dir);
+      const before = fs.readFileSync(path.join(dir, 'instance.json'), 'utf8');
+      expect(adoptOrResyncEnvInstall(dir, legacyEnv(), sslTmp)).toBeNull();
+      expect(fs.readFileSync(path.join(dir, 'instance.json'), 'utf8')).toBe(before);
+    });
+
+    it('leaves a corrupt instance.json untouched', () => {
+      fs.writeFileSync(path.join(dir, 'instance.json'), '{not json');
+      expect(adoptOrResyncEnvInstall(dir, legacyEnv(), sslTmp)).toBeNull();
+      expect(fs.readFileSync(path.join(dir, 'instance.json'), 'utf8')).toBe('{not json');
+    });
+
+    it('re-syncs an env-origin file when .env changes, and skips the write when unchanged', () => {
+      mintCerts(sslTmp);
+      adoptOrResyncEnvInstall(dir, legacyEnv(), sslTmp);
+      // Spy on the real `fs` module (via require), not the `import * as fs`
+      // binding above: under this repo's CJS interop, `import * as fs` compiles
+      // to a live-binding getter proxy whose property descriptor is
+      // non-configurable, so jest.spyOn(fs, ...) throws "Cannot redefine
+      // property". The proxy forwards live reads to the real module object, so
+      // spying on that real object (require('fs')) is observed by
+      // instance-config.ts's own `import * as fs` calls too.
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const writeSpy = jest.spyOn(require('fs'), 'writeFileSync');
+      adoptOrResyncEnvInstall(dir, legacyEnv(), sslTmp); // unchanged
+      expect(writeSpy).not.toHaveBeenCalled();
+      const cfg = adoptOrResyncEnvInstall(dir, legacyEnv({ PRIMARY_DOMAIN: 'renamed.com' }), sslTmp);
+      expect(cfg!.primaryDomain).toBe('renamed.com');
+      expect(loadInstanceConfig(dir)!.primaryDomain).toBe('renamed.com');
+      writeSpy.mockRestore();
+    });
+
+    it('hydrateProcessEnv does not override process.env for origin:env files', () => {
+      mintCerts(sslTmp);
+      adoptOrResyncEnvInstall(dir, legacyEnv(), sslTmp);
+      delete process.env.FRONTEND_URL;
+      process.env.PRIMARY_DOMAIN = 'fresh-from-env.com';
+      const cfg = hydrateProcessEnv(dir);
+      expect(cfg!.origin).toBe('env');
+      expect(process.env.PRIMARY_DOMAIN).toBe('fresh-from-env.com'); // NOT clobbered by the file
+      expect(process.env.FRONTEND_URL).toBeUndefined();
+    });
+
+    it('hydrateProcessEnv still overrides process.env for wizard files', () => {
+      writeInstanceConfig({ version: 2, state: 'applied', origin: 'wizard', primaryDomain: 'wizard.com', proxyMode: 'none', sslMode: 'paste' }, dir);
+      hydrateProcessEnv(dir);
+      expect(process.env.PRIMARY_DOMAIN).toBe('wizard.com');
+      expect(process.env.FRONTEND_URL).toBe('https://www.wizard.com');
+    });
+
+    describe('C1: fresh web-bootstrap install is never adopted on first boot', () => {
+      it('refuses the docker-compose placeholder domain even with certs present', () => {
+        mintCerts(sslTmp);
+        expect(
+          adoptOrResyncEnvInstall(dir, legacyEnv({ PRIMARY_DOMAIN: 'yourdomain.com' }), sslTmp),
+        ).toBeNull();
+        expect(fs.existsSync(path.join(dir, 'instance.json'))).toBe(false);
+        expect(fs.existsSync(path.join(dir, 'instance.env'))).toBe(false);
+      });
+
+      it('refuses a cert-less install (fresh bootstrap boot has no real certs)', () => {
+        // sslTmp intentionally has no fullchain.pem/privkey.pem.
+        expect(adoptOrResyncEnvInstall(dir, legacyEnv(), sslTmp)).toBeNull();
+        expect(fs.existsSync(path.join(dir, 'instance.json'))).toBe(false);
+        expect(fs.existsSync(path.join(dir, 'instance.env'))).toBe(false);
+      });
+
+      it('refuses when certs AND a bootstrap marker are present (mid-wizard restart)', () => {
+        mintCerts(sslTmp);
+        fs.writeFileSync(path.join(sslTmp, 'bootstrap-selfsigned.crt'), 'marker');
+        expect(adoptOrResyncEnvInstall(dir, legacyEnv(), sslTmp)).toBeNull();
+        expect(fs.existsSync(path.join(dir, 'instance.json'))).toBe(false);
+        expect(fs.existsSync(path.join(dir, 'instance.env'))).toBe(false);
+      });
+
+      it('adopts a genuine legacy install: real certs, no marker, real domain', () => {
+        mintCerts(sslTmp);
+        const cfg = adoptOrResyncEnvInstall(dir, legacyEnv(), sslTmp);
+        expect(cfg).toMatchObject({ state: 'applied', origin: 'env', primaryDomain: 'legacy.com' });
+        expect(fs.existsSync(path.join(dir, 'instance.json'))).toBe(true);
+      });
+
+      it('re-sync of an existing env-origin file is NOT gated on cert presence', () => {
+        // First adopt with certs present…
+        mintCerts(sslTmp);
+        adoptOrResyncEnvInstall(dir, legacyEnv(), sslTmp);
+        // …then the certs vanish (e.g. swapped out) and the domain changes:
+        // the re-sync still runs because the file already proved adoptable.
+        fs.rmSync(path.join(sslTmp, 'fullchain.pem'));
+        fs.rmSync(path.join(sslTmp, 'privkey.pem'));
+        const cfg = adoptOrResyncEnvInstall(dir, legacyEnv({ PRIMARY_DOMAIN: 'renamed.com' }), sslTmp);
+        expect(cfg!.primaryDomain).toBe('renamed.com');
+        expect(loadInstanceConfig(dir)!.primaryDomain).toBe('renamed.com');
+      });
+    });
+
+    describe('I3: env-origin files deleted when env becomes non-adoptable', () => {
+      it('deletes both files and warns when an adopted env flips to platform mode', () => {
+        mintCerts(sslTmp);
+        adoptOrResyncEnvInstall(dir, legacyEnv(), sslTmp);
+        expect(fs.existsSync(path.join(dir, 'instance.json'))).toBe(true);
+        expect(fs.existsSync(path.join(dir, 'instance.env'))).toBe(true);
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        const r = adoptOrResyncEnvInstall(dir, legacyEnv({ PLATFORM_MODE: 'true' }), sslTmp);
+        expect(r).toBeNull();
+        expect(fs.existsSync(path.join(dir, 'instance.json'))).toBe(false);
+        expect(fs.existsSync(path.join(dir, 'instance.env'))).toBe(false);
+        expect(warn).toHaveBeenCalled();
+        warn.mockRestore();
+      });
+
+      it('leaves a wizard-origin file untouched under the same env flip', () => {
+        writeInstanceConfig(
+          { version: 2, state: 'applied', origin: 'wizard', primaryDomain: 'wizard.com', proxyMode: 'none', sslMode: 'paste' },
+          dir,
+        );
+        const before = fs.readFileSync(path.join(dir, 'instance.json'), 'utf8');
+        const r = adoptOrResyncEnvInstall(
+          dir,
+          legacyEnv({ PRIMARY_DOMAIN: 'wizard.com', PLATFORM_MODE: 'true' }),
+          sslTmp,
+        );
+        expect(r).toBeNull();
+        expect(fs.readFileSync(path.join(dir, 'instance.json'), 'utf8')).toBe(before);
+      });
     });
   });
 });

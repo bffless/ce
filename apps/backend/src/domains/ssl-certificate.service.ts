@@ -500,10 +500,15 @@ export class SslCertificateService {
    * wildcard.<domain>.crt/.key filenames so the nginx render contract
    * (Task 4) holds — preview subdomains serve it with a hostname mismatch
    * until the optional DNS-01 wildcard flow replaces the copies.
+   *
+   * `extraSans` widens the SAN set beyond the fixed [apex, www, admin] union:
+   * the renewal cron passes the current cert's SANs for an env-adopted legacy
+   * certbot install (spec §4) so a renewal never drops names it already carried
+   * (e.g. minio.<domain>). The union is de-duplicated below.
    */
   async requestPrimaryDomainCertificate(
     domain: string,
-    opts: { target?: 'live' | 'staging' } = {},
+    opts: { target?: 'live' | 'staging'; extraSans?: string[] } = {},
   ): Promise<{
     success: boolean;
     error?: string;
@@ -512,7 +517,16 @@ export class SslCertificateService {
     reused?: boolean;
   }> {
     const target = opts.target ?? 'live';
-    const sans = [domain, `www.${domain}`, `admin.${domain}`];
+    // Renewal of an env-adopted install passes the current cert's SANs so we
+    // never drop names the legacy certbot cert carried (e.g. minio.<domain>).
+    // The union (defaults first, deduped) feeds the target-scoped
+    // stagedPrimaryCertificate reuse check unchanged. The ACME order
+    // authorizes every name together, so if any single default SAN can't
+    // HTTP-01 validate the whole order fails — deliberate (a partial cert that
+    // silently dropped apex/www/admin would be worse than a loud failure).
+    const sans = Array.from(
+      new Set([domain, `www.${domain}`, `admin.${domain}`, ...(opts.extraSans ?? [])]),
+    );
 
     // Idempotency (rate-limit protection). Target-scoped on purpose: the
     // renewal cron (target 'live') must never be satisfied by a stale staged
@@ -551,7 +565,7 @@ export class SslCertificateService {
 
       const [key, csr] = await acme.crypto.createCsr({
         commonName: domain,
-        altNames: [`www.${domain}`, `admin.${domain}`],
+        altNames: sans.filter((d) => d !== domain),
       });
       const finalizedOrder = await this.acmeClient.finalizeOrder(order, csr);
       let validOrder = finalizedOrder;
@@ -582,6 +596,23 @@ export class SslCertificateService {
       const pem = fs.readFileSync(join(this.getSslPath(), 'fullchain.pem'));
       const cert = new X509Certificate(pem);
       return Math.floor((new Date(cert.validTo).getTime() - Date.now()) / 86_400_000);
+    } catch {
+      return null;
+    }
+  }
+
+  /** DNS SANs of the current primary cert; null when absent/unparseable/empty. */
+  getPrimaryCertificateSans(): string[] | null {
+    try {
+      const pem = fs.readFileSync(join(this.getSslPath(), 'fullchain.pem'));
+      const cert = new X509Certificate(pem);
+      if (!cert.subjectAltName) return null;
+      const sans = cert.subjectAltName
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s.startsWith('DNS:'))
+        .map((s) => s.slice(4));
+      return sans.length ? sans : null;
     } catch {
       return null;
     }
