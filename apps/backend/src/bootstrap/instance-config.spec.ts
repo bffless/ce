@@ -317,11 +317,19 @@ describe('instance-config', () => {
 
   describe('sniffSslMode', () => {
     let sslTmp: string;
+    let savedProxyMode: string | undefined;
+
     beforeEach(() => {
       sslTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bffless-ssl-'));
+      savedProxyMode = process.env.PROXY_MODE;
     });
     afterEach(() => {
       fs.rmSync(sslTmp, { recursive: true, force: true });
+      if (savedProxyMode === undefined) {
+        delete process.env.PROXY_MODE;
+      } else {
+        process.env.PROXY_MODE = savedProxyMode;
+      }
     });
 
     function mintCert(subj: string): void {
@@ -336,7 +344,16 @@ describe('instance-config', () => {
     it('returns letsencrypt for an LE-issued cert when PROXY_MODE is not cloudflare', () => {
       mintCert("/O=Let's Encrypt/CN=R11");
       expect(sniffSslMode(sslTmp, 'none')).toBe('letsencrypt');
-      expect(sniffSslMode(sslTmp, undefined)).toBe('letsencrypt'); // unset counts as not-cloudflare
+      // Test with PROXY_MODE unset hermetically (omit arg to not trigger default at call time)
+      const saved = process.env.PROXY_MODE;
+      try {
+        delete process.env.PROXY_MODE;
+        expect(sniffSslMode(sslTmp)).toBe('letsencrypt'); // unset counts as not-cloudflare
+      } finally {
+        if (saved !== undefined) {
+          process.env.PROXY_MODE = saved;
+        }
+      }
     });
 
     it('returns paste for an LE cert behind cloudflare', () => {
