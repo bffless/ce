@@ -79,12 +79,16 @@ export function HomePage() {
   }, [certStatus?.expiresAt]);
 
   const user = sessionData?.user;
-  // Show the Repositories card when the user has at least one non-guest repo
-  // membership. The backend's /api/repositories/mine already filters out
-  // guest-only entries, so total > 0 means there is somewhere to navigate to.
-  // Admins always get a result here because the endpoint returns every repo.
+  // Show the Repositories card for roles that can create repositories
+  // (admin/user), even with zero memberships — /repo is their only path to
+  // "New Repository" once the onboarding modal has been dismissed (#517).
+  // Members can't create repos, so for them the card appears only when they
+  // have at least one non-guest repo membership. The backend's
+  // /api/repositories/mine already filters out guest-only entries, so
+  // total > 0 means there is somewhere to navigate to.
   const { data: myRepos } = useGetMyRepositoriesQuery(undefined, { skip: !user });
-  const showRepositoriesCard = (myRepos?.total ?? 0) > 0;
+  const canCreateRepos = user?.role === 'admin' || user?.role === 'user';
+  const showRepositoriesCard = canCreateRepos || (myRepos?.total ?? 0) > 0;
 
   const missingWildcard = certStatus?.exists === false;
   const showExpiryBanner = wildcardExpiring && !isExpiryBannerDismissed;
@@ -113,12 +117,11 @@ export function HomePage() {
   // repository" over a workspace that already has repos. Wait for the query to resolve so
   // the modal never flashes before the count is known.
   useEffect(() => {
-    const canCreateRepos = sessionData?.user?.role === 'admin' || sessionData?.user?.role === 'user';
     const hasNoRepos = myRepos !== undefined && (myRepos.total ?? 0) === 0;
     if (sessionData?.user && !hasCompletedOnboarding && canCreateRepos && hasNoRepos) {
       setShowOnboarding(true);
     }
-  }, [sessionData, hasCompletedOnboarding, myRepos]);
+  }, [sessionData, hasCompletedOnboarding, myRepos, canCreateRepos]);
 
   // Check setup status first - redirect to setup if not complete
   if (!isSetupLoading && setupStatus && !setupStatus.isSetupComplete) {
