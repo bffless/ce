@@ -1,28 +1,80 @@
-// Integration test with the REAL PrimarySslSnapshotService (real instance-config
-// + real cert files on tmpdirs). This is the test the fully-mocked service spec
-// missed: it exercises the actual snapshot ORDERING across a stage→apply→rollback
-// cycle and asserts the LIVE cert bytes are restored to the pre-change value.
+// Integration test with the REAL BootstrapSetupService and the REAL
+// PrimarySslSnapshotService (real instance-config + real cert files on
+// tmpdirs, real staging dir under SSL_CERT_PATH/staging). This is the test
+// the fully-mocked service spec (primary-ssl.service.spec.ts) misses: it
+// exercises the actual stage -> apply(promote) -> rollback cycle through
+// ssl-staging.ts, with real X509 cert/key validation, and asserts the LIVE
+// cert bytes at each step.
 //
-// Deliberately NO `jest.mock('../../bootstrap/instance-config')` here (unlike
-// primary-ssl.service.spec.ts) so the real snapshot service reads/writes real
-// instance.json + cert bytes under BOOTSTRAP_DIR / SSL_CERT_PATH.
+// Deliberately NO `jest.mock('../../bootstrap/instance-config')` here
+// (unlike primary-ssl.service.spec.ts) so the real snapshot service
+// reads/writes real instance.json + cert bytes under BOOTSTRAP_DIR /
+// SSL_CERT_PATH.
+import * as forge from 'node-forge';
 import { PrimarySslService } from './primary-ssl.service';
 import { PrimarySslSnapshotService } from './primary-ssl-snapshot.service';
+import { BootstrapSetupService } from '../bootstrap-setup.service';
 import { writeInstanceConfig } from '../../bootstrap/instance-config';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
 const domain = 'a.com';
-const CERT_FILES = ['fullchain.pem', 'privkey.pem', `wildcard.${domain}.crt`, `wildcard.${domain}.key`];
 
-describe('PrimarySslService cert rollback (real snapshot service)', () => {
+// RSA keygen is the slow part of these tests; generate the two distinct key
+// pairs once in beforeAll and reuse them across every test instead of
+// generating fresh keys each time. Two DISTINCT pairs (not just two cert
+// variants of the same key) so the "old" and "new" cert PEMs — and their
+// wildcard siblings — are byte-for-byte distinguishable, letting the
+// assertions below check actual file CONTENT rather than mere existence.
+let keyOld: forge.pki.rsa.KeyPair;
+let keyNew: forge.pki.rsa.KeyPair;
+let keyThird: forge.pki.rsa.KeyPair;
+
+function makeCert(d: string, keys: forge.pki.rsa.KeyPair) {
+  const cert = forge.pki.createCertificate();
+  cert.publicKey = keys.publicKey;
+  cert.serialNumber = '01';
+  cert.validity.notBefore = new Date(Date.now() - 86400_000);
+  cert.validity.notAfter = new Date(Date.now() + 365 * 86400_000);
+  const attrs = [{ name: 'commonName', value: d }];
+  cert.setSubject(attrs);
+  cert.setIssuer(attrs);
+  cert.setExtensions([
+    {
+      name: 'subjectAltName',
+      altNames: [
+        { type: 2, value: d },
+        { type: 2, value: `*.${d}` },
+      ],
+    },
+  ]);
+  cert.sign(keys.privateKey, forge.md.sha256.create());
+  return {
+    certPem: forge.pki.certificateToPem(cert),
+    keyPem: forge.pki.privateKeyToPem(keys.privateKey),
+  };
+}
+
+describe('PrimarySslService cert staging (real BootstrapSetupService + snapshot service)', () => {
   let bootDir: string;
   let sslDir: string;
+  let svc: PrimarySslService;
+  let oldCertPem: string;
+  let oldKeyPem: string;
+  let newCertPem: string;
+  let newKeyPem: string;
+  let thirdCertPem: string;
+  let thirdKeyPem: string;
 
-  const seedLiveCert = (bytes: string) => {
-    for (const f of CERT_FILES) fs.writeFileSync(path.join(sslDir, f), bytes);
-  };
+  beforeAll(() => {
+    keyOld = forge.pki.rsa.generateKeyPair(2048);
+    keyNew = forge.pki.rsa.generateKeyPair(2048);
+    keyThird = forge.pki.rsa.generateKeyPair(2048);
+    ({ certPem: oldCertPem, keyPem: oldKeyPem } = makeCert(domain, keyOld));
+    ({ certPem: newCertPem, keyPem: newKeyPem } = makeCert(domain, keyNew));
+    ({ certPem: thirdCertPem, keyPem: thirdKeyPem } = makeCert(domain, keyThird));
+  });
 
   beforeEach(() => {
     bootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'boot-'));
@@ -34,88 +86,91 @@ describe('PrimarySslService cert rollback (real snapshot service)', () => {
       { version: 2, state: 'applied', primaryDomain: domain, proxyMode: 'none', sslMode: 'paste', port80: 'redirect', realIp: null },
       bootDir,
     );
+
+    const bootstrap = new BootstrapSetupService({} as any, {} as any);
+    const ssl = { requestPrimaryDomainCertificate: jest.fn() };
+    const preflight = { run: jest.fn().mockResolvedValue({ ok: true, checks: [] }) };
+    const info = { getWildcardCertInfo: jest.fn().mockResolvedValue(null) };
+    const snap = new PrimarySslSnapshotService();
+    svc = new PrimarySslService(bootstrap, ssl as any, preflight as any, info as any, snap);
   });
+
   afterEach(() => {
     delete process.env.BOOTSTRAP_DIR;
     delete process.env.SSL_CERT_PATH;
   });
 
-  const build = () => {
-    const snap = new PrimarySslSnapshotService();
-    const bootstrap = {
-      validateCertificatePair: jest.fn().mockReturnValue({ sans: [domain, `*.${domain}`], wildcardCovered: true }),
-      // The real behavior under test: writing a paste actually overwrites the
-      // LIVE cert files. If the snapshot wasn't taken first, C0 is already gone.
-      saveCertificates: jest.fn((certPem: string, keyPem: string) => {
-        fs.writeFileSync(path.join(sslDir, 'fullchain.pem'), certPem);
-        fs.writeFileSync(path.join(sslDir, 'privkey.pem'), keyPem);
-        fs.writeFileSync(path.join(sslDir, `wildcard.${domain}.crt`), certPem);
-        fs.writeFileSync(path.join(sslDir, `wildcard.${domain}.key`), keyPem);
-      }),
-      validateApplyConfig: jest.fn((d: any) => ({ proxyMode: d.proxyMode, sslMode: d.sslMode, port80: d.port80 ?? 'redirect', realIp: d.realIp ?? null })),
-      certificatesPresent: jest.fn().mockReturnValue(true),
-      assertStagedCertificateCovers: jest.fn(),
-    };
-    const ssl = { requestPrimaryDomainCertificate: jest.fn() };
-    const preflight = { run: jest.fn().mockResolvedValue({ ok: true, checks: [] }) };
-    const info = { getWildcardCertInfo: jest.fn().mockResolvedValue(null) };
-    const svc = new PrimarySslService(bootstrap as any, ssl as any, preflight as any, info as any, snap);
-    return { svc, snap };
-  };
-
-  it('rollback restores the pre-change (C0) cert after a paste+apply that installed C1', async () => {
-    const { svc } = build();
-
-    // Live known-good cert before any change.
-    seedLiveCert('C0');
-    expect(fs.readFileSync(path.join(sslDir, 'fullchain.pem'), 'utf8')).toBe('C0');
-
-    // Stage a new pasted cert C1 — this OVERWRITES the live cert files.
-    svc.stagePaste({ certificatePem: 'C1', privateKeyPem: 'C1', servingMode: 'none' } as any);
-    expect(fs.readFileSync(path.join(sslDir, 'fullchain.pem'), 'utf8')).toBe('C1');
-
-    // Apply the cert-only change (no reachability change → no pending revert).
-    const r = await svc.apply({ proxyMode: 'none', sslMode: 'paste', port80: 'redirect', realIp: undefined } as any);
-    expect(r.kind).toBe('cert-only');
-
-    // Roll back — must restore the ORIGINAL C0 cert, not the just-installed C1.
-    svc.rollback();
-    expect(fs.readFileSync(path.join(sslDir, 'fullchain.pem'), 'utf8')).toBe('C0');
-    expect(fs.readFileSync(path.join(sslDir, `wildcard.${domain}.crt`), 'utf8')).toBe('C0');
+  it('stagePaste leaves the live cert untouched until apply promotes it', () => {
+    // seed a live cert as the "currently served" one
+    fs.writeFileSync(path.join(sslDir, 'fullchain.pem'), oldCertPem);
+    fs.writeFileSync(path.join(sslDir, 'privkey.pem'), oldKeyPem);
+    svc.stagePaste({ certificatePem: newCertPem, privateKeyPem: newKeyPem, servingMode: 'proxy' } as any);
+    // live file unchanged; staged file holds the new cert
+    expect(fs.readFileSync(path.join(sslDir, 'fullchain.pem'), 'utf8')).toBe(oldCertPem);
+    expect(fs.readFileSync(path.join(sslDir, 'staging', 'fullchain.pem'), 'utf8')).toBe(newCertPem);
   });
 
-  it('chained applies re-baseline: rollback after the second apply restores the FIRST applied cert, not the original', async () => {
-    // Proxied (Cloudflare) config on both the baseline and every apply below,
-    // so no reachability/confirm window is involved — this test is purely
-    // about the ssl-snapshot re-baseline chain (ce#511).
+  it('apply promotes the staged cert and rollback restores the OLD live cert', async () => {
+    fs.writeFileSync(path.join(sslDir, 'fullchain.pem'), oldCertPem);
+    fs.writeFileSync(path.join(sslDir, 'privkey.pem'), oldKeyPem);
+    // Seed the domain-specific wildcard pair too (a real prior bootstrap
+    // apply would have promoted these alongside the generic pair) so the
+    // round-trip below has an OLD value to roll back to.
+    fs.writeFileSync(path.join(sslDir, `wildcard.${domain}.crt`), oldCertPem);
+    fs.writeFileSync(path.join(sslDir, `wildcard.${domain}.key`), oldKeyPem);
+    svc.stagePaste({ certificatePem: newCertPem, privateKeyPem: newKeyPem, servingMode: 'none' } as any);
+    await svc.apply({ proxyMode: 'none', sslMode: 'paste', port80: 'redirect' } as any);
+    expect(fs.readFileSync(path.join(sslDir, 'fullchain.pem'), 'utf8')).toBe(newCertPem);
+    expect(fs.readFileSync(path.join(sslDir, `wildcard.${domain}.crt`), 'utf8')).toBe(newCertPem);
+    expect(fs.existsSync(path.join(sslDir, 'staging'))).toBe(false);
+    svc.rollback();
+    expect(fs.readFileSync(path.join(sslDir, 'fullchain.pem'), 'utf8')).toBe(oldCertPem);
+    expect(fs.readFileSync(path.join(sslDir, `wildcard.${domain}.crt`), 'utf8')).toBe(oldCertPem);
+  });
+
+  it('a second no-confirm-window apply re-baselines rollback to the LATEST pre-change cert, not the original (ce#511)', async () => {
+    // proxyMode 'cloudflare' means the origin cert isn't user-facing, so
+    // apply() commits immediately via markApplied() instead of opening a
+    // confirm window. Seed the instance config to match what apply() will
+    // produce so there is no reachability change either — both applies
+    // below take the no-confirm path.
     writeInstanceConfig(
-      { version: 2, state: 'applied', primaryDomain: domain, proxyMode: 'cloudflare', sslMode: 'paste', port80: 'redirect', realIp: null },
+      {
+        version: 2,
+        state: 'applied',
+        primaryDomain: domain,
+        proxyMode: 'cloudflare',
+        sslMode: 'paste',
+        port80: 'closed',
+        realIp: { preset: 'cloudflare' },
+      },
       bootDir,
     );
-    const { svc } = build();
+    fs.writeFileSync(path.join(sslDir, 'fullchain.pem'), oldCertPem);
+    fs.writeFileSync(path.join(sslDir, 'privkey.pem'), oldKeyPem);
 
-    // Original live cert, before any staged change.
-    seedLiveCert('ORIG');
+    // Cycle 1: live C0 -> stage C1 -> apply (commits immediately, no confirm window).
+    svc.stagePaste({ certificatePem: newCertPem, privateKeyPem: newKeyPem, servingMode: 'cloudflare' } as any);
+    await svc.apply({ proxyMode: 'cloudflare', sslMode: 'paste', port80: 'closed' } as any);
+    expect(fs.readFileSync(path.join(sslDir, 'fullchain.pem'), 'utf8')).toBe(newCertPem);
 
-    // Stage + apply cert A. Committed with no confirm window (proxied, no
-    // reachability change) -> markApplied() runs, no deadlineMs.
-    svc.stagePaste({ certificatePem: 'A', privateKeyPem: 'A', servingMode: 'cloudflare' } as any);
-    const r1 = await svc.apply({ proxyMode: 'cloudflare', sslMode: 'paste', port80: 'redirect', realIp: undefined } as any);
-    expect(r1.kind).toBe('cert-only');
-    expect(r1.deadlineMs).toBeUndefined();
-    expect(fs.readFileSync(path.join(sslDir, 'fullchain.pem'), 'utf8')).toBe('A');
+    // Cycle 2: stage C2 -> apply again (also commits immediately). This
+    // apply's snapshotForChangeCycle() re-baselines over the cycle-1
+    // snapshot (already marked applied) instead of leaving the original C0
+    // baseline in place.
+    svc.stagePaste({ certificatePem: thirdCertPem, privateKeyPem: thirdKeyPem, servingMode: 'cloudflare' } as any);
+    await svc.apply({ proxyMode: 'cloudflare', sslMode: 'paste', port80: 'closed' } as any);
+    expect(fs.readFileSync(path.join(sslDir, 'fullchain.pem'), 'utf8')).toBe(thirdCertPem);
 
-    // Stage + apply cert B. The stage re-baselines the (now-applied) snapshot
-    // over A -- so the snapshot goes from holding ORIG to holding A.
-    svc.stagePaste({ certificatePem: 'B', privateKeyPem: 'B', servingMode: 'cloudflare' } as any);
-    const r2 = await svc.apply({ proxyMode: 'cloudflare', sslMode: 'paste', port80: 'redirect', realIp: undefined } as any);
-    expect(r2.kind).toBe('cert-only');
-    expect(fs.readFileSync(path.join(sslDir, 'fullchain.pem'), 'utf8')).toBe('B');
-
-    // Roll back — must restore A (the last committed change before this one),
-    // NOT the original pre-chain ORIG cert.
+    // Rollback restores the LATEST pre-change state (C1), not the original
+    // C0 — the re-baseline guarantee.
     svc.rollback();
-    expect(fs.readFileSync(path.join(sslDir, 'fullchain.pem'), 'utf8')).toBe('A');
-    expect(fs.readFileSync(path.join(sslDir, `wildcard.${domain}.crt`), 'utf8')).toBe('A');
+    expect(fs.readFileSync(path.join(sslDir, 'fullchain.pem'), 'utf8')).toBe(newCertPem);
+  });
+
+  it('discardStaged aborts a stage cleanly', () => {
+    svc.stagePaste({ certificatePem: newCertPem, privateKeyPem: newKeyPem, servingMode: 'proxy' } as any);
+    svc.discardStaged();
+    expect(fs.existsSync(path.join(sslDir, 'staging'))).toBe(false);
   });
 });

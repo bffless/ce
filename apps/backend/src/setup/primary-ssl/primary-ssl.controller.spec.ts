@@ -8,6 +8,7 @@ const makeSvc = () => ({
   apply: jest.fn().mockResolvedValue({ applied: true, kind: 'cert-only' }),
   confirm: jest.fn(),
   rollback: jest.fn(),
+  discardStaged: jest.fn().mockReturnValue({ discarded: true }),
 });
 
 describe('PrimarySslController', () => {
@@ -27,5 +28,12 @@ describe('PrimarySslController', () => {
     expect(svc.apply).toHaveBeenCalled();
     expect(svc.confirm).toHaveBeenCalled();
     expect(svc.rollback).toHaveBeenCalled();
+  });
+
+  it('DELETE staged delegates to discardStaged', () => {
+    const svc = makeSvc();
+    const c = new PrimarySslController(svc as any);
+    expect(c.discardStaged()).toEqual({ discarded: true });
+    expect(svc.discardStaged).toHaveBeenCalled();
   });
 });

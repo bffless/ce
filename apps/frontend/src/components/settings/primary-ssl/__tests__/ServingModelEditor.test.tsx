@@ -25,7 +25,7 @@ describe('ServingModelEditor', () => {
 
   it('changing serving mode calls onChange', () => {
     const onChange = vi.fn();
-    render(<ServingModelEditor value={base} onChange={onChange} onCertStaged={vi.fn()} />);
+    render(<ServingModelEditor value={base} onChange={onChange} />);
     // ServingChoiceCards' Cloudflare card has "Cloudflare" in both its title
     // and body text, so getByText alone is ambiguous — click within the
     // wrapping <label> (native label→input forwarding still selects the
@@ -40,7 +40,6 @@ describe('ServingModelEditor', () => {
       <ServingModelEditor
         value={{ ...base, servingMode: 'none', sslMode: 'letsencrypt', port80: 'redirect' }}
         onChange={onChange}
-        onCertStaged={vi.fn()}
       />,
     );
     expect(screen.queryByRole('radio', { name: /close port 80/i })).not.toBeInTheDocument();
@@ -53,7 +52,6 @@ describe('ServingModelEditor', () => {
       <ServingModelEditor
         value={{ ...base, servingMode: 'none', sslMode: 'paste', port80: 'redirect' }}
         onChange={onChange}
-        onCertStaged={vi.fn()}
       />,
     );
     expect(screen.getByRole('radio', { name: /close port 80/i })).toBeInTheDocument();
@@ -65,7 +63,6 @@ describe('ServingModelEditor', () => {
       <ServingModelEditor
         value={{ ...base, servingMode: 'none', sslMode: 'letsencrypt', port80: 'closed' }}
         onChange={onChange}
-        onCertStaged={vi.fn()}
       />,
     );
     expect(onChange).toHaveBeenCalledWith(
@@ -79,7 +76,6 @@ describe('ServingModelEditor', () => {
       <ServingModelEditor
         value={{ ...base, servingMode: 'proxy', sslMode: 'selfsigned', port80: 'closed' }}
         onChange={onChange}
-        onCertStaged={vi.fn()}
       />,
     );
     // "none" and "proxy" both preset sslMode to 'letsencrypt' per presetSslFor;
@@ -97,7 +93,6 @@ describe('ServingModelEditor', () => {
         <ServingModelEditor
           value={{ ...base, servingMode: 'none', sslMode: 'letsencrypt' }}
           onChange={vi.fn()}
-          onCertStaged={vi.fn()}
         />,
       );
       fireEvent.click(screen.getByText("Issue Let's Encrypt"));
@@ -114,7 +109,6 @@ describe('ServingModelEditor', () => {
         <ServingModelEditor
           value={{ ...base, servingMode: 'none', sslMode: 'letsencrypt' }}
           onChange={vi.fn()}
-          onCertStaged={vi.fn()}
         />,
       );
       fireEvent.click(screen.getByText("Issue Let's Encrypt"));
@@ -132,7 +126,6 @@ describe('ServingModelEditor', () => {
         <ServingModelEditor
           value={{ ...base, servingMode: 'none', sslMode: 'letsencrypt' }}
           onChange={vi.fn()}
-          onCertStaged={vi.fn()}
           isCurrentlyLetsEncrypt={false}
         />,
       );
@@ -146,7 +139,6 @@ describe('ServingModelEditor', () => {
         <ServingModelEditor
           value={{ ...base, servingMode: 'none', sslMode: 'letsencrypt' }}
           onChange={vi.fn()}
-          onCertStaged={vi.fn()}
           isCurrentlyLetsEncrypt={true}
           currentCertDaysLeft={89}
         />,
@@ -164,7 +156,6 @@ describe('ServingModelEditor', () => {
         <ServingModelEditor
           value={{ ...base, servingMode: 'none', sslMode: 'letsencrypt' }}
           onChange={vi.fn()}
-          onCertStaged={vi.fn()}
           isCurrentlyLetsEncrypt={true}
           currentCertDaysLeft={10}
         />,

@@ -1,5 +1,6 @@
 import { ForbiddenException } from '@nestjs/common';
 import { PrimarySslService } from './primary-ssl.service';
+import * as staging from '../ssl-staging';
 
 const domain = 'a.com';
 
@@ -18,6 +19,7 @@ const makeDeps = () => ({
   info: {
     getWildcardCertInfo: jest.fn().mockResolvedValue({ type: 'wildcard', expiresAt: new Date(), isValid: true }),
     getServedPrimaryCertInfo: jest.fn().mockResolvedValue({ type: 'individual', expiresAt: new Date(), isValid: true }),
+    getStagedPrimaryCertInfo: jest.fn().mockResolvedValue(null),
   },
   snap: { snapshot: jest.fn(), snapshotForChangeCycle: jest.fn(), clearSnapshot: jest.fn(), restore: jest.fn(), hasSnapshot: jest.fn().mockReturnValue(false), writePendingRevert: jest.fn(), readPendingRevert: jest.fn().mockReturnValue(null), clearPendingRevert: jest.fn(), isApplied: jest.fn().mockReturnValue(false), markApplied: jest.fn() },
 });
@@ -27,10 +29,34 @@ jest.mock('../../bootstrap/instance-config', () => ({
   writeInstanceConfig: jest.fn(),
 }));
 
+jest.mock('../ssl-staging', () => ({
+  stagingPopulated: jest.fn().mockReturnValue(false),
+  stagingPartiallyPopulated: jest.fn().mockReturnValue(false),
+  promoteStagedCertificates: jest.fn().mockReturnValue([]),
+  discardStagedCertificates: jest.fn(),
+}));
+
 const build = () => { const d = makeDeps(); return { d, svc: new PrimarySslService(d.bootstrap as any, d.ssl as any, d.preflight as any, d.info as any, d.snap as any) }; };
 
 beforeEach(() => {
   mockCur = { version: 2, state: 'applied', primaryDomain: 'a.com', proxyMode: 'none', sslMode: 'paste', port80: 'redirect', realIp: null };
+  // Module mocks persist across tests (no global resetMocks), so re-baseline
+  // the staging module's defaults here — same reason mockCur is reset above.
+  (staging.stagingPopulated as jest.Mock).mockReset().mockReturnValue(false);
+  (staging.stagingPartiallyPopulated as jest.Mock).mockReset().mockReturnValue(false);
+  // Stateful (M1): promote/discard flip stagingPopulated() back to false when
+  // invoked, mirroring the real ssl-staging.ts module (a promoted or
+  // discarded stage is no longer populated). This makes certAffecting's
+  // ordering (must read stagingPopulated() BEFORE promote/discard runs)
+  // test-observable — computing it after would silently see `false` here,
+  // just as it would against the real filesystem.
+  (staging.promoteStagedCertificates as jest.Mock).mockReset().mockImplementation(() => {
+    (staging.stagingPopulated as jest.Mock).mockReturnValue(false);
+    return [];
+  });
+  (staging.discardStagedCertificates as jest.Mock).mockReset().mockImplementation(() => {
+    (staging.stagingPopulated as jest.Mock).mockReturnValue(false);
+  });
 });
 
 describe('PrimarySslService', () => {
@@ -48,6 +74,13 @@ describe('PrimarySslService', () => {
     expect(s.domain).toBe(domain);
     expect(s.sslMode).toBe('paste');
     expect(s.cert).not.toBeNull();
+  });
+
+  it('getStatus reports stagedCert from getStagedPrimaryCertInfo', async () => {
+    const { d, svc } = build();
+    d.info.getStagedPrimaryCertInfo.mockResolvedValue({ commonName: 'staged.example.com' });
+    const status = await svc.getStatus();
+    expect(status.stagedCert).toEqual({ commonName: 'staged.example.com' });
   });
 
   it('getStatus.cert comes from getServedPrimaryCertInfo (the SERVED cert), not getWildcardCertInfo', async () => {
@@ -75,17 +108,15 @@ describe('PrimarySslService', () => {
     expect(s.cert).toBeNull();
   });
 
-  it('stagePaste validates then saves for the fixed domain, snapshotting the OLD cert first', () => {
+  it('stagePaste validates then saves WITHOUT touching the snapshot (staging is provisional)', () => {
     const { d, svc } = build();
     const res = svc.stagePaste({ certificatePem: 'C', privateKeyPem: 'K', servingMode: 'none' } as any);
     expect(d.bootstrap.validateCertificatePair).toHaveBeenCalledWith('C', 'K', domain, 'none');
     expect(d.bootstrap.saveCertificates).toHaveBeenCalledWith('C', 'K', domain);
     expect(res.wildcardCovered).toBe(true);
-    // The snapshot must be taken BEFORE the cert is overwritten.
-    expect(d.snap.snapshotForChangeCycle).toHaveBeenCalled();
-    const snapOrder = d.snap.snapshotForChangeCycle.mock.invocationCallOrder[0];
-    const saveOrder = d.bootstrap.saveCertificates.mock.invocationCallOrder[0];
-    expect(snapOrder).toBeLessThan(saveOrder);
+    // saveCertificates now writes into staging/, not the live dir — nothing
+    // live changes yet, so there's nothing to snapshot until apply() promotes.
+    expect(d.snap.snapshotForChangeCycle).not.toHaveBeenCalled();
   });
 
   it('stagePaste throws when a serving revert is pending', () => {
@@ -118,7 +149,7 @@ describe('PrimarySslService.apply classification', () => {
   it('cert-only change behind a proxy writes config with no pending revert, and marks the snapshot applied', async () => {
     const { d, svc } = build();
     mockCur.proxyMode = 'cloudflare';
-    d.snap.hasSnapshot.mockReturnValue(true); // a cert was staged this cycle
+    (staging.stagingPopulated as jest.Mock).mockReturnValue(true); // a cert was staged this cycle
     const r = await svc.apply({ proxyMode: 'cloudflare', sslMode: 'paste', port80: 'redirect', realIp: undefined } as any);
     expect(r.kind).toBe('cert-only');
     expect(r.deadlineMs).toBeUndefined();
@@ -129,14 +160,12 @@ describe('PrimarySslService.apply classification', () => {
 
   it('cert change on direct serving gets the confirm window (pending revert + deadline, kind stays cert-only)', async () => {
     const { d, svc } = build();
-    d.snap.hasSnapshot.mockReturnValue(true); // staged-but-unapplied cert in flight
+    (staging.stagingPopulated as jest.Mock).mockReturnValue(true); // staged-but-unpromoted cert in flight
     const r = await svc.apply({ proxyMode: 'none', sslMode: 'paste', port80: 'redirect', realIp: undefined } as any);
     expect(r.kind).toBe('cert-only');
     expect(typeof r.deadlineMs).toBe('number');
     expect(d.snap.writePendingRevert).toHaveBeenCalled();
     expect(d.snap.markApplied).not.toHaveBeenCalled();
-    // classification must read the marker state BEFORE re-baselining can clear it
-    expect(d.snap.isApplied.mock.invocationCallOrder[0]).toBeLessThan(d.snap.snapshotForChangeCycle.mock.invocationCallOrder[0]);
   });
 
   it('sslMode-only swap on direct serving gets the confirm window even with no staged files', async () => {
@@ -148,14 +177,58 @@ describe('PrimarySslService.apply classification', () => {
     expect(d.snap.writePendingRevert).toHaveBeenCalled();
   });
 
-  it('a stale applied snapshot does not trigger the confirm window on a no-op direct-mode apply', async () => {
+  it('a no-op direct-mode apply with nothing staged and no sslMode change does not trigger the confirm window', async () => {
     const { d, svc } = build();
-    d.snap.hasSnapshot.mockReturnValue(true);
-    d.snap.isApplied.mockReturnValue(true); // left over from a committed change
+    // stagingPopulated() defaults to false (beforeEach) and sslMode is
+    // unchanged, so certAffecting is simply false — there's no "stale applied
+    // snapshot" leftover state to guard against under the new staging model.
     const r = await svc.apply({ proxyMode: 'none', sslMode: 'paste', port80: 'redirect', realIp: undefined } as any);
     expect(r.deadlineMs).toBeUndefined();
     expect(d.snap.writePendingRevert).not.toHaveBeenCalled();
     expect(d.snap.markApplied).toHaveBeenCalled();
+  });
+
+  it('apply promotes staging after snapshotting, in that order', async () => {
+    const { d, svc } = build();
+    (staging.stagingPopulated as jest.Mock).mockReturnValue(true);
+    await svc.apply({ proxyMode: 'proxy', sslMode: 'paste', port80: 'closed' } as any);
+    expect(staging.promoteStagedCertificates).toHaveBeenCalled();
+    const snapOrder = d.snap.snapshotForChangeCycle.mock.invocationCallOrder[0];
+    const promoteOrder = (staging.promoteStagedCertificates as jest.Mock).mock.invocationCallOrder[0];
+    expect(snapOrder).toBeLessThan(promoteOrder);
+  });
+
+  it('apply with sslMode selfsigned DISCARDS staging instead of promoting', async () => {
+    const { svc } = build();
+    (staging.stagingPopulated as jest.Mock).mockReturnValue(true);
+    await svc.apply({ proxyMode: 'proxy', sslMode: 'selfsigned' } as any);
+    expect(staging.discardStagedCertificates).toHaveBeenCalled();
+    expect(staging.promoteStagedCertificates).not.toHaveBeenCalled();
+  });
+
+  it('a populated stage on direct serving triggers the confirm window (certAffecting)', async () => {
+    const { d, svc } = build(); // current config: proxyMode 'none', sslMode 'paste' — same next values
+    (staging.stagingPopulated as jest.Mock).mockReturnValue(true);
+    const res = await svc.apply({ proxyMode: 'none', sslMode: 'paste', port80: 'redirect' } as any);
+    expect(res.deadlineMs).toBeDefined();
+    expect(d.snap.writePendingRevert).toHaveBeenCalled();
+  });
+
+  it('rejects apply when staging is partially populated (torn stage), before promoting', async () => {
+    const { d, svc } = build();
+    (staging.stagingPartiallyPopulated as jest.Mock).mockReturnValue(true);
+    await expect(
+      svc.apply({ proxyMode: 'none', sslMode: 'paste', port80: 'redirect' } as any),
+    ).rejects.toThrow(/incomplete/i);
+    expect(staging.promoteStagedCertificates).not.toHaveBeenCalled();
+    expect(staging.discardStagedCertificates).not.toHaveBeenCalled();
+    expect(d.snap.snapshotForChangeCycle).not.toHaveBeenCalled();
+  });
+
+  it('discardStaged clears the staging dir', () => {
+    const { svc } = build();
+    expect(svc.discardStaged()).toEqual({ discarded: true });
+    expect(staging.discardStagedCertificates).toHaveBeenCalled();
   });
 
   it('serving change writes a pending revert with a deadline and does not mark applied', async () => {
@@ -186,13 +259,12 @@ describe('PrimarySslService.apply classification', () => {
 });
 
 describe('PrimarySslService.issueLetsEncrypt', () => {
-  it('snapshots, preflights, then requests the cert', async () => {
+  it('preflights, then requests the cert into staging', async () => {
     const { d, svc } = build();
     d.ssl.requestPrimaryDomainCertificate.mockResolvedValue({ success: true, sans: ['a.com'] });
     const r = await svc.issueLetsEncrypt();
-    expect(d.snap.snapshotForChangeCycle).toHaveBeenCalled();
     expect(d.preflight.run).toHaveBeenCalledWith('a.com');
-    expect(d.ssl.requestPrimaryDomainCertificate).toHaveBeenCalledWith('a.com');
+    expect(d.ssl.requestPrimaryDomainCertificate).toHaveBeenCalledWith('a.com', { target: 'staging' });
     expect(r.issued).toBe(true);
   });
   it('surfaces reused: true when the underlying call reports the cert was reused (no-op re-issue)', async () => {
@@ -207,13 +279,12 @@ describe('PrimarySslService.issueLetsEncrypt', () => {
     const r = await svc.issueLetsEncrypt();
     expect(r.reused).toBe(false);
   });
-  it('snapshots BEFORE issuing so the OLD cert is the rollback baseline', async () => {
+  it('issueLetsEncrypt never snapshots — nothing live is written until apply', async () => {
     const { d, svc } = build();
     d.ssl.requestPrimaryDomainCertificate.mockResolvedValue({ success: true, sans: ['a.com'] });
     await svc.issueLetsEncrypt();
-    const snapOrder = d.snap.snapshotForChangeCycle.mock.invocationCallOrder[0];
-    const issueOrder = d.ssl.requestPrimaryDomainCertificate.mock.invocationCallOrder[0];
-    expect(snapOrder).toBeLessThan(issueOrder);
+    expect(d.snap.snapshotForChangeCycle).not.toHaveBeenCalled();
+    expect(d.snap.snapshot).not.toHaveBeenCalled();
   });
   it('throws when preflight fails, without requesting a cert', async () => {
     const { d, svc } = build();

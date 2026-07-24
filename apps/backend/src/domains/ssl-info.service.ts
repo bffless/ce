@@ -3,6 +3,7 @@ import { X509Certificate } from 'crypto';
 import { readFile, access } from 'fs/promises';
 import { join } from 'path';
 import { certPemHasWildcardSan } from './ssl-cert-utils';
+import { sslStagingDir } from '../setup/ssl-staging';
 
 export interface SslCertificateInfo {
   type: 'wildcard' | 'individual';
@@ -95,6 +96,20 @@ export class SslInfoService {
       return this.parseCertificate(certContent, 'individual');
     } catch (error) {
       this.logger.warn(`Served primary certificate not found or unparseable: ${error}`);
+      return null;
+    }
+  }
+
+  /**
+   * Cert staged for the primary domain but not yet promoted by apply()
+   * (<SSL_CERT_PATH>/staging/fullchain.pem). Absence is the normal state,
+   * so unlike getServedPrimaryCertInfo this logs nothing on a miss.
+   */
+  async getStagedPrimaryCertInfo(): Promise<SslCertificateInfo | null> {
+    try {
+      const certContent = await readFile(join(sslStagingDir(), 'fullchain.pem'), 'utf-8');
+      return this.parseCertificate(certContent, 'individual');
+    } catch {
       return null;
     }
   }

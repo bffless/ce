@@ -40,13 +40,11 @@ function errorMessage(error: unknown, fallback: string): string {
 export function ServingModelEditor({
   value,
   onChange,
-  onCertStaged,
   currentCertDaysLeft = null,
   isCurrentlyLetsEncrypt = false,
 }: {
   value: EditorState;
   onChange: (v: EditorState) => void;
-  onCertStaged: () => void;
   /** Days left on the currently-served cert, when known (used to gate "Renew now"). */
   currentCertDaysLeft?: number | null;
   /** True when the LIVE status already reports sslMode === 'letsencrypt' (as opposed to the editor merely staging a switch to it). */
@@ -77,7 +75,6 @@ export function ServingModelEditor({
         servingMode: value.servingMode,
       }).unwrap();
       toast({ title: 'Certificate staged', description: 'Ready to apply.' });
-      onCertStaged();
     } catch (error: unknown) {
       toast({ title: 'Error', description: errorMessage(error, 'Failed to validate certificate'), variant: 'destructive' });
     }

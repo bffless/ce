@@ -10,6 +10,7 @@ import { eq, and } from 'drizzle-orm';
 import { db } from '../db/client';
 import { sslChallenges, SslChallenge } from '../db/schema';
 import { certPemHasWildcardSan } from './ssl-cert-utils';
+import { sslStagingDir, discardStagedCertificates } from '../setup/ssl-staging';
 
 export interface DnsChallenge {
   domain: string;
@@ -500,25 +501,31 @@ export class SslCertificateService {
    * (Task 4) holds — preview subdomains serve it with a hostname mismatch
    * until the optional DNS-01 wildcard flow replaces the copies.
    */
-  async requestPrimaryDomainCertificate(domain: string): Promise<{
+  async requestPrimaryDomainCertificate(
+    domain: string,
+    opts: { target?: 'live' | 'staging' } = {},
+  ): Promise<{
     success: boolean;
     error?: string;
     expiresAt?: Date;
     sans?: string[];
     reused?: boolean;
   }> {
+    const target = opts.target ?? 'live';
     const sans = [domain, `www.${domain}`, `admin.${domain}`];
 
-    // Idempotency: bootstrap wizard retries (and the renewal cron far from
-    // expiry) must not burn LE rate limit re-issuing a cert we already hold.
-    const staged = this.stagedPrimaryCertificate(sans);
+    // Idempotency (rate-limit protection). Target-scoped on purpose: the
+    // renewal cron (target 'live') must never be satisfied by a stale staged
+    // cert while the LIVE one approaches expiry; a user-driven staging
+    // request may reuse either a fresh stage or a still-valid live cert.
+    const staged = this.stagedPrimaryCertificate(sans, target);
     if (staged) {
       this.logger.log(`Primary cert already covers [${sans.join(', ')}] — reusing`);
       return { success: true, expiresAt: staged.expiresAt, sans, reused: true };
     }
 
     if (this.mockMode) {
-      return this.issueMockPrimaryCertificate(domain, sans);
+      return this.issueMockPrimaryCertificate(domain, sans, target);
     }
     if (!this.acmeClient) {
       return { success: false, error: 'ACME client not initialized' };
@@ -559,7 +566,7 @@ export class SslCertificateService {
         throw new Error(`Order did not become valid. Final status: ${validOrder.status}`);
       }
       const certificate = await this.acmeClient.getCertificate(validOrder);
-      await this.savePrimaryCertificate(domain, certificate, key);
+      await this.savePrimaryCertificate(domain, certificate, key, target);
       const expiresAt = this.parseCertificateExpiry(certificate);
       this.logger.log(`Primary domain certificate issued for [${sans.join(', ')}]`);
       return { success: true, expiresAt, sans };
@@ -583,35 +590,64 @@ export class SslCertificateService {
   /**
    * Returns the currently staged fullchain.pem's expiry when it already
    * covers every requested SAN with more than 30 days left — signals the
-   * caller to skip re-issuance entirely.
+   * caller to skip re-issuance entirely. Target-scoped: a 'live' target only
+   * ever consults the live cert (the renewal cron must never be satisfied by
+   * a stale staged cert), while a 'staging' target checks staging first,
+   * falling back to a still-valid live cert.
    */
-  private stagedPrimaryCertificate(sans: string[]): { expiresAt: Date } | null {
-    try {
-      const pem = fs.readFileSync(join(this.getSslPath(), 'fullchain.pem'));
-      const cert = new X509Certificate(pem);
-      const certSans = (cert.subjectAltName ?? '')
-        .split(',')
-        .map((s) => s.trim())
-        .filter((s) => s.startsWith('DNS:'))
-        .map((s) => s.slice(4));
-      const covers = sans.every((s) => certSans.includes(s));
-      const expiresAt = new Date(cert.validTo);
-      const daysLeft = (expiresAt.getTime() - Date.now()) / 86_400_000;
-      return covers && daysLeft > 30 ? { expiresAt } : null;
-    } catch {
-      return null;
+  private stagedPrimaryCertificate(
+    sans: string[],
+    target: 'live' | 'staging',
+  ): { expiresAt: Date } | null {
+    // A staged fullchain.pem only counts as a usable candidate when its
+    // matching privkey.pem is also staged — a torn/partial stage (fullchain
+    // written, privkey not yet) must fall through to the live candidate
+    // instead of being reported as reusable (see stagingPartiallyPopulated).
+    const stagedFullchainUsable = fs.existsSync(join(sslStagingDir(), 'privkey.pem'));
+    const candidates =
+      target === 'staging'
+        ? [
+            ...(stagedFullchainUsable ? [join(sslStagingDir(), 'fullchain.pem')] : []),
+            join(this.getSslPath(), 'fullchain.pem'),
+          ]
+        : [join(this.getSslPath(), 'fullchain.pem')];
+    for (const certPath of candidates) {
+      try {
+        const cert = new X509Certificate(fs.readFileSync(certPath));
+        const certSans = (cert.subjectAltName ?? '')
+          .split(',')
+          .map((s) => s.trim())
+          .filter((s) => s.startsWith('DNS:'))
+          .map((s) => s.slice(4));
+        const covers = sans.every((s) => certSans.includes(s));
+        const expiresAt = new Date(cert.validTo);
+        const daysLeft = (expiresAt.getTime() - Date.now()) / 86_400_000;
+        if (covers && daysLeft > 30) return { expiresAt };
+      } catch {
+        // try next candidate
+      }
     }
+    return null;
   }
 
   private async savePrimaryCertificate(
     domain: string,
     certificate: string,
     key: Buffer,
+    target: 'live' | 'staging' = 'live',
   ): Promise<void> {
-    const sslPath = this.getSslPath();
-    await mkdir(sslPath, { recursive: true });
-    await writeFile(join(sslPath, 'fullchain.pem'), certificate, { mode: 0o644 });
-    await writeFile(join(sslPath, 'privkey.pem'), key, { mode: 0o600 });
+    const dir = target === 'staging' ? sslStagingDir() : this.getSslPath();
+    if (target === 'staging') {
+      // A stage overwrites any prior stage — no accumulation (#514 F1). Left
+      // unguarded, a stale staged wildcard pair from an earlier abandoned
+      // stage (e.g. a paste) could survive alongside this issuance's fresh
+      // generic pair and get promoted together as if it were one coherent
+      // set. The live dir is never touched here.
+      discardStagedCertificates();
+    }
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, 'fullchain.pem'), certificate, { mode: 0o644 });
+    await writeFile(join(dir, 'privkey.pem'), key, { mode: 0o600 });
     // The wildcard.* files are only a COPY of the primary cert (render-contract
     // filler for Task 4's nginx template). If a REAL DNS-01 wildcard is
     // installed — its SANs include *.<domain>, which an HTTP-01 primary cert
@@ -620,10 +656,12 @@ export class SslCertificateService {
     // *.<domain> SAN), which also correctly covers the mock path: a freshly
     // mock-issued primary cert has no prior wildcard.crt on disk yet, so the
     // guard is a no-op the first time and only ever blocks when a genuinely
-    // wildcard-carrying cert is already staged.
+    // wildcard-carrying cert is already staged. This guard stays pointed at
+    // the LIVE dir regardless of target — it decides whether wildcard copies
+    // may exist at all, and a real live wildcard must never be clobbered.
     if (!this.installedWildcardIsReal(domain)) {
-      await writeFile(join(sslPath, `wildcard.${domain}.crt`), certificate, { mode: 0o644 });
-      await writeFile(join(sslPath, `wildcard.${domain}.key`), key, { mode: 0o600 });
+      await writeFile(join(dir, `wildcard.${domain}.crt`), certificate, { mode: 0o644 });
+      await writeFile(join(dir, `wildcard.${domain}.key`), key, { mode: 0o600 });
     }
   }
 
@@ -648,9 +686,10 @@ export class SslCertificateService {
   private async issueMockPrimaryCertificate(
     domain: string,
     sans: string[],
+    target: 'live' | 'staging' = 'live',
   ): Promise<{ success: boolean; expiresAt?: Date; sans?: string[] }> {
     const certPem = this.selfSignWithForge(domain, [...sans, `*.${domain}`]);
-    await this.savePrimaryCertificate(domain, certPem, Buffer.from(this.mockPrimaryKeyPem!));
+    await this.savePrimaryCertificate(domain, certPem, Buffer.from(this.mockPrimaryKeyPem!), target);
     const expiresAt = new Date(Date.now() + 90 * 86_400_000);
     this.mockCertificates.set(domain, expiresAt);
     this.logger.log(`[MOCK] Primary domain certificate issued for [${sans.join(', ')}]`);

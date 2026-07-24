@@ -92,6 +92,76 @@ describe('SslCertificateService.requestPrimaryDomainCertificate', () => {
     const days = service.getPrimaryCertificateExpiryDays();
     expect(days).toBeGreaterThan(80); // mock certs are minted for 90 days
   });
+
+  describe('target (#514)', () => {
+    it("target 'staging' writes the issued cert under staging/, not live", async () => {
+      const service = new SslCertificateService();
+      const res = await service.requestPrimaryDomainCertificate('example.com', { target: 'staging' });
+      expect(res.success).toBe(true);
+      expect(fs.existsSync(path.join(sslDir, 'staging', 'fullchain.pem'))).toBe(true);
+      expect(fs.existsSync(path.join(sslDir, 'staging', 'privkey.pem'))).toBe(true);
+      expect(fs.existsSync(path.join(sslDir, 'fullchain.pem'))).toBe(false);
+    });
+
+    it('default target writes live (renewal-cron contract)', async () => {
+      const service = new SslCertificateService();
+      const res = await service.requestPrimaryDomainCertificate('example.com');
+      expect(res.success).toBe(true);
+      expect(fs.existsSync(path.join(sslDir, 'fullchain.pem'))).toBe(true);
+      expect(fs.existsSync(path.join(sslDir, 'staging'))).toBe(false);
+    });
+
+    it("a valid STAGED cert does NOT satisfy the reuse check for target 'live'", async () => {
+      const service = new SslCertificateService();
+      // Stage a valid covering cert...
+      await service.requestPrimaryDomainCertificate('example.com', { target: 'staging' });
+      // ...then a live-target request must still issue (not report reused).
+      const res = await service.requestPrimaryDomainCertificate('example.com');
+      expect(res.reused).toBeFalsy();
+      expect(fs.existsSync(path.join(sslDir, 'fullchain.pem'))).toBe(true);
+    });
+
+    it("a valid staged cert IS reused for target 'staging'", async () => {
+      const service = new SslCertificateService();
+      await service.requestPrimaryDomainCertificate('example.com', { target: 'staging' });
+      const res = await service.requestPrimaryDomainCertificate('example.com', { target: 'staging' });
+      expect(res.reused).toBe(true);
+    });
+
+    it('clears a prior stage before writing (#514 F1) — stale wildcard copies do not survive a fresh staging-target issuance', async () => {
+      const service = new SslCertificateService();
+      // Seed a paste-like 4-file stage (garbage content — must never parse as
+      // a valid reusable cert, so the reuse check below is forced to issue).
+      fs.mkdirSync(path.join(sslDir, 'staging'), { recursive: true });
+      fs.writeFileSync(path.join(sslDir, 'staging', 'fullchain.pem'), 'STALE-FULLCHAIN');
+      fs.writeFileSync(path.join(sslDir, 'staging', 'privkey.pem'), 'STALE-PRIVKEY');
+      fs.writeFileSync(path.join(sslDir, 'staging', 'wildcard.example.com.crt'), 'STALE-WCERT');
+      fs.writeFileSync(path.join(sslDir, 'staging', 'wildcard.example.com.key'), 'STALE-WKEY');
+      // A REAL live DNS-01 wildcard is installed — installedWildcardIsReal()
+      // is true, so the fresh issuance must NOT write new wildcard copies
+      // either; the stale staged ones must simply be gone.
+      fs.writeFileSync(path.join(sslDir, 'wildcard.example.com.crt'), REAL_WILDCARD_CERT_PEM);
+      fs.writeFileSync(path.join(sslDir, 'wildcard.example.com.key'), REAL_WILDCARD_KEY_PEM);
+
+      await service.requestPrimaryDomainCertificate('example.com', { target: 'staging' });
+
+      const stagedFiles = fs.readdirSync(path.join(sslDir, 'staging')).sort();
+      expect(stagedFiles).toEqual(['fullchain.pem', 'privkey.pem']);
+    });
+
+    it("a staged fullchain.pem WITHOUT its matching privkey.pem is not reused for target 'staging' (#514 F2)", async () => {
+      const service = new SslCertificateService();
+      const first = await service.requestPrimaryDomainCertificate('example.com', { target: 'staging' });
+      expect(first.reused).toBeFalsy();
+      // Simulate a torn stage: drop the privkey but leave the fullchain.
+      fs.unlinkSync(path.join(sslDir, 'staging', 'privkey.pem'));
+
+      const res = await service.requestPrimaryDomainCertificate('example.com', { target: 'staging' });
+      expect(res.reused).toBeFalsy();
+      // A fresh, complete stage was written (F1's discard-before-write).
+      expect(fs.existsSync(path.join(sslDir, 'staging', 'privkey.pem'))).toBe(true);
+    });
+  });
 });
 
 describe('SslCertificateService.checkWildcardCertificate', () => {

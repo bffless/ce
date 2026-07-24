@@ -4,6 +4,7 @@ import { BootstrapSetupService } from './bootstrap-setup.service';
 import { BootstrapDnsPreflightService, PreflightResult } from './bootstrap-dns-preflight.service';
 import { SslCertificateService } from '../domains/ssl-certificate.service';
 import { writeInstanceConfig } from '../bootstrap/instance-config';
+import { discardStagedCertificates, promoteStagedCertificates, stagingPartiallyPopulated } from './ssl-staging';
 import { ApplyBootstrapDto, BootstrapDomainActionDto, UploadCertificatesDto } from './setup.dto';
 
 @ApiTags('Setup')
@@ -67,6 +68,12 @@ export class BootstrapSetupController {
     // check. Every other mode stages a real cert (paste) or has one issued
     // (letsencrypt, via issue-certificate) before apply.
     if (dto.sslMode !== 'selfsigned') {
+      // A torn stage (only one of fullchain.pem/privkey.pem present) must
+      // fail loudly rather than silently no-op-ing through promote — see
+      // stagingPartiallyPopulated's doc comment.
+      if (stagingPartiallyPopulated()) {
+        throw new BadRequestException('Staged certificate is incomplete — discard it and stage again');
+      }
       if (!this.bootstrap.certificatesPresent(dto.domain)) {
         throw new BadRequestException('Install certificates before applying');
       }
@@ -89,6 +96,14 @@ export class BootstrapSetupController {
     // throws BadRequestException on any illegal combination before anything
     // is written or the process is marked for restart.
     const applied = this.bootstrap.validateApplyConfig(dto);
+    // #514: certs staged by uploadCertificates / issue-certificate go live
+    // here — after every validation gate, before the instance write whose
+    // watcher-triggered render flips SSL_MODE and starts serving them.
+    if (applied.sslMode === 'selfsigned') {
+      discardStagedCertificates();
+    } else {
+      promoteStagedCertificates();
+    }
     // Mark setup complete BEFORE writing instance.json + exiting: apply is the
     // bootstrap flow's terminal step, so the restarted backend should land the
     // user at login, not back in the normal-mode wizard. Must persist before
@@ -134,7 +149,7 @@ export class BootstrapSetupController {
       );
     }
     await this.sslCert.initialize();
-    const result = await this.sslCert.requestPrimaryDomainCertificate(domain);
+    const result = await this.sslCert.requestPrimaryDomainCertificate(domain, { target: 'staging' });
     if (!result.success) {
       throw new BadRequestException(`Certificate issuance failed: ${result.error}`);
     }

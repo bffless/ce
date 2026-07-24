@@ -7,6 +7,7 @@ import * as path from 'path';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { BootstrapSetupService } from './bootstrap-setup.service';
 import { ApplyBootstrapDto } from './setup.dto';
+import { promoteStagedCertificates } from './ssl-staging';
 
 interface MakeCertOpts {
   includeApex?: boolean;
@@ -340,7 +341,9 @@ describe('BootstrapSetupService', () => {
     it('saves the four cert files with correct permissions', () => {
       const { certPem, keyPem } = makeCert('example.com', keyA);
       service.saveCertificates(certPem, keyPem, 'example.com');
-      const mode = (f: string) => fs.statSync(path.join(sslDir, f)).mode & 0o777;
+      // #514: saveCertificates writes into staging/, not the live dir.
+      const stagingDir = path.join(sslDir, 'staging');
+      const mode = (f: string) => fs.statSync(path.join(stagingDir, f)).mode & 0o777;
       expect(mode('fullchain.pem')).toBe(0o644);
       expect(mode('privkey.pem')).toBe(0o600);
       expect(mode('wildcard.example.com.crt')).toBe(0o644);
@@ -350,16 +353,20 @@ describe('BootstrapSetupService', () => {
     it('writes exactly the expected file contents', () => {
       const { certPem, keyPem } = makeCert('example.com', keyA);
       service.saveCertificates(certPem, keyPem, 'example.com');
-      expect(fs.readFileSync(path.join(sslDir, 'fullchain.pem'), 'utf8')).toBe(certPem);
-      expect(fs.readFileSync(path.join(sslDir, 'privkey.pem'), 'utf8')).toBe(keyPem);
-      expect(fs.readFileSync(path.join(sslDir, 'wildcard.example.com.crt'), 'utf8')).toBe(certPem);
-      expect(fs.readFileSync(path.join(sslDir, 'wildcard.example.com.key'), 'utf8')).toBe(keyPem);
+      // #514: saveCertificates writes into staging/, not the live dir.
+      const stagingDir = path.join(sslDir, 'staging');
+      expect(fs.readFileSync(path.join(stagingDir, 'fullchain.pem'), 'utf8')).toBe(certPem);
+      expect(fs.readFileSync(path.join(stagingDir, 'privkey.pem'), 'utf8')).toBe(keyPem);
+      expect(fs.readFileSync(path.join(stagingDir, 'wildcard.example.com.crt'), 'utf8')).toBe(certPem);
+      expect(fs.readFileSync(path.join(stagingDir, 'wildcard.example.com.key'), 'utf8')).toBe(keyPem);
     });
 
     it('leaves no stray .tmp files behind', () => {
       const { certPem, keyPem } = makeCert('example.com', keyA);
       service.saveCertificates(certPem, keyPem, 'example.com');
-      const stray = fs.readdirSync(sslDir).filter((f) => f.includes('.tmp'));
+      // #514: the atomic write's tmp files land (and get renamed away) in
+      // staging/, the dir saveCertificates now writes into.
+      const stray = fs.readdirSync(path.join(sslDir, 'staging')).filter((f) => f.includes('.tmp'));
       expect(stray).toEqual([]);
     });
 
@@ -377,9 +384,11 @@ describe('BootstrapSetupService', () => {
     it('writes lowercased wildcard filenames given a mixed-case domain', () => {
       const { certPem, keyPem } = makeCert('example.com', keyA);
       service.saveCertificates(certPem, keyPem, 'Example.com');
-      expect(fs.existsSync(path.join(sslDir, 'wildcard.example.com.crt'))).toBe(true);
-      expect(fs.existsSync(path.join(sslDir, 'wildcard.example.com.key'))).toBe(true);
-      expect(fs.existsSync(path.join(sslDir, 'wildcard.Example.com.crt'))).toBe(false);
+      // #514: saveCertificates writes into staging/, not the live dir.
+      const stagingDir = path.join(sslDir, 'staging');
+      expect(fs.existsSync(path.join(stagingDir, 'wildcard.example.com.crt'))).toBe(true);
+      expect(fs.existsSync(path.join(stagingDir, 'wildcard.example.com.key'))).toBe(true);
+      expect(fs.existsSync(path.join(stagingDir, 'wildcard.Example.com.crt'))).toBe(false);
     });
   });
 
@@ -527,16 +536,22 @@ describe('BootstrapSetupService', () => {
       expect(() => service.assertStagedCertificateCovers('example.com', 'cloudflare')).not.toThrow();
     });
 
-    it('rejects the change-of-mind sequence: upload A, upload B, apply A', () => {
-      // saveCertificates overwrites the generic fullchain.pem/privkey.pem on
-      // every upload, but leaves earlier domains' wildcard.* files behind —
-      // so certificatesPresent('example.com') still passes after the
-      // other.com upload while fullchain.pem now holds other.com's cert.
+    it('rejects the change-of-mind sequence: upload A, apply A (promotes to live), upload B, apply A again', () => {
+      // #514 F1: saveCertificates now clears any PRIOR STAGE before writing,
+      // so the classic "upload A, upload B" trap can no longer arise purely
+      // within staging/ (the B upload wipes A's staged files outright). The
+      // trap still arises across live + staging: promote A to live (a real
+      // apply()), then upload B for a different domain — live keeps A's
+      // wildcard.* files while staging's generic pair now holds B's
+      // material. certificatesPresent('example.com') still passes on the
+      // leftover live wildcard.example.com.* files while fullchain.pem
+      // (staging, unioned in by certificatesPresent) now holds B's cert.
       // Applying example.com at that point would put nginx up serving
       // example.com's vhosts with other.com's certificate.
       const a = makeCert('example.com', keyA);
       const b = makeCert('other.com', keyB);
       service.saveCertificates(a.certPem, a.keyPem, 'example.com');
+      promoteStagedCertificates(); // simulate apply() promoting A to live
       service.saveCertificates(b.certPem, b.keyPem, 'other.com');
 
       expect(service.certificatesPresent('example.com')).toBe(true); // the trap
@@ -573,6 +588,68 @@ describe('BootstrapSetupService', () => {
       expect(() => service.assertStagedCertificateCovers('example.com', 'cloudflare')).toThrow(
         /wildcard/i,
       );
+    });
+  });
+
+  describe('staging semantics (#514)', () => {
+    const stagingDir = () => path.join(sslDir, 'staging');
+
+    it('saveCertificates writes the four files into staging/, not the live dir', () => {
+      const { certPem, keyPem } = makeCert('example.com', keyA);
+      service.saveCertificates(certPem, keyPem, 'example.com');
+      for (const f of ['fullchain.pem', 'privkey.pem', 'wildcard.example.com.crt', 'wildcard.example.com.key']) {
+        expect(fs.existsSync(path.join(stagingDir(), f))).toBe(true);
+        expect(fs.existsSync(path.join(sslDir, f))).toBe(false);
+      }
+    });
+
+    it('saveCertificates clears any prior stage before writing (#514 F1) — no accumulation', () => {
+      const { certPem, keyPem } = makeCert('example.com', keyA);
+      // Seed a junk file plus a stale pair from an earlier, abandoned stage.
+      fs.mkdirSync(stagingDir(), { recursive: true });
+      fs.writeFileSync(path.join(stagingDir(), 'junk.txt'), 'JUNK');
+      fs.writeFileSync(path.join(stagingDir(), 'wildcard.stale.com.crt'), 'STALE');
+      fs.writeFileSync(path.join(stagingDir(), 'wildcard.stale.com.key'), 'STALE');
+
+      service.saveCertificates(certPem, keyPem, 'example.com');
+
+      const files = fs.readdirSync(stagingDir()).sort();
+      expect(files).toEqual([
+        'fullchain.pem',
+        'privkey.pem',
+        'wildcard.example.com.crt',
+        'wildcard.example.com.key',
+      ]);
+    });
+
+    it('certificatesPresent is a per-file union of staging and live', () => {
+      const { certPem, keyPem } = makeCert('example.com', keyA);
+      expect(service.certificatesPresent('example.com')).toBe(false);
+      // generic pair staged, wildcard pair live (the LE + real-DNS-01-wildcard case)
+      fs.mkdirSync(stagingDir(), { recursive: true });
+      fs.writeFileSync(path.join(stagingDir(), 'fullchain.pem'), certPem);
+      fs.writeFileSync(path.join(stagingDir(), 'privkey.pem'), keyPem);
+      fs.writeFileSync(path.join(sslDir, 'wildcard.example.com.crt'), certPem);
+      fs.writeFileSync(path.join(sslDir, 'wildcard.example.com.key'), keyPem);
+      expect(service.certificatesPresent('example.com')).toBe(true);
+    });
+
+    it('assertStagedCertificateCovers prefers the STAGED fullchain over the live one', () => {
+      const a = makeCert('aaa.com', keyA); // live: covers only aaa.com
+      const b = makeCert('bbb.com', keyB); // staged: covers only bbb.com
+      fs.writeFileSync(path.join(sslDir, 'fullchain.pem'), a.certPem);
+      fs.mkdirSync(stagingDir(), { recursive: true });
+      fs.writeFileSync(path.join(stagingDir(), 'fullchain.pem'), b.certPem);
+      // staged cert covers bbb.com → passes even though live covers only aaa.com
+      expect(() => service.assertStagedCertificateCovers('bbb.com', 'proxy')).not.toThrow();
+      // and correctly fails for aaa.com (staged takes precedence)
+      expect(() => service.assertStagedCertificateCovers('aaa.com', 'proxy')).toThrow(/does not cover/);
+    });
+
+    it('assertStagedCertificateCovers falls back to the live fullchain when nothing is staged', () => {
+      const a = makeCert('aaa.com', keyA);
+      fs.writeFileSync(path.join(sslDir, 'fullchain.pem'), a.certPem);
+      expect(() => service.assertStagedCertificateCovers('aaa.com', 'proxy')).not.toThrow();
     });
   });
 

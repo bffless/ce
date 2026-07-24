@@ -6,6 +6,12 @@ import { SslInfoService, SslCertificateInfo } from '../../domains/ssl-info.servi
 import { PrimarySslSnapshotService } from './primary-ssl-snapshot.service';
 import { loadInstanceConfig, writeInstanceConfig, InstanceConfig, ProxyMode } from '../../bootstrap/instance-config';
 import { PrimarySslPasteDto, PrimarySslApplyDto } from './primary-ssl.dto';
+import {
+  discardStagedCertificates,
+  promoteStagedCertificates,
+  stagingPopulated,
+  stagingPartiallyPopulated,
+} from '../ssl-staging';
 
 export interface PrimarySslStatus {
   domain: string | null;
@@ -14,6 +20,7 @@ export interface PrimarySslStatus {
   port80: string | null;
   realIp: unknown;
   cert: SslCertificateInfo | null;
+  stagedCert: SslCertificateInfo | null;
   wildcardCovered: boolean;
   pendingRevert: { deadlineMs: number } | null;
 }
@@ -50,6 +57,7 @@ export class PrimarySslService {
     // leftover from an earlier SSL mode). Wildcard coverage is reported
     // separately and independently below.
     const cert = await this.info.getServedPrimaryCertInfo().catch(() => null);
+    const stagedCert = await this.info.getStagedPrimaryCertInfo().catch(() => null);
     const wildcardCert = await this.info.getWildcardCertInfo().catch(() => null);
     const pending = this.snap.readPendingRevert();
     return {
@@ -59,6 +67,7 @@ export class PrimarySslService {
       port80: cfg?.port80 ?? null,
       realIp: cfg?.realIp ?? null,
       cert,
+      stagedCert,
       wildcardCovered: !!wildcardCert,
       pendingRevert: pending ? { deadlineMs: pending.deadlineMs } : null,
     };
@@ -78,9 +87,8 @@ export class PrimarySslService {
     const result = this.bootstrap.validateCertificatePair(
       dto.certificatePem, dto.privateKeyPem, domain, dto.servingMode as ProxyMode,
     );
-    // Capture the OLD live cert BEFORE saveCertificates overwrites it, so a later
-    // rollback restores the pre-change cert (not the one we're about to write).
-    this.snap.snapshotForChangeCycle();
+    // #514: saveCertificates writes into staging/ — nothing live changes, so
+    // no snapshot is needed here. apply() snapshots before promoting.
     this.bootstrap.saveCertificates(dto.certificatePem, dto.privateKeyPem, domain);
     return result;
   }
@@ -106,15 +114,11 @@ export class PrimarySslService {
     if (this.snap.readPendingRevert()) {
       throw new BadRequestException('A serving change is pending confirmation; confirm or roll it back first');
     }
-    // Capture the current live cert BEFORE issuance overwrites it — unless a
-    // snapshot from earlier in this change cycle already holds it (a committed
-    // prior change re-baselines instead).
-    this.snap.snapshotForChangeCycle();
     const pre = await this.preflightSvc.run(domain);
     if (!pre.ok) {
       throw new BadRequestException('DNS/port-80 preflight failed; not requesting a certificate');
     }
-    const res = await this.ssl.requestPrimaryDomainCertificate(domain);
+    const res = await this.ssl.requestPrimaryDomainCertificate(domain, { target: 'staging' });
     if (!res.success) {
       throw new BadRequestException(res.error || 'Certificate issuance failed');
     }
@@ -125,6 +129,13 @@ export class PrimarySslService {
     this.assertEnabled();
     if (this.snap.readPendingRevert()) {
       throw new BadRequestException('A serving change is pending confirmation; confirm or roll it back first');
+    }
+    // A torn stage (only one of fullchain.pem/privkey.pem present — an
+    // interrupted write or manual tampering) must fail loudly rather than
+    // silently no-op: stagingPopulated() alone would just treat it as
+    // "nothing staged" and quietly skip promotion.
+    if (stagingPartiallyPopulated()) {
+      throw new BadRequestException('Staged certificate is incomplete — discard it and stage again');
     }
     const cur = loadInstanceConfig();
     if (!cur?.primaryDomain) throw new BadRequestException('No primary domain is configured yet');
@@ -150,11 +161,9 @@ export class PrimarySslService {
       realIp: applied.realIp,
     };
     const serving = this.isReachabilityChange(cur, next);
-    // A cert is "in flight" when a stage/issue snapshotted this cycle and no
-    // apply has committed it yet. An sslMode switch also changes the served
-    // cert (e.g. paste -> selfsigned) even with no newly staged files.
-    const certAffecting =
-      (this.snap.hasSnapshot() && !this.snap.isApplied()) || cur.sslMode !== next.sslMode;
+    // A cert change is in flight iff files are staged. An sslMode switch also
+    // changes the served cert (e.g. paste -> selfsigned) with nothing staged.
+    const certAffecting = stagingPopulated() || cur.sslMode !== next.sslMode;
     // On direct serving (nginx terminates TLS) a bad cert breaks the browser
     // on admin.<domain> — the page hosting the rollback button — so cert
     // changes there get the same provisional confirm window as reachability
@@ -162,10 +171,17 @@ export class PrimarySslService {
     // those stay manual-rollback-only (ce#511).
     const needsConfirm = serving || (certAffecting && next.proxyMode === 'none');
 
-    // Reuse the snapshot taken by a prior stage/issue (which holds the OLD
-    // cert); re-baseline over a stale applied one; otherwise snapshot the
-    // current known-good state.
+    // Snapshot the live pre-change state, THEN promote staging over it — the
+    // ordering is now structurally correct instead of call-order discipline.
     this.snap.snapshotForChangeCycle();
+    if (applied.sslMode === 'selfsigned') {
+      // Committing to self-signed abandons any staged cert: self-signed
+      // serves the bootstrap pair regardless, and a lingering "staged"
+      // indicator after this apply would mislead.
+      discardStagedCertificates();
+    } else {
+      promoteStagedCertificates();
+    }
     writeInstanceConfig(next); // watcher re-renders main.conf + reloads (~3s); no restart
 
     if (needsConfirm) {
@@ -193,5 +209,13 @@ export class PrimarySslService {
     this.assertEnabled();
     this.snap.clearPendingRevert();
     this.snap.restore();
+  }
+
+  discardStaged(): { discarded: true } {
+    this.assertEnabled();
+    // Touches nothing live, so no pending-revert gate: discarding while a
+    // revert is pending is harmless (staging was already cleared by apply).
+    discardStagedCertificates();
+    return { discarded: true };
   }
 }
