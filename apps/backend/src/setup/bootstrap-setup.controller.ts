@@ -4,6 +4,7 @@ import { BootstrapSetupService } from './bootstrap-setup.service';
 import { BootstrapDnsPreflightService, PreflightResult } from './bootstrap-dns-preflight.service';
 import { SslCertificateService } from '../domains/ssl-certificate.service';
 import { writeInstanceConfig } from '../bootstrap/instance-config';
+import { discardStagedCertificates, promoteStagedCertificates } from './ssl-staging';
 import { ApplyBootstrapDto, BootstrapDomainActionDto, UploadCertificatesDto } from './setup.dto';
 
 @ApiTags('Setup')
@@ -89,6 +90,14 @@ export class BootstrapSetupController {
     // throws BadRequestException on any illegal combination before anything
     // is written or the process is marked for restart.
     const applied = this.bootstrap.validateApplyConfig(dto);
+    // #514: certs staged by uploadCertificates / issue-certificate go live
+    // here — after every validation gate, before the instance write whose
+    // watcher-triggered render flips SSL_MODE and starts serving them.
+    if (applied.sslMode === 'selfsigned') {
+      discardStagedCertificates();
+    } else {
+      promoteStagedCertificates();
+    }
     // Mark setup complete BEFORE writing instance.json + exiting: apply is the
     // bootstrap flow's terminal step, so the restarted backend should land the
     // user at login, not back in the normal-mode wizard. Must persist before
@@ -134,7 +143,7 @@ export class BootstrapSetupController {
       );
     }
     await this.sslCert.initialize();
-    const result = await this.sslCert.requestPrimaryDomainCertificate(domain);
+    const result = await this.sslCert.requestPrimaryDomainCertificate(domain, { target: 'staging' });
     if (!result.success) {
       throw new BadRequestException(`Certificate issuance failed: ${result.error}`);
     }

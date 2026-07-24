@@ -1,6 +1,12 @@
 import { BadRequestException } from '@nestjs/common';
 import { BootstrapSetupController } from './bootstrap-setup.controller';
 import { ApplyBootstrapDto } from './setup.dto';
+import * as staging from './ssl-staging';
+
+jest.mock('./ssl-staging', () => ({
+  promoteStagedCertificates: jest.fn().mockReturnValue([]),
+  discardStagedCertificates: jest.fn(),
+}));
 
 describe('BootstrapSetupController', () => {
   let controller: BootstrapSetupController;
@@ -284,6 +290,41 @@ describe('BootstrapSetupController', () => {
       expect(res.adminUrl).toBe('https://admin.example.com');
       writeSpy.mockRestore();
     });
+
+    it('apply promotes staged certs BEFORE writing instance config (non-selfsigned)', async () => {
+      const writeSpy = jest
+        .spyOn(require('../bootstrap/instance-config'), 'writeInstanceConfig')
+        .mockImplementation(() => undefined);
+      // Pin explicitly (mockReturnValueOnce): an earlier test in this
+      // describe block ('applies a selfsigned proxy install...') leaves
+      // svc.validateApplyConfig permanently stubbed via mockReturnValue
+      // (no `Once`), so relying on the shared default dto-passthrough
+      // implementation here would be order-dependent.
+      svc.validateApplyConfig.mockReturnValueOnce({
+        proxyMode: 'cloudflare', sslMode: 'paste', port80: 'redirect', realIp: null,
+      });
+      await controller.apply({ domain: 'example.com', proxyMode: 'cloudflare', sslMode: 'paste' });
+      expect(staging.promoteStagedCertificates).toHaveBeenCalled();
+      const promoteOrder = (staging.promoteStagedCertificates as jest.Mock).mock.invocationCallOrder[0];
+      const writeOrder = writeSpy.mock.invocationCallOrder[0];
+      expect(promoteOrder).toBeLessThan(writeOrder);
+      writeSpy.mockRestore();
+    });
+
+    it('apply with selfsigned discards staging and does not promote', async () => {
+      const writeSpy = jest
+        .spyOn(require('../bootstrap/instance-config'), 'writeInstanceConfig')
+        .mockImplementation(() => undefined);
+      svc.validateApplyConfig.mockReturnValueOnce({
+        proxyMode: 'proxy', sslMode: 'selfsigned', port80: 'redirect', realIp: null,
+      });
+      await controller.apply({
+        domain: 'example.com', proxyMode: 'proxy', sslMode: 'selfsigned',
+      } as ApplyBootstrapDto);
+      expect(staging.discardStagedCertificates).toHaveBeenCalled();
+      expect(staging.promoteStagedCertificates).not.toHaveBeenCalled();
+      writeSpy.mockRestore();
+    });
   });
 
   describe('scheduleExit (real timer, not invoked through the mocked override)', () => {
@@ -341,7 +382,7 @@ describe('BootstrapSetupController', () => {
       });
       const res = await controller.issueCertificate({ domain: 'Example.com' });
       expect(svc.validateDomain).toHaveBeenCalledWith('Example.com');
-      expect(sslCert.requestPrimaryDomainCertificate).toHaveBeenCalledWith('example.com');
+      expect(sslCert.requestPrimaryDomainCertificate).toHaveBeenCalledWith('example.com', { target: 'staging' });
       expect(res).toEqual({ issued: true, sans: ['example.com', 'www.example.com', 'admin.example.com'] });
     });
 
