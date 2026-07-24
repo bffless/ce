@@ -81,6 +81,30 @@ Preconditions (all must hold, otherwise do nothing):
 - `process.env.PRIMARY_DOMAIN` is set and ≠ `localhost`.
 - Not platform mode (`PLATFORM_MODE` / `SSL_MANAGED_EXTERNALLY` unset).
 
+**First-adoption legacy gate (C1).** The three preconditions above are not
+enough on their own: a *fresh web-bootstrap* install (`setup.sh --bootstrap`)
+leaves `PRIMARY_DOMAIN=""` in `.env`, but `docker-compose.yml` passes the
+backend `PRIMARY_DOMAIN: ${PRIMARY_DOMAIN:-yourdomain.com}` — and `:-`
+substitutes the placeholder for an *empty* value too. So a cert-less,
+wizard-bound install boots with `PRIMARY_DOMAIN=yourdomain.com` and no
+`instance.json`, which the naive rule would adopt as `state:'applied'` — killing
+the wizard (`isBootstrapModeActive()` → false) and cutting nginx over to NORMAL
+mode for a domain with no certs. So **first adoption additionally requires the
+install to actually be legacy** (an existing `origin:'env'` file re-syncs
+regardless — the gate is first-adoption only):
+
+1. **Real certs present:** both `ssl/fullchain.pem` and `ssl/privkey.pem` exist.
+   Every non-localhost legacy `setup.sh` install has run certbot / pasted CF
+   origin certs; a fresh bootstrap boot is cert-less.
+2. **No bootstrap marker:** `ssl/bootstrap-selfsigned.crt` is absent. Its
+   presence means this install has rendered bootstrap mode at least once (so it
+   is NOT legacy), and protects the mid-wizard-restart window where the
+   certificate step has staged real certs before Apply ran. Mirrors
+   `render-main-conf.sh`'s `should_bootstrap()` legacy carve-out.
+3. **Refuse the compose placeholder:** `primaryDomain === 'yourdomain.com'` is
+   never adopted — it is `docker-compose.yml`'s `${PRIMARY_DOMAIN:-yourdomain.com}`
+   default, not a real identity.
+
 Adopted config:
 
 | Field | Value |
@@ -121,6 +145,17 @@ shell-safety validation included).
   on `.env` identity is ignored; if a later boot finds `.env` identity that
   diverges from a wizard-origin file, log a loud warning naming both values and
   which one wins.
+- **Day-2 primary-SSL on an `origin:'env'` install (I1).** The day-2 primary-SSL
+  apply path (`primary-ssl.service.ts`) *does* run on env-origin installs and
+  preserves `origin:'env'` on its write — but the next boot re-sync re-derives
+  the config from `.env` and drops any knob `.env` can't express (`proxyMode` is
+  re-read from `PROXY_MODE`, while `port80`/`realIp` are omitted v1-style). So a
+  UI-applied `proxyMode`/`port80`/`realIp` change silently reverts on restart.
+  Decision (this spec): **warn loudly** — apply logs which knobs will revert;
+  it invents no new response field. **Graduation stays wizard-apply-only for
+  now**: to persist those knobs the operator must manage identity/SSL via the
+  wizard (which stamps `origin:'wizard'`). A full graduation-on-apply redesign
+  is deferred.
 
 ### 4. Renewal takeover
 
@@ -148,7 +183,9 @@ shell-safety validation included).
 | Existing wizard install | No `origin` field ⇒ `'wizard'` default ⇒ zero behavior change. |
 | **Rollback** to a pre-adoption image | Adoption never touches `.env`; old images ignore `bootstrap/` files entirely. Fully reversible. |
 | Corrupt `instance.json` | Logged, untouched, install runs env-only for the boot (as today). |
-| `localhost` / Umbrel / platform mode | Never adopted; unchanged. |
+| `localhost` / Umbrel / platform mode | Never adopted; unchanged. Umbrel is *additionally* covered by the cert-presence gate — its own entrypoint/config model doesn't stage certs into `ssl/` the way `setup.sh` does, so first-adoption can't fire there either. |
+| **Fresh web-bootstrap install** (cert-less, `PRIMARY_DOMAIN=yourdomain.com` from the compose default) | **Never adopted** (fails the C1 legacy gate — placeholder domain, no certs, and post-Domain-step a bootstrap marker). Wizard is unaffected: `state` stays unclaimed, `isBootstrapModeActive()` stays true. |
+| **Adopted install whose `.env` later becomes non-adoptable** (domain removed/localhost, or `PLATFORM_MODE`/`SSL_MANAGED_EXTERNALLY` flipped true) | The derived `origin:'env'` `instance.json` + `instance.env` are **deleted** with a warning (I3), so nginx + renewal fall back to env instead of following a stale `state:'applied'` cache. Wizard-origin files are never touched. |
 
 ### 6. Error handling
 
