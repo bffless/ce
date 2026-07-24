@@ -106,8 +106,9 @@ export class PrimarySslService {
     if (this.snap.readPendingRevert()) {
       throw new BadRequestException('A serving change is pending confirmation; confirm or roll it back first');
     }
-    // Capture the current live cert BEFORE issuance overwrites it, only if a
-    // snapshot doesn't already exist this change cycle.
+    // Capture the current live cert BEFORE issuance overwrites it — unless a
+    // snapshot from earlier in this change cycle already holds it (a committed
+    // prior change re-baselines instead).
     this.snap.snapshotForChangeCycle();
     const pre = await this.preflightSvc.run(domain);
     if (!pre.ok) {
@@ -174,6 +175,8 @@ export class PrimarySslService {
     }
     // Committed without a confirm window: mark the snapshot applied so the
     // next change cycle re-baselines instead of rolling back past this change.
+    // (Deliberate even for a no-op apply: the snapshot just taken of the
+    // unchanged state keeps the manual rollback button working.)
     this.snap.markApplied();
     return { applied: true, kind: 'cert-only' };
   }
