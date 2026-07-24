@@ -7,6 +7,7 @@ export interface PrimarySslStatus {
   port80: 'closed' | 'redirect' | null;
   realIp: { header: string; ranges: string[] } | { preset: 'cloudflare' } | null;
   cert: { commonName: string; issuer: string; expiresAt: string; daysUntilExpiry: number; isValid: boolean } | null;
+  stagedCert: { commonName: string; issuer: string; expiresAt: string; daysUntilExpiry: number; isValid: boolean } | null;
   wildcardCovered: boolean;
   pendingRevert: { deadlineMs: number } | null;
 }
@@ -39,9 +40,11 @@ export const primarySslApi = api.injectEndpoints({
     }),
     stagePrimaryCertificate: builder.mutation<{ sans: string[]; wildcardCovered: boolean }, PrimarySslPasteBody>({
       query: (body) => ({ url: '/api/admin/ssl/certificate', method: 'POST', body }),
+      invalidatesTags: ['PrimarySsl'],
     }),
     issuePrimaryLetsEncrypt: builder.mutation<{ issued: boolean; sans: string[]; reused: boolean }, void>({
       query: () => ({ url: '/api/admin/ssl/letsencrypt', method: 'POST' }),
+      invalidatesTags: ['PrimarySsl'],
     }),
     applyPrimarySsl: builder.mutation<{ applied: true; kind: 'cert-only' | 'serving'; deadlineMs?: number }, PrimarySslApplyBody>({
       query: (body) => ({ url: '/api/admin/ssl/apply', method: 'POST', body }),
@@ -55,11 +58,15 @@ export const primarySslApi = api.injectEndpoints({
       query: () => ({ url: '/api/admin/ssl/rollback', method: 'POST' }),
       invalidatesTags: ['PrimarySsl'],
     }),
+    discardStagedCertificate: builder.mutation<{ discarded: true }, void>({
+      query: () => ({ url: '/api/admin/ssl/staged', method: 'DELETE' }),
+      invalidatesTags: ['PrimarySsl'],
+    }),
   }),
 });
 
 export const {
   useGetPrimarySslStatusQuery, usePrimarySslPreflightMutation, useStagePrimaryCertificateMutation,
   useIssuePrimaryLetsEncryptMutation, useApplyPrimarySslMutation, useConfirmPrimarySslMutation,
-  useRollbackPrimarySslMutation,
+  useRollbackPrimarySslMutation, useDiscardStagedCertificateMutation,
 } = primarySslApi;

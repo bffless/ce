@@ -3,7 +3,13 @@ import { CurrentSslStatus } from './CurrentSslStatus';
 import { ServingModelEditor, type EditorState } from './ServingModelEditor';
 import { ApplyPanel } from './ApplyPanel';
 import { RollbackPanel } from './RollbackPanel';
-import { useGetPrimarySslStatusQuery, type PrimarySslApplyBody } from '@/services/primarySslApi';
+import { Button } from '@/components/ui/button';
+import {
+  useGetPrimarySslStatusQuery,
+  useDiscardStagedCertificateMutation,
+  type PrimarySslApplyBody,
+  type PrimarySslStatus,
+} from '@/services/primarySslApi';
 import { useFeatureFlags } from '@/services/featureFlagsApi';
 
 const DEFAULT_EDITOR_STATE: EditorState = {
@@ -51,10 +57,21 @@ export function toApplyBody(editor: EditorState): PrimarySslApplyBody {
   return body;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- exported for unit testing (see PrimarySslManager.test.tsx)
+export function canApply(editor: EditorState, status: PrimarySslStatus | undefined): boolean {
+  if (editor.sslMode === 'selfsigned') return true; // needs no cert
+  if (status?.stagedCert) return true; // a staged cert is ready to promote
+  // Knob-only edits (port 80 / real-IP) on the mode that's already serving a
+  // cert stay enabled; switching modes requires staging first. The backend
+  // remains authoritative — this only prevents the guaranteed-422 click.
+  return editor.sslMode === status?.sslMode && status?.cert != null;
+}
+
 export function PrimarySslManager() {
   const { data } = useGetPrimarySslStatusQuery();
   const { isEnabled } = useFeatureFlags();
   const [editorState, setEditorState] = useState<EditorState>(DEFAULT_EDITOR_STATE);
+  const [discardStaged, { isLoading: isDiscarding }] = useDiscardStagedCertificateMutation();
 
   const realIpHeader = data?.realIp && 'header' in data.realIp ? data.realIp.header : null;
   const realIpRanges = data?.realIp && 'header' in data.realIp ? data.realIp.ranges.join('\n') : null;
@@ -80,6 +97,7 @@ export function PrimarySslManager() {
   if (!isEnabled('ENABLE_PRIMARY_SSL_MANAGEMENT')) return null;
 
   const config = toApplyBody(editorState);
+  const applyEnabled = canApply(editorState, data);
 
   return (
     <div className="space-y-6">
@@ -87,13 +105,24 @@ export function PrimarySslManager() {
       <ServingModelEditor
         value={editorState}
         onChange={setEditorState}
-        onCertStaged={() => {
-          /* no-op: ApplyPanel reads the latest editorState on Apply click */
-        }}
         isCurrentlyLetsEncrypt={data?.sslMode === 'letsencrypt'}
         currentCertDaysLeft={data?.cert?.daysUntilExpiry ?? null}
       />
-      <ApplyPanel config={config} disabled={false} />
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <ApplyPanel config={config} disabled={!applyEnabled} />
+          {data?.stagedCert && (
+            <Button variant="outline" onClick={() => discardStaged()} disabled={isDiscarding}>
+              {isDiscarding ? 'Discarding…' : 'Discard staged certificate'}
+            </Button>
+          )}
+        </div>
+        {!applyEnabled && (
+          <p className="text-sm text-muted-foreground">
+            Validate &amp; stage a certificate to enable Apply.
+          </p>
+        )}
+      </div>
       <RollbackPanel pendingRevert={data?.pendingRevert ?? null} />
     </div>
   );

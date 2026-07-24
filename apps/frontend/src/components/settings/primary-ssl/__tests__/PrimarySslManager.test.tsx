@@ -1,18 +1,20 @@
 import { render, screen } from '@testing-library/react';
 import { vi } from 'vitest';
-import { PrimarySslManager, splitRanges, toApplyBody } from '../PrimarySslManager';
+import { PrimarySslManager, splitRanges, toApplyBody, canApply } from '../PrimarySslManager';
 import type { EditorState } from '../ServingModelEditor';
+import type { PrimarySslStatus } from '@/services/primarySslApi';
 
 let enabled = true;
 vi.mock('@/services/featureFlagsApi', () => ({ useFeatureFlags: () => ({ isEnabled: () => enabled }) }));
 vi.mock('@/services/primarySslApi', () => ({
-  useGetPrimarySslStatusQuery: () => ({ data: { domain: 'a.com', sslMode: 'paste', proxyMode: 'none', port80: 'redirect', realIp: null, cert: null, wildcardCovered: false, pendingRevert: null }, isLoading: false }),
+  useGetPrimarySslStatusQuery: () => ({ data: { domain: 'a.com', sslMode: 'paste', proxyMode: 'none', port80: 'redirect', realIp: null, cert: null, stagedCert: null, wildcardCovered: false, pendingRevert: null }, isLoading: false }),
   useApplyPrimarySslMutation: () => [vi.fn(), {}],
   useConfirmPrimarySslMutation: () => [vi.fn(), {}],
   useRollbackPrimarySslMutation: () => [vi.fn(), {}],
   useStagePrimaryCertificateMutation: () => [vi.fn(), {}],
   useIssuePrimaryLetsEncryptMutation: () => [vi.fn(), {}],
   usePrimarySslPreflightMutation: () => [vi.fn(), {}],
+  useDiscardStagedCertificateMutation: () => [vi.fn(), {}],
 }));
 
 describe('PrimarySslManager', () => {
@@ -111,5 +113,34 @@ describe('toApplyBody', () => {
     const editor: EditorState = { ...base, servingMode: 'none', sslMode: 'selfsigned', port80: 'closed' };
     const body = toApplyBody(editor);
     expect(body).toEqual({ proxyMode: 'none', sslMode: 'selfsigned', port80: 'closed' });
+  });
+});
+
+describe('canApply (#512)', () => {
+  const status = (over: Partial<PrimarySslStatus> = {}): PrimarySslStatus => ({
+    domain: 'example.com', proxyMode: 'proxy', sslMode: 'paste', port80: 'closed',
+    realIp: null, cert: { commonName: 'example.com' } as any, stagedCert: null,
+    wildcardCovered: false, pendingRevert: null, ...over,
+  });
+  const editor = (over: Partial<EditorState> = {}): EditorState => ({
+    servingMode: 'proxy', sslMode: 'paste', port80: 'closed',
+    realIp: null, certificatePem: '', privateKeyPem: '', ...over,
+  });
+
+  it('selfsigned needs no cert', () => {
+    expect(canApply(editor({ sslMode: 'selfsigned' }), undefined)).toBe(true);
+  });
+  it('a staged cert enables Apply for paste/letsencrypt', () => {
+    expect(canApply(editor(), status({ stagedCert: { commonName: 'x' } as any }))).toBe(true);
+    expect(canApply(editor({ sslMode: 'letsencrypt' }), status({ stagedCert: { commonName: 'x' } as any }))).toBe(true);
+  });
+  it('knob-only changes on the already-active mode stay enabled (live cert present)', () => {
+    expect(canApply(editor(), status())).toBe(true); // editor paste === status paste, cert present
+  });
+  it('switching mode with nothing staged disables Apply', () => {
+    expect(canApply(editor({ sslMode: 'paste' }), status({ sslMode: 'selfsigned' }))).toBe(false);
+  });
+  it('no status yet (loading) disables non-selfsigned Apply', () => {
+    expect(canApply(editor(), undefined)).toBe(false);
   });
 });
