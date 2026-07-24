@@ -29,6 +29,7 @@ const domain = 'a.com';
 // assertions below check actual file CONTENT rather than mere existence.
 let keyOld: forge.pki.rsa.KeyPair;
 let keyNew: forge.pki.rsa.KeyPair;
+let keyThird: forge.pki.rsa.KeyPair;
 
 function makeCert(d: string, keys: forge.pki.rsa.KeyPair) {
   const cert = forge.pki.createCertificate();
@@ -63,12 +64,16 @@ describe('PrimarySslService cert staging (real BootstrapSetupService + snapshot 
   let oldKeyPem: string;
   let newCertPem: string;
   let newKeyPem: string;
+  let thirdCertPem: string;
+  let thirdKeyPem: string;
 
   beforeAll(() => {
     keyOld = forge.pki.rsa.generateKeyPair(2048);
     keyNew = forge.pki.rsa.generateKeyPair(2048);
+    keyThird = forge.pki.rsa.generateKeyPair(2048);
     ({ certPem: oldCertPem, keyPem: oldKeyPem } = makeCert(domain, keyOld));
     ({ certPem: newCertPem, keyPem: newKeyPem } = makeCert(domain, keyNew));
+    ({ certPem: thirdCertPem, keyPem: thirdKeyPem } = makeCert(domain, keyThird));
   });
 
   beforeEach(() => {
@@ -108,12 +113,59 @@ describe('PrimarySslService cert staging (real BootstrapSetupService + snapshot 
   it('apply promotes the staged cert and rollback restores the OLD live cert', async () => {
     fs.writeFileSync(path.join(sslDir, 'fullchain.pem'), oldCertPem);
     fs.writeFileSync(path.join(sslDir, 'privkey.pem'), oldKeyPem);
+    // Seed the domain-specific wildcard pair too (a real prior bootstrap
+    // apply would have promoted these alongside the generic pair) so the
+    // round-trip below has an OLD value to roll back to.
+    fs.writeFileSync(path.join(sslDir, `wildcard.${domain}.crt`), oldCertPem);
+    fs.writeFileSync(path.join(sslDir, `wildcard.${domain}.key`), oldKeyPem);
     svc.stagePaste({ certificatePem: newCertPem, privateKeyPem: newKeyPem, servingMode: 'none' } as any);
     await svc.apply({ proxyMode: 'none', sslMode: 'paste', port80: 'redirect' } as any);
     expect(fs.readFileSync(path.join(sslDir, 'fullchain.pem'), 'utf8')).toBe(newCertPem);
+    expect(fs.readFileSync(path.join(sslDir, `wildcard.${domain}.crt`), 'utf8')).toBe(newCertPem);
     expect(fs.existsSync(path.join(sslDir, 'staging'))).toBe(false);
     svc.rollback();
     expect(fs.readFileSync(path.join(sslDir, 'fullchain.pem'), 'utf8')).toBe(oldCertPem);
+    expect(fs.readFileSync(path.join(sslDir, `wildcard.${domain}.crt`), 'utf8')).toBe(oldCertPem);
+  });
+
+  it('a second no-confirm-window apply re-baselines rollback to the LATEST pre-change cert, not the original (ce#511)', async () => {
+    // proxyMode 'cloudflare' means the origin cert isn't user-facing, so
+    // apply() commits immediately via markApplied() instead of opening a
+    // confirm window. Seed the instance config to match what apply() will
+    // produce so there is no reachability change either — both applies
+    // below take the no-confirm path.
+    writeInstanceConfig(
+      {
+        version: 2,
+        state: 'applied',
+        primaryDomain: domain,
+        proxyMode: 'cloudflare',
+        sslMode: 'paste',
+        port80: 'closed',
+        realIp: { preset: 'cloudflare' },
+      },
+      bootDir,
+    );
+    fs.writeFileSync(path.join(sslDir, 'fullchain.pem'), oldCertPem);
+    fs.writeFileSync(path.join(sslDir, 'privkey.pem'), oldKeyPem);
+
+    // Cycle 1: live C0 -> stage C1 -> apply (commits immediately, no confirm window).
+    svc.stagePaste({ certificatePem: newCertPem, privateKeyPem: newKeyPem, servingMode: 'cloudflare' } as any);
+    await svc.apply({ proxyMode: 'cloudflare', sslMode: 'paste', port80: 'closed' } as any);
+    expect(fs.readFileSync(path.join(sslDir, 'fullchain.pem'), 'utf8')).toBe(newCertPem);
+
+    // Cycle 2: stage C2 -> apply again (also commits immediately). This
+    // apply's snapshotForChangeCycle() re-baselines over the cycle-1
+    // snapshot (already marked applied) instead of leaving the original C0
+    // baseline in place.
+    svc.stagePaste({ certificatePem: thirdCertPem, privateKeyPem: thirdKeyPem, servingMode: 'cloudflare' } as any);
+    await svc.apply({ proxyMode: 'cloudflare', sslMode: 'paste', port80: 'closed' } as any);
+    expect(fs.readFileSync(path.join(sslDir, 'fullchain.pem'), 'utf8')).toBe(thirdCertPem);
+
+    // Rollback restores the LATEST pre-change state (C1), not the original
+    // C0 — the re-baseline guarantee.
+    svc.rollback();
+    expect(fs.readFileSync(path.join(sslDir, 'fullchain.pem'), 'utf8')).toBe(newCertPem);
   });
 
   it('discardStaged aborts a stage cleanly', () => {
