@@ -14,6 +14,7 @@ import {
   RealIpConfig,
   SHELL_SAFE_HEADER_RE,
 } from '../bootstrap/instance-config';
+import { sslLiveDir, sslStagingDir } from './ssl-staging';
 
 /**
  * Plausible-hostname check for a bootstrap domain. This value is user-supplied
@@ -57,13 +58,9 @@ export class BootstrapSetupService {
     await this.setupService.finalizeBootstrapSetup();
   }
 
-  /**
-   * Same resolution as `ssl-certificate.service.ts` `getSslPath()` (line ~1039):
-   * `SSL_CERT_PATH` env override, else the default nginx SSL volume path.
-   * Duplicated intentionally rather than importing the 1000+ line ACME service.
-   */
+  /** Live cert dir — delegates to ssl-staging.ts so there is one resolution. */
   private sslDir(): string {
-    return process.env.SSL_CERT_PATH || '/etc/nginx/ssl';
+    return sslLiveDir();
   }
 
   /**
@@ -245,9 +242,13 @@ export class BootstrapSetupService {
    */
   assertStagedCertificateCovers(domain: string, servingMode: ProxyMode): void {
     const validatedDomain = this.assertValidDomain(domain);
+    const stagedPath = path.join(sslStagingDir(), 'fullchain.pem');
+    const certPath = fs.existsSync(stagedPath)
+      ? stagedPath
+      : path.join(this.sslDir(), 'fullchain.pem');
     let cert: X509Certificate;
     try {
-      cert = new X509Certificate(fs.readFileSync(path.join(this.sslDir(), 'fullchain.pem')));
+      cert = new X509Certificate(fs.readFileSync(certPath));
     } catch {
       throw new BadRequestException(
         'Installed certificate could not be read — re-install the certificate for this domain',
@@ -269,7 +270,9 @@ export class BootstrapSetupService {
    */
   saveCertificates(certPem: string, keyPem: string, domain: string): void {
     const validatedDomain = this.assertValidDomain(domain);
-    const dir = this.sslDir();
+    // #514: user-driven writes are provisional — they land in staging/ and
+    // only apply() promotes them into the watched live dir.
+    const dir = sslStagingDir();
     fs.mkdirSync(dir, { recursive: true });
 
     const write = (name: string, content: string, mode: number) => {
@@ -303,12 +306,17 @@ export class BootstrapSetupService {
    */
   certificatesPresent(domain: string): boolean {
     const validatedDomain = this.assertValidDomain(domain);
-    const dir = this.sslDir();
+    // Per-file union of staging and live: after #514 a stage may hold only
+    // the generic pair (LE issuance with a real DNS-01 wildcard installed
+    // live), and after a promote everything is live — both must count.
+    const present = (name: string) =>
+      fs.existsSync(path.join(sslStagingDir(), name)) ||
+      fs.existsSync(path.join(this.sslDir(), name));
     return (
-      fs.existsSync(path.join(dir, 'fullchain.pem')) &&
-      fs.existsSync(path.join(dir, 'privkey.pem')) &&
-      fs.existsSync(path.join(dir, `wildcard.${validatedDomain}.crt`)) &&
-      fs.existsSync(path.join(dir, `wildcard.${validatedDomain}.key`))
+      present('fullchain.pem') &&
+      present('privkey.pem') &&
+      present(`wildcard.${validatedDomain}.crt`) &&
+      present(`wildcard.${validatedDomain}.key`)
     );
   }
 
