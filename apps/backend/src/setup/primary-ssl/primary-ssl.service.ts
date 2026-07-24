@@ -156,7 +156,11 @@ export class PrimarySslService {
     const next: InstanceConfig = {
       version: 2,
       state: 'applied',
-      origin: cur.origin,
+      // Day-2 identity/SSL apply is a graduation event: the install becomes
+      // UI-managed regardless of how it was set up. A prior origin:'env'
+      // adoption is promoted to 'wizard' here so the boot re-sync stops
+      // treating .env as authoritative for identity (spec §3).
+      origin: 'wizard',
       primaryDomain: cur.primaryDomain,
       proxyMode: applied.proxyMode,
       sslMode: applied.sslMode,
@@ -174,21 +178,17 @@ export class PrimarySslService {
     // those stay manual-rollback-only (ce#511).
     const needsConfirm = serving || (certAffecting && next.proxyMode === 'none');
 
-    // I1: on an env-adopted install (.env is authoritative, this file is a
-    // derived cache re-synced every boot from adoptOrResyncEnvInstall), the
-    // boot re-sync re-derives the config from .env and drops any knob .env
-    // cannot express — proxyMode is re-read from PROXY_MODE, but port80/realIp
-    // are omitted entirely (v1-style). So a UI-applied change to those reverts
-    // silently on the next restart. Warn loudly rather than pretend it stuck;
-    // apply()'s response has no warnings field to surface it in, so this is
-    // log-only (graduation to a persisted wizard write stays wizard-only for now).
+    // Graduation notice (spec §3): an env-adopted install (origin:'env') that
+    // reaches a day-2 primary-SSL apply is promoted to UI-managed identity in
+    // `next` above. Say so loudly — .env identity edits no longer apply, and
+    // the boot-time divergence warning is the safety net if the operator keeps
+    // editing .env after this point.
     if (cur.origin === 'env') {
       this.logger.warn(
-        `Applying primary-SSL changes to an env-adopted install (origin:'env'): .env stays ` +
-          `authoritative, so the next boot re-sync will overwrite these from .env — ` +
-          `proxyMode=${next.proxyMode}, port80=${next.port80}, realIp=${JSON.stringify(next.realIp)} ` +
-          `(port80/realIp are not representable in .env and will revert). Manage identity/SSL via ` +
-          `the wizard to persist them.`,
+        `Primary-SSL apply on an env-adopted install (origin:'env') graduated it to ` +
+          `UI-managed identity: bootstrap/instance.json is now authoritative and .env ` +
+          `identity edits (PRIMARY_DOMAIN/PROXY_MODE/…) no longer apply. Manage identity and ` +
+          `SSL via the admin UI from now on.`,
       );
     }
 

@@ -232,25 +232,27 @@ describe('PrimarySslService.apply classification', () => {
     expect(staging.discardStagedCertificates).toHaveBeenCalled();
   });
 
-  it('apply preserves origin: env from the loaded config in the written instance config (env-adopted installs)', async () => {
+  it('apply stamps origin: wizard, graduating an env-adopted install to UI-managed identity', async () => {
     const { svc } = build();
     const dto = { proxyMode: 'cloudflare', sslMode: 'paste', port80: 'redirect', realIp: undefined } as any;
     mockCur.proxyMode = 'cloudflare'; // no reachability change; mirrors the "cert-only change behind a proxy" case above
 
-    // No origin on the loaded config -> the written config carries origin: undefined
+    // A wizard (origin-absent) install stays wizard-owned; the write makes it explicit.
     await svc.apply(dto);
     const calls = (writeInstanceConfig as jest.Mock).mock.calls;
-    const noOriginWrite = calls[calls.length - 1][0];
-    expect(noOriginWrite.origin).toBeUndefined();
+    const wizardWrite = calls[calls.length - 1][0];
+    expect(wizardWrite.origin).toBe('wizard');
 
-    // Loaded config has origin: 'env' (day-2 apply on an env-adopted install) -> preserved in the write
+    // Day-2 apply on an env-adopted install (origin:'env') GRADUATES it: the
+    // written config becomes origin:'wizard' so the boot re-sync no longer
+    // treats .env as authoritative for identity (spec §3).
     mockCur.origin = 'env';
     await svc.apply(dto);
-    const envOriginWrite = calls[calls.length - 1][0];
-    expect(envOriginWrite).toEqual(expect.objectContaining({ origin: 'env' }));
+    const graduatedWrite = calls[calls.length - 1][0];
+    expect(graduatedWrite).toEqual(expect.objectContaining({ origin: 'wizard' }));
   });
 
-  it('warns that non-representable knobs revert on an env-origin install, and not on wizard-origin (I1)', async () => {
+  it('logs a graduation notice on an env-origin install, and not on a wizard-origin install', async () => {
     const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     try {
       const { svc } = build();
@@ -258,10 +260,12 @@ describe('PrimarySslService.apply classification', () => {
       mockCur.proxyMode = 'cloudflare';
       const dto = { proxyMode: 'cloudflare', sslMode: 'paste', port80: 'redirect', realIp: undefined } as any;
 
+      // env-origin apply graduates the install -> a graduation notice is logged.
       mockCur.origin = 'env';
       await svc.apply(dto);
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining("origin:'env'"));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('graduated'));
 
+      // wizard-origin apply is unchanged -> nothing to graduate, no notice.
       warn.mockClear();
       mockCur.origin = 'wizard';
       await svc.apply(dto);
