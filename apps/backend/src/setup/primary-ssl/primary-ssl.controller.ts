@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { SessionAuthGuard } from '../../auth/session-auth.guard';
 import { RolesGuard } from '../../auth/roles.guard';
@@ -41,4 +41,7 @@ export class PrimarySslController {
   @Post('rollback')
   @HttpCode(HttpStatus.OK)
   rollback() { this.svc.rollback(); return { rolledBack: true }; }
+
+  @Delete('staged')
+  discardStaged() { return this.svc.discardStaged(); }
 }
