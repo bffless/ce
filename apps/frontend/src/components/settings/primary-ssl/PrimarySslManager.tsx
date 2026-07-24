@@ -11,6 +11,8 @@ import {
   type PrimarySslStatus,
 } from '@/services/primarySslApi';
 import { useFeatureFlags } from '@/services/featureFlagsApi';
+import { useToast } from '@/hooks/use-toast';
+import { errorMessage } from './toastError';
 
 const DEFAULT_EDITOR_STATE: EditorState = {
   servingMode: 'none',
@@ -70,8 +72,25 @@ export function canApply(editor: EditorState, status: PrimarySslStatus | undefin
 export function PrimarySslManager() {
   const { data } = useGetPrimarySslStatusQuery();
   const { isEnabled } = useFeatureFlags();
+  const { toast } = useToast();
   const [editorState, setEditorState] = useState<EditorState>(DEFAULT_EDITOR_STATE);
   const [discardStaged, { isLoading: isDiscarding }] = useDiscardStagedCertificateMutation();
+
+  const handleDiscard = async () => {
+    try {
+      await discardStaged().unwrap();
+      toast({
+        title: 'Staged certificate discarded',
+        description: 'The staged certificate was removed. Nothing live changed.',
+      });
+    } catch (error: unknown) {
+      toast({
+        title: 'Error',
+        description: errorMessage(error, 'Failed to discard the staged certificate'),
+        variant: 'destructive',
+      });
+    }
+  };
 
   const realIpHeader = data?.realIp && 'header' in data.realIp ? data.realIp.header : null;
   const realIpRanges = data?.realIp && 'header' in data.realIp ? data.realIp.ranges.join('\n') : null;
@@ -112,7 +131,7 @@ export function PrimarySslManager() {
         <div className="flex items-center gap-2">
           <ApplyPanel config={config} disabled={!applyEnabled} />
           {data?.stagedCert && (
-            <Button variant="outline" onClick={() => discardStaged()} disabled={isDiscarding}>
+            <Button variant="outline" onClick={() => void handleDiscard()} disabled={isDiscarding}>
               {isDiscarding ? 'Discarding…' : 'Discard staged certificate'}
             </Button>
           )}

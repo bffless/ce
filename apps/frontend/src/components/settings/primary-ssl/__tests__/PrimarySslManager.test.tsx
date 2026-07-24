@@ -1,23 +1,34 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
 import { PrimarySslManager, splitRanges, toApplyBody, canApply } from '../PrimarySslManager';
 import type { EditorState } from '../ServingModelEditor';
 import type { PrimarySslStatus } from '@/services/primarySslApi';
 
 let enabled = true;
+let stagedCert: PrimarySslStatus['stagedCert'] = null;
+const discardStaged = vi.fn();
+const mockToast = vi.fn();
 vi.mock('@/services/featureFlagsApi', () => ({ useFeatureFlags: () => ({ isEnabled: () => enabled }) }));
+vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: mockToast }) }));
 vi.mock('@/services/primarySslApi', () => ({
-  useGetPrimarySslStatusQuery: () => ({ data: { domain: 'a.com', sslMode: 'paste', proxyMode: 'none', port80: 'redirect', realIp: null, cert: null, stagedCert: null, wildcardCovered: false, pendingRevert: null }, isLoading: false }),
+  useGetPrimarySslStatusQuery: () => ({ data: { domain: 'a.com', sslMode: 'paste', proxyMode: 'none', port80: 'redirect', realIp: null, cert: null, stagedCert, wildcardCovered: false, pendingRevert: null }, isLoading: false }),
   useApplyPrimarySslMutation: () => [vi.fn(), {}],
   useConfirmPrimarySslMutation: () => [vi.fn(), {}],
   useRollbackPrimarySslMutation: () => [vi.fn(), {}],
   useStagePrimaryCertificateMutation: () => [vi.fn(), {}],
   useIssuePrimaryLetsEncryptMutation: () => [vi.fn(), {}],
   usePrimarySslPreflightMutation: () => [vi.fn(), {}],
-  useDiscardStagedCertificateMutation: () => [vi.fn(), {}],
+  useDiscardStagedCertificateMutation: () => [discardStaged, { isLoading: false }],
 }));
 
 describe('PrimarySslManager', () => {
+  beforeEach(() => {
+    enabled = true;
+    stagedCert = null;
+    discardStaged.mockClear();
+    mockToast.mockClear();
+  });
+
   it('renders when the flag is enabled', () => {
     enabled = true;
     render(<PrimarySslManager />);
@@ -27,6 +38,45 @@ describe('PrimarySslManager', () => {
     enabled = false;
     const { container } = render(<PrimarySslManager />);
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe('PrimarySslManager discard staged certificate (#512)', () => {
+  beforeEach(() => {
+    enabled = true;
+    stagedCert = { commonName: 'staged.example.com' } as unknown as PrimarySslStatus['stagedCert'];
+    discardStaged.mockClear();
+    mockToast.mockClear();
+  });
+
+  it('shows a success toast when discarding succeeds', async () => {
+    discardStaged.mockReturnValue({ unwrap: () => Promise.resolve({ discarded: true }) });
+    render(<PrimarySslManager />);
+
+    fireEvent.click(screen.getByRole('button', { name: /discard staged certificate/i }));
+
+    await waitFor(() => expect(discardStaged).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Staged certificate discarded',
+          description: 'The staged certificate was removed. Nothing live changed.',
+        }),
+      ),
+    );
+  });
+
+  it('shows an error toast when discarding fails', async () => {
+    discardStaged.mockReturnValue({ unwrap: () => Promise.reject({ data: { message: 'boom' } }) });
+    render(<PrimarySslManager />);
+
+    fireEvent.click(screen.getByRole('button', { name: /discard staged certificate/i }));
+
+    await waitFor(() =>
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Error', description: 'boom', variant: 'destructive' }),
+      ),
+    );
   });
 });
 
