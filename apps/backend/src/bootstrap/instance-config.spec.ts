@@ -14,6 +14,10 @@ import {
   SHELL_SAFE_HEADER_RE,
   SHELL_SAFE_RANGE_RE,
   sniffSslMode,
+  sslDir,
+  envIdentity,
+  deriveAdoptedConfig,
+  adoptOrResyncEnvInstall,
 } from './instance-config';
 
 describe('instance-config', () => {
@@ -370,6 +374,101 @@ describe('instance-config', () => {
       expect(sniffSslMode(sslTmp, 'none')).toBe('paste');
       fs.writeFileSync(path.join(sslTmp, 'fullchain.pem'), 'not a pem');
       expect(sniffSslMode(sslTmp, 'none')).toBe('paste');
+    });
+  });
+
+  describe('env adoption & re-sync', () => {
+    let sslTmp: string;
+    let envBackup: NodeJS.ProcessEnv;
+
+    const legacyEnv = (over: Record<string, string | undefined> = {}): NodeJS.ProcessEnv =>
+      ({ PRIMARY_DOMAIN: 'legacy.com', PROXY_MODE: 'cloudflare', ...over } as NodeJS.ProcessEnv);
+
+    beforeEach(() => {
+      envBackup = { ...process.env };
+      sslTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bffless-ssl-'));
+    });
+    afterEach(() => {
+      process.env = envBackup;
+      fs.rmSync(sslTmp, { recursive: true, force: true });
+    });
+
+    it('adopts a legacy env install: applied, origin env, no knobs, sniffed sslMode', () => {
+      const cfg = adoptOrResyncEnvInstall(dir, legacyEnv(), sslTmp);
+      expect(cfg).toMatchObject({
+        version: 2, state: 'applied', origin: 'env',
+        primaryDomain: 'legacy.com', proxyMode: 'cloudflare', sslMode: 'paste',
+      });
+      expect(cfg!.port80).toBeUndefined();
+      expect(cfg!.realIp).toBeUndefined();
+      const onDisk = loadInstanceConfig(dir);
+      expect(onDisk).toEqual(cfg);
+      expect(fs.readFileSync(path.join(dir, 'instance.env'), 'utf8')).toContain('PRIMARY_DOMAIN=legacy.com');
+    });
+
+    it('omits proxyMode when PROXY_MODE is unset or unknown', () => {
+      const cfg = adoptOrResyncEnvInstall(dir, legacyEnv({ PROXY_MODE: undefined }), sslTmp);
+      expect(cfg!.proxyMode).toBeUndefined();
+      fs.rmSync(path.join(dir, 'instance.json'));
+      const cfg2 = adoptOrResyncEnvInstall(dir, legacyEnv({ PROXY_MODE: 'bogus' }), sslTmp);
+      expect(cfg2!.proxyMode).toBeUndefined();
+    });
+
+    it('skips adoption for localhost, missing domain, and platform mode', () => {
+      expect(adoptOrResyncEnvInstall(dir, legacyEnv({ PRIMARY_DOMAIN: 'localhost' }), sslTmp)).toBeNull();
+      expect(adoptOrResyncEnvInstall(dir, legacyEnv({ PRIMARY_DOMAIN: undefined }), sslTmp)).toBeNull();
+      expect(adoptOrResyncEnvInstall(dir, legacyEnv({ PLATFORM_MODE: 'true' }), sslTmp)).toBeNull();
+      expect(adoptOrResyncEnvInstall(dir, legacyEnv({ SSL_MANAGED_EXTERNALLY: 'true' }), sslTmp)).toBeNull();
+      expect(fs.existsSync(path.join(dir, 'instance.json'))).toBe(false);
+    });
+
+    it('never touches a wizard-origin file (explicit or absent origin)', () => {
+      writeInstanceConfig({ version: 2, state: 'applied', primaryDomain: 'wizard.com', proxyMode: 'none', sslMode: 'paste' }, dir);
+      const before = fs.readFileSync(path.join(dir, 'instance.json'), 'utf8');
+      expect(adoptOrResyncEnvInstall(dir, legacyEnv(), sslTmp)).toBeNull();
+      expect(fs.readFileSync(path.join(dir, 'instance.json'), 'utf8')).toBe(before);
+    });
+
+    it('leaves a corrupt instance.json untouched', () => {
+      fs.writeFileSync(path.join(dir, 'instance.json'), '{not json');
+      expect(adoptOrResyncEnvInstall(dir, legacyEnv(), sslTmp)).toBeNull();
+      expect(fs.readFileSync(path.join(dir, 'instance.json'), 'utf8')).toBe('{not json');
+    });
+
+    it('re-syncs an env-origin file when .env changes, and skips the write when unchanged', () => {
+      adoptOrResyncEnvInstall(dir, legacyEnv(), sslTmp);
+      // Spy on the real `fs` module (via require), not the `import * as fs`
+      // binding above: under this repo's CJS interop, `import * as fs` compiles
+      // to a live-binding getter proxy whose property descriptor is
+      // non-configurable, so jest.spyOn(fs, ...) throws "Cannot redefine
+      // property". The proxy forwards live reads to the real module object, so
+      // spying on that real object (require('fs')) is observed by
+      // instance-config.ts's own `import * as fs` calls too.
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const writeSpy = jest.spyOn(require('fs'), 'writeFileSync');
+      adoptOrResyncEnvInstall(dir, legacyEnv(), sslTmp); // unchanged
+      expect(writeSpy).not.toHaveBeenCalled();
+      const cfg = adoptOrResyncEnvInstall(dir, legacyEnv({ PRIMARY_DOMAIN: 'renamed.com' }), sslTmp);
+      expect(cfg!.primaryDomain).toBe('renamed.com');
+      expect(loadInstanceConfig(dir)!.primaryDomain).toBe('renamed.com');
+      writeSpy.mockRestore();
+    });
+
+    it('hydrateProcessEnv does not override process.env for origin:env files', () => {
+      adoptOrResyncEnvInstall(dir, legacyEnv(), sslTmp);
+      delete process.env.FRONTEND_URL;
+      process.env.PRIMARY_DOMAIN = 'fresh-from-env.com';
+      const cfg = hydrateProcessEnv(dir);
+      expect(cfg!.origin).toBe('env');
+      expect(process.env.PRIMARY_DOMAIN).toBe('fresh-from-env.com'); // NOT clobbered by the file
+      expect(process.env.FRONTEND_URL).toBeUndefined();
+    });
+
+    it('hydrateProcessEnv still overrides process.env for wizard files', () => {
+      writeInstanceConfig({ version: 2, state: 'applied', origin: 'wizard', primaryDomain: 'wizard.com', proxyMode: 'none', sslMode: 'paste' }, dir);
+      hydrateProcessEnv(dir);
+      expect(process.env.PRIMARY_DOMAIN).toBe('wizard.com');
+      expect(process.env.FRONTEND_URL).toBe('https://www.wizard.com');
     });
   });
 });

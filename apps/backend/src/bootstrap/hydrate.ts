@@ -28,10 +28,16 @@
 // either way, so the regression would only surface on bootstrapped
 // instances). This repo has no import-order eslint rule as of this writing;
 // if one is added later, pin this import's position explicitly.
-import { hydrateProcessEnv } from './instance-config';
+import { adoptOrResyncEnvInstall, hydrateProcessEnv } from './instance-config';
 
+// Legacy env-install adoption/re-sync must run before hydration so the file
+// hydrate reads is never stale relative to .env (spec §3).
+adoptOrResyncEnvInstall();
 const instanceCfg = hydrateProcessEnv();
 if (instanceCfg?.state === 'applied') {
   // eslint-disable-next-line no-console
-  console.log(`[bootstrap] identity hydrated from instance.json: ${instanceCfg.primaryDomain}`);
+  console.log(
+    `[bootstrap] identity hydrated from instance.json: ${instanceCfg.primaryDomain}` +
+      (instanceCfg.origin === 'env' ? ' (env-adopted; .env remains authoritative)' : ''),
+  );
 }

@@ -113,6 +113,85 @@ export function sniffSslMode(
   return 'paste';
 }
 
+// Identity as expressed by a legacy .env install (docker-compose passes .env
+// into the backend's environment). Null = not an adoptable install: no/localhost
+// domain, or a platform workspace (identity is platform-managed there — same
+// check as SetupService.isPlatformManaged).
+export function envIdentity(
+  env: NodeJS.ProcessEnv = process.env,
+): { primaryDomain: string; proxyMode?: ProxyMode } | null {
+  if (env.PLATFORM_MODE === 'true' || env.SSL_MANAGED_EXTERNALLY === 'true') return null;
+  const d = env.PRIMARY_DOMAIN;
+  if (!d || d === 'localhost') return null;
+  const pm = env.PROXY_MODE;
+  const proxyMode = pm === 'cloudflare' || pm === 'proxy' || pm === 'none' ? pm : undefined;
+  return { primaryDomain: d, proxyMode };
+}
+
+// The instance.json a legacy env install maps to. Knobs (port80/realIp) are
+// deliberately omitted (v1-style): deriveKnobs and render-main-conf.sh's env
+// fallback derive identical values, so adoption changes nothing nginx renders.
+export function deriveAdoptedConfig(
+  env: NodeJS.ProcessEnv = process.env,
+  ssl: string = sslDir(),
+): InstanceConfig | null {
+  const id = envIdentity(env);
+  if (!id) return null;
+  const cfg: InstanceConfig = {
+    version: 2,
+    state: 'applied',
+    origin: 'env',
+    primaryDomain: id.primaryDomain,
+    sslMode: sniffSslMode(ssl, env.PROXY_MODE),
+  };
+  if (id.proxyMode) cfg.proxyMode = id.proxyMode;
+  return cfg;
+}
+
+// Boot-time adoption/re-sync for legacy env installs (spec §§2–3). Rules:
+//   - no instance.json + env identity present → write an adopted file
+//   - origin:'env' file → re-derive from env, rewrite only if changed
+//   - wizard file (origin absent/'wizard') or corrupt file → never touched
+// For origin:'env', .env is truth and the files are derived caches — which is
+// also why hydrateProcessEnv skips its process.env override for them.
+// Must never throw: any failure degrades to today's env-only behavior.
+export function adoptOrResyncEnvInstall(
+  dir: string = bootstrapDir(),
+  env: NodeJS.ProcessEnv = process.env,
+  ssl: string = sslDir(),
+): InstanceConfig | null {
+  try {
+    const jsonPath = path.join(dir, 'instance.json');
+    const exists = fs.existsSync(jsonPath);
+    const existing = loadInstanceConfig(dir);
+    if (exists && !existing) {
+      console.warn('[bootstrap] instance.json present but unreadable — leaving it untouched');
+      return null;
+    }
+    if (existing && existing.origin !== 'env') {
+      const d = env.PRIMARY_DOMAIN;
+      if (d && d !== 'localhost' && d !== existing.primaryDomain) {
+        console.warn(
+          `[bootstrap] .env PRIMARY_DOMAIN=${d} differs from wizard-managed instance.json ` +
+            `(${existing.primaryDomain}); instance.json wins — change identity via the admin UI`,
+        );
+      }
+      return null;
+    }
+    const derived = deriveAdoptedConfig(env, ssl);
+    if (!derived) return null;
+    if (existing && JSON.stringify(existing) === JSON.stringify(derived)) return existing;
+    writeInstanceConfig(derived, dir);
+    console.log(
+      `[bootstrap] ${existing ? 're-synced' : 'adopted'} env identity into instance.json: ${derived.primaryDomain}`,
+    );
+    return derived;
+  } catch (err) {
+    console.warn(`[bootstrap] env adoption skipped: ${(err as Error).message}`);
+    return null;
+  }
+}
+
 export function loadInstanceConfig(dir: string = bootstrapDir()): InstanceConfig | null {
   try {
     const raw = fs.readFileSync(path.join(dir, 'instance.json'), 'utf8');
@@ -144,7 +223,12 @@ export function deriveIdentityEnv(cfg: InstanceConfig): Record<string, string> {
 export function hydrateProcessEnv(dir: string = bootstrapDir()): InstanceConfig | null {
   const cfg = loadInstanceConfig(dir);
   if (!cfg) return null;
-  Object.assign(process.env, deriveIdentityEnv(cfg));
+  // origin:'env' — .env is truth and already lives in process.env; assigning
+  // the file's values would resurrect stale identity on the first boot after
+  // an .env edit (SuperTokens captures env before re-sync could correct it).
+  if (cfg.origin !== 'env') {
+    Object.assign(process.env, deriveIdentityEnv(cfg));
+  }
   return cfg;
 }
 
