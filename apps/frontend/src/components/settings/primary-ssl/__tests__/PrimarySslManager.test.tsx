@@ -193,4 +193,14 @@ describe('canApply (#512)', () => {
   it('no status yet (loading) disables non-selfsigned Apply', () => {
     expect(canApply(editor(), undefined)).toBe(false);
   });
+  it('switching mode to letsencrypt with a live cert present stays enabled even with nothing staged (#512)', () => {
+    // Issuance may legitimately reuse the still-valid live cert without ever
+    // populating stagedCert, which would otherwise dead-end the Apply button.
+    expect(
+      canApply(
+        editor({ sslMode: 'letsencrypt' }),
+        status({ sslMode: 'selfsigned', stagedCert: null }),
+      ),
+    ).toBe(true);
+  });
 });

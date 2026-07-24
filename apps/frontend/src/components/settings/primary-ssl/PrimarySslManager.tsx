@@ -66,7 +66,17 @@ export function canApply(editor: EditorState, status: PrimarySslStatus | undefin
   // Knob-only edits (port 80 / real-IP) on the mode that's already serving a
   // cert stay enabled; switching modes requires staging first. The backend
   // remains authoritative — this only prevents the guaranteed-422 click.
-  return editor.sslMode === status?.sslMode && status?.cert != null;
+  if (editor.sslMode === status?.sslMode && status?.cert != null) return true;
+  // Switching TO letsencrypt with a live cert present stays enabled even
+  // with nothing staged: issuance (requestPrimaryDomainCertificate) may
+  // legitimately reuse the still-valid live cert without ever populating
+  // stagedCert (the reuse check short-circuits before any staging write).
+  // Without this, switching mode -> letsencrypt with a reusable live cert
+  // dead-ends the Apply button with no way to stage anything (issuing again
+  // just reuses the same live cert, forever reporting stagedCert: null).
+  // The backend stays authoritative for anything this heuristic gets wrong.
+  if (editor.sslMode === 'letsencrypt' && status?.cert != null) return true;
+  return false;
 }
 
 export function PrimarySslManager() {
