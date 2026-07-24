@@ -149,18 +149,32 @@ export class PrimarySslService {
       realIp: applied.realIp,
     };
     const serving = this.isReachabilityChange(cur, next);
+    // A cert is "in flight" when a stage/issue snapshotted this cycle and no
+    // apply has committed it yet. An sslMode switch also changes the served
+    // cert (e.g. paste -> selfsigned) even with no newly staged files.
+    const certAffecting =
+      (this.snap.hasSnapshot() && !this.snap.isApplied()) || cur.sslMode !== next.sslMode;
+    // On direct serving (nginx terminates TLS) a bad cert breaks the browser
+    // on admin.<domain> — the page hosting the rollback button — so cert
+    // changes there get the same provisional confirm window as reachability
+    // changes. Behind Cloudflare/proxy the origin cert isn't user-facing, so
+    // those stay manual-rollback-only (ce#511).
+    const needsConfirm = serving || (certAffecting && next.proxyMode === 'none');
 
-    // Reuse the snapshot taken by a prior stage/issue (which holds the OLD cert).
-    // For a pure serving change with no prior cert op, this snapshots the current
-    // known-good state so a serving rollback can restore it.
+    // Reuse the snapshot taken by a prior stage/issue (which holds the OLD
+    // cert); re-baseline over a stale applied one; otherwise snapshot the
+    // current known-good state.
     this.snap.snapshotForChangeCycle();
     writeInstanceConfig(next); // watcher re-renders main.conf + reloads (~3s); no restart
 
-    if (serving) {
+    if (needsConfirm) {
       const deadlineMs = Date.now() + this.confirmTimeoutMs();
       this.snap.writePendingRevert({ deadlineMs, appliedAt: Date.now() });
-      return { applied: true, kind: 'serving', deadlineMs };
+      return { applied: true, kind: serving ? 'serving' : 'cert-only', deadlineMs };
     }
+    // Committed without a confirm window: mark the snapshot applied so the
+    // next change cycle re-baselines instead of rolling back past this change.
+    this.snap.markApplied();
     return { applied: true, kind: 'cert-only' };
   }
 
