@@ -100,6 +100,23 @@ export class SslInfoService {
   }
 
   /**
+   * Cert staged for the primary domain but not yet promoted by apply()
+   * (<SSL_CERT_PATH>/staging/fullchain.pem). Absence is the normal state,
+   * so unlike getServedPrimaryCertInfo this logs nothing on a miss.
+   */
+  async getStagedPrimaryCertInfo(): Promise<SslCertificateInfo | null> {
+    try {
+      const certContent = await readFile(
+        join(this.getSslPath(), 'staging', 'fullchain.pem'),
+        'utf-8',
+      );
+      return this.parseCertificate(certContent, 'individual');
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Get SSL certificate info for system app domains
    * These domains have individual certificates (not wildcard)
    */
