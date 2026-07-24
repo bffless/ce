@@ -171,3 +171,57 @@ describe('HomePage — wildcard SSL banner', () => {
     expect(screen.getByText('Wildcard SSL Certificate Required')).toBeInTheDocument();
   });
 });
+
+describe('HomePage — Repositories card gating (#517)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    mockGetSetupStatus.mockReturnValue({ data: { isSetupComplete: true }, isLoading: false });
+    mockGetWildcardStatus.mockReturnValue({ data: undefined });
+    mockGetPrimarySslStatus.mockReturnValue({ data: undefined });
+  });
+
+  const sessionWithRole = (role: 'admin' | 'user' | 'member') => ({
+    data: { user: { email: `${role}@example.com`, role } },
+  });
+
+  it('shows the card for an admin with zero repos', () => {
+    mockGetSession.mockReturnValue(sessionWithRole('admin'));
+    mockGetMyRepositories.mockReturnValue({ data: { total: 0 } });
+    renderHomePage();
+
+    expect(screen.getByText('Repositories')).toBeInTheDocument();
+  });
+
+  it('shows the card for a user-role account with zero repos (can create projects)', () => {
+    mockGetSession.mockReturnValue(sessionWithRole('user'));
+    mockGetMyRepositories.mockReturnValue({ data: { total: 0 } });
+    renderHomePage();
+
+    expect(screen.getByText('Repositories')).toBeInTheDocument();
+  });
+
+  it('shows the card for a user-role account before the repositories query resolves', () => {
+    mockGetSession.mockReturnValue(sessionWithRole('user'));
+    mockGetMyRepositories.mockReturnValue({ data: undefined });
+    renderHomePage();
+
+    expect(screen.getByText('Repositories')).toBeInTheDocument();
+  });
+
+  it('hides the card for a member with zero repo memberships (cannot create projects)', () => {
+    mockGetSession.mockReturnValue(sessionWithRole('member'));
+    mockGetMyRepositories.mockReturnValue({ data: { total: 0 } });
+    renderHomePage();
+
+    expect(screen.queryByText('Repositories')).not.toBeInTheDocument();
+  });
+
+  it('shows the card for a member with at least one repo membership', () => {
+    mockGetSession.mockReturnValue(sessionWithRole('member'));
+    mockGetMyRepositories.mockReturnValue({ data: { total: 2 } });
+    renderHomePage();
+
+    expect(screen.getByText('Repositories')).toBeInTheDocument();
+  });
+});
