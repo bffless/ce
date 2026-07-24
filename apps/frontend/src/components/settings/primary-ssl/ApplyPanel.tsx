@@ -16,11 +16,13 @@ export function ApplyPanel({
   const handleApply = async () => {
     try {
       const result = await applyPrimarySsl(config).unwrap();
-      if (result.kind === 'serving') {
+      if (result.deadlineMs != null) {
         toast({
           title: 'Applied — confirmation required',
           description:
-            'A confirmation countdown has started. Reachability may change; confirm below once you’ve verified the site loads, or it will auto-revert.',
+            result.kind === 'serving'
+              ? 'A confirmation countdown has started. Reachability may change; confirm below once you’ve verified the site loads, or it will auto-revert.'
+              : 'A confirmation countdown has started. Verify the site loads with the new certificate, then confirm below — or it will auto-revert.',
         });
       } else {
         toast({ title: 'Applied', description: 'Certificate updated successfully.' });

@@ -80,7 +80,7 @@ export class PrimarySslService {
     );
     // Capture the OLD live cert BEFORE saveCertificates overwrites it, so a later
     // rollback restores the pre-change cert (not the one we're about to write).
-    this.snap.snapshotIfAbsent();
+    this.snap.snapshotForChangeCycle();
     this.bootstrap.saveCertificates(dto.certificatePem, dto.privateKeyPem, domain);
     return result;
   }
@@ -106,9 +106,10 @@ export class PrimarySslService {
     if (this.snap.readPendingRevert()) {
       throw new BadRequestException('A serving change is pending confirmation; confirm or roll it back first');
     }
-    // Capture the current live cert BEFORE issuance overwrites it, only if a
-    // snapshot doesn't already exist this change cycle.
-    this.snap.snapshotIfAbsent();
+    // Capture the current live cert BEFORE issuance overwrites it — unless a
+    // snapshot from earlier in this change cycle already holds it (a committed
+    // prior change re-baselines instead).
+    this.snap.snapshotForChangeCycle();
     const pre = await this.preflightSvc.run(domain);
     if (!pre.ok) {
       throw new BadRequestException('DNS/port-80 preflight failed; not requesting a certificate');
@@ -149,18 +150,34 @@ export class PrimarySslService {
       realIp: applied.realIp,
     };
     const serving = this.isReachabilityChange(cur, next);
+    // A cert is "in flight" when a stage/issue snapshotted this cycle and no
+    // apply has committed it yet. An sslMode switch also changes the served
+    // cert (e.g. paste -> selfsigned) even with no newly staged files.
+    const certAffecting =
+      (this.snap.hasSnapshot() && !this.snap.isApplied()) || cur.sslMode !== next.sslMode;
+    // On direct serving (nginx terminates TLS) a bad cert breaks the browser
+    // on admin.<domain> — the page hosting the rollback button — so cert
+    // changes there get the same provisional confirm window as reachability
+    // changes. Behind Cloudflare/proxy the origin cert isn't user-facing, so
+    // those stay manual-rollback-only (ce#511).
+    const needsConfirm = serving || (certAffecting && next.proxyMode === 'none');
 
-    // Reuse the snapshot taken by a prior stage/issue (which holds the OLD cert).
-    // For a pure serving change with no prior cert op, this snapshots the current
-    // known-good state so a serving rollback can restore it.
-    this.snap.snapshotIfAbsent();
+    // Reuse the snapshot taken by a prior stage/issue (which holds the OLD
+    // cert); re-baseline over a stale applied one; otherwise snapshot the
+    // current known-good state.
+    this.snap.snapshotForChangeCycle();
     writeInstanceConfig(next); // watcher re-renders main.conf + reloads (~3s); no restart
 
-    if (serving) {
+    if (needsConfirm) {
       const deadlineMs = Date.now() + this.confirmTimeoutMs();
       this.snap.writePendingRevert({ deadlineMs, appliedAt: Date.now() });
-      return { applied: true, kind: 'serving', deadlineMs };
+      return { applied: true, kind: serving ? 'serving' : 'cert-only', deadlineMs };
     }
+    // Committed without a confirm window: mark the snapshot applied so the
+    // next change cycle re-baselines instead of rolling back past this change.
+    // (Deliberate even for a no-op apply: the snapshot just taken of the
+    // unchanged state keeps the manual rollback button working.)
+    this.snap.markApplied();
     return { applied: true, kind: 'cert-only' };
   }
 

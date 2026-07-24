@@ -2,6 +2,9 @@ import { ForbiddenException } from '@nestjs/common';
 import { PrimarySslService } from './primary-ssl.service';
 
 const domain = 'a.com';
+
+let mockCur: any;
+
 const makeDeps = () => ({
   bootstrap: {
     validateCertificatePair: jest.fn().mockReturnValue({ sans: ['a.com', '*.a.com'], wildcardCovered: true }),
@@ -16,15 +19,19 @@ const makeDeps = () => ({
     getWildcardCertInfo: jest.fn().mockResolvedValue({ type: 'wildcard', expiresAt: new Date(), isValid: true }),
     getServedPrimaryCertInfo: jest.fn().mockResolvedValue({ type: 'individual', expiresAt: new Date(), isValid: true }),
   },
-  snap: { snapshot: jest.fn(), snapshotIfAbsent: jest.fn(), clearSnapshot: jest.fn(), restore: jest.fn(), hasSnapshot: jest.fn().mockReturnValue(false), writePendingRevert: jest.fn(), readPendingRevert: jest.fn().mockReturnValue(null), clearPendingRevert: jest.fn() },
+  snap: { snapshot: jest.fn(), snapshotForChangeCycle: jest.fn(), clearSnapshot: jest.fn(), restore: jest.fn(), hasSnapshot: jest.fn().mockReturnValue(false), writePendingRevert: jest.fn(), readPendingRevert: jest.fn().mockReturnValue(null), clearPendingRevert: jest.fn(), isApplied: jest.fn().mockReturnValue(false), markApplied: jest.fn() },
 });
 
 jest.mock('../../bootstrap/instance-config', () => ({
-  loadInstanceConfig: () => ({ version: 2, state: 'applied', primaryDomain: 'a.com', proxyMode: 'none', sslMode: 'paste', port80: 'redirect', realIp: null }),
+  loadInstanceConfig: () => mockCur,
   writeInstanceConfig: jest.fn(),
 }));
 
 const build = () => { const d = makeDeps(); return { d, svc: new PrimarySslService(d.bootstrap as any, d.ssl as any, d.preflight as any, d.info as any, d.snap as any) }; };
+
+beforeEach(() => {
+  mockCur = { version: 2, state: 'applied', primaryDomain: 'a.com', proxyMode: 'none', sslMode: 'paste', port80: 'redirect', realIp: null };
+});
 
 describe('PrimarySslService', () => {
   afterEach(() => { delete process.env.PLATFORM_MODE; delete process.env.SSL_MANAGED_EXTERNALLY; });
@@ -75,8 +82,8 @@ describe('PrimarySslService', () => {
     expect(d.bootstrap.saveCertificates).toHaveBeenCalledWith('C', 'K', domain);
     expect(res.wildcardCovered).toBe(true);
     // The snapshot must be taken BEFORE the cert is overwritten.
-    expect(d.snap.snapshotIfAbsent).toHaveBeenCalled();
-    const snapOrder = d.snap.snapshotIfAbsent.mock.invocationCallOrder[0];
+    expect(d.snap.snapshotForChangeCycle).toHaveBeenCalled();
+    const snapOrder = d.snap.snapshotForChangeCycle.mock.invocationCallOrder[0];
     const saveOrder = d.bootstrap.saveCertificates.mock.invocationCallOrder[0];
     expect(snapOrder).toBeLessThan(saveOrder);
   });
@@ -108,25 +115,61 @@ describe('PrimarySslService', () => {
 });
 
 describe('PrimarySslService.apply classification', () => {
-  it('cert-only change writes config, no pending revert', async () => {
+  it('cert-only change behind a proxy writes config with no pending revert, and marks the snapshot applied', async () => {
     const { d, svc } = build();
-    const r = await svc.apply({ proxyMode: 'none', sslMode: 'letsencrypt', port80: 'redirect', realIp: undefined } as any);
+    mockCur.proxyMode = 'cloudflare';
+    d.snap.hasSnapshot.mockReturnValue(true); // a cert was staged this cycle
+    const r = await svc.apply({ proxyMode: 'cloudflare', sslMode: 'paste', port80: 'redirect', realIp: undefined } as any);
     expect(r.kind).toBe('cert-only');
-    expect(d.snap.snapshotIfAbsent).toHaveBeenCalled();
+    expect(r.deadlineMs).toBeUndefined();
+    expect(d.snap.snapshotForChangeCycle).toHaveBeenCalled();
     expect(d.snap.writePendingRevert).not.toHaveBeenCalled();
+    expect(d.snap.markApplied).toHaveBeenCalled();
   });
 
-  it('serving change writes a pending revert with a deadline', async () => {
+  it('cert change on direct serving gets the confirm window (pending revert + deadline, kind stays cert-only)', async () => {
+    const { d, svc } = build();
+    d.snap.hasSnapshot.mockReturnValue(true); // staged-but-unapplied cert in flight
+    const r = await svc.apply({ proxyMode: 'none', sslMode: 'paste', port80: 'redirect', realIp: undefined } as any);
+    expect(r.kind).toBe('cert-only');
+    expect(typeof r.deadlineMs).toBe('number');
+    expect(d.snap.writePendingRevert).toHaveBeenCalled();
+    expect(d.snap.markApplied).not.toHaveBeenCalled();
+    // classification must read the marker state BEFORE re-baselining can clear it
+    expect(d.snap.isApplied.mock.invocationCallOrder[0]).toBeLessThan(d.snap.snapshotForChangeCycle.mock.invocationCallOrder[0]);
+  });
+
+  it('sslMode-only swap on direct serving gets the confirm window even with no staged files', async () => {
+    const { d, svc } = build();
+    d.snap.hasSnapshot.mockReturnValue(false);
+    const r = await svc.apply({ proxyMode: 'none', sslMode: 'selfsigned', port80: 'redirect', realIp: undefined } as any);
+    expect(r.kind).toBe('cert-only');
+    expect(typeof r.deadlineMs).toBe('number');
+    expect(d.snap.writePendingRevert).toHaveBeenCalled();
+  });
+
+  it('a stale applied snapshot does not trigger the confirm window on a no-op direct-mode apply', async () => {
+    const { d, svc } = build();
+    d.snap.hasSnapshot.mockReturnValue(true);
+    d.snap.isApplied.mockReturnValue(true); // left over from a committed change
+    const r = await svc.apply({ proxyMode: 'none', sslMode: 'paste', port80: 'redirect', realIp: undefined } as any);
+    expect(r.deadlineMs).toBeUndefined();
+    expect(d.snap.writePendingRevert).not.toHaveBeenCalled();
+    expect(d.snap.markApplied).toHaveBeenCalled();
+  });
+
+  it('serving change writes a pending revert with a deadline and does not mark applied', async () => {
     process.env.SSL_SERVING_CONFIRM_TIMEOUT_MS = '1000';
     const { d, svc } = build();
     const r = await svc.apply({ proxyMode: 'cloudflare', sslMode: 'paste', port80: 'redirect', realIp: undefined } as any);
     expect(r.kind).toBe('serving');
     expect(d.snap.writePendingRevert).toHaveBeenCalled();
     expect(typeof r.deadlineMs).toBe('number');
+    expect(d.snap.markApplied).not.toHaveBeenCalled();
     delete process.env.SSL_SERVING_CONFIRM_TIMEOUT_MS;
   });
 
-  it('rejects a second apply while a serving revert is pending', async () => {
+  it('rejects a second apply while a revert is pending', async () => {
     const { d, svc } = build();
     d.snap.readPendingRevert.mockReturnValue({ deadlineMs: Date.now() + 1000, appliedAt: Date.now() });
     await expect(svc.apply({ proxyMode: 'none', sslMode: 'paste' } as any)).rejects.toThrow();
@@ -147,7 +190,7 @@ describe('PrimarySslService.issueLetsEncrypt', () => {
     const { d, svc } = build();
     d.ssl.requestPrimaryDomainCertificate.mockResolvedValue({ success: true, sans: ['a.com'] });
     const r = await svc.issueLetsEncrypt();
-    expect(d.snap.snapshotIfAbsent).toHaveBeenCalled();
+    expect(d.snap.snapshotForChangeCycle).toHaveBeenCalled();
     expect(d.preflight.run).toHaveBeenCalledWith('a.com');
     expect(d.ssl.requestPrimaryDomainCertificate).toHaveBeenCalledWith('a.com');
     expect(r.issued).toBe(true);
@@ -168,7 +211,7 @@ describe('PrimarySslService.issueLetsEncrypt', () => {
     const { d, svc } = build();
     d.ssl.requestPrimaryDomainCertificate.mockResolvedValue({ success: true, sans: ['a.com'] });
     await svc.issueLetsEncrypt();
-    const snapOrder = d.snap.snapshotIfAbsent.mock.invocationCallOrder[0];
+    const snapOrder = d.snap.snapshotForChangeCycle.mock.invocationCallOrder[0];
     const issueOrder = d.ssl.requestPrimaryDomainCertificate.mock.invocationCallOrder[0];
     expect(snapOrder).toBeLessThan(issueOrder);
   });
@@ -182,7 +225,7 @@ describe('PrimarySslService.issueLetsEncrypt', () => {
     const { d, svc } = build();
     d.snap.readPendingRevert.mockReturnValue({ deadlineMs: Date.now() + 1000, appliedAt: Date.now() });
     await expect(svc.issueLetsEncrypt()).rejects.toThrow();
-    expect(d.snap.snapshotIfAbsent).not.toHaveBeenCalled();
+    expect(d.snap.snapshotForChangeCycle).not.toHaveBeenCalled();
     expect(d.ssl.requestPrimaryDomainCertificate).not.toHaveBeenCalled();
   });
 });

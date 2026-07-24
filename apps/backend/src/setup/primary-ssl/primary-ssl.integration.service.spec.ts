@@ -83,4 +83,39 @@ describe('PrimarySslService cert rollback (real snapshot service)', () => {
     expect(fs.readFileSync(path.join(sslDir, 'fullchain.pem'), 'utf8')).toBe('C0');
     expect(fs.readFileSync(path.join(sslDir, `wildcard.${domain}.crt`), 'utf8')).toBe('C0');
   });
+
+  it('chained applies re-baseline: rollback after the second apply restores the FIRST applied cert, not the original', async () => {
+    // Proxied (Cloudflare) config on both the baseline and every apply below,
+    // so no reachability/confirm window is involved — this test is purely
+    // about the ssl-snapshot re-baseline chain (ce#511).
+    writeInstanceConfig(
+      { version: 2, state: 'applied', primaryDomain: domain, proxyMode: 'cloudflare', sslMode: 'paste', port80: 'redirect', realIp: null },
+      bootDir,
+    );
+    const { svc } = build();
+
+    // Original live cert, before any staged change.
+    seedLiveCert('ORIG');
+
+    // Stage + apply cert A. Committed with no confirm window (proxied, no
+    // reachability change) -> markApplied() runs, no deadlineMs.
+    svc.stagePaste({ certificatePem: 'A', privateKeyPem: 'A', servingMode: 'cloudflare' } as any);
+    const r1 = await svc.apply({ proxyMode: 'cloudflare', sslMode: 'paste', port80: 'redirect', realIp: undefined } as any);
+    expect(r1.kind).toBe('cert-only');
+    expect(r1.deadlineMs).toBeUndefined();
+    expect(fs.readFileSync(path.join(sslDir, 'fullchain.pem'), 'utf8')).toBe('A');
+
+    // Stage + apply cert B. The stage re-baselines the (now-applied) snapshot
+    // over A -- so the snapshot goes from holding ORIG to holding A.
+    svc.stagePaste({ certificatePem: 'B', privateKeyPem: 'B', servingMode: 'cloudflare' } as any);
+    const r2 = await svc.apply({ proxyMode: 'cloudflare', sslMode: 'paste', port80: 'redirect', realIp: undefined } as any);
+    expect(r2.kind).toBe('cert-only');
+    expect(fs.readFileSync(path.join(sslDir, 'fullchain.pem'), 'utf8')).toBe('B');
+
+    // Roll back — must restore A (the last committed change before this one),
+    // NOT the original pre-chain ORIG cert.
+    svc.rollback();
+    expect(fs.readFileSync(path.join(sslDir, 'fullchain.pem'), 'utf8')).toBe('A');
+    expect(fs.readFileSync(path.join(sslDir, `wildcard.${domain}.crt`), 'utf8')).toBe('A');
+  });
 });
