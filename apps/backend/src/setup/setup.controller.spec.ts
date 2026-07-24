@@ -68,4 +68,16 @@ describe('SetupController', () => {
       expect(service.initialize).toHaveBeenCalledWith(mockDto);
     });
   });
+
+  describe('getReady', () => {
+    it('returns ready with wide-open CORS and no-store caching', () => {
+      const res = { setHeader: jest.fn() };
+
+      const result = controller.getReady(res as any);
+
+      expect(result).toEqual({ ready: true });
+      expect(res.setHeader).toHaveBeenCalledWith('Access-Control-Allow-Origin', '*');
+      expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
+    });
+  });
 });

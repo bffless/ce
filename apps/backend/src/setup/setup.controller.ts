@@ -6,13 +6,14 @@ import {
   HttpStatus,
   Post,
   Req,
+  Res,
   BadRequestException,
   UnauthorizedException,
   Logger,
   UseGuards,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Request } from 'express';
+import { Request, Response } from 'express';
 import { SessionContainer } from 'supertokens-node/recipe/session';
 import { SetupService } from './setup.service';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
@@ -82,6 +83,26 @@ export class SetupController {
   })
   async getStatus(): Promise<SetupStatusResponseDto> {
     return this.setupService.getSetupStatus();
+  }
+
+  @Get('ready')
+  @ApiOperation({
+    summary: 'Readiness probe',
+    description:
+      'Answers 200 once the backend is fully booted. Served with Access-Control-Allow-Origin: * so ' +
+      'the bootstrap wizard can poll it from any origin (including a bare-IP page) across the apply ' +
+      'restart. Public; exposes nothing beyond process liveness.',
+  })
+  @ApiResponse({ status: 200, description: 'Backend is up and serving requests' })
+  getReady(@Res({ passthrough: true }) res: Response): { ready: boolean } {
+    // Overwrites the header the global CORS middleware set from its origin
+    // allowlist: this endpoint carries no credentials and nothing beyond
+    // "the process is up", so any origin may read it — that is what lets the
+    // wizard's post-apply poll work from the bare-IP page. no-store keeps
+    // any layer from replaying a stale "ready" mid-restart.
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'no-store');
+    return { ready: true };
   }
 
   @Get('constraints')
