@@ -47,15 +47,37 @@ BOLD='\033[1m'
 DIM='\033[2m'
 NC='\033[0m' # No Color
 
+# Number of columns between the box-drawing borders in print_header() and
+# print_web_bootstrap_banner() (both boxes are the same width).
+BOX_WIDTH=75
+
 # =============================================================================
 # Helper Functions
 # =============================================================================
+
+# Centers a title within a $BOX_WIDTH-column field for the box-drawing
+# banners. $1 is the plain (no ANSI codes) text, used to compute padding via
+# ${#var} so future copy edits stay centered instead of relying on
+# hand-counted spaces; $2 is the (optionally colored) text actually printed.
+# Echoes "<left-pad><text><right-pad>" with no trailing newline.
+center_line() {
+    plain="$1"
+    styled="$2"
+    text_len=${#plain}
+    total_pad=$((BOX_WIDTH - text_len))
+    if [ "$total_pad" -lt 0 ]; then
+        total_pad=0
+    fi
+    left_pad=$((total_pad / 2))
+    right_pad=$((total_pad - left_pad))
+    printf '%*s%b%*s' "$left_pad" '' "$styled" "$right_pad" ''
+}
 
 print_header() {
     echo ""
     printf "${BLUE}╔═══════════════════════════════════════════════════════════════════════════╗${NC}\n"
     printf "${BLUE}║                                                                           ║${NC}\n"
-    printf "${BLUE}║${NC}                               ${BOLD}Bffless                     ${NC}                ${BLUE}║${NC}\n"
+    printf "${BLUE}║${NC}%s${BLUE}║${NC}\n" "$(center_line "Bffless" "${BOLD}Bffless${NC}")"
     printf "${BLUE}║                                                                           ║${NC}\n"
     printf "${BLUE}╚═══════════════════════════════════════════════════════════════════════════╝${NC}\n"
     echo ""
@@ -102,31 +124,54 @@ print_web_bootstrap_banner() {
     claim_token=$(grep '^ONBOARDING_TOKEN=' .env 2>/dev/null | cut -d '=' -f2-)
     server_ip=$(detect_server_ip)
 
+    # With a claim token, the wizard links below carry it as `?token=` so
+    # the browser has it without retyping; without one (unreadable .env),
+    # fall back to bare URLs and rely on the manual-entry line below.
+    if [ -n "$claim_token" ]; then
+        ip_url="https://${server_ip}/?token=${claim_token}"
+        domain_url="https://admin.<your-domain>/?token=${claim_token}"
+        step1_line1="Open the setup wizard - this link carries your claim token, so it"
+        step1_line2="skips straight to account setup (no claim screen to fill in):"
+    else
+        ip_url="https://${server_ip}"
+        domain_url="https://admin.<your-domain>"
+        step1_line1="Open the setup wizard:"
+        step1_line2=""
+    fi
+
+    banner_title="Bffless is running - finish setup in a browser"
     echo ""
     printf "${BLUE}╔═══════════════════════════════════════════════════════════════════════════╗${NC}\n"
-    printf "${BLUE}║${NC}                       ${BOLD}Bffless is running - finish setup in a browser${NC}      ${BLUE}║${NC}\n"
+    printf "${BLUE}║${NC}%s${BLUE}║${NC}\n" "$(center_line "$banner_title" "${BOLD}${banner_title}${NC}")"
     printf "${BLUE}╚═══════════════════════════════════════════════════════════════════════════╝${NC}\n"
     echo ""
     if [ -n "$claim_token" ]; then
         printf "  ${BOLD}Claim token:${NC} ${YELLOW}${claim_token}${NC}\n"
+        printf "  ${DIM}(only needed if you type the URL in by hand instead of clicking a link below)${NC}\n"
     else
         print_warning "Could not read ONBOARDING_TOKEN from .env - check $ABSOLUTE_INSTALL_DIR/.env"
     fi
     echo ""
     printf "${BOLD}Next steps:${NC}\n"
     echo ""
-    printf "  ${CYAN}1.${NC} Open the setup wizard:\n"
+    printf "  ${CYAN}1.${NC} %s\n" "$step1_line1"
+    if [ -n "$step1_line2" ]; then
+        printf "     %s\n" "$step1_line2"
+    fi
     echo ""
-    printf "     ${YELLOW}https://${server_ip}${NC}\n"
+    printf "     ${YELLOW}${ip_url}${NC}\n"
     printf "     ${DIM}(a browser certificate warning is expected here)${NC}\n"
     echo ""
     printf "  ${CYAN}2.${NC} Or point a domain at this server first, then use it instead:\n"
     echo ""
     echo "     Cloudflare: A records for @ and *, SSL/TLS mode: Full"
-    printf "     ${YELLOW}https://admin.<your-domain>${NC}\n"
+    printf "     ${YELLOW}${domain_url}${NC}\n"
     echo ""
-    printf "  ${CYAN}3.${NC} Enter the claim token above to finish setup.\n"
-    echo ""
+    if [ -n "$claim_token" ]; then
+        printf "  ${CYAN}3.${NC} Typed the URL in by hand instead? Paste the claim token above when\n"
+        printf "     the wizard's claim-token screen asks for it.\n"
+        echo ""
+    fi
 }
 
 # =============================================================================
