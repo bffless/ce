@@ -120,7 +120,7 @@ echo "â€” status.sh: reports sections, restart-pending, and survives failures â€
 (
     make_sandbox
     FAILURES=0
-    cd "$SB/app" || exit 1
+    cd "$SB/app"
     printf '{\n  "version": "0.0.1"\n}\n' > package.json
     git init -q && git config user.email t@t && git config user.name t
     git add -A && git commit -qm init
