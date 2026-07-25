@@ -130,8 +130,21 @@ if [ "${SSL_MODE}" = "selfsigned" ]; then
     # built-in self-signed cert — no real cert is ever pasted or issued. Serve
     # it for both the admin and wildcard vhosts.
     if [ ! -f "${SSL_DIR}/bootstrap-selfsigned.crt" ] || [ ! -f "${SSL_DIR}/bootstrap-selfsigned.key" ]; then
-        echo "❌ SSL_MODE=selfsigned but bootstrap-selfsigned.crt/.key is missing"
-        exit 1
+        # Env-ADOPTED installs never have the pair (adoption gates on its
+        # absence; only the bootstrap-mode branch above generates it), so a
+        # day-2 switch to selfsigned would otherwise dead-end: exit-1 here is
+        # a silent no-op under the watcher and a crash-loop via the
+        # entrypoint on the next restart (v0.2.18 review, C1). Generate on
+        # demand — same shape as the bootstrap-mode generation. Writing the
+        # marker on a NORMAL-mode install is fine: should_bootstrap() /
+        # isLegacyEnvInstall() only consult it before an applied
+        # instance.env exists, and reaching this branch requires one.
+        echo "🔐 SSL_MODE=selfsigned with no pair on disk — generating it"
+        openssl req -x509 -nodes -days 825 -newkey rsa:2048 \
+            -keyout "${SSL_DIR}/bootstrap-selfsigned.key" \
+            -out "${SSL_DIR}/bootstrap-selfsigned.crt" \
+            -subj "/CN=bffless-bootstrap" 2>/dev/null
+        chmod 600 "${SSL_DIR}/bootstrap-selfsigned.key"
     fi
     echo "✅ Serving the built-in self-signed certificate (a proxy terminates browser TLS)"
     # Backend-generated vhost configs (primary-content, custom/subdomain blocks)

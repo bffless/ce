@@ -162,4 +162,27 @@ else
     FAILURES=$((FAILURES+1))
 fi
 
+# --- C1: selfsigned WITHOUT a pre-existing pair (env-adopted install) ---
+# Adoption gates on the marker being ABSENT, so an adopted install that
+# switches to selfsigned day-2 has no bootstrap-selfsigned.* at all. The
+# render must generate the pair on demand instead of exit-1 (which silently
+# no-ops under the watcher and crash-loops nginx on the next restart).
+setup_etc 'STATE=applied
+PRIMARY_DOMAIN=example.com
+PROXY_MODE=proxy
+SSL_MODE=selfsigned
+PORT80=redirect
+REALIP_MODE=off'
+rm -f "$ETC/ssl/bootstrap-selfsigned.crt" "$ETC/ssl/bootstrap-selfsigned.key"
+rm -f "$ETC/ssl/fullchain.pem" "$ETC/ssl/privkey.pem"
+run_render
+[ -f "$ETC/ssl/bootstrap-selfsigned.crt" ] && echo "ok: C1 pair generated on demand" \
+    || { echo "FAIL: C1 selfsigned pair not generated"; FAILURES=$((FAILURES+1)); }
+[ -f "$ETC/ssl/fullchain.pem" ] && echo "ok: C1 fullchain materialized" \
+    || { echo "FAIL: C1 fullchain.pem not materialized"; FAILURES=$((FAILURES+1)); }
+key_mode=$(stat -c '%a' "$ETC/ssl/bootstrap-selfsigned.key" 2>/dev/null || stat -f '%Lp' "$ETC/ssl/bootstrap-selfsigned.key")
+[ "$key_mode" = "600" ] && echo "ok: C1 key is 0600" \
+    || { echo "FAIL: C1 key mode is $key_mode"; FAILURES=$((FAILURES+1)); }
+assert_contains "$ETC/sites-available/main.conf" 'bootstrap-selfsigned.crt' 'C1: vhosts serve the generated pair'
+
 [ "$FAILURES" -eq 0 ] && echo 'ALL RENDER TESTS PASSED' || { echo "$FAILURES FAILURES"; exit 1; }
