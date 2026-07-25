@@ -47,11 +47,10 @@ export function ApplyStep() {
   const sslMode: BootstrapSslMode = bootstrapSslMode ?? 'paste';
   const isLetsEncrypt = sslMode === 'letsencrypt';
   // Port 80 handling, resolved the same way bootstrap-setup.service's
-  // validateApplyConfig defaults it server-side: closed for cloudflare
-  // (nothing needs it — the ACME challenge, if any, is served through the
-  // proxy), open/redirect otherwise (proxy/none both need it reachable, the
-  // latter for Let's Encrypt HTTP-01 renewal).
-  const resolvedPort80 = bootstrapPort80 ?? (servingMode === 'cloudflare' ? 'closed' : 'redirect');
+  // validateApplyConfig defaults it server-side: 'redirect' whenever the user
+  // hasn't chosen explicitly (commit 23689df) — including cloudflare, which
+  // used to default to 'closed' before that change.
+  const resolvedPort80 = bootstrapPort80 ?? 'redirect';
   // Visitor-IP restore: cloudflare always trusts Cloudflare's ranges (preset,
   // no user input needed), proxy mode only restores it when a custom
   // header/ranges were configured, and direct serving has nothing in front

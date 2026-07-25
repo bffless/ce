@@ -141,6 +141,20 @@ describe('ApplyStep', () => {
     expect(screen.queryByRole('radio')).not.toBeInTheDocument();
   });
 
+  it('shows the port-80 summary as open/redirect for cloudflare when unset, matching the backend default', () => {
+    // The backend (bootstrap-setup.service's validateApplyConfig) now defaults
+    // an unset port80 to 'redirect' even for cloudflare (commit 23689df) — it
+    // used to default to 'closed'. The summary must reflect what the backend
+    // will actually apply, not the old default.
+    renderWithStore(<ApplyStep />, {
+      bootstrapDomain: 'example.com',
+      servingMode: 'cloudflare',
+      bootstrapSslMode: 'paste',
+    });
+    expect(screen.getByText(/open \(redirects to https\)/i)).toBeInTheDocument();
+    expect(screen.queryByText(/^closed$/i)).not.toBeInTheDocument();
+  });
+
   it('LE path pre-satisfies the DNS confirmation', () => {
     renderWithStore(<ApplyStep />, {
       bootstrapDomain: 'example.com',
