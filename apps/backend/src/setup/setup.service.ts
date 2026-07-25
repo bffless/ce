@@ -86,18 +86,15 @@ export class SetupService {
   // Onboarding token from environment (for secure workspace setup)
   private readonly onboardingToken: string | null;
 
-  // Claim-token rate limiting: 5 failed attempts within a 15-minute fixed
-  // window locks out further attempts (even a correct token) until the
-  // window elapses. In-memory only — a k8s deployment with multiple backend
-  // replicas does NOT share this counter across pods, so an attacker who
-  // gets routed to different replicas could effectively get more than 5
-  // guesses. This is acceptable for CE: the token is short-lived and
-  // delivered out-of-band (Platform relays the correct token via the setup
-  // URL), so rate limiting here only ever throttles genuinely failed
-  // (brute-force) attempts — it is defense-in-depth on top of the token
-  // itself being unguessable, not the sole line of defense.
-  private claimAttempts = { count: 0, windowStart: 0 };
+  // Per-IP fixed-window claim limiting (v0.2.18 review, m5): the old single
+  // global counter let 5 bad guesses from ANYONE lock the legitimate
+  // operator out for 15 minutes — an onboarding DoS on a public IP. Per-IP
+  // buckets keep brute-force defense; the global backstop bounds distributed
+  // guessing. In-memory only (same multi-replica caveat as before).
+  private claimAttempts = new Map<string, { count: number; windowStart: number }>();
+  private claimGlobal = { count: 0, windowStart: 0 };
   private static readonly CLAIM_MAX_ATTEMPTS = 5;
+  private static readonly CLAIM_GLOBAL_MAX_ATTEMPTS = 50;
   private static readonly CLAIM_WINDOW_MS = 15 * 60 * 1000;
 
   constructor(
@@ -155,10 +152,12 @@ export class SetupService {
    * - If ONBOARDING_TOKEN is set in env, the provided token must match
    * - If ONBOARDING_TOKEN is not set, validation is skipped (CE mode backwards compatibility)
    * - This prevents unauthorized users from claiming admin access to new workspaces
-   * - Rate-limited: 5 failed attempts within a 15-minute window locks out further
-   *   attempts (including a correct token) until the window elapses. A successful
-   *   validation resets the counter. See `claimAttempts` field comment for the
-   *   in-memory/multi-replica caveat.
+   * - Rate-limited per client IP: 5 failed attempts within a 15-minute window from
+   *   the SAME IP locks out further attempts from that IP (including a correct
+   *   token) until the window elapses; a global backstop additionally locks out
+   *   ALL IPs after 50 failures across any IPs in the same window. A successful
+   *   validation resets only the calling IP's bucket. See `claimAttempts`/
+   *   `claimGlobal` field comment for the in-memory/multi-replica caveat.
    *
    * Reads `process.env.ONBOARDING_TOKEN` directly (rather than the `onboardingToken`
    * field cached at construction time) so it stays consistent with how
@@ -171,65 +170,57 @@ export class SetupService {
   // run inside the anonymous, session-less setup wizard (every setup step is
   // public), so they are token-gated rather than session-gated — see
   // BootstrapSetupService.validateClaimToken and the bootstrap controller.
-  validateOnboardingToken(providedToken?: string): void {
+  validateOnboardingToken(providedToken?: string, clientIp?: string): void {
     const expectedToken = process.env.ONBOARDING_TOKEN;
-
-    // If no token configured in environment, skip validation (CE mode)
     if (!expectedToken) {
       return;
     }
 
     const now = Date.now();
+    const key = clientIp || 'unknown';
 
-    // Fixed 15-minute window: only reset once it has fully elapsed since the
-    // first failure that opened it. Gated on `count > 0` (rather than
-    // comparing `windowStart` to a 0 sentinel) so the reset logic doesn't
-    // depend on `Date.now()` being far from the epoch — a sentinel-based
-    // check would work in production (real timestamps are always far past
-    // epoch) but silently do the wrong thing under mocked/fake clocks that
-    // start near 0, which is exactly the kind of bug that only shows up in
-    // tests.
-    if (
-      this.claimAttempts.count > 0 &&
-      now - this.claimAttempts.windowStart > SetupService.CLAIM_WINDOW_MS
-    ) {
-      this.claimAttempts = { count: 0, windowStart: 0 };
+    // Fixed windows, per bucket. Gated on count > 0 (not a 0-sentinel
+    // comparison) for the same mocked-clock reason as before.
+    const bucket = this.claimAttempts.get(key);
+    if (bucket && bucket.count > 0 && now - bucket.windowStart > SetupService.CLAIM_WINDOW_MS) {
+      this.claimAttempts.delete(key);
+    }
+    if (this.claimGlobal.count > 0 && now - this.claimGlobal.windowStart > SetupService.CLAIM_WINDOW_MS) {
+      this.claimGlobal = { count: 0, windowStart: 0 };
     }
 
-    if (this.claimAttempts.count >= SetupService.CLAIM_MAX_ATTEMPTS) {
+    if ((this.claimAttempts.get(key)?.count ?? 0) >= SetupService.CLAIM_MAX_ATTEMPTS) {
+      throw new UnauthorizedException('Too many attempts, try again later');
+    }
+    if (this.claimGlobal.count >= SetupService.CLAIM_GLOBAL_MAX_ATTEMPTS) {
       throw new UnauthorizedException('Too many attempts, try again later');
     }
 
-    // Token is configured, so it must be provided and match
     if (!providedToken) {
-      this.recordFailedClaimAttempt(now);
+      this.recordFailedClaimAttempt(key, now);
       throw new BadRequestException(
         'Onboarding token is required. Please use the setup link provided during workspace provisioning.',
       );
     }
-
     if (providedToken !== expectedToken) {
-      this.recordFailedClaimAttempt(now);
+      this.recordFailedClaimAttempt(key, now);
       throw new BadRequestException(
         'Invalid onboarding token. Please use the correct setup link.',
       );
     }
 
-    // Successful validation resets the counter.
-    this.claimAttempts = { count: 0, windowStart: 0 };
+    // Success clears this IP's bucket only — the global backstop keeps its
+    // window (success from one IP must not reset distributed-guessing math).
+    this.claimAttempts.delete(key);
   }
 
-  /**
-   * Record a failed claim-token attempt for rate limiting. Only stamps
-   * `windowStart` on the first failure of a window, so subsequent failures
-   * within the same window don't push the window forward (fixed window, not
-   * sliding).
-   */
-  private recordFailedClaimAttempt(now: number): void {
-    if (this.claimAttempts.count === 0) {
-      this.claimAttempts.windowStart = now;
-    }
-    this.claimAttempts.count += 1;
+  private recordFailedClaimAttempt(key: string, now: number): void {
+    const bucket = this.claimAttempts.get(key) ?? { count: 0, windowStart: 0 };
+    if (bucket.count === 0) bucket.windowStart = now;
+    bucket.count += 1;
+    this.claimAttempts.set(key, bucket);
+    if (this.claimGlobal.count === 0) this.claimGlobal.windowStart = now;
+    this.claimGlobal.count += 1;
   }
 
   /**
@@ -487,9 +478,9 @@ export class SetupService {
   /**
    * Initialize system with first admin user
    */
-  async initialize(dto: InitializeSystemDto): Promise<InitializeResponseDto> {
+  async initialize(dto: InitializeSystemDto, clientIp?: string): Promise<InitializeResponseDto> {
     // Validate onboarding token (prevents unauthorized admin creation)
-    this.validateOnboardingToken(dto.token);
+    this.validateOnboardingToken(dto.token, clientIp);
 
     // Check if setup is already complete
     const status = await this.getSetupStatus();
@@ -2440,9 +2431,10 @@ export class SetupService {
     sessionUserId: string,
     sessionEmail: string,
     token?: string,
+    clientIp?: string,
   ): Promise<{ message: string; userId: string; email: string }> {
     // Validate onboarding token (prevents unauthorized admin creation)
-    this.validateOnboardingToken(token);
+    this.validateOnboardingToken(token, clientIp);
 
     // Check if setup is already complete
     const status = await this.getSetupStatus();
@@ -2519,9 +2511,10 @@ export class SetupService {
     email: string,
     password: string,
     token?: string,
+    clientIp?: string,
   ): Promise<{ message: string; userId: string; email: string }> {
     // Validate onboarding token (prevents unauthorized admin creation)
-    this.validateOnboardingToken(token);
+    this.validateOnboardingToken(token, clientIp);
 
     // Check if setup is already complete
     const status = await this.getSetupStatus();

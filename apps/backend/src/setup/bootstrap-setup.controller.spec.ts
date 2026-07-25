@@ -87,7 +87,9 @@ describe('BootstrapSetupController', () => {
         servingMode: 'cloudflare',
         token: 'claim-123',
       });
-      expect(svc.validateClaimToken).toHaveBeenCalledWith('claim-123');
+      // m5: validateClaimToken now also forwards the client IP (req?.ip);
+      // the test doesn't pass a mock request, so it's undefined here.
+      expect(svc.validateClaimToken).toHaveBeenCalledWith('claim-123', undefined);
     });
 
     it('rejects a bad claim token before touching the cert (session-less auth gate)', async () => {
@@ -143,7 +145,9 @@ describe('BootstrapSetupController', () => {
         expect.objectContaining({ state: 'applied', primaryDomain: 'example.com', proxyMode: 'cloudflare' }),
       );
       expect(res).toEqual({ applying: true, adminUrl: 'https://admin.example.com' });
-      expect(svc.validateClaimToken).toHaveBeenCalledWith(undefined);
+      // m5: second arg is the client IP (req?.ip) — undefined since no mock
+      // request was passed to this call.
+      expect(svc.validateClaimToken).toHaveBeenCalledWith(undefined, undefined);
       // Setup is marked complete as part of apply, so the restarted backend
       // lands the user at login instead of back in the wizard.
       expect(svc.finalizeSetup).toHaveBeenCalled();
@@ -409,7 +413,9 @@ describe('BootstrapSetupController', () => {
       preflight.run.mockResolvedValue({ ok: true, checks: [] });
       const res = await controller.dnsPreflight({ domain: 'Example.com', token: 't' });
       expect(svc.assertBootstrapAllowed).toHaveBeenCalled();
-      expect(svc.validateClaimToken).toHaveBeenCalledWith('t');
+      // m5: second arg is the client IP (req?.ip) — undefined since no mock
+      // request was passed to this call.
+      expect(svc.validateClaimToken).toHaveBeenCalledWith('t', undefined);
       expect(svc.validateDomain).toHaveBeenCalledWith('Example.com');
       expect(preflight.run).toHaveBeenCalledWith('example.com');
       expect(res.ok).toBe(true);

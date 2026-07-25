@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ModuleRef } from '@nestjs/core';
 import * as fs from 'fs';
@@ -349,7 +350,9 @@ describe('SetupService', () => {
   describe('validateOnboardingToken — rate limiting', () => {
     beforeEach(() => {
       process.env.ONBOARDING_TOKEN = 'right-token';
-      (service as any).claimAttempts = { count: 0, windowStart: 0 }; // reset internal state
+      // Reset internal state (m5: per-IP Map + global backstop counter).
+      (service as any).claimAttempts = new Map();
+      (service as any).claimGlobal = { count: 0, windowStart: 0 };
     });
     afterEach(() => delete process.env.ONBOARDING_TOKEN);
 
@@ -364,7 +367,9 @@ describe('SetupService', () => {
     it('a successful validation resets the counter', () => {
       expect(() => (service as any).validateOnboardingToken('wrong')).toThrow();
       expect(() => (service as any).validateOnboardingToken('right-token')).not.toThrow();
-      expect((service as any).claimAttempts.count).toBe(0);
+      // m5: success clears the calling bucket entirely (no `unknown` entry left),
+      // rather than resetting a single global `.count` field to 0.
+      expect((service as any).claimAttempts.has('unknown')).toBe(false);
     });
 
     // Exercises the real public entry point (`initialize`) instead of poking
@@ -398,10 +403,35 @@ describe('SetupService', () => {
         // Window has elapsed — a fresh attempt (even a wrong one) is allowed,
         // proving the counter reset rather than merely tolerating one more try.
         expect(() => (service as any).validateOnboardingToken('wrong')).toThrow(/invalid/i);
-        expect((service as any).claimAttempts.count).toBe(1);
+        // m5: the per-IP bucket ('unknown', since no clientIp was passed) now
+        // lives in a Map rather than a flat `.count` field.
+        expect((service as any).claimAttempts.get('unknown')?.count).toBe(1);
       } finally {
         jest.useRealTimers();
       }
+    });
+
+    // m5 (v0.2.18 review): the old single global counter let 5 bad guesses
+    // from ANYONE lock the legitimate operator out for 15 minutes — an
+    // onboarding DoS on a public IP. Per-IP buckets fix that: a flood from one
+    // IP must not consume another IP's attempts.
+    it('m5: lockout is per client IP — a second IP still gets attempts', () => {
+      process.env.ONBOARDING_TOKEN = 'right';
+      for (let i = 0; i < 5; i++) {
+        expect(() => service.validateOnboardingToken('wrong', '1.1.1.1')).toThrow();
+      }
+      expect(() => service.validateOnboardingToken('right', '1.1.1.1')).toThrow(UnauthorizedException); // locked
+      expect(() => service.validateOnboardingToken('right', '2.2.2.2')).not.toThrow(); // different IP fine
+    });
+
+    it('m5: global backstop trips after 50 failures across IPs', () => {
+      process.env.ONBOARDING_TOKEN = 'right';
+      for (let ip = 0; ip < 10; ip++) {
+        for (let i = 0; i < 5; i++) {
+          try { service.validateOnboardingToken('wrong', `10.0.0.${ip}`); } catch { /* per-IP throws expected */ }
+        }
+      }
+      expect(() => service.validateOnboardingToken('right', '99.99.99.99')).toThrow(UnauthorizedException);
     });
   });
 });

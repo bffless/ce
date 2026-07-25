@@ -45,8 +45,8 @@ export class BootstrapSetupService {
    * ONBOARDING_TOKEN is configured (LAN/Umbrel profile) — identical semantics
    * to admin creation, so the two can never disagree.
    */
-  validateClaimToken(token?: string): void {
-    this.setupService.validateOnboardingToken(token);
+  validateClaimToken(token?: string, clientIp?: string): void {
+    this.setupService.validateOnboardingToken(token, clientIp);
   }
 
   /**

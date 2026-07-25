@@ -126,14 +126,14 @@ describe('BootstrapSetupService', () => {
   });
 
   describe('validateClaimToken', () => {
-    it('delegates to SetupService.validateOnboardingToken with the supplied token', () => {
+    it('delegates to SetupService.validateOnboardingToken with the supplied token and client IP (m5)', () => {
       const validateOnboardingToken = jest.fn();
       const svc = new BootstrapSetupService(
         { validateOnboardingToken } as any,
         { isEnabled: () => true } as any,
       );
-      svc.validateClaimToken('claim-abc');
-      expect(validateOnboardingToken).toHaveBeenCalledWith('claim-abc');
+      svc.validateClaimToken('claim-abc', '203.0.113.5');
+      expect(validateOnboardingToken).toHaveBeenCalledWith('claim-abc', '203.0.113.5');
     });
 
     it('propagates the validator throwing on a bad token', () => {

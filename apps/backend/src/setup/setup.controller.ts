@@ -157,8 +157,11 @@ export class SetupController {
     status: 400,
     description: 'Invalid input data',
   })
-  async initialize(@Body() dto: InitializeSystemDto): Promise<InitializeResponseDto> {
-    return this.setupService.initialize(dto);
+  async initialize(
+    @Body() dto: InitializeSystemDto,
+    @Req() req?: Request,
+  ): Promise<InitializeResponseDto> {
+    return this.setupService.initialize(dto, req?.ip);
   }
 
   @Post('check-email')
@@ -199,8 +202,11 @@ export class SetupController {
     status: 400,
     description: 'Invalid credentials or user cannot be adopted',
   })
-  async adoptExistingUser(@Body() dto: AdoptExistingUserDto): Promise<AdoptExistingUserResponseDto> {
-    return this.setupService.adoptExistingUser(dto.email, dto.password, dto.token);
+  async adoptExistingUser(
+    @Body() dto: AdoptExistingUserDto,
+    @Req() req?: Request,
+  ): Promise<AdoptExistingUserResponseDto> {
+    return this.setupService.adoptExistingUser(dto.email, dto.password, dto.token, req?.ip);
   }
 
   @Post('adopt-session-user')
@@ -241,7 +247,7 @@ export class SetupController {
       throw new UnauthorizedException('User not found');
     }
 
-    return this.setupService.adoptSessionUser(userId, user.email, dto.token);
+    return this.setupService.adoptSessionUser(userId, user.email, dto.token, req?.ip);
   }
 
   @Post('storage')

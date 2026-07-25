@@ -65,7 +65,9 @@ describe('SetupController', () => {
       const result = await controller.initialize(mockDto);
 
       expect(result).toEqual(mockResult);
-      expect(service.initialize).toHaveBeenCalledWith(mockDto);
+      // m5: initialize() now also forwards the client IP (req?.ip); the test
+      // doesn't pass a mock request, so it's undefined here.
+      expect(service.initialize).toHaveBeenCalledWith(mockDto, undefined);
     });
   });
 
