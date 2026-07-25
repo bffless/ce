@@ -117,6 +117,14 @@ describe('CertificatePhase', () => {
     expect(screen.queryByText(/restore visitor ips/i)).not.toBeInTheDocument();
   });
 
+  it('m13: cloudflare path renders the port-80 choice above the paste form', () => {
+    renderWithStore(<CertificatePhase domain="example.com" onBack={noop} />, {
+      servingMode: 'cloudflare',
+      bootstrapSslMode: 'paste',
+    });
+    expect(screen.getByText('Port 80 (HTTP)')).toBeInTheDocument();
+  });
+
   it('proxy path renders neutral copy and the visitor-IP option', () => {
     // servingMode 'proxy' now defaults bootstrapSslMode to 'selfsigned'
     // (Task 5); explicitly select 'paste' here to exercise the

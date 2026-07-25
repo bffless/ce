@@ -28,5 +28,15 @@ export function CertificatePhase({ domain, onBack }: CertificatePhaseProps) {
       </div>
     );
   }
+  // Cloudflare: port 80 is a real choice (redirect default per m13); realIp
+  // is preset server-side so only the port control shows.
+  if (servingMode === 'cloudflare') {
+    return (
+      <div className="space-y-6">
+        <ProxyOptions showRealIp={false} />
+        {certView}
+      </div>
+    );
+  }
   return certView;
 }

@@ -57,6 +57,12 @@ describe('ServingModelEditor', () => {
     expect(screen.getByRole('radio', { name: /close port 80/i })).toBeInTheDocument();
   });
 
+  it('m12: shows the port-80 control on the cloudflare path (and no realIp fields)', () => {
+    render(<ServingModelEditor value={{ ...base, servingMode: 'cloudflare', sslMode: 'paste' }} onChange={vi.fn()} />);
+    expect(screen.getByText('Port 80 (HTTP)')).toBeInTheDocument();
+    expect(screen.queryByText(/Restore visitor IPs/i)).not.toBeInTheDocument();
+  });
+
   it('reactively forces port80 to redirect when seeded with letsencrypt + closed', () => {
     const onChange = vi.fn();
     render(

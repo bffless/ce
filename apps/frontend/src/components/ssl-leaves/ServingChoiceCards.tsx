@@ -4,7 +4,7 @@ const CHOICES: { mode: ServingMode; title: string; body: string }[] = [
   {
     mode: 'cloudflare',
     title: 'Through Cloudflare (recommended)',
-    body: 'Cloudflare proxies your traffic and terminates TLS at its edge. You paste a free Origin Certificate; port 80 stays closed.',
+    body: 'Cloudflare proxies your traffic and terminates TLS at its edge. You paste a free Origin Certificate; plain HTTP redirects to HTTPS (you can close port 80 instead if you enable Always Use HTTPS in Cloudflare).',
   },
   {
     mode: 'proxy',
