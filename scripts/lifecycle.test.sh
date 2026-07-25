@@ -116,6 +116,47 @@ echo "— update.sh: clean tree pulls with detected profiles and restarts —"
     exit "$FAILURES"
 ); FAILURES=$((FAILURES+$?))
 
+echo "— status.sh: reports sections, restart-pending, and survives failures —"
+(
+    make_sandbox
+    FAILURES=0
+    cd "$SB/app" || exit 1
+    printf '{\n  "version": "0.0.1"\n}\n' > package.json
+    git init -q && git config user.email t@t && git config user.name t
+    git add -A && git commit -qm init
+    mkdir -p bootstrap ssl
+    printf 'STATE=applied\nPRIMARY_DOMAIN=example.com\n' > bootstrap/instance.env
+    # docker stub: running container image ID differs from the tag's image ID
+    cat > "$SB/bin/docker" <<'STUB'
+#!/bin/bash
+echo "docker $*" >> "$DOCKER_LOG"
+case "$*" in
+    "inspect --format {{.Image}} assethost-backend")        echo "sha256:aaa" ;;
+    "inspect --format {{.Config.Image}} assethost-backend") echo "ghcr.io/bffless/ce-backend:latest" ;;
+    "inspect --format {{.Image}} assethost-frontend")        echo "sha256:ccc" ;;
+    "inspect --format {{.Config.Image}} assethost-frontend") echo "ghcr.io/bffless/ce-frontend:latest" ;;
+    "image inspect --format {{.Id}} ghcr.io/bffless/ce-backend:latest")  echo "sha256:bbb" ;;
+    "image inspect --format {{.Id}} ghcr.io/bffless/ce-frontend:latest") echo "sha256:ccc" ;;
+    image\ inspect*Labels*) echo "0.3.2" ;;
+    compose*ps*) echo "NAME  STATUS" ;;
+    *) : ;;
+esac
+exit 0
+STUB
+    chmod +x "$SB/bin/docker"
+    # curl stub: health check fails
+    printf '#!/bin/bash\nexit 7\n' > "$SB/bin/curl" && chmod +x "$SB/bin/curl"
+    out="$SB/status.out"
+    PATH="$SB/bin:$PATH" ./status.sh > "$out" 2>&1; rc=$?
+    assert_exit 0 "$rc" "status exits 0 even with failed health check"
+    assert_contains "$out" "v0.0.1" "repo version shown"
+    assert_contains "$out" "restart" "restart-pending warning shown (backend IDs differ)"
+    assert_contains "$out" "example.com" "domain from bootstrap/instance.env"
+    assert_contains "$out" "health check failed" "failed health reported, not fatal"
+    cd / && rm -rf "$SB"
+    exit "$FAILURES"
+); FAILURES=$((FAILURES+$?))
+
 if [ "$FAILURES" -eq 0 ]; then
     echo 'ALL LIFECYCLE TESTS PASSED'
 else
