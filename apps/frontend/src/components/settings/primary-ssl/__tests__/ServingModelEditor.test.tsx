@@ -170,4 +170,32 @@ describe('ServingModelEditor', () => {
       expect(button).not.toBeDisabled();
     });
   });
+
+  describe('m11 cert-source selector', () => {
+    it('proxy path offers selfsigned/letsencrypt/paste', () => {
+      render(<ServingModelEditor value={{ ...base, servingMode: 'proxy', sslMode: 'selfsigned' }} onChange={vi.fn()} />);
+      expect(screen.getByLabelText(/Keep the built-in certificate/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/Auto-issue with Let's Encrypt/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/Paste my own certificate/i)).toBeInTheDocument();
+    });
+
+    it('cloudflare path offers no selector (paste only)', () => {
+      render(<ServingModelEditor value={{ ...base, servingMode: 'cloudflare', sslMode: 'paste' }} onChange={vi.fn()} />);
+      expect(screen.queryByLabelText(/Keep the built-in certificate/i)).not.toBeInTheDocument();
+    });
+
+    it('direct path offers letsencrypt/paste, not selfsigned', () => {
+      render(<ServingModelEditor value={{ ...base, servingMode: 'none', sslMode: 'letsencrypt' }} onChange={vi.fn()} />);
+      expect(screen.getByLabelText(/Auto-issue with Let's Encrypt/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/Paste my own certificate/i)).toBeInTheDocument();
+      expect(screen.queryByLabelText(/Keep the built-in certificate/i)).not.toBeInTheDocument();
+    });
+
+    it('selecting paste on the proxy path swaps in the paste fields', () => {
+      const onChange = vi.fn();
+      render(<ServingModelEditor value={{ ...base, servingMode: 'proxy', sslMode: 'selfsigned' }} onChange={onChange} />);
+      fireEvent.click(screen.getByLabelText(/Paste my own certificate/i));
+      expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ sslMode: 'paste' }));
+    });
+  });
 });
