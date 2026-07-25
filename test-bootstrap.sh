@@ -529,3 +529,58 @@ if [ "${RUN_LEGACY_LEG:-0}" = "1" ]; then
 else
     info "skipping legacy-upgrade leg (set RUN_LEGACY_LEG=1 to run it — needs its own fresh stack boot)"
 fi
+
+# ===========================================================================
+# Adopted-install day-2 selfsigned leg (opt-in: RUN_ADOPTED_SELFSIGNED_LEG=1).
+# C1 regression (v0.2.18 review): an env-adopted install has NO
+# bootstrap-selfsigned pair; switching its instance.env to SSL_MODE=selfsigned
+# must still render (the script generates the pair) and must survive an nginx
+# restart. Builds on the legacy leg's hand-made env install.
+#   RUN_ADOPTED_SELFSIGNED_LEG=1 ./test-bootstrap.sh
+# ===========================================================================
+if [ "${RUN_ADOPTED_SELFSIGNED_LEG:-0}" = "1" ]; then
+    info "adopted-selfsigned leg: tearing down, building a legacy env install"
+    docker compose --profile postgres --profile minio --profile redis --profile supertokens down -v >/dev/null 2>&1
+    rm -rf bootstrap ssl
+    mkdir -p bootstrap ssl
+
+    ADOPT_DOMAIN="adopted-ss.local"
+    sed -i "s/^PRIMARY_DOMAIN=.*/PRIMARY_DOMAIN=${ADOPT_DOMAIN}/" .env
+    grep -q '^PROXY_MODE=' .env && sed -i 's/^PROXY_MODE=.*/PROXY_MODE=proxy/' .env || echo 'PROXY_MODE=proxy' >> .env
+    openssl req -x509 -nodes -days 2 -newkey rsa:2048 -keyout ssl/privkey.pem \
+        -out ssl/fullchain.pem -subj "/CN=${ADOPT_DOMAIN}" 2>/dev/null
+    cp ssl/fullchain.pem "ssl/wildcard.${ADOPT_DOMAIN}.crt"
+    cp ssl/privkey.pem "ssl/wildcard.${ADOPT_DOMAIN}.key"
+
+    ./start.sh
+    wait_until 90 "adopted-selfsigned leg: backend to adopt the env identity" -- \
+        bash -c 'docker compose logs backend 2>/dev/null | grep -q "adopted env identity into instance.json"'
+    [ ! -f ssl/bootstrap-selfsigned.crt ] \
+        || fail "adopted-selfsigned leg: precondition broken — pair already exists"
+
+    # Day-2 switch to proxy+selfsigned, exactly as PrimarySslService.apply()
+    # writes it (we edit the files directly: the leg tests the RENDER path,
+    # not the session-guarded admin API).
+    python3 - <<'PYEOF'
+import json
+cfg = json.load(open('bootstrap/instance.json'))
+cfg['sslMode'] = 'selfsigned'
+cfg['proxyMode'] = 'proxy'
+open('bootstrap/instance.json', 'w').write(json.dumps(cfg, indent=2) + '\n')
+PYEOF
+    sed -i 's/^SSL_MODE=.*/SSL_MODE=selfsigned/; s/^PROXY_MODE=.*/PROXY_MODE=proxy/' bootstrap/instance.env
+
+    wait_until 60 "adopted-selfsigned leg: watcher render generates the pair" -- \
+        test -f ssl/bootstrap-selfsigned.crt
+    ok "adopted-selfsigned leg: pair generated on demand"
+
+    docker compose restart nginx >/dev/null 2>&1
+    wait_until 60 "adopted-selfsigned leg: nginx healthy after restart" -- \
+        bash -c 'docker compose ps nginx | grep -q "Up"'
+    sleep 5
+    docker compose ps nginx | grep -q "Restarting" \
+        && fail "adopted-selfsigned leg: nginx is crash-looping after restart"
+    ok "adopted-selfsigned leg passed: selfsigned renders and survives restart"
+else
+    info "skipping adopted-selfsigned leg (set RUN_ADOPTED_SELFSIGNED_LEG=1 — needs its own fresh stack boot)"
+fi
