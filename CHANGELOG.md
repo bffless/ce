@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1](https://github.com/bffless/ce/compare/v0.3.0...v0.3.1) (2026-07-25)
+
+
+### Features
+
+* **install:** one-liner defaults to zero-SSH web bootstrap — deps install, stack starts, onboarding moves to the browser ([#533](https://github.com/bffless/ce/issues/533)) ([24389f1](https://github.com/bffless/ce/commit/24389f1bb7cfe6aee31917db0d2bfa26f7546066))
+
+
+### Bug Fixes
+
+* **traffic:** failed first blocklist refresh no longer strands stale edge rules — first successful refresh notifies ([#531](https://github.com/bffless/ce/issues/531)) ([#532](https://github.com/bffless/ce/issues/532)) ([7ed36c2](https://github.com/bffless/ce/commit/7ed36c2745a4df21e2b00652c26ffe2b7e4b76d5))
+
 ## [0.3.0](https://github.com/bffless/ce/compare/v0.2.17...v0.3.0) (2026-07-25)
 
 
