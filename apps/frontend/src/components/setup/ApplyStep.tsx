@@ -48,8 +48,8 @@ export function ApplyStep() {
   const isLetsEncrypt = sslMode === 'letsencrypt';
   // Port 80 handling, resolved the same way bootstrap-setup.service's
   // validateApplyConfig defaults it server-side: 'redirect' whenever the user
-  // hasn't chosen explicitly (commit 23689df) — including cloudflare, which
-  // used to default to 'closed' before that change.
+  // hasn't chosen explicitly (v0.2.18 review, m13) — including cloudflare,
+  // which used to default to 'closed' before that change.
   const resolvedPort80 = bootstrapPort80 ?? 'redirect';
   // Visitor-IP restore: cloudflare always trusts Cloudflare's ranges (preset,
   // no user input needed), proxy mode only restores it when a custom

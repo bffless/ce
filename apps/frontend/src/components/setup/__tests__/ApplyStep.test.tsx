@@ -143,9 +143,9 @@ describe('ApplyStep', () => {
 
   it('shows the port-80 summary as open/redirect for cloudflare when unset, matching the backend default', () => {
     // The backend (bootstrap-setup.service's validateApplyConfig) now defaults
-    // an unset port80 to 'redirect' even for cloudflare (commit 23689df) — it
-    // used to default to 'closed'. The summary must reflect what the backend
-    // will actually apply, not the old default.
+    // an unset port80 to 'redirect' even for cloudflare (v0.2.18 review, m13)
+    // — it used to default to 'closed'. The summary must reflect what the
+    // backend will actually apply, not the old default.
     renderWithStore(<ApplyStep />, {
       bootstrapDomain: 'example.com',
       servingMode: 'cloudflare',

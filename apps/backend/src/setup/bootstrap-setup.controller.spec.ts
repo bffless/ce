@@ -24,7 +24,9 @@ describe('BootstrapSetupController', () => {
     validateApplyConfig: jest.fn((dto: any) => ({
       proxyMode: dto.proxyMode,
       sslMode: dto.sslMode,
-      port80: dto.port80 ?? (dto.proxyMode === 'cloudflare' ? 'closed' : 'redirect'),
+      // Mirrors the real validateApplyConfig default (m13): 'redirect' for
+      // every path when port80 is not chosen explicitly, Cloudflare included.
+      port80: dto.port80 ?? 'redirect',
       realIp:
         dto.proxyMode === 'cloudflare'
           ? { preset: 'cloudflare' }
