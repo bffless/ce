@@ -1,4 +1,4 @@
-import { BadRequestException, InternalServerErrorException } from '@nestjs/common';
+import { BadRequestException, InternalServerErrorException, Logger } from '@nestjs/common';
 import { BootstrapSetupController } from './bootstrap-setup.controller';
 import { ApplyBootstrapDto } from './setup.dto';
 import * as staging from './ssl-staging';
@@ -406,6 +406,32 @@ describe('BootstrapSetupController', () => {
       // prototype method, which the override already shadows.
       expect(exitFn).not.toHaveBeenCalled();
       writeSpy.mockRestore();
+    });
+
+    it('M3 follow-up (#525): a rejecting unfinalizeSetup() does not mask the write failure — both errors logged, friendly 500 still thrown', async () => {
+      const writeSpy = jest
+        .spyOn(require('../bootstrap/instance-config'), 'writeInstanceConfig')
+        .mockImplementation(() => {
+          throw new Error('ENOSPC: no space left on device');
+        });
+      svc.unfinalizeSetup.mockRejectedValue(new Error('connection to database lost'));
+      const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+      try {
+        // The DB rejection must not propagate raw: the browser still gets the
+        // actionable disk-space 500, not an opaque database error.
+        await expect(
+          controller.apply({ domain: 'example.com', proxyMode: 'cloudflare', sslMode: 'paste' }),
+        ).rejects.toThrow(InternalServerErrorException);
+        // Both the original (more actionable) disk error AND the recovery
+        // failure must reach the log.
+        const logged = errorSpy.mock.calls.map((c) => String(c[0])).join('\n');
+        expect(logged).toContain('ENOSPC');
+        expect(logged).toContain('connection to database lost');
+        expect(exitFn).not.toHaveBeenCalled();
+      } finally {
+        errorSpy.mockRestore();
+        writeSpy.mockRestore();
+      }
     });
   });
 
