@@ -196,23 +196,31 @@ main() {
     # Pull --interactive (if present) out of the argument list. It requests
     # the old terminal onboarding wizard instead of the default web
     # bootstrap; any remaining arguments are passed through to setup.sh
-    # exactly as before.
+    # exactly as before. Rebuilt via quoted `set --` (never a flattened
+    # string) so arguments with spaces/globs/quotes survive intact.
     interactive_requested=false
-    remaining_args=""
     for arg in "$@"; do
-        case "$arg" in
-            --interactive)
-                interactive_requested=true
-                ;;
-            *)
-                remaining_args="${remaining_args} ${arg}"
-                ;;
-        esac
+        if [ "$arg" = "--interactive" ]; then
+            interactive_requested=true
+        fi
     done
 
     if [ "$interactive_requested" = true ]; then
+        # Strip --interactive while preserving every other argument
+        # verbatim (no word-splitting/glob risk from re-parsing a string).
+        first=true
+        for arg in "$@"; do
+            [ "$arg" = "--interactive" ] && continue
+            if [ "$first" = true ]; then
+                set -- "$arg"
+                first=false
+            else
+                set -- "$@" "$arg"
+            fi
+        done
+        [ "$first" = true ] && set --
+
         # Old behavior, exactly: terminal onboarding wizard, no auto-start.
-        set -- $remaining_args
         print_info "Running setup script (interactive)..."
         echo ""
         BFFLESS_INSTALL_DIR="$ABSOLUTE_INSTALL_DIR" ./setup.sh "$@"
@@ -226,10 +234,16 @@ main() {
         # browser from here.
         print_info "Running non-interactive bootstrap setup..."
         echo ""
-        if ! BFFLESS_INSTALL_DIR="$ABSOLUTE_INSTALL_DIR" ./setup.sh --bootstrap; then
-            bootstrap_exit=$?
+        bootstrap_exit=0
+        BFFLESS_INSTALL_DIR="$ABSOLUTE_INSTALL_DIR" ./setup.sh --bootstrap || bootstrap_exit=$?
+        if [ "$bootstrap_exit" -ne 0 ]; then
             print_error "Bootstrap setup failed (exit $bootstrap_exit). Not starting the stack."
             exit "$bootstrap_exit"
+        fi
+
+        if [ ! -f "start.sh" ]; then
+            print_error "Start script not found at start.sh"
+            exit 1
         fi
 
         chmod +x start.sh 2>/dev/null || true
