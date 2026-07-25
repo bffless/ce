@@ -46,4 +46,31 @@ describe('BootstrapDnsPreflightService', () => {
     await service.run('example.com');
     expect(fs.readdirSync(path.join(webroot, '.well-known', 'acme-challenge'))).toEqual([]);
   });
+
+  describe('m6: SSRF hardening — private/reserved resolutions are refused', () => {
+    it.each([
+      ['loopback', '127.0.0.1'],
+      ['rfc1918', '10.1.2.3'],
+      ['rfc1918-172', '172.16.5.5'],
+      ['rfc1918-192', '192.168.1.1'],
+      ['link-local/metadata', '169.254.169.254'],
+      ['cgnat', '100.64.0.1'],
+    ])('m6: refuses to probe a host resolving to %s', async (_label, ip) => {
+      jest.spyOn(service as never, 'resolveA' as never).mockResolvedValue([ip] as never);
+      const fetchSpy = jest.spyOn(service as never, 'fetchProbe' as never);
+      const result = await service.run('internal.example.com');
+      expect(result.ok).toBe(false);
+      expect(result.checks[0].error).toContain('private or reserved');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('m6: public addresses still probe', async () => {
+      jest.spyOn(service as never, 'resolveA' as never).mockResolvedValue(['93.184.216.34'] as never);
+      jest
+        .spyOn(service as never, 'fetchProbe' as never)
+        .mockResolvedValue('tokenbody' as never);
+      const result = await service.run('example.com');
+      expect(result.checks[0].error === 'resolves to a private or reserved address').toBe(false);
+    });
+  });
 });

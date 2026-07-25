@@ -16,6 +16,24 @@ export interface PreflightResult {
   checks: PreflightCheck[];
 }
 
+// SSRF guard (v0.2.18 review, m6): the probe is a blind GET to a
+// caller-supplied hostname; refuse anything resolving into private,
+// loopback, link-local (incl. cloud metadata), CGNAT or reserved space.
+// IPv4-only because resolveA only asks for A records.
+export function isDisallowedProbeIp(ip: string): boolean {
+  const parts = ip.split('.').map(Number);
+  if (parts.length !== 4 || parts.some((p) => Number.isNaN(p) || p < 0 || p > 255)) return true;
+  const [a, b] = parts;
+  return (
+    a === 0 || a === 127 || a === 10 ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 169 && b === 254) ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    a >= 224 // multicast + reserved
+  );
+}
+
 /**
  * Preflight for the direct + Let's Encrypt path. The probe writes a token
  * into the ACME webroot and fetches it back over the PUBLIC internet
@@ -45,6 +63,10 @@ export class BootstrapDnsPreflightService {
       const checks: PreflightCheck[] = [];
       for (const host of hosts) {
         const resolvedIps = await this.resolveA(host);
+        if (resolvedIps.some((ip) => isDisallowedProbeIp(ip))) {
+          checks.push({ host, resolvedIps, probeOk: false, error: 'resolves to a private or reserved address' });
+          continue;
+        }
         let probeOk = false;
         let error: string | undefined;
         try {
