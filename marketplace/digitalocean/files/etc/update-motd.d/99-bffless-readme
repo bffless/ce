@@ -1,0 +1,36 @@
+#!/bin/sh
+# BFFless CE droplet MOTD (DO Marketplace image). update-motd.d scripts run at
+# login, so this stays accurate as the instance moves through setup.
+INSTALL_DIR=/opt/bffless
+
+cat <<'EOF'
+
+ ┌──────────────────────────────────────────────────────────────────┐
+ │  BFFless CE — self-hosted static hosting + BFF pipelines         │
+ └──────────────────────────────────────────────────────────────────┘
+EOF
+
+if grep -q '^STATE=applied' "$INSTALL_DIR/bootstrap/instance.env" 2>/dev/null; then
+    domain=$(sed -n 's/^PRIMARY_DOMAIN=//p' "$INSTALL_DIR/bootstrap/instance.env" | head -1)
+    printf ' Admin panel:  https://admin.%s\n' "$domain"
+else
+    token=$(sed -n 's/^ONBOARDING_TOKEN=//p' "$INSTALL_DIR/.env" 2>/dev/null | head -1)
+    if [ -n "$token" ]; then
+        ip=$(hostname -I | awk '{print $1}')
+        printf ' Finish setup in your browser:  https://%s/?token=%s\n' "$ip" "$token"
+        printf ' (or run: bffless-setup)\n'
+    else
+        printf ' First boot is still preparing this droplet — try again in a minute.\n'
+        printf ' Progress:  tail -f /var/log/bffless-first-boot.log\n'
+    fi
+fi
+
+cat <<'EOF'
+
+ Manage your instance (cd /opt/bffless):
+   ./status.sh   health, versions, resources    ./update.sh   upgrade BFFless
+   ./logs.sh     follow service logs            ./backup.sh   DB + assets backup
+   ./restart.sh  restart services               ./stop.sh     stop services
+
+ Docs: https://docs.bffless.dev
+EOF
