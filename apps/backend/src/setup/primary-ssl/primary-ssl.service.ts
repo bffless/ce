@@ -4,7 +4,7 @@ import { SslCertificateService } from '../../domains/ssl-certificate.service';
 import { BootstrapDnsPreflightService, PreflightResult } from '../bootstrap-dns-preflight.service';
 import { SslInfoService, SslCertificateInfo } from '../../domains/ssl-info.service';
 import { PrimarySslSnapshotService } from './primary-ssl-snapshot.service';
-import { loadInstanceConfig, writeInstanceConfig, InstanceConfig, ProxyMode } from '../../bootstrap/instance-config';
+import { deriveKnobs, loadInstanceConfig, writeInstanceConfig, InstanceConfig, ProxyMode } from '../../bootstrap/instance-config';
 import { PrimarySslPasteDto, PrimarySslApplyDto } from './primary-ssl.dto';
 import {
   discardStagedCertificates,
@@ -62,12 +62,19 @@ export class PrimarySslService {
     const stagedCert = await this.info.getStagedPrimaryCertInfo().catch(() => null);
     const wildcardCert = await this.info.getWildcardCertInfo().catch(() => null);
     const pending = this.snap.readPendingRevert();
+    // Report the *effective* knobs, not the raw file values: a v1 /
+    // env-adopted config carries no explicit port80/realIp, and the effective
+    // default is proxyMode-dependent (cloudflare → port80 'closed'). The
+    // day-2 editor seeds from this status — reporting the raw null here made
+    // it fall back to its hardcoded 'redirect', silently flipping an
+    // env-adopted Cloudflare install closed→redirect on the next apply (#527).
+    const knobs = cfg ? deriveKnobs(cfg) : null;
     return {
       domain: cfg?.primaryDomain ?? null,
       proxyMode: cfg?.proxyMode ?? null,
       sslMode: cfg?.sslMode ?? null,
-      port80: cfg?.port80 ?? null,
-      realIp: cfg?.realIp ?? null,
+      port80: knobs?.port80 ?? null,
+      realIp: knobs?.realIp ?? null,
       cert,
       stagedCert,
       wildcardCovered: !!wildcardCert,

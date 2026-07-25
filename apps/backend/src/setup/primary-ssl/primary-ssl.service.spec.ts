@@ -28,6 +28,9 @@ const makeDeps = () => ({
 jest.mock('../../bootstrap/instance-config', () => ({
   loadInstanceConfig: () => mockCur,
   writeInstanceConfig: jest.fn(),
+  // getStatus derives the effective knobs from the raw config — use the real
+  // derivation so these tests cover the v1/env-adopted defaulting (#527).
+  deriveKnobs: jest.requireActual('../../bootstrap/instance-config').deriveKnobs,
 }));
 
 jest.mock('../ssl-staging', () => ({
@@ -75,6 +78,36 @@ describe('PrimarySslService', () => {
     expect(s.domain).toBe(domain);
     expect(s.sslMode).toBe('paste');
     expect(s.cert).not.toBeNull();
+  });
+
+  it('getStatus reports the derived effective port80 (closed) for an env-adopted cloudflare config with no explicit knob (#527)', async () => {
+    // A v1 / env-adopted instance.json carries no port80; deriveKnobs says the
+    // effective knob for cloudflare is 'closed'. The status must report that
+    // derived value — reporting the raw null made the day-2 editor seed its
+    // hardcoded 'redirect' default, silently flipping the install on apply.
+    mockCur = { version: 1, state: 'applied', origin: 'env', primaryDomain: 'a.com', proxyMode: 'cloudflare', sslMode: 'paste' };
+    const { svc } = build();
+    const s = await svc.getStatus();
+    expect(s.port80).toBe('closed');
+    // realIp gets the same effective-knob treatment (cloudflare preset).
+    expect(s.realIp).toEqual({ preset: 'cloudflare' });
+  });
+
+  it('getStatus derives port80 redirect for a knob-less non-cloudflare config', async () => {
+    mockCur = { version: 1, state: 'applied', origin: 'env', primaryDomain: 'a.com', proxyMode: 'none', sslMode: 'paste' };
+    const { svc } = build();
+    const s = await svc.getStatus();
+    expect(s.port80).toBe('redirect');
+    expect(s.realIp).toBeNull();
+  });
+
+  it('getStatus keeps an explicit port80 over the proxyMode-derived default', async () => {
+    mockCur = { version: 2, state: 'applied', primaryDomain: 'a.com', proxyMode: 'cloudflare', sslMode: 'paste', port80: 'redirect', realIp: null };
+    const { svc } = build();
+    const s = await svc.getStatus();
+    expect(s.port80).toBe('redirect');
+    // explicit null is a meaningful "no realip" choice — not re-derived.
+    expect(s.realIp).toBeNull();
   });
 
   it('getStatus reports stagedCert from getStagedPrimaryCertInfo', async () => {
