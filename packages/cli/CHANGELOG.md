@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.0](https://github.com/bffless/ce/compare/bffless-v0.2.7...bffless-v0.3.0) (2026-07-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* `git pull` is a required upgrade step for this release. v0.3.0 adds compose mounts (bootstrap/), an ONBOARDING_TOKEN passthrough, and a rebuilt nginx image — pulling only the Docker images leaves the new day-2 SSL management silently inert (settings apply but never reach nginx) and breaks automatic renewal takeover for migrated Let's Encrypt installs. Upgrade with: cd /opt/bffless && git pull && ./stop.sh && docker compose pull && ./start.sh
+
+### Miscellaneous Chores
+
+* git pull is a required upgrade step for 0.3.0 ([281a259](https://github.com/bffless/ce/commit/281a2592d012c289973bc5eb77ebc3757656ebc9))
+* release 0.3.0 ([c9fe396](https://github.com/bffless/ce/commit/c9fe396efe5b3eb4cc45142b58f100da5df041cd))
+
 ## [0.2.7](https://github.com/bffless/ce/compare/bffless-v0.2.6...bffless-v0.2.7) (2026-07-17)
 
 
