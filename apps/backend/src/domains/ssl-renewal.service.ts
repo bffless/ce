@@ -15,7 +15,7 @@ import { NginxConfigService } from './nginx-config.service';
 import { NginxReloadService } from './nginx-reload.service';
 import { ProjectsService } from '../projects/projects.service';
 import { EmailService } from '../email/email.service';
-import { loadInstanceConfig } from '../bootstrap/instance-config';
+import { loadInstanceConfig, pendingServingRevertExists } from '../bootstrap/instance-config';
 
 interface RenewalResult {
   domain: string;
@@ -208,6 +208,13 @@ export class SslRenewalService {
   private async checkAndRenewPrimary(thresholdDays: number): Promise<RenewalResult | null> {
     const cfg = loadInstanceConfig();
     if (cfg?.state !== 'applied' || cfg.sslMode !== 'letsencrypt' || !cfg.primaryDomain) return null;
+    if (pendingServingRevertExists()) {
+      // A day-2 serving change is inside its confirm window; a renewal now
+      // would be silently undone by auto-revert/rollback (v0.2.18 review,
+      // m7). Next night's run proceeds normally.
+      this.logger.log('Primary renewal skipped: a serving-change confirm window is pending');
+      return null;
+    }
     const daysLeft = this.sslCertificateService.getPrimaryCertificateExpiryDays();
     if (daysLeft === null || daysLeft > thresholdDays) {
       return { domain: cfg.primaryDomain, status: 'skipped' };
@@ -511,6 +518,17 @@ export class SslRenewalService {
    * Send failure notifications
    */
   private async sendFailureNotifications(failures: RenewalResult[]): Promise<void> {
+    // Recurring failures (e.g. adopted certs with SANs HTTP-01 can't satisfy)
+    // otherwise email every single night (v0.2.18 review, m8). Same 7-day
+    // pattern as wildcard_reminder_last_sent; failures still log every run.
+    const last = await this.getSetting('renewal_failure_last_sent');
+    if (last && Date.now() - new Date(last).getTime() < 7 * 86_400_000) {
+      this.logger.warn(
+        `SSL renewal failures (digest throttled): ${failures.map((f) => `${f.domain}: ${f.error}`).join(', ')}`,
+      );
+      return;
+    }
+
     const to = await this.getReminderRecipient();
     if (!to) {
       this.logger.warn('No notification recipient configured for renewal failures');
@@ -530,7 +548,9 @@ export class SslRenewalService {
       text: failures.map((f) => `${f.domain}: ${f.error || 'Unknown error'}`).join('\n'),
     });
 
-    if (!result.success) {
+    if (result.success) {
+      await this.updateSetting('renewal_failure_last_sent', new Date().toISOString());
+    } else {
       this.logger.error(`Failed to send SSL renewal failure notification email: ${result.error}`);
     }
   }

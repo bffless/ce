@@ -97,6 +97,17 @@ export function sslDir(): string {
   return process.env.SSL_CERT_PATH || '/etc/nginx/ssl';
 }
 
+// One-file seam for the renewal cron (v0.2.18 review, m7): the durable
+// pending-revert marker PrimarySslSnapshotService writes lives at this
+// path; a pure existence check avoids a domains→setup Nest dependency.
+export function pendingServingRevertExists(dir: string = bootstrapDir()): boolean {
+  try {
+    return fs.existsSync(path.join(dir, 'pending-serving-revert.json'));
+  } catch {
+    return false;
+  }
+}
+
 // Adoption-time sslMode inference for legacy env-only installs (spec §2): an
 // LE-issued primary cert on a non-cloudflare install means the operator used
 // the setup.sh certbot path, whose renewal is broken by default (one-time
