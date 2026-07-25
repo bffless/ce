@@ -22,4 +22,9 @@ check "minio only extra" \
     " --profile postgres --profile minio --profile supertokens" \
     "export ENABLE_MINIO=true"
 
-[ "$FAILURES" -eq 0 ] && echo 'ALL COMPOSE-PROFILES TESTS PASSED' || { echo "$FAILURES FAILURES"; exit 1; }
+if [ "$FAILURES" -eq 0 ]; then
+    echo 'ALL COMPOSE-PROFILES TESTS PASSED'
+else
+    echo "$FAILURES FAILURES"
+    exit 1
+fi
