@@ -1,4 +1,9 @@
 #!/bin/bash
 # cloud-init per-instance: create swap BEFORE any container starts, sized to
 # the droplet the user actually picked (no-op on >= 4 GB droplets).
+umask 077
+# First writer of the shared log — create it restrictively (600) before
+# anything is appended, since the claim token setup.sh prints later (in
+# 002) must never land in a world-readable file.
+install -m 600 /dev/null /var/log/bffless-first-boot.log
 /opt/bffless/scripts/setup-swap.sh >> /var/log/bffless-first-boot.log 2>&1 || true

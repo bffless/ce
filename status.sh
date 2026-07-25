@@ -40,6 +40,7 @@ for svc in backend frontend; do
     fi
     image_ref=$(docker inspect --format '{{.Config.Image}}' "$container" 2>/dev/null | head -1)
     version_label=$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}}' "$image_ref" 2>/dev/null | head -1)
+    [ "$version_label" = "<no value>" ] && version_label=""
     echo "${svc}: ${image_ref}${version_label:+ (${version_label})}"
     tag_id=$(docker image inspect --format '{{.Id}}' "$image_ref" 2>/dev/null | head -1)
     if [ -n "$tag_id" ] && [ "$running_id" != "$tag_id" ]; then

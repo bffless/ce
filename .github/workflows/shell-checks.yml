@@ -31,6 +31,7 @@ jobs:
             marketplace/digitalocean/scripts/020-docker.sh \
             marketplace/digitalocean/scripts/030-bffless.sh \
             marketplace/digitalocean/files/first-login.sh \
+            marketplace/digitalocean/files/first-login.test.sh \
             marketplace/digitalocean/files/etc/update-motd.d/99-bffless-readme \
             marketplace/digitalocean/files/var/lib/cloud/scripts/per-instance/001-swap \
             marketplace/digitalocean/files/var/lib/cloud/scripts/per-instance/002-bffless-first-boot
