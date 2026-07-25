@@ -60,6 +60,19 @@ STUB
     exit "$FAILURES"
 ); FAILURES=$((FAILURES+$?))
 
+echo "— logs.sh: full compose invocation + service filter —"
+(
+    make_sandbox
+    FAILURES=0
+    (cd "$SB/app" && PATH="$SB/bin:$PATH" ./logs.sh backend); rc=$?
+    assert_exit 0 "$rc" "logs exits 0"
+    assert_contains "$DOCKER_LOG" \
+        "docker compose --profile postgres --profile minio --profile redis --profile supertokens logs -f --tail=100 backend" \
+        "logs passes all profiles + service"
+    rm -rf "$SB"
+    exit "$FAILURES"
+); FAILURES=$((FAILURES+$?))
+
 if [ "$FAILURES" -eq 0 ]; then
     echo 'ALL LIFECYCLE TESTS PASSED'
 else
