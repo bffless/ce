@@ -73,6 +73,49 @@ echo "— logs.sh: full compose invocation + service filter —"
     exit "$FAILURES"
 ); FAILURES=$((FAILURES+$?))
 
+echo "— update.sh: aborts on dirty tree —"
+(
+    make_sandbox
+    FAILURES=0
+    cd "$SB/app"
+    printf '{\n  "version": "0.0.1"\n}\n' > package.json
+    printf '#!/bin/bash\necho "restart $*" >> calls.log\n' > restart.sh && chmod +x restart.sh
+    git init -q && git config user.email t@t && git config user.name t
+    git add -A && git commit -qm init
+    echo dirty > dirty.txt                       # untracked file = dirty tree
+    PATH="$SB/bin:$PATH" ./update.sh >/dev/null 2>&1; rc=$?
+    assert_exit 1 "$rc" "update exits 1 on dirty tree"
+    assert_not_contains "$DOCKER_LOG" "pull" "no image pull on dirty tree"
+    assert_not_contains "calls.log" "restart" "no restart on dirty tree"
+    cd / && rm -rf "$SB"
+    exit "$FAILURES"
+); FAILURES=$((FAILURES+$?))
+
+echo "— update.sh: clean tree pulls with detected profiles and restarts —"
+(
+    make_sandbox
+    FAILURES=0
+    cd "$SB/app"
+    printf '{\n  "version": "0.0.1"\n}\n' > package.json
+    printf 'ENABLE_MINIO=true\n' > .env
+    printf '#!/bin/bash\necho "restart $*" >> calls.log\n' > restart.sh && chmod +x restart.sh
+    git init -q && git config user.email t@t && git config user.name t
+    git add -A && git commit -qm init
+    # Give the repo an upstream so `git pull --ff-only` succeeds (already up to date)
+    git clone -q --bare . "$SB/origin.git"
+    git remote add origin "$SB/origin.git" && git fetch -q origin
+    branch=$(git symbolic-ref --short HEAD)
+    git branch -q --set-upstream-to="origin/$branch"
+    PATH="$SB/bin:$PATH" ./update.sh >/dev/null 2>&1; rc=$?
+    assert_exit 0 "$rc" "update exits 0 on clean tree"
+    assert_contains "$DOCKER_LOG" \
+        "docker compose --profile postgres --profile minio --profile supertokens pull" \
+        "profile-aware image pull (minio on, redis off)"
+    assert_contains "calls.log" "restart" "restart.sh invoked"
+    cd / && rm -rf "$SB"
+    exit "$FAILURES"
+); FAILURES=$((FAILURES+$?))
+
 if [ "$FAILURES" -eq 0 ]; then
     echo 'ALL LIFECYCLE TESTS PASSED'
 else
