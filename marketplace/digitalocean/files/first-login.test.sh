@@ -36,6 +36,8 @@ printf 'ONBOARDING_TOKEN=tok123\n' > "$SB/app/.env"
 out=$(printf '\n' | run_fl)           # user presses Enter (skip terminal setup)
 echo "$out" > "$SB/out"
 assert_contains "$SB/out" "https://203.0.113.9/?token=tok123" "wizard claim URL shown"
+assert_contains "$SB/out" "Claim token" "bare claim token label shown"
+assert_contains "$SB/out" "tok123" "bare claim token value shown"
 assert_contains "$SB/bashrc" "hook-line" "bashrc hook kept while unclaimed"
 rm -rf "$SB"
 

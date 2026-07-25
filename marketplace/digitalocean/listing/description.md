@@ -23,4 +23,4 @@ droplets), generates per-droplet secrets, and starts all services. Open
 Lifecycle scripts (`status.sh`, `update.sh`, `backup.sh`, `logs.sh`,
 `restart.sh`) come standard.
 
-Runs on 1 GB droplets (2 GB recommended). Docs: https://docs.bffless.dev
+Runs on 1 GB droplets (2 GB recommended). Website: https://bffless.dev • Docs: https://docs.bffless.dev

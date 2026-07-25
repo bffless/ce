@@ -7,21 +7,27 @@ After you create your droplet from the 1-Click image:
 The droplet configures itself on first boot: swap (on 1–2 GB droplets),
 per-droplet secrets, and all services. No SSH needed.
 
-## 2. Get your setup link
+## 2. Get your claim token
 
-The setup wizard is claim-protected by a one-time token. Get your personal
-setup link either way:
+The setup wizard is claim-protected by a one-time token. Get it either way:
 
 - **SSH (or the DO web console):** `ssh root@<your-droplet-ip>` — the welcome
-  banner prints your setup link (`https://<ip>/?token=...`). This works in the
-  DigitalOcean control panel's Droplet Console too.
+  banner prints both your setup link (`https://<ip>/?token=...`) and the bare
+  claim token on its own line, ready to copy. This works in the DigitalOcean
+  control panel's Droplet Console too.
 
 ## 3. Finish setup in the browser
 
-Open the setup link. Your browser warns about a self-signed certificate —
-that's expected before a domain is configured; proceed. The wizard walks you
-through: create your admin account → set your domain (Cloudflare recommended,
-free) → SSL → done. Your admin panel lands at `https://admin.<your-domain>`.
+Copy your claim token, open `https://<your-droplet-ip>/`, and proceed past
+the self-signed certificate warning — that's expected before a domain is
+configured. Paste the token into the setup wizard's claim field, then it
+walks you through: create your admin account → set your domain (Cloudflare
+recommended, free) → SSL → done. Your admin panel lands at
+`https://admin.<your-domain>`.
+
+**Note:** browsers can drop the `?token=...` part of the link when you click
+through the certificate warning, so the wizard may not show your token
+prefilled — if that happens, just paste it manually from the banner.
 
 Prefer the terminal? The SSH welcome banner offers a full interactive setup
 instead (`bffless-setup`).
@@ -41,6 +47,7 @@ All from `/opt/bffless`:
 
 ## Resources
 
+- Website: https://bffless.dev
 - Documentation: https://docs.bffless.dev
 - Deployment guide: https://docs.bffless.dev/deployment/digitalocean
 - Community & issues: https://github.com/bffless/ce
