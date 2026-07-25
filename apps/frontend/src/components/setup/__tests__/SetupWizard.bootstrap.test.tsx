@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
 import { Provider } from 'react-redux';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useSearchParams } from 'react-router-dom';
 import { configureStore } from '@reduxjs/toolkit';
 import { computeWizardSteps, SetupWizard } from '../SetupWizard';
 import { api } from '@/services/api';
@@ -84,6 +84,36 @@ function wizardTree(store: ReturnType<typeof createTestStore>, initialEntries: s
 function renderWizard(initialEntries: string[] = ['/setup']) {
   const store = createTestStore();
   render(wizardTree(store, initialEntries));
+  return store;
+}
+
+// MemoryRouter keeps its location in-memory, independent of window.history,
+// so a real address-bar assertion can't reach it. Mounting a probe inside
+// the same <MemoryRouter> that reads the live search params (the same
+// useSearchParams() the wizard itself relies on) is how the scrub gets
+// observed from the outside.
+function LocationSearchProbe() {
+  const [params] = useSearchParams();
+  return <div data-testid="location-search">{params.toString()}</div>;
+}
+
+function wizardTreeWithProbe(
+  store: ReturnType<typeof createTestStore>,
+  initialEntries: string[]
+) {
+  return (
+    <Provider store={store}>
+      <MemoryRouter initialEntries={initialEntries}>
+        <LocationSearchProbe />
+        <SetupWizard />
+      </MemoryRouter>
+    </Provider>
+  );
+}
+
+function renderWizardWithProbe(initialEntries: string[] = ['/setup']) {
+  const store = createTestStore();
+  render(wizardTreeWithProbe(store, initialEntries));
   return store;
 }
 
@@ -189,6 +219,51 @@ describe('SetupWizard bootstrap-mode step gating', () => {
     });
   });
 
+  describe('skip-path token scrub (review follow-up: PR #536)', () => {
+    // ClaimStep's own scrub effect only ever mounts on the NO-token path
+    // (computeWizardSteps drops 'claim' precisely when a url token is
+    // present), so the token-seeding path here — the one install.sh's
+    // `?token=` links and the Platform relay actually take — must do its
+    // own scrubbing. It must also survive re-render: once `urlToken` goes
+    // back to null (post-scrub), computeWizardSteps must not resurrect the
+    // claim step.
+    it('scrubs the token from the URL while preserving other params, and stashes it', () => {
+      setMockStatus(baseStatus({ bootstrapMode: true, claimRequired: true }));
+
+      const store = renderWizardWithProbe([
+        '/setup?token=platform-relay-token&foo=bar',
+      ]);
+
+      expect(store.getState().setup.wizard.claimToken).toBe('platform-relay-token');
+      const probe = screen.getByTestId('location-search');
+      const parsed = new URLSearchParams(probe.textContent ?? '');
+      expect(parsed.has('token')).toBe(false);
+      expect(parsed.get('foo')).toBe('bar');
+    });
+
+    it('does not resurrect the claim step after the URL is scrubbed (urlToken -> null on re-render)', () => {
+      setMockStatus(baseStatus({ bootstrapMode: true, claimRequired: true }));
+
+      renderWizardWithProbe(['/setup?token=platform-relay-token']);
+
+      // Post-scrub: the url no longer carries the token ...
+      expect(screen.getByTestId('location-search').textContent).toBe('');
+      // ... yet the claim step must still be absent and the wizard must
+      // still be showing the step right after it, not stranded/reset.
+      expect(screen.queryByText(/claim this instance/i)).not.toBeInTheDocument();
+      expect(screen.getByText('ADMIN STEP')).toBeInTheDocument();
+    });
+
+    it('does not touch the URL when there is no ?token= to begin with', () => {
+      setMockStatus(baseStatus({ bootstrapMode: true, claimRequired: true }));
+
+      renderWizardWithProbe(['/setup']);
+
+      expect(screen.getByTestId('location-search').textContent).toBe('');
+      expect(screen.getByText(/claim this instance/i)).toBeInTheDocument();
+    });
+  });
+
   describe('Critical-1 regression: claimRequired flipping mid-session must not relocate the user', () => {
     it('reproduces the failure trace: claim -> admin -> domain-ssl, then the 7->6 shrink must not land on storage', () => {
       // No `?token=` in the URL — the DigitalOcean console-token flow.
@@ -272,6 +347,21 @@ describe('computeWizardSteps (regression guard: normal mode is unchanged)', () =
   it('bootstrap mode + claimRequired + ?token= present: claim step dropped', () => {
     const steps = computeWizardSteps(
       baseStatus({ bootstrapMode: true, claimRequired: true }),
+      'platform-relay-token'
+    );
+
+    expect(steps).toEqual(['admin', 'domain-ssl', 'storage', 'cache', 'email', 'apply']);
+  });
+
+  it('bootstrap mode + claimRequired + no urlToken but a seeded token (post-scrub): claim step stays dropped', () => {
+    // Reproduces the exact re-render this gating must survive: the
+    // seeding effect scrubs `?token=` from the URL immediately after
+    // stashing it, so urlToken goes back to null on the very next render.
+    // Without honoring the seeded token as an alternative signal, this
+    // would incorrectly resurrect 'claim'.
+    const steps = computeWizardSteps(
+      baseStatus({ bootstrapMode: true, claimRequired: true }),
+      null,
       'platform-relay-token'
     );
 

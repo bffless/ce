@@ -519,3 +519,76 @@ $ pnpm test -- ClaimStep
 $ pnpm --filter frontend exec tsc --noEmit
 (clean, no output)
 ```
+
+## Fix: skip-path token scrub
+
+**Gap (review finding, PR #536):** `SetupWizard.tsx`'s token-seeding effect
+(~lines 79-102) — the path install.sh's `?token=` links and the Platform
+relay actually take — dispatched `setClaimToken(urlToken)` but never
+scrubbed `token` from the URL. `ClaimStep.tsx`'s own scrub effect only
+mounts when `ClaimStep` is rendered, which per `computeWizardSteps`
+(`if (status.claimRequired && !urlToken) steps.push('claim')`) is exactly
+the case where there is **no** url token — mutually exclusive with the
+live seeding path. Net effect: the claim token lingered in the address bar
+and browser history on every real `?token=` link.
+
+**The trap:** scrubbing `token` out of the URL makes `urlToken` (from
+`useSearchParams()`) go back to `null` on the very next render.
+`computeWizardSteps` originally gated purely on `!urlToken`, so a naive
+scrub would resurrect the already-skipped `claim` step on that re-render.
+
+**Fix:**
+- `computeWizardSteps` takes a new optional third parameter, `seededToken`,
+  and guards `!urlToken && !seededToken`.
+- `SetupWizard` passes its own `claimToken` (the Redux-store value,
+  destructured from `state.setup.wizard.claimToken`) as `seededToken`. This
+  is the value that makes the post-scrub render stable: `dispatch(setClaimToken(urlToken))`
+  and the `setSearchParams` scrub are both fired from the same effect
+  invocation, so by the time React commits the next render, `claimToken` in
+  the store is already the seeded value — no flicker, no window where
+  neither signal is present.
+- The scrub itself uses the same `useSearchParams()` hook already in
+  scope: `setSearchParams((prev) => { const next = new URLSearchParams(prev); next.delete('token'); return next; }, { replace: true })`,
+  run immediately after the `setClaimToken` dispatch, inside the existing
+  seed-once effect (guarded by `hasStashedTokenRef`). Using the router's
+  own `setSearchParams` (rather than a raw `window.history.replaceState`
+  like `ClaimStep` uses) keeps React Router's internal location in sync —
+  important because `SetupWizard` derives `urlToken` from
+  `useSearchParams()`, not from `window.location` directly, so a
+  router-unaware scrub would either never be observed by `urlToken` (stale
+  `useSearchParams` state) or reappear inconsistently on the next real
+  navigation.
+- Platform's relay behavior is unchanged and now covered by a regression
+  test: land with `?token=` → claim step skipped → **stays** skipped after
+  the scrub fires and the URL param disappears.
+
+**Tests added** (`SetupWizard.bootstrap.test.tsx`):
+- A `LocationSearchProbe` helper (mounted inside the same `<MemoryRouter>`
+  as `SetupWizard`, reading `useSearchParams()`) — needed because
+  `MemoryRouter`'s location is independent of `window.history`, so a
+  `window.history.replaceState` spy (as used in `ClaimStep.test.tsx`)
+  can't observe the effect here.
+- `scrubs the token from the URL while preserving other params, and
+  stashes it` — `?token=...&foo=bar` → token gone, `foo=bar` preserved,
+  `claimToken` in the store set.
+- `does not resurrect the claim step after the URL is scrubbed
+  (urlToken -> null on re-render)` — the trap case: asserts the URL is
+  empty post-scrub AND the claim step is still absent AND the wizard is on
+  `ADMIN STEP`, not stranded.
+- `does not touch the URL when there is no ?token= to begin with` — no-op
+  path, claim step still shown when `claimRequired`.
+- `computeWizardSteps` unit test with `urlToken=null, seededToken='...'`
+  directly reproducing the post-scrub re-render shape, independent of the
+  component's effect timing.
+
+All new tests were confirmed red first (`computeWizardSteps` ignored the
+extra arg; the component never scrubbed), then green after the fix.
+
+### Verification
+```
+$ pnpm test -- SetupWizard ClaimStep
+ Test Files  63 passed (63)
+      Tests  677 passed (677)
+$ pnpm --filter frontend exec tsc --noEmit
+(clean, no output)
+```

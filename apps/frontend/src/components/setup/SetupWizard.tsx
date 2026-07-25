@@ -33,17 +33,26 @@ const STEP_COMPONENTS: Record<StepId, () => JSX.Element | null> = {
  * Bootstrap mode: ['claim'?, 'admin', 'domain-ssl', 'storage', 'cache', 'email', 'apply']
  * — 'claim' only appears when the backend requires it AND no `?token=` was
  * found in the URL (the Platform relay path auto-claims and skips it).
+ *
+ * `seededToken` is the same token once it's landed in the store (from
+ * either source — see the seeding effect below). It exists because the
+ * seeding effect scrubs `?token=` out of the URL right after stashing it
+ * (same reasoning as ClaimStep's own scrub — it must not linger in the
+ * address bar/history), which makes `urlToken` go back to `null` on the
+ * very next render. Without this fallback, that would incorrectly
+ * resurrect the already-skipped 'claim' step.
  */
 export function computeWizardSteps(
   status: SetupStatusResponse | undefined,
-  urlToken: string | null
+  urlToken: string | null,
+  seededToken?: string | null
 ): StepId[] {
   if (!status?.bootstrapMode) {
     return ['admin', 'storage', 'cache', 'email', 'complete'];
   }
 
   const steps: StepId[] = [];
-  if (status.claimRequired && !urlToken) {
+  if (status.claimRequired && !urlToken && !seededToken) {
     steps.push('claim');
   }
   return [...steps, 'admin', 'domain-ssl', 'storage', 'cache', 'email', 'apply'];
@@ -75,7 +84,7 @@ export function SetupWizard() {
     claimToken,
   } = useSelector((state: RootState) => state.setup.wizard);
   const { data: setupStatus } = useGetSetupStatusQuery();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const urlToken = searchParams.get('token');
 
   // Track if initial sync has been done to prevent continuous auto-advancing
@@ -88,18 +97,34 @@ export function SetupWizard() {
   // see CLAIM_TOKEN_STORAGE_KEY). Downstream steps (AdminAccountStep,
   // DomainSslStep, ApplyStep) read it from the store to authenticate their
   // session-less requests.
+  //
+  // A `?token=` here means computeWizardSteps already skipped 'claim'
+  // entirely (see its doc comment), so ClaimStep's own URL-scrub effect
+  // never mounts to clean up after it. This is the only path a
+  // Platform-relay / install.sh link actually takes, so the scrub has to
+  // happen here instead — otherwise the token lingers in the address bar
+  // and browser history indefinitely. `{ replace: true }` avoids adding a
+  // history entry, same as ClaimStep's `history.replaceState`.
   useEffect(() => {
     if (hasStashedTokenRef.current) return;
     hasStashedTokenRef.current = true;
     if (urlToken) {
       dispatch(setClaimToken(urlToken));
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete('token');
+          return next;
+        },
+        { replace: true }
+      );
       return;
     }
     const stored = readStoredClaimToken();
     if (stored) {
       dispatch(setClaimToken(stored));
     }
-  }, [urlToken, dispatch]);
+  }, [urlToken, dispatch, setSearchParams]);
 
   // Persist the token so a reload doesn't lose it. Cleared explicitly when it
   // becomes empty; otherwise it clears itself when the tab closes.
@@ -115,9 +140,14 @@ export function SetupWizard() {
     }
   }, [claimToken]);
 
+  // `claimToken` (from the store) is the seeded-token fallback described in
+  // computeWizardSteps' doc comment: it's set synchronously in the same
+  // dispatch batch that clears `urlToken` via the scrub above, so this
+  // stays stable across that re-render instead of flickering 'claim' back
+  // in.
   const steps = useMemo(
-    () => computeWizardSteps(setupStatus, urlToken),
-    [setupStatus, urlToken]
+    () => computeWizardSteps(setupStatus, urlToken, claimToken),
+    [setupStatus, urlToken, claimToken]
   );
 
   // Keep the store's stepOrder in sync with the currently active list. This
