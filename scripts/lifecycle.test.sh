@@ -3,7 +3,7 @@
 # backup.sh. No docker or root needed: external commands are stubbed on PATH
 # and each case runs in its own sandbox copy of the scripts.
 # Run: bash scripts/lifecycle.test.sh
-# shellcheck disable=SC2030,SC2031
+# shellcheck disable=SC2030,SC2031,SC2164,SC2012
 set -u
 FAILURES=0
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
