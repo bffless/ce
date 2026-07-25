@@ -65,9 +65,34 @@ describe('SetupController', () => {
       const result = await controller.initialize(mockDto);
 
       expect(result).toEqual(mockResult);
-      // m5: initialize() now also forwards the client IP (req?.ip); the test
-      // doesn't pass a mock request, so it's undefined here.
+      // m5: initialize() now also forwards the client IP via extractClientIp();
+      // the test doesn't pass a mock request, so it's undefined here.
       expect(service.initialize).toHaveBeenCalledWith(mockDto, undefined);
+    });
+
+    it('forwards the X-Forwarded-For-derived IP, not the raw socket peer (req.ip)', async () => {
+      // Only nginx ever connects directly to the backend (no exposed ports),
+      // so req.ip/req.socket.remoteAddress is always nginx's own address —
+      // using it for rate limiting would collapse every client into one
+      // bucket. extractClientIp() must be used instead, which reads the
+      // client IP nginx forwards in X-Forwarded-For.
+      const mockDto = {
+        email: 'admin@example.com',
+        password: 'SecurePass123!',
+        username: 'admin',
+      };
+      const mockResult = { success: true, message: 'System initialized' };
+      jest.spyOn(service, 'initialize').mockResolvedValue(mockResult as any);
+
+      const mockReq = {
+        headers: { 'x-forwarded-for': '203.0.113.7, 10.0.0.5' },
+        ip: '10.0.0.5',
+        socket: { remoteAddress: '10.0.0.5' },
+      };
+
+      await controller.initialize(mockDto, mockReq as any);
+
+      expect(service.initialize).toHaveBeenCalledWith(mockDto, '203.0.113.7');
     });
   });
 

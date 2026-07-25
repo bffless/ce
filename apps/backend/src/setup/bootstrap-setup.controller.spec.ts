@@ -87,9 +87,37 @@ describe('BootstrapSetupController', () => {
         servingMode: 'cloudflare',
         token: 'claim-123',
       });
-      // m5: validateClaimToken now also forwards the client IP (req?.ip);
-      // the test doesn't pass a mock request, so it's undefined here.
+      // m5: validateClaimToken now also forwards the client IP via
+      // extractClientIp(); the test doesn't pass a mock request, so it's
+      // undefined here.
       expect(svc.validateClaimToken).toHaveBeenCalledWith('claim-123', undefined);
+    });
+
+    it('forwards the X-Forwarded-For-derived IP, not the raw socket peer (req.ip)', async () => {
+      // Only nginx ever connects directly to the backend (no exposed ports),
+      // so req.ip/req.socket.remoteAddress is always nginx's own address —
+      // using it for per-IP rate limiting would collapse every client into
+      // one bucket, reproducing the lockout DoS this rate limiter exists to
+      // prevent. extractClientIp() must be used instead, which reads the
+      // client IP nginx forwards in X-Forwarded-For.
+      const mockReq = {
+        headers: { 'x-forwarded-for': '203.0.113.7, 10.0.0.5' },
+        ip: '10.0.0.5',
+        socket: { remoteAddress: '10.0.0.5' },
+      };
+
+      await controller.uploadCertificates(
+        {
+          domain: 'example.com',
+          certificatePem: 'CERT',
+          privateKeyPem: 'KEY',
+          servingMode: 'cloudflare',
+          token: 'claim-123',
+        },
+        mockReq as any,
+      );
+
+      expect(svc.validateClaimToken).toHaveBeenCalledWith('claim-123', '203.0.113.7');
     });
 
     it('rejects a bad claim token before touching the cert (session-less auth gate)', async () => {
@@ -145,8 +173,8 @@ describe('BootstrapSetupController', () => {
         expect.objectContaining({ state: 'applied', primaryDomain: 'example.com', proxyMode: 'cloudflare' }),
       );
       expect(res).toEqual({ applying: true, adminUrl: 'https://admin.example.com' });
-      // m5: second arg is the client IP (req?.ip) — undefined since no mock
-      // request was passed to this call.
+      // m5: second arg is the client IP via extractClientIp() — undefined
+      // since no mock request was passed to this call.
       expect(svc.validateClaimToken).toHaveBeenCalledWith(undefined, undefined);
       // Setup is marked complete as part of apply, so the restarted backend
       // lands the user at login instead of back in the wizard.
@@ -413,8 +441,8 @@ describe('BootstrapSetupController', () => {
       preflight.run.mockResolvedValue({ ok: true, checks: [] });
       const res = await controller.dnsPreflight({ domain: 'Example.com', token: 't' });
       expect(svc.assertBootstrapAllowed).toHaveBeenCalled();
-      // m5: second arg is the client IP (req?.ip) — undefined since no mock
-      // request was passed to this call.
+      // m5: second arg is the client IP via extractClientIp() — undefined
+      // since no mock request was passed to this call.
       expect(svc.validateClaimToken).toHaveBeenCalledWith('t', undefined);
       expect(svc.validateDomain).toHaveBeenCalledWith('Example.com');
       expect(preflight.run).toHaveBeenCalledWith('example.com');

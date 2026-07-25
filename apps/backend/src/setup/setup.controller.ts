@@ -16,6 +16,7 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { SessionContainer } from 'supertokens-node/recipe/session';
 import { SetupService } from './setup.service';
+import { extractClientIp } from '../common/utils/request-ip.util';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -161,7 +162,7 @@ export class SetupController {
     @Body() dto: InitializeSystemDto,
     @Req() req?: Request,
   ): Promise<InitializeResponseDto> {
-    return this.setupService.initialize(dto, req?.ip);
+    return this.setupService.initialize(dto, req ? extractClientIp(req) : undefined);
   }
 
   @Post('check-email')
@@ -206,7 +207,7 @@ export class SetupController {
     @Body() dto: AdoptExistingUserDto,
     @Req() req?: Request,
   ): Promise<AdoptExistingUserResponseDto> {
-    return this.setupService.adoptExistingUser(dto.email, dto.password, dto.token, req?.ip);
+    return this.setupService.adoptExistingUser(dto.email, dto.password, dto.token, req ? extractClientIp(req) : undefined);
   }
 
   @Post('adopt-session-user')
@@ -247,7 +248,7 @@ export class SetupController {
       throw new UnauthorizedException('User not found');
     }
 
-    return this.setupService.adoptSessionUser(userId, user.email, dto.token, req?.ip);
+    return this.setupService.adoptSessionUser(userId, user.email, dto.token, req ? extractClientIp(req) : undefined);
   }
 
   @Post('storage')

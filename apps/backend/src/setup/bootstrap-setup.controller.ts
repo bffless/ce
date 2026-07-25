@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Request } from 'express';
+import { extractClientIp } from '../common/utils/request-ip.util';
 import { BootstrapSetupService } from './bootstrap-setup.service';
 import { BootstrapDnsPreflightService, PreflightResult } from './bootstrap-dns-preflight.service';
 import { SslCertificateService } from '../domains/ssl-certificate.service';
@@ -54,7 +55,7 @@ export class BootstrapSetupController {
     // are claim-token-gated (the same rate-limited token that gates admin
     // creation), not admin-session-guarded. Runs after the mode gate, before
     // any cert parsing or disk writes.
-    this.bootstrap.validateClaimToken(dto.token, req?.ip);
+    this.bootstrap.validateClaimToken(dto.token, req ? extractClientIp(req) : undefined);
     const { sans, wildcardCovered } = this.bootstrap.validateCertificatePair(
       dto.certificatePem,
       dto.privateKeyPem,
@@ -75,7 +76,7 @@ export class BootstrapSetupController {
     // claim-token auth gate, before the certificate presence check or any
     // filesystem/response work.
     await this.bootstrap.assertBootstrapAllowed();
-    this.bootstrap.validateClaimToken(dto.token, req?.ip);
+    this.bootstrap.validateClaimToken(dto.token, req ? extractClientIp(req) : undefined);
     // Self-signed keeps serving the built-in bootstrap cert (behind a
     // TLS-terminating proxy) — there is deliberately no staged fullchain to
     // check. Every other mode stages a real cert (paste) or has one issued
@@ -155,7 +156,7 @@ export class BootstrapSetupController {
     @Req() req?: Request,
   ): Promise<PreflightResult> {
     await this.bootstrap.assertBootstrapAllowed();
-    this.bootstrap.validateClaimToken(dto.token, req?.ip);
+    this.bootstrap.validateClaimToken(dto.token, req ? extractClientIp(req) : undefined);
     const domain = this.bootstrap.validateDomain(dto.domain);
     return this.preflight.run(domain);
   }
@@ -167,7 +168,7 @@ export class BootstrapSetupController {
     @Req() req?: Request,
   ): Promise<{ issued: true; sans: string[] }> {
     await this.bootstrap.assertBootstrapAllowed();
-    this.bootstrap.validateClaimToken(dto.token, req?.ip);
+    this.bootstrap.validateClaimToken(dto.token, req ? extractClientIp(req) : undefined);
     const domain = this.bootstrap.validateDomain(dto.domain);
     // Server-side re-check — the client's claim that preflight passed is
     // advisory only. Cheap (one token write + three HTTP GETs) relative to
@@ -193,7 +194,7 @@ export class BootstrapSetupController {
     @Req() req?: Request,
   ): Promise<{ recordName: string; recordValues: string[]; expiresAt: string }> {
     await this.bootstrap.assertBootstrapAllowed();
-    this.bootstrap.validateClaimToken(dto.token, req?.ip);
+    this.bootstrap.validateClaimToken(dto.token, req ? extractClientIp(req) : undefined);
     const domain = this.bootstrap.validateDomain(dto.domain);
     await this.sslCert.initialize();
     const challenge = await this.sslCert.startWildcardCertificateRequest(domain);
@@ -211,7 +212,7 @@ export class BootstrapSetupController {
     @Req() req?: Request,
   ): Promise<{ success: boolean; error?: string }> {
     await this.bootstrap.assertBootstrapAllowed();
-    this.bootstrap.validateClaimToken(dto.token, req?.ip);
+    this.bootstrap.validateClaimToken(dto.token, req ? extractClientIp(req) : undefined);
     const domain = this.bootstrap.validateDomain(dto.domain);
     await this.sslCert.initialize();
     const result = await this.sslCert.completeWildcardCertificateRequest(domain);
