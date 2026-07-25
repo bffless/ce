@@ -73,6 +73,17 @@ interface SetupWizardState {
 
   // Bootstrap mode: claim token (from ClaimStep, or the `?token=` Platform relay)
   claimToken: string | null;
+  // Bootstrap mode: whether `claimToken` was seeded from the `?token=` URL
+  // relay (SetupWizard's seeding effect) rather than typed manually into
+  // ClaimStep. This is a DELIBERATELY separate signal from `claimToken`
+  // itself: ClaimStep's manual submission also dispatches setClaimToken, and
+  // gating the 'claim' step's presence in computeWizardSteps on bare
+  // claimToken would collapse it out of the step list (and the SetupProgress
+  // rail) the instant a manual submission lands — even though the user is
+  // still mid-flow through a list that was computed with 'claim' present.
+  // Set ONLY by the URL-seeding effect; ClaimStep's manual path never
+  // touches it. See review r2 of PR #536.
+  claimTokenFromUrl: boolean;
 
   // Bootstrap mode: domain chosen in DomainSslStep (consumed by ApplyStep)
   bootstrapDomain: string | null;
@@ -158,6 +169,7 @@ const initialState: SetupState = {
     smtpSkipped: false,
     // Bootstrap mode
     claimToken: null,
+    claimTokenFromUrl: false,
     bootstrapDomain: null,
     servingMode: null,
     bootstrapSslMode: null,
@@ -311,6 +323,13 @@ const setupSlice = createSlice({
       state.wizard.claimToken = action.payload;
     },
 
+    // Bootstrap mode: marks `claimToken` as URL-seeded (see the field's doc
+    // comment above). Dispatched only by SetupWizard's URL-token seeding
+    // effect, never by ClaimStep's manual submission.
+    setClaimTokenFromUrl: (state, action: PayloadAction<boolean>) => {
+      state.wizard.claimTokenFromUrl = action.payload;
+    },
+
     // Bootstrap mode: domain chosen in DomainSslStep (consumed by ApplyStep)
     setBootstrapDomain: (state, action: PayloadAction<string | null>) => {
       state.wizard.bootstrapDomain = action.payload;
@@ -440,6 +459,7 @@ export const {
   setSmtpSkipped,
   // Bootstrap mode actions
   setClaimToken,
+  setClaimTokenFromUrl,
   setBootstrapDomain,
   setServingMode,
   setBootstrapSslMode,

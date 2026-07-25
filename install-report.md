@@ -592,3 +592,115 @@ $ pnpm test -- SetupWizard ClaimStep
 $ pnpm --filter frontend exec tsc --noEmit
 (clean, no output)
 ```
+
+## Fix r2: url-seeded flag + durable-persist scrub
+
+A re-review of commit `37bdf36` (the skip-path-token-scrub fix above) found
+two further Important issues in the same code, both fixed here.
+
+### Issue 1 — bare `claimToken` truthiness collapsed the manual-claim step list
+
+`computeWizardSteps`'s gate was `!urlToken && !seededToken`, where
+`seededToken` was literally the Redux `claimToken` string. But
+`ClaimStep.handleSubmit` (the manual-entry path — no `?token=` involved)
+*also* dispatches `setClaimToken`. So the instant a user typed a token and
+hit Continue, `claimToken` went truthy, `computeWizardSteps` re-ran, and the
+`'claim'` step vanished from the 7-step bootstrap list — the SetupProgress
+rail's "Claim" bubble disappeared and every step's 1-based position shifted
+down by one, in the same render that was supposed to just advance the user
+forward. It happened to be masked by ordering (the user had already left the
+claim step by the time the list shrank), but it left the progress rail lying
+about history and was one refactor away from actually stranding a step
+index.
+
+**Fix:** introduced a dedicated boolean, `wizard.claimTokenFromUrl`, in
+`setupSlice.ts`, with its own action `setClaimTokenFromUrl`. It is set
+*only* by `SetupWizard`'s URL-token seeding effect; `ClaimStep`'s manual
+`handleSubmit` still dispatches only `setClaimToken`, and never touches the
+new flag. `computeWizardSteps`'s third parameter changed from the
+`claimToken` string (`seededToken`) to this boolean
+(`status.claimRequired && !urlToken && !claimTokenFromUrl`) — so the claim
+step's presence in the list is now driven purely by *how* the token arrived,
+never by whether one happens to be set.
+
+### Issue 2 — URL scrub could race ahead of durable persistence
+
+The seeding effect previously did `dispatch(setClaimToken(urlToken))` then
+unconditionally scrubbed `?token=` via `setSearchParams`, relying on a
+*separate* reactive `useEffect` (keyed on `claimToken`) to persist the token
+to `sessionStorage` on the next commit. If `sessionStorage.setItem` throws
+(incognito/privacy mode, or storage disabled/full), that separate effect's
+`try/catch` silently swallowed the failure — but the scrub had already
+removed the token from the URL. Result: on the next reload, the token exists
+in neither the URL (scrubbed) nor sessionStorage (write failed) — completely
+unrecoverable, strictly worse than the pre-fix behavior of just leaving the
+token sitting in the address bar.
+
+**Fix — reordered and gated:**
+1. Extracted `persistClaimToken(token, fromUrl): boolean` — a single
+   sessionStorage-write helper (extends the prior ad-hoc inline
+   `try { sessionStorage.setItem(...) } catch {}` into a reusable function
+   that also writes/clears the new `bffless.setup.claimTokenFromUrl` key)
+   that returns whether the write actually succeeded.
+2. The seeding effect now calls `persistClaimToken(urlToken, true)`
+   *synchronously, first* — before either dispatching to Redux or calling
+   `setSearchParams`.
+3. The scrub (`setSearchParams(...)`) only runs `if (persisted)`. If the
+   write threw, the effect still dispatches `setClaimToken`/
+   `setClaimTokenFromUrl` (so the in-memory session still works and the
+   claim step still correctly stays skipped), but leaves `?token=` in the
+   URL — the degraded-but-functional, recoverable fallback, with a comment
+   explaining why.
+4. The rehydration branch (no `?token=`, reading from sessionStorage on
+   mount) now also reads back `claimTokenFromUrl` via
+   `readStoredClaimTokenFromUrl()` and dispatches `setClaimTokenFromUrl(true)`
+   when it was persisted — so a refresh of an already-seeded relay-link
+   wizard still skips the claim step even if `claimRequired` hasn't yet
+   flipped false server-side.
+5. The original reactive `useEffect` (now keyed on both `claimToken` and
+   `claimTokenFromUrl`) still exists and calls the same `persistClaimToken`
+   helper — it keeps sessionStorage in sync with *all* later changes
+   (manual ClaimStep submission, the token being cleared, etc.), it's just
+   no longer the only thing standing between "seed" and "scrub".
+
+### TDD
+
+All new/changed assertions were written first and confirmed to fail for the
+right reason before implementing:
+
+- **(a) manual path** (new): drives `ClaimStep`'s real `handleSubmit` via
+  `userEvent.type` + `userEvent.click` (not a `store.dispatch` shortcut) —
+  asserts `claimToken` is set, `claimTokenFromUrl` stays `false`,
+  `stepOrder` still contains `'claim'`, and the "Claim" progress-rail label
+  is still rendered after advancing to `ADMIN STEP`. Red before the flag
+  existed (gate was on bare `claimToken`, so `stepOrder` lost `'claim'`).
+- **(b) refresh-resume** (new): renders once with `?token=`, asserts both
+  `sessionStorage` keys were written, `cleanup()`s to simulate a reload,
+  then renders a **fresh store** with no `?token=` in the URL but the same
+  `sessionStorage` — claim step stays skipped even though `claimRequired`
+  is still `true` in the mocked status (i.e. skipped because of the
+  restored flag, not because the backend state changed).
+- **(c) sessionStorage-unavailable** (new): `vi.spyOn(window.sessionStorage,
+  'setItem')` throws — asserts the URL search param probe still reads
+  `token=platform-relay-token` (no scrub happened) while the store's
+  `claimToken` is still correctly set and the claim step is still skipped.
+  (Note: `Storage.prototype.setItem` did NOT work as a spy target under
+  happy-dom — had to spy on the `window.sessionStorage` instance method
+  directly; caught this from an initial red-for-the-wrong-reason failure
+  where the probe showed the URL had been scrubbed anyway.)
+- **(d) existing scrub tests**: all four kept green. One `computeWizardSteps`
+  unit test's third argument changed from the string `'platform-relay-token'`
+  to `true` (matching the new boolean signature) and was renamed to reflect
+  the flag; a new sibling unit test was added asserting the inverse
+  (`claimTokenFromUrl: false` with `claimToken` conceptually truthy at the
+  gate-function level keeps `'claim'` in the list) to pin the manual-path
+  contract at the pure-function level too.
+
+### Verification
+```
+$ pnpm test -- SetupWizard ClaimStep
+ Test Files  63 passed (63)
+      Tests  681 passed (681)
+$ pnpm --filter frontend exec tsc --noEmit
+(clean, no output)
+```
