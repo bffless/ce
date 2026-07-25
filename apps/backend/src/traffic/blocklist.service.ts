@@ -118,6 +118,17 @@ export class BlocklistService implements OnModuleInit {
 
   /** Fingerprint of the last compiled state; null until the first refresh. */
   private lastFingerprint: string | null = null;
+  /**
+   * Set when a refresh dies in the outer catch below (e.g. postgres not
+   * ready yet at boot) — `lastFingerprint` stays null in that case, but the
+   * Baseline-only matcher from the constructor is already live and rendered
+   * into every nginx config by NginxStartupService. Without this flag, the
+   * next successful refresh's null-guard on `changed` would treat that as
+   * "no change" and never call notifyEffectiveChange(), stranding the
+   * Baseline-only edge rules until a manual edit forces a refresh (v0.3.0
+   * live incident, #531). Cleared once the first post-failure refresh notifies.
+   */
+  private refreshEverFailed = false;
   private readonly changeListeners: Array<() => void> = [];
 
   constructor(private readonly featureFlags: FeatureFlagsService) {}
@@ -294,13 +305,23 @@ export class BlocklistService implements OnModuleInit {
         .sort()
         .join(';');
       const fingerprint = `${enabled}|${defaultMatcher.blockSource ?? ''}|${defaultMatcher.allowSource ?? ''}|${domainPart}`;
-      const changed = this.lastFingerprint !== null && this.lastFingerprint !== fingerprint;
+      // Normally the null-guard means "first refresh ever, nothing to diff
+      // against, don't notify" — startup config regen already reads this
+      // state directly. But if an EARLIER refresh died in the outer catch
+      // below, the Baseline-only matcher it left behind is already live in
+      // rendered nginx configs, so this first *successful* refresh must
+      // notify even though lastFingerprint is still null (#531).
+      const changed =
+        this.refreshEverFailed ||
+        (this.lastFingerprint !== null && this.lastFingerprint !== fingerprint);
       this.lastFingerprint = fingerprint;
+      this.refreshEverFailed = false;
       if (changed) {
         this.notifyEffectiveChange();
       }
     } catch (error) {
       // Keep the last good matchers; never let a refresh failure break serving.
+      this.refreshEverFailed = true;
       this.logger.error(`Blocklist refresh failed: ${String(error)}`);
     }
   }

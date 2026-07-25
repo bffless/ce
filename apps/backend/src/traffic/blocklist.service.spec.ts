@@ -162,6 +162,27 @@ describe('BlocklistService', () => {
       expect(listener).not.toHaveBeenCalled();
     });
 
+    it('notifies on the first successful refresh after the boot refresh failed outright (#531)', async () => {
+      // Live incident: the outer catch (e.g. featureFlags.isEnabled() throwing
+      // because postgres isn't ready yet) used to leave lastFingerprint null,
+      // so the next successful refresh's null-guard suppressed notification
+      // and NginxStartupService's Baseline-only render was never corrected.
+      const listener = jest.fn();
+      service.onEffectiveChange(listener);
+
+      featureFlags.isEnabled.mockRejectedValueOnce(new Error('connection refused'));
+      await service.refresh(); // boot refresh: outer catch, Baseline-only stands
+      expect(listener).not.toHaveBeenCalled();
+
+      mockDb.__queue([listRow()]);
+      mockDb.__queue([entryRow()]);
+      mockDb.__queue([]); // attachments
+      mockDb.__queue([]); // domain mappings
+      await service.refresh(); // first successful refresh after the failure
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(service.shouldBlock('/custom-probe')).toBe(true);
+    });
+
     it('fires listeners when the effective set changes (mutation or toggle flip)', async () => {
       const listener = jest.fn();
       service.onEffectiveChange(listener);
