@@ -36,37 +36,12 @@
 # - Backend: NODE_OPTIONS --max-old-space-size (70% of container limit)
 #
 # =============================================================================
-# SWAP CONFIGURATION (Recommended for 1GB-2GB VMs)
+# SWAP (Recommended for 1GB-2GB VMs)
 # =============================================================================
-# Swap provides emergency overflow when RAM fills up. Without it, the OOM killer
-# may terminate containers unexpectedly.
-#
-# Check if swap is active:
-#   swapon --show
-#   free -h
-#
-# Create and enable swap (run once):
-#   sudo fallocate -l 2G /swapfile
-#   sudo chmod 600 /swapfile
-#   sudo mkswap /swapfile
-#   sudo swapon /swapfile
-#
-# Make swap permanent (survives reboots):
-#   echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-#
-# Recommended swap sizes:
-#   1GB VM: 2G swap
-#   2GB VM: 2G swap
-#   4GB VM: 2G swap (or skip, usually not needed)
-#
-# Adjust swappiness (optional, lower = prefer RAM over swap):
-#   echo 'vm.swappiness=10' | sudo tee -a /etc/sysctl.conf
-#   sudo sysctl -p
-#
-# Remove swap (if upgrading to larger VM):
-#   sudo swapoff /swapfile
-#   sudo rm /swapfile
-#   sudo sed -i '/swapfile/d' /etc/fstab
+# Without swap the OOM killer may terminate containers on small VMs.
+# Run the bundled script once (idempotent; no-ops on hosts with >= 4 GB RAM):
+#   sudo ./scripts/setup-swap.sh
+# Check current swap:  swapon --show ; free -h
 # =============================================================================
 
 services:
