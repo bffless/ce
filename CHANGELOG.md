@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2](https://github.com/bffless/ce/compare/v0.3.1...v0.3.2) (2026-07-25)
+
+
+### Features
+
+* **install:** claim-token links prefill the wizard claim form + centered banners ([#536](https://github.com/bffless/ce/issues/536)) ([b6ecc31](https://github.com/bffless/ce/commit/b6ecc314c4eaf6c1c5927ef665e179ecf9490696))
+
+
+### Bug Fixes
+
+* **install:** propagate real bootstrap exit code, quote-safe arg forwarding, start.sh presence check (PR [#533](https://github.com/bffless/ce/issues/533) review) ([#535](https://github.com/bffless/ce/issues/535)) ([51222c5](https://github.com/bffless/ce/commit/51222c5340396c38017c34532970a388b8b92a54))
+
 ## [0.3.1](https://github.com/bffless/ce/compare/v0.3.0...v0.3.1) (2026-07-25)
 
 
