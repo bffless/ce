@@ -71,6 +71,13 @@ export interface AppliedConfig {
 export const SHELL_SAFE_HEADER_RE = /^[A-Za-z0-9!#*+.^_~-]+$/;
 export const SHELL_SAFE_RANGE_RE = /^[0-9A-Fa-f:./]+$/;
 
+// Same shape the DTO layer enforces (bootstrap-setup.service HOSTNAME_RE):
+// dot-separated LDH labels. Applied at adoption because .env's PRIMARY_DOMAIN
+// is the one identity input that bypasses DTO validation yet still lands in
+// the shell-sourced instance.env.
+export const ADOPTABLE_HOSTNAME_RE =
+  /^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/;
+
 export function assertShellSafeRealIp(header: string, ranges: string[]): void {
   if (!SHELL_SAFE_HEADER_RE.test(header)) {
     throw new Error(`Real-IP header contains unsafe characters: ${JSON.stringify(header)}`);
@@ -127,9 +134,13 @@ export function envIdentity(
   if (env.PLATFORM_MODE === 'true' || env.SSL_MANAGED_EXTERNALLY === 'true') return null;
   const d = env.PRIMARY_DOMAIN;
   if (!d || d === 'localhost') return null;
+  if (!ADOPTABLE_HOSTNAME_RE.test(d.toLowerCase())) {
+    console.warn(`[bootstrap] PRIMARY_DOMAIN=${JSON.stringify(d)} is not a valid hostname — not adoptable`);
+    return null;
+  }
   const pm = env.PROXY_MODE;
   const proxyMode = pm === 'cloudflare' || pm === 'proxy' || pm === 'none' ? pm : undefined;
-  return { primaryDomain: d, proxyMode };
+  return { primaryDomain: d.toLowerCase(), proxyMode };
 }
 
 // The instance.json a legacy env install maps to. Knobs (port80/realIp) are
@@ -180,7 +191,21 @@ function isLegacyEnvInstall(ssl: string, primaryDomain: string): boolean {
   //     bootstrap mode at least once (render-main-conf.sh writes it and never
   //     deletes it) — i.e. NOT legacy. This protects the mid-wizard-restart
   //     window where the certificate step has staged real certs before Apply ran.
-  if (fs.existsSync(path.join(ssl, 'bootstrap-selfsigned.crt'))) return false;
+  if (fs.existsSync(path.join(ssl, 'bootstrap-selfsigned.crt'))) {
+    // Real certs + a real env identity + the marker + (checked by our caller)
+    // no instance.json: this is the "stuck in bootstrap mode" trap — the
+    // marker was durably written during a transient cert outage and now
+    // defeats both the render legacy carve-out and this adoption gate
+    // (v0.2.18 review, M2). We refuse adoption regardless (the marker may
+    // be legitimate mid-wizard state), but say exactly how to escape.
+    console.warn(
+      '[bootstrap] this install looks like a legacy env install stuck in bootstrap mode ' +
+        '(real certs + real PRIMARY_DOMAIN + ssl/bootstrap-selfsigned.crt, no instance.json). ' +
+        'If nginx is serving the setup wizard on your domain, recover with: ' +
+        'rm ssl/bootstrap-selfsigned.crt ssl/bootstrap-selfsigned.key && docker compose restart nginx',
+    );
+    return false;
+  }
   return true;
 }
 
@@ -207,7 +232,10 @@ export function adoptOrResyncEnvInstall(
     }
     if (existing && existing.origin !== 'env') {
       const d = env.PRIMARY_DOMAIN;
-      if (d && d !== 'localhost' && d !== existing.primaryDomain) {
+      // 'yourdomain.com' is compose's ${PRIMARY_DOMAIN:-yourdomain.com} placeholder
+      // for a blank .env — every wizard install boots with it (see
+      // isLegacyEnvInstall), so it is never a real divergence.
+      if (d && d !== 'localhost' && d !== 'yourdomain.com' && d !== existing.primaryDomain) {
         console.warn(
           `[bootstrap] .env PRIMARY_DOMAIN=${d} differs from wizard-managed instance.json ` +
             `(${existing.primaryDomain}); instance.json wins — change identity via the admin UI`,

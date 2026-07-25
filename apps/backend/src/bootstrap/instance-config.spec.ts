@@ -561,4 +561,53 @@ describe('instance-config', () => {
       });
     });
   });
+
+  describe('v0218 review hardening', () => {
+    let ssl: string;
+
+    beforeEach(() => {
+      ssl = fs.mkdtempSync(path.join(os.tmpdir(), 'bffless-ssl-'));
+    });
+    afterEach(() => {
+      fs.rmSync(ssl, { recursive: true, force: true });
+    });
+
+    it('m2: does not warn about divergence when .env holds the compose placeholder', () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      writeInstanceConfig({ version: 2, state: 'applied', origin: 'wizard', primaryDomain: 'example.com', sslMode: 'paste' }, dir);
+      adoptOrResyncEnvInstall(dir, { PRIMARY_DOMAIN: 'yourdomain.com' } as NodeJS.ProcessEnv, ssl);
+      expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('differs from wizard-managed'));
+      warn.mockRestore();
+    });
+
+    it('m2: still warns when .env holds a genuinely different real domain', () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      writeInstanceConfig({ version: 2, state: 'applied', origin: 'wizard', primaryDomain: 'example.com', sslMode: 'paste' }, dir);
+      adoptOrResyncEnvInstall(dir, { PRIMARY_DOMAIN: 'other.com' } as NodeJS.ProcessEnv, ssl);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('differs from wizard-managed'));
+      warn.mockRestore();
+    });
+
+    it('hostname hardening: refuses adoption of a shell-metacharacter PRIMARY_DOMAIN', () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      // real certs on disk so only the hostname gate can refuse
+      fs.writeFileSync(path.join(ssl, 'fullchain.pem'), 'x');
+      fs.writeFileSync(path.join(ssl, 'privkey.pem'), 'x');
+      const out = adoptOrResyncEnvInstall(dir, { PRIMARY_DOMAIN: 'evil.com; rm -rf /' } as NodeJS.ProcessEnv, ssl);
+      expect(out).toBeNull();
+      expect(fs.existsSync(path.join(dir, 'instance.json'))).toBe(false);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('not a valid hostname'));
+      warn.mockRestore();
+    });
+
+    it('M2: warns loudly when the bootstrap trap state is detected', () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      fs.writeFileSync(path.join(ssl, 'fullchain.pem'), 'x');
+      fs.writeFileSync(path.join(ssl, 'privkey.pem'), 'x');
+      fs.writeFileSync(path.join(ssl, 'bootstrap-selfsigned.crt'), 'x'); // the trap marker
+      adoptOrResyncEnvInstall(dir, { PRIMARY_DOMAIN: 'example.com' } as NodeJS.ProcessEnv, ssl);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('stuck in bootstrap mode'));
+      warn.mockRestore();
+    });
+  });
 });
