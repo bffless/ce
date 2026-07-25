@@ -21,7 +21,7 @@ describe('BootstrapDnsPreflightService', () => {
     jest.spyOn(service as never, 'resolveA' as never).mockResolvedValue(['203.0.113.7'] as never);
     jest
       .spyOn(service as never, 'fetchProbe' as never)
-      .mockImplementation((async (_host: string, _token: string, content: string) => content) as never);
+      .mockImplementation((async (_host: string, _ip: string, _token: string, content: string) => content) as never);
     const res = await service.run('example.com');
     expect(res.ok).toBe(true);
     expect(res.checks.map((c) => c.host)).toEqual(['example.com', 'www.example.com', 'admin.example.com']);
@@ -32,7 +32,7 @@ describe('BootstrapDnsPreflightService', () => {
     jest.spyOn(service as never, 'resolveA' as never).mockResolvedValue([] as never);
     jest
       .spyOn(service as never, 'fetchProbe' as never)
-      .mockImplementation((async (host: string, _t: string, content: string) =>
+      .mockImplementation((async (host: string, _ip: string, _t: string, content: string) =>
         host === 'www.example.com' ? 'someone else answered' : content) as never);
     const res = await service.run('example.com');
     expect(res.ok).toBe(false);
@@ -71,6 +71,33 @@ describe('BootstrapDnsPreflightService', () => {
         .mockResolvedValue('tokenbody' as never);
       const result = await service.run('example.com');
       expect(result.checks[0].error === 'resolves to a private or reserved address').toBe(false);
+    });
+  });
+
+  describe('m6 TOCTOU fix: probe connects to the vetted IP, not the hostname', () => {
+    it('pins the connection to the resolved IP and sends the real hostname via the Host header', async () => {
+      jest.spyOn(service as never, 'resolveA' as never).mockResolvedValue(['93.184.216.34'] as never);
+      const transportSpy = jest
+        .spyOn(service as never, 'sendProbeRequest' as never)
+        .mockResolvedValue({ statusCode: 200, body: '' } as never);
+
+      await service.run('example.com');
+
+      expect(transportSpy).toHaveBeenCalled();
+      const options = transportSpy.mock.calls[0][0] as {
+        host: string;
+        headers: Record<string, string>;
+        path: string;
+      };
+      // Connection target must be the already-vetted IP — never the raw
+      // hostname, which would let the HTTP client re-resolve DNS itself and
+      // reopen the resolve/connect TOCTOU window.
+      expect(options.host).toBe('93.184.216.34');
+      expect(options.host).not.toBe('example.com');
+      // The hostname still travels via the Host header so ACME webroot
+      // vhost routing on the target server keeps working.
+      expect(options.headers.Host).toBe('example.com');
+      expect(options.path).toMatch(/^\/\.well-known\/acme-challenge\//);
     });
   });
 });
