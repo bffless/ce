@@ -55,17 +55,27 @@ rm -rf bootstrap/instance.json bootstrap/instance.env
 docker compose restart backend nginx
 ```
 
-### Updating
+## Managing your instance
 
-`git pull` first, always — image-only updates run, but new features that live
-in the repo (compose mounts, the nginx image) silently stay dormant:
+Day-2 operations are covered by seven scripts in the repo root. They work on
+any install (DigitalOcean 1-Click, manual droplet, home server) and are safe
+to re-run.
+
+| Script | What it does |
+| --- | --- |
+| `./start.sh` | Start services (profile-aware; `--all`, `--minimal`) |
+| `./stop.sh` | Stop services (`--volumes` also deletes data — careful) |
+| `./restart.sh` | `stop.sh` + `start.sh`; flags pass through to `start.sh` |
+| `./update.sh` | Upgrade: `git pull --ff-only` → pull images → restart. Aborts on a dirty tree |
+| `./logs.sh [service]` | Follow logs for all services, or one (`backend`, `nginx`, ...) |
+| `./status.sh` | Versions (with restart-pending warning), services, RAM/swap/disk, domain, SSL expiry, health check |
+| `./backup.sh` | `backups/bffless-backup-<ts>.tar.gz`: database dump + assets + config. Contains secrets — store securely |
+
+On small VMs (1–2 GB RAM), enable swap once so the OOM killer doesn't take
+out containers:
 
 ```bash
-cd /opt/bffless
-git pull
-./stop.sh
-docker compose pull
-./start.sh        # rebuilds the local nginx image from the pulled tree
+sudo ./scripts/setup-swap.sh   # idempotent; no-ops on hosts with >= 4 GB RAM
 ```
 
 ## Technology Stack
