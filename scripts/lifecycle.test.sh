@@ -191,6 +191,10 @@ STUB
     assert_contains "$listing" ".env" ".env in archive"
     assert_contains "$listing" "bootstrap/instance.env" "bootstrap identity in archive"
     assert_contains "$listing" "ssl/fullchain.pem" "certs in archive"
+    sleep 1
+    PATH="$SB/bin:$PATH" ./backup.sh --uploads-path /custom/assets >/dev/null 2>&1; rc=$?
+    assert_exit 0 "$rc" "backup --uploads-path exits 0"
+    assert_contains "$DOCKER_LOG" "cp assethost-backend:/custom/assets" "custom uploads path passed to docker cp"
     cd / && rm -rf "$SB"
     exit "$FAILURES"
 ); FAILURES=$((FAILURES+$?))

@@ -7,20 +7,39 @@ GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-    cat <<'EOF'
-Usage: ./backup.sh
+UPLOADS_PATH="/app/apps/backend/uploads"
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --uploads-path)
+            UPLOADS_PATH="$2"
+            shift 2
+            ;;
+        --help|-h)
+            cat <<EOF
+Usage: ./backup.sh [options]
 
 Writes backups/bffless-backup-<timestamp>.tar.gz containing:
   database.sql      pg_dump of the bundled Postgres (skipped for external DBs)
   uploads/          local asset storage (or minio-data/ when ENABLE_MINIO=true)
   .env bootstrap/ ssl/   config, instance identity, certificates
 
+Options:
+  --uploads-path <path>   container path of the local asset storage; matches
+                          your configured localPath — default $UPLOADS_PATH
+  --help, -h              Show this help message
+
 The archive contains secrets — store it securely.
 Restore guide: https://docs.bffless.dev/deployment/digitalocean#restoring-a-backup
 EOF
-    exit 0
-fi
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            exit 1
+            ;;
+    esac
+done
 
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 WORK_DIR=$(mktemp -d)
@@ -42,7 +61,7 @@ if grep -q '^ENABLE_MINIO=true' .env 2>/dev/null; then
     docker cp assethost-minio:/data "$WORK_DIR/minio-data"
 else
     echo "Copying local asset storage..."
-    docker cp assethost-backend:/app/apps/backend/uploads "$WORK_DIR/uploads"
+    docker cp "assethost-backend:${UPLOADS_PATH}" "$WORK_DIR/uploads"
 fi
 
 # 3. Config + identity (small but essential for restore: secrets, domain, certs)
