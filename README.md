@@ -39,10 +39,12 @@ Full documentation is available at [docs.bffless.app](https://docs.bffless.app/)
 
 ### Web bootstrap setup (no SSH)
 
-A cert-less install boots into **bootstrap mode**: run `./setup.sh --bootstrap && ./start.sh`,
-then finish everything in the browser — claim token, admin account, domain, and SSL
-certificate — at `https://admin.<your-domain>` (Cloudflare zone on SSL mode **Full**) or
-`https://<server-ip>`. Design: `docs/superpowers/specs/2026-07-20-web-bootstrap-setup-design.md`.
+The one-liner (`curl -fsSL https://bffless.dev/install.sh | sh`) does this automatically:
+it installs OS dependencies, boots into **bootstrap mode**, and starts the stack for you.
+Running `./setup.sh --bootstrap && ./start.sh` by hand (e.g. after cloning yourself) does
+the same thing. Either way, finish everything in the browser — claim token, admin account,
+domain, and SSL certificate — at `https://admin.<your-domain>` (Cloudflare zone on SSL mode
+**Full**) or `https://<server-ip>`. Design: `docs/superpowers/specs/2026-07-20-web-bootstrap-setup-design.md`.
 
 **Recovery from a bad apply:** the final "Finish setup" step is one-way — if you typo the
 domain or DNS isn't pointed at the box yet, the server restarts under an identity you can't
