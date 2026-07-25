@@ -1,0 +1,16 @@
+#!/bin/bash
+# cloud-init per-instance: configure + start BFFless so the web wizard is
+# reachable at https://<droplet-ip>/ before anyone logs in over SSH.
+exec >> /var/log/bffless-first-boot.log 2>&1
+set -x
+cd /opt/bffless || exit
+
+# Best-effort self-update: the image is a warm cache, never a pinned release.
+timeout 120 git pull --ff-only || echo "git pull failed/timed out — continuing with baked tree"
+timeout 600 docker compose --profile postgres --profile minio --profile redis --profile supertokens pull || echo "compose pull failed/timed out — continuing with cached images"
+
+# Generates per-droplet secrets + ONBOARDING_TOKEN, writes .env, exits 0.
+# (Refuses to run if .env already exists — correct: per-instance scripts run
+# once, and a re-imaged droplet keeping its disk keeps its config.)
+./setup.sh --bootstrap
+./start.sh

@@ -1,0 +1,4 @@
+#!/bin/bash
+# cloud-init per-instance: create swap BEFORE any container starts, sized to
+# the droplet the user actually picked (no-op on >= 4 GB droplets).
+/opt/bffless/scripts/setup-swap.sh >> /var/log/bffless-first-boot.log 2>&1 || true
