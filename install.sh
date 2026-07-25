@@ -3,14 +3,26 @@
 #
 # This minimal script downloads the repository and runs the setup script.
 #
-# Usage:
-#   sh -c "$(curl -fsSL https://raw.githubusercontent.com/bffless/ce/main/install.sh)"
+# Default (zero-SSH web bootstrap): installs OS dependencies (via
+# setup.sh --bootstrap), starts the stack, and hands off to the browser -
+# no terminal onboarding prompts. Prints a claim token + URL to finish
+# setup at https://admin.<your-domain> (or https://<server-ip>).
+#
+#   sh -c "$(curl -fsSL https://bffless.dev/install.sh)"
 #
 # Or with custom installation directory:
-#   INSTALL_DIR=/opt/asset-host sh -c "$(curl -fsSL https://...)"
+#   INSTALL_DIR=/opt/bffless sh -c "$(curl -fsSL https://...)"
 #
 # Or specify a branch/tag:
 #   BRANCH=v1.0.0 sh -c "$(curl -fsSL https://...)"
+#
+# For the old terminal-based onboarding wizard instead of the web bootstrap:
+#   sh -c "$(curl -fsSL https://...)" -- --interactive
+#
+# Any other arguments are passed through to setup.sh unchanged (e.g.
+# --non-interactive with PRIMARY_DOMAIN/CERTBOT_EMAIL env vars for a
+# scripted, cert-bearing install) - setup.sh's own flow prints next steps
+# and this script does not auto-start the stack in that case.
 
 set -e
 
@@ -32,6 +44,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 BOLD='\033[1m'
+DIM='\033[2m'
 NC='\033[0m' # No Color
 
 # =============================================================================
@@ -67,6 +80,53 @@ print_info() {
 # Check if a command exists
 command_exists() {
     command -v "$1" >/dev/null 2>&1
+}
+
+# Best-effort public IP detection, for the "open https://<ip>" fallback in
+# the web-bootstrap banner. Never fails the script - falls back to a
+# placeholder string if both lookups come up empty.
+detect_server_ip() {
+    server_ip=$(curl -fsSL -m 3 https://api.ipify.org 2>/dev/null || true)
+    if [ -z "$server_ip" ]; then
+        server_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+    fi
+    if [ -z "$server_ip" ]; then
+        server_ip="<server-ip>"
+    fi
+    echo "$server_ip"
+}
+
+# Final banner for the default (web-bootstrap) flow: reads the claim token
+# setup.sh --bootstrap minted into .env and points the user at the browser.
+print_web_bootstrap_banner() {
+    claim_token=$(grep '^ONBOARDING_TOKEN=' .env 2>/dev/null | cut -d '=' -f2-)
+    server_ip=$(detect_server_ip)
+
+    echo ""
+    printf "${BLUE}╔═══════════════════════════════════════════════════════════════════════════╗${NC}\n"
+    printf "${BLUE}║${NC}                       ${BOLD}Bffless is running - finish setup in a browser${NC}      ${BLUE}║${NC}\n"
+    printf "${BLUE}╚═══════════════════════════════════════════════════════════════════════════╝${NC}\n"
+    echo ""
+    if [ -n "$claim_token" ]; then
+        printf "  ${BOLD}Claim token:${NC} ${YELLOW}${claim_token}${NC}\n"
+    else
+        print_warning "Could not read ONBOARDING_TOKEN from .env - check $ABSOLUTE_INSTALL_DIR/.env"
+    fi
+    echo ""
+    printf "${BOLD}Next steps:${NC}\n"
+    echo ""
+    printf "  ${CYAN}1.${NC} Open the setup wizard:\n"
+    echo ""
+    printf "     ${YELLOW}https://${server_ip}${NC}\n"
+    printf "     ${DIM}(a browser certificate warning is expected here)${NC}\n"
+    echo ""
+    printf "  ${CYAN}2.${NC} Or point a domain at this server first, then use it instead:\n"
+    echo ""
+    echo "     Cloudflare: A records for @ and *, SSL/TLS mode: Full"
+    printf "     ${YELLOW}https://admin.<your-domain>${NC}\n"
+    echo ""
+    printf "  ${CYAN}3.${NC} Enter the claim token above to finish setup.\n"
+    echo ""
 }
 
 # =============================================================================
@@ -133,12 +193,59 @@ main() {
     # Get absolute path to pass to setup.sh
     ABSOLUTE_INSTALL_DIR=$(pwd)
 
-    # Run setup
+    # Pull --interactive (if present) out of the argument list. It requests
+    # the old terminal onboarding wizard instead of the default web
+    # bootstrap; any remaining arguments are passed through to setup.sh
+    # exactly as before.
+    interactive_requested=false
+    remaining_args=""
+    for arg in "$@"; do
+        case "$arg" in
+            --interactive)
+                interactive_requested=true
+                ;;
+            *)
+                remaining_args="${remaining_args} ${arg}"
+                ;;
+        esac
+    done
+
+    if [ "$interactive_requested" = true ]; then
+        # Old behavior, exactly: terminal onboarding wizard, no auto-start.
+        set -- $remaining_args
+        print_info "Running setup script (interactive)..."
+        echo ""
+        BFFLESS_INSTALL_DIR="$ABSOLUTE_INSTALL_DIR" ./setup.sh "$@"
+        return 0
+    fi
+
+    if [ "$#" -eq 0 ]; then
+        # Default: zero-SSH web bootstrap. Installs OS dependencies (Docker,
+        # etc. via setup.sh's check_prerequisites), mints a claim token, and
+        # starts the stack. No terminal prompts - onboarding moves to the
+        # browser from here.
+        print_info "Running non-interactive bootstrap setup..."
+        echo ""
+        if ! BFFLESS_INSTALL_DIR="$ABSOLUTE_INSTALL_DIR" ./setup.sh --bootstrap; then
+            bootstrap_exit=$?
+            print_error "Bootstrap setup failed (exit $bootstrap_exit). Not starting the stack."
+            exit "$bootstrap_exit"
+        fi
+
+        chmod +x start.sh 2>/dev/null || true
+        print_info "Starting the platform..."
+        echo ""
+        ./start.sh
+
+        print_web_bootstrap_banner
+        return 0
+    fi
+
+    # Any other arguments: passthrough to setup.sh unchanged (current
+    # behavior). setup.sh's own flow prints its next steps; we don't
+    # auto-start the stack here.
     print_info "Running setup script..."
     echo ""
-
-    # Pass through any additional arguments, and export the install dir for setup.sh
-    # This lets setup.sh include "cd <dir>" in the Next Steps
     BFFLESS_INSTALL_DIR="$ABSOLUTE_INSTALL_DIR" ./setup.sh "$@"
 }
 
