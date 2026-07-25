@@ -3,7 +3,7 @@
 # backup.sh. No docker or root needed: external commands are stubbed on PATH
 # and each case runs in its own sandbox copy of the scripts.
 # Run: bash scripts/lifecycle.test.sh
-# shellcheck disable=SC2030,SC2031,SC2164,SC2012
+# shellcheck disable=SC2030,SC2031
 set -u
 FAILURES=0
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -77,7 +77,7 @@ echo "— update.sh: aborts on dirty tree —"
 (
     make_sandbox
     FAILURES=0
-    cd "$SB/app"
+    cd "$SB/app" || exit 1
     printf '{\n  "version": "0.0.1"\n}\n' > package.json
     printf '#!/bin/bash\necho "restart $*" >> calls.log\n' > restart.sh && chmod +x restart.sh
     git init -q && git config user.email t@t && git config user.name t
@@ -95,7 +95,7 @@ echo "— update.sh: clean tree pulls with detected profiles and restarts —"
 (
     make_sandbox
     FAILURES=0
-    cd "$SB/app"
+    cd "$SB/app" || exit 1
     printf '{\n  "version": "0.0.1"\n}\n' > package.json
     printf 'ENABLE_MINIO=true\n' > .env
     printf '#!/bin/bash\necho "restart $*" >> calls.log\n' > restart.sh && chmod +x restart.sh
@@ -120,7 +120,7 @@ echo "— status.sh: reports sections, restart-pending, and survives failures �
 (
     make_sandbox
     FAILURES=0
-    cd "$SB/app"
+    cd "$SB/app" || exit 1
     printf '{\n  "version": "0.0.1"\n}\n' > package.json
     git init -q && git config user.email t@t && git config user.name t
     git add -A && git commit -qm init
@@ -161,7 +161,7 @@ echo "— backup.sh: archive contains db dump, assets, and config —"
 (
     make_sandbox
     FAILURES=0
-    cd "$SB/app"
+    cd "$SB/app" || exit 1
     printf 'PRIMARY_DOMAIN=example.com\n' > .env      # ENABLE_MINIO unset → local storage path
     mkdir -p bootstrap ssl
     echo 'STATE=applied' > bootstrap/instance.env
@@ -181,7 +181,7 @@ STUB
     chmod +x "$SB/bin/docker"
     PATH="$SB/bin:$PATH" ./backup.sh >/dev/null 2>&1; rc=$?
     assert_exit 0 "$rc" "backup exits 0"
-    archive=$(ls backups/bffless-backup-*.tar.gz 2>/dev/null | head -1)
+    archive=$(find backups -maxdepth 1 -name 'bffless-backup-*.tar.gz' | head -1)
     assert_file "$archive" "archive created"
     perms=$(stat -c %a "$archive" 2>/dev/null)
     if [ "$perms" = "600" ]; then echo "ok: archive is 600"; else echo "FAIL: archive perms $perms"; FAILURES=$((FAILURES+1)); fi
