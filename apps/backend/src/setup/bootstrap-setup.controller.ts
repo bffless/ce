@@ -136,11 +136,22 @@ export class BootstrapSetupController {
       });
     } catch (err) {
       // Failed fs write with setup already finalized = permanently dead
-      // wizard AND no identity (M3). Put the wizard back so Apply can be
-      // retried from the browser once the underlying problem (disk space,
-      // mount perms) is fixed.
-      await this.bootstrap.unfinalizeSetup();
+      // wizard AND no identity (M3). Log the original (more actionable) disk
+      // error before anything else — the recovery below can itself fail.
       this.logger.error(`[bootstrap] apply failed writing instance config: ${(err as Error).message}`);
+      try {
+        // Put the wizard back so Apply can be retried from the browser once
+        // the underlying problem (disk space, mount perms) is fixed.
+        await this.bootstrap.unfinalizeSetup();
+      } catch (recoveryErr) {
+        // An fs failure followed by a DB failure (#525). The raw rejection
+        // must not escape this catch: it would mask the disk error with an
+        // opaque database error. Setup stays finalized, so the wizard may not
+        // come back until the backend restarts with both problems fixed.
+        this.logger.error(
+          `[bootstrap] un-finalizing setup after the failed apply also failed (wizard may not reopen until restart): ${(recoveryErr as Error).message}`,
+        );
+      }
       throw new InternalServerErrorException(
         'Could not write the instance configuration to disk (check free disk space). Setup was NOT completed — fix the disk issue and retry Apply.',
       );
