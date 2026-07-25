@@ -407,8 +407,11 @@ export class BootstrapSetupService {
       }
     }
 
-    const port80: Port80Mode =
-      dto.port80 ?? (dto.proxyMode === 'cloudflare' ? 'closed' : 'redirect');
+    // 'redirect' for every path, Cloudflare included: fresh CF zones ship
+    // with Always Use HTTPS off, so a closed origin port 80 turns every
+    // plain-http visitor into a CF 520 error page (v0.2.18 review, m13 —
+    // observed through the live CF edge). Closing stays an explicit choice.
+    const port80: Port80Mode = dto.port80 ?? 'redirect';
     const realIp: RealIpConfig =
       dto.proxyMode === 'cloudflare'
         ? { preset: 'cloudflare' }
