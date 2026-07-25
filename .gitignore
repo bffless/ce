@@ -67,6 +67,9 @@ ssl/
 # and would silently hide new files under apps/backend/src/bootstrap/.
 /bootstrap/
 
+# Backup archives (contain secrets — see backup.sh)
+/backups/
+
 # Production nginx config (copied from nginx-ssl.conf in production)
 docker/nginx-prod.conf
 
