@@ -178,6 +178,54 @@ describe('SslCertificateService.requestPrimaryDomainCertificate', () => {
   });
 });
 
+describe('SslCertificateService.requestPrimaryDomainCertificate — HTTP-01 challenge cleanup (m9)', () => {
+  let sslDir: string;
+  let webrootDir: string;
+
+  beforeEach(() => {
+    sslDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bffless-ssl-'));
+    webrootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bffless-webroot-'));
+    process.env.SSL_CERT_PATH = sslDir;
+    process.env.CERTBOT_WEBROOT = webrootDir; // real (non-mock) ACME path below
+  });
+  afterEach(() => {
+    delete process.env.SSL_CERT_PATH;
+    delete process.env.CERTBOT_WEBROOT;
+    fs.rmSync(sslDir, { recursive: true, force: true });
+    fs.rmSync(webrootDir, { recursive: true, force: true });
+  });
+
+  it('m9: removes the challenge token file when validation fails', async () => {
+    const service = new SslCertificateService();
+    // No jest.mock('acme-client') exists in this file (all other tests here
+    // exercise MOCK_SSL's forge-based stub path) — so the ACME client is
+    // hand-stubbed and injected directly into the private field to drive the
+    // real (non-mock) HTTP-01 challenge loop under test.
+    const mockAcmeClient = {
+      createOrder: jest.fn().mockResolvedValue({}),
+      getAuthorizations: jest.fn().mockResolvedValue([
+        {
+          identifier: { value: 'example.com' },
+          challenges: [{ type: 'http-01', token: 'm9-token' }],
+        },
+      ]),
+      getChallengeKeyAuthorization: jest.fn().mockResolvedValue('key-auth'),
+      completeChallenge: jest.fn().mockResolvedValue(undefined),
+      waitForValidStatus: jest.fn().mockRejectedValue(new Error('authorization invalid')),
+    };
+    (service as any).acmeClient = mockAcmeClient;
+
+    const removeSpy = jest
+      .spyOn(service as any, 'removeHttpChallenge')
+      .mockResolvedValue(undefined);
+
+    await expect(
+      service.requestPrimaryDomainCertificate('example.com', { target: 'staging' }),
+    ).resolves.toMatchObject({ success: false });
+    expect(removeSpy).toHaveBeenCalled();
+  });
+});
+
 describe('SslCertificateService.getPrimaryCertificateSans', () => {
   let sslDir: string;
 
