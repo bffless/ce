@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0](https://github.com/bffless/ce/compare/v0.2.17...v0.3.0) (2026-07-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* `git pull` is a required upgrade step for this release. v0.3.0 adds compose mounts (bootstrap/), an ONBOARDING_TOKEN passthrough, and a rebuilt nginx image — pulling only the Docker images leaves the new day-2 SSL management silently inert (settings apply but never reach nginx) and breaks automatic renewal takeover for migrated Let's Encrypt installs. Upgrade with: cd /opt/bffless && git pull && ./stop.sh && docker compose pull && ./start.sh
+
+### Features
+
+* **bootstrap:** zero-SSH web setup — cert-less HTTPS bootstrap mode + browser wizard ([#508](https://github.com/bffless/ce/issues/508)) ([3b618ea](https://github.com/bffless/ce/commit/3b618ea0b986eeeb36ff50b86bfc3efcfbdc554f))
+* **env-adoption:** adopt legacy env-only installs into instance.json (.env stays authoritative) ([#522](https://github.com/bffless/ce/issues/522)) ([aaa8ec2](https://github.com/bffless/ce/commit/aaa8ec2821caebb074fad2a789c166bb994924ce))
+* **ssl:** stage certs to a staging path; gate + discard staged certs in day-2 UI ([#520](https://github.com/bffless/ce/issues/520)) ([c296d6b](https://github.com/bffless/ce/commit/c296d6b93252b2d48ad331742fa73f19033d2ac5))
+
+
+### Bug Fixes
+
+* **bootstrap:** redirect after apply only when the backend is ready, not on nginx's 502 ([#519](https://github.com/bffless/ce/issues/519)) ([e876cd1](https://github.com/bffless/ce/commit/e876cd15870eb926616d6a1171845ce00afba3f5))
+* **frontend:** always show Repositories card for roles that can create repos ([#518](https://github.com/bffless/ce/issues/518)) ([bee95ac](https://github.com/bffless/ce/commit/bee95ac69f7f898cf9bed531d1b946640f56a3d6)), closes [#517](https://github.com/bffless/ce/issues/517)
+* **ssl:** cert-change confirm window on direct serving + snapshot re-baselining ([#516](https://github.com/bffless/ce/issues/516)) ([d71606e](https://github.com/bffless/ce/commit/d71606e4d73b6dfb3f31251190c7594ccc6050ae))
+* unmask bootstrap apply write errors + seed day-2 SSL editor from derived effective knobs ([#529](https://github.com/bffless/ce/issues/529)) ([b4d5218](https://github.com/bffless/ce/commit/b4d5218fa86777e0aa3961b19c8a7b52aac81a98))
+* v0.2.18 review fixes — selfsigned crash-loop (C1), apply stranding, port-80/CF defaults, day-2 cert-source selector, hardening ([#523](https://github.com/bffless/ce/issues/523)) ([181bb44](https://github.com/bffless/ce/commit/181bb44189006ce1f8f4af37136ea1567e74d02d))
+
+
+### Miscellaneous Chores
+
+* git pull is a required upgrade step for 0.3.0 ([281a259](https://github.com/bffless/ce/commit/281a2592d012c289973bc5eb77ebc3757656ebc9))
+* release 0.3.0 ([c9fe396](https://github.com/bffless/ce/commit/c9fe396efe5b3eb4cc45142b58f100da5df041cd))
+
 ## [0.2.17](https://github.com/bffless/ce/compare/v0.2.16...v0.2.17) (2026-07-19)
 
 
