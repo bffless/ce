@@ -32,6 +32,31 @@ function presetSslFor(mode: ServingMode): SslMode {
   return 'letsencrypt';
 }
 
+// Wizard-parity cert-source sets (mirrors the wizard's per-path choices:
+// CertificatePhase + the proxy path's three modes). The wizard promises
+// "change this later in Settings → SSL" — this selector is that promise
+// (v0.2.18 review, m11).
+export function allowedSslModesFor(mode: ServingMode): SslMode[] {
+  if (mode === 'proxy') return ['selfsigned', 'letsencrypt', 'paste'];
+  if (mode === 'cloudflare') return ['paste'];
+  return ['letsencrypt', 'paste'];
+}
+
+const SSL_MODE_LABELS: Record<SslMode, { label: string; hint: string }> = {
+  selfsigned: {
+    label: 'Keep the built-in certificate',
+    hint: 'Zero maintenance. Works with CDNs that don’t validate the origin certificate.',
+  },
+  letsencrypt: {
+    label: "Auto-issue with Let's Encrypt",
+    hint: 'A real auto-renewing certificate on this server. Needs ACME challenges to reach the origin.',
+  },
+  paste: {
+    label: 'Paste my own certificate',
+    hint: 'Your CDN’s origin certificate or any browser-trusted cert. Re-paste when it expires.',
+  },
+};
+
 function errorMessage(error: unknown, fallback: string): string {
   const err = error as { data?: { message?: string } };
   return err?.data?.message || fallback;
@@ -107,6 +132,10 @@ export function ServingModelEditor({
       <ServingChoiceCards
         value={value.servingMode}
         onChange={(mode) => {
+          // The preset still applies on every mode change (unchanged
+          // behavior) — it's the best default for that serving path. The
+          // cert-source selector below then lets the user adjust within the
+          // newly-allowed set afterward (m11 wizard parity).
           const sslMode = presetSslFor(mode);
           onChange({
             ...value,
@@ -120,23 +149,54 @@ export function ServingModelEditor({
         }}
       />
 
-      {value.servingMode !== 'cloudflare' && (
+      {allowedSslModesFor(value.servingMode).length > 1 && (
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-foreground">Certificate for the origin</p>
+          {allowedSslModesFor(value.servingMode).map((mode) => (
+            <label key={mode} className="flex items-start text-sm cursor-pointer">
+              <input
+                type="radio"
+                name="day2-ssl-mode"
+                checked={value.sslMode === mode}
+                onChange={() =>
+                  onChange({
+                    ...value,
+                    sslMode: mode,
+                    // LE is HTTP-01: mirrors the wizard's ProxyOptions clearing
+                    // of a stale 'closed' pick.
+                    port80: mode === 'letsencrypt' ? 'redirect' : value.port80,
+                  })
+                }
+                className="mt-0.5 mr-2"
+                aria-label={SSL_MODE_LABELS[mode].label}
+              />
+              <span>
+                <span className="font-medium">{SSL_MODE_LABELS[mode].label}</span>{' '}
+                <span className="text-muted-foreground">{SSL_MODE_LABELS[mode].hint}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      )}
+
+      {value.servingMode !== 'cloudflare' ? (
         <div className="space-y-4 pl-1">
           {value.sslMode === 'letsencrypt' ? (
             <p className="text-sm text-muted-foreground">
               Port 80 stays open so Let&apos;s Encrypt can validate over HTTP-01.
             </p>
           ) : (
-            <Port80Choice
-              value={value.port80}
-              onChange={(port80) => onChange({ ...value, port80 })}
-            />
+            <Port80Choice value={value.port80} onChange={(port80) => onChange({ ...value, port80 })} />
           )}
           <RealIpFields
             header={value.realIp?.header ?? ''}
             ranges={value.realIp?.ranges ?? ''}
             onChange={(realIp) => onChange({ ...value, realIp })}
           />
+        </div>
+      ) : (
+        <div className="space-y-4 pl-1">
+          <Port80Choice value={value.port80} onChange={(port80) => onChange({ ...value, port80 })} />
         </div>
       )}
 

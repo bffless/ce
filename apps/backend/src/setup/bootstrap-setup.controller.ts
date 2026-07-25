@@ -1,5 +1,15 @@
-import { BadRequestException, Body, Controller, Logger, Post } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  InternalServerErrorException,
+  Logger,
+  Post,
+  Req,
+} from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Request } from 'express';
+import { extractClientIp } from '../common/utils/request-ip.util';
 import { BootstrapSetupService } from './bootstrap-setup.service';
 import { BootstrapDnsPreflightService, PreflightResult } from './bootstrap-dns-preflight.service';
 import { SslCertificateService } from '../domains/ssl-certificate.service';
@@ -34,6 +44,7 @@ export class BootstrapSetupController {
   @ApiOperation({ summary: 'Validate and install SSL certificate pair (bootstrap mode)' })
   async uploadCertificates(
     @Body() dto: UploadCertificatesDto,
+    @Req() req?: Request,
   ): Promise<{ saved: true; sans: string[]; wildcardCovered: boolean }> {
     // Must be awaited: assertBootstrapAllowed is async (it calls the async
     // FeatureFlagsService.isEnabled). Awaiting first, before any validation
@@ -44,7 +55,7 @@ export class BootstrapSetupController {
     // are claim-token-gated (the same rate-limited token that gates admin
     // creation), not admin-session-guarded. Runs after the mode gate, before
     // any cert parsing or disk writes.
-    this.bootstrap.validateClaimToken(dto.token);
+    this.bootstrap.validateClaimToken(dto.token, req ? extractClientIp(req) : undefined);
     const { sans, wildcardCovered } = this.bootstrap.validateCertificatePair(
       dto.certificatePem,
       dto.privateKeyPem,
@@ -57,12 +68,15 @@ export class BootstrapSetupController {
 
   @Post('apply')
   @ApiOperation({ summary: 'Apply domain identity and restart into HTTPS mode (bootstrap mode)' })
-  async apply(@Body() dto: ApplyBootstrapDto): Promise<{ applying: true; adminUrl: string }> {
+  async apply(
+    @Body() dto: ApplyBootstrapDto,
+    @Req() req?: Request,
+  ): Promise<{ applying: true; adminUrl: string }> {
     // Same ordering as uploadCertificates: mode gate first, then the
     // claim-token auth gate, before the certificate presence check or any
     // filesystem/response work.
     await this.bootstrap.assertBootstrapAllowed();
-    this.bootstrap.validateClaimToken(dto.token);
+    this.bootstrap.validateClaimToken(dto.token, req ? extractClientIp(req) : undefined);
     // Self-signed keeps serving the built-in bootstrap cert (behind a
     // TLS-terminating proxy) — there is deliberately no staged fullchain to
     // check. Every other mode stages a real cert (paste) or has one issued
@@ -109,25 +123,40 @@ export class BootstrapSetupController {
     // user at login, not back in the normal-mode wizard. Must persist before
     // the process exit below (awaited here, exit is a deferred timer).
     await this.bootstrap.finalizeSetup();
-    writeInstanceConfig({
-      version: 2,
-      state: 'applied',
-      origin: 'wizard',
-      primaryDomain: domain,
-      proxyMode: applied.proxyMode,
-      sslMode: applied.sslMode,
-      port80: applied.port80,
-      realIp: applied.realIp,
-    });
+    try {
+      writeInstanceConfig({
+        version: 2,
+        state: 'applied',
+        origin: 'wizard',
+        primaryDomain: domain,
+        proxyMode: applied.proxyMode,
+        sslMode: applied.sslMode,
+        port80: applied.port80,
+        realIp: applied.realIp,
+      });
+    } catch (err) {
+      // Failed fs write with setup already finalized = permanently dead
+      // wizard AND no identity (M3). Put the wizard back so Apply can be
+      // retried from the browser once the underlying problem (disk space,
+      // mount perms) is fixed.
+      await this.bootstrap.unfinalizeSetup();
+      this.logger.error(`[bootstrap] apply failed writing instance config: ${(err as Error).message}`);
+      throw new InternalServerErrorException(
+        'Could not write the instance configuration to disk (check free disk space). Setup was NOT completed — fix the disk issue and retry Apply.',
+      );
+    }
     this.scheduleExit();
     return { applying: true, adminUrl: `https://admin.${domain}` };
   }
 
   @Post('dns-preflight')
   @ApiOperation({ summary: 'Check DNS + port-80 reachability for the LE path (bootstrap mode)' })
-  async dnsPreflight(@Body() dto: BootstrapDomainActionDto): Promise<PreflightResult> {
+  async dnsPreflight(
+    @Body() dto: BootstrapDomainActionDto,
+    @Req() req?: Request,
+  ): Promise<PreflightResult> {
     await this.bootstrap.assertBootstrapAllowed();
-    this.bootstrap.validateClaimToken(dto.token);
+    this.bootstrap.validateClaimToken(dto.token, req ? extractClientIp(req) : undefined);
     const domain = this.bootstrap.validateDomain(dto.domain);
     return this.preflight.run(domain);
   }
@@ -136,9 +165,10 @@ export class BootstrapSetupController {
   @ApiOperation({ summary: "Issue the primary-domain Let's Encrypt certificate (bootstrap mode)" })
   async issueCertificate(
     @Body() dto: BootstrapDomainActionDto,
+    @Req() req?: Request,
   ): Promise<{ issued: true; sans: string[] }> {
     await this.bootstrap.assertBootstrapAllowed();
-    this.bootstrap.validateClaimToken(dto.token);
+    this.bootstrap.validateClaimToken(dto.token, req ? extractClientIp(req) : undefined);
     const domain = this.bootstrap.validateDomain(dto.domain);
     // Server-side re-check — the client's claim that preflight passed is
     // advisory only. Cheap (one token write + three HTTP GETs) relative to
@@ -161,9 +191,10 @@ export class BootstrapSetupController {
   @ApiOperation({ summary: 'Start the optional DNS-01 wildcard (bootstrap mode)' })
   async wildcardStart(
     @Body() dto: BootstrapDomainActionDto,
+    @Req() req?: Request,
   ): Promise<{ recordName: string; recordValues: string[]; expiresAt: string }> {
     await this.bootstrap.assertBootstrapAllowed();
-    this.bootstrap.validateClaimToken(dto.token);
+    this.bootstrap.validateClaimToken(dto.token, req ? extractClientIp(req) : undefined);
     const domain = this.bootstrap.validateDomain(dto.domain);
     await this.sslCert.initialize();
     const challenge = await this.sslCert.startWildcardCertificateRequest(domain);
@@ -178,9 +209,10 @@ export class BootstrapSetupController {
   @ApiOperation({ summary: 'Verify TXT records and issue the wildcard (bootstrap mode)' })
   async wildcardComplete(
     @Body() dto: BootstrapDomainActionDto,
+    @Req() req?: Request,
   ): Promise<{ success: boolean; error?: string }> {
     await this.bootstrap.assertBootstrapAllowed();
-    this.bootstrap.validateClaimToken(dto.token);
+    this.bootstrap.validateClaimToken(dto.token, req ? extractClientIp(req) : undefined);
     const domain = this.bootstrap.validateDomain(dto.domain);
     await this.sslCert.initialize();
     const result = await this.sslCert.completeWildcardCertificateRequest(domain);

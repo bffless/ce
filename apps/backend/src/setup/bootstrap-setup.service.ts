@@ -45,8 +45,8 @@ export class BootstrapSetupService {
    * ONBOARDING_TOKEN is configured (LAN/Umbrel profile) — identical semantics
    * to admin creation, so the two can never disagree.
    */
-  validateClaimToken(token?: string): void {
-    this.setupService.validateOnboardingToken(token);
+  validateClaimToken(token?: string, clientIp?: string): void {
+    this.setupService.validateOnboardingToken(token, clientIp);
   }
 
   /**
@@ -56,6 +56,10 @@ export class BootstrapSetupService {
    */
   async finalizeSetup(): Promise<void> {
     await this.setupService.finalizeBootstrapSetup();
+  }
+
+  async unfinalizeSetup(): Promise<void> {
+    await this.setupService.unfinalizeBootstrapSetup();
   }
 
   /** Live cert dir — delegates to ssl-staging.ts so there is one resolution. */
@@ -403,8 +407,11 @@ export class BootstrapSetupService {
       }
     }
 
-    const port80: Port80Mode =
-      dto.port80 ?? (dto.proxyMode === 'cloudflare' ? 'closed' : 'redirect');
+    // 'redirect' for every path, Cloudflare included: fresh CF zones ship
+    // with Always Use HTTPS off, so a closed origin port 80 turns every
+    // plain-http visitor into a CF 520 error page (v0.2.18 review, m13 —
+    // observed through the live CF edge). Closing stays an explicit choice.
+    const port80: Port80Mode = dto.port80 ?? 'redirect';
     const realIp: RealIpConfig =
       dto.proxyMode === 'cloudflare'
         ? { preset: 'cloudflare' }

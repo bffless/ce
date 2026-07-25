@@ -434,12 +434,15 @@ export class SslCertificateService {
 
         this.logger.log(`Completing HTTP-01 challenge for ${authz.identifier.value}`);
 
-        // Complete challenge
-        await this.acmeClient.completeChallenge(challenge);
-        await this.acmeClient.waitForValidStatus(challenge);
-
-        // Cleanup challenge file
-        await this.removeHttpChallenge(challenge.token);
+        try {
+          // Complete challenge
+          await this.acmeClient.completeChallenge(challenge);
+          await this.acmeClient.waitForValidStatus(challenge);
+        } finally {
+          // Failed authorizations must not leave token litter in the shared
+          // ACME webroot (v0.2.18 review, m9).
+          await this.removeHttpChallenge(challenge.token);
+        }
       }
 
       // Generate CSR with all domains
@@ -558,9 +561,14 @@ export class SslCertificateService {
         const keyAuth = await this.acmeClient.getChallengeKeyAuthorization(challenge);
         await this.writeHttpChallenge(challenge.token, keyAuth);
         this.logger.log(`Completing HTTP-01 challenge for ${authz.identifier.value}`);
-        await this.acmeClient.completeChallenge(challenge);
-        await this.acmeClient.waitForValidStatus(challenge);
-        await this.removeHttpChallenge(challenge.token);
+        try {
+          await this.acmeClient.completeChallenge(challenge);
+          await this.acmeClient.waitForValidStatus(challenge);
+        } finally {
+          // Failed authorizations must not leave token litter in the shared
+          // ACME webroot (v0.2.18 review, m9).
+          await this.removeHttpChallenge(challenge.token);
+        }
       }
 
       const [key, csr] = await acme.crypto.createCsr({

@@ -53,6 +53,19 @@ rm -rf bootstrap/instance.json bootstrap/instance.env
 docker compose restart backend nginx
 ```
 
+### Updating
+
+`git pull` first, always — image-only updates run, but new features that live
+in the repo (compose mounts, the nginx image) silently stay dormant:
+
+```bash
+cd /opt/bffless
+git pull
+./stop.sh
+docker compose pull
+./start.sh        # rebuilds the local nginx image from the pulled tree
+```
+
 ## Technology Stack
 
 **Backend:** NestJS, TypeScript, PostgreSQL, Drizzle ORM, SuperTokens

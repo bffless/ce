@@ -57,6 +57,12 @@ describe('ServingModelEditor', () => {
     expect(screen.getByRole('radio', { name: /close port 80/i })).toBeInTheDocument();
   });
 
+  it('m12: shows the port-80 control on the cloudflare path (and no realIp fields)', () => {
+    render(<ServingModelEditor value={{ ...base, servingMode: 'cloudflare', sslMode: 'paste' }} onChange={vi.fn()} />);
+    expect(screen.getByText('Port 80 (HTTP)')).toBeInTheDocument();
+    expect(screen.queryByText(/Restore visitor IPs/i)).not.toBeInTheDocument();
+  });
+
   it('reactively forces port80 to redirect when seeded with letsencrypt + closed', () => {
     const onChange = vi.fn();
     render(
@@ -162,6 +168,34 @@ describe('ServingModelEditor', () => {
       );
       const button = screen.getByRole('button', { name: /renew now/i });
       expect(button).not.toBeDisabled();
+    });
+  });
+
+  describe('m11 cert-source selector', () => {
+    it('proxy path offers selfsigned/letsencrypt/paste', () => {
+      render(<ServingModelEditor value={{ ...base, servingMode: 'proxy', sslMode: 'selfsigned' }} onChange={vi.fn()} />);
+      expect(screen.getByLabelText(/Keep the built-in certificate/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/Auto-issue with Let's Encrypt/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/Paste my own certificate/i)).toBeInTheDocument();
+    });
+
+    it('cloudflare path offers no selector (paste only)', () => {
+      render(<ServingModelEditor value={{ ...base, servingMode: 'cloudflare', sslMode: 'paste' }} onChange={vi.fn()} />);
+      expect(screen.queryByLabelText(/Keep the built-in certificate/i)).not.toBeInTheDocument();
+    });
+
+    it('direct path offers letsencrypt/paste, not selfsigned', () => {
+      render(<ServingModelEditor value={{ ...base, servingMode: 'none', sslMode: 'letsencrypt' }} onChange={vi.fn()} />);
+      expect(screen.getByLabelText(/Auto-issue with Let's Encrypt/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/Paste my own certificate/i)).toBeInTheDocument();
+      expect(screen.queryByLabelText(/Keep the built-in certificate/i)).not.toBeInTheDocument();
+    });
+
+    it('selecting paste on the proxy path swaps in the paste fields', () => {
+      const onChange = vi.fn();
+      render(<ServingModelEditor value={{ ...base, servingMode: 'proxy', sslMode: 'selfsigned' }} onChange={onChange} />);
+      fireEvent.click(screen.getByLabelText(/Paste my own certificate/i));
+      expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ sslMode: 'paste' }));
     });
   });
 });

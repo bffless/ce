@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { BootstrapSetupController } from './bootstrap-setup.controller';
 import { ApplyBootstrapDto } from './setup.dto';
 import * as staging from './ssl-staging';
@@ -24,7 +24,9 @@ describe('BootstrapSetupController', () => {
     validateApplyConfig: jest.fn((dto: any) => ({
       proxyMode: dto.proxyMode,
       sslMode: dto.sslMode,
-      port80: dto.port80 ?? (dto.proxyMode === 'cloudflare' ? 'closed' : 'redirect'),
+      // Mirrors the real validateApplyConfig default (m13): 'redirect' for
+      // every path when port80 is not chosen explicitly, Cloudflare included.
+      port80: dto.port80 ?? 'redirect',
       realIp:
         dto.proxyMode === 'cloudflare'
           ? { preset: 'cloudflare' }
@@ -33,6 +35,7 @@ describe('BootstrapSetupController', () => {
             : null,
     })),
     finalizeSetup: jest.fn(),
+    unfinalizeSetup: jest.fn(),
   };
   const preflight = {
     run: jest.fn(),
@@ -57,6 +60,7 @@ describe('BootstrapSetupController', () => {
     svc.assertStagedCertificateCovers.mockReturnValue(undefined);
     svc.validateDomain.mockImplementation((d: string) => d.toLowerCase());
     svc.finalizeSetup.mockResolvedValue(undefined);
+    svc.unfinalizeSetup.mockResolvedValue(undefined);
     preflight.run.mockResolvedValue({ ok: true, checks: [] });
     sslCert.initialize.mockResolvedValue(undefined);
     controller = new BootstrapSetupController(svc as any, preflight as any, sslCert as any);
@@ -85,7 +89,37 @@ describe('BootstrapSetupController', () => {
         servingMode: 'cloudflare',
         token: 'claim-123',
       });
-      expect(svc.validateClaimToken).toHaveBeenCalledWith('claim-123');
+      // m5: validateClaimToken now also forwards the client IP via
+      // extractClientIp(); the test doesn't pass a mock request, so it's
+      // undefined here.
+      expect(svc.validateClaimToken).toHaveBeenCalledWith('claim-123', undefined);
+    });
+
+    it('forwards the X-Forwarded-For-derived IP, not the raw socket peer (req.ip)', async () => {
+      // Only nginx ever connects directly to the backend (no exposed ports),
+      // so req.ip/req.socket.remoteAddress is always nginx's own address —
+      // using it for per-IP rate limiting would collapse every client into
+      // one bucket, reproducing the lockout DoS this rate limiter exists to
+      // prevent. extractClientIp() must be used instead, which reads the
+      // client IP nginx forwards in X-Forwarded-For.
+      const mockReq = {
+        headers: { 'x-forwarded-for': '203.0.113.7, 10.0.0.5' },
+        ip: '10.0.0.5',
+        socket: { remoteAddress: '10.0.0.5' },
+      };
+
+      await controller.uploadCertificates(
+        {
+          domain: 'example.com',
+          certificatePem: 'CERT',
+          privateKeyPem: 'KEY',
+          servingMode: 'cloudflare',
+          token: 'claim-123',
+        },
+        mockReq as any,
+      );
+
+      expect(svc.validateClaimToken).toHaveBeenCalledWith('claim-123', '203.0.113.7');
     });
 
     it('rejects a bad claim token before touching the cert (session-less auth gate)', async () => {
@@ -141,7 +175,9 @@ describe('BootstrapSetupController', () => {
         expect.objectContaining({ state: 'applied', primaryDomain: 'example.com', proxyMode: 'cloudflare' }),
       );
       expect(res).toEqual({ applying: true, adminUrl: 'https://admin.example.com' });
-      expect(svc.validateClaimToken).toHaveBeenCalledWith(undefined);
+      // m5: second arg is the client IP via extractClientIp() — undefined
+      // since no mock request was passed to this call.
+      expect(svc.validateClaimToken).toHaveBeenCalledWith(undefined, undefined);
       // Setup is marked complete as part of apply, so the restarted backend
       // lands the user at login instead of back in the wizard.
       expect(svc.finalizeSetup).toHaveBeenCalled();
@@ -353,6 +389,24 @@ describe('BootstrapSetupController', () => {
       expect(staging.promoteStagedCertificates).not.toHaveBeenCalled();
       writeSpy.mockRestore();
     });
+
+    it('M3: un-finalizes setup and returns 500 when writeInstanceConfig throws (box stays browser-recoverable)', async () => {
+      const writeSpy = jest
+        .spyOn(require('../bootstrap/instance-config'), 'writeInstanceConfig')
+        .mockImplementation(() => {
+          throw new Error('ENOSPC: no space left on device');
+        });
+      await expect(
+        controller.apply({ domain: 'example.com', proxyMode: 'cloudflare', sslMode: 'paste' }),
+      ).rejects.toThrow(InternalServerErrorException);
+      expect(svc.finalizeSetup).toHaveBeenCalled();
+      expect(svc.unfinalizeSetup).toHaveBeenCalled();
+      // scheduleExit is overridden with exitFn (a plain jest.fn) in
+      // beforeEach — asserting on it is equivalent to spying on the
+      // prototype method, which the override already shadows.
+      expect(exitFn).not.toHaveBeenCalled();
+      writeSpy.mockRestore();
+    });
   });
 
   describe('scheduleExit (real timer, not invoked through the mocked override)', () => {
@@ -389,7 +443,9 @@ describe('BootstrapSetupController', () => {
       preflight.run.mockResolvedValue({ ok: true, checks: [] });
       const res = await controller.dnsPreflight({ domain: 'Example.com', token: 't' });
       expect(svc.assertBootstrapAllowed).toHaveBeenCalled();
-      expect(svc.validateClaimToken).toHaveBeenCalledWith('t');
+      // m5: second arg is the client IP via extractClientIp() — undefined
+      // since no mock request was passed to this call.
+      expect(svc.validateClaimToken).toHaveBeenCalledWith('t', undefined);
       expect(svc.validateDomain).toHaveBeenCalledWith('Example.com');
       expect(preflight.run).toHaveBeenCalledWith('example.com');
       expect(res.ok).toBe(true);

@@ -86,7 +86,7 @@ import { NginxConfigService } from './nginx-config.service';
 import { NginxReloadService } from './nginx-reload.service';
 import { ProjectsService } from '../projects/projects.service';
 import { EmailService } from '../email/email.service';
-import { loadInstanceConfig } from '../bootstrap/instance-config';
+import { loadInstanceConfig, pendingServingRevertExists } from '../bootstrap/instance-config';
 import type { SslCertificateInfo } from './ssl-info.service';
 
 /** Minimal SslCertificateInfo fixture (SslInfoService's real return shape). */
@@ -147,6 +147,10 @@ describe('SslRenewalService', () => {
     );
 
     (loadInstanceConfig as jest.Mock).mockReturnValue(null);
+    // mockReturnValue persists across clearAllMocks (only mockReset would drop
+    // it), so re-pin the default here or a prior test's
+    // pendingServingRevertExists(true) leaks into later tests.
+    (pendingServingRevertExists as jest.Mock).mockReturnValue(false);
   });
 
   describe('primary-domain LE renewal', () => {
@@ -238,6 +242,23 @@ describe('SslRenewalService', () => {
 
       await service.checkAndRenewCertificates();
 
+      expect(sslCert.requestPrimaryDomainCertificate).not.toHaveBeenCalled();
+    });
+
+    it('m7: skips primary renewal while a serving-confirm window is pending', async () => {
+      (loadInstanceConfig as jest.Mock).mockReturnValue({
+        version: 2,
+        state: 'applied',
+        primaryDomain: 'example.com',
+        proxyMode: 'none',
+        sslMode: 'letsencrypt',
+      });
+      sslCert.getPrimaryCertificateExpiryDays.mockReturnValue(5); // inside threshold
+      (pendingServingRevertExists as jest.Mock).mockReturnValue(true);
+
+      const result = await (service as any).checkAndRenewPrimary(30);
+
+      expect(result).toBeNull();
       expect(sslCert.requestPrimaryDomainCertificate).not.toHaveBeenCalled();
     });
   });
@@ -533,6 +554,34 @@ describe('SslRenewalService', () => {
           text: expect.stringContaining('fails.example.com: ACME failure'),
         }),
       );
+    });
+
+    it('m8: failure digest is throttled to once per 7 days', async () => {
+      settingsStore['notification_email'] = 'admin@example.com';
+      settingsStore['renewal_failure_last_sent'] = new Date(
+        Date.now() - 3 * 86_400_000,
+      ).toISOString();
+
+      await (service as any).sendFailureNotifications([
+        { domain: 'x.com', status: 'failed', error: 'boom' },
+      ]);
+
+      expect(email.sendEmail).not.toHaveBeenCalled();
+    });
+
+    it('m8: failure digest sends again after the window and stamps the marker', async () => {
+      settingsStore['notification_email'] = 'admin@example.com';
+      settingsStore['renewal_failure_last_sent'] = new Date(
+        Date.now() - 8 * 86_400_000,
+      ).toISOString();
+      const updateSettingSpy = jest.spyOn(service as any, 'updateSetting');
+
+      await (service as any).sendFailureNotifications([
+        { domain: 'x.com', status: 'failed', error: 'boom' },
+      ]);
+
+      expect(email.sendEmail).toHaveBeenCalled();
+      expect(updateSettingSpy).toHaveBeenCalledWith('renewal_failure_last_sent', expect.any(String));
     });
   });
 });

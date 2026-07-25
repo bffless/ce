@@ -11,7 +11,7 @@ import { Port80Choice } from '@/components/ssl-leaves/Port80Choice';
 // reads them back. The realIp fields are OPTIONAL — invalid input shows an
 // inline error and simply isn't applied (dispatched as null), rather than
 // hard-blocking; the backend combo-validation is the authoritative gate.
-export function ProxyOptions() {
+export function ProxyOptions({ showRealIp = true }: { showRealIp?: boolean } = {}) {
   const dispatch = useDispatch();
   const bootstrapSslMode = useSelector((s: RootState) => s.setup.wizard.bootstrapSslMode);
   const [rangesText, setRangesText] = useState('');
@@ -56,17 +56,19 @@ export function ProxyOptions() {
 
   return (
     <div className="space-y-4">
-      <RealIpFields
-        header={header}
-        ranges={rangesText}
-        onChange={({ header: nextHeader, ranges: nextRanges }) => {
-          setRangesText(nextRanges);
-          setHeader(nextHeader);
-          applyRealIp(nextRanges, nextHeader);
-        }}
-        headerError={headerError}
-        rangesError={rangesError}
-      />
+      {showRealIp && (
+        <RealIpFields
+          header={header}
+          ranges={rangesText}
+          onChange={({ header: nextHeader, ranges: nextRanges }) => {
+            setRangesText(nextRanges);
+            setHeader(nextHeader);
+            applyRealIp(nextRanges, nextHeader);
+          }}
+          headerError={headerError}
+          rangesError={rangesError}
+        />
+      )}
       {bootstrapSslMode !== 'letsencrypt' ? (
         <Port80Choice
           value={port80}

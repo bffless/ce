@@ -126,14 +126,14 @@ describe('BootstrapSetupService', () => {
   });
 
   describe('validateClaimToken', () => {
-    it('delegates to SetupService.validateOnboardingToken with the supplied token', () => {
+    it('delegates to SetupService.validateOnboardingToken with the supplied token and client IP (m5)', () => {
       const validateOnboardingToken = jest.fn();
       const svc = new BootstrapSetupService(
         { validateOnboardingToken } as any,
         { isEnabled: () => true } as any,
       );
-      svc.validateClaimToken('claim-abc');
-      expect(validateOnboardingToken).toHaveBeenCalledWith('claim-abc');
+      svc.validateClaimToken('claim-abc', '203.0.113.5');
+      expect(validateOnboardingToken).toHaveBeenCalledWith('claim-abc', '203.0.113.5');
     });
 
     it('propagates the validator throwing on a bad token', () => {
@@ -659,7 +659,7 @@ describe('BootstrapSetupService', () => {
     it('resolves cloudflare preset defaults', () => {
       const cfg = service.validateApplyConfig({ ...base, proxyMode: 'cloudflare', sslMode: 'paste' } as ApplyBootstrapDto);
       expect(cfg).toEqual({
-        proxyMode: 'cloudflare', sslMode: 'paste', port80: 'closed', realIp: { preset: 'cloudflare' },
+        proxyMode: 'cloudflare', sslMode: 'paste', port80: 'redirect', realIp: { preset: 'cloudflare' },
       });
     });
 
@@ -749,6 +749,20 @@ describe('BootstrapSetupService', () => {
       expect(() => service.validateApplyConfig({
         domain: 'example.com', proxyMode: 'proxy', sslMode: 'letsencrypt', port80: 'closed',
       } as ApplyBootstrapDto)).toThrow(/Port 80 must stay open/);
+    });
+
+    it('m13: cloudflare apply with no explicit port80 defaults to redirect (fresh CF zones have Always-Use-HTTPS off; closed → edge 520s)', () => {
+      const out = service.validateApplyConfig({
+        domain: 'example.com', proxyMode: 'cloudflare', sslMode: 'paste',
+      } as ApplyBootstrapDto);
+      expect(out.port80).toBe('redirect');
+    });
+
+    it('m13: explicit closed on cloudflare is still honored', () => {
+      const out = service.validateApplyConfig({
+        domain: 'example.com', proxyMode: 'cloudflare', sslMode: 'paste', port80: 'closed',
+      } as ApplyBootstrapDto);
+      expect(out.port80).toBe('closed');
     });
   });
 });

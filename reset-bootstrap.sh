@@ -22,8 +22,7 @@
 #      (inside the container), and the frontend re-syncs its bundle — so no host
 #      tooling and no 404.
 #
-# .env (and its claim token) is left untouched. For a brand-new token, run
-# `./setup.sh --bootstrap --force` before this script.
+# .env is left untouched, except that a claim token is minted if none exists.
 
 set -euo pipefail
 
@@ -71,12 +70,12 @@ if [ "$FORCE" != true ]; then
 fi
 
 # 1. Stop the stack (keep volumes for now; we remove specific ones next).
-echo -e "${YELLOW}[1/4] Stopping the stack...${NC}"
+echo -e "${YELLOW}[1/5] Stopping the stack...${NC}"
 # shellcheck disable=SC2086 # word-splitting of $PROFILES is intentional
 docker compose $PROFILES down --remove-orphans
 
 # 2. Remove the data volumes (by their compose-project-prefixed names).
-echo -e "${YELLOW}[2/4] Wiping data volumes...${NC}"
+echo -e "${YELLOW}[2/5] Wiping data volumes...${NC}"
 project="${COMPOSE_PROJECT_NAME:-$(basename "$(pwd)")}"
 removed_any=false
 for v in $DATA_VOLUMES; do
@@ -94,7 +93,7 @@ done
 [ "$removed_any" = true ] || echo "  (no data volumes found — already clean)"
 
 # 3. Clear bind-mounted host state (survives `docker compose down -v`).
-echo -e "${YELLOW}[3/4] Clearing bootstrap state on disk...${NC}"
+echo -e "${YELLOW}[3/5] Clearing bootstrap state on disk...${NC}"
 # Applied identity — removing these drops the instance back to bootstrap mode.
 rm -f bootstrap/instance.json bootstrap/instance.env 2>/dev/null || true
 # Wizard-staged certs. Keep bootstrap-selfsigned.* and acme-account.key.
@@ -105,12 +104,30 @@ rm -f docker/nginx/sites-enabled/*.conf 2>/dev/null || true
 mkdir -p bootstrap ssl
 echo "  cleared instance.*, staged certs, and per-domain nginx configs"
 
-# 4. Bring it back up. Backend migrates on boot; frontend re-syncs its bundle.
-echo -e "${YELLOW}[4/4] Starting the stack...${NC}"
+# 4. A claim token must exist before the wizard comes back up: a formerly
+#    classic (non-bootstrap) install's .env has none, and without it the
+#    relaunched wizard is claim-ungated on a public IP (v0.2.18 review, m3).
+echo -e "${YELLOW}[4/5] Ensuring a claim token exists...${NC}"
+if ! grep -q '^ONBOARDING_TOKEN=..*' .env 2>/dev/null; then
+  CLAIM_TOKEN=$(openssl rand -hex 16)
+  {
+    echo ""
+    echo "# Web-bootstrap claim token (shown in the server's login banner)"
+    echo "ONBOARDING_TOKEN=${CLAIM_TOKEN}"
+  } >> .env
+  echo "  minted a new claim token (none was set)"
+else
+  CLAIM_TOKEN="$(grep '^ONBOARDING_TOKEN=' .env | head -1 | cut -d= -f2-)"
+  echo "  keeping the existing claim token"
+fi
+
+# 5. Bring it back up. Backend migrates on boot; frontend re-syncs its bundle.
+echo -e "${YELLOW}[5/5] Starting the stack...${NC}"
 ./start.sh
 
 echo ""
 echo -e "${GREEN}Done — reset to a fresh setup wizard.${NC}"
+echo "Claim token for the wizard: ${CLAIM_TOKEN}"
 echo ""
 echo "Give it ~45s, then check it's healthy and back in bootstrap mode:"
 echo "  curl -sk https://localhost/api/setup/status    # want bootstrapMode:true, claimRequired:true"

@@ -188,6 +188,50 @@ uncomment_and_set() {
     fi
 }
 
+# A surviving postgres-data volume keeps the OLD password; writing a fresh
+# POSTGRES_PASSWORD then yields an install that boots but fails every DB
+# query with only a soft migration warning (v0.2.18 review, m4). Warn, and
+# interactively offer the wipe. Never deletes silently.
+check_stale_postgres_volume() {
+    command_exists docker || return 0
+    # Docker Compose lowercases/normalizes the directory name when deriving the
+    # default project name, so an install dir like /opt/BFFless becomes
+    # "bffless" - lowercase our guess the same way or the exact-prefix match
+    # below silently never fires.
+    project="$(basename "$(pwd)" | tr '[:upper:]' '[:lower:]')"
+    compose_project="${COMPOSE_PROJECT_NAME:-$project}"
+    vol="$(docker volume ls --format '{{.Name}}' 2>/dev/null | grep -E "^(${project}|${compose_project})_postgres-data$" | head -1)"
+    if [ -z "$vol" ]; then
+        # Fall back to any postgres-data volume in this daemon - covers project
+        # names we still failed to guess (custom COMPOSE_PROJECT_NAME casing,
+        # unusual directory naming, etc). The warning below names the volume
+        # so the operator can judge whether it's actually theirs.
+        vol="$(docker volume ls --format '{{.Name}}' 2>/dev/null | grep -E '_postgres-data$' | head -1)"
+    fi
+    [ -n "$vol" ] || return 0
+    echo ""
+    print_warning "Existing database volume found: $vol"
+    echo "  A new POSTGRES_PASSWORD is about to be generated, but this volume keeps"
+    echo "  the OLD password — the stack would start and then fail every database"
+    echo "  query with 'password authentication failed'."
+    if [ "$INTERACTIVE" = true ]; then
+        printf "Delete this volume and start with a fresh database? ALL DATA IS LOST. (y/N): "
+        read -r wipe_reply
+        case "$wipe_reply" in
+            [yY][eE][sS]|[yY])
+                docker volume rm "$vol" >/dev/null && print_success "Removed $vol" ;;
+            *)
+                echo "  Keeping the volume. Either reuse the old password in .env, or remove it later:"
+                echo "    docker compose down && docker volume rm $vol" ;;
+        esac
+    else
+        echo "  Non-interactive mode: NOT deleting. Fix before ./start.sh with either:"
+        echo "    docker volume rm $vol            # fresh database"
+        echo "    (or set the previous POSTGRES_PASSWORD back in .env)"
+    fi
+    echo ""
+}
+
 # =============================================================================
 # Prerequisite Installation (Debian/Ubuntu)
 # =============================================================================
@@ -655,6 +699,7 @@ prompt_configuration() {
         echo "(auto-generated)"
     fi
     if [ -z "$POSTGRES_PASSWORD" ]; then
+        check_stale_postgres_volume
         POSTGRES_PASSWORD=$(generate_password 32)
         print_info "Generated PostgreSQL password"
     fi
@@ -1682,6 +1727,7 @@ run_bootstrap_mode() {
     check_existing_env          # respects --force semantics; aborts if .env exists without it
 
     PRIMARY_DOMAIN=""           # identity comes later from the web wizard via instance.json
+    check_stale_postgres_volume
     POSTGRES_PASSWORD=$(generate_password 32)
     MINIO_ROOT_USER="$DEFAULT_MINIO_USER"
     MINIO_ROOT_PASSWORD=$(generate_password 32)

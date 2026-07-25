@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { promises as dns } from 'dns';
 import * as crypto from 'crypto';
 import * as fs from 'fs/promises';
+import * as http from 'http';
 import * as path from 'path';
 
 export interface PreflightCheck {
@@ -14,6 +15,24 @@ export interface PreflightCheck {
 export interface PreflightResult {
   ok: boolean;
   checks: PreflightCheck[];
+}
+
+// SSRF guard (v0.2.18 review, m6): the probe is a blind GET to a
+// caller-supplied hostname; refuse anything resolving into private,
+// loopback, link-local (incl. cloud metadata), CGNAT or reserved space.
+// IPv4-only because resolveA only asks for A records.
+export function isDisallowedProbeIp(ip: string): boolean {
+  const parts = ip.split('.').map(Number);
+  if (parts.length !== 4 || parts.some((p) => Number.isNaN(p) || p < 0 || p > 255)) return true;
+  const [a, b] = parts;
+  return (
+    a === 0 || a === 127 || a === 10 ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 169 && b === 254) ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    a >= 224 // multicast + reserved
+  );
 }
 
 /**
@@ -45,10 +64,14 @@ export class BootstrapDnsPreflightService {
       const checks: PreflightCheck[] = [];
       for (const host of hosts) {
         const resolvedIps = await this.resolveA(host);
+        if (resolvedIps.some((ip) => isDisallowedProbeIp(ip))) {
+          checks.push({ host, resolvedIps, probeOk: false, error: 'resolves to a private or reserved address' });
+          continue;
+        }
         let probeOk = false;
         let error: string | undefined;
         try {
-          const body = await this.fetchProbe(host, token, content);
+          const body = await this.fetchProbe(host, resolvedIps[0], token, content);
           probeOk = body === content;
           if (!probeOk) error = 'Another server answered on port 80 for this hostname';
         } catch (e) {
@@ -78,12 +101,47 @@ export class BootstrapDnsPreflightService {
     }
   }
 
-  private async fetchProbe(host: string, token: string, _content: string): Promise<string> {
-    const res = await fetch(`http://${host}/.well-known/acme-challenge/${token}`, {
-      redirect: 'manual', // a 301 means the ACME location is missing — that's a failure
-      signal: AbortSignal.timeout(5000),
+  // SSRF/TOCTOU guard (v0.2.18 review, m6 follow-up): `host` was already
+  // resolved and vetted by resolveA()/isDisallowedProbeIp() in run(). If we
+  // handed the raw hostname to fetch()/http here, the HTTP client would
+  // re-resolve DNS itself — a short-TTL record could rebind to a private or
+  // metadata IP (or answer with an AAAA record, bypassing the IPv4-only
+  // check entirely) between the vetting resolve and this connection. So we
+  // pin the TCP connection to the already-vetted IPv4 address (`ip`) and
+  // send the real hostname via the Host header, which keeps ACME webroot
+  // vhost routing on the target server working exactly as before.
+  //
+  // Redirects are NOT followed — same as the previous `redirect: 'manual'`
+  // fetch() behavior: any non-2xx (including a 3xx) is treated as a probe
+  // failure below. A redirect target could point at a different hostname,
+  // which would reopen the same rebinding hole one hop later.
+  private async fetchProbe(host: string, ip: string | undefined, token: string, _content: string): Promise<string> {
+    if (!ip) throw new Error('No resolved address to probe');
+    const { statusCode, body } = await this.sendProbeRequest({
+      host: ip,
+      port: 80,
+      path: `/.well-known/acme-challenge/${token}`,
+      method: 'GET',
+      headers: { Host: host },
+      timeout: 5000,
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status} from ${host}`);
-    return await res.text();
+    if (statusCode < 200 || statusCode >= 300) throw new Error(`HTTP ${statusCode} from ${host}`);
+    return body;
+  }
+
+  private sendProbeRequest(options: http.RequestOptions): Promise<{ statusCode: number; body: string }> {
+    return new Promise((resolve, reject) => {
+      const req = http.request(options, (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () =>
+          resolve({ statusCode: res.statusCode ?? 0, body: Buffer.concat(chunks).toString('utf8') }),
+        );
+        res.on('error', reject);
+      });
+      req.on('timeout', () => req.destroy(new Error(`Timed out probing ${String(options.host)}`)));
+      req.on('error', reject);
+      req.end();
+    });
   }
 }
