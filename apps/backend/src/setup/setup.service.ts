@@ -1078,6 +1078,23 @@ export class SetupService {
   }
 
   /**
+   * Inverse of finalizeBootstrapSetup, for the one caller that needs it:
+   * bootstrap apply marks setup complete BEFORE writing instance.json, and a
+   * failed write must put the wizard back (isBootstrapModeActive requires
+   * !isSetupComplete) or the box is stranded with no identity and no wizard
+   * (v0.2.18 review, M3).
+   */
+  async unfinalizeBootstrapSetup(): Promise<void> {
+    const config = await this.getSystemConfig();
+    if (!config || !config.isSetupComplete) return;
+    await db
+      .update(systemConfig)
+      .set({ isSetupComplete: false, updatedAt: new Date() })
+      .where(eq(systemConfig.id, config.id));
+    this.logger.warn('[bootstrap] setup un-finalized after a failed apply write — wizard restored');
+  }
+
+  /**
    * Get decrypted storage configuration mapped to adapter format
    */
   async getStorageConfig(): Promise<any> {

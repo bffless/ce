@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { BootstrapSetupController } from './bootstrap-setup.controller';
 import { ApplyBootstrapDto } from './setup.dto';
 import * as staging from './ssl-staging';
@@ -33,6 +33,7 @@ describe('BootstrapSetupController', () => {
             : null,
     })),
     finalizeSetup: jest.fn(),
+    unfinalizeSetup: jest.fn(),
   };
   const preflight = {
     run: jest.fn(),
@@ -57,6 +58,7 @@ describe('BootstrapSetupController', () => {
     svc.assertStagedCertificateCovers.mockReturnValue(undefined);
     svc.validateDomain.mockImplementation((d: string) => d.toLowerCase());
     svc.finalizeSetup.mockResolvedValue(undefined);
+    svc.unfinalizeSetup.mockResolvedValue(undefined);
     preflight.run.mockResolvedValue({ ok: true, checks: [] });
     sslCert.initialize.mockResolvedValue(undefined);
     controller = new BootstrapSetupController(svc as any, preflight as any, sslCert as any);
@@ -351,6 +353,24 @@ describe('BootstrapSetupController', () => {
       } as ApplyBootstrapDto);
       expect(staging.discardStagedCertificates).toHaveBeenCalled();
       expect(staging.promoteStagedCertificates).not.toHaveBeenCalled();
+      writeSpy.mockRestore();
+    });
+
+    it('M3: un-finalizes setup and returns 500 when writeInstanceConfig throws (box stays browser-recoverable)', async () => {
+      const writeSpy = jest
+        .spyOn(require('../bootstrap/instance-config'), 'writeInstanceConfig')
+        .mockImplementation(() => {
+          throw new Error('ENOSPC: no space left on device');
+        });
+      await expect(
+        controller.apply({ domain: 'example.com', proxyMode: 'cloudflare', sslMode: 'paste' }),
+      ).rejects.toThrow(InternalServerErrorException);
+      expect(svc.finalizeSetup).toHaveBeenCalled();
+      expect(svc.unfinalizeSetup).toHaveBeenCalled();
+      // scheduleExit is overridden with exitFn (a plain jest.fn) in
+      // beforeEach — asserting on it is equivalent to spying on the
+      // prototype method, which the override already shadows.
+      expect(exitFn).not.toHaveBeenCalled();
       writeSpy.mockRestore();
     });
   });

@@ -58,6 +58,10 @@ export class BootstrapSetupService {
     await this.setupService.finalizeBootstrapSetup();
   }
 
+  async unfinalizeSetup(): Promise<void> {
+    await this.setupService.unfinalizeBootstrapSetup();
+  }
+
   /** Live cert dir — delegates to ssl-staging.ts so there is one resolution. */
   private sslDir(): string {
     return sslLiveDir();

@@ -1,4 +1,11 @@
-import { BadRequestException, Body, Controller, Logger, Post } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  InternalServerErrorException,
+  Logger,
+  Post,
+} from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { BootstrapSetupService } from './bootstrap-setup.service';
 import { BootstrapDnsPreflightService, PreflightResult } from './bootstrap-dns-preflight.service';
@@ -109,16 +116,28 @@ export class BootstrapSetupController {
     // user at login, not back in the normal-mode wizard. Must persist before
     // the process exit below (awaited here, exit is a deferred timer).
     await this.bootstrap.finalizeSetup();
-    writeInstanceConfig({
-      version: 2,
-      state: 'applied',
-      origin: 'wizard',
-      primaryDomain: domain,
-      proxyMode: applied.proxyMode,
-      sslMode: applied.sslMode,
-      port80: applied.port80,
-      realIp: applied.realIp,
-    });
+    try {
+      writeInstanceConfig({
+        version: 2,
+        state: 'applied',
+        origin: 'wizard',
+        primaryDomain: domain,
+        proxyMode: applied.proxyMode,
+        sslMode: applied.sslMode,
+        port80: applied.port80,
+        realIp: applied.realIp,
+      });
+    } catch (err) {
+      // Failed fs write with setup already finalized = permanently dead
+      // wizard AND no identity (M3). Put the wizard back so Apply can be
+      // retried from the browser once the underlying problem (disk space,
+      // mount perms) is fixed.
+      await this.bootstrap.unfinalizeSetup();
+      this.logger.error(`[bootstrap] apply failed writing instance config: ${(err as Error).message}`);
+      throw new InternalServerErrorException(
+        'Could not write the instance configuration to disk (check free disk space). Setup was NOT completed — fix the disk issue and retry Apply.',
+      );
+    }
     this.scheduleExit();
     return { applying: true, adminUrl: `https://admin.${domain}` };
   }
