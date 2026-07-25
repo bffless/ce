@@ -194,8 +194,20 @@ uncomment_and_set() {
 # interactively offer the wipe. Never deletes silently.
 check_stale_postgres_volume() {
     command_exists docker || return 0
-    project="$(basename "$(pwd)")"
-    vol="$(docker volume ls --format '{{.Name}}' 2>/dev/null | grep -E "^(${project}|${COMPOSE_PROJECT_NAME:-$project})_postgres-data$" | head -1)"
+    # Docker Compose lowercases/normalizes the directory name when deriving the
+    # default project name, so an install dir like /opt/BFFless becomes
+    # "bffless" - lowercase our guess the same way or the exact-prefix match
+    # below silently never fires.
+    project="$(basename "$(pwd)" | tr '[:upper:]' '[:lower:]')"
+    compose_project="${COMPOSE_PROJECT_NAME:-$project}"
+    vol="$(docker volume ls --format '{{.Name}}' 2>/dev/null | grep -E "^(${project}|${compose_project})_postgres-data$" | head -1)"
+    if [ -z "$vol" ]; then
+        # Fall back to any postgres-data volume in this daemon - covers project
+        # names we still failed to guess (custom COMPOSE_PROJECT_NAME casing,
+        # unusual directory naming, etc). The warning below names the volume
+        # so the operator can judge whether it's actually theirs.
+        vol="$(docker volume ls --format '{{.Name}}' 2>/dev/null | grep -E '_postgres-data$' | head -1)"
+    fi
     [ -n "$vol" ] || return 0
     echo ""
     print_warning "Existing database volume found: $vol"
