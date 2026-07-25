@@ -157,6 +157,44 @@ STUB
     exit "$FAILURES"
 ); FAILURES=$((FAILURES+$?))
 
+echo "— backup.sh: archive contains db dump, assets, and config —"
+(
+    make_sandbox
+    FAILURES=0
+    cd "$SB/app"
+    printf 'PRIMARY_DOMAIN=example.com\n' > .env      # ENABLE_MINIO unset → local storage path
+    mkdir -p bootstrap ssl
+    echo 'STATE=applied' > bootstrap/instance.env
+    echo 'cert' > ssl/fullchain.pem
+    cat > "$SB/bin/docker" <<'STUB'
+#!/bin/bash
+echo "docker $*" >> "$DOCKER_LOG"
+case "$*" in
+    "inspect --format {{.State.Running}} assethost-postgres") echo "true" ;;
+    exec*pg_dump*) echo "-- pg_dump stub" ;;
+    cp\ assethost-backend:*)
+        dest="${!#}"
+        mkdir -p "$dest" && echo blob > "$dest/asset.bin" ;;
+esac
+exit 0
+STUB
+    chmod +x "$SB/bin/docker"
+    PATH="$SB/bin:$PATH" ./backup.sh >/dev/null 2>&1; rc=$?
+    assert_exit 0 "$rc" "backup exits 0"
+    archive=$(ls backups/bffless-backup-*.tar.gz 2>/dev/null | head -1)
+    assert_file "$archive" "archive created"
+    perms=$(stat -c %a "$archive" 2>/dev/null)
+    if [ "$perms" = "600" ]; then echo "ok: archive is 600"; else echo "FAIL: archive perms $perms"; FAILURES=$((FAILURES+1)); fi
+    listing="$SB/tar.lst"; tar -tzf "$archive" > "$listing"
+    assert_contains "$listing" "database.sql" "db dump in archive"
+    assert_contains "$listing" "uploads/asset.bin" "local assets in archive"
+    assert_contains "$listing" ".env" ".env in archive"
+    assert_contains "$listing" "bootstrap/instance.env" "bootstrap identity in archive"
+    assert_contains "$listing" "ssl/fullchain.pem" "certs in archive"
+    cd / && rm -rf "$SB"
+    exit "$FAILURES"
+); FAILURES=$((FAILURES+$?))
+
 if [ "$FAILURES" -eq 0 ]; then
     echo 'ALL LIFECYCLE TESTS PASSED'
 else
