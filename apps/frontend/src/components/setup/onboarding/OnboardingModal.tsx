@@ -7,9 +7,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { useBranding } from '@/hooks/useBranding';
+import { WelcomeStep } from './WelcomeStep';
 import { CreateRepoStep } from './CreateRepoStep';
 import { ApiKeyStep } from './ApiKeyStep';
 import { GitHubActionsStep } from './GitHubActionsStep';
+
+const LAST_STEP = 4;
 
 interface OnboardingModalProps {
   isOpen: boolean;
@@ -18,6 +22,7 @@ interface OnboardingModalProps {
 
 export function OnboardingModal({ isOpen, onClose }: OnboardingModalProps) {
   const dispatch = useDispatch();
+  const { siteName } = useBranding();
   const { onboardingStep, createdProjectId, createdApiKey } = useSelector(
     (state: RootState) => state.setup.onboarding
   );
@@ -28,7 +33,7 @@ export function OnboardingModal({ isOpen, onClose }: OnboardingModalProps) {
   };
 
   const handleNext = () => {
-    if (onboardingStep < 3) {
+    if (onboardingStep < LAST_STEP) {
       dispatch(setOnboardingStep(onboardingStep + 1));
     } else {
       dispatch(completeOnboarding());
@@ -39,8 +44,10 @@ export function OnboardingModal({ isOpen, onClose }: OnboardingModalProps) {
   const renderStep = () => {
     switch (onboardingStep) {
       case 1:
-        return <CreateRepoStep onNext={handleNext} onSkip={handleSkip} />;
+        return <WelcomeStep onNext={handleNext} onSkip={handleSkip} />;
       case 2:
+        return <CreateRepoStep onNext={handleNext} onSkip={handleSkip} />;
+      case 3:
         return (
           <ApiKeyStep
             projectId={createdProjectId}
@@ -48,7 +55,7 @@ export function OnboardingModal({ isOpen, onClose }: OnboardingModalProps) {
             onSkip={handleSkip}
           />
         );
-      case 3:
+      case 4:
         return (
           <GitHubActionsStep
             apiKey={createdApiKey}
@@ -63,10 +70,12 @@ export function OnboardingModal({ isOpen, onClose }: OnboardingModalProps) {
   const getTitle = () => {
     switch (onboardingStep) {
       case 1:
-        return 'Create Your First Repository';
+        return `Welcome to ${siteName}`;
       case 2:
-        return 'Generate API Key';
+        return 'Create Your First Repository';
       case 3:
+        return 'Generate API Key';
+      case 4:
         return 'Set Up GitHub Actions';
       default:
         return 'Getting Started';
@@ -75,7 +84,10 @@ export function OnboardingModal({ isOpen, onClose }: OnboardingModalProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-lg">
+      {/* DialogContent is vertically centred with no height cap of its own, so
+          the welcome step's video would push the buttons off-screen on short
+          viewports (~700px laptops). Cap and scroll instead. */}
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{getTitle()}</DialogTitle>
         </DialogHeader>
