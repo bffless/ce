@@ -45,7 +45,7 @@ export const DOCS = {
  * touching any component.
  */
 export const VIDEOS = {
-  cloudflareSetup: { id: 'zTGi5M0mcCo', dnsStart: 249, certStart: 249 },
+  cloudflareSetup: { id: 'zTGi5M0mcCo', dnsStart: 249, certStart: 293 },
   firstDeployment: { id: 'cNqh02HyD0s', title: 'BFFless: your first deployment' },
 } as const;
 
