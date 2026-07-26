@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { useGetPublicBrandingQuery } from '@/services/settingsApi';
 import defaultLogoSvg from '@/assets/logo.svg';
 import defaultAuthLogoSvg from '@/assets/logo-circle-wire-text.svg';
@@ -8,11 +7,10 @@ const DEFAULT_SITE_NAME = 'BFFLESS';
 export function useBranding() {
   const { data, isLoading } = useGetPublicBrandingQuery();
 
+  // `document.title` is owned by PageTitleProvider (@/components/DocumentTitle),
+  // which combines this site name with a per-route title.
   const siteName = data?.siteName || DEFAULT_SITE_NAME;
 
-  useEffect(() => {
-    document.title = siteName;
-  }, [siteName]);
   const hasHeaderLogo = data?.hasHeaderLogo ?? false;
   const hasAuthLogo = data?.hasAuthLogo ?? false;
 

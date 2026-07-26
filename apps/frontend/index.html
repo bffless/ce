@@ -3,8 +3,16 @@
   <head>
     <base href="/" />
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <!-- Favicons are relative so they resolve against <base> when the admin
+         panel is served from a subdirectory. -->
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png" />
+    <link rel="alternate icon" href="favicon.ico" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Placeholder only: PageTitleProvider (src/components/DocumentTitle.tsx)
+         replaces this with a per-route, brand-aware title once React mounts. -->
     <title>BFFless</title>
     <!-- Pendo Analytics (only loads if VITE_PENDO_API_KEY is set) -->
     <script>

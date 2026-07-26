@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -76,6 +77,8 @@ export function UploadDetailPage() {
   const { data: schema, isLoading: isLoadingSchema } = useGetSchemaQuery(schemaId!, {
     skip: !schemaId,
   });
+
+  useDocumentTitle(schema ? [schema.name, 'Uploads', `${owner}/${repo}`] : null);
 
   // Fetch uploaded files (pipeline data records)
   const {

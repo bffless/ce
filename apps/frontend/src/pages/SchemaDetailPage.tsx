@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -41,6 +42,8 @@ export function SchemaDetailPage() {
   const { data: schema, isLoading, error } = useGetSchemaQuery(schemaId || '', {
     skip: !schemaId,
   });
+
+  useDocumentTitle(schema ? [schema.name, 'Data', `${owner}/${repo}`] : null);
 
   // Delete mutation
   const [deleteSchema, { isLoading: isDeleting }] = useDeleteSchemaMutation();

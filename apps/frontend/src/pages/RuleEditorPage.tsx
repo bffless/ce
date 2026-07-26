@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -61,6 +62,11 @@ export function RuleEditorPage() {
   } = useGetProxyRuleQuery(ruleId!, {
     skip: !isEditMode || !ruleId,
   });
+
+  const ruleLabel = isCreateMode ? 'New rule' : rule?.pathPattern;
+  useDocumentTitle(
+    ruleLabel ? [ruleLabel, ruleSet?.name, 'Proxy Rules', `${owner}/${repo}`] : null,
+  );
 
   // Mutations
   const [createRule, { isLoading: isCreating }] = useCreateRuleInSetMutation();

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useGetSessionQuery } from '@/services/authApi';
 import {
   useGetGroupQuery,
@@ -85,6 +86,8 @@ export function GroupDetailPage() {
     isLoading: isLoadingMembers,
     error: membersError,
   } = useGetGroupMembersQuery(groupId!, { skip: !groupId });
+
+  useDocumentTitle(group ? [group.name, 'User groups'] : null);
 
   // Mutations
   const [updateGroup, { isLoading: isUpdating }] = useUpdateGroupMutation();

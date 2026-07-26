@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -45,6 +46,9 @@ export default function PipelineLogsPage() {
   const [showClearDialog, setShowClearDialog] = useState(false);
 
   const { data: rule } = useGetProxyRuleQuery(ruleId!);
+
+  useDocumentTitle(['Logs', rule?.pathPattern, 'Proxy Rules', `${owner}/${repo}`]);
+
   const { data: logsData, isLoading } = useGetRuleLogsQuery(
     { ruleId: ruleId!, page, pageSize: 20 },
     { pollingInterval: 10000 },

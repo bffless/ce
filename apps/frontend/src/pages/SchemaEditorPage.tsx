@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -65,6 +66,12 @@ export function SchemaEditorPage() {
   const { data: existingSchema, isLoading: isLoadingSchema } = useGetSchemaQuery(schemaId || '', {
     skip: !schemaId,
   });
+
+  useDocumentTitle(
+    isEditing
+      ? existingSchema && [`Edit ${existingSchema.name}`, 'Data', `${owner}/${repo}`]
+      : ['New schema', 'Data', `${owner}/${repo}`],
+  );
 
   // Mutations
   const [createSchema, { isLoading: isCreating }] = useCreateSchemaMutation();
