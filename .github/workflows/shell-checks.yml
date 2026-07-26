@@ -1,0 +1,44 @@
+name: Shell Checks
+
+on:
+  pull_request:
+    paths:
+      - '*.sh'
+      - 'scripts/**'
+      - 'marketplace/**'
+      - '.github/workflows/shell-checks.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  shell-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Only the scripts introduced by the DO 1-Click work are linted —
+      # pre-existing scripts (setup.sh, start.sh, ...) are not shellcheck-clean
+      # and cleaning them up is out of scope. Vendored DO scripts
+      # (900-cleanup.sh, 999-img_check.sh) are upstream code and excluded.
+      - name: shellcheck
+        run: |
+          shellcheck \
+            restart.sh update.sh logs.sh status.sh backup.sh \
+            scripts/setup-swap.sh scripts/compose-profiles.sh \
+            scripts/setup-swap.test.sh scripts/compose-profiles.test.sh scripts/lifecycle.test.sh \
+            marketplace/digitalocean/scripts/010-prep.sh \
+            marketplace/digitalocean/scripts/020-docker.sh \
+            marketplace/digitalocean/scripts/030-bffless.sh \
+            marketplace/digitalocean/files/first-login.sh \
+            marketplace/digitalocean/files/first-login.test.sh \
+            marketplace/digitalocean/files/etc/update-motd.d/99-bffless-readme \
+            marketplace/digitalocean/files/var/lib/cloud/scripts/per-instance/001-swap \
+            marketplace/digitalocean/files/var/lib/cloud/scripts/per-instance/002-bffless-first-boot
+
+      - name: Shell unit tests
+        run: |
+          bash scripts/setup-swap.test.sh
+          bash scripts/compose-profiles.test.sh
+          bash scripts/lifecycle.test.sh
+          bash marketplace/digitalocean/files/first-login.test.sh

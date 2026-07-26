@@ -1,0 +1,53 @@
+name: Build DO Marketplace Image
+
+# Builds the DigitalOcean 1-Click snapshot with Packer. NOT tied to CE
+# releases — the image is a warm cache; droplets self-update at first boot
+# and via update.sh. Monthly rebuild keeps the base OS fresh (DO expects
+# periodic refreshes). Vendor Portal submission remains manual:
+# https://cloud.digitalocean.com/vendorportal
+on:
+  workflow_dispatch:
+    inputs:
+      region:
+        description: 'DO region for the build droplet'
+        required: false
+        default: 'nyc3'
+        type: string
+  schedule:
+    - cron: '17 6 3 * *' # 06:17 UTC on the 3rd of each month
+
+permissions:
+  contents: read
+
+jobs:
+  build-image:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash # explicit bash => pipefail, so a packer failure isn't masked by tee
+        working-directory: marketplace/digitalocean
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-packer@v3
+
+      - name: Packer init + validate
+        run: |
+          packer init template.pkr.hcl
+          packer validate template.pkr.hcl
+
+      - name: Packer build
+        env:
+          DIGITALOCEAN_API_TOKEN: ${{ secrets.DIGITALOCEAN_API_TOKEN }}
+        run: packer build -color=false -var "region=${{ inputs.region || 'nyc3' }}" template.pkr.hcl | tee build.log
+
+      - name: Snapshot summary
+        if: always()
+        run: |
+          {
+            echo "## DO Marketplace image build"
+            echo ""
+            grep -iE "snapshot.*(created|bffless-ce)" build.log || echo "(no snapshot line found — check the build log)"
+            echo ""
+            echo "Next: submit/refresh the listing in the [Vendor Portal](https://cloud.digitalocean.com/vendorportal)."
+          } >> "$GITHUB_STEP_SUMMARY"
