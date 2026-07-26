@@ -19,6 +19,8 @@ import {
   type CurrentStorageConfigResponse,
 } from '@/services/setupApi';
 import { AlertTriangle, CheckCircle, KeyRound, Loader2 } from 'lucide-react';
+import { storageDocsFor } from '@/lib/docsLinks';
+import { DocsInlineLink } from '@/components/common/DocsLink';
 
 interface EditStorageCredentialsProps {
   currentProvider: StorageProvider;
@@ -94,6 +96,7 @@ export function EditStorageCredentials({
   const [localPath, setLocalPath] = useState(currentConfig?.localPath || './uploads');
 
   const providerLabel = providerLabels[currentProvider] || currentProvider;
+  const providerDocs = storageDocsFor(currentProvider);
 
   // Build the config payload. Secret fields left blank are omitted so the
   // backend keeps the currently-stored value.
@@ -402,6 +405,14 @@ export function EditStorageCredentials({
         <CardDescription>
           Update the connection details for your current storage provider — for example, rotating an
           access key — without migrating any files.
+          {providerDocs && (
+            <>
+              {' '}
+              <DocsInlineLink href={providerDocs.href}>
+                Where to find these values
+              </DocsInlineLink>
+            </>
+          )}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">

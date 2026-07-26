@@ -13,6 +13,8 @@ import { MigrationWizard } from '@/components/storage/MigrationWizard';
 import { MigrationProgress } from '@/components/storage/MigrationProgress';
 import { EditStorageCredentials } from '@/components/storage/EditStorageCredentials';
 import type { StorageProvider } from '@/services/setupApi';
+import { storageDocsFor } from '@/lib/docsLinks';
+import { DocsInlineLink } from '@/components/common/DocsLink';
 import {
   Database,
   HardDrive,
@@ -111,6 +113,10 @@ export function StorageSettings() {
   const isS3Compatible = storageConfig?.isS3Compatible;
   const ProviderIcon = currentProvider === 's3' && isS3Compatible ? Globe : (providerIcons[currentProvider] || Database);
   const providerName = getProviderDisplayName(currentProvider, isS3Compatible);
+  // currentProvider is a string off the status response, so it may be
+  // 'unknown' before the query settles — narrow through storageDocsFor, which
+  // returns null for anything without a guide.
+  const providerDocs = storageDocsFor(currentProvider as StorageProvider);
 
   const handleMigrationComplete = () => {
     setShowMigrationWizard(false);
@@ -315,6 +321,13 @@ export function StorageSettings() {
                   )}
                 </div>
                 <p className="text-sm text-muted-foreground">{providerName}</p>
+                {providerDocs && (
+                  <p className="text-sm text-muted-foreground">
+                    <DocsInlineLink href={providerDocs.href}>
+                      View the {providerName} setup guide
+                    </DocsInlineLink>
+                  </p>
+                )}
               </div>
             </div>
             <div className="flex items-center gap-2 text-green-600">

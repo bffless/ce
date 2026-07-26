@@ -25,6 +25,8 @@ import {
 } from '@/services/migrationApi';
 import type { StorageProvider, S3StorageConfig, GCSStorageConfig } from '@/services/setupApi';
 import { useGetConstraintsQuery, useGetAvailableOptionsQuery } from '@/services/setupApi';
+import { storageDocsFor } from '@/lib/docsLinks';
+import { DocsInlineLink } from '@/components/common/DocsLink';
 import { MigrationProgress } from './MigrationProgress';
 import { ArrowRight, AlertTriangle, Loader2, CheckCircle, Server, Cloud, Database, Globe, Shield } from 'lucide-react';
 
@@ -783,6 +785,10 @@ export function MigrationWizard({ currentProvider, onComplete, onCancel }: Migra
     );
   }
 
+  // Pure lookup, hoisted out of the configure-step JSX so it's evaluated once
+  // per render instead of once per usage below.
+  const targetProviderDocs = targetProvider ? storageDocsFor(targetProvider) : null;
+
   return (
     <div className="space-y-6">
       {/* Step 1: Select Provider */}
@@ -833,7 +839,17 @@ export function MigrationWizard({ currentProvider, onComplete, onCancel }: Migra
         <Card>
           <CardHeader>
             <CardTitle>Configure {storageProviders.find((p) => p.value === targetProvider)?.label}</CardTitle>
-            <CardDescription>Enter your storage credentials</CardDescription>
+            <CardDescription>
+              Enter your storage credentials.
+              {targetProviderDocs && (
+                <>
+                  {' '}
+                  <DocsInlineLink href={targetProviderDocs.href}>
+                    {targetProviderDocs.label}
+                  </DocsInlineLink>
+                </>
+              )}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {renderProviderConfig()}
