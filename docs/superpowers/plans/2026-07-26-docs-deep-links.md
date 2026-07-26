@@ -18,7 +18,9 @@
 - **The local `repos/docs-public` checkout is stale.** Anchors below were verified against the *live* site on 2026-07-26. Do not "correct" them against local markdown headings.
 - **Every external link** renders `target="_blank"` and `rel="noopener noreferrer"`.
 - **Brand accent is `#d96459`**, used as an arbitrary Tailwind value exactly as `WelcomeStep.tsx` does today (`text-[#d96459]`, `hover:border-[#d96459]/50`).
-- **Test commands** (run from `apps/frontend/`): single file `pnpm test:run -- <pattern>`; full suite `pnpm test`; types `pnpm exec tsc --noEmit`; lint `pnpm lint` (max-warnings 0).
+- **Test commands** (run from `apps/frontend/`): single file `pnpm test:run <pattern>`; full suite `pnpm test`; types `pnpm exec tsc --noEmit`; lint `pnpm lint`.
+- **`pnpm lint` ALREADY FAILS on `main`** — 58 pre-existing problems (30 errors, 28 warnings), verified on the `main` checkout at e779c38. A non-zero lint exit is therefore NOT a signal you broke something. The check that matters: `pnpm lint 2>&1 | grep -E "<files you changed>"` must produce **no output**. Do not attempt to fix the pre-existing failures — they are out of scope for this plan.
+- **`pnpm exec tsc --noEmit` IS clean on `main`** and must stay clean. A type error is yours.
 - **`StorageProvider`** is `'local' | 'minio' | 's3' | 'gcs' | 'azure' | 'managed'`, exported from `@/services/setupApi`.
 
 ---
@@ -151,7 +153,7 @@ describe('VIDEOS', () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `cd apps/frontend && pnpm test:run -- docsLinks`
+Run: `cd apps/frontend && pnpm test:run docsLinks`
 Expected: FAIL — `Failed to resolve import "./docsLinks"`.
 
 - [ ] **Step 3: Write the implementation**
@@ -252,13 +254,13 @@ export function formatTimestamp(seconds: number): string {
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `cd apps/frontend && pnpm test:run -- docsLinks`
+Run: `cd apps/frontend && pnpm test:run docsLinks`
 Expected: PASS, all cases green.
 
 - [ ] **Step 5: Verify types and lint**
 
 Run: `cd apps/frontend && pnpm exec tsc --noEmit && pnpm lint`
-Expected: both clean.
+Expected: `tsc` clean (a type error is yours). `pnpm lint` exits non-zero from 58 pre-existing problems on `main` — that is the baseline, not your regression. Confirm you added none: `pnpm lint 2>&1 | grep -E "<files you changed>"` must print nothing.
 
 - [ ] **Step 6: Commit**
 
@@ -345,7 +347,7 @@ describe('WatchLink', () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `cd apps/frontend && pnpm test:run -- DocsLink`
+Run: `cd apps/frontend && pnpm test:run DocsLink`
 Expected: FAIL — `Failed to resolve import "./DocsLink"`.
 
 - [ ] **Step 3: Write the implementation**
@@ -435,7 +437,7 @@ export function WatchLink({ videoId, start }: WatchLinkProps) {
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `cd apps/frontend && pnpm test:run -- DocsLink`
+Run: `cd apps/frontend && pnpm test:run DocsLink`
 Expected: PASS.
 
 - [ ] **Step 5: Refactor WelcomeStep onto the shared row and registry**
@@ -468,7 +470,7 @@ Leave the facade embed, its `useState` hooks, and the button row untouched.
 
 - [ ] **Step 6: Run WelcomeStep's existing tests unchanged**
 
-Run: `cd apps/frontend && pnpm test:run -- WelcomeStep`
+Run: `cd apps/frontend && pnpm test:run WelcomeStep`
 Expected: PASS, all four cases. The suite is unmodified at this point on purpose — it is the proof that the extraction preserved behaviour (href, target, rel, accessible name, and the facade).
 
 If the "links to the first-deployment guide" case fails on the accessible name, the extraction changed the label text — fix `DocsLink`'s usage, not the test.
@@ -487,13 +489,13 @@ Delete the old `const DOCS_URL = 'https://docs.bffless.dev/getting-started/first
 
 - [ ] **Step 8: Run the tests again**
 
-Run: `cd apps/frontend && pnpm test:run -- WelcomeStep DocsLink docsLinks`
+Run: `cd apps/frontend && pnpm test:run WelcomeStep DocsLink docsLinks`
 Expected: PASS.
 
 - [ ] **Step 9: Verify types and lint**
 
 Run: `cd apps/frontend && pnpm exec tsc --noEmit && pnpm lint`
-Expected: both clean. A lint failure here is most likely an unused `BookOpen`/`ExternalLink` import left in `WelcomeStep.tsx`.
+Expected: `tsc` clean (a type error is yours). `pnpm lint` exits non-zero from 58 pre-existing problems on `main` — that is the baseline, not your regression. Confirm you added none: `pnpm lint 2>&1 | grep -E "<files you changed>"` must print nothing. Watch for an unused `BookOpen`/`ExternalLink` import left in `WelcomeStep.tsx`.
 
 - [ ] **Step 10: Commit**
 
@@ -544,13 +546,13 @@ Find the provider selection block — the `<div>` containing `<Label>Storage Pro
 
 - [ ] **Step 4: Verify it renders and nothing regressed**
 
-Run: `cd apps/frontend && pnpm test:run -- StorageStep`
+Run: `cd apps/frontend && pnpm test:run StorageStep`
 Expected: PASS (existing suite; no new assertions added — the links are static markup and `docsLinks.test.ts` covers the mapping).
 
 - [ ] **Step 5: Verify types and lint**
 
 Run: `cd apps/frontend && pnpm exec tsc --noEmit && pnpm lint`
-Expected: both clean.
+Expected: `tsc` clean (a type error is yours). `pnpm lint` exits non-zero from 58 pre-existing problems on `main` — that is the baseline, not your regression. Confirm you added none: `pnpm lint 2>&1 | grep -E "<files you changed>"` must print nothing.
 
 - [ ] **Step 6: Commit**
 
@@ -607,7 +609,7 @@ The component's first child is a `<div>` holding the `<h3>` and the three `{serv
 
 - [ ] **Step 3: Verify DomainDnsPhase**
 
-Run: `cd apps/frontend && pnpm test:run -- DomainDnsPhase`
+Run: `cd apps/frontend && pnpm test:run DomainDnsPhase`
 Expected: PASS if a suite exists for it; "No test files found" is an acceptable result — proceed.
 
 - [ ] **Step 4: Widen the PasteCertificateForm COPY record**
@@ -669,13 +671,13 @@ In the JSX, find where `copy.body` is rendered (inside the paragraph under the `
 
 - [ ] **Step 7: Verify the SSL wizard suites still pass**
 
-Run: `cd apps/frontend && pnpm test:run -- PasteCertificate DomainSsl`
+Run: `cd apps/frontend && pnpm test:run PasteCertificate DomainSsl`
 Expected: PASS, or "No test files found" for a pattern with no suite.
 
 - [ ] **Step 8: Verify types and lint**
 
 Run: `cd apps/frontend && pnpm exec tsc --noEmit && pnpm lint`
-Expected: both clean.
+Expected: `tsc` clean (a type error is yours). `pnpm lint` exits non-zero from 58 pre-existing problems on `main` — that is the baseline, not your regression. Confirm you added none: `pnpm lint 2>&1 | grep -E "<files you changed>"` must print nothing.
 
 - [ ] **Step 9: Commit**
 
@@ -821,13 +823,13 @@ This is the one moment an operator deliberately picks a backend they have not us
 
 - [ ] **Step 5: Run the storage-related suites**
 
-Run: `cd apps/frontend && pnpm test:run -- StorageSettings MigrationWizard EditStorageCredentials MySitesSection`
+Run: `cd apps/frontend && pnpm test:run StorageSettings MigrationWizard EditStorageCredentials MySitesSection`
 Expected: PASS, or "No test files found" for patterns without a suite.
 
 - [ ] **Step 6: Verify types and lint**
 
 Run: `cd apps/frontend && pnpm exec tsc --noEmit && pnpm lint`
-Expected: both clean. A type error on `storageDocsFor(currentProvider as StorageProvider)` means the `StorageProvider` import is missing in `StorageSettings.tsx` — add it to the `@/services/setupApi` import.
+Expected: `tsc` clean (a type error is yours). `pnpm lint` exits non-zero from 58 pre-existing problems on `main` — that is the baseline, not your regression. Confirm you added none: `pnpm lint 2>&1 | grep -E "<files you changed>"` must print nothing. A type error on `storageDocsFor(currentProvider as StorageProvider)` means the `StorageProvider` import is missing in `StorageSettings.tsx` — add it to the `@/services/setupApi` import.
 
 - [ ] **Step 7: Commit**
 
@@ -887,7 +889,7 @@ Inline treatment here, not a bordered row: this is a settings page, and the oper
 
 - [ ] **Step 3: Run the SSL suites**
 
-Run: `cd apps/frontend && pnpm test:run -- ServingModelEditor PrimarySsl ssl-leaves`
+Run: `cd apps/frontend && pnpm test:run ServingModelEditor PrimarySsl ssl-leaves`
 Expected: PASS, or "No test files found" for patterns without a suite.
 
 - [ ] **Step 4: Confirm no docs literal escaped the registry**
@@ -908,7 +910,7 @@ Expected: PASS. Do not proceed to the browser check with a red suite.
 - [ ] **Step 6: Verify types and lint one final time**
 
 Run: `cd apps/frontend && pnpm exec tsc --noEmit && pnpm lint`
-Expected: both clean.
+Expected: `tsc` clean (a type error is yours). `pnpm lint` exits non-zero from 58 pre-existing problems on `main` — that is the baseline, not your regression. Confirm you added none: `pnpm lint 2>&1 | grep -E "<files you changed>"` must print nothing.
 
 - [ ] **Step 7: Commit**
 
