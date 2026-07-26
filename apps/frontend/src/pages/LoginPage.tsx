@@ -167,7 +167,7 @@ export function LoginPage() {
 
   // Redirect to setup if not complete
   if (!isLoadingSetup && setupStatus && !setupStatus.isSetupComplete) {
-    return <Navigate to="/setup" replace />;
+    return <Navigate to={{ pathname: '/setup', search: window.location.search }} replace />;
   }
 
   const onSubmit = async (data: LoginFormValues) => {

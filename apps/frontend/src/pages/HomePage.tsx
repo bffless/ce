@@ -125,7 +125,7 @@ export function HomePage() {
 
   // Check setup status first - redirect to setup if not complete
   if (!isSetupLoading && setupStatus && !setupStatus.isSetupComplete) {
-    return <Navigate to="/setup" replace />;
+    return <Navigate to={{ pathname: '/setup', search: window.location.search }} replace />;
   }
 
   // Show loading while checking setup status (auth loading handled by ProtectedRoute)
