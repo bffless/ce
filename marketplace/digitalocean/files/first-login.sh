@@ -66,7 +66,7 @@ echo "  warning — if the wizard doesn't show your token prefilled, paste it ma
 echo -e "  Claim token (paste into the wizard if the link loses it):  ${BOLD}${claim_token}${NC}"
 echo ""
 echo "Prefer the terminal? Setup here needs your domain on Cloudflare ready:"
-echo "  https://docs.bffless.dev/getting-started/quickstart"
+echo "  https://docs.bffless.dev/getting-started/quickstart/"
 echo ""
 printf "Press Enter to continue to the shell, or type %bsetup%b to configure here: " "$BOLD" "$NC"
 read -r answer || answer=""

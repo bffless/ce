@@ -30,7 +30,7 @@ Options:
   --help, -h              Show this help message
 
 The archive contains secrets — store it securely.
-Restore guide: https://docs.bffless.dev/deployment/digitalocean#restoring-a-backup
+Restore guide: https://docs.bffless.dev/deployment/digitalocean/#restoring-a-backup
 EOF
             exit 0
             ;;
@@ -75,4 +75,4 @@ chmod 600 "$ARCHIVE"
 
 echo -e "${GREEN}✓ Backup written to ${ARCHIVE}${NC}"
 echo -e "${YELLOW}⚠ The archive contains secrets (.env, certificates) — store it securely.${NC}"
-echo "  Restore guide: https://docs.bffless.dev/deployment/digitalocean#restoring-a-backup"
+echo "  Restore guide: https://docs.bffless.dev/deployment/digitalocean/#restoring-a-backup"
