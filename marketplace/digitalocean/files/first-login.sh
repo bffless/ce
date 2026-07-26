@@ -57,7 +57,7 @@ claim_token=$(grep '^ONBOARDING_TOKEN=' .env 2>/dev/null | head -1 | cut -d= -f2
 server_ip=$(detect_server_ip)
 
 echo -e "Finish setup in your browser (recommended):"
-echo -e "  ${CYAN}${BOLD}https://${server_ip}/?token=${claim_token}${NC}"
+echo -e "  ${CYAN}${BOLD}https://${server_ip}/setup?token=${claim_token}${NC}"
 echo ""
 echo "  Your browser will warn about a self-signed certificate — that's expected"
 echo "  before a domain is configured; proceed past the warning."

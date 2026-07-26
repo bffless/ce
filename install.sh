@@ -128,8 +128,8 @@ print_web_bootstrap_banner() {
     # the browser has it without retyping; without one (unreadable .env),
     # fall back to bare URLs and rely on the manual-entry line below.
     if [ -n "$claim_token" ]; then
-        ip_url="https://${server_ip}/?token=${claim_token}"
-        domain_url="https://admin.<your-domain>/?token=${claim_token}"
+        ip_url="https://${server_ip}/setup?token=${claim_token}"
+        domain_url="https://admin.<your-domain>/setup?token=${claim_token}"
         step1_line1="Open the setup wizard - this link carries your claim token, so it"
         step1_line2="skips straight to account setup (no claim screen to fill in):"
     else
