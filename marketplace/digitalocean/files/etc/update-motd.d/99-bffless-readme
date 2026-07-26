@@ -17,7 +17,7 @@ else
     token=$(sed -n 's/^ONBOARDING_TOKEN=//p' "$INSTALL_DIR/.env" 2>/dev/null | head -1)
     if [ -n "$token" ]; then
         ip=$(hostname -I | awk '{print $1}')
-        printf ' Finish setup in your browser:  https://%s/?token=%s\n' "$ip" "$token"
+        printf ' Finish setup in your browser:  https://%s/setup?token=%s\n' "$ip" "$token"
         printf ' Claim token: %s\n' "$token"
         printf ' (or run: bffless-setup)\n'
     else

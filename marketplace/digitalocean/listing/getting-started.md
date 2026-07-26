@@ -12,7 +12,7 @@ per-droplet secrets, and all services. No SSH needed.
 The setup wizard is claim-protected by a one-time token. Get it either way:
 
 - **SSH (or the DO web console):** `ssh root@<your-droplet-ip>` — the welcome
-  banner prints both your setup link (`https://<ip>/?token=...`) and the bare
+  banner prints both your setup link (`https://<ip>/setup?token=...`) and the bare
   claim token on its own line, ready to copy. This works in the DigitalOcean
   control panel's Droplet Console too.
 
