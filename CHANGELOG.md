@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.8](https://github.com/bffless/ce/compare/v0.3.7...v0.3.8) (2026-07-26)
+
+
+### Features
+
+* **frontend:** per-route document titles and a real favicon ([#553](https://github.com/bffless/ce/issues/553)) ([c5b42f2](https://github.com/bffless/ce/commit/c5b42f2ba44c08297898ce23c82bef026b6a04b9))
+
 ## [0.3.7](https://github.com/bffless/ce/compare/v0.3.6...v0.3.7) (2026-07-26)
 
 
