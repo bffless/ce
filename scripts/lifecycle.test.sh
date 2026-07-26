@@ -112,6 +112,7 @@ echo "— update.sh: clean tree pulls with detected profiles and restarts —"
         "docker compose --profile postgres --profile minio --profile supertokens pull" \
         "profile-aware image pull (minio on, redis off)"
     assert_contains "calls.log" "restart" "restart.sh invoked"
+    assert_contains "$DOCKER_LOG" "docker image prune -f" "superseded images pruned after restart"
     cd / && rm -rf "$SB"
     exit "$FAILURES"
 ); FAILURES=$((FAILURES+$?))

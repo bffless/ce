@@ -16,6 +16,7 @@ Updates this BFFless install:
   2. git pull --ff-only
   3. docker compose pull (only the profiles this install has enabled)
   4. ./restart.sh — start.sh rebuilds the local nginx image from the pulled tree
+  5. docker image prune -f — reclaims disk from superseded (dangling) images
 EOF
     exit 0
 fi
@@ -54,5 +55,11 @@ echo "Pulling latest images..."
 docker compose $PROFILES pull
 
 ./restart.sh
+
+# Reclaim disk from superseded images: after the restart nothing references
+# the previous pulls/builds, and prune -f only touches dangling (untagged)
+# images — pinned tags are never removed.
+echo "Pruning superseded images..."
+docker image prune -f || true
 
 echo -e "Updated to: ${GREEN}$(current_version)${NC}"
