@@ -14,6 +14,11 @@ $APT update
 $APT -o Dpkg::Options::="--force-confold" upgrade -y
 $APT install -y git ufw curl openssl
 
+# Marketplace images must not ship the droplet-agent (img_check FAILs on
+# /opt/digitalocean) — DO installs it per-droplet at creation time.
+$APT purge -y droplet-agent 2>/dev/null || true
+rm -rf /opt/digitalocean
+
 # img_check requires an enabled firewall. Docker publishes 80/443 via iptables
 # directly (bypassing ufw), but the explicit allows document intent and cover
 # any host-level services.
