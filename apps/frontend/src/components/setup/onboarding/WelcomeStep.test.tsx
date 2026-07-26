@@ -2,8 +2,9 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { WelcomeStep } from './WelcomeStep';
+import { DOCS } from '@/lib/docsLinks';
 
-const DOCS_URL = 'https://docs.bffless.dev/getting-started/first-deployment/';
+const DOCS_URL = DOCS.gettingStarted.firstDeployment;
 
 describe('WelcomeStep', () => {
   afterEach(cleanup);

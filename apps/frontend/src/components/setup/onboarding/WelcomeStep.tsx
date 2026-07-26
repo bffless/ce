@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { BookOpen, ExternalLink, Play } from 'lucide-react';
+import { Play } from 'lucide-react';
+import { DOCS, VIDEOS } from '@/lib/docsLinks';
+import { DocsLink } from '@/components/common/DocsLink';
 
-const VIDEO_ID = 'cNqh02HyD0s';
-const VIDEO_TITLE = 'BFFless: your first deployment';
-const DOCS_URL = 'https://docs.bffless.dev/getting-started/first-deployment/';
+const VIDEO_ID = VIDEOS.firstDeployment.id;
+const VIDEO_TITLE = VIDEOS.firstDeployment.title;
+const DOCS_URL = DOCS.gettingStarted.firstDeployment;
 
 // hqdefault always exists for a public video (unlike maxresdefault), and is 4:3
 // with letterbox bars — object-cover inside the 16:9 frame crops them off.
@@ -77,16 +79,7 @@ export function WelcomeStep({ onNext, onSkip }: WelcomeStepProps) {
         )}
       </div>
 
-      <a
-        href={DOCS_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="flex items-center gap-2 rounded-lg border p-3 text-sm transition-colors hover:border-[#d96459]/50 hover:bg-muted/50"
-      >
-        <BookOpen className="h-4 w-4 flex-shrink-0 text-[#d96459]" />
-        <span className="font-medium">Read the first-deployment guide</span>
-        <ExternalLink className="ml-auto h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
-      </a>
+      <DocsLink href={DOCS_URL} label="Read the first-deployment guide" />
 
       <div className="flex justify-between pt-4">
         <Button type="button" variant="ghost" onClick={onSkip}>

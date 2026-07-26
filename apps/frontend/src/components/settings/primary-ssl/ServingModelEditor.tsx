@@ -4,6 +4,8 @@ import { ServingChoiceCards, type ServingMode } from '@/components/ssl-leaves/Se
 import { Port80Choice } from '@/components/ssl-leaves/Port80Choice';
 import { RealIpFields } from '@/components/ssl-leaves/RealIpFields';
 import { PasteCertificateFields } from '@/components/ssl-leaves/PasteCertificateFields';
+import { CLOUDFLARE_DOCS, VIDEOS } from '@/lib/docsLinks';
+import { DocsInlineLink, WatchLink } from '@/components/common/DocsLink';
 import {
   useStagePrimaryCertificateMutation,
   useIssuePrimaryLetsEncryptMutation,
@@ -202,6 +204,24 @@ export function ServingModelEditor({
 
       {value.sslMode === 'paste' && (
         <div className="space-y-4">
+          {value.servingMode === 'cloudflare' && (
+            <div className="space-y-1 text-sm text-muted-foreground">
+              <p>
+                Need a certificate?{' '}
+                <DocsInlineLink href={CLOUDFLARE_DOCS.cert.href}>
+                  {CLOUDFLARE_DOCS.cert.label}
+                </DocsInlineLink>
+                {' · '}
+                <DocsInlineLink href={CLOUDFLARE_DOCS.dns.href}>
+                  {CLOUDFLARE_DOCS.dns.label}
+                </DocsInlineLink>
+              </p>
+              <WatchLink
+                videoId={VIDEOS.cloudflareSetup.id}
+                start={VIDEOS.cloudflareSetup.certStart}
+              />
+            </div>
+          )}
           <PasteCertificateFields
             certificatePem={value.certificatePem}
             privateKeyPem={value.privateKeyPem}

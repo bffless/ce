@@ -36,6 +36,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
+import { storageDocsFor } from '@/lib/docsLinks';
+import { DocsLink } from '@/components/common/DocsLink';
 import {
   CheckCircle,
   XCircle,
@@ -294,6 +296,10 @@ export function StorageStep() {
   const minioAvailable =
     envConfig?.isConfigured && envConfig?.storageProvider === 'minio' && !minioDisabled;
 
+  // Null for local/managed — neither has a setup guide worth interrupting the
+  // form for, and storageDocsFor encodes that decision once.
+  const providerDocs = storageProvider ? storageDocsFor(storageProvider) : null;
+
   return (
     <div className="space-y-6">
       <div>
@@ -356,6 +362,8 @@ export function StorageStep() {
           </SelectContent>
         </Select>
       </div>
+
+      {providerDocs && <DocsLink href={providerDocs.href} label={providerDocs.label} />}
 
       {/* Managed Storage (Platform-provided) */}
       {storageProvider === 'managed' && (
