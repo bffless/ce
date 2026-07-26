@@ -32,6 +32,9 @@ jobs:
       - uses: hashicorp/setup-packer@v3
 
       - name: Packer init + validate
+        env:
+          # The DO source block requires api_token even at validate time.
+          DIGITALOCEAN_API_TOKEN: ${{ secrets.DIGITALOCEAN_API_TOKEN }}
         run: |
           packer init template.pkr.hcl
           packer validate template.pkr.hcl

@@ -3,16 +3,21 @@
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 
-# The base image runs unattended-upgrades on first boot — wait for apt locks.
-while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 \
-   || fuser /var/lib/apt/lists/lock >/dev/null 2>&1; do
-    echo "Waiting for apt locks..."
-    sleep 5
-done
+# The base image runs cloud-init + unattended-upgrades on first boot. A
+# point-in-time lock check races (the lock can be re-taken between apt calls):
+# block until first-boot provisioning is completely done, and make apt itself
+# wait out any remaining lock holders.
+cloud-init status --wait || true
+APT="apt-get -o DPkg::Lock::Timeout=600"
 
-apt-get update
-apt-get -o Dpkg::Options::="--force-confold" upgrade -y
-apt-get install -y git ufw curl openssl
+$APT update
+$APT -o Dpkg::Options::="--force-confold" upgrade -y
+$APT install -y git ufw curl openssl
+
+# Marketplace images must not ship the droplet-agent (img_check FAILs on
+# /opt/digitalocean) — DO installs it per-droplet at creation time.
+$APT purge -y droplet-agent 2>/dev/null || true
+rm -rf /opt/digitalocean
 
 # img_check requires an enabled firewall. Docker publishes 80/443 via iptables
 # directly (bypassing ufw), but the explicit allows document intent and cover

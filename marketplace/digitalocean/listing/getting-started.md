@@ -49,5 +49,5 @@ All from `/opt/bffless`:
 
 - Website: https://bffless.dev
 - Documentation: https://docs.bffless.dev
-- Deployment guide: https://docs.bffless.dev/deployment/digitalocean
+- Deployment guide: https://docs.bffless.dev/deployment/digitalocean/
 - Community & issues: https://github.com/bffless/ce
