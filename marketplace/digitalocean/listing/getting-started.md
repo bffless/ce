@@ -25,9 +25,8 @@ walks you through: create your admin account → set your domain (Cloudflare
 recommended, free) → SSL → done. Your admin panel lands at
 `https://admin.<your-domain>`.
 
-**Note:** browsers can drop the `?token=...` part of the link when you click
-through the certificate warning, so the wizard may not show your token
-prefilled — if that happens, just paste it manually from the banner.
+**Note:** if the wizard doesn't show your token prefilled, just paste it
+manually from the banner.
 
 Prefer the terminal? The SSH welcome banner offers a full interactive setup
 instead (`bffless-setup`).
