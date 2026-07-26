@@ -10,6 +10,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 import { PasteCertificateFields } from '@/components/ssl-leaves/PasteCertificateFields';
+import { DOCS, VIDEOS } from '@/lib/docsLinks';
+import { DocsLink, WatchLink } from '@/components/common/DocsLink';
 
 interface Props {
   domain: string;
@@ -18,7 +20,19 @@ interface Props {
 
 // Copy varies by servingMode: the wording, worked example, and CA guidance
 // only make sense relative to how traffic actually reaches this server.
-const COPY: Record<ServingMode, { title: string; certLabel: string; body: JSX.Element }> = {
+// docs/video are optional: only the Cloudflare path has a guide of ours to
+// point at. A CDN's or a public CA's issuance flow is theirs to document, and
+// omitting the fields keeps that decision visible next to the copy it applies to.
+const COPY: Record<
+  ServingMode,
+  {
+    title: string;
+    certLabel: string;
+    body: JSX.Element;
+    docs?: { href: string; label: string };
+    video?: { id: string; start: number };
+  }
+> = {
   cloudflare: {
     title: 'Provide your Cloudflare Origin Certificate',
     certLabel: 'Origin Certificate (PEM)',
@@ -31,6 +45,8 @@ const COPY: Record<ServingMode, { title: string; certLabel: string; body: JSX.El
         Certificate, so strict validation works right away.
       </>
     ),
+    docs: { href: DOCS.cloudflare.cert, label: 'Generating a Cloudflare Origin Certificate' },
+    video: { id: VIDEOS.cloudflareSetup.id, start: VIDEOS.cloudflareSetup.certStart },
   },
   proxy: {
     title: 'Provide your origin certificate',
@@ -106,6 +122,12 @@ export function PasteCertificateForm({ domain, onBack }: Props) {
       <div>
         <h3 className="text-lg font-medium text-foreground">{copy.title}</h3>
         <p className="mt-2 text-sm text-muted-foreground">{copy.body}</p>
+        {copy.docs && (
+          <div className="mt-3">
+            <DocsLink href={copy.docs.href} label={copy.docs.label} />
+            {copy.video && <WatchLink videoId={copy.video.id} start={copy.video.start} />}
+          </div>
+        )}
       </div>
 
       <PasteCertificateFields

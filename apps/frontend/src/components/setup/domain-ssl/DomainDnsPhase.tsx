@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import { DOCS, VIDEOS } from '@/lib/docsLinks';
+import { DocsLink, WatchLink } from '@/components/common/DocsLink';
 
 interface Props {
   domain: string;
@@ -83,6 +85,20 @@ export function DomainDnsPhase({ domain, setDomain, serverIp, onBack, onNext }: 
             <code className="bg-muted px-1 rounded">{ipText}</code>. If your DNS host can proxy traffic (e.g.
             Cloudflare), turn that <strong>off</strong> for these records (gray cloud).
           </p>
+        )}
+        {servingMode === 'cloudflare' && (
+          <div className="mt-3">
+            <DocsLink href={DOCS.cloudflare.dns} label="Creating your Cloudflare DNS records" />
+            <WatchLink
+              videoId={VIDEOS.cloudflareSetup.id}
+              start={VIDEOS.cloudflareSetup.dnsStart}
+            />
+          </div>
+        )}
+        {isLetsEncrypt && (
+          <div className="mt-3">
+            <DocsLink href={DOCS.letsencrypt.dns} label="Configuring DNS for Let's Encrypt" />
+          </div>
         )}
       </div>
 
