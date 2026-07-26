@@ -324,7 +324,7 @@ export function StorageSettings() {
                 {providerDocs && (
                   <p className="text-sm text-muted-foreground">
                     <DocsInlineLink href={providerDocs.href}>
-                      View the {providerName} setup guide
+                      {providerDocs.label}
                     </DocsInlineLink>
                   </p>
                 )}

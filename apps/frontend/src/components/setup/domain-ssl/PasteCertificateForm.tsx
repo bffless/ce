@@ -10,7 +10,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 import { PasteCertificateFields } from '@/components/ssl-leaves/PasteCertificateFields';
-import { DOCS, VIDEOS } from '@/lib/docsLinks';
+import { CLOUDFLARE_DOCS, VIDEOS } from '@/lib/docsLinks';
 import { DocsLink, WatchLink } from '@/components/common/DocsLink';
 
 interface Props {
@@ -45,7 +45,7 @@ const COPY: Record<
         Certificate, so strict validation works right away.
       </>
     ),
-    docs: { href: DOCS.cloudflare.cert, label: 'Generating a Cloudflare Origin Certificate' },
+    docs: CLOUDFLARE_DOCS.cert,
     video: { id: VIDEOS.cloudflareSetup.id, start: VIDEOS.cloudflareSetup.certStart },
   },
   proxy: {

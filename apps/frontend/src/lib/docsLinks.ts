@@ -75,6 +75,20 @@ export function storageDocsFor(
   return STORAGE_DOCS[provider] ?? null;
 }
 
+/**
+ * Cloudflare doc links, paired with their label.
+ *
+ * A sibling export rather than nesting `{ href, label }` objects under `DOCS`
+ * itself: `docsLinks.test.ts` walks every string leaf under `DOCS` and asserts
+ * it's an absolute `docs.bffless.dev` URL, so a label string living inside
+ * that tree would fail the walk. Shaped like `STORAGE_DOCS` above, minus the
+ * per-provider lookup function since there are only the two fixed keys.
+ */
+export const CLOUDFLARE_DOCS = {
+  dns: { href: DOCS.cloudflare.dns, label: 'Creating your Cloudflare DNS records' },
+  cert: { href: DOCS.cloudflare.cert, label: 'Generating a Cloudflare Origin Certificate' },
+} as const;
+
 /** Share-style watch URL, optionally seeked to `startSeconds`. */
 export function youtubeUrl(id: string, startSeconds?: number): string {
   const base = `https://youtu.be/${id}`;

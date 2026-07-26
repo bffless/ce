@@ -23,9 +23,10 @@ export function DocsLink({ href, label }: DocsLinkProps) {
       rel="noopener noreferrer"
       className="flex items-center gap-2 rounded-lg border p-3 text-sm transition-colors hover:border-[#d96459]/50 hover:bg-muted/50"
     >
-      <BookOpen className="h-4 w-4 flex-shrink-0 text-[#d96459]" />
+      <BookOpen aria-hidden="true" className="h-4 w-4 flex-shrink-0 text-[#d96459]" />
       <span className="font-medium">{label}</span>
-      <ExternalLink className="ml-auto h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
+      <ExternalLink aria-hidden="true" className="ml-auto h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
+      <span className="sr-only"> (opens in a new tab)</span>
     </a>
   );
 }
@@ -45,7 +46,8 @@ export function DocsInlineLink({ href, children }: DocsInlineLinkProps) {
       className="inline-flex items-center gap-1 underline underline-offset-2 hover:text-foreground"
     >
       {children}
-      <ExternalLink className="h-3 w-3 flex-shrink-0" />
+      <ExternalLink aria-hidden="true" className="h-3 w-3 flex-shrink-0" />
+      <span className="sr-only"> (opens in a new tab)</span>
     </a>
   );
 }
@@ -71,7 +73,7 @@ export function WatchLink({ videoId, start }: WatchLinkProps) {
       rel="noopener noreferrer"
       className="mt-2 inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
     >
-      <Play className="h-3.5 w-3.5 flex-shrink-0 fill-current" />
+      <Play aria-hidden="true" className="h-3.5 w-3.5 flex-shrink-0 fill-current" />
       <span>Watch this step ({formatTimestamp(start)})</span>
     </a>
   );
