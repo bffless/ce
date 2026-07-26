@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.5](https://github.com/bffless/ce/compare/v0.3.4...v0.3.5) (2026-07-26)
+
+
+### Features
+
+* **scripts:** update.sh prunes dangling images after restart — pulls no longer accumulate on disk ([#546](https://github.com/bffless/ce/issues/546)) ([ce0ddf4](https://github.com/bffless/ce/commit/ce0ddf4ef0c421bb7ac8b093fd8646427d494305))
+
+
+### Bug Fixes
+
+* **frontend:** preserve query string when redirecting to /setup — claim token was dropped ([#544](https://github.com/bffless/ce/issues/544)) ([ed49b84](https://github.com/bffless/ce/commit/ed49b8431877286dcb3ea050d5f82e9f25243f6b))
+
 ## [0.3.4](https://github.com/bffless/ce/compare/v0.3.3...v0.3.4) (2026-07-26)
 
 
