@@ -80,13 +80,13 @@ export function promptSecret(question: string): Promise<string> {
           resolve(value.trim());
           return;
         }
-        if (ch === '') {
+        if (ch === '\u0003') {
           // Ctrl-C
           stdin.setRawMode(false);
           process.stdout.write('\n');
           process.exit(130);
         }
-        if (ch === '' || ch === '\b') {
+        if (ch === '\u007f' || ch === '\b') {
           value = value.slice(0, -1);
           continue;
         }
