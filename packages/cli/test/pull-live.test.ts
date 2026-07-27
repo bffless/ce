@@ -88,7 +88,7 @@ describe('rules pull — live path', () => {
       config,
     });
     expect(result.ok).toBe(false);
-    expect(result.error).toMatch(/--api-key or set BFFLESS_API_KEY/);
+    expect(result.error).toMatch(/--api-key.*set BFFLESS_API_KEY.*bffless login/s);
   });
 
   it('refuses a non-empty output dir without --force, honors --force', async () => {

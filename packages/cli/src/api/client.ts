@@ -4,10 +4,12 @@
  * Base-URL resolution: `--api-url` flag > `BFFLESS_API_URL` env > `apiUrl` in the nearest
  * `.bffless/config.json`.
  *
- * API-key resolution: `--api-key` flag > `BFFLESS_API_KEY` env — and NOTHING else.
- * The key is deliberately never read from `.bffless/config.json`: that file is meant to be
- * committed to the repo (it carries `apiUrl`/`project`/`ruleSets` for the whole team), so
- * supporting a key there would invite committing credentials. Keys stay in flags/env only.
+ * API-key resolution: `--api-key` flag > `BFFLESS_API_KEY` env > the `bffless login`
+ * credential store (~/.config/bffless/credentials.json, keyed by normalized apiUrl) —
+ * and NOTHING else. The key is deliberately never read from `.bffless/config.json`:
+ * that file is meant to be committed to the repo (it carries `apiUrl`/`project`/
+ * `ruleSets` for the whole team), so supporting a key there would invite committing
+ * credentials. Keys stay in flags/env/the out-of-repo store only.
  *
  * Auth is the backend's `ApiKeyGuard`, which reads the `X-API-Key` request header.
  *
@@ -19,6 +21,7 @@
  * fast and loudly rather than mask a flaky endpoint.
  */
 import { findConfig, type BfflessConfig } from '../config.js';
+import { getStoredKey } from './credentials.js';
 import { resolveRemediation, type Remediation } from './remediation.js';
 
 /** Error thrown for any failed request; `status` is 0 for network-level failures. */
@@ -46,6 +49,8 @@ export interface ClientDeps {
   /** Pre-loaded config (tests / callers that already ran `findConfig`); when absent the
    *  nearest `.bffless/config.json` above `cwd` is used. */
   config?: BfflessConfig | null;
+  /** Override the credential-store file path (tests). Default: `credentialsPath()`. */
+  credentialsFile?: string;
   /** Override the "how to fix it" wording of config/auth errors. Unset fields keep the
    *  CLI's default phrasing — an embedder with no flags should override the ones its user
    *  can actually act on. */
@@ -178,8 +183,10 @@ export function createClient(flags: ClientFlags, cwd: string, deps?: ClientDeps)
     throw new Error(`no API URL configured — ${remediation.apiUrl}`);
   }
 
-  // Key precedence is flag > env ONLY — never config.json (a committed file; see module doc).
-  const apiKey = flags.apiKey ?? env.BFFLESS_API_KEY;
+  // Key precedence is flag > env > credential store — never config.json (a committed
+  // file; see module doc). The store (written by `bffless login`) lives in ~/.config,
+  // outside any repo, and is keyed by normalized apiUrl.
+  const apiKey = flags.apiKey ?? env.BFFLESS_API_KEY ?? getStoredKey(apiUrl, deps?.credentialsFile);
   if (!apiKey) {
     throw new Error(`no API key configured — ${remediation.apiKey}`);
   }

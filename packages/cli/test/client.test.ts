@@ -1,7 +1,11 @@
 import { describe, it, expect } from 'vitest';
+import { mkdtempSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { ApiClient, ApiError, createClient, type FetchLike } from '../src/api/client.js';
 import { CLI_REMEDIATION, resolveRemediation } from '../src/api/remediation.js';
 import { requireProject } from '../src/api/resolve.js';
+import { storeKey } from '../src/api/credentials.js';
 
 interface RecordedCall {
   url: string;
@@ -160,7 +164,7 @@ describe('createClient — precedence and sourcing rules', () => {
     // supply a key. The error explains where keys may come from and why config is excluded.
     const config = { apiUrl: 'https://config.test', project: 'p' };
     expect(() => createClient({}, '/nowhere', { env: {}, config, fetchImpl: okFetch })).toThrow(
-      /--api-key or set BFFLESS_API_KEY.*never read from \.bffless\/config\.json/s,
+      /--api-key.*set BFFLESS_API_KEY.*bffless login.*never read from \.bffless\/config\.json/s,
     );
   });
 });
@@ -204,5 +208,58 @@ describe('remediation overrides', () => {
     expect(merged.project).toBe('X');
     expect(merged.apiKey).toBe(CLI_REMEDIATION.apiKey);
     expect(resolveRemediation()).toEqual(CLI_REMEDIATION);
+  });
+});
+
+describe('createClient credential-store fallback', () => {
+  function seededStore(apiUrl: string, key: string): string {
+    const file = path.join(mkdtempSync(path.join(os.tmpdir(), 'bffless-cred-')), 'credentials.json');
+    storeKey(apiUrl, key, file);
+    return file;
+  }
+
+  it('uses the stored key when flag and env are absent', async () => {
+    const file = seededStore('https://api.test', 'k-stored');
+    const { fetchImpl, calls } = stubFetch({ 'GET https://api.test/api/projects': { body: [] } });
+    const client = createClient({}, '/tmp', {
+      env: {},
+      config: { apiUrl: 'https://api.test' },
+      credentialsFile: file,
+      fetchImpl,
+    });
+    await client.get('/api/projects');
+    expect((calls[0].init?.headers as Record<string, string>)['X-API-Key']).toBe('k-stored');
+  });
+
+  it('flag and env both beat the store', async () => {
+    const file = seededStore('https://api.test', 'k-stored');
+    const base = { config: { apiUrl: 'https://api.test' }, credentialsFile: file } as const;
+    const a = stubFetch({ 'GET https://api.test/api/projects': { body: [] } });
+    await createClient({ apiKey: 'k-flag' }, '/tmp', { ...base, env: {}, fetchImpl: a.fetchImpl }).get('/api/projects');
+    expect((a.calls[0].init?.headers as Record<string, string>)['X-API-Key']).toBe('k-flag');
+
+    const b = stubFetch({ 'GET https://api.test/api/projects': { body: [] } });
+    await createClient({}, '/tmp', { ...base, env: { BFFLESS_API_KEY: 'k-env' }, fetchImpl: b.fetchImpl }).get('/api/projects');
+    expect((b.calls[0].init?.headers as Record<string, string>)['X-API-Key']).toBe('k-env');
+  });
+
+  it('store lookup matches by normalized URL (config URL with trailing slash)', async () => {
+    const file = seededStore('https://api.test', 'k-stored');
+    const { fetchImpl, calls } = stubFetch({ 'GET https://api.test/api/projects': { body: [] } });
+    const client = createClient({}, '/tmp', {
+      env: {},
+      config: { apiUrl: 'https://api.test/' },
+      credentialsFile: file,
+      fetchImpl,
+    });
+    await client.get('/api/projects');
+    expect((calls[0].init?.headers as Record<string, string>)['X-API-Key']).toBe('k-stored');
+  });
+
+  it('no flag, env, or store entry → error mentions bffless login', () => {
+    const file = path.join(mkdtempSync(path.join(os.tmpdir(), 'bffless-cred-')), 'credentials.json');
+    expect(() =>
+      createClient({}, '/tmp', { env: {}, config: { apiUrl: 'https://api.test' }, credentialsFile: file }),
+    ).toThrow(/bffless login/);
   });
 });
