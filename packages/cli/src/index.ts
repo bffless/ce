@@ -11,6 +11,7 @@ import { runRevisionsList, formatRevisionsTable } from './commands/revisions.js'
 import { runRollback } from './commands/rollback.js';
 import { runDev, type DevOptions } from './commands/dev.js';
 import { runInit } from './commands/init.js';
+import { runLogin, runLogout, runAuthStatus, runAuthToken } from './commands/auth.js';
 
 /** `<file>:<line> <message>` when `line` is present, `<file> <message>` otherwise. */
 function formatIssue(issue: Issue): string {
@@ -361,6 +362,78 @@ rules
         handle.close().then(resolve, resolve);
       });
     });
+  });
+
+program
+  .command('login')
+  .description(
+    'Store an API key for a BFFless instance in ~/.config/bffless/credentials.json ' +
+      '(paste-a-key; validated against the instance before saving). All commands then ' +
+      'use it automatically when --api-key/BFFLESS_API_KEY are absent.',
+  )
+  .option('--api-url <url>', 'API base URL (overrides BFFLESS_API_URL and config apiUrl)')
+  .action(async (opts: { apiUrl?: string }) => {
+    const result = await runLogin(opts, process.cwd());
+    if (!result.ok) {
+      console.error(result.error);
+      process.exitCode = 1;
+      return;
+    }
+    console.log(`stored credentials for ${result.apiUrl}`);
+  });
+
+program
+  .command('logout')
+  .description('Remove the stored API key for a BFFless instance')
+  .option('--api-url <url>', 'API base URL (overrides BFFLESS_API_URL and config apiUrl)')
+  .action((opts: { apiUrl?: string }) => {
+    const result = runLogout(opts, process.cwd());
+    if (!result.ok) {
+      console.error(result.error);
+      process.exitCode = 1;
+      return;
+    }
+    console.log(
+      result.removed
+        ? `removed credentials for ${result.apiUrl}`
+        : `no stored credentials for ${result.apiUrl} — nothing to remove`,
+    );
+  });
+
+const auth = program
+  .command('auth')
+  .description('Inspect the credential store written by `bffless login` (status, token)');
+
+auth
+  .command('status')
+  .description('List stored instances (key prefix only) and whether each key still validates')
+  .action(async () => {
+    const rows = await runAuthStatus();
+    if (rows.length === 0) {
+      console.log('no stored credentials — run `bffless login`');
+      return;
+    }
+    for (const row of rows) {
+      console.log(`${row.apiUrl}  ${row.keyPrefix}  ${row.valid ? 'valid' : 'INVALID'}`);
+    }
+    if (rows.some((r) => !r.valid)) process.exitCode = 1;
+  });
+
+auth
+  .command('token')
+  .description(
+    'Print the stored API key for the resolved instance to stdout (pipe-safe), e.g. ' +
+      'curl -H "X-API-Key: $(bffless auth token)" …',
+  )
+  .option('--api-url <url>', 'API base URL (overrides BFFLESS_API_URL and config apiUrl)')
+  .action((opts: { apiUrl?: string }) => {
+    const result = runAuthToken(opts, process.cwd());
+    if (!result.ok) {
+      console.error(result.error);
+      process.exitCode = 1;
+      return;
+    }
+    console.log(result.token);
   });
 
 program.parseAsync().catch((err) => {

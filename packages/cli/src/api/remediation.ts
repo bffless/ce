@@ -25,12 +25,12 @@ export interface Remediation {
 export const CLI_REMEDIATION: Remediation = {
   apiUrl: 'pass --api-url, set BFFLESS_API_URL, or add "apiUrl" to .bffless/config.json',
   apiKey:
-    'pass --api-key or set BFFLESS_API_KEY (API keys are never read from .bffless/config.json, ' +
-    'which is committed to the repo)',
+    'pass --api-key, set BFFLESS_API_KEY, or run `bffless login` (API keys are never read ' +
+    'from .bffless/config.json, which is committed to the repo)',
   project: 'pass --project <uuid|owner/name|name> or add "project" to .bffless/config.json',
   auth:
-    'The API key is sent as the X-API-Key header — pass --api-key or set BFFLESS_API_KEY to a ' +
-    'key with access to this project.',
+    'The API key is sent as the X-API-Key header — pass --api-key, set BFFLESS_API_KEY, or ' +
+    'run `bffless login` with a key that has access to this project.',
 };
 
 /** Fill any unspecified field from {@link CLI_REMEDIATION}. */
