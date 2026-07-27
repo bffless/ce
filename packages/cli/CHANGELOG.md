@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/bffless/ce/compare/bffless-v0.3.0...bffless-v0.3.1) (2026-07-27)
+
+
+### Features
+
+* **cli:** bffless login credential store + auth commands ([#555](https://github.com/bffless/ce/issues/555)) ([e89f822](https://github.com/bffless/ce/commit/e89f822f83ae3603b6eab1e4d313ece2aaa801fe))
+
 ## [0.3.0](https://github.com/bffless/ce/compare/bffless-v0.2.7...bffless-v0.3.0) (2026-07-25)
 
 
