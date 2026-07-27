@@ -329,7 +329,7 @@ describe('FileServeHandler — explicit key mode', () => {
     expect(storage.downloadStream).toHaveBeenCalledWith('o/r/uploads/content/abc-styles.css');
     expect(res.status).toHaveBeenCalledWith(200);
     // Content-Type comes from the key's extension, not the request path.
-    expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/css');
+    expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/css; charset=utf-8');
   });
 
   it('interpolates a `key` expression resolved from a prior step', async () => {
@@ -355,7 +355,10 @@ describe('FileServeHandler — explicit key mode', () => {
     );
 
     expect(storage.downloadStream).toHaveBeenCalledWith('o/r/uploads/content/def-app.js');
-    expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'application/javascript');
+    expect(res.setHeader).toHaveBeenCalledWith(
+      'Content-Type',
+      'application/javascript; charset=utf-8',
+    );
   });
 
   it('rejects a resolved key containing ".." (path traversal)', async () => {
@@ -376,5 +379,105 @@ describe('FileServeHandler — explicit key mode', () => {
 
     expect(result.success).toBe(false);
     expect(storage.downloadStream).not.toHaveBeenCalled();
+  });
+});
+
+describe('FileServeHandler — content type', () => {
+  const makeRes = () => {
+    const res: any = {
+      headersSent: false,
+      writableEnded: false,
+      setHeader: jest.fn(),
+      end: jest.fn(),
+      on: jest.fn(),
+      json: jest.fn(),
+    };
+    res.status = jest.fn(() => res);
+    res.flushHeaders = jest.fn(() => {
+      res.headersSent = true;
+    });
+    return res;
+  };
+
+  const makeStream = () => ({ pipe: jest.fn(), on: jest.fn(), destroy: jest.fn() });
+
+  const buildHandler = (storage: Partial<IStorageAdapter>) => {
+    const registry = { register: jest.fn() } as unknown as StepHandlerRegistry;
+    const cacheConfigService = {
+      getCacheConfig: jest.fn().mockResolvedValue({ source: 'default' }),
+      buildCacheControlHeader: jest.fn(),
+    } as unknown as CacheConfigService;
+    return new FileServeHandler(
+      registry,
+      storage as IStorageAdapter,
+      cacheConfigService,
+      new ExpressionEvaluator(),
+    );
+  };
+
+  const buildContext = (res: any, path: string): PipelineContext =>
+    ({
+      projectId: 'p1',
+      deployment: { owner: 'o', repo: 'r', commitSha: 'sha' },
+      metadata: { path, headers: {} },
+      stepOutputs: {},
+      request: { res },
+    }) as unknown as PipelineContext;
+
+  const serve = async (
+    key: string,
+    storageOverrides: Partial<{ streamMime: string; metaMime: string; stream: boolean }> = {},
+  ) => {
+    const { streamMime, metaMime, stream = true } = storageOverrides;
+    const res = makeRes();
+    const storage: any = {
+      getMetadata: jest.fn().mockResolvedValue({ size: 42, etag: 'e', mimeType: metaMime }),
+    };
+    if (stream) {
+      storage.downloadStream = jest
+        .fn()
+        .mockResolvedValue({ stream: makeStream(), size: 42, etag: 'e', mimeType: streamMime });
+    } else {
+      storage.download = jest.fn().mockResolvedValue(Buffer.from('x'));
+    }
+    const step = {
+      id: 'serve',
+      name: 'serve',
+      handlerType: 'file_serve_handler',
+      config: { key },
+    } as unknown as PipelineStep;
+
+    await buildHandler(storage).execute(buildContext(res, '/api/uploads/content/x'), step);
+    return res;
+  };
+
+  it('serves HTML with a charset so browsers do not fall back to windows-1252', async () => {
+    const res = await serve('content/reports/index.html');
+
+    expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/html; charset=utf-8');
+  });
+
+  it('serves extensions missing from the old table by their real type, not octet-stream', async () => {
+    const res = await serve('content/notes.md');
+
+    expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/markdown; charset=utf-8');
+  });
+
+  it('prefers the type storage recorded for the object over the extension guess', async () => {
+    const res = await serve('content/download.bin', { streamMime: 'application/pdf' });
+
+    expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'application/pdf');
+  });
+
+  it('falls back to the extension when storage reports octet-stream', async () => {
+    const res = await serve('content/styles.css', { streamMime: 'application/octet-stream' });
+
+    expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/css; charset=utf-8');
+  });
+
+  it('applies the same resolution on the buffered path', async () => {
+    const res = await serve('content/notes.md', { stream: false, metaMime: 'text/markdown' });
+
+    expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/markdown; charset=utf-8');
   });
 });

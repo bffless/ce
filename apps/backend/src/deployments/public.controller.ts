@@ -32,6 +32,7 @@ import { CacheConfigService } from '../cache-rules/cache-config.service';
 import { MetadataCacheService } from '../storage/cache/metadata-cache.service';
 import { ShareLinksService } from '../share-links/share-links.service';
 import { ResponseHeaderConfigService } from '../response-header-rules/response-header-config.service';
+import { resolveContentType } from '../common/utils/content-type.util';
 
 /**
  * Options for serving files with appropriate cache headers
@@ -49,38 +50,6 @@ interface ServeFileOptions {
   filePath: string;
 }
 
-// Common MIME type mapping
-const MIME_TYPES: Record<string, string> = {
-  '.html': 'text/html',
-  '.htm': 'text/html',
-  '.css': 'text/css',
-  '.js': 'application/javascript',
-  '.mjs': 'application/javascript',
-  '.json': 'application/json',
-  '.xml': 'application/xml',
-  '.txt': 'text/plain',
-  '.md': 'text/markdown',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.gif': 'image/gif',
-  '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon',
-  '.webp': 'image/webp',
-  '.avif': 'image/avif',
-  '.woff': 'font/woff',
-  '.woff2': 'font/woff2',
-  '.ttf': 'font/ttf',
-  '.otf': 'font/otf',
-  '.eot': 'application/vnd.ms-fontobject',
-  '.mp4': 'video/mp4',
-  '.webm': 'video/webm',
-  '.mp3': 'audio/mpeg',
-  '.wav': 'audio/wav',
-  '.pdf': 'application/pdf',
-  '.zip': 'application/zip',
-  '.wasm': 'application/wasm',
-};
 
 @ApiTags('Public')
 @Controller('public')
@@ -629,7 +598,7 @@ export class PublicController {
     const { immutable, statusCode = 200, isPublic, projectId, filePath } = options;
 
     try {
-      const mimeType = asset.mimeType || this.getMimeType(asset.fileName);
+      const mimeType = resolveContentType(asset.fileName, asset.mimeType);
 
       // Get cache configuration from rules (or defaults) BEFORE download
       // so we can pass TTL hint to Redis caching
@@ -1209,14 +1178,6 @@ export class PublicController {
   }
 
   /**
-   * Get MIME type from file extension
-   */
-  private getMimeType(filename: string): string {
-    const ext = '.' + filename.split('.').pop()?.toLowerCase();
-    return MIME_TYPES[ext] || 'application/octet-stream';
-  }
-
-  /**
    * Check for path traversal attempts
    */
   private containsPathTraversal(path: string): boolean {
@@ -1298,7 +1259,7 @@ export class PublicController {
     // These responses vary based on authentication state, so must not be cached
     res
       .status(404)
-      .setHeader('Content-Type', 'text/html')
+      .setHeader('Content-Type', 'text/html; charset=utf-8')
       .setHeader('Cache-Control', 'private, no-store')
       .setHeader('Vary', 'Cookie')
       .send(html);
@@ -1444,7 +1405,7 @@ export class PublicController {
     // Prevent caching of auth-dependent 403 responses by upstream proxies/CDN
     res
       .status(403)
-      .setHeader('Content-Type', 'text/html')
+      .setHeader('Content-Type', 'text/html; charset=utf-8')
       .setHeader('Cache-Control', 'private, no-store')
       .setHeader('Vary', 'Cookie')
       .send(html);

@@ -340,7 +340,7 @@ describe('PublicController', () => {
       await controller.serveDefault(mockOwner, mockRepo, req, res);
 
       expect(res.status).toHaveBeenCalledWith(404);
-      expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/html');
+      expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/html; charset=utf-8');
       expect(res.send).toHaveBeenCalled();
     });
 
@@ -360,7 +360,7 @@ describe('PublicController', () => {
       await controller.serveDefault(mockOwner, mockRepo, req, res);
 
       expect(res.status).toHaveBeenCalledWith(404);
-      expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/html');
+      expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/html; charset=utf-8');
       expect(res.send).toHaveBeenCalled();
     });
 
@@ -401,7 +401,7 @@ describe('PublicController', () => {
       await controller.serveCommitAsset(mockOwner, mockRepo, mockCommitSha, 'index.html', req, res);
 
       expect(mockStorageAdapter.download).toHaveBeenCalledWith(mockAsset.storageKey);
-      expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/html');
+      expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/html; charset=utf-8');
       expect(res.setHeader).toHaveBeenCalledWith(
         'Cache-Control',
         'public, max-age=31536000, immutable',
@@ -496,7 +496,7 @@ describe('PublicController', () => {
       await controller.serveCommitAsset(mockOwner, mockRepo, mockCommitSha, 'missing.html', req, res);
 
       expect(res.status).toHaveBeenCalledWith(404);
-      expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/html');
+      expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/html; charset=utf-8');
       expect(res.send).toHaveBeenCalled();
     });
 
@@ -537,7 +537,7 @@ describe('PublicController', () => {
       await controller.serveCommitAsset(mockOwner, mockRepo, mockCommitSha, 'index.html', req, res);
 
       expect(res.status).toHaveBeenCalledWith(404);
-      expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/html');
+      expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/html; charset=utf-8');
       expect(res.send).toHaveBeenCalled();
     });
   });
@@ -580,7 +580,7 @@ describe('PublicController', () => {
       await controller.serveAliasAsset(mockOwner, mockRepo, 'non-existent', 'index.html', req, res);
 
       expect(res.status).toHaveBeenCalledWith(404);
-      expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/html');
+      expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/html; charset=utf-8');
       expect(res.send).toHaveBeenCalled();
     });
   });
@@ -614,7 +614,7 @@ describe('PublicController', () => {
         res,
       );
 
-      expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/css');
+      expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/css; charset=utf-8');
     });
 
     it('should detect JavaScript mime type', async () => {
@@ -636,14 +636,61 @@ describe('PublicController', () => {
         res,
       );
 
-      expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'application/javascript');
+      expect(res.setHeader).toHaveBeenCalledWith(
+        'Content-Type',
+        'application/javascript; charset=utf-8',
+      );
+    });
+
+    it('should serve HTML with a charset so browsers do not fall back to windows-1252', async () => {
+      const htmlAsset = {
+        ...mockAsset,
+        fileName: 'index.html',
+        publicPath: 'index.html',
+        mimeType: null,
+      };
+      setupDbMock([[htmlAsset]]);
+      const res = createMockResponse();
+
+      await controller.serveCommitAsset(
+        mockOwner,
+        mockRepo,
+        mockCommitSha,
+        'index.html',
+        createMockRequest(),
+        res,
+      );
+
+      expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/html; charset=utf-8');
+    });
+
+    it('should add the missing charset to a stored text mime type', async () => {
+      const storedAsset = {
+        ...mockAsset,
+        fileName: 'index.html',
+        publicPath: 'index.html',
+        mimeType: 'text/html',
+      };
+      setupDbMock([[storedAsset]]);
+      const res = createMockResponse();
+
+      await controller.serveCommitAsset(
+        mockOwner,
+        mockRepo,
+        mockCommitSha,
+        'index.html',
+        createMockRequest(),
+        res,
+      );
+
+      expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/html; charset=utf-8');
     });
 
     it('should default to octet-stream for unknown types', async () => {
       const unknownAsset = {
         ...mockAsset,
-        fileName: 'data.xyz',
-        publicPath: 'data.xyz',
+        fileName: 'data.xyzzy',
+        publicPath: 'data.xyzzy',
         mimeType: null,
       };
       setupDbMock([[unknownAsset]]);
@@ -653,7 +700,7 @@ describe('PublicController', () => {
         mockOwner,
         mockRepo,
         mockCommitSha,
-        'data.xyz',
+        'data.xyzzy',
         createMockRequest(),
         res,
       );
