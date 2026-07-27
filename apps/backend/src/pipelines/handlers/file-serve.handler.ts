@@ -7,39 +7,11 @@ import { PipelineStep } from '../types';
 import { ConfigurationError } from '../errors';
 import { IStorageAdapter, STORAGE_ADAPTER } from '../../storage/storage.interface';
 import { CacheConfigService } from '../../cache-rules/cache-config.service';
+import { resolveContentType } from '../../common/utils/content-type.util';
 import { db } from '../../db/client';
 import { projects } from '../../db/schema';
 import { eq } from 'drizzle-orm';
-import * as path from 'path';
 import crypto from 'crypto';
-
-// Common MIME type lookup
-const MIME_TYPES: Record<string, string> = {
-  '.html': 'text/html',
-  '.css': 'text/css',
-  '.js': 'application/javascript',
-  '.json': 'application/json',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.gif': 'image/gif',
-  '.svg': 'image/svg+xml',
-  '.webp': 'image/webp',
-  '.ico': 'image/x-icon',
-  '.pdf': 'application/pdf',
-  '.zip': 'application/zip',
-  '.mp4': 'video/mp4',
-  '.webm': 'video/webm',
-  '.mp3': 'audio/mpeg',
-  '.ogg': 'audio/ogg',
-  '.wav': 'audio/wav',
-  '.woff': 'font/woff',
-  '.woff2': 'font/woff2',
-  '.ttf': 'font/ttf',
-  '.txt': 'text/plain',
-  '.csv': 'text/csv',
-  '.xml': 'application/xml',
-};
 
 /**
  * File Serve Handler
@@ -161,9 +133,9 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
 
     const storageKey = `${owner}/${repo}/uploads/${relativePath}`;
 
-    // Determine content type from file extension
-    const ext = path.extname(relativePath).toLowerCase();
-    const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+    // The content type is resolved per response, not here: storage reports the
+    // type it recorded for the object, which beats guessing from the extension.
+    // `relativePath` is what that resolution falls back to.
 
     // Resolve cache headers: check cache rules first, fall back to config/default.
     // Files served through a pipeline are typically behind app-defined access
@@ -209,7 +181,7 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
       if (this.storageAdapter.downloadStream) {
         return await this.serveWithStream(
           storageKey,
-          contentType,
+          relativePath,
           cacheControlHeader,
           context,
           res,
@@ -217,7 +189,7 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
       }
 
       // Fallback: buffer-based serving for adapters without stream support
-      return await this.serveWithBuffer(storageKey, contentType, cacheControlHeader, res);
+      return await this.serveWithBuffer(storageKey, relativePath, cacheControlHeader, res);
     } catch (error) {
       this.logger.debug(`File not found: ${storageKey}`);
       if (!res.headersSent) {
@@ -244,7 +216,7 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
    */
   private async serveWithStream(
     storageKey: string,
-    contentType: string,
+    relativePath: string,
     cacheControlHeader: string,
     context: PipelineContext,
     res: any,
@@ -316,7 +288,7 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
       // Fetch ONLY the requested range from storage.
       const { stream } = await this.storageAdapter.downloadStream!(storageKey, { start, end });
 
-      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Type', resolveContentType(relativePath, meta.mimeType));
       res.setHeader('Content-Length', end - start + 1);
       res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
       setEtag(meta.etag);
@@ -327,7 +299,7 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
       // Full file response — stream directly.
       const result = await this.storageAdapter.downloadStream!(storageKey);
 
-      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Type', resolveContentType(relativePath, result.mimeType));
       res.setHeader('Content-Length', result.size);
       setEtag(result.etag);
       res.status(200);
@@ -346,7 +318,7 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
    */
   private async serveWithBuffer(
     storageKey: string,
-    contentType: string,
+    relativePath: string,
     cacheControlHeader: string,
     res: any,
   ): Promise<StepResult> {
@@ -360,14 +332,16 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
     }
 
     let etag: string | undefined;
+    let storedType: string | undefined;
     try {
       const metadata = await this.storageAdapter.getMetadata(storageKey);
       etag = metadata.etag;
+      storedType = metadata.mimeType;
     } catch {
       // Non-fatal
     }
 
-    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Type', resolveContentType(relativePath, storedType));
     res.setHeader('Content-Length', data.length);
     res.setHeader('Cache-Control', cacheControlHeader);
     res.setHeader('Accept-Ranges', 'bytes');
