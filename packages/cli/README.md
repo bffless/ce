@@ -56,7 +56,7 @@ CI should keep using `BFFLESS_API_KEY` — env always beats the store.
 ## Auth & config precedence
 
 - API URL: `--api-url` > `BFFLESS_API_URL` env > `.bffless/config.json`'s `apiUrl`.
-- API key: `--api-key` > `BFFLESS_API_KEY` env only (never read from config, so it's safe to commit).
+- API key: `--api-key` > `BFFLESS_API_KEY` env > login credential store (see Authentication above; never read from config, so it's safe to commit).
 - Project: `--project` > `.bffless/config.json`'s `project` (UUID, `owner/name`, or bare name).
   Prefer a UUID or `owner/name`: both resolve for any user with a role on the project. A bare
   name has to be matched against `GET /api/projects`, which lists only the projects the API
