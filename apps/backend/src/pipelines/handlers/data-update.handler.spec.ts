@@ -94,6 +94,58 @@ describe('DataUpdateHandler in operator', () => {
   });
 });
 
+describe('DataUpdateHandler schema type coercion (ce#562)', () => {
+  beforeEach(() => mockDb.__reset());
+
+  function buildTypedHandler() {
+    const { handler } = buildHandler();
+    const typedSchema = {
+      ...SCHEMA,
+      fields: [
+        { name: 'updatedMs', type: 'number', required: false },
+        { name: 'read', type: 'boolean', required: false },
+      ],
+    };
+    (handler as unknown as { schemasService: { getById: jest.Mock } }).schemasService = {
+      getById: jest.fn(async () => typedSchema),
+    };
+    return handler;
+  }
+
+  it('coerces an ISO date string into a number-typed field as epoch ms', async () => {
+    const handler = buildTypedHandler();
+    mockDb.__queue([{ id: 'i1', data: { read: false } }]); // select matches
+    mockDb.__queue([{ id: 'i1', data: { updatedMs: 1704067200000 } }]); // update .returning()
+
+    const result = await handler.execute(
+      context({}),
+      step({
+        schemaId: 'schema-1',
+        recordId: 'i1',
+        fields: { updatedMs: '2024-01-01T00:00:00.000Z' },
+      }),
+    );
+
+    expect(result.success).toBe(true);
+    const setArg = mockDb.set.mock.calls[0][0] as { data: Record<string, unknown> };
+    expect(setArg.data.updatedMs).toBe(1704067200000);
+  });
+
+  it('returns VALIDATION_ERROR for a non-coercible value instead of writing it', async () => {
+    const handler = buildTypedHandler();
+    mockDb.__queue([{ id: 'i1', data: {} }]); // select matches
+
+    const result = await handler.execute(
+      context({}),
+      step({ schemaId: 'schema-1', recordId: 'i1', fields: { updatedMs: 'garbage' } }),
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error?.code).toBe('VALIDATION_ERROR');
+    expect(mockDb.update).not.toHaveBeenCalled();
+  });
+});
+
 describe('DataUpdateHandler ne operator is null-safe', () => {
   beforeEach(() => mockDb.__reset());
 

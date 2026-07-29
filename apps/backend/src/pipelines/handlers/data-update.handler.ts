@@ -10,6 +10,7 @@ import { PipelineSchemasService } from '../pipeline-schemas.service';
 import { db } from '../../db/client';
 import { ConfigurationError, SchemaNotFoundError } from '../errors';
 import { buildInPredicate } from './in-filter.util';
+import { coerceFieldsToSchema } from './field-coercion.util';
 
 /**
  * Data Update Handler
@@ -158,13 +159,26 @@ export class DataUpdateHandler implements StepHandler<DataUpdateHandlerConfig> {
     }
 
     // Evaluate field expressions for updates
-    const updates: Record<string, unknown> = {};
+    const rawUpdates: Record<string, unknown> = {};
     for (const [fieldName, expression] of Object.entries(config.fields)) {
-      updates[fieldName] = this.expressionEvaluator.evaluateExpression(
+      rawUpdates[fieldName] = this.expressionEvaluator.evaluateExpression(
         expression,
         context,
         stepName,
       );
+    }
+
+    // Coerce values to the schema's declared field types
+    const { data: updates, errors } = coerceFieldsToSchema(rawUpdates, schema.fields);
+    if (Object.keys(errors).length > 0) {
+      return {
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Data validation failed',
+          details: { errors },
+        },
+      };
     }
 
     // Update each matching record
