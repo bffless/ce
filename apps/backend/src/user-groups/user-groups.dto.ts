@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsUUID, MaxLength } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsUUID, MaxLength, IsInt } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class CreateGroupDto {
   @ApiProperty({
@@ -162,4 +163,36 @@ export class GroupListResponseDto {
     type: [GroupResponseDto],
   })
   groups: GroupResponseDto[];
+}
+
+export class MyGroupDto {
+  @ApiProperty() id: string;
+  @ApiProperty() name: string;
+}
+
+export class MyGroupsResponseDto {
+  @ApiProperty({ type: [MyGroupDto] }) groups: MyGroupDto[];
+}
+
+export class GroupDirectoryEntryDto {
+  @ApiProperty() id: string;
+  @ApiProperty() name: string;
+  @ApiProperty() memberCount: number;
+}
+
+export class GroupDirectoryResponseDto {
+  @ApiProperty({ type: [GroupDirectoryEntryDto] }) groups: GroupDirectoryEntryDto[];
+}
+
+export class SearchGroupDirectoryQueryDto {
+  @ApiPropertyOptional({ description: 'Case-insensitive group-name substring' })
+  @IsOptional()
+  @IsString()
+  search?: string;
+
+  @ApiPropertyOptional({ description: 'Max results (server-capped)' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  limit?: number;
 }

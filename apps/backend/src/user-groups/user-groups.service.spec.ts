@@ -21,6 +21,9 @@ jest.mock('../db/schema', () => ({
 
 import { db } from '../db/client';
 
+// Type the mocked db
+export const mockDb = db as any;
+
 describe('UserGroupsService', () => {
   let service: UserGroupsService;
 
@@ -532,6 +535,78 @@ describe('UserGroupsService', () => {
       });
 
       await expect(service.getGroupMembers(mockGroupId)).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('getGroupIdsForUser', () => {
+    it('returns the groupId column of the membership rows', async () => {
+      const whereMock = jest.fn().mockResolvedValue([{ groupId: 'g1' }, { groupId: 'g2' }]);
+      mockDb.select.mockReturnValueOnce({
+        from: jest.fn().mockReturnValue({ where: whereMock }),
+      });
+      await expect(service.getGroupIdsForUser('u1')).resolves.toEqual(['g1', 'g2']);
+    });
+
+    it('returns [] for a user with no memberships', async () => {
+      const whereMock = jest.fn().mockResolvedValue([]);
+      mockDb.select.mockReturnValueOnce({
+        from: jest.fn().mockReturnValue({ where: whereMock }),
+      });
+      await expect(service.getGroupIdsForUser('u1')).resolves.toEqual([]);
+    });
+  });
+
+  describe('getMyGroups', () => {
+    it('returns id+name of groups the user is a member of', async () => {
+      const orderByMock = jest.fn().mockResolvedValue([{ id: 'g1', name: 'Design' }]);
+      mockDb.select.mockReturnValueOnce({
+        from: jest.fn().mockReturnValue({
+          innerJoin: jest.fn().mockReturnValue({
+            where: jest.fn().mockReturnValue({ orderBy: orderByMock }),
+          }),
+        }),
+      });
+      await expect(service.getMyGroups('u1')).resolves.toEqual({
+        groups: [{ id: 'g1', name: 'Design' }],
+      });
+    });
+  });
+
+  describe('searchGroupDirectory', () => {
+    it('returns groups with numeric memberCount and applies the default limit', async () => {
+      const limitMock = jest.fn().mockResolvedValue([{ id: 'g1', name: 'Design', memberCount: '3' }]);
+      mockDb.select.mockReturnValueOnce({
+        from: jest.fn().mockReturnValue({
+          leftJoin: jest.fn().mockReturnValue({
+            where: jest.fn().mockReturnValue({
+              groupBy: jest.fn().mockReturnValue({
+                orderBy: jest.fn().mockReturnValue({ limit: limitMock }),
+              }),
+            }),
+          }),
+        }),
+      });
+      const result = await service.searchGroupDirectory(undefined);
+      expect(result.groups).toEqual([{ id: 'g1', name: 'Design', memberCount: 3 }]);
+      expect(limitMock).toHaveBeenCalledWith(20);
+    });
+
+    it('caps an oversized limit at 50', async () => {
+      /* same chain mock */
+      const limitMock = jest.fn().mockResolvedValue([{ id: 'g1', name: 'Design', memberCount: '3' }]);
+      mockDb.select.mockReturnValueOnce({
+        from: jest.fn().mockReturnValue({
+          leftJoin: jest.fn().mockReturnValue({
+            where: jest.fn().mockReturnValue({
+              groupBy: jest.fn().mockReturnValue({
+                orderBy: jest.fn().mockReturnValue({ limit: limitMock }),
+              }),
+            }),
+          }),
+        }),
+      });
+      await service.searchGroupDirectory('a', 9999);
+      expect(limitMock).toHaveBeenCalledWith(50);
     });
   });
 });
