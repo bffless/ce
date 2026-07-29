@@ -72,6 +72,7 @@ export class FunctionHandler implements StepHandler<FunctionHandlerConfig> {
             id: context.user.id,
             email: context.user.email,
             role: context.user.role,
+            groups: context.user.groups ?? [],
           }
         : undefined,
       request: {

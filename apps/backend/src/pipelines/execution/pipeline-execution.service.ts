@@ -3,6 +3,7 @@ import { Request } from 'express';
 import {
   PipelineContext,
   PipelineDebugResult,
+  PipelineUser,
   StepResult,
   StepDebugInfo,
   ValidatorDebugInfo,
@@ -44,7 +45,7 @@ export class PipelineExecutionService {
   async executePipelineWithDebug(
     pipeline: Pipeline & { steps: PipelineStep[] },
     req: Request,
-    user?: { id: string; email?: string; role?: string },
+    user?: PipelineUser,
     options?: {
       dryRun?: boolean;
       deployment?: { owner: string; repo: string; commitSha: string; alias?: string };
@@ -105,7 +106,7 @@ export class PipelineExecutionService {
   private async executePipelineWithDebugInner(
     pipeline: Pipeline & { steps: PipelineStep[] },
     req: Request,
-    user?: { id: string; email?: string; role?: string },
+    user?: PipelineUser,
     options?: {
       dryRun?: boolean;
       deployment?: { owner: string; repo: string; commitSha: string; alias?: string };

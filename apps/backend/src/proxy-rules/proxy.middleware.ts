@@ -14,12 +14,14 @@ import { ProxyRule, ProxyType, PipelineConfig } from '../db/schema/proxy-rules.s
 import { ConfigService } from '@nestjs/config';
 import { PipelineExecutionService } from '../pipelines/execution';
 import { PipelineExecutionLogService } from '../pipelines/pipeline-execution-log.service';
+import { PipelineUser } from '../pipelines/execution/pipeline-context.interface';
 import { Pipeline, PipelineStep } from '../pipelines/types';
 import multer from 'multer';
 import { CustomDomainAuthService } from '../auth/custom-domain-auth.service';
 import { VisibilityService, AccessControlInfo } from '../domains/visibility.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { TrafficRoutingService } from '../domains/traffic-routing.service';
+import { UserGroupsService } from '../user-groups/user-groups.service';
 import { matchesMethod } from './method-match';
 
 interface ParsedPublicPath {
@@ -52,6 +54,7 @@ export class ProxyMiddleware implements NestMiddleware {
     private readonly visibilityService: VisibilityService,
     private readonly permissionsService: PermissionsService,
     private readonly trafficRoutingService: TrafficRoutingService,
+    private readonly userGroupsService: UserGroupsService,
   ) {}
 
   /**
@@ -1142,11 +1145,23 @@ export class ProxyMiddleware implements NestMiddleware {
       // Extract user from session if available (optional - don't fail if not authenticated)
       const user = await this.getOptionalUser(req, res);
 
+      // Enrich with group memberships for the sandboxed pipeline context. Group
+      // lookup must never take the request down: on failure, degrade to "no groups".
+      let pipelineUser: PipelineUser | undefined = user;
+      if (user) {
+        try {
+          pipelineUser = { ...user, groups: await this.userGroupsService.getGroupIdsForUser(user.id) };
+        } catch (error) {
+          this.logger.warn(`Group membership lookup failed for ${user.id}: ${error}`);
+          pipelineUser = { ...user, groups: [] };
+        }
+      }
+
       // Execute the pipeline with deployment context for skills access
       const result = await this.pipelineExecutionService.executePipelineWithDebug(
         pipeline,
         req,
-        user,
+        pipelineUser,
         // Only retain in-memory debug snapshots when this rule actually persists
         // them; otherwise they're built and thrown away, needlessly pressuring the heap.
         { deployment, captureDebug: rule.debugEnabled },

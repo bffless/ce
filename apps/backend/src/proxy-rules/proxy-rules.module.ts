@@ -12,6 +12,7 @@ import { DomainsModule } from '../domains/domains.module';
 import { PipelinesModule } from '../pipelines/pipelines.module';
 import { DeploymentsModule } from '../deployments/deployments.module';
 import { ProjectsModule } from '../projects/projects.module';
+import { UserGroupsModule } from '../user-groups/user-groups.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { ProjectsModule } from '../projects/projects.module';
     forwardRef(() => PipelinesModule),
     forwardRef(() => DeploymentsModule),
     forwardRef(() => ProjectsModule),
+    UserGroupsModule,
   ],
   controllers: [ProxyRulesController, PipelineLogsController, ProxyRuleSetsController],
   providers: [

@@ -8,6 +8,7 @@ import { PipelineExecutionLogService } from '../pipelines/pipeline-execution-log
 import { VisibilityService } from '../domains/visibility.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { TrafficRoutingService } from '../domains/traffic-routing.service';
+import { UserGroupsService } from '../user-groups/user-groups.service';
 import { Request, Response, NextFunction } from 'express';
 
 // Mock the database client
@@ -32,6 +33,7 @@ describe('ProxyMiddleware', () => {
   let mockVisibilityService: jest.Mocked<VisibilityService>;
   let mockPermissionsService: jest.Mocked<PermissionsService>;
   let mockTrafficRoutingService: jest.Mocked<TrafficRoutingService>;
+  let mockUserGroupsService: jest.Mocked<UserGroupsService>;
   let mockNext: NextFunction;
 
   beforeEach(() => {
@@ -81,6 +83,10 @@ describe('ProxyMiddleware', () => {
       selectVariant: jest.fn().mockResolvedValue(null),
     } as any;
 
+    mockUserGroupsService = {
+      getGroupIdsForUser: jest.fn().mockResolvedValue([]),
+    } as any;
+
     middleware = new ProxyMiddleware(
       mockProxyRulesService,
       mockProxyService,
@@ -91,6 +97,7 @@ describe('ProxyMiddleware', () => {
       mockVisibilityService,
       mockPermissionsService,
       mockTrafficRoutingService,
+      mockUserGroupsService,
     );
     mockNext = jest.fn();
   });
