@@ -8,6 +8,7 @@ import { PipelineStep } from '../types';
 import { PipelineDataService } from '../pipeline-data.service';
 import { PipelineSchemasService } from '../pipeline-schemas.service';
 import { ConfigurationError, SchemaNotFoundError } from '../errors';
+import { coerceFieldsToSchema } from './field-coercion.util';
 
 /**
  * Configuration for the data_upsert_many handler.
@@ -218,12 +219,18 @@ export class DataUpsertManyHandler implements StepHandler<DataUpsertManyHandlerC
       const item = rawItems[i];
       const itemContext = this.withItem(context, item);
       try {
-        const data = this.mapItem(config.map, itemContext, stepName);
-        const key = this.resolveDedupKey(chain, itemContext, data, stepName);
+        const mapped = this.mapItem(config.map, itemContext, stepName);
+        const key = this.resolveDedupKey(chain, itemContext, mapped, stepName);
 
         // Force the stored dedup column to the resolved key so the existence
         // check round-trips even when the key came from a fallback/hash.
-        data[config.dedupField] = key;
+        mapped[config.dedupField] = key;
+
+        // Coerce values to the schema's declared field types
+        const { data, errors: coercionErrors } = coerceFieldsToSchema(mapped, schema.fields);
+        if (Object.keys(coercionErrors).length > 0) {
+          throw new Error(Object.values(coercionErrors).join('; '));
+        }
 
         this.validateRequired(schema.fields, data, config.dedupField);
 

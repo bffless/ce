@@ -12,7 +12,8 @@ import { v4 as uuidv4 } from 'uuid';
  * - user.id, user.email - Current user
  * - steps.stepName.fieldName - Previous step output
  * - deployment.alias - Current deployment alias
- * - now() - Current timestamp
+ * - now() - Current timestamp as ISO-8601 string
+ * - now_ms() - Current timestamp as epoch milliseconds
  * - uuid() - Generate UUID
  *
  * Templates use {{expression}} syntax:
@@ -38,6 +39,9 @@ export class ExpressionEvaluator {
     // Handle built-in functions
     if (trimmed === 'now()') {
       return new Date().toISOString();
+    }
+    if (trimmed === 'now_ms()') {
+      return Date.now();
     }
     if (trimmed === 'uuid()') {
       return uuidv4();

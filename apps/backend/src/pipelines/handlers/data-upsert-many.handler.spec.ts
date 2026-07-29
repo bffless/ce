@@ -467,3 +467,33 @@ describe('DataUpsertManyHandler', () => {
     );
   });
 });
+
+describe('DataUpsertManyHandler schema type coercion (ce#562)', () => {
+  it('coerces now() ISO strings into number-typed columns as epoch ms', async () => {
+    const { handler, dataService, schemasService } = buildHandler();
+    schemasService.getById.mockResolvedValue({
+      ...SCHEMA,
+      fields: [
+        { name: 'guid', type: 'string', required: false },
+        { name: 'title', type: 'string', required: true },
+        { name: 'fetchedMs', type: 'number', required: false },
+      ],
+    } as never);
+
+    const items = [{ guid: 'a', title: 'A' }];
+    const result = await handler.execute(
+      contextWith(items),
+      step({
+        schemaId: 'schema-1',
+        items: 'steps.feed.items',
+        dedupField: 'guid',
+        dedupKey: 'steps.item.guid',
+        map: { guid: 'steps.item.guid', title: 'steps.item.title', fetchedMs: 'now()' },
+      }),
+    );
+
+    expect((result.output as DataUpsertManyOutput).inserted).toBe(1);
+    const records = dataService.createMany.mock.calls[0][2] as Record<string, unknown>[];
+    expect(records[0].fetchedMs).toBe(1704067200000); // Date.parse('2024-01-01T00:00:00.000Z')
+  });
+});

@@ -7,6 +7,7 @@ import { PipelineStep } from '../types';
 import { PipelineDataService } from '../pipeline-data.service';
 import { PipelineSchemasService } from '../pipeline-schemas.service';
 import { ConfigurationError, SchemaNotFoundError } from '../errors';
+import { coerceFieldsToSchema } from './field-coercion.util';
 
 /**
  * Data Create Handler
@@ -58,17 +59,18 @@ export class DataCreateHandler implements StepHandler<DataCreateHandlerConfig> {
     }
 
     // Evaluate field expressions to build data object
-    const data: Record<string, unknown> = {};
+    const rawData: Record<string, unknown> = {};
     for (const [fieldName, expression] of Object.entries(config.fields)) {
-      data[fieldName] = this.expressionEvaluator.evaluateExpression(
+      rawData[fieldName] = this.expressionEvaluator.evaluateExpression(
         expression,
         context,
         stepName,
       );
     }
 
-    // Validate required fields against schema
-    const errors: Record<string, string> = {};
+    // Coerce values to the schema's declared field types, then validate
+    // required fields against schema
+    const { data, errors } = coerceFieldsToSchema(rawData, schema.fields);
     for (const field of schema.fields) {
       if (field.required && (data[field.name] === undefined || data[field.name] === null)) {
         errors[field.name] = `${field.name} is required`;
