@@ -43,8 +43,11 @@ describe('local presigned upload over HTTP', () => {
       ],
     }).compile();
 
-    app = moduleRef.createNestApplication<NestExpressApplication>();
-    // Reproduce main.ts's body-parser configuration — this is what the test exists to check.
+    // Reproduce main.ts's bootstrap exactly: rawBody: true plus the re-registered
+    // json/urlencoded parsers at a 10mb limit. This is the fixture's whole job —
+    // if main.ts's body handling ever changes, this file should be the one that
+    // notices.
+    app = moduleRef.createNestApplication<NestExpressApplication>({ rawBody: true });
     app.useBodyParser('json', { limit: '10mb' });
     app.useBodyParser('urlencoded', { extended: true, limit: '10mb' });
     await app.init();
@@ -92,8 +95,13 @@ describe('local presigned upload over HTTP', () => {
   });
 
   it('accepts a body far larger than the 10mb body-parser limit with bounded memory', async () => {
-    // If rawBody:true or a body parser consumed this stream, it would fail at
-    // ~10mb and/or blow the heap. That silent failure mode is the whole point.
+    // Proves that with production's exact bootstrap in effect — rawBody: true
+    // AND the re-registered json/urlencoded parsers at a 10mb limit — an
+    // octet-stream body far past that limit still streams through unbuffered.
+    // Neither parser's content-type matcher claims application/octet-stream, so
+    // this doesn't exercise what happens when one of them does (see the
+    // JSON-typed regression test below for that case); it exercises the path
+    // every real large upload actually takes.
     const url = await adapter.getPresignedUploadUrl('o/r/uploads/content/big.bin');
     const chunk = Buffer.alloc(1024 * 1024, 0x62);
     const chunks = 200; // 200 MiB
@@ -113,15 +121,20 @@ describe('local presigned upload over HTTP', () => {
     });
 
     const growth = process.memoryUsage().heapUsed - before;
-    // eslint-disable-next-line no-console
-    console.info(
-      `[local-presigned-upload] heap growth for 200MiB body: ${(growth / (1024 * 1024)).toFixed(2)} MiB`,
-    );
+    const ceiling = 64 * 1024 * 1024;
 
     expect(res.status).toBe(200);
     const stat = await fs.stat(path.join(basePath, 'o/r/uploads/content/big.bin'));
     expect(stat.size).toBe(chunks * chunk.length);
-    expect(growth).toBeLessThan(64 * 1024 * 1024);
+    // Jest's expect() has no message parameter, so report the measured MiB
+    // only on failure via a plain throw rather than an unconditional log —
+    // that's the only moment anyone needs the number; a green run stays silent.
+    if (growth >= ceiling) {
+      throw new Error(
+        `heap grew by ${(growth / (1024 * 1024)).toFixed(2)} MiB for a 200 MiB body ` +
+          `(ceiling ${(ceiling / (1024 * 1024)).toFixed(0)} MiB) — the body may be buffering`,
+      );
+    }
   }, 120_000);
 
   it('rejects a tampered signature with 403 and writes nothing', async () => {
