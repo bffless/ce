@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.14](https://github.com/bffless/ce/compare/v0.3.13...v0.3.14) (2026-07-30)
+
+
+### Bug Fixes
+
+* **frontend:** user typeahead in group Add Member dialog ([#573](https://github.com/bffless/ce/issues/573)) ([21d8231](https://github.com/bffless/ce/commit/21d823164284f2bc8bca9b0d1d8b4fa32f8becb7)), closes [#572](https://github.com/bffless/ce/issues/572)
+
 ## [0.3.13](https://github.com/bffless/ce/compare/v0.3.12...v0.3.13) (2026-07-30)
 
 
