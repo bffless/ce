@@ -242,6 +242,10 @@ export class LocalStorageAdapter implements IStorageAdapter {
       );
     }
 
+    if (!Number.isFinite(expiresIn)) {
+      throw new TypeError('expiresIn must be a finite number');
+    }
+
     const storageKey = this.prefixKey(this.sanitizeKey(key));
     const ttl = Math.min(Math.max(1, Math.floor(expiresIn)), MAX_EXPIRES_IN_SECONDS);
     const exp = Math.floor(Date.now() / 1000) + ttl;

@@ -423,6 +423,37 @@ describe('LocalStorageAdapter presigned uploads', () => {
     expect(Number(clamped.searchParams.get('exp'))).toBeLessThanOrEqual(now + 3601);
   });
 
+  it('floors expiresIn to at least 1 second', async () => {
+    const now = Math.floor(Date.now() / 1000);
+
+    // expiresIn: 0 → exp is now + 1
+    const zero = new URL(await makeAdapter().getPresignedUploadUrl('k', 0));
+    expect(Number(zero.searchParams.get('exp'))).toBeGreaterThanOrEqual(now + 1);
+    expect(Number(zero.searchParams.get('exp'))).toBeLessThanOrEqual(now + 2);
+
+    // expiresIn: -50 → exp is now + 1 (never in the past)
+    const negative = new URL(await makeAdapter().getPresignedUploadUrl('k', -50));
+    expect(Number(negative.searchParams.get('exp'))).toBeGreaterThanOrEqual(now + 1);
+    expect(Number(negative.searchParams.get('exp'))).toBeLessThanOrEqual(now + 2);
+
+    // expiresIn: 0.4 → floors to 1, so exp is now + 1
+    const fractionalFloor = new URL(await makeAdapter().getPresignedUploadUrl('k', 0.4));
+    expect(Number(fractionalFloor.searchParams.get('exp'))).toBeGreaterThanOrEqual(now + 1);
+    expect(Number(fractionalFloor.searchParams.get('exp'))).toBeLessThanOrEqual(now + 2);
+
+    // expiresIn: 2.9 → floors to 2
+    const fractionalTwo = new URL(await makeAdapter().getPresignedUploadUrl('k', 2.9));
+    const exp = Number(fractionalTwo.searchParams.get('exp'));
+    expect(exp).toBeGreaterThanOrEqual(now + 2);
+    expect(exp).toBeLessThanOrEqual(now + 3);
+  });
+
+  it('rejects NaN expiresIn with a clear error', async () => {
+    await expect(makeAdapter().getPresignedUploadUrl('k', NaN)).rejects.toThrow(
+      /expiresIn must be a finite number/i,
+    );
+  });
+
   it('rejects a path-traversal key instead of signing it', async () => {
     await expect(makeAdapter().getPresignedUploadUrl('../../etc/passwd')).rejects.toThrow(
       /path traversal/i,
