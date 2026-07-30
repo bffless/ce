@@ -235,6 +235,17 @@ export class CachingStorageAdapter implements IStorageAdapter {
   }
 
   /**
+   * Invalidate a single cached object.
+   *
+   * Needed because a presigned upload writes to the backing store directly,
+   * bypassing this adapter's `upload()` — so the cache would otherwise keep
+   * serving the previous bytes for that key.
+   */
+  async invalidateKey(key: string): Promise<void> {
+    await this.cache.delete(this.getCacheKey(key));
+  }
+
+  /**
    * Get cache statistics
    */
   getCacheStats() {
