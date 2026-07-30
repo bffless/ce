@@ -95,6 +95,17 @@ export const FLAG_DEFINITIONS: Record<string, FlagDefinition> = {
     exposeToClient: true,
   },
 
+  ENABLE_LOCAL_PRESIGNED_UPLOADS: {
+    envKey: 'FEATURE_LOCAL_PRESIGNED_UPLOADS',
+    defaultValue: true,
+    type: 'boolean',
+    description:
+      'Allow presigned (direct) uploads when local filesystem storage is active. ' +
+      'Exposes a signature-authorized PUT route; disable to require proxied uploads.',
+    category: 'features',
+    exposeToClient: true,
+  },
+
   // ==========================================================================
   // Cache/Redis Flags (for PaaS onboarding)
   // ==========================================================================
@@ -451,8 +462,7 @@ export const FLAG_DEFINITIONS: Record<string, FlagDefinition> = {
     envKey: 'FEATURE_TOS_URL',
     defaultValue: '',
     type: 'string',
-    description:
-      'URL to Terms of Service page. Used when REQUIRE_TOS_ACCEPTANCE is enabled.',
+    description: 'URL to Terms of Service page. Used when REQUIRE_TOS_ACCEPTANCE is enabled.',
     category: 'features',
     exposeToClient: true,
   },
