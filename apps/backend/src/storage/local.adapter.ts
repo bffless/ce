@@ -11,7 +11,6 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import {
   derivePresignKey,
-  resolvePublicOrigin,
   signLocalUpload,
   DEFAULT_MAX_UPLOAD_BYTES,
   MAX_EXPIRES_IN_SECONDS,
