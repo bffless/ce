@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.13](https://github.com/bffless/ce/compare/v0.3.12...v0.3.13) (2026-07-30)
+
+
+### Bug Fixes
+
+* **frontend:** use AlertDialogTrigger in group member removal dialog ([#570](https://github.com/bffless/ce/issues/570)) ([9376158](https://github.com/bffless/ce/commit/9376158b104da90649778df2a4d91397c76a0701)), closes [#569](https://github.com/bffless/ce/issues/569)
+
 ## [0.3.12](https://github.com/bffless/ce/compare/v0.3.11...v0.3.12) (2026-07-30)
 
 
