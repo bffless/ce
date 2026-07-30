@@ -93,6 +93,12 @@ describe('DeploymentsController', () => {
       resolveAlias: jest.fn(),
       getDefaultAlias: jest.fn(),
       createOrUpdateAlias: jest.fn(),
+      generateStorageKeyPublic: jest
+        .fn()
+        .mockImplementation(
+          (repository: string, commitSha: string, publicPath: string) =>
+            `${repository}/${commitSha}/${publicPath}`,
+        ),
     } as any;
 
     mockPendingUploadsService = {
@@ -247,6 +253,51 @@ describe('DeploymentsController', () => {
         mockUserId,
         'user',
       );
+    });
+  });
+
+  describe('prepareBatchUpload', () => {
+    const mockDto = {
+      repository: mockRepository,
+      commitSha: mockCommitSha,
+      files: [{ path: 'index.html', size: 100, contentType: 'text/html' }],
+    } as any;
+
+    // Local storage's presigned route is for browser uploads (same-origin
+    // relative URLs). This CI/Node endpoint has no page origin to resolve a
+    // relative URL against, and presigning buys nothing over the ZIP
+    // fallback on local storage anyway -- see the comment on
+    // prepareBatchUpload in deployments.controller.ts.
+    it('reports presigned unsupported when the active adapter is the local one, even if supportsPresignedUrls() is true', async () => {
+      mockStorageAdapter.isLocalAdapter = true;
+      mockStorageAdapter.supportsPresignedUrls.mockReturnValue(true);
+
+      const result = await controller.prepareBatchUpload(mockDto, mockUser);
+
+      expect(result).toEqual({ presignedUrlsSupported: false });
+      // Must not attempt to mint a URL (and must not touch pending-upload
+      // bookkeeping) once the endpoint has already decided to fall back.
+      expect(mockStorageAdapter.getPresignedUploadUrl).not.toHaveBeenCalled();
+      expect(mockPendingUploadsService.create).not.toHaveBeenCalled();
+    });
+
+    it('still returns presigned URLs for a non-local adapter that supports them', async () => {
+      mockStorageAdapter.isLocalAdapter = false;
+      mockStorageAdapter.supportsPresignedUrls.mockReturnValue(true);
+      mockStorageAdapter.getPresignedUploadUrl.mockResolvedValue('https://bucket.example/signed');
+      mockProjectsService.findOrCreateProject.mockResolvedValue({
+        id: 'project-123',
+        owner: 'owner',
+        name: 'repo',
+      } as any);
+      mockPendingUploadsService.create.mockResolvedValue({
+        uploadToken: 'token-123',
+      } as any);
+
+      const result = await controller.prepareBatchUpload(mockDto, mockUser);
+
+      expect(result.presignedUrlsSupported).toBe(true);
+      expect(mockStorageAdapter.getPresignedUploadUrl).toHaveBeenCalled();
     });
   });
 

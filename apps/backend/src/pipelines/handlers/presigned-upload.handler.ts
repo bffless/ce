@@ -65,14 +65,31 @@ export interface PresignedUploadHandlerConfig {
 /**
  * Presigned Upload Handler (prepare phase)
  *
- * Mints a time-limited presigned PUT URL so the client can upload a file
- * DIRECTLY to the storage bucket, bypassing nginx and the backend entirely.
- * No bytes pass through the server. After the client PUTs the file, it calls a
- * second pipeline using `register_upload` to verify the object and write the
- * DB records.
+ * Mints a time-limited presigned PUT URL so a BROWSER client can upload a
+ * file directly, without routing the bytes through this pipeline step. After
+ * the client PUTs the file, it calls a second pipeline using
+ * `register_upload` to verify the object and write the DB records.
  *
- * Only works on storage backends that support presigned uploads (S3, GCS,
- * MinIO, Azure). On local storage this fails with PRESIGNED_NOT_SUPPORTED —
+ * This works on ALL storage backends, not just buckets:
+ * - Bucket backends (S3, GCS, MinIO, Azure): the URL is absolute and the PUT
+ *   bypasses nginx/the backend entirely, landing straight on the bucket
+ *   (needs bucket CORS allowing PUT from the site origin).
+ * - Local storage: `LocalStorageAdapter.getPresignedUploadUrl` mints a
+ *   RELATIVE URL by default, which the browser resolves against the page's
+ *   own origin -- the PUT still reaches this backend (via a dedicated,
+ *   signature-authorized route the per-domain nginx templates proxy
+ *   unrewritten -- see `apps/backend/templates/nginx/subdomain.conf.hbs` and
+ *   `custom-domain.conf.hbs`), just not through this pipeline's request
+ *   body. No CORS is needed because the URL is same-origin by construction.
+ *   See `docs/superpowers/specs/2026-07-30-local-fs-presigned-uploads-design.md`,
+ *   section "Correction: upload URL routing", for the full rationale.
+ *
+ * `PRESIGNED_NOT_SUPPORTED` below is now a real failure mode only when the
+ * active adapter has no real signing secret configured, which should not
+ * happen on a normal CE install (`ENCRYPTION_KEY` is mandatory setup).
+ *
+ * This handler is for BROWSER callers -- a server/CI caller has no page
+ * origin to resolve a relative URL against. Server-side upload flows should
  * use `file_upload_handler` (proxied) instead.
  */
 @Injectable()
@@ -109,8 +126,10 @@ export class PresignedUploadHandler
         error: {
           code: 'PRESIGNED_NOT_SUPPORTED',
           message:
-            'The configured storage backend does not support direct (presigned) uploads. ' +
-            'Switch to S3, GCS, MinIO, or Azure storage, or use a proxied file_upload_handler instead.',
+            'The configured storage backend does not support direct (presigned) uploads right now. ' +
+            'On local storage this means no real signing secret is configured (ENCRYPTION_KEY is ' +
+            'mandatory CE setup and doubles as the presign secret) -- verify it is set, or use a ' +
+            'proxied file_upload_handler instead.',
         },
       };
     }

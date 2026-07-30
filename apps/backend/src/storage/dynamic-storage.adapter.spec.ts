@@ -286,14 +286,12 @@ describe('DynamicStorageAdapter default local adapter', () => {
     expect(new DynamicStorageAdapter().supportsPresignedUrls()).toBe(true);
   });
 
-  it('does not throw, and (Task 12) still supports presigned uploads, when no origin can be resolved', () => {
-    // Before Task 12, this isolated the ORIGIN gate: with a real secret
-    // present, an unresolvable origin alone drove supportsPresignedUrls() to
-    // false. Task 12 removed that gate -- getPresignedUploadUrl now falls
-    // back to a relative URL instead of requiring an origin, so support
-    // depends only on the (separately-tested) secret gate. This test now
-    // proves construction/evaluation doesn't throw and that origin
-    // resolvability no longer affects the result.
+  it('does not throw, and still supports presigned uploads, when no origin can be resolved', () => {
+    // supportsPresignedUrls() does not gate on origin resolvability at all --
+    // getPresignedUploadUrl falls back to a relative URL instead of
+    // requiring one, so support depends only on the (separately-tested)
+    // secret gate. This test proves construction/evaluation doesn't throw
+    // and that origin resolvability doesn't affect the result.
     delete process.env.PRIMARY_DOMAIN;
     delete process.env.PUBLIC_ORIGIN;
     process.env.ENCRYPTION_KEY = 'test-encryption-key';

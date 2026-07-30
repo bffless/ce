@@ -275,7 +275,11 @@ export class LocalStorageAdapter implements IStorageAdapter {
    * the page, which is exactly the app's own host — the per-domain nginx
    * templates proxy this path there unrewritten. That makes "same-origin, no
    * CORS" true by construction instead of by assuming the mint-time origin
-   * matches the app's serving host (it didn't: see task-12-brief.md).
+   * matches the app's serving host (it didn't -- an absolute URL minted at
+   * PRIMARY_DOMAIN pointed at an nginx vhost that doesn't route /api to the
+   * backend at all; see
+   * docs/superpowers/specs/2026-07-30-local-fs-presigned-uploads-design.md,
+   * section "Correction: upload URL routing").
    */
   async getPresignedUploadUrl(key: string, expiresIn = MAX_EXPIRES_IN_SECONDS): Promise<string> {
     if (!Number.isFinite(expiresIn)) {

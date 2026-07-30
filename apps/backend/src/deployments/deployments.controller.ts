@@ -62,6 +62,7 @@ import { isPreviewAliasPattern } from './preview-alias.util';
 import { VisibilityService } from '../domains/visibility.service';
 import { ProjectsService } from '../projects/projects.service';
 import { IStorageAdapter, STORAGE_ADAPTER } from '../storage/storage.interface';
+import { resolveLocalAdapter } from '../storage/local.adapter';
 import { PendingUploadFile } from '../db/schema/pending-uploads.schema';
 import { db } from '../db/client';
 import { assets, deploymentAliases } from '../db/schema';
@@ -186,8 +187,26 @@ export class DeploymentsController {
     @Body() dto: PrepareBatchUploadDto,
     @CurrentUser() user: CurrentUserData,
   ): Promise<PrepareBatchUploadResponseDto> {
-    // Check if storage supports presigned URLs
-    const supportsPresigned = this.storageAdapter.supportsPresignedUrls?.() ?? false;
+    // Local storage's presigned upload route exists for BROWSER uploads,
+    // where resolving a relative URL against the page's own origin is the
+    // entire point (same-origin, no CORS -- see
+    // docs/superpowers/specs/2026-07-30-local-fs-presigned-uploads-design.md,
+    // section "Correction: upload URL routing"). This endpoint's caller is a
+    // CI/Node client (the upload-artifact GitHub Action, `bffless` CLI, etc.)
+    // with no page origin to resolve a relative URL against -- `new
+    // URL(relativeUrl)` with no base throws. And even ignoring that,
+    // presigning buys a CI client nothing on local storage: a "direct"
+    // upload still goes to this same backend over the same connection as the
+    // ZIP-upload fallback, so there is no direct-to-storage win to have. So
+    // the local adapter is always treated as NOT supporting presigned
+    // uploads here, regardless of what supportsPresignedUrls() reports --
+    // preserving the existing, working ZIP-upload fallback instead of
+    // turning "unsupported" into a hard client-side throw. Do NOT "fix" this
+    // by inventing an absolute origin here just to keep the presigned branch
+    // alive for local storage.
+    const isLocalAdapter = resolveLocalAdapter(this.storageAdapter) !== null;
+    const supportsPresigned =
+      !isLocalAdapter && (this.storageAdapter.supportsPresignedUrls?.() ?? false);
 
     if (!supportsPresigned) {
       // Return fallback response - client should use ZIP upload

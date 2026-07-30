@@ -10,7 +10,7 @@ import { FilesController } from './files.controller';
 import { CacheController } from './cache/cache.controller';
 import { CachingStorageAdapter } from './cache/caching-storage.adapter';
 import { CACHE_ADAPTER, ICacheAdapter, CacheConfig } from './cache/cache.interface';
-import { tryResolvePublicOrigin } from './presign.util';
+import { explicitPublicOrigin } from './presign.util';
 import { LocalPresignedUploadController } from './local-presigned-upload.controller';
 import { LocalUploadWriterService } from './local-upload-writer.service';
 import { StorageUsageModule } from './storage-usage.module';
@@ -157,9 +157,12 @@ export class StorageModule {
   static createAdapter(config: StorageModuleConfig): IStorageAdapter {
     switch (config.storageType) {
       case 'local':
+        // config.config.publicOrigin is a legitimately EXPLICIT value (e.g. a
+        // future DB-configured override); explicitPublicOrigin() below reads
+        // ONLY PUBLIC_ORIGIN, never PRIMARY_DOMAIN -- see its doc comment.
         return new LocalStorageAdapter({
           ...config.config,
-          publicOrigin: config.config.publicOrigin ?? tryResolvePublicOrigin(),
+          publicOrigin: config.config.publicOrigin ?? explicitPublicOrigin(),
         });
 
       case 'minio':

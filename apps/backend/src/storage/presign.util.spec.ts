@@ -1,9 +1,8 @@
 import {
   derivePresignKey,
-  resolvePublicOrigin,
+  explicitPublicOrigin,
   signLocalUpload,
   verifyLocalUpload,
-  tryResolvePublicOrigin,
   hasRealPresignSecret,
   DEFAULT_MAX_UPLOAD_BYTES,
   MAX_EXPIRES_IN_SECONDS,
@@ -56,17 +55,32 @@ describe('hasRealPresignSecret', () => {
   });
 });
 
-describe('resolvePublicOrigin', () => {
+describe('explicitPublicOrigin', () => {
   it('uses PUBLIC_ORIGIN when set, stripping a trailing slash', () => {
-    expect(resolvePublicOrigin({ PUBLIC_ORIGIN: 'https://a.example/' })).toBe('https://a.example');
+    expect(explicitPublicOrigin({ PUBLIC_ORIGIN: 'https://a.example/' })).toBe('https://a.example');
   });
 
-  it('falls back to https://PRIMARY_DOMAIN', () => {
-    expect(resolvePublicOrigin({ PRIMARY_DOMAIN: 'b.example' })).toBe('https://b.example');
+  it('does NOT fall back to https://PRIMARY_DOMAIN', () => {
+    // PRIMARY_DOMAIN is set on every real CE install, so a fallback to it
+    // here is never actually a fallback -- it fires unconditionally and
+    // forces every construction site onto an absolute apex URL, which the
+    // apex nginx vhost does not route to the backend (see
+    // docs/superpowers/specs/2026-07-30-local-fs-presigned-uploads-design.md,
+    // "Correction: upload URL routing"). explicitPublicOrigin must return
+    // undefined here, not a PRIMARY_DOMAIN-derived guess.
+    expect(explicitPublicOrigin({ PRIMARY_DOMAIN: 'b.example' })).toBeUndefined();
   });
 
-  it('throws rather than inventing a localhost origin', () => {
-    expect(() => resolvePublicOrigin({})).toThrow(/PUBLIC_ORIGIN|PRIMARY_DOMAIN/);
+  it('returns undefined (not a throw) when nothing is configured', () => {
+    // Unlike the removed resolvePublicOrigin, there is no "cannot resolve"
+    // failure mode any more -- an absent explicit origin just means the
+    // adapter falls back to minting a relative URL, which always works.
+    expect(explicitPublicOrigin({})).toBeUndefined();
+  });
+
+  it("is false/blank-safe like the rest of this module's env readers", () => {
+    expect(explicitPublicOrigin({ PUBLIC_ORIGIN: '' })).toBeUndefined();
+    expect(explicitPublicOrigin({ PUBLIC_ORIGIN: '   ' })).toBeUndefined();
   });
 });
 
@@ -131,7 +145,7 @@ describe('constants', () => {
   });
 });
 
-describe('publicOrigin reaches every LocalStorageAdapter construction site', () => {
+describe('every LocalStorageAdapter construction site: relative by default, PRIMARY_DOMAIN never used', () => {
   const saved = {
     PRIMARY_DOMAIN: process.env.PRIMARY_DOMAIN,
     PUBLIC_ORIGIN: process.env.PUBLIC_ORIGIN,
@@ -139,12 +153,17 @@ describe('publicOrigin reaches every LocalStorageAdapter construction site', () 
   };
 
   beforeEach(() => {
+    // PRIMARY_DOMAIN is set here to 'sites.example' deliberately -- it is set
+    // on EVERY real CE install, so every test in this block runs with it
+    // present. If a construction site regresses back to deriving an origin
+    // from it (fix round 1's bug), site 1/2/3 below would emit an absolute
+    // URL at this decoy origin instead of a relative one, and fail loudly.
     process.env.PRIMARY_DOMAIN = 'sites.example';
     delete process.env.PUBLIC_ORIGIN;
-    // These sites exercise "presigned support is fully wired end-to-end given
-    // a resolvable origin" -- which on a real CE install always also has
-    // ENCRYPTION_KEY set (it's mandatory setup, not optional). The dedicated
-    // "no secret" fail-closed cases live in local.adapter.spec.ts.
+    // These sites exercise "presigned support is fully wired end-to-end" --
+    // which on a real CE install always also has ENCRYPTION_KEY set (it's
+    // mandatory setup, not optional). The dedicated "no secret" fail-closed
+    // cases live in local.adapter.spec.ts.
     process.env.ENCRYPTION_KEY = 'test-encryption-key';
   });
 
@@ -155,14 +174,23 @@ describe('publicOrigin reaches every LocalStorageAdapter construction site', () 
     }
   });
 
-  it('site 1 — DynamicStorageAdapter default adapter mints presigned URLs', async () => {
+  it('site 1 — DynamicStorageAdapter default adapter mints a RELATIVE presigned URL despite PRIMARY_DOMAIN being set', async () => {
     const dynamic = new DynamicStorageAdapter();
     expect(dynamic.supportsPresignedUrls()).toBe(true);
     const url = await dynamic.getPresignedUploadUrl!('o/r/uploads/content/a.bin');
-    expect(new URL(url).origin).toBe('https://sites.example');
+    expect(url.startsWith(LOCAL_PRESIGN_PATH)).toBe(true);
+    expect(url).not.toMatch(/^https?:\/\//);
   });
 
-  it('site 2 — StorageModule.createAdapter local branch mints presigned URLs', async () => {
+  it('site 1b — DynamicStorageAdapter mints an ABSOLUTE URL at PUBLIC_ORIGIN when explicitly set, ignoring the PRIMARY_DOMAIN decoy', async () => {
+    process.env.PUBLIC_ORIGIN = 'https://explicit.example';
+    const dynamic = new DynamicStorageAdapter();
+    const url = await dynamic.getPresignedUploadUrl!('o/r/uploads/content/a.bin');
+    // Must be the explicit PUBLIC_ORIGIN, NOT the 'sites.example' PRIMARY_DOMAIN decoy.
+    expect(new URL(url).origin).toBe('https://explicit.example');
+  });
+
+  it('site 2 — StorageModule.createAdapter local branch mints a RELATIVE presigned URL despite PRIMARY_DOMAIN being set', async () => {
     // StorageModule.createAdapter is a public static factory, so the real local
     // branch (the actual construction site) can be exercised directly rather
     // than only asserting an equivalent config shape.
@@ -171,28 +199,37 @@ describe('publicOrigin reaches every LocalStorageAdapter construction site', () 
       config: { localPath: '/tmp/bffless-site2' },
     }) as LocalStorageAdapter;
     expect(adapter.supportsPresignedUrls()).toBe(true);
-    expect(new URL(await adapter.getPresignedUploadUrl('k')).origin).toBe('https://sites.example');
+    const url = await adapter.getPresignedUploadUrl('k');
+    expect(url.startsWith(LOCAL_PRESIGN_PATH)).toBe(true);
+    expect(url).not.toMatch(/^https?:\/\//);
   });
 
-  it('site 3 — a setup.service-shaped construction mints presigned URLs', async () => {
+  it('site 2b — StorageModule.createAdapter honors an EXPLICIT config.config.publicOrigin over env entirely', async () => {
+    const adapter = StorageModule.createAdapter({
+      storageType: 'local',
+      config: { localPath: '/tmp/bffless-site2b', publicOrigin: 'https://db-configured.example' },
+    }) as LocalStorageAdapter;
+    const url = await adapter.getPresignedUploadUrl('k');
+    expect(new URL(url).origin).toBe('https://db-configured.example');
+  });
+
+  it('site 3 — a setup.service-shaped construction mints a RELATIVE presigned URL despite PRIMARY_DOMAIN being set', async () => {
     const adapter = new LocalStorageAdapter({
       localPath: '/tmp/bffless-site3',
       keyPrefix: 'ws1',
-      publicOrigin: tryResolvePublicOrigin(),
+      publicOrigin: explicitPublicOrigin(),
     });
     expect(adapter.supportsPresignedUrls()).toBe(true);
     const url = await adapter.getPresignedUploadUrl('k');
-    const key = Buffer.from(new URL(url).searchParams.get('key')!, 'base64url').toString('utf8');
+    expect(url.startsWith(LOCAL_PRESIGN_PATH)).toBe(true);
+    const key = Buffer.from(
+      new URL(url, 'https://any-app-host.example').searchParams.get('key')!,
+      'base64url',
+    ).toString('utf8');
     expect(key).toBe('ws1/k');
   });
 
-  it('does not crash when no origin can be resolved, and (Task 12) still supports presigned uploads via a relative URL', () => {
-    // Before Task 12, an unresolvable origin degraded support to `false`. Now
-    // publicOrigin is an explicit override for an absolute URL, not a
-    // precondition, so support still holds on the (mandatory) signing secret
-    // alone -- this test's job is now to prove construction doesn't throw AND
-    // that the minted URL is the relative fallback shape, not an absolute one
-    // pointed at a wrong/guessed origin.
+  it('does not crash when no origin at all is configured, and still supports presigned uploads via a relative URL', () => {
     delete process.env.PRIMARY_DOMAIN;
     delete process.env.PUBLIC_ORIGIN;
     const dynamic = new DynamicStorageAdapter();
@@ -200,7 +237,7 @@ describe('publicOrigin reaches every LocalStorageAdapter construction site', () 
     expect(dynamic.supportsPresignedUrls()).toBe(true);
   });
 
-  it('site 4 — DynamicStorageAdapter mints a RELATIVE presigned URL when no origin can be resolved', async () => {
+  it('site 4 — DynamicStorageAdapter mints a RELATIVE presigned URL when no origin at all is configured', async () => {
     delete process.env.PRIMARY_DOMAIN;
     delete process.env.PUBLIC_ORIGIN;
     const dynamic = new DynamicStorageAdapter();

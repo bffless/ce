@@ -192,7 +192,7 @@ describe('local presigned upload over HTTP', () => {
     expect(res.status).toBe(411);
   });
 
-  // TASK 12 — production mints a RELATIVE URL by default (see local.adapter.ts's
+  // Production mints a RELATIVE URL by default (see local.adapter.ts's
   // getPresignedUploadUrl); the fixture above uses an explicit publicOrigin so
   // its absolute-URL cases above keep exercising that (still-supported) shape.
   // This adapter shares the SAME presignKey/maxUploadBytes as the one wired
@@ -205,11 +205,13 @@ describe('local presigned upload over HTTP', () => {
   // only proves the app-layer contract holds for a relative URL resolved
   // against *some* origin -- it does NOT prove nginx actually routes
   // `/api/storage/presigned/local` on a real app host unrewritten. That vhost
-  // routing gap is exactly the defect Task 12 fixes (see task-12-brief.md);
-  // this test file structurally cannot catch a regression there. The nginx
-  // template changes are the actual fix; this only confirms the URL SHAPE the
-  // adapter now mints is relative and that a relative URL, once resolved
-  // against a host, still round-trips through the route correctly.
+  // routing gap is the one fixed by the per-domain nginx templates (see
+  // docs/superpowers/specs/2026-07-30-local-fs-presigned-uploads-design.md,
+  // section "Correction: upload URL routing"); this test file structurally
+  // cannot catch a regression there. The nginx template changes are the
+  // actual fix; this only confirms the URL SHAPE the adapter now mints is
+  // relative and that a relative URL, once resolved against a host, still
+  // round-trips through the route correctly.
   it('resolves a RELATIVE presigned URL against the app host and completes the PUT', async () => {
     const relativeOnlyAdapter = new LocalStorageAdapter({
       localPath: basePath,

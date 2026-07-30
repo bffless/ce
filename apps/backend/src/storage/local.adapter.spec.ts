@@ -381,12 +381,11 @@ describe('LocalStorageAdapter presigned uploads', () => {
     expect(makeAdapter().supportsPresignedUrls()).toBe(true);
   });
 
-  it('still reports presigned support when no origin was resolved (Task 12: a relative URL needs none)', () => {
-    // Prior to task 12, supportsPresignedUrls() also required a resolved
-    // publicOrigin, because the URL was always minted absolute. That gate is
-    // gone: getPresignedUploadUrl now falls back to a relative URL, so only
-    // real signing material (checked below, in the "fails closed" describe
-    // block) gates support. See local.adapter.ts's supportsPresignedUrls doc.
+  it('still reports presigned support when no origin was resolved (a relative URL needs none)', () => {
+    // supportsPresignedUrls() does not require a resolved publicOrigin --
+    // getPresignedUploadUrl falls back to a relative URL, so only real
+    // signing material (checked below, in the "fails closed" describe block)
+    // gates support. See local.adapter.ts's supportsPresignedUrls doc.
     const adapter = new LocalStorageAdapter({ localPath: '/tmp/x', presignKey });
     expect(adapter.supportsPresignedUrls()).toBe(true);
   });

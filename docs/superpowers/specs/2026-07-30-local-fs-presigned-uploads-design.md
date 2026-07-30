@@ -28,7 +28,7 @@ The presigned flow exists to let the browser PUT bytes **without passing through
 
 | Decision | Choice | Rationale |
 |---|---|---|
-| URL form | **Absolute**, from an explicitly resolved public origin: `PUBLIC_ORIGIN` if set, else `https://${PRIMARY_DOMAIN}`, else **fail loudly** | A relative URL would work in a browser but presigned URLs are also consumed by non-browser clients (CI, CLI). Absolute keeps one shape for all callers. Failing loudly matters — see the `baseUrl` warning below. |
+| URL form | **Relative by default** (`/api/storage/presigned/local?…`), resolved by the browser against the app's own origin; **absolute only when `PUBLIC_ORIGIN` is explicitly set** | ⚠️ **REVISED 2026-07-30 — see "Correction: upload URL routing" below.** The original decision here was *absolute, from `PUBLIC_ORIGIN` else `https://${PRIMARY_DOMAIN}`*, on the reasoning that non-browser clients also consume presigned URLs. That was wrong on both counts: the apex does not route `/api` to the backend at all, and the local adapter's presigned URLs are consumed by browsers (CI uses `POST /api/deployments/zip`, not presigned). |
 | Signing key | **Derived**, `sha256(ENCRYPTION_KEY \| 'local-presign-v1')`, overridable via `LOCAL_PRESIGN_SECRET` | Mirrors the established precedent in `function-runner.service.ts:126-137`, which derives the `utils.sign` key from the required, stable `ENCRYPTION_KEY`. Zero new config; signatures survive restarts. |
 | Auth on the PUT route | **Signature only**, no session | This is the whole point of a presigned URL. Compensating controls: expiry, exact-key binding, size cap, quota. |
 | Overwrite semantics | **Allowed** within the signature's validity | Parity with S3 presigned PUT. Handoff's keys are content-addressed anyway, so overwrite is a no-op in practice. |
@@ -103,7 +103,31 @@ But a presigned PUT writes **underneath** the cache: the cache never sees it and
 Once this ships, on a stock local-FS install:
 
 - `PRESIGNED_NOT_SUPPORTED` no longer occurs.
-- **No bucket CORS configuration is needed.** The upload URL is same-origin, so the cross-origin `PUT` rule that Handoff's README requires for S3/GCS/Spaces simply doesn't apply. One manual step disappears.
+- **No bucket CORS configuration is needed** — but only because the upload route is deliberately served on the app's *own* host. See the correction below; this benefit is real, and it is **earned by routing work, not free**.
+
+## Correction: upload URL routing (added 2026-07-30, during implementation)
+
+The original spec asserted that local presigned uploads are "same-origin, so no CORS configuration is needed", and had the adapter mint absolute URLs at `https://${PRIMARY_DOMAIN}`. **Both were wrong**, and the error was found only after Tasks 1-10 were implemented and reviewed — because every test in the plan exercises the app layer directly, with no nginx in front, and is therefore structurally blind to virtual-host routing.
+
+What the repo actually does:
+
+- The **only** vhost that proxies `/api` to the backend unrewritten is `server_name admin.${PRIMARY_DOMAIN}` (`docker/nginx/sites-available/main.conf.template:94`, with `location /api` at `:167`).
+- The **apex** matches no dedicated block, so it falls through to the wildcard block at `:21`, which is `listen 443 ssl default_server` and whose `location /` rewrites every path:
+  ```nginx
+  rewrite ^/(.*)$ /public/subdomain-alias/$subdomain/$1 break;
+  ```
+  A `PUT https://<primary>/api/storage/presigned/local` therefore becomes `/public/subdomain-alias//api/storage/presigned/local` and never reaches the controller.
+- The generated per-domain configs (`apps/backend/templates/nginx/subdomain.conf.hbs`, `custom-domain.conf.hbs`) contain **no `/api` location** either.
+
+So the minted URL was unreachable in production, and "same-origin" was false in any case: an app served at `handoff.<primary>` is a different origin from CE's API on `admin.<primary>`, and `main.ts`'s CORS allowlist is only `[FRONTEND_URL, 'http://localhost:3000']`.
+
+**Resolution — serve the presign route on the app's own host.** Add a dedicated, *unrewritten* location for `/api/storage/presigned/local` to the per-domain templates (`subdomain.conf.hbs` and `custom-domain.conf.hbs`) carrying the same streaming directives as the admin block, and have the adapter mint a **relative** URL so the browser resolves it against whichever host is serving the app. This makes the same-origin claim true by construction rather than by assumption, and keeps the zero-CORS property that motivates local presigned uploads in the first place.
+
+Consequences for earlier decisions in this spec:
+
+- `supportsPresignedUrls()` no longer requires a resolved `publicOrigin`, since a relative URL needs none. It still requires a real signing secret (the fail-closed check added during Task 7).
+- `PUBLIC_ORIGIN` becomes an explicit **override** for deployments that need absolute URLs, not a precondition for the feature working.
+- Existing installs pick up the new per-domain location when nginx configs are regenerated, which `nginx-startup.service.ts` already does on backend startup.
 - Handoff's README should be revised from *"requires a real bucket storage backend"* to *"works on any storage backend; a bucket is recommended for production"*, with the CE-version floor noted.
 
 Bucket backends remain the production recommendation — local FS doesn't survive a container rebuild without a volume, and it doesn't scale past one node. This changes what's *possible* on a default install, not what's *advisable* at scale.

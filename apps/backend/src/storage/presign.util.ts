@@ -44,34 +44,27 @@ export function hasRealPresignSecret(env: NodeJS.ProcessEnv = process.env): bool
 }
 
 /**
- * Resolve the origin presigned URLs are minted against.
+ * Read an EXPLICITLY configured public origin, if any. Consults ONLY
+ * `PUBLIC_ORIGIN` -- never `PRIMARY_DOMAIN`.
  *
- * Throws when it cannot be resolved. That is deliberate: silently defaulting to
- * localhost would mint unusable URLs that look like a broken client rather than
- * a misconfigured server (see the adapter's vestigial `baseUrl`).
+ * This function used to also fall back to `https://${PRIMARY_DOMAIN}` when
+ * `PUBLIC_ORIGIN` was unset. That fallback was a bug: `PRIMARY_DOMAIN` is set
+ * on every real CE install, so the "fallback" was never actually a fallback
+ * -- it fired unconditionally in production, forcing every
+ * `LocalStorageAdapter` construction site onto an absolute URL at the apex
+ * domain. The apex has no dedicated nginx vhost that proxies `/api`
+ * unrewritten (see `docs/superpowers/specs/2026-07-30-local-fs-presigned-uploads-design.md`,
+ * section "Correction: upload URL routing"), so that URL was unreachable and
+ * `getPresignedUploadUrl`'s relative-URL default (below) never actually ran.
+ *
+ * `publicOrigin` is an EXPLICIT override for callers that need an absolute
+ * URL (e.g. a non-browser consumer with no page origin to resolve a relative
+ * URL against) -- never an automatic guess derived from unrelated config
+ * that happens to be set on every install.
  */
-export function resolvePublicOrigin(env: NodeJS.ProcessEnv = process.env): string {
+export function explicitPublicOrigin(env: NodeJS.ProcessEnv = process.env): string | undefined {
   const explicit = env.PUBLIC_ORIGIN?.trim();
-  if (explicit) return explicit.replace(/\/+$/, '');
-
-  const domain = env.PRIMARY_DOMAIN?.trim();
-  if (domain) return `https://${domain.replace(/\/+$/, '')}`;
-
-  throw new Error(
-    'Cannot resolve a public origin for presigned local uploads: set PUBLIC_ORIGIN or PRIMARY_DOMAIN.',
-  );
-}
-
-/**
- * Origin resolution for construction sites that must not fail boot. Returns
- * undefined instead of throwing; the adapter then reports no presigned support.
- */
-export function tryResolvePublicOrigin(env: NodeJS.ProcessEnv = process.env): string | undefined {
-  try {
-    return resolvePublicOrigin(env);
-  } catch {
-    return undefined;
-  }
+  return explicit ? explicit.replace(/\/+$/, '') : undefined;
 }
 
 /**

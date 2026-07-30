@@ -630,13 +630,14 @@ server {
       expect(config).toContain('location /_bffless/auth/');
     });
 
-    it('Task 12: emits an unrewritten presign location for local-fs presigned uploads on the primary domain', async () => {
+    it('emits an unrewritten presign location for local-fs presigned uploads on the primary domain', async () => {
       // generateCEPrimaryDomainConfig is the render path for isPrimary domain
       // mappings on a self-hosted CE install -- an app served on the primary
       // domain itself (not admin.<domain>, not a subdomain/custom-domain
-      // mapping). Task 12 fixed the equivalent gap in the .hbs templates
-      // (subdomain/custom-domain); this is the same defect on this host
-      // shape, so this generator needs the same exact-match location.
+      // mapping). The two per-domain .hbs templates (subdomain/custom-domain)
+      // get the same `location = /api/storage/presigned/local` block; this
+      // proves the primary-domain generator emits the equivalent, unrewritten
+      // location for that same host shape.
       const domainMapping = {
         id: 'domain-primary',
         projectId: 'proj-1',
