@@ -61,6 +61,19 @@ export class LocalStorageAdapter implements IStorageAdapter {
     );
   }
 
+  /** Marker used to narrow the active adapter without instanceof across module boundaries. */
+  readonly isLocalAdapter = true;
+
+  /** Absolute storage root. Used by the presigned-upload route. */
+  getStorageBasePath(): string {
+    return this.basePath;
+  }
+
+  /** Presign key this adapter mints with; the route verifies against it. */
+  getPresignKey(): Buffer {
+    return this.presignKey;
+  }
+
   /**
    * Apply key prefix for workspace isolation
    */
