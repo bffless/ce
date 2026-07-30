@@ -267,6 +267,7 @@ describe('DynamicStorageAdapter default local adapter', () => {
     PRIMARY_DOMAIN: process.env.PRIMARY_DOMAIN,
     PUBLIC_ORIGIN: process.env.PUBLIC_ORIGIN,
     ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
+    LOCAL_PRESIGN_SECRET: process.env.LOCAL_PRESIGN_SECRET,
   };
   afterEach(() => {
     for (const [k, v] of Object.entries(original)) {
@@ -285,14 +286,27 @@ describe('DynamicStorageAdapter default local adapter', () => {
     expect(new DynamicStorageAdapter().supportsPresignedUrls()).toBe(true);
   });
 
-  it('degrades to unsupported rather than throwing when no origin can be resolved', () => {
+  it('does not throw, and (Task 12) still supports presigned uploads, when no origin can be resolved', () => {
+    // Before Task 12, this isolated the ORIGIN gate: with a real secret
+    // present, an unresolvable origin alone drove supportsPresignedUrls() to
+    // false. Task 12 removed that gate -- getPresignedUploadUrl now falls
+    // back to a relative URL instead of requiring an origin, so support
+    // depends only on the (separately-tested) secret gate. This test now
+    // proves construction/evaluation doesn't throw and that origin
+    // resolvability no longer affects the result.
     delete process.env.PRIMARY_DOMAIN;
     delete process.env.PUBLIC_ORIGIN;
-    // This test isolates the ORIGIN gate specifically: set a real secret so
-    // the (separate) secret gate can't also be the reason for `false` here --
-    // without this, the test would still pass even if the origin check were
-    // deleted, since the secret gate alone would produce `false` regardless.
     process.env.ENCRYPTION_KEY = 'test-encryption-key';
+    expect(() => new DynamicStorageAdapter().supportsPresignedUrls()).not.toThrow();
+    expect(new DynamicStorageAdapter().supportsPresignedUrls()).toBe(true);
+  });
+
+  it('still degrades to unsupported when no real secret exists, even with an origin configured', () => {
+    // The secret gate, isolated the same way: a resolvable origin can't
+    // substitute for real signing material.
+    process.env.PRIMARY_DOMAIN = 'ce.example';
+    delete process.env.ENCRYPTION_KEY;
+    delete process.env.LOCAL_PRESIGN_SECRET;
     expect(new DynamicStorageAdapter().supportsPresignedUrls()).toBe(false);
   });
 });

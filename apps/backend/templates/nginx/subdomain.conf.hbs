@@ -37,6 +37,41 @@ server {
         proxy_set_header X-Forwarded-Host $host;
     }
 
+    # Presigned local-filesystem uploads. Served on the app's own host so the
+    # upload URL is same-origin with the page performing it -- no CORS
+    # needed. Must be an exact match (nginx always prefers "location =" over
+    # a prefix match, regardless of declaration order) so it reaches the
+    # backend's /api controller untouched instead of falling into the
+    # catch-all `location /` below, which rewrites everything to the
+    # public-deployment-serving path.
+    location = /api/storage/presigned/local {
+        proxy_pass http://{{backendHost}}:{{backendPort}};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+
+        # Extended timeouts, matching the admin vhost's equivalent location.
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+
+        # Disable buffering so the backend receives (and streams to disk) the
+        # upload body incrementally instead of nginx spooling the whole
+        # request to its own temp file first.
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_max_temp_file_size 0;
+
+        # Matches the admin vhost's client_max_body_size for this location
+        # (docker/nginx/sites-available/main.conf.template) -- above
+        # DEFAULT_MAX_UPLOAD_BYTES (100 MiB) so the ceiling isn't an exact
+        # boundary; the backend's signed `max` is still the authoritative limit.
+        client_max_body_size 200M;
+    }
+
     # Main location
     location / {
         # Rewrite path to internal backend URL
@@ -142,6 +177,41 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-Host $host;
+    }
+
+    # Presigned local-filesystem uploads. Served on the app's own host so the
+    # upload URL is same-origin with the page performing it -- no CORS
+    # needed. Must be an exact match (nginx always prefers "location =" over
+    # a prefix match, regardless of declaration order) so it reaches the
+    # backend's /api controller untouched instead of falling into the
+    # catch-all `location /` below, which rewrites everything to the
+    # public-deployment-serving path.
+    location = /api/storage/presigned/local {
+        proxy_pass http://{{backendHost}}:{{backendPort}};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+
+        # Extended timeouts, matching the admin vhost's equivalent location.
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+
+        # Disable buffering so the backend receives (and streams to disk) the
+        # upload body incrementally instead of nginx spooling the whole
+        # request to its own temp file first.
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_max_temp_file_size 0;
+
+        # Matches the admin vhost's client_max_body_size for this location
+        # (docker/nginx/sites-available/main.conf.template) -- above
+        # DEFAULT_MAX_UPLOAD_BYTES (100 MiB) so the ceiling isn't an exact
+        # boundary; the backend's signed `max` is still the authoritative limit.
+        client_max_body_size 200M;
     }
 
     # Main location

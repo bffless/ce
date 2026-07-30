@@ -60,7 +60,11 @@ export class LocalStorageAdapter implements IStorageAdapter {
     this.logger.log(
       `Initialized LocalStorageAdapter with basePath: ${this.basePath}` +
         (this.keyPrefix ? `, keyPrefix: ${this.keyPrefix}` : '') +
-        `, presignedUploads: ${this.publicOrigin ? 'enabled' : 'disabled (no public origin)'}`,
+        `, presignedUploads: ${
+          this.hasExplicitPresignKey || hasRealPresignSecret()
+            ? `enabled (${this.publicOrigin ? 'absolute' : 'relative'} URLs)`
+            : 'disabled (no real signing secret)'
+        }`,
     );
   }
 
@@ -237,22 +241,25 @@ export class LocalStorageAdapter implements IStorageAdapter {
 
   /**
    * Local storage supports presigned uploads via a same-origin, HMAC-signed
-   * PUT route. Requires a resolvable public origin to mint absolute URLs, AND
-   * real signing material: either an explicitly configured `presignKey`, or a
-   * non-default secret in the environment (`hasRealPresignSecret`).
+   * PUT route, mounted on the app's own host (see the per-domain nginx
+   * templates' `location = /api/storage/presigned/local`). Because the URL is
+   * relative by default (`getPresignedUploadUrl` below), minting one needs no
+   * resolvable public origin — only real signing material: either an
+   * explicitly configured `presignKey`, or a non-default secret in the
+   * environment (`hasRealPresignSecret`). `publicOrigin` is now an explicit
+   * override for callers that need an absolute URL, not a precondition.
    *
-   * Without one of those, `derivePresignKey()` above degrades to a hardcoded
-   * dev-fallback string rather than throwing (so construction never crashes),
-   * but that fallback is a PUBLIC CONSTANT — the sole "authorization" on the
-   * upload route would then be forgeable by anyone. Fail closed here instead:
-   * don't advertise presigned support when the only signing material backing
-   * it is public. `ENCRYPTION_KEY` is mandatory in CE setup, so this should
-   * never trigger in practice — but ENABLE_LOCAL_PRESIGNED_UPLOADS defaults
-   * to on, so this is the backstop for a misconfigured install rather than a
-   * theoretical concern.
+   * Without real signing material, `derivePresignKey()` above degrades to a
+   * hardcoded dev-fallback string rather than throwing (so construction never
+   * crashes), but that fallback is a PUBLIC CONSTANT — the sole
+   * "authorization" on the upload route would then be forgeable by anyone.
+   * Fail closed here instead: don't advertise presigned support when the only
+   * signing material backing it is public. `ENCRYPTION_KEY` is mandatory in
+   * CE setup, so this should never trigger in practice — but
+   * ENABLE_LOCAL_PRESIGNED_UPLOADS defaults to on, so this is the backstop
+   * for a misconfigured install rather than a theoretical concern.
    */
   supportsPresignedUrls(): boolean {
-    if (this.publicOrigin === null) return false;
     return this.hasExplicitPresignKey || hasRealPresignSecret();
   }
 
@@ -261,15 +268,16 @@ export class LocalStorageAdapter implements IStorageAdapter {
    *
    * The signature covers the PREFIXED key so it matches exactly what the route
    * will write, and `max` is signed so a client cannot raise its own cap.
+   *
+   * Shape: RELATIVE (`/api/storage/presigned/local?...`) unless `publicOrigin`
+   * was explicitly configured, in which case the URL is absolute as before.
+   * A relative URL is resolved by the browser against whichever host served
+   * the page, which is exactly the app's own host — the per-domain nginx
+   * templates proxy this path there unrewritten. That makes "same-origin, no
+   * CORS" true by construction instead of by assuming the mint-time origin
+   * matches the app's serving host (it didn't: see task-12-brief.md).
    */
   async getPresignedUploadUrl(key: string, expiresIn = MAX_EXPIRES_IN_SECONDS): Promise<string> {
-    if (!this.publicOrigin) {
-      throw new Error(
-        'Presigned local uploads are not available: no public origin configured ' +
-          '(set PUBLIC_ORIGIN or PRIMARY_DOMAIN).',
-      );
-    }
-
     if (!Number.isFinite(expiresIn)) {
       throw new TypeError('expiresIn must be a finite number');
     }
@@ -280,11 +288,18 @@ export class LocalStorageAdapter implements IStorageAdapter {
     const max = this.maxUploadBytes;
     const sig = signLocalUpload({ key: storageKey, exp, max }, this.presignKey);
 
+    const params = new URLSearchParams();
+    params.set('key', Buffer.from(storageKey, 'utf8').toString('base64url'));
+    params.set('exp', String(exp));
+    params.set('max', String(max));
+    params.set('sig', sig);
+
+    if (!this.publicOrigin) {
+      return `${LOCAL_PRESIGN_PATH}?${params.toString()}`;
+    }
+
     const url = new URL(LOCAL_PRESIGN_PATH, this.publicOrigin);
-    url.searchParams.set('key', Buffer.from(storageKey, 'utf8').toString('base64url'));
-    url.searchParams.set('exp', String(exp));
-    url.searchParams.set('max', String(max));
-    url.searchParams.set('sig', sig);
+    url.search = params.toString();
     return url.toString();
   }
 

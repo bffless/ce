@@ -7,7 +7,7 @@ import * as os from 'os';
 import * as http from 'http';
 import { LocalPresignedUploadController } from '../../local-presigned-upload.controller';
 import { LocalUploadWriterService } from '../../local-upload-writer.service';
-import { LocalStorageAdapter } from '../../local.adapter';
+import { LocalStorageAdapter, LOCAL_PRESIGN_PATH } from '../../local.adapter';
 import { STORAGE_ADAPTER } from '../../storage.interface';
 import { FeatureFlagsService } from '../../../feature-flags/feature-flags.service';
 import { StorageQuotaService } from '../../storage-quota.service';
@@ -190,5 +190,53 @@ describe('local presigned upload over HTTP', () => {
       'transfer-encoding': 'chunked',
     });
     expect(res.status).toBe(411);
+  });
+
+  // TASK 12 — production mints a RELATIVE URL by default (see local.adapter.ts's
+  // getPresignedUploadUrl); the fixture above uses an explicit publicOrigin so
+  // its absolute-URL cases above keep exercising that (still-supported) shape.
+  // This adapter shares the SAME presignKey/maxUploadBytes as the one wired
+  // into the app above -- getPresignedUploadUrl only reads those two fields
+  // plus keyPrefix to mint+sign, so a URL from either adapter verifies
+  // identically against the running route.
+  //
+  // IMPORTANT LIMITATION: this still drives the Nest app directly with no
+  // nginx in front (see `put()`'s http.request straight to `port`), so it
+  // only proves the app-layer contract holds for a relative URL resolved
+  // against *some* origin -- it does NOT prove nginx actually routes
+  // `/api/storage/presigned/local` on a real app host unrewritten. That vhost
+  // routing gap is exactly the defect Task 12 fixes (see task-12-brief.md);
+  // this test file structurally cannot catch a regression there. The nginx
+  // template changes are the actual fix; this only confirms the URL SHAPE the
+  // adapter now mints is relative and that a relative URL, once resolved
+  // against a host, still round-trips through the route correctly.
+  it('resolves a RELATIVE presigned URL against the app host and completes the PUT', async () => {
+    const relativeOnlyAdapter = new LocalStorageAdapter({
+      localPath: basePath,
+      presignKey: derivePresignKey({ ENCRYPTION_KEY: 'itest' }),
+      maxUploadBytes: 400 * 1024 * 1024,
+    });
+    expect(relativeOnlyAdapter.supportsPresignedUrls()).toBe(true);
+
+    const relativeUrl = await relativeOnlyAdapter.getPresignedUploadUrl(
+      'o/r/uploads/content/relative.bin',
+    );
+    expect(relativeUrl.startsWith(LOCAL_PRESIGN_PATH)).toBe(true);
+    expect(relativeUrl).not.toMatch(/^https?:\/\//);
+
+    // What the browser does: resolve the relative URL against the page's own
+    // origin, which here is the same host:port the test server listens on.
+    const absoluteUrl = new URL(relativeUrl, `http://127.0.0.1:${port}`).toString();
+    const body = Buffer.from('relative body');
+
+    const res = await put(absoluteUrl, Readable.from([body]), {
+      'content-type': 'application/octet-stream',
+      'content-length': String(body.length),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await fs.readFile(path.join(basePath, 'o/r/uploads/content/relative.bin'))).toEqual(
+      body,
+    );
   });
 });

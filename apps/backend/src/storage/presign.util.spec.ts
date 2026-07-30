@@ -8,7 +8,7 @@ import {
   DEFAULT_MAX_UPLOAD_BYTES,
   MAX_EXPIRES_IN_SECONDS,
 } from './presign.util';
-import { LocalStorageAdapter } from './local.adapter';
+import { LocalStorageAdapter, LOCAL_PRESIGN_PATH } from './local.adapter';
 import { DynamicStorageAdapter } from './dynamic-storage.adapter';
 import { StorageModule } from './storage.module';
 
@@ -186,9 +186,26 @@ describe('publicOrigin reaches every LocalStorageAdapter construction site', () 
     expect(key).toBe('ws1/k');
   });
 
-  it('degrades to unsupported, not a crash, when no origin can be resolved', () => {
+  it('does not crash when no origin can be resolved, and (Task 12) still supports presigned uploads via a relative URL', () => {
+    // Before Task 12, an unresolvable origin degraded support to `false`. Now
+    // publicOrigin is an explicit override for an absolute URL, not a
+    // precondition, so support still holds on the (mandatory) signing secret
+    // alone -- this test's job is now to prove construction doesn't throw AND
+    // that the minted URL is the relative fallback shape, not an absolute one
+    // pointed at a wrong/guessed origin.
     delete process.env.PRIMARY_DOMAIN;
     delete process.env.PUBLIC_ORIGIN;
-    expect(new DynamicStorageAdapter().supportsPresignedUrls()).toBe(false);
+    const dynamic = new DynamicStorageAdapter();
+    expect(() => dynamic.supportsPresignedUrls()).not.toThrow();
+    expect(dynamic.supportsPresignedUrls()).toBe(true);
+  });
+
+  it('site 4 — DynamicStorageAdapter mints a RELATIVE presigned URL when no origin can be resolved', async () => {
+    delete process.env.PRIMARY_DOMAIN;
+    delete process.env.PUBLIC_ORIGIN;
+    const dynamic = new DynamicStorageAdapter();
+    const url = await dynamic.getPresignedUploadUrl!('o/r/uploads/content/a.bin');
+    expect(url.startsWith(LOCAL_PRESIGN_PATH)).toBe(true);
+    expect(url).not.toMatch(/^https?:\/\//);
   });
 });
