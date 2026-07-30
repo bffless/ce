@@ -66,10 +66,20 @@ export class LocalPresignedUploadController {
       throw new NotFoundException();
     }
 
-    // 2. Active adapter must be local. A URL minted before a backend swap must
-    //    not write to disk on a bucket-backed install.
+    // 2. Active adapter must be local AND must itself be willing to mint
+    //    presigned URLs. supportsPresignedUrls() is the exact predicate
+    //    LocalStorageAdapter.getPresignedUploadUrl consults before minting one
+    //    (see local.adapter.ts) -- it's false when the only signing material
+    //    available is the hardcoded dev-fallback secret (no ENCRYPTION_KEY /
+    //    LOCAL_PRESIGN_SECRET configured, no explicit presignKey injected).
+    //    Checking it here closes the other half of that threat model: without
+    //    this, an install that refuses to MINT URLs with the dev secret would
+    //    still ACCEPT signatures forged with that same public constant. 404,
+    //    not 403 -- the route must be indistinguishable from absent when it
+    //    isn't usable, matching the non-local-adapter case just above (one
+    //    predicate governs both directions: if it can't mint, it can't honour).
     const local = this.resolveLocalAdapter();
-    if (!local) throw new NotFoundException();
+    if (!local || !local.supportsPresignedUrls()) throw new NotFoundException();
 
     // 3. Params.
     const { key: encodedKey, exp: expRaw, max: maxRaw, sig } = query;
@@ -170,6 +180,7 @@ export class LocalPresignedUploadController {
   private resolveLocalAdapter(): {
     getStorageBasePath(): string;
     getPresignKey(): Buffer;
+    supportsPresignedUrls(): boolean;
   } | null {
     const candidates: unknown[] = [this.storageAdapter];
     const adapter = this.storageAdapter as unknown as {

@@ -514,7 +514,7 @@ describe('LocalStorageAdapter fails closed on the dev presign secret', () => {
     expect(adapter.supportsPresignedUrls()).toBe(true);
   });
 
-  it('still refuses to sign a URL if callers bypass supportsPresignedUrls and call getPresignedUploadUrl directly', async () => {
+  it('getPresignedUploadUrl itself is NOT gated on hasRealPresignSecret -- only supportsPresignedUrls is', async () => {
     // getPresignedUploadUrl itself doesn't gate on hasRealPresignSecret --
     // only supportsPresignedUrls (the advertised capability) does. This just
     // documents that boundary so it isn't mistaken for a second enforcement

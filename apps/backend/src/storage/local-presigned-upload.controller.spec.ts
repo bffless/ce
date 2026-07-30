@@ -71,6 +71,7 @@ describe('LocalPresignedUploadController', () => {
       getStorageBasePath: () => '/tmp/base',
       getPresignKey: () => presignKey,
       isLocalAdapter: true,
+      supportsPresignedUrls: () => true,
     };
     storageAdapter = { getUnderlyingAdapter: () => localAdapter };
   });
@@ -88,6 +89,20 @@ describe('LocalPresignedUploadController', () => {
     await expect(build().upload(validQuery(), makeReq(), {} as any)).rejects.toBeInstanceOf(
       NotFoundException,
     );
+  });
+
+  it('404s when the resolved local adapter would not itself mint presigned URLs', async () => {
+    // Fix-round-2 finding: supportsPresignedUrls() is false when the install
+    // has no real presign secret (only the public dev-fallback constant) and
+    // no explicit key was injected -- LocalStorageAdapter refuses to MINT a
+    // URL in that state. The route must equally refuse to ACCEPT one, or a
+    // no-secret install would honour signatures forged with that public
+    // constant. 404, not 403 -- indistinguishable from the route being absent.
+    localAdapter.supportsPresignedUrls = () => false;
+    await expect(build().upload(validQuery(), makeReq(), {} as any)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(writer.writeStream).not.toHaveBeenCalled();
   });
 
   it('403s on a tampered signature', async () => {
@@ -240,6 +255,7 @@ describe('LocalPresignedUploadController with the real global ValidationPipe', (
       isLocalAdapter: true,
       getStorageBasePath: () => '/tmp/base',
       getPresignKey: () => presignKey,
+      supportsPresignedUrls: () => true,
     };
     const storageAdapter = { getUnderlyingAdapter: () => localAdapter };
 

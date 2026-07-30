@@ -265,6 +265,7 @@ describe('DynamicStorageAdapter', () => {
 describe('DynamicStorageAdapter default local adapter', () => {
   const original = {
     PRIMARY_DOMAIN: process.env.PRIMARY_DOMAIN,
+    PUBLIC_ORIGIN: process.env.PUBLIC_ORIGIN,
     ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
   };
   afterEach(() => {
@@ -287,6 +288,11 @@ describe('DynamicStorageAdapter default local adapter', () => {
   it('degrades to unsupported rather than throwing when no origin can be resolved', () => {
     delete process.env.PRIMARY_DOMAIN;
     delete process.env.PUBLIC_ORIGIN;
+    // This test isolates the ORIGIN gate specifically: set a real secret so
+    // the (separate) secret gate can't also be the reason for `false` here --
+    // without this, the test would still pass even if the origin check were
+    // deleted, since the secret gate alone would produce `false` regardless.
+    process.env.ENCRYPTION_KEY = 'test-encryption-key';
     expect(new DynamicStorageAdapter().supportsPresignedUrls()).toBe(false);
   });
 });
