@@ -186,9 +186,15 @@ export interface IStorageAdapter {
    * This allows clients to upload directly without going through the backend
    * @param key - Storage key/path for the file
    * @param expiresIn - Optional expiration time in seconds (default: 3600)
+   * @param maxBytes - Optional caller-supplied ceiling (e.g. a pipeline step's
+   *   configured `maxFileSize`) to narrow the signed upload size below the
+   *   adapter's own default cap. Optional and adapter-specific: only
+   *   `LocalStorageAdapter` currently honours it (it signs `max` into the
+   *   URL itself); bucket adapters ignore it because their presigned URLs
+   *   don't carry a size constraint in this codebase.
    * @returns Presigned URL for PUT operation
    */
-  getPresignedUploadUrl?(key: string, expiresIn?: number): Promise<string>;
+  getPresignedUploadUrl?(key: string, expiresIn?: number, maxBytes?: number): Promise<string>;
 
   /**
    * Download a file as a stream instead of buffering into memory.

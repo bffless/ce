@@ -419,6 +419,21 @@ export class NginxConfigService implements OnModuleInit {
    * Generate nginx config for custom domains in PLATFORM_MODE.
    * Simpler config: port 80 only, no SSL (Traefik handles SSL termination).
    * Handles wwwBehavior for www/apex redirect configurations.
+   *
+   * SCOPE NOTE: unlike generateCEPrimaryDomainConfig and the two per-domain
+   * .hbs templates, this function (and its platform-mode siblings
+   * generatePlatformPrimaryDomainConfig / generatePlatformSubdomainConfig)
+   * deliberately does NOT get a `location = /api/storage/presigned/local`
+   * block. Platform-mode workspaces run on managed bucket storage, not the
+   * local filesystem adapter, so the local presigned-upload route's own
+   * accept-side gate (resolveLocalAdapter(...) + supportsPresignedUrls(),
+   * which 404s on a non-local adapter) already makes the route inert here --
+   * adding the location would emit config that can never be exercised. Also,
+   * platform nginx generation affects live tenant workspaces, which isn't
+   * something to change speculatively without a platform-specific need. See
+   * docs/superpowers/specs/2026-07-30-local-fs-presigned-uploads-design.md,
+   * section "Correction: upload URL routing", for the local-storage routing
+   * fix this deliberately does not extend to platform mode.
    */
   private generatePlatformCustomDomainConfig(
     domainMapping: DomainMapping,
@@ -617,6 +632,10 @@ ${serverBlocks}
   /**
    * Generate nginx config for subdomains in PLATFORM_MODE.
    * Similar to custom domains: port 80 only, Traefik handles SSL.
+   *
+   * SCOPE NOTE: deliberately no `/api/storage/presigned/local` location
+   * here -- see the note on generatePlatformCustomDomainConfig above for why
+   * (platform workspaces don't run the local storage adapter).
    */
   private generatePlatformSubdomainConfig(
     domainMapping: DomainMapping,
@@ -1052,6 +1071,10 @@ ${httpServerBlock}${httpsServerBlock}
   /**
    * Platform mode: Traefik handles SSL, nginx listens on port 80.
    * Includes proxy rules as location blocks before main content location.
+   *
+   * SCOPE NOTE: deliberately no `/api/storage/presigned/local` location
+   * here -- see the note on generatePlatformCustomDomainConfig above for why
+   * (platform workspaces don't run the local storage adapter).
    */
   private generatePlatformPrimaryDomainConfig(
     config: PrimaryDomainConfig,
@@ -1324,6 +1347,40 @@ ${proxyLocations}
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-Host $host;
+    }
+
+    # Presigned local-filesystem uploads. Served on the app's own host so the
+    # upload URL is same-origin with the page performing it -- no CORS
+    # needed. Must be an exact match (nginx always prefers "location =" over
+    # a prefix match, regardless of declaration order) so it reaches the
+    # backend's /api controller untouched instead of falling into "location /"
+    # below, which rewrites everything to the public-deployment-serving path.
+    location = /api/storage/presigned/local {
+        proxy_pass http://${backendHost}:${backendPort};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+
+        # Extended timeouts, matching the admin vhost's equivalent location.
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+
+        # Disable buffering so the backend receives (and streams to disk) the
+        # upload body incrementally instead of nginx spooling the whole
+        # request to its own temp file first.
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_max_temp_file_size 0;
+
+        # Matches the admin vhost's client_max_body_size for this location
+        # (docker/nginx/sites-available/main.conf.template) -- above
+        # DEFAULT_MAX_UPLOAD_BYTES (100 MiB) so the ceiling isn't an exact
+        # boundary; the backend's signed "max" param is still the authoritative limit.
+        client_max_body_size 200M;
     }
 
     location / {

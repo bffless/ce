@@ -7,6 +7,8 @@ import { PipelineStep } from '../types';
 import { ConfigurationError } from '../errors';
 import { IStorageAdapter, STORAGE_ADAPTER } from '../../storage/storage.interface';
 import { UploadRecordService } from '../upload-record.service';
+import { resolveLocalAdapter } from '../../storage/local.adapter';
+import { FeatureFlagsService } from '../../feature-flags/feature-flags.service';
 
 export interface PresignedUploadHandlerConfig {
   /**
@@ -50,8 +52,13 @@ export interface PresignedUploadHandlerConfig {
   expiresIn?: number;
 
   /**
-   * Maximum file size in bytes. Echoed back to the client as a hint and
-   * enforced at the register step (the backend never sees the bytes here).
+   * Maximum file size in bytes. Echoed back to the client as a hint, enforced
+   * at the register step (the backend never sees the bytes here), AND -- on
+   * local storage only -- passed to `getPresignedUploadUrl` to narrow the
+   * signed `max` on the URL itself, so an oversized PUT is rejected by the
+   * upload route (`Content-Length` vs. the signed `max`) rather than only
+   * being caught after the fact at register time. Bucket adapters ignore
+   * this narrowing; their presigned URLs carry no size constraint here.
    */
   maxFileSize?: number;
 
@@ -65,14 +72,45 @@ export interface PresignedUploadHandlerConfig {
 /**
  * Presigned Upload Handler (prepare phase)
  *
- * Mints a time-limited presigned PUT URL so the client can upload a file
- * DIRECTLY to the storage bucket, bypassing nginx and the backend entirely.
- * No bytes pass through the server. After the client PUTs the file, it calls a
- * second pipeline using `register_upload` to verify the object and write the
- * DB records.
+ * Mints a time-limited presigned PUT URL so a BROWSER client can upload a
+ * file directly, without routing the bytes through this pipeline step. After
+ * the client PUTs the file, it calls a second pipeline using
+ * `register_upload` to verify the object and write the DB records.
  *
- * Only works on storage backends that support presigned uploads (S3, GCS,
- * MinIO, Azure). On local storage this fails with PRESIGNED_NOT_SUPPORTED —
+ * This works on any storage backend that reports presigned support via
+ * `supportsPresignedUrls()` -- which now includes local filesystem storage,
+ * not only bucket backends. Support is still backend-specific and not
+ * universal: e.g. `AzureBlobStorageAdapter.supportsPresignedUrls()` is false
+ * without a shared-key credential (SAS URLs can't be minted from a
+ * connection string alone).
+ * - Bucket backends (S3, GCS, MinIO, Azure): the URL is absolute and the PUT
+ *   bypasses nginx/the backend entirely, landing straight on the bucket
+ *   (needs bucket CORS allowing PUT from the site origin).
+ * - Local storage: `LocalStorageAdapter.getPresignedUploadUrl` mints a
+ *   RELATIVE URL by default, which the browser resolves against the page's
+ *   own origin -- the PUT still reaches this backend (via a dedicated,
+ *   signature-authorized route the per-domain nginx templates proxy
+ *   unrewritten -- see `apps/backend/templates/nginx/subdomain.conf.hbs` and
+ *   `custom-domain.conf.hbs`), just not through this pipeline's request
+ *   body. No CORS is needed because the URL is same-origin by construction.
+ *   See `docs/superpowers/specs/2026-07-30-local-fs-presigned-uploads-design.md`,
+ *   section "Correction: upload URL routing", for the full rationale.
+ *
+ * `PRESIGNED_NOT_SUPPORTED` below is a real failure mode when the active
+ * adapter has no real signing secret configured (which should not happen on
+ * a normal CE install -- `ENCRYPTION_KEY` is mandatory setup), OR -- for
+ * local storage specifically -- when `ENABLE_LOCAL_PRESIGNED_UPLOADS` is
+ * off. The adapter itself has no access to `FeatureFlagsService` (it isn't a
+ * Nest injectable), so this handler -- which is one -- consults the flag
+ * directly and folds it into the same support check, mirroring exactly what
+ * `local-presigned-upload.controller.ts`'s route-level flag check would do
+ * to the client's subsequent PUT. That keeps this step's success/failure
+ * consistent with whether the PUT it hands back would actually work: with
+ * the flag off, this step now fails fast with `PRESIGNED_NOT_SUPPORTED`
+ * instead of reporting success and letting the client's PUT 404 later.
+ *
+ * This handler is for BROWSER callers -- a server/CI caller has no page
+ * origin to resolve a relative URL against. Server-side upload flows should
  * use `file_upload_handler` (proxied) instead.
  */
 @Injectable()
@@ -87,6 +125,7 @@ export class PresignedUploadHandler
     private readonly expressionEvaluator: ExpressionEvaluator,
     private readonly uploadRecords: UploadRecordService,
     @Inject(STORAGE_ADAPTER) private readonly storageAdapter: IStorageAdapter,
+    private readonly featureFlags: FeatureFlagsService,
   ) {
     this.registry.register(this);
   }
@@ -109,8 +148,30 @@ export class PresignedUploadHandler
         error: {
           code: 'PRESIGNED_NOT_SUPPORTED',
           message:
-            'The configured storage backend does not support direct (presigned) uploads. ' +
-            'Switch to S3, GCS, MinIO, or Azure storage, or use a proxied file_upload_handler instead.',
+            'The configured storage backend does not support direct (presigned) uploads right now. ' +
+            'On local storage this means no real signing secret is configured (ENCRYPTION_KEY is ' +
+            'mandatory CE setup and doubles as the presign secret) -- verify it is set, or use a ' +
+            'proxied file_upload_handler instead.',
+        },
+      };
+    }
+
+    // Local storage additionally gates on ENABLE_LOCAL_PRESIGNED_UPLOADS.
+    // This is local-specific: bucket adapters (S3/GCS/MinIO/Azure) are
+    // unaffected by the flag and keep reporting support based purely on
+    // supportsPresignedUrls() above. Checking here -- not just at the route
+    // -- means flag-off surfaces as this step failing with
+    // PRESIGNED_NOT_SUPPORTED (so the caller can fall back to
+    // file_upload_handler) instead of minting a URL whose PUT then 404s.
+    const localAdapter = resolveLocalAdapter(this.storageAdapter);
+    if (localAdapter && !(await this.featureFlags.isEnabled('ENABLE_LOCAL_PRESIGNED_UPLOADS'))) {
+      return {
+        success: false,
+        error: {
+          code: 'PRESIGNED_NOT_SUPPORTED',
+          message:
+            'Direct (presigned) uploads to local storage are disabled ' +
+            '(ENABLE_LOCAL_PRESIGNED_UPLOADS is off) -- use a proxied file_upload_handler instead.',
         },
       };
     }
@@ -183,6 +244,7 @@ export class PresignedUploadHandler
       uploadUrl = await this.storageAdapter.getPresignedUploadUrl(
         keyParts.storageKey,
         expiresIn,
+        config.maxFileSize,
       );
     } catch (err) {
       return {

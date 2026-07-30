@@ -8,6 +8,7 @@ import {
   SignedUrlOptions,
 } from './storage.interface';
 import { LocalStorageAdapter } from './local.adapter';
+import { explicitPublicOrigin } from './presign.util';
 
 /**
  * Dynamic Storage Adapter
@@ -28,8 +29,14 @@ export class DynamicStorageAdapter implements IStorageAdapter {
   constructor() {
     // Generate a unique instance ID to track this singleton
     this.instanceId = Math.random().toString(36).substring(7);
-    // Start with a default local adapter
-    this.adapter = new LocalStorageAdapter({ localPath: './uploads' });
+    // Start with a default local adapter. publicOrigin is ONLY an explicit
+    // PUBLIC_ORIGIN override (never derived from PRIMARY_DOMAIN) -- see
+    // explicitPublicOrigin's doc comment for why. Absent, getPresignedUploadUrl
+    // mints a relative URL, which is the production default.
+    this.adapter = new LocalStorageAdapter({
+      localPath: './uploads',
+      publicOrigin: explicitPublicOrigin(),
+    });
     this.logger.log(
       `DynamicStorageAdapter [${this.instanceId}] initialized with default LocalStorageAdapter`,
     );
@@ -149,10 +156,10 @@ export class DynamicStorageAdapter implements IStorageAdapter {
     return this.adapter.supportsPresignedUrls?.() ?? false;
   }
 
-  async getPresignedUploadUrl(key: string, expiresIn?: number): Promise<string> {
+  async getPresignedUploadUrl(key: string, expiresIn?: number, maxBytes?: number): Promise<string> {
     if (!this.adapter.getPresignedUploadUrl) {
       throw new Error('Presigned URLs not supported by current storage adapter');
     }
-    return this.adapter.getPresignedUploadUrl(key, expiresIn);
+    return this.adapter.getPresignedUploadUrl(key, expiresIn, maxBytes);
   }
 }

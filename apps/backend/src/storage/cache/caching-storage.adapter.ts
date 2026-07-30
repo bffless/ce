@@ -210,11 +210,11 @@ export class CachingStorageAdapter implements IStorageAdapter {
   /**
    * Get presigned upload URL (pass through to storage)
    */
-  async getPresignedUploadUrl(key: string, expiresIn?: number): Promise<string> {
+  async getPresignedUploadUrl(key: string, expiresIn?: number, maxBytes?: number): Promise<string> {
     if (!this.storage.getPresignedUploadUrl) {
       throw new Error('Presigned URLs not supported by current storage adapter');
     }
-    return this.storage.getPresignedUploadUrl(key, expiresIn);
+    return this.storage.getPresignedUploadUrl(key, expiresIn, maxBytes);
   }
 
   /**
@@ -232,6 +232,17 @@ export class CachingStorageAdapter implements IStorageAdapter {
   async invalidateProject(owner: string, repo: string): Promise<number> {
     const prefix = `cache:${owner}/${repo}/`;
     return this.cache.deleteByPrefix(prefix);
+  }
+
+  /**
+   * Invalidate a single cached object.
+   *
+   * Needed because a presigned upload writes to the backing store directly,
+   * bypassing this adapter's `upload()` — so the cache would otherwise keep
+   * serving the previous bytes for that key.
+   */
+  async invalidateKey(key: string): Promise<void> {
+    await this.cache.delete(this.getCacheKey(key));
   }
 
   /**

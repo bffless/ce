@@ -60,6 +60,17 @@ assert_contains "$ETC/cloudflare-realip.conf"    'set_real_ip_from 151.101.0.0/1
 assert_contains "$ETC/cloudflare-realip.conf"    'set_real_ip_from 2a04:4e40::/32;'      'proxy: custom range 2'
 assert_contains "$ETC/cloudflare-realip.conf"    'real_ip_header True-Client-IP;'        'proxy: custom header'
 
+# --- presigned local-fs uploads: the wildcard (*.PRIMARY_DOMAIN) vhost needs
+# its own unrewritten "location =" passthrough, same as the admin vhost —
+# without it, a relative presigned upload URL minted for a deployment
+# subdomain (the zero-config default, no domain mapping row required) gets
+# rewritten by the wildcard block's "location /" into
+# /public/subdomain-alias/<sub>/api/storage/presigned/local and 404s. Assert
+# it appears twice: once per vhost (admin + wildcard).
+presign_count=$(grep -cF 'location = /api/storage/presigned/local {' "$ETC/sites-available/main.conf")
+[ "$presign_count" -eq 2 ] && echo 'ok: presign location present on both admin and wildcard vhosts' \
+    || { echo "FAIL: presign location count is $presign_count, expected 2 (admin + wildcard vhosts) in $ETC/sites-available/main.conf"; FAILURES=$((FAILURES+1)); }
+
 # --- direct + letsencrypt: redirect + ACME + realip off ---
 setup_etc 'STATE=applied
 PRIMARY_DOMAIN=example.com

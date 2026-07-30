@@ -1,0 +1,247 @@
+import { Readable } from 'stream';
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import * as os from 'os';
+import { createHash } from 'crypto';
+import {
+  LocalUploadWriterService,
+  UploadTooLargeError,
+  UploadIncompleteError,
+  TEMP_DIR_NAME,
+} from './local-upload-writer.service';
+
+describe('LocalUploadWriterService', () => {
+  let basePath: string;
+  let writer: LocalUploadWriterService;
+
+  beforeEach(async () => {
+    basePath = await fs.mkdtemp(path.join(os.tmpdir(), 'bffless-upload-'));
+    writer = new LocalUploadWriterService();
+  });
+  afterEach(async () => {
+    await fs.rm(basePath, { recursive: true, force: true });
+  });
+
+  const listTemp = async (): Promise<string[]> => {
+    try {
+      return await fs.readdir(path.join(basePath, TEMP_DIR_NAME));
+    } catch {
+      return [];
+    }
+  };
+
+  it('writes the body to the target key and returns a content etag', async () => {
+    const body = Buffer.from('hello presigned world');
+    const result = await writer.writeStream({
+      source: Readable.from([body]),
+      basePath,
+      storageKey: 'o/r/uploads/content/a.bin',
+      maxBytes: 1024,
+    });
+
+    expect(result.bytesWritten).toBe(body.length);
+    expect(result.etag).toBe(createHash('sha256').update(body).digest('hex'));
+    expect(await fs.readFile(path.join(basePath, 'o/r/uploads/content/a.bin'))).toEqual(body);
+  });
+
+  it('creates missing parent directories', async () => {
+    await writer.writeStream({
+      source: Readable.from([Buffer.from('x')]),
+      basePath,
+      storageKey: 'deep/nested/path/f.txt',
+      maxBytes: 16,
+    });
+    expect(await fs.readFile(path.join(basePath, 'deep/nested/path/f.txt'), 'utf8')).toBe('x');
+  });
+
+  it('leaves no temp file behind on success', async () => {
+    await writer.writeStream({
+      source: Readable.from([Buffer.from('x')]),
+      basePath,
+      storageKey: 'a.txt',
+      maxBytes: 16,
+    });
+    expect(await listTemp()).toEqual([]);
+  });
+
+  it('aborts when the body exceeds maxBytes, writing nothing to the target', async () => {
+    await expect(
+      writer.writeStream({
+        source: Readable.from([Buffer.alloc(100)]),
+        basePath,
+        storageKey: 'too-big.bin',
+        maxBytes: 10,
+      }),
+    ).rejects.toBeInstanceOf(UploadTooLargeError);
+
+    await expect(fs.access(path.join(basePath, 'too-big.bin'))).rejects.toThrow();
+    expect(await listTemp()).toEqual([]);
+  });
+
+  it('cleans up when the source stream errors mid-body', async () => {
+    const source = new Readable({
+      read() {
+        this.push(Buffer.from('partial'));
+        this.destroy(new Error('client disconnected'));
+      },
+    });
+
+    await expect(
+      writer.writeStream({ source, basePath, storageKey: 'partial.bin', maxBytes: 1024 }),
+    ).rejects.toThrow(/client disconnected/);
+
+    await expect(fs.access(path.join(basePath, 'partial.bin'))).rejects.toThrow();
+    expect(await listTemp()).toEqual([]);
+  });
+
+  it('never leaves a partial object at the target key', async () => {
+    // Pre-existing content must survive a failed overwrite.
+    await fs.writeFile(path.join(basePath, 'existing.bin'), 'ORIGINAL');
+    await expect(
+      writer.writeStream({
+        source: Readable.from([Buffer.alloc(999)]),
+        basePath,
+        storageKey: 'existing.bin',
+        maxBytes: 10,
+      }),
+    ).rejects.toBeInstanceOf(UploadTooLargeError);
+
+    expect(await fs.readFile(path.join(basePath, 'existing.bin'), 'utf8')).toBe('ORIGINAL');
+  });
+
+  it('cleans up the temp file when the final rename fails', async () => {
+    // Occupy the target path with a directory so `fs.rename(tempPath, targetPath)`
+    // fails (EISDIR) after the body has already been fully written to the temp file.
+    await fs.mkdir(path.join(basePath, 'rename-fails.bin'));
+
+    await expect(
+      writer.writeStream({
+        source: Readable.from([Buffer.from('will not land')]),
+        basePath,
+        storageKey: 'rename-fails.bin',
+        maxBytes: 1024,
+      }),
+    ).rejects.toThrow();
+
+    expect(await listTemp()).toEqual([]);
+    // The target key must still be the (empty) directory we set up — never a
+    // partial file — proving the failed rename didn't leave anything behind.
+    expect((await fs.stat(path.join(basePath, 'rename-fails.bin'))).isDirectory()).toBe(true);
+    expect(await fs.readdir(path.join(basePath, 'rename-fails.bin'))).toEqual([]);
+  });
+
+  it('streams with bounded memory for a body far larger than the heap budget', async () => {
+    const chunk = Buffer.alloc(1024 * 1024, 0x61); // 1 MiB
+    const totalChunks = 300; // 300 MiB — would OOM a 128 MB heap if buffered
+    let emitted = 0;
+    const source = new Readable({
+      read() {
+        this.push(emitted++ < totalChunks ? chunk : null);
+      },
+    });
+
+    global.gc?.();
+    const before = process.memoryUsage().heapUsed;
+
+    const result = await writer.writeStream({
+      source,
+      basePath,
+      storageKey: 'big.bin',
+      maxBytes: totalChunks * chunk.length,
+    });
+
+    const growth = process.memoryUsage().heapUsed - before;
+    expect(result.bytesWritten).toBe(totalChunks * chunk.length);
+    // Generous ceiling; a buffering implementation grows by ~300 MB.
+    expect(growth).toBeLessThan(64 * 1024 * 1024);
+  }, 60_000);
+
+  it('rejects a short body that under-delivers the declared length, without touching the target', async () => {
+    // Simulates something upstream (e.g. a body-parser triggered by a
+    // non-octet-stream Content-Type) fully consuming the request body before
+    // it reaches the writer: the source stream ends immediately, having
+    // yielded zero bytes, even though the caller declared 999.
+    await fs.writeFile(path.join(basePath, 'existing.bin'), 'ORIGINAL');
+
+    await expect(
+      writer.writeStream({
+        source: Readable.from([]),
+        basePath,
+        storageKey: 'existing.bin',
+        maxBytes: 999,
+        expectedBytes: 999,
+      }),
+    ).rejects.toBeInstanceOf(UploadIncompleteError);
+
+    // The pre-existing object must be completely untouched -- not truncated,
+    // not replaced with an empty file.
+    expect(await fs.readFile(path.join(basePath, 'existing.bin'), 'utf8')).toBe('ORIGINAL');
+    expect(await listTemp()).toEqual([]);
+  });
+
+  it('rejects a short body even when there is no pre-existing object at the target key', async () => {
+    await expect(
+      writer.writeStream({
+        source: Readable.from([Buffer.alloc(3)]),
+        basePath,
+        storageKey: 'brand-new.bin',
+        maxBytes: 10,
+        expectedBytes: 10,
+      }),
+    ).rejects.toBeInstanceOf(UploadIncompleteError);
+
+    await expect(fs.access(path.join(basePath, 'brand-new.bin'))).rejects.toThrow();
+    expect(await listTemp()).toEqual([]);
+  });
+
+  it('carries bytesWritten and expectedBytes on the error for diagnostics', async () => {
+    const err = await writer
+      .writeStream({
+        source: Readable.from([Buffer.alloc(4)]),
+        basePath,
+        storageKey: 'short.bin',
+        maxBytes: 10,
+        expectedBytes: 10,
+      })
+      .catch((e) => e);
+
+    expect(err).toBeInstanceOf(UploadIncompleteError);
+    expect(err.bytesWritten).toBe(4);
+    expect(err.expectedBytes).toBe(10);
+  });
+
+  it('does not enforce expectedBytes when it is omitted', async () => {
+    const result = await writer.writeStream({
+      source: Readable.from([Buffer.from('ok')]),
+      basePath,
+      storageKey: 'no-check.bin',
+      maxBytes: 1024,
+    });
+    expect(result.bytesWritten).toBe(2);
+  });
+
+  it('succeeds when bytesWritten matches expectedBytes exactly', async () => {
+    const result = await writer.writeStream({
+      source: Readable.from([Buffer.from('exact')]),
+      basePath,
+      storageKey: 'exact.bin',
+      maxBytes: 1024,
+      expectedBytes: 5,
+    });
+    expect(result.bytesWritten).toBe(5);
+    expect(await fs.readFile(path.join(basePath, 'exact.bin'), 'utf8')).toBe('exact');
+  });
+
+  it('sweeps temp files older than the cutoff and keeps fresh ones', async () => {
+    const tempDir = path.join(basePath, TEMP_DIR_NAME);
+    await fs.mkdir(tempDir, { recursive: true });
+    await fs.writeFile(path.join(tempDir, 'stale'), 'x');
+    await fs.writeFile(path.join(tempDir, 'fresh'), 'x');
+
+    const old = new Date(Date.now() - 60 * 60 * 1000);
+    await fs.utimes(path.join(tempDir, 'stale'), old, old);
+
+    expect(await writer.sweepTempFiles(basePath, 30 * 60 * 1000)).toBe(1);
+    expect(await fs.readdir(tempDir)).toEqual(['fresh']);
+  });
+});

@@ -9,6 +9,16 @@ import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import {
+  derivePresignKey,
+  signLocalUpload,
+  hasRealPresignSecret,
+  DEFAULT_MAX_UPLOAD_BYTES,
+  MAX_EXPIRES_IN_SECONDS,
+} from './presign.util';
+
+/** Path the local presigned-upload route is mounted at. */
+export const LOCAL_PRESIGN_PATH = '/api/storage/presigned/local';
 
 /**
  * Local File System Storage Adapter
@@ -22,15 +32,53 @@ export class LocalStorageAdapter implements IStorageAdapter {
   private readonly basePath: string;
   private readonly baseUrl: string;
   private readonly keyPrefix: string;
+  private readonly publicOrigin: string | null;
+  private readonly presignKey: Buffer;
+  private readonly hasExplicitPresignKey: boolean;
+  private readonly maxUploadBytes: number;
 
-  constructor(config: { localPath: string; baseUrl?: string; keyPrefix?: string }) {
+  constructor(config: {
+    localPath: string;
+    baseUrl?: string;
+    keyPrefix?: string;
+    publicOrigin?: string;
+    presignKey?: Buffer;
+    maxUploadBytes?: number;
+  }) {
     this.basePath = path.resolve(config.localPath);
     this.baseUrl = config.baseUrl || 'http://localhost:3000/files'; // @TODO baseUrl of /files does not make sense, no sure baseUrl is used for anything?
     this.keyPrefix = config.keyPrefix || '';
+
+    // Presigned-upload config. `publicOrigin` is deliberately separate from the
+    // vestigial `baseUrl` above: threading presigned URLs through that would
+    // silently mint localhost URLs on a real install.
+    this.publicOrigin = config.publicOrigin?.replace(/\/+$/, '') ?? null;
+    this.presignKey = config.presignKey ?? derivePresignKey();
+    this.hasExplicitPresignKey = config.presignKey !== undefined;
+    this.maxUploadBytes = config.maxUploadBytes ?? DEFAULT_MAX_UPLOAD_BYTES;
+
     this.logger.log(
       `Initialized LocalStorageAdapter with basePath: ${this.basePath}` +
-        (this.keyPrefix ? `, keyPrefix: ${this.keyPrefix}` : ''),
+        (this.keyPrefix ? `, keyPrefix: ${this.keyPrefix}` : '') +
+        `, presignedUploads: ${
+          this.hasExplicitPresignKey || hasRealPresignSecret()
+            ? `enabled (${this.publicOrigin ? 'absolute' : 'relative'} URLs)`
+            : 'disabled (no real signing secret)'
+        }`,
     );
+  }
+
+  /** Marker used to narrow the active adapter without instanceof across module boundaries. */
+  readonly isLocalAdapter = true;
+
+  /** Absolute storage root. Used by the presigned-upload route and the temp-file sweeper. */
+  getStorageBasePath(): string {
+    return this.basePath;
+  }
+
+  /** Presign key this adapter mints with; the route verifies against it. */
+  getPresignKey(): Buffer {
+    return this.presignKey;
   }
 
   /**
@@ -192,11 +240,87 @@ export class LocalStorageAdapter implements IStorageAdapter {
   }
 
   /**
-   * Check if presigned upload URLs are supported
-   * Local storage does not support presigned URLs - uploads must go through backend
+   * Local storage supports presigned uploads via a same-origin, HMAC-signed
+   * PUT route, mounted on the app's own host (see the per-domain nginx
+   * templates' `location = /api/storage/presigned/local`). Because the URL is
+   * relative by default (`getPresignedUploadUrl` below), minting one needs no
+   * resolvable public origin — only real signing material: either an
+   * explicitly configured `presignKey`, or a non-default secret in the
+   * environment (`hasRealPresignSecret`). `publicOrigin` is now an explicit
+   * override for callers that need an absolute URL, not a precondition.
+   *
+   * Without real signing material, `derivePresignKey()` above degrades to a
+   * hardcoded dev-fallback string rather than throwing (so construction never
+   * crashes), but that fallback is a PUBLIC CONSTANT — the sole
+   * "authorization" on the upload route would then be forgeable by anyone.
+   * Fail closed here instead: don't advertise presigned support when the only
+   * signing material backing it is public. `ENCRYPTION_KEY` is mandatory in
+   * CE setup, so this should never trigger in practice — but
+   * ENABLE_LOCAL_PRESIGNED_UPLOADS defaults to on, so this is the backstop
+   * for a misconfigured install rather than a theoretical concern.
    */
   supportsPresignedUrls(): boolean {
-    return false;
+    return this.hasExplicitPresignKey || hasRealPresignSecret();
+  }
+
+  /**
+   * Mint a signed, time-bounded, size-capped upload URL.
+   *
+   * The signature covers the PREFIXED key so it matches exactly what the route
+   * will write, and `max` is signed so a client cannot raise its own cap.
+   *
+   * Shape: RELATIVE (`/api/storage/presigned/local?...`) unless `publicOrigin`
+   * was explicitly configured, in which case the URL is absolute as before.
+   * A relative URL is resolved by the browser against whichever host served
+   * the page, which is exactly the app's own host — the per-domain nginx
+   * templates proxy this path there unrewritten. That makes "same-origin, no
+   * CORS" true by construction instead of by assuming the mint-time origin
+   * matches the app's serving host (it didn't -- an absolute URL minted at
+   * PRIMARY_DOMAIN pointed at an nginx vhost that doesn't route /api to the
+   * backend at all; see
+   * docs/superpowers/specs/2026-07-30-local-fs-presigned-uploads-design.md,
+   * section "Correction: upload URL routing").
+   *
+   * `maxBytes`, when provided, NARROWS the signed `max` below the adapter's
+   * own ceiling (`this.maxUploadBytes`, normally `DEFAULT_MAX_UPLOAD_BYTES`).
+   * It can only tighten, never widen: a step configuring a larger
+   * `maxFileSize` than the adapter's own cap still gets the adapter's cap.
+   * This lets a pipeline step's `maxFileSize` (e.g. a public
+   * `/api/uploads/prepare` rule meant only for small avatars) actually bound
+   * what gets signed, instead of every presigned URL always carrying the
+   * same 100 MiB ceiling regardless of the step's own configured limit.
+   */
+  async getPresignedUploadUrl(
+    key: string,
+    expiresIn = MAX_EXPIRES_IN_SECONDS,
+    maxBytes?: number,
+  ): Promise<string> {
+    if (!Number.isFinite(expiresIn)) {
+      throw new TypeError('expiresIn must be a finite number');
+    }
+
+    const storageKey = this.prefixKey(this.sanitizeKey(key));
+    const ttl = Math.min(Math.max(1, Math.floor(expiresIn)), MAX_EXPIRES_IN_SECONDS);
+    const exp = Math.floor(Date.now() / 1000) + ttl;
+    const max =
+      typeof maxBytes === 'number' && Number.isFinite(maxBytes) && maxBytes > 0
+        ? Math.min(this.maxUploadBytes, Math.floor(maxBytes))
+        : this.maxUploadBytes;
+    const sig = signLocalUpload({ key: storageKey, exp, max }, this.presignKey);
+
+    const params = new URLSearchParams();
+    params.set('key', Buffer.from(storageKey, 'utf8').toString('base64url'));
+    params.set('exp', String(exp));
+    params.set('max', String(max));
+    params.set('sig', sig);
+
+    if (!this.publicOrigin) {
+      return `${LOCAL_PRESIGN_PATH}?${params.toString()}`;
+    }
+
+    const url = new URL(LOCAL_PRESIGN_PATH, this.publicOrigin);
+    url.search = params.toString();
+    return url.toString();
   }
 
   /**
@@ -437,4 +561,53 @@ export class LocalStorageAdapter implements IStorageAdapter {
     };
     return mimeTypes[ext] || 'application/octet-stream';
   }
+}
+
+/**
+ * Narrow the active (possibly wrapped) storage adapter down to a
+ * `LocalStorageAdapter`, or `null` when the active backend isn't local.
+ *
+ * The active `IStorageAdapter` may be a `DynamicStorageAdapter`
+ * (`getUnderlyingAdapter()`) and/or a `CachingStorageAdapter`
+ * (`getWrappedAdapter()`), and in production both together: the setup-wizard
+ * flow wraps as `DynamicStorageAdapter(CachingStorageAdapter(LocalStorageAdapter))`.
+ * This checks the adapter itself, one level of unwrapping, and — for that
+ * nested case — a second level from whichever wrapper was found first, so it
+ * resolves correctly regardless of which single wrapper (or both, in that
+ * order) is present.
+ *
+ * Shared by the presigned-upload route and the temp-file sweep cron so there
+ * is exactly one place that understands this wrapping, instead of each
+ * caller re-deriving (and potentially under-handling) it.
+ *
+ * MAXIMUM SUPPORTED WRAPPER DEPTH IS 2 (bare adapter, or one wrapper, or two
+ * nested wrappers — Dynamic(Caching(Local)) or Caching(Dynamic(Local))). If a
+ * third wrapper is ever introduced around the local adapter, this function
+ * returns `null` for it — i.e. it fails CLOSED (every caller here treats
+ * `null` as "not local", which is the safe direction: the presigned route
+ * 404s instead of misrouting a signed upload, and the sweeper simply skips a
+ * backend it doesn't recognize). That reads as "the feature stopped working
+ * for no reason" rather than crashing, so if presigned uploads or the sweep
+ * mysteriously stop finding a local adapter after a storage-layer refactor,
+ * check whether a new wrapper was added and extend the `candidates` walk
+ * below to match.
+ */
+export function resolveLocalAdapter(adapter: unknown): LocalStorageAdapter | null {
+  const candidates: unknown[] = [adapter];
+  const wrapper = adapter as {
+    getUnderlyingAdapter?: () => unknown;
+    getWrappedAdapter?: () => unknown;
+  };
+  if (wrapper?.getUnderlyingAdapter) candidates.push(wrapper.getUnderlyingAdapter());
+  if (wrapper?.getWrappedAdapter) candidates.push(wrapper.getWrappedAdapter());
+
+  for (const candidate of candidates) {
+    const c = candidate as { isLocalAdapter?: boolean } & Record<string, unknown>;
+    if (c?.isLocalAdapter) return c as unknown as LocalStorageAdapter;
+    const inner = ((c as any)?.getUnderlyingAdapter?.() ?? (c as any)?.getWrappedAdapter?.()) as
+      | ({ isLocalAdapter?: boolean } & Record<string, unknown>)
+      | undefined;
+    if (inner?.isLocalAdapter) return inner as unknown as LocalStorageAdapter;
+  }
+  return null;
 }

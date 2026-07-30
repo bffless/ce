@@ -311,4 +311,13 @@ describe('CachingStorageAdapter', () => {
       expect(mockCache.set).toHaveBeenCalledWith('cache:font.woff2', expect.any(Buffer), 86400);
     });
   });
+
+  describe('invalidateKey', () => {
+    it('deletes exactly the cache entry for one storage key', async () => {
+      await cachingAdapter.invalidateKey('o/r/uploads/content/a.bin');
+
+      expect(mockCache.delete).toHaveBeenCalledWith('cache:o/r/uploads/content/a.bin');
+      expect(mockCache.deleteByPrefix).not.toHaveBeenCalled();
+    });
+  });
 });

@@ -1,4 +1,5 @@
-import { LocalStorageAdapter } from './local.adapter';
+import { LocalStorageAdapter, LOCAL_PRESIGN_PATH, resolveLocalAdapter } from './local.adapter';
+import { derivePresignKey, signLocalUpload, DEFAULT_MAX_UPLOAD_BYTES } from './presign.util';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -362,5 +363,330 @@ describe('LocalStorageAdapter', () => {
         expect(entries).toHaveLength(0);
       }
     });
+  });
+});
+
+describe('LocalStorageAdapter presigned uploads', () => {
+  const presignKey = derivePresignKey({ ENCRYPTION_KEY: 'test' });
+
+  const makeAdapter = (overrides: Record<string, unknown> = {}) =>
+    new LocalStorageAdapter({
+      localPath: '/tmp/bffless-presign-test',
+      publicOrigin: 'https://ce.example',
+      presignKey,
+      ...overrides,
+    });
+
+  it('reports presigned support once an origin is configured', () => {
+    expect(makeAdapter().supportsPresignedUrls()).toBe(true);
+  });
+
+  it('still reports presigned support when no origin was resolved (a relative URL needs none)', () => {
+    // supportsPresignedUrls() does not require a resolved publicOrigin --
+    // getPresignedUploadUrl falls back to a relative URL, so only real
+    // signing material (checked below, in the "fails closed" describe block)
+    // gates support. See local.adapter.ts's supportsPresignedUrls doc.
+    const adapter = new LocalStorageAdapter({ localPath: '/tmp/x', presignKey });
+    expect(adapter.supportsPresignedUrls()).toBe(true);
+  });
+
+  it('mints an absolute same-origin URL on the presign path', async () => {
+    const url = new URL(await makeAdapter().getPresignedUploadUrl('o/r/uploads/content/a.bin'));
+    expect(url.origin).toBe('https://ce.example');
+    expect(url.pathname).toBe(LOCAL_PRESIGN_PATH);
+  });
+
+  it('signs the prefixed key so the signature matches what the route will verify', async () => {
+    const adapter = makeAdapter({ keyPrefix: 'ws1' });
+    const url = new URL(await adapter.getPresignedUploadUrl('o/r/uploads/content/a.bin'));
+
+    const key = Buffer.from(url.searchParams.get('key')!, 'base64url').toString('utf8');
+    expect(key).toBe('ws1/o/r/uploads/content/a.bin');
+
+    const exp = Number(url.searchParams.get('exp'));
+    const max = Number(url.searchParams.get('max'));
+    expect(url.searchParams.get('sig')).toBe(signLocalUpload({ key, exp, max }, presignKey));
+  });
+
+  it('binds the configured size ceiling into the URL', async () => {
+    const url = new URL(await makeAdapter().getPresignedUploadUrl('k'));
+    expect(Number(url.searchParams.get('max'))).toBe(DEFAULT_MAX_UPLOAD_BYTES);
+
+    const custom = new URL(await makeAdapter({ maxUploadBytes: 1234 }).getPresignedUploadUrl('k'));
+    expect(Number(custom.searchParams.get('max'))).toBe(1234);
+  });
+
+  describe('optional maxBytes parameter narrows (never widens) the signed max', () => {
+    it('narrows below the adapter default when a smaller caller ceiling is passed', async () => {
+      const url = new URL(await makeAdapter().getPresignedUploadUrl('k', undefined, 5_242_880));
+      expect(Number(url.searchParams.get('max'))).toBe(5_242_880);
+    });
+
+    it('does NOT widen past the adapter ceiling when the caller ceiling is larger', async () => {
+      const url = new URL(
+        await makeAdapter({ maxUploadBytes: 1234 }).getPresignedUploadUrl(
+          'k',
+          undefined,
+          999_999_999,
+        ),
+      );
+      expect(Number(url.searchParams.get('max'))).toBe(1234);
+    });
+
+    it('falls back to the adapter default when maxBytes is omitted, zero, negative, or non-finite', async () => {
+      for (const bad of [undefined, 0, -5, NaN, Infinity]) {
+        const url = new URL(await makeAdapter().getPresignedUploadUrl('k', undefined, bad as any));
+        expect(Number(url.searchParams.get('max'))).toBe(DEFAULT_MAX_UPLOAD_BYTES);
+      }
+    });
+
+    it('floors a fractional maxBytes', async () => {
+      const url = new URL(await makeAdapter().getPresignedUploadUrl('k', undefined, 100.9));
+      expect(Number(url.searchParams.get('max'))).toBe(100);
+    });
+
+    it('signs with the narrowed max, so verifyLocalUpload only accepts that exact value', async () => {
+      const url = new URL(await makeAdapter().getPresignedUploadUrl('k', undefined, 5_242_880));
+      const key = Buffer.from(url.searchParams.get('key')!, 'base64url').toString('utf8');
+      const exp = Number(url.searchParams.get('exp'));
+      const sig = url.searchParams.get('sig')!;
+
+      const { verifyLocalUpload } = await import('./presign.util');
+      expect(verifyLocalUpload({ key, exp, max: 5_242_880 }, sig, presignKey)).toBe(true);
+      // The original (wider) default no longer verifies against this signature.
+      expect(verifyLocalUpload({ key, exp, max: DEFAULT_MAX_UPLOAD_BYTES }, sig, presignKey)).toBe(
+        false,
+      );
+    });
+  });
+
+  it('defaults expiry to one hour and clamps anything longer', async () => {
+    const now = Math.floor(Date.now() / 1000);
+
+    const def = new URL(await makeAdapter().getPresignedUploadUrl('k'));
+    expect(Number(def.searchParams.get('exp'))).toBeGreaterThanOrEqual(now + 3599);
+    expect(Number(def.searchParams.get('exp'))).toBeLessThanOrEqual(now + 3601);
+
+    const clamped = new URL(await makeAdapter().getPresignedUploadUrl('k', 999_999));
+    expect(Number(clamped.searchParams.get('exp'))).toBeLessThanOrEqual(now + 3601);
+  });
+
+  it('floors expiresIn to at least 1 second', async () => {
+    const now = Math.floor(Date.now() / 1000);
+
+    // expiresIn: 0 → exp is now + 1
+    const zero = new URL(await makeAdapter().getPresignedUploadUrl('k', 0));
+    expect(Number(zero.searchParams.get('exp'))).toBeGreaterThanOrEqual(now + 1);
+    expect(Number(zero.searchParams.get('exp'))).toBeLessThanOrEqual(now + 2);
+
+    // expiresIn: -50 → exp is now + 1 (never in the past)
+    const negative = new URL(await makeAdapter().getPresignedUploadUrl('k', -50));
+    expect(Number(negative.searchParams.get('exp'))).toBeGreaterThanOrEqual(now + 1);
+    expect(Number(negative.searchParams.get('exp'))).toBeLessThanOrEqual(now + 2);
+
+    // expiresIn: 0.4 → floors to 1, so exp is now + 1
+    const fractionalFloor = new URL(await makeAdapter().getPresignedUploadUrl('k', 0.4));
+    expect(Number(fractionalFloor.searchParams.get('exp'))).toBeGreaterThanOrEqual(now + 1);
+    expect(Number(fractionalFloor.searchParams.get('exp'))).toBeLessThanOrEqual(now + 2);
+
+    // expiresIn: 2.9 → floors to 2
+    const fractionalTwo = new URL(await makeAdapter().getPresignedUploadUrl('k', 2.9));
+    const exp = Number(fractionalTwo.searchParams.get('exp'));
+    expect(exp).toBeGreaterThanOrEqual(now + 2);
+    expect(exp).toBeLessThanOrEqual(now + 3);
+  });
+
+  it('rejects NaN expiresIn with a clear error', async () => {
+    await expect(makeAdapter().getPresignedUploadUrl('k', NaN)).rejects.toThrow(
+      /expiresIn must be a finite number/i,
+    );
+  });
+
+  it('rejects a path-traversal key instead of signing it', async () => {
+    await expect(makeAdapter().getPresignedUploadUrl('../../etc/passwd')).rejects.toThrow(
+      /path traversal/i,
+    );
+  });
+
+  it('does not use the vestigial baseUrl', async () => {
+    const adapter = makeAdapter({ baseUrl: 'http://localhost:3000/files' });
+    const url = await adapter.getPresignedUploadUrl('k');
+    expect(url.startsWith('https://ce.example')).toBe(true);
+  });
+});
+
+describe('LocalStorageAdapter fails closed on the dev presign secret', () => {
+  // derivePresignKey() (called with no args inside the adapter) reads
+  // process.env directly, so these tests must control it rather than pass an
+  // explicit env map like the rest of the suite.
+  const saved = {
+    ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
+    LOCAL_PRESIGN_SECRET: process.env.LOCAL_PRESIGN_SECRET,
+  };
+
+  beforeEach(() => {
+    delete process.env.ENCRYPTION_KEY;
+    delete process.env.LOCAL_PRESIGN_SECRET;
+  });
+
+  afterEach(() => {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
+
+  it('does NOT advertise presigned support with no secrets and no explicit key', () => {
+    const adapter = new LocalStorageAdapter({
+      localPath: '/tmp/bffless-no-secret',
+      publicOrigin: 'https://ce.example',
+    });
+    expect(adapter.supportsPresignedUrls()).toBe(false);
+  });
+
+  it('DOES advertise presigned support when an explicit presignKey is passed, even with no env secrets', () => {
+    const adapter = new LocalStorageAdapter({
+      localPath: '/tmp/bffless-explicit-key',
+      publicOrigin: 'https://ce.example',
+      presignKey: derivePresignKey({ ENCRYPTION_KEY: 'explicit' }),
+    });
+    expect(adapter.supportsPresignedUrls()).toBe(true);
+  });
+
+  it('DOES advertise presigned support once ENCRYPTION_KEY is set in the environment', () => {
+    process.env.ENCRYPTION_KEY = 'a-real-encryption-key';
+    const adapter = new LocalStorageAdapter({
+      localPath: '/tmp/bffless-env-secret',
+      publicOrigin: 'https://ce.example',
+    });
+    expect(adapter.supportsPresignedUrls()).toBe(true);
+  });
+
+  it('getPresignedUploadUrl itself is NOT gated on hasRealPresignSecret -- only supportsPresignedUrls is', async () => {
+    // getPresignedUploadUrl itself doesn't gate on hasRealPresignSecret --
+    // only supportsPresignedUrls (the advertised capability) does. This just
+    // documents that boundary so it isn't mistaken for a second enforcement
+    // point: callers (LocalPresignedUploadController, mint-URL call sites)
+    // are expected to check supportsPresignedUrls() first.
+    const adapter = new LocalStorageAdapter({
+      localPath: '/tmp/bffless-no-secret-2',
+      publicOrigin: 'https://ce.example',
+    });
+    expect(adapter.supportsPresignedUrls()).toBe(false);
+    await expect(adapter.getPresignedUploadUrl('k')).resolves.toEqual(expect.any(String));
+  });
+});
+
+describe('resolveLocalAdapter', () => {
+  // This predicate gates whether the unauthenticated presigned-upload route
+  // serves at all (LocalPresignedUploadController) and, separately, whether
+  // the temp-file sweep cron runs (PendingUploadsScheduler). Every shape the
+  // active STORAGE_ADAPTER can take in practice is covered explicitly here,
+  // rather than relying on incidental coverage from those callers' own specs.
+
+  // A minimal double with the isLocalAdapter marker -- not a full
+  // LocalStorageAdapter, since resolveLocalAdapter only inspects the marker
+  // and unwrapping methods, not the adapter's other members.
+  const local = { isLocalAdapter: true, getStorageBasePath: () => '/tmp/local' };
+
+  it('resolves a bare local adapter (no wrapping)', () => {
+    expect(resolveLocalAdapter(local)).toBe(local);
+  });
+
+  it('resolves through a single DynamicStorageAdapter wrapper', () => {
+    const dynamic = { getUnderlyingAdapter: () => local };
+    expect(resolveLocalAdapter(dynamic)).toBe(local);
+  });
+
+  it('resolves through a single CachingStorageAdapter wrapper', () => {
+    const caching = { getWrappedAdapter: () => local };
+    expect(resolveLocalAdapter(caching)).toBe(local);
+  });
+
+  it('resolves through nested Dynamic(Caching(Local)) wrapping', () => {
+    const dynamicOverCaching = {
+      getUnderlyingAdapter: () => ({ getWrappedAdapter: () => local }),
+    };
+    expect(resolveLocalAdapter(dynamicOverCaching)).toBe(local);
+  });
+
+  it('returns null for a bare non-local adapter', () => {
+    const nonLocal = { upload: () => {}, download: () => {} };
+    expect(resolveLocalAdapter(nonLocal)).toBeNull();
+  });
+
+  it('returns null for a wrapped non-local adapter', () => {
+    const dynamic = { getUnderlyingAdapter: () => ({ isLocalAdapter: false }) };
+    expect(resolveLocalAdapter(dynamic)).toBeNull();
+  });
+
+  it('returns null, without throwing, for null or undefined', () => {
+    expect(() => resolveLocalAdapter(null)).not.toThrow();
+    expect(resolveLocalAdapter(null)).toBeNull();
+    expect(() => resolveLocalAdapter(undefined)).not.toThrow();
+    expect(resolveLocalAdapter(undefined)).toBeNull();
+  });
+});
+
+describe('LocalStorageAdapter relative presigned URLs (same-origin routing)', () => {
+  const presignKey = derivePresignKey({ ENCRYPTION_KEY: 'test' });
+
+  it('mints a RELATIVE url when no publicOrigin is configured, so the browser resolves it against the app host', async () => {
+    const adapter = new LocalStorageAdapter({ localPath: '/tmp/bffless-rel', presignKey });
+    const url = await adapter.getPresignedUploadUrl('o/r/uploads/content/a.bin');
+
+    expect(url.startsWith(LOCAL_PRESIGN_PATH)).toBe(true);
+    expect(url).not.toMatch(/^https?:\/\//);
+    // Still fully signed and parseable against an arbitrary base.
+    const parsed = new URL(url, 'https://any-app-host.example');
+    expect(parsed.pathname).toBe(LOCAL_PRESIGN_PATH);
+    const key = Buffer.from(parsed.searchParams.get('key')!, 'base64url').toString('utf8');
+    const exp = Number(parsed.searchParams.get('exp'));
+    const max = Number(parsed.searchParams.get('max'));
+    expect(parsed.searchParams.get('sig')).toBe(signLocalUpload({ key, exp, max }, presignKey));
+  });
+
+  it('supports presigned uploads with NO publicOrigin, as long as a real signing secret exists', () => {
+    const adapter = new LocalStorageAdapter({ localPath: '/tmp/bffless-rel', presignKey });
+    expect(adapter.supportsPresignedUrls()).toBe(true);
+  });
+
+  it('still fails closed when only the hardcoded dev secret is available', () => {
+    const saved = {
+      LOCAL_PRESIGN_SECRET: process.env.LOCAL_PRESIGN_SECRET,
+      ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
+    };
+    delete process.env.LOCAL_PRESIGN_SECRET;
+    delete process.env.ENCRYPTION_KEY;
+    try {
+      const adapter = new LocalStorageAdapter({ localPath: '/tmp/bffless-rel' });
+      expect(adapter.supportsPresignedUrls()).toBe(false);
+    } finally {
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+  });
+
+  it('still mints an ABSOLUTE url when publicOrigin is explicitly configured', async () => {
+    const adapter = new LocalStorageAdapter({
+      localPath: '/tmp/bffless-rel',
+      publicOrigin: 'https://explicit.example',
+      presignKey,
+    });
+    const url = await adapter.getPresignedUploadUrl('k');
+    expect(new URL(url).origin).toBe('https://explicit.example');
+  });
+
+  it('signs the prefixed key identically in relative mode', async () => {
+    const adapter = new LocalStorageAdapter({
+      localPath: '/tmp/bffless-rel',
+      keyPrefix: 'ws1',
+      presignKey,
+    });
+    const parsed = new URL(await adapter.getPresignedUploadUrl('k'), 'https://x.example');
+    const key = Buffer.from(parsed.searchParams.get('key')!, 'base64url').toString('utf8');
+    expect(key).toBe('ws1/k');
   });
 });

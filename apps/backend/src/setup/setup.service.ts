@@ -52,6 +52,7 @@ import { DYNAMIC_STORAGE_ADAPTER, StorageModule } from '../storage/storage.modul
 import { ModuleRef } from '@nestjs/core';
 import { CACHE_ADAPTER, ICacheAdapter } from '../storage/cache/cache.interface';
 import { CachingStorageAdapter } from '../storage/cache/caching-storage.adapter';
+import { explicitPublicOrigin } from '../storage/presign.util';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 import { AvailableOptionsResponseDto } from './setup.dto';
 import { UsageReporterService } from '../platform/usage-reporter.service';
@@ -891,9 +892,13 @@ export class SetupService {
     switch (provider) {
       case StorageProvider.LOCAL: {
         const { LocalStorageAdapter } = await import('../storage/local.adapter');
+        // publicOrigin is ONLY an explicit PUBLIC_ORIGIN override, never
+        // derived from PRIMARY_DOMAIN -- see explicitPublicOrigin's doc
+        // comment. Absent, getPresignedUploadUrl mints a relative URL.
         return new LocalStorageAdapter({
           localPath: config.localPath,
           baseUrl: config.baseUrl,
+          publicOrigin: explicitPublicOrigin(),
         });
       }
 

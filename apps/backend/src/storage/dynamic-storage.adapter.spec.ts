@@ -261,3 +261,50 @@ describe('DynamicStorageAdapter', () => {
     });
   });
 });
+
+describe('DynamicStorageAdapter default local adapter', () => {
+  const original = {
+    PRIMARY_DOMAIN: process.env.PRIMARY_DOMAIN,
+    PUBLIC_ORIGIN: process.env.PUBLIC_ORIGIN,
+    ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
+    LOCAL_PRESIGN_SECRET: process.env.LOCAL_PRESIGN_SECRET,
+  };
+  afterEach(() => {
+    for (const [k, v] of Object.entries(original)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
+
+  it('supports presigned uploads out of the box when a domain is configured', () => {
+    process.env.PRIMARY_DOMAIN = 'ce.example';
+    // On a real CE install ENCRYPTION_KEY is mandatory setup, not optional --
+    // this test exercises "presigned support given a resolvable origin", so
+    // it needs the real signing secret present too (fail-closed behavior with
+    // no secret is covered in local.adapter.spec.ts).
+    process.env.ENCRYPTION_KEY = 'test-encryption-key';
+    expect(new DynamicStorageAdapter().supportsPresignedUrls()).toBe(true);
+  });
+
+  it('does not throw, and still supports presigned uploads, when no origin can be resolved', () => {
+    // supportsPresignedUrls() does not gate on origin resolvability at all --
+    // getPresignedUploadUrl falls back to a relative URL instead of
+    // requiring one, so support depends only on the (separately-tested)
+    // secret gate. This test proves construction/evaluation doesn't throw
+    // and that origin resolvability doesn't affect the result.
+    delete process.env.PRIMARY_DOMAIN;
+    delete process.env.PUBLIC_ORIGIN;
+    process.env.ENCRYPTION_KEY = 'test-encryption-key';
+    expect(() => new DynamicStorageAdapter().supportsPresignedUrls()).not.toThrow();
+    expect(new DynamicStorageAdapter().supportsPresignedUrls()).toBe(true);
+  });
+
+  it('still degrades to unsupported when no real secret exists, even with an origin configured', () => {
+    // The secret gate, isolated the same way: a resolvable origin can't
+    // substitute for real signing material.
+    process.env.PRIMARY_DOMAIN = 'ce.example';
+    delete process.env.ENCRYPTION_KEY;
+    delete process.env.LOCAL_PRESIGN_SECRET;
+    expect(new DynamicStorageAdapter().supportsPresignedUrls()).toBe(false);
+  });
+});

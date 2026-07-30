@@ -10,6 +10,10 @@ import { FilesController } from './files.controller';
 import { CacheController } from './cache/cache.controller';
 import { CachingStorageAdapter } from './cache/caching-storage.adapter';
 import { CACHE_ADAPTER, ICacheAdapter, CacheConfig } from './cache/cache.interface';
+import { explicitPublicOrigin } from './presign.util';
+import { LocalPresignedUploadController } from './local-presigned-upload.controller';
+import { LocalUploadWriterService } from './local-upload-writer.service';
+import { StorageUsageModule } from './storage-usage.module';
 
 // Re-export STORAGE_ADAPTER for convenience
 export { STORAGE_ADAPTER } from './storage.interface';
@@ -56,9 +60,10 @@ export class StorageModule {
 
     return {
       module: StorageModule,
-      controllers: [FilesController, CacheController],
-      providers: [storageProvider],
-      exports: [STORAGE_ADAPTER],
+      imports: [StorageUsageModule],
+      controllers: [FilesController, CacheController, LocalPresignedUploadController],
+      providers: [storageProvider, LocalUploadWriterService],
+      exports: [STORAGE_ADAPTER, LocalUploadWriterService],
     };
   }
 
@@ -138,10 +143,10 @@ export class StorageModule {
 
     return {
       module: StorageModule,
-      imports: options.imports || [],
-      controllers: [FilesController, CacheController],
-      providers: [dynamicAdapterProvider, storageAdapterProvider],
-      exports: [STORAGE_ADAPTER, DYNAMIC_STORAGE_ADAPTER],
+      imports: [...(options.imports || []), StorageUsageModule],
+      controllers: [FilesController, CacheController, LocalPresignedUploadController],
+      providers: [dynamicAdapterProvider, storageAdapterProvider, LocalUploadWriterService],
+      exports: [STORAGE_ADAPTER, DYNAMIC_STORAGE_ADAPTER, LocalUploadWriterService],
     };
   }
 
@@ -152,7 +157,13 @@ export class StorageModule {
   static createAdapter(config: StorageModuleConfig): IStorageAdapter {
     switch (config.storageType) {
       case 'local':
-        return new LocalStorageAdapter(config.config);
+        // config.config.publicOrigin is a legitimately EXPLICIT value (e.g. a
+        // future DB-configured override); explicitPublicOrigin() below reads
+        // ONLY PUBLIC_ORIGIN, never PRIMARY_DOMAIN -- see its doc comment.
+        return new LocalStorageAdapter({
+          ...config.config,
+          publicOrigin: config.config.publicOrigin ?? explicitPublicOrigin(),
+        });
 
       case 'minio':
         return new MinioStorageAdapter(config.config);
