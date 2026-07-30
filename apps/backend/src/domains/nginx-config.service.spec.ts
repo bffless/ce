@@ -629,6 +629,64 @@ server {
       // BFFless auth relay proxied (not swallowed by SPA fallback)
       expect(config).toContain('location /_bffless/auth/');
     });
+
+    it('Task 12: emits an unrewritten presign location for local-fs presigned uploads on the primary domain', async () => {
+      // generateCEPrimaryDomainConfig is the render path for isPrimary domain
+      // mappings on a self-hosted CE install -- an app served on the primary
+      // domain itself (not admin.<domain>, not a subdomain/custom-domain
+      // mapping). Task 12 fixed the equivalent gap in the .hbs templates
+      // (subdomain/custom-domain); this is the same defect on this host
+      // shape, so this generator needs the same exact-match location.
+      const domainMapping = {
+        id: 'domain-primary',
+        projectId: 'proj-1',
+        domain: 'example.com',
+        domainType: 'custom' as const,
+        alias: 'production',
+        path: '/dist',
+        sslEnabled: true,
+        isActive: true,
+        isPublic: null,
+        unauthorizedBehavior: null,
+        requiredRole: null,
+        dnsVerified: true,
+        createdBy: 'user-1',
+        createdAt: new Date('2024-01-01'),
+        updatedAt: new Date('2024-01-01'),
+        sslExpiresAt: null,
+        dnsVerifiedAt: null,
+        nginxConfigPath: null,
+        autoRenewSsl: true,
+        sslRenewedAt: null,
+        sslRenewalStatus: null,
+        sslRenewalError: null,
+        stickySessionsEnabled: true,
+        stickySessionDuration: 86400,
+        isSpa: false,
+        isPrimary: true,
+        wwwBehavior: null,
+        redirectTarget: null,
+        redirectType: '301' as const,
+      };
+
+      const config = await service.generateConfig(domainMapping, mockProject);
+
+      // Exact match, so it wins over `location /` regardless of declaration order.
+      expect(config).toContain('location = /api/storage/presigned/local {');
+      // Must proxy to the backend UNREWRITTEN -- no `rewrite` line inside this
+      // location block, unlike `location /` below it which rewrites everything
+      // to the public-deployment-serving path. Extract just this block and
+      // assert no rewrite directive appears in it.
+      const blockMatch = config.match(
+        /location = \/api\/storage\/presigned\/local \{([\s\S]*?)\n {4}\}/,
+      );
+      expect(blockMatch).not.toBeNull();
+      const presignBlock = blockMatch![1];
+      expect(presignBlock).not.toContain('rewrite');
+      expect(presignBlock).toContain('proxy_pass http://localhost:3000;');
+      expect(presignBlock).toContain('proxy_request_buffering off;');
+      expect(presignBlock).toContain('client_max_body_size 200M;');
+    });
   });
 
   describe('primary domain SSL cert path (self-signed awareness)', () => {
