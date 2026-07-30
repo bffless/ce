@@ -49,6 +49,48 @@ server {
         proxy_set_header X-Forwarded-Host $host;
     }
 
+    # Presigned local-filesystem uploads stream straight through to the
+    # backend. Same rationale as /_bffless/auth/ above: this vhost's
+    # location / rewrites every path to the subdomain-alias handler, so
+    # without an unrewritten exact match here, a relative presigned upload
+    # URL minted for a deployment subdomain (the zero-config default — no
+    # domain mapping row required) would rewrite to
+    # /public/subdomain-alias/<sub>/api/storage/presigned/local and 404.
+    # Must be an exact match so it is picked over the general "location /"
+    # below (nginx always prefers a "location =" exact match over a prefix
+    # match, regardless of declaration order). Mirrors the admin server
+    # block's identical location further down in this file.
+    location = /api/storage/presigned/local {
+        proxy_pass http://backend:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Extended timeouts, matching the large-transfer /public location below.
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+
+        # Disable buffering so the backend receives (and streams to disk)
+        # the upload body incrementally instead of nginx spooling the whole
+        # request to its own temp file first. proxy_request_buffering is the
+        # load-bearing directive here; the other two mirror the /public
+        # large-download location's style for consistency.
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_max_temp_file_size 0;
+
+        # DEFAULT_MAX_UPLOAD_BYTES (apps/backend/src/storage/presign.util.ts)
+        # is 104,857,600 bytes (100 MiB). Set explicitly rather than
+        # inheriting the http-level 10M default (docker/nginx/nginx.conf),
+        # and above (not equal to) that 100 MiB figure so the ceiling isn't
+        # an exact boundary — nginx's own signed-URL `max` check in the
+        # backend is still the authoritative limit for a given upload.
+        client_max_body_size 200M;
+    }
+
     # Route all requests to backend subdomain-alias endpoint
     location / {
         # Rewrite path to backend subdomain-alias endpoint

@@ -5,6 +5,9 @@ import { EdgeBlocklistService } from './edge-blocklist.service';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 import { loadInstanceConfig } from '../bootstrap/instance-config';
 import * as fs from 'fs/promises';
+// Only 'fs/promises' is jest.mock'd below -- 'fs' itself is real, used at the
+// bottom of this file to read the actual shipped .hbs templates from disk.
+import * as realFs from 'fs';
 import * as path from 'path';
 
 // Mock fs/promises
@@ -869,5 +872,32 @@ server {
 
       expect(result).toContain('domain-domain-123.conf');
     });
+  });
+});
+
+// Everything above mocks `fs/promises` and feeds NginxConfigService a
+// hand-rolled fake template string, so those tests exercise the Handlebars
+// substitution logic, not the actual shipped .hbs content. That means the
+// `location = /api/storage/presigned/local` assertions that matter for the
+// #1 CRITICAL fix (the wildcard vhost had no presign location) need to read
+// the REAL per-domain templates from disk, not the mocks above. This uses
+// node:fs (unmocked here -- only 'fs/promises' is jest.mock'd above) to read
+// the actual files NginxConfigService loads at runtime
+// (join(process.cwd(), 'templates/nginx/...') -- process.cwd() is
+// apps/backend when tests run, matching the relative path below).
+describe('real per-domain nginx templates carry the presign location', () => {
+  const readReal = (filename: string): string =>
+    realFs.readFileSync(path.join(__dirname, '../../templates/nginx', filename), 'utf8');
+
+  it('subdomain.conf.hbs has an unrewritten presign location in both the SSL and non-SSL branches', () => {
+    const tpl = readReal('subdomain.conf.hbs');
+    const count = (tpl.match(/location = \/api\/storage\/presigned\/local \{/g) || []).length;
+    expect(count).toBe(2);
+  });
+
+  it('custom-domain.conf.hbs has an unrewritten presign location in both the SSL and non-SSL branches', () => {
+    const tpl = readReal('custom-domain.conf.hbs');
+    const count = (tpl.match(/location = \/api\/storage\/presigned\/local \{/g) || []).length;
+    expect(count).toBe(2);
   });
 });
