@@ -44,6 +44,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 
 /**
@@ -386,7 +387,7 @@ export function GroupDetailPage() {
                             setRemovingMember(open ? member.userId : null)
                           }
                         >
-                          <DialogTrigger asChild>
+                          <AlertDialogTrigger asChild>
                             <Button
                               variant="ghost"
                               size="sm"
@@ -394,7 +395,7 @@ export function GroupDetailPage() {
                             >
                               <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>
-                          </DialogTrigger>
+                          </AlertDialogTrigger>
                           <AlertDialogContent>
                             <AlertDialogHeader>
                               <AlertDialogTitle>Remove Member</AlertDialogTitle>
