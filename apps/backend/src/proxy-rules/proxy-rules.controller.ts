@@ -15,6 +15,7 @@ import {
   BadRequestException,
   Inject,
   forwardRef,
+  Logger,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
@@ -32,8 +33,10 @@ import { CurrentUser, CurrentUserData } from '../auth/decorators/current-user.de
 import { PipelineExecutionService } from '../pipelines/execution';
 import { PipelineExecutionLogService } from '../pipelines/pipeline-execution-log.service';
 import { TestPipelineDto, PipelineTestResultDto } from '../pipelines/dto';
+import { PipelineUser } from '../pipelines/execution/pipeline-context.interface';
 import { DeploymentsService } from '../deployments/deployments.service';
 import { ProjectsService } from '../projects/projects.service';
+import { UserGroupsService } from '../user-groups/user-groups.service';
 
 /**
  * Controller for individual proxy rule operations.
@@ -45,6 +48,8 @@ import { ProjectsService } from '../projects/projects.service';
 @Controller('api/proxy-rules')
 @UseGuards(ApiKeyGuard)
 export class ProxyRulesController {
+  private readonly logger = new Logger(ProxyRulesController.name);
+
   constructor(
     private readonly proxyRulesService: ProxyRulesService,
     private readonly pipelineExecutionService: PipelineExecutionService,
@@ -53,6 +58,7 @@ export class ProxyRulesController {
     private readonly deploymentsService: DeploymentsService,
     @Inject(forwardRef(() => ProjectsService))
     private readonly projectsService: ProjectsService,
+    private readonly userGroupsService: UserGroupsService,
   ) {}
 
   @Get(':id')
@@ -256,7 +262,7 @@ export class ProxyRulesController {
     } as any;
 
     // Determine which user to use for the test
-    let testUser: { id: string; email?: string; role?: string } | undefined;
+    let testUser: PipelineUser | undefined;
 
     if (dto.simulateAuth !== false) {
       if (dto.mockUser) {
@@ -264,12 +270,24 @@ export class ProxyRulesController {
           id: dto.mockUser.id,
           email: dto.mockUser.email,
           role: dto.mockUser.role,
+          groups: dto.mockUser.groups,
         };
       } else {
+        // Enrich with the real user's group memberships so pipeline conditions
+        // gated on user.groups can be exercised from the test endpoint. Group
+        // lookup must never take the test down: on failure, degrade to "no groups".
+        let groups: string[] = [];
+        try {
+          groups = await this.userGroupsService.getGroupIdsForUser(user.id);
+        } catch (error) {
+          this.logger.warn(`Group membership lookup failed for ${user.id}: ${error}`);
+          groups = [];
+        }
         testUser = {
           id: user.id,
           email: user.email,
           role: user.role,
+          groups,
         };
       }
     }
