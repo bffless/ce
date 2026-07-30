@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useGetSessionQuery } from '@/services/authApi';
 import {
   useGetGroupQuery,
@@ -9,6 +10,7 @@ import {
   useAddMemberMutation,
   useRemoveMemberMutation,
 } from '@/services/userGroupsApi';
+import { useSearchDirectoryQuery, type DirectoryUser } from '@/services/usersApi';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -30,9 +32,26 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { AlertCircle, UserPlus, Trash2, ArrowLeft, Edit, Save } from 'lucide-react';
+import {
+  AlertCircle,
+  UserPlus,
+  Trash2,
+  ArrowLeft,
+  Edit,
+  Save,
+  ChevronsUpDown,
+} from 'lucide-react';
 
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -72,7 +91,9 @@ export function GroupDetailPage() {
   const [groupDescription, setGroupDescription] = useState('');
   const [addMemberDialogOpen, setAddMemberDialogOpen] = useState(false);
   const [removingMember, setRemovingMember] = useState<string | null>(null);
-  const [newMemberEmail, setNewMemberEmail] = useState('');
+  const [memberSearch, setMemberSearch] = useState('');
+  const [selectedMemberUser, setSelectedMemberUser] = useState<DirectoryUser | null>(null);
+  const [memberPickerOpen, setMemberPickerOpen] = useState(false);
 
   // Fetch group details
   const {
@@ -94,6 +115,14 @@ export function GroupDetailPage() {
   const [updateGroup, { isLoading: isUpdating }] = useUpdateGroupMutation();
   const [addMember, { isLoading: isAddingMember }] = useAddMemberMutation();
   const [removeMember, { isLoading: isRemovingMember }] = useRemoveMemberMutation();
+
+  // Directory search for the Add Member typeahead
+  const debouncedMemberSearch = useDebouncedValue(memberSearch, 300).trim();
+  const { data: directoryData, isFetching: isSearchingUsers } = useSearchDirectoryQuery(
+    { search: debouncedMemberSearch, limit: 10 },
+    { skip: !debouncedMemberSearch },
+  );
+  const directoryUsers = directoryData?.users ?? [];
 
   // Initialize form state when group loads
   if (group && !groupName && !editMode) {
@@ -135,11 +164,29 @@ export function GroupDetailPage() {
     }
   };
 
+  const resetAddMemberForm = () => {
+    setMemberSearch('');
+    setSelectedMemberUser(null);
+    setMemberPickerOpen(false);
+  };
+
+  const handleAddMemberDialogOpenChange = (open: boolean) => {
+    setAddMemberDialogOpen(open);
+    if (!open) {
+      resetAddMemberForm();
+    }
+  };
+
+  const handleSelectMemberUser = (user: DirectoryUser) => {
+    setSelectedMemberUser(user);
+    setMemberPickerOpen(false);
+  };
+
   const handleAddMember = async () => {
-    if (!groupId || !newMemberEmail.trim()) {
+    if (!groupId || !selectedMemberUser) {
       toast({
         title: 'Error',
-        description: 'Please enter a user email',
+        description: 'Please select a user',
         variant: 'destructive',
       });
       return;
@@ -148,16 +195,15 @@ export function GroupDetailPage() {
     try {
       await addMember({
         groupId,
-        dto: { userId: newMemberEmail }, // Backend should lookup user by email
+        dto: { userId: selectedMemberUser.id },
       }).unwrap();
 
       toast({
         title: 'Member added',
-        description: `${newMemberEmail} has been added to the group`,
+        description: `${selectedMemberUser.email} has been added to the group`,
       });
 
-      setAddMemberDialogOpen(false);
-      setNewMemberEmail('');
+      handleAddMemberDialogOpenChange(false);
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -317,7 +363,7 @@ export function GroupDetailPage() {
                   Users in this group ({members?.length || 0})
                 </CardDescription>
               </div>
-              <Dialog open={addMemberDialogOpen} onOpenChange={setAddMemberDialogOpen}>
+              <Dialog open={addMemberDialogOpen} onOpenChange={handleAddMemberDialogOpenChange}>
                 <DialogTrigger asChild>
                   <Button>
                     <UserPlus className="h-4 w-4 mr-2" />
@@ -333,21 +379,76 @@ export function GroupDetailPage() {
                   </DialogHeader>
                   <div className="space-y-4 py-4">
                     <div className="space-y-2">
-                      <Label htmlFor="email">User Email</Label>
-                      <Input
-                        id="email"
-                        type="email"
-                        placeholder="user@example.com"
-                        value={newMemberEmail}
-                        onChange={(e) => setNewMemberEmail(e.target.value)}
-                      />
+                      <Label htmlFor="add-member-user-trigger">User</Label>
+                      <Popover open={memberPickerOpen} onOpenChange={setMemberPickerOpen}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            id="add-member-user-trigger"
+                            type="button"
+                            variant="outline"
+                            role="combobox"
+                            aria-expanded={memberPickerOpen}
+                            className="w-full justify-between font-normal"
+                          >
+                            {selectedMemberUser ? (
+                              <span className="truncate">{selectedMemberUser.email}</span>
+                            ) : (
+                              <span className="text-muted-foreground">Search by email...</span>
+                            )}
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          className="w-[--radix-popover-trigger-width] p-0"
+                          align="start"
+                        >
+                          <Command shouldFilter={false}>
+                            <CommandInput
+                              placeholder="Search by email..."
+                              value={memberSearch}
+                              onValueChange={setMemberSearch}
+                            />
+                            <CommandList>
+                              {!debouncedMemberSearch ? (
+                                <div className="py-6 text-center text-sm text-muted-foreground">
+                                  Type an email to search
+                                </div>
+                              ) : isSearchingUsers ? (
+                                <div className="py-6 text-center text-sm text-muted-foreground">
+                                  Searching...
+                                </div>
+                              ) : directoryUsers.length === 0 ? (
+                                <CommandEmpty>No users found</CommandEmpty>
+                              ) : (
+                                <CommandGroup>
+                                  {directoryUsers.map((user) => (
+                                    <CommandItem
+                                      key={user.id}
+                                      value={user.email}
+                                      onSelect={() => handleSelectMemberUser(user)}
+                                    >
+                                      {user.email}
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              )}
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
                     </div>
                   </div>
                   <DialogFooter>
-                    <Button variant="outline" onClick={() => setAddMemberDialogOpen(false)}>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleAddMemberDialogOpenChange(false)}
+                    >
                       Cancel
                     </Button>
-                    <Button onClick={handleAddMember} disabled={isAddingMember}>
+                    <Button
+                      onClick={handleAddMember}
+                      disabled={isAddingMember || !selectedMemberUser}
+                    >
                       {isAddingMember ? 'Adding...' : 'Add Member'}
                     </Button>
                   </DialogFooter>
