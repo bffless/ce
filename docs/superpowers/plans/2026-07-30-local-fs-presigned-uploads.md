@@ -879,7 +879,7 @@ Run: `cd apps/backend && pnpm test -- local-upload-writer`
 Expected: PASS. The bounded-memory case is the important one — if it fails, the implementation is buffering somewhere and must be fixed, not the assertion loosened.
 
 Run the memory case with GC exposed for a tighter signal:
-`cd apps/backend && pnpm exec jest --expose-gc -t 'bounded memory'`
+`cd apps/backend && NODE_OPTIONS=--expose-gc pnpm exec jest -t 'bounded memory'`
 
 - [ ] **Step 5: Commit**
 
@@ -1633,7 +1633,7 @@ describe('local presigned upload over HTTP', () => {
 
 - [ ] **Step 2: Run the test**
 
-Run: `cd apps/backend && pnpm exec jest --expose-gc local-presigned-upload.spec --testPathPattern=integration`
+Run: `cd apps/backend && NODE_OPTIONS=--expose-gc pnpm exec jest local-presigned-upload.spec --testPathPattern=integration`
 Expected: PASS.
 
 **If the large-body case fails or hangs**, the body is being consumed before the controller. Fixes, in order of preference:
