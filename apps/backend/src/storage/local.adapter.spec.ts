@@ -1,4 +1,5 @@
-import { LocalStorageAdapter } from './local.adapter';
+import { LocalStorageAdapter, LOCAL_PRESIGN_PATH } from './local.adapter';
+import { derivePresignKey, signLocalUpload, DEFAULT_MAX_UPLOAD_BYTES } from './presign.util';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -362,5 +363,75 @@ describe('LocalStorageAdapter', () => {
         expect(entries).toHaveLength(0);
       }
     });
+  });
+});
+
+describe('LocalStorageAdapter presigned uploads', () => {
+  const presignKey = derivePresignKey({ ENCRYPTION_KEY: 'test' });
+
+  const makeAdapter = (overrides: Record<string, unknown> = {}) =>
+    new LocalStorageAdapter({
+      localPath: '/tmp/bffless-presign-test',
+      publicOrigin: 'https://ce.example',
+      presignKey,
+      ...overrides,
+    });
+
+  it('reports presigned support once an origin is configured', () => {
+    expect(makeAdapter().supportsPresignedUrls()).toBe(true);
+  });
+
+  it('reports NO presigned support when no origin was resolved', () => {
+    const adapter = new LocalStorageAdapter({ localPath: '/tmp/x', presignKey });
+    expect(adapter.supportsPresignedUrls()).toBe(false);
+  });
+
+  it('mints an absolute same-origin URL on the presign path', async () => {
+    const url = new URL(await makeAdapter().getPresignedUploadUrl('o/r/uploads/content/a.bin'));
+    expect(url.origin).toBe('https://ce.example');
+    expect(url.pathname).toBe(LOCAL_PRESIGN_PATH);
+  });
+
+  it('signs the prefixed key so the signature matches what the route will verify', async () => {
+    const adapter = makeAdapter({ keyPrefix: 'ws1' });
+    const url = new URL(await adapter.getPresignedUploadUrl('o/r/uploads/content/a.bin'));
+
+    const key = Buffer.from(url.searchParams.get('key')!, 'base64url').toString('utf8');
+    expect(key).toBe('ws1/o/r/uploads/content/a.bin');
+
+    const exp = Number(url.searchParams.get('exp'));
+    const max = Number(url.searchParams.get('max'));
+    expect(url.searchParams.get('sig')).toBe(signLocalUpload({ key, exp, max }, presignKey));
+  });
+
+  it('binds the configured size ceiling into the URL', async () => {
+    const url = new URL(await makeAdapter().getPresignedUploadUrl('k'));
+    expect(Number(url.searchParams.get('max'))).toBe(DEFAULT_MAX_UPLOAD_BYTES);
+
+    const custom = new URL(await makeAdapter({ maxUploadBytes: 1234 }).getPresignedUploadUrl('k'));
+    expect(Number(custom.searchParams.get('max'))).toBe(1234);
+  });
+
+  it('defaults expiry to one hour and clamps anything longer', async () => {
+    const now = Math.floor(Date.now() / 1000);
+
+    const def = new URL(await makeAdapter().getPresignedUploadUrl('k'));
+    expect(Number(def.searchParams.get('exp'))).toBeGreaterThanOrEqual(now + 3599);
+    expect(Number(def.searchParams.get('exp'))).toBeLessThanOrEqual(now + 3601);
+
+    const clamped = new URL(await makeAdapter().getPresignedUploadUrl('k', 999_999));
+    expect(Number(clamped.searchParams.get('exp'))).toBeLessThanOrEqual(now + 3601);
+  });
+
+  it('rejects a path-traversal key instead of signing it', async () => {
+    await expect(makeAdapter().getPresignedUploadUrl('../../etc/passwd')).rejects.toThrow(
+      /path traversal/i,
+    );
+  });
+
+  it('does not use the vestigial baseUrl', async () => {
+    const adapter = makeAdapter({ baseUrl: 'http://localhost:3000/files' });
+    const url = await adapter.getPresignedUploadUrl('k');
+    expect(url.startsWith('https://ce.example')).toBe(true);
   });
 });

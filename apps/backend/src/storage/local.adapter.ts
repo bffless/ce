@@ -9,6 +9,16 @@ import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import {
+  derivePresignKey,
+  resolvePublicOrigin,
+  signLocalUpload,
+  DEFAULT_MAX_UPLOAD_BYTES,
+  MAX_EXPIRES_IN_SECONDS,
+} from './presign.util';
+
+/** Path the local presigned-upload route is mounted at. */
+export const LOCAL_PRESIGN_PATH = '/api/storage/presigned/local';
 
 /**
  * Local File System Storage Adapter
@@ -22,14 +32,33 @@ export class LocalStorageAdapter implements IStorageAdapter {
   private readonly basePath: string;
   private readonly baseUrl: string;
   private readonly keyPrefix: string;
+  private readonly publicOrigin: string | null;
+  private readonly presignKey: Buffer;
+  private readonly maxUploadBytes: number;
 
-  constructor(config: { localPath: string; baseUrl?: string; keyPrefix?: string }) {
+  constructor(config: {
+    localPath: string;
+    baseUrl?: string;
+    keyPrefix?: string;
+    publicOrigin?: string;
+    presignKey?: Buffer;
+    maxUploadBytes?: number;
+  }) {
     this.basePath = path.resolve(config.localPath);
     this.baseUrl = config.baseUrl || 'http://localhost:3000/files'; // @TODO baseUrl of /files does not make sense, no sure baseUrl is used for anything?
     this.keyPrefix = config.keyPrefix || '';
+
+    // Presigned-upload config. `publicOrigin` is deliberately separate from the
+    // vestigial `baseUrl` above: threading presigned URLs through that would
+    // silently mint localhost URLs on a real install.
+    this.publicOrigin = config.publicOrigin?.replace(/\/+$/, '') ?? null;
+    this.presignKey = config.presignKey ?? derivePresignKey();
+    this.maxUploadBytes = config.maxUploadBytes ?? DEFAULT_MAX_UPLOAD_BYTES;
+
     this.logger.log(
       `Initialized LocalStorageAdapter with basePath: ${this.basePath}` +
-        (this.keyPrefix ? `, keyPrefix: ${this.keyPrefix}` : ''),
+        (this.keyPrefix ? `, keyPrefix: ${this.keyPrefix}` : '') +
+        `, presignedUploads: ${this.publicOrigin ? 'enabled' : 'disabled (no public origin)'}`,
     );
   }
 
@@ -192,11 +221,39 @@ export class LocalStorageAdapter implements IStorageAdapter {
   }
 
   /**
-   * Check if presigned upload URLs are supported
-   * Local storage does not support presigned URLs - uploads must go through backend
+   * Local storage supports presigned uploads via a same-origin, HMAC-signed
+   * PUT route. Requires a resolvable public origin to mint absolute URLs.
    */
   supportsPresignedUrls(): boolean {
-    return false;
+    return this.publicOrigin !== null;
+  }
+
+  /**
+   * Mint a signed, time-bounded, size-capped upload URL.
+   *
+   * The signature covers the PREFIXED key so it matches exactly what the route
+   * will write, and `max` is signed so a client cannot raise its own cap.
+   */
+  async getPresignedUploadUrl(key: string, expiresIn = MAX_EXPIRES_IN_SECONDS): Promise<string> {
+    if (!this.publicOrigin) {
+      throw new Error(
+        'Presigned local uploads are not available: no public origin configured ' +
+          '(set PUBLIC_ORIGIN or PRIMARY_DOMAIN).',
+      );
+    }
+
+    const storageKey = this.prefixKey(this.sanitizeKey(key));
+    const ttl = Math.min(Math.max(1, Math.floor(expiresIn)), MAX_EXPIRES_IN_SECONDS);
+    const exp = Math.floor(Date.now() / 1000) + ttl;
+    const max = this.maxUploadBytes;
+    const sig = signLocalUpload({ key: storageKey, exp, max }, this.presignKey);
+
+    const url = new URL(LOCAL_PRESIGN_PATH, this.publicOrigin);
+    url.searchParams.set('key', Buffer.from(storageKey, 'utf8').toString('base64url'));
+    url.searchParams.set('exp', String(exp));
+    url.searchParams.set('max', String(max));
+    url.searchParams.set('sig', sig);
+    return url.toString();
   }
 
   /**
