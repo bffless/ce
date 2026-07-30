@@ -450,6 +450,6 @@ Expected: PASS, no regressions.
 Run: `pnpm lint`
 Expected: clean.
 
-- [ ] **Step 3: End-to-end smoke through a pipeline.** In the local dev stack, create a throwaway proxy rule with a one-step pipeline `function_handler` whose code is `export default function h({ user }) { return { groups: (user && user.groups) || null } }`, call it with a session/API key belonging to a user who is a member of one group, and confirm the response contains that group id. Delete the rule afterwards.
+- [ ] **Step 3: End-to-end smoke through a pipeline.** In the local dev stack, create a throwaway proxy rule with a one-step pipeline `function_handler` whose code is `function handler({ user }) { return { groups: (user && user.groups) || null } }`, call it with a session/API key belonging to a user who is a member of one group, and confirm the response contains that group id. Delete the rule afterwards. (Note: the sandbox has no module loader — no `export`/`import`; the handler is a plain top-level `function handler(data) { ... }`.)
 
 - [ ] **Step 4: Push and open PR** (rebase on `origin/main` first; PR title `feat: pipeline user.groups + member-accessible group directory`). Merging and the release/deploy to j5s.dev gate the Handoff plan — its rules 404 gracefully until then.
