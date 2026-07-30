@@ -191,19 +191,23 @@ export class DeploymentsController {
     // where resolving a relative URL against the page's own origin is the
     // entire point (same-origin, no CORS -- see
     // docs/superpowers/specs/2026-07-30-local-fs-presigned-uploads-design.md,
-    // section "Correction: upload URL routing"). This endpoint's caller is a
-    // CI/Node client (the upload-artifact GitHub Action, `bffless` CLI, etc.)
-    // with no page origin to resolve a relative URL against -- `new
-    // URL(relativeUrl)` with no base throws. And even ignoring that,
-    // presigning buys a CI client nothing on local storage: a "direct"
-    // upload still goes to this same backend over the same connection as the
-    // ZIP-upload fallback, so there is no direct-to-storage win to have. So
-    // the local adapter is always treated as NOT supporting presigned
-    // uploads here, regardless of what supportsPresignedUrls() reports --
-    // preserving the existing, working ZIP-upload fallback instead of
-    // turning "unsupported" into a hard client-side throw. Do NOT "fix" this
-    // by inventing an absolute origin here just to keep the presigned branch
-    // alive for local storage.
+    // section "Correction: upload URL routing"). This endpoint's callers are
+    // a CI/Node client (the upload-artifact GitHub Action, `bffless` CLI,
+    // etc.) AND the admin SPA (apps/frontend/src/services/uploadDeployment.ts),
+    // neither of which has a page origin belonging to the DEPLOYED APP to
+    // resolve a relative presigned URL against -- `new URL(relativeUrl)`
+    // with no base throws for the CI/Node case, and the admin SPA's own
+    // origin (admin.<domain>) is not where the local-storage presign route
+    // is served (see the per-domain nginx templates). And even ignoring
+    // that, presigning buys neither caller anything on local storage: a
+    // "direct" upload still goes to this same backend over the same
+    // connection as the ZIP-upload fallback, so there is no direct-to-storage
+    // win to have. So the local adapter is always treated as NOT supporting
+    // presigned uploads here, regardless of what supportsPresignedUrls()
+    // reports -- preserving the existing, working ZIP-upload fallback
+    // instead of turning "unsupported" into a hard client-side throw. Do NOT
+    // "fix" this by inventing an absolute origin here just to keep the
+    // presigned branch alive for local storage.
     const isLocalAdapter = resolveLocalAdapter(this.storageAdapter) !== null;
     const supportsPresigned =
       !isLocalAdapter && (this.storageAdapter.supportsPresignedUrls?.() ?? false);
@@ -537,8 +541,19 @@ export class DeploymentsController {
             .from(assets)
             .where(and(eq(assets.projectId, project.id), eq(assets.commitSha, commitSha)));
 
-    // Check if storage supports presigned URLs
-    const supportsPresigned = this.storageAdapter.supportsPresignedUrls?.() ?? false;
+    // Check if storage supports presigned URLs. Local storage always takes
+    // the fallback branch below (the `${PUBLIC_URL}/api/files/...` URL, a
+    // few lines down) regardless of what supportsPresignedUrls() reports:
+    // LocalStorageAdapter.getUrl() ignores the expiry argument entirely and
+    // returns `${baseUrl}/${key}`, where baseUrl defaults to the vestigial
+    // `http://localhost:3000/files` (see the @TODO on LocalStorageAdapter's
+    // baseUrl field). That is not a real presigned URL, so calling getUrl()
+    // here for local storage would leak localhost into download URLs on any
+    // real install. Same predicate and reasoning as prepareBatchUpload
+    // above, mirrored for the download direction.
+    const isLocalAdapter = resolveLocalAdapter(this.storageAdapter) !== null;
+    const supportsPresigned =
+      !isLocalAdapter && (this.storageAdapter.supportsPresignedUrls?.() ?? false);
 
     // Generate presigned URLs for each file
     const expiresInSeconds = 3600; // 1 hour

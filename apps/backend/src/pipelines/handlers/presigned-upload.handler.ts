@@ -70,7 +70,12 @@ export interface PresignedUploadHandlerConfig {
  * the client PUTs the file, it calls a second pipeline using
  * `register_upload` to verify the object and write the DB records.
  *
- * This works on ALL storage backends, not just buckets:
+ * This works on any storage backend that reports presigned support via
+ * `supportsPresignedUrls()` -- which now includes local filesystem storage,
+ * not only bucket backends. Support is still backend-specific and not
+ * universal: e.g. `AzureBlobStorageAdapter.supportsPresignedUrls()` is false
+ * without a shared-key credential (SAS URLs can't be minted from a
+ * connection string alone).
  * - Bucket backends (S3, GCS, MinIO, Azure): the URL is absolute and the PUT
  *   bypasses nginx/the backend entirely, landing straight on the bucket
  *   (needs bucket CORS allowing PUT from the site origin).
@@ -87,6 +92,15 @@ export interface PresignedUploadHandlerConfig {
  * `PRESIGNED_NOT_SUPPORTED` below is now a real failure mode only when the
  * active adapter has no real signing secret configured, which should not
  * happen on a normal CE install (`ENCRYPTION_KEY` is mandatory setup).
+ *
+ * TRAP: for local storage specifically, minting a URL here does NOT check
+ * the `ENABLE_LOCAL_PRESIGNED_UPLOADS` feature flag -- the adapter has no
+ * access to `FeatureFlagsService`, only to the (separate) signing-secret
+ * check above. If that flag is off, this step still succeeds and returns a
+ * URL, but the client's PUT to it then 404s at the route level
+ * (`local-presigned-upload.controller.ts`'s flag check runs before its
+ * `supportsPresignedUrls()` check). If uploads mysteriously start 404ing
+ * after this step reports success, check whether the flag was disabled.
  *
  * This handler is for BROWSER callers -- a server/CI caller has no page
  * origin to resolve a relative URL against. Server-side upload flows should

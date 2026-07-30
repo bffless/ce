@@ -6,6 +6,25 @@ import { ProjectsService } from '../projects/projects.service';
 import { PendingUploadsService } from './pending-uploads.service';
 import { STORAGE_ADAPTER } from '../storage/storage.interface';
 
+// prepareBatchDownload queries `db` directly (not through a mockable
+// service), so it needs its own chainable mock -- same pattern as
+// assets.service.spec.ts. Every method returns the mock itself except the
+// terminal one(s) each test overrides with mockResolvedValueOnce.
+jest.mock('../db/client', () => {
+  const mockDb = {
+    select: jest.fn(),
+    from: jest.fn(),
+    where: jest.fn(),
+    limit: jest.fn(),
+    orderBy: jest.fn(),
+  };
+  Object.keys(mockDb).forEach((key) => {
+    (mockDb as any)[key].mockReturnValue(mockDb);
+  });
+  return { db: mockDb };
+});
+const { db: mockDb } = jest.requireMock('../db/client');
+
 describe('DeploymentsController', () => {
   let controller: DeploymentsController;
   let mockDeploymentsService: jest.Mocked<DeploymentsService>;
@@ -124,6 +143,7 @@ describe('DeploymentsController', () => {
     mockStorageAdapter = {
       supportsPresignedUrls: jest.fn().mockReturnValue(false),
       getPresignedUploadUrl: jest.fn(),
+      getUrl: jest.fn(),
       exists: jest.fn(),
     };
 
@@ -264,10 +284,11 @@ describe('DeploymentsController', () => {
     } as any;
 
     // Local storage's presigned route is for browser uploads (same-origin
-    // relative URLs). This CI/Node endpoint has no page origin to resolve a
-    // relative URL against, and presigning buys nothing over the ZIP
-    // fallback on local storage anyway -- see the comment on
-    // prepareBatchUpload in deployments.controller.ts.
+    // relative URLs). Neither of this endpoint's callers (CI/Node clients,
+    // or the admin SPA) has a page origin to resolve a relative URL
+    // against, and presigning buys nothing over the ZIP fallback on local
+    // storage anyway -- see the comment on prepareBatchUpload in
+    // deployments.controller.ts.
     it('reports presigned unsupported when the active adapter is the local one, even if supportsPresignedUrls() is true', async () => {
       mockStorageAdapter.isLocalAdapter = true;
       mockStorageAdapter.supportsPresignedUrls.mockReturnValue(true);
@@ -298,6 +319,68 @@ describe('DeploymentsController', () => {
 
       expect(result.presignedUrlsSupported).toBe(true);
       expect(mockStorageAdapter.getPresignedUploadUrl).toHaveBeenCalled();
+    });
+  });
+
+  describe('prepareBatchDownload', () => {
+    const mockDownloadDto = {
+      repository: mockRepository,
+      path: '',
+      commitSha: mockCommitSha,
+    } as any;
+
+    const mockAssetRow = {
+      id: 'asset-1',
+      projectId: 'project-123',
+      commitSha: mockCommitSha,
+      publicPath: 'index.html',
+      fileName: 'index.html',
+      size: 123,
+      storageKey: `${mockRepository}/${mockCommitSha}/index.html`,
+      branch: 'main',
+    };
+
+    beforeEach(() => {
+      // Reset the terminal query methods so mockResolvedValueOnce from a
+      // prior test in this block can't leak into the next one.
+      mockDb.where.mockReset().mockReturnValue(mockDb);
+      mockDb.limit.mockReset().mockReturnValue(mockDb);
+    });
+
+    // Regression test for the finding that supportsPresignedUrls() now
+    // returning true for local storage made this endpoint take the
+    // presigned branch and call getUrl(), whose local implementation
+    // ignores the expiry argument and returns `${baseUrl}/${key}` with
+    // baseUrl defaulting to the vestigial 'http://localhost:3000/files' --
+    // leaking localhost into download URLs on a real install. See the
+    // comment on prepareBatchDownload in deployments.controller.ts.
+    it('returns /api/files/... fallback URLs, NOT localhost:3000/files, when the active adapter is local', async () => {
+      mockStorageAdapter.isLocalAdapter = true;
+      mockStorageAdapter.supportsPresignedUrls.mockReturnValue(true);
+      // Matching-assets query: db.select().from(assets).where(...) — no
+      // trailing .limit(), so .where() is the terminal call to resolve.
+      mockDb.where.mockResolvedValueOnce([mockAssetRow]);
+
+      const result = await controller.prepareBatchDownload(mockDownloadDto, mockUser);
+
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0].downloadUrl).toContain('/api/files/');
+      // The specific signature of this bug: a leaked localhost URL.
+      expect(result.files[0].downloadUrl).not.toContain('localhost:3000/files');
+      expect(mockStorageAdapter.getUrl).not.toHaveBeenCalled();
+    });
+
+    it('still returns presigned URLs from getUrl() for a non-local adapter that supports them', async () => {
+      mockStorageAdapter.isLocalAdapter = false;
+      mockStorageAdapter.supportsPresignedUrls.mockReturnValue(true);
+      mockStorageAdapter.getUrl.mockResolvedValue('https://bucket.example/signed-download');
+      mockDb.where.mockResolvedValueOnce([mockAssetRow]);
+
+      const result = await controller.prepareBatchDownload(mockDownloadDto, mockUser);
+
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0].downloadUrl).toBe('https://bucket.example/signed-download');
+      expect(mockStorageAdapter.getUrl).toHaveBeenCalledWith(mockAssetRow.storageKey, 3600);
     });
   });
 
