@@ -36,6 +36,16 @@ export class MockUserDto {
   @IsOptional()
   @IsString()
   role?: string;
+
+  @ApiPropertyOptional({
+    description: 'Group ids to simulate the user as a member of',
+    example: ['group-123'],
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  groups?: string[];
 }
 
 export class TestPipelineDto {

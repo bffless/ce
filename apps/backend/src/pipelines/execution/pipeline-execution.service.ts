@@ -3,6 +3,7 @@ import { Request } from 'express';
 import {
   PipelineContext,
   PipelineDebugResult,
+  PipelineUser,
   StepResult,
   StepDebugInfo,
   ValidatorDebugInfo,
@@ -44,7 +45,7 @@ export class PipelineExecutionService {
   async executePipelineWithDebug(
     pipeline: Pipeline & { steps: PipelineStep[] },
     req: Request,
-    user?: { id: string; email?: string; role?: string },
+    user?: PipelineUser,
     options?: {
       dryRun?: boolean;
       deployment?: { owner: string; repo: string; commitSha: string; alias?: string };
@@ -105,7 +106,7 @@ export class PipelineExecutionService {
   private async executePipelineWithDebugInner(
     pipeline: Pipeline & { steps: PipelineStep[] },
     req: Request,
-    user?: { id: string; email?: string; role?: string },
+    user?: PipelineUser,
     options?: {
       dryRun?: boolean;
       deployment?: { owner: string; repo: string; commitSha: string; alias?: string };
@@ -419,7 +420,11 @@ export class PipelineExecutionService {
     // Check condition if present
     let conditionResult: boolean | undefined;
     if (config.condition) {
-      conditionResult = this.expressionEvaluator.evaluateCondition(config.condition, context, stepName);
+      conditionResult = this.expressionEvaluator.evaluateCondition(
+        config.condition,
+        context,
+        stepName,
+      );
       if (!conditionResult) {
         const endTime = Date.now();
         this.logger.debug(`Skipping step '${stepName}' - condition not met`);
@@ -455,7 +460,10 @@ export class PipelineExecutionService {
     });
 
     try {
-      const result = await Promise.race([handler.execute(context, step as PipelineStep), timeoutPromise]);
+      const result = await Promise.race([
+        handler.execute(context, step as PipelineStep),
+        timeoutPromise,
+      ]);
       const endTime = Date.now();
 
       return {
@@ -619,12 +627,13 @@ export class PipelineExecutionService {
         }
       } catch (error) {
         const endTime = Date.now();
-        const errorInfo = error instanceof PipelineError
-          ? error.toResponse()
-          : {
-              code: 'STEP_EXECUTION_ERROR',
-              message: error instanceof Error ? error.message : 'Unknown error',
-            };
+        const errorInfo =
+          error instanceof PipelineError
+            ? error.toResponse()
+            : {
+                code: 'STEP_EXECUTION_ERROR',
+                message: error instanceof Error ? error.message : 'Unknown error',
+              };
 
         debugInfo.push({
           stepId: step.id,
@@ -689,7 +698,9 @@ export class PipelineExecutionService {
 
     if (forwardedFor) {
       // X-Forwarded-For can be a comma-separated list; first IP is the original client
-      const forwardedIp = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor.split(',')[0];
+      const forwardedIp = Array.isArray(forwardedFor)
+        ? forwardedFor[0]
+        : forwardedFor.split(',')[0];
       ip = forwardedIp?.trim();
     }
 
@@ -705,5 +716,4 @@ export class PipelineExecutionService {
 
     return ip;
   }
-
 }

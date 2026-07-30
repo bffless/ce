@@ -7,6 +7,8 @@ export interface PipelineUser {
   id: string;
   email?: string;
   role?: string;
+  /** Group ids the user is a member of (strict membership). Absent only on pre-groups callers. */
+  groups?: string[];
 }
 
 /**

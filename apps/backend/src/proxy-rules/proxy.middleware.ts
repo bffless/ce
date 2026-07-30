@@ -6,7 +6,15 @@ import * as jwt from 'jsonwebtoken';
 import * as bcrypt from 'bcrypt';
 import { asc } from 'drizzle-orm';
 import { db } from '../db/client';
-import { projects, deploymentAliases, domainMappings, users, apiKeys, aliasProxyRuleSets, projectDefaultProxyRuleSets } from '../db/schema';
+import {
+  projects,
+  deploymentAliases,
+  domainMappings,
+  users,
+  apiKeys,
+  aliasProxyRuleSets,
+  projectDefaultProxyRuleSets,
+} from '../db/schema';
 import { ProxyRulesService } from './proxy-rules.service';
 import { ProxyService } from './proxy.service';
 import { EmailFormHandlerService } from './email-form-handler.service';
@@ -14,12 +22,14 @@ import { ProxyRule, ProxyType, PipelineConfig } from '../db/schema/proxy-rules.s
 import { ConfigService } from '@nestjs/config';
 import { PipelineExecutionService } from '../pipelines/execution';
 import { PipelineExecutionLogService } from '../pipelines/pipeline-execution-log.service';
+import { PipelineUser } from '../pipelines/execution/pipeline-context.interface';
 import { Pipeline, PipelineStep } from '../pipelines/types';
 import multer from 'multer';
 import { CustomDomainAuthService } from '../auth/custom-domain-auth.service';
 import { VisibilityService, AccessControlInfo } from '../domains/visibility.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { TrafficRoutingService } from '../domains/traffic-routing.service';
+import { UserGroupsService } from '../user-groups/user-groups.service';
 import { matchesMethod } from './method-match';
 
 interface ParsedPublicPath {
@@ -52,6 +62,7 @@ export class ProxyMiddleware implements NestMiddleware {
     private readonly visibilityService: VisibilityService,
     private readonly permissionsService: PermissionsService,
     private readonly trafficRoutingService: TrafficRoutingService,
+    private readonly userGroupsService: UserGroupsService,
   ) {}
 
   /**
@@ -140,13 +151,19 @@ export class ProxyMiddleware implements NestMiddleware {
             resolvedCommitSha = alias.commitSha;
           }
           // Resolve rule set IDs: join table → legacy column → project default
-          effectiveRuleSetIds = await this.resolveRuleSetIdsForAlias(alias.id, alias.proxyRuleSetId);
+          effectiveRuleSetIds = await this.resolveRuleSetIdsForAlias(
+            alias.id,
+            alias.proxyRuleSetId,
+          );
         }
       }
 
       // Fall back to project defaults if no rule sets resolved
       if (effectiveRuleSetIds.length === 0) {
-        effectiveRuleSetIds = await this.resolveProjectDefaultRuleSetIds(project.id, project.defaultProxyRuleSetId);
+        effectiveRuleSetIds = await this.resolveProjectDefaultRuleSetIds(
+          project.id,
+          project.defaultProxyRuleSetId,
+        );
       }
 
       // Apply traffic splitting: check traffic rules and variant cookie
@@ -175,7 +192,10 @@ export class ProxyMiddleware implements NestMiddleware {
             );
             resolvedCommitSha = variantAlias.commitSha;
             // Update effectiveRuleSetIds if variant alias has its own rules
-            const variantRuleSetIds = await this.resolveRuleSetIdsForAlias(variantAlias.id, variantAlias.proxyRuleSetId);
+            const variantRuleSetIds = await this.resolveRuleSetIdsForAlias(
+              variantAlias.id,
+              variantAlias.proxyRuleSetId,
+            );
             if (variantRuleSetIds.length > 0) {
               effectiveRuleSetIds = variantRuleSetIds;
             }
@@ -421,7 +441,10 @@ export class ProxyMiddleware implements NestMiddleware {
     }
 
     if (effectiveRuleSetIds.length === 0) {
-      effectiveRuleSetIds = await this.resolveProjectDefaultRuleSetIds(project.id, project.defaultProxyRuleSetId);
+      effectiveRuleSetIds = await this.resolveProjectDefaultRuleSetIds(
+        project.id,
+        project.defaultProxyRuleSetId,
+      );
     }
 
     // Get effective rules from the resolved rule sets
@@ -1142,11 +1165,26 @@ export class ProxyMiddleware implements NestMiddleware {
       // Extract user from session if available (optional - don't fail if not authenticated)
       const user = await this.getOptionalUser(req, res);
 
+      // Enrich with group memberships for the sandboxed pipeline context. Group
+      // lookup must never take the request down: on failure, degrade to "no groups".
+      let pipelineUser: PipelineUser | undefined = user;
+      if (user) {
+        try {
+          pipelineUser = {
+            ...user,
+            groups: await this.userGroupsService.getGroupIdsForUser(user.id),
+          };
+        } catch (error) {
+          this.logger.warn(`Group membership lookup failed for ${user.id}: ${error}`);
+          pipelineUser = { ...user, groups: [] };
+        }
+      }
+
       // Execute the pipeline with deployment context for skills access
       const result = await this.pipelineExecutionService.executePipelineWithDebug(
         pipeline,
         req,
-        user,
+        pipelineUser,
         // Only retain in-memory debug snapshots when this rule actually persists
         // them; otherwise they're built and thrown away, needlessly pressuring the heap.
         { deployment, captureDebug: rule.debugEnabled },
@@ -1203,11 +1241,18 @@ export class ProxyMiddleware implements NestMiddleware {
               this.logger.error('Failed to capture post-steps debug info', err);
             }
           }
-          await this.executionLogService.log(rule.id, projectId, result, {
-            ip: req.ip,
-            userAgent: req.headers['user-agent'],
-            userId: user?.id,
-          }, req.method, req.path);
+          await this.executionLogService.log(
+            rule.id,
+            projectId,
+            result,
+            {
+              ip: req.ip,
+              userAgent: req.headers['user-agent'],
+              userId: user?.id,
+            },
+            req.method,
+            req.path,
+          );
         };
         persistLog().catch((err) =>
           this.logger.error('Failed to persist pipeline execution log', err),
@@ -1232,7 +1277,11 @@ export class ProxyMiddleware implements NestMiddleware {
    * Parse multipart form data using multer (for file upload pipelines).
    * Populates req.file with the uploaded file buffer.
    */
-  private parseMultipartUpload(req: Request, fieldName = 'file', maxFileSize = 50 * 1024 * 1024): Promise<void> {
+  private parseMultipartUpload(
+    req: Request,
+    fieldName = 'file',
+    maxFileSize = 50 * 1024 * 1024,
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
       const upload = multer({
         storage: multer.memoryStorage(),
@@ -1482,9 +1531,7 @@ export class ProxyMiddleware implements NestMiddleware {
     // Glob → regex: escape regex metacharacters (but not '*'), then replace
     // '*' with '.*' and anchor. Handles trailing, leading, and middle wildcards.
     const regexSource =
-      '^' +
-      pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') +
-      '$';
+      '^' + pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$';
     return new RegExp(regexSource).test(path);
   }
 }

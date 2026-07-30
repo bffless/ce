@@ -45,7 +45,10 @@ export class FunctionHandler implements StepHandler<FunctionHandlerConfig> {
         throw new ConfigurationError('timeout must be a number', 'function_handler');
       }
       if (config.timeout < 1000 || config.timeout > 30000) {
-        throw new ConfigurationError('timeout must be between 1000 and 30000 milliseconds', 'function_handler');
+        throw new ConfigurationError(
+          'timeout must be between 1000 and 30000 milliseconds',
+          'function_handler',
+        );
       }
     }
 
@@ -72,6 +75,7 @@ export class FunctionHandler implements StepHandler<FunctionHandlerConfig> {
             id: context.user.id,
             email: context.user.email,
             role: context.user.role,
+            groups: context.user.groups ?? [],
           }
         : undefined,
       request: {

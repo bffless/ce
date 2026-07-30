@@ -4,9 +4,12 @@ import {
   ConflictException,
   ForbiddenException,
 } from '@nestjs/common';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, ilike, asc, sql } from 'drizzle-orm';
 import { db } from '../db/client';
 import { userGroups, userGroupMembers, users, UserGroup, UserGroupMember } from '../db/schema';
+import { MyGroupsResponseDto, GroupDirectoryResponseDto } from './user-groups.dto';
+
+const GROUP_DIRECTORY_MAX_LIMIT = 50;
 
 export interface UserGroupWithMembers extends UserGroup {
   members: (UserGroupMember & { user: typeof users.$inferSelect })[];
@@ -251,5 +254,60 @@ export class UserGroupsService {
       .where(eq(userGroupMembers.groupId, groupId));
 
     return members;
+  }
+
+  /**
+   * Group ids the user is a MEMBER of (strict: user_group_members only;
+   * creating a group does not make you a member). Consumed per-request by
+   * the pipeline context builder — keep it a single indexed query.
+   */
+  async getGroupIdsForUser(userId: string): Promise<string[]> {
+    const rows = await db
+      .select({ groupId: userGroupMembers.groupId })
+      .from(userGroupMembers)
+      .where(eq(userGroupMembers.userId, userId));
+    return rows.map((row) => row.groupId);
+  }
+
+  /**
+   * The session user's own memberships, id + name only. Member-accessible:
+   * apps need it client-side to mirror the gate's group evaluation.
+   */
+  async getMyGroups(userId: string): Promise<MyGroupsResponseDto> {
+    const rows = await db
+      .select({ id: userGroups.id, name: userGroups.name })
+      .from(userGroupMembers)
+      .innerJoin(userGroups, eq(userGroupMembers.groupId, userGroups.id))
+      .where(eq(userGroupMembers.userId, userId))
+      .orderBy(asc(userGroups.name));
+    return { groups: rows };
+  }
+
+  /**
+   * Group picker for share dialogs. Member-accessible and deliberately
+   * minimal: id, name, member count — never members or emails. A blank
+   * search returns all groups (they are few and browsable), unlike the
+   * user directory where a blank term must not dump the user table.
+   */
+  async searchGroupDirectory(search?: string, limit = 20): Promise<GroupDirectoryResponseDto> {
+    const term = (search ?? '').trim();
+    const capped = Math.min(Math.max(Math.trunc(limit) || 20, 1), GROUP_DIRECTORY_MAX_LIMIT);
+
+    const rows = await db
+      .select({
+        id: userGroups.id,
+        name: userGroups.name,
+        memberCount: sql<number>`count(${userGroupMembers.id})`,
+      })
+      .from(userGroups)
+      .leftJoin(userGroupMembers, eq(userGroupMembers.groupId, userGroups.id))
+      .where(term.length > 0 ? ilike(userGroups.name, `%${term}%`) : undefined)
+      .groupBy(userGroups.id)
+      .orderBy(asc(userGroups.name))
+      .limit(capped);
+
+    return {
+      groups: rows.map((r) => ({ id: r.id, name: r.name, memberCount: Number(r.memberCount) })),
+    };
   }
 }

@@ -6,6 +6,7 @@ import { PipelineExecutionService } from '../pipelines/execution';
 import { PipelineExecutionLogService } from '../pipelines/pipeline-execution-log.service';
 import { DeploymentsService } from '../deployments/deployments.service';
 import { ProjectsService } from '../projects/projects.service';
+import { UserGroupsService } from '../user-groups/user-groups.service';
 import { CurrentUserData } from '../auth/decorators/current-user.decorator';
 
 describe('ProxyRulesController', () => {
@@ -14,6 +15,7 @@ describe('ProxyRulesController', () => {
   let mockPipelineExecutionService: jest.Mocked<PipelineExecutionService>;
   let mockDeploymentsService: jest.Mocked<DeploymentsService>;
   let mockProjectsService: jest.Mocked<ProjectsService>;
+  let mockUserGroupsService: jest.Mocked<UserGroupsService>;
 
   const mockUser: CurrentUserData = {
     id: 'user-1',
@@ -70,6 +72,10 @@ describe('ProxyRulesController', () => {
       getProjectById: jest.fn(),
     } as unknown as jest.Mocked<ProjectsService>;
 
+    mockUserGroupsService = {
+      getGroupIdsForUser: jest.fn(),
+    } as unknown as jest.Mocked<UserGroupsService>;
+
     const mockExecutionLogService = {
       log: jest.fn().mockResolvedValue(undefined),
     };
@@ -82,6 +88,7 @@ describe('ProxyRulesController', () => {
         { provide: PipelineExecutionLogService, useValue: mockExecutionLogService },
         { provide: DeploymentsService, useValue: mockDeploymentsService },
         { provide: ProjectsService, useValue: mockProjectsService },
+        { provide: UserGroupsService, useValue: mockUserGroupsService },
       ],
     }).compile();
 
@@ -141,6 +148,109 @@ describe('ProxyRulesController', () => {
         'user-1',
         'admin',
         undefined,
+      );
+    });
+  });
+
+  describe('testPipelineRule', () => {
+    const createMockPipelineRule = (overrides: Record<string, unknown> = {}) =>
+      createMockRule({
+        proxyType: 'pipeline' as const,
+        pipelineConfig: {
+          name: 'Test Pipeline',
+          steps: [
+            {
+              id: 'step-1',
+              handlerType: 'response_handler',
+              config: {},
+              isEnabled: true,
+            },
+          ],
+        },
+        ...overrides,
+      });
+
+    const mockRuleSet = { id: 'rule-set-1', projectId: 'project-1' };
+
+    beforeEach(() => {
+      mockProxyRulesService.getRuleSetById = jest.fn().mockResolvedValue(mockRuleSet);
+      mockPipelineExecutionService.executePipelineWithDebug.mockResolvedValue({
+        success: true,
+        response: { status: 200, body: {} },
+        stepOutputs: {},
+        debug: undefined,
+      } as any);
+    });
+
+    it('passes mockUser.groups through to executePipelineWithDebug', async () => {
+      mockProxyRulesService.getRuleById.mockResolvedValue(createMockPipelineRule());
+
+      await controller.testPipelineRule(
+        'rule-1',
+        {
+          mockUser: { id: 'mock-user-1', email: 'mock@example.com', role: 'user', groups: ['group-a', 'group-b'] },
+        },
+        mockUser,
+        { file: undefined } as any,
+      );
+
+      expect(mockPipelineExecutionService.executePipelineWithDebug).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.objectContaining({
+          id: 'mock-user-1',
+          groups: ['group-a', 'group-b'],
+        }),
+        expect.anything(),
+      );
+    });
+
+    it('does not crash when mockUser.groups is absent', async () => {
+      mockProxyRulesService.getRuleById.mockResolvedValue(createMockPipelineRule());
+
+      await expect(
+        controller.testPipelineRule(
+          'rule-1',
+          { mockUser: { id: 'mock-user-1', email: 'mock@example.com', role: 'user' } },
+          mockUser,
+          { file: undefined } as any,
+        ),
+      ).resolves.toBeDefined();
+
+      expect(mockPipelineExecutionService.executePipelineWithDebug).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.objectContaining({ id: 'mock-user-1', groups: undefined }),
+        expect.anything(),
+      );
+    });
+
+    it('enriches the real-user branch with group memberships', async () => {
+      mockProxyRulesService.getRuleById.mockResolvedValue(createMockPipelineRule());
+      mockUserGroupsService.getGroupIdsForUser.mockResolvedValue(['group-x']);
+
+      await controller.testPipelineRule('rule-1', {}, mockUser, { file: undefined } as any);
+
+      expect(mockUserGroupsService.getGroupIdsForUser).toHaveBeenCalledWith('user-1');
+      expect(mockPipelineExecutionService.executePipelineWithDebug).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.objectContaining({ id: 'user-1', groups: ['group-x'] }),
+        expect.anything(),
+      );
+    });
+
+    it('degrades to empty groups when group lookup fails for the real user', async () => {
+      mockProxyRulesService.getRuleById.mockResolvedValue(createMockPipelineRule());
+      mockUserGroupsService.getGroupIdsForUser.mockRejectedValue(new Error('db down'));
+
+      await controller.testPipelineRule('rule-1', {}, mockUser, { file: undefined } as any);
+
+      expect(mockPipelineExecutionService.executePipelineWithDebug).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.objectContaining({ id: 'user-1', groups: [] }),
+        expect.anything(),
       );
     });
   });
