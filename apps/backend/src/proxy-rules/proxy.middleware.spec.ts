@@ -199,11 +199,27 @@ describe('ProxyMiddleware', () => {
     });
 
     it('should match middle wildcard patterns', () => {
-      expect((middleware as any).matchesPattern('/api/uploads/feedback-*', '/api/uploads/feedback-screenshots')).toBe(true);
-      expect((middleware as any).matchesPattern('/api/uploads/feedback-*', '/api/uploads/feedback-audio/foo.mp3')).toBe(true);
-      expect((middleware as any).matchesPattern('/api/uploads/feedback-*', '/api/uploads/feedback-')).toBe(true);
-      expect((middleware as any).matchesPattern('/api/uploads/feedback-*', '/api/uploads/other')).toBe(false);
-      expect((middleware as any).matchesPattern('/api/uploads/feedback-*', '/api/uploads')).toBe(false);
+      expect(
+        (middleware as any).matchesPattern(
+          '/api/uploads/feedback-*',
+          '/api/uploads/feedback-screenshots',
+        ),
+      ).toBe(true);
+      expect(
+        (middleware as any).matchesPattern(
+          '/api/uploads/feedback-*',
+          '/api/uploads/feedback-audio/foo.mp3',
+        ),
+      ).toBe(true);
+      expect(
+        (middleware as any).matchesPattern('/api/uploads/feedback-*', '/api/uploads/feedback-'),
+      ).toBe(true);
+      expect(
+        (middleware as any).matchesPattern('/api/uploads/feedback-*', '/api/uploads/other'),
+      ).toBe(false);
+      expect((middleware as any).matchesPattern('/api/uploads/feedback-*', '/api/uploads')).toBe(
+        false,
+      );
     });
   });
 

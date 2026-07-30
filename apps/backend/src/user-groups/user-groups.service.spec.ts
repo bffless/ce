@@ -574,7 +574,9 @@ describe('UserGroupsService', () => {
 
   describe('searchGroupDirectory', () => {
     it('returns groups with numeric memberCount and applies the default limit', async () => {
-      const limitMock = jest.fn().mockResolvedValue([{ id: 'g1', name: 'Design', memberCount: '3' }]);
+      const limitMock = jest
+        .fn()
+        .mockResolvedValue([{ id: 'g1', name: 'Design', memberCount: '3' }]);
       mockDb.select.mockReturnValueOnce({
         from: jest.fn().mockReturnValue({
           leftJoin: jest.fn().mockReturnValue({
@@ -593,7 +595,9 @@ describe('UserGroupsService', () => {
 
     it('caps an oversized limit at 50', async () => {
       /* same chain mock */
-      const limitMock = jest.fn().mockResolvedValue([{ id: 'g1', name: 'Design', memberCount: '3' }]);
+      const limitMock = jest
+        .fn()
+        .mockResolvedValue([{ id: 'g1', name: 'Design', memberCount: '3' }]);
       mockDb.select.mockReturnValueOnce({
         from: jest.fn().mockReturnValue({
           leftJoin: jest.fn().mockReturnValue({

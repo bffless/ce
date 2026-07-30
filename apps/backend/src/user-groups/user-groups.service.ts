@@ -306,6 +306,8 @@ export class UserGroupsService {
       .orderBy(asc(userGroups.name))
       .limit(capped);
 
-    return { groups: rows.map((r) => ({ id: r.id, name: r.name, memberCount: Number(r.memberCount) })) };
+    return {
+      groups: rows.map((r) => ({ id: r.id, name: r.name, memberCount: Number(r.memberCount) })),
+    };
   }
 }
