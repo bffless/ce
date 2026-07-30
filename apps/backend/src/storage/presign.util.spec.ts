@@ -78,6 +78,27 @@ describe('signLocalUpload / verifyLocalUpload', () => {
     expect(verifyLocalUpload(params, 'not-hex', presignKey)).toBe(false);
     expect(verifyLocalUpload(params, '', presignKey)).toBe(false);
   });
+
+  it('rejects a same-length but invalid-hex signature', () => {
+    // 'g' is not valid hex, so Buffer.from(..., 'hex') silently truncates it.
+    // verifyLocalUpload must still return false rather than throw.
+    const invalidHex = 'g'.repeat(64);
+    expect(verifyLocalUpload(params, invalidHex, presignKey)).toBe(false);
+  });
+
+  it('throws TypeError when exp is not a finite number', () => {
+    expect(() => signLocalUpload({ ...params, exp: 'not-a-number' as any }, presignKey)).toThrow(TypeError);
+    expect(() => verifyLocalUpload({ ...params, exp: 'not-a-number' as any }, '', presignKey)).toThrow(TypeError);
+    expect(() => signLocalUpload({ ...params, exp: Infinity }, presignKey)).toThrow(TypeError);
+    expect(() => verifyLocalUpload({ ...params, exp: NaN }, '', presignKey)).toThrow(TypeError);
+  });
+
+  it('throws TypeError when max is not a finite number', () => {
+    expect(() => signLocalUpload({ ...params, max: 'not-a-number' as any }, presignKey)).toThrow(TypeError);
+    expect(() => verifyLocalUpload({ ...params, max: 'not-a-number' as any }, '', presignKey)).toThrow(TypeError);
+    expect(() => signLocalUpload({ ...params, max: Infinity }, presignKey)).toThrow(TypeError);
+    expect(() => verifyLocalUpload({ ...params, max: NaN }, '', presignKey)).toThrow(TypeError);
+  });
 });
 
 describe('constants', () => {

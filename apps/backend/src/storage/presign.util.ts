@@ -45,11 +45,36 @@ export function resolvePublicOrigin(env: NodeJS.ProcessEnv = process.env): strin
   );
 }
 
+/**
+ * Build the canonical string for signing.
+ *
+ * CRITICAL INVARIANT: This signature scheme is collision-free ONLY because `exp`
+ * and `max` are numbers. A JavaScript number's template-literal stringification
+ * can never contain the `|` delimiter. If either param were coerced from a string
+ * without validation, an attacker could inject `|` into the `key` to shift where
+ * `exp` and `max` are parsed and forge a single signature for multiple triples.
+ *
+ * Callers MUST:
+ * - Coerce query-string `exp` and `max` to numbers via `Number()` or `parseInt()`
+ * - Validate that both are finite (`Number.isFinite()`)
+ * - Never pass raw string parameters directly
+ *
+ * Changing the delimiter scheme or accepting string params would break this
+ * invariant and enable delimiter injection attacks.
+ */
 function canonicalString({ key, exp, max }: LocalPresignParams): string {
   return `${key}|${exp}|${max}`;
 }
 
 export function signLocalUpload(params: LocalPresignParams, presignKey: Buffer): string {
+  // Enforce the canonicalization invariant: exp and max must be finite numbers.
+  // See canonicalString() for why this is load-bearing.
+  if (typeof params.exp !== 'number' || !Number.isFinite(params.exp)) {
+    throw new TypeError(`exp must be a finite number, got ${typeof params.exp}`);
+  }
+  if (typeof params.max !== 'number' || !Number.isFinite(params.max)) {
+    throw new TypeError(`max must be a finite number, got ${typeof params.max}`);
+  }
   return createHmac('sha256', presignKey).update(canonicalString(params)).digest('hex');
 }
 
@@ -58,6 +83,14 @@ export function verifyLocalUpload(
   sig: string,
   presignKey: Buffer,
 ): boolean {
+  // Enforce the canonicalization invariant: exp and max must be finite numbers.
+  // See canonicalString() for why this is load-bearing.
+  if (typeof params.exp !== 'number' || !Number.isFinite(params.exp)) {
+    throw new TypeError(`exp must be a finite number, got ${typeof params.exp}`);
+  }
+  if (typeof params.max !== 'number' || !Number.isFinite(params.max)) {
+    throw new TypeError(`max must be a finite number, got ${typeof params.max}`);
+  }
   const expected = signLocalUpload(params, presignKey);
   // timingSafeEqual throws on length mismatch, so guard before comparing.
   if (typeof sig !== 'string' || sig.length !== expected.length) return false;
