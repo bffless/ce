@@ -52,6 +52,7 @@ import { DYNAMIC_STORAGE_ADAPTER, StorageModule } from '../storage/storage.modul
 import { ModuleRef } from '@nestjs/core';
 import { CACHE_ADAPTER, ICacheAdapter } from '../storage/cache/cache.interface';
 import { CachingStorageAdapter } from '../storage/cache/caching-storage.adapter';
+import { tryResolvePublicOrigin } from '../storage/presign.util';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 import { AvailableOptionsResponseDto } from './setup.dto';
 import { UsageReporterService } from '../platform/usage-reporter.service';
@@ -894,6 +895,7 @@ export class SetupService {
         return new LocalStorageAdapter({
           localPath: config.localPath,
           baseUrl: config.baseUrl,
+          publicOrigin: tryResolvePublicOrigin(),
         });
       }
 

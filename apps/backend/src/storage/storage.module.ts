@@ -10,6 +10,7 @@ import { FilesController } from './files.controller';
 import { CacheController } from './cache/cache.controller';
 import { CachingStorageAdapter } from './cache/caching-storage.adapter';
 import { CACHE_ADAPTER, ICacheAdapter, CacheConfig } from './cache/cache.interface';
+import { tryResolvePublicOrigin } from './presign.util';
 
 // Re-export STORAGE_ADAPTER for convenience
 export { STORAGE_ADAPTER } from './storage.interface';
@@ -152,7 +153,10 @@ export class StorageModule {
   static createAdapter(config: StorageModuleConfig): IStorageAdapter {
     switch (config.storageType) {
       case 'local':
-        return new LocalStorageAdapter(config.config);
+        return new LocalStorageAdapter({
+          ...config.config,
+          publicOrigin: config.config.publicOrigin ?? tryResolvePublicOrigin(),
+        });
 
       case 'minio':
         return new MinioStorageAdapter(config.config);

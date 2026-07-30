@@ -261,3 +261,22 @@ describe('DynamicStorageAdapter', () => {
     });
   });
 });
+
+describe('DynamicStorageAdapter default local adapter', () => {
+  const original = process.env.PRIMARY_DOMAIN;
+  afterEach(() => {
+    if (original === undefined) delete process.env.PRIMARY_DOMAIN;
+    else process.env.PRIMARY_DOMAIN = original;
+  });
+
+  it('supports presigned uploads out of the box when a domain is configured', () => {
+    process.env.PRIMARY_DOMAIN = 'ce.example';
+    expect(new DynamicStorageAdapter().supportsPresignedUrls()).toBe(true);
+  });
+
+  it('degrades to unsupported rather than throwing when no origin can be resolved', () => {
+    delete process.env.PRIMARY_DOMAIN;
+    delete process.env.PUBLIC_ORIGIN;
+    expect(new DynamicStorageAdapter().supportsPresignedUrls()).toBe(false);
+  });
+});

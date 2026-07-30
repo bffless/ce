@@ -8,6 +8,7 @@ import {
   SignedUrlOptions,
 } from './storage.interface';
 import { LocalStorageAdapter } from './local.adapter';
+import { tryResolvePublicOrigin } from './presign.util';
 
 /**
  * Dynamic Storage Adapter
@@ -29,7 +30,10 @@ export class DynamicStorageAdapter implements IStorageAdapter {
     // Generate a unique instance ID to track this singleton
     this.instanceId = Math.random().toString(36).substring(7);
     // Start with a default local adapter
-    this.adapter = new LocalStorageAdapter({ localPath: './uploads' });
+    this.adapter = new LocalStorageAdapter({
+      localPath: './uploads',
+      publicOrigin: tryResolvePublicOrigin(),
+    });
     this.logger.log(
       `DynamicStorageAdapter [${this.instanceId}] initialized with default LocalStorageAdapter`,
     );

@@ -3,9 +3,13 @@ import {
   resolvePublicOrigin,
   signLocalUpload,
   verifyLocalUpload,
+  tryResolvePublicOrigin,
   DEFAULT_MAX_UPLOAD_BYTES,
   MAX_EXPIRES_IN_SECONDS,
 } from './presign.util';
+import { LocalStorageAdapter } from './local.adapter';
+import { DynamicStorageAdapter } from './dynamic-storage.adapter';
+import { StorageModule } from './storage.module';
 
 describe('derivePresignKey', () => {
   it('prefers LOCAL_PRESIGN_SECRET over ENCRYPTION_KEY', () => {
@@ -104,5 +108,58 @@ describe('signLocalUpload / verifyLocalUpload', () => {
 describe('constants', () => {
   it('caps expiry at one hour, matching the other adapters', () => {
     expect(MAX_EXPIRES_IN_SECONDS).toBe(3600);
+  });
+});
+
+describe('publicOrigin reaches every LocalStorageAdapter construction site', () => {
+  const saved = { PRIMARY_DOMAIN: process.env.PRIMARY_DOMAIN, PUBLIC_ORIGIN: process.env.PUBLIC_ORIGIN };
+
+  beforeEach(() => {
+    process.env.PRIMARY_DOMAIN = 'sites.example';
+    delete process.env.PUBLIC_ORIGIN;
+  });
+
+  afterEach(() => {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
+
+  it('site 1 — DynamicStorageAdapter default adapter mints presigned URLs', async () => {
+    const dynamic = new DynamicStorageAdapter();
+    expect(dynamic.supportsPresignedUrls()).toBe(true);
+    const url = await dynamic.getPresignedUploadUrl!('o/r/uploads/content/a.bin');
+    expect(new URL(url).origin).toBe('https://sites.example');
+  });
+
+  it('site 2 — StorageModule.createAdapter local branch mints presigned URLs', async () => {
+    // StorageModule.createAdapter is a public static factory, so the real local
+    // branch (the actual construction site) can be exercised directly rather
+    // than only asserting an equivalent config shape.
+    const adapter = StorageModule.createAdapter({
+      storageType: 'local',
+      config: { localPath: '/tmp/bffless-site2' },
+    }) as LocalStorageAdapter;
+    expect(adapter.supportsPresignedUrls()).toBe(true);
+    expect(new URL(await adapter.getPresignedUploadUrl('k')).origin).toBe('https://sites.example');
+  });
+
+  it('site 3 — a setup.service-shaped construction mints presigned URLs', async () => {
+    const adapter = new LocalStorageAdapter({
+      localPath: '/tmp/bffless-site3',
+      keyPrefix: 'ws1',
+      publicOrigin: tryResolvePublicOrigin(),
+    });
+    expect(adapter.supportsPresignedUrls()).toBe(true);
+    const url = await adapter.getPresignedUploadUrl('k');
+    const key = Buffer.from(new URL(url).searchParams.get('key')!, 'base64url').toString('utf8');
+    expect(key).toBe('ws1/k');
+  });
+
+  it('degrades to unsupported, not a crash, when no origin can be resolved', () => {
+    delete process.env.PRIMARY_DOMAIN;
+    delete process.env.PUBLIC_ORIGIN;
+    expect(new DynamicStorageAdapter().supportsPresignedUrls()).toBe(false);
   });
 });

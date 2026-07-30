@@ -46,6 +46,18 @@ export function resolvePublicOrigin(env: NodeJS.ProcessEnv = process.env): strin
 }
 
 /**
+ * Origin resolution for construction sites that must not fail boot. Returns
+ * undefined instead of throwing; the adapter then reports no presigned support.
+ */
+export function tryResolvePublicOrigin(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  try {
+    return resolvePublicOrigin(env);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Build the canonical string for signing.
  *
  * CRITICAL INVARIANT: This signature scheme is collision-free ONLY because `exp`
