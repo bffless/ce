@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.15](https://github.com/bffless/ce/compare/v0.3.14...v0.3.15) (2026-07-30)
+
+
+### Features
+
+* **storage:** presigned uploads on local filesystem storage ([#565](https://github.com/bffless/ce/issues/565)) ([a54c330](https://github.com/bffless/ce/commit/a54c3304f861ed3c4e8d489cf053a49f0aa28984))
+
 ## [0.3.14](https://github.com/bffless/ce/compare/v0.3.13...v0.3.14) (2026-07-30)
 
 
