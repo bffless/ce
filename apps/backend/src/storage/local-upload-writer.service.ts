@@ -19,11 +19,41 @@ export class UploadTooLargeError extends Error {
   }
 }
 
+/**
+ * Thrown when the stream ends having written fewer (or more, though that path
+ * is unreachable here — see writeStream) bytes than the caller declared it
+ * would. The prototypical cause: something upstream of this service (e.g. a
+ * body parser mis-triggered by an unexpected Content-Type) fully consumed the
+ * request stream before it reached here, so `source` ends immediately having
+ * yielded zero bytes. Without this check, that would rename a 0-byte temp
+ * file over whatever object already existed at `storageKey` and report 200 —
+ * data destruction reported as success. Raised (and the temp file discarded)
+ * BEFORE the rename, so the target key is never touched by a short write.
+ */
+export class UploadIncompleteError extends Error {
+  constructor(
+    message: string,
+    readonly bytesWritten: number,
+    readonly expectedBytes: number,
+  ) {
+    super(message);
+    this.name = 'UploadIncompleteError';
+  }
+}
+
 export interface WriteStreamOptions {
   source: Readable;
   basePath: string;
   storageKey: string;
   maxBytes: number;
+  /**
+   * The declared body length (Content-Length) the caller verified before
+   * streaming. When provided, `writeStream` requires `bytesWritten` to equal
+   * it exactly before renaming into place — see UploadIncompleteError.
+   * Optional so lower-level/test callers that don't have a declared length
+   * aren't forced to supply one.
+   */
+  expectedBytes?: number;
 }
 
 /**
@@ -42,6 +72,7 @@ export class LocalUploadWriterService {
     basePath,
     storageKey,
     maxBytes,
+    expectedBytes,
   }: WriteStreamOptions): Promise<{ bytesWritten: number; etag: string }> {
     const tempDir = path.join(basePath, TEMP_DIR_NAME);
     await fs.mkdir(tempDir, { recursive: true });
@@ -71,6 +102,23 @@ export class LocalUploadWriterService {
     } catch (err) {
       await fs.rm(tempPath, { force: true });
       throw err;
+    }
+
+    // Integrity check, BEFORE the rename below: a stream that ended having
+    // written fewer bytes than declared means something consumed or
+    // truncated the body upstream of us (e.g. a global body-parser fully
+    // draining the request because of an unexpected Content-Type). Renaming
+    // a short temp file into place would silently destroy whatever object
+    // already existed at storageKey while reporting success, so this is
+    // caught here — before the target key is touched at all — and the temp
+    // file is discarded instead of promoted.
+    if (expectedBytes !== undefined && bytesWritten !== expectedBytes) {
+      await fs.rm(tempPath, { force: true });
+      throw new UploadIncompleteError(
+        `Upload wrote ${bytesWritten} bytes but the declared length was ${expectedBytes} bytes`,
+        bytesWritten,
+        expectedBytes,
+      );
     }
 
     // `fs.rename` is only atomic within a single filesystem. That holds here

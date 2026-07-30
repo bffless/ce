@@ -12,6 +12,7 @@ import * as crypto from 'crypto';
 import {
   derivePresignKey,
   signLocalUpload,
+  hasRealPresignSecret,
   DEFAULT_MAX_UPLOAD_BYTES,
   MAX_EXPIRES_IN_SECONDS,
 } from './presign.util';
@@ -33,6 +34,7 @@ export class LocalStorageAdapter implements IStorageAdapter {
   private readonly keyPrefix: string;
   private readonly publicOrigin: string | null;
   private readonly presignKey: Buffer;
+  private readonly hasExplicitPresignKey: boolean;
   private readonly maxUploadBytes: number;
 
   constructor(config: {
@@ -52,6 +54,7 @@ export class LocalStorageAdapter implements IStorageAdapter {
     // silently mint localhost URLs on a real install.
     this.publicOrigin = config.publicOrigin?.replace(/\/+$/, '') ?? null;
     this.presignKey = config.presignKey ?? derivePresignKey();
+    this.hasExplicitPresignKey = config.presignKey !== undefined;
     this.maxUploadBytes = config.maxUploadBytes ?? DEFAULT_MAX_UPLOAD_BYTES;
 
     this.logger.log(
@@ -234,10 +237,23 @@ export class LocalStorageAdapter implements IStorageAdapter {
 
   /**
    * Local storage supports presigned uploads via a same-origin, HMAC-signed
-   * PUT route. Requires a resolvable public origin to mint absolute URLs.
+   * PUT route. Requires a resolvable public origin to mint absolute URLs, AND
+   * real signing material: either an explicitly configured `presignKey`, or a
+   * non-default secret in the environment (`hasRealPresignSecret`).
+   *
+   * Without one of those, `derivePresignKey()` above degrades to a hardcoded
+   * dev-fallback string rather than throwing (so construction never crashes),
+   * but that fallback is a PUBLIC CONSTANT — the sole "authorization" on the
+   * upload route would then be forgeable by anyone. Fail closed here instead:
+   * don't advertise presigned support when the only signing material backing
+   * it is public. `ENCRYPTION_KEY` is mandatory in CE setup, so this should
+   * never trigger in practice — but ENABLE_LOCAL_PRESIGNED_UPLOADS defaults
+   * to on, so this is the backstop for a misconfigured install rather than a
+   * theoretical concern.
    */
   supportsPresignedUrls(): boolean {
-    return this.publicOrigin !== null;
+    if (this.publicOrigin === null) return false;
+    return this.hasExplicitPresignKey || hasRealPresignSecret();
   }
 
   /**

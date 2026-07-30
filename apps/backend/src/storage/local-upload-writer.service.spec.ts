@@ -6,6 +6,7 @@ import { createHash } from 'crypto';
 import {
   LocalUploadWriterService,
   UploadTooLargeError,
+  UploadIncompleteError,
   TEMP_DIR_NAME,
 } from './local-upload-writer.service';
 
@@ -154,6 +155,82 @@ describe('LocalUploadWriterService', () => {
     // Generous ceiling; a buffering implementation grows by ~300 MB.
     expect(growth).toBeLessThan(64 * 1024 * 1024);
   }, 60_000);
+
+  it('rejects a short body that under-delivers the declared length, without touching the target', async () => {
+    // Simulates something upstream (e.g. a body-parser triggered by a
+    // non-octet-stream Content-Type) fully consuming the request body before
+    // it reaches the writer: the source stream ends immediately, having
+    // yielded zero bytes, even though the caller declared 999.
+    await fs.writeFile(path.join(basePath, 'existing.bin'), 'ORIGINAL');
+
+    await expect(
+      writer.writeStream({
+        source: Readable.from([]),
+        basePath,
+        storageKey: 'existing.bin',
+        maxBytes: 999,
+        expectedBytes: 999,
+      }),
+    ).rejects.toBeInstanceOf(UploadIncompleteError);
+
+    // The pre-existing object must be completely untouched -- not truncated,
+    // not replaced with an empty file.
+    expect(await fs.readFile(path.join(basePath, 'existing.bin'), 'utf8')).toBe('ORIGINAL');
+    expect(await listTemp()).toEqual([]);
+  });
+
+  it('rejects a short body even when there is no pre-existing object at the target key', async () => {
+    await expect(
+      writer.writeStream({
+        source: Readable.from([Buffer.alloc(3)]),
+        basePath,
+        storageKey: 'brand-new.bin',
+        maxBytes: 10,
+        expectedBytes: 10,
+      }),
+    ).rejects.toBeInstanceOf(UploadIncompleteError);
+
+    await expect(fs.access(path.join(basePath, 'brand-new.bin'))).rejects.toThrow();
+    expect(await listTemp()).toEqual([]);
+  });
+
+  it('carries bytesWritten and expectedBytes on the error for diagnostics', async () => {
+    const err = await writer
+      .writeStream({
+        source: Readable.from([Buffer.alloc(4)]),
+        basePath,
+        storageKey: 'short.bin',
+        maxBytes: 10,
+        expectedBytes: 10,
+      })
+      .catch((e) => e);
+
+    expect(err).toBeInstanceOf(UploadIncompleteError);
+    expect(err.bytesWritten).toBe(4);
+    expect(err.expectedBytes).toBe(10);
+  });
+
+  it('does not enforce expectedBytes when it is omitted', async () => {
+    const result = await writer.writeStream({
+      source: Readable.from([Buffer.from('ok')]),
+      basePath,
+      storageKey: 'no-check.bin',
+      maxBytes: 1024,
+    });
+    expect(result.bytesWritten).toBe(2);
+  });
+
+  it('succeeds when bytesWritten matches expectedBytes exactly', async () => {
+    const result = await writer.writeStream({
+      source: Readable.from([Buffer.from('exact')]),
+      basePath,
+      storageKey: 'exact.bin',
+      maxBytes: 1024,
+      expectedBytes: 5,
+    });
+    expect(result.bytesWritten).toBe(5);
+    expect(await fs.readFile(path.join(basePath, 'exact.bin'), 'utf8')).toBe('exact');
+  });
 
   it('sweeps temp files older than the cutoff and keeps fresh ones', async () => {
     const tempDir = path.join(basePath, TEMP_DIR_NAME);

@@ -12,7 +12,11 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { LocalPresignedUploadController } from './local-presigned-upload.controller';
 import { derivePresignKey, signLocalUpload } from './presign.util';
-import { LocalUploadWriterService, UploadTooLargeError } from './local-upload-writer.service';
+import {
+  LocalUploadWriterService,
+  UploadTooLargeError,
+  UploadIncompleteError,
+} from './local-upload-writer.service';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 import { StorageQuotaService } from './storage-quota.service';
 import { STORAGE_ADAPTER } from './storage.interface';
@@ -145,8 +149,18 @@ describe('LocalPresignedUploadController', () => {
     const res = { setHeader: jest.fn(), status: jest.fn().mockReturnThis(), end: jest.fn() } as any;
     await build().upload(validQuery(), makeReq(), res);
 
+    // makeReq() defaults to a 10-byte Content-Length; MAX (the signed
+    // ceiling) is 1024. maxBytes is tightened to Math.min(max, contentLength)
+    // per the fix-round hardening, so the writer must see 10, not 1024 --
+    // and expectedBytes must be set to contentLength so the writer can
+    // detect a short body before it ever renames into place.
     expect(writer.writeStream).toHaveBeenCalledWith(
-      expect.objectContaining({ basePath: '/tmp/base', storageKey: KEY, maxBytes: MAX }),
+      expect.objectContaining({
+        basePath: '/tmp/base',
+        storageKey: KEY,
+        maxBytes: 10,
+        expectedBytes: 10,
+      }),
     );
     expect(res.setHeader).toHaveBeenCalledWith('ETag', '"abc"');
     expect(res.status).toHaveBeenCalledWith(200);
@@ -157,6 +171,24 @@ describe('LocalPresignedUploadController', () => {
     await expect(build().upload(validQuery(), makeReq(), {} as any)).rejects.toBeInstanceOf(
       PayloadTooLargeException,
     );
+  });
+
+  it('translates a writer-detected short body (e.g. body-parser consumed the request) into 400, not a 200', async () => {
+    // Regression test for the fix-round finding: a non-octet-stream
+    // Content-Type (e.g. application/json) lets a global body parser fully
+    // consume the request stream before it reaches the writer, so the writer
+    // sees zero bytes despite a declared Content-Length. The writer detects
+    // this (UploadIncompleteError) and the controller must surface it as a
+    // client error, not let it fall through as a false 200.
+    writer.writeStream.mockRejectedValue(new UploadIncompleteError('short body', 0, 10));
+    const err = await build()
+      .upload(validQuery(), makeReq(), {
+        setHeader: jest.fn(),
+        status: jest.fn().mockReturnThis(),
+        end: jest.fn(),
+      } as any)
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(BadRequestException);
   });
 
   it('passes the request stream itself to the writer, not a buffer', async () => {
@@ -251,10 +283,17 @@ describe('LocalPresignedUploadController with the real global ValidationPipe', (
 
     // A silent strip would surface as 400 "Missing presigned upload
     // parameters" (query.key/exp/max/sig all undefined). Confirm instead that
-    // the handler reached the writer with the real, decoded params.
+    // the handler reached the writer with the real, decoded params. maxBytes
+    // is Math.min(max, contentLength) = min(1024, 5) = 5 per the fix-round
+    // hardening, and expectedBytes mirrors the declared Content-Length.
     expect(res.status).toBe(200);
     expect(writer.writeStream).toHaveBeenCalledWith(
-      expect.objectContaining({ basePath: '/tmp/base', storageKey: KEY, maxBytes: MAX }),
+      expect.objectContaining({
+        basePath: '/tmp/base',
+        storageKey: KEY,
+        maxBytes: 5,
+        expectedBytes: 5,
+      }),
     );
   });
 });

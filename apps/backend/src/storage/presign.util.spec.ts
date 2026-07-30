@@ -4,6 +4,7 @@ import {
   signLocalUpload,
   verifyLocalUpload,
   tryResolvePublicOrigin,
+  hasRealPresignSecret,
   DEFAULT_MAX_UPLOAD_BYTES,
   MAX_EXPIRES_IN_SECONDS,
 } from './presign.util';
@@ -33,6 +34,25 @@ describe('derivePresignKey', () => {
       .update('k|pipeline-fn-sign')
       .digest();
     expect(ours.equals(theirs)).toBe(false);
+  });
+});
+
+describe('hasRealPresignSecret', () => {
+  it('is false when neither LOCAL_PRESIGN_SECRET nor ENCRYPTION_KEY is set', () => {
+    expect(hasRealPresignSecret({})).toBe(false);
+  });
+
+  it('is false for blank/whitespace-only values', () => {
+    expect(hasRealPresignSecret({ ENCRYPTION_KEY: '' })).toBe(false);
+    expect(hasRealPresignSecret({ LOCAL_PRESIGN_SECRET: '   ' })).toBe(false);
+  });
+
+  it('is true when ENCRYPTION_KEY is set', () => {
+    expect(hasRealPresignSecret({ ENCRYPTION_KEY: 'real-key' })).toBe(true);
+  });
+
+  it('is true when LOCAL_PRESIGN_SECRET is set', () => {
+    expect(hasRealPresignSecret({ LOCAL_PRESIGN_SECRET: 'real-secret' })).toBe(true);
   });
 });
 
@@ -112,11 +132,20 @@ describe('constants', () => {
 });
 
 describe('publicOrigin reaches every LocalStorageAdapter construction site', () => {
-  const saved = { PRIMARY_DOMAIN: process.env.PRIMARY_DOMAIN, PUBLIC_ORIGIN: process.env.PUBLIC_ORIGIN };
+  const saved = {
+    PRIMARY_DOMAIN: process.env.PRIMARY_DOMAIN,
+    PUBLIC_ORIGIN: process.env.PUBLIC_ORIGIN,
+    ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
+  };
 
   beforeEach(() => {
     process.env.PRIMARY_DOMAIN = 'sites.example';
     delete process.env.PUBLIC_ORIGIN;
+    // These sites exercise "presigned support is fully wired end-to-end given
+    // a resolvable origin" -- which on a real CE install always also has
+    // ENCRYPTION_KEY set (it's mandatory setup, not optional). The dedicated
+    // "no secret" fail-closed cases live in local.adapter.spec.ts.
+    process.env.ENCRYPTION_KEY = 'test-encryption-key';
   });
 
   afterEach(() => {

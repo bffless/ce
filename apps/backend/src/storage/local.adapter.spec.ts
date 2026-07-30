@@ -466,3 +466,65 @@ describe('LocalStorageAdapter presigned uploads', () => {
     expect(url.startsWith('https://ce.example')).toBe(true);
   });
 });
+
+describe('LocalStorageAdapter fails closed on the dev presign secret', () => {
+  // derivePresignKey() (called with no args inside the adapter) reads
+  // process.env directly, so these tests must control it rather than pass an
+  // explicit env map like the rest of the suite.
+  const saved = {
+    ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
+    LOCAL_PRESIGN_SECRET: process.env.LOCAL_PRESIGN_SECRET,
+  };
+
+  beforeEach(() => {
+    delete process.env.ENCRYPTION_KEY;
+    delete process.env.LOCAL_PRESIGN_SECRET;
+  });
+
+  afterEach(() => {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
+
+  it('does NOT advertise presigned support with no secrets and no explicit key', () => {
+    const adapter = new LocalStorageAdapter({
+      localPath: '/tmp/bffless-no-secret',
+      publicOrigin: 'https://ce.example',
+    });
+    expect(adapter.supportsPresignedUrls()).toBe(false);
+  });
+
+  it('DOES advertise presigned support when an explicit presignKey is passed, even with no env secrets', () => {
+    const adapter = new LocalStorageAdapter({
+      localPath: '/tmp/bffless-explicit-key',
+      publicOrigin: 'https://ce.example',
+      presignKey: derivePresignKey({ ENCRYPTION_KEY: 'explicit' }),
+    });
+    expect(adapter.supportsPresignedUrls()).toBe(true);
+  });
+
+  it('DOES advertise presigned support once ENCRYPTION_KEY is set in the environment', () => {
+    process.env.ENCRYPTION_KEY = 'a-real-encryption-key';
+    const adapter = new LocalStorageAdapter({
+      localPath: '/tmp/bffless-env-secret',
+      publicOrigin: 'https://ce.example',
+    });
+    expect(adapter.supportsPresignedUrls()).toBe(true);
+  });
+
+  it('still refuses to sign a URL if callers bypass supportsPresignedUrls and call getPresignedUploadUrl directly', async () => {
+    // getPresignedUploadUrl itself doesn't gate on hasRealPresignSecret --
+    // only supportsPresignedUrls (the advertised capability) does. This just
+    // documents that boundary so it isn't mistaken for a second enforcement
+    // point: callers (LocalPresignedUploadController, mint-URL call sites)
+    // are expected to check supportsPresignedUrls() first.
+    const adapter = new LocalStorageAdapter({
+      localPath: '/tmp/bffless-no-secret-2',
+      publicOrigin: 'https://ce.example',
+    });
+    expect(adapter.supportsPresignedUrls()).toBe(false);
+    await expect(adapter.getPresignedUploadUrl('k')).resolves.toEqual(expect.any(String));
+  });
+});

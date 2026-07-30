@@ -27,6 +27,23 @@ export function derivePresignKey(env: NodeJS.ProcessEnv = process.env): Buffer {
 }
 
 /**
+ * True when a real, install-specific presign secret is configured — either
+ * `LOCAL_PRESIGN_SECRET` or the (normally mandatory) `ENCRYPTION_KEY`.
+ *
+ * `derivePresignKey` above deliberately never throws when neither is set: it
+ * degrades to a hardcoded dev-fallback string so unit tests and other callers
+ * that construct a key unconditionally never crash. But that fallback is a
+ * PUBLIC CONSTANT baked into the source — if it's the only signing material
+ * available, anyone can forge a valid upload signature for any key under
+ * basePath. Callers that decide whether to ADVERTISE presigned-upload
+ * support (i.e. `LocalStorageAdapter.supportsPresignedUrls`) must check this
+ * and fail closed rather than silently offering forgeable auth.
+ */
+export function hasRealPresignSecret(env: NodeJS.ProcessEnv = process.env): boolean {
+  return Boolean(env.LOCAL_PRESIGN_SECRET?.trim() || env.ENCRYPTION_KEY?.trim());
+}
+
+/**
  * Resolve the origin presigned URLs are minted against.
  *
  * Throws when it cannot be resolved. That is deliberate: silently defaulting to

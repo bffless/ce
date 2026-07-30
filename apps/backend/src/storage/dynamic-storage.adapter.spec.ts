@@ -263,14 +263,24 @@ describe('DynamicStorageAdapter', () => {
 });
 
 describe('DynamicStorageAdapter default local adapter', () => {
-  const original = process.env.PRIMARY_DOMAIN;
+  const original = {
+    PRIMARY_DOMAIN: process.env.PRIMARY_DOMAIN,
+    ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
+  };
   afterEach(() => {
-    if (original === undefined) delete process.env.PRIMARY_DOMAIN;
-    else process.env.PRIMARY_DOMAIN = original;
+    for (const [k, v] of Object.entries(original)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
   });
 
   it('supports presigned uploads out of the box when a domain is configured', () => {
     process.env.PRIMARY_DOMAIN = 'ce.example';
+    // On a real CE install ENCRYPTION_KEY is mandatory setup, not optional --
+    // this test exercises "presigned support given a resolvable origin", so
+    // it needs the real signing secret present too (fail-closed behavior with
+    // no secret is covered in local.adapter.spec.ts).
+    process.env.ENCRYPTION_KEY = 'test-encryption-key';
     expect(new DynamicStorageAdapter().supportsPresignedUrls()).toBe(true);
   });
 

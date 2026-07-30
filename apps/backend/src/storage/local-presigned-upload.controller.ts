@@ -17,7 +17,11 @@ import { ApiTags, ApiOperation, ApiResponse, ApiExcludeEndpoint } from '@nestjs/
 import { Request, Response } from 'express';
 import { IStorageAdapter, STORAGE_ADAPTER } from './storage.interface';
 import { verifyLocalUpload } from './presign.util';
-import { LocalUploadWriterService, UploadTooLargeError } from './local-upload-writer.service';
+import {
+  LocalUploadWriterService,
+  UploadTooLargeError,
+  UploadIncompleteError,
+} from './local-upload-writer.service';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 import { StorageQuotaService } from './storage-quota.service';
 
@@ -123,18 +127,35 @@ export class LocalPresignedUploadController {
       throw new BadRequestException('Invalid storage key');
     }
 
-    // Stream it.
+    // Stream it. maxBytes is tightened to contentLength (never looser than
+    // what quota was actually authorized against — max is only the signed
+    // ceiling, contentLength is what this specific request declared and was
+    // checked against quota above). expectedBytes makes the writer verify
+    // the stream actually delivered that many bytes before it ever renames
+    // into place — see UploadIncompleteError for why that matters.
     let result: { bytesWritten: number; etag: string };
     try {
       result = await this.writer.writeStream({
         source: req,
         basePath: local.getStorageBasePath(),
         storageKey,
-        maxBytes: max,
+        maxBytes: Math.min(max, contentLength),
+        expectedBytes: contentLength,
       });
     } catch (err) {
       if (err instanceof UploadTooLargeError) {
         throw new PayloadTooLargeException(err.message);
+      }
+      if (err instanceof UploadIncompleteError) {
+        // A short body under a declared Content-Length is a malformed client
+        // request (or, per the review that flagged this, the body was fully
+        // consumed upstream by a body-parser before reaching here — e.g. a
+        // non-octet-stream Content-Type). Either way this is a 4xx: the
+        // request as sent didn't deliver what it promised. 400 over 500
+        // because nothing on the server is broken and no server-side
+        // exception occurred — the writer detected the mismatch and handled
+        // it cleanly, leaving the target key untouched (see writeStream).
+        throw new BadRequestException(err.message);
       }
       throw err;
     }
