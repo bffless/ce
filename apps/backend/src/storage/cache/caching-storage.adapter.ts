@@ -210,11 +210,11 @@ export class CachingStorageAdapter implements IStorageAdapter {
   /**
    * Get presigned upload URL (pass through to storage)
    */
-  async getPresignedUploadUrl(key: string, expiresIn?: number): Promise<string> {
+  async getPresignedUploadUrl(key: string, expiresIn?: number, maxBytes?: number): Promise<string> {
     if (!this.storage.getPresignedUploadUrl) {
       throw new Error('Presigned URLs not supported by current storage adapter');
     }
-    return this.storage.getPresignedUploadUrl(key, expiresIn);
+    return this.storage.getPresignedUploadUrl(key, expiresIn, maxBytes);
   }
 
   /**

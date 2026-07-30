@@ -280,8 +280,21 @@ export class LocalStorageAdapter implements IStorageAdapter {
    * backend at all; see
    * docs/superpowers/specs/2026-07-30-local-fs-presigned-uploads-design.md,
    * section "Correction: upload URL routing").
+   *
+   * `maxBytes`, when provided, NARROWS the signed `max` below the adapter's
+   * own ceiling (`this.maxUploadBytes`, normally `DEFAULT_MAX_UPLOAD_BYTES`).
+   * It can only tighten, never widen: a step configuring a larger
+   * `maxFileSize` than the adapter's own cap still gets the adapter's cap.
+   * This lets a pipeline step's `maxFileSize` (e.g. a public
+   * `/api/uploads/prepare` rule meant only for small avatars) actually bound
+   * what gets signed, instead of every presigned URL always carrying the
+   * same 100 MiB ceiling regardless of the step's own configured limit.
    */
-  async getPresignedUploadUrl(key: string, expiresIn = MAX_EXPIRES_IN_SECONDS): Promise<string> {
+  async getPresignedUploadUrl(
+    key: string,
+    expiresIn = MAX_EXPIRES_IN_SECONDS,
+    maxBytes?: number,
+  ): Promise<string> {
     if (!Number.isFinite(expiresIn)) {
       throw new TypeError('expiresIn must be a finite number');
     }
@@ -289,7 +302,10 @@ export class LocalStorageAdapter implements IStorageAdapter {
     const storageKey = this.prefixKey(this.sanitizeKey(key));
     const ttl = Math.min(Math.max(1, Math.floor(expiresIn)), MAX_EXPIRES_IN_SECONDS);
     const exp = Math.floor(Date.now() / 1000) + ttl;
-    const max = this.maxUploadBytes;
+    const max =
+      typeof maxBytes === 'number' && Number.isFinite(maxBytes) && maxBytes > 0
+        ? Math.min(this.maxUploadBytes, Math.floor(maxBytes))
+        : this.maxUploadBytes;
     const sig = signLocalUpload({ key: storageKey, exp, max }, this.presignKey);
 
     const params = new URLSearchParams();
@@ -563,6 +579,18 @@ export class LocalStorageAdapter implements IStorageAdapter {
  * Shared by the presigned-upload route and the temp-file sweep cron so there
  * is exactly one place that understands this wrapping, instead of each
  * caller re-deriving (and potentially under-handling) it.
+ *
+ * MAXIMUM SUPPORTED WRAPPER DEPTH IS 2 (bare adapter, or one wrapper, or two
+ * nested wrappers — Dynamic(Caching(Local)) or Caching(Dynamic(Local))). If a
+ * third wrapper is ever introduced around the local adapter, this function
+ * returns `null` for it — i.e. it fails CLOSED (every caller here treats
+ * `null` as "not local", which is the safe direction: the presigned route
+ * 404s instead of misrouting a signed upload, and the sweeper simply skips a
+ * backend it doesn't recognize). That reads as "the feature stopped working
+ * for no reason" rather than crashing, so if presigned uploads or the sweep
+ * mysteriously stop finding a local adapter after a storage-layer refactor,
+ * check whether a new wrapper was added and extend the `candidates` walk
+ * below to match.
  */
 export function resolveLocalAdapter(adapter: unknown): LocalStorageAdapter | null {
   const candidates: unknown[] = [adapter];

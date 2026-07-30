@@ -30,7 +30,7 @@ The presigned flow exists to let the browser PUT bytes **without passing through
 |---|---|---|
 | URL form | **Relative by default** (`/api/storage/presigned/local?…`), resolved by the browser against the app's own origin; **absolute only when `PUBLIC_ORIGIN` is explicitly set** | ⚠️ **REVISED 2026-07-30 — see "Correction: upload URL routing" below.** The original decision here was *absolute, from `PUBLIC_ORIGIN` else `https://${PRIMARY_DOMAIN}`*, on the reasoning that non-browser clients also consume presigned URLs. That was wrong on both counts: the apex does not route `/api` to the backend at all, and the local adapter's presigned URLs are consumed by browsers (CI uses `POST /api/deployments/zip`, not presigned). |
 | Signing key | **Derived**, `sha256(ENCRYPTION_KEY \| 'local-presign-v1')`, overridable via `LOCAL_PRESIGN_SECRET` | Mirrors the established precedent in `function-runner.service.ts:126-137`, which derives the `utils.sign` key from the required, stable `ENCRYPTION_KEY`. Zero new config; signatures survive restarts. |
-| Auth on the PUT route | **Signature only**, no session | This is the whole point of a presigned URL. Compensating controls: expiry, exact-key binding, size cap, quota. |
+| Auth on the PUT route | **Signature only**, no session | This is the whole point of a presigned URL. Compensating controls: expiry, exact-key binding, size cap. ⚠️ Quota was originally listed here too — see "Correction: quota is not a real compensating control in CE self-hosted mode" below; it does not bound anything on a self-hosted install. |
 | Overwrite semantics | **Allowed** within the signature's validity | Parity with S3 presigned PUT. Handoff's keys are content-addressed anyway, so overwrite is a no-op in practice. |
 | Body handling | **Stream to a temp file, then atomic rename** | A buffered write on a 128 MB-heap backend is how the earlier large-file OOM happened. Streaming is not an optimization here, it is the requirement. |
 | Feature flag | `ENABLE_LOCAL_PRESIGNED_UPLOADS`, **default on** | Additive capability, but it does expose an unauthenticated write route, so an operator must be able to turn it off. |
@@ -132,6 +132,14 @@ Consequences for earlier decisions in this spec:
 
 Bucket backends remain the production recommendation — local FS doesn't survive a container rebuild without a volume, and it doesn't scale past one node. This changes what's *possible* on a default install, not what's *advisable* at scale.
 
+## Correction: quota is not a real compensating control in CE self-hosted mode (added during final review)
+
+Earlier text in this spec (the "Auth on the PUT route" row above, the "Over quota" row in the error-handling table, and the security review notes below) lists quota enforcement alongside expiry, exact-key binding, and the size cap as one of the controls compensating for the PUT route having no session auth. That list overstates what quota actually does on the deployment this feature targets.
+
+`StorageQuotaService.checkQuota` (`storage/storage-quota.service.ts:65-77`) **always returns `{ allowed: true }` in CE self-hosted mode** — there is no L2/Platform quota configuration to check against, so the "control" is a no-op precisely where this feature ships. The route still calls it, and the call is not wrong to keep (it's a real control on Platform-fronted deployments), but it must not be counted as bounding anything on CE.
+
+**Residual exposure this leaves:** the real bounding controls on CE self-hosted are expiry, the signed `max` (now narrowable per-step via `maxFileSize` — see the handler's `getPresignedUploadUrl(key, expiresIn, maxBytes)` call), and disk space itself. Nothing reclaims an object that was PUT to a validly-signed URL but never followed up with `register_upload` — the temp-file sweeper (`local-upload-writer.service.ts`) only cleans up `.tmp/*` from *interrupted* uploads, not completed-but-unregistered final objects. So a `presigned_upload` step reachable via a public (or merely authenticated, non-admin) `/api/uploads/prepare`-shaped proxy rule lets a caller mint many URLs for distinct keys and PUT up to `max` bytes to each, repeatedly, with no quota backstop and no reclamation of the unregistered results — a real disk-exhaustion path on a self-hosted install. Mitigating this fully (e.g. actual CE-local quota accounting, or reclaiming unregistered objects after a TTL) is out of scope for this spec and is tracked as follow-up work, not solved here.
+
 ## Error handling
 
 | Condition | Status | Notes |
@@ -142,7 +150,7 @@ Bucket backends remain the production recommendation — local FS doesn't surviv
 | Missing `Content-Length` | 411 | Streaming write needs a declared size for the quota pre-check |
 | Declared size over `max` | 413 | `max` is signature-bound |
 | Actual bytes exceed declared | 413 | Detected mid-stream; temp file deleted |
-| Over quota | 507 | Reuses `QuotaCheckResult`'s message |
+| Over quota | 507 | Reuses `QuotaCheckResult`'s message. Only reachable on Platform-fronted deployments — see "Correction: quota is not a real compensating control in CE self-hosted mode" above; `checkQuota` always allows in CE self-hosted. |
 | Key fails re-sanitization | 400 | Defence in depth |
 | Disk write failure | 500 | Temp file deleted; nothing renamed into place |
 
@@ -163,6 +171,6 @@ Failures never leave a partial object at the target key — that is the reason f
 
 ## Security review notes
 
-This adds an **unauthenticated write endpoint**, which deserves explicit review attention. The controls are: an HMAC-SHA256 signature over key + expiry + size cap derived from `ENCRYPTION_KEY`; a short default expiry; the exact target key bound into the signature; a size cap bound into the signature and enforced twice (declared and actual); quota enforcement before the write; key re-sanitization; and no session, cookie, or ambient credential consulted, so the route cannot be used as a confused deputy. The route is also inert whenever the active adapter isn't local, which bounds the blast radius of leaked URLs across a backend migration.
+This adds an **unauthenticated write endpoint**, which deserves explicit review attention. The controls are: an HMAC-SHA256 signature over key + expiry + size cap derived from `ENCRYPTION_KEY`; a short default expiry; the exact target key bound into the signature; a size cap bound into the signature and enforced twice (declared and actual); key re-sanitization; and no session, cookie, or ambient credential consulted, so the route cannot be used as a confused deputy. The route is also inert whenever the active adapter isn't local, which bounds the blast radius of leaked URLs across a backend migration. The upload route also calls `StorageQuotaService.checkQuota`, but — see "Correction: quota is not a real compensating control in CE self-hosted mode" above — that check is a no-op on CE self-hosted and must not be counted as a control here.
 
-The residual risk is the standard presigned-URL one: a leaked URL permits one upload of bounded size to one key until it expires. That is the same exposure S3 presigned PUTs carry, and it is why the expiry ceiling is configurable.
+The residual risk is the standard presigned-URL one — a leaked URL permits one upload of bounded size to one key until it expires, the same exposure S3 presigned PUTs carry — **plus** a CE-self-hosted-specific one: with no real quota backstop, a `presigned_upload` step reachable from a public or low-privilege proxy rule lets a caller mint many URLs for distinct keys and PUT bounded bytes to each repeatedly; unregistered objects (PUT but never `register_upload`'d) are not reclaimed. This is a genuine disk-exhaustion exposure on the exact deployment shape this feature targets, not a theoretical one — see the correction section above for the reasoning and why it's left as follow-up rather than solved here.

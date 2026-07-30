@@ -416,6 +416,50 @@ describe('LocalStorageAdapter presigned uploads', () => {
     expect(Number(custom.searchParams.get('max'))).toBe(1234);
   });
 
+  describe('optional maxBytes parameter narrows (never widens) the signed max', () => {
+    it('narrows below the adapter default when a smaller caller ceiling is passed', async () => {
+      const url = new URL(await makeAdapter().getPresignedUploadUrl('k', undefined, 5_242_880));
+      expect(Number(url.searchParams.get('max'))).toBe(5_242_880);
+    });
+
+    it('does NOT widen past the adapter ceiling when the caller ceiling is larger', async () => {
+      const url = new URL(
+        await makeAdapter({ maxUploadBytes: 1234 }).getPresignedUploadUrl(
+          'k',
+          undefined,
+          999_999_999,
+        ),
+      );
+      expect(Number(url.searchParams.get('max'))).toBe(1234);
+    });
+
+    it('falls back to the adapter default when maxBytes is omitted, zero, negative, or non-finite', async () => {
+      for (const bad of [undefined, 0, -5, NaN, Infinity]) {
+        const url = new URL(await makeAdapter().getPresignedUploadUrl('k', undefined, bad as any));
+        expect(Number(url.searchParams.get('max'))).toBe(DEFAULT_MAX_UPLOAD_BYTES);
+      }
+    });
+
+    it('floors a fractional maxBytes', async () => {
+      const url = new URL(await makeAdapter().getPresignedUploadUrl('k', undefined, 100.9));
+      expect(Number(url.searchParams.get('max'))).toBe(100);
+    });
+
+    it('signs with the narrowed max, so verifyLocalUpload only accepts that exact value', async () => {
+      const url = new URL(await makeAdapter().getPresignedUploadUrl('k', undefined, 5_242_880));
+      const key = Buffer.from(url.searchParams.get('key')!, 'base64url').toString('utf8');
+      const exp = Number(url.searchParams.get('exp'));
+      const sig = url.searchParams.get('sig')!;
+
+      const { verifyLocalUpload } = await import('./presign.util');
+      expect(verifyLocalUpload({ key, exp, max: 5_242_880 }, sig, presignKey)).toBe(true);
+      // The original (wider) default no longer verifies against this signature.
+      expect(verifyLocalUpload({ key, exp, max: DEFAULT_MAX_UPLOAD_BYTES }, sig, presignKey)).toBe(
+        false,
+      );
+    });
+  });
+
   it('defaults expiry to one hour and clamps anything longer', async () => {
     const now = Math.floor(Date.now() / 1000);
 

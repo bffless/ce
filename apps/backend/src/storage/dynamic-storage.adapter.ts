@@ -156,10 +156,10 @@ export class DynamicStorageAdapter implements IStorageAdapter {
     return this.adapter.supportsPresignedUrls?.() ?? false;
   }
 
-  async getPresignedUploadUrl(key: string, expiresIn?: number): Promise<string> {
+  async getPresignedUploadUrl(key: string, expiresIn?: number, maxBytes?: number): Promise<string> {
     if (!this.adapter.getPresignedUploadUrl) {
       throw new Error('Presigned URLs not supported by current storage adapter');
     }
-    return this.adapter.getPresignedUploadUrl(key, expiresIn);
+    return this.adapter.getPresignedUploadUrl(key, expiresIn, maxBytes);
   }
 }
