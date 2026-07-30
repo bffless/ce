@@ -108,6 +108,27 @@ describe('LocalUploadWriterService', () => {
     expect(await fs.readFile(path.join(basePath, 'existing.bin'), 'utf8')).toBe('ORIGINAL');
   });
 
+  it('cleans up the temp file when the final rename fails', async () => {
+    // Occupy the target path with a directory so `fs.rename(tempPath, targetPath)`
+    // fails (EISDIR) after the body has already been fully written to the temp file.
+    await fs.mkdir(path.join(basePath, 'rename-fails.bin'));
+
+    await expect(
+      writer.writeStream({
+        source: Readable.from([Buffer.from('will not land')]),
+        basePath,
+        storageKey: 'rename-fails.bin',
+        maxBytes: 1024,
+      }),
+    ).rejects.toThrow();
+
+    expect(await listTemp()).toEqual([]);
+    // The target key must still be the (empty) directory we set up — never a
+    // partial file — proving the failed rename didn't leave anything behind.
+    expect((await fs.stat(path.join(basePath, 'rename-fails.bin'))).isDirectory()).toBe(true);
+    expect(await fs.readdir(path.join(basePath, 'rename-fails.bin'))).toEqual([]);
+  });
+
   it('streams with bounded memory for a body far larger than the heap budget', async () => {
     const chunk = Buffer.alloc(1024 * 1024, 0x61); // 1 MiB
     const totalChunks = 300; // 300 MiB — would OOM a 128 MB heap if buffered

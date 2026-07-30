@@ -73,6 +73,13 @@ export class LocalUploadWriterService {
       throw err;
     }
 
+    // `fs.rename` is only atomic within a single filesystem. That holds here
+    // because the temp dir (`<basePath>/.tmp`) is deliberately co-located
+    // under the same `basePath` as the target, not on a separate mount. If a
+    // caller ever pointed `basePath` at a path spanning a mount boundary
+    // relative to the temp dir, this would surface as `EXDEV` — which fails
+    // safe: the upload errors out and the temp file is cleaned up below, but
+    // nothing at the target key is ever truncated or partially written.
     const targetPath = path.join(basePath, storageKey);
     try {
       await fs.mkdir(path.dirname(targetPath), { recursive: true });
@@ -89,6 +96,28 @@ export class LocalUploadWriterService {
   /**
    * Remove abandoned temp files (client disconnected before the body ended).
    * Returns how many were deleted.
+   *
+   * Liveness contract: this sweeper has no lease tying it to an in-flight
+   * `writeStream` call. It infers liveness purely from each temp file's
+   * `mtime`. That is safe because every chunk written via `createWriteStream`
+   * issues a real `write()` syscall, which advances the file's `mtime` — so
+   * an upload that is actively making progress is continuously refreshing
+   * its own `mtime` and is therefore never eligible for a sweep under any
+   * sane cutoff. The population this sweeper actually deletes is temp files
+   * whose writes have *stopped* — i.e. genuinely stalled or abandoned
+   * uploads — which is exactly what it's for.
+   *
+   * Caller obligation: `olderThanMs` must exceed the longest plausible
+   * *stall* within a legitimate upload (a slow chunk, a network hiccup), not
+   * merely the upload's total expected duration. A cutoff sized to "total
+   * upload time" would be far too aggressive and could sweep a slow-but-live
+   * upload.
+   *
+   * Failure mode if a sweep still wins a race against a live upload: the
+   * temp file disappears out from under the open write stream, and the
+   * final `fs.rename` in `writeStream` fails with `ENOENT`. The client's
+   * upload is lost, but nothing is corrupted — no partial or truncated
+   * object is ever written to the target key.
    */
   async sweepTempFiles(basePath: string, olderThanMs: number): Promise<number> {
     const tempDir = path.join(basePath, TEMP_DIR_NAME);
