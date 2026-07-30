@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.12](https://github.com/bffless/ce/compare/v0.3.11...v0.3.12) (2026-07-30)
+
+
+### Features
+
+* pipeline user.groups + member-accessible group directory ([#566](https://github.com/bffless/ce/issues/566)) ([59c1c13](https://github.com/bffless/ce/commit/59c1c137eb203a5b4a005427b45663e2b9430118))
+
 ## [0.3.11](https://github.com/bffless/ce/compare/v0.3.10...v0.3.11) (2026-07-29)
 
 
