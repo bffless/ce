@@ -162,17 +162,44 @@ client (the `upload-artifact` GitHub Action, the `bffless` CLI) and even the adm
 origin belonging to the *deployed app* to resolve one against. Build server-side upload flows on
 `file_upload_handler`, not presigned uploads, when the backend is local storage.
 
-**Flag-off is a trap: the URL still gets minted.** `ENABLE_LOCAL_PRESIGNED_UPLOADS` (env var
-`FEATURE_LOCAL_PRESIGNED_UPLOADS`, default **on**) is checked only in the upload route
-(`local-presigned-upload.controller.ts`), not when the URL is minted. With the flag off, a
-`presigned_upload` pipeline step still succeeds and returns a `uploadUrl` — the client's `PUT` to
-that URL then 404s. If presigned uploads mysteriously stop working on local storage, check this
-flag before assuming a routing or signing problem.
+**Flag-off fails fast at mint time, not just at the route.** `ENABLE_LOCAL_PRESIGNED_UPLOADS` (env
+var `FEATURE_LOCAL_PRESIGNED_UPLOADS`, default **on**) is checked in two places: the upload route
+(`local-presigned-upload.controller.ts`, 404s the PUT when off) AND `PresignedUploadHandler`
+(`presigned-upload.handler.ts`, which injects `FeatureFlagsService` — it's a Nest injectable, even
+though the storage adapter itself is not). With the flag off, the `presigned_upload` pipeline step
+now returns `PRESIGNED_NOT_SUPPORTED` immediately instead of minting a `uploadUrl` whose `PUT`
+would 404 later, so a caller can fall back to `file_upload_handler` in the same pipeline run rather
+than discovering the flag only after a failed client-side PUT.
 
 Signing key: `sha256((LOCAL_PRESIGN_SECRET || ENCRYPTION_KEY || <dev fallback>) | 'local-presign-v1')`
 (`derivePresignKey` in `presign.util.ts`). Never change `ENCRYPTION_KEY` on a live install —
 in-flight presigned upload URLs would stop verifying, on top of the existing consequences for
 stored storage credentials.
+
+**A step's `maxFileSize` narrows the signed cap, not just the register-time check.**
+`getPresignedUploadUrl(key, expiresIn?, maxBytes?)` takes an optional third parameter; when
+`PresignedUploadHandler` (`pipelines/handlers/presigned-upload.handler.ts`) is configured with a
+step-level `maxFileSize`, it passes that through here so `LocalStorageAdapter` signs
+`Math.min(adapterCeiling, maxBytes)` into `max`, instead of every URL always carrying the same
+`DEFAULT_MAX_UPLOAD_BYTES` (100 MiB) ceiling regardless of what the rule actually declared. The
+parameter can only narrow, never widen, the adapter's own configured ceiling. Bucket adapters
+ignore the third parameter — their presigned URLs carry no size constraint in this codebase.
+
+**Quota is not a real bound on CE self-hosted — plan around disk space, not `StorageQuotaService`.**
+The upload route calls `StorageQuotaService.checkQuota` before writing, but
+`storage-quota.service.ts:65-77` always returns `{ allowed: true }` in CE self-hosted mode (there
+is no L2/Platform quota configuration to check against there); it is a real control only on
+Platform-fronted deployments. Combined with the size cap being the only per-request bound, a
+`presigned_upload` step reachable from a public or low-privilege proxy rule lets a caller mint URLs
+for distinct keys and PUT up to `max` bytes to each, repeatedly — and objects that are PUT but
+never followed up with `register_upload` are **not reclaimed**: the temp-file sweeper
+(`local-upload-writer.service.ts`) only cleans up `.tmp/*` from interrupted uploads, not
+completed-but-unregistered final objects. This is a genuine disk-exhaustion exposure on a
+self-hosted install, not a theoretical one. See
+`docs/superpowers/specs/2026-07-30-local-fs-presigned-uploads-design.md`, section "Correction:
+quota is not a real compensating control in CE self-hosted mode", for the full analysis; real
+CE-local quota accounting or reclaiming unregistered objects after a TTL is tracked as follow-up
+work, not solved here.
 
 ## Storage Module (`storage.module.ts`)
 
