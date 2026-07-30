@@ -1,4 +1,4 @@
-import { LocalStorageAdapter, LOCAL_PRESIGN_PATH } from './local.adapter';
+import { LocalStorageAdapter, LOCAL_PRESIGN_PATH, resolveLocalAdapter } from './local.adapter';
 import { derivePresignKey, signLocalUpload, DEFAULT_MAX_UPLOAD_BYTES } from './presign.util';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -526,5 +526,56 @@ describe('LocalStorageAdapter fails closed on the dev presign secret', () => {
     });
     expect(adapter.supportsPresignedUrls()).toBe(false);
     await expect(adapter.getPresignedUploadUrl('k')).resolves.toEqual(expect.any(String));
+  });
+});
+
+describe('resolveLocalAdapter', () => {
+  // This predicate gates whether the unauthenticated presigned-upload route
+  // serves at all (LocalPresignedUploadController) and, separately, whether
+  // the temp-file sweep cron runs (PendingUploadsScheduler). Every shape the
+  // active STORAGE_ADAPTER can take in practice is covered explicitly here,
+  // rather than relying on incidental coverage from those callers' own specs.
+
+  // A minimal double with the isLocalAdapter marker -- not a full
+  // LocalStorageAdapter, since resolveLocalAdapter only inspects the marker
+  // and unwrapping methods, not the adapter's other members.
+  const local = { isLocalAdapter: true, getStorageBasePath: () => '/tmp/local' };
+
+  it('resolves a bare local adapter (no wrapping)', () => {
+    expect(resolveLocalAdapter(local)).toBe(local);
+  });
+
+  it('resolves through a single DynamicStorageAdapter wrapper', () => {
+    const dynamic = { getUnderlyingAdapter: () => local };
+    expect(resolveLocalAdapter(dynamic)).toBe(local);
+  });
+
+  it('resolves through a single CachingStorageAdapter wrapper', () => {
+    const caching = { getWrappedAdapter: () => local };
+    expect(resolveLocalAdapter(caching)).toBe(local);
+  });
+
+  it('resolves through nested Dynamic(Caching(Local)) wrapping', () => {
+    const dynamicOverCaching = {
+      getUnderlyingAdapter: () => ({ getWrappedAdapter: () => local }),
+    };
+    expect(resolveLocalAdapter(dynamicOverCaching)).toBe(local);
+  });
+
+  it('returns null for a bare non-local adapter', () => {
+    const nonLocal = { upload: () => {}, download: () => {} };
+    expect(resolveLocalAdapter(nonLocal)).toBeNull();
+  });
+
+  it('returns null for a wrapped non-local adapter', () => {
+    const dynamic = { getUnderlyingAdapter: () => ({ isLocalAdapter: false }) };
+    expect(resolveLocalAdapter(dynamic)).toBeNull();
+  });
+
+  it('returns null, without throwing, for null or undefined', () => {
+    expect(() => resolveLocalAdapter(null)).not.toThrow();
+    expect(resolveLocalAdapter(null)).toBeNull();
+    expect(() => resolveLocalAdapter(undefined)).not.toThrow();
+    expect(resolveLocalAdapter(undefined)).toBeNull();
   });
 });

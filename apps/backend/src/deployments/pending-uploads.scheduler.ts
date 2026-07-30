@@ -8,10 +8,13 @@ import { LocalUploadWriterService } from '../storage/local-upload-writer.service
 /**
  * Scheduler for cleaning up expired pending uploads
  *
- * Runs every 15 minutes to:
+ * Runs every 10 minutes to:
  * 1. Find expired pending upload records
  * 2. Delete any orphaned files from storage
  * 3. Delete the pending upload records from database
+ *
+ * Also runs an hourly sweep (`sweepPresignedTempFiles`) that removes local-storage
+ * presigned-upload temp files abandoned by clients that disconnected mid-body.
  */
 @Injectable()
 export class PendingUploadsScheduler {
@@ -95,17 +98,19 @@ export class PendingUploadsScheduler {
    *
    * `olderThanMs`: `LocalUploadWriterService.sweepTempFiles` infers liveness
    * purely from a temp file's `mtime`, which an actively-writing upload keeps
-   * refreshing — so the only files this can ever claim are ones whose writes
-   * have genuinely stopped. The obligation on this cutoff is therefore that
-   * it exceeds the longest plausible *stall inside* a legitimate upload, not
-   * the upload's total duration. The 1-hour value here is bounded by Task
-   * 10's nginx `proxy_read_timeout 600s` / `proxy_send_timeout 600s`: nginx
-   * itself kills any request stalled beyond 10 minutes, so a temp file that
-   * survives a stall long enough for an hourly sweep to see it is guaranteed
-   * to already be abandoned at the proxy, not merely slow. Do NOT shrink this
-   * interval without first re-checking that bound (or widening it correctly
-   * if the proxy timeout ever changes) — see also the liveness contract on
-   * `sweepTempFiles` itself.
+   * refreshing — so, under any sane cutoff, the only files this can claim are
+   * ones whose writes have genuinely stopped. The obligation on this cutoff
+   * is therefore that it exceeds the longest plausible *stall inside* a
+   * legitimate upload, not the upload's total duration. The 1-hour value
+   * here is bounded by nginx's `client_body_timeout`, which governs how long
+   * nginx will wait for more of a client's request body before giving up —
+   * this repo never overrides it (see `docker/nginx/sites-available/main.conf.template`),
+   * so it takes nginx's built-in default of 60s. A client stalled mid-body
+   * for longer than that is disconnected by nginx well before an hourly
+   * sweep could ever see its temp file, so the 1-hour cutoff has an hour of
+   * margin to spare. Do NOT shrink this interval without first re-checking
+   * that bound (or re-deriving it if `client_body_timeout` is ever set
+   * explicitly) — see also the liveness contract on `sweepTempFiles` itself.
    */
   @Cron(CronExpression.EVERY_HOUR)
   async sweepPresignedTempFiles(): Promise<void> {
