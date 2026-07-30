@@ -67,7 +67,7 @@ export class LocalStorageAdapter implements IStorageAdapter {
   /** Marker used to narrow the active adapter without instanceof across module boundaries. */
   readonly isLocalAdapter = true;
 
-  /** Absolute storage root. Used by the presigned-upload route. */
+  /** Absolute storage root. Used by the presigned-upload route and the temp-file sweeper. */
   getStorageBasePath(): string {
     return this.basePath;
   }
@@ -526,4 +526,41 @@ export class LocalStorageAdapter implements IStorageAdapter {
     };
     return mimeTypes[ext] || 'application/octet-stream';
   }
+}
+
+/**
+ * Narrow the active (possibly wrapped) storage adapter down to a
+ * `LocalStorageAdapter`, or `null` when the active backend isn't local.
+ *
+ * The active `IStorageAdapter` may be a `DynamicStorageAdapter`
+ * (`getUnderlyingAdapter()`) and/or a `CachingStorageAdapter`
+ * (`getWrappedAdapter()`), and in production both together: the setup-wizard
+ * flow wraps as `DynamicStorageAdapter(CachingStorageAdapter(LocalStorageAdapter))`.
+ * This checks the adapter itself, one level of unwrapping, and — for that
+ * nested case — a second level from whichever wrapper was found first, so it
+ * resolves correctly regardless of which single wrapper (or both, in that
+ * order) is present.
+ *
+ * Shared by the presigned-upload route and the temp-file sweep cron so there
+ * is exactly one place that understands this wrapping, instead of each
+ * caller re-deriving (and potentially under-handling) it.
+ */
+export function resolveLocalAdapter(adapter: unknown): LocalStorageAdapter | null {
+  const candidates: unknown[] = [adapter];
+  const wrapper = adapter as {
+    getUnderlyingAdapter?: () => unknown;
+    getWrappedAdapter?: () => unknown;
+  };
+  if (wrapper?.getUnderlyingAdapter) candidates.push(wrapper.getUnderlyingAdapter());
+  if (wrapper?.getWrappedAdapter) candidates.push(wrapper.getWrappedAdapter());
+
+  for (const candidate of candidates) {
+    const c = candidate as { isLocalAdapter?: boolean } & Record<string, unknown>;
+    if (c?.isLocalAdapter) return c as unknown as LocalStorageAdapter;
+    const inner = ((c as any)?.getUnderlyingAdapter?.() ?? (c as any)?.getWrappedAdapter?.()) as
+      | ({ isLocalAdapter?: boolean } & Record<string, unknown>)
+      | undefined;
+    if (inner?.isLocalAdapter) return inner as unknown as LocalStorageAdapter;
+  }
+  return null;
 }

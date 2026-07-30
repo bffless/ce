@@ -17,6 +17,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiExcludeEndpoint } from '@nestjs/
 import { Request, Response } from 'express';
 import { IStorageAdapter, STORAGE_ADAPTER } from './storage.interface';
 import { verifyLocalUpload } from './presign.util';
+import { resolveLocalAdapter } from './local.adapter';
 import {
   LocalUploadWriterService,
   UploadTooLargeError,
@@ -78,7 +79,7 @@ export class LocalPresignedUploadController {
     //    not 403 -- the route must be indistinguishable from absent when it
     //    isn't usable, matching the non-local-adapter case just above (one
     //    predicate governs both directions: if it can't mint, it can't honour).
-    const local = this.resolveLocalAdapter();
+    const local = resolveLocalAdapter(this.storageAdapter);
     if (!local || !local.supportsPresignedUrls()) throw new NotFoundException();
 
     // 3. Params.
@@ -174,29 +175,6 @@ export class LocalPresignedUploadController {
 
     res.setHeader('ETag', `"${result.etag}"`);
     res.status(HttpStatus.OK);
-  }
-
-  /** Narrow the (possibly dynamic/cache-wrapped) adapter to a local one. */
-  private resolveLocalAdapter(): {
-    getStorageBasePath(): string;
-    getPresignKey(): Buffer;
-    supportsPresignedUrls(): boolean;
-  } | null {
-    const candidates: unknown[] = [this.storageAdapter];
-    const adapter = this.storageAdapter as unknown as {
-      getUnderlyingAdapter?: () => unknown;
-      getWrappedAdapter?: () => unknown;
-    };
-    if (adapter.getUnderlyingAdapter) candidates.push(adapter.getUnderlyingAdapter());
-    if (adapter.getWrappedAdapter) candidates.push(adapter.getWrappedAdapter());
-
-    for (const candidate of candidates) {
-      const c = candidate as any;
-      if (c?.isLocalAdapter) return c;
-      const inner = c?.getUnderlyingAdapter?.() ?? c?.getWrappedAdapter?.();
-      if (inner?.isLocalAdapter) return inner;
-    }
-    return null;
   }
 
   /** Mirrors LocalStorageAdapter.sanitizeKey's normalization. */
