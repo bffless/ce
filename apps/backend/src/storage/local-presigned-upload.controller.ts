@@ -183,7 +183,23 @@ export class LocalPresignedUploadController {
     return key.replace(/^\/+|\/+$/g, '');
   }
 
-  /** A direct write bypasses CachingStorageAdapter.upload, so evict the key. */
+  /**
+   * A direct write bypasses CachingStorageAdapter.upload, so evict the key.
+   *
+   * TODO: `storageKey` here is the PREFIXED key (it was decoded straight from
+   * the URL, which LocalStorageAdapter.getPresignedUploadUrl built via
+   * `this.prefixKey(this.sanitizeKey(key))`), but
+   * CachingStorageAdapter.invalidateKey -> getCacheKey() expects the same
+   * UNPREFIXED key its own upload()/download() callers use. That mismatch
+   * only matters if a local adapter is ever configured with BOTH a
+   * `keyPrefix` (workspace isolation) AND caching (`ENABLE_LRU_CACHE`) at the
+   * same time -- in that combination this evicts the wrong cache entry and a
+   * subsequent read could serve stale bytes for the just-uploaded key. Not
+   * fixed here because no current deployment shape combines both, but if one
+   * ever does, unprefix `storageKey` (LocalStorageAdapter.unprefixKey is
+   * private -- either expose it or thread the unprefixed key through
+   * separately) before calling invalidateKey.
+   */
   private async invalidateCache(storageKey: string): Promise<void> {
     const adapter = this.storageAdapter as unknown as {
       invalidateKey?: (key: string) => Promise<void>;

@@ -1,5 +1,23 @@
 # Local-FS Presigned Uploads Implementation Plan
 
+> ⚠️ **SUPERSEDED (2026-07-30): the upload-URL shape and origin-resolution design below is
+> outdated.** This plan's original design minted an **absolute** presigned URL from
+> `resolvePublicOrigin()`, falling back to `https://$PRIMARY_DOMAIN` when `PUBLIC_ORIGIN` was
+> unset. That fallback was wrong — the apex domain has no nginx vhost that proxies `/api` to the
+> backend unrewritten, so the minted URL was unreachable in production, and the "same-origin, no
+> CORS" claim was false for the same reason. The actual shipped design mints a **relative** URL by
+> default (resolved by the browser against whichever host served the page) and adds a dedicated,
+> unrewritten `location = /api/storage/presigned/local` to every vhost that can serve a deployment.
+> `PUBLIC_ORIGIN` is now an explicit override for callers that need an absolute URL, not a
+> precondition, and there is **no fallback to `PRIMARY_DOMAIN`**.
+>
+> See `docs/superpowers/specs/2026-07-30-local-fs-presigned-uploads-design.md`, section
+> "Correction: upload URL routing", for the full analysis. This plan is kept as an implementation
+> record and is **not** rewritten below — treat every mention of `resolvePublicOrigin` falling back
+> to `PRIMARY_DOMAIN`, "mints an absolute same-origin URL", or "requires a resolvable public
+> origin" as superseded by that correction; the actual shipped behavior is what's in the code and
+> the spec, not what's described in those spots here.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make `LocalStorageAdapter` support presigned uploads, so the presigned prepare → direct PUT → register flow works on a stock local-filesystem CE install instead of failing with `PRESIGNED_NOT_SUPPORTED`.
@@ -84,6 +102,9 @@ describe('derivePresignKey', () => {
   });
 });
 
+// SUPERSEDED — see the banner at the top of this file. This PRIMARY_DOMAIN
+// fallback shipped as a bug and was removed; `explicitPublicOrigin` in the
+// actual code reads only PUBLIC_ORIGIN, with no fallback.
 describe('resolvePublicOrigin', () => {
   it('uses PUBLIC_ORIGIN when set, stripping a trailing slash', () => {
     expect(resolvePublicOrigin({ PUBLIC_ORIGIN: 'https://a.example/' })).toBe('https://a.example');
@@ -184,6 +205,10 @@ export function derivePresignKey(env: NodeJS.ProcessEnv = process.env): Buffer {
  * localhost would mint unusable URLs that look like a broken client rather than
  * a misconfigured server (see the adapter's vestigial `baseUrl`).
  */
+// SUPERSEDED — see the banner at the top of this file. The PRIMARY_DOMAIN
+// fallback below is the bug the "Correction: upload URL routing" section of
+// the spec describes; the shipped `explicitPublicOrigin` never falls back and
+// never throws (absent PUBLIC_ORIGIN, the adapter mints a relative URL).
 export function resolvePublicOrigin(env: NodeJS.ProcessEnv = process.env): string {
   const explicit = env.PUBLIC_ORIGIN?.trim();
   if (explicit) return explicit.replace(/\/+$/, '');
@@ -276,6 +301,11 @@ describe('LocalStorageAdapter presigned uploads', () => {
     expect(adapter.supportsPresignedUrls()).toBe(false);
   });
 
+  // SUPERSEDED — see the banner at the top of this file. The shipped adapter
+  // mints a RELATIVE URL by default; an absolute URL now only happens when
+  // `PUBLIC_ORIGIN` is explicitly configured (never as a PRIMARY_DOMAIN
+  // fallback), and neither shape is "same-origin" in the sense this test
+  // name implies without the routing fix described in the spec correction.
   it('mints an absolute same-origin URL on the presign path', async () => {
     const url = new URL(await makeAdapter().getPresignedUploadUrl('o/r/uploads/content/a.bin'));
     expect(url.origin).toBe('https://ce.example');
@@ -386,6 +416,10 @@ Add fields alongside the existing ones (after line 24) and extend the constructo
 Replace `supportsPresignedUrls()` (line 198) and add the minting method next to it:
 
 ```typescript
+  // SUPERSEDED — see the banner at the top of this file. The shipped
+  // supportsPresignedUrls() does not require a resolved publicOrigin (a
+  // relative URL needs none); it gates on real signing material instead
+  // (hasRealPresignSecret()). Requiring publicOrigin here was itself the bug.
   /**
    * Local storage supports presigned uploads via a same-origin, HMAC-signed
    * PUT route. Requires a resolvable public origin to mint absolute URLs.
@@ -1822,6 +1856,12 @@ git commit -m "feat(nginx): stream presigned local uploads without request buffe
 
 Add a section to `apps/backend/src/storage/README.md`:
 
+<!-- SUPERSEDED — see the banner at the top of this file. The actual shipped
+README section reads very differently: the URL is relative by default (no
+public origin required), PUBLIC_ORIGIN is an explicit override with no
+PRIMARY_DOMAIN fallback, and "no CORS needed" is earned by dedicated nginx
+routing, not by "same-origin" being automatically true. See the real
+apps/backend/src/storage/README.md for the current text. -->
 ```markdown
 ## Presigned uploads
 
@@ -1849,6 +1889,11 @@ Turn the route off with `FEATURE_LOCAL_PRESIGNED_UPLOADS=false`.
 
 Add to `.env.example`:
 
+<!-- SUPERSEDED — see the banner at the top of this file. PUBLIC_ORIGIN has no
+PRIMARY_DOMAIN fallback in the shipped code; leaving it unset simply means
+the URL is relative. The actual `.env.example` entry added is
+FEATURE_LOCAL_PRESIGNED_UPLOADS (the flag), not a PUBLIC_ORIGIN default note
+shaped like the one below. -->
 ```bash
 # Origin used to mint presigned upload URLs for local filesystem storage.
 # Defaults to https://$PRIMARY_DOMAIN. Only set this if they differ.

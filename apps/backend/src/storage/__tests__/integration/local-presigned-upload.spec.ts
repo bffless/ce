@@ -177,8 +177,13 @@ describe('local presigned upload over HTTP', () => {
       'content-length': String(jsonBody.length),
     });
 
-    // It must NOT report success...
-    expect(res.status).not.toBe(200);
+    // It must NOT report success — a body-parser-consumed stream delivers 0
+    // bytes against a declared Content-Length > 0, which the writer surfaces
+    // as UploadIncompleteError -> 400 (see local-presigned-upload.controller.ts).
+    // Asserting the exact status (not just !== 200) is what makes this test
+    // fail if some *other* unrelated error started firing here instead of the
+    // real regression guard.
+    expect(res.status).toBe(400);
     // ...and critically, the original object must be intact.
     expect(await fs.readFile(path.join(basePath, key))).toEqual(original);
   });
