@@ -45,6 +45,20 @@ export interface UserResponse {
   user: User;
 }
 
+export interface DirectoryUser {
+  id: string;
+  email: string;
+}
+
+export interface DirectoryResponse {
+  users: DirectoryUser[];
+}
+
+export interface SearchDirectoryParams {
+  search: string;
+  limit?: number;
+}
+
 export interface DeleteUserResponse {
   message: string;
   userId: string;
@@ -76,6 +90,17 @@ export const usersApi = api.injectEndpoints({
     getUser: builder.query<User, string>({
       query: (id) => `/api/users/${id}`,
       providesTags: (_result, _error, id) => [{ type: 'User' as const, id }],
+    }),
+
+    // Member-accessible directory search (id + email only) for people-pickers.
+    // Not admin-gated — any authenticated user can resolve a colleague by email.
+    searchDirectory: builder.query<DirectoryResponse, SearchDirectoryParams>({
+      query: ({ search, limit }) => {
+        const searchParams = new URLSearchParams();
+        searchParams.set('search', search);
+        if (limit) searchParams.set('limit', String(limit));
+        return `/api/users/directory?${searchParams.toString()}`;
+      },
     }),
 
     updateUserRole: builder.mutation<UserResponse, { id: string; role: UserRole }>({
@@ -128,6 +153,7 @@ export const usersApi = api.injectEndpoints({
 export const {
   useListUsersQuery,
   useGetUserQuery,
+  useSearchDirectoryQuery,
   useUpdateUserRoleMutation,
   useDeleteUserMutation,
   useDisableUserMutation,
