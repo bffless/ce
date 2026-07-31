@@ -12,7 +12,9 @@ const resetPreflightMock = vi.fn();
 const installTrigger = vi.fn();
 const undoTrigger = vi.fn();
 const ackTrigger = vi.fn();
-const getInstallJobQueryMock = vi.fn((_jobId: string, _options?: { pollingInterval?: number; skip?: boolean }) => jobQueryResult);
+const getInstallJobQueryMock = vi.fn<
+  (jobId: string, options?: { pollingInterval?: number; skip?: boolean }) => { data?: InstallJob }
+>(() => jobQueryResult);
 
 let preflightState: { data?: PreflightResponse; isLoading: boolean } = {
   data: undefined,
@@ -406,5 +408,43 @@ describe('InstallDialog — Done screen', () => {
 
     const checkbox = await screen.findByRole('checkbox', { name: /set the signing_secret/i });
     expect(checkbox).toBeChecked();
+  });
+});
+
+describe('InstallDialog — update mode reuse', () => {
+  it('skips the Review screen and goes straight to Working when opened with an initialJobId', () => {
+    jobQueryResult = { data: makeJob({ kind: 'update', status: 'running' }) };
+
+    render(
+      <InstallDialog
+        entry={baseEntry}
+        open
+        onOpenChange={vi.fn()}
+        mode="update"
+        initialJobId="job-1"
+      />,
+    );
+
+    expect(screen.getByText(/sync proxy rules/i)).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: /project/i })).not.toBeInTheDocument();
+    expect(screen.getByText(`Updating ${baseEntry.name}`)).toBeInTheDocument();
+  });
+
+  it('shows the "updated" title on the Done screen', () => {
+    jobQueryResult = {
+      data: makeJob({ kind: 'update', status: 'succeeded', appUrl: 'https://handoff.example.com' }),
+    };
+
+    render(
+      <InstallDialog
+        entry={baseEntry}
+        open
+        onOpenChange={vi.fn()}
+        mode="update"
+        initialJobId="job-1"
+      />,
+    );
+
+    expect(screen.getByText(`${baseEntry.name} updated`)).toBeInTheDocument();
   });
 });

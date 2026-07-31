@@ -41,6 +41,15 @@ interface InstallDialogProps {
   entry: CatalogEntry;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * 'update' reuses this dialog's Working/Done screens for the Update flow
+   * (AppCard fires `useUpdateAppMutation` itself and hands the resulting
+   * jobId here via `initialJobId`) — the Review/project-picker screen is
+   * install-only and is skipped entirely in this mode.
+   */
+  mode?: 'install' | 'update';
+  /** When set, the dialog opens directly on the Working/Done screen for this job instead of Review. */
+  initialJobId?: string;
 }
 
 const NEW_PROJECT_VALUE = 'new';
@@ -89,14 +98,23 @@ function StepIcon({ status }: { status: InstallStepState['status'] }) {
  * `appCatalogApi` hooks; nothing is installed until the user has seen the
  * preflight plan and clicked Install.
  */
-export function InstallDialog({ entry, open, onOpenChange }: InstallDialogProps) {
+export function InstallDialog({
+  entry,
+  open,
+  onOpenChange,
+  mode = 'install',
+  initialJobId,
+}: InstallDialogProps) {
   const { toast } = useToast();
+  const isUpdate = mode === 'update';
 
   const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>(undefined);
   const [creatingNew, setCreatingNew] = useState(false);
   const [newOwner, setNewOwner] = useState('');
   const [newName, setNewName] = useState('');
-  const [jobId, setJobId] = useState<string | null>(null);
+  // Update mode is handed an already-running job — seed it directly so the
+  // very first render lands on Working/Done, skipping Review entirely.
+  const [jobId, setJobId] = useState<string | null>(initialJobId ?? null);
   const [installBody, setInstallBody] = useState<PreflightRequest | null>(null);
 
   const { data: reposData } = useGetMyRepositoriesQuery();
@@ -134,11 +152,13 @@ export function InstallDialog({ entry, open, onOpenChange }: InstallDialogProps)
       setLastJobStatus(undefined);
       return;
     }
-    if (repositories.length === 1 && !selectedProjectId && !creatingNew) {
+    // Update mode never shows Review, so there's no project to preselect —
+    // and preselecting one would trigger a pointless preflight call.
+    if (!isUpdate && repositories.length === 1 && !selectedProjectId && !creatingNew) {
       setSelectedProjectId(repositories[0].id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, repositories.length]);
+  }, [open, repositories.length, isUpdate]);
 
   const preflightBody: PreflightRequest | null = creatingNew
     ? newOwner.trim() && newName.trim()
@@ -227,7 +247,11 @@ export function InstallDialog({ entry, open, onOpenChange }: InstallDialogProps)
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            {screen === 'done' ? `${entry.name} installed` : `Install ${entry.name}`}
+            {screen === 'done'
+              ? `${entry.name} ${isUpdate ? 'updated' : 'installed'}`
+              : isUpdate
+                ? `Updating ${entry.name}`
+                : `Install ${entry.name}`}
           </DialogTitle>
           {screen === 'review' && (
             <DialogDescription>
@@ -381,7 +405,7 @@ export function InstallDialog({ entry, open, onOpenChange }: InstallDialogProps)
                     {step.detail && <p className="text-xs text-muted-foreground">{step.detail}</p>}
                     {step.error && <p className="text-xs text-destructive">{step.error}</p>}
                   </div>
-                  {step.status === 'action-required' && (
+                  {step.status === 'action-required' && !isUpdate && (
                     <Button variant="outline" size="sm" onClick={handleRetryInstall}>
                       Retry
                     </Button>
@@ -400,7 +424,7 @@ export function InstallDialog({ entry, open, onOpenChange }: InstallDialogProps)
                     Close
                   </Button>
                   <Button variant="destructive" onClick={handleUndo} disabled={isUndoing}>
-                    Undo this install
+                    {isUpdate ? 'Undo this update' : 'Undo this install'}
                   </Button>
                 </DialogFooter>
               </>

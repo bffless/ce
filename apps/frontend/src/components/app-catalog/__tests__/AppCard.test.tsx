@@ -1,13 +1,23 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { vi } from 'vitest';
 import { AppCard } from '../AppCard';
 import type { CatalogEntry } from '@/services/appCatalogApi';
 
+const updateTrigger = vi.fn();
+
 vi.mock('@/services/appCatalogApi', () => ({
-  useUpdateAppMutation: () => [vi.fn(), { isLoading: false }],
+  useUpdateAppMutation: () => [updateTrigger, { isLoading: false }],
   useUninstallAppMutation: () => [vi.fn(), { isLoading: false }],
-  useGetUninstallPreviewQuery: () => ({ data: undefined, isLoading: false }),
-  useLazyGetEjectPayloadQuery: () => [vi.fn(), { data: undefined, isLoading: false }],
+  useGetUninstallPreviewQuery: () => ({ data: undefined }),
+  useGetEjectPayloadQuery: () => ({ data: undefined, isFetching: false }),
+}));
+
+vi.mock('@/services/apiKeysApi', () => ({
+  useCreateApiKeyMutation: () => [vi.fn(), { isLoading: false }],
+}));
+
+vi.mock('@/hooks/use-toast', () => ({
+  useToast: () => ({ toast: vi.fn() }),
 }));
 
 const baseEntry: CatalogEntry = {
@@ -18,9 +28,13 @@ const baseEntry: CatalogEntry = {
   installable: true,
 };
 
+beforeEach(() => {
+  updateTrigger.mockReset().mockReturnValue({ unwrap: () => Promise.resolve({ jobId: 'job-1' }) });
+});
+
 describe('AppCard', () => {
   it('renders an enabled Install button when installable', () => {
-    render(<AppCard entry={baseEntry} onInstall={vi.fn()} />);
+    render(<AppCard entry={baseEntry} onInstall={vi.fn()} onUpdateStarted={vi.fn()} />);
 
     const button = screen.getByRole('button', { name: /install/i });
     expect(button).toBeEnabled();
@@ -41,7 +55,7 @@ describe('AppCard', () => {
       ],
     };
 
-    render(<AppCard entry={entry} onInstall={vi.fn()} />);
+    render(<AppCard entry={entry} onInstall={vi.fn()} onUpdateStarted={vi.fn()} />);
 
     expect(screen.getByText('Requires bucket storage')).toBeInTheDocument();
     const button = screen.getByRole('button', { name: /requires bucket storage/i });
@@ -66,7 +80,7 @@ describe('AppCard', () => {
       },
     };
 
-    render(<AppCard entry={entry} onInstall={vi.fn()} />);
+    render(<AppCard entry={entry} onInstall={vi.fn()} onUpdateStarted={vi.fn()} />);
 
     expect(screen.getByText('Installed · v1.2.0')).toBeInTheDocument();
     const openLink = screen.getByRole('link', { name: /open/i });
@@ -91,8 +105,70 @@ describe('AppCard', () => {
       },
     };
 
-    render(<AppCard entry={entry} onInstall={vi.fn()} />);
+    render(<AppCard entry={entry} onInstall={vi.fn()} onUpdateStarted={vi.fn()} />);
 
     expect(screen.getByRole('button', { name: /update to v2\.0\.0/i })).toBeInTheDocument();
+  });
+
+  it('opens a confirm popover with the prune toggle defaulted off, and fires the update with prune: false', async () => {
+    const onUpdateStarted = vi.fn();
+    const entry: CatalogEntry = {
+      ...baseEntry,
+      registryVersion: '2.0.0',
+      installed: {
+        installedAppId: 'installed-1',
+        version: '1.2.0',
+        projectId: 'proj-1',
+        projectName: 'acme/handoff',
+        alias: 'production',
+        appUrl: 'https://handoff.example.com',
+        status: 'installed',
+        updateAvailable: true,
+        manualSteps: [],
+        manualStepsAcked: [],
+      },
+    };
+
+    render(<AppCard entry={entry} onInstall={vi.fn()} onUpdateStarted={onUpdateStarted} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /update to v2\.0\.0/i }));
+
+    const pruneToggle = screen.getByRole('switch', { name: /reset to the app's shipped rules \(prune\)/i });
+    expect(pruneToggle).not.toBeChecked();
+
+    fireEvent.click(screen.getByRole('button', { name: /confirm update/i }));
+
+    expect(updateTrigger).toHaveBeenCalledWith({ id: 'installed-1', prune: false });
+    await vi.waitFor(() => {
+      expect(onUpdateStarted).toHaveBeenCalledWith(entry, 'job-1');
+    });
+  });
+
+  it('fires the update with prune: true when the toggle is switched on', async () => {
+    const onUpdateStarted = vi.fn();
+    const entry: CatalogEntry = {
+      ...baseEntry,
+      registryVersion: '2.0.0',
+      installed: {
+        installedAppId: 'installed-1',
+        version: '1.2.0',
+        projectId: 'proj-1',
+        projectName: 'acme/handoff',
+        alias: 'production',
+        appUrl: 'https://handoff.example.com',
+        status: 'installed',
+        updateAvailable: true,
+        manualSteps: [],
+        manualStepsAcked: [],
+      },
+    };
+
+    render(<AppCard entry={entry} onInstall={vi.fn()} onUpdateStarted={onUpdateStarted} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /update to v2\.0\.0/i }));
+    fireEvent.click(screen.getByRole('switch', { name: /reset to the app's shipped rules \(prune\)/i }));
+    fireEvent.click(screen.getByRole('button', { name: /confirm update/i }));
+
+    expect(updateTrigger).toHaveBeenCalledWith({ id: 'installed-1', prune: true });
   });
 });

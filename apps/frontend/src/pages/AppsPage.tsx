@@ -18,6 +18,9 @@ export function AppsPage() {
   const { data, isLoading, isError, refetch } = useGetAppCatalogQuery();
   const [registryNoticeDismissed, setRegistryNoticeDismissed] = useState(false);
   const [installTarget, setInstallTarget] = useState<CatalogEntry | null>(null);
+  const [updateTarget, setUpdateTarget] = useState<{ entry: CatalogEntry; jobId: string } | null>(
+    null,
+  );
 
   const entries = data?.data ?? [];
 
@@ -79,7 +82,12 @@ export function AppsPage() {
       {!isLoading && entries.length > 0 && (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {entries.map((entry) => (
-            <AppCard key={entry.id} entry={entry} onInstall={setInstallTarget} />
+            <AppCard
+              key={entry.id}
+              entry={entry}
+              onInstall={setInstallTarget}
+              onUpdateStarted={(updatedEntry, jobId) => setUpdateTarget({ entry: updatedEntry, jobId })}
+            />
           ))}
         </div>
       )}
@@ -89,6 +97,16 @@ export function AppsPage() {
           entry={installTarget}
           open={installTarget !== null}
           onOpenChange={(open) => !open && setInstallTarget(null)}
+        />
+      )}
+
+      {updateTarget && (
+        <InstallDialog
+          entry={updateTarget.entry}
+          open={updateTarget !== null}
+          onOpenChange={(open) => !open && setUpdateTarget(null)}
+          mode="update"
+          initialJobId={updateTarget.jobId}
         />
       )}
     </div>
