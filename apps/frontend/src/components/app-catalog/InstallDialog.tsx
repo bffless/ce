@@ -14,6 +14,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useToast } from '@/hooks/use-toast';
+import { useAppDispatch } from '@/store/hooks';
+import { api } from '@/services/api';
 import {
   usePreflightAppMutation,
   useInstallAppMutation,
@@ -115,6 +117,7 @@ export function InstallDialog({
   initialJobId,
 }: InstallDialogProps) {
   const { toast } = useToast();
+  const dispatch = useAppDispatch();
   const isUpdate = mode === 'update';
 
   const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>(undefined);
@@ -155,6 +158,23 @@ export function InstallDialog({
   if (job?.status !== lastJobStatus) {
     setLastJobStatus(job?.status);
   }
+
+  // The catalog card (badge, version, "Update to vX") and this dialog's own
+  // Done screen both read from the LIVE catalog entry (`entry.installed`),
+  // which `installApp`/`updateApp` invalidate at DISPATCH time — before the
+  // background job has done anything. Nothing re-invalidates when the job
+  // actually finishes, so the card is stuck showing pre-update state until a
+  // manual reload. Fix: invalidate again here, once per job, the moment a
+  // poll observes a terminal status. Keyed by job id (not just status) so a
+  // retried job that lands on the same terminal status as the one before it
+  // still gets its own invalidation.
+  const invalidatedJobIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!job || !TERMINAL_JOB_STATUSES.has(job.status)) return;
+    if (invalidatedJobIdRef.current === job.id) return;
+    invalidatedJobIdRef.current = job.id;
+    dispatch(api.util.invalidateTags(['AppCatalog', 'InstalledApp']));
+  }, [job, dispatch]);
 
   const repositories = reposData?.repositories ?? [];
 

@@ -45,6 +45,14 @@ vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: vi.fn() }),
 }));
 
+// InstallDialog dispatches `api.util.invalidateTags` directly (via
+// `useAppDispatch`) once a polled job reaches a terminal status — this page
+// isn't wrapped in a redux <Provider>, so stub the hook the same way
+// InstallDialog.test.tsx does.
+vi.mock('@/store/hooks', () => ({
+  useAppDispatch: () => vi.fn(),
+}));
+
 function makeEntry(manualStepsAcked: string[]): CatalogEntry {
   return {
     id: 'handoff',

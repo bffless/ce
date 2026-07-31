@@ -1,6 +1,7 @@
 import { act, render, screen, fireEvent, within } from '@testing-library/react';
 import { vi } from 'vitest';
 import { InstallDialog } from '../InstallDialog';
+import { api } from '@/services/api';
 import type {
   CatalogEntry,
   InstallJob,
@@ -55,6 +56,12 @@ vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: vi.fn() }),
 }));
 
+const dispatchMock = vi.fn();
+
+vi.mock('@/store/hooks', () => ({
+  useAppDispatch: () => dispatchMock,
+}));
+
 const baseEntry: CatalogEntry = {
   id: 'handoff',
   name: 'Handoff',
@@ -107,6 +114,7 @@ beforeEach(() => {
   undoTrigger.mockReset().mockReturnValue({ unwrap: () => Promise.resolve({}) });
   ackTrigger.mockReset().mockReturnValue({ unwrap: () => Promise.resolve({ acked: [] }) });
   getInstallJobQueryMock.mockClear();
+  dispatchMock.mockClear();
   preflightState = { data: makePreflight(), isLoading: false };
   installState = { isLoading: false };
   jobQueryResult = { data: undefined };
@@ -614,5 +622,91 @@ describe('InstallDialog — update mode reuse', () => {
     );
 
     expect(screen.getByText(`${baseEntry.name} updated`)).toBeInTheDocument();
+  });
+});
+
+describe('InstallDialog — catalog cache invalidation on job completion', () => {
+  // Regression coverage for the live-test bug: installApp/updateApp
+  // invalidate ['AppCatalog', 'InstalledApp'] at DISPATCH time, before the
+  // background job has done anything, so the catalog card is stuck showing
+  // pre-update state until a manual reload. The dialog must invalidate again
+  // itself, once, the moment its polling observes a terminal job status.
+
+  it('dispatches invalidateTags exactly once when the job transitions running -> succeeded', async () => {
+    jobQueryResult = { data: makeJob({ status: 'running' }) };
+    const { rerender } = render(<InstallDialog entry={baseEntry} open onOpenChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /^install$/i }));
+    await screen.findByText(/sync proxy rules/i);
+    expect(dispatchMock).not.toHaveBeenCalled();
+
+    jobQueryResult = {
+      data: makeJob({ status: 'succeeded', appUrl: 'https://handoff.example.com' }),
+    };
+    rerender(<InstallDialog entry={baseEntry} open onOpenChange={vi.fn()} />);
+    await screen.findByRole('link', { name: /open/i });
+
+    expect(dispatchMock).toHaveBeenCalledTimes(1);
+    expect(dispatchMock).toHaveBeenCalledWith(
+      api.util.invalidateTags(['AppCatalog', 'InstalledApp']),
+    );
+  });
+
+  it('does not dispatch invalidateTags again across further re-renders while the job stays terminal', async () => {
+    jobQueryResult = {
+      data: makeJob({ status: 'succeeded', appUrl: 'https://handoff.example.com' }),
+    };
+    const { rerender } = render(<InstallDialog entry={baseEntry} open onOpenChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /^install$/i }));
+    await screen.findByRole('link', { name: /open/i });
+    expect(dispatchMock).toHaveBeenCalledTimes(1);
+    dispatchMock.mockClear();
+
+    // Further poll ticks / re-renders that keep observing the same terminal
+    // job (still status 'succeeded', same job id) must not invalidate again.
+    rerender(<InstallDialog entry={baseEntry} open onOpenChange={vi.fn()} />);
+    rerender(<InstallDialog entry={baseEntry} open onOpenChange={vi.fn()} />);
+
+    expect(dispatchMock).not.toHaveBeenCalled();
+  });
+
+  it("dispatches invalidateTags once when the job transitions to 'undone'", async () => {
+    jobQueryResult = { data: makeJob({ status: 'running' }) };
+    const { rerender } = render(<InstallDialog entry={baseEntry} open onOpenChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /^install$/i }));
+    await screen.findByText(/sync proxy rules/i);
+    expect(dispatchMock).not.toHaveBeenCalled();
+
+    jobQueryResult = { data: makeJob({ status: 'undone' }) };
+    rerender(<InstallDialog entry={baseEntry} open onOpenChange={vi.fn()} />);
+
+    expect(dispatchMock).toHaveBeenCalledTimes(1);
+    expect(dispatchMock).toHaveBeenCalledWith(
+      api.util.invalidateTags(['AppCatalog', 'InstalledApp']),
+    );
+  });
+
+  it('never dispatches invalidateTags while the job stays running', async () => {
+    jobQueryResult = { data: makeJob({ status: 'running' }) };
+    const { rerender } = render(<InstallDialog entry={baseEntry} open onOpenChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /^install$/i }));
+    await screen.findByText(/sync proxy rules/i);
+    expect(dispatchMock).not.toHaveBeenCalled();
+
+    // Simulate more poll ticks — still running, just further along.
+    jobQueryResult = {
+      data: makeJob({
+        status: 'running',
+        steps: [
+          { id: 'preflight', status: 'done' },
+          { id: 'fetch', status: 'done' },
+          { id: 'sync-rules', status: 'done' },
+          { id: 'deploy', status: 'running' },
+        ],
+      }),
+    };
+    rerender(<InstallDialog entry={baseEntry} open onOpenChange={vi.fn()} />);
+    await screen.findByText(/^deploy$/i);
+
+    expect(dispatchMock).not.toHaveBeenCalled();
   });
 });
