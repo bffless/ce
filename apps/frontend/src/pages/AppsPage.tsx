@@ -1,14 +1,8 @@
 import { useState } from 'react';
 import { AppCard } from '@/components/app-catalog/AppCard';
+import { InstallDialog } from '@/components/app-catalog/InstallDialog';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useGetAppCatalogQuery, type CatalogEntry } from '@/services/appCatalogApi';
 import { AlertTriangle, LayoutGrid, X } from 'lucide-react';
@@ -90,22 +84,13 @@ export function AppsPage() {
         </div>
       )}
 
-      {/* TODO(Task 13/14): replace with the full install wizard (preflight ->
-          install -> job progress -> manual steps). */}
-      <Dialog open={installTarget !== null} onOpenChange={(open) => !open && setInstallTarget(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{`Install ${installTarget?.name ?? ''}`}</DialogTitle>
-            <DialogDescription>
-              The install wizard is coming soon — this will walk through project selection,
-              preflight checks, and install progress.
-            </DialogDescription>
-          </DialogHeader>
-          <Button variant="outline" onClick={() => setInstallTarget(null)}>
-            Close
-          </Button>
-        </DialogContent>
-      </Dialog>
+      {installTarget && (
+        <InstallDialog
+          entry={installTarget}
+          open={installTarget !== null}
+          onOpenChange={(open) => !open && setInstallTarget(null)}
+        />
+      )}
     </div>
   );
 }
