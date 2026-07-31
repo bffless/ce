@@ -469,6 +469,43 @@ describe('AppInstallerService', () => {
     });
   });
 
+  describe('subdomain override', () => {
+    it("passes the override straight through to the job's own re-preflight", async () => {
+      preflight.projectGates.mockResolvedValue({
+        gates: [{ id: 'dns', status: 'pass', message: 'ok' }],
+        syncPlans: [],
+        appHost: 'my-app.example.com',
+      });
+      queueInstallDb();
+
+      service.startInstall(ENTRY, { projectId: 'proj-1' }, 'user-1', 'my-app');
+      await service.whenIdle();
+
+      expect(preflight.projectGates).toHaveBeenCalledWith(
+        expect.anything(),
+        { projectId: 'proj-1' },
+        'user-1',
+        'my-app',
+      );
+    });
+
+    it('creates the app domain at "<override>.<PRIMARY_DOMAIN>", not the manifest default', async () => {
+      preflight.projectGates.mockResolvedValue({
+        gates: [{ id: 'dns', status: 'pass', message: 'ok' }],
+        syncPlans: [],
+        appHost: 'my-app.example.com',
+      });
+      queueInstallDb();
+
+      const { jobId } = service.startInstall(ENTRY, { projectId: 'proj-1' }, 'user-1', 'my-app');
+      await service.whenIdle();
+
+      const [dto] = domains.create.mock.calls[0];
+      expect(dto.domain).toBe('my-app.example.com');
+      expect(jobs.get(jobId)!.appUrl).toBe('https://my-app.example.com');
+    });
+  });
+
   describe('project resolution', () => {
     it('creates the project and flags projectCreated when it did not exist', async () => {
       projects.projectExists.mockResolvedValue(false);

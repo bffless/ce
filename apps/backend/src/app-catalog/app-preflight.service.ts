@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client';
@@ -13,6 +13,7 @@ import type {
 import { BootstrapDnsPreflightService } from '../setup/bootstrap-dns-preflight.service';
 import { IStorageAdapter, STORAGE_ADAPTER } from '../storage/storage.interface';
 import { getCeVersion, satisfiesMin } from './ce-version.util';
+import { isReservedSubdomain } from './app-manifest.util';
 import type { AppManifest, AppManifestRequires } from './app-manifest.types';
 import type { LoadedBundle } from './app-bundle.service';
 
@@ -79,19 +80,42 @@ export class AppPreflightService {
     return [this.storageGate(requires), this.ceVersionGate(requires), ...this.platformConfigGates()];
   }
 
+  /**
+   * `subdomainOverride` lets the wizard replace the manifest's
+   * `install.domain.subdomain` default for THIS install only — the manifest
+   * itself is never mutated. An override against a manifest that declares no
+   * `install.domain` at all is meaningless (there is nothing to override), so
+   * that's rejected outright rather than silently ignored. A reserved-name
+   * override is instead surfaced as a `name-collision` gate failure (not an
+   * exception) — it's a preview-time concern the wizard shows next to every
+   * other naming conflict.
+   */
   async projectGates(
     bundle: LoadedBundle,
     target: InstallTarget,
     userId: string,
+    subdomainOverride?: string,
   ): Promise<{ gates: GateResult[]; syncPlans: SyncPlanSummary[]; appHost: string | null }> {
     const manifest = bundle.manifest;
-    const subdomain = manifest.install.domain?.subdomain;
+    if (subdomainOverride !== undefined && !manifest.install.domain) {
+      throw new BadRequestException(
+        `App "${manifest.id}" does not declare an install domain, so a subdomain override does not apply.`,
+      );
+    }
+    const subdomain = subdomainOverride ?? manifest.install.domain?.subdomain;
     const primaryDomain = this.configService.get<string>('PRIMARY_DOMAIN') || '';
     const appHost = subdomain ? `${subdomain}.${primaryDomain}` : null;
     const ruleSets = this.parseBundledRuleSets(bundle);
 
     const dns = await this.dnsGate(appHost, subdomain, primaryDomain);
-    const nameCollision = await this.nameCollisionGate(manifest, ruleSets, target, appHost, subdomain);
+    const nameCollision = await this.nameCollisionGate(
+      manifest,
+      ruleSets,
+      target,
+      appHost,
+      subdomain,
+      subdomainOverride,
+    );
     const { gate: dataTables, syncPlans } = await this.dataTablesGate(ruleSets, target, userId);
 
     return { gates: [dns, nameCollision, dataTables], syncPlans, appHost };
@@ -247,8 +271,12 @@ export class AppPreflightService {
     target: InstallTarget,
     appHost: string | null,
     subdomain: string | undefined,
+    subdomainOverride?: string,
   ): Promise<GateResult> {
     const issues: string[] = [];
+    if (subdomainOverride !== undefined && isReservedSubdomain(subdomainOverride)) {
+      issues.push(`The subdomain "${subdomainOverride}" is reserved and cannot be used.`);
+    }
     let existingInstall: typeof installedApps.$inferSelect | undefined;
     // A `newProject` target skips every project-scoped check below (there is
     // no project id to scope them to). That is only sound while the project

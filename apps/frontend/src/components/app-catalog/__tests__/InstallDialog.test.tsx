@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { act, render, screen, fireEvent, within } from '@testing-library/react';
 import { vi } from 'vitest';
 import { InstallDialog } from '../InstallDialog';
 import type {
@@ -211,22 +211,39 @@ describe('InstallDialog — Review screen', () => {
     expect(screen.getByRole('button', { name: /^install$/i })).toBeDisabled();
   });
 
-  it('resets the preflight result when the selection changes, before requesting a new one', () => {
-    render(<InstallDialog entry={baseEntry} open onOpenChange={vi.fn()} />);
+  it('resets the preflight result immediately on selection change, debouncing the re-fire', () => {
+    vi.useFakeTimers();
+    try {
+      render(<InstallDialog entry={baseEntry} open onOpenChange={vi.fn()} />);
 
-    // The initial mount already ran a preflight for the preselected project;
-    // isolate the assertion to the effect of the selection actually changing.
-    resetPreflightMock.mockClear();
-    preflightTrigger.mockClear();
+      // The initial mount already ran a preflight for the preselected project;
+      // isolate the assertion to the effect of the selection actually changing.
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+      resetPreflightMock.mockClear();
+      preflightTrigger.mockClear();
 
-    fireEvent.change(screen.getByRole('combobox', { name: /project/i }), {
-      target: { value: 'new' },
-    });
-    fireEvent.change(screen.getByLabelText(/owner/i), { target: { value: 'acme' } });
-    fireEvent.change(screen.getByLabelText(/^name$/i), { target: { value: 'new-site' } });
+      fireEvent.change(screen.getByRole('combobox', { name: /project/i }), {
+        target: { value: 'new' },
+      });
+      fireEvent.change(screen.getByLabelText(/owner/i), { target: { value: 'acme' } });
+      fireEvent.change(screen.getByLabelText(/^name$/i), { target: { value: 'new-site' } });
 
-    expect(resetPreflightMock).toHaveBeenCalled();
-    expect(preflightTrigger).toHaveBeenCalled();
+      // The reset (which clears stale `preflightData`, so `canInstall` is
+      // false) is synchronous — it must not wait for the debounce.
+      expect(resetPreflightMock).toHaveBeenCalled();
+      // But the actual network re-fire is debounced — not yet.
+      expect(preflightTrigger).not.toHaveBeenCalled();
+
+      act(() => {
+        vi.advanceTimersByTime(600);
+      });
+
+      expect(preflightTrigger).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('shows the "Why?" remediation for a failed gate', () => {
@@ -270,6 +287,127 @@ describe('InstallDialog — Review screen', () => {
     expect(
       screen.getByText("A project's owner/name can never be renamed."),
     ).toBeInTheDocument();
+  });
+
+  it('shows the subdomain field empty, placeholder-defaulted from the first preflight appHost', () => {
+    preflightState = { data: makePreflight({ appHost: 'handoff.example.com' }), isLoading: false };
+
+    render(<InstallDialog entry={baseEntry} open onOpenChange={vi.fn()} />);
+
+    const input = screen.getByLabelText(/subdomain/i) as HTMLInputElement;
+    expect(input.value).toBe('');
+    expect(input.placeholder).toBe('handoff');
+  });
+
+  it('shows the resulting URL from the preflight response next to the subdomain field', () => {
+    preflightState = {
+      data: makePreflight({ appHost: 'handoff.example.com', appUrl: 'https://handoff.example.com' }),
+      isLoading: false,
+    };
+
+    render(<InstallDialog entry={baseEntry} open onOpenChange={vi.fn()} />);
+
+    expect(screen.getByText('https://handoff.example.com')).toBeInTheDocument();
+  });
+
+  it('debounces the subdomain field: resets immediately, re-fires preflight only after the delay, with subdomain in the body', () => {
+    vi.useFakeTimers();
+    try {
+      render(<InstallDialog entry={baseEntry} open onOpenChange={vi.fn()} />);
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+      resetPreflightMock.mockClear();
+      preflightTrigger.mockClear();
+
+      fireEvent.change(screen.getByLabelText(/subdomain/i), { target: { value: 'my-app' } });
+
+      expect(resetPreflightMock).toHaveBeenCalled();
+      expect(preflightTrigger).not.toHaveBeenCalled();
+
+      act(() => {
+        vi.advanceTimersByTime(600);
+      });
+
+      expect(preflightTrigger).toHaveBeenCalledTimes(1);
+      expect(preflightTrigger).toHaveBeenCalledWith({
+        appId: 'handoff',
+        body: { projectId: 'proj-1', subdomain: 'my-app' },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('omits subdomain from the preflight body when the field is left empty', () => {
+    vi.useFakeTimers();
+    try {
+      render(<InstallDialog entry={baseEntry} open onOpenChange={vi.fn()} />);
+
+      act(() => {
+        vi.advanceTimersByTime(600);
+      });
+
+      expect(preflightTrigger).toHaveBeenCalledWith({
+        appId: 'handoff',
+        body: { projectId: 'proj-1' },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps Install disabled for the whole debounce window after a subdomain keystroke', () => {
+    vi.useFakeTimers();
+    try {
+      const { rerender } = render(<InstallDialog entry={baseEntry} open onOpenChange={vi.fn()} />);
+      act(() => {
+        vi.advanceTimersByTime(600);
+      });
+      // Mount's own preflight settles against the seeded `preflightState`
+      // (untouched so far); Install starts enabled.
+      expect(screen.getByRole('button', { name: /^install$/i })).toBeEnabled();
+
+      // From here on, mirror the real RTK Query mutation: reset() clears
+      // `data`, which is exactly what makes `canInstall` false — the mocked
+      // hook otherwise has no reactivity of its own to observe.
+      resetPreflightMock.mockImplementation(() => {
+        preflightState = { ...preflightState, data: undefined };
+      });
+      preflightTrigger.mockClear();
+
+      fireEvent.change(screen.getByLabelText(/subdomain/i), { target: { value: 'my-app' } });
+      rerender(<InstallDialog entry={baseEntry} open onOpenChange={vi.fn()} />);
+
+      expect(screen.getByRole('button', { name: /^install$/i })).toBeDisabled();
+      expect(preflightTrigger).not.toHaveBeenCalled();
+
+      act(() => {
+        vi.advanceTimersByTime(600);
+      });
+      expect(preflightTrigger).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('sends the same subdomain the last preflight showed when installing', async () => {
+    preflightState = {
+      data: makePreflight({ appHost: 'my-app.example.com', appUrl: 'https://my-app.example.com' }),
+      isLoading: false,
+    };
+
+    render(<InstallDialog entry={baseEntry} open onOpenChange={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText(/subdomain/i), { target: { value: 'my-app' } });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^install$/i }));
+    });
+
+    expect(installTrigger).toHaveBeenCalledWith({
+      appId: 'handoff',
+      body: { projectId: 'proj-1', subdomain: 'my-app' },
+    });
   });
 });
 

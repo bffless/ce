@@ -82,6 +82,8 @@ export interface NewProjectInput {
 export interface PreflightRequest {
   projectId?: string;
   newProject?: NewProjectInput;
+  /** Overrides the manifest's default `install.domain.subdomain` for this install. */
+  subdomain?: string;
 }
 
 export interface SyncSchemaResolutionLike {

@@ -29,6 +29,11 @@ const RESERVED_SUBDOMAINS = [
   'minio',
 ];
 
+/** Shared with `PreflightRequestDto.subdomain`'s install-time override and `AppPreflightService`. */
+export function isReservedSubdomain(subdomain: string): boolean {
+  return RESERVED_SUBDOMAINS.includes(subdomain);
+}
+
 const ID_PATTERN = /^[a-z0-9-]+$/;
 // Matches CreateAliasDto/CreateDeploymentZipDto's alias rule.
 const ALIAS_PATTERN = /^[a-zA-Z0-9_-]+$/;
@@ -102,7 +107,7 @@ function validateDomain(domain: unknown, path: string, errors: string[]): void {
     errors.push(`${path}.subdomain: required string`);
   } else if (!SUBDOMAIN_PATTERN.test(domain.subdomain)) {
     errors.push(`${path}.subdomain: must match /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/`);
-  } else if (RESERVED_SUBDOMAINS.includes(domain.subdomain)) {
+  } else if (isReservedSubdomain(domain.subdomain)) {
     errors.push(`${path}.subdomain: is a reserved subdomain`);
   }
   if (domain.isPublic !== undefined && typeof domain.isPublic !== 'boolean') {

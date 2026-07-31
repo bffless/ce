@@ -44,6 +44,7 @@ jest.mock('./ce-version.util', () => ({
 }));
 
 import { ConfigService } from '@nestjs/config';
+import { BadRequestException } from '@nestjs/common';
 import { db } from '../db/client';
 import { getCeVersion } from './ce-version.util';
 import { AppPreflightService } from './app-preflight.service';
@@ -341,6 +342,77 @@ describe('AppPreflightService', () => {
       const result = await service.projectGates(bundle, { projectId: 'proj-1' }, 'user-1');
 
       expect(result.appHost).toBe('handoff.example.com');
+    });
+  });
+
+  describe('projectGates > subdomain override', () => {
+    it('uses the override for appHost and as the DNS probe target', async () => {
+      const bundle = makeBundle();
+      const { service, proxyRuleSetsService, dnsPreflight } = buildService({
+        configValues: { PRIMARY_DOMAIN: 'example.com' },
+      });
+      (dnsPreflight.probeHost as jest.Mock).mockResolvedValue({
+        host: 'my-app.example.com',
+        resolvedIps: ['1.2.3.4'],
+        probeOk: true,
+      } as PreflightCheck);
+      (proxyRuleSetsService.syncRuleSet as jest.Mock).mockResolvedValue(EMPTY_SYNC_RESPONSE);
+      mockDb.__queue([]); // installedApps lookup
+      mockDb.__queue([]); // ruleSet 1
+      mockDb.__queue([]); // ruleSet 2
+      mockDb.__queue([]); // alias
+      mockDb.__queue([]); // domain
+      mockDb.__queue([]); // cross-namespace
+
+      const result = await service.projectGates(
+        bundle,
+        { projectId: 'proj-1' },
+        'user-1',
+        'my-app',
+      );
+
+      expect(result.appHost).toBe('my-app.example.com');
+      expect(dnsPreflight.probeHost).toHaveBeenCalledWith('my-app.example.com');
+      const dns = result.gates.find((g) => g.id === 'dns');
+      expect(dns?.status).toBe('pass');
+      const nameCollision = result.gates.find((g) => g.id === 'name-collision');
+      expect(nameCollision?.status).toBe('pass');
+    });
+
+    it('fails the name-collision gate with a clear message when the override is a reserved subdomain', async () => {
+      const bundle = makeBundle();
+      const { service, proxyRuleSetsService, dnsPreflight } = buildService({
+        configValues: { PRIMARY_DOMAIN: 'example.com' },
+      });
+      (dnsPreflight.probeHost as jest.Mock).mockResolvedValue({
+        host: 'admin.example.com',
+        resolvedIps: [],
+        probeOk: true,
+      } as PreflightCheck);
+      (proxyRuleSetsService.syncRuleSet as jest.Mock).mockResolvedValue(EMPTY_SYNC_RESPONSE);
+      mockDb.__queue([]); // installedApps lookup
+      mockDb.__queue([]); // ruleSet 1
+      mockDb.__queue([]); // ruleSet 2
+      mockDb.__queue([]); // alias
+      mockDb.__queue([]); // domain
+      mockDb.__queue([]); // cross-namespace
+
+      const result = await service.projectGates(bundle, { projectId: 'proj-1' }, 'user-1', 'admin');
+
+      const nameCollision = result.gates.find((g) => g.id === 'name-collision');
+      expect(nameCollision?.status).toBe('fail');
+      expect(nameCollision?.message).toMatch(/reserved/i);
+    });
+
+    it('rejects an override when the manifest declares no install.domain', async () => {
+      const bundle = makeBundle({
+        install: { ...TEST_MANIFEST.install, domain: undefined },
+      } as Partial<AppManifest>);
+      const { service } = buildService({ configValues: { PRIMARY_DOMAIN: 'example.com' } });
+
+      await expect(
+        service.projectGates(bundle, { projectId: 'proj-1' }, 'user-1', 'my-app'),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 

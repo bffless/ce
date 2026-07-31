@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -53,6 +53,15 @@ interface InstallDialogProps {
 }
 
 const NEW_PROJECT_VALUE = 'new';
+
+/**
+ * Delay before a Review-screen keystroke (subdomain field, or the new-project
+ * owner/name fields) re-fires preflight. `resetPreflight()` still runs
+ * synchronously on every keystroke — that's what makes `canInstall` (which
+ * requires `preflightData`) false for the whole debounce window, not just the
+ * network round trip.
+ */
+const PREFLIGHT_DEBOUNCE_MS = 500;
 
 /** Job statuses that will never change again — polling past this point is wasted work. */
 const TERMINAL_JOB_STATUSES = new Set(['succeeded', 'failed', 'undone']);
@@ -112,6 +121,15 @@ export function InstallDialog({
   const [creatingNew, setCreatingNew] = useState(false);
   const [newOwner, setNewOwner] = useState('');
   const [newName, setNewName] = useState('');
+  // Editable override for the manifest's default install subdomain. Starts
+  // empty — the manifest default is only shown as a placeholder (see
+  // `defaultSubdomainLabel` below), never forced into the field's value.
+  const [subdomain, setSubdomain] = useState('');
+  // Seeded once from the FIRST preflight response's appHost, so later
+  // preflights (e.g. after a project change) don't keep overwriting a
+  // placeholder the operator is already looking at.
+  const [defaultSubdomainLabel, setDefaultSubdomainLabel] = useState<string | undefined>(undefined);
+  const preflightDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Update mode is handed an already-running job — seed it directly so the
   // very first render lands on Working/Done, skipping Review entirely.
   const [jobId, setJobId] = useState<string | null>(initialJobId ?? null);
@@ -148,8 +166,11 @@ export function InstallDialog({
       setCreatingNew(false);
       setNewOwner('');
       setNewName('');
+      setSubdomain('');
+      setDefaultSubdomainLabel(undefined);
       setSelectedProjectId(undefined);
       setLastJobStatus(undefined);
+      if (preflightDebounceRef.current) clearTimeout(preflightDebounceRef.current);
       return;
     }
     // Update mode never shows Review, so there's no project to preselect —
@@ -160,12 +181,19 @@ export function InstallDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, repositories.length, isUpdate]);
 
+  const trimmedSubdomain = subdomain.trim();
   const preflightBody: PreflightRequest | null = creatingNew
     ? newOwner.trim() && newName.trim()
-      ? { newProject: { owner: newOwner.trim(), name: newName.trim() } }
+      ? {
+          newProject: { owner: newOwner.trim(), name: newName.trim() },
+          ...(trimmedSubdomain ? { subdomain: trimmedSubdomain } : {}),
+        }
       : null
     : selectedProjectId
-      ? { projectId: selectedProjectId }
+      ? {
+          projectId: selectedProjectId,
+          ...(trimmedSubdomain ? { subdomain: trimmedSubdomain } : {}),
+        }
       : null;
 
   const runPreflight = (body: PreflightRequest) => {
@@ -173,15 +201,34 @@ export function InstallDialog({
   };
 
   useEffect(() => {
-    if (preflightBody) {
-      // Clear the previous selection's result immediately so stale gates/plan
-      // (and a stale "clean" verdict) can't be shown — or acted on — against
-      // the newly selected project while the new preflight is in flight.
-      resetPreflight();
+    if (!preflightBody) return;
+    // Clear the previous result IMMEDIATELY (not debounced) so stale
+    // gates/plan (and a stale "clean" verdict) can't be shown — or acted on
+    // — against the newly-typed target while the debounced re-fire is
+    // pending. `canInstall` requires `preflightData`, so this alone is what
+    // keeps Install disabled for the whole debounce window, not just the
+    // network round trip that follows it.
+    resetPreflight();
+    if (preflightDebounceRef.current) clearTimeout(preflightDebounceRef.current);
+    preflightDebounceRef.current = setTimeout(() => {
       runPreflight(preflightBody);
+    }, PREFLIGHT_DEBOUNCE_MS);
+    return () => {
+      if (preflightDebounceRef.current) clearTimeout(preflightDebounceRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProjectId, creatingNew, newOwner, newName, trimmedSubdomain]);
+
+  // Seed the placeholder default from the first preflight response only —
+  // the manifest's default subdomain doesn't change across projects, so
+  // later responses (from a project change, or the operator's own override)
+  // must not keep stomping a placeholder already on screen.
+  useEffect(() => {
+    if (defaultSubdomainLabel === undefined && preflightData?.appHost) {
+      setDefaultSubdomainLabel(preflightData.appHost.split('.')[0]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedProjectId, creatingNew, newOwner, newName]);
+  }, [preflightData?.appHost]);
 
   const handleProjectChange = (value: string) => {
     if (value === NEW_PROJECT_VALUE) {
@@ -309,18 +356,29 @@ export function InstallDialog({
               </div>
             )}
 
+            {preflightData?.appHost !== null && (
+              <div className="space-y-2">
+                <Label htmlFor="install-subdomain">Subdomain</Label>
+                <Input
+                  id="install-subdomain"
+                  value={subdomain}
+                  onChange={(e) => setSubdomain(e.target.value)}
+                  placeholder={defaultSubdomainLabel}
+                />
+                {preflightData?.appUrl && (
+                  <p className="text-xs text-muted-foreground">
+                    Will be available at <code className="text-xs">{preflightData.appUrl}</code>
+                  </p>
+                )}
+              </div>
+            )}
+
             {isPreflighting && !preflightData && (
               <p className="text-sm text-muted-foreground">Checking…</p>
             )}
 
             {preflightData && (
               <>
-                {preflightData.appUrl && (
-                  <p className="text-sm">
-                    App URL: <code className="text-xs">{preflightData.appUrl}</code>
-                  </p>
-                )}
-
                 <div className="space-y-2">
                   {preflightData.gates.map((gate) => (
                     <div key={gate.id} className="flex items-start gap-2 rounded-md border p-2">

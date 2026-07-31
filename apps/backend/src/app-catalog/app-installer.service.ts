@@ -147,10 +147,21 @@ export class AppInstallerService {
     @Inject(STORAGE_ADAPTER) private readonly storageAdapter: IStorageAdapter,
   ) {}
 
-  /** Kicks off the background run; returns immediately (storage-migration shape). */
-  startInstall(entry: AppRegistryEntry, target: InstallTarget, userId: string): { jobId: string } {
+  /**
+   * Kicks off the background run; returns immediately (storage-migration
+   * shape). `subdomainOverride` is the SAME value the wizard's last preflight
+   * showed — it is passed straight through to the job's own re-preflight
+   * (`runInstall`), so the job never re-verifies a different host than the
+   * one the operator was shown.
+   */
+  startInstall(
+    entry: AppRegistryEntry,
+    target: InstallTarget,
+    userId: string,
+    subdomainOverride?: string,
+  ): { jobId: string } {
     const job = this.jobs.create('install', entry.id, INSTALL_STEPS);
-    this.currentRun = this.runInstall(job.id, entry, target, userId);
+    this.currentRun = this.runInstall(job.id, entry, target, userId, subdomainOverride);
     void this.currentRun;
     return { jobId: job.id };
   }
@@ -180,6 +191,7 @@ export class AppInstallerService {
     entry: AppRegistryEntry,
     target: InstallTarget,
     userId: string,
+    subdomainOverride?: string,
   ): Promise<void> {
     let step: InstallStepId = 'preflight';
     let rowId: string | undefined;
@@ -196,6 +208,7 @@ export class AppInstallerService {
         preflightBundle,
         this.toPreflightTarget(target),
         userId,
+        subdomainOverride,
       );
       this.assertGatesPass(projectGates.gates);
       this.jobs.setStep(jobId, step, { status: 'done', detail: 'All install gates passed.' });

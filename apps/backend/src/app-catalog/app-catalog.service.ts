@@ -146,6 +146,7 @@ export class AppCatalogService {
       bundle,
       this.toPreflightTarget(target),
       userId,
+      dto.subdomain,
     );
 
     return {
@@ -159,7 +160,7 @@ export class AppCatalogService {
   async install(appId: string, dto: PreflightRequestDto, userId: string): Promise<{ jobId: string }> {
     const entry = await this.requireRegistryEntry(appId);
     const target = this.toInstallTarget(dto);
-    return this.installerService.startInstall(entry, target, userId);
+    return this.installerService.startInstall(entry, target, userId, dto.subdomain);
   }
 
   async updateInstalled(

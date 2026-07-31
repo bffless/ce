@@ -1,6 +1,17 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { IsBoolean, IsOptional, IsString, IsUUID, Matches, ValidateNested } from 'class-validator';
+import {
+  IsBoolean,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Matches,
+  MaxLength,
+  ValidateNested,
+} from 'class-validator';
+
+/** DNS label rule — matches `app-manifest.util.ts`'s `SUBDOMAIN_PATTERN` for `install.domain.subdomain`. */
+const SUBDOMAIN_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
 
 /**
  * DTOs for the app-catalog admin HTTP surface (Task 11 of the app-catalog
@@ -37,6 +48,25 @@ export class PreflightRequestDto {
   @ValidateNested()
   @Type(() => NewProjectDto)
   newProject?: NewProjectDto;
+
+  /**
+   * Overrides the manifest's `install.domain.subdomain` default. Reserved-name
+   * enforcement (and rejecting an override for a manifest that declares no
+   * domain at all) happens in `AppPreflightService.projectGates`, not here —
+   * this DTO only enforces DNS-label shape.
+   */
+  @ApiPropertyOptional({
+    description: "Override the app manifest's default install subdomain",
+    example: 'my-app',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(63)
+  @Matches(SUBDOMAIN_PATTERN, {
+    message:
+      'subdomain must be a valid DNS label: lowercase letters, digits and hyphens, not starting/ending with a hyphen',
+  })
+  subdomain?: string;
 }
 
 export class UpdateInstalledAppDto {

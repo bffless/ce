@@ -394,6 +394,7 @@ describe('AppCatalogService', () => {
         { manifest: MANIFEST, files: {}, sha256: 'a'.repeat(64) },
         { projectId: 'proj-1' },
         'user-1',
+        undefined,
       );
       expect(result.gates).toEqual([
         { id: 'storage', status: 'pass', message: 'ok' },
@@ -402,6 +403,38 @@ describe('AppCatalogService', () => {
       expect(result.syncPlans).toHaveLength(1);
       expect(result.appHost).toBe('handoff.example.com');
       expect(result.appUrl).toBe('https://handoff.example.com');
+    });
+
+    it('passes dto.subdomain through to projectGates as the override', async () => {
+      registry.getRegistry.mockResolvedValue({
+        ok: true,
+        registry: { schemaVersion: 1, apps: [HANDOFF_ENTRY] },
+      });
+      bundle.fetchBundle.mockResolvedValue({
+        manifest: MANIFEST,
+        files: {},
+        sha256: 'a'.repeat(64),
+      });
+      preflight.projectGates.mockResolvedValue({
+        gates: [],
+        syncPlans: [],
+        appHost: 'my-app.example.com',
+      });
+
+      const result = await service.preflight(
+        'handoff',
+        { projectId: 'proj-1', subdomain: 'my-app' } as never,
+        'user-1',
+      );
+
+      expect(preflight.projectGates).toHaveBeenCalledWith(
+        { manifest: MANIFEST, files: {}, sha256: 'a'.repeat(64) },
+        { projectId: 'proj-1' },
+        'user-1',
+        'my-app',
+      );
+      expect(result.appHost).toBe('my-app.example.com');
+      expect(result.appUrl).toBe('https://my-app.example.com');
     });
 
     it('throws NotFoundException for an app id not in the registry', async () => {
@@ -463,8 +496,29 @@ describe('AppCatalogService', () => {
         HANDOFF_ENTRY,
         { newProject: { owner: 'acme', name: 'site' } },
         'user-1',
+        undefined,
       );
       expect(result).toEqual({ jobId: 'job-1' });
+    });
+
+    it('passes dto.subdomain through to the installer as the override', async () => {
+      registry.getRegistry.mockResolvedValue({
+        ok: true,
+        registry: { schemaVersion: 1, apps: [HANDOFF_ENTRY] },
+      });
+
+      await service.install(
+        'handoff',
+        { projectId: 'proj-1', subdomain: 'my-app' } as never,
+        'user-1',
+      );
+
+      expect(installer.startInstall).toHaveBeenCalledWith(
+        HANDOFF_ENTRY,
+        { projectId: 'proj-1' },
+        'user-1',
+        'my-app',
+      );
     });
 
     it('throws NotFoundException for an unknown app id', async () => {
