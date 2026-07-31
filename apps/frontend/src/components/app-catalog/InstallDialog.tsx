@@ -45,6 +45,9 @@ interface InstallDialogProps {
 
 const NEW_PROJECT_VALUE = 'new';
 
+/** Job statuses that will never change again — polling past this point is wasted work. */
+const TERMINAL_JOB_STATUSES = new Set(['succeeded', 'failed', 'undone']);
+
 const STEP_LABELS: Record<string, string> = {
   preflight: 'Preflight checks',
   fetch: 'Fetch app bundle',
@@ -97,11 +100,25 @@ export function InstallDialog({ entry, open, onOpenChange }: InstallDialogProps)
   const [installBody, setInstallBody] = useState<PreflightRequest | null>(null);
 
   const { data: reposData } = useGetMyRepositoriesQuery();
-  const [preflight, { data: preflightData, isLoading: isPreflighting }] = usePreflightAppMutation();
+  const [preflight, { data: preflightData, isLoading: isPreflighting, reset: resetPreflight }] =
+    usePreflightAppMutation();
   const [installApp, { isLoading: isInstalling }] = useInstallAppMutation();
-  const { data: job } = useGetInstallJobQuery(jobId ?? '', { pollingInterval: 1000, skip: !jobId });
   const [undoJob, { isLoading: isUndoing }] = useUndoJobMutation();
   const [ackManualStep] = useAckManualStepMutation();
+
+  // Stop polling once the job reaches a terminal state. `lastJobStatus` is
+  // corrected synchronously during render (not in an effect) so the very
+  // poll that observes the terminal status is also the one that disables
+  // further polling — no one-more-poll-after-done straggler.
+  const [lastJobStatus, setLastJobStatus] = useState<string | undefined>(undefined);
+  const jobPollingInterval = lastJobStatus && TERMINAL_JOB_STATUSES.has(lastJobStatus) ? 0 : 1000;
+  const { data: job } = useGetInstallJobQuery(jobId ?? '', {
+    pollingInterval: jobPollingInterval,
+    skip: !jobId,
+  });
+  if (job?.status !== lastJobStatus) {
+    setLastJobStatus(job?.status);
+  }
 
   const repositories = reposData?.repositories ?? [];
 
@@ -114,6 +131,7 @@ export function InstallDialog({ entry, open, onOpenChange }: InstallDialogProps)
       setNewOwner('');
       setNewName('');
       setSelectedProjectId(undefined);
+      setLastJobStatus(undefined);
       return;
     }
     if (repositories.length === 1 && !selectedProjectId && !creatingNew) {
@@ -136,6 +154,10 @@ export function InstallDialog({ entry, open, onOpenChange }: InstallDialogProps)
 
   useEffect(() => {
     if (preflightBody) {
+      // Clear the previous selection's result immediately so stale gates/plan
+      // (and a stale "clean" verdict) can't be shown — or acted on — against
+      // the newly selected project while the new preflight is in flight.
+      resetPreflight();
       runPreflight(preflightBody);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -435,7 +457,7 @@ export function InstallDialog({ entry, open, onOpenChange }: InstallDialogProps)
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button onClick={handleInstall} disabled={!canInstall || isInstalling}>
+            <Button onClick={handleInstall} disabled={!canInstall || isInstalling || isPreflighting}>
               {isInstalling ? 'Installing…' : 'Install'}
             </Button>
           </DialogFooter>

@@ -8,9 +8,11 @@ import type {
 } from '@/services/appCatalogApi';
 
 const preflightTrigger = vi.fn();
+const resetPreflightMock = vi.fn();
 const installTrigger = vi.fn();
 const undoTrigger = vi.fn();
 const ackTrigger = vi.fn();
+const getInstallJobQueryMock = vi.fn((_jobId: string, _options?: { pollingInterval?: number; skip?: boolean }) => jobQueryResult);
 
 let preflightState: { data?: PreflightResponse; isLoading: boolean } = {
   data: undefined,
@@ -22,9 +24,15 @@ let undoState: { isLoading: boolean } = { isLoading: false };
 let ackState: { isLoading: boolean } = { isLoading: false };
 
 vi.mock('@/services/appCatalogApi', () => ({
-  usePreflightAppMutation: () => [preflightTrigger, preflightState],
+  usePreflightAppMutation: () => [
+    preflightTrigger,
+    { ...preflightState, reset: resetPreflightMock },
+  ],
   useInstallAppMutation: () => [installTrigger, installState],
-  useGetInstallJobQuery: () => jobQueryResult,
+  useGetInstallJobQuery: (
+    jobId: string,
+    options?: { pollingInterval?: number; skip?: boolean },
+  ) => getInstallJobQueryMock(jobId, options),
   useUndoJobMutation: () => [undoTrigger, undoState],
   useAckManualStepMutation: () => [ackTrigger, ackState],
 }));
@@ -92,9 +100,11 @@ function makeJob(overrides: Partial<InstallJob> = {}): InstallJob {
 
 beforeEach(() => {
   preflightTrigger.mockReset().mockReturnValue({ unwrap: () => Promise.resolve(makePreflight()) });
+  resetPreflightMock.mockReset();
   installTrigger.mockReset().mockReturnValue({ unwrap: () => Promise.resolve({ jobId: 'job-1' }) });
   undoTrigger.mockReset().mockReturnValue({ unwrap: () => Promise.resolve({}) });
   ackTrigger.mockReset().mockReturnValue({ unwrap: () => Promise.resolve({ acked: [] }) });
+  getInstallJobQueryMock.mockClear();
   preflightState = { data: makePreflight(), isLoading: false };
   installState = { isLoading: false };
   jobQueryResult = { data: undefined };
@@ -187,6 +197,36 @@ describe('InstallDialog — Review screen', () => {
     expect(screen.getByRole('button', { name: /^install$/i })).toBeEnabled();
   });
 
+  it('disables Install while a new preflight is in flight, even against clean stale data from the previous selection', () => {
+    // RTK Query mutation hooks keep the previous `data` around until the new
+    // request settles — `isLoading` flips to true well before `data` is
+    // replaced. Reproduce that: the still-clean, all-pass preflight from the
+    // prior selection is still sitting in `data` while a new one is pending.
+    preflightState = { data: makePreflight(), isLoading: true };
+
+    render(<InstallDialog entry={baseEntry} open onOpenChange={vi.fn()} />);
+
+    expect(screen.getByRole('button', { name: /^install$/i })).toBeDisabled();
+  });
+
+  it('resets the preflight result when the selection changes, before requesting a new one', () => {
+    render(<InstallDialog entry={baseEntry} open onOpenChange={vi.fn()} />);
+
+    // The initial mount already ran a preflight for the preselected project;
+    // isolate the assertion to the effect of the selection actually changing.
+    resetPreflightMock.mockClear();
+    preflightTrigger.mockClear();
+
+    fireEvent.change(screen.getByRole('combobox', { name: /project/i }), {
+      target: { value: 'new' },
+    });
+    fireEvent.change(screen.getByLabelText(/owner/i), { target: { value: 'acme' } });
+    fireEvent.change(screen.getByLabelText(/^name$/i), { target: { value: 'new-site' } });
+
+    expect(resetPreflightMock).toHaveBeenCalled();
+    expect(preflightTrigger).toHaveBeenCalled();
+  });
+
   it('shows the "Why?" remediation for a failed gate', () => {
     preflightState = {
       data: makePreflight({
@@ -242,6 +282,30 @@ describe('InstallDialog — Working screen', () => {
     expect(await screen.findByText(/fetch app bundle/i)).toBeInTheDocument();
     expect(screen.getByText(/sync proxy rules/i)).toBeInTheDocument();
     expect(screen.getByText(/^deploy$/i)).toBeInTheDocument();
+  });
+
+  it('keeps polling (pollingInterval 1000) while the job is still running', async () => {
+    jobQueryResult = { data: makeJob({ status: 'running' }) };
+
+    render(<InstallDialog entry={baseEntry} open onOpenChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /^install$/i }));
+
+    await screen.findByText(/sync proxy rules/i);
+
+    const lastCall = getInstallJobQueryMock.mock.calls.at(-1);
+    expect(lastCall?.[1]).toMatchObject({ pollingInterval: 1000, skip: false });
+  });
+
+  it('stops polling (pollingInterval 0) once the job reaches a terminal status', async () => {
+    jobQueryResult = { data: makeJob({ status: 'succeeded', appUrl: 'https://handoff.example.com' }) };
+
+    render(<InstallDialog entry={baseEntry} open onOpenChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /^install$/i }));
+
+    await screen.findByRole('link', { name: /open/i });
+
+    const lastCall = getInstallJobQueryMock.mock.calls.at(-1);
+    expect(lastCall?.[1]).toMatchObject({ pollingInterval: 0 });
   });
 
   it('shows the detail text for an action-required step', async () => {
