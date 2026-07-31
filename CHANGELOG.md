@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0](https://github.com/bffless/ce/compare/v0.3.15...v0.4.0) (2026-07-31)
+
+
+### Features
+
+* **apps:** app catalog — 1-click app install ([#567](https://github.com/bffless/ce/issues/567)) ([9530ec0](https://github.com/bffless/ce/commit/9530ec0f51900a05b27d319d21c236b9409053de))
+
+
+### Miscellaneous Chores
+
+* release CE 0.4.0 ([#577](https://github.com/bffless/ce/issues/577)) ([8023697](https://github.com/bffless/ce/commit/802369796800c5f42061e4982e81f0c7ecdeecff))
+
 ## [0.3.15](https://github.com/bffless/ce/compare/v0.3.14...v0.3.15) (2026-07-30)
 
 
