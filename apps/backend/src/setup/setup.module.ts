@@ -33,6 +33,9 @@ import { PrimarySslRevertService } from './primary-ssl/primary-ssl-revert.servic
     PrimarySslSnapshotService,
     PrimarySslRevertService,
   ],
-  exports: [SetupService],
+  // PrimarySslService is exported for AppCatalogModule's AppCertStepService
+  // (Task 8): it needs `issueLetsEncrypt({ extraSans })` to stage a widened
+  // cert for a newly-installed app's subdomain.
+  exports: [SetupService, PrimarySslService],
 })
 export class SetupModule {}

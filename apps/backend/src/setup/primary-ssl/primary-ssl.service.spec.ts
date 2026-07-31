@@ -16,7 +16,10 @@ const makeDeps = () => ({
     assertStagedCertificateCovers: jest.fn(),
   },
   ssl: { requestPrimaryDomainCertificate: jest.fn() },
-  preflight: { run: jest.fn().mockResolvedValue({ ok: true, checks: [] }) },
+  preflight: {
+    run: jest.fn().mockResolvedValue({ ok: true, checks: [] }),
+    probeHost: jest.fn().mockResolvedValue({ host: 'extra.a.com', resolvedIps: ['1.2.3.4'], probeOk: true }),
+  },
   info: {
     getWildcardCertInfo: jest.fn().mockResolvedValue({ type: 'wildcard', expiresAt: new Date(), isValid: true }),
     getServedPrimaryCertInfo: jest.fn().mockResolvedValue({ type: 'individual', expiresAt: new Date(), isValid: true }),
@@ -374,6 +377,42 @@ describe('PrimarySslService.issueLetsEncrypt', () => {
     d.snap.readPendingRevert.mockReturnValue({ deadlineMs: Date.now() + 1000, appliedAt: Date.now() });
     await expect(svc.issueLetsEncrypt()).rejects.toThrow();
     expect(d.snap.snapshotForChangeCycle).not.toHaveBeenCalled();
+    expect(d.ssl.requestPrimaryDomainCertificate).not.toHaveBeenCalled();
+  });
+
+  // Regression (Task 8): no-opts callers must produce the exact same call
+  // shape as before extraSans threading existed.
+  it('regression: without opts, calls requestPrimaryDomainCertificate with the same args as before extraSans existed', async () => {
+    const { d, svc } = build();
+    d.ssl.requestPrimaryDomainCertificate.mockResolvedValue({ success: true, sans: ['a.com'] });
+    await svc.issueLetsEncrypt();
+    expect(d.ssl.requestPrimaryDomainCertificate).toHaveBeenCalledWith('a.com', { target: 'staging' });
+    expect(d.preflight.probeHost).not.toHaveBeenCalled();
+  });
+
+  it('with extraSans: probes the extra host(s) and passes extraSans through to requestPrimaryDomainCertificate', async () => {
+    const { d, svc } = build();
+    d.ssl.requestPrimaryDomainCertificate.mockResolvedValue({ success: true, sans: ['a.com', 'handoff.example.com'] });
+    const r = await svc.issueLetsEncrypt({ extraSans: ['handoff.example.com'] });
+    expect(d.preflight.probeHost).toHaveBeenCalledWith('handoff.example.com');
+    expect(d.ssl.requestPrimaryDomainCertificate).toHaveBeenCalledWith('a.com', {
+      target: 'staging',
+      extraSans: ['handoff.example.com'],
+    });
+    expect(r.sans).toContain('handoff.example.com');
+  });
+
+  it('with extraSans: the original [apex, www, admin] preflight still runs unreduced', async () => {
+    const { d, svc } = build();
+    d.ssl.requestPrimaryDomainCertificate.mockResolvedValue({ success: true, sans: ['a.com'] });
+    await svc.issueLetsEncrypt({ extraSans: ['handoff.example.com'] });
+    expect(d.preflight.run).toHaveBeenCalledWith('a.com');
+  });
+
+  it('with extraSans: throws (does not issue) when the extra host fails its preflight probe', async () => {
+    const { d, svc } = build();
+    d.preflight.probeHost.mockResolvedValue({ host: 'handoff.example.com', resolvedIps: [], probeOk: false, error: 'does not resolve' });
+    await expect(svc.issueLetsEncrypt({ extraSans: ['handoff.example.com'] })).rejects.toThrow();
     expect(d.ssl.requestPrimaryDomainCertificate).not.toHaveBeenCalled();
   });
 });
