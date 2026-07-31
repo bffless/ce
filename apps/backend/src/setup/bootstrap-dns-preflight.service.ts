@@ -54,6 +54,11 @@ export class BootstrapDnsPreflightService {
 
   async run(domain: string): Promise<PreflightResult> {
     const hosts = [domain, `www.${domain}`, `admin.${domain}`];
+    const checks = await Promise.all(hosts.map((host) => this.probeHost(host)));
+    return { ok: checks.every((c) => c.probeOk), checks };
+  }
+
+  async probeHost(host: string): Promise<PreflightCheck> {
     const token = `preflight-${crypto.randomBytes(16).toString('hex')}`;
     const content = token; // body == token: cheap, unguessable, self-describing
     const filePath = path.join(this.webroot(), '.well-known', 'acme-challenge', token);
@@ -61,28 +66,23 @@ export class BootstrapDnsPreflightService {
     await fs.mkdir(path.dirname(filePath), { recursive: true });
     await fs.writeFile(filePath, content);
     try {
-      const checks: PreflightCheck[] = [];
-      for (const host of hosts) {
-        const resolvedIps = await this.resolveA(host);
-        if (resolvedIps.some((ip) => isDisallowedProbeIp(ip))) {
-          checks.push({ host, resolvedIps, probeOk: false, error: 'resolves to a private or reserved address' });
-          continue;
-        }
-        let probeOk = false;
-        let error: string | undefined;
-        try {
-          const body = await this.fetchProbe(host, resolvedIps[0], token, content);
-          probeOk = body === content;
-          if (!probeOk) error = 'Another server answered on port 80 for this hostname';
-        } catch (e) {
-          error = e instanceof Error ? e.message : 'Unreachable over HTTP';
-        }
-        if (!probeOk && resolvedIps.length === 0 && !error) {
-          error = 'Hostname does not resolve yet';
-        }
-        checks.push({ host, resolvedIps, probeOk, error: probeOk ? undefined : error });
+      const resolvedIps = await this.resolveA(host);
+      if (resolvedIps.some((ip) => isDisallowedProbeIp(ip))) {
+        return { host, resolvedIps, probeOk: false, error: 'resolves to a private or reserved address' };
       }
-      return { ok: checks.every((c) => c.probeOk), checks };
+      let probeOk = false;
+      let error: string | undefined;
+      try {
+        const body = await this.fetchProbe(host, resolvedIps[0], token, content);
+        probeOk = body === content;
+        if (!probeOk) error = 'Another server answered on port 80 for this hostname';
+      } catch (e) {
+        error = e instanceof Error ? e.message : 'Unreachable over HTTP';
+      }
+      if (!probeOk && resolvedIps.length === 0 && !error) {
+        error = 'Hostname does not resolve yet';
+      }
+      return { host, resolvedIps, probeOk, error: probeOk ? undefined : error };
     } finally {
       await fs.rm(filePath, { force: true });
     }
