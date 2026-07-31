@@ -83,21 +83,35 @@ describe('BootstrapDnsPreflightService', () => {
 
       await service.run('example.com');
 
-      expect(transportSpy).toHaveBeenCalled();
-      const options = transportSpy.mock.calls[0][0] as {
+      // `run()` probes apex/www/admin CONCURRENTLY, so the order calls land in
+      // is not deterministic — assert over the whole set rather than calls[0],
+      // which raced and failed intermittently in CI.
+      expect(transportSpy).toHaveBeenCalledTimes(3);
+      type ProbeOptions = {
         host: string;
         headers: Record<string, string>;
         path: string;
       };
-      // Connection target must be the already-vetted IP — never the raw
-      // hostname, which would let the HTTP client re-resolve DNS itself and
-      // reopen the resolve/connect TOCTOU window.
-      expect(options.host).toBe('93.184.216.34');
-      expect(options.host).not.toBe('example.com');
+      const calls = (transportSpy.mock.calls as unknown as Array<[ProbeOptions]>).map(
+        ([options]) => options,
+      );
+
+      for (const options of calls) {
+        // Connection target must be the already-vetted IP — never the raw
+        // hostname, which would let the HTTP client re-resolve DNS itself and
+        // reopen the resolve/connect TOCTOU window. This must hold for EVERY
+        // probed host, not just the first one to fire.
+        expect(options.host).toBe('93.184.216.34');
+        expect(options.path).toMatch(/^\/\.well-known\/acme-challenge\//);
+      }
+
       // The hostname still travels via the Host header so ACME webroot
       // vhost routing on the target server keeps working.
-      expect(options.headers.Host).toBe('example.com');
-      expect(options.path).toMatch(/^\/\.well-known\/acme-challenge\//);
+      expect(calls.map((options) => options.headers.Host).sort()).toEqual([
+        'admin.example.com',
+        'example.com',
+        'www.example.com',
+      ]);
     });
   });
 
