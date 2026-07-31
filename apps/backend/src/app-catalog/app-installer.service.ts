@@ -49,6 +49,8 @@ export interface UninstallSummary {
     deletedRecordCounts: Record<string, number>;
   };
   note: string;
+  /** `kind:id` labels of deletions that failed. Absent/omitted when everything succeeded. */
+  failures?: string[];
 }
 
 export interface UninstallPreview {
@@ -413,10 +415,30 @@ export class AppInstallerService {
    * Deletes ONLY this install's own created objects, in reverse creation
    * order, then drops the `installed_apps` row. Never touches a reused schema,
    * an adopted rule set, or a pre-existing domain.
+   *
+   * The row is only dropped when every attempted deletion succeeded. If any
+   * failed, the row is KEPT (`status: 'failed'`) rather than silently leaving
+   * a stranded, untracked resource with nothing left to retry it from — the
+   * caller sees which labels failed via `failures` and can call `undo` again
+   * (each `tryRun` treats an already-gone resource as success, so a retry
+   * only re-attempts what's still actually live).
    */
-  async undo(installedAppId: string, userId: string): Promise<{ removed: string[] }> {
+  async undo(installedAppId: string, userId: string): Promise<{ removed: string[]; failures?: string[] }> {
     const row = await this.requireRow(installedAppId);
-    const removed = await this.deleteCreatedResources(row, userId, { includeSchemas: true });
+    const { removed, failures } = await this.deleteCreatedResources(row, userId, { includeSchemas: true });
+
+    if (failures.length > 0) {
+      await db
+        .update(installedApps)
+        .set({ status: 'failed', updatedAt: new Date() })
+        .where(eq(installedApps.id, row.id));
+
+      this.logger.warn(
+        `Undo of app install ${row.appId} (${row.id}) left ${failures.length} object(s) undeleted ` +
+          `(${failures.join(', ')}); row kept for retry.`,
+      );
+      return { removed, failures };
+    }
 
     await db.delete(installedApps).where(eq(installedApps.id, row.id));
 
@@ -441,6 +463,13 @@ export class AppInstallerService {
    * failed/in-progress install and must never touch a set it didn't create;
    * a full uninstall is the user tearing the app down, and its rule sets
    * (named after the app, not general-purpose) go with it.
+   *
+   * Same row-retention rule as {@link undo}: the `installed_apps` row is only
+   * dropped once every attempted deletion (infrastructure AND, when
+   * `deleteData` is true, data tables) succeeded. A partial failure keeps the
+   * row (`status: 'failed'`) and reports which `kind:id` labels failed via
+   * `UninstallSummary.failures`, so a repeat call has something to retry from
+   * instead of orphaning whatever didn't get cleaned up.
    */
   async uninstall(
     installedAppId: string,
@@ -450,8 +479,32 @@ export class AppInstallerService {
     const row = await this.requireRow(installedAppId);
     const project = await this.projectsService.getProjectById(row.projectId);
 
-    const dataTables = await this.resolveUninstallDataTables(row, opts.deleteData, userId);
-    const removed = await this.removeLifecycleResources(row, userId, project, row.ruleSetIds ?? []);
+    const { dataTables, failures: dataTableFailures } = await this.resolveUninstallDataTables(
+      row,
+      opts.deleteData,
+      userId,
+    );
+    const { removed, failures: lifecycleFailures } = await this.removeLifecycleResources(
+      row,
+      userId,
+      project,
+      row.ruleSetIds ?? [],
+    );
+    const failures = [...dataTableFailures, ...lifecycleFailures];
+    const note = `Stored objects under project ${project.owner}/${project.name} remain; delete the project for full cleanup.`;
+
+    if (failures.length > 0) {
+      await db
+        .update(installedApps)
+        .set({ status: 'failed', updatedAt: new Date() })
+        .where(eq(installedApps.id, row.id));
+
+      this.logger.warn(
+        `Uninstall of app ${row.appId} (${row.id}) left ${failures.length} object(s) undeleted ` +
+          `(${failures.join(', ')}); row kept for retry.`,
+      );
+      return { removed, dataTables, note, failures };
+    }
 
     await db.delete(installedApps).where(eq(installedApps.id, row.id));
 
@@ -459,11 +512,7 @@ export class AppInstallerService {
       `Uninstalled app ${row.appId} (${row.id}); data ${opts.deleteData ? 'deleted' : 'kept'}`,
     );
 
-    return {
-      removed,
-      dataTables,
-      note: `Stored objects under project ${project.owner}/${project.name} remain; delete the project for full cleanup.`,
-    };
+    return { removed, dataTables, note };
   }
 
   /**
@@ -498,11 +547,12 @@ export class AppInstallerService {
     row: InstalledApp,
     deleteData: boolean,
     userId: string,
-  ): Promise<UninstallSummary['dataTables']> {
+  ): Promise<{ dataTables: UninstallSummary['dataTables']; failures: string[] }> {
     const createdSchemaIds = new Set(row.createdResources?.schemaIdsCreated ?? []);
     const kept: string[] = [];
     const deleted: string[] = [];
     const deletedRecordCounts: Record<string, number> = {};
+    const failures: string[] = [];
 
     for (const id of row.schemaIds ?? []) {
       const withCount = await this.schemasService.getByIdWithCount(id, null);
@@ -522,10 +572,11 @@ export class AppInstallerService {
       } else {
         kept.push(name);
         delete deletedRecordCounts[name];
+        failures.push(`schema:${id}`);
       }
     }
 
-    return { kept, deleted, deletedRecordCounts };
+    return { dataTables: { kept, deleted, deletedRecordCounts }, failures };
   }
 
   /**
@@ -539,8 +590,9 @@ export class AppInstallerService {
     userId: string,
     project: ProjectRef,
     ruleSetIds: string[],
-  ): Promise<UninstallSummary['removed']> {
+  ): Promise<{ removed: UninstallSummary['removed']; failures: string[] }> {
     const created: CreatedResources = row.createdResources ?? {};
+    const failures: string[] = [];
 
     let schedulesRemoved = 0;
     for (const scheduleId of created.scheduleIds ?? []) {
@@ -548,6 +600,7 @@ export class AppInstallerService {
         this.schedulesService.deleteSchedule(scheduleId, userId, 'admin', null),
       );
       if (ok) schedulesRemoved++;
+      else failures.push(`schedule:${scheduleId}`);
     }
 
     let domainRemoved = false;
@@ -555,6 +608,7 @@ export class AppInstallerService {
       domainRemoved = await this.tryRun(`domain:${created.domainId}`, () =>
         this.domainsService.remove(created.domainId!, userId, undefined, null),
       );
+      if (!domainRemoved) failures.push(`domain:${created.domainId}`);
     }
 
     let aliasRemoved = false;
@@ -567,6 +621,7 @@ export class AppInstallerService {
           'admin',
         ),
       );
+      if (!aliasRemoved) failures.push(`alias:${created.aliasName}`);
     }
 
     let deploymentRemoved = false;
@@ -574,6 +629,7 @@ export class AppInstallerService {
       deploymentRemoved = await this.tryRun(`deployment:${created.deploymentId}`, () =>
         this.deploymentsService.deleteDeployment(created.deploymentId!, userId, 'admin'),
       );
+      if (!deploymentRemoved) failures.push(`deployment:${created.deploymentId}`);
     }
 
     let ruleSetsRemoved = 0;
@@ -582,14 +638,18 @@ export class AppInstallerService {
         this.ruleSetsService.delete(ruleSetId, userId, 'admin', null),
       );
       if (ok) ruleSetsRemoved++;
+      else failures.push(`ruleSet:${ruleSetId}`);
     }
 
     return {
-      ruleSets: ruleSetsRemoved,
-      alias: aliasRemoved,
-      domain: domainRemoved,
-      deployment: deploymentRemoved,
-      schedules: schedulesRemoved,
+      removed: {
+        ruleSets: ruleSetsRemoved,
+        alias: aliasRemoved,
+        domain: domainRemoved,
+        deployment: deploymentRemoved,
+        schedules: schedulesRemoved,
+      },
+      failures,
     };
   }
 
@@ -597,25 +657,26 @@ export class AppInstallerService {
     row: InstalledApp,
     userId: string,
     opts: { includeSchemas: boolean; kept?: string[] },
-  ): Promise<string[]> {
+  ): Promise<{ removed: string[]; failures: string[] }> {
     const created: CreatedResources = row.createdResources ?? {};
     const removed: string[] = [];
+    const failures: string[] = [];
 
     for (const scheduleId of created.scheduleIds ?? []) {
-      await this.tryDelete(removed, `schedule:${scheduleId}`, () =>
+      await this.tryDelete(removed, failures, `schedule:${scheduleId}`, () =>
         this.schedulesService.deleteSchedule(scheduleId, userId, 'admin', null),
       );
     }
 
     if (created.domainId) {
-      await this.tryDelete(removed, `domain:${created.domainId}`, () =>
+      await this.tryDelete(removed, failures, `domain:${created.domainId}`, () =>
         this.domainsService.remove(created.domainId!, userId, undefined, null),
       );
     }
 
     if (created.aliasName) {
       const project = await this.projectsService.getProjectById(row.projectId);
-      await this.tryDelete(removed, `alias:${created.aliasName}`, () =>
+      await this.tryDelete(removed, failures, `alias:${created.aliasName}`, () =>
         this.deploymentsService.deleteAlias(
           `${project.owner}/${project.name}`,
           created.aliasName!,
@@ -626,13 +687,13 @@ export class AppInstallerService {
     }
 
     if (created.deploymentId) {
-      await this.tryDelete(removed, `deployment:${created.deploymentId}`, () =>
+      await this.tryDelete(removed, failures, `deployment:${created.deploymentId}`, () =>
         this.deploymentsService.deleteDeployment(created.deploymentId!, userId, 'admin'),
       );
     }
 
     for (const ruleSetId of created.ruleSetIds ?? []) {
-      await this.tryDelete(removed, `ruleSet:${ruleSetId}`, () =>
+      await this.tryDelete(removed, failures, `ruleSet:${ruleSetId}`, () =>
         this.ruleSetsService.delete(ruleSetId, userId, 'admin', null),
       );
     }
@@ -642,14 +703,14 @@ export class AppInstallerService {
         opts.kept?.push(`schema:${schemaId}`);
         continue;
       }
-      await this.tryDelete(removed, `schema:${schemaId}`, () =>
+      await this.tryDelete(removed, failures, `schema:${schemaId}`, () =>
         this.schemasService.delete(schemaId, userId, 'admin', null),
       );
     }
 
     if (created.projectCreated) {
       if (await this.projectIsEmpty(row.projectId)) {
-        await this.tryDelete(removed, `project:${row.projectId}`, () =>
+        await this.tryDelete(removed, failures, `project:${row.projectId}`, () =>
           this.projectsService.deleteProject(row.projectId),
         );
       } else {
@@ -657,7 +718,7 @@ export class AppInstallerService {
       }
     }
 
-    return removed;
+    return { removed, failures };
   }
 
   /** A project we created is only removable if this app was its only content. */
@@ -677,18 +738,38 @@ export class AppInstallerService {
 
   private async tryDelete(
     removed: string[],
+    failures: string[],
     label: string,
     run: () => Promise<unknown>,
   ): Promise<void> {
-    if (await this.tryRun(label, run)) removed.push(label);
+    if (await this.tryRun(label, run)) {
+      removed.push(label);
+    } else {
+      failures.push(label);
+    }
   }
 
-  /** Runs `run`, swallowing (and logging) a failure so it can't strand the rest of a cleanup. */
+  /**
+   * Runs `run`, swallowing (and logging) a failure so it can't strand the
+   * rest of a cleanup — EXCEPT a `NotFoundException`, which means the
+   * resource is already gone. That's the desired end state, not a failure:
+   * without this, a retry over a row kept alive by a PRIOR partial failure
+   * would re-throw on every already-deleted resource and could never
+   * complete, since every delete call here (`ProxyRuleSetsService.delete`,
+   * `PipelineSchemasService.delete`, `DomainsService.remove`,
+   * `DeploymentsService.deleteAlias`/`deleteDeployment`,
+   * `PipelineSchedulesService.deleteSchedule`) throws `NotFoundException` for
+   * a missing id.
+   */
   private async tryRun(label: string, run: () => Promise<unknown>): Promise<boolean> {
     try {
       await run();
       return true;
     } catch (error) {
+      if (error instanceof NotFoundException) {
+        this.logger.log(`${label} was already removed.`);
+        return true;
+      }
       this.logger.warn(`Failed to remove ${label}: ${this.messageOf(error)}`);
       return false;
     }

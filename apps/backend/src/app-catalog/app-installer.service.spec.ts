@@ -37,6 +37,7 @@ jest.mock('../db/client', () => {
 });
 
 import { ConfigService } from '@nestjs/config';
+import { NotFoundException } from '@nestjs/common';
 import { db } from '../db/client';
 import { AppInstallJobsService } from './app-install-jobs.service';
 import { AppInstallerService } from './app-installer.service';
@@ -1020,6 +1021,37 @@ describe('AppInstallerService', () => {
       expect(result.removed).not.toContain('domain:dom-1');
       expect(ruleSets.delete).toHaveBeenCalled();
     });
+
+    it('keeps the installed_apps row (status failed) instead of dropping it when a delete throws', async () => {
+      deployments.deleteAlias.mockRejectedValue(new Error('alias gone for real'));
+      mockDb.__queue([
+        { ...INSTALLED_ROW, schemaIds: ['sch-new', 'sch-reused'], createdResources: created },
+      ]);
+      mockDb.__queue([]); // the status-update, not a row delete
+
+      const result = await service.undo('ia-1', 'user-1');
+
+      expect(result.failures).toEqual(['alias:handoff']);
+      expect(result.removed).toEqual(
+        expect.arrayContaining([
+          'schedule:sched-1',
+          'domain:dom-1',
+          'deployment:dep-1',
+          'ruleSet:rs-1',
+          'schema:sch-new',
+        ]),
+      );
+      // Other deletions were still attempted despite the alias failure.
+      expect(schedules.deleteSchedule).toHaveBeenCalled();
+      expect(domains.remove).toHaveBeenCalled();
+      expect(deployments.deleteDeployment).toHaveBeenCalled();
+      expect(ruleSets.delete).toHaveBeenCalled();
+      expect(schemas.delete).toHaveBeenCalled();
+
+      expect(mockDb.delete).not.toHaveBeenCalled();
+      expect(mockDb.update).toHaveBeenCalled();
+      expect(mockDb.set).toHaveBeenCalledWith(expect.objectContaining({ status: 'failed' }));
+    });
   });
 
   describe('uninstall', () => {
@@ -1103,6 +1135,23 @@ describe('AppInstallerService', () => {
       expect(summary.dataTables.deletedRecordCounts).toEqual({ handoff_nodes: 42 });
     });
 
+    it('also keeps the row when a data-table delete fails under deleteData: true', async () => {
+      schemas.delete.mockRejectedValue(new Error('schema delete failed for real'));
+      mockDb.__queue([
+        { ...INSTALLED_ROW, schemaIds: ['sch-new', 'sch-reused'], createdResources: created },
+      ]);
+      mockDb.__queue([]); // status update, not a row delete
+
+      const summary = await service.uninstall('ia-1', 'user-1', { deleteData: true });
+
+      expect(summary.failures).toEqual(['schema:sch-new']);
+      expect(summary.dataTables.deleted).toEqual([]);
+      expect(summary.dataTables.kept).toEqual(expect.arrayContaining(['handoff_nodes', 'handoff_shared_table']));
+      expect(summary.dataTables.deletedRecordCounts).toEqual({});
+      expect(mockDb.delete).not.toHaveBeenCalled();
+      expect(mockDb.set).toHaveBeenCalledWith(expect.objectContaining({ status: 'failed' }));
+    });
+
     it('continues past an individual delete failure and reports accurate counts', async () => {
       domains.remove.mockRejectedValue(new Error('domain gone'));
       mockDb.__queue([{ ...INSTALLED_ROW, ruleSetIds: ['rs-1'], createdResources: created }]);
@@ -1113,6 +1162,65 @@ describe('AppInstallerService', () => {
       expect(summary.removed.domain).toBe(false);
       expect(summary.removed.alias).toBe(true);
       expect(ruleSets.delete).toHaveBeenCalled();
+    });
+
+    it('keeps the installed_apps row (status failed) and reports the failing label when a delete throws', async () => {
+      deployments.deleteAlias.mockRejectedValue(new Error('alias gone for real'));
+      mockDb.__queue([{ ...INSTALLED_ROW, ruleSetIds: ['rs-1'], createdResources: created }]);
+      mockDb.__queue([]); // the status-update, not a row delete
+
+      const summary = await service.uninstall('ia-1', 'user-1', { deleteData: false });
+
+      expect(summary.failures).toEqual(['alias:handoff']);
+      expect(summary.removed.alias).toBe(false);
+      // Other deletions were still attempted despite the alias failure.
+      expect(summary.removed.domain).toBe(true);
+      expect(summary.removed.deployment).toBe(true);
+      expect(summary.removed.schedules).toBe(1);
+      expect(summary.removed.ruleSets).toBe(1);
+      expect(schedules.deleteSchedule).toHaveBeenCalled();
+      expect(domains.remove).toHaveBeenCalled();
+      expect(deployments.deleteDeployment).toHaveBeenCalled();
+      expect(ruleSets.delete).toHaveBeenCalled();
+
+      expect(mockDb.delete).not.toHaveBeenCalled();
+      expect(mockDb.update).toHaveBeenCalled();
+      expect(mockDb.set).toHaveBeenCalledWith(expect.objectContaining({ status: 'failed' }));
+    });
+
+    it('re-running after a partial failure is idempotent (already-removed resources do not block it) and completes by dropping the row', async () => {
+      // Pass 1: the alias delete throws a real error; everything else succeeds.
+      // Pass 2 (after whatever broke it is fixed): the alias delete succeeds,
+      // and the rule set — already deleted for real during pass 1 — now
+      // throws NotFoundException, standing in for "this object is already
+      // gone". Neither should block the retry from completing.
+      deployments.deleteAlias
+        .mockRejectedValueOnce(new Error('alias gone for real'))
+        .mockResolvedValueOnce(undefined);
+      ruleSets.delete
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new NotFoundException('rule set already gone'));
+
+      const row = { ...INSTALLED_ROW, ruleSetIds: ['rs-1'], createdResources: created };
+
+      mockDb.__queue([row]);
+      mockDb.__queue([]); // status update, not a delete
+      const first = await service.uninstall('ia-1', 'user-1', { deleteData: false });
+
+      expect(first.failures).toEqual(['alias:handoff']);
+      expect(mockDb.delete).not.toHaveBeenCalled();
+
+      mockDb.__reset(); // clears queued db results + call counts; service mocks (alias/ruleSets) are untouched
+      mockDb.__queue([row]);
+      mockDb.__queue([]); // this time, the final row delete
+
+      const second = await service.uninstall('ia-1', 'user-1', { deleteData: false });
+
+      expect(second.failures).toBeUndefined();
+      expect(second.removed.alias).toBe(true);
+      expect(second.removed.ruleSets).toBe(1); // NotFound on retry still counts as removed
+      expect(mockDb.delete).toHaveBeenCalled();
+      expect(mockDb.update).not.toHaveBeenCalled();
     });
   });
 
