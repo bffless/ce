@@ -24,6 +24,16 @@ export class AppBundleService {
   private readonly cache = new Map<string, LoadedBundle>();
 
   async fetchBundle(url: string, expectedSha256: string): Promise<LoadedBundle> {
+    if (expectedSha256) {
+      const cached = this.cache.get(expectedSha256.toLowerCase());
+      if (cached) {
+        // Bump recency (Map preserves insertion order).
+        this.cache.delete(cached.sha256);
+        this.cache.set(cached.sha256, cached);
+        return cached;
+      }
+    }
+
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.DOWNLOAD_TIMEOUT_MS);
     let res: Response;

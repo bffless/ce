@@ -108,6 +108,18 @@ describe('AppBundleService', () => {
       expect(fetchSpy).toHaveBeenCalledTimes(1);
     });
 
+    it('does not re-download when the sha is already cached (preflight then install)', async () => {
+      const { buf, sha256 } = makeBundle();
+      fetchSpy.mockResolvedValue(fetchResponse(buf));
+
+      const first = await service.fetchBundle('https://example.com/handoff.zip', sha256);
+      const second = await service.fetchBundle('https://example.com/handoff.zip', sha256);
+
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(second).toBe(first);
+      expect(second.manifest).toEqual(TEST_MANIFEST);
+    });
+
     it('throws on sha mismatch', async () => {
       const { buf } = makeBundle();
       fetchSpy.mockResolvedValue(fetchResponse(buf));
