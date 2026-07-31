@@ -219,6 +219,8 @@ export const api = createApi({
     'BlocklistSettings',
     'PipelineSchedule',
     'PrimarySsl',
+    'AppCatalog',
+    'InstalledApp',
   ],
   endpoints: () => ({}),
 });
