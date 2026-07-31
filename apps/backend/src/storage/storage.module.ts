@@ -12,6 +12,7 @@ import { CachingStorageAdapter } from './cache/caching-storage.adapter';
 import { CACHE_ADAPTER, ICacheAdapter, CacheConfig } from './cache/cache.interface';
 import { explicitPublicOrigin } from './presign.util';
 import { LocalPresignedUploadController } from './local-presigned-upload.controller';
+import { LocalPresignedDownloadController } from './local-presigned-download.controller';
 import { LocalUploadWriterService } from './local-upload-writer.service';
 import { StorageUsageModule } from './storage-usage.module';
 
@@ -61,7 +62,12 @@ export class StorageModule {
     return {
       module: StorageModule,
       imports: [StorageUsageModule],
-      controllers: [FilesController, CacheController, LocalPresignedUploadController],
+      controllers: [
+        FilesController,
+        CacheController,
+        LocalPresignedUploadController,
+        LocalPresignedDownloadController,
+      ],
       providers: [storageProvider, LocalUploadWriterService],
       exports: [STORAGE_ADAPTER, LocalUploadWriterService],
     };
@@ -144,7 +150,12 @@ export class StorageModule {
     return {
       module: StorageModule,
       imports: [...(options.imports || []), StorageUsageModule],
-      controllers: [FilesController, CacheController, LocalPresignedUploadController],
+      controllers: [
+        FilesController,
+        CacheController,
+        LocalPresignedUploadController,
+        LocalPresignedDownloadController,
+      ],
       providers: [dynamicAdapterProvider, storageAdapterProvider, LocalUploadWriterService],
       exports: [STORAGE_ADAPTER, DYNAMIC_STORAGE_ADAPTER, LocalUploadWriterService],
     };

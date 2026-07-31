@@ -3,6 +3,16 @@ import { createHash, createHmac, timingSafeEqual } from 'crypto';
 /** Domain-separation label. Distinct from function-runner's 'pipeline-fn-sign'. */
 export const PRESIGN_DOMAIN_LABEL = 'local-presign-v1';
 
+/**
+ * Domain-separation label for the signed DOWNLOAD (GET) direction.
+ *
+ * Deliberately distinct from {@link PRESIGN_DOMAIN_LABEL}: it is mixed into a
+ * separate HMAC key (see {@link deriveDownloadKey}) rather than into the signed
+ * message, so an upload signature and a download signature can never satisfy
+ * each other's verifier no matter how the signed fields line up.
+ */
+export const DOWNLOAD_PRESIGN_DOMAIN_LABEL = 'local-presign-dl-v1';
+
 /** Default per-upload size ceiling (100 MB), matching nginx's client_max_body_size. */
 export const DEFAULT_MAX_UPLOAD_BYTES = 104_857_600;
 
@@ -98,6 +108,71 @@ export function signLocalUpload(params: LocalPresignParams, presignKey: Buffer):
     throw new TypeError(`max must be a finite number, got ${typeof params.max}`);
   }
   return createHmac('sha256', presignKey).update(canonicalString(params)).digest('hex');
+}
+
+/**
+ * Derive the DOWNLOAD signing key from the upload presign key.
+ *
+ * Domain separation is done at the KEY, not in the message. Prefixing the
+ * signed string with a label would leave the two schemes sharing one HMAC key,
+ * and both schemes contain attacker-influenceable variable-length fields (the
+ * storage key is derived from pipeline config / request input) — so a crafted
+ * key could make an upload canonical string byte-identical to a download one
+ * and cross-authorize. A one-way, labelled re-hash makes that structurally
+ * impossible instead of relying on the two canonical formats never colliding.
+ *
+ * Taking the upload key (rather than the environment) as input keeps this
+ * working for the `presignKey`-injected construction sites too, which have no
+ * `LOCAL_PRESIGN_SECRET`/`ENCRYPTION_KEY` of their own to derive from.
+ */
+export function deriveDownloadKey(presignKey: Buffer): Buffer {
+  return createHash('sha256').update(presignKey).update(DOWNLOAD_PRESIGN_DOMAIN_LABEL).digest();
+}
+
+export interface LocalDownloadParams {
+  key: string;
+  exp: number;
+  /** Optional filename to force `Content-Disposition: attachment` under. */
+  dl?: string;
+}
+
+/**
+ * Canonical string for the download direction.
+ *
+ * Both variable-length fields are base64url-encoded before joining. base64url's
+ * alphabet excludes `|`, so no value of `key` or `dl` can shift where a field
+ * boundary is read — the delimiter-injection hazard documented on
+ * {@link canonicalString} above cannot occur here at all, rather than being
+ * held off by validating the numeric field.
+ */
+function canonicalDownloadString({ key, exp, dl }: LocalDownloadParams): string {
+  const b64 = (s: string) => Buffer.from(s, 'utf8').toString('base64url');
+  return `${b64(key)}|${exp}|${b64(dl ?? '')}`;
+}
+
+export function signLocalDownload(params: LocalDownloadParams, downloadKey: Buffer): string {
+  if (typeof params.exp !== 'number' || !Number.isFinite(params.exp)) {
+    throw new TypeError(`exp must be a finite number, got ${typeof params.exp}`);
+  }
+  return createHmac('sha256', downloadKey).update(canonicalDownloadString(params)).digest('hex');
+}
+
+export function verifyLocalDownload(
+  params: LocalDownloadParams,
+  sig: string,
+  downloadKey: Buffer,
+): boolean {
+  if (typeof params.exp !== 'number' || !Number.isFinite(params.exp)) {
+    throw new TypeError(`exp must be a finite number, got ${typeof params.exp}`);
+  }
+  const expected = signLocalDownload(params, downloadKey);
+  // timingSafeEqual throws on length mismatch, so guard before comparing.
+  if (typeof sig !== 'string' || sig.length !== expected.length) return false;
+  try {
+    return timingSafeEqual(Buffer.from(sig, 'hex'), Buffer.from(expected, 'hex'));
+  } catch {
+    return false;
+  }
 }
 
 export function verifyLocalUpload(

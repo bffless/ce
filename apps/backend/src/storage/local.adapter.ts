@@ -4,6 +4,7 @@ import {
   FileMetadata,
   StreamDownloadResult,
   DownloadStreamOptions,
+  SignedUrlOptions,
 } from './storage.interface';
 import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
@@ -11,7 +12,9 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import {
   derivePresignKey,
+  deriveDownloadKey,
   signLocalUpload,
+  signLocalDownload,
   hasRealPresignSecret,
   DEFAULT_MAX_UPLOAD_BYTES,
   MAX_EXPIRES_IN_SECONDS,
@@ -34,6 +37,7 @@ export class LocalStorageAdapter implements IStorageAdapter {
   private readonly keyPrefix: string;
   private readonly publicOrigin: string | null;
   private readonly presignKey: Buffer;
+  private readonly downloadKey: Buffer;
   private readonly hasExplicitPresignKey: boolean;
   private readonly maxUploadBytes: number;
 
@@ -54,6 +58,7 @@ export class LocalStorageAdapter implements IStorageAdapter {
     // silently mint localhost URLs on a real install.
     this.publicOrigin = config.publicOrigin?.replace(/\/+$/, '') ?? null;
     this.presignKey = config.presignKey ?? derivePresignKey();
+    this.downloadKey = deriveDownloadKey(this.presignKey);
     this.hasExplicitPresignKey = config.presignKey !== undefined;
     this.maxUploadBytes = config.maxUploadBytes ?? DEFAULT_MAX_UPLOAD_BYTES;
 
@@ -226,24 +231,71 @@ export class LocalStorageAdapter implements IStorageAdapter {
   }
 
   /**
-   * Local storage serves files through the backend API rather than presigning,
-   * so there is no signature to embed a `Content-Disposition` into. A
-   * `SignedUrlOptions.downloadFilename` passed here is deliberately IGNORED —
-   * the browser will render the object inline. Presigned-only apps (e.g. Studio,
-   * whose uploads bypass the 1 MB body cap) cannot run on local storage anyway.
+   * Mint a signed, time-bounded DOWNLOAD URL — the GET sibling of
+   * `getPresignedUploadUrl` below, and the read half of the same "local
+   * presigned URLs" capability.
+   *
+   * This used to return `${baseUrl}/${key}`, i.e. the vestigial
+   * `http://localhost:3000/files/...`. That URL dead-ended on every real
+   * install: nginx proxies `/api`, `/auth` and `/public` but never `/files`,
+   * and `FilesController` additionally requires a BARE `LocalStorageAdapter`
+   * (`instanceof`), which production never has — it is wrapped in
+   * `DynamicStorageAdapter`/`CachingStorageAdapter`. So every signed-URL flow
+   * (Handoff share links, the in-app file viewer) was broken on local-FS
+   * storage.
+   *
+   * Shape mirrors `getPresignedUploadUrl` exactly: RELATIVE
+   * (`/api/storage/presigned/local?...`) so the browser resolves it against
+   * whichever host served the page — the same host whose nginx vhost proxies
+   * this exact path unrewritten — unless `publicOrigin` (`PUBLIC_ORIGIN`) was
+   * explicitly configured, in which case the URL is absolute for callers with
+   * no page origin to resolve against.
+   *
+   * Every parameter goes through `URLSearchParams`, which handles all
+   * encoding. This supersedes the previous per-segment `encodeURIComponent`
+   * pass: the key now travels base64url-encoded in a query param, so
+   * characters that are invalid in an HTTP header (a raw space, U+202F from a
+   * macOS screenshot filename) can no longer reach a `Location` header at all.
+   *
+   * `options.downloadFilename` is SIGNED IN (as `dl`), not merely appended, so
+   * a holder of the URL cannot rewrite the filename the response is served
+   * under; the route re-sanitizes it before it reaches the header regardless.
    */
-  async getUrl(key: string): Promise<string> {
-    const sanitizedKey = this.sanitizeKey(key);
-    // For local storage, we'll serve files through the backend API
-    // The URL format will be: {baseUrl}/{key} (unprefixed for external access)
-    // Percent-encode each path segment (not the whole key, which would also
-    // encode the `/` separators): a raw key can contain characters that are
-    // invalid in an HTTP header when this URL is later used as a redirect
-    // Location (e.g. a macOS screenshot filename with U+202F narrow no-break
-    // space), which throws ERR_INVALID_CHAR from Node's setHeader. Express
-    // decodes route params on the serving side, so resolution is unchanged.
-    const encodedKey = sanitizedKey.split('/').map(encodeURIComponent).join('/');
-    return `${this.baseUrl}/${encodedKey}`;
+  async getUrl(key: string, expiresIn = MAX_EXPIRES_IN_SECONDS, options?: SignedUrlOptions): Promise<string> {
+    if (!Number.isFinite(expiresIn)) {
+      throw new TypeError('expiresIn must be a finite number');
+    }
+
+    // Signed against the PREFIXED key so it matches exactly what the route
+    // will read off disk, same as the upload direction.
+    const storageKey = this.prefixKey(this.sanitizeKey(key));
+    const ttl = Math.min(Math.max(1, Math.floor(expiresIn)), MAX_EXPIRES_IN_SECONDS);
+    const exp = Math.floor(Date.now() / 1000) + ttl;
+    const dl = options?.downloadFilename;
+    const sig = signLocalDownload({ key: storageKey, exp, dl }, this.getDownloadPresignKey());
+
+    const params = new URLSearchParams();
+    params.set('key', Buffer.from(storageKey, 'utf8').toString('base64url'));
+    params.set('exp', String(exp));
+    params.set('sig', sig);
+    if (dl) params.set('dl', dl);
+
+    if (!this.publicOrigin) {
+      return `${LOCAL_PRESIGN_PATH}?${params.toString()}`;
+    }
+
+    const url = new URL(LOCAL_PRESIGN_PATH, this.publicOrigin);
+    url.search = params.toString();
+    return url.toString();
+  }
+
+  /**
+   * Signing key for the download direction. Derived one-way from the upload
+   * presign key under a distinct domain label, so a presigned PUT signature
+   * can never authorize a GET (or vice versa) — see `deriveDownloadKey`.
+   */
+  getDownloadPresignKey(): Buffer {
+    return this.downloadKey;
   }
 
   /**

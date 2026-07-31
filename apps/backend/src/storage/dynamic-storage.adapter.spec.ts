@@ -150,6 +150,19 @@ describe('DynamicStorageAdapter', () => {
 
         expect(mockAdapter.getUrl).toHaveBeenCalledWith(key, undefined, undefined);
       });
+
+      // Regression guard: a wrapper that drops an argument is exactly how the
+      // downloadStream production bug happened. On local storage `options`
+      // now carries the download filename signed into the URL, so dropping it
+      // here would silently strip Content-Disposition from every signed
+      // download.
+      it('should forward the full (key, expiresIn, options) triple', async () => {
+        await adapter.getUrl('test/key.txt', 600, { downloadFilename: 'my-video.mp4' });
+
+        expect(mockAdapter.getUrl).toHaveBeenCalledWith('test/key.txt', 600, {
+          downloadFilename: 'my-video.mp4',
+        });
+      });
     });
 
     describe('listKeys', () => {

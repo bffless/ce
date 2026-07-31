@@ -1,5 +1,11 @@
 import { LocalStorageAdapter, LOCAL_PRESIGN_PATH, resolveLocalAdapter } from './local.adapter';
-import { derivePresignKey, signLocalUpload, DEFAULT_MAX_UPLOAD_BYTES } from './presign.util';
+import {
+  derivePresignKey,
+  deriveDownloadKey,
+  signLocalUpload,
+  verifyLocalDownload,
+  DEFAULT_MAX_UPLOAD_BYTES,
+} from './presign.util';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -153,38 +159,123 @@ describe('LocalStorageAdapter', () => {
   });
 
   describe('getUrl', () => {
-    it('should generate correct URL', async () => {
+    // Resolve against an arbitrary host so URL/searchParams can parse the
+    // relative shape the adapter now returns.
+    const parse = (url: string) => new URL(url, 'https://app.example');
+    const decodeKey = (url: string) =>
+      Buffer.from(parse(url).searchParams.get('key')!, 'base64url').toString('utf8');
+
+    it('returns a relative, signed download URL on the presigned route', async () => {
       const key = 'owner/repo/abc123/test.txt';
       const url = await adapter.getUrl(key);
 
-      expect(url).toBe('http://localhost:3000/files/owner/repo/abc123/test.txt');
+      expect(url.startsWith(`${LOCAL_PRESIGN_PATH}?`)).toBe(true);
+      expect(url).not.toMatch(/^https?:\/\//);
+      expect(url).not.toContain('localhost:3000/files');
+
+      const params = parse(url).searchParams;
+      expect(decodeKey(url)).toBe(key);
+      expect(params.get('sig')).toMatch(/^[0-9a-f]{64}$/);
+      expect(Number(params.get('exp'))).toBeGreaterThan(Math.floor(Date.now() / 1000));
+      expect(params.get('dl')).toBeNull();
     });
 
-    it('leaves a plain-ASCII sha-path key byte-identical to the pre-encoding behavior', async () => {
-      // encodeURIComponent leaves unreserved characters (A-Za-z0-9 - _ . ! ~ * ' ( ))
-      // untouched, so a typical storage key round-trips unchanged.
+    it('signs the URL so it verifies under the adapter download key', async () => {
+      const key = 'owner/repo/abc123/test.txt';
+      const url = await adapter.getUrl(key);
+      const params = parse(url).searchParams;
+
+      expect(
+        verifyLocalDownload(
+          { key, exp: Number(params.get('exp')) },
+          params.get('sig')!,
+          deriveDownloadKey(adapter.getPresignKey()),
+        ),
+      ).toBe(true);
+    });
+
+    it('signs the PREFIXED key when a keyPrefix is configured', async () => {
+      const prefixed = new LocalStorageAdapter({
+        localPath: testBasePath,
+        keyPrefix: 'ws1',
+        presignKey: derivePresignKey({ ENCRYPTION_KEY: 'test' }),
+      });
+      const url = await prefixed.getUrl('owner/repo/a.txt');
+      expect(decodeKey(url)).toBe('ws1/owner/repo/a.txt');
+    });
+
+    it('leaves a plain-ASCII sha-path key intact through the round trip', async () => {
       const key = 'sahp/handoff/uploads/content/abc123-def_456.file~name!(1).png';
       const url = await adapter.getUrl(key);
 
-      expect(url).toBe(`http://localhost:3000/files/${key}`);
+      expect(decodeKey(url)).toBe(key);
     });
 
-    it('percent-encodes a key containing a raw space and U+202F narrow no-break space (regression: macOS screenshot filename 500)', async () => {
+    it('encodes a key containing a raw space and U+202F narrow no-break space (regression: macOS screenshot filename 500)', async () => {
       // Live bug: a macOS screenshot filename contains U+202F between the time
       // and "AM"/"PM". The unencoded URL was later used as a redirect Location
       // header, and Node's setHeader throws ERR_INVALID_CHAR on raw spaces /
       // U+202F, 500-ing every /r/* raw-file link on local-FS installs.
-      const key = 'sahp/handoff/uploads/content/Screenshot 2026-07-31 at 7.44.31 AM.png';
+      const key = 'sahp/handoff/uploads/content/Screenshot 2026-07-31 at 7.44.31\u202fAM.png';
       const url = await adapter.getUrl(key);
 
+      expect(url).not.toContain('\u202f');
       expect(url).not.toContain(' ');
-      expect(url).not.toContain(' ');
+      // Round-trips: URLSearchParams handles all of the encoding.
+      expect(decodeKey(url)).toBe(key);
+    });
 
-      // Resolution must be unchanged: decoding each `/`-delimited segment
-      // round-trips to the original key, since only segments (not `/`) are encoded.
-      const withoutBase = url.slice('http://localhost:3000/files/'.length);
-      const decoded = withoutBase.split('/').map(decodeURIComponent).join('/');
-      expect(decoded).toBe(key);
+    it('honours expiresIn and clamps it to the one-hour ceiling', async () => {
+      const now = Math.floor(Date.now() / 1000);
+
+      const short = parse(await adapter.getUrl('k', 60));
+      expect(Number(short.searchParams.get('exp'))).toBeGreaterThanOrEqual(now + 59);
+      expect(Number(short.searchParams.get('exp'))).toBeLessThanOrEqual(now + 61);
+
+      const def = parse(await adapter.getUrl('k'));
+      expect(Number(def.searchParams.get('exp'))).toBeGreaterThanOrEqual(now + 3599);
+      expect(Number(def.searchParams.get('exp'))).toBeLessThanOrEqual(now + 3601);
+
+      const clamped = parse(await adapter.getUrl('k', 999_999));
+      expect(Number(clamped.searchParams.get('exp'))).toBeLessThanOrEqual(now + 3601);
+
+      const floored = parse(await adapter.getUrl('k', -5));
+      expect(Number(floored.searchParams.get('exp'))).toBeGreaterThanOrEqual(now + 1);
+    });
+
+    it('rejects a non-finite expiresIn', async () => {
+      await expect(adapter.getUrl('k', NaN)).rejects.toThrow(/finite number/i);
+    });
+
+    it('carries and signs a downloadFilename as the dl param', async () => {
+      const url = await adapter.getUrl('o/r/a.mp4', 600, { downloadFilename: 'my video.mp4' });
+      const params = parse(url).searchParams;
+
+      expect(params.get('dl')).toBe('my video.mp4');
+      expect(url).not.toContain(' ');
+      expect(
+        verifyLocalDownload(
+          { key: 'o/r/a.mp4', exp: Number(params.get('exp')), dl: 'my video.mp4' },
+          params.get('sig')!,
+          deriveDownloadKey(adapter.getPresignKey()),
+        ),
+      ).toBe(true);
+    });
+
+    it('returns an absolute URL when publicOrigin is configured', async () => {
+      const absolute = new LocalStorageAdapter({
+        localPath: testBasePath,
+        publicOrigin: 'https://ce.example/',
+        presignKey: derivePresignKey({ ENCRYPTION_KEY: 'test' }),
+      });
+      const url = await absolute.getUrl('o/r/a.txt');
+
+      expect(url.startsWith(`https://ce.example${LOCAL_PRESIGN_PATH}?`)).toBe(true);
+      expect(decodeKey(url)).toBe('o/r/a.txt');
+    });
+
+    it('rejects a path-traversal key instead of signing it', async () => {
+      await expect(adapter.getUrl('../../etc/passwd')).rejects.toThrow(/path traversal/i);
     });
   });
 

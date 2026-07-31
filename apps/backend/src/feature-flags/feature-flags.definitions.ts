@@ -100,8 +100,10 @@ export const FLAG_DEFINITIONS: Record<string, FlagDefinition> = {
     defaultValue: true,
     type: 'boolean',
     description:
-      'Allow presigned (direct) uploads when local filesystem storage is active. ' +
-      'Exposes a signature-authorized PUT route; disable to require proxied uploads.',
+      'Allow presigned (direct) uploads AND signed downloads when local filesystem ' +
+      'storage is active. Exposes one signature-authorized route ' +
+      '(PUT /api/storage/presigned/local to upload, GET to download); disable to ' +
+      'require proxied uploads and to turn off signed download links.',
     category: 'features',
     exposeToClient: true,
   },
