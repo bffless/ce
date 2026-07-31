@@ -700,6 +700,31 @@ describe('AppInstallerService', () => {
       expect(firstWithDomain).toBeLessThan(writes.length - 1);
     });
 
+    it('stamps installedAppId on a failed job once a row exists, so it can still be undone by jobId', async () => {
+      deployments.createDeploymentFromZip.mockResolvedValue(deployResponse({ aliases: [] }));
+      queueInstallDb();
+
+      const { jobId } = service.startInstall(ENTRY, { projectId: 'proj-1' }, 'user-1');
+      await service.whenIdle();
+
+      const job = jobs.get(jobId)!;
+      expect(job.status).toBe('failed');
+      expect(job.installedAppId).toBe('ia-1');
+    });
+
+    it('leaves installedAppId unset on a failed job that never reached a row', async () => {
+      preflight.instanceGates.mockResolvedValue([
+        { id: 'storage', status: 'fail', message: 'no presigned support' },
+      ]);
+
+      const { jobId } = service.startInstall(ENTRY, { projectId: 'proj-1' }, 'user-1');
+      await service.whenIdle();
+
+      const job = jobs.get(jobId)!;
+      expect(job.status).toBe('failed');
+      expect(job.installedAppId).toBeUndefined();
+    });
+
     it('persists a failed update run too', async () => {
       deployments.createDeploymentFromZip.mockResolvedValue(deployResponse({ aliases: [] }));
 

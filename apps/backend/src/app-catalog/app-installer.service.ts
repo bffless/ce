@@ -1285,7 +1285,9 @@ export class AppInstallerService {
       }
     }
 
-    this.jobs.finish(jobId, 'failed', { error: message });
+    // Stamp installedAppId even on failure (when a row exists): the catalog's
+    // undo-by-jobId route (Task 11) has no other way to find what to undo.
+    this.jobs.finish(jobId, 'failed', { error: message, ...(rowId ? { installedAppId: rowId } : {}) });
   }
 
   private messageOf(error: unknown): string {
