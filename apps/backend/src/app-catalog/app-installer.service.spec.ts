@@ -204,7 +204,7 @@ describe('AppInstallerService', () => {
     createSchedule: jest.Mock;
     deleteSchedule: jest.Mock;
   };
-  let schemas: { delete: jest.Mock };
+  let schemas: { delete: jest.Mock; getByIdWithCount: jest.Mock };
   let config: { get: jest.Mock };
 
   beforeEach(() => {
@@ -251,7 +251,12 @@ describe('AppInstallerService', () => {
       createSchedule: jest.fn().mockResolvedValue({ id: 'sched-1' }),
       deleteSchedule: jest.fn().mockResolvedValue(undefined),
     };
-    schemas = { delete: jest.fn().mockResolvedValue(undefined) };
+    schemas = {
+      delete: jest.fn().mockResolvedValue(undefined),
+      getByIdWithCount: jest.fn((id: string) =>
+        Promise.resolve({ id, name: id, recordCount: 0 }),
+      ),
+    };
     config = {
       get: jest.fn((key: string) => (key === 'PRIMARY_DOMAIN' ? 'example.com' : undefined)),
     };
@@ -1024,30 +1029,113 @@ describe('AppInstallerService', () => {
       aliasName: 'handoff',
       deploymentId: 'dep-1',
       domainId: 'dom-1',
-      scheduleIds: [],
+      scheduleIds: ['sched-1'],
     };
 
-    it('keeps the created data-table schemas when deleteData is false', async () => {
-      mockDb.__queue([{ ...INSTALLED_ROW, createdResources: created }]);
-      mockDb.__queue([]);
+    beforeEach(() => {
+      schemas.getByIdWithCount = jest.fn((id: string) => {
+        if (id === 'sch-new') return Promise.resolve({ id, name: 'handoff_nodes', recordCount: 42 });
+        if (id === 'sch-reused') {
+          return Promise.resolve({ id, name: 'handoff_shared_table', recordCount: 7 });
+        }
+        return Promise.resolve(null);
+      });
+    });
+
+    it('by default removes rule sets, alias, domain, deployment, schedules and keeps ALL data tables', async () => {
+      mockDb.__queue([
+        {
+          ...INSTALLED_ROW,
+          // "rs-adopted" is attached to the app (in ruleSetIds) but was NOT
+          // created by this install (absent from createdResources.ruleSetIds)
+          // — the default uninstall removes it anyway (deviation 5).
+          ruleSetIds: ['rs-1', 'rs-adopted'],
+          schemaIds: ['sch-new', 'sch-reused'],
+          createdResources: created,
+        },
+      ]);
+      mockDb.__queue([]); // delete installed_apps row
 
       const summary = await service.uninstall('ia-1', 'user-1', { deleteData: false });
 
       expect(schemas.delete).not.toHaveBeenCalled();
-      expect(summary.dataDeleted).toBe(false);
-      expect(summary.kept).toEqual(expect.arrayContaining(['schema:sch-new']));
-      expect(summary.removed).toEqual(expect.arrayContaining(['domain:dom-1', 'ruleSet:rs-1']));
+      expect(ruleSets.delete).toHaveBeenCalledWith('rs-1', 'user-1', 'admin', null);
+      expect(ruleSets.delete).toHaveBeenCalledWith('rs-adopted', 'user-1', 'admin', null);
+      expect(deployments.deleteAlias).toHaveBeenCalledWith('acme/site', 'handoff', 'user-1', 'admin');
+      expect(deployments.deleteDeployment).toHaveBeenCalledWith('dep-1', 'user-1', 'admin');
+      expect(domains.remove).toHaveBeenCalledWith('dom-1', 'user-1', undefined, null);
+      expect(schedules.deleteSchedule).toHaveBeenCalledWith('sched-1', 'user-1', 'admin', null);
+
+      expect(summary.removed).toEqual({
+        ruleSets: 2,
+        alias: true,
+        domain: true,
+        deployment: true,
+        schedules: 1,
+      });
+      expect(summary.dataTables.deleted).toEqual([]);
+      expect(summary.dataTables.deletedRecordCounts).toEqual({});
+      expect(summary.dataTables.kept).toEqual(
+        expect.arrayContaining(['handoff_nodes', 'handoff_shared_table']),
+      );
+      expect(summary.dataTables.kept).toHaveLength(2);
+      expect(summary.note).toContain('acme/site');
+      expect(mockDb.delete).toHaveBeenCalled();
     });
 
-    it('deletes the created data-table schemas when deleteData is true', async () => {
-      mockDb.__queue([{ ...INSTALLED_ROW, createdResources: created }]);
+    it('with deleteData: true deletes only created tables, fetching counts first, and never deletes reused tables', async () => {
+      mockDb.__queue([
+        { ...INSTALLED_ROW, schemaIds: ['sch-new', 'sch-reused'], createdResources: created },
+      ]);
       mockDb.__queue([]);
 
       const summary = await service.uninstall('ia-1', 'user-1', { deleteData: true });
 
+      expect(schemas.getByIdWithCount).toHaveBeenCalledWith('sch-new', null);
       expect(schemas.delete).toHaveBeenCalledWith('sch-new', 'user-1', 'admin', null);
-      expect(summary.dataDeleted).toBe(true);
-      expect(summary.removed).toEqual(expect.arrayContaining(['schema:sch-new']));
+      expect(schemas.delete).not.toHaveBeenCalledWith('sch-reused', 'user-1', 'admin', null);
+      expect(schemas.getByIdWithCount.mock.invocationCallOrder[0]).toBeLessThan(
+        schemas.delete.mock.invocationCallOrder[0],
+      );
+
+      expect(summary.dataTables.deleted).toEqual(['handoff_nodes']);
+      expect(summary.dataTables.kept).toEqual(['handoff_shared_table']);
+      expect(summary.dataTables.deletedRecordCounts).toEqual({ handoff_nodes: 42 });
+    });
+
+    it('continues past an individual delete failure and reports accurate counts', async () => {
+      domains.remove.mockRejectedValue(new Error('domain gone'));
+      mockDb.__queue([{ ...INSTALLED_ROW, ruleSetIds: ['rs-1'], createdResources: created }]);
+      mockDb.__queue([]);
+
+      const summary = await service.uninstall('ia-1', 'user-1', { deleteData: false });
+
+      expect(summary.removed.domain).toBe(false);
+      expect(summary.removed.alias).toBe(true);
+      expect(ruleSets.delete).toHaveBeenCalled();
+    });
+  });
+
+  describe('uninstallPreview', () => {
+    it('returns per-table name, record count, and whether this install created it', async () => {
+      mockDb.__queue([
+        {
+          ...INSTALLED_ROW,
+          schemaIds: ['sch-new', 'sch-reused'],
+          createdResources: { schemaIdsCreated: ['sch-new'] },
+        },
+      ]);
+      schemas.getByIdWithCount = jest.fn((id: string) => {
+        if (id === 'sch-new') return Promise.resolve({ id, name: 'handoff_nodes', recordCount: 42 });
+        return Promise.resolve({ id, name: 'handoff_shared_table', recordCount: 7 });
+      });
+
+      const preview = await service.uninstallPreview('ia-1');
+
+      expect(preview.dataTables).toEqual([
+        { name: 'handoff_nodes', recordCount: 42, createdByInstall: true },
+        { name: 'handoff_shared_table', recordCount: 7, createdByInstall: false },
+      ]);
     });
   });
 });

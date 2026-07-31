@@ -33,11 +33,26 @@ export interface InstallTarget {
 }
 
 export interface UninstallSummary {
-  /** Labels (`kind:id`) of objects actually deleted. */
-  removed: string[];
-  /** Objects deliberately left in place (e.g. data-table schemas when `deleteData` is false). */
-  kept: string[];
-  dataDeleted: boolean;
+  removed: {
+    ruleSets: number;
+    alias: boolean;
+    domain: boolean;
+    deployment: boolean;
+    schedules: number;
+  };
+  dataTables: {
+    /** Table names left in place — every reused table, plus created tables when `deleteData` is false. */
+    kept: string[];
+    /** Table names actually dropped (`deleteData: true`, created-by-install tables only). */
+    deleted: string[];
+    /** Record count captured (via `getByIdWithCount`) BEFORE each deleted table was dropped. */
+    deletedRecordCounts: Record<string, number>;
+  };
+  note: string;
+}
+
+export interface UninstallPreview {
+  dataTables: Array<{ name: string; recordCount: number; createdByInstall: boolean }>;
 }
 
 const INSTALL_STEPS: InstallStepId[] = [
@@ -413,8 +428,19 @@ export class AppInstallerService {
   }
 
   /**
-   * Uninstall = undo, except the app's data-table schemas (which hold the
-   * user's records) are only dropped when `deleteData` is explicitly true.
+   * Uninstall treats the app's content as the USER's, not the installer's:
+   * it removes the app's own infrastructure (rule sets, alias, domain,
+   * deployment, schedules) but keeps every data table and stored object by
+   * default. `deleteData: true` additionally drops the tables this install
+   * itself created — a table the sync merely REUSED is never dropped, no
+   * matter what the flag says.
+   *
+   * One deliberate divergence from {@link undo}: rule-set removal here walks
+   * `row.ruleSetIds` (every rule set this app's rule-set files sync, whether
+   * created or adopted), not `createdResources.ruleSetIds`. `undo` unwinds a
+   * failed/in-progress install and must never touch a set it didn't create;
+   * a full uninstall is the user tearing the app down, and its rule sets
+   * (named after the app, not general-purpose) go with it.
    */
   async uninstall(
     installedAppId: string,
@@ -422,18 +448,149 @@ export class AppInstallerService {
     opts: { deleteData: boolean },
   ): Promise<UninstallSummary> {
     const row = await this.requireRow(installedAppId);
-    const kept: string[] = [];
-    const removed = await this.deleteCreatedResources(row, userId, {
-      includeSchemas: opts.deleteData,
-      kept,
-    });
+    const project = await this.projectsService.getProjectById(row.projectId);
+
+    const dataTables = await this.resolveUninstallDataTables(row, opts.deleteData, userId);
+    const removed = await this.removeLifecycleResources(row, userId, project, row.ruleSetIds ?? []);
 
     await db.delete(installedApps).where(eq(installedApps.id, row.id));
 
     this.logger.log(
       `Uninstalled app ${row.appId} (${row.id}); data ${opts.deleteData ? 'deleted' : 'kept'}`,
     );
-    return { removed, kept, dataDeleted: opts.deleteData };
+
+    return {
+      removed,
+      dataTables,
+      note: `Stored objects under project ${project.owner}/${project.name} remain; delete the project for full cleanup.`,
+    };
+  }
+
+  /**
+   * Powers the uninstall dialog's real counts ("this deletes 412 records
+   * across 3 tables") before the user commits to `deleteData: true`.
+   */
+  async uninstallPreview(installedAppId: string): Promise<UninstallPreview> {
+    const row = await this.requireRow(installedAppId);
+    const createdSchemaIds = new Set(row.createdResources?.schemaIdsCreated ?? []);
+
+    const dataTables: UninstallPreview['dataTables'] = [];
+    for (const id of row.schemaIds ?? []) {
+      const withCount = await this.schemasService.getByIdWithCount(id, null);
+      dataTables.push({
+        name: withCount?.name ?? id,
+        recordCount: withCount?.recordCount ?? 0,
+        createdByInstall: createdSchemaIds.has(id),
+      });
+    }
+
+    return { dataTables };
+  }
+
+  /**
+   * Splits `row.schemaIds` into kept/deleted for the uninstall summary. A
+   * table only ever moves to `deleted` when BOTH `deleteData` is true AND
+   * this install created it — reused tables are unconditionally kept.
+   * Record counts are fetched via `getByIdWithCount` before the delete call,
+   * so a partial failure still reports what would have been removed.
+   */
+  private async resolveUninstallDataTables(
+    row: InstalledApp,
+    deleteData: boolean,
+    userId: string,
+  ): Promise<UninstallSummary['dataTables']> {
+    const createdSchemaIds = new Set(row.createdResources?.schemaIdsCreated ?? []);
+    const kept: string[] = [];
+    const deleted: string[] = [];
+    const deletedRecordCounts: Record<string, number> = {};
+
+    for (const id of row.schemaIds ?? []) {
+      const withCount = await this.schemasService.getByIdWithCount(id, null);
+      const name = withCount?.name ?? id;
+
+      if (!deleteData || !createdSchemaIds.has(id)) {
+        kept.push(name);
+        continue;
+      }
+
+      deletedRecordCounts[name] = withCount?.recordCount ?? 0;
+      const ok = await this.tryRun(`schema:${id}`, () =>
+        this.schemasService.delete(id, userId, 'admin', null),
+      );
+      if (ok) {
+        deleted.push(name);
+      } else {
+        kept.push(name);
+        delete deletedRecordCounts[name];
+      }
+    }
+
+    return { kept, deleted, deletedRecordCounts };
+  }
+
+  /**
+   * Removes an installed app's own infrastructure — schedules, domain,
+   * alias, deployment, then rule sets — reporting a count/boolean per class
+   * for {@link UninstallSummary}. `ruleSetIds` is caller-supplied (see
+   * {@link uninstall}'s doc comment on why it differs from `undo`).
+   */
+  private async removeLifecycleResources(
+    row: InstalledApp,
+    userId: string,
+    project: ProjectRef,
+    ruleSetIds: string[],
+  ): Promise<UninstallSummary['removed']> {
+    const created: CreatedResources = row.createdResources ?? {};
+
+    let schedulesRemoved = 0;
+    for (const scheduleId of created.scheduleIds ?? []) {
+      const ok = await this.tryRun(`schedule:${scheduleId}`, () =>
+        this.schedulesService.deleteSchedule(scheduleId, userId, 'admin', null),
+      );
+      if (ok) schedulesRemoved++;
+    }
+
+    let domainRemoved = false;
+    if (created.domainId) {
+      domainRemoved = await this.tryRun(`domain:${created.domainId}`, () =>
+        this.domainsService.remove(created.domainId!, userId, undefined, null),
+      );
+    }
+
+    let aliasRemoved = false;
+    if (created.aliasName) {
+      aliasRemoved = await this.tryRun(`alias:${created.aliasName}`, () =>
+        this.deploymentsService.deleteAlias(
+          `${project.owner}/${project.name}`,
+          created.aliasName!,
+          userId,
+          'admin',
+        ),
+      );
+    }
+
+    let deploymentRemoved = false;
+    if (created.deploymentId) {
+      deploymentRemoved = await this.tryRun(`deployment:${created.deploymentId}`, () =>
+        this.deploymentsService.deleteDeployment(created.deploymentId!, userId, 'admin'),
+      );
+    }
+
+    let ruleSetsRemoved = 0;
+    for (const ruleSetId of ruleSetIds) {
+      const ok = await this.tryRun(`ruleSet:${ruleSetId}`, () =>
+        this.ruleSetsService.delete(ruleSetId, userId, 'admin', null),
+      );
+      if (ok) ruleSetsRemoved++;
+    }
+
+    return {
+      ruleSets: ruleSetsRemoved,
+      alias: aliasRemoved,
+      domain: domainRemoved,
+      deployment: deploymentRemoved,
+      schedules: schedulesRemoved,
+    };
   }
 
   private async deleteCreatedResources(
@@ -523,12 +680,17 @@ export class AppInstallerService {
     label: string,
     run: () => Promise<unknown>,
   ): Promise<void> {
+    if (await this.tryRun(label, run)) removed.push(label);
+  }
+
+  /** Runs `run`, swallowing (and logging) a failure so it can't strand the rest of a cleanup. */
+  private async tryRun(label: string, run: () => Promise<unknown>): Promise<boolean> {
     try {
       await run();
-      removed.push(label);
+      return true;
     } catch (error) {
-      // A partial failure must not strand the rest of the cleanup.
       this.logger.warn(`Failed to remove ${label}: ${this.messageOf(error)}`);
+      return false;
     }
   }
 
