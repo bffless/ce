@@ -7,6 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
@@ -34,6 +35,7 @@ export function UninstallDialog({ entry, open, onOpenChange }: UninstallDialogPr
   const { toast } = useToast();
   const { installed } = entry;
   const [deleteData, setDeleteData] = useState(false);
+  const [failures, setFailures] = useState<string[] | null>(null);
 
   const { data: preview } = useGetUninstallPreviewQuery(installed?.installedAppId ?? '', {
     skip: !open || !installed,
@@ -48,6 +50,7 @@ export function UninstallDialog({ entry, open, onOpenChange }: UninstallDialogPr
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {
       setDeleteData(false);
+      setFailures(null);
     }
     onOpenChange(nextOpen);
   };
@@ -56,6 +59,19 @@ export function UninstallDialog({ entry, open, onOpenChange }: UninstallDialogPr
     if (!installed) return;
     try {
       const summary = await uninstallApp({ id: installed.installedAppId, deleteData }).unwrap();
+      // The backend deliberately keeps the installed_apps row when some
+      // cleanup steps fail, so the user can retry — don't tell them it
+      // succeeded, and don't close the dialog out from under a retry.
+      if (summary.failures && summary.failures.length > 0) {
+        setFailures(summary.failures);
+        toast({
+          title: 'Uninstall incomplete',
+          description: `Failed to remove: ${summary.failures.join(', ')}. The install was kept — retry when ready.`,
+          variant: 'destructive',
+        });
+        return;
+      }
+      setFailures(null);
       toast({ title: `${entry.name} uninstalled`, description: summary.note });
       handleOpenChange(false);
     } catch (err) {
@@ -76,6 +92,14 @@ export function UninstallDialog({ entry, open, onOpenChange }: UninstallDialogPr
         </DialogHeader>
 
         <div className="space-y-3">
+          {failures && failures.length > 0 && (
+            <Alert variant="destructive">
+              <AlertDescription>
+                {`Uninstall incomplete — failed to remove: ${failures.join(', ')}. The install was kept so you can retry.`}
+              </AlertDescription>
+            </Alert>
+          )}
+
           <div className="flex items-start gap-2">
             <Checkbox
               id="uninstall-delete-data"
@@ -112,7 +136,7 @@ export function UninstallDialog({ entry, open, onOpenChange }: UninstallDialogPr
             Cancel
           </Button>
           <Button variant="destructive" onClick={handleConfirm} disabled={isLoading || !installed}>
-            {isLoading ? 'Uninstalling…' : 'Uninstall'}
+            {isLoading ? 'Uninstalling…' : failures ? 'Retry uninstall' : 'Uninstall'}
           </Button>
         </DialogFooter>
       </DialogContent>

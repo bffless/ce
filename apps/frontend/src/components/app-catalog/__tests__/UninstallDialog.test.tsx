@@ -128,4 +128,38 @@ describe('UninstallDialog', () => {
       expect(onOpenChange).toHaveBeenCalledWith(false);
     });
   });
+
+  it('surfaces partial-failure uninstall as a destructive toast, keeps the dialog open, and lets retry re-fire the mutation', async () => {
+    const onOpenChange = vi.fn();
+    const partialSummary: UninstallSummary = {
+      ...baseSummary,
+      failures: ['ruleSet:handoff-api', 'domain:handoff.example.com'],
+    };
+    uninstallTrigger.mockReturnValue({ unwrap: () => Promise.resolve(partialSummary) });
+
+    render(<UninstallDialog entry={entry} open onOpenChange={onOpenChange} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^uninstall$/i }));
+
+    await vi.waitFor(() => {
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Uninstall incomplete',
+          variant: 'destructive',
+        }),
+      );
+    });
+
+    // Dialog stays open — onOpenChange is never told to close.
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+
+    // Failures are surfaced in the dialog body too.
+    expect(screen.getByText(/ruleSet:handoff-api/)).toBeInTheDocument();
+    expect(screen.getByText(/domain:handoff\.example\.com/)).toBeInTheDocument();
+
+    // Retrying re-fires the same mutation.
+    uninstallTrigger.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: /retry uninstall/i }));
+    expect(uninstallTrigger).toHaveBeenCalledWith({ id: 'installed-1', deleteData: false });
+  });
 });
