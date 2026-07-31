@@ -68,7 +68,15 @@ const INSTALL_STEPS: InstallStepId[] = [
   'record',
 ];
 
-const UPDATE_STEPS: InstallStepId[] = ['fetch', 'sync-rules', 'deploy', 'record'];
+/**
+ * An update re-verifies the INSTANCE gates only. A registry bump can raise
+ * `requires.ceMin`/`presignedStorage`, and an app that installed cleanly a
+ * month ago is not automatically still installable today. Project gates are
+ * deliberately absent: the target project, alias, domain and rule sets are
+ * this install's own by definition, so a collision check against them would
+ * fail on every update.
+ */
+const UPDATE_STEPS: InstallStepId[] = ['preflight', 'fetch', 'sync-rules', 'deploy', 'record'];
 
 interface ParsedRuleSet {
   file: string;
@@ -319,10 +327,21 @@ export class AppInstallerService {
     userId: string,
     opts: { prune: boolean },
   ): Promise<void> {
-    let step: InstallStepId = 'fetch';
+    let step: InstallStepId = 'preflight';
     let progress: InstallProgress | undefined;
+    // Stays undefined until the gates pass, so a refused update leaves the
+    // healthy `installed_apps` row exactly as it was — a gate failure writes
+    // nothing, and must not restamp a working install as `failed`.
+    let rowId: string | undefined;
 
     try {
+      // ---- 1. preflight: the instance may no longer satisfy this version's
+      // requirements, even though the previous version installed fine ----
+      this.jobs.setStep(jobId, step, { status: 'running' });
+      this.assertGatesPass(await this.preflightService.instanceGates(entry.requires), 'Update');
+      this.jobs.setStep(jobId, step, { status: 'done', detail: 'All instance gates passed.' });
+
+      step = 'fetch';
       this.jobs.setStep(jobId, step, { status: 'running' });
       const bundle = await this.bundleService.fetchBundle(entry.bundleUrl, entry.sha256);
       const manifest = bundle.manifest;
@@ -342,6 +361,9 @@ export class AppInstallerService {
 
       step = 'sync-rules';
       this.jobs.setStep(jobId, step, { status: 'running' });
+      // From here on the run can write; a failure past this point must carry
+      // the accumulated progress onto the row (see failJob).
+      rowId = installed.id;
       progress = {
         created,
         ruleSetIds: [...(installed.ruleSetIds ?? [])],
@@ -405,7 +427,7 @@ export class AppInstallerService {
         appUrl,
       });
     } catch (error) {
-      await this.failJob(jobId, step, installed.id, error, progress);
+      await this.failJob(jobId, step, rowId, error, progress);
     }
   }
 
@@ -1013,11 +1035,11 @@ export class AppInstallerService {
 
   // ==================== helpers ====================
 
-  private assertGatesPass(gates: GateResult[]): void {
+  private assertGatesPass(gates: GateResult[], kind: 'Install' | 'Update' = 'Install'): void {
     const failures = gates.filter((gate) => gate.status === 'fail');
     if (failures.length === 0) return;
     throw new BadRequestException(
-      `Install blocked by preflight: ${failures.map((f) => f.message).join(' ')}`,
+      `${kind} blocked by preflight: ${failures.map((f) => f.message).join(' ')}`,
     );
   }
 
@@ -1046,9 +1068,25 @@ export class AppInstallerService {
     const { owner, name } = target.newProject;
     // Check BEFORE creating — findOrCreateProject is idempotent, so afterwards
     // we could no longer tell whether the project was ours.
-    const existedBefore = await this.projectsService.projectExists(owner, name);
+    //
+    // An existing project is a REFUSAL, not an adoption: every project-scoped
+    // collision gate (rule-set names, the app's alias, the per-project install
+    // row) is skipped for a `newProject` target, and findOrCreateProject would
+    // quietly hand us someone else's project with its own alias — which would
+    // then land in `createdResources.aliasName` and be deleted by a later
+    // undo. Preflight already fails this (`name-collision`); repeating it here
+    // is defense in depth for any caller that reaches the installer directly.
+    // Retrying a failed newProject install is unaffected in substance: the
+    // project now exists, so the operator picks it from the picker and the
+    // full set of gates runs, recognising this app's own objects as its own.
+    if (await this.projectsService.projectExists(owner, name)) {
+      throw new BadRequestException(
+        `A project named "${owner}/${name}" already exists — select it from the project picker instead of ` +
+          'creating it, so the install can check its existing rule sets, aliases and data tables for collisions.',
+      );
+    }
     const project = await this.projectsService.findOrCreateProject(owner, name, userId);
-    created.projectCreated = !existedBefore;
+    created.projectCreated = true;
     return { id: project.id, owner: project.owner, name: project.name };
   }
 

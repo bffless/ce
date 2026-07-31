@@ -455,6 +455,29 @@ describe('AppInstallerService', () => {
       expect(finalUpdate.createdResources.projectCreated).toBe(true);
     });
 
+    it('refuses a newProject target whose project already exists, rather than adopting it', async () => {
+      // Preflight's project-scoped gates are all skipped for a newProject
+      // target, so adopting an existing project would install into it
+      // unchecked — and its pre-existing alias would land in
+      // createdResources for a later undo to delete.
+      projects.projectExists.mockResolvedValue(true);
+
+      const { jobId } = service.startInstall(
+        ENTRY,
+        { newProject: { owner: 'acme', name: 'site' } },
+        'user-1',
+      );
+      await service.whenIdle();
+
+      const job = jobs.get(jobId)!;
+      expect(job.status).toBe('failed');
+      expect(job.error).toMatch(/already exists/i);
+      expect(job.error).toMatch(/picker/i);
+      expect(projects.findOrCreateProject).not.toHaveBeenCalled();
+      expect(mockDb.insert).not.toHaveBeenCalled();
+      expect(ruleSets.syncRuleSet).not.toHaveBeenCalled();
+    });
+
     it('inserts the installing row before any project-scoped write', async () => {
       queueInstallDb();
 
@@ -886,7 +909,7 @@ describe('AppInstallerService', () => {
   describe('startUpdate', () => {
     const installed = { ...INSTALLED_ROW, status: 'installed' as const, createdResources: {} };
 
-    it('runs only fetch → sync-rules → deploy → record, leaving the domain alone', async () => {
+    it('runs only preflight → fetch → sync-rules → deploy → record, leaving the domain alone', async () => {
       mockDb.__queue([]); // final record update
 
       const { jobId } = service.startUpdate(
@@ -900,10 +923,56 @@ describe('AppInstallerService', () => {
       const job = jobs.get(jobId)!;
       expect(job.kind).toBe('update');
       expect(job.status).toBe('succeeded');
-      expect(job.steps.map((s) => s.id)).toEqual(['fetch', 'sync-rules', 'deploy', 'record']);
+      expect(job.steps.map((s) => s.id)).toEqual([
+        'preflight',
+        'fetch',
+        'sync-rules',
+        'deploy',
+        'record',
+      ]);
       expect(domains.create).not.toHaveBeenCalled();
+      // Instance gates ARE re-verified; project gates would collide with this
+      // install's own alias/rule sets and are deliberately not run.
+      expect(preflight.instanceGates).toHaveBeenCalledWith(ENTRY.requires);
       expect(preflight.projectGates).not.toHaveBeenCalled();
       expect(schedules.createSchedule).not.toHaveBeenCalled();
+    });
+
+    it('refuses before any collaborator call when an instance gate now fails', async () => {
+      // A registry bump can raise requires.ceMin/presignedStorage: the
+      // previously-installed version says nothing about the new one.
+      preflight.instanceGates.mockResolvedValue([
+        {
+          id: 'ce-version',
+          status: 'fail',
+          message: 'CE 0.3.1 is below the required minimum 0.4.0',
+        },
+      ]);
+
+      const { jobId } = service.startUpdate(installed as never, ENTRY, 'user-1', { prune: false });
+      await service.whenIdle();
+
+      const job = jobs.get(jobId)!;
+      expect(job.status).toBe('failed');
+      expect(job.steps.find((s) => s.id === 'preflight')!.status).toBe('failed');
+      expect(job.error).toMatch(/below the required minimum 0\.4\.0/);
+      expect(bundleService.fetchBundle).not.toHaveBeenCalled();
+      expect(ruleSets.syncRuleSet).not.toHaveBeenCalled();
+      expect(deployments.createDeploymentFromZip).not.toHaveBeenCalled();
+    });
+
+    it('leaves the healthy installed row untouched when a gate refuses the update', async () => {
+      preflight.instanceGates.mockResolvedValue([
+        { id: 'storage', status: 'fail', message: 'no presigned support' },
+      ]);
+
+      service.startUpdate(installed as never, ENTRY, 'user-1', { prune: false });
+      await service.whenIdle();
+
+      // No write at all — in particular the row is NOT restamped 'failed',
+      // which would mislabel a still-working install.
+      expect(mockDb.update).not.toHaveBeenCalled();
+      expect(mockDb.set).not.toHaveBeenCalled();
     });
 
     it('passes the prune flag through to the sync and deploys to the same alias', async () => {

@@ -110,6 +110,43 @@ describe('AppCard', () => {
     expect(screen.getByRole('button', { name: /update to v2\.0\.0/i })).toBeInTheDocument();
   });
 
+  it('disables the Update CTA with the gate message when an instance gate fails', () => {
+    // An update re-runs the instance gates server-side and would refuse at
+    // its preflight step, so the CTA must not look actionable.
+    const entry: CatalogEntry = {
+      ...baseEntry,
+      installable: false,
+      registryVersion: '2.0.0',
+      gates: [
+        {
+          id: 'ce-version',
+          status: 'fail',
+          message: 'Requires CE v0.4.0 or later',
+          remediation: 'Upgrade this BFFless CE instance to v0.4.0 or later.',
+        },
+      ],
+      installed: {
+        installedAppId: 'installed-1',
+        version: '1.2.0',
+        projectId: 'proj-1',
+        projectName: 'acme/handoff',
+        alias: 'production',
+        appUrl: 'https://handoff.example.com',
+        status: 'installed',
+        updateAvailable: true,
+        manualSteps: [],
+        manualStepsAcked: [],
+      },
+    };
+
+    render(<AppCard entry={entry} onInstall={vi.fn()} onUpdateStarted={vi.fn()} />);
+
+    expect(screen.queryByRole('button', { name: /update to v2\.0\.0/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /requires ce v0\.4\.0 or later/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /why\?/i })).toBeInTheDocument();
+    expect(updateTrigger).not.toHaveBeenCalled();
+  });
+
   it('opens a confirm popover with the prune toggle defaulted off, and fires the update with prune: false', async () => {
     const onUpdateStarted = vi.fn();
     const entry: CatalogEntry = {

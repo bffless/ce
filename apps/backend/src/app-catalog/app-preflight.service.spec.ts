@@ -49,6 +49,7 @@ import { getCeVersion } from './ce-version.util';
 import { AppPreflightService } from './app-preflight.service';
 import type { LoadedBundle } from './app-bundle.service';
 import type { AppManifest } from './app-manifest.types';
+import type { ProjectsService } from '../projects/projects.service';
 import type { ProxyRuleSetsService } from '../proxy-rules/proxy-rule-sets.service';
 import type { BootstrapDnsPreflightService, PreflightCheck } from '../setup/bootstrap-dns-preflight.service';
 import type { IStorageAdapter } from '../storage/storage.interface';
@@ -121,12 +122,15 @@ const EMPTY_SYNC_RESPONSE = {
   setCreated: true,
 };
 
-function buildService(overrides: {
-  storageAdapter?: Partial<IStorageAdapter>;
-  configValues?: Record<string, string | undefined>;
-  dnsPreflight?: Partial<BootstrapDnsPreflightService>;
-  proxyRuleSetsService?: Partial<ProxyRuleSetsService>;
-} = {}) {
+function buildService(
+  overrides: {
+    storageAdapter?: Partial<IStorageAdapter>;
+    configValues?: Record<string, string | undefined>;
+    dnsPreflight?: Partial<BootstrapDnsPreflightService>;
+    proxyRuleSetsService?: Partial<ProxyRuleSetsService>;
+    projectsService?: Partial<ProjectsService>;
+  } = {},
+) {
   const storageAdapter = (overrides.storageAdapter ?? {}) as IStorageAdapter;
   const configService = new ConfigService(overrides.configValues ?? {});
   const dnsPreflight = {
@@ -137,15 +141,27 @@ function buildService(overrides: {
     syncRuleSet: jest.fn(),
     ...overrides.proxyRuleSetsService,
   } as unknown as ProxyRuleSetsService;
+  const projectsService = {
+    projectExists: jest.fn().mockResolvedValue(false),
+    ...overrides.projectsService,
+  } as unknown as ProjectsService;
 
   const service = new AppPreflightService(
     storageAdapter,
     configService,
     dnsPreflight,
     proxyRuleSetsService,
+    projectsService,
   );
 
-  return { service, storageAdapter, configService, dnsPreflight, proxyRuleSetsService };
+  return {
+    service,
+    storageAdapter,
+    configService,
+    dnsPreflight,
+    proxyRuleSetsService,
+    projectsService,
+  };
 }
 
 describe('AppPreflightService', () => {
@@ -627,6 +643,37 @@ describe('AppPreflightService', () => {
       expect(collision).toMatchObject({ id: 'name-collision', status: 'pass' });
       expect(proxyRuleSetsService.syncRuleSet).not.toHaveBeenCalled();
       expect(mockDb.select).toHaveBeenCalledTimes(2);
+    });
+
+    it('fails when the "new" project already exists, pointing at the picker instead', async () => {
+      // Every project-scoped check (rule-set names, alias, this app's own
+      // install row) is skipped for a newProject target — adopting an
+      // existing project would sail past all of them, and its pre-existing
+      // alias would end up in createdResources for a later undo to delete.
+      const bundle = makeBundle();
+      const { service, dnsPreflight, projectsService } = buildService({
+        configValues: { PRIMARY_DOMAIN: 'example.com' },
+        projectsService: { projectExists: jest.fn().mockResolvedValue(true) },
+      });
+      (dnsPreflight.probeHost as jest.Mock).mockResolvedValue({
+        host: 'handoff.example.com',
+        resolvedIps: ['1.2.3.4'],
+        probeOk: true,
+      } as PreflightCheck);
+      mockDb.__queue([]); // domain
+      mockDb.__queue([]); // cross-namespace
+
+      const result = await service.projectGates(
+        bundle,
+        { newProject: { owner: 'acme', name: 'demo' } },
+        'user-1',
+      );
+
+      expect(projectsService.projectExists).toHaveBeenCalledWith('acme', 'demo');
+      const collision = result.gates.find((g) => g.id === 'name-collision');
+      expect(collision?.status).toBe('fail');
+      expect(collision?.message).toMatch(/project named "acme\/demo" already exists/i);
+      expect(collision?.remediation).toMatch(/picker/i);
     });
 
     it('fails when the domain is already mapped for a newProject target', async () => {

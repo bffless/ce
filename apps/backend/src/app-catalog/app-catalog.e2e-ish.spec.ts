@@ -361,7 +361,13 @@ describe('App catalog orchestration (fixture bundle, real bytes + real manifest 
     const job = jobs.get(jobId)!;
     expect(job.kind).toBe('update');
     expect(job.status).toBe('succeeded');
-    expect(job.steps.map((s) => s.id)).toEqual(['fetch', 'sync-rules', 'deploy', 'record']);
+    expect(job.steps.map((s) => s.id)).toEqual([
+      'preflight',
+      'fetch',
+      'sync-rules',
+      'deploy',
+      'record',
+    ]);
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(fetchSpy).toHaveBeenCalledWith(ENTRY_V2.bundleUrl, expect.anything());

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client';
 import { deploymentAliases, domainMappings, installedApps, proxyRuleSets } from '../db/schema';
+import { ProjectsService } from '../projects/projects.service';
 import { ProxyRuleSetsService } from '../proxy-rules/proxy-rule-sets.service';
 import type {
   SyncProxyRuleSetDto,
@@ -71,6 +72,7 @@ export class AppPreflightService {
     private readonly configService: ConfigService,
     private readonly dnsPreflight: BootstrapDnsPreflightService,
     private readonly proxyRuleSetsService: ProxyRuleSetsService,
+    private readonly projectsService: ProjectsService,
   ) {}
 
   async instanceGates(requires?: AppManifestRequires): Promise<GateResult[]> {
@@ -248,6 +250,10 @@ export class AppPreflightService {
   ): Promise<GateResult> {
     const issues: string[] = [];
     let existingInstall: typeof installedApps.$inferSelect | undefined;
+    // A `newProject` target skips every project-scoped check below (there is
+    // no project id to scope them to). That is only sound while the project
+    // genuinely does not exist yet — see `projectAlreadyExists`.
+    let projectAlreadyExists = false;
 
     if ('projectId' in target) {
       const projectId = target.projectId;
@@ -281,6 +287,19 @@ export class AppPreflightService {
       const aliasOwnedByThisInstall = existingInstall?.alias === alias;
       if (existingAlias && !aliasOwnedByThisInstall) {
         issues.push(`An alias named "${alias}" already exists in this project.`);
+      }
+    } else {
+      // "Create new project" pointed at a project that ALREADY exists would
+      // sail past every check above — rule-set names, the app's alias, the
+      // per-project install row — and the installer's findOrCreateProject
+      // would silently adopt it. Worse, the adopted project's pre-existing
+      // alias lands in `createdResources.aliasName`, so a later undo would
+      // delete a resource this install never created. Refuse instead: the
+      // picker path runs all of those checks properly.
+      const { owner, name } = target.newProject;
+      projectAlreadyExists = await this.projectsService.projectExists(owner, name);
+      if (projectAlreadyExists) {
+        issues.push(`A project named "${owner}/${name}" already exists.`);
       }
     }
 
@@ -318,7 +337,10 @@ export class AppPreflightService {
         id: 'name-collision',
         status: 'fail',
         message: issues.join(' '),
-        remediation: 'Rename the conflicting resource, choose a different subdomain/alias, or target a different project.',
+        remediation: projectAlreadyExists
+          ? 'That project already exists — select it from the project picker instead of creating it, so the ' +
+            'install can check its existing rule sets, aliases and data tables for collisions.'
+          : 'Rename the conflicting resource, choose a different subdomain/alias, or target a different project.',
       };
     }
 
