@@ -499,8 +499,29 @@ describe('AppCatalogService', () => {
   });
 
   describe('undoJob', () => {
+    it('refuses to undo an update — that would delete the original install and its data tables', async () => {
+      // createdResources is cumulative, so undo on an update job would tear
+      // down the ORIGINAL install: rule sets, alias, domain, deployment and
+      // (undo passes includeSchemas: true) its populated data tables.
+      jobs.get.mockReturnValue({
+        id: 'job-2',
+        kind: 'update',
+        installedAppId: 'ia-1',
+        status: 'failed',
+      });
+
+      await expect(service.undoJob('job-2', 'user-1')).rejects.toThrow(BadRequestException);
+      await expect(service.undoJob('job-2', 'user-1')).rejects.toThrow(/alias/i);
+      expect(installer.undo).not.toHaveBeenCalled();
+    });
+
     it('delegates to installer.undo using the job’s installedAppId', async () => {
-      jobs.get.mockReturnValue({ id: 'job-1', installedAppId: 'ia-1', status: 'failed' });
+      jobs.get.mockReturnValue({
+        id: 'job-1',
+        kind: 'install',
+        installedAppId: 'ia-1',
+        status: 'failed',
+      });
 
       const result = await service.undoJob('job-1', 'user-1');
 
@@ -509,7 +530,7 @@ describe('AppCatalogService', () => {
     });
 
     it('returns an empty removal with no installer call when the job never reached a row', async () => {
-      jobs.get.mockReturnValue({ id: 'job-1', status: 'failed' });
+      jobs.get.mockReturnValue({ id: 'job-1', kind: 'install', status: 'failed' });
 
       const result = await service.undoJob('job-1', 'user-1');
 

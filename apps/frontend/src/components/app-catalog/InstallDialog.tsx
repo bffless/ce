@@ -417,15 +417,32 @@ export function InstallDialog({
             {job.status === 'failed' && (
               <>
                 <Alert variant="destructive">
-                  <AlertDescription>{job.error ?? 'Install failed.'}</AlertDescription>
+                  <AlertDescription>
+                    {job.error ?? (isUpdate ? 'Update failed.' : 'Install failed.')}
+                  </AlertDescription>
                 </Alert>
+                {/*
+                  Undo is install-only. A failed update's row carries the
+                  ORIGINAL install's created resources, so undoing it would
+                  delete that install outright — data tables included. An
+                  update rolls back through the alias's deployment history
+                  instead, which costs nothing and loses nothing.
+                */}
+                {isUpdate && (
+                  <p className="text-sm text-muted-foreground">
+                    Nothing was removed. The previous version is still in the alias&apos;s deployment
+                    history — roll back there, or run the update again once the cause is fixed.
+                  </p>
+                )}
                 <DialogFooter>
                   <Button variant="outline" onClick={() => onOpenChange(false)}>
                     Close
                   </Button>
-                  <Button variant="destructive" onClick={handleUndo} disabled={isUndoing}>
-                    {isUpdate ? 'Undo this update' : 'Undo this install'}
-                  </Button>
+                  {!isUpdate && (
+                    <Button variant="destructive" onClick={handleUndo} disabled={isUndoing}>
+                      Undo this install
+                    </Button>
+                  )}
                 </DialogFooter>
               </>
             )}

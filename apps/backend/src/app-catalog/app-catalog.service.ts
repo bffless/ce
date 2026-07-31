@@ -181,9 +181,24 @@ export class AppCatalogService {
    * Undo is keyed by jobId (the wizard only has the job it just started), not
    * by installedAppId — a job that failed before an `installed_apps` row ever
    * got created has nothing to undo.
+   *
+   * Undo is an INSTALL-only operation. `createdResources` is cumulative across
+   * the row's whole lifetime, so undoing a failed *update* would tear down the
+   * ORIGINAL install — rule sets, alias, domain, deployment and, because undo
+   * passes `includeSchemas: true`, the data tables that install created, live
+   * records and all. A transient fetch blip during an update must never be one
+   * click away from that. An update has its own, non-destructive rollback: the
+   * alias's deployment history still points at the previous version.
    */
   async undoJob(jobId: string, userId: string): Promise<{ removed: string[]; failures?: string[] }> {
     const job = this.getJob(jobId);
+    if (job.kind === 'update') {
+      throw new BadRequestException(
+        'Undo is not available for an update — it would delete the original install, including its data ' +
+          "tables. Nothing was removed: roll back by re-pointing the app's alias to the previous deployment " +
+          'in its history, or run the update again once the cause is fixed.',
+      );
+    }
     if (!job.installedAppId) {
       return { removed: [] };
     }

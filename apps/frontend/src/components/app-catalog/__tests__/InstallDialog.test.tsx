@@ -430,6 +430,36 @@ describe('InstallDialog — update mode reuse', () => {
     expect(screen.getByText(`Updating ${baseEntry.name}`)).toBeInTheDocument();
   });
 
+  it('offers Close but never Undo when a failed job is an update', () => {
+    // Undo tears down the whole install from its cumulative createdResources
+    // — data tables included — so it must not be one click away from a failed
+    // update. The alias's deployment history is the rollback path instead.
+    jobQueryResult = {
+      data: makeJob({ kind: 'update', status: 'failed', error: 'Fetch failed: socket hang up' }),
+    };
+
+    render(
+      <InstallDialog
+        entry={baseEntry}
+        open
+        onOpenChange={vi.fn()}
+        mode="update"
+        initialJobId="job-1"
+      />,
+    );
+
+    expect(screen.getByText('Fetch failed: socket hang up')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /undo/i })).not.toBeInTheDocument();
+    // The dialog chrome's own X also exposes an accessible name of "Close" —
+    // the footer button is the one without the sr-only label.
+    const footerClose = screen
+      .getAllByRole('button', { name: /^close$/i })
+      .find((button) => !button.querySelector('.sr-only'));
+    expect(footerClose).toBeDefined();
+    expect(screen.getByText(/nothing was removed/i)).toBeInTheDocument();
+    expect(undoTrigger).not.toHaveBeenCalled();
+  });
+
   it('shows the "updated" title on the Done screen', () => {
     jobQueryResult = {
       data: makeJob({ kind: 'update', status: 'succeeded', appUrl: 'https://handoff.example.com' }),
