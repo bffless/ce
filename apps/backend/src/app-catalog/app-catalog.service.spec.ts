@@ -119,7 +119,11 @@ describe('AppCatalogService', () => {
     uninstallPreview: jest.Mock;
   };
   let jobs: { get: jest.Mock };
-  let storageAdapter: { supportsPresignedUrls: jest.Mock; getAdapterType?: jest.Mock };
+  let storageAdapter: {
+    supportsPresignedUrls: jest.Mock;
+    isLocalAdapter?: boolean;
+    getUnderlyingAdapter?: jest.Mock;
+  };
 
   beforeEach(() => {
     mockDb.__reset();
@@ -149,7 +153,9 @@ describe('AppCatalogService', () => {
     jobs = { get: jest.fn() };
     storageAdapter = {
       supportsPresignedUrls: jest.fn().mockReturnValue(true),
-      getAdapterType: jest.fn().mockReturnValue('LocalStorageAdapter'),
+      // Brands as local the way `resolveLocalAdapter` expects (see local.adapter.ts):
+      // the real LocalStorageAdapter carries `readonly isLocalAdapter = true`.
+      isLocalAdapter: true,
     };
 
     service = new AppCatalogService(
@@ -288,6 +294,26 @@ describe('AppCatalogService', () => {
         manualSteps: [{ id: 'always-step', title: 'Always', body: 'always applies' }],
         manualStepsAcked: [],
       });
+    });
+
+    it('does not treat a CachingStorageAdapter-wrapped local adapter as bucket storage (regression: live droplet Redis cache)', async () => {
+      // Shape observed live: STORAGE_ADAPTER is a CachingStorageAdapter wrapping the real
+      // LocalStorageAdapter. It has no getAdapterType(), so the old `getAdapterType?.() ??
+      // constructor.name` fallback resolved to 'CachingStorageAdapter' -> bucketStorage=true,
+      // wrongly surfacing the bucket-cors manual step on a local-FS install.
+      storageAdapter.isLocalAdapter = undefined;
+      storageAdapter.getUnderlyingAdapter = jest.fn().mockReturnValue({ isLocalAdapter: true });
+      registry.getRegistry.mockResolvedValue({
+        ok: true,
+        registry: { schemaVersion: 1, apps: [HANDOFF_ENTRY] },
+      });
+      mockDb.__queue([ROW]);
+
+      const result = await service.listCatalog();
+
+      expect(result.data[0].installed!.manualSteps).toEqual([
+        { id: 'always-step', title: 'Always', body: 'always applies' },
+      ]);
     });
 
     it('updateAvailable is false when the installed version already matches the registry', async () => {

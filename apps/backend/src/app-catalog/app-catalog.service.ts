@@ -5,6 +5,7 @@ import { db } from '../db/client';
 import { installedApps, type InstalledApp, type InstalledAppStatus } from '../db/schema';
 import { ProjectsService } from '../projects/projects.service';
 import { IStorageAdapter, STORAGE_ADAPTER } from '../storage/storage.interface';
+import { resolveLocalAdapter } from '../storage/local.adapter';
 import { AppsRegistryService } from './apps-registry.service';
 import { AppBundleService } from './app-bundle.service';
 import {
@@ -392,10 +393,8 @@ export class AppCatalogService {
   /** Mirrors `AppInstallerService`'s private helper of the same name — small enough that
    * extracting a shared util isn't worth the cross-module coupling yet. */
   private instanceContext(): { bucketStorage: boolean; platformMode: boolean } {
-    const adapter = this.storageAdapter as IStorageAdapter & { getAdapterType?: () => string };
-    const adapterName = adapter.getAdapterType?.() ?? this.storageAdapter.constructor.name;
     return {
-      bucketStorage: !adapterName.toLowerCase().includes('local'),
+      bucketStorage: resolveLocalAdapter(this.storageAdapter) === null,
       platformMode:
         this.configService.get<string>('PLATFORM_MODE') === 'true' ||
         process.env.PLATFORM_MODE === 'true',

@@ -20,6 +20,7 @@ import { ProjectsService } from '../projects/projects.service';
 import { ProxyRuleSetsService } from '../proxy-rules/proxy-rule-sets.service';
 import { SyncProxyRuleSetDto } from '../proxy-rules/dto/sync-proxy-rule-set.dto';
 import { IStorageAdapter, STORAGE_ADAPTER } from '../storage/storage.interface';
+import { resolveLocalAdapter } from '../storage/local.adapter';
 import { AppBundleService, type LoadedBundle } from './app-bundle.service';
 import { AppCertStepService } from './app-cert-step.service';
 import { AppInstallJobsService, type InstallStepId } from './app-install-jobs.service';
@@ -1254,10 +1255,8 @@ export class AppInstallerService {
   }
 
   private instanceContext(): { bucketStorage: boolean; platformMode: boolean } {
-    const adapter = this.storageAdapter as IStorageAdapter & { getAdapterType?: () => string };
-    const adapterName = adapter.getAdapterType?.() ?? this.storageAdapter.constructor.name;
     return {
-      bucketStorage: !adapterName.toLowerCase().includes('local'),
+      bucketStorage: resolveLocalAdapter(this.storageAdapter) === null,
       platformMode:
         this.configService.get<string>('PLATFORM_MODE') === 'true' ||
         process.env.PLATFORM_MODE === 'true',

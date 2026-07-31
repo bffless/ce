@@ -436,6 +436,37 @@ describe('AppInstallerService', () => {
 
       expect(jobs.get(jobId)!.manualSteps!.map((s) => s.id)).toEqual(['bucket-cors']);
     });
+
+    it('does not treat a CachingStorageAdapter-wrapped local adapter as bucket storage (regression: live droplet Redis cache)', async () => {
+      // Shape observed live: STORAGE_ADAPTER is a CachingStorageAdapter wrapping the real
+      // LocalStorageAdapter. It has no getAdapterType(), so the old `getAdapterType?.() ??
+      // constructor.name` fallback resolved to 'CachingStorageAdapter' -> bucketStorage=true,
+      // wrongly surfacing the bucket-cors manual step on a local-FS install.
+      const wrappedLocalAdapter = {
+        supportsPresignedUrls: () => true,
+        getUnderlyingAdapter: () => ({ isLocalAdapter: true }),
+      };
+      const localService = new AppInstallerService(
+        jobs,
+        bundleService as never,
+        preflight as never,
+        certStep as never,
+        ruleSets as never,
+        deployments as never,
+        domains as never,
+        projects as never,
+        schedules as never,
+        schemas as never,
+        config as unknown as ConfigService,
+        wrappedLocalAdapter as never,
+      );
+      queueInstallDb();
+
+      const { jobId } = localService.startInstall(ENTRY, { projectId: 'proj-1' }, 'user-1');
+      await localService.whenIdle();
+
+      expect(jobs.get(jobId)!.manualSteps!.map((s) => s.id)).toEqual([]);
+    });
   });
 
   describe('project resolution', () => {
