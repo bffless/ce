@@ -343,6 +343,17 @@ export const FLAG_DEFINITIONS: Record<string, FlagDefinition> = {
     exposeToClient: true,
   },
 
+  ENABLE_APP_CATALOG: {
+    envKey: 'FEATURE_APP_CATALOG',
+    defaultValue: true,
+    type: 'boolean',
+    description:
+      'Show the Admin → Apps catalog for 1-click installs of first-party BFFless apps. ' +
+      'Disable to hide the catalog and refuse install endpoints.',
+    category: 'features',
+    exposeToClient: true,
+  },
+
   ENABLE_BOOTSTRAP_SETUP: {
     envKey: 'FEATURE_BOOTSTRAP_SETUP',
     defaultValue: true,
