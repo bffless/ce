@@ -1,0 +1,984 @@
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { plainToInstance } from 'class-transformer';
+import { validateSync, type ValidationError } from 'class-validator';
+import { and, eq } from 'drizzle-orm';
+import { zipSync } from 'fflate';
+import { db } from '../db/client';
+import {
+  deploymentAliases,
+  installedApps,
+  proxyRuleSets,
+  type CreatedResources,
+  type InstalledApp,
+} from '../db/schema';
+import { DeploymentsService } from '../deployments/deployments.service';
+import { DomainsService } from '../domains/domains.service';
+import { PipelineSchedulesService } from '../pipeline-schedules/pipeline-schedules.service';
+import { PipelineSchemasService } from '../pipelines/pipeline-schemas.service';
+import { ProjectsService } from '../projects/projects.service';
+import { ProxyRuleSetsService } from '../proxy-rules/proxy-rule-sets.service';
+import { SyncProxyRuleSetDto } from '../proxy-rules/dto/sync-proxy-rule-set.dto';
+import { IStorageAdapter, STORAGE_ADAPTER } from '../storage/storage.interface';
+import { AppBundleService, type LoadedBundle } from './app-bundle.service';
+import { AppCertStepService } from './app-cert-step.service';
+import { AppInstallJobsService, type InstallStepId } from './app-install-jobs.service';
+import { AppPreflightService, type GateResult } from './app-preflight.service';
+import { manualStepApplies } from './app-manifest.util';
+import type { AppManifest, AppManualStep, AppRegistryEntry } from './app-manifest.types';
+
+export interface InstallTarget {
+  projectId?: string;
+  newProject?: { owner: string; name: string };
+}
+
+export interface UninstallSummary {
+  /** Labels (`kind:id`) of objects actually deleted. */
+  removed: string[];
+  /** Objects deliberately left in place (e.g. data-table schemas when `deleteData` is false). */
+  kept: string[];
+  dataDeleted: boolean;
+}
+
+const INSTALL_STEPS: InstallStepId[] = [
+  'preflight',
+  'fetch',
+  'sync-rules',
+  'deploy',
+  'domain',
+  'certificate',
+  'schedules',
+  'record',
+];
+
+const UPDATE_STEPS: InstallStepId[] = ['fetch', 'sync-rules', 'deploy', 'record'];
+
+interface ParsedRuleSet {
+  file: string;
+  name: string;
+  /** Attach the synced set to the app's alias (manifest default: true). */
+  attach: boolean;
+  dto: SyncProxyRuleSetDto;
+}
+
+interface ProjectRef {
+  id: string;
+  owner: string;
+  name: string;
+}
+
+/**
+ * AppInstallerService — the applier behind 1-click install (Task 9 of the
+ * app-catalog spec).
+ *
+ * Every step is individually reported on the job AND individually idempotent,
+ * so re-running an install over a `failed` row is a resume rather than a
+ * duplicate. The durable record is the `installed_apps` row, written with
+ * `status: 'installing'` BEFORE the first project-scoped write — it survives a
+ * crash/restart and is what {@link undo} replays in reverse.
+ *
+ * Two invariants worth stating out loud:
+ *  - **Nothing is written that preflight didn't just re-verify.** The wizard
+ *    already showed the gates, but the job re-runs them; a `fail` aborts
+ *    before the row insert.
+ *  - **`createdResources` is the deletion boundary.** Only objects this
+ *    install actually created land there (a rule set the sync ADOPTED, or a
+ *    schema it REUSED, never does), so undo/uninstall can never delete a
+ *    user's pre-existing data.
+ */
+@Injectable()
+export class AppInstallerService {
+  private readonly logger = new Logger(AppInstallerService.name);
+  /** Resolves when the (single-flight) background run finishes. Never rejects. */
+  private currentRun: Promise<void> = Promise.resolve();
+
+  constructor(
+    private readonly jobs: AppInstallJobsService,
+    private readonly bundleService: AppBundleService,
+    private readonly preflightService: AppPreflightService,
+    private readonly certStepService: AppCertStepService,
+    private readonly ruleSetsService: ProxyRuleSetsService,
+    private readonly deploymentsService: DeploymentsService,
+    private readonly domainsService: DomainsService,
+    private readonly projectsService: ProjectsService,
+    private readonly schedulesService: PipelineSchedulesService,
+    private readonly schemasService: PipelineSchemasService,
+    private readonly configService: ConfigService,
+    @Inject(STORAGE_ADAPTER) private readonly storageAdapter: IStorageAdapter,
+  ) {}
+
+  /** Kicks off the background run; returns immediately (storage-migration shape). */
+  startInstall(entry: AppRegistryEntry, target: InstallTarget, userId: string): { jobId: string } {
+    const job = this.jobs.create('install', entry.id, INSTALL_STEPS);
+    this.currentRun = this.runInstall(job.id, entry, target, userId);
+    void this.currentRun;
+    return { jobId: job.id };
+  }
+
+  startUpdate(
+    installed: InstalledApp,
+    entry: AppRegistryEntry,
+    userId: string,
+    opts: { prune: boolean },
+  ): { jobId: string } {
+    const job = this.jobs.create('update', entry.id, UPDATE_STEPS);
+    this.jobs.setProjectId(job.id, installed.projectId);
+    this.currentRun = this.runUpdate(job.id, installed, entry, userId, opts);
+    void this.currentRun;
+    return { jobId: job.id };
+  }
+
+  /** Awaits the in-flight background run (tests, graceful shutdown). */
+  async whenIdle(): Promise<void> {
+    await this.currentRun;
+  }
+
+  // ==================== install ====================
+
+  private async runInstall(
+    jobId: string,
+    entry: AppRegistryEntry,
+    target: InstallTarget,
+    userId: string,
+  ): Promise<void> {
+    let step: InstallStepId = 'preflight';
+    let rowId: string | undefined;
+
+    try {
+      // ---- 1. preflight: re-verify every gate before anything is written ----
+      this.jobs.setStep(jobId, step, { status: 'running' });
+      this.assertGatesPass(await this.preflightService.instanceGates(entry.requires));
+      const preflightBundle = await this.bundleService.fetchBundle(entry.bundleUrl, entry.sha256);
+      const projectGates = await this.preflightService.projectGates(
+        preflightBundle,
+        this.toPreflightTarget(target),
+        userId,
+      );
+      this.assertGatesPass(projectGates.gates);
+      this.jobs.setStep(jobId, step, { status: 'done', detail: 'All install gates passed.' });
+
+      // ---- 2. fetch (cache hit — preflight just downloaded it) + payload validation ----
+      step = 'fetch';
+      this.jobs.setStep(jobId, step, { status: 'running' });
+      const bundle = await this.bundleService.fetchBundle(entry.bundleUrl, entry.sha256);
+      const manifest = bundle.manifest;
+      const ruleSets = this.parseAndValidateRuleSets(bundle);
+      this.jobs.setStep(jobId, step, {
+        status: 'done',
+        detail: `Bundle ${bundle.sha256.slice(0, 12)} verified; ${ruleSets.length} rule set payload(s) validated.`,
+      });
+
+      const appHost = projectGates.appHost ?? this.computeAppHost(manifest);
+      const created: CreatedResources = {
+        ruleSetIds: [],
+        schemaIdsCreated: [],
+        scheduleIds: [],
+      };
+
+      // ---- 3. project resolution + the durable installing row ----
+      step = 'sync-rules';
+      this.jobs.setStep(jobId, step, { status: 'running' });
+      const project = await this.resolveProject(target, userId, created);
+      this.jobs.setProjectId(jobId, project.id);
+      const row = await this.loadOrCreateRow(manifest, project.id, bundle.sha256, userId);
+      rowId = row.id;
+      // Carry forward what a previous (failed) attempt already created.
+      this.mergeCreated(created, row.createdResources);
+
+      // ---- 4. sync-rules ----
+      const ruleSetIds: string[] = [...(row.ruleSetIds ?? [])];
+      const schemaIds: string[] = [...(row.schemaIds ?? [])];
+      const { missingSecrets, warnings } = await this.syncRuleSets(
+        ruleSets,
+        manifest,
+        project.id,
+        userId,
+        { prune: false },
+        { created, ruleSetIds, schemaIds },
+      );
+      this.jobs.setStep(jobId, step, {
+        status: 'done',
+        detail: this.syncDetail(ruleSets.length, missingSecrets, warnings),
+      });
+
+      // ---- 5. deploy ----
+      step = 'deploy';
+      this.jobs.setStep(jobId, step, { status: 'running' });
+      const deployment = await this.deployBundle(bundle, manifest, ruleSets, project, userId);
+      created.aliasName = manifest.install.alias;
+      created.deploymentId = deployment.deploymentId;
+      this.jobs.setStep(jobId, step, {
+        status: 'done',
+        detail: `Deployed ${deployment.fileCount} file(s) to alias "${manifest.install.alias}".`,
+      });
+
+      // ---- 6. domain ----
+      step = 'domain';
+      const domainOutcome = await this.applyDomainStep(jobId, manifest, row, project.id, appHost, userId);
+      if (domainOutcome.domainId) created.domainId = domainOutcome.domainId;
+
+      // ---- 7. certificate (never fails the install) ----
+      step = 'certificate';
+      const certManualSteps = await this.applyCertificateStep(
+        jobId,
+        appHost,
+        domainOutcome.sslDowngraded,
+      );
+
+      // ---- 8. schedules ----
+      step = 'schedules';
+      await this.applyScheduleStep(jobId, manifest, project.id, userId, created);
+
+      // ---- 9. record ----
+      step = 'record';
+      this.jobs.setStep(jobId, step, { status: 'running' });
+      const manualSteps = [...this.applicableManualSteps(manifest), ...certManualSteps];
+      const appUrl =
+        appHost && created.domainId ? `https://${appHost}` : deployment.urls?.default;
+
+      await db
+        .update(installedApps)
+        .set({
+          name: manifest.name,
+          version: manifest.version,
+          alias: manifest.install.alias,
+          bundleSha256: bundle.sha256,
+          manifest,
+          ruleSetIds,
+          schemaIds,
+          deploymentId: deployment.deploymentId,
+          domainId: created.domainId ?? null,
+          createdResources: created,
+          status: 'installed',
+          updatedAt: new Date(),
+        })
+        .where(eq(installedApps.id, row.id));
+
+      this.jobs.setStep(jobId, step, { status: 'done', detail: 'Install recorded.' });
+      this.jobs.finish(jobId, 'succeeded', { installedAppId: row.id, manualSteps, appUrl });
+      this.logger.log(`Installed app ${manifest.id} v${manifest.version} into project ${project.id}`);
+    } catch (error) {
+      await this.failJob(jobId, step, rowId, error);
+    }
+  }
+
+  // ==================== update ====================
+
+  private async runUpdate(
+    jobId: string,
+    installed: InstalledApp,
+    entry: AppRegistryEntry,
+    userId: string,
+    opts: { prune: boolean },
+  ): Promise<void> {
+    let step: InstallStepId = 'fetch';
+
+    try {
+      this.jobs.setStep(jobId, step, { status: 'running' });
+      const bundle = await this.bundleService.fetchBundle(entry.bundleUrl, entry.sha256);
+      const manifest = bundle.manifest;
+      const ruleSets = this.parseAndValidateRuleSets(bundle);
+      this.jobs.setStep(jobId, step, {
+        status: 'done',
+        detail: `Bundle ${bundle.sha256.slice(0, 12)} verified; ${ruleSets.length} rule set payload(s) validated.`,
+      });
+
+      const project = await this.projectsService.getProjectById(installed.projectId);
+      const created: CreatedResources = {
+        ruleSetIds: [],
+        schemaIdsCreated: [],
+        scheduleIds: [],
+      };
+      this.mergeCreated(created, installed.createdResources);
+
+      step = 'sync-rules';
+      this.jobs.setStep(jobId, step, { status: 'running' });
+      const ruleSetIds: string[] = [...(installed.ruleSetIds ?? [])];
+      const schemaIds: string[] = [...(installed.schemaIds ?? [])];
+      const { missingSecrets, warnings } = await this.syncRuleSets(
+        ruleSets,
+        manifest,
+        project.id,
+        userId,
+        { prune: opts.prune },
+        { created, ruleSetIds, schemaIds },
+      );
+      this.jobs.setStep(jobId, step, {
+        status: 'done',
+        detail: this.syncDetail(ruleSets.length, missingSecrets, warnings, opts.prune),
+      });
+
+      // Same alias: the alias's deployment history IS the rollback mechanism.
+      step = 'deploy';
+      this.jobs.setStep(jobId, step, { status: 'running' });
+      const deployment = await this.deployBundle(bundle, manifest, ruleSets, project, userId);
+      created.aliasName = manifest.install.alias;
+      created.deploymentId = deployment.deploymentId;
+      this.jobs.setStep(jobId, step, {
+        status: 'done',
+        detail: `Deployed ${deployment.fileCount} file(s) to alias "${manifest.install.alias}".`,
+      });
+
+      step = 'record';
+      this.jobs.setStep(jobId, step, { status: 'running' });
+      await db
+        .update(installedApps)
+        .set({
+          name: manifest.name,
+          version: manifest.version,
+          bundleSha256: bundle.sha256,
+          manifest,
+          ruleSetIds,
+          schemaIds,
+          deploymentId: deployment.deploymentId,
+          createdResources: created,
+          status: 'installed',
+          updatedAt: new Date(),
+        })
+        .where(eq(installedApps.id, installed.id));
+
+      const manualSteps = this.applicableManualSteps(manifest);
+      const appUrl = installed.domainId
+        ? `https://${this.computeAppHost(manifest) ?? ''}`
+        : deployment.urls?.default;
+      this.jobs.setStep(jobId, step, { status: 'done', detail: 'Update recorded.' });
+      this.jobs.finish(jobId, 'succeeded', {
+        installedAppId: installed.id,
+        manualSteps,
+        appUrl,
+      });
+    } catch (error) {
+      await this.failJob(jobId, step, installed.id, error);
+    }
+  }
+
+  // ==================== undo / uninstall ====================
+
+  /**
+   * Deletes ONLY this install's own created objects, in reverse creation
+   * order, then drops the `installed_apps` row. Never touches a reused schema,
+   * an adopted rule set, or a pre-existing domain.
+   */
+  async undo(installedAppId: string, userId: string): Promise<{ removed: string[] }> {
+    const row = await this.requireRow(installedAppId);
+    const removed = await this.deleteCreatedResources(row, userId, { includeSchemas: true });
+
+    await db.delete(installedApps).where(eq(installedApps.id, row.id));
+
+    const job = this.jobs.findByInstalledApp(row.id);
+    if (job) this.jobs.finish(job.id, 'undone');
+
+    this.logger.log(`Undid app install ${row.appId} (${row.id}): removed ${removed.join(', ') || 'nothing'}`);
+    return { removed };
+  }
+
+  /**
+   * Uninstall = undo, except the app's data-table schemas (which hold the
+   * user's records) are only dropped when `deleteData` is explicitly true.
+   */
+  async uninstall(
+    installedAppId: string,
+    userId: string,
+    opts: { deleteData: boolean },
+  ): Promise<UninstallSummary> {
+    const row = await this.requireRow(installedAppId);
+    const kept: string[] = [];
+    const removed = await this.deleteCreatedResources(row, userId, {
+      includeSchemas: opts.deleteData,
+      kept,
+    });
+
+    await db.delete(installedApps).where(eq(installedApps.id, row.id));
+
+    this.logger.log(
+      `Uninstalled app ${row.appId} (${row.id}); data ${opts.deleteData ? 'deleted' : 'kept'}`,
+    );
+    return { removed, kept, dataDeleted: opts.deleteData };
+  }
+
+  private async deleteCreatedResources(
+    row: InstalledApp,
+    userId: string,
+    opts: { includeSchemas: boolean; kept?: string[] },
+  ): Promise<string[]> {
+    const created: CreatedResources = row.createdResources ?? {};
+    const removed: string[] = [];
+
+    for (const scheduleId of created.scheduleIds ?? []) {
+      await this.tryDelete(removed, `schedule:${scheduleId}`, () =>
+        this.schedulesService.deleteSchedule(scheduleId, userId, 'admin', null),
+      );
+    }
+
+    if (created.domainId) {
+      await this.tryDelete(removed, `domain:${created.domainId}`, () =>
+        this.domainsService.remove(created.domainId!, userId, undefined, null),
+      );
+    }
+
+    if (created.aliasName) {
+      const project = await this.projectsService.getProjectById(row.projectId);
+      await this.tryDelete(removed, `alias:${created.aliasName}`, () =>
+        this.deploymentsService.deleteAlias(
+          `${project.owner}/${project.name}`,
+          created.aliasName!,
+          userId,
+          'admin',
+        ),
+      );
+    }
+
+    if (created.deploymentId) {
+      await this.tryDelete(removed, `deployment:${created.deploymentId}`, () =>
+        this.deploymentsService.deleteDeployment(created.deploymentId!, userId, 'admin'),
+      );
+    }
+
+    for (const ruleSetId of created.ruleSetIds ?? []) {
+      await this.tryDelete(removed, `ruleSet:${ruleSetId}`, () =>
+        this.ruleSetsService.delete(ruleSetId, userId, 'admin', null),
+      );
+    }
+
+    for (const schemaId of created.schemaIdsCreated ?? []) {
+      if (!opts.includeSchemas) {
+        opts.kept?.push(`schema:${schemaId}`);
+        continue;
+      }
+      await this.tryDelete(removed, `schema:${schemaId}`, () =>
+        this.schemasService.delete(schemaId, userId, 'admin', null),
+      );
+    }
+
+    if (created.projectCreated) {
+      if (await this.projectIsEmpty(row.projectId)) {
+        await this.tryDelete(removed, `project:${row.projectId}`, () =>
+          this.projectsService.deleteProject(row.projectId),
+        );
+      } else {
+        opts.kept?.push(`project:${row.projectId}`);
+      }
+    }
+
+    return removed;
+  }
+
+  /** A project we created is only removable if this app was its only content. */
+  private async projectIsEmpty(projectId: string): Promise<boolean> {
+    const aliases = await db
+      .select({ id: deploymentAliases.id })
+      .from(deploymentAliases)
+      .where(eq(deploymentAliases.projectId, projectId));
+    if (aliases.length > 0) return false;
+
+    const sets = await db
+      .select({ id: proxyRuleSets.id })
+      .from(proxyRuleSets)
+      .where(eq(proxyRuleSets.projectId, projectId));
+    return sets.length === 0;
+  }
+
+  private async tryDelete(
+    removed: string[],
+    label: string,
+    run: () => Promise<unknown>,
+  ): Promise<void> {
+    try {
+      await run();
+      removed.push(label);
+    } catch (error) {
+      // A partial failure must not strand the rest of the cleanup.
+      this.logger.warn(`Failed to remove ${label}: ${this.messageOf(error)}`);
+    }
+  }
+
+  // ==================== steps ====================
+
+  private async syncRuleSets(
+    ruleSets: ParsedRuleSet[],
+    manifest: AppManifest,
+    projectId: string,
+    userId: string,
+    options: { prune: boolean },
+    acc: { created: CreatedResources; ruleSetIds: string[]; schemaIds: string[] },
+  ): Promise<{ missingSecrets: string[]; warnings: string[] }> {
+    const missingSecrets: string[] = [];
+    const warnings: string[] = [];
+
+    for (const ruleSet of ruleSets) {
+      const response = await this.ruleSetsService.syncRuleSet(
+        projectId,
+        {
+          ...ruleSet.dto,
+          options: { dryRun: false, prune: options.prune },
+          source: { repo: manifest.eject?.repo, path: ruleSet.file },
+        } as SyncProxyRuleSetDto,
+        userId,
+        'admin',
+        null,
+      );
+
+      if (response.ruleSetId) {
+        pushUnique(acc.ruleSetIds, response.ruleSetId);
+        // Only a set we CREATED is ours to delete on undo.
+        if (response.setCreated) pushUnique(acc.created.ruleSetIds!, response.ruleSetId);
+      }
+
+      for (const resolution of response.schemaResolutions ?? []) {
+        if (!resolution.targetSchemaId) continue;
+        pushUnique(acc.schemaIds, resolution.targetSchemaId);
+        if (resolution.action === 'create') {
+          pushUnique(acc.created.schemaIdsCreated!, resolution.targetSchemaId);
+        }
+      }
+
+      missingSecrets.push(...(response.missingSecrets ?? []));
+      warnings.push(...(response.warnings ?? []));
+    }
+
+    return { missingSecrets, warnings };
+  }
+
+  private async deployBundle(
+    bundle: LoadedBundle,
+    manifest: AppManifest,
+    ruleSets: ParsedRuleSet[],
+    project: ProjectRef,
+    userId: string,
+  ) {
+    const zipped = this.buildDistZip(bundle, manifest);
+    const alias = manifest.install.alias;
+    const attachNames = ruleSets.filter((r) => r.attach).map((r) => r.name);
+
+    const response = await this.deploymentsService.createDeploymentFromZip(
+      {
+        buffer: zipped,
+        originalname: `${manifest.id}-bundle.zip`,
+        mimetype: 'application/zip',
+      } as Express.Multer.File,
+      {
+        repository: `${project.owner}/${project.name}`,
+        commitSha: bundle.sha256.slice(0, 40),
+        branch: 'app-catalog',
+        alias,
+        description: `App install: ${manifest.name} v${manifest.version}`,
+        basePath: manifest.install.deployment.basePath,
+        proxyRuleSetNames: attachNames,
+        source: 'manual',
+      },
+      userId,
+      'admin',
+    );
+
+    // An explicit-alias failure is swallowed upstream (deployments.service.ts:
+    // "Alias creation failure is non-critical"), so absence here is the ONLY
+    // signal that the app's URL would 404. Treat it as a step failure.
+    if (!response.aliases?.includes(alias)) {
+      throw new Error(
+        `Deployment ${response.deploymentId} did not receive the "${alias}" alias — the app would not be reachable.`,
+      );
+    }
+
+    return response;
+  }
+
+  private async applyDomainStep(
+    jobId: string,
+    manifest: AppManifest,
+    row: InstalledApp,
+    projectId: string,
+    appHost: string | null,
+    userId: string,
+  ): Promise<{ domainId?: string; sslDowngraded: boolean }> {
+    const domain = manifest.install.domain;
+    if (!domain || !appHost) {
+      this.jobs.setStep(jobId, 'domain', {
+        status: 'skipped',
+        detail: 'This app declares no domain; it is served from its alias URL.',
+      });
+      return { sslDowngraded: false };
+    }
+
+    this.jobs.setStep(jobId, 'domain', { status: 'running' });
+
+    // Idempotent re-run: this app already owns the mapping.
+    const ownDomainId = row.createdResources?.domainId ?? row.domainId ?? undefined;
+    if (ownDomainId) {
+      this.jobs.setStep(jobId, 'domain', {
+        status: 'done',
+        detail: `${appHost} is already mapped by this install.`,
+      });
+      return { domainId: ownDomainId, sslDowngraded: false };
+    }
+
+    const createdDomain = await this.domainsService.create(
+      {
+        projectId,
+        alias: manifest.install.alias,
+        path: manifest.install.deployment.basePath,
+        domain: appHost,
+        domainType: 'subdomain',
+        sslEnabled: true,
+        isPublic: domain.isPublic,
+        isSpa: domain.isSpa,
+      },
+      userId,
+      undefined,
+      null,
+    );
+
+    // A subdomain's sslEnabled is silently downgraded when no wildcard cert
+    // exists — read it back rather than assuming what we asked for.
+    const sslDowngraded = createdDomain?.sslEnabled === false;
+    this.jobs.setStep(jobId, 'domain', { status: 'done', detail: `${appHost} mapped to this app.` });
+    return { domainId: createdDomain.id, sslDowngraded };
+  }
+
+  private async applyCertificateStep(
+    jobId: string,
+    appHost: string | null,
+    sslDowngraded: boolean,
+  ): Promise<AppManualStep[]> {
+    if (!appHost) {
+      this.jobs.setStep(jobId, 'certificate', {
+        status: 'skipped',
+        detail: 'No app domain, so no certificate is needed.',
+      });
+      return [];
+    }
+
+    try {
+      const plan = await this.certStepService.plan(appHost);
+      const result = await this.certStepService.execute(plan, appHost);
+      const detail = sslDowngraded
+        ? `${result.detail} Note: the domain row came back with SSL disabled (no wildcard certificate covers ` +
+          `${appHost} yet), so HTTPS may not work until a certificate is applied.`
+        : result.detail;
+      this.jobs.setStep(jobId, 'certificate', { status: result.status, detail });
+      return result.manualStep ? [result.manualStep] : [];
+    } catch (error) {
+      // A cert problem must never fail an install — the app stays reachable
+      // over the existing certificate or plain HTTP meanwhile.
+      const message = this.messageOf(error);
+      this.logger.warn(`Certificate step for ${appHost} failed: ${message}`);
+      this.jobs.setStep(jobId, 'certificate', {
+        status: 'skipped',
+        detail: `Certificate step skipped: ${message}. Verify SSL for ${appHost} manually.`,
+      });
+      return [];
+    }
+  }
+
+  private async applyScheduleStep(
+    jobId: string,
+    manifest: AppManifest,
+    projectId: string,
+    userId: string,
+    created: CreatedResources,
+  ): Promise<void> {
+    const wanted = manifest.install.schedules ?? [];
+    if (wanted.length === 0) {
+      this.jobs.setStep(jobId, 'schedules', {
+        status: 'skipped',
+        detail: 'This app ships no scheduled pipelines.',
+      });
+      return;
+    }
+
+    this.jobs.setStep(jobId, 'schedules', { status: 'running' });
+    const rules = await this.schedulesService.listPipelineRules(projectId, userId, 'admin', null);
+    const existing = await this.schedulesService.listSchedules(projectId, userId, 'admin', null);
+
+    let createdCount = 0;
+    for (const schedule of wanted) {
+      // Schedules have no name-uniqueness constraint, so idempotency is the
+      // installer's own job.
+      if (existing.some((e) => e.name === schedule.name)) continue;
+
+      const wantedMethod = schedule.targetRuleMethod ?? null;
+      const rule = rules.find(
+        (r) => r.pathPattern === schedule.targetRulePath && (r.method ?? null) === wantedMethod,
+      );
+      if (!rule) {
+        throw new Error(
+          `No pipeline rule matching ${wantedMethod ?? 'ANY'} ${schedule.targetRulePath} was found ` +
+            `for schedule "${schedule.name}".`,
+        );
+      }
+
+      const row = await this.schedulesService.createSchedule(
+        projectId,
+        {
+          name: schedule.name,
+          targetProxyRuleId: rule.id,
+          cronExpression: schedule.cronExpression,
+          timezone: schedule.timezone ?? 'UTC',
+        },
+        userId,
+        'admin',
+        null,
+      );
+      pushUnique(created.scheduleIds!, row.id);
+      createdCount++;
+    }
+
+    this.jobs.setStep(jobId, 'schedules', {
+      status: 'done',
+      detail: `${createdCount} schedule(s) created, ${wanted.length - createdCount} already present.`,
+    });
+  }
+
+  // ==================== helpers ====================
+
+  private assertGatesPass(gates: GateResult[]): void {
+    const failures = gates.filter((gate) => gate.status === 'fail');
+    if (failures.length === 0) return;
+    throw new BadRequestException(
+      `Install blocked by preflight: ${failures.map((f) => f.message).join(' ')}`,
+    );
+  }
+
+  private toPreflightTarget(
+    target: InstallTarget,
+  ): { projectId: string } | { newProject: { owner: string; name: string } } {
+    if (target.projectId) return { projectId: target.projectId };
+    if (target.newProject) return { newProject: target.newProject };
+    throw new BadRequestException('An install target requires either projectId or newProject');
+  }
+
+  private async resolveProject(
+    target: InstallTarget,
+    userId: string,
+    created: CreatedResources,
+  ): Promise<ProjectRef> {
+    if (target.projectId) {
+      created.projectCreated = false;
+      const project = await this.projectsService.getProjectById(target.projectId);
+      return { id: project.id, owner: project.owner, name: project.name };
+    }
+    if (!target.newProject) {
+      throw new BadRequestException('An install target requires either projectId or newProject');
+    }
+
+    const { owner, name } = target.newProject;
+    // Check BEFORE creating — findOrCreateProject is idempotent, so afterwards
+    // we could no longer tell whether the project was ours.
+    const existedBefore = await this.projectsService.projectExists(owner, name);
+    const project = await this.projectsService.findOrCreateProject(owner, name, userId);
+    created.projectCreated = !existedBefore;
+    return { id: project.id, owner: project.owner, name: project.name };
+  }
+
+  /**
+   * The `installed_apps` row goes in with `status: 'installing'` BEFORE any
+   * project-scoped write, so a crash mid-install still leaves an undoable
+   * record. A row from a previous failed attempt is reused (resume), never
+   * duplicated — `(app_id, project_id)` is unique anyway.
+   */
+  private async loadOrCreateRow(
+    manifest: AppManifest,
+    projectId: string,
+    bundleSha256: string,
+    userId: string,
+  ): Promise<InstalledApp> {
+    const [existing] = await db
+      .select()
+      .from(installedApps)
+      .where(and(eq(installedApps.appId, manifest.id), eq(installedApps.projectId, projectId)))
+      .limit(1);
+
+    if (existing) {
+      const [updated] = await db
+        .update(installedApps)
+        .set({ status: 'installing', manifest, bundleSha256, updatedAt: new Date() })
+        .where(eq(installedApps.id, existing.id))
+        .returning();
+      return updated ?? existing;
+    }
+
+    const [inserted] = await db
+      .insert(installedApps)
+      .values({
+        appId: manifest.id,
+        name: manifest.name,
+        version: manifest.version,
+        projectId,
+        alias: manifest.install.alias,
+        bundleSha256,
+        manifest,
+        status: 'installing',
+        createdResources: {},
+        installedBy: userId,
+      })
+      .returning();
+
+    return inserted;
+  }
+
+  private async requireRow(installedAppId: string): Promise<InstalledApp> {
+    const [row] = await db
+      .select()
+      .from(installedApps)
+      .where(eq(installedApps.id, installedAppId))
+      .limit(1);
+    if (!row) throw new NotFoundException(`Installed app ${installedAppId} not found`);
+    return row;
+  }
+
+  private mergeCreated(target: CreatedResources, source?: CreatedResources | null): void {
+    if (!source) return;
+    for (const id of source.ruleSetIds ?? []) pushUnique(target.ruleSetIds!, id);
+    for (const id of source.schemaIdsCreated ?? []) pushUnique(target.schemaIdsCreated!, id);
+    for (const id of source.scheduleIds ?? []) pushUnique(target.scheduleIds!, id);
+    if (source.projectCreated !== undefined) target.projectCreated = source.projectCreated;
+    if (source.aliasName) target.aliasName = source.aliasName;
+    if (source.deploymentId) target.deploymentId = source.deploymentId;
+    if (source.domainId) target.domainId = source.domainId;
+  }
+
+  /**
+   * Runs every bundled rule-set payload through the REAL sync DTO pipeline
+   * (`plainToInstance` + `validateSync`) so a direct service call gets the
+   * same SSRF/shape validation an HTTP caller would (`IsValidSyncTargetUrl`
+   * and friends). Anything invalid aborts the install before a single write.
+   */
+  private parseAndValidateRuleSets(bundle: LoadedBundle): ParsedRuleSet[] {
+    return bundle.manifest.install.ruleSets.map((entry) => {
+      const bytes = bundle.files[entry.file];
+      if (!bytes) {
+        throw new BadRequestException(`Bundle is missing declared rule set file: ${entry.file}`);
+      }
+
+      let json: unknown;
+      try {
+        json = JSON.parse(new TextDecoder().decode(bytes));
+      } catch (error) {
+        throw new BadRequestException(`${entry.file} is not valid JSON: ${this.messageOf(error)}`);
+      }
+
+      const dto = plainToInstance(SyncProxyRuleSetDto, json);
+      const errors = validateSync(dto as object, { whitelist: true, forbidUnknownValues: false });
+      if (errors.length > 0) {
+        throw new BadRequestException(
+          `${entry.file} failed rule-set validation: ${flattenValidationErrors(errors).join('; ')}`,
+        );
+      }
+
+      return {
+        file: entry.file,
+        name: dto.ruleSet.name,
+        attach: entry.attachToAlias !== false,
+        dto,
+      };
+    });
+  }
+
+  /**
+   * The deployment carries only the manifest's `deployment.path` subtree,
+   * re-keyed under `basePath` (e.g. `dist/index.html` →
+   * `apps/handoff/dist/index.html`) so the alias's basePath resolves.
+   */
+  private buildDistZip(bundle: LoadedBundle, manifest: AppManifest): Buffer {
+    const prefix = `${manifest.install.deployment.path.replace(/\/+$/, '')}/`;
+    const base = manifest.install.deployment.basePath.replace(/^\/+/, '').replace(/\/+$/, '');
+
+    const entries: Record<string, Uint8Array> = {};
+    for (const [entryPath, bytes] of Object.entries(bundle.files)) {
+      if (!entryPath.startsWith(prefix)) continue;
+      const rest = entryPath.slice(prefix.length);
+      if (!rest) continue;
+      entries[base ? `${base}/${rest}` : rest] = bytes;
+    }
+
+    if (Object.keys(entries).length === 0) {
+      throw new Error(`Bundle has no files under ${manifest.install.deployment.path}/ to deploy`);
+    }
+
+    return Buffer.from(zipSync(entries));
+  }
+
+  private applicableManualSteps(manifest: AppManifest): AppManualStep[] {
+    const ctx = this.instanceContext();
+    return (manifest.install.manualSteps ?? []).filter((step) => manualStepApplies(step, ctx));
+  }
+
+  private instanceContext(): { bucketStorage: boolean; platformMode: boolean } {
+    const adapter = this.storageAdapter as IStorageAdapter & { getAdapterType?: () => string };
+    const adapterName = adapter.getAdapterType?.() ?? this.storageAdapter.constructor.name;
+    return {
+      bucketStorage: !adapterName.toLowerCase().includes('local'),
+      platformMode:
+        this.configService.get<string>('PLATFORM_MODE') === 'true' ||
+        process.env.PLATFORM_MODE === 'true',
+    };
+  }
+
+  private computeAppHost(manifest: AppManifest): string | null {
+    const subdomain = manifest.install.domain?.subdomain;
+    if (!subdomain) return null;
+    const primaryDomain = this.configService.get<string>('PRIMARY_DOMAIN') || '';
+    return primaryDomain ? `${subdomain}.${primaryDomain}` : null;
+  }
+
+  private syncDetail(
+    count: number,
+    missingSecrets: string[],
+    warnings: string[],
+    prune?: boolean,
+  ): string {
+    const parts = [`Synced ${count} rule set(s)${prune ? ' with prune enabled' : ''}.`];
+    if (missingSecrets.length > 0) {
+      parts.push(`Missing project secrets: ${[...new Set(missingSecrets)].join(', ')}.`);
+    }
+    if (warnings.length > 0) parts.push(`Warnings: ${warnings.join('; ')}.`);
+    return parts.join(' ');
+  }
+
+  private async failJob(
+    jobId: string,
+    step: InstallStepId,
+    rowId: string | undefined,
+    error: unknown,
+  ): Promise<void> {
+    const message = this.messageOf(error);
+    this.logger.error(`App install job ${jobId} failed at step "${step}": ${message}`);
+    this.jobs.setStep(jobId, step, { status: 'failed', error: message });
+
+    // Keep the row — it powers both undo and a resume-by-reinstall.
+    if (rowId) {
+      try {
+        await db
+          .update(installedApps)
+          .set({ status: 'failed', updatedAt: new Date() })
+          .where(eq(installedApps.id, rowId));
+      } catch (updateError) {
+        this.logger.error(`Could not mark install row ${rowId} failed: ${this.messageOf(updateError)}`);
+      }
+    }
+
+    this.jobs.finish(jobId, 'failed', { error: message });
+  }
+
+  private messageOf(error: unknown): string {
+    if (error instanceof Error) return error.message;
+    return typeof error === 'string' ? error : 'Unknown error';
+  }
+}
+
+function pushUnique(list: string[], value: string): void {
+  if (!list.includes(value)) list.push(value);
+}
+
+function flattenValidationErrors(errors: ValidationError[], path = ''): string[] {
+  const messages: string[] = [];
+  for (const error of errors) {
+    const here = path ? `${path}.${error.property}` : error.property;
+    if (error.constraints) {
+      messages.push(`${here}: ${Object.values(error.constraints).join(', ')}`);
+    }
+    if (error.children?.length) {
+      messages.push(...flattenValidationErrors(error.children, here));
+    }
+  }
+  return messages;
+}
