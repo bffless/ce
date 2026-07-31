@@ -7,6 +7,7 @@ import { zipSync } from 'fflate';
 import { db } from '../db/client';
 import {
   deploymentAliases,
+  domainMappings,
   installedApps,
   proxyRuleSets,
   type CreatedResources,
@@ -274,7 +275,7 @@ export class AppInstallerService {
       await this.persistProgress(row.id, progress);
       this.jobs.setStep(jobId, step, {
         status: 'done',
-        detail: `Deployed ${deployment.fileCount} file(s) to alias "${manifest.install.alias}".`,
+        detail: this.deployDetail(deployment.fileCount, manifest.install.alias, appHost),
       });
 
       // ---- 6. domain ----
@@ -373,6 +374,13 @@ export class AppInstallerService {
       };
       this.mergeCreated(created, installed.createdResources);
 
+      // An update reuses the alias and domain the ORIGINAL install created
+      // (no 'domain' step in UPDATE_STEPS — see the "Same alias" comment on
+      // the deploy step below), so the serving host must be read back from
+      // that stored mapping, not recomputed from the manifest's default
+      // subdomain — the operator may have overridden it at install time.
+      const appHost = await this.lookupDomainHost(installed.domainId);
+
       step = 'sync-rules';
       this.jobs.setStep(jobId, step, { status: 'running' });
       // From here on the run can write; a failure past this point must carry
@@ -409,7 +417,7 @@ export class AppInstallerService {
       await this.persistProgress(installed.id, progress);
       this.jobs.setStep(jobId, step, {
         status: 'done',
-        detail: `Deployed ${deployment.fileCount} file(s) to alias "${manifest.install.alias}".`,
+        detail: this.deployDetail(deployment.fileCount, manifest.install.alias, appHost),
       });
 
       step = 'record';
@@ -431,9 +439,7 @@ export class AppInstallerService {
         .where(eq(installedApps.id, installed.id));
 
       const manualSteps = this.applicableManualSteps(manifest);
-      const appUrl = installed.domainId
-        ? `https://${this.computeAppHost(manifest) ?? ''}`
-        : deployment.urls?.default;
+      const appUrl = appHost ? `https://${appHost}` : deployment.urls?.default;
       this.jobs.setStep(jobId, step, { status: 'done', detail: 'Update recorded.' });
       this.jobs.finish(jobId, 'succeeded', {
         installedAppId: installed.id,
@@ -1276,11 +1282,46 @@ export class AppInstallerService {
     };
   }
 
+  /**
+   * The manifest's *default* subdomain suggestion — only meaningful as a
+   * fallback during `runInstall`, before any domain row exists (and even
+   * there `projectGates.appHost`, which already accounts for a
+   * `subdomainOverride`, wins first — see the `appHost` assignment above).
+   * Once an install exists, its actual serving host must be read back from
+   * the domain mapping it owns (`lookupDomainHost`, used by `runUpdate` and
+   * mirrored in `AppCatalogService.resolveAppUrl` for the catalog listing) —
+   * never recomputed from this manifest default, which the operator may
+   * have overridden.
+   */
   private computeAppHost(manifest: AppManifest): string | null {
     const subdomain = manifest.install.domain?.subdomain;
     if (!subdomain) return null;
     const primaryDomain = this.configService.get<string>('PRIMARY_DOMAIN') || '';
     return primaryDomain ? `${subdomain}.${primaryDomain}` : null;
+  }
+
+  /** Single-row read of a domain mapping's `domain` string; `undefined` if absent or since deleted. */
+  private async lookupDomainHost(domainId: string | null | undefined): Promise<string | undefined> {
+    if (!domainId) return undefined;
+    const [mapping] = await db
+      .select({ domain: domainMappings.domain })
+      .from(domainMappings)
+      .where(eq(domainMappings.id, domainId))
+      .limit(1);
+    return mapping?.domain;
+  }
+
+  /**
+   * The manifest's deployment `alias` (a rule-set/deployment identifier,
+   * e.g. "handoff") and the subdomain the operator chose for
+   * `install.domain.subdomain` (e.g. "files") are different namespaces —
+   * overriding the subdomain never changes the alias. Naming both here
+   * avoids reading like the override was ignored.
+   */
+  private deployDetail(fileCount: number, alias: string, appHost: string | null | undefined): string {
+    return appHost
+      ? `Deployed ${fileCount} file(s) to deployment alias "${alias}" (serving at ${appHost}).`
+      : `Deployed ${fileCount} file(s) to alias "${alias}".`;
   }
 
   private syncDetail(

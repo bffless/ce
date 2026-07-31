@@ -372,6 +372,83 @@ describe('AppCatalogService', () => {
       const ids = result.data.map((e) => e.id).sort();
       expect(ids).toEqual(['handoff', 'legacy-app']);
     });
+
+    describe('appUrl (regression: catalog card linked to the manifest default, not the actual install)', () => {
+      // Manifest default subdomain is "handoff" — the operator overrode it to
+      // "files" at install time, so the domain row is files.example.com. The
+      // card's "Open" link must follow the row, not the manifest.
+      const MANIFEST_WITH_DOMAIN: AppManifest = {
+        ...MANIFEST,
+        install: { ...MANIFEST.install, domain: { subdomain: 'handoff' } },
+      };
+
+      it('resolves appUrl from the stored domain row, not the manifest default subdomain', async () => {
+        registry.getRegistry.mockResolvedValue({
+          ok: true,
+          registry: { schemaVersion: 1, apps: [HANDOFF_ENTRY] },
+        });
+        mockDb.__queue([{ ...ROW, manifest: MANIFEST_WITH_DOMAIN, domainId: 'dom-1' }]);
+        mockDb.__queue([{ id: 'dom-1', domain: 'files.example.com' }]);
+
+        const result = await service.listCatalog();
+
+        expect(result.data[0].installed!.appUrl).toBe('https://files.example.com');
+      });
+
+      it('yields undefined appUrl when domainId points at a since-deleted mapping', async () => {
+        registry.getRegistry.mockResolvedValue({
+          ok: true,
+          registry: { schemaVersion: 1, apps: [HANDOFF_ENTRY] },
+        });
+        mockDb.__queue([{ ...ROW, manifest: MANIFEST_WITH_DOMAIN, domainId: 'dom-gone' }]);
+        mockDb.__queue([]); // domain mapping no longer exists
+
+        const result = await service.listCatalog();
+
+        expect(result.data[0].installed!.appUrl).toBeUndefined();
+      });
+
+      it('yields undefined appUrl with no domainId lookup at all when the row has none', async () => {
+        registry.getRegistry.mockResolvedValue({
+          ok: true,
+          registry: { schemaVersion: 1, apps: [HANDOFF_ENTRY] },
+        });
+        mockDb.__queue([{ ...ROW, manifest: MANIFEST_WITH_DOMAIN, domainId: null }]);
+
+        const result = await service.listCatalog();
+
+        expect(result.data[0].installed!.appUrl).toBeUndefined();
+        // No domainId anywhere -> the batch query is skipped entirely (only
+        // the installedApps row select happened).
+        expect(mockDb.select).toHaveBeenCalledTimes(1);
+      });
+
+      it('batches the domain lookup into a single query for multiple installed rows (no N+1)', async () => {
+        registry.getRegistry.mockResolvedValue({
+          ok: true,
+          registry: { schemaVersion: 1, apps: [HANDOFF_ENTRY] },
+        });
+        const rowA = { ...ROW, id: 'ia-1', appId: 'handoff', manifest: MANIFEST_WITH_DOMAIN, domainId: 'dom-1' };
+        const rowB = { ...LEGACY_ROW, id: 'ia-legacy', appId: 'legacy-app', domainId: 'dom-2' };
+        mockDb.__queue([rowA, rowB]);
+        mockDb.__queue([
+          { id: 'dom-1', domain: 'files.example.com' },
+          { id: 'dom-2', domain: 'legacy.example.com' },
+        ]);
+
+        const result = await service.listCatalog();
+
+        // One select() for the installedApps rows, one for the batched domain
+        // lookup — never one per row (N rows here, still 2 selects total).
+        expect(mockDb.select).toHaveBeenCalledTimes(2);
+        expect(mockDb.where).toHaveBeenCalledTimes(1);
+
+        const handoff = result.data.find((e) => e.id === 'handoff')!;
+        const legacy = result.data.find((e) => e.id === 'legacy-app')!;
+        expect(handoff.installed!.appUrl).toBe('https://files.example.com');
+        expect(legacy.installed!.appUrl).toBe('https://legacy.example.com');
+      });
+    });
   });
 
   describe('preflight', () => {

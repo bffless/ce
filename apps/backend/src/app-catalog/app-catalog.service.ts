@@ -1,8 +1,13 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client';
-import { installedApps, type InstalledApp, type InstalledAppStatus } from '../db/schema';
+import {
+  domainMappings,
+  installedApps,
+  type InstalledApp,
+  type InstalledAppStatus,
+} from '../db/schema';
 import { ProjectsService } from '../projects/projects.service';
 import { IStorageAdapter, STORAGE_ADAPTER } from '../storage/storage.interface';
 import { resolveLocalAdapter } from '../storage/local.adapter';
@@ -117,19 +122,23 @@ export class AppCatalogService {
       else rowsByAppId.set(row.appId, [row]);
     }
 
+    const domainsById = await this.fetchDomainsById(rows);
+
     const data: CatalogEntry[] = [];
     const seen = new Set<string>();
 
     if (registryResult.ok) {
       for (const entry of registryResult.registry.apps) {
         seen.add(entry.id);
-        data.push(await this.buildRegistryEntry(entry, rowsByAppId.get(entry.id) ?? []));
+        data.push(
+          await this.buildRegistryEntry(entry, rowsByAppId.get(entry.id) ?? [], domainsById),
+        );
       }
     }
 
     for (const [appId, appRows] of rowsByAppId) {
       if (seen.has(appId)) continue;
-      data.push(await this.buildManifestOnlyEntry(appRows));
+      data.push(await this.buildManifestOnlyEntry(appRows, domainsById));
     }
 
     return registryResult.ok ? { data } : { data, registryError: registryResult.error };
@@ -263,7 +272,11 @@ export class AppCatalogService {
 
   // ==================== catalog assembly helpers ====================
 
-  private async buildRegistryEntry(entry: AppRegistryEntry, rows: InstalledApp[]): Promise<CatalogEntry> {
+  private async buildRegistryEntry(
+    entry: AppRegistryEntry,
+    rows: InstalledApp[],
+    domainsById: Map<string, string>,
+  ): Promise<CatalogEntry> {
     const gates = await this.preflightService.instanceGates(entry.requires);
     const base: CatalogEntry = {
       id: entry.id,
@@ -279,11 +292,14 @@ export class AppCatalogService {
     if (rows.length === 0) return base;
 
     const row = pickPrimaryRow(rows);
-    return { ...base, installed: await this.buildInstalledSummary(row, entry.version) };
+    return { ...base, installed: await this.buildInstalledSummary(row, entry.version, domainsById) };
   }
 
   /** An installed app whose app id isn't (or no longer is) in the registry. */
-  private async buildManifestOnlyEntry(rows: InstalledApp[]): Promise<CatalogEntry> {
+  private async buildManifestOnlyEntry(
+    rows: InstalledApp[],
+    domainsById: Map<string, string>,
+  ): Promise<CatalogEntry> {
     const row = pickPrimaryRow(rows);
     const manifest = row.manifest as AppManifest;
     const gates = await this.preflightService.instanceGates(manifest.requires);
@@ -297,13 +313,14 @@ export class AppCatalogService {
       sourceUrl: manifest.sourceUrl,
       gates,
       installable: false, // no registry entry to install/reinstall from
-      installed: await this.buildInstalledSummary(row, undefined),
+      installed: await this.buildInstalledSummary(row, undefined, domainsById),
     };
   }
 
   private async buildInstalledSummary(
     row: InstalledApp,
     registryVersion: string | undefined,
+    domainsById: Map<string, string>,
   ): Promise<NonNullable<CatalogEntry['installed']>> {
     const manifest = row.manifest as AppManifest;
     const project = await this.projectsService.getProjectById(row.projectId);
@@ -316,7 +333,7 @@ export class AppCatalogService {
       projectId: row.projectId,
       projectName: `${project.owner}/${project.name}`,
       alias: row.alias,
-      appUrl: this.computeAppUrl(manifest, row),
+      appUrl: this.resolveAppUrl(row, domainsById),
       status: row.status,
       updateAvailable,
       manualSteps: this.applicableManualSteps(manifest),
@@ -367,23 +384,42 @@ export class AppCatalogService {
   }
 
   /**
-   * Only computable when this install owns a domain mapping — there is no
-   * persisted "default alias URL" on the row to fall back to (unlike the
-   * installer's in-flight `deployment.urls.default`), so a domain-less app
-   * simply has no catalog `appUrl` and the admin UI links to the deployment
-   * instead.
+   * Batch-fetches the `domain_mappings.domain` string for every row's
+   * `domainId` in one query, so `listCatalog` doesn't issue an N+1 lookup per
+   * installed row.
    */
-  private computeAppUrl(manifest: AppManifest, row: InstalledApp): string | undefined {
-    if (!row.domainId) return undefined;
-    const appHost = this.computeAppHost(manifest);
-    return appHost ? `https://${appHost}` : undefined;
+  private async fetchDomainsById(rows: InstalledApp[]): Promise<Map<string, string>> {
+    const domainIds = [...new Set(rows.map((row) => row.domainId).filter((id): id is string => Boolean(id)))];
+    if (domainIds.length === 0) return new Map();
+
+    const mappings = await db
+      .select({ id: domainMappings.id, domain: domainMappings.domain })
+      .from(domainMappings)
+      .where(inArray(domainMappings.id, domainIds));
+
+    return new Map(mappings.map((mapping) => [mapping.id, mapping.domain]));
   }
 
-  private computeAppHost(manifest: AppManifest): string | null {
-    const subdomain = manifest.install.domain?.subdomain;
-    if (!subdomain) return null;
-    const primaryDomain = this.configService.get<string>('PRIMARY_DOMAIN') || '';
-    return primaryDomain ? `${subdomain}.${primaryDomain}` : null;
+  /**
+   * The catalog card's "Open" link must point at wherever this install
+   * ACTUALLY lives — the domain row its install (or update) created — not at
+   * `manifest.install.domain.subdomain`, which is only the manifest's
+   * *default* suggestion. The operator may have overridden the subdomain at
+   * install time (e.g. manifest default `handoff`, operator chose `files`),
+   * and reading the manifest back here would silently ignore that override.
+   *
+   * Only computable when this install owns a domain mapping — there is no
+   * persisted "default alias URL" on the row to fall back to (unlike the
+   * installer's in-flight `deployment.urls.default`). If `domainId` points at
+   * a mapping that's since been deleted (operator removed it by hand), this
+   * also yields `undefined` rather than guessing from the manifest — a stale
+   * wrong link is worse than none, and the admin UI links to the deployment
+   * instead.
+   */
+  private resolveAppUrl(row: InstalledApp, domainsById: Map<string, string>): string | undefined {
+    if (!row.domainId) return undefined;
+    const domain = domainsById.get(row.domainId);
+    return domain ? `https://${domain}` : undefined;
   }
 
   private applicableManualSteps(manifest: AppManifest): AppManualStep[] {

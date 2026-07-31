@@ -504,6 +504,25 @@ describe('AppInstallerService', () => {
       expect(dto.domain).toBe('my-app.example.com');
       expect(jobs.get(jobId)!.appUrl).toBe('https://my-app.example.com');
     });
+
+    it('names both the deployment alias and the serving host in the deploy step detail (manifest alias "handoff" != overridden subdomain "my-app")', async () => {
+      preflight.projectGates.mockResolvedValue({
+        gates: [{ id: 'dns', status: 'pass', message: 'ok' }],
+        syncPlans: [],
+        appHost: 'my-app.example.com',
+      });
+      queueInstallDb();
+
+      const { jobId } = service.startInstall(ENTRY, { projectId: 'proj-1' }, 'user-1', 'my-app');
+      await service.whenIdle();
+
+      const deployStep = jobs.get(jobId)!.steps.find((s) => s.id === 'deploy')!;
+      // The alias genuinely stays "handoff" (a different namespace from the
+      // subdomain) — wording it alongside the actual serving host avoids
+      // reading like the override was ignored.
+      expect(deployStep.detail).toContain('alias "handoff"');
+      expect(deployStep.detail).toContain('my-app.example.com');
+    });
   });
 
   describe('project resolution', () => {
@@ -1064,6 +1083,62 @@ describe('AppInstallerService', () => {
       const finalUpdate = mockDb.set.mock.calls.at(-1)![0] as { version: string; status: string };
       expect(finalUpdate.status).toBe('installed');
       expect(finalUpdate.version).toBe('1.0.0'); // manifest version wins over the registry entry
+    });
+
+    describe('appUrl (regression: an update read the manifest default subdomain instead of the row it never touches)', () => {
+      // TEST_MANIFEST's install.domain.subdomain is "handoff" — an update
+      // never recreates the domain (no 'domain' step in UPDATE_STEPS), so the
+      // finished job's appUrl must come from the ORIGINAL install's stored
+      // domain row, even when that row's actual host ("files.example.com")
+      // differs from the manifest default.
+      it('resolves appUrl from the stored domain row, not the manifest default subdomain', async () => {
+        mockDb.__queue([{ domain: 'files.example.com' }]); // lookupDomainHost
+        mockDb.__queue([]); // final record update
+
+        const { jobId } = service.startUpdate(
+          { ...installed, domainId: 'dom-1' } as never,
+          { ...ENTRY, version: '1.1.0' },
+          'user-1',
+          { prune: false },
+        );
+        await service.whenIdle();
+
+        const job = jobs.get(jobId)!;
+        expect(job.status).toBe('succeeded');
+        expect(job.appUrl).toBe('https://files.example.com');
+      });
+
+      it('falls back to the deployment URL when domainId points at a since-deleted mapping', async () => {
+        mockDb.__queue([]); // lookupDomainHost: mapping gone
+        mockDb.__queue([]); // final record update
+
+        const { jobId } = service.startUpdate(
+          { ...installed, domainId: 'dom-gone' } as never,
+          { ...ENTRY, version: '1.1.0' },
+          'user-1',
+          { prune: false },
+        );
+        await service.whenIdle();
+
+        expect(jobs.get(jobId)!.appUrl).toBe('https://admin.example.com/alias/handoff');
+      });
+
+      it('names both the deployment alias and the serving host in the deploy step detail', async () => {
+        mockDb.__queue([{ domain: 'files.example.com' }]);
+        mockDb.__queue([]);
+
+        const { jobId } = service.startUpdate(
+          { ...installed, domainId: 'dom-1' } as never,
+          { ...ENTRY, version: '1.1.0' },
+          'user-1',
+          { prune: false },
+        );
+        await service.whenIdle();
+
+        const deployStep = jobs.get(jobId)!.steps.find((s) => s.id === 'deploy')!;
+        expect(deployStep.detail).toContain('alias "handoff"');
+        expect(deployStep.detail).toContain('files.example.com');
+      });
     });
   });
 
