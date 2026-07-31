@@ -236,7 +236,14 @@ export class LocalStorageAdapter implements IStorageAdapter {
     const sanitizedKey = this.sanitizeKey(key);
     // For local storage, we'll serve files through the backend API
     // The URL format will be: {baseUrl}/{key} (unprefixed for external access)
-    return `${this.baseUrl}/${sanitizedKey}`;
+    // Percent-encode each path segment (not the whole key, which would also
+    // encode the `/` separators): a raw key can contain characters that are
+    // invalid in an HTTP header when this URL is later used as a redirect
+    // Location (e.g. a macOS screenshot filename with U+202F narrow no-break
+    // space), which throws ERR_INVALID_CHAR from Node's setHeader. Express
+    // decodes route params on the serving side, so resolution is unchanged.
+    const encodedKey = sanitizedKey.split('/').map(encodeURIComponent).join('/');
+    return `${this.baseUrl}/${encodedKey}`;
   }
 
   /**

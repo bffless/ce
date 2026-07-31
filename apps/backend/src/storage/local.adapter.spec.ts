@@ -159,6 +159,33 @@ describe('LocalStorageAdapter', () => {
 
       expect(url).toBe('http://localhost:3000/files/owner/repo/abc123/test.txt');
     });
+
+    it('leaves a plain-ASCII sha-path key byte-identical to the pre-encoding behavior', async () => {
+      // encodeURIComponent leaves unreserved characters (A-Za-z0-9 - _ . ! ~ * ' ( ))
+      // untouched, so a typical storage key round-trips unchanged.
+      const key = 'sahp/handoff/uploads/content/abc123-def_456.file~name!(1).png';
+      const url = await adapter.getUrl(key);
+
+      expect(url).toBe(`http://localhost:3000/files/${key}`);
+    });
+
+    it('percent-encodes a key containing a raw space and U+202F narrow no-break space (regression: macOS screenshot filename 500)', async () => {
+      // Live bug: a macOS screenshot filename contains U+202F between the time
+      // and "AM"/"PM". The unencoded URL was later used as a redirect Location
+      // header, and Node's setHeader throws ERR_INVALID_CHAR on raw spaces /
+      // U+202F, 500-ing every /r/* raw-file link on local-FS installs.
+      const key = 'sahp/handoff/uploads/content/Screenshot 2026-07-31 at 7.44.31 AM.png';
+      const url = await adapter.getUrl(key);
+
+      expect(url).not.toContain(' ');
+      expect(url).not.toContain(' ');
+
+      // Resolution must be unchanged: decoding each `/`-delimited segment
+      // round-trips to the original key, since only segments (not `/`) are encoded.
+      const withoutBase = url.slice('http://localhost:3000/files/'.length);
+      const decoded = withoutBase.split('/').map(decodeURIComponent).join('/');
+      expect(decoded).toBe(key);
+    });
   });
 
   describe('listKeys', () => {
