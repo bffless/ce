@@ -527,6 +527,35 @@ describe('AppInstallerService', () => {
       expect(ruleSets.syncRuleSet).not.toHaveBeenCalled();
       expect(mockDb.insert).not.toHaveBeenCalled();
     });
+
+    it('aborts on a rule set carrying keys the sync DTO does not declare (HTTP parity)', async () => {
+      // `whitelist` alone would silently DELETE this key and sync a payload
+      // that is not what the bundle shipped; the HTTP endpoint 400s on it.
+      bundleService.fetchBundle.mockResolvedValue(
+        makeBundle({}, {
+          ruleSet: { name: 'handoff' },
+          rules: [
+            {
+              pathPattern: '/api/nodes',
+              method: 'GET',
+              targetUrl: 'https://api.example.com',
+              futureFeatureFlag: true,
+            },
+          ],
+          schemas: [],
+        }),
+      );
+
+      const { jobId } = service.startInstall(ENTRY, { projectId: 'proj-1' }, 'user-1');
+      await service.whenIdle();
+
+      const job = jobs.get(jobId)!;
+      expect(job.status).toBe('failed');
+      expect(job.steps.find((s) => s.id === 'fetch')!.status).toBe('failed');
+      expect(job.steps.find((s) => s.id === 'fetch')!.error).toMatch(/futureFeatureFlag/);
+      expect(ruleSets.syncRuleSet).not.toHaveBeenCalled();
+      expect(mockDb.insert).not.toHaveBeenCalled();
+    });
   });
 
   describe('sync results', () => {
@@ -592,6 +621,96 @@ describe('AppInstallerService', () => {
       expect(domains.create).not.toHaveBeenCalled();
       const failedUpdate = mockDb.set.mock.calls.at(-1)![0] as { status: string };
       expect(failedUpdate.status).toBe('failed');
+    });
+  });
+
+  describe('progress persistence', () => {
+    it('writes the sync step results to the row before the deploy runs', async () => {
+      queueInstallDb();
+
+      service.startInstall(ENTRY, { projectId: 'proj-1' }, 'user-1');
+      await service.whenIdle();
+
+      // The insert uses values(), so the FIRST set() is the post-sync flush.
+      const afterSync = mockDb.set.mock.calls[0][0] as {
+        ruleSetIds: string[];
+        createdResources: CreatedResources;
+        deploymentId: string | null;
+      };
+      expect(afterSync.ruleSetIds).toEqual(['rs-1', 'rs-2']);
+      expect(afterSync.createdResources.ruleSetIds).toEqual(['rs-1', 'rs-2']);
+      // Nothing deployed yet at that point.
+      expect(afterSync.deploymentId).toBeNull();
+      expect(mockDb.set.mock.invocationCallOrder[0]).toBeLessThan(
+        deployments.createDeploymentFromZip.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('carries what the sync created into the failure write, so undo can find it', async () => {
+      // Nothing hand-seeded: everything asserted here must have been produced
+      // by the run itself. A `failed` row with an empty createdResources would
+      // orphan the rule sets/schemas the sync just created.
+      ruleSets.syncRuleSet
+        .mockReset()
+        .mockResolvedValueOnce(
+          syncResponse({
+            ruleSetId: 'rs-1',
+            schemaResolutions: [
+              { name: 'handoff_nodes', action: 'create', targetSchemaId: 'sch-new', fieldMismatch: false },
+            ],
+          }),
+        )
+        .mockResolvedValueOnce(syncResponse({ ruleSetId: 'rs-2' }));
+      deployments.createDeploymentFromZip.mockResolvedValue(deployResponse({ aliases: [] }));
+      queueInstallDb();
+
+      service.startInstall(ENTRY, { projectId: 'proj-1' }, 'user-1');
+      await service.whenIdle();
+
+      const failureWrite = mockDb.set.mock.calls.at(-1)![0] as {
+        status: string;
+        ruleSetIds: string[];
+        schemaIds: string[];
+        createdResources: CreatedResources;
+      };
+      expect(failureWrite.status).toBe('failed');
+      expect(failureWrite.ruleSetIds).toEqual(['rs-1', 'rs-2']);
+      expect(failureWrite.schemaIds).toEqual(['sch-new']);
+      expect(failureWrite.createdResources.ruleSetIds).toEqual(['rs-1', 'rs-2']);
+      expect(failureWrite.createdResources.schemaIdsCreated).toEqual(['sch-new']);
+    });
+
+    it('persists the domain id as soon as the domain step created it', async () => {
+      certStep.plan.mockRejectedValue(new Error('boom')); // cert runs after domain
+      queueInstallDb();
+
+      service.startInstall(ENTRY, { projectId: 'proj-1' }, 'user-1');
+      await service.whenIdle();
+
+      const writes = mockDb.set.mock.calls.map((c) => c[0] as { domainId?: string | null });
+      const firstWithDomain = writes.findIndex((w) => w.domainId === 'dom-1');
+      expect(firstWithDomain).toBeGreaterThan(-1);
+      // Not only at the final record write.
+      expect(firstWithDomain).toBeLessThan(writes.length - 1);
+    });
+
+    it('persists a failed update run too', async () => {
+      deployments.createDeploymentFromZip.mockResolvedValue(deployResponse({ aliases: [] }));
+
+      service.startUpdate(
+        { ...INSTALLED_ROW, status: 'installed', createdResources: {} } as never,
+        ENTRY,
+        'user-1',
+        { prune: false },
+      );
+      await service.whenIdle();
+
+      const failureWrite = mockDb.set.mock.calls.at(-1)![0] as {
+        status: string;
+        createdResources: CreatedResources;
+      };
+      expect(failureWrite.status).toBe('failed');
+      expect(failureWrite.createdResources.ruleSetIds).toEqual(['rs-1', 'rs-2']);
     });
   });
 

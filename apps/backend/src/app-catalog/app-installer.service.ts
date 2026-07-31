@@ -68,6 +68,20 @@ interface ProjectRef {
 }
 
 /**
+ * Everything a step can produce that must survive a crash. Written to the
+ * `installed_apps` row at every step boundary AND on the failure path — undo
+ * walks `createdResources`, so state that only lived in memory would orphan
+ * whatever the failed run had already created.
+ */
+interface InstallProgress {
+  created: CreatedResources;
+  ruleSetIds: string[];
+  schemaIds: string[];
+  deploymentId?: string;
+  domainId?: string;
+}
+
+/**
  * AppInstallerService — the applier behind 1-click install (Task 9 of the
  * app-catalog spec).
  *
@@ -143,6 +157,9 @@ export class AppInstallerService {
   ): Promise<void> {
     let step: InstallStepId = 'preflight';
     let rowId: string | undefined;
+    // Accumulated state, persisted at every step boundary (see persistProgress)
+    // and carried into the failure write so a crashed install stays undoable.
+    let progress: InstallProgress | undefined;
 
     try {
       // ---- 1. preflight: re-verify every gate before anything is written ----
@@ -185,17 +202,24 @@ export class AppInstallerService {
       // Carry forward what a previous (failed) attempt already created.
       this.mergeCreated(created, row.createdResources);
 
+      progress = {
+        created,
+        ruleSetIds: [...(row.ruleSetIds ?? [])],
+        schemaIds: [...(row.schemaIds ?? [])],
+        deploymentId: row.deploymentId ?? undefined,
+        domainId: row.domainId ?? undefined,
+      };
+
       // ---- 4. sync-rules ----
-      const ruleSetIds: string[] = [...(row.ruleSetIds ?? [])];
-      const schemaIds: string[] = [...(row.schemaIds ?? [])];
       const { missingSecrets, warnings } = await this.syncRuleSets(
         ruleSets,
         manifest,
         project.id,
         userId,
         { prune: false },
-        { created, ruleSetIds, schemaIds },
+        progress,
       );
+      await this.persistProgress(row.id, progress);
       this.jobs.setStep(jobId, step, {
         status: 'done',
         detail: this.syncDetail(ruleSets.length, missingSecrets, warnings),
@@ -207,6 +231,8 @@ export class AppInstallerService {
       const deployment = await this.deployBundle(bundle, manifest, ruleSets, project, userId);
       created.aliasName = manifest.install.alias;
       created.deploymentId = deployment.deploymentId;
+      progress.deploymentId = deployment.deploymentId;
+      await this.persistProgress(row.id, progress);
       this.jobs.setStep(jobId, step, {
         status: 'done',
         detail: `Deployed ${deployment.fileCount} file(s) to alias "${manifest.install.alias}".`,
@@ -215,7 +241,11 @@ export class AppInstallerService {
       // ---- 6. domain ----
       step = 'domain';
       const domainOutcome = await this.applyDomainStep(jobId, manifest, row, project.id, appHost, userId);
-      if (domainOutcome.domainId) created.domainId = domainOutcome.domainId;
+      if (domainOutcome.domainId) {
+        created.domainId = domainOutcome.domainId;
+        progress.domainId = domainOutcome.domainId;
+      }
+      await this.persistProgress(row.id, progress);
 
       // ---- 7. certificate (never fails the install) ----
       step = 'certificate';
@@ -228,6 +258,7 @@ export class AppInstallerService {
       // ---- 8. schedules ----
       step = 'schedules';
       await this.applyScheduleStep(jobId, manifest, project.id, userId, created);
+      await this.persistProgress(row.id, progress);
 
       // ---- 9. record ----
       step = 'record';
@@ -244,8 +275,8 @@ export class AppInstallerService {
           alias: manifest.install.alias,
           bundleSha256: bundle.sha256,
           manifest,
-          ruleSetIds,
-          schemaIds,
+          ruleSetIds: progress.ruleSetIds,
+          schemaIds: progress.schemaIds,
           deploymentId: deployment.deploymentId,
           domainId: created.domainId ?? null,
           createdResources: created,
@@ -258,7 +289,7 @@ export class AppInstallerService {
       this.jobs.finish(jobId, 'succeeded', { installedAppId: row.id, manualSteps, appUrl });
       this.logger.log(`Installed app ${manifest.id} v${manifest.version} into project ${project.id}`);
     } catch (error) {
-      await this.failJob(jobId, step, rowId, error);
+      await this.failJob(jobId, step, rowId, error, progress);
     }
   }
 
@@ -272,6 +303,7 @@ export class AppInstallerService {
     opts: { prune: boolean },
   ): Promise<void> {
     let step: InstallStepId = 'fetch';
+    let progress: InstallProgress | undefined;
 
     try {
       this.jobs.setStep(jobId, step, { status: 'running' });
@@ -293,16 +325,22 @@ export class AppInstallerService {
 
       step = 'sync-rules';
       this.jobs.setStep(jobId, step, { status: 'running' });
-      const ruleSetIds: string[] = [...(installed.ruleSetIds ?? [])];
-      const schemaIds: string[] = [...(installed.schemaIds ?? [])];
+      progress = {
+        created,
+        ruleSetIds: [...(installed.ruleSetIds ?? [])],
+        schemaIds: [...(installed.schemaIds ?? [])],
+        deploymentId: installed.deploymentId ?? undefined,
+        domainId: installed.domainId ?? undefined,
+      };
       const { missingSecrets, warnings } = await this.syncRuleSets(
         ruleSets,
         manifest,
         project.id,
         userId,
         { prune: opts.prune },
-        { created, ruleSetIds, schemaIds },
+        progress,
       );
+      await this.persistProgress(installed.id, progress);
       this.jobs.setStep(jobId, step, {
         status: 'done',
         detail: this.syncDetail(ruleSets.length, missingSecrets, warnings, opts.prune),
@@ -314,6 +352,8 @@ export class AppInstallerService {
       const deployment = await this.deployBundle(bundle, manifest, ruleSets, project, userId);
       created.aliasName = manifest.install.alias;
       created.deploymentId = deployment.deploymentId;
+      progress.deploymentId = deployment.deploymentId;
+      await this.persistProgress(installed.id, progress);
       this.jobs.setStep(jobId, step, {
         status: 'done',
         detail: `Deployed ${deployment.fileCount} file(s) to alias "${manifest.install.alias}".`,
@@ -328,8 +368,8 @@ export class AppInstallerService {
           version: manifest.version,
           bundleSha256: bundle.sha256,
           manifest,
-          ruleSetIds,
-          schemaIds,
+          ruleSetIds: progress.ruleSetIds,
+          schemaIds: progress.schemaIds,
           deploymentId: deployment.deploymentId,
           createdResources: created,
           status: 'installed',
@@ -348,7 +388,7 @@ export class AppInstallerService {
         appUrl,
       });
     } catch (error) {
-      await this.failJob(jobId, step, installed.id, error);
+      await this.failJob(jobId, step, installed.id, error, progress);
     }
   }
 
@@ -500,7 +540,7 @@ export class AppInstallerService {
     projectId: string,
     userId: string,
     options: { prune: boolean },
-    acc: { created: CreatedResources; ruleSetIds: string[]; schemaIds: string[] },
+    acc: InstallProgress,
   ): Promise<{ missingSecrets: string[]; warnings: string[] }> {
     const missingSecrets: string[] = [];
     const warnings: string[] = [];
@@ -815,6 +855,26 @@ export class AppInstallerService {
     return inserted;
   }
 
+  /**
+   * Flushes accumulated progress to the row. Called after every step that
+   * creates something, so a crash (or a later step's failure) still leaves
+   * `createdResources` describing exactly what exists — which is what undo
+   * replays and what preflight reads to recognise a re-run's own objects.
+   */
+  private async persistProgress(rowId: string, progress: InstallProgress): Promise<void> {
+    await db
+      .update(installedApps)
+      .set({
+        ruleSetIds: progress.ruleSetIds,
+        schemaIds: progress.schemaIds,
+        deploymentId: progress.deploymentId ?? null,
+        domainId: progress.domainId ?? null,
+        createdResources: progress.created,
+        updatedAt: new Date(),
+      })
+      .where(eq(installedApps.id, rowId));
+  }
+
   private async requireRow(installedAppId: string): Promise<InstalledApp> {
     const [row] = await db
       .select()
@@ -857,7 +917,17 @@ export class AppInstallerService {
       }
 
       const dto = plainToInstance(SyncProxyRuleSetDto, json);
-      const errors = validateSync(dto as object, { whitelist: true, forbidUnknownValues: false });
+      // forbidNonWhitelisted mirrors main.ts's global ValidationPipe. Without
+      // it, `whitelist` would silently DELETE undecorated keys (a typo'd or
+      // newer-schema `pipelineConfig` key just vanishes) and the mutated
+      // object is what gets synced — installing a pipeline that is not the one
+      // the bundle shipped. The same payload 400s over HTTP; a stale bundle
+      // must abort here too, not install quietly altered.
+      const errors = validateSync(dto as object, {
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        forbidUnknownValues: false,
+      });
       if (errors.length > 0) {
         throw new BadRequestException(
           `${entry.file} failed rule-set validation: ${flattenValidationErrors(errors).join('; ')}`,
@@ -939,17 +1009,33 @@ export class AppInstallerService {
     step: InstallStepId,
     rowId: string | undefined,
     error: unknown,
+    progress?: InstallProgress,
   ): Promise<void> {
     const message = this.messageOf(error);
     this.logger.error(`App install job ${jobId} failed at step "${step}": ${message}`);
     this.jobs.setStep(jobId, step, { status: 'failed', error: message });
 
-    // Keep the row — it powers both undo and a resume-by-reinstall.
+    // Keep the row — it powers both undo and a resume-by-reinstall — and carry
+    // the accumulated state with it. The step that threw may have created
+    // things after the last persistProgress (e.g. schedules), and a row that
+    // says "failed" with an empty createdResources is an unrecoverable orphan.
     if (rowId) {
       try {
         await db
           .update(installedApps)
-          .set({ status: 'failed', updatedAt: new Date() })
+          .set({
+            status: 'failed',
+            ...(progress
+              ? {
+                  ruleSetIds: progress.ruleSetIds,
+                  schemaIds: progress.schemaIds,
+                  deploymentId: progress.deploymentId ?? null,
+                  domainId: progress.domainId ?? null,
+                  createdResources: progress.created,
+                }
+              : {}),
+            updatedAt: new Date(),
+          })
           .where(eq(installedApps.id, rowId));
       } catch (updateError) {
         this.logger.error(`Could not mark install row ${rowId} failed: ${this.messageOf(updateError)}`);
