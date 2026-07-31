@@ -17,12 +17,32 @@ import { AlertTriangle, LayoutGrid, X } from 'lucide-react';
 export function AppsPage() {
   const { data, isLoading, isError, refetch } = useGetAppCatalogQuery();
   const [registryNoticeDismissed, setRegistryNoticeDismissed] = useState(false);
-  const [installTarget, setInstallTarget] = useState<CatalogEntry | null>(null);
-  const [updateTarget, setUpdateTarget] = useState<{ entry: CatalogEntry; jobId: string } | null>(
-    null,
-  );
+  // These hold the entry captured at open time — used only as an id lookup
+  // key and as a fallback if the app disappears from the catalog while the
+  // dialog is open. The dialog is actually handed the LIVE entry (derived
+  // below from the current `data`), not this snapshot: server-side mutations
+  // like ackManualStep invalidate the `AppCatalog` tag and refetch `data`,
+  // and a stale snapshot here would never pick that up (the Done screen's
+  // ack checkboxes would appear permanently unchecked/disabled).
+  const [installTargetSnapshot, setInstallTargetSnapshot] = useState<CatalogEntry | null>(null);
+  const [updateTargetSnapshot, setUpdateTargetSnapshot] = useState<{
+    entry: CatalogEntry;
+    jobId: string;
+  } | null>(null);
 
   const entries = data?.data ?? [];
+
+  const installTarget = installTargetSnapshot
+    ? (entries.find((e) => e.id === installTargetSnapshot.id) ?? installTargetSnapshot)
+    : null;
+  const updateTarget = updateTargetSnapshot
+    ? {
+        entry:
+          entries.find((e) => e.id === updateTargetSnapshot.entry.id) ??
+          updateTargetSnapshot.entry,
+        jobId: updateTargetSnapshot.jobId,
+      }
+    : null;
 
   return (
     <div className="container mx-auto py-8">
@@ -85,8 +105,10 @@ export function AppsPage() {
             <AppCard
               key={entry.id}
               entry={entry}
-              onInstall={setInstallTarget}
-              onUpdateStarted={(updatedEntry, jobId) => setUpdateTarget({ entry: updatedEntry, jobId })}
+              onInstall={setInstallTargetSnapshot}
+              onUpdateStarted={(updatedEntry, jobId) =>
+                setUpdateTargetSnapshot({ entry: updatedEntry, jobId })
+              }
             />
           ))}
         </div>
@@ -96,7 +118,7 @@ export function AppsPage() {
         <InstallDialog
           entry={installTarget}
           open={installTarget !== null}
-          onOpenChange={(open) => !open && setInstallTarget(null)}
+          onOpenChange={(open) => !open && setInstallTargetSnapshot(null)}
         />
       )}
 
@@ -104,7 +126,7 @@ export function AppsPage() {
         <InstallDialog
           entry={updateTarget.entry}
           open={updateTarget !== null}
-          onOpenChange={(open) => !open && setUpdateTarget(null)}
+          onOpenChange={(open) => !open && setUpdateTargetSnapshot(null)}
           mode="update"
           initialJobId={updateTarget.jobId}
         />
