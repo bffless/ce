@@ -100,6 +100,24 @@ describe('LocalPresignedDownloadController', () => {
       await get(rawQuery({ key: encodeKey(KEY), exp: 'soon', sig: 'x'.repeat(64) })).expect(400);
     });
 
+    // Express's query parser hands back an object for `dl[a]=b` and an array
+    // for a repeated param. Before the type guard those reached
+    // canonicalDownloadString, where Buffer.from(object) threw INSIDE the
+    // signature computation — an unauthenticated 500 on a pre-auth path.
+    it.each([
+      ['object', 'dl[a]=b'],
+      ['array', 'dl=one&dl=two'],
+      ['object key', 'key[a]=b&exp=1800000000&sig=x'],
+    ])('400s (not 500) on a structured %s parameter', async (_label, fragment) => {
+      const base = new URLSearchParams((await mint()).slice(1));
+      base.delete(fragment.startsWith('key') ? 'key' : 'dl');
+      const res = await get(`?${base.toString()}&${fragment}`).expect(400);
+
+      // Pins the failure to the type guard specifically, not to some other
+      // 400 further down the handler.
+      expect(res.body.message).toBe('Malformed signed download parameters');
+    });
+
     it('403s on a tampered signature', async () => {
       const query = await mint();
       await get(query.replace(/sig=[0-9a-f]{64}/, `sig=${'a'.repeat(64)}`)).expect(403);
@@ -205,6 +223,38 @@ describe('LocalPresignedDownloadController', () => {
       expect(res.headers['content-disposition']).toBe('attachment; filename="Holiday Clip.mp4"');
     });
 
+    // Live 500: sanitizeDownloadFilename leaves non-Latin-1 characters intact
+    // and res.setHeader throws ERR_INVALID_CHAR on anything above U+00FF.
+    // EVERY macOS screenshot carries U+202F between the time and AM/PM, and
+    // Studio's sign rule passes the user's own filename straight through, so
+    // this was reachable with a completely ordinary file.
+    it('serves a U+202F filename as RFC 6266 dual form instead of 500ing', async () => {
+      const res = await get(
+        await mint(KEY, 600, { downloadFilename: 'Screenshot 7.44.31\u202fAM.png' }),
+      ).expect(200);
+
+      expect(res.headers['content-disposition']).toBe(
+        `attachment; filename="Screenshot 7.44.31_AM.png"; filename*=UTF-8''Screenshot%207.44.31%E2%80%AFAM.png`,
+      );
+      expect(Buffer.from(res.body)).toEqual(BODY);
+    });
+
+    it('serves a CJK filename as RFC 6266 dual form with a usable ASCII fallback', async () => {
+      const res = await get(await mint(KEY, 600, { downloadFilename: '文件.png' })).expect(200);
+
+      expect(res.headers['content-disposition']).toBe(
+        `attachment; filename="download.png"; filename*=UTF-8''%E6%96%87%E4%BB%B6.png`,
+      );
+    });
+
+    it('leaves a pure-ASCII filename in the plain quoted form (no filename*)', async () => {
+      const res = await get(
+        await mint(KEY, 600, { downloadFilename: 'Holiday Clip.mp4' }),
+      ).expect(200);
+
+      expect(res.headers['content-disposition']).not.toContain('filename*');
+    });
+
     it('sanitizes a hostile dl before it reaches the header', async () => {
       const res = await get(
         await mint(KEY, 600, { downloadFilename: 'a/b/ev"il\r\nX-Evil: 1.mp4' }),
@@ -229,6 +279,29 @@ describe('LocalPresignedDownloadController', () => {
 
       expect(res.headers['content-range']).toBe(`bytes 8-${BODY.length - 1}/${BODY.length}`);
       expect(Buffer.from(res.body)).toEqual(BODY.subarray(8));
+    });
+
+    // RFC 9110 §14.1.2: `bytes=-N` is the SUFFIX form — the last N bytes.
+    // Reading the empty first group as a defaulted 0 served bytes 0..N and
+    // mislabelled them in Content-Range, which a player renders as garbage.
+    it('serves a suffix range as the LAST N bytes (curl -r -5)', async () => {
+      const res = await get(await mint()).set('Range', 'bytes=-5').expect(206);
+
+      expect(res.headers['content-range']).toBe(`bytes 11-15/${BODY.length}`);
+      expect(res.headers['content-length']).toBe('5');
+      expect(Buffer.from(res.body)).toEqual(BODY.subarray(BODY.length - 5));
+    });
+
+    it('serves the whole file when the suffix exceeds its size', async () => {
+      const res = await get(await mint()).set('Range', 'bytes=-999').expect(206);
+
+      expect(res.headers['content-range']).toBe(`bytes 0-${BODY.length - 1}/${BODY.length}`);
+      expect(Buffer.from(res.body)).toEqual(BODY);
+    });
+
+    it('416s a zero-length suffix range', async () => {
+      const res = await get(await mint()).set('Range', 'bytes=-0').expect(416);
+      expect(res.headers['content-range']).toBe(`bytes */${BODY.length}`);
     });
 
     it('416s an unsatisfiable range', async () => {

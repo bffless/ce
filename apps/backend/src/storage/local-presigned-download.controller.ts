@@ -20,13 +20,22 @@ import { verifyLocalDownload } from './presign.util';
 import { resolveLocalAdapter } from './local.adapter';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 import { resolveContentType } from '../common/utils/content-type.util';
-import { sanitizeDownloadFilename } from '../common/utils/download-filename.util';
+import {
+  sanitizeDownloadFilename,
+  formatAttachmentDisposition,
+} from '../common/utils/download-filename.util';
 
+/**
+ * Deliberately `unknown`, not `string`: Express's query parser yields objects
+ * (`?dl[a]=b`) and arrays (`?dl=1&dl=2`) as well as strings, and typing these
+ * as `string` would be a lie the compiler then stops us from checking. The
+ * handler narrows them before use.
+ */
 interface PresignDownloadQuery {
-  key?: string;
-  exp?: string;
-  sig?: string;
-  dl?: string;
+  key?: unknown;
+  exp?: unknown;
+  sig?: unknown;
+  dl?: unknown;
 }
 
 /**
@@ -82,7 +91,22 @@ export class LocalPresignedDownloadController {
     if (!local || !local.supportsPresignedUrls()) throw new NotFoundException();
 
     // 3. Params.
+    //
+    // TYPES FIRST. Express's query parser turns `?dl[a]=b` into an object and
+    // `?dl=1&dl=2` into an array, so nothing here is a string until proven
+    // one. Without this guard a structured `dl` reaches
+    // `canonicalDownloadString`, where `Buffer.from(object)` throws INSIDE the
+    // signature computation — i.e. an unauthenticated 500, reachable before
+    // any signature is validated.
     const { key: encodedKey, exp: expRaw, sig, dl } = query;
+    if (
+      typeof encodedKey !== 'string' ||
+      typeof expRaw !== 'string' ||
+      typeof sig !== 'string' ||
+      (dl !== undefined && typeof dl !== 'string')
+    ) {
+      throw new BadRequestException('Malformed signed download parameters');
+    }
     if (!encodedKey || !expRaw || !sig) {
       throw new BadRequestException('Missing signed download parameters');
     }
@@ -152,9 +176,15 @@ export class LocalPresignedDownloadController {
     // `dl` is re-sanitized here, not trusted from the query: a signed URL is
     // minted once and then replayed by an untrusted client, and this value is
     // interpolated straight into a header.
+    //
+    // formatAttachmentDisposition, not raw interpolation: a filename with any
+    // character above U+00FF makes res.setHeader throw ERR_INVALID_CHAR, and
+    // EVERY macOS screenshot carries U+202F between the time and AM/PM. Those
+    // names arrive here for real — Studio's sign rule passes the user's own
+    // filename straight through — so this path 500'd on a very ordinary file.
     const filename = sanitizeDownloadFilename(dl);
     if (filename) {
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Disposition', formatAttachmentDisposition(filename));
     }
 
     // 8. Range — videos need seeking, and fs.createReadStream gives inclusive
@@ -164,8 +194,23 @@ export class LocalPresignedDownloadController {
     if (rangeHeader) {
       const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
       if (match && (match[1] || match[2])) {
-        const start = match[1] ? parseInt(match[1], 10) : 0;
-        const end = match[2] ? Math.min(parseInt(match[2], 10), size - 1) : size - 1;
+        let start: number;
+        let end: number;
+
+        if (match[1]) {
+          start = parseInt(match[1], 10);
+          end = match[2] ? Math.min(parseInt(match[2], 10), size - 1) : size - 1;
+        } else {
+          // SUFFIX form. `bytes=-N` (what `curl -r -N` sends) means the LAST N
+          // bytes, not bytes 0..N — RFC 9110 §14.1.2. Reading match[1] as a
+          // defaulted 0 would serve the wrong bytes AND mislabel them in
+          // Content-Range, which a video player would happily render as
+          // garbage. A zero-length suffix is unsatisfiable by definition and
+          // falls into the 416 below via start > end.
+          const suffix = parseInt(match[2], 10);
+          start = Math.max(0, size - suffix);
+          end = suffix === 0 ? -1 : size - 1;
+        }
 
         if (start >= size || start > end) {
           res.status(416).setHeader('Content-Range', `bytes */${size}`);
