@@ -117,7 +117,7 @@ export class PrimarySslService {
     );
   }
 
-  async issueLetsEncrypt(): Promise<{ issued: boolean; sans: string[]; reused: boolean }> {
+  async issueLetsEncrypt(opts?: { extraSans?: string[] }): Promise<{ issued: boolean; sans: string[]; reused: boolean }> {
     this.assertEnabled();
     const domain = this.requireDomain();
     if (this.snap.readPendingRevert()) {
@@ -127,7 +127,26 @@ export class PrimarySslService {
     if (!pre.ok) {
       throw new BadRequestException('DNS/port-80 preflight failed; not requesting a certificate');
     }
-    const res = await this.ssl.requestPrimaryDomainCertificate(domain, { target: 'staging' });
+    // Extra SANs (e.g. an app-catalog subdomain) get their own preflight
+    // probe on top of the fixed [apex, www, admin] set above — never a
+    // reduction of the existing hard gate, purely additive.
+    const extraSans = opts?.extraSans ?? [];
+    if (extraSans.length > 0) {
+      const extraChecks = await Promise.all(extraSans.map((host) => this.preflightSvc.probeHost(host)));
+      const failed = extraChecks.filter((c) => !c.probeOk);
+      if (failed.length > 0) {
+        throw new BadRequestException(
+          `DNS/port-80 preflight failed for additional host(s): ${failed.map((c) => c.host).join(', ')}`,
+        );
+      }
+    }
+    // Keep the call shape byte-identical to before when no extraSans are
+    // requested (no-opts callers, and the existing regression tests, expect
+    // exactly `{ target: 'staging' }`).
+    const res = await this.ssl.requestPrimaryDomainCertificate(
+      domain,
+      extraSans.length > 0 ? { target: 'staging', extraSans } : { target: 'staging' },
+    );
     if (!res.success) {
       throw new BadRequestException(res.error || 'Certificate issuance failed');
     }

@@ -105,9 +105,18 @@ describe('Storage Integration Tests', () => {
       expect(typeof (metadata.lastModified as Date).getTime).toBe('function');
     });
 
-    it('should generate presigned/signed/SAS URL', async () => {
+    it('should generate a signed download URL', async () => {
+      // Local storage mints a RELATIVE, same-origin signed URL (the browser
+      // resolves it against the host that served the page) rather than an
+      // absolute bucket URL — see LocalStorageAdapter.getUrl.
       const url = await adapter.getUrl(testKey, 300);
-      expect(url).toMatch(/^https?:\/\//);
+      expect(url).toMatch(/^\/api\/storage\/presigned\/local\?/);
+      expect(
+        Buffer.from(
+          new URL(url, 'https://app.example').searchParams.get('key')!,
+          'base64url',
+        ).toString('utf8'),
+      ).toBe(testKey);
     });
 
     it('should list keys with prefix', async () => {

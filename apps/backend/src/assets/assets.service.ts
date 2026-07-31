@@ -12,6 +12,8 @@ import { assets, Asset } from '../db/schema';
 import { STORAGE_ADAPTER } from '../storage/storage.module';
 import { IStorageAdapter } from '../storage/storage.interface';
 import { StorageQuotaService } from '../storage/storage-quota.service';
+import { resolveLocalAdapter } from '../storage/local.adapter';
+import { MAX_EXPIRES_IN_SECONDS } from '../storage/presign.util';
 import {
   UploadAssetDto,
   UpdateAssetDto,
@@ -451,12 +453,20 @@ export class AssetsService implements OnModuleInit {
     // Get URL from storage adapter
     const url = await this.storageAdapter.getUrl(asset.storageKey, expiresIn);
 
-    // Calculate expiration if provided
-    // Note: For local storage, expiresIn is ignored (URLs are permanent)
-    // For MinIO/S3, if expiresIn is undefined, the adapter uses its default
+    // Calculate expiration if provided.
+    //
+    // Local storage no longer ignores expiresIn — it mints a real signed URL
+    // that genuinely stops working at `exp` — but it CLAMPS the lifetime to
+    // MAX_EXPIRES_IN_SECONDS. Reporting the unclamped request back would tell
+    // a caller their link lasts a day when it dies in an hour, so mirror the
+    // adapter's clamp here. Bucket adapters honour longer lifetimes, so this
+    // only applies when the active backend resolves to local.
     let expiresAt: string | undefined;
     if (expiresIn !== undefined) {
-      expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
+      const effective = resolveLocalAdapter(this.storageAdapter)
+        ? Math.min(Math.max(1, Math.floor(expiresIn)), MAX_EXPIRES_IN_SECONDS)
+        : expiresIn;
+      expiresAt = new Date(Date.now() + effective * 1000).toISOString();
     }
 
     return { url, expiresAt };

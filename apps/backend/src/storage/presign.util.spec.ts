@@ -3,6 +3,9 @@ import {
   explicitPublicOrigin,
   signLocalUpload,
   verifyLocalUpload,
+  deriveDownloadKey,
+  signLocalDownload,
+  verifyLocalDownload,
   hasRealPresignSecret,
   DEFAULT_MAX_UPLOAD_BYTES,
   MAX_EXPIRES_IN_SECONDS,
@@ -244,5 +247,96 @@ describe('every LocalStorageAdapter construction site: relative by default, PRIM
     const url = await dynamic.getPresignedUploadUrl!('o/r/uploads/content/a.bin');
     expect(url.startsWith(LOCAL_PRESIGN_PATH)).toBe(true);
     expect(url).not.toMatch(/^https?:\/\//);
+  });
+});
+
+describe('local download presigning', () => {
+  const root = derivePresignKey({ ENCRYPTION_KEY: 'test-secret' });
+  const dlKey = deriveDownloadKey(root);
+  const KEY = 'o/r/uploads/content/a.mp4';
+  const EXP = 1_800_000_000;
+
+  it('derives a download key distinct from the upload key it is derived from', () => {
+    expect(dlKey.equals(root)).toBe(false);
+    expect(dlKey.length).toBe(32);
+  });
+
+  it('derives the same download key deterministically', () => {
+    expect(deriveDownloadKey(root).equals(dlKey)).toBe(true);
+  });
+
+  it('round-trips a signature', () => {
+    const sig = signLocalDownload({ key: KEY, exp: EXP }, dlKey);
+    expect(verifyLocalDownload({ key: KEY, exp: EXP }, sig, dlKey)).toBe(true);
+  });
+
+  it('round-trips a signature carrying a download filename', () => {
+    const sig = signLocalDownload({ key: KEY, exp: EXP, dl: 'my video.mp4' }, dlKey);
+    expect(verifyLocalDownload({ key: KEY, exp: EXP, dl: 'my video.mp4' }, sig, dlKey)).toBe(true);
+  });
+
+  it('rejects a tampered key', () => {
+    const sig = signLocalDownload({ key: KEY, exp: EXP }, dlKey);
+    expect(verifyLocalDownload({ key: 'o/r/other.mp4', exp: EXP }, sig, dlKey)).toBe(false);
+  });
+
+  it('rejects a tampered expiry', () => {
+    const sig = signLocalDownload({ key: KEY, exp: EXP }, dlKey);
+    expect(verifyLocalDownload({ key: KEY, exp: EXP + 1 }, sig, dlKey)).toBe(false);
+  });
+
+  it('rejects a tampered download filename', () => {
+    const sig = signLocalDownload({ key: KEY, exp: EXP, dl: 'a.mp4' }, dlKey);
+    expect(verifyLocalDownload({ key: KEY, exp: EXP, dl: 'b.mp4' }, sig, dlKey)).toBe(false);
+    // Adding a filename to a signature minted without one must also fail.
+    const bare = signLocalDownload({ key: KEY, exp: EXP }, dlKey);
+    expect(verifyLocalDownload({ key: KEY, exp: EXP, dl: 'b.mp4' }, bare, dlKey)).toBe(false);
+  });
+
+  it('rejects a malformed / wrong-length signature without throwing', () => {
+    expect(verifyLocalDownload({ key: KEY, exp: EXP }, 'deadbeef', dlKey)).toBe(false);
+    expect(verifyLocalDownload({ key: KEY, exp: EXP }, '', dlKey)).toBe(false);
+    expect(verifyLocalDownload({ key: KEY, exp: EXP }, 'z'.repeat(64), dlKey)).toBe(false);
+  });
+
+  it('rejects a signature minted under a different presign key', () => {
+    const otherDl = deriveDownloadKey(derivePresignKey({ ENCRYPTION_KEY: 'other' }));
+    const sig = signLocalDownload({ key: KEY, exp: EXP }, otherDl);
+    expect(verifyLocalDownload({ key: KEY, exp: EXP }, sig, dlKey)).toBe(false);
+  });
+
+  it('requires a finite exp', () => {
+    expect(() => signLocalDownload({ key: KEY, exp: NaN }, dlKey)).toThrow(TypeError);
+    expect(() => verifyLocalDownload({ key: KEY, exp: NaN }, 'x', dlKey)).toThrow(TypeError);
+  });
+
+  // CROSS-DOMAIN SEPARATION. An upload signature must never authorize a
+  // download and vice versa: the two are minted under keys that differ by a
+  // one-way, domain-labelled derivation, so neither verifier can be satisfied
+  // by the other's output even when every signed field lines up.
+  describe('upload/download domain separation', () => {
+    it('does not accept an UPLOAD signature on the download verifier', () => {
+      const uploadSig = signLocalUpload({ key: KEY, exp: EXP, max: 1024 }, root);
+      expect(verifyLocalDownload({ key: KEY, exp: EXP }, uploadSig, dlKey)).toBe(false);
+      expect(verifyLocalDownload({ key: KEY, exp: EXP, dl: '1024' }, uploadSig, dlKey)).toBe(false);
+      // Nor when the download verifier is (mistakenly) handed the upload key.
+      expect(verifyLocalDownload({ key: KEY, exp: EXP }, uploadSig, root)).toBe(false);
+    });
+
+    it('does not accept a DOWNLOAD signature on the upload verifier', () => {
+      const dlSig = signLocalDownload({ key: KEY, exp: EXP }, dlKey);
+      expect(verifyLocalUpload({ key: KEY, exp: EXP, max: 1024 }, dlSig, root)).toBe(false);
+      expect(verifyLocalUpload({ key: KEY, exp: EXP, max: 1024 }, dlSig, dlKey)).toBe(false);
+    });
+
+    it('is immune to delimiter injection through the key or filename', () => {
+      // Both variable-length fields are length-safe-encoded before signing, so
+      // shifting a `|` from one field into another cannot produce the same
+      // canonical string under a different (key, exp, dl) triple.
+      const a = signLocalDownload({ key: 'a|1800000000', exp: 1, dl: '' }, dlKey);
+      const b = signLocalDownload({ key: 'a', exp: 1_800_000_000, dl: '1|' }, dlKey);
+      expect(a).not.toBe(b);
+      expect(verifyLocalDownload({ key: 'a', exp: 1_800_000_000, dl: '1|' }, a, dlKey)).toBe(false);
+    });
   });
 });

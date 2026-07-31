@@ -100,4 +100,22 @@ describe('BootstrapDnsPreflightService', () => {
       expect(options.path).toMatch(/^\/\.well-known\/acme-challenge\//);
     });
   });
+
+  describe('probeHost extraction', () => {
+    it('probeHost probes exactly the given host', async () => {
+      const resolveA = jest.spyOn(service as never, 'resolveA' as never).mockResolvedValue(['203.0.113.7'] as never);
+      jest.spyOn(service as never, 'fetchProbe' as never).mockResolvedValue('irrelevant' as never);
+      const check = await service.probeHost('handoff.example.com');
+      expect(check.host).toBe('handoff.example.com');
+      expect(resolveA).toHaveBeenCalledTimes(1);
+    });
+
+    it('run() still fans out to apex + www + admin via probeHost', async () => {
+      const probe = jest
+        .spyOn(service, 'probeHost')
+        .mockResolvedValue({ host: 'x', resolvedIps: [], probeOk: true });
+      await service.run('example.com');
+      expect(probe.mock.calls.map((c) => c[0])).toEqual(['example.com', 'www.example.com', 'admin.example.com']);
+    });
+  });
 });

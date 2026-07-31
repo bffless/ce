@@ -376,6 +376,11 @@ services:
       FEATURE_WILDCARD_SSL: ${FEATURE_WILDCARD_SSL:-}
       FEATURE_WILDCARD_SSL_BANNER: ${FEATURE_WILDCARD_SSL_BANNER:-}
       FEATURE_DOMAIN_SSL_TOGGLE: ${FEATURE_DOMAIN_SSL_TOGGLE:-}
+      FEATURE_APP_CATALOG: ${FEATURE_APP_CATALOG:-}
+
+      # App catalog registry (Admin → Apps) — override for air-gapped or
+      # self-published catalogs; see .env.example
+      APPS_REGISTRY_URL: ${APPS_REGISTRY_URL:-}
     ports:
       - '3000:3000'
     depends_on:

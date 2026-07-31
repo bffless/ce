@@ -542,15 +542,16 @@ export class DeploymentsController {
             .where(and(eq(assets.projectId, project.id), eq(assets.commitSha, commitSha)));
 
     // Check if storage supports presigned URLs. Local storage always takes
-    // the fallback branch below (the `${PUBLIC_URL}/api/files/...` URL, a
-    // few lines down) regardless of what supportsPresignedUrls() reports:
-    // LocalStorageAdapter.getUrl() ignores the expiry argument entirely and
-    // returns `${baseUrl}/${key}`, where baseUrl defaults to the vestigial
-    // `http://localhost:3000/files` (see the @TODO on LocalStorageAdapter's
-    // baseUrl field). That is not a real presigned URL, so calling getUrl()
-    // here for local storage would leak localhost into download URLs on any
-    // real install. Same predicate and reasoning as prepareBatchUpload
-    // above, mirrored for the download direction.
+    // the fallback branch below (the `${PUBLIC_URL}/api/files/...` URL, a few
+    // lines down) regardless of what supportsPresignedUrls() reports.
+    //
+    // LocalStorageAdapter.getUrl() DOES now mint a real signed, expiring URL
+    // (see local-presigned-download.controller.ts), but a RELATIVE one, to be
+    // resolved by the browser against the host that served the page. This
+    // response is consumed by CI / the CLI — non-browser callers with no page
+    // origin to resolve against — so the absolute `${PUBLIC_URL}/api/files/...`
+    // fallback stays correct here. Same predicate and reasoning as
+    // prepareBatchUpload above, mirrored for the download direction.
     const isLocalAdapter = resolveLocalAdapter(this.storageAdapter) !== null;
     const supportsPresigned =
       !isLocalAdapter && (this.storageAdapter.supportsPresignedUrls?.() ?? false);

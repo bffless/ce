@@ -29,6 +29,7 @@ import { InfrastructureTab } from '@/pages/admin-settings/InfrastructureTab';
 import { SslTab } from '@/pages/admin-settings/SslTab';
 import { DomainsPage } from '@/pages/DomainsPage';
 import { TrafficPage } from '@/pages/TrafficPage';
+import { AppsPage } from '@/pages/AppsPage';
 import { HomePage } from '@/pages/HomePage';
 import { LoginPage } from '@/pages/LoginPage';
 import { LogoutPage } from '@/pages/LogoutPage';
@@ -138,6 +139,9 @@ function App() {
 
           {/* Traffic route (admin only) */}
           <Route path="/traffic" element={<ProtectedRoute requireAdmin><TrafficPage /></ProtectedRoute>} />
+
+          {/* Apps route (admin only) */}
+          <Route path="/apps" element={<ProtectedRoute requireAdmin><AppsPage /></ProtectedRoute>} />
           </Routes>
           <Toaster />
         </div>

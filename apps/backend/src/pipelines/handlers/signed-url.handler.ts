@@ -6,6 +6,7 @@ import { PipelineContext, StepResult } from '../execution/pipeline-context.inter
 import { PipelineStep } from '../types';
 import { ConfigurationError } from '../errors';
 import { IStorageAdapter, STORAGE_ADAPTER } from '../../storage/storage.interface';
+import { sanitizeDownloadFilename } from '../../common/utils/download-filename.util';
 
 export interface SignedUrlHandlerConfig {
   /**
@@ -31,27 +32,12 @@ export interface SignedUrlHandlerConfig {
 }
 
 /**
- * Reduce an arbitrary value to a filename safe to interpolate into a
- * `Content-Disposition` header value. THE choke point: every adapter trusts
- * that `SignedUrlOptions.downloadFilename` came through here.
- *
- * Strips path separators (basename only), then control characters, double
- * quotes and backslashes — the characters that could break out of the quoted
- * header value or inject a second header. Returns `undefined` when nothing
- * usable survives, which makes the handler omit the disposition entirely.
+ * Re-exported from `common/utils/download-filename.util` so existing importers
+ * (and the handler's own spec) keep working. The implementation moved out of
+ * this file because the local-filesystem signed-download route in `storage/`
+ * needs the same sanitizer, and `storage/` must not import from `pipelines/`.
  */
-export function sanitizeDownloadFilename(raw: unknown): string | undefined {
-  if (typeof raw !== 'string') return undefined;
-
-  const basename = raw.split(/[/\\]/).pop() ?? '';
-  const cleaned = basename
-    // eslint-disable-next-line no-control-regex
-    .replace(/[\u0000-\u001f\u007f"\\]/g, '')
-    .trim()
-    .slice(0, 200);
-
-  return cleaned || undefined;
-}
+export { sanitizeDownloadFilename };
 
 /**
  * Signed URL Handler

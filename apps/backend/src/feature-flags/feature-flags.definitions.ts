@@ -100,8 +100,10 @@ export const FLAG_DEFINITIONS: Record<string, FlagDefinition> = {
     defaultValue: true,
     type: 'boolean',
     description:
-      'Allow presigned (direct) uploads when local filesystem storage is active. ' +
-      'Exposes a signature-authorized PUT route; disable to require proxied uploads.',
+      'Allow presigned (direct) uploads AND signed downloads when local filesystem ' +
+      'storage is active. Exposes one signature-authorized route ' +
+      '(PUT /api/storage/presigned/local to upload, GET to download); disable to ' +
+      'require proxied uploads and to turn off signed download links.',
     category: 'features',
     exposeToClient: true,
   },
@@ -339,6 +341,17 @@ export const FLAG_DEFINITIONS: Record<string, FlagDefinition> = {
     type: 'boolean',
     description:
       'Show the day-2 Admin → Settings → SSL page for managing the primary instance certificate and serving model. Disable when a PaaS/Traefik edge terminates SSL.',
+    category: 'features',
+    exposeToClient: true,
+  },
+
+  ENABLE_APP_CATALOG: {
+    envKey: 'FEATURE_APP_CATALOG',
+    defaultValue: true,
+    type: 'boolean',
+    description:
+      'Show the Admin → Apps catalog for 1-click installs of first-party BFFless apps. ' +
+      'Disable to hide the catalog and refuse install endpoints.',
     category: 'features',
     exposeToClient: true,
   },

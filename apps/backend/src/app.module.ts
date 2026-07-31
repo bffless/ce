@@ -45,6 +45,7 @@ import { ApiKeyGuard } from './auth/api-key.guard';
 import { McpToolsModule } from './mcp/mcp-tools.module';
 import { TelemetryModule } from './telemetry/telemetry.module';
 import { TrafficModule } from './traffic/traffic.module';
+import { AppCatalogModule } from './app-catalog/app-catalog.module';
 
 @Module({
   imports: [
@@ -175,6 +176,8 @@ import { TrafficModule } from './traffic/traffic.module';
     McpToolsModule,
     TelemetryModule,
     TrafficModule,
+    // App catalog for 1-click installs (own prefix, no ordering constraint)
+    AppCatalogModule,
   ],
   controllers: [AppController],
   providers: [

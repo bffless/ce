@@ -281,6 +281,13 @@
       "when": 1783896812504,
       "tag": "0039_thick_trish_tilby",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1785457155737,
+      "tag": "0040_dashing_wither",
+      "breakpoints": true
     }
   ]
 }
