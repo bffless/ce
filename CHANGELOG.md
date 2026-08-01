@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.8](https://github.com/bffless/ce/compare/v0.4.7...v0.4.8) (2026-08-01)
+
+
+### Features
+
+* **app-catalog:** render registry store metadata in Admin -&gt; Apps ([#605](https://github.com/bffless/ce/issues/605)) ([b36f668](https://github.com/bffless/ce/commit/b36f66865c8ad80a3c79cfcae22278e0c0abd189)), closes [#590](https://github.com/bffless/ce/issues/590)
+
+
+### Bug Fixes
+
+* **nginx:** give every app-serving vhost the same body ceiling ([#603](https://github.com/bffless/ce/issues/603)) ([243fdf1](https://github.com/bffless/ce/commit/243fdf1ec099a4b94310f397bbaebae7bcaae41d))
+
 ## [0.4.7](https://github.com/bffless/ce/compare/v0.4.6...v0.4.7) (2026-08-01)
 
 
