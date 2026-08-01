@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.5](https://github.com/bffless/ce/compare/v0.4.4...v0.4.5) (2026-08-01)
+
+
+### Features
+
+* **onboarding:** app-install callout as the primary first-login path ([#593](https://github.com/bffless/ce/issues/593)) ([24a5023](https://github.com/bffless/ce/commit/24a5023cc1adf79e9ee888061938909f9c983707))
+
+
+### Bug Fixes
+
+* **umbrel:** except auth + presigned uploads from the subdomain-alias rewrite ([#594](https://github.com/bffless/ce/issues/594)) ([e4b8471](https://github.com/bffless/ce/commit/e4b84714d435c0936ee68d64fcf51011a618d124)), closes [#584](https://github.com/bffless/ce/issues/584)
+
 ## [0.4.4](https://github.com/bffless/ce/compare/v0.4.3...v0.4.4) (2026-08-01)
 
 
