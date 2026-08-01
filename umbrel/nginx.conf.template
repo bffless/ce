@@ -195,7 +195,59 @@ server {
         set $subdomain $1;
     }
 
-    # Route all requests to backend subdomain-alias endpoint
+    # Authentication endpoints (callback, refresh, logout, session).
+    # Must be declared before the catch-all below: this block's `location /`
+    # rewrites EVERY path into the subdomain-alias handler, so without an
+    # unrewritten exception the auth relay an app on a subdomain uses would
+    # rewrite to /public/subdomain-alias/<sub>/_bffless/auth/... and 404.
+    # Mirrors the same location in docker/nginx/sites-available/main.conf.template.
+    location /_bffless/auth/ {
+        proxy_pass http://backend:3000/_bffless/auth/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+    }
+
+    # Presigned local-filesystem uploads (and their signed GET downloads —
+    # both live at this exact path) stream straight through to the backend.
+    # Same rationale as /_bffless/auth/ above: without this exception a
+    # relative presigned URL minted for an app subdomain rewrites to
+    # /public/subdomain-alias/<sub>/api/storage/presigned/local and the
+    # backend answers 404 — which is exactly what every Handoff upload on
+    # Umbrel did (ce#584 follow-up).
+    #
+    # Must be an exact match so nginx prefers it over the general
+    # "location /" below, regardless of declaration order.
+    location = /api/storage/presigned/local {
+        proxy_pass http://backend:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+
+        # Extended timeouts for large transfers.
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+
+        # Stream the body to the backend incrementally instead of spooling the
+        # whole request into an nginx temp file first. proxy_request_buffering
+        # is the load-bearing directive.
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_max_temp_file_size 0;
+
+        # Above this server block's 100M default so the ceiling is the
+        # backend's signed `max`, not nginx.
+        client_max_body_size 200M;
+    }
+
+    # Route all remaining requests to backend subdomain-alias endpoint
     location / {
         rewrite ^/(.*)$ /public/subdomain-alias/$subdomain/$1 break;
 
