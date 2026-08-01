@@ -13,17 +13,10 @@ function makeDomainsService(exists = false) {
   };
 }
 
-function makePrimarySslService() {
-  return {
-    issueLetsEncrypt: jest.fn(),
-  };
-}
-
 function build(domainsExists = false) {
   const domains = makeDomainsService(domainsExists);
-  const primarySsl = makePrimarySslService();
-  const svc = new AppCertStepService(domains as any, primarySsl as any);
-  return { svc, domains, primarySsl };
+  const svc = new AppCertStepService(domains as any);
+  return { svc, domains };
 }
 
 const ORIGINAL_ENV = { ...process.env };
@@ -94,76 +87,150 @@ describe('AppCertStepService.plan', () => {
     expect(plan).toEqual({ model: 'edge-terminated', action: 'none-needed' });
   });
 
-  it('branch 5: proxyMode none + sslMode letsencrypt → direct-le/stage-san-reissue', async () => {
+  // Umbrel packages CE behind a Cloudflare Tunnel: its nginx listens on a
+  // plain port with no TLS at all, and the public URL is HTTPS via the tunnel.
+  // These are the reserved instance-config values for that profile — they must
+  // read as edge-terminated, never as "provision a wildcard" (ce#584).
+  it.each([
+    [{ proxyMode: 'cloudflare-tunnel', sslMode: 'external' }],
+    [{ proxyMode: 'cloudflare-tunnel', sslMode: 'letsencrypt' }],
+    [{ proxyMode: 'none', sslMode: 'external' }],
+  ])('branch 4: tunnel/external profile %o → edge-terminated/none-needed', async (cfg) => {
+    delete process.env.PLATFORM_MODE;
+    mockLoadInstanceConfig.mockReturnValue(cfg);
+    const { svc } = build(false);
+    await expect(svc.plan(APP_HOST)).resolves.toEqual({
+      model: 'edge-terminated',
+      action: 'none-needed',
+    });
+    // and its app URL stays https — the tunnel terminates TLS
+    await expect(svc.schemeFor(APP_HOST, false)).resolves.toBe('https');
+  });
+
+  it('branch 5: proxyMode none + sslMode letsencrypt, no wildcard → direct-no-wildcard/report', async () => {
     delete process.env.PLATFORM_MODE;
     delete process.env.SSL_MANAGED_EXTERNALLY;
     mockLoadInstanceConfig.mockReturnValue({ proxyMode: 'none', sslMode: 'letsencrypt' });
     const { svc } = build(false);
     const plan = await svc.plan(APP_HOST);
-    expect(plan).toEqual({ model: 'direct-le', action: 'stage-san-reissue' });
+    expect(plan).toEqual({ model: 'direct-no-wildcard', action: 'report' });
   });
 });
 
 describe('AppCertStepService.execute', () => {
-  it('delegated → skipped, never touches PrimarySslService', async () => {
-    const { svc, primarySsl } = build();
+  it('delegated → skipped', async () => {
+    const { svc } = build();
     const result = await svc.execute({ model: 'platform', action: 'delegated' }, APP_HOST);
     expect(result.status).toBe('skipped');
-    expect(primarySsl.issueLetsEncrypt).not.toHaveBeenCalled();
   });
 
-  it('covered → done, never touches PrimarySslService', async () => {
-    const { svc, primarySsl } = build();
+  it('covered → done', async () => {
+    const { svc } = build();
     const result = await svc.execute({ model: 'wildcard', action: 'covered' }, APP_HOST);
     expect(result.status).toBe('done');
-    expect(primarySsl.issueLetsEncrypt).not.toHaveBeenCalled();
   });
 
-  it('none-needed → skipped, never touches PrimarySslService', async () => {
-    const { svc, primarySsl } = build();
+  it('none-needed → skipped', async () => {
+    const { svc } = build();
     const result = await svc.execute({ model: 'edge-terminated', action: 'none-needed' }, APP_HOST);
     expect(result.status).toBe('skipped');
-    expect(primarySsl.issueLetsEncrypt).not.toHaveBeenCalled();
   });
 
   it('report (unknown) → never touches PrimarySslService', async () => {
-    const { svc, primarySsl } = build();
+    const { svc } = build();
     const result = await svc.execute({ model: 'unknown', action: 'report' }, APP_HOST);
     expect(['skipped', 'action-required']).toContain(result.status);
-    expect(primarySsl.issueLetsEncrypt).not.toHaveBeenCalled();
   });
 
-  it('stage-san-reissue success → action-required with the apply-ssl-cert manual step', async () => {
-    const { svc, primarySsl } = build();
-    primarySsl.issueLetsEncrypt.mockResolvedValue({ issued: true, sans: [APP_HOST], reused: false });
-    const result = await svc.execute({ model: 'direct-le', action: 'stage-san-reissue' }, APP_HOST);
-    expect(primarySsl.issueLetsEncrypt).toHaveBeenCalledWith({ extraSans: [APP_HOST] });
-    expect(result.status).toBe('action-required');
-    expect(result.manualStep).toEqual({
-      id: 'apply-ssl-cert',
-      title: 'Apply the updated certificate',
-      body: `A new certificate including ${APP_HOST} was issued and staged. Review and apply it, then confirm within the safety window.`,
-      deepLink: '/admin/settings/ssl',
-      appliesWhen: 'selfHosted',
-    });
-  });
+  it('direct serving without a wildcard → action-required naming the wildcard as the route to HTTPS', async () => {
+    const { svc } = build();
+    const result = await svc.execute({ model: 'direct-no-wildcard', action: 'report' }, APP_HOST);
 
-  it('stage-san-reissue failure → degrades to action-required, install not failed, both remediation routes named', async () => {
-    const { svc, primarySsl } = build();
-    primarySsl.issueLetsEncrypt.mockRejectedValue(new Error('DNS/port-80 preflight failed; not requesting a certificate'));
-    const result = await svc.execute({ model: 'direct-le', action: 'stage-san-reissue' }, APP_HOST);
     expect(result.status).toBe('action-required');
-    expect(result.detail).toContain('DNS/port-80 preflight failed');
-    expect(result.manualStep).toBeDefined();
-    // Both remediation routes must be named: wildcard cert AND manual SSL page re-issue.
+    // The app is reachable — over HTTP — and the operator must be told exactly that.
+    expect(result.detail).toContain(APP_HOST);
+    expect(result.detail.toLowerCase()).toContain('http');
+    expect(result.manualStep).toEqual(
+      expect.objectContaining({ id: 'provision-wildcard-cert', deepLink: '/domains', appliesWhen: 'selfHosted' }),
+    );
     expect(result.manualStep!.body.toLowerCase()).toContain('wildcard');
-    expect(result.manualStep!.body.toLowerCase()).toContain('settings');
-    expect(result.manualStep!.deepLink).toBe('/admin/settings/ssl');
   });
 
-  it('stage-san-reissue never throws — issuance failure is caught and returned, not raised', async () => {
-    const { svc, primarySsl } = build();
-    primarySsl.issueLetsEncrypt.mockRejectedValue(new Error('boom'));
-    await expect(svc.execute({ model: 'direct-le', action: 'stage-san-reissue' }, APP_HOST)).resolves.toBeDefined();
+  /**
+   * ce#584: the old branch re-issued the PRIMARY certificate with the app host
+   * as an extra SAN, staged it, and asked the operator to apply + confirm
+   * inside a 5-minute window. Even on full success the app stayed HTTP-only:
+   * `DomainsService.create` only sets `sslEnabled` for a subdomain when a
+   * WILDCARD exists, and `getSslCertPath` resolves a subdomain of the primary
+   * domain to the wildcard file — so the app vhost never gained a 443 block,
+   * and would have pointed at a file that does not exist if it had. The path
+   * spent an issuance and rewrote the certificate serving admin for nothing.
+   */
+  it('never touches the primary certificate — that path could not deliver HTTPS for a subdomain', async () => {
+    const { svc } = build();
+    // The service no longer depends on PrimarySslService at all; constructing
+    // it with a single argument (above) is the structural proof.
+    expect(AppCertStepService.length).toBe(1);
+    await expect(
+      svc.execute({ model: 'direct-no-wildcard', action: 'report' }, APP_HOST),
+    ).resolves.toBeDefined();
+  });
+
+  it('execute never throws for any plan — a cert problem must never fail an install', async () => {
+    const { svc } = build();
+    const plans = [
+      { model: 'platform', action: 'delegated' },
+      { model: 'wildcard', action: 'covered' },
+      { model: 'edge-terminated', action: 'none-needed' },
+      { model: 'unknown', action: 'report' },
+      { model: 'direct-no-wildcard', action: 'report' },
+    ] as const;
+    for (const plan of plans) {
+      await expect(svc.execute(plan as never, APP_HOST)).resolves.toBeDefined();
+    }
+  });
+});
+
+describe('AppCertStepService.schemeFor (ce#584: the "Open" link must not promise HTTPS that does not exist)', () => {
+  it('direct serving with no wildcard → http (the vhost has no 443 block at all)', async () => {
+    delete process.env.PLATFORM_MODE;
+    delete process.env.SSL_MANAGED_EXTERNALLY;
+    mockLoadInstanceConfig.mockReturnValue({ proxyMode: 'none', sslMode: 'letsencrypt' });
+    const { svc } = build(false);
+    await expect(svc.schemeFor(APP_HOST, false)).resolves.toBe('http');
+  });
+
+  it('direct serving once the domain row carries SSL → https', async () => {
+    delete process.env.PLATFORM_MODE;
+    mockLoadInstanceConfig.mockReturnValue({ proxyMode: 'none', sslMode: 'letsencrypt' });
+    const { svc } = build(false);
+    await expect(svc.schemeFor(APP_HOST, true)).resolves.toBe('https');
+  });
+
+  it('behind Cloudflare → https even though the origin vhost is plain HTTP (edge terminates)', async () => {
+    delete process.env.PLATFORM_MODE;
+    mockLoadInstanceConfig.mockReturnValue({ proxyMode: 'cloudflare', sslMode: 'paste' });
+    const { svc } = build(false);
+    await expect(svc.schemeFor(APP_HOST, false)).resolves.toBe('https');
+  });
+
+  it('platform mode → https (cert delegated to the platform edge)', async () => {
+    process.env.PLATFORM_MODE = 'true';
+    const { svc } = build(false);
+    await expect(svc.schemeFor(APP_HOST, false)).resolves.toBe('https');
+  });
+
+  it('wildcard present → https', async () => {
+    delete process.env.PLATFORM_MODE;
+    mockLoadInstanceConfig.mockReturnValue({ proxyMode: 'none', sslMode: 'letsencrypt' });
+    const { svc } = build(true);
+    await expect(svc.schemeFor(APP_HOST, false)).resolves.toBe('https');
+  });
+
+  it('unknown serving model (legacy compose, no instance config) → https, unchanged from before', async () => {
+    delete process.env.PLATFORM_MODE;
+    mockLoadInstanceConfig.mockReturnValue(null);
+    const { svc } = build(false);
+    await expect(svc.schemeFor(APP_HOST, false)).resolves.toBe('https');
   });
 });

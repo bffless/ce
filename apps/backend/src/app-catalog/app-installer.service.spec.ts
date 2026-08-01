@@ -185,7 +185,7 @@ describe('AppInstallerService', () => {
   let service: AppInstallerService;
   let bundleService: { fetchBundle: jest.Mock };
   let preflight: { instanceGates: jest.Mock; projectGates: jest.Mock };
-  let certStep: { plan: jest.Mock; execute: jest.Mock };
+  let certStep: { plan: jest.Mock; execute: jest.Mock; schemeFor: jest.Mock };
   let ruleSets: { syncRuleSet: jest.Mock; delete: jest.Mock };
   let deployments: {
     createDeploymentFromZip: jest.Mock;
@@ -223,6 +223,9 @@ describe('AppInstallerService', () => {
     certStep = {
       plan: jest.fn().mockResolvedValue({ model: 'wildcard', action: 'covered' }),
       execute: jest.fn().mockResolvedValue({ status: 'done', detail: 'covered by wildcard' }),
+      // Default: a certificate covers the app host, so app URLs are https.
+      // Scheme selection itself is covered in app-cert-step.service.spec.ts.
+      schemeFor: jest.fn().mockResolvedValue('https'),
     };
     ruleSets = {
       syncRuleSet: jest
@@ -426,6 +429,46 @@ describe('AppInstallerService', () => {
         scheduleIds: [],
       });
       expect(jobs.get(jobId)!.appUrl).toBe('https://handoff.example.com');
+    });
+
+    // ce#584: the dialog disables Install on a failing gate, but the job
+    // re-runs projectGates itself — an API caller must be stopped too, before
+    // anything is written.
+    it('aborts before any write when the app host could only be served over http://', async () => {
+      preflight.projectGates.mockResolvedValue({
+        gates: [
+          {
+            id: 'app-host-tls',
+            status: 'fail',
+            message: 'handoff.example.com could only be served over http://',
+            retryable: true,
+          },
+        ],
+        syncPlans: [],
+        appHost: 'handoff.example.com',
+      });
+
+      const { jobId } = service.startInstall(ENTRY, { projectId: 'proj-1' }, 'user-1');
+      await service.whenIdle();
+
+      const job = jobs.get(jobId)!;
+      expect(job.status).toBe('failed');
+      expect(ruleSets.syncRuleSet).not.toHaveBeenCalled();
+      expect(domains.create).not.toHaveBeenCalled();
+    });
+
+    // ce#584: on a direct-serving instance with no certificate covering the app
+    // host, the origin serves it over plain HTTP. Linking https:// there lands
+    // the operator on the default vhost — certificate mismatch, then 404.
+    it('links http:// when the cert step reports no certificate covers the host yet', async () => {
+      queueInstallDb();
+      certStep.schemeFor.mockResolvedValue('http');
+
+      const { jobId } = service.startInstall(ENTRY, { projectId: 'proj-1' }, 'user-1');
+      await service.whenIdle();
+
+      expect(jobs.get(jobId)!.status).toBe('succeeded');
+      expect(jobs.get(jobId)!.appUrl).toBe('http://handoff.example.com');
     });
 
     it('filters manifest manual steps by the instance context', async () => {

@@ -11,6 +11,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Request } from 'express';
 import { extractClientIp } from '../common/utils/request-ip.util';
 import { BootstrapSetupService } from './bootstrap-setup.service';
+import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 import { BootstrapDnsPreflightService, PreflightResult } from './bootstrap-dns-preflight.service';
 import { SslCertificateService } from '../domains/ssl-certificate.service';
 import { writeInstanceConfig } from '../bootstrap/instance-config';
@@ -26,6 +27,7 @@ export class BootstrapSetupController {
     private readonly bootstrap: BootstrapSetupService,
     private readonly preflight: BootstrapDnsPreflightService,
     private readonly sslCert: SslCertificateService,
+    private readonly featureFlags: FeatureFlagsService,
   ) {}
 
   // Overridable in tests (assigned as an own property on the instance, which
@@ -33,6 +35,18 @@ export class BootstrapSetupController {
   // Docker's restart policy revive the backend, which re-runs main.ts
   // hydration and adopts the new identity. There is no docker socket here,
   // so a file write + process exit is the only way to "apply" the change.
+  private async reconcileWildcardSslVisibility(proxyMode: 'cloudflare' | 'proxy' | 'none'): Promise<void> {
+    try {
+      await this.featureFlags.reconcileWildcardSslVisibility(proxyMode);
+    } catch (err) {
+      this.logger.warn(
+        `Could not reconcile wildcard-SSL visibility after apply: ${
+          err instanceof Error ? err.message : 'unknown error'
+        }`,
+      );
+    }
+  }
+
   private scheduleExit(): void {
     setTimeout(() => {
       this.logger.log('[bootstrap] apply complete — exiting for identity restart');
@@ -134,6 +148,10 @@ export class BootstrapSetupController {
         port80: applied.port80,
         realIp: applied.realIp,
       });
+      // ce#584: an install set up for Cloudflare carries
+      // FEATURE_WILDCARD_SSL=false in .env; landing on direct serving must not
+      // leave the wildcard flow hidden. Never fail apply over this.
+      await this.reconcileWildcardSslVisibility(applied.proxyMode);
     } catch (err) {
       // Failed fs write with setup already finalized = permanently dead
       // wizard AND no identity (M3). Log the original (more actionable) disk

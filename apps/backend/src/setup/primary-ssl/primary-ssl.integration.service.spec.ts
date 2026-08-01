@@ -92,7 +92,8 @@ describe('PrimarySslService cert staging (real BootstrapSetupService + snapshot 
     const preflight = { run: jest.fn().mockResolvedValue({ ok: true, checks: [] }) };
     const info = { getWildcardCertInfo: jest.fn().mockResolvedValue(null) };
     const snap = new PrimarySslSnapshotService();
-    svc = new PrimarySslService(bootstrap, ssl as any, preflight as any, info as any, snap);
+    const featureFlags = { reconcileWildcardSslVisibility: jest.fn().mockResolvedValue(undefined) };
+    svc = new PrimarySslService(bootstrap, ssl as any, preflight as any, info as any, snap, featureFlags as any);
   });
 
   afterEach(() => {

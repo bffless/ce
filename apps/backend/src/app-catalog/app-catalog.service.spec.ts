@@ -119,6 +119,7 @@ describe('AppCatalogService', () => {
     uninstallPreview: jest.Mock;
   };
   let jobs: { get: jest.Mock };
+  let certStep: { schemeFor: jest.Mock };
   let storageAdapter: {
     supportsPresignedUrls: jest.Mock;
     isLocalAdapter?: boolean;
@@ -151,6 +152,10 @@ describe('AppCatalogService', () => {
       uninstallPreview: jest.fn().mockResolvedValue({ dataTables: [] }),
     };
     jobs = { get: jest.fn() };
+    // Default serving model for these tests: a certificate covers the app host,
+    // so URLs are https. Scheme selection itself is covered in
+    // app-cert-step.service.spec.ts.
+    certStep = { schemeFor: jest.fn().mockResolvedValue('https') };
     storageAdapter = {
       supportsPresignedUrls: jest.fn().mockReturnValue(true),
       // Brands as local the way `resolveLocalAdapter` expects (see local.adapter.ts):
@@ -166,6 +171,7 @@ describe('AppCatalogService', () => {
       preflight as never,
       installer as never,
       jobs as never,
+      certStep as never,
       storageAdapter as never,
     );
   });
@@ -392,6 +398,35 @@ describe('AppCatalogService', () => {
 
         const result = await service.listCatalog();
 
+        expect(result.data[0].installed!.appUrl).toBe('https://files.example.com');
+      });
+
+      it('links http:// when the serving model has no certificate for the host yet (ce#584)', async () => {
+        registry.getRegistry.mockResolvedValue({
+          ok: true,
+          registry: { schemaVersion: 1, apps: [HANDOFF_ENTRY] },
+        });
+        mockDb.__queue([{ ...ROW, manifest: MANIFEST_WITH_DOMAIN, domainId: 'dom-1' }]);
+        mockDb.__queue([{ id: 'dom-1', domain: 'files.example.com', sslEnabled: false }]);
+        certStep.schemeFor.mockResolvedValue('http');
+
+        const result = await service.listCatalog();
+
+        expect(certStep.schemeFor).toHaveBeenCalledWith('files.example.com', false);
+        expect(result.data[0].installed!.appUrl).toBe('http://files.example.com');
+      });
+
+      it('passes the row\'s sslEnabled through, so an edge-terminated install still links https', async () => {
+        registry.getRegistry.mockResolvedValue({
+          ok: true,
+          registry: { schemaVersion: 1, apps: [HANDOFF_ENTRY] },
+        });
+        mockDb.__queue([{ ...ROW, manifest: MANIFEST_WITH_DOMAIN, domainId: 'dom-1' }]);
+        mockDb.__queue([{ id: 'dom-1', domain: 'files.example.com', sslEnabled: true }]);
+
+        const result = await service.listCatalog();
+
+        expect(certStep.schemeFor).toHaveBeenCalledWith('files.example.com', true);
         expect(result.data[0].installed!.appUrl).toBe('https://files.example.com');
       });
 

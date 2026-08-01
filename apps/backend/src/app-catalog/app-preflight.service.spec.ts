@@ -123,6 +123,28 @@ const EMPTY_SYNC_RESPONSE = {
   setCreated: true,
 };
 
+function stubProjectGateDeps(proxyRuleSetsService: ProxyRuleSetsService): void {
+  (proxyRuleSetsService.syncRuleSet as jest.Mock).mockResolvedValue({
+    ruleSetId: 'rs-1',
+    created: [],
+    updated: [],
+    deleted: [],
+    unchanged: [],
+    pruneCandidates: [],
+    schemaResolutions: [],
+    missingSecrets: [],
+    warnings: [],
+    dryRun: true,
+    setCreated: true,
+  });
+  mockDb.__queue([]); // installedApps lookup
+  mockDb.__queue([]); // ruleSet 1
+  mockDb.__queue([]); // ruleSet 2
+  mockDb.__queue([]); // alias
+  mockDb.__queue([]); // domain
+  mockDb.__queue([]); // cross-namespace
+}
+
 function buildService(
   overrides: {
     storageAdapter?: Partial<IStorageAdapter>;
@@ -130,6 +152,7 @@ function buildService(
     dnsPreflight?: Partial<BootstrapDnsPreflightService>;
     proxyRuleSetsService?: Partial<ProxyRuleSetsService>;
     projectsService?: Partial<ProjectsService>;
+    certStepService?: { plan?: jest.Mock };
   } = {},
 ) {
   const storageAdapter = (overrides.storageAdapter ?? {}) as IStorageAdapter;
@@ -147,12 +170,19 @@ function buildService(
     ...overrides.projectsService,
   } as unknown as ProjectsService;
 
+  const certStepService = {
+    // Default: nothing to warn about (a wildcard covers the app host).
+    plan: jest.fn().mockResolvedValue({ model: 'wildcard', action: 'covered' }),
+    ...overrides.certStepService,
+  } as never;
+
   const service = new AppPreflightService(
     storageAdapter,
     configService,
     dnsPreflight,
     proxyRuleSetsService,
     projectsService,
+    certStepService,
   );
 
   return {
@@ -256,7 +286,7 @@ describe('AppPreflightService', () => {
 
       const gates = await service.instanceGates(undefined);
 
-      expect(gates.filter((g) => g.id === 'platform-config')).toHaveLength(0);
+      expect(gates.filter((g) => g.id.startsWith('platform-'))).toHaveLength(0);
     });
 
     it('fails the config check and adds the cert-coverage warn when platform mode lacks CONTROL_PLANE_URL/WORKSPACE_ID', async () => {
@@ -264,10 +294,11 @@ describe('AppPreflightService', () => {
 
       const gates = await service.instanceGates(undefined);
 
-      const platformGates = gates.filter((g) => g.id === 'platform-config');
+      const platformGates = gates.filter((g) => g.id.startsWith('platform-'));
       expect(platformGates).toHaveLength(2);
-      expect(platformGates.find((g) => g.status === 'fail')).toBeTruthy();
+      expect(platformGates.find((g) => g.status === 'fail')?.id).toBe('platform-config');
       const warn = platformGates.find((g) => g.status === 'warn');
+      expect(warn?.id).toBe('platform-cert-scope');
       expect(warn?.message).toMatch(/wildcard/i);
     });
 
@@ -282,11 +313,110 @@ describe('AppPreflightService', () => {
 
       const gates = await service.instanceGates(undefined);
 
-      const platformGates = gates.filter((g) => g.id === 'platform-config');
+      const platformGates = gates.filter((g) => g.id.startsWith('platform-'));
       expect(platformGates).toHaveLength(2);
       expect(platformGates.find((g) => g.status === 'fail')).toBeFalsy();
-      expect(platformGates.find((g) => g.status === 'pass')).toBeTruthy();
-      expect(platformGates.find((g) => g.status === 'warn')).toBeTruthy();
+      expect(platformGates.find((g) => g.status === 'pass')?.id).toBe('platform-config');
+      expect(platformGates.find((g) => g.status === 'warn')?.id).toBe('platform-cert-scope');
+    });
+
+    // ce#584: both platform gates shipped with id 'platform-config', and the
+    // install dialog renders `key={gate.id}` — duplicate React keys on the one
+    // path where two gates always appear together.
+    it('gives every emitted gate a unique id', async () => {
+      const { service } = buildService({
+        configValues: {
+          PLATFORM_MODE: 'true',
+          CONTROL_PLANE_URL: 'https://cp.example.com',
+          WORKSPACE_ID: 'ws-1',
+        },
+      });
+
+      const gates = await service.instanceGates(undefined);
+
+      const ids = gates.map((g) => g.id);
+      expect(new Set(ids).size).toBe(ids.length);
+    });
+  });
+
+  // ce#584: on a direct-serving instance with no wildcard, an app subdomain
+  // CANNOT be served over HTTPS — a per-app certificate never reaches its
+  // vhost. The operator must learn that in the install dialog, BEFORE
+  // committing, not from a manual step afterwards. Warn, never block.
+  describe('projectGates > app-host-tls (ce#584)', () => {
+    it('BLOCKS when direct serving has no wildcard: an app must never be served over plain HTTP', async () => {
+      const bundle = makeBundle();
+      const { service, proxyRuleSetsService } = buildService({
+        configValues: { PRIMARY_DOMAIN: 'example.com' },
+        dnsPreflight: { probeHost: jest.fn().mockResolvedValue({ host: 'h', resolvedIps: [], probeOk: true }) },
+        certStepService: {
+          plan: jest.fn().mockResolvedValue({ model: 'direct-no-wildcard', action: 'report' }),
+        },
+      });
+
+      stubProjectGateDeps(proxyRuleSetsService);
+      const { gates } = await service.projectGates(bundle, { projectId: 'proj-1' }, 'user-1');
+
+      const tls = gates.find((g) => g.id === 'app-host-tls');
+      expect(tls).toBeDefined();
+      expect(tls!.status).toBe('fail');
+      expect(tls!.message.toLowerCase()).toContain('http');
+      expect(tls!.remediation?.toLowerCase()).toContain('wildcard');
+      expect(tls!.deepLink).toBe('/domains');
+      // Retryable: provisioning a wildcard is minutes away, and re-running the
+      // same preflight then passes — unlike a name collision.
+      expect(tls!.retryable).toBe(true);
+    });
+
+    it.each([
+      ['wildcard', { model: 'wildcard', action: 'covered' }],
+      ['edge-terminated', { model: 'edge-terminated', action: 'none-needed' }],
+      ['platform', { model: 'platform', action: 'delegated' }],
+      ['unknown', { model: 'unknown', action: 'report' }],
+    ])('emits no TLS warning on a %s instance — HTTPS already works there', async (_label, plan) => {
+      const bundle = makeBundle();
+      const { service, proxyRuleSetsService } = buildService({
+        configValues: { PRIMARY_DOMAIN: 'example.com' },
+        dnsPreflight: { probeHost: jest.fn().mockResolvedValue({ host: 'h', resolvedIps: [], probeOk: true }) },
+        certStepService: { plan: jest.fn().mockResolvedValue(plan) },
+      });
+
+      stubProjectGateDeps(proxyRuleSetsService);
+      const { gates } = await service.projectGates(bundle, { projectId: 'proj-1' }, 'user-1');
+
+      expect(gates.find((g) => g.id === 'app-host-tls')).toBeUndefined();
+    });
+
+    it('emits no TLS gate when the app declares no domain at all', async () => {
+      const bundle = makeBundle({
+        install: { ...TEST_MANIFEST.install, domain: undefined },
+      } as Partial<AppManifest>);
+      const certPlan = jest.fn();
+      const { service, proxyRuleSetsService } = buildService({
+        configValues: { PRIMARY_DOMAIN: 'example.com' },
+        certStepService: { plan: certPlan },
+      });
+
+      stubProjectGateDeps(proxyRuleSetsService);
+      const { gates } = await service.projectGates(bundle, { projectId: 'proj-1' }, 'user-1');
+
+      expect(gates.find((g) => g.id === 'app-host-tls')).toBeUndefined();
+      expect(certPlan).not.toHaveBeenCalled();
+    });
+
+    it('never fails the preflight when the cert plan itself throws', async () => {
+      const bundle = makeBundle();
+      const { service, proxyRuleSetsService } = buildService({
+        configValues: { PRIMARY_DOMAIN: 'example.com' },
+        dnsPreflight: { probeHost: jest.fn().mockResolvedValue({ host: 'h', resolvedIps: [], probeOk: true }) },
+        certStepService: { plan: jest.fn().mockRejectedValue(new Error('boom')) },
+      });
+
+      stubProjectGateDeps(proxyRuleSetsService);
+      const { gates } = await service.projectGates(bundle, { projectId: 'proj-1' }, 'user-1');
+
+      expect(gates.find((g) => g.id === 'app-host-tls')).toBeUndefined();
+      expect(gates.some((g) => g.status === 'fail')).toBe(false);
     });
   });
 

@@ -201,6 +201,40 @@ describe('InstallDialog — Review screen', () => {
     expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
   });
 
+  // ce#584: a direct-serving instance with no wildcard certificate cannot serve
+  // the app over HTTPS at all. Rather than deploy an app to a plain-HTTP
+  // origin, the install is blocked until a wildcard exists.
+  it('blocks Install when the app host could only be served over http://', () => {
+    preflightState = {
+      data: makePreflight({
+        gates: [
+          { id: 'storage', status: 'pass', message: 'Storage looks good' },
+          {
+            id: 'app-host-tls',
+            status: 'fail',
+            message: 'handoff.example.com could only be served over http:// — no wildcard certificate yet.',
+            remediation: 'Provision a wildcard certificate on the Domains page.',
+            deepLink: '/domains',
+            retryable: true,
+          },
+        ],
+      }),
+      isLoading: false,
+    };
+
+    render(<InstallDialog entry={baseEntry} open onOpenChange={vi.fn()} />);
+
+    expect(
+      screen.getByText(/could only be served over http:\/\/ — no wildcard certificate yet\./),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^install$/i })).toBeDisabled();
+    // retryable: provisioning a wildcard is minutes away, so offer the re-check
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /why\?/i }));
+    expect(screen.getByText('Provision a wildcard certificate on the Domains page.')).toBeInTheDocument();
+  });
+
   it('enables Install when every gate passes', () => {
     render(<InstallDialog entry={baseEntry} open onOpenChange={vi.fn()} />);
 

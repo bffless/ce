@@ -304,8 +304,14 @@ export class AppInstallerService {
       step = 'record';
       this.jobs.setStep(jobId, step, { status: 'running' });
       const manualSteps = [...this.applicableManualSteps(manifest), ...certManualSteps];
+      // Scheme follows the serving model, not wishful thinking: a direct+LE
+      // instance with no certificate covering this host yet serves it over
+      // plain HTTP, and linking to https:// there lands the operator on the
+      // default vhost's certificate mismatch + 404 (ce#584).
       const appUrl =
-        appHost && created.domainId ? `https://${appHost}` : deployment.urls?.default;
+        appHost && created.domainId
+          ? `${await this.certStepService.schemeFor(appHost, !domainOutcome.sslDowngraded)}://${appHost}`
+          : deployment.urls?.default;
 
       await db
         .update(installedApps)
@@ -379,7 +385,8 @@ export class AppInstallerService {
       // the deploy step below), so the serving host must be read back from
       // that stored mapping, not recomputed from the manifest's default
       // subdomain — the operator may have overridden it at install time.
-      const appHost = await this.lookupDomainHost(installed.domainId);
+      const domainRow = await this.lookupDomainRow(installed.domainId);
+      const appHost = domainRow?.domain;
 
       step = 'sync-rules';
       this.jobs.setStep(jobId, step, { status: 'running' });
@@ -439,7 +446,9 @@ export class AppInstallerService {
         .where(eq(installedApps.id, installed.id));
 
       const manualSteps = this.applicableManualSteps(manifest);
-      const appUrl = appHost ? `https://${appHost}` : deployment.urls?.default;
+      const appUrl = appHost
+        ? `${await this.certStepService.schemeFor(appHost, domainRow!.sslEnabled)}://${appHost}`
+        : deployment.urls?.default;
       this.jobs.setStep(jobId, step, { status: 'done', detail: 'Update recorded.' });
       this.jobs.finish(jobId, 'succeeded', {
         installedAppId: installed.id,
@@ -1302,13 +1311,24 @@ export class AppInstallerService {
 
   /** Single-row read of a domain mapping's `domain` string; `undefined` if absent or since deleted. */
   private async lookupDomainHost(domainId: string | null | undefined): Promise<string | undefined> {
+    return (await this.lookupDomainRow(domainId))?.domain;
+  }
+
+  /**
+   * `sslEnabled` comes back alongside the host because the update job's
+   * `appUrl` needs the same scheme decision the install job makes — see
+   * `AppCertStepService.schemeFor`.
+   */
+  private async lookupDomainRow(
+    domainId: string | null | undefined,
+  ): Promise<{ domain: string; sslEnabled: boolean } | undefined> {
     if (!domainId) return undefined;
     const [mapping] = await db
-      .select({ domain: domainMappings.domain })
+      .select({ domain: domainMappings.domain, sslEnabled: domainMappings.sslEnabled })
       .from(domainMappings)
       .where(eq(domainMappings.id, domainId))
       .limit(1);
-    return mapping?.domain;
+    return mapping ? { domain: mapping.domain, sslEnabled: Boolean(mapping.sslEnabled) } : undefined;
   }
 
   /**

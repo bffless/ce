@@ -8,6 +8,7 @@ const domain = 'a.com';
 let mockCur: any;
 
 const makeDeps = () => ({
+  featureFlags: { reconcileWildcardSslVisibility: jest.fn().mockResolvedValue(undefined) },
   bootstrap: {
     validateCertificatePair: jest.fn().mockReturnValue({ sans: ['a.com', '*.a.com'], wildcardCovered: true }),
     saveCertificates: jest.fn(),
@@ -43,7 +44,7 @@ jest.mock('../ssl-staging', () => ({
   discardStagedCertificates: jest.fn(),
 }));
 
-const build = () => { const d = makeDeps(); return { d, svc: new PrimarySslService(d.bootstrap as any, d.ssl as any, d.preflight as any, d.info as any, d.snap as any) }; };
+const build = () => { const d = makeDeps(); return { d, svc: new PrimarySslService(d.bootstrap as any, d.ssl as any, d.preflight as any, d.info as any, d.snap as any, d.featureFlags as any) }; };
 
 beforeEach(() => {
   mockCur = { version: 2, state: 'applied', primaryDomain: 'a.com', proxyMode: 'none', sslMode: 'paste', port80: 'redirect', realIp: null };

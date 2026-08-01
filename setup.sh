@@ -934,11 +934,15 @@ create_env_file() {
     # ─────────────────────────────────────────────────────────────────────────
     if [ "$PROXY_MODE" = "cloudflare" ]; then
         uncomment_and_set "PROXY_MODE" "cloudflare"
-        # Cloudflare handles SSL at the edge (Universal SSL covers *.domain.com)
-        # so disable the Let's Encrypt wildcard SSL flow and related UI elements
+        # Cloudflare handles SSL at the edge (Universal SSL covers *.domain.com),
+        # so quieten the SSL nag and the per-domain toggle for this install.
         echo "" >> .env
-        echo "# Cloudflare SSL - disabled because Cloudflare handles SSL at edge" >> .env
-        echo "FEATURE_WILDCARD_SSL=false" >> .env
+        echo "# Cloudflare SSL - edge terminates TLS, so the origin needs no cert of its own." >> .env
+        echo "# Only the NAG (banner) and the per-domain toggle are turned off here." >> .env
+        echo "# FEATURE_WILDCARD_SSL is deliberately NOT disabled (ce#584): the serving" >> .env
+        echo "# model can change later (Cloudflare -> direct), and on direct serving a" >> .env
+        echo "# wildcard certificate is the only way to cover app subdomains. Disabling" >> .env
+        echo "# the capability here left it hidden exactly when it was needed." >> .env
         echo "FEATURE_WILDCARD_SSL_BANNER=false" >> .env
         echo "FEATURE_DOMAIN_SSL_TOGGLE=false" >> .env
         # Set platform IP (Cloudflare proxies DNS, so we need the real server IP)

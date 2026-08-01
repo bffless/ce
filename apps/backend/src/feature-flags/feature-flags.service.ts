@@ -263,6 +263,36 @@ export class FeatureFlagsService implements OnModuleInit {
   /**
    * Set multiple flags at once
    */
+  /**
+   * ce#584: `setup.sh`'s Cloudflare branch appends
+   * `FEATURE_WILDCARD_SSL=false` ("Cloudflare handles SSL at edge") to `.env`.
+   * Nothing revisits that line when the instance later moves to direct
+   * serving via the bootstrap wizard or Admin → Settings → SSL, so the
+   * wildcard certificate flow stays hidden exactly when it becomes the only
+   * way to give an app subdomain a certificate.
+   *
+   * Deliberately ONE-DIRECTIONAL: it clears a stale env-sourced *disable*
+   * when the instance starts terminating TLS itself, and never disables
+   * anything. An operator who wants the wildcard UI off on a direct install
+   * can still turn it off — a database override wins over env, and we only
+   * write one when env is the reason it is off.
+   */
+  async reconcileWildcardSslVisibility(proxyMode: 'cloudflare' | 'proxy' | 'none'): Promise<void> {
+    if (proxyMode !== 'none') return;
+
+    const sources = await this.getSources('ENABLE_WILDCARD_SSL', getFlagDefinition('ENABLE_WILDCARD_SSL')!);
+    const disabledByEnv = sources.env === false && sources.database === undefined;
+    if (!disabledByEnv) return;
+
+    await this.setFlag('ENABLE_WILDCARD_SSL', true);
+    this.logger.warn(
+      'ENABLE_WILDCARD_SSL was disabled by FEATURE_WILDCARD_SSL=false in .env (written for an ' +
+        'edge-terminated install). This instance now terminates TLS itself, where a wildcard ' +
+        'certificate is the only way to cover app subdomains — re-enabled via a database override. ' +
+        'Remove the .env line to keep the two in step.',
+    );
+  }
+
   async setFlags(
     flags: Array<{ key: string; value: boolean | string | number | object; enabled?: boolean }>,
   ): Promise<FeatureFlag[]> {

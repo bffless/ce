@@ -16,7 +16,16 @@ import { api } from './api';
 export type GateStatus = 'pass' | 'fail' | 'warn';
 
 export interface GateResult {
-  id: 'storage' | 'ce-version' | 'platform-config' | 'dns' | 'name-collision' | 'data-tables';
+  // Mirrors GateResult['id'] in apps/backend/src/app-catalog/app-preflight.service.ts.
+  id:
+    | 'storage'
+    | 'ce-version'
+    | 'platform-config'
+    | 'platform-cert-scope'
+    | 'dns'
+    | 'app-host-tls'
+    | 'name-collision'
+    | 'data-tables';
   status: GateStatus;
   message: string;
   remediation?: string;

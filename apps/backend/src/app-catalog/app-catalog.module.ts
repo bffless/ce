@@ -14,7 +14,6 @@ import { DomainsModule } from '../domains/domains.module';
 import { ProjectsModule } from '../projects/projects.module';
 import { PipelineSchedulesModule } from '../pipeline-schedules/pipeline-schedules.module';
 import { PipelinesModule } from '../pipelines/pipelines.module';
-import { SetupModule } from '../setup/setup.module';
 
 @Module({
   // The applier (Task 9) is where the cross-module edges land: it drives the
@@ -29,7 +28,6 @@ import { SetupModule } from '../setup/setup.module';
   //  - ProjectsModule:        ProjectsService (findOrCreate/exists/delete)
   //  - PipelineSchedulesModule: PipelineSchedulesService (manifest schedules)
   //  - PipelinesModule:       PipelineSchemasService (created-schema cleanup)
-  //  - SetupModule:           PrimarySslService for AppCertStepService
   imports: [
     forwardRef(() => ProxyRulesModule),
     forwardRef(() => DeploymentsModule),
@@ -37,7 +35,6 @@ import { SetupModule } from '../setup/setup.module';
     forwardRef(() => ProjectsModule),
     PipelineSchedulesModule,
     forwardRef(() => PipelinesModule),
-    SetupModule,
   ],
   controllers: [AppCatalogController],
   providers: [
@@ -48,11 +45,11 @@ import { SetupModule } from '../setup/setup.module';
     AppCertStepService,
     AppInstallJobsService,
     AppInstallerService,
-    // BootstrapDnsPreflightService is NOT exported by SetupModule (only
-    // SetupService/PrimarySslService are), so even though SetupModule is
-    // imported above (for PrimarySslService), we still provide a second
-    // instance directly here — same pattern SetupModule itself uses for
-    // SslCertificateService. Safe: probeHost is stateless (only reads/writes
+    // BootstrapDnsPreflightService is NOT exported by SetupModule, so we
+    // provide an instance directly here — same pattern SetupModule itself uses
+    // for SslCertificateService. (ce#584 dropped this module's SetupModule
+    // import along with AppCertStepService's PrimarySslService dependency:
+    // the cert step no longer issues anything.) Safe: probeHost is stateless (only reads/writes
     // a per-call temp ACME challenge file), so the two instances share all
     // durable state through the filesystem, not in-memory state.
     BootstrapDnsPreflightService,
