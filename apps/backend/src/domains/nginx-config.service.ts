@@ -420,20 +420,16 @@ export class NginxConfigService implements OnModuleInit {
    * Simpler config: port 80 only, no SSL (Traefik handles SSL termination).
    * Handles wwwBehavior for www/apex redirect configurations.
    *
-   * SCOPE NOTE: unlike generateCEPrimaryDomainConfig and the two per-domain
-   * .hbs templates, this function (and its platform-mode siblings
-   * generatePlatformPrimaryDomainConfig / generatePlatformSubdomainConfig)
-   * deliberately does NOT get a `location = /api/storage/presigned/local`
-   * block. Platform-mode workspaces run on managed bucket storage, not the
-   * local filesystem adapter, so the local presigned-upload route's own
-   * accept-side gate (resolveLocalAdapter(...) + supportsPresignedUrls(),
-   * which 404s on a non-local adapter) already makes the route inert here --
-   * adding the location would emit config that can never be exercised. Also,
-   * platform nginx generation affects live tenant workspaces, which isn't
-   * something to change speculatively without a platform-specific need. See
-   * docs/superpowers/specs/2026-07-30-local-fs-presigned-uploads-design.md,
-   * section "Correction: upload URL routing", for the local-storage routing
-   * fix this deliberately does not extend to platform mode.
+   * This is an app-serving vhost, so it owes the serving contract in
+   * nginx-serving-contract.spec.ts (ce#598): the auth relay, the exact-match
+   * presigned location, a server-level client_max_body_size, and 16k proxy
+   * header buffers. Only SSL termination, listen port and server_name may
+   * differ from the CE surfaces.
+   *
+   * It carries all four unconditionally. This block used to omit the
+   * presigned location on the reasoning that platform workspaces run managed
+   * bucket storage — see presignedUploadLocation() for why that assumption
+   * broke on Umbrel (#596).
    */
   private generatePlatformCustomDomainConfig(
     domainMapping: DomainMapping,
@@ -707,9 +703,8 @@ ${serverBlocks}
    * Generate nginx config for subdomains in PLATFORM_MODE.
    * Similar to custom domains: port 80 only, Traefik handles SSL.
    *
-   * SCOPE NOTE: deliberately no `/api/storage/presigned/local` location
-   * here -- see the note on generatePlatformCustomDomainConfig above for why
-   * (platform workspaces don't run the local storage adapter).
+   * App-serving vhost: owes the ce#598 serving contract in full — see the
+   * note on generatePlatformCustomDomainConfig above.
    */
   private generatePlatformSubdomainConfig(
     domainMapping: DomainMapping,
@@ -1163,9 +1158,8 @@ ${httpServerBlock}${httpsServerBlock}
    * Platform mode: Traefik handles SSL, nginx listens on port 80.
    * Includes proxy rules as location blocks before main content location.
    *
-   * SCOPE NOTE: deliberately no `/api/storage/presigned/local` location
-   * here -- see the note on generatePlatformCustomDomainConfig above for why
-   * (platform workspaces don't run the local storage adapter).
+   * App-serving vhost: owes the ce#598 serving contract in full — see the
+   * note on generatePlatformCustomDomainConfig above.
    */
   private generatePlatformPrimaryDomainConfig(
     config: PrimaryDomainConfig,
