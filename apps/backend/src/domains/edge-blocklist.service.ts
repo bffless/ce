@@ -43,6 +43,14 @@ export class EdgeBlocklistService {
   private readonly logger = new Logger(EdgeBlocklistService.name);
 
   private fingerprint: string | null = null;
+  /**
+   * True when the last sync rolled at least one pair back to "no edge rules".
+   * The fingerprint then describes a state we did NOT apply, so it must not be
+   * allowed to short-circuit the next sync — otherwise one transient
+   * validation failure (an `nginx -t` during an upgrade, say) latches
+   * permanently and only a blocklist mutation can ever dislodge it (#607).
+   */
+  private degraded = false;
   private defaultSources: EdgeRuleSources = { blockSource: null, allowSource: null };
   /** Per-domain validated sources, only for domains that differ from the default. */
   private domainSources = new Map<string, EdgeRuleSources>();
@@ -66,20 +74,30 @@ export class EdgeBlocklistService {
       .sort()
       .join(';');
     const fingerprint = `${state.enabled}|${pairKey(state)}|${domainPart}`;
-    if (fingerprint === this.fingerprint) {
+    if (fingerprint === this.fingerprint && !this.degraded) {
       return false;
     }
+
+    /** Key of what is CURRENTLY applied, to tell a real change from a retry. */
+    const appliedKey = (): string =>
+      `${pairKey(this.defaultSources)}|${[...this.domainSources.entries()]
+        .map(([id, s]) => `${id}=${pairKey(s)}`)
+        .sort()
+        .join(';')}`;
+    const appliedBefore = appliedKey();
 
     // Disabled: edge rules are simply omitted everywhere.
     if (!state.enabled) {
       this.defaultSources = { blockSource: null, allowSource: null };
       this.domainSources = new Map();
       this.fingerprint = fingerprint;
+      this.degraded = false;
       return true;
     }
 
     // Validate each DISTINCT pair once — most domains share the default set.
     const validated = new Map<string, EdgeRuleSources>();
+    let rolledBack = false;
     const validatePair = async (pair: EdgeRuleSources): Promise<EdgeRuleSources> => {
       const key = pairKey(pair);
       const cached = validated.get(key);
@@ -93,9 +111,10 @@ export class EdgeBlocklistService {
         if (!valid) {
           this.logger.error(
             'Generated edge blocklist rules failed validation; omitting edge rules ' +
-              '(app-side enforcement still applies)',
+              '(app-side enforcement still applies, and the next sync will retry)',
           );
           result = { blockSource: null, allowSource: null };
+          rolledBack = true;
         }
       }
       validated.set(key, result);
@@ -109,7 +128,12 @@ export class EdgeBlocklistService {
     }
     this.domainSources = domainSources;
     this.fingerprint = fingerprint;
-    return true;
+    this.degraded = rolledBack;
+    // A rolled-back retry that produced the same (empty) rules is not a
+    // change: reporting one would rewrite every config every 30s for as long
+    // as validation keeps failing. Recovery — or any genuine state change —
+    // still reports true.
+    return !rolledBack || appliedKey() !== appliedBefore;
   }
 
   /**

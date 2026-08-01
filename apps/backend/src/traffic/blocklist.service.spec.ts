@@ -82,9 +82,14 @@ describe('BlocklistService', () => {
   });
 
   describe('enforcement state (refresh + shouldBlock)', () => {
-    it('enforces the Baseline before any refresh (protected by default)', () => {
-      expect(service.shouldBlock('/wp-login.php')).toBe(true);
+    it('enforces nothing before the first successful load (#607)', () => {
+      // The Baseline alone is only half the operator's intent — the allowlist
+      // that qualifies it is database-only — so enforcing it unloaded blocks
+      // paths the operator explicitly allowed. Hold off instead.
+      expect(service.isLoaded()).toBe(false);
+      expect(service.shouldBlock('/wp-login.php')).toBe(false);
       expect(service.shouldBlock('/index.html')).toBe(false);
+      expect(service.getCompiledState().enabled).toBe(false);
     });
 
     it('after refresh with the toggle on, Baseline + list patterns block and allowlists win', async () => {
@@ -124,7 +129,12 @@ describe('BlocklistService', () => {
       expect(service.shouldBlock('/.env')).toBe(true);
     });
 
-    it('falls back to Baseline-only enforcement when the lists cannot load', async () => {
+    it('does not compile a half-loaded state when the lists cannot load (#607)', async () => {
+      // Regression: the fallback used to compile `lists = []` into a live
+      // matcher — fail-closed for Baseline blocks, fail-open for the allowlist
+      // that rescues them. On a self-hosted box that 444'd `/install.sh`
+      // (Baseline `extension('sh')`) after every ./update.sh, even though the
+      // admin had `exact:/install.sh` allowlisted.
       const failure = {
         then: (_resolve: unknown, reject: (reason: unknown) => void) =>
           reject(new Error('relation does not exist')),
@@ -132,7 +142,83 @@ describe('BlocklistService', () => {
       mockDb.orderBy.mockImplementationOnce(() => failure);
       await service.refresh();
 
+      expect(service.isLoaded()).toBe(false);
+      expect(service.shouldBlock('/install.sh')).toBe(false);
+      expect(service.shouldBlock('/.env')).toBe(false);
+      // Nothing may reach the edge either, or nginx bakes in the same asymmetry.
+      expect(service.getCompiledState().enabled).toBe(false);
+    });
+
+    it('keeps the previous allowlist when a later DB read fails (#607)', async () => {
+      mockDb.__queue([listRow()]); // listBlocklists: lists
+      mockDb.__queue([
+        entryRow({ id: 'e2', kind: 'allow', matchType: 'exact', value: '/install.sh' }),
+      ]);
+      mockDb.__queue([]); // attachments
+      mockDb.__queue([]); // domain mappings
+      await service.refresh();
+      expect(service.shouldBlock('/install.sh')).toBe(false);
       expect(service.shouldBlock('/.env')).toBe(true);
+
+      const failure = {
+        then: (_resolve: unknown, reject: (reason: unknown) => void) =>
+          reject(new Error('connection terminated')),
+      };
+      mockDb.orderBy.mockImplementationOnce(() => failure);
+      await service.refresh();
+
+      // Last good state stands — NOT recompiled to Baseline-without-allowlist.
+      expect(service.shouldBlock('/install.sh')).toBe(false);
+      expect(service.shouldBlock('/.env')).toBe(true);
+    });
+
+    it('notifies on the first successful refresh after a degraded read (#607)', async () => {
+      const listener = jest.fn();
+      service.onEffectiveChange(listener);
+
+      const failure = {
+        then: (_resolve: unknown, reject: (reason: unknown) => void) =>
+          reject(new Error('relation does not exist')),
+      };
+      mockDb.orderBy.mockImplementationOnce(() => failure);
+      await service.refresh();
+      expect(listener).not.toHaveBeenCalled();
+
+      mockDb.__queue([listRow()]);
+      mockDb.__queue([entryRow()]);
+      mockDb.__queue([]); // attachments
+      mockDb.__queue([]); // domain mappings
+      await service.refresh();
+
+      // lastFingerprint is still null here, so only the failure flag can carry
+      // the notification that startup-rendered configs need regenerating.
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(service.isLoaded()).toBe(true);
+    });
+  });
+
+  describe('first-load gate (whenFirstLoad, #607)', () => {
+    it('resolves true once a refresh has loaded real state', async () => {
+      const waiting = service.whenFirstLoad(5_000);
+
+      mockDb.__queue([]); // lists
+      mockDb.__queue([]); // domain mappings
+      await service.refresh();
+
+      await expect(waiting).resolves.toBe(true);
+      // Already-loaded callers resolve immediately.
+      await expect(service.whenFirstLoad(0)).resolves.toBe(true);
+    });
+
+    it('resolves false when the state never loads in time', async () => {
+      const failure = {
+        then: (_resolve: unknown, reject: (reason: unknown) => void) =>
+          reject(new Error('relation does not exist')),
+      };
+      mockDb.orderBy.mockImplementationOnce(() => failure);
+      await service.refresh();
+
+      await expect(service.whenFirstLoad(10)).resolves.toBe(false);
     });
   });
 

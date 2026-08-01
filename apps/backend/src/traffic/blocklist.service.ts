@@ -33,6 +33,11 @@ export const BOT_PROTECTION_FLAG = 'BOT_PROTECTION_ENABLED';
  *  flips made through the generic feature-flags API and multi-replica drift). */
 const REFRESH_INTERVAL_MS = 30_000;
 
+/** Boot retry cadence while the first load is still failing (postgres warming up). */
+const BOOT_RETRY_INTERVAL_MS = 2_000;
+/** Give up on fast retries after this long and fall back to REFRESH_INTERVAL_MS. */
+const BOOT_RETRY_CEILING_MS = 60_000;
+
 export interface AttachedDomainRef {
   id: string;
   domain: string;
@@ -103,9 +108,11 @@ function normalizeHost(host: string): string {
 export class BlocklistService implements OnModuleInit {
   private readonly logger = new Logger(BlocklistService.name);
 
-  // Start protected-by-default: Baseline-only, toggle at its default. The
-  // first refresh() replaces this with the real database state; if that
-  // fails (e.g. the migration has not run yet), the Baseline still applies.
+  // A placeholder so the matcher fields are never null; it is NOT enforced
+  // until `loaded` flips (see the `enforcing` getter). Enforcing the Baseline
+  // before the lists have loaded would block `.sh`, `.env`, `/status` … while
+  // the allowlist that rescues them — a per-list, database-only property — is
+  // still missing, 444'ing paths the operator explicitly allowed (#607).
   private defaultMatcher: CompiledBlocklistMatcher = buildBlocklistMatcher(
     BASELINE_BLOCKLIST_ENTRIES,
     [],
@@ -131,10 +138,84 @@ export class BlocklistService implements OnModuleInit {
   private refreshEverFailed = false;
   private readonly changeListeners: Array<() => void> = [];
 
+  /**
+   * True once a refresh has compiled the matchers from a real database read.
+   * Until then NOTHING is enforced — app-side or at the edge (#607). The
+   * Baseline is only half of the operator's intent; its other half (the
+   * allowlist exceptions) lives exclusively in the `blocklists` tables, so a
+   * Baseline-only compile is not "degraded protection", it is protection the
+   * operator never configured, applied to paths they explicitly allowed.
+   */
+  private loaded = false;
+  /** Resolvers waiting on {@link whenFirstLoad}, drained on the first load. */
+  private loadWaiters: Array<() => void> = [];
+  /** Rate-limits the degraded-read warning to once per outage. */
+  private degradedLogged = false;
+  private bootRetryTimer: NodeJS.Timeout | null = null;
+  private bootRetryElapsedMs = 0;
+
   constructor(private readonly featureFlags: FeatureFlagsService) {}
 
   async onModuleInit(): Promise<void> {
     await this.refresh();
+    // Postgres is commonly still accepting-but-not-ready at boot (every
+    // ./update.sh restarts both). The 30s interval alone would leave a long
+    // window with no enforcement, so retry fast until the first real load.
+    if (!this.loaded) {
+      this.scheduleBootRetry();
+    }
+  }
+
+  /** True once the compiled state came from the database rather than a fallback. */
+  isLoaded(): boolean {
+    return this.loaded;
+  }
+
+  /**
+   * Resolves true once the compiled state reflects a real database read, or
+   * false if `timeoutMs` elapses first. Callers that render enforcement into
+   * DURABLE artifacts (NginxStartupService writing sites-enabled/*.conf) await
+   * this so a boot-time database race can never bake a half-loaded state into
+   * nginx (#607).
+   */
+  whenFirstLoad(timeoutMs: number): Promise<boolean> {
+    if (this.loaded) {
+      return Promise.resolve(true);
+    }
+    return new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => {
+        this.loadWaiters = this.loadWaiters.filter((waiter) => waiter !== onLoad);
+        resolve(false);
+      }, timeoutMs);
+      timer.unref?.();
+      const onLoad = () => {
+        clearTimeout(timer);
+        resolve(true);
+      };
+      this.loadWaiters.push(onLoad);
+    });
+  }
+
+  private scheduleBootRetry(): void {
+    if (this.bootRetryTimer || this.bootRetryElapsedMs >= BOOT_RETRY_CEILING_MS) {
+      return;
+    }
+    this.bootRetryTimer = setTimeout(() => {
+      this.bootRetryTimer = null;
+      this.bootRetryElapsedMs += BOOT_RETRY_INTERVAL_MS;
+      void this.refresh().then(() => {
+        if (!this.loaded) {
+          this.scheduleBootRetry();
+        }
+      });
+    }, BOOT_RETRY_INTERVAL_MS);
+    // Never hold the process open for a retry (tests, shutdown).
+    this.bootRetryTimer.unref?.();
+  }
+
+  /** The toggle AND a real loaded state — anything less enforces nothing. */
+  private get enforcing(): boolean {
+    return this.enabled && this.loaded;
   }
 
   /**
@@ -144,7 +225,7 @@ export class BlocklistService implements OnModuleInit {
    */
   getCompiledState(): CompiledBlocklistState {
     return {
-      enabled: this.enabled,
+      enabled: this.enforcing,
       blockSource: this.defaultMatcher.blockSource,
       allowSource: this.defaultMatcher.allowSource,
     };
@@ -159,7 +240,7 @@ export class BlocklistService implements OnModuleInit {
   getCompiledStateForDomain(domainMappingId: string): CompiledBlocklistState {
     const matcher = this.domainMatchers.get(domainMappingId) ?? this.defaultMatcher;
     return {
-      enabled: this.enabled,
+      enabled: this.enforcing,
       blockSource: matcher.blockSource,
       allowSource: matcher.allowSource,
     };
@@ -175,7 +256,7 @@ export class BlocklistService implements OnModuleInit {
     for (const [id, matcher] of this.domainMatchers) {
       if (matcher !== this.defaultMatcher) {
         states.set(id, {
-          enabled: this.enabled,
+          enabled: this.enforcing,
           blockSource: matcher.blockSource,
           allowSource: matcher.allowSource,
         });
@@ -202,7 +283,7 @@ export class BlocklistService implements OnModuleInit {
    * throw — a matcher bug must not take down request serving.
    */
   shouldBlock(pathname: string, host?: string | null): boolean {
-    if (!this.enabled) {
+    if (!this.enforcing) {
       return false;
     }
     try {
@@ -219,18 +300,40 @@ export class BlocklistService implements OnModuleInit {
   async refresh(): Promise<void> {
     try {
       const enabled = await this.featureFlags.isEnabled(BOT_PROTECTION_FLAG);
-      let lists: BlocklistWithEntries[] = [];
-      let domains: Array<{ id: string; domain: string }> = [];
+      let lists: BlocklistWithEntries[];
+      let domains: Array<{ id: string; domain: string }>;
       try {
         lists = await this.listBlocklists();
         domains = await db
           .select({ id: domainMappings.id, domain: domainMappings.domain })
           .from(domainMappings);
       } catch (error) {
-        // Pre-migration or transient DB failure: enforce the Baseline alone
-        // rather than dropping protection.
-        this.logger.warn(`Could not load Blocklists; enforcing Baseline only: ${String(error)}`);
+        // Pre-migration or transient DB failure. Compiling from `lists = []`
+        // here would be fail-closed for blocks and fail-OPEN for allows: the
+        // Baseline still blocks `.sh`/`.env`/`/status`, but every allowlist
+        // exception that qualifies it is missing, so the operator's explicitly
+        // allowed paths start returning 444 (#607). Abandon the refresh
+        // instead — keep the last good matchers, or enforce nothing at all if
+        // we never had any — and let the next attempt notify.
+        //
+        // Note this cannot rely on the outer catch: FeatureFlagsService
+        // swallows its own database errors, so a boot with postgres still
+        // warming up lands HERE, not there. That is why the #531/#532
+        // `refreshEverFailed` fix did not cover this path.
+        this.refreshEverFailed = true;
+        if (!this.degradedLogged) {
+          this.degradedLogged = true;
+          this.logger.warn(
+            `Could not load Blocklists; ${
+              this.loaded
+                ? 'keeping the last good compiled state'
+                : 'enforcing nothing until the first successful load'
+            }: ${String(error)}`,
+          );
+        }
+        return;
       }
+      this.degradedLogged = false;
 
       const byId = new Map(lists.map((list) => [list.id, list]));
       const defaultIds = lists.filter((list) => list.isDefault).map((list) => list.id);
@@ -295,6 +398,7 @@ export class BlocklistService implements OnModuleInit {
       this.domainMatchers = domainMatchers;
       this.hostMatchers = hostMatchers;
       this.enabled = enabled;
+      this.markLoaded();
 
       // Fingerprint the full effective state: toggle, default sources, and
       // every domain whose set differs from the default — so attachment and
@@ -307,10 +411,12 @@ export class BlocklistService implements OnModuleInit {
       const fingerprint = `${enabled}|${defaultMatcher.blockSource ?? ''}|${defaultMatcher.allowSource ?? ''}|${domainPart}`;
       // Normally the null-guard means "first refresh ever, nothing to diff
       // against, don't notify" — startup config regen already reads this
-      // state directly. But if an EARLIER refresh died in the outer catch
-      // below, the Baseline-only matcher it left behind is already live in
-      // rendered nginx configs, so this first *successful* refresh must
-      // notify even though lastFingerprint is still null (#531).
+      // state directly. But if an EARLIER refresh failed (outer catch below,
+      // #531; or the degraded-read return above, #607), configs may already
+      // have been rendered without these rules, so this first *successful*
+      // refresh must notify even though lastFingerprint is still null.
+      // Cheap when it is redundant: the edge sync fingerprint short-circuits
+      // a regeneration that would not change any file.
       const changed =
         this.refreshEverFailed ||
         (this.lastFingerprint !== null && this.lastFingerprint !== fingerprint);
@@ -323,6 +429,20 @@ export class BlocklistService implements OnModuleInit {
       // Keep the last good matchers; never let a refresh failure break serving.
       this.refreshEverFailed = true;
       this.logger.error(`Blocklist refresh failed: ${String(error)}`);
+    }
+  }
+
+  /** Flip to a real loaded state and release everyone waiting on it. */
+  private markLoaded(): void {
+    this.loaded = true;
+    if (this.bootRetryTimer) {
+      clearTimeout(this.bootRetryTimer);
+      this.bootRetryTimer = null;
+    }
+    const waiters = this.loadWaiters;
+    this.loadWaiters = [];
+    for (const waiter of waiters) {
+      waiter();
     }
   }
 
