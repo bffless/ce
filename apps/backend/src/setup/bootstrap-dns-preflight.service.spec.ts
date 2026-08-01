@@ -232,23 +232,67 @@ describe('BootstrapDnsPreflightService', () => {
       expect(check.probeKind).toBe('https-reachability');
     });
 
-    it('falls back to the stronger port-80 token echo on a direct-serving instance', async () => {
+    // Reachability mode must NEVER run the ACME token echo, on ANY serving
+    // model. That probe answers "could Let's Encrypt validate this host?",
+    // which is a different and strictly harder question — wrong in both
+    // directions for this gate:
+    //
+    //  - FALSE FAILURES. Behind a Cloudflare Tunnel (Umbrel) an unmapped
+    //    subdomain answers 404, and fetchProbe rejects every non-2xx
+    //    ("HTTP 404 from <host>"), so the install gate blocked permanently on
+    //    a host that was perfectly reachable.
+    //  - FALSE PASSES. On a direct-serving instance the echo only succeeded
+    //    because the request fell through to the PRIMARY vhost's ACME
+    //    location; it never measured the app host at all, and the same probe
+    //    fails once that host has a vhost of its own (ce#584).
+    it('probes port 80 for reachability on a direct-serving instance, not the token echo', async () => {
       mockInstanceConfig = { version: 2, state: 'applied', proxyMode: 'none', port80: 'redirect' };
       stubResolve();
       const httpsSpy = jest.spyOn(service as never, 'sendSecureProbeRequest' as never);
       const httpSpy = jest
         .spyOn(service as never, 'sendProbeRequest' as never)
-        .mockImplementation((async (options: { path: string }) => ({
-          statusCode: 200,
-          body: options.path.replace('/.well-known/acme-challenge/', ''),
-        })) as never);
+        .mockResolvedValue({ statusCode: 404, body: '' } as never);
 
       const check = await service.probeHost('handoff.example.com', { mode: 'reachability' });
 
       expect(httpsSpy).not.toHaveBeenCalled();
-      expect((httpSpy.mock.calls[0] as unknown as [{ port: number }])[0].port).toBe(80);
-      expect(check.probeKind).toBe('acme');
+      const opts = (httpSpy.mock.calls[0] as unknown as [{ port: number; path: string }])[0];
+      expect(opts.port).toBe(80);
+      // Plain '/', NOT an acme-challenge token path.
+      expect(opts.path).toBe('/');
+      expect(check.probeKind).toBe('http-reachability');
+      // A 404 from our own server still proves the hostname arrives here.
       expect(check.probeOk).toBe(true);
+      expect(check.status).toBe(404);
+    });
+
+    it('passes on the 404 an unmapped subdomain returns behind a tunnel (the Umbrel case)', async () => {
+      // Umbrel writes no instance.json and sets no PROXY_MODE, so the serving
+      // model resolves to 'none' — the branch that used to take the echo.
+      mockInstanceConfig = null;
+      delete process.env.PROXY_MODE;
+      stubResolve('104.21.37.118');
+      jest
+        .spyOn(service as never, 'sendProbeRequest' as never)
+        .mockResolvedValue({ statusCode: 404, body: '' } as never);
+
+      const check = await service.probeHost('handoff.toshimoto.dev', { mode: 'reachability' });
+
+      expect(check.probeOk).toBe(true);
+      expect(check.status).toBe(404);
+      expect(check.error).toBeUndefined();
+    });
+
+    it('never writes an ACME challenge file in reachability mode', async () => {
+      mockInstanceConfig = { version: 2, state: 'applied', proxyMode: 'none', port80: 'redirect' };
+      stubResolve();
+      jest
+        .spyOn(service as never, 'sendProbeRequest' as never)
+        .mockResolvedValue({ statusCode: 200, body: '' } as never);
+      await service.probeHost('handoff.example.com', { mode: 'reachability' });
+
+      // The ACME probe mints a token file in the webroot; reachability must not.
+      expect(fs.existsSync(path.join(webroot, '.well-known', 'acme-challenge'))).toBe(false);
     });
 
     it('derives the serving model from PROXY_MODE when there is no instance.json', async () => {

@@ -315,14 +315,25 @@ export class AppPreflightService {
       // says the hostname reaches a live server, not that it reaches THIS one.
       // A 404 is the expected answer at this point — the app has no domain
       // mapping until the install creates one.
-      const message =
-        check.probeKind === 'https-reachability'
-          ? `${appHost} resolves to ${resolvedIps} and answered over HTTPS` +
-            (check.status ? ` (HTTP ${check.status})` : '') +
-            `. This instance serves behind a proxy or with port 80 closed, so the probe confirms the ` +
-            `hostname reaches a live server — it cannot prove that server is this origin, because the ` +
-            `proxy terminates TLS. A 404 here is expected: the app has no domain mapping until it is installed.`
-          : `${appHost} resolves and answered the preflight probe on port 80.`;
+      const status = check.status ? ` (HTTP ${check.status})` : '';
+      const expected404 =
+        ' A 404 here is expected: the app has no domain mapping until it is installed.';
+      let message: string;
+      if (check.probeKind === 'https-reachability') {
+        message =
+          `${appHost} resolves to ${resolvedIps} and answered over HTTPS${status}. ` +
+          `This instance serves behind a proxy or with port 80 closed, so the probe confirms the ` +
+          `hostname reaches a live server — it cannot prove that server is this origin, because the ` +
+          `proxy terminates TLS.${expected404}`;
+      } else if (check.probeKind === 'http-reachability') {
+        // Direct serving: no proxy in the path, so the answer came from this
+        // origin itself — a stronger result than the proxied case.
+        message =
+          `${appHost} resolves to ${resolvedIps} and answered on port 80${status}, so the hostname ` +
+          `reaches this server.${expected404}`;
+      } else {
+        message = `${appHost} resolves and answered the preflight probe on port 80.`;
+      }
       return { id: 'dns', status: 'pass', message };
     }
 
