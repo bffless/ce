@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.7](https://github.com/bffless/ce/compare/v0.4.6...v0.4.7) (2026-08-01)
+
+
+### Bug Fixes
+
+* **nginx:** apply the same contract to the platform primary-domain generator ([#599](https://github.com/bffless/ce/issues/599)) ([4b4edd8](https://github.com/bffless/ce/commit/4b4edd8ae4d7dae9862028ace6c8434f7dd0464f)), closes [#584](https://github.com/bffless/ce/issues/584)
+
 ## [0.4.6](https://github.com/bffless/ce/compare/v0.4.5...v0.4.6) (2026-08-01)
 
 
