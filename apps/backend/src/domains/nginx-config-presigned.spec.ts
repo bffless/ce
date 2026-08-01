@@ -89,6 +89,25 @@ describe('generated vhosts always expose the local presigned upload route', () =
     },
   );
 
+  // The primary-domain generator serves an app mapped to the apex — same
+  // contract, and it had none of the three until ce#584's sweep.
+  it('applies the same contract to a primary-domain mapping', async () => {
+    const primaryMapping = {
+      ...(subdomainMapping as object),
+      id: 'dom-3',
+      domain: 'toshimoto.dev',
+      domainType: 'subdomain',
+      isPrimary: true,
+      wwwBehavior: 'serve-both',
+    } as never;
+
+    const config = await buildService().generateConfig(primaryMapping, project);
+
+    expect(config).toContain('location = /api/storage/presigned/local');
+    expect(config).toContain('client_max_body_size');
+    expect(config).toContain('proxy_buffer_size 16k');
+  });
+
   it('still routes everything else into the deployment path', async () => {
     const config = await buildService().generateConfig(subdomainMapping, project);
     expect(config).toContain('/public/bffless/handoff/alias/handoff/apps/handoff/dist/');

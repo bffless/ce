@@ -1235,6 +1235,9 @@ ${httpServerBlock}${httpsServerBlock}
 
     // Main location block
     const locationBlock = `
+    # nginx defaults to 1M and 413s anything larger on every proxied path.
+    # The presigned upload location below carries its own 200M ceiling.
+    client_max_body_size 100M;
 ${proxyLocations}
 
     # BFFless auth relay endpoints (login relay, session, callback, refresh, logout)
@@ -1248,6 +1251,7 @@ ${proxyLocations}
         proxy_set_header X-Forwarded-Host $host;
     }
 
+${this.presignedUploadLocation()}
     # Main location - serves static content
     location / {
         rewrite ^/(.*)$ ${internalPath}/$1 break;
@@ -1260,6 +1264,14 @@ ${proxyLocations}
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-Host $host;
         proxy_set_header X-Original-URI $request_uri;
+
+        # Header buffers sized for SuperTokens' session-refresh response;
+        # nginx's 4k default returns 502 "upstream sent too big header" on a
+        # successful /api/auth/session/refresh (ce#370).
+        proxy_buffering on;
+        proxy_buffer_size 16k;
+        proxy_buffers 8 16k;
+        proxy_busy_buffers_size 32k;
 
         proxy_intercept_errors ${proxyInterceptErrors};
         ${spaErrorPage}
