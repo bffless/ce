@@ -46,7 +46,7 @@ export interface PreflightCheck {
   probeOk: boolean;
   error?: string;
   /** Which probe actually ran (absent on nothing — always set from here on). */
-  probeKind?: 'acme' | 'https-reachability';
+  probeKind?: 'acme' | 'https-reachability' | 'http-reachability';
   /** Failure classification; only populated for the reachability probe. */
   failure?: ProbeFailure;
   /** HTTP status the host answered with, when it answered at all. */
@@ -146,8 +146,7 @@ export class BootstrapDnsPreflightService {
    */
   async probeHost(host: string, opts: ProbeOptions = {}): Promise<PreflightCheck> {
     if (opts.mode === 'reachability') {
-      const model = this.resolveServingModel();
-      if (model.probeHttps) return this.httpsReachabilityProbe(host, model);
+      return this.reachabilityProbe(host, this.resolveServingModel());
     }
     return this.acmeProbe(host);
   }
@@ -226,7 +225,29 @@ export class BootstrapDnsPreflightService {
    * "something in front answered, the origin behind it did not" ones — see
    * classifyOriginError for why 502/503/504 only count when proxied.
    */
-  private async httpsReachabilityProbe(host: string, model: ServingModel): Promise<PreflightCheck> {
+  /**
+   * Reachability, on every serving model — never the ACME token echo.
+   *
+   * The echo answers "could Let's Encrypt validate this host?", which is a
+   * different and strictly harder question, and it was wrong in both
+   * directions here:
+   *
+   *  - FALSE FAILURES. Behind a Cloudflare Tunnel (Umbrel) or any proxy an
+   *    unmapped subdomain answers 404, and `fetchProbe` rejects every non-2xx
+   *    ("HTTP 404 from <host>"), so the app-catalog install gate blocked
+   *    permanently on a host that was perfectly reachable. The host cannot
+   *    answer as itself until the install creates it — chicken and egg.
+   *  - FALSE PASSES. On a direct-serving instance the echo only succeeded
+   *    because the request fell through to the PRIMARY vhost's ACME location.
+   *    It never measured the app host, and the identical probe fails once
+   *    that host has a vhost of its own (ce#584).
+   *
+   * The port still follows the serving model — `probeHttps` instances have
+   * nothing listening on 80 — but the verdict is now the same everywhere:
+   * any status that is not an origin error proves the hostname arrives here.
+   */
+  private async reachabilityProbe(host: string, model: ServingModel): Promise<PreflightCheck> {
+    const probeKind = model.probeHttps ? 'https-reachability' : 'http-reachability';
     const resolvedIps = await this.resolveA(host);
     if (resolvedIps.some((ip) => isDisallowedProbeIp(ip))) {
       return {
@@ -234,7 +255,7 @@ export class BootstrapDnsPreflightService {
         resolvedIps,
         probeOk: false,
         error: 'resolves to a private or reserved address',
-        probeKind: 'https-reachability',
+        probeKind,
         failure: 'private-ip',
       };
     }
@@ -244,13 +265,13 @@ export class BootstrapDnsPreflightService {
         resolvedIps,
         probeOk: false,
         error: 'Hostname does not resolve yet',
-        probeKind: 'https-reachability',
+        probeKind,
         failure: 'no-dns',
       };
     }
 
     try {
-      const { statusCode } = await this.fetchReachabilityProbe(host, resolvedIps[0]);
+      const { statusCode } = await this.fetchReachabilityProbe(host, resolvedIps[0], model);
       const failure = classifyOriginError(statusCode, model.proxied);
       if (failure) {
         return {
@@ -263,7 +284,7 @@ export class BootstrapDnsPreflightService {
               ? `The proxy in front of ${host} returned HTTP ${statusCode} — it could not reach an origin`
               : `The proxy in front of ${host} returned HTTP ${statusCode} — it reached this server, ` +
                 `but the backend behind it did not return a valid response`,
-          probeKind: 'https-reachability',
+          probeKind,
           failure,
         };
       }
@@ -272,15 +293,15 @@ export class BootstrapDnsPreflightService {
         resolvedIps,
         probeOk: true,
         status: statusCode,
-        probeKind: 'https-reachability',
+        probeKind,
       };
     } catch (e) {
       return {
         host,
         resolvedIps,
         probeOk: false,
-        error: e instanceof Error ? e.message : 'Unreachable over HTTPS',
-        probeKind: 'https-reachability',
+        error: e instanceof Error ? e.message : 'Unreachable',
+        probeKind,
         failure: 'no-response',
       };
     }
@@ -344,8 +365,24 @@ export class BootstrapDnsPreflightService {
   private async fetchReachabilityProbe(
     host: string,
     ip: string | undefined,
+    model: ServingModel,
   ): Promise<{ statusCode: number }> {
     if (!ip) throw new Error('No resolved address to probe');
+    // A direct-serving instance with port 80 open is probed there: it is the
+    // port nginx definitely answers on (the wildcard/default vhost), and it
+    // avoids depending on a certificate existing for a host that, by
+    // definition, does not have one yet.
+    if (!model.probeHttps) {
+      const { statusCode } = await this.sendProbeRequest({
+        host: ip,
+        port: 80,
+        path: '/',
+        method: 'GET',
+        headers: { Host: host },
+        timeout: 5000,
+      });
+      return { statusCode };
+    }
     return this.sendSecureProbeRequest({
       host: ip,
       servername: host,
