@@ -12,60 +12,26 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
-import {
-  useUpdateAppMutation,
-  type CatalogEntry,
-  type GateResult,
-} from '@/services/appCatalogApi';
+import { useUpdateAppMutation, type CatalogEntry } from '@/services/appCatalogApi';
 import { UninstallDialog } from './UninstallDialog';
 import { EjectPanel } from './EjectPanel';
-import { ExternalLink, MoreVertical, HelpCircle } from 'lucide-react';
+import { GateBlockedCta } from './GateBlockedCta';
+import { RemoteImage } from './RemoteImage';
+import { hasAppDetails } from './catalogEntry';
+import { ExternalLink, MoreVertical } from 'lucide-react';
 
 interface AppCardProps {
   entry: CatalogEntry;
   /** Opens the install wizard dialog (Task 13/14) for this app. */
   onInstall: (entry: CatalogEntry) => void;
+  /** Opens the read-only details dialog (description + screenshots). */
+  onDetails: (entry: CatalogEntry) => void;
   /**
    * Fired once `useUpdateAppMutation` returns a jobId — the parent mounts
    * `InstallDialog` in `mode="update"` with that jobId so the update run
    * reuses the same Working/Done job-progress screens as install.
    */
   onUpdateStarted: (entry: CatalogEntry, jobId: string) => void;
-}
-
-/**
- * The disabled CTA a failing instance gate produces: the gate's own message
- * IS the button label, with its remediation behind a "Why?" popover. Shared
- * by the Install and Update CTAs — the same gates block both (an update
- * re-runs `instanceGates` server-side and would fail the job), so they must
- * present the blockage identically.
- */
-function GateBlockedCta({ gate }: { gate: GateResult }) {
-  return (
-    <>
-      <Button disabled aria-label={gate.message}>
-        {gate.message}
-      </Button>
-      {(gate.remediation || gate.deepLink) && (
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button variant="ghost" size="sm" aria-label="Why?">
-              <HelpCircle className="h-4 w-4 mr-1" />
-              Why?
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent>
-            {gate.remediation && <p className="text-sm">{gate.remediation}</p>}
-            {gate.deepLink && (
-              <a href={gate.deepLink} className="text-sm text-primary underline mt-2 inline-block">
-                Fix it now
-              </a>
-            )}
-          </PopoverContent>
-        </Popover>
-      )}
-    </>
-  );
 }
 
 /**
@@ -89,11 +55,16 @@ function GateBlockedCta({ gate }: { gate: GateResult }) {
  * `EjectPanel`) that each load their own preview/payload data; Update fires
  * `useUpdateAppMutation` here and hands the job off to the shared
  * `InstallDialog` (mounted by the page) for progress.
+ *
+ * Store metadata from the registry (ce#590) rides on top: a `thumbnailUrl`
+ * banner and a `category` badge here, with the long-form description and
+ * screenshots one click away in `AppDetailsDialog`.
  */
-export function AppCard({ entry, onInstall, onUpdateStarted }: AppCardProps) {
+export function AppCard({ entry, onInstall, onDetails, onUpdateStarted }: AppCardProps) {
   const { toast } = useToast();
   const { installed } = entry;
   const failedGate = entry.gates.find((gate) => gate.status === 'fail');
+  const showDetails = hasAppDetails(entry);
 
   const [updateApp, { isLoading: isUpdating }] = useUpdateAppMutation();
   const [updatePopoverOpen, setUpdatePopoverOpen] = useState(false);
@@ -114,12 +85,53 @@ export function AppCard({ entry, onInstall, onUpdateStarted }: AppCardProps) {
     }
   };
 
+  const banner = (
+    <div className="aspect-video w-full overflow-hidden bg-muted">
+      <RemoteImage
+        src={entry.thumbnailUrl}
+        alt=""
+        className="h-full w-full object-cover"
+        fallback={
+          <div
+            aria-hidden
+            className="flex h-full w-full items-center justify-center text-4xl font-semibold text-muted-foreground/40"
+          >
+            {entry.name.slice(0, 1)}
+          </div>
+        }
+      />
+    </div>
+  );
+
   return (
-    <Card className="flex flex-col">
+    <Card className="flex flex-col overflow-hidden">
+      {/*
+        The banner is unconditional so a grid row stays even — one card with a
+        thumbnail next to one without would otherwise be twice the height. An
+        app with no `thumbnailUrl` (or whose image this instance can't reach)
+        gets a monogram plate instead. It doubles as the details affordance
+        when there IS a details view; a clickable banner that opens nothing
+        would be worse than a plain one.
+      */}
+      {showDetails ? (
+        <button
+          type="button"
+          onClick={() => onDetails(entry)}
+          aria-label={`${entry.name} details`}
+          className="block w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+        >
+          {banner}
+        </button>
+      ) : (
+        banner
+      )}
+
       <CardHeader className="flex-row items-start gap-3 space-y-0">
-        {entry.iconUrl && (
-          <img src={entry.iconUrl} alt="" className="h-10 w-10 rounded-md object-cover" />
-        )}
+        <RemoteImage
+          src={entry.iconUrl}
+          alt=""
+          className="h-10 w-10 shrink-0 rounded-md object-cover"
+        />
         <div className="min-w-0">
           <h3 className="font-semibold leading-tight truncate">{entry.name}</h3>
           {entry.summary && (
@@ -129,12 +141,28 @@ export function AppCard({ entry, onInstall, onUpdateStarted }: AppCardProps) {
       </CardHeader>
 
       <CardContent className="flex-1">
-        {installed && (
-          <Badge variant="secondary">{`Installed · v${installed.version}`}</Badge>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {entry.category && (
+            <Badge variant="outline" className="capitalize">
+              {entry.category}
+            </Badge>
+          )}
+          {installed && <Badge variant="secondary">{`Installed · v${installed.version}`}</Badge>}
+        </div>
       </CardContent>
 
       <CardFooter className="flex flex-wrap items-center gap-2">
+        {/*
+          Rendered first so it's the footer's tab stop before the primary CTA:
+          reading about an app should come before committing to installing it.
+          Also the only details affordance when the app has no thumbnail.
+        */}
+        {showDetails && (
+          <Button variant="ghost" size="sm" onClick={() => onDetails(entry)}>
+            Details
+          </Button>
+        )}
+
         {!installed && !failedGate && (
           <Button disabled={!entry.installable} onClick={() => onInstall(entry)}>
             Install

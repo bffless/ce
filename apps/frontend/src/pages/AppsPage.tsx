@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { AppCard } from '@/components/app-catalog/AppCard';
+import { AppDetailsDialog } from '@/components/app-catalog/AppDetailsDialog';
 import { InstallDialog } from '@/components/app-catalog/InstallDialog';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -25,6 +26,7 @@ export function AppsPage() {
   // and a stale snapshot here would never pick that up (the Done screen's
   // ack checkboxes would appear permanently unchecked/disabled).
   const [installTargetSnapshot, setInstallTargetSnapshot] = useState<CatalogEntry | null>(null);
+  const [detailsTargetSnapshot, setDetailsTargetSnapshot] = useState<CatalogEntry | null>(null);
   const [updateTargetSnapshot, setUpdateTargetSnapshot] = useState<{
     entry: CatalogEntry;
     jobId: string;
@@ -34,6 +36,9 @@ export function AppsPage() {
 
   const installTarget = installTargetSnapshot
     ? (entries.find((e) => e.id === installTargetSnapshot.id) ?? installTargetSnapshot)
+    : null;
+  const detailsTarget = detailsTargetSnapshot
+    ? (entries.find((e) => e.id === detailsTargetSnapshot.id) ?? detailsTargetSnapshot)
     : null;
   const updateTarget = updateTargetSnapshot
     ? {
@@ -72,9 +77,9 @@ export function AppsPage() {
 
       {isLoading && (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <Skeleton className="h-48 w-full" />
-          <Skeleton className="h-48 w-full" />
-          <Skeleton className="h-48 w-full" />
+          <Skeleton className="h-64 w-full" />
+          <Skeleton className="h-64 w-full" />
+          <Skeleton className="h-64 w-full" />
         </div>
       )}
 
@@ -106,12 +111,27 @@ export function AppsPage() {
               key={entry.id}
               entry={entry}
               onInstall={setInstallTargetSnapshot}
+              onDetails={setDetailsTargetSnapshot}
               onUpdateStarted={(updatedEntry, jobId) =>
                 setUpdateTargetSnapshot({ entry: updatedEntry, jobId })
               }
             />
           ))}
         </div>
+      )}
+
+      {detailsTarget && (
+        <AppDetailsDialog
+          entry={detailsTarget}
+          open={detailsTarget !== null}
+          onOpenChange={(open) => !open && setDetailsTargetSnapshot(null)}
+          // Hand off rather than stack: the details dialog closes and the
+          // install wizard takes its place, so there's only ever one modal.
+          onInstall={(entry) => {
+            setDetailsTargetSnapshot(null);
+            setInstallTargetSnapshot(entry);
+          }}
+        />
       )}
 
       {installTarget && (

@@ -55,7 +55,17 @@ export interface CatalogEntry {
   id: string;
   name: string;
   summary?: string;
+  /**
+   * Long-form markdown blurb for the details dialog. Registry-only — an
+   * installed app that has dropped out of the registry has none.
+   */
+  description?: string;
+  category?: string;
   iconUrl?: string;
+  /** Wide card image for the catalog grid. Registry-only. */
+  thumbnailUrl?: string;
+  /** Absolute https URLs, already ordered by the registry. Registry-only. */
+  screenshots?: string[];
   docsUrl?: string;
   sourceUrl?: string;
   /** Absent when the registry is unavailable, or this app isn't (or no longer) listed in it. */

@@ -269,6 +269,9 @@ export function validateAppManifest(
   if (json.summary !== undefined && typeof json.summary !== 'string') {
     errors.push('summary: must be string');
   }
+  if (json.category !== undefined && typeof json.category !== 'string') {
+    errors.push('category: must be string');
+  }
   if (json.iconUrl !== undefined && typeof json.iconUrl !== 'string') {
     errors.push('iconUrl: must be string');
   }
@@ -336,6 +339,25 @@ export function validateRegistry(
       }
       if (entry.summary !== undefined && typeof entry.summary !== 'string') {
         errors.push(`${path}.summary: must be string`);
+      }
+      // Store-presentation fields (added by the registry builder from
+      // apps/<app>/catalog/). Type-checked but never required: a registry
+      // that predates them, or an app without a catalog/ dir, is still valid.
+      if (entry.description !== undefined && typeof entry.description !== 'string') {
+        errors.push(`${path}.description: must be string`);
+      }
+      if (entry.category !== undefined && typeof entry.category !== 'string') {
+        errors.push(`${path}.category: must be string`);
+      }
+      if (entry.thumbnailUrl !== undefined && typeof entry.thumbnailUrl !== 'string') {
+        errors.push(`${path}.thumbnailUrl: must be string`);
+      }
+      if (entry.screenshots !== undefined) {
+        if (!Array.isArray(entry.screenshots)) {
+          errors.push(`${path}.screenshots: must be an array of strings`);
+        } else if (entry.screenshots.some((url) => typeof url !== 'string')) {
+          errors.push(`${path}.screenshots: must be an array of strings`);
+        }
       }
       if (entry.iconUrl !== undefined && typeof entry.iconUrl !== 'string') {
         errors.push(`${path}.iconUrl: must be string`);

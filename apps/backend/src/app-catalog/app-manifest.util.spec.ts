@@ -184,6 +184,70 @@ describe('validateRegistry', () => {
       expect(result.errors).toContain('apps[0].sha256: required string');
     }
   });
+
+  it('accepts and round-trips the store-presentation fields', () => {
+    const registry = {
+      schemaVersion: 1,
+      apps: [
+        {
+          ...validRegistry.apps[0],
+          description: '## Handoff\n\nShare files.',
+          category: 'files',
+          thumbnailUrl: 'https://apps.example.com/assets/handoff/thumbnail.png',
+          iconUrl: 'https://apps.example.com/assets/handoff/icon.png',
+          screenshots: [
+            'https://apps.example.com/assets/handoff/screenshots/01.png',
+            'https://apps.example.com/assets/handoff/screenshots/02.png',
+          ],
+        },
+      ],
+    };
+
+    const result = validateRegistry(registry);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.registry).toEqual(registry);
+    }
+  });
+
+  it('rejects mistyped store-presentation fields', () => {
+    const result = validateRegistry({
+      schemaVersion: 1,
+      apps: [
+        {
+          ...validRegistry.apps[0],
+          description: 42,
+          category: [],
+          thumbnailUrl: {},
+          screenshots: 'https://apps.example.com/one.png',
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toEqual(
+        expect.arrayContaining([
+          'apps[0].description: must be string',
+          'apps[0].category: must be string',
+          'apps[0].thumbnailUrl: must be string',
+          'apps[0].screenshots: must be an array of strings',
+        ]),
+      );
+    }
+  });
+
+  it('rejects a screenshots array containing a non-string', () => {
+    const result = validateRegistry({
+      schemaVersion: 1,
+      apps: [{ ...validRegistry.apps[0], screenshots: ['https://apps.example.com/one.png', 7] }],
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toContain('apps[0].screenshots: must be an array of strings');
+    }
+  });
 });
 
 describe('manualStepApplies', () => {
