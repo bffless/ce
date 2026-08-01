@@ -254,7 +254,11 @@ describe('AppCatalogService', () => {
           id: 'handoff',
           name: 'Handoff',
           summary: undefined,
+          description: undefined,
+          category: undefined,
           iconUrl: undefined,
+          thumbnailUrl: undefined,
+          screenshots: undefined,
           docsUrl: undefined,
           sourceUrl: undefined,
           registryVersion: '1.0.0',
@@ -262,6 +266,40 @@ describe('AppCatalogService', () => {
           installable: true,
         },
       ]);
+    });
+
+    it('passes the store-presentation fields through to the catalog entry', async () => {
+      // Admin -> Apps renders these (ce#590); they must survive the explicit
+      // field-by-field copy in buildRegistryEntry rather than be dropped.
+      const entry: AppRegistryEntry = {
+        ...HANDOFF_ENTRY,
+        summary: 'Share files with clients',
+        description: '## Handoff\n\nShare files.',
+        category: 'files',
+        iconUrl: 'https://apps.example.com/assets/handoff/icon.png',
+        thumbnailUrl: 'https://apps.example.com/assets/handoff/thumbnail.png',
+        screenshots: ['https://apps.example.com/assets/handoff/screenshots/01.png'],
+        docsUrl: 'https://example.com/docs',
+        sourceUrl: 'https://github.com/bffless/apps',
+      };
+      registry.getRegistry.mockResolvedValue({
+        ok: true,
+        registry: { schemaVersion: 1, apps: [entry] },
+      });
+      mockDb.__queue([]);
+
+      const result = await service.listCatalog();
+
+      expect(result.data[0]).toMatchObject({
+        summary: entry.summary,
+        description: entry.description,
+        category: entry.category,
+        iconUrl: entry.iconUrl,
+        thumbnailUrl: entry.thumbnailUrl,
+        screenshots: entry.screenshots,
+        docsUrl: entry.docsUrl,
+        sourceUrl: entry.sourceUrl,
+      });
     });
 
     it('marks a registry app not-installable when an instance gate fails', async () => {

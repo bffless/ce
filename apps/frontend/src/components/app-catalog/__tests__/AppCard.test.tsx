@@ -34,7 +34,7 @@ beforeEach(() => {
 
 describe('AppCard', () => {
   it('renders an enabled Install button when installable', () => {
-    render(<AppCard entry={baseEntry} onInstall={vi.fn()} onUpdateStarted={vi.fn()} />);
+    render(<AppCard entry={baseEntry} onInstall={vi.fn()} onDetails={vi.fn()} onUpdateStarted={vi.fn()} />);
 
     const button = screen.getByRole('button', { name: /install/i });
     expect(button).toBeEnabled();
@@ -55,7 +55,7 @@ describe('AppCard', () => {
       ],
     };
 
-    render(<AppCard entry={entry} onInstall={vi.fn()} onUpdateStarted={vi.fn()} />);
+    render(<AppCard entry={entry} onInstall={vi.fn()} onDetails={vi.fn()} onUpdateStarted={vi.fn()} />);
 
     expect(screen.getByText('Requires bucket storage')).toBeInTheDocument();
     const button = screen.getByRole('button', { name: /requires bucket storage/i });
@@ -80,7 +80,7 @@ describe('AppCard', () => {
       },
     };
 
-    render(<AppCard entry={entry} onInstall={vi.fn()} onUpdateStarted={vi.fn()} />);
+    render(<AppCard entry={entry} onInstall={vi.fn()} onDetails={vi.fn()} onUpdateStarted={vi.fn()} />);
 
     expect(screen.getByText('Installed · v1.2.0')).toBeInTheDocument();
     const openLink = screen.getByRole('link', { name: /open/i });
@@ -105,7 +105,7 @@ describe('AppCard', () => {
       },
     };
 
-    render(<AppCard entry={entry} onInstall={vi.fn()} onUpdateStarted={vi.fn()} />);
+    render(<AppCard entry={entry} onInstall={vi.fn()} onDetails={vi.fn()} onUpdateStarted={vi.fn()} />);
 
     expect(screen.getByRole('button', { name: /update to v2\.0\.0/i })).toBeInTheDocument();
   });
@@ -139,7 +139,7 @@ describe('AppCard', () => {
       },
     };
 
-    render(<AppCard entry={entry} onInstall={vi.fn()} onUpdateStarted={vi.fn()} />);
+    render(<AppCard entry={entry} onInstall={vi.fn()} onDetails={vi.fn()} onUpdateStarted={vi.fn()} />);
 
     expect(screen.queryByRole('button', { name: /update to v2\.0\.0/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /requires ce v0\.4\.0 or later/i })).toBeDisabled();
@@ -166,7 +166,7 @@ describe('AppCard', () => {
       },
     };
 
-    render(<AppCard entry={entry} onInstall={vi.fn()} onUpdateStarted={onUpdateStarted} />);
+    render(<AppCard entry={entry} onInstall={vi.fn()} onDetails={vi.fn()} onUpdateStarted={onUpdateStarted} />);
 
     fireEvent.click(screen.getByRole('button', { name: /update to v2\.0\.0/i }));
 
@@ -179,6 +179,50 @@ describe('AppCard', () => {
     await vi.waitFor(() => {
       expect(onUpdateStarted).toHaveBeenCalledWith(entry, 'job-1');
     });
+  });
+
+  it('renders the registry thumbnail and category badge', () => {
+    const entry: CatalogEntry = {
+      ...baseEntry,
+      category: 'files',
+      thumbnailUrl: 'https://apps.example.com/assets/handoff/thumbnail.png',
+    };
+
+    const { container } = render(
+      <AppCard entry={entry} onInstall={vi.fn()} onDetails={vi.fn()} onUpdateStarted={vi.fn()} />,
+    );
+
+    expect(screen.getByText('files')).toBeInTheDocument();
+    expect(container.querySelector(`img[src="${entry.thumbnailUrl}"]`)).toBeInTheDocument();
+  });
+
+  it('offers no Details affordance when the entry carries no store metadata', () => {
+    // A de-listed installed app renders from its stored manifest, which never
+    // carries description/screenshots — a Details button would open nothing.
+    render(
+      <AppCard entry={baseEntry} onInstall={vi.fn()} onDetails={vi.fn()} onUpdateStarted={vi.fn()} />,
+    );
+
+    expect(screen.queryByRole('button', { name: /^details$/i })).not.toBeInTheDocument();
+  });
+
+  it('opens details from the footer button and from the thumbnail', () => {
+    const onDetails = vi.fn();
+    const entry: CatalogEntry = {
+      ...baseEntry,
+      description: '## Handoff\n\nShare files.',
+      thumbnailUrl: 'https://apps.example.com/assets/handoff/thumbnail.png',
+    };
+
+    render(
+      <AppCard entry={entry} onInstall={vi.fn()} onDetails={onDetails} onUpdateStarted={vi.fn()} />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /^details$/i }));
+    expect(onDetails).toHaveBeenCalledWith(entry);
+
+    fireEvent.click(screen.getByRole('button', { name: /handoff details/i }));
+    expect(onDetails).toHaveBeenCalledTimes(2);
   });
 
   it('fires the update with prune: true when the toggle is switched on', async () => {
@@ -200,7 +244,7 @@ describe('AppCard', () => {
       },
     };
 
-    render(<AppCard entry={entry} onInstall={vi.fn()} onUpdateStarted={onUpdateStarted} />);
+    render(<AppCard entry={entry} onInstall={vi.fn()} onDetails={vi.fn()} onUpdateStarted={onUpdateStarted} />);
 
     fireEvent.click(screen.getByRole('button', { name: /update to v2\.0\.0/i }));
     fireEvent.click(screen.getByRole('switch', { name: /reset to the app's shipped rules \(prune\)/i }));

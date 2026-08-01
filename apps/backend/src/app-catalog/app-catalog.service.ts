@@ -54,7 +54,14 @@ export interface CatalogEntry {
   id: string;
   name: string;
   summary?: string;
+  /** Long-form markdown blurb. Registry-only — see AppRegistryEntry.description. */
+  description?: string;
+  category?: string;
   iconUrl?: string;
+  /** Wide card image for the catalog grid. Registry-only. */
+  thumbnailUrl?: string;
+  /** Absolute https URLs. Registry-only. */
+  screenshots?: string[];
   docsUrl?: string;
   sourceUrl?: string;
   /** Absent when the registry is unavailable, or this app isn't (or no longer) listed in it. */
@@ -290,7 +297,11 @@ export class AppCatalogService {
       id: entry.id,
       name: entry.name ?? entry.id,
       summary: entry.summary,
+      description: entry.description,
+      category: entry.category,
       iconUrl: entry.iconUrl,
+      thumbnailUrl: entry.thumbnailUrl,
+      screenshots: entry.screenshots,
       docsUrl: entry.docsUrl,
       sourceUrl: entry.sourceUrl,
       registryVersion: entry.version,
@@ -312,10 +323,14 @@ export class AppCatalogService {
     const manifest = row.manifest as AppManifest;
     const gates = await this.preflightService.instanceGates(manifest.requires);
 
+    // `description`/`thumbnailUrl`/`screenshots` are registry-only (the store
+    // folds them in from apps/<app>/catalog/, they never reach the bundled
+    // manifest), so a delisted app renders with just its manifest metadata.
     return {
       id: manifest.id,
       name: manifest.name,
       summary: manifest.summary,
+      category: manifest.category,
       iconUrl: manifest.iconUrl,
       docsUrl: manifest.docsUrl,
       sourceUrl: manifest.sourceUrl,

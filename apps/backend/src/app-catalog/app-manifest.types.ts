@@ -41,6 +41,8 @@ export interface AppManifest {
   name: string;
   version: string;
   summary?: string;
+  /** Free-form store category (e.g. 'files'), shown as a badge in the catalog. */
+  category?: string;
   iconUrl?: string;
   docsUrl?: string;
   sourceUrl?: string;
@@ -69,7 +71,18 @@ export interface AppRegistryEntry {
   bundleUrl: string;
   sha256: string;
   summary?: string;
+  /**
+   * Long-form markdown blurb (the store's `apps/<app>/catalog/description.md`).
+   * Registry-only — it never travels in the bundled manifest, so an installed
+   * app that has dropped out of the registry renders without one.
+   */
+  description?: string;
+  category?: string;
   iconUrl?: string;
+  /** Wide (1200x630-ish) card image for the catalog grid. Registry-only. */
+  thumbnailUrl?: string;
+  /** Absolute https URLs, already ordered by the registry builder. Registry-only. */
+  screenshots?: string[];
   docsUrl?: string;
   sourceUrl?: string;
   requires?: AppManifestRequires;

@@ -101,6 +101,44 @@ beforeEach(() => {
   getInstallJobQueryMock.mockReset().mockImplementation(() => jobQueryResult);
 });
 
+describe('AppsPage — details dialog', () => {
+  it('opens details from a card and swaps to the install wizard on Install', async () => {
+    catalogResult = {
+      data: {
+        data: [
+          {
+            id: 'handoff',
+            name: 'Handoff',
+            summary: 'Share files with clients',
+            description: '## Highlights\n\n- Per-folder access control',
+            category: 'files',
+            screenshots: ['https://apps.example.com/assets/handoff/screenshots/01.png'],
+            gates: [],
+            installable: true,
+            registryVersion: '1.0.0',
+          },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+    };
+
+    render(<AppsPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^details$/i }));
+    expect(await screen.findByRole('heading', { name: 'Highlights' })).toBeInTheDocument();
+    expect(screen.getByAltText('Handoff screenshot')).toBeInTheDocument();
+
+    // Only one modal at a time: details closes, the install wizard opens.
+    fireEvent.click(screen.getByRole('button', { name: /^install$/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('heading', { name: 'Highlights' })).not.toBeInTheDocument();
+    });
+    expect(screen.getByText(/review what will change/i)).toBeInTheDocument();
+  });
+});
+
 describe('AppsPage — Done-screen ack checkbox stays live (regression)', () => {
   it('re-derives the InstallDialog entry from the current catalog query, so acking a manual step checks the box once the catalog refetches', async () => {
     const { rerender } = render(<AppsPage />);
