@@ -94,6 +94,40 @@ describe('generated vhosts always expose the local presigned upload route', () =
     expect(config).toContain('/public/bffless/handoff/alias/handoff/apps/handoff/dist/');
   });
 
+  /**
+   * The CE per-domain templates carry both of these; the platform-style
+   * generators never did, so an externally-proxied install (Umbrel behind a
+   * Cloudflare Tunnel) inherited nginx's defaults.
+   */
+  it.each([
+    ['subdomain', 'subdomainMapping'],
+    ['custom domain', 'customMapping'],
+  ])('sets a server-level client_max_body_size for a %s (nginx defaults to 1M)', async (label) => {
+    const mapping = label === 'subdomain' ? subdomainMapping : customMapping;
+    const config = await buildService().generateConfig(mapping, project);
+
+    // Outside the presigned location, which has its own 200M ceiling.
+    const beforePresigned = config.slice(0, config.indexOf('location = /api/storage/presigned/local'));
+    expect(beforePresigned).toContain('client_max_body_size');
+  });
+
+  it.each([
+    ['subdomain', 'subdomainMapping'],
+    ['custom domain', 'customMapping'],
+  ])(
+    'sizes proxy header buffers for a %s, so a SuperTokens session refresh does not 502',
+    async (label) => {
+      const mapping = label === 'subdomain' ? subdomainMapping : customMapping;
+      const config = await buildService().generateConfig(mapping, project);
+
+      // At nginx's 4k default, a successful /api/auth/session/refresh
+      // overflows the header buffer and returns 502 (ce#370).
+      expect(config).toContain('proxy_buffer_size 16k');
+      expect(config).toContain('proxy_buffers 8 16k');
+      expect(config).toContain('proxy_busy_buffers_size 32k');
+    },
+  );
+
   it('streams the upload body through rather than spooling it in nginx', async () => {
     const config = await buildService().generateConfig(subdomainMapping, project);
     const block = config.slice(config.indexOf('location = /api/storage/presigned/local'));

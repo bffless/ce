@@ -547,6 +547,19 @@ export class NginxConfigService implements OnModuleInit {
         proxy_send_timeout 60s;
         proxy_read_timeout 60s;
 
+        # Header buffers must be large enough to hold SuperTokens' session
+        # refresh response, which sets several big Set-Cookie/token headers
+        # (rotated sAccessToken + sRefreshToken JWTs, front-token, anti-csrf).
+        # At nginx's 4k default a successful /api/auth/session/refresh
+        # overflows the buffer and returns 502 "upstream sent too big header"
+        # (ce#370). The CE per-domain templates carry this; the platform-style
+        # generators did not, so externally-proxied installs (e.g. Umbrel
+        # behind a Cloudflare Tunnel) inherited the broken default.
+        proxy_buffering on;
+        proxy_buffer_size 16k;
+        proxy_buffers 8 16k;
+        proxy_busy_buffers_size 32k;
+
         proxy_intercept_errors ${proxyInterceptErrors};
         ${spaErrorPage}
     }`;
@@ -556,6 +569,13 @@ export class NginxConfigService implements OnModuleInit {
 server {
     listen ${listenPort};
     server_name ${serverName};
+
+    # nginx defaults to 1M, which 413s any body larger than that on every
+    # path this vhost proxies (pipeline multipart uploads, form posts). The
+    # presigned upload location below raises its own ceiling to 200M; this is
+    # the floor for everything else, matching the CE templates' server-level
+    # value.
+    client_max_body_size 100M;
 ${securityHeaders}
 ${scannerBlock}
 ${errorPages}
@@ -755,6 +775,12 @@ server {
     listen ${this.getNginxListenPort()};
     server_name ${domainMapping.domain};
 
+    # nginx defaults to 1M, which 413s any body larger than that on every path
+    # this vhost proxies. The presigned upload location below raises its own
+    # ceiling to 200M; this is the floor for everything else, matching the CE
+    # templates' server-level value.
+    client_max_body_size 100M;
+
     # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
@@ -799,6 +825,16 @@ ${this.presignedUploadLocation()}
         proxy_connect_timeout 60s;
         proxy_send_timeout 60s;
         proxy_read_timeout 60s;
+
+        # Header buffers must be large enough to hold SuperTokens' session
+        # refresh response (rotated sAccessToken + sRefreshToken JWTs,
+        # front-token, anti-csrf). At nginx's 4k default a successful
+        # /api/auth/session/refresh overflows the buffer and returns 502
+        # "upstream sent too big header" (ce#370).
+        proxy_buffering on;
+        proxy_buffer_size 16k;
+        proxy_buffers 8 16k;
+        proxy_busy_buffers_size 32k;
 
         proxy_intercept_errors ${proxyInterceptErrors};
         ${spaErrorPage}
