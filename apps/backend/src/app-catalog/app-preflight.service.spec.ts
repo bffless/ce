@@ -372,7 +372,9 @@ describe('AppPreflightService', () => {
       );
 
       expect(result.appHost).toBe('my-app.example.com');
-      expect(dnsPreflight.probeHost).toHaveBeenCalledWith('my-app.example.com');
+      expect(dnsPreflight.probeHost).toHaveBeenCalledWith('my-app.example.com', {
+        mode: 'reachability',
+      });
       const dns = result.gates.find((g) => g.id === 'dns');
       expect(dns?.status).toBe('pass');
       const nameCollision = result.gates.find((g) => g.id === 'name-collision');
@@ -471,7 +473,10 @@ describe('AppPreflightService', () => {
 
       const dns = result.gates.find((g) => g.id === 'dns');
       expect(dns).toMatchObject({ id: 'dns', status: 'pass' });
-      expect(dnsPreflight.probeHost).toHaveBeenCalledWith('handoff.example.com');
+      // Reachability mode, not the ACME gate — see dnsGate's comment.
+      expect(dnsPreflight.probeHost).toHaveBeenCalledWith('handoff.example.com', {
+        mode: 'reachability',
+      });
     });
 
     it('fails as retryable with the exact record to add and resolved IPs when probeHost fails', async () => {
@@ -515,6 +520,79 @@ describe('AppPreflightService', () => {
       expect(dns?.remediation).toMatch(/CNAME/);
       expect(dns?.remediation).toMatch(/handoff/);
       expect(dns?.remediation).toMatch(/example\.com/);
+    });
+
+    // A proxied instance can only ever get the weaker HTTPS answer, so the
+    // gate's wording has to stop over-claiming. These lock that in.
+    function buildDnsCase(check: PreflightCheck) {
+      const bundle = makeBundle();
+      const built = buildService({ configValues: { PRIMARY_DOMAIN: 'example.com' } });
+      (built.dnsPreflight.probeHost as jest.Mock).mockResolvedValue(check);
+      (built.proxyRuleSetsService.syncRuleSet as jest.Mock).mockResolvedValue(EMPTY_SYNC_RESPONSE);
+      for (let i = 0; i < 6; i++) mockDb.__queue([]);
+      return { bundle, ...built };
+    }
+
+    it('on a proxied instance, a passing HTTPS probe says HTTPS and admits it cannot prove the origin', async () => {
+      const { service, bundle } = buildDnsCase({
+        host: 'handoff.example.com',
+        resolvedIps: ['104.21.1.1'],
+        probeOk: true,
+        probeKind: 'https-reachability',
+        status: 404,
+      });
+
+      const result = await service.projectGates(bundle, { projectId: 'proj-1' }, 'user-1');
+
+      const dns = result.gates.find((g) => g.id === 'dns');
+      expect(dns?.status).toBe('pass');
+      expect(dns?.message).toMatch(/HTTPS/);
+      expect(dns?.message).toMatch(/HTTP 404/);
+      expect(dns?.message).toMatch(/cannot prove/i);
+      expect(dns?.message).toMatch(/104\.21\.1\.1/);
+    });
+
+    it('a Cloudflare 520 fails with an origin-down message, not a "fix your DNS" message', async () => {
+      const { service, bundle } = buildDnsCase({
+        host: 'handoff.example.com',
+        resolvedIps: ['104.21.1.1'],
+        probeOk: false,
+        probeKind: 'https-reachability',
+        status: 520,
+        failure: 'origin-error',
+        error:
+          'The proxy in front of handoff.example.com returned HTTP 520 — it could not reach an origin',
+      });
+
+      const result = await service.projectGates(bundle, { projectId: 'proj-1' }, 'user-1');
+
+      const dns = result.gates.find((g) => g.id === 'dns');
+      expect(dns?.status).toBe('fail');
+      expect(dns?.retryable).toBe(true);
+      expect(dns?.message).toMatch(/HTTP 520/);
+      expect(dns?.message).toMatch(/DNS is fine/i);
+      expect(dns?.remediation).toMatch(/serving handoff\.example\.com/);
+      // Still names the exact record, in case the record really is missing.
+      expect(dns?.remediation).toMatch(/CNAME/);
+    });
+
+    it('a refused connection keeps the DNS-record remediation', async () => {
+      const { service, bundle } = buildDnsCase({
+        host: 'handoff.example.com',
+        resolvedIps: [],
+        probeOk: false,
+        probeKind: 'https-reachability',
+        failure: 'no-response',
+        error: 'connect ECONNREFUSED 104.21.1.1:443',
+      });
+
+      const result = await service.projectGates(bundle, { projectId: 'proj-1' }, 'user-1');
+
+      const dns = result.gates.find((g) => g.id === 'dns');
+      expect(dns?.status).toBe('fail');
+      expect(dns?.retryable).toBe(true);
+      expect(dns?.message).toMatch(/ECONNREFUSED/);
+      expect(dns?.remediation).toMatch(/CNAME record "handoff"/);
     });
   });
 
