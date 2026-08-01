@@ -19,6 +19,13 @@ server {
 
     server_name {{domain}};
 
+    # nginx defaults to 1M, which 413s any body larger than that on every path
+    # this vhost proxies -- proxy-rule POSTs and form posts in particular. The
+    # presigned upload location below carries its own 200M ceiling. Declared
+    # rather than inherited from the http block so an app's body ceiling does
+    # not depend on how TLS is terminated for it (ce#598).
+    client_max_body_size 100M;
+
     # Security headers are set by the NestJS backend (SecurityHeadersMiddleware)
 
 {{{blocklistRules}}}
@@ -163,6 +170,13 @@ server {
 server {
     listen {{listenPort}};
     server_name {{domain}};
+
+    # nginx defaults to 1M, which 413s any body larger than that on every path
+    # this vhost proxies -- proxy-rule POSTs and form posts in particular. The
+    # presigned upload location below carries its own 200M ceiling. Declared
+    # rather than inherited from the http block so an app's body ceiling does
+    # not depend on how TLS is terminated for it (ce#598).
+    client_max_body_size 100M;
 
     # ACME challenge for Let's Encrypt
     location /.well-known/acme-challenge/ {

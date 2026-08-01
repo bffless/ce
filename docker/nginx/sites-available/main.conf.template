@@ -20,6 +20,13 @@ server {
     http2 on;
     server_name *.${PRIMARY_DOMAIN};
 
+    # nginx's http-level default (nginx.conf) is 10M. App vhosts get 100M, so
+    # an app's body ceiling doesn't depend on how TLS is terminated for it:
+    # the Umbrel wildcard and the platform-style generators already declare
+    # 100M, and this block is their compose-stack counterpart (ce#598). The
+    # presigned upload location below carries its own 200M.
+    client_max_body_size 100M;
+
     # SSL certificates (use wildcard cert — path set by entrypoint based on PROXY_MODE)
     ssl_certificate ${WILDCARD_CERT};
     ssl_certificate_key ${WILDCARD_KEY};
