@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { RootState } from '@/store';
 import { completeOnboarding, setOnboardingStep } from '@/store/slices/setupSlice';
 import { useGetSessionQuery } from '@/services/authApi';
+import { useFeatureFlags } from '@/services/featureFlagsApi';
 import {
   Dialog,
   DialogContent,
@@ -27,8 +28,14 @@ export function OnboardingModal({ isOpen, onClose }: OnboardingModalProps) {
   const { siteName } = useBranding();
   const navigate = useNavigate();
   const { data: sessionData } = useGetSessionQuery();
-  // /apps is an admin-only route — only offer the apps path to admins.
-  const showAppsPath = sessionData?.user?.role === 'admin';
+  const { isEnabled } = useFeatureFlags();
+  // /apps is an admin-only route — only offer the apps path to admins, and
+  // only when the app catalog is enabled. The catalog can be disabled (e.g.
+  // platform-managed deployments), in which case /apps is a dead end and the
+  // backend refuses its endpoints. isEnabled() returns false while flags are
+  // still loading, so this safely degrades to the single-path layout rather
+  // than briefly flashing the apps path before flags resolve.
+  const showAppsPath = sessionData?.user?.role === 'admin' && isEnabled('ENABLE_APP_CATALOG');
   const { onboardingStep, createdProjectId, createdApiKey } = useSelector(
     (state: RootState) => state.setup.onboarding
   );

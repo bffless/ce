@@ -24,6 +24,13 @@ vi.mock('@/services/authApi', () => ({
   useGetSessionQuery: () => mockSession(),
 }));
 
+// The apps path is also gated on ENABLE_APP_CATALOG — default to enabled so
+// existing admin tests still see the apps path unless a test overrides it.
+const mockFlags = vi.fn();
+vi.mock('@/services/featureFlagsApi', () => ({
+  useFeatureFlags: () => mockFlags(),
+}));
+
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', async (importOriginal) => ({
   ...(await importOriginal<typeof import('react-router-dom')>()),
@@ -49,6 +56,7 @@ function renderModal({ onClose = vi.fn() } = {}) {
 describe('OnboardingModal', () => {
   beforeEach(() => {
     mockSession.mockReturnValue({ data: { user: { role: 'user' } } });
+    mockFlags.mockReturnValue({ isEnabled: () => true });
     mockNavigate.mockClear();
   });
   afterEach(cleanup);
@@ -88,5 +96,14 @@ describe('OnboardingModal', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Create a repository' }));
 
     expect(screen.getByText('Create Your First Repository')).toBeInTheDocument();
+  });
+
+  it('hides the apps path for admins when ENABLE_APP_CATALOG is off', () => {
+    mockSession.mockReturnValue({ data: { user: { role: 'admin' } } });
+    mockFlags.mockReturnValue({ isEnabled: () => false });
+    renderModal();
+
+    expect(screen.queryByRole('button', { name: 'Browse apps' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Get Started' })).toBeInTheDocument();
   });
 });
