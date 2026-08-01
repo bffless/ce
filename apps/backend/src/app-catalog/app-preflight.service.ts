@@ -270,6 +270,10 @@ export class AppPreflightService {
       return { id: 'dns', status: 'pass', message };
     }
 
+    // Three failures need three different remedies, so they get three
+    // different messages: the proxy could not find an origin at all
+    // (Cloudflare 520–527), the proxy found this server but the backend behind
+    // it did not answer (502/503/504), or nothing answered at all.
     if (check.failure === 'origin-error') {
       return {
         id: 'dns',
@@ -283,6 +287,21 @@ export class AppPreflightService {
           `Check that this server is running and serving ${appHost} (and, on Cloudflare, that the ` +
           `record for "${subdomain}" is proxied to the same origin as ${primaryDomain}), then retry. ` +
           `If the record is missing entirely, ${dnsRemediation}`,
+      };
+    }
+
+    if (check.failure === 'origin-down') {
+      return {
+        id: 'dns',
+        status: 'fail',
+        retryable: true,
+        message:
+          `${appHost} resolves to ${resolvedIps} and the proxy in front of it reached this server, but ` +
+          `the backend behind it answered HTTP ${check.status ?? '5xx'}. DNS is fine; the BFFless ` +
+          `backend is not serving requests.`,
+        remediation:
+          `Check that the BFFless backend is running and healthy (for a Docker install: ` +
+          `\`docker compose ps\` and \`docker compose logs backend\`), then retry.`,
       };
     }
 

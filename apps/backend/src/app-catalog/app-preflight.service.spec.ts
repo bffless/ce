@@ -576,6 +576,32 @@ describe('AppPreflightService', () => {
       expect(dns?.remediation).toMatch(/CNAME/);
     });
 
+    it('a 502 behind a generic proxy fails with a backend-down message, not an origin-unreachable one', async () => {
+      const { service, bundle } = buildDnsCase({
+        host: 'handoff.example.com',
+        resolvedIps: ['203.0.113.7'],
+        probeOk: false,
+        probeKind: 'https-reachability',
+        status: 502,
+        failure: 'origin-down',
+        error:
+          'The proxy in front of handoff.example.com returned HTTP 502 — it reached this server, but ' +
+          'the backend behind it did not return a valid response',
+      });
+
+      const result = await service.projectGates(bundle, { projectId: 'proj-1' }, 'user-1');
+
+      const dns = result.gates.find((g) => g.id === 'dns');
+      expect(dns?.status).toBe('fail');
+      expect(dns?.retryable).toBe(true);
+      expect(dns?.message).toMatch(/HTTP 502/);
+      expect(dns?.message).toMatch(/DNS is fine/i);
+      expect(dns?.message).toMatch(/backend is not serving requests/i);
+      // Different remedy from the Cloudflare 520 case: fix the backend, not DNS.
+      expect(dns?.remediation).toMatch(/backend is running/i);
+      expect(dns?.remediation).not.toMatch(/CNAME/);
+    });
+
     it('a refused connection keeps the DNS-record remediation', async () => {
       const { service, bundle } = buildDnsCase({
         host: 'handoff.example.com',

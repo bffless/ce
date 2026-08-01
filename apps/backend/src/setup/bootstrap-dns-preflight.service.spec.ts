@@ -299,6 +299,73 @@ describe('BootstrapDnsPreflightService', () => {
       },
     );
 
+    // Generic reverse proxies (nginx/Traefik/HAProxy) answer with plain
+    // 502/503/504 when the backend is down — a strong backend-down signal that
+    // must not read as "reachable". Scoped to proxied serving models: with no
+    // proxy in the path a gateway status is the application's own answer.
+    describe.each([
+      ['cloudflare', { version: 2, state: 'applied', proxyMode: 'cloudflare' }],
+      ['proxy', { version: 2, state: 'applied', proxyMode: 'proxy' }],
+    ])('behind a %s proxy', (_label, cfg) => {
+      it.each([502, 503, 504])('fails HTTP %s as origin-down', async (statusCode) => {
+        mockInstanceConfig = cfg;
+        stubResolve();
+        stubHttps(statusCode);
+
+        const check = await service.probeHost('handoff.example.com', { mode: 'reachability' });
+
+        expect(check.probeOk).toBe(false);
+        expect(check.failure).toBe('origin-down');
+        expect(check.status).toBe(statusCode);
+        expect(check.error).toMatch(/reached this server/i);
+        expect(check.error).toMatch(/backend behind it did not return a valid response/i);
+      });
+
+      it.each([520, 524])('still fails Cloudflare %s as origin-error', async (statusCode) => {
+        mockInstanceConfig = cfg;
+        stubResolve();
+        stubHttps(statusCode);
+
+        const check = await service.probeHost('handoff.example.com', { mode: 'reachability' });
+        expect(check.failure).toBe('origin-error');
+      });
+    });
+
+    // The one direct-serving config that still takes the HTTPS path: nothing
+    // listens on 80, but no proxy sits in front either, so a 502 here is the
+    // app's own response and still proves the hostname reaches this server.
+    describe('direct-serving instance with port 80 closed', () => {
+      const DIRECT_PORT80_CLOSED = {
+        version: 2,
+        state: 'applied',
+        proxyMode: 'none',
+        port80: 'closed',
+      };
+
+      it.each([502, 503, 504])('treats HTTP %s as a reachable answer', async (statusCode) => {
+        mockInstanceConfig = DIRECT_PORT80_CLOSED;
+        stubResolve();
+        stubHttps(statusCode);
+
+        const check = await service.probeHost('handoff.example.com', { mode: 'reachability' });
+
+        expect(check.probeOk).toBe(true);
+        expect(check.failure).toBeUndefined();
+        expect(check.status).toBe(statusCode);
+      });
+
+      it('still fails a Cloudflare 520 — those are unambiguous whatever the model', async () => {
+        mockInstanceConfig = DIRECT_PORT80_CLOSED;
+        stubResolve();
+        stubHttps(520);
+
+        const check = await service.probeHost('handoff.example.com', { mode: 'reachability' });
+
+        expect(check.probeOk).toBe(false);
+        expect(check.failure).toBe('origin-error');
+      });
+    });
+
     it('fails with no-response when the connection is refused', async () => {
       mockInstanceConfig = { version: 2, state: 'applied', proxyMode: 'cloudflare' };
       stubResolve();

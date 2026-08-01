@@ -5,7 +5,12 @@ import * as fs from 'fs/promises';
 import * as http from 'http';
 import * as https from 'https';
 import * as path from 'path';
-import { deriveKnobs, loadInstanceConfig, type ProxyMode } from '../bootstrap/instance-config';
+import {
+  deriveKnobs,
+  loadInstanceConfig,
+  type Port80Mode,
+  type ProxyMode,
+} from '../bootstrap/instance-config';
 
 /**
  * What a probe is being asked to prove.
@@ -24,8 +29,16 @@ export interface ProbeOptions {
   mode?: ProbeMode;
 }
 
-/** How a reachability probe failed, so callers can word remediation honestly. */
-export type ProbeFailure = 'no-dns' | 'private-ip' | 'origin-error' | 'no-response';
+/**
+ * How a reachability probe failed, so callers can word remediation honestly.
+ *
+ * `origin-error` and `origin-down` are both "DNS is fine, the proxy answered"
+ * but they need different remedies:
+ *  - `origin-error` (Cloudflare 520–527): the edge could not reach ANY origin.
+ *  - `origin-down` (502/503/504): the proxy reached this server but the
+ *    backend behind it did not return a valid response.
+ */
+export type ProbeFailure = 'no-dns' | 'private-ip' | 'origin-error' | 'origin-down' | 'no-response';
 
 export interface PreflightCheck {
   host: string;
@@ -45,9 +58,33 @@ export interface PreflightResult {
   checks: PreflightCheck[];
 }
 
-/** Cloudflare's origin-error range: the edge answered, the origin did not. */
-function isProxyOriginError(status: number): boolean {
-  return status >= 520 && status <= 527;
+/** The serving model the probe has to work with — see resolveServingModel(). */
+interface ServingModel {
+  proxyMode: ProxyMode;
+  port80: Port80Mode;
+  /** A proxy/edge sits in the request path and terminates TLS. */
+  proxied: boolean;
+  /** Reachability mode must use HTTPS/443 rather than the port-80 token echo. */
+  probeHttps: boolean;
+}
+
+/**
+ * Classify a status as "something in front answered, the origin behind it did
+ * not". Two families, scoped differently on purpose:
+ *
+ *  - 520–527 are Cloudflare-specific and unambiguous — no application emits
+ *    them — so they are always an origin error, whatever the serving model.
+ *  - 502/503/504 are standard gateway statuses. Behind a generic reverse proxy
+ *    (nginx/Traefik/HAProxy) they mean the proxy could not get a valid answer
+ *    out of the backend, which is a strong backend-down signal and must NOT
+ *    read as "reachable". On a direct-serving instance, though, there is no
+ *    proxy in the path: a 502 there is the application's own response, which
+ *    still proves the hostname reaches this server. Hence the `proxied` scope.
+ */
+function classifyOriginError(status: number, proxied: boolean): ProbeFailure | null {
+  if (status >= 520 && status <= 527) return 'origin-error';
+  if (proxied && (status === 502 || status === 503 || status === 504)) return 'origin-down';
+  return null;
 }
 
 // SSRF guard (v0.2.18 review, m6): the probe is a blind GET to a
@@ -108,8 +145,9 @@ export class BootstrapDnsPreflightService {
    * render it, so they keep the strictly stronger port-80 proof.
    */
   async probeHost(host: string, opts: ProbeOptions = {}): Promise<PreflightCheck> {
-    if (opts.mode === 'reachability' && this.shouldProbeHttps()) {
-      return this.httpsReachabilityProbe(host);
+    if (opts.mode === 'reachability') {
+      const model = this.resolveServingModel();
+      if (model.probeHttps) return this.httpsReachabilityProbe(host, model);
     }
     return this.acmeProbe(host);
   }
@@ -119,8 +157,13 @@ export class BootstrapDnsPreflightService {
    * instance.json here) wins, otherwise PROXY_MODE from the environment with
    * 'none' as the default, and the knobs derive from that. Keeping the two in
    * step matters — if we probe a port nginx isn't listening on, the gate lies.
+   *
+   * `proxied` and `probeHttps` are deliberately NOT the same predicate:
+   * a direct-serving instance with port 80 closed must be probed over HTTPS
+   * (nothing answers on 80), but it has no proxy in the request path, so a
+   * gateway status it returns is the application's own answer.
    */
-  private shouldProbeHttps(): boolean {
+  private resolveServingModel(): ServingModel {
     const cfg = loadInstanceConfig();
     const envProxyMode = process.env.PROXY_MODE;
     const proxyMode: ProxyMode =
@@ -129,7 +172,8 @@ export class BootstrapDnsPreflightService {
         ? envProxyMode
         : 'none');
     const { port80 } = deriveKnobs({ ...(cfg ?? { version: 2, state: 'applied' }), proxyMode });
-    return proxyMode === 'cloudflare' || proxyMode === 'proxy' || port80 === 'closed';
+    const proxied = proxyMode === 'cloudflare' || proxyMode === 'proxy';
+    return { proxyMode, port80, proxied, probeHttps: proxied || port80 === 'closed' };
   }
 
   private async acmeProbe(host: string): Promise<PreflightCheck> {
@@ -178,10 +222,11 @@ export class BootstrapDnsPreflightService {
    * What this does NOT prove: that the answering origin is *this* CE instance.
    * A proxied edge terminates TLS and we deliberately skip certificate
    * validation below, so authenticity is out of reach on this path; callers
-   * must word their messages accordingly. Cloudflare's 520–527 range is the
-   * one shape we reject: the edge answered but the origin behind it did not.
+   * must word their messages accordingly. The shapes we reject are the
+   * "something in front answered, the origin behind it did not" ones — see
+   * classifyOriginError for why 502/503/504 only count when proxied.
    */
-  private async httpsReachabilityProbe(host: string): Promise<PreflightCheck> {
+  private async httpsReachabilityProbe(host: string, model: ServingModel): Promise<PreflightCheck> {
     const resolvedIps = await this.resolveA(host);
     if (resolvedIps.some((ip) => isDisallowedProbeIp(ip))) {
       return {
@@ -206,15 +251,20 @@ export class BootstrapDnsPreflightService {
 
     try {
       const { statusCode } = await this.fetchReachabilityProbe(host, resolvedIps[0]);
-      if (isProxyOriginError(statusCode)) {
+      const failure = classifyOriginError(statusCode, model.proxied);
+      if (failure) {
         return {
           host,
           resolvedIps,
           probeOk: false,
           status: statusCode,
-          error: `The proxy in front of ${host} returned HTTP ${statusCode} — it could not reach an origin`,
+          error:
+            failure === 'origin-error'
+              ? `The proxy in front of ${host} returned HTTP ${statusCode} — it could not reach an origin`
+              : `The proxy in front of ${host} returned HTTP ${statusCode} — it reached this server, ` +
+                `but the backend behind it did not return a valid response`,
           probeKind: 'https-reachability',
-          failure: 'origin-error',
+          failure,
         };
       }
       return {
