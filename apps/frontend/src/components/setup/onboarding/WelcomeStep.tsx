@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Play } from 'lucide-react';
-import { DOCS, VIDEOS } from '@/lib/docsLinks';
+import { LayoutGrid, Play, Rocket } from 'lucide-react';
+import { APP_STORE_URL, DOCS, VIDEOS } from '@/lib/docsLinks';
 import { DocsLink } from '@/components/common/DocsLink';
 
 const VIDEO_ID = VIDEOS.firstDeployment.id;
@@ -15,12 +15,17 @@ const thumbnailUrl = `https://i.ytimg.com/vi/${VIDEO_ID}/hqdefault.jpg`;
 interface WelcomeStepProps {
   onNext: () => void;
   onSkip: () => void;
+  /** Complete onboarding and route to the in-instance /apps catalog. */
+  onInstallApps: () => void;
+  /** /apps is admin-only — non-admins keep the single-path welcome. */
+  showAppsPath: boolean;
 }
 
 /**
- * First screen of post-setup onboarding: welcomes the operator, offers the
- * walkthrough video and the first-deployment guide, then hands off to
- * CreateRepoStep.
+ * First screen of post-setup onboarding. For admins it forks into two paths:
+ * install a catalog app in one click (/apps — the primary callout), or deploy
+ * your own site via the existing repo → API key → GitHub Actions wizard. For
+ * non-admin users (who cannot reach /apps) it keeps the single wizard path.
  *
  * The video is a click-to-load facade: on render it fetches only the static
  * thumbnail from i.ytimg.com, and the tracking-capable player iframe
@@ -29,16 +34,16 @@ interface WelcomeStepProps {
  * strict egress policy — onError drops the image and the gradient placeholder
  * plus play button remain, rather than a broken-image icon.
  */
-export function WelcomeStep({ onNext, onSkip }: WelcomeStepProps) {
+export function WelcomeStep({ onNext, onSkip, onInstallApps, showAppsPath }: WelcomeStepProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [thumbnailFailed, setThumbnailFailed] = useState(false);
 
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Your instance is up and running. Watch the walkthrough, or jump straight
-        in — the next few steps create your first repository, generate an API
-        key, and hand you a GitHub Actions workflow to copy.
+        {showAppsPath
+          ? 'Your instance is up and running. Install a ready-made app in one click, or deploy your own site — watch the walkthrough for a tour first if you like.'
+          : 'Your instance is up and running. Watch the walkthrough, or jump straight in — the next few steps create your first repository, generate an API key, and hand you a GitHub Actions workflow to copy.'}
       </p>
 
       <div className="relative aspect-video overflow-hidden rounded-lg bg-gradient-to-br from-zinc-800 to-zinc-900">
@@ -79,16 +84,75 @@ export function WelcomeStep({ onNext, onSkip }: WelcomeStepProps) {
         )}
       </div>
 
-      <DocsLink href={DOCS_URL} label="Read the first-deployment guide" />
+      {showAppsPath ? (
+        <>
+          <div className="space-y-3">
+            <div className="rounded-lg border-2 border-primary/50 bg-primary/5 p-4">
+              <div className="flex items-start gap-3">
+                <LayoutGrid className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                <div className="flex-1 space-y-2">
+                  <h3 className="text-sm font-semibold">Install a ready-made app</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Apps like Handoff install onto this instance in one click — frontend, backend
+                    rules, and domain included.
+                  </p>
+                  <div className="flex items-center gap-3 pt-1">
+                    <Button type="button" size="sm" onClick={onInstallApps}>
+                      Browse apps
+                    </Button>
+                    <a
+                      href={APP_STORE_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                    >
+                      See what's available ↗
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
 
-      <div className="flex justify-between pt-4">
-        <Button type="button" variant="ghost" onClick={onSkip}>
-          Skip for now
-        </Button>
-        <Button type="button" onClick={onNext}>
-          Get Started
-        </Button>
-      </div>
+            <div className="rounded-lg border p-4">
+              <div className="flex items-start gap-3">
+                <Rocket className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
+                <div className="flex-1 space-y-2">
+                  <h3 className="text-sm font-semibold">Deploy your own site</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Create a repository, generate an API key, and wire up a GitHub Actions deploy.
+                  </p>
+                  <div className="pt-1">
+                    <Button type="button" variant="outline" size="sm" onClick={onNext}>
+                      Create a repository
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <DocsLink href={DOCS_URL} label="Read the first-deployment guide" />
+
+          <div className="pt-2">
+            <Button type="button" variant="ghost" onClick={onSkip}>
+              Skip for now
+            </Button>
+          </div>
+        </>
+      ) : (
+        <>
+          <DocsLink href={DOCS_URL} label="Read the first-deployment guide" />
+
+          <div className="flex justify-between pt-4">
+            <Button type="button" variant="ghost" onClick={onSkip}>
+              Skip for now
+            </Button>
+            <Button type="button" onClick={onNext}>
+              Get Started
+            </Button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
