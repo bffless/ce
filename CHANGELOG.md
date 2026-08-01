@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3](https://github.com/bffless/ce/compare/v0.4.2...v0.4.3) (2026-08-01)
+
+
+### Bug Fixes
+
+* **app-catalog:** never install an app that could only be served over HTTP ([#588](https://github.com/bffless/ce/issues/588)) ([f647790](https://github.com/bffless/ce/commit/f647790c9a3d59af38d56696e3bfd0b08ae12334)), closes [#584](https://github.com/bffless/ce/issues/584)
+* **app-catalog:** treat 502/503/504 as origin errors behind a proxy ([#587](https://github.com/bffless/ce/issues/587)) ([b213969](https://github.com/bffless/ce/commit/b213969312c066cd8e12d6523c45ef2aa9b8e987))
+
 ## [0.4.2](https://github.com/bffless/ce/compare/v0.4.1...v0.4.2) (2026-08-01)
 
 
