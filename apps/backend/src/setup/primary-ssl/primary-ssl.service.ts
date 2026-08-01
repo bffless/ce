@@ -4,6 +4,7 @@ import { SslCertificateService } from '../../domains/ssl-certificate.service';
 import { BootstrapDnsPreflightService, PreflightResult } from '../bootstrap-dns-preflight.service';
 import { SslInfoService, SslCertificateInfo } from '../../domains/ssl-info.service';
 import { PrimarySslSnapshotService } from './primary-ssl-snapshot.service';
+import { FeatureFlagsService } from '../../feature-flags/feature-flags.service';
 import { deriveKnobs, loadInstanceConfig, writeInstanceConfig, InstanceConfig, ProxyMode } from '../../bootstrap/instance-config';
 import { PrimarySslPasteDto, PrimarySslApplyDto } from './primary-ssl.dto';
 import {
@@ -35,6 +36,7 @@ export class PrimarySslService {
     private readonly preflightSvc: BootstrapDnsPreflightService,
     private readonly info: SslInfoService,
     private readonly snap: PrimarySslSnapshotService,
+    private readonly featureFlags: FeatureFlagsService,
   ) {}
 
   assertEnabled(): void {
@@ -230,6 +232,18 @@ export class PrimarySslService {
       promoteStagedCertificates();
     }
     writeInstanceConfig(next); // watcher re-renders main.conf + reloads (~3s); no restart
+    // ce#584: same reconciliation as the bootstrap apply — a day-2 switch to
+    // direct serving must not leave Cloudflare-era .env flags hiding the
+    // wildcard certificate flow. Best-effort; never fails the apply.
+    try {
+      if (next.proxyMode) await this.featureFlags.reconcileWildcardSslVisibility(next.proxyMode);
+    } catch (err) {
+      this.logger.warn(
+        `Could not reconcile wildcard-SSL visibility after apply: ${
+          err instanceof Error ? err.message : 'unknown error'
+        }`,
+      );
+    }
 
     if (needsConfirm) {
       const deadlineMs = Date.now() + this.confirmTimeoutMs();

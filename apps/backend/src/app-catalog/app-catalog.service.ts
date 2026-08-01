@@ -26,10 +26,17 @@ import {
   type UninstallSummary,
 } from './app-installer.service';
 import { AppInstallJobsService, type InstallJob } from './app-install-jobs.service';
+import { AppCertStepService } from './app-cert-step.service';
 import { compareSemver } from './ce-version.util';
 import { manualStepApplies } from './app-manifest.util';
 import type { AppManifest, AppManualStep, AppRegistryEntry } from './app-manifest.types';
 import type { PreflightRequestDto } from './app-catalog.dtos';
+
+/** A resolved domain row: the host plus whether THIS origin terminates TLS for it. */
+interface DomainRef {
+  domain: string;
+  sslEnabled: boolean;
+}
 
 export interface EjectPayload {
   repo: string;
@@ -99,6 +106,7 @@ export class AppCatalogService {
     private readonly preflightService: AppPreflightService,
     private readonly installerService: AppInstallerService,
     private readonly jobsService: AppInstallJobsService,
+    private readonly certStepService: AppCertStepService,
     @Inject(STORAGE_ADAPTER) private readonly storageAdapter: IStorageAdapter,
   ) {}
 
@@ -275,7 +283,7 @@ export class AppCatalogService {
   private async buildRegistryEntry(
     entry: AppRegistryEntry,
     rows: InstalledApp[],
-    domainsById: Map<string, string>,
+    domainsById: Map<string, DomainRef>,
   ): Promise<CatalogEntry> {
     const gates = await this.preflightService.instanceGates(entry.requires);
     const base: CatalogEntry = {
@@ -298,7 +306,7 @@ export class AppCatalogService {
   /** An installed app whose app id isn't (or no longer is) in the registry. */
   private async buildManifestOnlyEntry(
     rows: InstalledApp[],
-    domainsById: Map<string, string>,
+    domainsById: Map<string, DomainRef>,
   ): Promise<CatalogEntry> {
     const row = pickPrimaryRow(rows);
     const manifest = row.manifest as AppManifest;
@@ -320,7 +328,7 @@ export class AppCatalogService {
   private async buildInstalledSummary(
     row: InstalledApp,
     registryVersion: string | undefined,
-    domainsById: Map<string, string>,
+    domainsById: Map<string, DomainRef>,
   ): Promise<NonNullable<CatalogEntry['installed']>> {
     const manifest = row.manifest as AppManifest;
     const project = await this.projectsService.getProjectById(row.projectId);
@@ -333,7 +341,7 @@ export class AppCatalogService {
       projectId: row.projectId,
       projectName: `${project.owner}/${project.name}`,
       alias: row.alias,
-      appUrl: this.resolveAppUrl(row, domainsById),
+      appUrl: await this.resolveAppUrl(row, domainsById),
       status: row.status,
       updateAvailable,
       manualSteps: this.applicableManualSteps(manifest),
@@ -388,16 +396,25 @@ export class AppCatalogService {
    * `domainId` in one query, so `listCatalog` doesn't issue an N+1 lookup per
    * installed row.
    */
-  private async fetchDomainsById(rows: InstalledApp[]): Promise<Map<string, string>> {
+  private async fetchDomainsById(rows: InstalledApp[]): Promise<Map<string, DomainRef>> {
     const domainIds = [...new Set(rows.map((row) => row.domainId).filter((id): id is string => Boolean(id)))];
     if (domainIds.length === 0) return new Map();
 
     const mappings = await db
-      .select({ id: domainMappings.id, domain: domainMappings.domain })
+      .select({
+        id: domainMappings.id,
+        domain: domainMappings.domain,
+        sslEnabled: domainMappings.sslEnabled,
+      })
       .from(domainMappings)
       .where(inArray(domainMappings.id, domainIds));
 
-    return new Map(mappings.map((mapping) => [mapping.id, mapping.domain]));
+    return new Map(
+      mappings.map((mapping) => [
+        mapping.id,
+        { domain: mapping.domain, sslEnabled: Boolean(mapping.sslEnabled) },
+      ]),
+    );
   }
 
   /**
@@ -416,10 +433,17 @@ export class AppCatalogService {
    * wrong link is worse than none, and the admin UI links to the deployment
    * instead.
    */
-  private resolveAppUrl(row: InstalledApp, domainsById: Map<string, string>): string | undefined {
+  private async resolveAppUrl(
+    row: InstalledApp,
+    domainsById: Map<string, DomainRef>,
+  ): Promise<string | undefined> {
     if (!row.domainId) return undefined;
-    const domain = domainsById.get(row.domainId);
-    return domain ? `https://${domain}` : undefined;
+    const ref = domainsById.get(row.domainId);
+    if (!ref) return undefined;
+    // Same scheme rule as the install job: a direct-serving instance with no
+    // certificate for this host serves it over plain HTTP (ce#584).
+    const scheme = await this.certStepService.schemeFor(ref.domain, ref.sslEnabled);
+    return `${scheme}://${ref.domain}`;
   }
 
   private applicableManualSteps(manifest: AppManifest): AppManualStep[] {

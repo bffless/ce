@@ -11,6 +11,7 @@ import type {
   SyncSchemaDto,
 } from '../proxy-rules/dto/sync-proxy-rule-set.dto';
 import { BootstrapDnsPreflightService } from '../setup/bootstrap-dns-preflight.service';
+import { AppCertStepService } from './app-cert-step.service';
 import { IStorageAdapter, STORAGE_ADAPTER } from '../storage/storage.interface';
 import { getCeVersion, satisfiesMin } from './ce-version.util';
 import { isReservedSubdomain } from './app-manifest.util';
@@ -20,7 +21,18 @@ import type { LoadedBundle } from './app-bundle.service';
 export type GateStatus = 'pass' | 'fail' | 'warn';
 
 export interface GateResult {
-  id: 'storage' | 'ce-version' | 'platform-config' | 'dns' | 'name-collision' | 'data-tables';
+  id:
+    | 'storage'
+    | 'ce-version'
+    | 'platform-config'
+    /** Distinct from `platform-config` so the two platform gates never collide
+     *  as React list keys — the install dialog renders gates keyed by id. */
+    | 'platform-cert-scope'
+    | 'dns'
+    /** Blocking: the app host cannot be served over HTTPS on this instance yet. */
+    | 'app-host-tls'
+    | 'name-collision'
+    | 'data-tables';
   status: GateStatus;
   message: string;
   remediation?: string;
@@ -74,6 +86,7 @@ export class AppPreflightService {
     private readonly dnsPreflight: BootstrapDnsPreflightService,
     private readonly proxyRuleSetsService: ProxyRuleSetsService,
     private readonly projectsService: ProjectsService,
+    private readonly certStepService: AppCertStepService,
   ) {}
 
   async instanceGates(requires?: AppManifestRequires): Promise<GateResult[]> {
@@ -117,8 +130,13 @@ export class AppPreflightService {
       subdomainOverride,
     );
     const { gate: dataTables, syncPlans } = await this.dataTablesGate(ruleSets, target, userId);
+    const tls = await this.appHostTlsGate(appHost);
 
-    return { gates: [dns, nameCollision, dataTables], syncPlans, appHost };
+    return {
+      gates: [dns, ...(tls ? [tls] : []), nameCollision, dataTables],
+      syncPlans,
+      appHost,
+    };
   }
 
   // ---- instance gates -----------------------------------------------------
@@ -214,7 +232,7 @@ export class AppPreflightService {
     }
 
     gates.push({
-      id: 'platform-config',
+      id: 'platform-cert-scope',
       status: 'warn',
       message:
         "This app's subdomain resolves under <sub>.<workspace>.<platform-domain> — a two-label subdomain that " +
@@ -228,6 +246,44 @@ export class AppPreflightService {
   }
 
   // ---- project gates -------------------------------------------------------
+
+  /**
+   * ce#584 — refuse to install an app that could only be served over plain
+   * HTTP.
+   *
+   * On a direct-serving instance with no wildcard, the app's subdomain can
+   * only ever be served over HTTP: `DomainsService.create` enables SSL on a
+   * subdomain solely when a wildcard exists, and a subdomain of the primary
+   * domain resolves to the wildcard certificate file. Rather than deploy an
+   * app to an insecure origin, block until a wildcard exists — `retryable`,
+   * because provisioning one is a few minutes away on the Domains page and
+   * the same preflight then passes.
+   *
+   * Returns null (no gate) on every other serving model, where HTTPS already
+   * works, and swallows any error from `plan()`: a certificate question must
+   * never break a preflight.
+   */
+  private async appHostTlsGate(appHost: string | null): Promise<GateResult | null> {
+    if (!appHost) return null;
+    try {
+      const plan = await this.certStepService.plan(appHost);
+      if (plan.model !== 'direct-no-wildcard') return null;
+      return {
+        id: 'app-host-tls',
+        status: 'fail',
+        message:
+          `${appHost} could only be served over http:// — this instance terminates TLS itself and no ` +
+          'wildcard certificate covers app subdomains yet.',
+        remediation:
+          'Provision a wildcard certificate on the Domains page (a DNS TXT record proves ownership), ' +
+          'then run this check again. One wildcard covers this app and every app you install later.',
+        deepLink: '/domains',
+        retryable: true,
+      };
+    } catch {
+      return null;
+    }
+  }
 
   private async dnsGate(
     appHost: string | null,

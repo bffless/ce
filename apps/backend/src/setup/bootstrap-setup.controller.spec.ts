@@ -63,7 +63,8 @@ describe('BootstrapSetupController', () => {
     svc.unfinalizeSetup.mockResolvedValue(undefined);
     preflight.run.mockResolvedValue({ ok: true, checks: [] });
     sslCert.initialize.mockResolvedValue(undefined);
-    controller = new BootstrapSetupController(svc as any, preflight as any, sslCert as any);
+    const featureFlags = { reconcileWildcardSslVisibility: jest.fn().mockResolvedValue(undefined) };
+    controller = new BootstrapSetupController(svc as any, preflight as any, sslCert as any, featureFlags as any);
     (controller as any).scheduleExit = exitFn; // do not actually exit in tests
   });
 
@@ -444,7 +445,12 @@ describe('BootstrapSetupController', () => {
         return undefined as never;
       }) as unknown) as (code?: number) => never);
 
-      const freshController = new BootstrapSetupController(svc as any, preflight as any, sslCert as any);
+      const freshController = new BootstrapSetupController(
+        svc as any,
+        preflight as any,
+        sslCert as any,
+        { reconcileWildcardSslVisibility: jest.fn().mockResolvedValue(undefined) } as any,
+      );
       (freshController as any).scheduleExit();
 
       expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 500);

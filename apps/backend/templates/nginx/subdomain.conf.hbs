@@ -149,17 +149,37 @@ server {
     }
 }
 
-# HTTP server - redirect to HTTPS
+# HTTP server - redirect to HTTPS (allows ACME challenges)
 server {
     listen {{listenPort}};
     server_name {{domain}};
-    return 301 https://$host$request_uri;
+
+    # ACME challenge for Let's Encrypt certificate renewal.
+    # Must stay ahead of the catch-all redirect below: an HTTP-01 validator
+    # follows no redirects, so a 301 here fails renewal for this host.
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    # Redirect all other traffic to HTTPS
+    location / {
+        return 301 https://$host$request_uri;
+    }
 }
 {{else}}
 # HTTP only server - no SSL
 server {
     listen {{listenPort}};
     server_name {{domain}};
+
+    # ACME challenge for Let's Encrypt.
+    # Declared before the catch-all `location /` below, which rewrites every
+    # path into the deployment and (in SPA mode) falls back to index.html —
+    # without this, an HTTP-01 challenge for this host is answered with the
+    # app's HTML and issuance can never succeed (ce#584).
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
 
     # Security headers are set by the NestJS backend (SecurityHeadersMiddleware)
 
