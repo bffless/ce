@@ -50,6 +50,13 @@ export const VIDEOS = {
 } as const;
 
 /**
+ * Public app-store showcase (bffless/apps). Informational only — the actual
+ * 1-click install happens on this instance's /apps page, which respects
+ * APPS_REGISTRY_URL for air-gapped installs.
+ */
+export const APP_STORE_URL = 'https://apps.bffless.dev';
+
+/**
  * Docs entry for a storage provider, or null when the provider has no
  * dedicated setup guide.
  *

@@ -1,6 +1,9 @@
 import { useSelector, useDispatch } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 import { RootState } from '@/store';
 import { completeOnboarding, setOnboardingStep } from '@/store/slices/setupSlice';
+import { useGetSessionQuery } from '@/services/authApi';
+import { useFeatureFlags } from '@/services/featureFlagsApi';
 import {
   Dialog,
   DialogContent,
@@ -23,6 +26,16 @@ interface OnboardingModalProps {
 export function OnboardingModal({ isOpen, onClose }: OnboardingModalProps) {
   const dispatch = useDispatch();
   const { siteName } = useBranding();
+  const navigate = useNavigate();
+  const { data: sessionData } = useGetSessionQuery();
+  const { isEnabled } = useFeatureFlags();
+  // /apps is an admin-only route — only offer the apps path to admins, and
+  // only when the app catalog is enabled. The catalog can be disabled (e.g.
+  // platform-managed deployments), in which case /apps is a dead end and the
+  // backend refuses its endpoints. isEnabled() returns false while flags are
+  // still loading, so this safely degrades to the single-path layout rather
+  // than briefly flashing the apps path before flags resolve.
+  const showAppsPath = sessionData?.user?.role === 'admin' && isEnabled('ENABLE_APP_CATALOG');
   const { onboardingStep, createdProjectId, createdApiKey } = useSelector(
     (state: RootState) => state.setup.onboarding
   );
@@ -30,6 +43,12 @@ export function OnboardingModal({ isOpen, onClose }: OnboardingModalProps) {
   const handleSkip = () => {
     dispatch(completeOnboarding());
     onClose();
+  };
+
+  const handleInstallApps = () => {
+    dispatch(completeOnboarding());
+    onClose();
+    navigate('/apps');
   };
 
   const handleNext = () => {
@@ -44,7 +63,14 @@ export function OnboardingModal({ isOpen, onClose }: OnboardingModalProps) {
   const renderStep = () => {
     switch (onboardingStep) {
       case 1:
-        return <WelcomeStep onNext={handleNext} onSkip={handleSkip} />;
+        return (
+          <WelcomeStep
+            onNext={handleNext}
+            onSkip={handleSkip}
+            onInstallApps={handleInstallApps}
+            showAppsPath={showAppsPath}
+          />
+        );
       case 2:
         return <CreateRepoStep onNext={handleNext} onSkip={handleSkip} />;
       case 3:
