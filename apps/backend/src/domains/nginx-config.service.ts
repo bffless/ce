@@ -1444,13 +1444,12 @@ ${serverBlocks}`;
     const spaErrorPage = config.isSpa ? 'error_page 404 = @spa_fallback;' : '';
     const proxyInterceptErrors = config.isSpa ? 'on' : 'off';
 
-    // NOTE: unlike the platform-style generators this block emits no
-    // server-level client_max_body_size and no proxy header buffers. It is
-    // only ever written into sites-enabled/ of the compose CE image, whose
-    // http block (docker/nginx/nginx.conf) supplies both — 10M and 128k. That
-    // inheritance is asserted, per surface, by nginx-serving-contract.spec.ts;
-    // remove it there and this generator goes red.
-    const locationBlock = `
+    // Proxy header buffers are still inherited here: this block is only ever
+    // written into sites-enabled/ of the compose CE image, whose http block
+    // (docker/nginx/nginx.conf) supplies 128k. That inheritance is asserted
+    // per surface by nginx-serving-contract.spec.ts, which turns this
+    // generator red if the http-level value goes away.
+    const locationBlock = `${this.appServingBodyLimit()}
 ${proxyLocations}
 ${this.authRelayLocation()}
 ${this.presignedUploadLocation()}

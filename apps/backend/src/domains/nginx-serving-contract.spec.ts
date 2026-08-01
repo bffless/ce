@@ -137,9 +137,19 @@ function httpLevelDirectives(file: string): string {
 const DOCKER_HTTP = () => httpLevelDirectives(path.join(REPO_ROOT, 'docker/nginx/nginx.conf'));
 const STOCK_NGINX = () => '';
 
-/** nginx's compiled-in defaults, which are wrong for every surface here. */
-const NGINX_DEFAULT_MAX_BODY = 1024 * 1024; // 1m
-const MIN_PROXY_BUFFER = 16 * 1024; // ce#370: the 4k default 502s on session refresh
+/**
+ * The one body ceiling every app-serving vhost declares.
+ *
+ * Pinned to a single value, not a floor: before ce#598 the CE-mode vhosts
+ * inherited 10M from docker/nginx/nginx.conf while the externally-proxied
+ * ones declared 100M, so the same app got a 10x different limit depending on
+ * how TLS was terminated for it. The presigned upload location keeps its own
+ * 200M — that is a per-route ceiling, not this.
+ */
+const APP_SERVING_MAX_BODY = 100 * 1024 ** 2; // 100M
+
+/** ce#370: nginx's 4k default 502s a successful session refresh. */
+const MIN_PROXY_BUFFER = 16 * 1024;
 
 // ---------------------------------------------------------------------------
 // Rendering the hand-written envsubst templates.
@@ -352,19 +362,20 @@ describe.each(SURFACES.map((surface) => [surface.name, surface] as const))(
       }
     });
 
-    it("raises client_max_body_size above nginx's 1M default", () => {
-      // Server level, or inherited from an http block shipped alongside this
-      // surface. Deliberately NOT the 200M inside the presigned location:
-      // that ceiling covers one route, while this is the floor for every
-      // other proxied path, and its absence 413'd pipeline uploads and form
-      // posts on externally-proxied installs (#596/2).
+    it('declares its own client_max_body_size rather than inheriting one', () => {
+      // Deliberately NOT the 200M inside the presigned location: that ceiling
+      // covers one route, while this is the limit for every other proxied
+      // path — notably proxy-rule POSTs, which set no ceiling of their own.
+      // Its absence 413'd externally-proxied installs at nginx's 1M (#596/2).
+      //
+      // Declared, not inherited: whether a surface has an http block of ours
+      // above it depends on how TLS is terminated for the deployment, which
+      // must not decide an app's body ceiling.
       for (const block of blocks) {
-        const scope = withoutNestedBlocks(block);
-        const value =
-          directive(scope, 'client_max_body_size') ?? directive(inherited, 'client_max_body_size');
+        const value = directive(withoutNestedBlocks(block), 'client_max_body_size');
 
         expect(value).not.toBeNull();
-        expect(parseSize(value as string)).toBeGreaterThan(NGINX_DEFAULT_MAX_BODY);
+        expect(parseSize(value as string)).toBe(APP_SERVING_MAX_BODY);
       }
     });
 
