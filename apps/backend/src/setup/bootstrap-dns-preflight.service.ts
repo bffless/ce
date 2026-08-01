@@ -3,18 +3,51 @@ import { promises as dns } from 'dns';
 import * as crypto from 'crypto';
 import * as fs from 'fs/promises';
 import * as http from 'http';
+import * as https from 'https';
 import * as path from 'path';
+import { deriveKnobs, loadInstanceConfig, type ProxyMode } from '../bootstrap/instance-config';
+
+/**
+ * What a probe is being asked to prove.
+ *
+ * - `acme` (default, and the ONLY thing `run()` ever uses): "will Let's
+ *   Encrypt's HTTP-01 validator succeed against this host?" — port 80 plus a
+ *   token echo out of the certbot webroot. Never weaken this path; the wizard
+ *   hard-gates issuance on it precisely because it walks the CA's own route.
+ * - `reachability`: "does this hostname reach this server, so an app served
+ *   here will work?" — a strictly weaker, differently-shaped question that the
+ *   app catalog asks about a not-yet-mapped app subdomain.
+ */
+export type ProbeMode = 'acme' | 'reachability';
+
+export interface ProbeOptions {
+  mode?: ProbeMode;
+}
+
+/** How a reachability probe failed, so callers can word remediation honestly. */
+export type ProbeFailure = 'no-dns' | 'private-ip' | 'origin-error' | 'no-response';
 
 export interface PreflightCheck {
   host: string;
   resolvedIps: string[];
   probeOk: boolean;
   error?: string;
+  /** Which probe actually ran (absent on nothing — always set from here on). */
+  probeKind?: 'acme' | 'https-reachability';
+  /** Failure classification; only populated for the reachability probe. */
+  failure?: ProbeFailure;
+  /** HTTP status the host answered with, when it answered at all. */
+  status?: number;
 }
 
 export interface PreflightResult {
   ok: boolean;
   checks: PreflightCheck[];
+}
+
+/** Cloudflare's origin-error range: the edge answered, the origin did not. */
+function isProxyOriginError(status: number): boolean {
+  return status >= 520 && status <= 527;
 }
 
 // SSRF guard (v0.2.18 review, m6): the probe is a blind GET to a
@@ -52,13 +85,54 @@ export function isDisallowedProbeIp(ip: string): boolean {
 export class BootstrapDnsPreflightService {
   private readonly logger = new Logger(BootstrapDnsPreflightService.name);
 
+  /**
+   * ACME gate. Deliberately takes no options: issuance preflight must always
+   * be the port-80 token echo, never the weaker reachability probe.
+   */
   async run(domain: string): Promise<PreflightResult> {
     const hosts = [domain, `www.${domain}`, `admin.${domain}`];
     const checks = await Promise.all(hosts.map((host) => this.probeHost(host)));
     return { ok: checks.every((c) => c.probeOk), checks };
   }
 
-  async probeHost(host: string): Promise<PreflightCheck> {
+  /**
+   * Default mode is `acme` — every existing caller (run(), and
+   * PrimarySslService's extraSans checks, which ARE about ACME) keeps the
+   * port-80 token-echo semantics unchanged.
+   *
+   * `reachability` mode answers a different question and, on instances that
+   * serve behind a proxy or with port 80 closed, uses an HTTPS probe instead:
+   * those instances render NO acme-challenge location at all (see
+   * render-main-conf.sh's PORT80=closed branch), so the token echo is not
+   * merely inconvenient there, it is impossible. Direct-serving instances DO
+   * render it, so they keep the strictly stronger port-80 proof.
+   */
+  async probeHost(host: string, opts: ProbeOptions = {}): Promise<PreflightCheck> {
+    if (opts.mode === 'reachability' && this.shouldProbeHttps()) {
+      return this.httpsReachabilityProbe(host);
+    }
+    return this.acmeProbe(host);
+  }
+
+  /**
+   * Mirrors render-main-conf.sh's resolution order exactly: instance.env (i.e.
+   * instance.json here) wins, otherwise PROXY_MODE from the environment with
+   * 'none' as the default, and the knobs derive from that. Keeping the two in
+   * step matters — if we probe a port nginx isn't listening on, the gate lies.
+   */
+  private shouldProbeHttps(): boolean {
+    const cfg = loadInstanceConfig();
+    const envProxyMode = process.env.PROXY_MODE;
+    const proxyMode: ProxyMode =
+      cfg?.proxyMode ??
+      (envProxyMode === 'cloudflare' || envProxyMode === 'proxy' || envProxyMode === 'none'
+        ? envProxyMode
+        : 'none');
+    const { port80 } = deriveKnobs({ ...(cfg ?? { version: 2, state: 'applied' }), proxyMode });
+    return proxyMode === 'cloudflare' || proxyMode === 'proxy' || port80 === 'closed';
+  }
+
+  private async acmeProbe(host: string): Promise<PreflightCheck> {
     const token = `preflight-${crypto.randomBytes(16).toString('hex')}`;
     const content = token; // body == token: cheap, unguessable, self-describing
     const filePath = path.join(this.webroot(), '.well-known', 'acme-challenge', token);
@@ -68,7 +142,13 @@ export class BootstrapDnsPreflightService {
     try {
       const resolvedIps = await this.resolveA(host);
       if (resolvedIps.some((ip) => isDisallowedProbeIp(ip))) {
-        return { host, resolvedIps, probeOk: false, error: 'resolves to a private or reserved address' };
+        return {
+          host,
+          resolvedIps,
+          probeOk: false,
+          error: 'resolves to a private or reserved address',
+          probeKind: 'acme',
+        };
       }
       let probeOk = false;
       let error: string | undefined;
@@ -82,9 +162,77 @@ export class BootstrapDnsPreflightService {
       if (!probeOk && resolvedIps.length === 0 && !error) {
         error = 'Hostname does not resolve yet';
       }
-      return { host, resolvedIps, probeOk, error: probeOk ? undefined : error };
+      return { host, resolvedIps, probeOk, error: probeOk ? undefined : error, probeKind: 'acme' };
     } finally {
       await fs.rm(filePath, { force: true });
+    }
+  }
+
+  /**
+   * Reachability probe for proxied / port-80-closed instances: GET https://<host>/
+   * and accept ANY real HTTP answer. A 404 is a SUCCESS here — at preflight
+   * time the app's subdomain has no mapping yet by definition, so 404 is the
+   * expected shape of "yes, this hostname lands on a server that will serve
+   * the app once installed".
+   *
+   * What this does NOT prove: that the answering origin is *this* CE instance.
+   * A proxied edge terminates TLS and we deliberately skip certificate
+   * validation below, so authenticity is out of reach on this path; callers
+   * must word their messages accordingly. Cloudflare's 520–527 range is the
+   * one shape we reject: the edge answered but the origin behind it did not.
+   */
+  private async httpsReachabilityProbe(host: string): Promise<PreflightCheck> {
+    const resolvedIps = await this.resolveA(host);
+    if (resolvedIps.some((ip) => isDisallowedProbeIp(ip))) {
+      return {
+        host,
+        resolvedIps,
+        probeOk: false,
+        error: 'resolves to a private or reserved address',
+        probeKind: 'https-reachability',
+        failure: 'private-ip',
+      };
+    }
+    if (resolvedIps.length === 0) {
+      return {
+        host,
+        resolvedIps,
+        probeOk: false,
+        error: 'Hostname does not resolve yet',
+        probeKind: 'https-reachability',
+        failure: 'no-dns',
+      };
+    }
+
+    try {
+      const { statusCode } = await this.fetchReachabilityProbe(host, resolvedIps[0]);
+      if (isProxyOriginError(statusCode)) {
+        return {
+          host,
+          resolvedIps,
+          probeOk: false,
+          status: statusCode,
+          error: `The proxy in front of ${host} returned HTTP ${statusCode} — it could not reach an origin`,
+          probeKind: 'https-reachability',
+          failure: 'origin-error',
+        };
+      }
+      return {
+        host,
+        resolvedIps,
+        probeOk: true,
+        status: statusCode,
+        probeKind: 'https-reachability',
+      };
+    } catch (e) {
+      return {
+        host,
+        resolvedIps,
+        probeOk: false,
+        error: e instanceof Error ? e.message : 'Unreachable over HTTPS',
+        probeKind: 'https-reachability',
+        failure: 'no-response',
+      };
     }
   }
 
@@ -129,9 +277,53 @@ export class BootstrapDnsPreflightService {
     return body;
   }
 
+  // Same TOCTOU pinning as fetchProbe: connect to the already-vetted IPv4
+  // address, carry the hostname in SNI (`servername`) AND the Host header so
+  // both TLS and vhost selection land on the right server block, and never let
+  // the HTTP client re-resolve. Redirects are not followed — a 3xx is simply
+  // an answer, which is all reachability mode needs.
+  //
+  // rejectUnauthorized:false is deliberate and load-bearing. We connect BY IP,
+  // so the presented certificate would fail hostname verification even when it
+  // is perfectly valid, and a direct origin behind Cloudflare commonly serves a
+  // self-signed or CF-origin cert that no public root chains to. This probe
+  // proves REACHABILITY, not AUTHENTICITY: nothing from the response is
+  // trusted, echoed back, or stored — only the status code is read — and the
+  // IP was already vetted by isDisallowedProbeIp() before we got here, so the
+  // usual SSRF risk of skipping validation does not apply.
+  private async fetchReachabilityProbe(
+    host: string,
+    ip: string | undefined,
+  ): Promise<{ statusCode: number }> {
+    if (!ip) throw new Error('No resolved address to probe');
+    return this.sendSecureProbeRequest({
+      host: ip,
+      servername: host,
+      port: 443,
+      path: '/',
+      method: 'GET',
+      headers: { Host: host },
+      timeout: 5000,
+      rejectUnauthorized: false,
+    });
+  }
+
   private sendProbeRequest(options: http.RequestOptions): Promise<{ statusCode: number; body: string }> {
+    return this.consumeProbeResponse(http.request(options), options);
+  }
+
+  private sendSecureProbeRequest(
+    options: https.RequestOptions,
+  ): Promise<{ statusCode: number; body: string }> {
+    return this.consumeProbeResponse(https.request(options), options);
+  }
+
+  private consumeProbeResponse(
+    req: http.ClientRequest,
+    options: http.RequestOptions,
+  ): Promise<{ statusCode: number; body: string }> {
     return new Promise((resolve, reject) => {
-      const req = http.request(options, (res) => {
+      req.on('response', (res) => {
         const chunks: Buffer[] = [];
         res.on('data', (chunk: Buffer) => chunks.push(chunk));
         res.on('end', () =>

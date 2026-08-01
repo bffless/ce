@@ -1,3 +1,13 @@
+// The serving model steers which port the reachability probe uses, so it is a
+// mocked seam here (house pattern: primary-ssl.service.spec does the same).
+// `deriveKnobs` stays real — the v1/env-adopted defaulting it encodes is
+// exactly what we want exercised.
+let mockInstanceConfig: unknown = null;
+jest.mock('../bootstrap/instance-config', () => ({
+  loadInstanceConfig: () => mockInstanceConfig,
+  deriveKnobs: jest.requireActual('../bootstrap/instance-config').deriveKnobs,
+}));
+
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -10,10 +20,13 @@ describe('BootstrapDnsPreflightService', () => {
   beforeEach(() => {
     webroot = fs.mkdtempSync(path.join(os.tmpdir(), 'bffless-webroot-'));
     process.env.CERTBOT_WEBROOT = webroot;
+    delete process.env.PROXY_MODE;
+    mockInstanceConfig = null;
     service = new BootstrapDnsPreflightService();
   });
   afterEach(() => {
     delete process.env.CERTBOT_WEBROOT;
+    delete process.env.PROXY_MODE;
     fs.rmSync(webroot, { recursive: true, force: true });
   });
 
@@ -130,6 +143,225 @@ describe('BootstrapDnsPreflightService', () => {
         .mockResolvedValue({ host: 'x', resolvedIps: [], probeOk: true });
       await service.run('example.com');
       expect(probe.mock.calls.map((c) => c[0])).toEqual(['example.com', 'www.example.com', 'admin.example.com']);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // The ACME gate must never be weakened by the reachability work. Everything
+  // in this block is a regression fence around run(): it stays on port 80 with
+  // a token echo REGARDLESS of the serving model, because that is the exact
+  // route Let's Encrypt's HTTP-01 validator takes.
+  // ---------------------------------------------------------------------------
+  describe('run(): ACME semantics are unconditional', () => {
+    it.each([
+      ['direct', null],
+      ['cloudflare', { version: 2, state: 'applied', proxyMode: 'cloudflare', port80: 'closed' }],
+      ['proxy', { version: 2, state: 'applied', proxyMode: 'proxy', port80: 'redirect' }],
+    ])('probes port 80 over plain HTTP with a token echo (%s instance)', async (_label, cfg) => {
+      mockInstanceConfig = cfg;
+      jest
+        .spyOn(service as never, 'resolveA' as never)
+        .mockResolvedValue(['93.184.216.34'] as never);
+      const httpSpy = jest
+        .spyOn(service as never, 'sendProbeRequest' as never)
+        .mockImplementation((async (options: { path: string }) => ({
+          statusCode: 200,
+          // Echo the token back out of the request path, i.e. exactly what a
+          // correctly-serving webroot does.
+          body: options.path.replace('/.well-known/acme-challenge/', ''),
+        })) as never);
+      const httpsSpy = jest.spyOn(service as never, 'sendSecureProbeRequest' as never);
+
+      const res = await service.run('example.com');
+
+      expect(res.ok).toBe(true);
+      expect(httpsSpy).not.toHaveBeenCalled();
+      expect(httpSpy).toHaveBeenCalledTimes(3);
+      type ProbeOptions = {
+        host: string;
+        port: number;
+        path: string;
+        headers: Record<string, string>;
+      };
+      const calls = (httpSpy.mock.calls as unknown as Array<[ProbeOptions]>).map(([o]) => o);
+      for (const options of calls) {
+        expect(options.port).toBe(80);
+        expect(options.path).toMatch(/^\/\.well-known\/acme-challenge\//);
+        // TOCTOU: connect to the vetted IP, carry the hostname in Host.
+        expect(options.host).toBe('93.184.216.34');
+      }
+      expect(calls.map((o) => o.headers.Host).sort()).toEqual([
+        'admin.example.com',
+        'example.com',
+        'www.example.com',
+      ]);
+      expect(res.checks.every((c) => c.probeKind === 'acme')).toBe(true);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Reachability mode: the app catalog's question, not the CA's.
+  // ---------------------------------------------------------------------------
+  describe('probeHost({ mode: "reachability" })', () => {
+    function stubResolve(ip = '93.184.216.34') {
+      jest.spyOn(service as never, 'resolveA' as never).mockResolvedValue([ip] as never);
+    }
+    function stubHttps(statusCode: number) {
+      return jest
+        .spyOn(service as never, 'sendSecureProbeRequest' as never)
+        .mockResolvedValue({ statusCode, body: '' } as never);
+    }
+
+    it.each([
+      ['proxyMode cloudflare', { version: 2, state: 'applied', proxyMode: 'cloudflare' }],
+      ['proxyMode proxy', { version: 2, state: 'applied', proxyMode: 'proxy' }],
+      // port80 'closed' on its own is enough: whatever the proxyMode label
+      // says, nginx renders `return 444` and no ACME location there.
+      ['port80 closed', { version: 2, state: 'applied', proxyMode: 'none', port80: 'closed' }],
+    ])('probes HTTPS on 443 when %s', async (_label, cfg) => {
+      mockInstanceConfig = cfg;
+      stubResolve();
+      const httpsSpy = stubHttps(404);
+      const httpSpy = jest.spyOn(service as never, 'sendProbeRequest' as never);
+
+      const check = await service.probeHost('handoff.example.com', { mode: 'reachability' });
+
+      expect(httpSpy).not.toHaveBeenCalled();
+      expect(httpsSpy).toHaveBeenCalledTimes(1);
+      expect((httpsSpy.mock.calls[0] as unknown as [{ port: number }])[0].port).toBe(443);
+      expect(check.probeKind).toBe('https-reachability');
+    });
+
+    it('falls back to the stronger port-80 token echo on a direct-serving instance', async () => {
+      mockInstanceConfig = { version: 2, state: 'applied', proxyMode: 'none', port80: 'redirect' };
+      stubResolve();
+      const httpsSpy = jest.spyOn(service as never, 'sendSecureProbeRequest' as never);
+      const httpSpy = jest
+        .spyOn(service as never, 'sendProbeRequest' as never)
+        .mockImplementation((async (options: { path: string }) => ({
+          statusCode: 200,
+          body: options.path.replace('/.well-known/acme-challenge/', ''),
+        })) as never);
+
+      const check = await service.probeHost('handoff.example.com', { mode: 'reachability' });
+
+      expect(httpsSpy).not.toHaveBeenCalled();
+      expect((httpSpy.mock.calls[0] as unknown as [{ port: number }])[0].port).toBe(80);
+      expect(check.probeKind).toBe('acme');
+      expect(check.probeOk).toBe(true);
+    });
+
+    it('derives the serving model from PROXY_MODE when there is no instance.json', async () => {
+      mockInstanceConfig = null;
+      process.env.PROXY_MODE = 'cloudflare';
+      stubResolve();
+      const httpsSpy = stubHttps(404);
+
+      await service.probeHost('handoff.example.com', { mode: 'reachability' });
+
+      expect(httpsSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('treats a 404 over HTTPS as success — the app has no mapping yet by definition', async () => {
+      mockInstanceConfig = { version: 2, state: 'applied', proxyMode: 'cloudflare' };
+      stubResolve();
+      stubHttps(404);
+
+      const check = await service.probeHost('handoff.example.com', { mode: 'reachability' });
+
+      expect(check.probeOk).toBe(true);
+      expect(check.status).toBe(404);
+      expect(check.error).toBeUndefined();
+    });
+
+    it.each([200, 301, 403, 500])('treats HTTP %s as a reachable answer', async (statusCode) => {
+      mockInstanceConfig = { version: 2, state: 'applied', proxyMode: 'cloudflare' };
+      stubResolve();
+      stubHttps(statusCode);
+
+      const check = await service.probeHost('handoff.example.com', { mode: 'reachability' });
+      expect(check.probeOk).toBe(true);
+    });
+
+    it.each([520, 521, 522, 523, 524, 525, 526, 527])(
+      'fails a Cloudflare origin error (%s) with an origin-error classification',
+      async (statusCode) => {
+        mockInstanceConfig = { version: 2, state: 'applied', proxyMode: 'cloudflare' };
+        stubResolve();
+        stubHttps(statusCode);
+
+        const check = await service.probeHost('handoff.example.com', { mode: 'reachability' });
+
+        expect(check.probeOk).toBe(false);
+        expect(check.failure).toBe('origin-error');
+        expect(check.status).toBe(statusCode);
+        expect(check.error).toMatch(/could not reach an origin/i);
+      },
+    );
+
+    it('fails with no-response when the connection is refused', async () => {
+      mockInstanceConfig = { version: 2, state: 'applied', proxyMode: 'cloudflare' };
+      stubResolve();
+      jest
+        .spyOn(service as never, 'sendSecureProbeRequest' as never)
+        .mockRejectedValue(new Error('connect ECONNREFUSED 93.184.216.34:443') as never);
+
+      const check = await service.probeHost('handoff.example.com', { mode: 'reachability' });
+
+      expect(check.probeOk).toBe(false);
+      expect(check.failure).toBe('no-response');
+      expect(check.error).toMatch(/ECONNREFUSED/);
+    });
+
+    it('fails with no-dns when the hostname does not resolve, without opening a socket', async () => {
+      mockInstanceConfig = { version: 2, state: 'applied', proxyMode: 'cloudflare' };
+      jest.spyOn(service as never, 'resolveA' as never).mockResolvedValue([] as never);
+      const httpsSpy = jest.spyOn(service as never, 'sendSecureProbeRequest' as never);
+
+      const check = await service.probeHost('handoff.example.com', { mode: 'reachability' });
+
+      expect(check.probeOk).toBe(false);
+      expect(check.failure).toBe('no-dns');
+      expect(httpsSpy).not.toHaveBeenCalled();
+    });
+
+    it('refuses a private/reserved resolution before connecting (SSRF guard holds in both modes)', async () => {
+      mockInstanceConfig = { version: 2, state: 'applied', proxyMode: 'cloudflare' };
+      stubResolve('169.254.169.254');
+      const httpsSpy = jest.spyOn(service as never, 'sendSecureProbeRequest' as never);
+
+      const check = await service.probeHost('metadata.example.com', { mode: 'reachability' });
+
+      expect(check.probeOk).toBe(false);
+      expect(check.failure).toBe('private-ip');
+      expect(check.error).toContain('private or reserved');
+      expect(httpsSpy).not.toHaveBeenCalled();
+    });
+
+    it('pins the HTTPS connection to the vetted IP and carries the hostname in SNI + Host', async () => {
+      mockInstanceConfig = { version: 2, state: 'applied', proxyMode: 'cloudflare' };
+      stubResolve('93.184.216.34');
+      const httpsSpy = stubHttps(404);
+
+      await service.probeHost('handoff.example.com', { mode: 'reachability' });
+
+      const [options] = httpsSpy.mock.calls[0] as unknown as [
+        {
+          host: string;
+          servername: string;
+          headers: Record<string, string>;
+          rejectUnauthorized: boolean;
+        },
+      ];
+      // TOCTOU: never re-resolve — connect to the address we already vetted.
+      expect(options.host).toBe('93.184.216.34');
+      // SNI + Host still carry the hostname so the right vhost answers.
+      expect(options.servername).toBe('handoff.example.com');
+      expect(options.headers.Host).toBe('handoff.example.com');
+      // Connecting by IP can never satisfy hostname verification, and origins
+      // behind a proxy routinely serve self-signed certs — the probe proves
+      // reachability, not authenticity.
+      expect(options.rejectUnauthorized).toBe(false);
     });
   });
 });

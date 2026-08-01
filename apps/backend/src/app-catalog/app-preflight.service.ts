@@ -242,16 +242,50 @@ export class AppPreflightService {
       };
     }
 
-    const check = await this.dnsPreflight.probeHost(appHost);
+    // Reachability mode, NOT the ACME gate. The question here is "will an app
+    // served at this hostname be reachable?", and on a Cloudflare/reverse-proxy
+    // instance the ACME answer is unobtainable: those instances render no
+    // acme-challenge location and serve nothing at all on origin port 80, so
+    // the port-80 token echo fails even when everything is perfectly healthy.
+    const check = await this.dnsPreflight.probeHost(appHost, { mode: 'reachability' });
+    const resolvedIps = check.resolvedIps.length ? check.resolvedIps.join(', ') : 'none';
+    const dnsRemediation =
+      `Add a CNAME record "${subdomain}" pointing to "${primaryDomain}" (or an A record matching ` +
+      `${primaryDomain}'s IP), then retry.`;
+
     if (check.probeOk) {
+      // Be honest about what each probe actually proved. The HTTPS probe is
+      // deliberately weaker: a proxied edge terminates TLS, so a green result
+      // says the hostname reaches a live server, not that it reaches THIS one.
+      // A 404 is the expected answer at this point — the app has no domain
+      // mapping until the install creates one.
+      const message =
+        check.probeKind === 'https-reachability'
+          ? `${appHost} resolves to ${resolvedIps} and answered over HTTPS` +
+            (check.status ? ` (HTTP ${check.status})` : '') +
+            `. This instance serves behind a proxy or with port 80 closed, so the probe confirms the ` +
+            `hostname reaches a live server — it cannot prove that server is this origin, because the ` +
+            `proxy terminates TLS. A 404 here is expected: the app has no domain mapping until it is installed.`
+          : `${appHost} resolves and answered the preflight probe on port 80.`;
+      return { id: 'dns', status: 'pass', message };
+    }
+
+    if (check.failure === 'origin-error') {
       return {
         id: 'dns',
-        status: 'pass',
-        message: `${appHost} resolves and answered the preflight probe.`,
+        status: 'fail',
+        retryable: true,
+        message:
+          `${appHost} resolves to ${resolvedIps} and the proxy in front of it answered, but with ` +
+          `HTTP ${check.status ?? '5xx'} — a Cloudflare-style origin error. DNS is fine; the proxy could ` +
+          `not reach an origin for this hostname.`,
+        remediation:
+          `Check that this server is running and serving ${appHost} (and, on Cloudflare, that the ` +
+          `record for "${subdomain}" is proxied to the same origin as ${primaryDomain}), then retry. ` +
+          `If the record is missing entirely, ${dnsRemediation}`,
       };
     }
 
-    const resolvedIps = check.resolvedIps.length ? check.resolvedIps.join(', ') : 'none';
     return {
       id: 'dns',
       status: 'fail',
@@ -259,9 +293,7 @@ export class AppPreflightService {
       message:
         `DNS check failed for ${appHost}: ${check.error ?? 'probe did not succeed'}. ` +
         `Resolved IPs: ${resolvedIps}.`,
-      remediation:
-        `Add a CNAME record "${subdomain}" pointing to "${primaryDomain}" (or an A record matching ` +
-        `${primaryDomain}'s IP), then retry.`,
+      remediation: dnsRemediation,
     };
   }
 
