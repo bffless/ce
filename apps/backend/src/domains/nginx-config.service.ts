@@ -677,9 +677,10 @@ ${serverBlocks}
   private appServingBodyLimit(): string {
     return `
     # nginx defaults to 1M, which 413s any body larger than that on every path
-    # this vhost proxies. The presigned upload location below raises its own
-    # ceiling to 200M; this is the floor for everything else, matching the CE
-    # templates' server-level value.
+    # this vhost proxies -- proxy-rule POSTs and form posts in particular,
+    # since generateProxyLocationBlocks() sets no ceiling of its own. The
+    # presigned upload location carries its own 200M; this is the limit for
+    # everything else on an app-serving vhost.
     client_max_body_size 100M;`;
   }
 
