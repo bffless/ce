@@ -17,6 +17,7 @@ import { UninstallDialog } from './UninstallDialog';
 import { EjectPanel } from './EjectPanel';
 import { GateBlockedCta } from './GateBlockedCta';
 import { RemoteImage } from './RemoteImage';
+import { SetupNotes } from './SetupNotes';
 import { hasAppDetails } from './catalogEntry';
 import { ExternalLink, MoreVertical } from 'lucide-react';
 
@@ -45,6 +46,11 @@ interface AppCardProps {
  *   plus a "Why?" popover with the gate's remediation/deepLink.
  * - installed → "Installed · v{version}" badge, an "Open" link to `appUrl`,
  *   and an overflow menu (Update, Uninstall, Eject).
+ *
+ * An installed card also carries its app's setup notes (titles collapsed,
+ * bodies expanding in place) — CE can't perform them, so they live where the
+ * app lives rather than behind a one-shot dialog.
+ *
  * - installed + update available → an additional primary "Update to
  *   v{registryVersion}" button that opens a confirm popover (prune toggle,
  *   default off) before firing the update — unless an instance gate fails, in
@@ -140,7 +146,7 @@ export function AppCard({ entry, onInstall, onDetails, onUpdateStarted }: AppCar
         </div>
       </CardHeader>
 
-      <CardContent className="flex-1">
+      <CardContent className="flex-1 space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           {entry.category && (
             <Badge variant="outline" className="capitalize">
@@ -149,6 +155,15 @@ export function AppCard({ entry, onInstall, onDetails, onUpdateStarted }: AppCar
           )}
           {installed && <Badge variant="secondary">{`Installed · v${installed.version}`}</Badge>}
         </div>
+
+        {/*
+          Titles only, collapsed. The banner above is unconditional so the grid
+          doesn't go ragged; two three-line bodies inline would reintroduce
+          exactly that unevenness, permanently. Expanding is one click, and the
+          notes are worth finding — before this they were reachable only by
+          triggering an Update.
+        */}
+        {installed && <SetupNotes steps={installed.manualSteps} />}
       </CardContent>
 
       <CardFooter className="flex flex-wrap items-center gap-2">

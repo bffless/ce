@@ -1,4 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import { AppCard } from '../AppCard';
 import type { CatalogEntry } from '@/services/appCatalogApi';
@@ -246,5 +247,78 @@ describe('AppCard', () => {
     fireEvent.click(screen.getByRole('button', { name: /confirm update/i }));
 
     expect(updateTrigger).toHaveBeenCalledWith({ id: 'installed-1', prune: true });
+  });
+
+  describe('setup notes', () => {
+    const installedWithNotes: CatalogEntry = {
+      ...baseEntry,
+      installed: {
+        installedAppId: 'installed-1',
+        version: '1.0.0',
+        projectId: 'proj-1',
+        projectName: 'acme/site',
+        alias: 'reader',
+        appUrl: 'https://reader.example.com',
+        status: 'installed',
+        updateAvailable: false,
+        manualSteps: [
+          {
+            id: 'grant-access',
+            title: 'Give other people access',
+            body: 'Rivulet is private. Add each person as a guest.',
+            deepLink: '/repo/acme/site/settings?tab=members',
+          },
+        ],
+      },
+    };
+
+    it('shows the note title on an installed card', () => {
+      render(
+        <AppCard
+          entry={installedWithNotes}
+          onInstall={vi.fn()}
+          onDetails={vi.fn()}
+          onUpdateStarted={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByText('Give other people access')).toBeInTheDocument();
+      expect(screen.queryByText(/Rivulet is private/)).not.toBeInTheDocument();
+    });
+
+    it('expands the body in place', async () => {
+      render(
+        <AppCard
+          entry={installedWithNotes}
+          onInstall={vi.fn()}
+          onDetails={vi.fn()}
+          onUpdateStarted={vi.fn()}
+        />,
+      );
+
+      await userEvent.click(screen.getByRole('button', { name: /give other people access/i }));
+
+      expect(screen.getByText(/Rivulet is private/)).toBeInTheDocument();
+    });
+
+    it('renders no setup notes block when the app has none', () => {
+      const entry: CatalogEntry = {
+        ...installedWithNotes,
+        installed: { ...installedWithNotes.installed!, manualSteps: [] },
+      };
+      render(
+        <AppCard entry={entry} onInstall={vi.fn()} onDetails={vi.fn()} onUpdateStarted={vi.fn()} />,
+      );
+
+      expect(screen.queryByText(/Setup notes/)).not.toBeInTheDocument();
+    });
+
+    it('renders no setup notes block when the app is not installed', () => {
+      render(
+        <AppCard entry={baseEntry} onInstall={vi.fn()} onDetails={vi.fn()} onUpdateStarted={vi.fn()} />,
+      );
+
+      expect(screen.queryByText(/Setup notes/)).not.toBeInTheDocument();
+    });
   });
 });

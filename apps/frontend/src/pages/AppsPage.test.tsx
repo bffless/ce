@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { vi } from 'vitest';
 import { AppsPage } from './AppsPage';
 import type {
@@ -156,8 +156,14 @@ describe('AppsPage — Done-screen setup notes stay live (regression)', () => {
     fireEvent.click(screen.getByRole('button', { name: /update to v2\.0\.0/i }));
     fireEvent.click(screen.getByRole('button', { name: /confirm update/i }));
 
-    expect(await screen.findByText('Configure bucket CORS')).toBeInTheDocument();
-    expect(screen.queryByText('Rotate the signing secret')).not.toBeInTheDocument();
+    // The installed card behind the dialog now carries its own SetupNotes
+    // block too (this task), so once the dialog reaches the Done screen the
+    // same note title exists twice in the DOM (card + dialog) — scope to the
+    // dialog to keep asserting on what this regression test actually cares
+    // about: the Done screen's live-derived content.
+    const dialog = await screen.findByRole('dialog', { name: /handoff updated/i });
+    expect(within(dialog).getByText('Configure bucket CORS')).toBeInTheDocument();
+    expect(within(dialog).queryByText('Rotate the signing secret')).not.toBeInTheDocument();
 
     // Simulate the update finishing server-side (e.g. a manual step's manifest
     // definition changed) and `updateApp`'s `invalidatesTags` causing
@@ -181,8 +187,8 @@ describe('AppsPage — Done-screen setup notes stay live (regression)', () => {
     rerender(<AppsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText('Rotate the signing secret')).toBeInTheDocument();
+      expect(within(dialog).getByText('Rotate the signing secret')).toBeInTheDocument();
     });
-    expect(screen.queryByText('Configure bucket CORS')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('Configure bucket CORS')).not.toBeInTheDocument();
   });
 });
