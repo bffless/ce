@@ -481,6 +481,12 @@ describe('AliasesController', () => {
         name: 'repo',
         isPublic: true,
       }),
+      getProjectById: jest.fn().mockResolvedValue({
+        id: 'project-123',
+        owner: 'owner',
+        name: 'repo',
+        isPublic: true,
+      }),
     } as any;
 
     const module: TestingModule = await Test.createTestingModule({
@@ -560,6 +566,74 @@ describe('AliasesController', () => {
         'main',
         mockUserId,
         'admin',
+      );
+    });
+  });
+
+  describe('updateAliasVisibility', () => {
+    const mockProjectId = 'project-123';
+
+    it('forwards requiredRole to the service', async () => {
+      const dto = { requiredRole: 'admin' as const };
+
+      await controller.updateAliasVisibility(mockProjectId, 'main', dto, mockUser);
+
+      expect(mockDeploymentsService.updateAliasVisibility).toHaveBeenCalledWith(
+        mockProjectId,
+        'main',
+        undefined,
+        mockUserId,
+        'admin',
+        undefined,
+        'admin',
+      );
+    });
+
+    it('forwards unauthorizedBehavior to the service', async () => {
+      const dto = { unauthorizedBehavior: 'redirect_login' as const };
+
+      await controller.updateAliasVisibility(mockProjectId, 'main', dto, mockUser);
+
+      expect(mockDeploymentsService.updateAliasVisibility).toHaveBeenCalledWith(
+        mockProjectId,
+        'main',
+        undefined,
+        mockUserId,
+        'admin',
+        'redirect_login',
+        undefined,
+      );
+    });
+
+    it('does not coerce an omitted isPublic into an explicit null (regression: Bug 2)', async () => {
+      // Only requiredRole is being changed; isPublic and unauthorizedBehavior are
+      // absent from the request body entirely (not sent as null).
+      const dto = { requiredRole: 'viewer' as const };
+
+      await controller.updateAliasVisibility(mockProjectId, 'main', dto, mockUser);
+
+      const call = mockDeploymentsService.updateAliasVisibility.mock.calls[0];
+      // isPublic arg (index 2) must be undefined ("leave alone"), never null
+      // ("clear the override") -- that conflation is exactly Bug 2.
+      expect(call[2]).toBeUndefined();
+      // unauthorizedBehavior arg (index 5) must likewise stay undefined.
+      expect(call[5]).toBeUndefined();
+      expect(call[6]).toBe('viewer');
+    });
+
+    it('forwards an explicit null to clear an override', async () => {
+      const dto = { isPublic: null, unauthorizedBehavior: null, requiredRole: null };
+
+      await controller.updateAliasVisibility(mockProjectId, 'main', dto, mockUser);
+
+      expect(mockDeploymentsService.updateAliasVisibility).toHaveBeenCalledWith(
+        mockProjectId,
+        'main',
+        null,
+        mockUserId,
+        'admin',
+        null,
+        null,
       );
     });
   });

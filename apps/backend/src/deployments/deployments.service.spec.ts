@@ -568,6 +568,124 @@ describe('DeploymentsService', () => {
     });
   });
 
+  describe('updateAliasVisibility', () => {
+    const mockProjectId = 'project-id-123';
+
+    const mockAliasWithOverrides = {
+      ...mockAlias,
+      projectId: mockProjectId,
+      isPublic: false,
+      unauthorizedBehavior: null,
+      requiredRole: null,
+    };
+
+    it('persists requiredRole', async () => {
+      setupMockChain([
+        [mockAliasWithOverrides], // find existing alias
+        [{ ...mockAliasWithOverrides, requiredRole: 'admin' }], // update returning
+      ]);
+
+      await service.updateAliasVisibility(
+        mockProjectId,
+        'main',
+        undefined,
+        mockUserId,
+        'admin',
+        undefined,
+        'admin',
+      );
+
+      const setArg = mockDb.set.mock.calls[0][0];
+      expect(setArg.requiredRole).toBe('admin');
+    });
+
+    it('persists unauthorizedBehavior', async () => {
+      setupMockChain([
+        [mockAliasWithOverrides],
+        [{ ...mockAliasWithOverrides, unauthorizedBehavior: 'redirect_login' }],
+      ]);
+
+      await service.updateAliasVisibility(
+        mockProjectId,
+        'main',
+        undefined,
+        mockUserId,
+        'admin',
+        'redirect_login',
+        undefined,
+      );
+
+      const setArg = mockDb.set.mock.calls[0][0];
+      expect(setArg.unauthorizedBehavior).toBe('redirect_login');
+    });
+
+    it('leaves an existing explicit isPublic untouched when only requiredRole changes (regression: Bug 2)', async () => {
+      setupMockChain([
+        [{ ...mockAliasWithOverrides, isPublic: false }],
+        [{ ...mockAliasWithOverrides, isPublic: false, requiredRole: 'viewer' }],
+      ]);
+
+      await service.updateAliasVisibility(
+        mockProjectId,
+        'main',
+        undefined, // isPublic omitted entirely from the request
+        mockUserId,
+        'admin',
+        undefined,
+        'viewer',
+      );
+
+      const setArg = mockDb.set.mock.calls[0][0];
+      // The bug: `dto.isPublic ?? null` used to force isPublic: null onto every
+      // update, wiping an explicit Private override back to "inherit".
+      expect(setArg).not.toHaveProperty('isPublic');
+      expect(setArg).not.toHaveProperty('unauthorizedBehavior');
+      expect(setArg.requiredRole).toBe('viewer');
+    });
+
+    it('clears an override when explicitly passed null for each field', async () => {
+      setupMockChain([
+        [mockAliasWithOverrides],
+        [{ ...mockAliasWithOverrides, isPublic: null, unauthorizedBehavior: null, requiredRole: null }],
+      ]);
+
+      await service.updateAliasVisibility(
+        mockProjectId,
+        'main',
+        null,
+        mockUserId,
+        'admin',
+        null,
+        null,
+      );
+
+      const setArg = mockDb.set.mock.calls[0][0];
+      expect(setArg.isPublic).toBeNull();
+      expect(setArg.unauthorizedBehavior).toBeNull();
+      expect(setArg.requiredRole).toBeNull();
+    });
+
+    it('does not write any of the three fields when all are absent from the call', async () => {
+      setupMockChain([[mockAliasWithOverrides], [mockAliasWithOverrides]]);
+
+      await service.updateAliasVisibility(
+        mockProjectId,
+        'main',
+        undefined,
+        mockUserId,
+        'admin',
+        undefined,
+        undefined,
+      );
+
+      const setArg = mockDb.set.mock.calls[0][0];
+      expect(setArg).not.toHaveProperty('isPublic');
+      expect(setArg).not.toHaveProperty('unauthorizedBehavior');
+      expect(setArg).not.toHaveProperty('requiredRole');
+      expect(setArg).toHaveProperty('updatedAt');
+    });
+  });
+
   describe('deleteAlias', () => {
     it('should delete alias', async () => {
       setupMockChain([[mockAlias]]);
