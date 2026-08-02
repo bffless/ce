@@ -395,3 +395,61 @@ export function manualStepApplies(
       return !ctx.platformMode;
   }
 }
+
+/** The closed set of tokens a manifest may use in a manual step. */
+export const PLACEHOLDER_TOKENS = ['projectPath', 'appHost'] as const;
+
+export type PlaceholderToken = (typeof PLACEHOLDER_TOKENS)[number];
+
+export type StepPlaceholders = Partial<Record<PlaceholderToken, string>>;
+
+/** Matches `{projectPath}` / `{appHost}` and nothing else — validation rejects other tokens. */
+const TOKEN_RE = new RegExp(`\\{(${PLACEHOLDER_TOKENS.join('|')})\\}`, 'g');
+
+/**
+ * A sentence whose token has no value (an app installed before it had a
+ * domain has no `{appHost}`) is dropped whole rather than rendered with a
+ * literal brace or a hole where the host should be. Sentence = run of text up
+ * to and including its terminating period + following space.
+ */
+function expand(text: string, values: StepPlaceholders): string {
+  const sentences = text.match(/[^.]*\.\s*|[^.]+$/g) ?? [text];
+
+  return sentences
+    .filter((sentence) => {
+      const tokens = [...sentence.matchAll(TOKEN_RE)].map((m) => m[1] as PlaceholderToken);
+      return tokens.every((token) => values[token] !== undefined);
+    })
+    .join('')
+    .replace(TOKEN_RE, (_match, token: PlaceholderToken) => values[token] as string)
+    .trim();
+}
+
+/**
+ * Expands `{projectPath}`/`{appHost}` in a manual step. A manifest cannot
+ * hardcode `/repo/acme/site/settings?tab=members` — it does not know which
+ * project it will be installed into — so it declares the token and CE fills
+ * it in at read time. Returns a new step; never mutates the input.
+ */
+export function interpolateStep(step: AppManualStep, values: StepPlaceholders): AppManualStep {
+  const result: AppManualStep = {
+    ...step,
+    title: expand(step.title, values),
+    body: expand(step.body, values),
+  };
+
+  if (step.deepLink !== undefined) {
+    const tokens = [...step.deepLink.matchAll(TOKEN_RE)].map((m) => m[1] as PlaceholderToken);
+    // A link to a page we can't name is worse than no link.
+    if (tokens.every((token) => values[token] !== undefined)) {
+      result.deepLink = step.deepLink.replace(
+        TOKEN_RE,
+        (_match, token: PlaceholderToken) => values[token] as string,
+      );
+    } else {
+      delete result.deepLink;
+    }
+  }
+
+  return result;
+}

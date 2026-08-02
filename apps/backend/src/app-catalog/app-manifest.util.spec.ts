@@ -1,4 +1,9 @@
-import { validateAppManifest, validateRegistry, manualStepApplies } from './app-manifest.util';
+import {
+  validateAppManifest,
+  validateRegistry,
+  manualStepApplies,
+  interpolateStep,
+} from './app-manifest.util';
 import { APPLIES_WHEN_VALUES, type AppManualStep } from './app-manifest.types';
 
 export const TEST_MANIFEST = {
@@ -282,5 +287,66 @@ describe('manualStepApplies', () => {
     const step: AppManualStep = { ...baseStep, appliesWhen: 'selfHosted' };
     expect(manualStepApplies(step, { bucketStorage: false, platformMode: false })).toBe(true);
     expect(manualStepApplies(step, { bucketStorage: false, platformMode: true })).toBe(false);
+  });
+});
+
+describe('interpolateStep', () => {
+  const step = {
+    id: 'grant-access',
+    title: 'Give other people access',
+    body: 'Add each person as a guest on {projectPath}.',
+    deepLink: '/repo/{projectPath}/settings?tab=members',
+  };
+
+  it('expands every token across title, body and deepLink', () => {
+    const result = interpolateStep(
+      { ...step, title: 'Access for {projectPath}' },
+      { projectPath: 'acme/site', appHost: 'reader.example.com' },
+    );
+
+    expect(result.title).toBe('Access for acme/site');
+    expect(result.body).toBe('Add each person as a guest on acme/site.');
+    expect(result.deepLink).toBe('/repo/acme/site/settings?tab=members');
+  });
+
+  it('expands every occurrence of a repeated token', () => {
+    const result = interpolateStep(
+      { id: 'x', title: 't', body: 'Allow PUT from {appHost} to {appHost}.' },
+      { appHost: 'a.example.com' },
+    );
+
+    expect(result.body).toBe('Allow PUT from a.example.com to a.example.com.');
+  });
+
+  it('leaves a step with no tokens untouched', () => {
+    const plain = { id: 'x', title: 'Title', body: 'Body.', deepLink: '/domains' };
+
+    expect(interpolateStep(plain, { projectPath: 'acme/site' })).toEqual(plain);
+  });
+
+  it('drops a sentence whose token has no value rather than emitting a literal brace', () => {
+    const result = interpolateStep(
+      { id: 'x', title: 'T', body: 'First sentence. Allow PUT from {appHost}. Last sentence.' },
+      {},
+    );
+
+    expect(result.body).toBe('First sentence. Last sentence.');
+    expect(result.body).not.toContain('{appHost}');
+  });
+
+  it('omits deepLink entirely when it depends on a token with no value', () => {
+    const result = interpolateStep(
+      { id: 'x', title: 'T', body: 'B', deepLink: '/repo/{projectPath}/settings' },
+      {},
+    );
+
+    expect(result.deepLink).toBeUndefined();
+  });
+
+  it('does not mutate the input step', () => {
+    const original = { id: 'x', title: 'T', body: 'On {projectPath}.' };
+    interpolateStep(original, { projectPath: 'acme/site' });
+
+    expect(original.body).toBe('On {projectPath}.');
   });
 });
