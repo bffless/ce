@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.11](https://github.com/bffless/ce/compare/v0.4.10...v0.4.11) (2026-08-02)
+
+
+### Bug Fixes
+
+* **deployments:** persist alias requiredRole/unauthorizedBehavior overrides ([#617](https://github.com/bffless/ce/issues/617)) ([abaf5ec](https://github.com/bffless/ce/commit/abaf5ec1f46eedf4a9230ac80db020520100ae10))
+
 ## [0.4.10](https://github.com/bffless/ce/compare/v0.4.9...v0.4.10) (2026-08-02)
 
 
