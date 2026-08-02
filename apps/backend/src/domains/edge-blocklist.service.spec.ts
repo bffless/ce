@@ -76,8 +76,64 @@ describe('EdgeBlocklistService', () => {
         cb(error);
       },
     );
+    // No rules were applied before and none after, so there is nothing for a
+    // caller to regenerate — sync() reports the APPLIED delta, not the
+    // intended one (#607).
+    await expect(service.sync()).resolves.toBe(false);
+    expect(service.getServerRules('444')).toBe('');
+  });
+
+  it('reports a change when a rollback REMOVES rules that were applied', async () => {
+    await service.sync();
+    expect(service.getServerRules('444')).not.toBe('');
+
+    state = { ...state, blockSource: '(?:^/wp\\-admin|^/new)' };
+    mockExecFile.mockImplementation((_cmd: string, _args: string[], cb: (err: unknown) => void) => {
+      const error = new Error('nginx: configuration file test failed') as Error & { stderr: string };
+      error.stderr = 'nginx: [emerg] invalid regex';
+      cb(error);
+    });
+    // Configs still carry the old rules; they must be rewritten without them.
     await expect(service.sync()).resolves.toBe(true);
     expect(service.getServerRules('444')).toBe('');
+  });
+
+  it('retries a rolled-back pair instead of latching on the fingerprint (#607)', async () => {
+    // Regression: sync() recorded the fingerprint of the state it had just
+    // ROLLED BACK, so every later sync short-circuited on it and the edge
+    // rules stayed missing until a blocklist mutation changed the
+    // fingerprint. One transient `nginx -t` failure during an upgrade was
+    // enough to disable edge enforcement permanently.
+    mockExecFile.mockImplementation((_cmd: string, _args: string[], cb: (err: unknown) => void) => {
+      const error = new Error('nginx: configuration file test failed') as Error & { stderr: string };
+      error.stderr = 'nginx: [emerg] invalid regex';
+      cb(error);
+    });
+    await service.sync();
+    expect(service.getServerRules('444')).toBe('');
+
+    // Same compiled state, nginx healthy again: must re-validate and apply.
+    mockExecFile.mockImplementation(
+      (_cmd: string, _args: string[], cb: (err: unknown, out?: unknown) => void) =>
+        cb(null, { stdout: '', stderr: '' }),
+    );
+    await expect(service.sync()).resolves.toBe(true);
+    expect(service.getServerRules('444')).toContain('^/wp\\-admin');
+  });
+
+  it('reports no change while a rolled-back pair keeps failing', async () => {
+    // Retrying is right; rewriting every nginx config every 30s is not.
+    mockExecFile.mockImplementation((_cmd: string, _args: string[], cb: (err: unknown) => void) => {
+      const error = new Error('nginx: configuration file test failed') as Error & { stderr: string };
+      error.stderr = 'nginx: [emerg] invalid regex';
+      cb(error);
+    });
+    await service.sync();
+    mockExecFile.mockClear();
+
+    await expect(service.sync()).resolves.toBe(false);
+    expect(mockExecFile).toHaveBeenCalled(); // re-validated…
+    expect(service.getServerRules('444')).toBe(''); // …but nothing changed.
   });
 
   it('accepts rules when only the sandbox environment fails (nginx reported syntax ok)', async () => {

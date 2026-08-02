@@ -23,6 +23,13 @@ import { BlocklistService } from '../traffic/blocklist.service';
 const BLOCKLIST_REGEN_DEBOUNCE_MS = 1_500;
 
 /**
+ * How long startup waits for the Blocklist to load real database state before
+ * generating configs anyway. Generated configs are durable artifacts, so this
+ * is a correctness gate, not a nicety (#607).
+ */
+const BLOCKLIST_LOAD_WAIT_MS = 15_000;
+
+/**
  * Service that regenerates all nginx configs on backend startup.
  * This ensures any template changes are applied automatically without
  * requiring manual domain remapping.
@@ -57,8 +64,20 @@ export class NginxStartupService implements OnModuleInit {
     // single admin save can land as several mutations.
     this.blocklistService.onEffectiveChange(() => this.scheduleBlocklistRegen());
 
-    // Wait a bit for database connections to stabilize
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    // Gate on the Blocklist having loaded real database state rather than
+    // sleeping and hoping (#607). Every ./update.sh restarts postgres
+    // alongside the backend, and a config generated during that race used to
+    // bake in Baseline blocks without the allowlist entries that rescue them
+    // — 444'ing paths the operator had explicitly allowed until someone
+    // edited a list by hand. This also subsumes the old "wait for database
+    // connections to stabilize" sleep: a successful load IS that signal.
+    const loaded = await this.blocklistService.whenFirstLoad(BLOCKLIST_LOAD_WAIT_MS);
+    if (!loaded) {
+      this.logger.warn(
+        `Blocklist state still unloaded after ${BLOCKLIST_LOAD_WAIT_MS}ms; generating configs ` +
+          'without edge blocklist rules — the first successful refresh will regenerate them',
+      );
+    }
 
     try {
       await this.regenerateAllConfigs();
@@ -139,7 +158,9 @@ export class NginxStartupService implements OnModuleInit {
 
     // Pull (and validate) the current edge Blocklist rules before any config
     // is generated (#392). BlocklistService loaded its state during
-    // TrafficModule init, which precedes this module's.
+    // TrafficModule init, which precedes this module's; onModuleInit above
+    // additionally waits for that load to have actually reached the database,
+    // so what gets rendered here is never a half-loaded state (#607).
     await this.edgeBlocklistService.sync();
 
     // 0. Clean up orphaned config files (from previous installs or deleted mappings)
