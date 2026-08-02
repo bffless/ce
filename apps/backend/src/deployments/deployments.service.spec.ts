@@ -928,4 +928,93 @@ describe('DeploymentsService', () => {
       expect(result.message).toBe('Commit deleted successfully');
     });
   });
+
+  describe('createAssetsFromManifest', () => {
+    // Same-SHA republish (issue #623): presigned PUTs bypass
+    // CachingStorageAdapter.upload(), so finalize must evict the content
+    // cache and must not keep the previous publish's contentHash.
+    const manifestParams = {
+      projectId: mockProjectId,
+      repository: mockRepository,
+      commitSha: mockCommitSha,
+      branch: 'main',
+      files: [
+        {
+          path: 'registry.json',
+          size: 6393,
+          contentType: 'application/json',
+          storageKey: `${mockRepository}/commits/${mockCommitSha}/registry.json`,
+        },
+      ],
+      userId: mockUserId,
+    };
+
+    const existingManifestAsset = {
+      ...mockAsset,
+      fileName: 'registry.json',
+      publicPath: 'registry.json',
+      storageKey: manifestParams.files[0].storageKey,
+      size: 3441,
+      contentHash: 'stale-hash-from-first-publish',
+    };
+
+    it('invalidates the content cache for each uploaded storage key', async () => {
+      const invalidateKey = jest.fn().mockResolvedValue(undefined);
+      (mockStorageAdapter as any).invalidateKey = invalidateKey;
+
+      setupMockChain([
+        [existingManifestAsset], // existing asset lookup
+        [{ ...existingManifestAsset, size: 6393, contentHash: null }], // update returning
+      ]);
+
+      await service.createAssetsFromManifest(manifestParams);
+
+      expect(invalidateKey).toHaveBeenCalledWith(manifestParams.files[0].storageKey);
+    });
+
+    it('invalidates via getUnderlyingAdapter when wrapped (DynamicStorageAdapter shape)', async () => {
+      const invalidateKey = jest.fn().mockResolvedValue(undefined);
+      (mockStorageAdapter as any).getUnderlyingAdapter = jest
+        .fn()
+        .mockReturnValue({ invalidateKey });
+
+      setupMockChain([
+        [existingManifestAsset],
+        [{ ...existingManifestAsset, size: 6393, contentHash: null }],
+      ]);
+
+      await service.createAssetsFromManifest(manifestParams);
+
+      expect(invalidateKey).toHaveBeenCalledWith(manifestParams.files[0].storageKey);
+    });
+
+    it('clears the stale contentHash when updating an existing asset', async () => {
+      setupMockChain([
+        [existingManifestAsset],
+        [{ ...existingManifestAsset, size: 6393, contentHash: null }],
+      ]);
+
+      await service.createAssetsFromManifest(manifestParams);
+
+      expect(mockDb.set).toHaveBeenCalledWith(
+        expect.objectContaining({ contentHash: null, size: 6393 }),
+      );
+    });
+
+    it('does not fail the deployment when cache invalidation throws', async () => {
+      (mockStorageAdapter as any).invalidateKey = jest
+        .fn()
+        .mockRejectedValue(new Error('cache backend down'));
+
+      setupMockChain([
+        [existingManifestAsset],
+        [{ ...existingManifestAsset, size: 6393, contentHash: null }],
+      ]);
+
+      const result = await service.createAssetsFromManifest(manifestParams);
+
+      expect(result.fileCount).toBe(1);
+      expect(result.failed).toHaveLength(0);
+    });
+  });
 });
