@@ -419,7 +419,12 @@ export function manualStepApplies(
   }
 }
 
-/** The closed set of tokens a manifest may use in a manual step. */
+/** The closed set of tokens a manifest may use in a manual step.
+ * Mirrored in `bffless/apps`'s `scripts/check-app-conventions.mjs`
+ * (`PLACEHOLDER_TOKENS`) so manifests are linted against this same list before
+ * publish. Keep in sync in that direction: removing or renaming a token here
+ * without updating that copy lets a manifest that lints clean in `bffless/apps`
+ * fail CE's install-time validation for every user who tries to install it. */
 export const PLACEHOLDER_TOKENS = ['projectPath', 'appHost'] as const;
 
 export type PlaceholderToken = (typeof PLACEHOLDER_TOKENS)[number];
@@ -434,10 +439,14 @@ const TOKEN_RE = new RegExp(`\\{(${PLACEHOLDER_TOKENS.join('|')})\\}`, 'g');
  * A sentence whose token has no value (an app installed before it had a
  * domain has no `{appHost}`) is dropped whole rather than rendered with a
  * literal brace or a hole where the host should be. Sentence = run of text up
- * to and including its terminating period + following space.
+ * to and including its terminating period + following space. A period only
+ * terminates a sentence when it's followed by whitespace or end-of-string —
+ * otherwise (e.g. the "." in "v1.0") it's treated as part of the sentence, so
+ * an embedded decimal point can't split a token-bearing sentence in two and
+ * leave an orphan fragment behind when the first half is dropped.
  */
 function expandBody(text: string, values: StepPlaceholders): string {
-  const sentences = text.match(/[^.]*\.\s*|[^.]+$/g) ?? [text];
+  const sentences = text.match(/(?:[^.]|\.(?!\s|$))*\.(?:\s+|$)|[^.]+$/g) ?? [text];
 
   return sentences
     .filter((sentence) => {

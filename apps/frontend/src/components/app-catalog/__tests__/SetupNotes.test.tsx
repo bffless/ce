@@ -58,4 +58,12 @@ describe('SetupNotes', () => {
     expect(screen.getByText(/Rivulet is private/)).toBeInTheDocument();
     expect(screen.getByText('Over HTTP now.')).toBeInTheDocument();
   });
+
+  it('renders the title with no empty paragraph when body is empty', async () => {
+    const step = { id: 'empty-body', title: 'Configure something', body: '' };
+    render(<SetupNotes steps={[step]} defaultExpanded />);
+
+    expect(screen.getByText('Configure something')).toBeInTheDocument();
+    expect(document.querySelector('p.text-muted-foreground')).not.toBeInTheDocument();
+  });
 });

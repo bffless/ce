@@ -46,11 +46,6 @@ interface AppCardProps {
  *   plus a "Why?" popover with the gate's remediation/deepLink.
  * - installed → "Installed · v{version}" badge, an "Open" link to `appUrl`,
  *   and an overflow menu (Update, Uninstall, Eject).
- *
- * An installed card also carries its app's setup notes (titles collapsed,
- * bodies expanding in place) — CE can't perform them, so they live where the
- * app lives rather than behind a one-shot dialog.
- *
  * - installed + update available → an additional primary "Update to
  *   v{registryVersion}" button that opens a confirm popover (prune toggle,
  *   default off) before firing the update — unless an instance gate fails, in
@@ -61,6 +56,10 @@ interface AppCardProps {
  * `EjectPanel`) that each load their own preview/payload data; Update fires
  * `useUpdateAppMutation` here and hands the job off to the shared
  * `InstallDialog` (mounted by the page) for progress.
+ *
+ * An installed card also carries its app's setup notes (titles collapsed,
+ * bodies expanding in place) — CE can't perform them, so they live where the
+ * app lives rather than behind a one-shot dialog.
  *
  * Store metadata from the registry (ce#590) rides on top: a `thumbnailUrl`
  * banner and a `category` badge here, with the long-form description and

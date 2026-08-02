@@ -63,7 +63,7 @@ export function SetupNotes({ steps, defaultExpanded = false, className }: SetupN
 
               {isOpen && (
                 <div className="ml-5 mt-1 space-y-1">
-                  <p className="text-sm text-muted-foreground">{step.body}</p>
+                  {step.body && <p className="text-sm text-muted-foreground">{step.body}</p>}
                   {step.deepLink && (
                     <a href={step.deepLink} className="text-sm text-primary underline">
                       Go

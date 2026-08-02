@@ -436,4 +436,20 @@ describe('interpolateStep', () => {
     expect(result!.body).toBe('But also configure locally.');
     expect(result!.body).not.toContain('{appHost}');
   });
+
+  it('drops the whole sentence, not just up to an embedded decimal point, leaving no orphan fragment', () => {
+    const result = interpolateStep(
+      {
+        id: 'x',
+        title: 'T',
+        body: 'Allow PUT from {appHost} for v1.0 clients. Nothing else.',
+      },
+      {},
+    );
+
+    expect(result).not.toBeNull();
+    expect(result!.body).toBe('Nothing else.');
+    expect(result!.body).not.toContain('0 clients');
+    expect(result!.body).not.toContain('{appHost}');
+  });
 });
