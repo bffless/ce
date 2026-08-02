@@ -736,9 +736,11 @@ export class AliasesController {
     const updated = await this.deploymentsService.updateAliasVisibility(
       projectId,
       aliasName,
-      dto.isPublic ?? null,
+      dto.isPublic,
       user.id,
       user.role || 'user',
+      dto.unauthorizedBehavior,
+      dto.requiredRole,
     );
 
     const project = await this.projectsService.getProjectById(projectId);

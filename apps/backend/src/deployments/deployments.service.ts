@@ -1991,9 +1991,18 @@ export class DeploymentsService {
   async updateAliasVisibility(
     projectId: string,
     aliasName: string,
-    isPublic: boolean | null,
+    isPublic: boolean | null | undefined,
     userId: string,
     userRole: string,
+    unauthorizedBehavior?: 'not_found' | 'redirect_login' | null,
+    requiredRole?:
+      | 'authenticated'
+      | 'guest'
+      | 'viewer'
+      | 'contributor'
+      | 'admin'
+      | 'owner'
+      | null,
   ): Promise<typeof deploymentAliases.$inferSelect> {
     // Check project access
     await this.checkProjectAccess(projectId, userId, userRole, 'admin');
@@ -2011,13 +2020,30 @@ export class DeploymentsService {
       throw new NotFoundException(`Alias not found: ${aliasName}`);
     }
 
-    // Update visibility
+    // Build the update payload field-by-field so each of the three overrides
+    // is independent: absent (undefined) leaves the stored value untouched,
+    // explicit null clears the override (inherit from project), and a value
+    // stores that value. Using `??` here would conflate "not supplied" with
+    // "explicitly cleared" -- that conflation was the root cause of an
+    // explicit Private override silently reverting to inherit whenever only
+    // another field (e.g. requiredRole) was updated.
+    const updateData: Partial<typeof deploymentAliases.$inferInsert> = {
+      updatedAt: new Date(),
+    };
+    if (isPublic !== undefined) {
+      updateData.isPublic = isPublic;
+    }
+    if (unauthorizedBehavior !== undefined) {
+      updateData.unauthorizedBehavior = unauthorizedBehavior;
+    }
+    if (requiredRole !== undefined) {
+      updateData.requiredRole = requiredRole;
+    }
+
+    // Update visibility / access control overrides
     const [updated] = await db
       .update(deploymentAliases)
-      .set({
-        isPublic,
-        updatedAt: new Date(),
-      })
+      .set(updateData)
       .where(eq(deploymentAliases.id, existingAlias.id))
       .returning();
 
