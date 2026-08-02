@@ -1786,6 +1786,12 @@ export class DeploymentsService {
       basePath: alias.basePath ?? undefined,
       proxyRuleSetIds: ids,
       proxyRuleSetId: ids[0],
+      // Access control overrides (null = inherit from project). Preserve null as-is —
+      // do not coerce to undefined, since the frontend distinguishes "inherit" (null)
+      // from "not returned" (undefined).
+      isPublic: alias.isPublic,
+      unauthorizedBehavior: alias.unauthorizedBehavior as AliasResponseDto['unauthorizedBehavior'],
+      requiredRole: alias.requiredRole as AliasResponseDto['requiredRole'],
       createdAt: alias.createdAt,
       updatedAt: alias.updatedAt,
     };

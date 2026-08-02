@@ -5,6 +5,8 @@ import {
   useGetAliasVisibilityQuery,
   useUpdateAliasVisibilityMutation,
   type AliasDetail,
+  type UnauthorizedBehavior,
+  type RequiredRole,
 } from '@/services/repoApi';
 import { useGetProjectQuery } from '@/services/projectsApi';
 import { useGetProjectRuleSetsQuery } from '@/services/proxyRulesApi';
@@ -255,12 +257,18 @@ export function AliasesTab({ owner, repo }: AliasesTabProps) {
     commitSha: string;
     branch: string;
     proxyRuleSetIds: string[];
+    isPublic: boolean | null | undefined;
+    unauthorizedBehavior: UnauthorizedBehavior | null | undefined;
+    requiredRole: RequiredRole | null | undefined;
   }>({
     open: false,
     aliasName: '',
     commitSha: '',
     branch: '',
     proxyRuleSetIds: [],
+    isPublic: undefined,
+    unauthorizedBehavior: undefined,
+    requiredRole: undefined,
   });
   const [deleteDialogState, setDeleteDialogState] = useState<{
     open: boolean;
@@ -441,6 +449,9 @@ export function AliasesTab({ owner, repo }: AliasesTabProps) {
                     commitSha: alias.commitSha,
                     branch: alias.branch,
                     proxyRuleSetIds: ruleSetIds,
+                    isPublic: alias.isPublic,
+                    unauthorizedBehavior: alias.unauthorizedBehavior,
+                    requiredRole: alias.requiredRole,
                   })
                 }
                 onDelete={() =>
@@ -474,6 +485,9 @@ export function AliasesTab({ owner, repo }: AliasesTabProps) {
           currentCommitSha={updateDialogState.commitSha}
           currentBranch={updateDialogState.branch}
           currentProxyRuleSetIds={updateDialogState.proxyRuleSetIds}
+          currentIsPublic={updateDialogState.isPublic}
+          currentUnauthorizedBehavior={updateDialogState.unauthorizedBehavior}
+          currentRequiredRole={updateDialogState.requiredRole}
           open={updateDialogState.open}
           onOpenChange={(open) =>
             setUpdateDialogState({

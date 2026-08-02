@@ -487,6 +487,27 @@ export class AliasResponseDto {
   })
   proxyRuleSetId?: string;
 
+  @ApiPropertyOptional({
+    description:
+      'Visibility override: true = force public, false = force private, null = inherit from project',
+    nullable: true,
+  })
+  isPublic?: boolean | null;
+
+  @ApiPropertyOptional({
+    description: 'Unauthorized behavior override: null = inherit from project',
+    enum: ['not_found', 'redirect_login'],
+    nullable: true,
+  })
+  unauthorizedBehavior?: 'not_found' | 'redirect_login' | null;
+
+  @ApiPropertyOptional({
+    description: 'Required role override: null = inherit from project',
+    enum: ['authenticated', 'guest', 'viewer', 'contributor', 'admin', 'owner'],
+    nullable: true,
+  })
+  requiredRole?: 'authenticated' | 'guest' | 'viewer' | 'contributor' | 'admin' | 'owner' | null;
+
   @ApiProperty()
   createdAt: Date;
 
