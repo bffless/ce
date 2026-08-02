@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.10](https://github.com/bffless/ce/compare/v0.4.9...v0.4.10) (2026-08-02)
+
+
+### Features
+
+* **app-catalog:** deploy installs under the real source commit ([#611](https://github.com/bffless/ce/issues/611)) ([f95d3ce](https://github.com/bffless/ce/commit/f95d3ce368f9fbfffafade23c213d2d8c1554892)), closes [#610](https://github.com/bffless/ce/issues/610)
+
 ## [0.4.9](https://github.com/bffless/ce/compare/v0.4.8...v0.4.9) (2026-08-02)
 
 
