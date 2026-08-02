@@ -444,9 +444,15 @@ const TOKEN_RE = new RegExp(`\\{(${PLACEHOLDER_TOKENS.join('|')})\\}`, 'g');
  * otherwise (e.g. the "." in "v1.0") it's treated as part of the sentence, so
  * an embedded decimal point can't split a token-bearing sentence in two and
  * leave an orphan fragment behind when the first half is dropped.
+ *
+ * The fallback alternative (matching a final, unterminated run of text) must
+ * be able to match ANY remainder, including one containing a dot — otherwise
+ * `String.prototype.match` with the `g` flag silently skips text it can't
+ * match at any position, instead of erroring, and `.join('')` below no
+ * longer reconstructs the input losslessly. Use `[\s\S]+$`, not `[^.]+$`.
  */
 function expandBody(text: string, values: StepPlaceholders): string {
-  const sentences = text.match(/(?:[^.]|\.(?!\s|$))*\.(?:\s+|$)|[^.]+$/g) ?? [text];
+  const sentences = text.match(/(?:[^.]|\.(?!\s|$))*\.(?:\s+|$)|[\s\S]+$/g) ?? [text];
 
   return sentences
     .filter((sentence) => {

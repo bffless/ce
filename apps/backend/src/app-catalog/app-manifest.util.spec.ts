@@ -452,4 +452,41 @@ describe('interpolateStep', () => {
     expect(result!.body).not.toContain('0 clients');
     expect(result!.body).not.toContain('{appHost}');
   });
+
+  it('leaves a decimal-only body with no tokens fully unchanged', () => {
+    const result = interpolateStep({ id: 'x', title: 'T', body: 'Works fine on v1.0' }, {});
+
+    expect(result).not.toBeNull();
+    expect(result!.body).toBe('Works fine on v1.0');
+  });
+
+  it('leaves a body ending in a decimal point fully unchanged', () => {
+    const result = interpolateStep({ id: 'x', title: 'T', body: 'Ends with decimal 3.14' }, {});
+
+    expect(result).not.toBeNull();
+    expect(result!.body).toBe('Ends with decimal 3.14');
+  });
+
+  it('substitutes a resolvable token without eating the trailing decimal-bearing text', () => {
+    const result = interpolateStep(
+      { id: 'x', title: 'T', body: 'Requires {appHost} for v2.5 support' },
+      { appHost: 'x.example.com' },
+    );
+
+    expect(result).not.toBeNull();
+    expect(result!.body).toBe('Requires x.example.com for v2.5 support');
+  });
+
+  it.each([
+    ['embedded decimal with no final terminator', 'Ships version v1.0 today'],
+    ['no period at all', 'No terminator here'],
+    ['single sentence', 'Just one sentence.'],
+    ['multi-sentence', 'First one. Second one. Third one.'],
+    ['ends without a terminator (dot present but unterminated)', 'See docs at v2 spec.io for details'],
+  ])('round-trips a body with no unresolvable tokens byte-identically: %s', (_label, body) => {
+    const result = interpolateStep({ id: 'x', title: 'T', body }, {});
+
+    expect(result).not.toBeNull();
+    expect(result!.body).toBe(body);
+  });
 });
