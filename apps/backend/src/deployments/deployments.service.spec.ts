@@ -734,6 +734,48 @@ describe('DeploymentsService', () => {
       expect(result.data).toHaveLength(2);
       expect(result.data[0].repository).toBe(mockRepository);
     });
+
+    // Regression: bffless/ce alias access-control readback bug.
+    // The write path (#617) persists isPublic/unauthorizedBehavior/requiredRole
+    // overrides correctly, but toAliasResponse() never copied them onto the
+    // response DTO, so a listed alias always looked like it had no override.
+    it('round-trips isPublic, unauthorizedBehavior, and requiredRole overrides', async () => {
+      const aliasWithOverrides = {
+        ...mockAlias,
+        isPublic: false,
+        unauthorizedBehavior: 'redirect_login',
+        requiredRole: 'guest',
+      };
+      setupMockChain([[aliasWithOverrides]]);
+
+      const result = await service.listAliases({ repository: mockRepository }, mockUserId, 'admin');
+
+      expect(result.data[0].isPublic).toBe(false);
+      expect(result.data[0].unauthorizedBehavior).toBe('redirect_login');
+      expect(result.data[0].requiredRole).toBe('guest');
+    });
+
+    it('preserves explicit null overrides (inherit from project) rather than dropping them as undefined', async () => {
+      const aliasInheriting = {
+        ...mockAlias,
+        isPublic: null,
+        unauthorizedBehavior: null,
+        requiredRole: null,
+      };
+      setupMockChain([[aliasInheriting]]);
+
+      const result = await service.listAliases({ repository: mockRepository }, mockUserId, 'admin');
+
+      // null (inherit) must round-trip as null, not be coerced to/left as undefined -
+      // the frontend dialog relies on `?? 'inherit'` semantics that only work if the
+      // field is present and null, not absent.
+      expect(result.data[0].isPublic).toBeNull();
+      expect(result.data[0].unauthorizedBehavior).toBeNull();
+      expect(result.data[0].requiredRole).toBeNull();
+      expect('isPublic' in result.data[0]).toBe(true);
+      expect('unauthorizedBehavior' in result.data[0]).toBe(true);
+      expect('requiredRole' in result.data[0]).toBe(true);
+    });
   });
 
   describe('listDeployments', () => {

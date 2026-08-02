@@ -20,6 +20,7 @@ import {
   DeploymentItemDto,
   GetRepositoryStatsResponseDto,
   GetAliasesResponseDto,
+  AliasDetailDto,
   CreateAliasRequestDto,
   UpdateAliasRequestDto,
   AliasCreatedResponseDto,
@@ -576,6 +577,12 @@ export class RepoBrowserService {
           basePath: alias.basePath ?? undefined,
           proxyRuleSetId: alias.proxyRuleSetId ?? null,
           proxyRuleSetIds,
+          // Access control overrides (null = inherit from project). Preserve null as-is —
+          // do not coerce to undefined, since the edit dialog distinguishes "inherit"
+          // (null) from "not returned" (undefined) when initializing its form state.
+          isPublic: alias.isPublic,
+          unauthorizedBehavior: alias.unauthorizedBehavior as AliasDetailDto['unauthorizedBehavior'],
+          requiredRole: alias.requiredRole as AliasDetailDto['requiredRole'],
         };
       }),
     );

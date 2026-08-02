@@ -237,6 +237,89 @@ describe('RepoBrowserService', () => {
     });
   });
 
+  describe('getAliases', () => {
+    const mockAliasRow = {
+      id: 'alias-id-123',
+      projectId: 'project-123',
+      repository: 'owner/repo',
+      alias: 'production',
+      commitSha: 'abc123def456',
+      deploymentId: 'deployment-123',
+      isPublic: null,
+      unauthorizedBehavior: null,
+      requiredRole: null,
+      isAutoPreview: false,
+      basePath: null,
+      proxyRuleSetId: null,
+      createdAt: new Date('2025-01-01'),
+      updatedAt: new Date('2025-01-01'),
+    };
+
+    // Sets up the three sequential db.select() calls made by getAliases():
+    // 1) select aliases, 2) select matching asset (branch lookup), 3) select join-table rule set rows.
+    const mockAliasesQueryChain = (aliasRows: any[], assetRows: any[] = [], joinRows: any[] = []) => {
+      (mockDb.select as jest.Mock)
+        .mockImplementationOnce(() => ({
+          from: jest.fn().mockReturnValue({
+            where: jest.fn().mockReturnValue({
+              orderBy: jest.fn().mockResolvedValue(aliasRows),
+            }),
+          }),
+        }))
+        .mockImplementationOnce(() => ({
+          from: jest.fn().mockReturnValue({
+            where: jest.fn().mockReturnValue({
+              limit: jest.fn().mockResolvedValue(assetRows),
+            }),
+          }),
+        }))
+        .mockImplementationOnce(() => ({
+          from: jest.fn().mockReturnValue({
+            where: jest.fn().mockReturnValue({
+              orderBy: jest.fn().mockResolvedValue(joinRows),
+            }),
+          }),
+        }));
+    };
+
+    // Regression: bffless/ce alias access-control readback bug.
+    // The list-aliases endpoint backing the AliasesTab UI (getAliases -> AliasDetailDto)
+    // never included isPublic/unauthorizedBehavior/requiredRole, so the edit dialog
+    // always initialized as "Inherit from project" even when an override was stored
+    // and actively being enforced.
+    it('round-trips isPublic, unauthorizedBehavior, and requiredRole overrides', async () => {
+      mockProjectsService.getProjectByOwnerName.mockResolvedValue(mockPublicProject as any);
+      mockAliasesQueryChain([
+        {
+          ...mockAliasRow,
+          isPublic: false,
+          unauthorizedBehavior: 'redirect_login',
+          requiredRole: 'guest',
+        },
+      ]);
+
+      const result = await service.getAliases('owner', 'repo', false, 'user-123', 'admin');
+
+      expect(result.aliases[0].isPublic).toBe(false);
+      expect(result.aliases[0].unauthorizedBehavior).toBe('redirect_login');
+      expect(result.aliases[0].requiredRole).toBe('guest');
+    });
+
+    it('preserves explicit null overrides (inherit from project) rather than dropping them as undefined', async () => {
+      mockProjectsService.getProjectByOwnerName.mockResolvedValue(mockPublicProject as any);
+      mockAliasesQueryChain([{ ...mockAliasRow }]);
+
+      const result = await service.getAliases('owner', 'repo', false, 'user-123', 'admin');
+
+      expect(result.aliases[0].isPublic).toBeNull();
+      expect(result.aliases[0].unauthorizedBehavior).toBeNull();
+      expect(result.aliases[0].requiredRole).toBeNull();
+      expect('isPublic' in result.aliases[0]).toBe(true);
+      expect('unauthorizedBehavior' in result.aliases[0]).toBe(true);
+      expect('requiredRole' in result.aliases[0]).toBe(true);
+    });
+  });
+
   describe('getDeployments', () => {
     // TODO: Add integration tests with real database
     // These methods have complex database queries that are difficult to mock

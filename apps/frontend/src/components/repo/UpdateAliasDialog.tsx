@@ -264,6 +264,16 @@ export function UpdateAliasDialog({
 
   const isSubmitting = isLoading || isUpdatingVisibility;
 
+  // Access-control overrides are meaningless for a public deployment, so the panel
+  // should only be hidden in that case. Gate on *effective* visibility (explicit
+  // override, or inherited from the project via visibilityInfo) rather than only
+  // an explicit "private" override — otherwise an alias that inherits private from
+  // its project shows no panel at all, making it impossible to set (or even see)
+  // a Required Role without first explicitly overriding Visibility to Private.
+  const isEffectivelyPrivate =
+    visibility === 'private' ||
+    (visibility === 'inherit' && visibilityInfo?.effectiveVisibility === 'private');
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[525px]">
@@ -403,8 +413,8 @@ export function UpdateAliasDialog({
               )}
             </div>
 
-            {/* Access Control Overrides - Only show when private */}
-            {visibility === 'private' && (
+            {/* Access Control Overrides - Only show when effectively private (explicit or inherited) */}
+            {isEffectivelyPrivate && (
               <div className="space-y-4 p-3 rounded-md bg-muted/50 border">
                 <div className="flex items-center gap-2 text-sm font-medium">
                   <Shield className="h-4 w-4" />
