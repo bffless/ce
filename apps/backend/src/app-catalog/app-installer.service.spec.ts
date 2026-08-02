@@ -177,7 +177,6 @@ const INSTALLED_ROW = {
   schemaIds: [] as string[],
   bundleSha256: 'a'.repeat(64),
   manifest: TEST_MANIFEST,
-  manualStepsAcked: [] as string[],
   status: 'installing',
   createdResources: {} as CreatedResources,
   installedBy: 'user-1',

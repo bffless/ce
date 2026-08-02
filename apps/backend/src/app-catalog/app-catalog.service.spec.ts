@@ -79,7 +79,6 @@ const ROW = {
   schemaIds: [] as string[],
   bundleSha256: 'a'.repeat(64),
   manifest: MANIFEST,
-  manualStepsAcked: [] as string[],
   status: 'installed' as const,
   createdResources: {},
   installedBy: 'user-1',

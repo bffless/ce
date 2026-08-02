@@ -271,21 +271,6 @@ export class AppCatalogService {
     };
   }
 
-  /** Idempotent: acking an already-acked step id is a no-op, not a duplicate entry. */
-  async ackManualStep(installedAppId: string, stepId: string): Promise<string[]> {
-    const row = await this.requireRow(installedAppId);
-    const acked = new Set(row.manualStepsAcked ?? []);
-    acked.add(stepId);
-    const updated = [...acked];
-
-    await db
-      .update(installedApps)
-      .set({ manualStepsAcked: updated, updatedAt: new Date() })
-      .where(eq(installedApps.id, row.id));
-
-    return updated;
-  }
-
   // ==================== catalog assembly helpers ====================
 
   private async buildRegistryEntry(

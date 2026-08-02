@@ -7,7 +7,6 @@ import { CurrentUser, type CurrentUserData } from '../auth/decorators/current-us
 import { FeatureFlagGuard, RequireFeatureFlags } from '../feature-flags/feature-flag.guard';
 import { AppCatalogService } from './app-catalog.service';
 import {
-  AckManualStepDto,
   PreflightRequestDto,
   UninstallQueryDto,
   UpdateInstalledAppDto,
@@ -85,11 +84,5 @@ export class AppCatalogController {
   @Get('installed/:id/eject')
   async eject(@Param('id') id: string) {
     return this.catalog.ejectPayload(id);
-  }
-
-  @Post('installed/:id/ack-manual-step')
-  async ack(@Param('id') id: string, @Body() body: AckManualStepDto) {
-    const acked = await this.catalog.ackManualStep(id, body.stepId);
-    return { acked };
   }
 }
