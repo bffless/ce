@@ -148,6 +148,26 @@ function validateSchedules(schedules: unknown, path: string, errors: string[]): 
   });
 }
 
+/** Any `{token}` at all, so unknown ones can be named in the error. */
+const ANY_TOKEN_RE = /\{([^}]*)\}/g;
+
+function validateStepPlaceholders(
+  value: unknown,
+  fieldPath: string,
+  errors: string[],
+): void {
+  if (typeof value !== 'string') return;
+
+  for (const match of value.matchAll(ANY_TOKEN_RE)) {
+    const token = match[1];
+    if (!(PLACEHOLDER_TOKENS as readonly string[]).includes(token)) {
+      errors.push(
+        `${fieldPath}: unknown placeholder {${token}} (known: ${PLACEHOLDER_TOKENS.join(', ')})`,
+      );
+    }
+  }
+}
+
 function validateManualSteps(manualSteps: unknown, path: string, errors: string[]): void {
   if (manualSteps === undefined) return;
   if (!Array.isArray(manualSteps)) {
@@ -172,6 +192,9 @@ function validateManualSteps(manualSteps: unknown, path: string, errors: string[
     if (entry.deepLink !== undefined && typeof entry.deepLink !== 'string') {
       errors.push(`${entryPath}.deepLink: must be string`);
     }
+    validateStepPlaceholders(entry.title, `${entryPath}.title`, errors);
+    validateStepPlaceholders(entry.body, `${entryPath}.body`, errors);
+    validateStepPlaceholders(entry.deepLink, `${entryPath}.deepLink`, errors);
     if (
       entry.appliesWhen !== undefined &&
       !APPLIES_WHEN_VALUES.includes(entry.appliesWhen as (typeof APPLIES_WHEN_VALUES)[number])

@@ -149,6 +149,57 @@ describe('validateAppManifest', () => {
       expect(result.errors.some((e) => e.startsWith('install.alias:'))).toBe(true);
     }
   });
+
+  it('fails when a manual step body uses an unknown placeholder, naming the known ones', () => {
+    const result = validateAppManifest({
+      ...TEST_MANIFEST,
+      install: {
+        ...TEST_MANIFEST.install,
+        manualSteps: [{ id: 'x', title: 'Title', body: 'Go to {foo} now.' }],
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      const err = result.errors.find((e) => e.startsWith('install.manualSteps[0].body:'));
+      expect(err).toContain('unknown placeholder {foo}');
+      expect(err).toContain('projectPath, appHost');
+    }
+  });
+
+  it('fails when a manual step deepLink uses an unknown placeholder', () => {
+    const result = validateAppManifest({
+      ...TEST_MANIFEST,
+      install: {
+        ...TEST_MANIFEST.install,
+        manualSteps: [{ id: 'x', title: 'T', body: 'B', deepLink: '/repo/{owner}/settings' }],
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.some((e) => e.includes('unknown placeholder {owner}'))).toBe(true);
+    }
+  });
+
+  it('accepts the known placeholders', () => {
+    const result = validateAppManifest({
+      ...TEST_MANIFEST,
+      install: {
+        ...TEST_MANIFEST.install,
+        manualSteps: [
+          {
+            id: 'x',
+            title: 'T',
+            body: 'Allow PUT from {appHost}.',
+            deepLink: '/repo/{projectPath}/settings?tab=members',
+          },
+        ],
+      },
+    });
+
+    expect(result.ok).toBe(true);
+  });
 });
 
 describe('validateRegistry', () => {
