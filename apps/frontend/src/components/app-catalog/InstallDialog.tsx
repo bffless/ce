@@ -10,7 +10,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useToast } from '@/hooks/use-toast';
@@ -21,12 +20,12 @@ import {
   useInstallAppMutation,
   useGetInstallJobQuery,
   useUndoJobMutation,
-  useAckManualStepMutation,
   type CatalogEntry,
   type GateResult,
   type InstallStepState,
   type PreflightRequest,
 } from '@/services/appCatalogApi';
+import { SetupNotes } from './SetupNotes';
 import { useGetMyRepositoriesQuery } from '@/services/repositoriesApi';
 import {
   AlertTriangle,
@@ -143,7 +142,6 @@ export function InstallDialog({
     usePreflightAppMutation();
   const [installApp, { isLoading: isInstalling }] = useInstallAppMutation();
   const [undoJob, { isLoading: isUndoing }] = useUndoJobMutation();
-  const [ackManualStep] = useAckManualStepMutation();
 
   // Stop polling once the job reaches a terminal state. `lastJobStatus` is
   // corrected synchronously during render (not in an effect) so the very
@@ -288,15 +286,8 @@ export function InstallDialog({
     undoJob(jobId);
   };
 
-  const installedAppId = entry.installed?.installedAppId ?? job?.installedAppId;
   const manualSteps = entry.installed?.manualSteps ?? job?.manualSteps ?? [];
-  const manualStepsAcked = entry.installed?.manualStepsAcked ?? [];
   const doneAppUrl = entry.installed?.appUrl ?? job?.appUrl;
-
-  const handleAck = (stepId: string, checked: boolean) => {
-    if (!checked || !installedAppId) return;
-    ackManualStep({ id: installedAppId, stepId });
-  };
 
   const screen: 'review' | 'working' | 'done' = !jobId
     ? 'review'
@@ -538,32 +529,7 @@ export function InstallDialog({
               </Button>
             )}
 
-            {manualSteps.length > 0 && (
-              <div className="space-y-3">
-                <p className="text-sm font-medium">Finish setting up</p>
-                {manualSteps.map((step) => (
-                  <div key={step.id} className="flex items-start gap-2 rounded-md border p-2">
-                    <Checkbox
-                      id={`manual-step-${step.id}`}
-                      aria-label={step.title}
-                      checked={manualStepsAcked.includes(step.id)}
-                      onCheckedChange={(checked) => handleAck(step.id, checked === true)}
-                    />
-                    <div className="flex-1">
-                      <Label htmlFor={`manual-step-${step.id}`} className="font-medium">
-                        {step.title}
-                      </Label>
-                      <p className="text-sm text-muted-foreground">{step.body}</p>
-                      {step.deepLink && (
-                        <a href={step.deepLink} className="text-sm text-primary underline">
-                          Go
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            <SetupNotes steps={manualSteps} defaultExpanded />
 
             <DialogFooter>
               <Button onClick={() => onOpenChange(false)}>Close</Button>

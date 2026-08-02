@@ -288,6 +288,13 @@
       "when": 1785457155737,
       "tag": "0040_dashing_wither",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1785697701781,
+      "tag": "0041_chemical_spirit",
+      "breakpoints": true
     }
   ]
 }

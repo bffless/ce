@@ -32,7 +32,6 @@ describe('AppCatalogController routes', () => {
       uninstallPreview: jest.fn().mockResolvedValue({ dataTables: [] }),
       uninstall: jest.fn().mockResolvedValue({ removed: {}, dataTables: {}, note: '' }),
       ejectPayload: jest.fn().mockResolvedValue({ repo: 'bffless/apps' }),
-      ackManualStep: jest.fn().mockResolvedValue(['step-1']),
     } as unknown as jest.Mocked<AppCatalogService>;
     controller = new AppCatalogController(catalog);
   });
@@ -97,9 +96,7 @@ describe('AppCatalogController routes', () => {
     expect(catalog.ejectPayload).toHaveBeenCalledWith('ia-1');
   });
 
-  it('ack() delegates to catalog.ackManualStep and wraps the result as { acked }', async () => {
-    const result = await controller.ack('ia-1', { stepId: 'bucket-cors' });
-    expect(catalog.ackManualStep).toHaveBeenCalledWith('ia-1', 'bucket-cors');
-    expect(result).toEqual({ acked: ['step-1'] });
+  it('exposes no manual-step acknowledgement handler', () => {
+    expect((controller as unknown as Record<string, unknown>).ack).toBeUndefined();
   });
 });

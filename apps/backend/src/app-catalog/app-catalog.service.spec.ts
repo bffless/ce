@@ -21,7 +21,7 @@ jest.mock('../db/client', () => {
 });
 
 import { ConfigService } from '@nestjs/config';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
 import { db } from '../db/client';
 import { AppCatalogService } from './app-catalog.service';
 import type { AppManifest, AppRegistryEntry } from './app-manifest.types';
@@ -79,7 +79,6 @@ const ROW = {
   schemaIds: [] as string[],
   bundleSha256: 'a'.repeat(64),
   manifest: MANIFEST,
-  manualStepsAcked: [] as string[],
   status: 'installed' as const,
   createdResources: {},
   installedBy: 'user-1',
@@ -119,7 +118,7 @@ describe('AppCatalogService', () => {
     uninstallPreview: jest.Mock;
   };
   let jobs: { get: jest.Mock };
-  let certStep: { schemeFor: jest.Mock };
+  let certStep: { schemeFor: jest.Mock; plan: jest.Mock; execute: jest.Mock };
   let storageAdapter: {
     supportsPresignedUrls: jest.Mock;
     isLocalAdapter?: boolean;
@@ -155,7 +154,11 @@ describe('AppCatalogService', () => {
     // Default serving model for these tests: a certificate covers the app host,
     // so URLs are https. Scheme selection itself is covered in
     // app-cert-step.service.spec.ts.
-    certStep = { schemeFor: jest.fn().mockResolvedValue('https') };
+    certStep = {
+      schemeFor: jest.fn().mockResolvedValue('https'),
+      plan: jest.fn().mockResolvedValue({ model: 'wildcard', action: 'covered' }),
+      execute: jest.fn().mockResolvedValue({ status: 'done', detail: 'covered' }),
+    };
     storageAdapter = {
       supportsPresignedUrls: jest.fn().mockReturnValue(true),
       // Brands as local the way `resolveLocalAdapter` expects (see local.adapter.ts):
@@ -211,29 +214,6 @@ describe('AppCatalogService', () => {
       mockDb.__queue([]);
 
       await expect(service.ejectPayload('missing')).rejects.toThrow(NotFoundException);
-    });
-  });
-
-  describe('ackManualStep', () => {
-    it('appends a step id to the acked list', async () => {
-      mockDb.__queue([{ ...ROW, manualStepsAcked: ['bucket-cors'] }]);
-      mockDb.__queue([]); // update
-
-      const acked = await service.ackManualStep('ia-1', 'platform-only');
-
-      expect(acked).toEqual(expect.arrayContaining(['bucket-cors', 'platform-only']));
-      expect(mockDb.set).toHaveBeenCalledWith(
-        expect.objectContaining({ manualStepsAcked: expect.arrayContaining(['bucket-cors', 'platform-only']) }),
-      );
-    });
-
-    it('is idempotent — double-acking the same step does not duplicate it', async () => {
-      mockDb.__queue([{ ...ROW, manualStepsAcked: ['bucket-cors'] }]);
-      mockDb.__queue([]);
-
-      const acked = await service.ackManualStep('ia-1', 'bucket-cors');
-
-      expect(acked).toEqual(['bucket-cors']);
     });
   });
 
@@ -336,7 +316,6 @@ describe('AppCatalogService', () => {
         status: 'installed',
         updateAvailable: true, // 1.1.0 > 1.0.0
         manualSteps: [{ id: 'always-step', title: 'Always', body: 'always applies' }],
-        manualStepsAcked: [],
       });
     });
 
@@ -521,6 +500,88 @@ describe('AppCatalogService', () => {
         expect(handoff.installed!.appUrl).toBe('https://files.example.com');
         expect(legacy.installed!.appUrl).toBe('https://legacy.example.com');
       });
+    });
+  });
+
+  describe('installed manual steps', () => {
+    // These four cases need an appHost the service can resolve — without a
+    // domainId (ROW's default is null), buildInstalledSummary never even
+    // calls certStepService, so the cert-note tests would pass trivially
+    // without exercising anything. Give the row a domainId and queue the
+    // matching domain mapping, the same pattern the appUrl tests above use.
+    it('interpolates {projectPath} and {appHost} into the returned steps', async () => {
+      const manifest = {
+        ...MANIFEST,
+        install: {
+          ...MANIFEST.install,
+          manualSteps: [
+            {
+              id: 'grant-access',
+              title: 'Give other people access',
+              body: 'Add each person as a guest.',
+              deepLink: '/repo/{projectPath}/settings?tab=members',
+            },
+            {
+              id: 'bucket-cors',
+              title: 'Let the browser upload to your bucket',
+              body: 'Allow PUT from {appHost}.',
+            },
+          ],
+        },
+      };
+      mockDb.__queue([{ ...ROW, manifest, domainId: 'dom-1' }]);
+      mockDb.__queue([{ id: 'dom-1', domain: 'reader.example.com' }]);
+
+      const result = await service.listCatalog();
+      const steps = result.data[0].installed!.manualSteps;
+
+      expect(steps[0].deepLink).toBe('/repo/acme/site/settings?tab=members');
+      expect(steps[1].body).toBe('Allow PUT from reader.example.com.');
+    });
+
+    it('appends the cert note when the host has no certificate', async () => {
+      certStep.plan.mockResolvedValue({ model: 'direct-no-wildcard', action: 'report' });
+      certStep.execute.mockResolvedValue({
+        status: 'action-required',
+        detail: 'served over HTTP',
+        manualStep: { id: 'provision-wildcard-cert', title: 'Turn on HTTPS', body: 'Body.' },
+      });
+      mockDb.__queue([{ ...ROW, domainId: 'dom-1' }]);
+      mockDb.__queue([{ id: 'dom-1', domain: 'reader.example.com' }]);
+
+      const result = await service.listCatalog();
+
+      expect(result.data[0].installed!.manualSteps.map((s) => s.id)).toContain(
+        'provision-wildcard-cert',
+      );
+    });
+
+    it('omits the cert note when a wildcard already covers the host', async () => {
+      certStep.plan.mockResolvedValue({ model: 'wildcard', action: 'covered' });
+      certStep.execute.mockResolvedValue({ status: 'done', detail: 'covered' });
+      mockDb.__queue([{ ...ROW, domainId: 'dom-1' }]);
+      mockDb.__queue([{ id: 'dom-1', domain: 'reader.example.com' }]);
+
+      const result = await service.listCatalog();
+
+      expect(result.data[0].installed!.manualSteps.map((s) => s.id)).not.toContain(
+        'provision-wildcard-cert',
+      );
+    });
+
+    it('still lists the app when the cert lookup throws', async () => {
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      certStep.plan.mockRejectedValue(new Error('domains service down'));
+      mockDb.__queue([{ ...ROW, domainId: 'dom-1' }]);
+      mockDb.__queue([{ id: 'dom-1', domain: 'reader.example.com' }]);
+
+      const result = await service.listCatalog();
+
+      expect(result.data[0].installed).toBeDefined();
+      expect(result.data[0].installed!.manualSteps.map((s) => s.id)).not.toContain(
+        'provision-wildcard-cert',
+      );
+      expect(warnSpy).toHaveBeenCalled();
     });
   });
 

@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client';
@@ -28,7 +28,7 @@ import {
 import { AppInstallJobsService, type InstallJob } from './app-install-jobs.service';
 import { AppCertStepService } from './app-cert-step.service';
 import { compareSemver } from './ce-version.util';
-import { manualStepApplies } from './app-manifest.util';
+import { manualStepApplies, interpolateStep, type StepPlaceholders } from './app-manifest.util';
 import type { AppManifest, AppManualStep, AppRegistryEntry } from './app-manifest.types';
 import type { PreflightRequestDto } from './app-catalog.dtos';
 
@@ -80,7 +80,6 @@ export interface CatalogEntry {
     status: InstalledAppStatus;
     updateAvailable: boolean;
     manualSteps: AppManualStep[];
-    manualStepsAcked: string[];
   };
 }
 
@@ -105,6 +104,8 @@ export interface PreflightResult {
  */
 @Injectable()
 export class AppCatalogService {
+  private readonly logger = new Logger(AppCatalogService.name);
+
   constructor(
     private readonly projectsService: ProjectsService,
     private readonly configService: ConfigService,
@@ -270,21 +271,6 @@ export class AppCatalogService {
     };
   }
 
-  /** Idempotent: acking an already-acked step id is a no-op, not a duplicate entry. */
-  async ackManualStep(installedAppId: string, stepId: string): Promise<string[]> {
-    const row = await this.requireRow(installedAppId);
-    const acked = new Set(row.manualStepsAcked ?? []);
-    acked.add(stepId);
-    const updated = [...acked];
-
-    await db
-      .update(installedApps)
-      .set({ manualStepsAcked: updated, updatedAt: new Date() })
-      .where(eq(installedApps.id, row.id));
-
-    return updated;
-  }
-
   // ==================== catalog assembly helpers ====================
 
   private async buildRegistryEntry(
@@ -350,17 +336,23 @@ export class AppCatalogService {
     const updateAvailable =
       registryVersion !== undefined && compareSemver(registryVersion, row.version) > 0;
 
+    const projectPath = `${project.owner}/${project.name}`;
+    const appHost = row.domainId ? domainsById.get(row.domainId)?.domain : undefined;
+    const appUrl = await this.resolveAppUrl(row, domainsById);
+
     return {
       installedAppId: row.id,
       version: row.version,
       projectId: row.projectId,
-      projectName: `${project.owner}/${project.name}`,
+      projectName: projectPath,
       alias: row.alias,
-      appUrl: await this.resolveAppUrl(row, domainsById),
+      appUrl,
       status: row.status,
       updateAvailable,
-      manualSteps: this.applicableManualSteps(manifest),
-      manualStepsAcked: row.manualStepsAcked ?? [],
+      manualSteps: [
+        ...this.applicableManualSteps(manifest, { projectPath, appHost }),
+        ...(await this.certManualStep(appHost)),
+      ],
     };
   }
 
@@ -461,9 +453,39 @@ export class AppCatalogService {
     return `${scheme}://${ref.domain}`;
   }
 
-  private applicableManualSteps(manifest: AppManifest): AppManualStep[] {
+  private applicableManualSteps(
+    manifest: AppManifest,
+    values: StepPlaceholders,
+  ): AppManualStep[] {
     const ctx = this.instanceContext();
-    return (manifest.install.manualSteps ?? []).filter((step) => manualStepApplies(step, ctx));
+    return (manifest.install.manualSteps ?? [])
+      .filter((step) => manualStepApplies(step, ctx))
+      .map((step) => interpolateStep(step, values))
+      .filter((step): step is AppManualStep => step !== null);
+  }
+
+  /**
+   * The TLS note is synthesized during the install run and attached to the
+   * in-memory job, so it used to vanish the moment the catalog refetched
+   * (ce#584 follow-up). Re-deriving it here keeps it visible AND makes it
+   * self-healing — it disappears on its own once a wildcard covers the host.
+   *
+   * `AppCertStepService` never throws by contract; the guard is for the day
+   * that stops being true. A catalog that fails to list is worse than one
+   * missing an advisory line.
+   */
+  private async certManualStep(appHost: string | undefined): Promise<AppManualStep[]> {
+    if (!appHost) return [];
+    try {
+      const plan = await this.certStepService.plan(appHost);
+      const result = await this.certStepService.execute(plan, appHost);
+      return result.manualStep ? [result.manualStep] : [];
+    } catch (error) {
+      this.logger.warn(
+        `Could not derive the certificate note for ${appHost}: ${(error as Error).message}`,
+      );
+      return [];
+    }
   }
 
   /** Mirrors `AppInstallerService`'s private helper of the same name — small enough that

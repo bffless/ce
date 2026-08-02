@@ -1,4 +1,9 @@
-import { validateAppManifest, validateRegistry, manualStepApplies } from './app-manifest.util';
+import {
+  validateAppManifest,
+  validateRegistry,
+  manualStepApplies,
+  interpolateStep,
+} from './app-manifest.util';
 import { APPLIES_WHEN_VALUES, type AppManualStep } from './app-manifest.types';
 
 export const TEST_MANIFEST = {
@@ -144,6 +149,57 @@ describe('validateAppManifest', () => {
       expect(result.errors.some((e) => e.startsWith('install.alias:'))).toBe(true);
     }
   });
+
+  it('fails when a manual step body uses an unknown placeholder, naming the known ones', () => {
+    const result = validateAppManifest({
+      ...TEST_MANIFEST,
+      install: {
+        ...TEST_MANIFEST.install,
+        manualSteps: [{ id: 'x', title: 'Title', body: 'Go to {foo} now.' }],
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      const err = result.errors.find((e) => e.startsWith('install.manualSteps[0].body:'));
+      expect(err).toContain('unknown placeholder {foo}');
+      expect(err).toContain('projectPath, appHost');
+    }
+  });
+
+  it('fails when a manual step deepLink uses an unknown placeholder', () => {
+    const result = validateAppManifest({
+      ...TEST_MANIFEST,
+      install: {
+        ...TEST_MANIFEST.install,
+        manualSteps: [{ id: 'x', title: 'T', body: 'B', deepLink: '/repo/{owner}/settings' }],
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.some((e) => e.includes('unknown placeholder {owner}'))).toBe(true);
+    }
+  });
+
+  it('accepts the known placeholders', () => {
+    const result = validateAppManifest({
+      ...TEST_MANIFEST,
+      install: {
+        ...TEST_MANIFEST.install,
+        manualSteps: [
+          {
+            id: 'x',
+            title: 'T',
+            body: 'Allow PUT from {appHost}.',
+            deepLink: '/repo/{projectPath}/settings?tab=members',
+          },
+        ],
+      },
+    });
+
+    expect(result.ok).toBe(true);
+  });
 });
 
 describe('validateRegistry', () => {
@@ -282,5 +338,155 @@ describe('manualStepApplies', () => {
     const step: AppManualStep = { ...baseStep, appliesWhen: 'selfHosted' };
     expect(manualStepApplies(step, { bucketStorage: false, platformMode: false })).toBe(true);
     expect(manualStepApplies(step, { bucketStorage: false, platformMode: true })).toBe(false);
+  });
+});
+
+describe('interpolateStep', () => {
+  const step = {
+    id: 'grant-access',
+    title: 'Give other people access',
+    body: 'Add each person as a guest on {projectPath}.',
+    deepLink: '/repo/{projectPath}/settings?tab=members',
+  };
+
+  it('expands every token across title, body and deepLink', () => {
+    const result = interpolateStep(
+      { ...step, title: 'Access for {projectPath}' },
+      { projectPath: 'acme/site', appHost: 'reader.example.com' },
+    );
+
+    expect(result).not.toBeNull();
+    expect(result!.title).toBe('Access for acme/site');
+    expect(result!.body).toBe('Add each person as a guest on acme/site.');
+    expect(result!.deepLink).toBe('/repo/acme/site/settings?tab=members');
+  });
+
+  it('expands every occurrence of a repeated token', () => {
+    const result = interpolateStep(
+      { id: 'x', title: 't', body: 'Allow PUT from {appHost} to {appHost}.' },
+      { appHost: 'a.example.com' },
+    );
+
+    expect(result).not.toBeNull();
+    expect(result!.body).toBe('Allow PUT from a.example.com to a.example.com.');
+  });
+
+  it('leaves a step with no tokens untouched', () => {
+    const plain = { id: 'x', title: 'Title', body: 'Body.', deepLink: '/domains' };
+
+    const result = interpolateStep(plain, { projectPath: 'acme/site' });
+    expect(result).toEqual(plain);
+  });
+
+  it('drops a sentence whose token has no value rather than emitting a literal brace', () => {
+    const result = interpolateStep(
+      { id: 'x', title: 'T', body: 'First sentence. Allow PUT from {appHost}. Last sentence.' },
+      {},
+    );
+
+    expect(result).not.toBeNull();
+    expect(result!.body).toBe('First sentence. Last sentence.');
+    expect(result!.body).not.toContain('{appHost}');
+  });
+
+  it('omits deepLink entirely when it depends on a token with no value', () => {
+    const result = interpolateStep(
+      { id: 'x', title: 'T', body: 'B', deepLink: '/repo/{projectPath}/settings' },
+      {},
+    );
+
+    expect(result).not.toBeNull();
+    expect(result!.deepLink).toBeUndefined();
+  });
+
+  it('does not mutate the input step', () => {
+    const original = { id: 'x', title: 'T', body: 'On {projectPath}.' };
+    interpolateStep(original, { projectPath: 'acme/site' });
+
+    expect(original.body).toBe('On {projectPath}.');
+  });
+
+  it('returns null when title has an unresolvable token', () => {
+    const result = interpolateStep(
+      { id: 'x', title: 'Configure on {projectPath}', body: 'B' },
+      {},
+    );
+
+    expect(result).toBeNull();
+  });
+
+  it('returns a step when title tokens all resolve', () => {
+    const result = interpolateStep(
+      { id: 'x', title: 'Access for {projectPath}', body: 'B' },
+      { projectPath: 'acme/site' },
+    );
+
+    expect(result).not.toBeNull();
+    expect(result!.title).toBe('Access for acme/site');
+  });
+
+  it('survives when only body has an unresolvable token', () => {
+    const result = interpolateStep(
+      { id: 'x', title: 'Configure CORS', body: 'Allow PUT from {appHost}. But also configure locally.' },
+      {},
+    );
+
+    expect(result).not.toBeNull();
+    expect(result!.title).toBe('Configure CORS');
+    expect(result!.body).toBe('But also configure locally.');
+    expect(result!.body).not.toContain('{appHost}');
+  });
+
+  it('drops the whole sentence, not just up to an embedded decimal point, leaving no orphan fragment', () => {
+    const result = interpolateStep(
+      {
+        id: 'x',
+        title: 'T',
+        body: 'Allow PUT from {appHost} for v1.0 clients. Nothing else.',
+      },
+      {},
+    );
+
+    expect(result).not.toBeNull();
+    expect(result!.body).toBe('Nothing else.');
+    expect(result!.body).not.toContain('0 clients');
+    expect(result!.body).not.toContain('{appHost}');
+  });
+
+  it('leaves a decimal-only body with no tokens fully unchanged', () => {
+    const result = interpolateStep({ id: 'x', title: 'T', body: 'Works fine on v1.0' }, {});
+
+    expect(result).not.toBeNull();
+    expect(result!.body).toBe('Works fine on v1.0');
+  });
+
+  it('leaves a body ending in a decimal point fully unchanged', () => {
+    const result = interpolateStep({ id: 'x', title: 'T', body: 'Ends with decimal 3.14' }, {});
+
+    expect(result).not.toBeNull();
+    expect(result!.body).toBe('Ends with decimal 3.14');
+  });
+
+  it('substitutes a resolvable token without eating the trailing decimal-bearing text', () => {
+    const result = interpolateStep(
+      { id: 'x', title: 'T', body: 'Requires {appHost} for v2.5 support' },
+      { appHost: 'x.example.com' },
+    );
+
+    expect(result).not.toBeNull();
+    expect(result!.body).toBe('Requires x.example.com for v2.5 support');
+  });
+
+  it.each([
+    ['embedded decimal with no final terminator', 'Ships version v1.0 today'],
+    ['no period at all', 'No terminator here'],
+    ['single sentence', 'Just one sentence.'],
+    ['multi-sentence', 'First one. Second one. Third one.'],
+    ['ends without a terminator (dot present but unterminated)', 'See docs at v2 spec.io for details'],
+  ])('round-trips a body with no unresolvable tokens byte-identically: %s', (_label, body) => {
+    const result = interpolateStep({ id: 'x', title: 'T', body }, {});
+
+    expect(result).not.toBeNull();
+    expect(result!.body).toBe(body);
   });
 });

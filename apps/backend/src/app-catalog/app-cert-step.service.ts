@@ -152,13 +152,10 @@ export class AppCertStepService {
             'certificate covers it yet. The app works meanwhile; HTTPS needs a wildcard.',
           manualStep: {
             id: 'provision-wildcard-cert',
-            title: 'Provision a wildcard certificate to serve this app over HTTPS',
+            title: 'Turn on HTTPS for this app',
             body:
-              `${appHost} is reachable now, over HTTP. On this serving model a wildcard certificate ` +
-              "for *.<your domain> is what gives app subdomains HTTPS — it's the only certificate an " +
-              'app subdomain can be served with, and one wildcard covers every app you install later. ' +
-              'Provision it on the Domains page (a DNS TXT record proves ownership); the app switches ' +
-              'to HTTPS once it is issued.',
+              'Your app is live, over HTTP. Provision a wildcard certificate on the Domains ' +
+              'page and it switches to HTTPS on its own.',
             deepLink: '/domains',
             appliesWhen: 'selfHosted',
           },

@@ -115,7 +115,6 @@ describe('AppDetailsDialog', () => {
         status: 'installed',
         updateAvailable: false,
         manualSteps: [],
-        manualStepsAcked: [],
       },
     };
 

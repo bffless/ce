@@ -125,7 +125,6 @@ const POST_UPDATE_ROW: InstalledApp = {
   schemaIds: ['sch-items', 'sch-notes'],
   bundleSha256: v2.sha256,
   manifest: v2.manifest,
-  manualStepsAcked: [],
   status: 'installed',
   createdResources: {
     projectCreated: false,

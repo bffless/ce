@@ -79,12 +79,6 @@ export class UpdateInstalledAppDto {
   prune?: boolean;
 }
 
-export class AckManualStepDto {
-  @ApiPropertyOptional({ description: 'The manual step id to mark acknowledged' })
-  @IsString()
-  stepId!: string;
-}
-
 /** `DELETE .../installed/:id?deleteData=true|false` — query strings arrive as text. */
 export class UninstallQueryDto {
   @ApiPropertyOptional({

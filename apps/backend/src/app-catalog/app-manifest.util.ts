@@ -148,6 +148,26 @@ function validateSchedules(schedules: unknown, path: string, errors: string[]): 
   });
 }
 
+/** Any `{token}` at all, so unknown ones can be named in the error. */
+const ANY_TOKEN_RE = /\{([^}]*)\}/g;
+
+function validateStepPlaceholders(
+  value: unknown,
+  fieldPath: string,
+  errors: string[],
+): void {
+  if (typeof value !== 'string') return;
+
+  for (const match of value.matchAll(ANY_TOKEN_RE)) {
+    const token = match[1];
+    if (!(PLACEHOLDER_TOKENS as readonly string[]).includes(token)) {
+      errors.push(
+        `${fieldPath}: unknown placeholder {${token}} (known: ${PLACEHOLDER_TOKENS.join(', ')})`,
+      );
+    }
+  }
+}
+
 function validateManualSteps(manualSteps: unknown, path: string, errors: string[]): void {
   if (manualSteps === undefined) return;
   if (!Array.isArray(manualSteps)) {
@@ -172,6 +192,9 @@ function validateManualSteps(manualSteps: unknown, path: string, errors: string[
     if (entry.deepLink !== undefined && typeof entry.deepLink !== 'string') {
       errors.push(`${entryPath}.deepLink: must be string`);
     }
+    validateStepPlaceholders(entry.title, `${entryPath}.title`, errors);
+    validateStepPlaceholders(entry.body, `${entryPath}.body`, errors);
+    validateStepPlaceholders(entry.deepLink, `${entryPath}.deepLink`, errors);
     if (
       entry.appliesWhen !== undefined &&
       !APPLIES_WHEN_VALUES.includes(entry.appliesWhen as (typeof APPLIES_WHEN_VALUES)[number])
@@ -394,4 +417,93 @@ export function manualStepApplies(
     case 'selfHosted':
       return !ctx.platformMode;
   }
+}
+
+/** The closed set of tokens a manifest may use in a manual step.
+ * Mirrored in `bffless/apps`'s `scripts/check-app-conventions.mjs`
+ * (`PLACEHOLDER_TOKENS`) so manifests are linted against this same list before
+ * publish. Keep in sync in that direction: removing or renaming a token here
+ * without updating that copy lets a manifest that lints clean in `bffless/apps`
+ * fail CE's install-time validation for every user who tries to install it. */
+export const PLACEHOLDER_TOKENS = ['projectPath', 'appHost'] as const;
+
+export type PlaceholderToken = (typeof PLACEHOLDER_TOKENS)[number];
+
+export type StepPlaceholders = Partial<Record<PlaceholderToken, string>>;
+
+/** Matches `{projectPath}` / `{appHost}` and nothing else — validation rejects other tokens. */
+const TOKEN_RE = new RegExp(`\\{(${PLACEHOLDER_TOKENS.join('|')})\\}`, 'g');
+
+/**
+ * Expands tokens in body text, dropping sentences that contain unresolvable tokens.
+ * A sentence whose token has no value (an app installed before it had a
+ * domain has no `{appHost}`) is dropped whole rather than rendered with a
+ * literal brace or a hole where the host should be. Sentence = run of text up
+ * to and including its terminating period + following space. A period only
+ * terminates a sentence when it's followed by whitespace or end-of-string —
+ * otherwise (e.g. the "." in "v1.0") it's treated as part of the sentence, so
+ * an embedded decimal point can't split a token-bearing sentence in two and
+ * leave an orphan fragment behind when the first half is dropped.
+ *
+ * The fallback alternative (matching a final, unterminated run of text) must
+ * be able to match ANY remainder, including one containing a dot — otherwise
+ * `String.prototype.match` with the `g` flag silently skips text it can't
+ * match at any position, instead of erroring, and `.join('')` below no
+ * longer reconstructs the input losslessly. Use `[\s\S]+$`, not `[^.]+$`.
+ */
+function expandBody(text: string, values: StepPlaceholders): string {
+  const sentences = text.match(/(?:[^.]|\.(?!\s|$))*\.(?:\s+|$)|[\s\S]+$/g) ?? [text];
+
+  return sentences
+    .filter((sentence) => {
+      const tokens = [...sentence.matchAll(TOKEN_RE)].map((m) => m[1] as PlaceholderToken);
+      return tokens.every((token) => values[token] !== undefined);
+    })
+    .join('')
+    .replace(TOKEN_RE, (_match, token: PlaceholderToken) => values[token] as string)
+    .trim();
+}
+
+/**
+ * Checks if text can be fully expanded (all tokens have values).
+ * Used for title and deepLink which cannot be partially dropped.
+ */
+function canExpand(text: string, values: StepPlaceholders): boolean {
+  const tokens = [...text.matchAll(TOKEN_RE)].map((m) => m[1] as PlaceholderToken);
+  return tokens.every((token) => values[token] !== undefined);
+}
+
+/**
+ * Expands `{projectPath}`/`{appHost}` in a manual step. A manifest cannot
+ * hardcode `/repo/acme/site/settings?tab=members` — it does not know which
+ * project it will be installed into — so it declares the token and CE fills
+ * it in at read time. Returns a new step; never mutates the input. Returns
+ * null if the step's title has an unresolvable token — a note without a title
+ * is worse than no note.
+ */
+export function interpolateStep(step: AppManualStep, values: StepPlaceholders): AppManualStep | null {
+  // If title has any unresolvable token, drop the entire step.
+  if (!canExpand(step.title, values)) {
+    return null;
+  }
+
+  const result: AppManualStep = {
+    ...step,
+    title: step.title.replace(TOKEN_RE, (_match, token: PlaceholderToken) => values[token] as string),
+    body: expandBody(step.body, values),
+  };
+
+  if (step.deepLink !== undefined) {
+    // A link to a page we can't name is worse than no link.
+    if (canExpand(step.deepLink, values)) {
+      result.deepLink = step.deepLink.replace(
+        TOKEN_RE,
+        (_match, token: PlaceholderToken) => values[token] as string,
+      );
+    } else {
+      delete result.deepLink;
+    }
+  }
+
+  return result;
 }

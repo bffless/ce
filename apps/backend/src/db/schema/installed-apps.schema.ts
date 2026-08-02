@@ -43,7 +43,6 @@ export const installedApps = pgTable(
     bundleSha256: varchar('bundle_sha256', { length: 64 }).notNull(),
     /** Full manifest at install time — powers eject + manual steps without refetching. */
     manifest: jsonb('manifest').notNull(),
-    manualStepsAcked: jsonb('manual_steps_acked').$type<string[]>().notNull().default([]),
     status: varchar('status', { length: 20 })
       .$type<InstalledAppStatus>()
       .notNull()
