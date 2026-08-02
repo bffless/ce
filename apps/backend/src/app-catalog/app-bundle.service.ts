@@ -4,12 +4,31 @@ import { createHash } from 'crypto';
 import { validateAppManifest } from './app-manifest.util';
 import type { AppManifest } from './app-manifest.types';
 
+/**
+ * Build provenance stamped into the bundle by bffless/apps' scripts/build-app-bundle.mjs
+ * (`.bffless-build.json`). Absent on bundles built before that change, and on any build whose
+ * commit could not be resolved — absence is a normal state, never an error.
+ */
+export interface BundleBuildInfo {
+  /** 40-hex commit whose tree produced this bundle. */
+  commit: string;
+}
+
 export interface LoadedBundle {
   manifest: AppManifest;
   /** entry path -> bytes; directory entries stripped */
   files: Record<string, Uint8Array>;
   sha256: string;
+  /**
+   * Source provenance, read from inside the bundle rather than from the registry entry: it
+   * travels with the bytes, so it is covered by the same sha256 the registry pins and can
+   * never attribute a bundle to a commit that did not produce it. Undefined when unstamped.
+   */
+  build?: BundleBuildInfo;
 }
+
+const BUILD_INFO_ENTRY = '.bffless-build.json';
+const COMMIT_PATTERN = /^[0-9a-f]{40}$/i;
 
 /**
  * AppBundleService — downloads/parses an app bundle zip, verifying its
@@ -122,7 +141,12 @@ export class AppBundleService {
       );
     }
 
-    const loaded: LoadedBundle = { manifest, files, sha256: actualSha256 };
+    const loaded: LoadedBundle = {
+      manifest,
+      files,
+      sha256: actualSha256,
+      build: this.readBuildInfo(files),
+    };
     this.cache.set(actualSha256, loaded);
     if (this.cache.size > this.MAX_CACHE_ENTRIES) {
       const oldestKey = this.cache.keys().next().value;
@@ -130,6 +154,30 @@ export class AppBundleService {
     }
 
     return loaded;
+  }
+
+  /**
+   * Reads the optional build stamp. Deliberately total: a bundle whose stamp is missing,
+   * unparseable, or not a 40-hex commit still installs — it simply carries no provenance, and
+   * the caller falls back to the bundle hash. Rejecting the bundle would turn a cosmetic
+   * regression in the publisher into an outage for every install of that app.
+   */
+  private readBuildInfo(files: Record<string, Uint8Array>): BundleBuildInfo | undefined {
+    const bytes = files[BUILD_INFO_ENTRY];
+    if (!bytes) return undefined;
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(new TextDecoder().decode(bytes));
+    } catch {
+      return undefined;
+    }
+
+    if (typeof parsed !== 'object' || parsed === null) return undefined;
+    const commit = (parsed as { commit?: unknown }).commit;
+    if (typeof commit !== 'string' || !COMMIT_PATTERN.test(commit)) return undefined;
+
+    return { commit: commit.toLowerCase() };
   }
 
   private unzip(buf: Uint8Array): Promise<Record<string, Uint8Array>> {
