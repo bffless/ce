@@ -892,7 +892,16 @@ export class AppInstallerService {
       } as Express.Multer.File,
       {
         repository: `${project.owner}/${project.name}`,
-        commitSha: bundle.sha256.slice(0, 40),
+        // The real source commit when the bundle carries one (bffless/apps#276), so the SHA in
+        // the repo browser and in the deployment URL is a commit you can actually look up —
+        // it used to be the bundle's content hash truncated to fit varchar(40), which reads as
+        // a commit in the References panel but resolves to nothing.
+        //
+        // Falls back to that truncated hash for unstamped bundles: every app published before
+        // the stamp existed, plus any build whose commit was unresolvable. Both forms are
+        // 40-hex and opaque to storage, so the fallback needs no special handling and no
+        // existing deployment moves.
+        commitSha: bundle.build?.commit ?? bundle.sha256.slice(0, 40),
         branch: 'app-catalog',
         alias,
         description: `App install: ${manifest.name} v${manifest.version}`,

@@ -103,10 +103,15 @@ function encode(s: string): Uint8Array {
   return new TextEncoder().encode(s);
 }
 
-function makeBundle(overrides: Partial<AppManifest> = {}, ruleSetJson?: unknown): LoadedBundle {
+function makeBundle(
+  overrides: Partial<AppManifest> = {},
+  ruleSetJson?: unknown,
+  build?: LoadedBundle['build'],
+): LoadedBundle {
   const manifest = { ...TEST_MANIFEST, ...overrides } as AppManifest;
   return {
     manifest,
+    build,
     files: {
       'rulesets/handoff.json': encode(
         JSON.stringify(
@@ -362,6 +367,33 @@ describe('AppInstallerService', () => {
       expect(role).toBe('admin');
       expect(file.mimetype).toBe('application/zip');
       expect(Buffer.isBuffer(file.buffer)).toBe(true);
+    });
+
+    // Provenance: a stamped bundle deploys under the commit that produced it, so the SHA in the
+    // repo browser and the deployment URL resolves to real source instead of the content hash.
+    it('deploys under the source commit when the bundle carries a build stamp', async () => {
+      const commit = 'c01bb08a1b2c3d4e5f60718293a4b5c6d7e8f900';
+      bundleService.fetchBundle.mockResolvedValue(makeBundle({}, undefined, { commit }));
+      queueInstallDb();
+
+      service.startInstall(ENTRY, { projectId: 'proj-1' }, 'user-1');
+      await service.whenIdle();
+
+      expect(deployments.createDeploymentFromZip.mock.calls[0][1].commitSha).toBe(commit);
+    });
+
+    // Every app published before the stamp existed. Those must keep deploying exactly as they
+    // do today — same 40-char value, same storage keys, no migration.
+    it('falls back to the truncated bundle hash when the bundle is unstamped', async () => {
+      bundleService.fetchBundle.mockResolvedValue(makeBundle());
+      queueInstallDb();
+
+      service.startInstall(ENTRY, { projectId: 'proj-1' }, 'user-1');
+      await service.whenIdle();
+
+      const { commitSha } = deployments.createDeploymentFromZip.mock.calls[0][1];
+      expect(commitSha).toBe('a'.repeat(40));
+      expect(commitSha).toHaveLength(40);
     });
 
     it('uploads only the dist/ subtree, re-keyed under basePath', async () => {

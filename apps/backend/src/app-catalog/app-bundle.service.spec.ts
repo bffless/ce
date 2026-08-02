@@ -4,7 +4,10 @@ import { BadRequestException } from '@nestjs/common';
 import { AppBundleService } from './app-bundle.service';
 import { TEST_MANIFEST } from './app-manifest.util.spec';
 
-function makeBundle(manifest: unknown = TEST_MANIFEST): { buf: Uint8Array; sha256: string } {
+function makeBundle(
+  manifest: unknown = TEST_MANIFEST,
+  extraEntries: Record<string, Uint8Array> = {},
+): { buf: Uint8Array; sha256: string } {
   const buf = zipSync({
     'bffless-app.json': strToU8(JSON.stringify(manifest)),
     'rulesets/handoff.json': strToU8(JSON.stringify({ ruleSet: { name: 'handoff' }, rules: [], schemas: [] })),
@@ -12,8 +15,15 @@ function makeBundle(manifest: unknown = TEST_MANIFEST): { buf: Uint8Array; sha25
       JSON.stringify({ ruleSet: { name: 'handoff-rss-feed' }, rules: [], schemas: [] }),
     ),
     'dist/index.html': strToU8('<!doctype html>ok'),
+    ...extraEntries,
   });
   return { buf, sha256: createHash('sha256').update(buf).digest('hex') };
+}
+
+const TEST_COMMIT = 'c01bb08a1b2c3d4e5f60718293a4b5c6d7e8f900';
+
+function withBuildStamp(stamp: string): Record<string, Uint8Array> {
+  return { '.bffless-build.json': strToU8(stamp) };
 }
 
 function fetchResponse(bytes: Uint8Array, opts: { contentLength?: number } = {}): Response {
@@ -51,6 +61,55 @@ describe('AppBundleService', () => {
       expect(loaded.sha256).toBe(sha256);
       expect(loaded.files['dist/index.html']).toBeInstanceOf(Uint8Array);
       expect(new TextDecoder().decode(loaded.files['dist/index.html'])).toBe('<!doctype html>ok');
+    });
+
+    it('exposes the source commit from the build stamp', async () => {
+      const { buf, sha256 } = makeBundle(
+        TEST_MANIFEST,
+        withBuildStamp(JSON.stringify({ commit: TEST_COMMIT })),
+      );
+
+      const loaded = await service.loadFromBuffer(buf, sha256);
+
+      expect(loaded.build).toEqual({ commit: TEST_COMMIT });
+    });
+
+    it('leaves build undefined for a bundle with no stamp', async () => {
+      const { buf, sha256 } = makeBundle();
+
+      const loaded = await service.loadFromBuffer(buf, sha256);
+
+      expect(loaded.build).toBeUndefined();
+    });
+
+    // A malformed stamp must degrade to "no provenance", never to a failed install: the stamp
+    // is cosmetic, and rejecting the bundle would take an app offline over it. Anything that is
+    // not a bare 40-hex commit is dropped rather than passed through to a deployment's SHA.
+    it.each([
+      ['not JSON', 'not json at all'],
+      ['a JSON array', '[]'],
+      ['no commit field', JSON.stringify({ builtAt: '2026-08-02' })],
+      ['a non-string commit', JSON.stringify({ commit: 12345 })],
+      ['a short commit', JSON.stringify({ commit: 'c01bb08' })],
+      ['a 64-hex sha256', JSON.stringify({ commit: 'a'.repeat(64) })],
+    ])('installs without provenance when the stamp is %s', async (_label, stamp) => {
+      const { buf, sha256 } = makeBundle(TEST_MANIFEST, withBuildStamp(stamp));
+
+      const loaded = await service.loadFromBuffer(buf, sha256);
+
+      expect(loaded.build).toBeUndefined();
+      expect(loaded.manifest).toEqual(TEST_MANIFEST);
+    });
+
+    it('normalises an uppercase commit to lowercase', async () => {
+      const { buf, sha256 } = makeBundle(
+        TEST_MANIFEST,
+        withBuildStamp(JSON.stringify({ commit: TEST_COMMIT.toUpperCase() })),
+      );
+
+      const loaded = await service.loadFromBuffer(buf, sha256);
+
+      expect(loaded.build).toEqual({ commit: TEST_COMMIT });
     });
 
     it('throws BadRequestException mentioning sha256 on mismatch, before parsing', async () => {
