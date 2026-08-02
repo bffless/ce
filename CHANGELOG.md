@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.9](https://github.com/bffless/ce/compare/v0.4.8...v0.4.9) (2026-08-02)
+
+
+### Bug Fixes
+
+* **traffic:** never enforce a half-loaded Blocklist ([#607](https://github.com/bffless/ce/issues/607)) ([#608](https://github.com/bffless/ce/issues/608)) ([f6adbc4](https://github.com/bffless/ce/commit/f6adbc4ee81fd23b639867d5a83fbc6a070bab7e))
+
 ## [0.4.8](https://github.com/bffless/ce/compare/v0.4.7...v0.4.8) (2026-08-01)
 
 
