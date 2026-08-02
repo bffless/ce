@@ -1808,6 +1808,28 @@ export class DeploymentsService {
   }
 
   /**
+   * Evict a key from the app-level content cache.
+   *
+   * The injected adapter is typically DynamicStorageAdapter wrapping a
+   * CachingStorageAdapter; only the latter exposes invalidateKey, so unwrap
+   * via getUnderlyingAdapter when needed (same pattern as
+   * LocalPresignedUploadController.invalidateCache). Failures are logged,
+   * not thrown — a stale cache entry must not fail the deployment itself.
+   */
+  private async invalidateCachedKey(storageKey: string): Promise<void> {
+    const adapter = this.storageAdapter as unknown as {
+      invalidateKey?: (key: string) => Promise<void>;
+      getUnderlyingAdapter?: () => { invalidateKey?: (key: string) => Promise<void> };
+    };
+    const target = adapter.invalidateKey ? adapter : adapter.getUnderlyingAdapter?.();
+    try {
+      await target?.invalidateKey?.(storageKey);
+    } catch (err) {
+      this.logger.warn(`Cache invalidation failed for ${storageKey}: ${(err as Error).message}`);
+    }
+  }
+
+  /**
    * Create asset records from a file manifest (for presigned URL uploads)
    * This method creates database records without handling file content - files are
    * already uploaded directly to storage via presigned URLs.
@@ -1864,6 +1886,12 @@ export class DeploymentsService {
         const publicPath = this.normalizePublicPath(file.path);
         const fileName = file.path.split('/').pop() || file.path;
 
+        // Presigned PUTs write straight to the backing store, bypassing
+        // CachingStorageAdapter.upload(), so on a same-SHA republish the
+        // content cache still holds the previous publish's bytes for this
+        // key (issue #623). Evict it before the new record goes live.
+        await this.invalidateCachedKey(file.storageKey);
+
         // Check if asset already exists (upsert logic for re-runs)
         const [existingAsset] = await db
           .select()
@@ -1879,7 +1907,10 @@ export class DeploymentsService {
 
         let newAsset: Asset;
         if (existingAsset) {
-          // Update existing asset
+          // Update existing asset. The manifest carries no hash and the
+          // server never saw the bytes, so a stale contentHash from an
+          // earlier publish must not survive — it feeds the ETag, and a
+          // stale ETag makes CDN/browser revalidation 304 old content.
           const [updated] = await db
             .update(assets)
             .set({
@@ -1888,6 +1919,7 @@ export class DeploymentsService {
               storageKey: file.storageKey,
               mimeType: file.contentType,
               size: file.size,
+              contentHash: null,
               branch: params.branch,
               uploadedBy: params.userId,
               deploymentId,
