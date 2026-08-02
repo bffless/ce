@@ -1,0 +1,1 @@
+ALTER TABLE "installed_apps" DROP COLUMN "manual_steps_acked";
