@@ -26,7 +26,7 @@ import { AppBundleService, type LoadedBundle } from './app-bundle.service';
 import { AppCertStepService } from './app-cert-step.service';
 import { AppInstallJobsService, type InstallStepId } from './app-install-jobs.service';
 import { AppPreflightService, type GateResult } from './app-preflight.service';
-import { manualStepApplies } from './app-manifest.util';
+import { manualStepApplies, interpolateStep, type StepPlaceholders } from './app-manifest.util';
 import type { AppManifest, AppManualStep, AppRegistryEntry } from './app-manifest.types';
 
 export interface InstallTarget {
@@ -303,7 +303,14 @@ export class AppInstallerService {
       // ---- 9. record ----
       step = 'record';
       this.jobs.setStep(jobId, step, { status: 'running' });
-      const manualSteps = [...this.applicableManualSteps(manifest), ...certManualSteps];
+      const stepValues: StepPlaceholders = {
+        projectPath: `${project.owner}/${project.name}`,
+        appHost: appHost ?? undefined,
+      };
+      const manualSteps = [
+        ...this.applicableManualSteps(manifest, stepValues),
+        ...certManualSteps,
+      ];
       // Scheme follows the serving model, not wishful thinking: a direct+LE
       // instance with no certificate covering this host yet serves it over
       // plain HTTP, and linking to https:// there lands the operator on the
@@ -445,7 +452,10 @@ export class AppInstallerService {
         })
         .where(eq(installedApps.id, installed.id));
 
-      const manualSteps = this.applicableManualSteps(manifest);
+      const manualSteps = this.applicableManualSteps(manifest, {
+        projectPath: `${project.owner}/${project.name}`,
+        appHost: appHost ?? undefined,
+      });
       const appUrl = appHost
         ? `${await this.certStepService.schemeFor(appHost, domainRow!.sslEnabled)}://${appHost}`
         : deployment.urls?.default;
@@ -1286,9 +1296,15 @@ export class AppInstallerService {
     return Buffer.from(zipSync(entries));
   }
 
-  private applicableManualSteps(manifest: AppManifest): AppManualStep[] {
+  private applicableManualSteps(
+    manifest: AppManifest,
+    values: StepPlaceholders,
+  ): AppManualStep[] {
     const ctx = this.instanceContext();
-    return (manifest.install.manualSteps ?? []).filter((step) => manualStepApplies(step, ctx));
+    return (manifest.install.manualSteps ?? [])
+      .filter((step) => manualStepApplies(step, ctx))
+      .map((step) => interpolateStep(step, values))
+      .filter((step): step is AppManualStep => step !== null);
   }
 
   private instanceContext(): { bucketStorage: boolean; platformMode: boolean } {

@@ -511,6 +511,29 @@ describe('AppInstallerService', () => {
       expect(jobs.get(jobId)!.manualSteps!.map((s) => s.id)).toEqual(['bucket-cors']);
     });
 
+    it('interpolates {projectPath} and {appHost} into the job manual steps', async () => {
+      const withToken = {
+        ...TEST_MANIFEST.install,
+        manualSteps: [
+          {
+            id: 'grant-access',
+            title: 'Give other people access',
+            body: 'Add each person as a guest.',
+            deepLink: '/repo/{projectPath}/settings?tab=members',
+          },
+        ],
+      };
+      bundleService.fetchBundle.mockResolvedValue(makeBundle({ install: withToken }));
+      queueInstallDb();
+
+      const { jobId } = service.startInstall(ENTRY, { projectId: 'proj-1' }, 'user-1');
+      await service.whenIdle();
+
+      expect(jobs.get(jobId)!.manualSteps![0].deepLink).toBe(
+        '/repo/acme/site/settings?tab=members',
+      );
+    });
+
     it('does not treat a CachingStorageAdapter-wrapped local adapter as bucket storage (regression: live droplet Redis cache)', async () => {
       // Shape observed live: STORAGE_ADAPTER is a CachingStorageAdapter wrapping the real
       // LocalStorageAdapter. It has no getAdapterType(), so the old `getAdapterType?.() ??
@@ -1212,6 +1235,35 @@ describe('AppInstallerService', () => {
         const deployStep = jobs.get(jobId)!.steps.find((s) => s.id === 'deploy')!;
         expect(deployStep.detail).toContain('alias "handoff"');
         expect(deployStep.detail).toContain('files.example.com');
+      });
+
+      it('interpolates {projectPath} and {appHost} into the update job manual steps', async () => {
+        const withToken = {
+          ...TEST_MANIFEST.install,
+          manualSteps: [
+            {
+              id: 'grant-access',
+              title: 'Give other people access',
+              body: 'Add each person as a guest.',
+              deepLink: '/repo/{projectPath}/settings?tab=members',
+            },
+          ],
+        };
+        bundleService.fetchBundle.mockResolvedValue(makeBundle({ install: withToken }));
+        mockDb.__queue([{ domain: 'files.example.com' }]); // lookupDomainHost
+        mockDb.__queue([]); // final record update
+
+        const { jobId } = service.startUpdate(
+          { ...installed, domainId: 'dom-1' } as never,
+          { ...ENTRY, version: '1.1.0' },
+          'user-1',
+          { prune: false },
+        );
+        await service.whenIdle();
+
+        expect(jobs.get(jobId)!.manualSteps![0].deepLink).toBe(
+          '/repo/acme/site/settings?tab=members',
+        );
       });
     });
   });
