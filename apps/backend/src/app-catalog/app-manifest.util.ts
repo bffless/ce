@@ -407,12 +407,13 @@ export type StepPlaceholders = Partial<Record<PlaceholderToken, string>>;
 const TOKEN_RE = new RegExp(`\\{(${PLACEHOLDER_TOKENS.join('|')})\\}`, 'g');
 
 /**
+ * Expands tokens in body text, dropping sentences that contain unresolvable tokens.
  * A sentence whose token has no value (an app installed before it had a
  * domain has no `{appHost}`) is dropped whole rather than rendered with a
  * literal brace or a hole where the host should be. Sentence = run of text up
  * to and including its terminating period + following space.
  */
-function expand(text: string, values: StepPlaceholders): string {
+function expandBody(text: string, values: StepPlaceholders): string {
   const sentences = text.match(/[^.]*\.\s*|[^.]+$/g) ?? [text];
 
   return sentences
@@ -426,22 +427,37 @@ function expand(text: string, values: StepPlaceholders): string {
 }
 
 /**
+ * Checks if text can be fully expanded (all tokens have values).
+ * Used for title and deepLink which cannot be partially dropped.
+ */
+function canExpand(text: string, values: StepPlaceholders): boolean {
+  const tokens = [...text.matchAll(TOKEN_RE)].map((m) => m[1] as PlaceholderToken);
+  return tokens.every((token) => values[token] !== undefined);
+}
+
+/**
  * Expands `{projectPath}`/`{appHost}` in a manual step. A manifest cannot
  * hardcode `/repo/acme/site/settings?tab=members` — it does not know which
  * project it will be installed into — so it declares the token and CE fills
- * it in at read time. Returns a new step; never mutates the input.
+ * it in at read time. Returns a new step; never mutates the input. Returns
+ * null if the step's title has an unresolvable token — a note without a title
+ * is worse than no note.
  */
-export function interpolateStep(step: AppManualStep, values: StepPlaceholders): AppManualStep {
+export function interpolateStep(step: AppManualStep, values: StepPlaceholders): AppManualStep | null {
+  // If title has any unresolvable token, drop the entire step.
+  if (!canExpand(step.title, values)) {
+    return null;
+  }
+
   const result: AppManualStep = {
     ...step,
-    title: expand(step.title, values),
-    body: expand(step.body, values),
+    title: step.title.replace(TOKEN_RE, (_match, token: PlaceholderToken) => values[token] as string),
+    body: expandBody(step.body, values),
   };
 
   if (step.deepLink !== undefined) {
-    const tokens = [...step.deepLink.matchAll(TOKEN_RE)].map((m) => m[1] as PlaceholderToken);
     // A link to a page we can't name is worse than no link.
-    if (tokens.every((token) => values[token] !== undefined)) {
+    if (canExpand(step.deepLink, values)) {
       result.deepLink = step.deepLink.replace(
         TOKEN_RE,
         (_match, token: PlaceholderToken) => values[token] as string,

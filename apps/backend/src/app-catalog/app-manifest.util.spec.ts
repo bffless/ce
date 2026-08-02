@@ -304,9 +304,10 @@ describe('interpolateStep', () => {
       { projectPath: 'acme/site', appHost: 'reader.example.com' },
     );
 
-    expect(result.title).toBe('Access for acme/site');
-    expect(result.body).toBe('Add each person as a guest on acme/site.');
-    expect(result.deepLink).toBe('/repo/acme/site/settings?tab=members');
+    expect(result).not.toBeNull();
+    expect(result!.title).toBe('Access for acme/site');
+    expect(result!.body).toBe('Add each person as a guest on acme/site.');
+    expect(result!.deepLink).toBe('/repo/acme/site/settings?tab=members');
   });
 
   it('expands every occurrence of a repeated token', () => {
@@ -315,13 +316,15 @@ describe('interpolateStep', () => {
       { appHost: 'a.example.com' },
     );
 
-    expect(result.body).toBe('Allow PUT from a.example.com to a.example.com.');
+    expect(result).not.toBeNull();
+    expect(result!.body).toBe('Allow PUT from a.example.com to a.example.com.');
   });
 
   it('leaves a step with no tokens untouched', () => {
     const plain = { id: 'x', title: 'Title', body: 'Body.', deepLink: '/domains' };
 
-    expect(interpolateStep(plain, { projectPath: 'acme/site' })).toEqual(plain);
+    const result = interpolateStep(plain, { projectPath: 'acme/site' });
+    expect(result).toEqual(plain);
   });
 
   it('drops a sentence whose token has no value rather than emitting a literal brace', () => {
@@ -330,8 +333,9 @@ describe('interpolateStep', () => {
       {},
     );
 
-    expect(result.body).toBe('First sentence. Last sentence.');
-    expect(result.body).not.toContain('{appHost}');
+    expect(result).not.toBeNull();
+    expect(result!.body).toBe('First sentence. Last sentence.');
+    expect(result!.body).not.toContain('{appHost}');
   });
 
   it('omits deepLink entirely when it depends on a token with no value', () => {
@@ -340,7 +344,8 @@ describe('interpolateStep', () => {
       {},
     );
 
-    expect(result.deepLink).toBeUndefined();
+    expect(result).not.toBeNull();
+    expect(result!.deepLink).toBeUndefined();
   });
 
   it('does not mutate the input step', () => {
@@ -348,5 +353,36 @@ describe('interpolateStep', () => {
     interpolateStep(original, { projectPath: 'acme/site' });
 
     expect(original.body).toBe('On {projectPath}.');
+  });
+
+  it('returns null when title has an unresolvable token', () => {
+    const result = interpolateStep(
+      { id: 'x', title: 'Configure on {projectPath}', body: 'B' },
+      {},
+    );
+
+    expect(result).toBeNull();
+  });
+
+  it('returns a step when title tokens all resolve', () => {
+    const result = interpolateStep(
+      { id: 'x', title: 'Access for {projectPath}', body: 'B' },
+      { projectPath: 'acme/site' },
+    );
+
+    expect(result).not.toBeNull();
+    expect(result!.title).toBe('Access for acme/site');
+  });
+
+  it('survives when only body has an unresolvable token', () => {
+    const result = interpolateStep(
+      { id: 'x', title: 'Configure CORS', body: 'Allow PUT from {appHost}. But also configure locally.' },
+      {},
+    );
+
+    expect(result).not.toBeNull();
+    expect(result!.title).toBe('Configure CORS');
+    expect(result!.body).toBe('But also configure locally.');
+    expect(result!.body).not.toContain('{appHost}');
   });
 });
