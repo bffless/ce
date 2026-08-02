@@ -76,7 +76,6 @@ describe('AppCard', () => {
         status: 'installed',
         updateAvailable: false,
         manualSteps: [],
-        manualStepsAcked: [],
       },
     };
 
@@ -101,7 +100,6 @@ describe('AppCard', () => {
         status: 'installed',
         updateAvailable: true,
         manualSteps: [],
-        manualStepsAcked: [],
       },
     };
 
@@ -135,7 +133,6 @@ describe('AppCard', () => {
         status: 'installed',
         updateAvailable: true,
         manualSteps: [],
-        manualStepsAcked: [],
       },
     };
 
@@ -162,7 +159,6 @@ describe('AppCard', () => {
         status: 'installed',
         updateAvailable: true,
         manualSteps: [],
-        manualStepsAcked: [],
       },
     };
 
@@ -240,7 +236,6 @@ describe('AppCard', () => {
         status: 'installed',
         updateAvailable: true,
         manualSteps: [],
-        manualStepsAcked: [],
       },
     };
 

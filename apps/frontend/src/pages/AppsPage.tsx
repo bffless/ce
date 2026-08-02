@@ -22,9 +22,9 @@ export function AppsPage() {
   // key and as a fallback if the app disappears from the catalog while the
   // dialog is open. The dialog is actually handed the LIVE entry (derived
   // below from the current `data`), not this snapshot: server-side mutations
-  // like ackManualStep invalidate the `AppCatalog` tag and refetch `data`,
-  // and a stale snapshot here would never pick that up (the Done screen's
-  // ack checkboxes would appear permanently unchecked/disabled).
+  // like updateApp invalidate the `AppCatalog` tag and refetch `data`, and a
+  // stale snapshot here would never pick that up (the Done screen's setup
+  // notes would appear stuck on the pre-update list).
   const [installTargetSnapshot, setInstallTargetSnapshot] = useState<CatalogEntry | null>(null);
   const [detailsTargetSnapshot, setDetailsTargetSnapshot] = useState<CatalogEntry | null>(null);
   const [updateTargetSnapshot, setUpdateTargetSnapshot] = useState<{

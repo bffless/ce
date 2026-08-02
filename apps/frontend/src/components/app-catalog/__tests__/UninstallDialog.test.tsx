@@ -43,7 +43,6 @@ const entry: CatalogEntry = {
     status: 'installed',
     updateAvailable: false,
     manualSteps: [],
-    manualStepsAcked: [],
   },
 };
 

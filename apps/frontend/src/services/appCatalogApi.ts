@@ -7,7 +7,7 @@ import { api } from './api';
  * `app-preflight.service.ts`, `app-installer.service.ts`, and
  * `app-install-jobs.service.ts` for the source of truth.
  *
- * `preflightApp`/`installApp`/`getInstallJob`/`undoJob`/`ackManualStep` back
+ * `preflightApp`/`installApp`/`getInstallJob`/`undoJob` back
  * the 1-click install wizard dialog (Tasks 13–14 wire them up); this task
  * only wires `getAppCatalog` (catalog page) and the simpler one-shot actions
  * (`updateApp`, `uninstallApp`, `getEjectPayload`) directly into `AppCard`.
@@ -84,7 +84,6 @@ export interface CatalogEntry {
     status: InstalledAppStatus;
     updateAvailable: boolean;
     manualSteps: AppManualStep[];
-    manualStepsAcked: string[];
   };
 }
 
@@ -260,15 +259,6 @@ export const appCatalogApi = api.injectEndpoints({
     getEjectPayload: builder.query<EjectPayload, string>({
       query: (id) => `/api/admin/apps/installed/${id}/eject`,
     }),
-
-    ackManualStep: builder.mutation<{ acked: string[] }, { id: string; stepId: string }>({
-      query: ({ id, stepId }) => ({
-        url: `/api/admin/apps/installed/${id}/ack-manual-step`,
-        method: 'POST',
-        body: { stepId },
-      }),
-      invalidatesTags: ['AppCatalog', 'InstalledApp'],
-    }),
   }),
 });
 
@@ -284,5 +274,4 @@ export const {
   useUninstallAppMutation,
   useGetEjectPayloadQuery,
   useLazyGetEjectPayloadQuery,
-  useAckManualStepMutation,
 } = appCatalogApi;

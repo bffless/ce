@@ -12,7 +12,6 @@ const preflightTrigger = vi.fn();
 const resetPreflightMock = vi.fn();
 const installTrigger = vi.fn();
 const undoTrigger = vi.fn();
-const ackTrigger = vi.fn();
 const getInstallJobQueryMock = vi.fn<
   (jobId: string, options?: { pollingInterval?: number; skip?: boolean }) => { data?: InstallJob }
 >(() => jobQueryResult);
@@ -24,7 +23,6 @@ let preflightState: { data?: PreflightResponse; isLoading: boolean } = {
 let installState: { isLoading: boolean } = { isLoading: false };
 let jobQueryResult: { data?: InstallJob } = { data: undefined };
 let undoState: { isLoading: boolean } = { isLoading: false };
-let ackState: { isLoading: boolean } = { isLoading: false };
 
 vi.mock('@/services/appCatalogApi', () => ({
   usePreflightAppMutation: () => [
@@ -37,7 +35,6 @@ vi.mock('@/services/appCatalogApi', () => ({
     options?: { pollingInterval?: number; skip?: boolean },
   ) => getInstallJobQueryMock(jobId, options),
   useUndoJobMutation: () => [undoTrigger, undoState],
-  useAckManualStepMutation: () => [ackTrigger, ackState],
 }));
 
 vi.mock('@/services/repositoriesApi', () => ({
@@ -112,14 +109,12 @@ beforeEach(() => {
   resetPreflightMock.mockReset();
   installTrigger.mockReset().mockReturnValue({ unwrap: () => Promise.resolve({ jobId: 'job-1' }) });
   undoTrigger.mockReset().mockReturnValue({ unwrap: () => Promise.resolve({}) });
-  ackTrigger.mockReset().mockReturnValue({ unwrap: () => Promise.resolve({ acked: [] }) });
   getInstallJobQueryMock.mockClear();
   dispatchMock.mockClear();
   preflightState = { data: makePreflight(), isLoading: false };
   installState = { isLoading: false };
   jobQueryResult = { data: undefined };
   undoState = { isLoading: false };
-  ackState = { isLoading: false };
 });
 
 describe('InstallDialog — Review screen', () => {
@@ -531,7 +526,7 @@ describe('InstallDialog — Working screen', () => {
 });
 
 describe('InstallDialog — Done screen', () => {
-  it('renders the app URL, an Open link, and the manual steps checklist, firing ack on check', async () => {
+  it('renders the app URL, an Open link, and the setup notes expanded', async () => {
     jobQueryResult = {
       data: makeJob({
         status: 'succeeded',
@@ -553,15 +548,15 @@ describe('InstallDialog — Done screen', () => {
     const openLink = await screen.findByRole('link', { name: /open/i });
     expect(openLink).toHaveAttribute('href', 'https://handoff.example.com');
 
+    // The Done screen passes `defaultExpanded`, so the body is visible
+    // without a click.
     expect(screen.getByText('Set the SIGNING_SECRET')).toBeInTheDocument();
-    const checkbox = screen.getByRole('checkbox', { name: /set the signing_secret/i });
-    expect(checkbox).not.toBeChecked();
-
-    fireEvent.click(checkbox);
-    expect(ackTrigger).toHaveBeenCalledWith({ id: 'installed-1', stepId: 'set-env' });
+    expect(
+      screen.getByText('Add SIGNING_SECRET to your environment before sharing links.'),
+    ).toBeInTheDocument();
   });
 
-  it('prefers the durable entry.installed manual-step ack state over the job', async () => {
+  it('prefers the durable entry.installed manual steps over the job’s', async () => {
     const entryWithInstall: CatalogEntry = {
       ...baseEntry,
       installed: {
@@ -574,20 +569,23 @@ describe('InstallDialog — Done screen', () => {
         status: 'installed',
         updateAvailable: false,
         manualSteps: [
-          { id: 'set-env', title: 'Set the SIGNING_SECRET', body: 'Add it before sharing links.' },
+          { id: 'installed-step', title: 'Rotate the signing secret', body: 'Do it in Settings.' },
         ],
-        manualStepsAcked: ['set-env'],
       },
     };
     jobQueryResult = {
-      data: makeJob({ status: 'succeeded', installedAppId: 'installed-1' }),
+      data: makeJob({
+        status: 'succeeded',
+        installedAppId: 'installed-1',
+        manualSteps: [{ id: 'job-step', title: 'Set the SIGNING_SECRET', body: 'From the job.' }],
+      }),
     };
 
     render(<InstallDialog entry={entryWithInstall} open onOpenChange={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: /^install$/i }));
 
-    const checkbox = await screen.findByRole('checkbox', { name: /set the signing_secret/i });
-    expect(checkbox).toBeChecked();
+    expect(await screen.findByText('Rotate the signing secret')).toBeInTheDocument();
+    expect(screen.queryByText('Set the SIGNING_SECRET')).not.toBeInTheDocument();
   });
 });
 
