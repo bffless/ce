@@ -47,21 +47,25 @@ vi.mock('@/hooks/useBranding', () => ({
   useBranding: () => ({ authLogoUrl: '/logo.svg', siteName: 'BFFLESS' }),
 }));
 
+const mockDispatch = vi.fn();
+
 vi.mock('react-redux', async () => {
   const actual = await vi.importActual<typeof import('react-redux')>('react-redux');
   return {
     ...actual,
     useSelector: () => ({ hasCompletedOnboarding: true }),
+    useDispatch: () => mockDispatch,
   };
 });
 
 vi.mock('@/components/setup/onboarding/OnboardingModal', () => ({
-  OnboardingModal: () => null,
+  OnboardingModal: ({ isOpen }: { isOpen: boolean }) =>
+    isOpen ? <div data-testid="onboarding-modal" /> : null,
 }));
 
-function renderHomePage() {
+function renderHomePage(initialEntries: string[] = ['/']) {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={initialEntries}>
       <HomePage />
     </MemoryRouter>,
   );
@@ -223,5 +227,44 @@ describe('HomePage — Repositories card gating (#517)', () => {
     renderHomePage();
 
     expect(screen.getByText('Repositories')).toBeInTheDocument();
+  });
+});
+
+describe('HomePage — ?onboarding=1 developer override', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    mockGetSession.mockReturnValue({
+      data: { user: { email: 'admin@example.com', role: 'admin' } },
+    });
+    mockGetSetupStatus.mockReturnValue({ data: { isSetupComplete: true }, isLoading: false });
+    mockGetWildcardStatus.mockReturnValue({ data: undefined });
+    mockGetPrimarySslStatus.mockReturnValue({ data: undefined });
+    // Established workspace: repos exist, so the normal auto-show guard
+    // (hasNoRepos) can never pass — only the override can open the modal.
+    mockGetMyRepositories.mockReturnValue({ data: { total: 3 } });
+  });
+
+  it('force-opens the modal past the completed flag and repo-count guards, resetting the wizard', () => {
+    renderHomePage(['/?onboarding=1']);
+
+    expect(screen.getByTestId('onboarding-modal')).toBeInTheDocument();
+    expect(mockDispatch).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'setup/resetOnboarding' }),
+    );
+  });
+
+  it('does not open the modal without the param (completed flag set, repos exist)', () => {
+    renderHomePage();
+
+    expect(screen.queryByTestId('onboarding-modal')).not.toBeInTheDocument();
+    expect(mockDispatch).not.toHaveBeenCalled();
+  });
+
+  it('ignores other values of the param (e.g. ?onboarding=0)', () => {
+    renderHomePage(['/?onboarding=0']);
+
+    expect(screen.queryByTestId('onboarding-modal')).not.toBeInTheDocument();
+    expect(mockDispatch).not.toHaveBeenCalled();
   });
 });
