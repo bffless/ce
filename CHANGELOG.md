@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.15](https://github.com/bffless/ce/compare/v0.4.14...v0.4.15) (2026-08-03)
+
+
+### Features
+
+* **onboarding:** ?onboarding=1 developer override to replay the modal ([#626](https://github.com/bffless/ce/issues/626)) ([a2d7634](https://github.com/bffless/ce/commit/a2d7634edd6cc65ab3c51dd74628ab07722ee76f))
+
 ## [0.4.14](https://github.com/bffless/ce/compare/v0.4.13...v0.4.14) (2026-08-02)
 
 
