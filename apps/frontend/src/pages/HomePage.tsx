@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Link, Navigate } from 'react-router-dom';
-import { useSelector } from 'react-redux';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
+import { useDispatch, useSelector } from 'react-redux';
 import { useGetSessionQuery } from '@/services/authApi';
 import { useGetSetupStatusQuery } from '@/services/setupApi';
 import { useGetWildcardCertificateStatusQuery } from '@/services/domainsApi';
@@ -8,6 +8,7 @@ import { useGetPrimarySslStatusQuery } from '@/services/primarySslApi';
 import { useFeatureFlags } from '@/services/featureFlagsApi';
 import { useGetMyRepositoriesQuery } from '@/services/repositoriesApi';
 import { RootState } from '@/store';
+import { resetOnboarding } from '@/store/slices/setupSlice';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -30,6 +31,8 @@ export function HomePage() {
   const { authLogoUrl, siteName } = useBranding();
   const { hasCompletedOnboarding } = useSelector((state: RootState) => state.setup.onboarding);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const dispatch = useDispatch();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // Feature flags and wildcard SSL status for banner
   const { isEnabled, isReady: flagsReady } = useFeatureFlags();
@@ -108,6 +111,21 @@ export function HomePage() {
     localStorage.setItem(expiryDismissKey, 'true');
     setIsExpiryBannerDismissed(true);
   };
+
+  // Developer override: ?onboarding=1 replays the onboarding modal regardless
+  // of the completed flag and repo-count guards below (an established
+  // workspace can never satisfy hasNoRepos, so this is the only way to see
+  // the modal there). Resets the wizard to step 1 and consumes the param so a
+  // refresh doesn't re-trigger it; the reset also clears the localStorage
+  // completed flag, which skip/complete inside the modal writes back.
+  useEffect(() => {
+    if (searchParams.get('onboarding') !== '1') return;
+    dispatch(resetOnboarding());
+    setShowOnboarding(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete('onboarding');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, dispatch]);
 
   // Show onboarding modal if user hasn't completed onboarding
   // Only show for admin/user roles since they can create repos (the modal guides through repo creation)
