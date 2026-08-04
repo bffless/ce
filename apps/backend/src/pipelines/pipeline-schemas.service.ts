@@ -108,6 +108,9 @@ export class PipelineSchemasService {
           ...f,
           required: f.required ?? false,
         })),
+        // Declared intent, never inferred — absent means "not declared", which
+        // is what every pre-existing schema carries (bffless/ce#633).
+        kind: dto.kind ?? null,
       } as NewPipelineSchema)
       .returning();
 

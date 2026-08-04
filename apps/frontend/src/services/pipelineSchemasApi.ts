@@ -18,12 +18,21 @@ export interface SchemaField {
   default?: unknown;
 }
 
+/** What a schema is for, as declared at creation. Null = not declared. */
+export type SchemaKind = 'upload' | 'chat' | 'state';
+
 export interface PipelineSchema {
   id: string;
   projectId: string;
   name: string;
   version: number;
   fields: SchemaField[];
+  /**
+   * Declared intent, null for schemas predating the field or written by hand.
+   * Read it through `isUploadSchema()` rather than comparing here — null needs
+   * the field-shape fallback.
+   */
+  kind: SchemaKind | null;
   createdAt: string;
   updatedAt: string;
 }

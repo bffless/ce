@@ -71,6 +71,7 @@ export class StateSchemaGeneratorService {
         projectId: dto.projectId,
         name: dto.name,
         fields,
+        kind: 'state',
       } as NewPipelineSchema)
       .returning();
 

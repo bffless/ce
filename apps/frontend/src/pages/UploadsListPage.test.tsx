@@ -90,6 +90,14 @@ describe('UploadsListPage schema cards', () => {
     expect(screen.getByText('4 files')).toBeInTheDocument();
   });
 
+  it('keeps a declared non-upload schema out of the Upload Schemas section (ce#633)', () => {
+    // Field shape alone would have listed this as an upload schema.
+    schemas = [{ ...uploadSchema('chat_messages', 2), kind: 'chat' } as PipelineSchemaWithCount];
+    renderPage();
+    expect(screen.queryByText('Upload Schemas')).not.toBeInTheDocument();
+    expect(screen.getByText('All Schemas')).toBeInTheDocument();
+  });
+
   it('shows a placeholder rather than a wrong count while the total loads', () => {
     fileTotals = {};
     renderPage();

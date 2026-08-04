@@ -10,7 +10,7 @@ import {
   IsIn,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { SchemaFieldType } from '../../db/schema';
+import { SchemaFieldType, SchemaKind } from '../../db/schema';
 
 /**
  * Schema field definition DTO
@@ -75,4 +75,15 @@ export class CreatePipelineSchemaDto {
   @ValidateNested({ each: true })
   @Type(() => SchemaFieldDto)
   fields: SchemaFieldDto[];
+
+  @ApiPropertyOptional({
+    description:
+      'What this schema is for. Declares primary intent — an upload schema may still ' +
+      'hold rows that are not files. Omit for a plain data schema; it cannot be inferred ' +
+      'later without guessing from field names.',
+    enum: ['upload', 'chat', 'state'],
+  })
+  @IsOptional()
+  @IsIn(['upload', 'chat', 'state'])
+  kind?: SchemaKind;
 }

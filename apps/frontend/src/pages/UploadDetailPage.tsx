@@ -36,6 +36,7 @@ import {
 } from '@/services/pipelineSchemasApi';
 import { useProjectRole } from '@/hooks/useProjectRole';
 import { useToast } from '@/hooks/use-toast';
+import { holdsUploadedFiles } from '@/lib/schemaKind';
 
 function getPreviewUrl(storagePath: string): string {
   return `/api/pipeline-schemas/storage/preview?path=${encodeURIComponent(storagePath)}`;
@@ -90,7 +91,10 @@ export function UploadDetailPage() {
   useDocumentTitle(schema ? [schema.name, 'Uploads', `${owner}/${repo}`] : null);
 
   // Only records that actually reference stored bytes belong in an uploads list.
-  const hasFileMarker = schema?.fields?.some((f) => f.name === FILE_MARKER_FIELD) ?? false;
+  // A declared upload schema qualifies even if it forgot to declare the field —
+  // the filter reads the RECORDS, which carry `storage_path` regardless of what
+  // the schema says. Undeclared schemas keep falling back to the field shape.
+  const hasFileMarker = schema ? holdsUploadedFiles(schema) : false;
 
   // Fetch uploaded files (pipeline data records). Waits for the schema so the
   // file filter is known up front — otherwise the first render would briefly
