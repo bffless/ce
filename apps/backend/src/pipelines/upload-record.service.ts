@@ -8,6 +8,12 @@ import { PipelineContext } from './execution/pipeline-context.interface';
 import { ExpressionEvaluator } from './execution/expression-evaluator';
 import { PipelineDataService } from './pipeline-data.service';
 import { ConfigurationError } from './errors';
+import {
+  DeclaredField,
+  describeUploadSchemaGap,
+  diffUploadSchema,
+  hasUploadSchemaGap,
+} from './upload-schema-contract';
 
 /**
  * Parts of a computed upload storage key.
@@ -48,6 +54,9 @@ export interface UploadRecordOutput {
 @Injectable()
 export class UploadRecordService {
   private readonly logger = new Logger(UploadRecordService.name);
+
+  /** `${schemaId}:${version}` already warned about — see {@link warnOnSchemaGap}. */
+  private readonly warnedSchemaGaps = new Set<string>();
 
   constructor(
     private readonly dataService: PipelineDataService,
@@ -244,8 +253,16 @@ export class UploadRecordService {
     contentHash?: string | null;
     /** Already-evaluated extra fields to merge into the pipeline_data record */
     extraData?: Record<string, unknown>;
+    /**
+     * The target schema's declared fields, when the caller has them. Used only
+     * to warn about a schema that doesn't describe what is being written —
+     * never to change what is written.
+     */
+    schemaFields?: DeclaredField[];
   }): Promise<UploadRecordOutput> {
     const { context } = params;
+
+    this.warnOnSchemaGap(params);
 
     const data: Record<string, unknown> = {
       filename: params.storedFilename,
@@ -298,6 +315,37 @@ export class UploadRecordService {
       size: params.size,
       original_name: params.originalName,
     };
+  }
+
+  /**
+   * Last-resort backstop for a schema that doesn't describe its own upload
+   * records — the authoring-time lint is where an author should hear about
+   * this, so this only catches schemas edited after the rule was written.
+   *
+   * Deliberately never throws: the record is written correctly either way, and
+   * failing an upload over a metadata declaration would lose someone's file.
+   * Logged once per (schema, version) so a busy upload endpoint doesn't flood
+   * the log with the same line.
+   */
+  private warnOnSchemaGap(params: {
+    schemaId: string;
+    schemaVersion: number;
+    extraData?: Record<string, unknown>;
+    schemaFields?: DeclaredField[];
+  }): void {
+    if (!params.schemaFields) return;
+
+    const seenKey = `${params.schemaId}:${params.schemaVersion}`;
+    if (this.warnedSchemaGaps.has(seenKey)) return;
+
+    const gap = diffUploadSchema(params.schemaFields, Object.keys(params.extraData ?? {}));
+    if (!hasUploadSchemaGap(gap)) return;
+
+    this.warnedSchemaGaps.add(seenKey);
+    this.logger.warn(
+      describeUploadSchemaGap(`${params.schemaId}`, gap) ??
+        `Upload schema ${params.schemaId} does not match the upload record shape`,
+    );
   }
 
   /**

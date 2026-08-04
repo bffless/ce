@@ -228,6 +228,7 @@ export class FileUploadHandler implements StepHandler<FileUploadHandlerConfig> {
       publicPath: keyParts.publicPath,
       contentHash,
       extraData,
+      schemaFields: schema.fields,
     });
 
     return { success: true, output };
