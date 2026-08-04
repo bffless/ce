@@ -30,6 +30,12 @@ export interface SchemaResolution {
   action: 'reuse' | 'create';
   targetSchemaId: string | null;
   fieldMismatch: boolean;
+  /**
+   * The payload declared a `kind` and the live schema had none, so the sync
+   * filled it in (planned only, under dryRun). Never true for a conflict: a
+   * schema that already declares a kind keeps it.
+   */
+  kindAdopted: boolean;
 }
 
 /**

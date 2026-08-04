@@ -6,7 +6,7 @@ import type {
   ProxyRule,
   ProxyType,
 } from '../db/schema/proxy-rules.schema';
-import type { SchemaField } from '../db/schema/pipeline-schemas.schema';
+import type { SchemaField, SchemaKind } from '../db/schema/pipeline-schemas.schema';
 
 /**
  * Canonical proxy-rule-set export format (server side).
@@ -60,6 +60,13 @@ export const ENVELOPE_KEY_ORDER = [
 export interface ExportedSchema {
   id: string;
   name: string;
+  /**
+   * Declared purpose, omitted entirely when the schema doesn't declare one.
+   * Key position matters: schema entries have no fixed key order (the CLI
+   * canonicalizer copies them as-is), so producers on both sides emit
+   * `id, name, kind?, fields` or the two exports stop being byte-identical.
+   */
+  kind?: SchemaKind;
   fields: SchemaField[];
 }
 

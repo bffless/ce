@@ -249,6 +249,8 @@ export async function buildRuleSet(setDir: string, opts?: { exportedAt?: string 
     const entry: ExportedSchema = {
       id: manifest.id ?? uuidv5(name, SCHEMA_NAMESPACE),
       name: manifest.name,
+      // Key order matches the server's export builder — see ExportedSchema.
+      ...(manifest.kind ? { kind: manifest.kind } : {}),
       fields: manifest.fields,
     };
     schemasByName.set(name, entry);

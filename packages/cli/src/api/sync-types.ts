@@ -15,6 +15,8 @@ export interface SyncSchemaResolution {
   action: 'reuse' | 'create';
   targetSchemaId: string | null;
   fieldMismatch: boolean;
+  /** The declared `kind` was written onto a live schema that had none. */
+  kindAdopted?: boolean;
 }
 
 export interface SyncRequestBody {

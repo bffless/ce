@@ -236,6 +236,10 @@ const schemaRows: Record<string, unknown> = {
     id: 'schema-messages',
     projectId: 'project-1',
     name: 'messages',
+    // Declared kind: exercises that it reaches the wire in the right key
+    // position. 'comments' above stays undeclared (null) so the omitted case
+    // is covered too.
+    kind: 'chat',
     fields: [{ name: 'content', type: 'string', required: true }],
   },
 };
@@ -365,6 +369,7 @@ const expectedEnvelope: CliRuleSetExport = {
     {
       id: 'schema-messages',
       name: 'messages',
+      kind: 'chat',
       fields: [{ name: 'content', type: 'string', required: true }],
     },
   ],
