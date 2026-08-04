@@ -11,6 +11,7 @@ import type { PipelineConfig, PipelineStepConfig } from '../db/schema/proxy-rule
 import type { ProxyRuleSet } from '../db/schema/proxy-rule-sets.schema';
 import type { ValidatorConfig } from './types';
 import { SchemaGeneratorRevisionsService } from './schema-generator-revisions.service';
+import { UPLOAD_RECORD_FIELDS } from './upload-schema-contract';
 import { eq, and } from 'drizzle-orm';
 
 /**
@@ -65,16 +66,9 @@ export class UploadSchemaGeneratorService {
       throw new ConflictException(`A schema with name "${dto.name}" already exists`);
     }
 
-    // Define upload metadata schema fields
-    const fields: SchemaField[] = [
-      { name: 'filename', type: 'string', required: true },
-      { name: 'storage_path', type: 'string', required: true },
-      { name: 'content_type', type: 'string', required: true },
-      { name: 'size', type: 'number', required: true },
-      { name: 'url', type: 'string', required: true },
-      { name: 'sub_dir', type: 'string', required: true },
-      { name: 'original_name', type: 'string', required: true },
-    ];
+    // The record shape upload handlers write — shared with the writer so the
+    // generated schema and the actual records cannot drift apart.
+    const fields: SchemaField[] = UPLOAD_RECORD_FIELDS.map((f) => ({ ...f }));
 
     // Create the schema
     const [schema] = await db

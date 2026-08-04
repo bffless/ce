@@ -5,6 +5,7 @@ import { ProxyRulesService } from './proxy-rules.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { NginxRegenerationService } from '../domains/nginx-regeneration.service';
 import { PipelineSchemasService } from '../pipelines/pipeline-schemas.service';
+import { UploadSchemaLintService } from '../pipelines/upload-schema-lint.service';
 import {
   ProxyRuleSetRevisionsService,
   computeRevisionHash,
@@ -189,6 +190,7 @@ describe('ProxyRuleSetsService', () => {
         { provide: NginxRegenerationService, useValue: mockNginxRegenerationService },
         { provide: PipelineSchemasService, useValue: mockPipelineSchemasService },
         { provide: ProxyRuleSetRevisionsService, useValue: mockProxyRuleSetRevisionsService },
+        UploadSchemaLintService,
       ],
     }).compile();
 
@@ -1525,6 +1527,112 @@ describe('ProxyRuleSetsService', () => {
         },
       ]);
       expect(result.created).toEqual([{ pathPattern: '/api/comments', method: 'GET' }]);
+    });
+
+    /**
+     * bffless/ce#630 — a rules-as-code author (often an agent) gets no signal
+     * today that the schema their upload step writes into doesn't declare what
+     * upload handlers actually write. Warning-level: the push still succeeds.
+     */
+    describe('upload schema lint', () => {
+      const uploadRule = (schemaId: string, extraFields?: Record<string, string>) => ({
+        pathPattern: '/api/uploads',
+        method: 'POST',
+        pipelineConfig: {
+          name: 'upload',
+          steps: [
+            {
+              name: 'save',
+              handlerType: 'register_upload',
+              config: { schemaId, subDir: 'content', ...(extraFields ? { extraFields } : {}) },
+            },
+          ],
+        },
+      });
+
+      const canonicalFields = [
+        { name: 'filename', type: 'string', required: true },
+        { name: 'storage_path', type: 'string', required: true },
+        { name: 'content_type', type: 'string', required: true },
+        { name: 'size', type: 'number', required: true },
+        { name: 'url', type: 'string', required: true },
+        { name: 'sub_dir', type: 'string', required: true },
+        { name: 'original_name', type: 'string', required: true },
+      ];
+
+      it('warns about a bundled upload schema that omits contract fields', async () => {
+        mockDb.__setResults([[mockProject], []]);
+        mockPipelineSchemasService.getByProjectId.mockResolvedValue([]);
+
+        const result = await sync(
+          syncDto({
+            rules: [uploadRule('src-uploads')],
+            schemas: [
+              { id: 'src-uploads', name: 'my_files', fields: [{ name: 'path', type: 'string' }] },
+            ],
+            options: { dryRun: true },
+          }),
+        );
+
+        expect(result.warnings).toHaveLength(1);
+        expect(result.warnings[0]).toContain('my_files');
+        expect(result.warnings[0]).toContain('storage_path');
+        // Advisory only — the push is still a normal, successful plan.
+        expect(result.created).toEqual([{ pathPattern: '/api/uploads', method: 'POST' }]);
+      });
+
+      it('stays silent when the bundled schema matches the upload record shape', async () => {
+        mockDb.__setResults([[mockProject], []]);
+        mockPipelineSchemasService.getByProjectId.mockResolvedValue([]);
+
+        const result = await sync(
+          syncDto({
+            rules: [uploadRule('src-uploads')],
+            schemas: [{ id: 'src-uploads', name: 'uploads', fields: canonicalFields }],
+            options: { dryRun: true },
+          }),
+        );
+
+        expect(result.warnings).toEqual([]);
+      });
+
+      it('counts the step extraFields as part of the expected shape', async () => {
+        mockDb.__setResults([[mockProject], []]);
+        mockPipelineSchemasService.getByProjectId.mockResolvedValue([]);
+
+        const result = await sync(
+          syncDto({
+            rules: [uploadRule('src-uploads', { nodeType: "'file'" })],
+            schemas: [{ id: 'src-uploads', name: 'nodes', fields: canonicalFields }],
+            options: { dryRun: true },
+          }),
+        );
+
+        expect(result.warnings[0]).toContain('nodeType');
+      });
+
+      it('falls back to the live schema when the rule references one not in the payload', async () => {
+        mockDb.__setResults([[mockProject], []]);
+        mockPipelineSchemasService.getByProjectId.mockResolvedValue([
+          { id: 'live-uploads', projectId: 'project-1', name: 'legacy_files', fields: [] },
+        ]);
+
+        const result = await sync(
+          syncDto({ rules: [uploadRule('live-uploads')], options: { dryRun: true } }),
+        );
+
+        expect(result.warnings[0]).toContain('legacy_files');
+      });
+
+      it('does not query schemas at all for a rule set with no upload steps', async () => {
+        mockDb.__setResults([[mockProject], []]);
+        mockPipelineSchemasService.getByProjectId.mockResolvedValue([]);
+
+        const result = await sync(syncDto({ options: { dryRun: true } }));
+
+        expect(result.warnings).toEqual([]);
+        expect(mockPipelineSchemasService.getByProjectId).not.toHaveBeenCalled();
+      });
     });
 
     describe('revision capture', () => {

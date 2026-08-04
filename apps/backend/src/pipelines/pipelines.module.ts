@@ -8,6 +8,7 @@ import { ChatSchemaGeneratorService } from './chat-schema-generator.service';
 import { UploadSchemaGeneratorService } from './upload-schema-generator.service';
 import { SchemaGeneratorRevisionsService } from './schema-generator-revisions.service';
 import { UploadRecordService } from './upload-record.service';
+import { UploadSchemaLintService } from './upload-schema-lint.service';
 import {
   PipelineExecutionService,
   StepHandlerRegistry,
@@ -109,6 +110,8 @@ import {
     SchemaGeneratorRevisionsService,
     // Shared upload bookkeeping (used by file_upload + register_upload handlers)
     UploadRecordService,
+    // Advisory upload-schema check for rule authoring paths (sync, MCP)
+    UploadSchemaLintService,
     // Execution engine
     PipelineExecutionService,
     StepHandlerRegistry,
@@ -178,6 +181,7 @@ import {
     SkillsService,
     AIToolPluginService,
     UploadSchemaGeneratorService,
+    UploadSchemaLintService,
     PipelineExecutionLogService,
   ],
 })

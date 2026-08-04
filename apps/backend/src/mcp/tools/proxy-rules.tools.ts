@@ -6,6 +6,7 @@ import { ProxyRuleSetsService } from '../../proxy-rules/proxy-rule-sets.service'
 import { ProxyRulesService } from '../../proxy-rules/proxy-rules.service';
 import { AuthService } from '../../auth/auth.service';
 import { getUserContext } from '../helpers/user-context.helper';
+import { UploadSchemaLintService } from '../../pipelines/upload-schema-lint.service';
 
 const pipelineStepSchema = z.object({
   id: z.string().describe('Unique step ID'),
@@ -101,7 +102,23 @@ export class ProxyRulesTools {
     private readonly proxyRuleSetsService: ProxyRuleSetsService,
     private readonly proxyRulesService: ProxyRulesService,
     private readonly authService: AuthService,
+    private readonly uploadSchemaLint: UploadSchemaLintService,
   ) {}
+
+  /**
+   * Attach upload-schema warnings to a rule result (bffless/ce#630).
+   *
+   * An agent authoring a pipeline never sees the admin UI, so this tool result
+   * is the only place it can learn that the schema it just wired up doesn't
+   * declare what upload handlers write. Advisory: the rule is already saved,
+   * and the key is omitted entirely when there is nothing to say.
+   */
+  private async withUploadSchemaWarnings<T extends { pipelineConfig?: unknown }>(
+    result: T,
+  ): Promise<T | (T & { uploadSchemaWarnings: string[] })> {
+    const warnings = await this.uploadSchemaLint.lintPipelineConfig(result?.pipelineConfig);
+    return warnings.length > 0 ? { ...result, uploadSchemaWarnings: warnings } : result;
+  }
 
   // =====================
   // Rule Set Tools
@@ -299,7 +316,7 @@ export class ProxyRulesTools {
       user.role,
       user.apiKeyProjectId,
     );
-    return JSON.stringify(result);
+    return JSON.stringify(await this.withUploadSchemaWarnings(result));
   }
 
   @Tool({
@@ -372,7 +389,7 @@ export class ProxyRulesTools {
       user.role,
       user.apiKeyProjectId,
     );
-    return JSON.stringify(result);
+    return JSON.stringify(await this.withUploadSchemaWarnings(result));
   }
 
   @Tool({

@@ -247,6 +247,7 @@ export class RegisterUploadHandler
       publicPath: keyParts.publicPath,
       contentHash: metadata.etag ?? null,
       extraData,
+      schemaFields: schema.fields,
     });
 
     return { success: true, output };

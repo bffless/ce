@@ -27,6 +27,7 @@ import { ProxyRulesService } from './proxy-rules.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { NginxRegenerationService } from '../domains/nginx-regeneration.service';
 import { PipelineSchemasService } from '../pipelines/pipeline-schemas.service';
+import { UploadSchemaLintService } from '../pipelines/upload-schema-lint.service';
 import { ProxyRuleSetRevisionsService } from './proxy-rule-set-revisions.service';
 import {
   RULE_KEY_ORDER as BACKEND_RULE_KEY_ORDER,
@@ -402,6 +403,11 @@ describe('server export ↔ CLI canonicalizer equivalence (#448 drift guard)', (
           // present only to satisfy ProxyRuleSetsService's constructor.
           provide: ProxyRuleSetRevisionsService,
           useValue: { capture: jest.fn(), captureIfUnrevisioned: jest.fn() },
+        },
+        {
+          // Likewise unused here — the upload-schema lint runs on sync, not export.
+          provide: UploadSchemaLintService,
+          useValue: { lintWithFields: jest.fn().mockReturnValue([]) },
         },
       ],
     }).compile();

@@ -21,6 +21,8 @@ import {
 import { PermissionsService } from '../permissions/permissions.service';
 import { NginxRegenerationService } from '../domains/nginx-regeneration.service';
 import { PipelineSchemasService } from '../pipelines/pipeline-schemas.service';
+import { LintableSchema, UploadSchemaLintService } from '../pipelines/upload-schema-lint.service';
+import { collectUploadStepRefs } from '../pipelines/upload-schema-contract';
 import {
   ProxyRuleSetRevisionsService,
   computeRevisionHash,
@@ -92,6 +94,8 @@ export class ProxyRuleSetsService {
     @Inject(forwardRef(() => PipelineSchemasService))
     private readonly pipelineSchemasService: PipelineSchemasService,
     private readonly proxyRuleSetRevisionsService: ProxyRuleSetRevisionsService,
+    @Inject(forwardRef(() => UploadSchemaLintService))
+    private readonly uploadSchemaLint: UploadSchemaLintService,
   ) {}
 
   /**
@@ -727,6 +731,62 @@ export class ProxyRuleSetsService {
   }
 
   /**
+   * Warn when a rule's upload step targets a schema that doesn't declare the
+   * fields upload handlers write (bffless/ce#630).
+   *
+   * Warning-level only, matching the schema-mismatch policy above: files still
+   * upload and the record is still correct, so a hard failure would break
+   * pushes for a metadata declaration. `--strict-schemas` deliberately does NOT
+   * cover this — that flag means "live schema drift", and extending it would
+   * fail CI for anyone whose upload schema was always partial.
+   *
+   * Schema fields come from the payload bundle when present (the shape the
+   * schema WILL have, including under `dryRun` where nothing is written), and
+   * from the project's live schemas otherwise. Payload entries are indexed
+   * under both their source id and their remapped target id, because `dryRun`
+   * creates have no target id to remap to.
+   */
+  private async lintUploadSchemas(
+    projectId: string,
+    rules: SyncRuleInput[],
+    payloadSchemas: { id: string; name: string; fields: ComparableSchemaField[] }[] | undefined,
+    idMap: Map<string, string>,
+    apiKeyProjectId?: string | null,
+  ): Promise<string[]> {
+    const referenced = rules.flatMap((rule) => collectUploadStepRefs(rule.pipelineConfig));
+    if (referenced.length === 0) return [];
+
+    const byId = new Map<string, LintableSchema>();
+    for (const schema of payloadSchemas ?? []) {
+      const entry: LintableSchema = { name: schema.name.trim(), fields: schema.fields };
+      byId.set(schema.id, entry);
+      const targetId = idMap.get(schema.id);
+      if (targetId) byId.set(targetId, entry);
+    }
+
+    if (referenced.some((ref) => !byId.has(ref.schemaId))) {
+      const live = await this.pipelineSchemasService.getByProjectId(projectId, apiKeyProjectId);
+      for (const schema of live) {
+        if (!byId.has(schema.id)) byId.set(schema.id, { name: schema.name, fields: schema.fields });
+      }
+    }
+
+    const warnings: string[] = [];
+    const seen = new Set<string>();
+    for (const rule of rules) {
+      for (const warning of this.uploadSchemaLint.lintWithFields(rule.pipelineConfig, (id) =>
+        byId.get(id),
+      )) {
+        // Two rules sharing one bad schema is one problem, not two.
+        if (seen.has(warning)) continue;
+        seen.add(warning);
+        warnings.push(warning);
+      }
+    }
+    return warnings;
+  }
+
+  /**
    * Resolve bundled schema definitions against the target project by NAME —
    * the non-interactive counterpart of importRuleSet's resolution block, for
    * the sync path (Task 6/7 of the Phase 1 plan). No `ImportSchemaResolutionDto`
@@ -958,6 +1018,19 @@ export class ProxyRuleSetsService {
     // with an empty idMap the rules still alias the request DTO, so downstream
     // code must not mutate them in place.
     const incomingRules = idMap.size > 0 ? remapSchemaIds(dtoRules, idMap) : dtoRules;
+
+    // Advisory: an upload step whose target schema doesn't declare what upload
+    // handlers write. Runs on the remapped rules so ids match the target
+    // project, and before any writing so `dryRun` reports it too.
+    warnings.push(
+      ...(await this.lintUploadSchemas(
+        projectId,
+        incomingRules,
+        dto.schemas,
+        idMap,
+        apiKeyProjectId,
+      )),
+    );
 
     const existing = await this.findByName(projectId, name);
     const setCreated = !existing;
