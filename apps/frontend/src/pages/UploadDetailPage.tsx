@@ -42,6 +42,15 @@ function getPreviewUrl(storagePath: string): string {
 }
 
 /**
+ * Every record written by an upload handler carries `storage_path` — it is what
+ * makes a record an uploaded file rather than an arbitrary row. A schema is free
+ * to hold both (an app modelling a file tree stores its folders as rows in the
+ * same schema), so this view lists only the rows that reference stored bytes;
+ * the rest are shown as a count with a pointer to the Data tab.
+ */
+const FILE_MARKER_FIELD = 'storage_path';
+
+/**
  * UploadDetailPage - Shows uploaded files for a specific upload schema.
  * Route: /repo/:owner/:repo/uploads/:schemaId
  */
@@ -80,7 +89,12 @@ export function UploadDetailPage() {
 
   useDocumentTitle(schema ? [schema.name, 'Uploads', `${owner}/${repo}`] : null);
 
-  // Fetch uploaded files (pipeline data records)
+  // Only records that actually reference stored bytes belong in an uploads list.
+  const hasFileMarker = schema?.fields?.some((f) => f.name === FILE_MARKER_FIELD) ?? false;
+
+  // Fetch uploaded files (pipeline data records). Waits for the schema so the
+  // file filter is known up front — otherwise the first render would briefly
+  // list non-file records.
   const {
     data: filesData,
     isLoading: isLoadingFiles,
@@ -92,10 +106,13 @@ export function UploadDetailPage() {
       search: debouncedSearch || undefined,
       createdAfter: dateFrom ? new Date(dateFrom).toISOString() : undefined,
       createdBefore: dateTo ? new Date(dateTo + 'T23:59:59').toISOString() : undefined,
+      filters: hasFileMarker
+        ? { [FILE_MARKER_FIELD]: { op: 'exists' as const, value: 'true' } }
+        : undefined,
       sortBy: 'createdAt',
       sortOrder: 'desc',
     },
-    { skip: !schemaId },
+    { skip: !schemaId || !schema },
   );
 
   const [deleteRecord, { isLoading: isDeleting }] = useDeleteRecordMutation();
@@ -138,6 +155,15 @@ export function UploadDetailPage() {
   const isLoading = isLoadingSchema || isLoadingFiles;
   const files = filesData?.records || [];
   const totalPages = filesData?.totalPages || 1;
+
+  // Records held back by the file filter. Only meaningful against an unfiltered
+  // list — schema.recordCount is the whole schema, so a search or date range
+  // would make the subtraction lie.
+  const isUnfiltered = !debouncedSearch && !dateFrom && !dateTo;
+  const nonFileCount =
+    hasFileMarker && isUnfiltered && schema && filesData
+      ? Math.max(0, schema.recordCount - filesData.total)
+      : 0;
 
   const formatFileSize = (bytes: unknown): string => {
     const size = Number(bytes);
@@ -187,6 +213,18 @@ export function UploadDetailPage() {
             <CardTitle>{schema?.name || 'Upload Schema'}</CardTitle>
             <CardDescription>
               {filesData?.total || 0} uploaded file{(filesData?.total || 0) !== 1 ? 's' : ''}
+              {nonFileCount > 0 && (
+                <>
+                  {' · '}
+                  {nonFileCount} record{nonFileCount !== 1 ? 's' : ''} without a file (not shown){' '}
+                  <Link
+                    to={`/repo/${owner}/${repo}/data/${schemaId}`}
+                    className="underline underline-offset-2 hover:text-foreground"
+                  >
+                    view in Data
+                  </Link>
+                </>
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent>

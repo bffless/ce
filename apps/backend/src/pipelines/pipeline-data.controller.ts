@@ -51,7 +51,7 @@ export class PipelineDataController {
   @ApiQuery({ name: 'createdBefore', required: false, type: String, description: 'ISO date for createdAt <= filter' })
   @ApiQuery({ name: 'updatedAfter', required: false, type: String, description: 'ISO date for updatedAt >= filter' })
   @ApiQuery({ name: 'updatedBefore', required: false, type: String, description: 'ISO date for updatedAt <= filter' })
-  @ApiQuery({ name: 'filters', required: false, type: String, description: 'JSON string of field filters: {"fieldName":{"op":"eq","value":"xxx"}}' })
+  @ApiQuery({ name: 'filters', required: false, type: String, description: 'JSON string of field filters: {"fieldName":{"op":"eq","value":"xxx"}}. Ops: eq, ne, gt, lt, gte, lte, like, exists (value "true"/"false" — filters on the field being present rather than its value)' })
   @ApiQuery({ name: 'sortBy', required: false, type: String, description: 'Field to sort by (createdAt, updatedAt, or data field name)' })
   @ApiQuery({ name: 'sortOrder', required: false, enum: ['asc', 'desc'], description: 'Sort order' })
   @ApiResponse({ status: 200, description: 'Paginated data records', type: PaginatedDataResponseDto })

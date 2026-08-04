@@ -112,7 +112,8 @@ export interface GenerateUploadSchemaResponse {
 }
 
 export interface FieldFilter {
-  op: 'eq' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte' | 'like';
+  /** `exists` filters on presence of the field, with value 'true' | 'false'. */
+  op: 'eq' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte' | 'like' | 'exists';
   value: string;
 }
 

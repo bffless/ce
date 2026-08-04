@@ -125,6 +125,15 @@ export class PipelineDataService {
             case 'like':
               conditions.push(sql`${fieldPath} ILIKE ${`%${value}%`}`);
               break;
+            case 'exists':
+              // Presence rather than value: `->>` yields NULL both when the key is
+              // absent and when its value is JSON null, which is exactly what
+              // "this record has no such field" means for a heterogeneous schema
+              // (e.g. file rows and folder rows sharing one schema).
+              conditions.push(
+                value === 'false' ? sql`${fieldPath} IS NULL` : sql`${fieldPath} IS NOT NULL`,
+              );
+              break;
           }
         }
       }
