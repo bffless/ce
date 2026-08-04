@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.17](https://github.com/bffless/ce/compare/v0.4.16...v0.4.17) (2026-08-04)
+
+
+### Features
+
+* warn when an upload schema doesn't match what upload handlers write ([#632](https://github.com/bffless/ce/issues/632)) ([9a42cd7](https://github.com/bffless/ce/commit/9a42cd75d89448c3541b83b5cb2bd33474173871))
+
+
+### Bug Fixes
+
+* count files, not rows, on the Uploads schema cards ([#631](https://github.com/bffless/ce/issues/631)) ([a34162e](https://github.com/bffless/ce/commit/a34162e8b4973ce5ba5f1f8957adc1660fcc5cd1))
+
 ## [0.4.16](https://github.com/bffless/ce/compare/v0.4.15...v0.4.16) (2026-08-04)
 
 
