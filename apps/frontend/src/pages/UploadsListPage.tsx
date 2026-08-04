@@ -11,7 +11,11 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Upload, Zap, FileImage, ArrowRight } from 'lucide-react';
-import { useGetProjectSchemasQuery, PipelineSchemaWithCount } from '@/services/pipelineSchemasApi';
+import {
+  useGetProjectSchemasQuery,
+  useGetSchemaDataQuery,
+  PipelineSchemaWithCount,
+} from '@/services/pipelineSchemasApi';
 import { useGetProjectQuery } from '@/services/projectsApi';
 import { useProjectRole } from '@/hooks/useProjectRole';
 import { GenerateUploadModal } from '@/components/uploads/GenerateUploadModal';
@@ -216,6 +220,21 @@ function SchemaCard({
   schema: PipelineSchemaWithCount;
   onClick: () => void;
 }) {
+  // `recordCount` counts every row in the schema, so for a schema that also
+  // holds non-file rows it overstates the uploads (a file tree stored as one
+  // schema counts its folders). Ask for the same file-only total the detail
+  // view shows, so the two pages can't disagree; pageSize 1 because only the
+  // total is wanted.
+  const { data: fileData } = useGetSchemaDataQuery({
+    schemaId: schema.id,
+    page: 1,
+    pageSize: 1,
+    filters: { storage_path: { op: 'exists', value: 'true' } },
+  });
+
+  const fileCount = fileData?.total;
+  const nonFileCount = fileCount === undefined ? 0 : Math.max(0, schema.recordCount - fileCount);
+
   return (
     <Card
       className="cursor-pointer hover:bg-muted/50 transition-colors"
@@ -230,12 +249,14 @@ function SchemaCard({
             <div>
               <h3 className="font-medium">{schema.name}</h3>
               <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                {/* recordCount counts every row in the schema, and a schema may
-                    hold non-file rows too — so this is a record count, not a
-                    file count. The detail view reports the file total. */}
-                <span>
-                  {schema.recordCount} record{schema.recordCount !== 1 ? 's' : ''}
-                </span>
+                {fileCount === undefined ? (
+                  <Skeleton className="h-4 w-16" />
+                ) : (
+                  <span>
+                    {fileCount} file{fileCount !== 1 ? 's' : ''}
+                    {nonFileCount > 0 && ` · ${nonFileCount} non-file record${nonFileCount !== 1 ? 's' : ''}`}
+                  </span>
+                )}
               </div>
             </div>
           </div>
