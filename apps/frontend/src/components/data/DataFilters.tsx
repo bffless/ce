@@ -87,6 +87,7 @@ function formatOperator(op: FieldFilter['op']): string {
     gte: '>=',
     lte: '<=',
     like: 'contains',
+    exists: 'has value',
   };
   return labels[op];
 }

@@ -230,8 +230,11 @@ function SchemaCard({
             <div>
               <h3 className="font-medium">{schema.name}</h3>
               <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                {/* recordCount counts every row in the schema, and a schema may
+                    hold non-file rows too — so this is a record count, not a
+                    file count. The detail view reports the file total. */}
                 <span>
-                  {schema.recordCount} file{schema.recordCount !== 1 ? 's' : ''}
+                  {schema.recordCount} record{schema.recordCount !== 1 ? 's' : ''}
                 </span>
               </div>
             </div>
