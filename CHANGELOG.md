@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.16](https://github.com/bffless/ce/compare/v0.4.15...v0.4.16) (2026-08-04)
+
+
+### Bug Fixes
+
+* list only file records in the Uploads tab ([#628](https://github.com/bffless/ce/issues/628)) ([e0e274f](https://github.com/bffless/ce/commit/e0e274fe2a9110fc34ad35949eba152ccfd3ebfa))
+
 ## [0.4.15](https://github.com/bffless/ce/compare/v0.4.14...v0.4.15) (2026-08-03)
 
 
