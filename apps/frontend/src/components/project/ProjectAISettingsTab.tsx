@@ -902,7 +902,7 @@ export function ProjectAISettingsTab({ project }: ProjectAISettingsTabProps) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Bot className="h-5 w-5" />
-            AI Settings
+            LLM Providers
           </CardTitle>
         </CardHeader>
         <CardContent>
