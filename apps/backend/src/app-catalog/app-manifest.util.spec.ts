@@ -200,6 +200,114 @@ describe('validateAppManifest', () => {
 
     expect(result.ok).toBe(true);
   });
+
+  it('accepts a manual step with an external link', () => {
+    const result = validateAppManifest({
+      ...TEST_MANIFEST,
+      install: {
+        ...TEST_MANIFEST.install,
+        manualSteps: [
+          {
+            id: 'add-hf-token',
+            title: 'Optional: HF_TOKEN for speaker diarization',
+            body: 'Create a secret named HF_TOKEN.',
+            externalLink: {
+              label: 'Get a Hugging Face token',
+              url: 'https://huggingface.co/settings/tokens',
+            },
+          },
+        ],
+      },
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
+  it('rejects an external link missing a label', () => {
+    const result = validateAppManifest({
+      ...TEST_MANIFEST,
+      install: {
+        ...TEST_MANIFEST.install,
+        manualSteps: [
+          {
+            id: 'a',
+            title: 'T',
+            body: 'B',
+            externalLink: { url: 'https://example.com' },
+          },
+        ],
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toContain(
+        'install.manualSteps[0].externalLink.label: required string',
+      );
+    }
+  });
+
+  it('rejects a non-https external link', () => {
+    const result = validateAppManifest({
+      ...TEST_MANIFEST,
+      install: {
+        ...TEST_MANIFEST.install,
+        manualSteps: [
+          {
+            id: 'a',
+            title: 'T',
+            body: 'B',
+            externalLink: { label: 'Docs', url: 'http://example.com' },
+          },
+        ],
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toContain(
+        'install.manualSteps[0].externalLink.url: must be an https:// URL',
+      );
+    }
+  });
+
+  it('rejects an external link that is not an object', () => {
+    const result = validateAppManifest({
+      ...TEST_MANIFEST,
+      install: {
+        ...TEST_MANIFEST.install,
+        manualSteps: [
+          { id: 'a', title: 'T', body: 'B', externalLink: 'https://example.com' },
+        ],
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toContain('install.manualSteps[0].externalLink: must be an object');
+    }
+  });
+
+  it('does not apply placeholder validation to an external link url', () => {
+    // externalLink is a literal external URL, not a templated admin path, so
+    // a brace in it is a plain character and must not be read as a token.
+    const result = validateAppManifest({
+      ...TEST_MANIFEST,
+      install: {
+        ...TEST_MANIFEST.install,
+        manualSteps: [
+          {
+            id: 'a',
+            title: 'T',
+            body: 'B',
+            externalLink: { label: 'Docs', url: 'https://example.com/a{b}c' },
+          },
+        ],
+      },
+    });
+
+    expect(result.ok).toBe(true);
+  });
 });
 
 describe('validateRegistry', () => {

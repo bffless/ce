@@ -13,11 +13,19 @@ export const APPLIES_WHEN_VALUES: readonly AppliesWhen[] = [
   'selfHosted',
 ];
 
+/** An off-CE destination where a credential is obtained (e.g. a provider's
+ *  token page). Rendered beside `deepLink`, which goes into the admin panel. */
+export interface AppManualStepExternalLink {
+  label: string;
+  url: string;
+}
+
 export interface AppManualStep {
   id: string;
   title: string;
   body: string;
   deepLink?: string;
+  externalLink?: AppManualStepExternalLink;
   appliesWhen?: AppliesWhen;
 }
 
