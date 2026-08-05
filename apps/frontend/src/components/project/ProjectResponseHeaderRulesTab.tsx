@@ -67,20 +67,42 @@ const defaultRuleForm: CreateResponseHeaderRuleDto = {
   description: '',
 };
 
-const presets = [
+export interface HeaderRulePreset {
+  name: string;
+  pathPattern: string;
+  framePolicy: 'allow' | 'deny' | 'sameorigin';
+  allowedOrigins: string[];
+  description: string;
+  customHeaders?: { name: string; value: string }[];
+}
+
+// eslint-disable-next-line react-refresh/only-export-components -- exported for unit testing (see __tests__/responseHeaderPresets.test.ts)
+export const presets: HeaderRulePreset[] = [
   {
     name: 'Embed Widget',
     pathPattern: 'embed/**',
-    framePolicy: 'allow' as const,
+    framePolicy: 'allow',
     allowedOrigins: [],
     description: 'Allow iframe embedding of widget pages (add allowed origins below)',
   },
   {
     name: 'Block Framing',
     pathPattern: '**',
-    framePolicy: 'deny' as const,
+    framePolicy: 'deny',
     allowedOrigins: [],
     description: 'Prevent all iframe embedding',
+  },
+  {
+    name: 'Cross-Origin Isolation',
+    pathPattern: '**',
+    framePolicy: 'sameorigin',
+    allowedOrigins: [],
+    description:
+      'Enable SharedArrayBuffer for multithreaded WebAssembly (in-browser video export)',
+    customHeaders: [
+      { name: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
+      { name: 'Cross-Origin-Embedder-Policy', value: 'credentialless' },
+    ],
   },
 ];
 
@@ -149,7 +171,7 @@ export function ProjectResponseHeaderRulesTab({ project }: ProjectResponseHeader
     setShowRuleDialog(true);
   };
 
-  const applyPreset = (preset: (typeof presets)[0]) => {
+  const applyPreset = (preset: HeaderRulePreset) => {
     setRuleForm({
       ...defaultRuleForm,
       pathPattern: preset.pathPattern,
@@ -159,7 +181,7 @@ export function ProjectResponseHeaderRulesTab({ project }: ProjectResponseHeader
       description: preset.description,
     });
     setOriginsText(preset.allowedOrigins.join('\n'));
-    setCustomHeaderRows([]);
+    setCustomHeaderRows(preset.customHeaders ? [...preset.customHeaders] : []);
   };
 
   const handleEditRule = (rule: ResponseHeaderRule) => {
