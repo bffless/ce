@@ -1,8 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { SchemaField } from '../../db/schema';
+import { SchemaField, SchemaKind } from '../../db/schema';
 import { HttpMethod, ValidatorConfig, HandlerType } from '../types';
 
-export { SchemaField };
+export { SchemaField, SchemaKind };
 
 /**
  * Pipeline response DTO
@@ -112,6 +112,17 @@ export class PipelineSchemaResponseDto {
 
   @ApiProperty()
   fields: SchemaField[];
+
+  @ApiProperty({
+    nullable: true,
+    enum: ['upload', 'chat', 'state'],
+    description:
+      'What this schema is for, as declared at creation. Null for schemas created before ' +
+      'the field existed or authored by hand — consumers must treat null as unknown rather ' +
+      'than as "plain data". Declares primary intent: an upload schema may still hold rows ' +
+      'that are not files.',
+  })
+  kind: SchemaKind | null;
 
   @ApiProperty()
   createdAt: Date;

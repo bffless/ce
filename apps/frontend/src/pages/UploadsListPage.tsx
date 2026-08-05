@@ -19,15 +19,7 @@ import {
 import { useGetProjectQuery } from '@/services/projectsApi';
 import { useProjectRole } from '@/hooks/useProjectRole';
 import { GenerateUploadModal } from '@/components/uploads/GenerateUploadModal';
-
-/**
- * Heuristic: a schema is "likely" an upload schema if it has these fields.
- * Used only for sorting — generated upload schemas appear first in the list.
- */
-function looksLikeUploadSchema(schema: PipelineSchemaWithCount): boolean {
-  const fieldNames = new Set(schema.fields.map((f) => f.name));
-  return fieldNames.has('storage_path') && fieldNames.has('content_type') && fieldNames.has('url');
-}
+import { isUploadSchema } from '@/lib/schemaKind';
 
 /**
  * UploadsListPage - Content for the Uploads tab.
@@ -62,15 +54,15 @@ export function UploadsListPage() {
 
   // Sort: upload-like schemas first, then alphabetical
   const sortedSchemas = [...allSchemas].sort((a, b) => {
-    const aUpload = looksLikeUploadSchema(a);
-    const bUpload = looksLikeUploadSchema(b);
+    const aUpload = isUploadSchema(a);
+    const bUpload = isUploadSchema(b);
     if (aUpload && !bUpload) return -1;
     if (!aUpload && bUpload) return 1;
     return a.name.localeCompare(b.name);
   });
 
-  const uploadLikeSchemas = sortedSchemas.filter(looksLikeUploadSchema);
-  const otherSchemas = sortedSchemas.filter((s) => !looksLikeUploadSchema(s));
+  const uploadLikeSchemas = sortedSchemas.filter(isUploadSchema);
+  const otherSchemas = sortedSchemas.filter((s) => !isUploadSchema(s));
 
   // Loading state
   if (isLoading) {

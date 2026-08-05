@@ -168,6 +168,9 @@ export const SchemaManifestSchema = z
   .object({
     id: z.string().uuid().optional(),
     name: z.string(),
+    // Declares what the schema is FOR. Adopted by `rules push` onto a live
+    // schema that has none; a genuine conflict warns and the live value wins.
+    kind: z.enum(['upload', 'chat', 'state']).optional(),
     fields: z.array(SchemaFieldSchema),
   })
   .strict();

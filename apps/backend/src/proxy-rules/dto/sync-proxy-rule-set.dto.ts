@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional, OmitType } from '@nestjs/swagger';
 import {
   IsArray,
   IsBoolean,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -17,6 +18,7 @@ import { CreateProxyRuleDto, IsValidTargetUrlOrPath } from './create-proxy-rule.
 import { CreateProxyRuleSetDto } from './proxy-rule-set.dto';
 import { SchemaFieldDto } from '../../pipelines/dto/create-pipeline-schema.dto';
 import type { ProxyType } from '../../db/schema/proxy-rules.schema';
+import type { SchemaKind } from '../../db/schema/pipeline-schemas.schema';
 
 /**
  * DTOs for the idempotent sync endpoint
@@ -101,6 +103,16 @@ export class SyncSchemaDto {
   @IsString()
   @MaxLength(255)
   name: string;
+
+  @ApiPropertyOptional({
+    enum: ['upload', 'chat', 'state'],
+    description:
+      'Declared purpose of the schema. Adopted onto a live schema that has none; a genuine ' +
+      'conflict warns and leaves the live value alone.',
+  })
+  @IsOptional()
+  @IsIn(['upload', 'chat', 'state'])
+  kind?: SchemaKind;
 
   @ApiProperty({ type: [SchemaFieldDto], description: 'Schema field definitions' })
   @IsArray()
@@ -250,6 +262,14 @@ export class SyncSchemaResolutionDto {
 
   @ApiProperty({ description: 'Whether the reused schema has mismatched field definitions' })
   fieldMismatch: boolean;
+
+  @ApiProperty({
+    description:
+      'Whether the payload\'s declared kind was written onto a live schema that had none ' +
+      '(true under dryRun means it would be). Adoption only ever fills a null — a declared ' +
+      'kind is never rewritten.',
+  })
+  kindAdopted: boolean;
 }
 
 /**

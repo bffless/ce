@@ -1,7 +1,13 @@
 import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
-import { eq, and, count } from 'drizzle-orm';
+import { eq, and, count, isNull } from 'drizzle-orm';
 import { db } from '../db/client';
-import { pipelineSchemas, pipelineData, PipelineSchema, NewPipelineSchema } from '../db/schema';
+import {
+  pipelineSchemas,
+  pipelineData,
+  PipelineSchema,
+  NewPipelineSchema,
+  SchemaKind,
+} from '../db/schema';
 import { PermissionsService } from '../permissions/permissions.service';
 import { CreatePipelineSchemaDto, UpdatePipelineSchemaDto } from './dto';
 
@@ -108,12 +114,32 @@ export class PipelineSchemasService {
           ...f,
           required: f.required ?? false,
         })),
+        // Declared intent, never inferred — absent means "not declared", which
+        // is what every pre-existing schema carries (bffless/ce#633).
+        kind: dto.kind ?? null,
       } as NewPipelineSchema)
       .returning();
 
     this.logger.log(`Created schema '${dto.name}' (${schema.id}) for project ${dto.projectId}`);
 
     return schema;
+  }
+
+  /**
+   * Fill in a schema's `kind` — only ever from null, never a rewrite.
+   *
+   * Separate from {@link update} on purpose: this is a narrow, additive
+   * declaration used by the rules-as-code sync so a schema that predates the
+   * column can adopt one (bffless/ce#633). It is guarded in SQL as well as by
+   * the caller, so a concurrent sync can't clobber a kind set in between; and
+   * it deliberately does NOT bump `version`, which tracks field changes that
+   * data records are associated with.
+   */
+  async adoptKind(id: string, kind: SchemaKind): Promise<void> {
+    await db
+      .update(pipelineSchemas)
+      .set({ kind, updatedAt: new Date() })
+      .where(and(eq(pipelineSchemas.id, id), isNull(pipelineSchemas.kind)));
   }
 
   /**

@@ -17,8 +17,12 @@ import { resolveRuleSetDirs } from '../config.js';
 export interface InitOptions {
   schema?: string;
   field?: string[];
+  kind?: string;
   force?: boolean;
 }
+
+/** Declared schema purposes the server accepts (mirrors the backend's `SchemaKind`). */
+export const SCHEMA_KINDS = ['upload', 'chat', 'state'] as const;
 
 export interface InitOutcome {
   ok: boolean;
@@ -59,7 +63,7 @@ function parseFieldSpec(spec: string): ParsedField | string {
   return { name, type, required: flag === 'required' };
 }
 
-function schemaYaml(name: string, fields: ParsedField[]): string {
+function schemaYaml(name: string, fields: ParsedField[], kind?: string): string {
   const header = [
     `# Pipeline schema "${name}" — reference it from rules as \`$schema:${name}\`.`,
     '#',
@@ -70,8 +74,16 @@ function schemaYaml(name: string, fields: ParsedField[]): string {
     '# first push; edit live fields in the dashboard.',
     '#',
     `# Field types: ${SCHEMA_FIELD_TYPES.join(' | ')}`,
+    '#',
+    `# kind: ${SCHEMA_KINDS.join(' | ')} — optional; declares what the schema is FOR so the`,
+    '# dashboard stops guessing from field names. Adopted onto a live schema that has none;',
+    '# a conflict warns and the live value wins.',
   ].join('\n');
-  const body = stringifyYaml({ name, fields }, { blockQuote: 'literal', lineWidth: 0 });
+  // Key order matches the compiler's export entry (name, kind, fields).
+  const body = stringifyYaml(
+    kind ? { name, kind, fields } : { name, fields },
+    { blockQuote: 'literal', lineWidth: 0 },
+  );
   const example =
     fields.length > 0
       ? ''
@@ -130,11 +142,15 @@ export function runInit(dir: string | undefined, opts: InitOptions, cwd: string)
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 
+  if (opts.kind !== undefined && !(SCHEMA_KINDS as readonly string[]).includes(opts.kind)) {
+    return { ok: false, error: `invalid --kind "${opts.kind}" — one of ${SCHEMA_KINDS.join(', ')}` };
+  }
+
   const outFile = path.join(setDir, 'schemas', `${name}.schema.yaml`);
   if (existsSync(outFile) && !opts.force) {
     return { ok: false, error: `${path.relative(cwd, outFile)} already exists (use --force to overwrite)` };
   }
   mkdirSync(path.dirname(outFile), { recursive: true });
-  writeFileSync(outFile, schemaYaml(name, fields), 'utf8');
+  writeFileSync(outFile, schemaYaml(name, fields, opts.kind), 'utf8');
   return { ok: true, outFile, hint: `reference it from a rule pipeline as $schema:${name}` };
 }

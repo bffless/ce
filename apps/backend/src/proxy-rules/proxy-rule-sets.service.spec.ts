@@ -104,6 +104,7 @@ describe('ProxyRuleSetsService', () => {
     getById: jest.fn(),
     getByProjectId: jest.fn(),
     create: jest.fn(),
+    adoptKind: jest.fn(),
   };
 
   // Plain-object mock, per the brief: the DB-mock result slots must not change
@@ -670,6 +671,7 @@ describe('ProxyRuleSetsService', () => {
           action: 'reuse',
           targetSchemaId: 'existing-comments-id',
           fieldMismatch: false,
+          kindAdopted: false,
         },
       ]);
       expect(result.warnings).toEqual([]);
@@ -691,6 +693,7 @@ describe('ProxyRuleSetsService', () => {
         action: 'reuse',
         targetSchemaId: 'existing-comments-id',
         fieldMismatch: true,
+        kindAdopted: false,
       });
       expect(result.warnings).toEqual([
         'Schema "comments": field "body": type string (incoming) vs text (existing)',
@@ -749,6 +752,7 @@ describe('ProxyRuleSetsService', () => {
           action: 'create',
           targetSchemaId: 'created-brand-new',
           fieldMismatch: false,
+          kindAdopted: false,
         },
       ]);
       expect(result.warnings).toEqual([]);
@@ -762,7 +766,7 @@ describe('ProxyRuleSetsService', () => {
 
       expect(mockPipelineSchemasService.create).not.toHaveBeenCalled();
       expect(result.resolutions).toEqual([
-        { name: 'brand-new', action: 'create', targetSchemaId: null, fieldMismatch: false },
+        { name: 'brand-new', action: 'create', targetSchemaId: null, fieldMismatch: false, kindAdopted: false },
       ]);
       expect(result.idMap.has('src-1')).toBe(false);
     });
@@ -790,13 +794,15 @@ describe('ProxyRuleSetsService', () => {
           action: 'reuse',
           targetSchemaId: 'existing-comments-id',
           fieldMismatch: false,
+          kindAdopted: false,
         },
-        { name: 'votes', action: 'reuse', targetSchemaId: 'existing-votes-id', fieldMismatch: true },
+        { name: 'votes', action: 'reuse', targetSchemaId: 'existing-votes-id', fieldMismatch: true, kindAdopted: false },
         {
           name: 'brand-new',
           action: 'create',
           targetSchemaId: 'created-brand-new',
           fieldMismatch: false,
+          kindAdopted: false,
         },
       ]);
       expect(result.warnings).toEqual([
@@ -851,7 +857,7 @@ describe('ProxyRuleSetsService', () => {
         { strictSchemas: false, dryRun: true },
       );
       expect(result.resolutions).toEqual([
-        { name: 'comments', action: 'reuse', targetSchemaId: 'existing-comments-id', fieldMismatch: false },
+        { name: 'comments', action: 'reuse', targetSchemaId: 'existing-comments-id', fieldMismatch: false, kindAdopted: false },
       ]);
       expect(result.idMap.get('src-1')).toBe('existing-comments-id');
       expect(mockPipelineSchemasService.create).not.toHaveBeenCalled();
@@ -1524,9 +1530,110 @@ describe('ProxyRuleSetsService', () => {
           action: 'reuse',
           targetSchemaId: 'target-comments-id',
           fieldMismatch: false,
+          kindAdopted: false,
         },
       ]);
       expect(result.created).toEqual([{ pathPattern: '/api/comments', method: 'GET' }]);
+    });
+
+    /**
+     * bffless/ce#633 — `kind` is adopted onto a live schema that has none (the
+     * only route by which a schema predating the column can declare itself),
+     * but a genuine disagreement never rewrites the live value: silently
+     * reclassifying someone's schema from a config file is not a change a push
+     * should make on its own.
+     */
+    describe('schema kind adoption', () => {
+      const withKind = (kind?: string) => ({
+        id: 'src-uploads',
+        name: 'uploads',
+        ...(kind ? { kind } : {}),
+        fields: [{ name: 'url', type: 'string' }],
+      });
+
+      const liveSchema = (kind: string | null) => ({
+        id: 'live-uploads',
+        projectId: 'project-1',
+        name: 'uploads',
+        kind,
+        fields: [{ name: 'url', type: 'string', required: false }],
+      });
+
+      it('adopts a declared kind onto a live schema that has none', async () => {
+        mockDb.__setResults([[mockProject], []]);
+        mockPipelineSchemasService.getByProjectId.mockResolvedValue([liveSchema(null)]);
+
+        const result = await sync(syncDto({ schemas: [withKind('upload')] }));
+
+        expect(mockPipelineSchemasService.adoptKind).toHaveBeenCalledWith('live-uploads', 'upload');
+        expect(result.schemaResolutions[0]).toMatchObject({
+          name: 'uploads',
+          action: 'reuse',
+          kindAdopted: true,
+        });
+        expect(result.warnings).toEqual([]);
+      });
+
+      it('reports the adoption under dryRun without writing it', async () => {
+        mockDb.__setResults([[mockProject], []]);
+        mockPipelineSchemasService.getByProjectId.mockResolvedValue([liveSchema(null)]);
+
+        const result = await sync(
+          syncDto({ schemas: [withKind('upload')], options: { dryRun: true } }),
+        );
+
+        expect(result.schemaResolutions[0].kindAdopted).toBe(true);
+        expect(mockPipelineSchemasService.adoptKind).not.toHaveBeenCalled();
+      });
+
+      it('keeps the live kind on a conflict and says so', async () => {
+        mockDb.__setResults([[mockProject], []]);
+        mockPipelineSchemasService.getByProjectId.mockResolvedValue([liveSchema('upload')]);
+
+        const result = await sync(syncDto({ schemas: [withKind('chat')] }));
+
+        expect(mockPipelineSchemasService.adoptKind).not.toHaveBeenCalled();
+        expect(result.schemaResolutions[0].kindAdopted).toBe(false);
+        expect(result.warnings[0]).toContain('declared kind "chat"');
+        expect(result.warnings[0]).toContain('keeping the live kind');
+      });
+
+      it('is silent when the declared kind already matches', async () => {
+        mockDb.__setResults([[mockProject], []]);
+        mockPipelineSchemasService.getByProjectId.mockResolvedValue([liveSchema('upload')]);
+
+        const result = await sync(syncDto({ schemas: [withKind('upload')] }));
+
+        expect(mockPipelineSchemasService.adoptKind).not.toHaveBeenCalled();
+        expect(result.warnings).toEqual([]);
+      });
+
+      it('leaves a live kind alone when the payload declares none', async () => {
+        mockDb.__setResults([[mockProject], []]);
+        mockPipelineSchemasService.getByProjectId.mockResolvedValue([liveSchema('upload')]);
+
+        const result = await sync(syncDto({ schemas: [withKind()] }));
+
+        expect(mockPipelineSchemasService.adoptKind).not.toHaveBeenCalled();
+        expect(result.warnings).toEqual([]);
+        expect(result.schemaResolutions[0].kindAdopted).toBe(false);
+      });
+
+      it('creates a new schema with the declared kind, adopting nothing', async () => {
+        mockDb.__setResults([[mockProject], []]);
+        mockPipelineSchemasService.getByProjectId.mockResolvedValue([]);
+        mockPipelineSchemasService.create.mockResolvedValue({ id: 'new-id' });
+
+        const result = await sync(syncDto({ schemas: [withKind('upload')] }));
+
+        expect(mockPipelineSchemasService.create).toHaveBeenCalledWith(
+          expect.objectContaining({ name: 'uploads', kind: 'upload' }),
+          'user-1',
+          'admin',
+          'project-1',
+        );
+        expect(result.schemaResolutions[0]).toMatchObject({ action: 'create', kindAdopted: false });
+      });
     });
 
     /**

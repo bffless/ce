@@ -7,7 +7,7 @@ import { PipelineDataService } from '../../pipelines/pipeline-data.service';
 import { PipelineExecutionLogService } from '../../pipelines/pipeline-execution-log.service';
 import { UploadSchemaGeneratorService } from '../../pipelines/upload-schema-generator.service';
 import { ProxyRulesService } from '../../proxy-rules/proxy-rules.service';
-import { SchemaFieldType } from '../../db/schema';
+import { SchemaFieldType, SchemaKind } from '../../db/schema';
 import { AuthService } from '../../auth/auth.service';
 import { getUserContext } from '../helpers/user-context.helper';
 
@@ -74,6 +74,14 @@ export class PipelineTools {
           }),
         )
         .describe('Schema field definitions'),
+      kind: z
+        .enum(['upload', 'chat', 'state'])
+        .optional()
+        .describe(
+          'What this schema is for. Declares primary intent (an upload schema may still hold ' +
+            'rows that are not files); omit for a plain data schema. Cannot be inferred later ' +
+            'without guessing from field names.',
+        ),
     }),
   })
   async createSchema(
@@ -86,6 +94,7 @@ export class PipelineTools {
         required?: boolean;
         description?: string;
       }>;
+      kind?: SchemaKind;
     },
     _context: Context,
     request: Request,
@@ -96,6 +105,7 @@ export class PipelineTools {
         projectId: args.projectId,
         name: args.name,
         fields: args.fields.map((f) => ({ name: f.name, type: f.type, required: f.required })),
+        kind: args.kind,
       },
       user.id,
       user.role,

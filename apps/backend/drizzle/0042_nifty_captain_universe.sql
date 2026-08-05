@@ -1,0 +1,1 @@
+ALTER TABLE "pipeline_schemas" ADD COLUMN "kind" varchar(32);

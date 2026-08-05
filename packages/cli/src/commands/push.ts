@@ -86,6 +86,13 @@ export function formatSyncReport(setName: string, res: SyncResponse): string {
     );
   }
 
+  // Adoption is an action, not a warning: the sync filled in a kind the live
+  // schema was missing, so say so rather than leaving it to the schema list.
+  const adopted = res.schemaResolutions.filter((r) => r.kindAdopted);
+  if (adopted.length > 0) {
+    lines.push(`  declared kind adopted by: ${adopted.map((r) => r.name).join(', ')}`);
+  }
+
   for (const w of res.warnings) lines.push(`  warning: ${w}`);
 
   return lines.join('\n');

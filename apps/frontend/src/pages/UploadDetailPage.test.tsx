@@ -98,6 +98,18 @@ describe('UploadDetailPage', () => {
     expect(screen.queryByText(/without a file/)).not.toBeInTheDocument();
   });
 
+  it('filters a declared upload schema even when it declares no fields (ce#633)', () => {
+    // Records carry storage_path whatever the schema says, so an under-declared
+    // upload schema still gets a correct file list once its kind is declared.
+    schemaResult = {
+      data: { ...makeSchema([], 3), kind: 'upload' } as PipelineSchemaWithCount,
+      isLoading: false,
+    };
+    renderPage();
+    const [args] = dataQueryArgs.mock.calls[dataQueryArgs.mock.calls.length - 1];
+    expect(args.filters).toEqual({ storage_path: { op: 'exists', value: 'true' } });
+  });
+
   it('sends no file filter for a schema that has no storage_path field', () => {
     schemaResult = { data: makeSchema(['name', 'body'], 2), isLoading: false };
     renderPage();

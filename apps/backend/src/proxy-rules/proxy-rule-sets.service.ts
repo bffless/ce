@@ -21,6 +21,7 @@ import {
 import { PermissionsService } from '../permissions/permissions.service';
 import { NginxRegenerationService } from '../domains/nginx-regeneration.service';
 import { PipelineSchemasService } from '../pipelines/pipeline-schemas.service';
+import type { SchemaKind } from '../db/schema/pipeline-schemas.schema';
 import { LintableSchema, UploadSchemaLintService } from '../pipelines/upload-schema-lint.service';
 import { collectUploadStepRefs } from '../pipelines/upload-schema-contract';
 import {
@@ -172,7 +173,12 @@ export class ProxyRuleSetsService {
       // Skip silently: missing refs stay unbundled; never bundle another
       // project's schema definition
       if (!schema || schema.projectId !== ruleSet.projectId) continue;
-      schemas.push({ id: schema.id, name: schema.name, fields: schema.fields });
+      schemas.push({
+        id: schema.id,
+        name: schema.name,
+        ...(schema.kind ? { kind: schema.kind } : {}),
+        fields: schema.fields,
+      });
     }
 
     return buildExportEnvelope({
@@ -816,7 +822,9 @@ export class ProxyRuleSetsService {
    */
   private async resolveSchemasByName(
     projectId: string,
-    schemas: { id: string; name: string; fields: ComparableSchemaField[] }[] | undefined,
+    schemas:
+      | { id: string; name: string; kind?: SchemaKind; fields: ComparableSchemaField[] }[]
+      | undefined,
     options: { strictSchemas: boolean; dryRun: boolean },
     userId: string,
     userRole: string,
@@ -856,17 +864,35 @@ export class ProxyRuleSetsService {
     // Pass 1 — examine everything (reuse resolutions + pending creates) so the
     // strict throw can list ALL mismatches and precede ANY creation.
     const pendingCreates: { schema: (typeof schemas)[number]; resolution: SchemaResolution }[] = [];
+    const pendingKindAdoptions: { schemaId: string; kind: SchemaKind }[] = [];
     const strictFailures: string[] = [];
     for (const schema of schemas) {
       const existing = existingByName.get(schema.name);
       if (existing) {
         const { match, mismatches } = compareSchemaFields(schema.fields, existing.fields);
         idMap.set(schema.id, existing.id);
+
+        // Kind is adopted, never overwritten: filling a null is unambiguous and
+        // is the only route by which a schema that predates the column can ever
+        // declare itself. A real disagreement warns and leaves the live value —
+        // silently reclassifying someone's schema from a config file is not a
+        // change a push should make on its own (bffless/ce#633).
+        const kindAdopted = Boolean(schema.kind) && !existing.kind;
+        if (schema.kind && existing.kind && schema.kind !== existing.kind) {
+          warnings.push(
+            `Schema "${schema.name}": declared kind "${schema.kind}" but the live schema is ` +
+              `"${existing.kind}" — keeping the live kind. Change it in the dashboard if the ` +
+              `payload is right.`,
+          );
+        }
+        if (kindAdopted) pendingKindAdoptions.push({ schemaId: existing.id, kind: schema.kind! });
+
         resolutions.push({
           name: schema.name,
           action: 'reuse',
           targetSchemaId: existing.id,
           fieldMismatch: !match,
+          kindAdopted,
         });
         for (const mismatch of mismatches) {
           warnings.push(`Schema "${schema.name}": ${mismatch}`);
@@ -878,6 +904,9 @@ export class ProxyRuleSetsService {
           action: 'create',
           targetSchemaId: null,
           fieldMismatch: false,
+          // A schema created by this sync carries the payload's kind from birth;
+          // nothing was adopted onto an existing row.
+          kindAdopted: false,
         };
         resolutions.push(resolution);
         pendingCreates.push({ schema, resolution });
@@ -895,9 +924,12 @@ export class ProxyRuleSetsService {
     // Pass 2 — perform creations (live sync only; dryRun reports the plan with
     // targetSchemaId null and touches nothing).
     if (!options.dryRun) {
+      for (const { schemaId, kind } of pendingKindAdoptions) {
+        await this.pipelineSchemasService.adoptKind(schemaId, kind);
+      }
       for (const { schema, resolution } of pendingCreates) {
         const created = await this.pipelineSchemasService.create(
-          { projectId, name: schema.name, fields: schema.fields },
+          { projectId, name: schema.name, fields: schema.fields, kind: schema.kind },
           userId,
           userRole,
           apiKeyProjectId,
@@ -1006,6 +1038,7 @@ export class ProxyRuleSetsService {
       dto.schemas?.map((schema) => ({
         id: schema.id,
         name: schema.name.trim(),
+        kind: schema.kind,
         fields: schema.fields,
       })),
       { strictSchemas, dryRun },

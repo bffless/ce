@@ -48,6 +48,7 @@ rules
   )
   .argument('[dir]', 'rule-set directory (defaults to the single .bffless/config.json ruleSets match)')
   .option('--schema <name>', 'generate schemas/<name>.schema.yaml')
+  .option('--kind <kind>', 'declare what the schema is for: upload|chat|state')
   .option(
     '--field <name:type[:required]>',
     'schema field, repeatable; types: string|number|boolean|email|text|datetime|json',

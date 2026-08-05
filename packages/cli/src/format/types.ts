@@ -1,5 +1,12 @@
 export interface SchemaField { name: string; type: string; required?: boolean; [k: string]: unknown }
-export interface ExportedSchema { id: string; name: string; fields: SchemaField[] }
+/** Declared purpose of a schema — mirrors the backend's `SchemaKind`. */
+export type SchemaKind = 'upload' | 'chat' | 'state';
+/**
+ * `kind` sits between `name` and `fields` to match the server's export builder:
+ * schema entries have no fixed key order (the canonicalizer copies them as-is),
+ * so the two producers must agree or exports stop being byte-identical.
+ */
+export interface ExportedSchema { id: string; name: string; kind?: SchemaKind; fields: SchemaField[] }
 export interface PipelineValidator { type: 'auth_required' | 'rate_limit'; config?: Record<string, unknown> }
 /** `name` is an optional display label — the server treats it as optional, and dashboard-authored steps may omit it. */
 export interface PipelineStep { id?: string; name?: string; handlerType: string; config: Record<string, unknown>; isEnabled?: boolean }

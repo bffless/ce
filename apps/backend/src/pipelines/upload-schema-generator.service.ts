@@ -77,6 +77,7 @@ export class UploadSchemaGeneratorService {
         projectId: dto.projectId,
         name: dto.name,
         fields,
+        kind: 'upload',
       } as NewPipelineSchema)
       .returning();
 

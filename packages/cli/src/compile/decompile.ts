@@ -137,7 +137,10 @@ export function decompileExport(exp: RuleSetExport): DecompileResult {
   const idToName = new Map<string, string>();
   for (const s of canon.schemas ?? []) idToName.set(s.id, s.name);
   for (const s of canon.schemas ?? []) {
-    files.set(`schemas/${s.name}.schema.yaml`, toYaml({ id: s.id, name: s.name, fields: s.fields }));
+    files.set(
+      `schemas/${s.name}.schema.yaml`,
+      toYaml({ id: s.id, name: s.name, ...(s.kind ? { kind: s.kind } : {}), fields: s.fields }),
+    );
   }
 
   // Derived orders (keyed by the canonical rule objects) for `order:` elision.

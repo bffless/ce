@@ -111,6 +111,7 @@ export class ChatSchemaGeneratorService {
         projectId: dto.projectId,
         name: conversationsName,
         fields: conversationsFields,
+        kind: 'chat',
       } as NewPipelineSchema)
       .returning();
 
@@ -124,6 +125,7 @@ export class ChatSchemaGeneratorService {
         projectId: dto.projectId,
         name: messagesName,
         fields: messagesFields,
+        kind: 'chat',
       } as NewPipelineSchema)
       .returning();
 
