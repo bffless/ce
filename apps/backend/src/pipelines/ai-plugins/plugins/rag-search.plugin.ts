@@ -103,7 +103,7 @@ export class RagSearchPlugin implements AIToolPlugin {
     id: 'rag-search',
     name: 'AI Data Tools',
     description:
-      'Give the AI tools to search and query your pipeline data. Supports semantic search (vector embeddings) and exact data lookups. Vector search requires Replicate in AI Services.',
+      'Give the AI tools to search and query your pipeline data. Supports semantic search (vector embeddings) and exact data lookups. Vector search requires a Replicate token (Settings → AI → Replicate).',
     category: 'information',
     icon: 'database',
     pipelineOptionsSchema: z.object({

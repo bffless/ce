@@ -64,10 +64,24 @@ export function SetupNotes({ steps, defaultExpanded = false, className }: SetupN
               {isOpen && (
                 <div className="ml-5 mt-1 space-y-1">
                   {step.body && <p className="text-sm text-muted-foreground">{step.body}</p>}
-                  {step.deepLink && (
-                    <a href={step.deepLink} className="text-sm text-primary underline">
-                      Go
-                    </a>
+                  {(step.deepLink || step.externalLink) && (
+                    <div className="flex items-center gap-3">
+                      {step.deepLink && (
+                        <a href={step.deepLink} className="text-sm text-primary underline">
+                          Go
+                        </a>
+                      )}
+                      {step.externalLink && (
+                        <a
+                          href={step.externalLink.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-primary underline"
+                        >
+                          {step.externalLink.label}
+                        </a>
+                      )}
+                    </div>
                   )}
                 </div>
               )}

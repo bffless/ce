@@ -150,18 +150,23 @@ function ProjectAIServicesSection({ project }: { project: Project }) {
           <div>
             <CardTitle className="flex items-center gap-2">
               <Zap className="h-5 w-5" />
-              AI Services
+              Replicate
             </CardTitle>
             <CardDescription>
-              Configure external ML services for pipeline steps.
+              Your Replicate API token. Powers ML model steps: transcription, image generation,
+              and embeddings.
             </CardDescription>
           </div>
-          {!hasReplicate && (
-            <Button onClick={() => setShowAddDialog(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Service
-            </Button>
-          )}
+          <Button onClick={() => setShowAddDialog(true)}>
+            {hasReplicate ? (
+              'Replace token'
+            ) : (
+              <>
+                <Plus className="h-4 w-4 mr-2" />
+                Connect Replicate
+              </>
+            )}
+          </Button>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -181,7 +186,6 @@ function ProjectAIServicesSection({ project }: { project: Project }) {
                         <p className="text-sm text-muted-foreground">
                           Token: <span className="font-mono text-xs">{svc.apiToken}</span>
                         </p>
-                        <p className="text-xs text-muted-foreground mt-1">{meta.description}</p>
                       </div>
                     </div>
                     <Button
@@ -207,14 +211,14 @@ function ProjectAIServicesSection({ project }: { project: Project }) {
           <div className="space-y-3">
             <div className="flex items-center text-sm">
               <AlertTriangle className="h-4 w-4 text-yellow-500 mr-2" />
-              <span className="text-muted-foreground">No AI services configured</span>
+              <span className="text-muted-foreground">Replicate not connected</span>
             </div>
             <p className="text-sm text-muted-foreground">
-              Add an AI service to enable Replicate ML model pipelines.
+              Connect Replicate to enable transcription, image generation, and embeddings.
             </p>
             <Button onClick={() => setShowAddDialog(true)}>
               <Plus className="h-4 w-4 mr-2" />
-              Add Service
+              Connect Replicate
             </Button>
           </div>
         )}
@@ -231,9 +235,11 @@ function ProjectAIServicesSection({ project }: { project: Project }) {
       }}>
         <DialogContent className="sm:max-w-[450px]">
           <DialogHeader>
-            <DialogTitle>Add Replicate</DialogTitle>
+            <DialogTitle>{hasReplicate ? 'Replace Replicate token' : 'Connect Replicate'}</DialogTitle>
             <DialogDescription>
-              Add your Replicate API token to enable ML model pipelines.
+              {hasReplicate
+                ? 'Replace the stored Replicate API token.'
+                : 'Add your Replicate API token to enable ML model pipelines.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -305,10 +311,10 @@ function ProjectAIServicesSection({ project }: { project: Project }) {
               {isAdding ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Adding...
+                  {hasReplicate ? 'Saving...' : 'Connecting...'}
                 </>
               ) : (
-                'Add Replicate'
+                hasReplicate ? 'Save token' : 'Connect Replicate'
               )}
             </Button>
           </DialogFooter>
@@ -637,9 +643,9 @@ function AddProviderDialog({
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>Add AI Provider</DialogTitle>
+          <DialogTitle>Add LLM Provider</DialogTitle>
           <DialogDescription>
-            Configure a new AI provider for this project's chat pipelines.
+            Choose a provider and paste its API key.
           </DialogDescription>
         </DialogHeader>
 
@@ -898,7 +904,7 @@ export function ProjectAISettingsTab({ project }: ProjectAISettingsTabProps) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Bot className="h-5 w-5" />
-            AI Settings
+            LLM Providers
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -921,10 +927,11 @@ export function ProjectAISettingsTab({ project }: ProjectAISettingsTabProps) {
             <div>
               <CardTitle className="flex items-center gap-2">
                 <Bot className="h-5 w-5" />
-                AI Settings
+                LLM Providers
               </CardTitle>
               <CardDescription>
-                Configure AI providers for chat pipelines in this project.
+                API keys for OpenAI, Anthropic, and Google. Used by any AI step in your pipelines
+                — chat and one-off text generation.
               </CardDescription>
             </div>
             {availableToAdd.length > 0 && (
@@ -961,10 +968,11 @@ export function ProjectAISettingsTab({ project }: ProjectAISettingsTabProps) {
             <div className="space-y-3">
               <div className="flex items-center text-sm">
                 <AlertTriangle className="h-4 w-4 text-yellow-500 mr-2" />
-                <span className="text-muted-foreground">No AI providers configured</span>
+                <span className="text-muted-foreground">No LLM providers connected</span>
               </div>
               <p className="text-sm text-muted-foreground">
-                Add an AI provider to enable chat pipelines and AI-powered features for this project.
+                Add a provider — Anthropic, OpenAI, or Google — to enable AI steps in this
+                project's pipelines.
               </p>
               <Button onClick={() => setShowAddDialog(true)}>
                 <Plus className="h-4 w-4 mr-2" />

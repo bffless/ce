@@ -192,6 +192,20 @@ function validateManualSteps(manualSteps: unknown, path: string, errors: string[
     if (entry.deepLink !== undefined && typeof entry.deepLink !== 'string') {
       errors.push(`${entryPath}.deepLink: must be string`);
     }
+    if (entry.externalLink !== undefined) {
+      if (!isPlainObject(entry.externalLink)) {
+        errors.push(`${entryPath}.externalLink: must be an object`);
+      } else {
+        if (!isNonEmptyString(entry.externalLink.label)) {
+          errors.push(`${entryPath}.externalLink.label: required string`);
+        }
+        if (!isNonEmptyString(entry.externalLink.url)) {
+          errors.push(`${entryPath}.externalLink.url: required string`);
+        } else if (!entry.externalLink.url.startsWith('https://')) {
+          errors.push(`${entryPath}.externalLink.url: must be an https:// URL`);
+        }
+      }
+    }
     validateStepPlaceholders(entry.title, `${entryPath}.title`, errors);
     validateStepPlaceholders(entry.body, `${entryPath}.body`, errors);
     validateStepPlaceholders(entry.deepLink, `${entryPath}.deepLink`, errors);

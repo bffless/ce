@@ -41,11 +41,18 @@ export type AppliesWhen =
   | 'platformMode'
   | 'selfHosted';
 
+// Mirrors AppManualStepExternalLink in apps/backend/src/app-catalog/app-manifest.types.ts — keep both in sync.
+export interface AppManualStepExternalLink {
+  label: string;
+  url: string;
+}
+
 export interface AppManualStep {
   id: string;
   title: string;
   body: string;
   deepLink?: string;
+  externalLink?: AppManualStepExternalLink;
   appliesWhen?: AppliesWhen;
 }
 
