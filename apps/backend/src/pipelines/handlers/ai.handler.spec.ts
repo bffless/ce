@@ -31,16 +31,20 @@ export function createHandler(overrides: Partial<Record<string, unknown>> = {}) 
     getSkillsPath: jest.fn().mockResolvedValue('skills'),
     ...((overrides.projectAISettingsService as object) || {}),
   };
+  const skillsService = {
+    listSkills: jest.fn().mockResolvedValue([]),
+    ...((overrides.skillsService as object) || {}),
+  };
   const handler = new AIHandler(
     registry as never,
     new ExpressionEvaluator(),
     projectAISettingsService as never,
     {} as never, // PipelineDataService
     {} as never, // PipelineSchemasService
-    { listSkills: jest.fn().mockResolvedValue([]) } as never, // SkillsService
+    skillsService as never, // SkillsService
     {} as never, // AIToolPluginService
   );
-  return { handler, projectAISettingsService };
+  return { handler, projectAISettingsService, skillsService };
 }
 
 describe('AIHandler.validateConfig — attachments', () => {
@@ -225,5 +229,90 @@ describe('AIHandler.execute — completion attachments', () => {
       image: 'https://x.test/a.png?token=secret123',
     });
     expect(typeof userMessage.content[1].image).toBe('string');
+  });
+});
+
+describe('AIHandler.execute — step-scoped skills source', () => {
+  beforeEach(() => {
+    (generateText as jest.Mock).mockReset().mockResolvedValue({
+      text: 'ok',
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      finishReason: 'stop',
+      steps: [],
+    });
+  });
+
+  function deploymentContext(): PipelineContext {
+    return {
+      ...createContext({ prep: { prompt: 'draft a thumbnail' } }),
+      deployment: { owner: 'bffless', repo: 'studio', commitSha: 'sha-serving' },
+    } as PipelineContext;
+  }
+
+  it("loads skills from the step's own path instead of the project setting", async () => {
+    const { handler, skillsService } = createHandler();
+
+    await handler.execute(
+      deploymentContext(),
+      completionStep({
+        messageField: 'steps.prep.prompt',
+        skills: {
+          mode: 'selected',
+          enabled: ['image-prompts'],
+          path: 'apps/studio/dist/bffless/skills',
+        },
+      }),
+    );
+
+    expect(skillsService.listSkills).toHaveBeenCalledWith(
+      'bffless',
+      'studio',
+      'sha-serving',
+      'apps/studio/dist/bffless/skills',
+    );
+  });
+
+  it('falls back to the project skills path when the step declares none', async () => {
+    const { handler, skillsService } = createHandler();
+
+    await handler.execute(
+      deploymentContext(),
+      completionStep({
+        messageField: 'steps.prep.prompt',
+        skills: { mode: 'selected', enabled: ['image-prompts'] },
+      }),
+    );
+
+    expect(skillsService.listSkills).toHaveBeenCalledWith(
+      'bffless',
+      'studio',
+      'sha-serving',
+      'skills',
+    );
+  });
+
+  it("resolves the commit SHA from the step's own skills alias", async () => {
+    const { handler, projectAISettingsService, skillsService } = createHandler();
+    projectAISettingsService.resolveSkillsCommitSha.mockResolvedValue('sha-from-alias');
+
+    await handler.execute(
+      deploymentContext(),
+      completionStep({
+        messageField: 'steps.prep.prompt',
+        skills: { mode: 'selected', enabled: ['image-prompts'], alias: 'skills-only' },
+      }),
+    );
+
+    expect(projectAISettingsService.resolveSkillsCommitSha).toHaveBeenCalledWith(
+      'proj-1',
+      'sha-serving',
+      'skills-only',
+    );
+    expect(skillsService.listSkills).toHaveBeenCalledWith(
+      'bffless',
+      'studio',
+      'sha-from-alias',
+      'skills',
+    );
   });
 });

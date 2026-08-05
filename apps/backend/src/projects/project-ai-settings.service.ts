@@ -756,15 +756,19 @@ export class ProjectAISettingsService {
 
   /**
    * Resolve the commit SHA that skills should be loaded from for a project.
-   * If a skills alias is configured and resolves to a deployment, that SHA is
-   * returned; otherwise the provided fallback (e.g. the serving deployment's
-   * SHA at runtime) is returned.
+   * If a skills alias resolves to a deployment, that SHA is returned; otherwise
+   * the provided fallback (e.g. the serving deployment's SHA at runtime).
+   *
+   * `aliasOverride` is the alias declared on an individual pipeline step, which
+   * wins over the project-wide setting so two AI steps in one project can load
+   * skills from different deployments.
    */
   async resolveSkillsCommitSha(
     projectId: string,
     fallbackCommitSha?: string,
+    aliasOverride?: string,
   ): Promise<string | undefined> {
-    const alias = await this.getSkillsAlias(projectId);
+    const alias = aliasOverride?.trim() || (await this.getSkillsAlias(projectId));
     if (alias) {
       const [record] = await db
         .select({ commitSha: deploymentAliases.commitSha })

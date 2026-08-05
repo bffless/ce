@@ -1,16 +1,12 @@
-import { useState, useEffect } from 'react';
 import {
   useListProjectSkillsQuery,
   useGetProjectSkillsPathQuery,
-  useSetProjectSkillsPathMutation,
-  useGetProjectByIdQuery,
   useGetProjectSkillsAliasQuery,
-  useSetProjectSkillsAliasMutation,
+  useGetProjectByIdQuery,
 } from '@/services/projectsApi';
 import { useListAliasesQuery } from '@/services/repoApi';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
 import {
   Select,
   SelectContent,
@@ -21,11 +17,17 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Info, Check } from 'lucide-react';
+import { Info } from 'lucide-react';
 
 export interface SkillsConfigValue {
   mode: 'none' | 'all' | 'selected';
   enabled?: string[];
+  /** Directory in the deployment holding SKILL.md files. Inherits the
+   *  project-wide default when empty. */
+  path?: string;
+  /** Deployment alias to load skills from. Inherits the project-wide default,
+   *  then the deployment serving the request, when empty. */
+  alias?: string;
 }
 
 interface SkillsConfigProps {
@@ -34,47 +36,33 @@ interface SkillsConfigProps {
   projectId: string;
 }
 
+const AUTO = '__auto__';
+
 export function SkillsConfig({ config, onChange, projectId }: SkillsConfigProps) {
-  const { data, isLoading } = useListProjectSkillsQuery({ projectId });
-  const { data: pathData } = useGetProjectSkillsPathQuery({ projectId });
-  const [setSkillsPath, { isLoading: isSaving }] = useSetProjectSkillsPathMutation();
-  const [localPath, setLocalPath] = useState('');
-  const [saved, setSaved] = useState(false);
+  // Both source controls live on the step and save with the rule. The project
+  // settings below are read-only here — they only supply the inherited default
+  // shown when a step leaves a field blank.
+  const { data: projectPathData } = useGetProjectSkillsPathQuery({ projectId });
+  const { data: projectAliasData } = useGetProjectSkillsAliasQuery({ projectId });
+  const projectPath = projectPathData?.skillsPath || '.bffless/skills';
+  const projectAlias = projectAliasData?.skillsAlias || null;
+
+  const { data, isLoading } = useListProjectSkillsQuery({
+    projectId,
+    path: config.path?.trim() || undefined,
+    alias: config.alias?.trim() || undefined,
+  });
   const skills = data?.skills ?? [];
 
-  // Skills alias: which deployment alias to load skills from
   const { data: project } = useGetProjectByIdQuery(projectId);
   const { data: aliasesData } = useListAliasesQuery(
     { owner: project?.owner ?? '', repo: project?.name ?? '' },
     { skip: !project?.owner || !project?.name },
   );
-  const { data: aliasData } = useGetProjectSkillsAliasQuery({ projectId });
-  const [setSkillsAlias] = useSetProjectSkillsAliasMutation();
   const aliases = aliasesData?.aliases ?? [];
-  const AUTO = '__auto__';
-  const selectedAlias = aliasData?.skillsAlias || AUTO;
 
-  const handleAliasChange = async (value: string) => {
-    await setSkillsAlias({
-      projectId,
-      skillsAlias: value === AUTO ? null : value,
-    });
-  };
-
-  useEffect(() => {
-    if (pathData?.skillsPath) {
-      setLocalPath(pathData.skillsPath);
-    }
-  }, [pathData?.skillsPath]);
-
-  const handleSavePath = async () => {
-    if (!localPath.trim()) return;
-    await setSkillsPath({ projectId, skillsPath: localPath.trim() });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  };
-
-  const isDirty = pathData?.skillsPath !== localPath;
+  const effectivePath = config.path?.trim() || projectPath;
+  const noSkillsFound = config.mode === 'selected' && !isLoading && skills.length === 0;
 
   return (
     <div className="space-y-4">
@@ -105,12 +93,21 @@ export function SkillsConfig({ config, onChange, projectId }: SkillsConfigProps)
       {config.mode !== 'none' && (
         <div className="space-y-2">
           <Label>Skills Source (Alias)</Label>
-          <Select value={selectedAlias} onValueChange={handleAliasChange}>
+          <Select
+            value={config.alias || AUTO}
+            onValueChange={(v) =>
+              onChange({ ...config, alias: v === AUTO ? undefined : v })
+            }
+          >
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={AUTO}>Auto (serving deployment)</SelectItem>
+              <SelectItem value={AUTO}>
+                {projectAlias
+                  ? `Inherit project default (${projectAlias})`
+                  : 'Auto (serving deployment)'}
+              </SelectItem>
               {aliases.map((a) => (
                 <SelectItem key={a.name} value={a.name}>
                   {a.name}
@@ -119,9 +116,9 @@ export function SkillsConfig({ config, onChange, projectId }: SkillsConfigProps)
             </SelectContent>
           </Select>
           <p className="text-xs text-muted-foreground">
-            Which deployment alias to load <code className="bg-muted px-1 rounded">SKILL.md</code> files
-            from. <strong>Auto</strong> uses whichever deployment serves the request at runtime; pick a
-            specific alias to always load skills from there (e.g. a dedicated skills deployment).
+            Which deployment alias this step loads{' '}
+            <code className="bg-muted px-1 rounded">SKILL.md</code> files from. Saved with the
+            rule, so each AI step can use its own.
           </p>
         </div>
       )}
@@ -129,25 +126,19 @@ export function SkillsConfig({ config, onChange, projectId }: SkillsConfigProps)
       {config.mode !== 'none' && (
         <div className="space-y-2">
           <Label>Skills Path</Label>
-          <div className="flex gap-2">
-            <Input
-              value={localPath}
-              onChange={(e) => { setLocalPath(e.target.value); setSaved(false); }}
-              placeholder=".bffless/skills"
-              className="font-mono text-sm"
-            />
-            <Button
-              size="sm"
-              variant={saved ? 'default' : 'outline'}
-              onClick={handleSavePath}
-              disabled={!isDirty || isSaving}
-            >
-              {saved ? <Check className="h-4 w-4" /> : 'Save'}
-            </Button>
-          </div>
+          <Input
+            value={config.path ?? ''}
+            onChange={(e) => onChange({ ...config, path: e.target.value || undefined })}
+            placeholder={projectPath}
+            className="font-mono text-sm"
+          />
           <p className="text-xs text-muted-foreground">
-            Path within the deployment where <code className="bg-muted px-1 rounded">SKILL.md</code> files
-            are located. Useful for monorepos where skills aren't at the root.
+            Path within the deployment where{' '}
+            <code className="bg-muted px-1 rounded">SKILL.md</code> files live. Leave blank to
+            inherit the project default (
+            <code className="bg-muted px-1 rounded">{projectPath}</code>). An app served under a
+            base path publishes skills to a non-hidden directory — e.g.{' '}
+            <code className="bg-muted px-1 rounded">apps/studio/dist/bffless/skills</code>.
           </p>
         </div>
       )}
@@ -157,12 +148,16 @@ export function SkillsConfig({ config, onChange, projectId }: SkillsConfigProps)
           <Label>Enabled Skills</Label>
           {isLoading ? (
             <Skeleton className="h-20" />
-          ) : skills.length === 0 ? (
-            <Alert>
+          ) : noSkillsFound ? (
+            // Loud on purpose: an unresolvable path used to fail silently at
+            // runtime, with the model inventing a skill it never loaded.
+            <Alert variant="destructive">
               <Info className="h-4 w-4" />
               <AlertDescription>
-                No skills found. Add <code className="bg-muted px-1 rounded">SKILL.md</code> files
-                to <code className="bg-muted px-1 rounded">{localPath || '.bffless/skills/'}</code> in your deployment.
+                No <code className="bg-muted px-1 rounded">SKILL.md</code> files found under{' '}
+                <code className="bg-muted px-1 rounded">{effectivePath}</code>
+                {config.alias ? ` on alias "${config.alias}"` : ''}. This step will run with no
+                skills loaded — check the path against your deployment's files.
               </AlertDescription>
             </Alert>
           ) : (

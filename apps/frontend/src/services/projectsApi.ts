@@ -469,12 +469,20 @@ export const projectsApi = api.injectEndpoints({
     // Skills endpoint
     listProjectSkills: builder.query<
       { skills: SkillSummary[] },
-      { projectId: string; commitSha?: string }
+      { projectId: string; commitSha?: string; path?: string; alias?: string }
     >({
-      query: ({ projectId, commitSha }) => ({
-        url: `/api/projects/${projectId}/ai/skills`,
-        params: commitSha ? { commitSha } : undefined,
-      }),
+      // `path`/`alias` preview what a single pipeline step's source resolves to;
+      // omitting them falls back to the project-wide settings server-side.
+      query: ({ projectId, commitSha, path, alias }) => {
+        const params: Record<string, string> = {};
+        if (commitSha) params.commitSha = commitSha;
+        if (path) params.path = path;
+        if (alias) params.alias = alias;
+        return {
+          url: `/api/projects/${projectId}/ai/skills`,
+          params: Object.keys(params).length ? params : undefined,
+        };
+      },
       providesTags: (_result, _error, { projectId }) => [
         { type: 'ProjectAI' as const, id: `${projectId}-skills` },
       ],

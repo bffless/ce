@@ -297,18 +297,30 @@ export class ProxyRulesController {
     let deployment: { owner: string; repo: string; commitSha: string; alias?: string } | undefined;
 
     // Check if skills are configured in any step
-    const hasSkillsConfig = (pipelineConfig.steps || []).some(
+    const skillsSteps = (pipelineConfig.steps || []).filter(
       (step) => step.config?.skills && (step.config.skills as any).mode !== 'none',
     );
+    const hasSkillsConfig = skillsSteps.length > 0;
+
+    // A step may name the alias its skills live on. Honour it here so "Test"
+    // reads from the same deployment the live request would — otherwise a rule
+    // that passes in the editor can still find no skills in production.
+    const stepSkillsAlias = skillsSteps
+      .map((step) => (step.config?.skills as any)?.alias)
+      .find((alias): alias is string => typeof alias === 'string' && alias.trim() !== '')
+      ?.trim();
 
     // Check if any step requires deployment context (file uploads need owner/repo for storage keys)
     const needsDeploymentContext = (pipelineConfig.steps || []).some(
       (step) => step.handlerType === 'file_upload_handler' || step.handlerType === 'file_serve_handler',
     );
 
-    // Use provided alias, or fallback to "production" if skills or deployment context are needed
+    // Explicit request wins, then a step's own skills alias, then "production"
+    // when skills or deployment context are needed at all.
     const aliasToResolve =
-      dto.deploymentAlias || (hasSkillsConfig || needsDeploymentContext ? 'production' : undefined);
+      dto.deploymentAlias ||
+      stepSkillsAlias ||
+      (hasSkillsConfig || needsDeploymentContext ? 'production' : undefined);
 
     if (aliasToResolve) {
       const project = await this.projectsService.getProjectById(ruleSet.projectId);
