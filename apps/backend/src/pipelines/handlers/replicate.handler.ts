@@ -211,32 +211,54 @@ export class ReplicateHandler implements StepHandler<ReplicateHandlerConfig> {
     apiToken: string,
   ): Promise<void> {
     for (const [key, value] of Object.entries(input)) {
-      if (typeof value !== 'string') continue;
-
-      // Skip if already a URL (http/https) or data URI
-      if (value.startsWith('http://') || value.startsWith('https://') || value.startsWith('data:')) {
+      // Image models take reference images as an array of URIs (e.g.
+      // google/nano-banana-2's `image_input`), so resolve element-wise too —
+      // otherwise a storage path inside the array reaches Replicate raw.
+      if (Array.isArray(value)) {
+        input[key] = await Promise.all(
+          value.map((entry) => this.resolveFileValue(entry, context, apiToken)),
+        );
         continue;
       }
 
-      let storagePath: string | null = null;
-
-      // Pattern 1: Storage path (contains "uploads/" with owner/repo prefix)
-      if (value.includes('/uploads/') && value.includes('/')) {
-        storagePath = value;
-      }
-
-      // Pattern 2: Internal API URL like "/api/uploads/sub_dir/uuid-file.png"
-      if (!storagePath && value.startsWith('/api/uploads/')) {
-        storagePath = this.resolveApiUrlToStoragePath(value, context);
-      }
-
-      if (!storagePath) continue;
-
-      const resolved = await this.resolveStorageFile(storagePath, context, apiToken);
-      if (resolved) {
-        input[key] = resolved;
-      }
+      input[key] = await this.resolveFileValue(value, context, apiToken);
     }
+  }
+
+  /**
+   * Resolve one input value: a storage path or internal `/api/uploads/...` URL
+   * becomes a data URI or Replicate Files URL; anything else is returned as-is.
+   */
+  private async resolveFileValue(
+    value: unknown,
+    context: PipelineContext,
+    apiToken: string,
+  ): Promise<unknown> {
+    if (typeof value !== 'string') return value;
+
+    // Skip if already a URL (http/https) or data URI
+    if (value.startsWith('http://') || value.startsWith('https://') || value.startsWith('data:')) {
+      return value;
+    }
+
+    let storagePath: string | null = null;
+
+    // Pattern 1: Internal API URL like "/api/uploads/sub_dir/uuid-file.png".
+    // Checked FIRST because it also contains "/uploads/" — matching the bare
+    // storage-path pattern below would hand storage the un-prefixed API URL.
+    if (value.startsWith('/api/uploads/')) {
+      storagePath = this.resolveApiUrlToStoragePath(value, context);
+    }
+
+    // Pattern 2: Storage path (contains "uploads/" with owner/repo prefix)
+    if (!storagePath && value.includes('/uploads/') && value.includes('/')) {
+      storagePath = value;
+    }
+
+    if (!storagePath) return value;
+
+    const resolved = await this.resolveStorageFile(storagePath, context, apiToken);
+    return resolved ?? value;
   }
 
   /**
