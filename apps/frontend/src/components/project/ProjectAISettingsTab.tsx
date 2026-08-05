@@ -65,12 +65,11 @@ import { ProjectAIPluginsSection } from './ProjectAIPluginsSection';
 import { ProjectSecretsSection } from './ProjectSecretsSection';
 
 // AI Service display config
-const SERVICE_CONFIG: Record<string, { name: string; color: string; bgColor: string; description: string }> = {
+const SERVICE_CONFIG: Record<string, { name: string; color: string; bgColor: string }> = {
   replicate: {
     name: 'Replicate',
     color: 'text-indigo-600',
     bgColor: 'bg-indigo-50',
-    description: 'Run ML models (CLIP embeddings, image generation, transcription, etc.)',
   },
 };
 
@@ -173,7 +172,7 @@ function ProjectAIServicesSection({ project }: { project: Project }) {
         {configuredServices.length > 0 ? (
           <div className="space-y-3">
             {configuredServices.map((svc) => {
-              const meta = SERVICE_CONFIG[svc.service] || { name: svc.service, color: 'text-gray-600', bgColor: 'bg-gray-50', description: '' };
+              const meta = SERVICE_CONFIG[svc.service] || { name: svc.service, color: 'text-gray-600', bgColor: 'bg-gray-50' };
               return (
                 <div key={svc.service} className="border rounded-lg p-4">
                   <div className="flex items-start justify-between">
