@@ -98,7 +98,9 @@ export const presets: HeaderRulePreset[] = [
     framePolicy: 'sameorigin',
     allowedOrigins: [],
     description:
-      'Enable SharedArrayBuffer for multithreaded WebAssembly (in-browser video export)',
+      'Enable SharedArrayBuffer for multithreaded WebAssembly (in-browser video export). ' +
+      'Applies project-wide: adds a frame-ancestors CSP and may block cross-origin ' +
+      'subresources that lack a CORP header.',
     customHeaders: [
       { name: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
       { name: 'Cross-Origin-Embedder-Policy', value: 'credentialless' },

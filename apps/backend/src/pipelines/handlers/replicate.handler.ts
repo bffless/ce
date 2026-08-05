@@ -73,7 +73,7 @@ export class ReplicateHandler implements StepHandler<ReplicateHandlerConfig> {
         success: false,
         error: {
           code: 'REPLICATE_NOT_CONFIGURED',
-          message: 'Replicate API token is not configured. Add it in Settings > AI > Replicate.',
+          message: 'Replicate API token is not configured. Add it in Settings → AI → Replicate.',
         },
       };
     }

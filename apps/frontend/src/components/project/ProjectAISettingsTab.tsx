@@ -214,7 +214,7 @@ function ProjectAIServicesSection({ project }: { project: Project }) {
               <span className="text-muted-foreground">Replicate not connected</span>
             </div>
             <p className="text-sm text-muted-foreground">
-              Connect Replicate to enable transcription, image generation, and vector-search steps.
+              Connect Replicate to enable transcription, image generation, and embeddings.
             </p>
             <Button onClick={() => setShowAddDialog(true)}>
               <Plus className="h-4 w-4 mr-2" />
@@ -235,9 +235,11 @@ function ProjectAIServicesSection({ project }: { project: Project }) {
       }}>
         <DialogContent className="sm:max-w-[450px]">
           <DialogHeader>
-            <DialogTitle>{hasReplicate ? 'Replace Replicate token' : 'Add Replicate'}</DialogTitle>
+            <DialogTitle>{hasReplicate ? 'Replace Replicate token' : 'Connect Replicate'}</DialogTitle>
             <DialogDescription>
-              Add your Replicate API token to enable ML model pipelines.
+              {hasReplicate
+                ? 'Replace the stored Replicate API token.'
+                : 'Add your Replicate API token to enable ML model pipelines.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -309,10 +311,10 @@ function ProjectAIServicesSection({ project }: { project: Project }) {
               {isAdding ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Adding...
+                  {hasReplicate ? 'Saving...' : 'Connecting...'}
                 </>
               ) : (
-                hasReplicate ? 'Save token' : 'Add Replicate'
+                hasReplicate ? 'Save token' : 'Connect Replicate'
               )}
             </Button>
           </DialogFooter>

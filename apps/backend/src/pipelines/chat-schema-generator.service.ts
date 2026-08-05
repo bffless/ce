@@ -61,7 +61,7 @@ export class ChatSchemaGeneratorService {
       throw new ConflictException(
         dto.provider
           ? `AI provider '${dto.provider}' is not configured for this project`
-          : 'No AI provider is configured for this project. Configure AI settings in Project Settings first.',
+          : 'No AI provider is configured for this project. Add an LLM provider in Settings → AI.',
       );
     }
 
