@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/bffless/ce/compare/bffless-v0.3.1...bffless-v0.3.2) (2026-08-05)
+
+
+### Features
+
+* declare what a pipeline schema is for with a kind column ([#635](https://github.com/bffless/ce/issues/635)) ([c580fea](https://github.com/bffless/ce/commit/c580fea89891e0f4c94448fbb7921e65172bbf55))
+
 ## [0.3.1](https://github.com/bffless/ce/compare/bffless-v0.3.0...bffless-v0.3.1) (2026-07-27)
 
 

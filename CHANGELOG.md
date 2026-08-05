@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.18](https://github.com/bffless/ce/compare/v0.4.17...v0.4.18) (2026-08-05)
+
+
+### Features
+
+* declare what a pipeline schema is for with a kind column ([#635](https://github.com/bffless/ce/issues/635)) ([c580fea](https://github.com/bffless/ce/commit/c580fea89891e0f4c94448fbb7921e65172bbf55))
+
 ## [0.4.17](https://github.com/bffless/ce/compare/v0.4.16...v0.4.17) (2026-08-04)
 
 
