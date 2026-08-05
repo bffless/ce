@@ -436,6 +436,25 @@ export interface AIHandlerConfig extends BaseHandlerConfig {
      * Each name should match a skill's `name` field in its frontmatter.
      */
     enabled?: string[];
+
+    /**
+     * Directory within the deployment holding the `SKILL.md` files, e.g.
+     * `apps/studio/dist/bffless/skills`. Falls back to the project-wide
+     * `settings.skillsPath` (default `.bffless/skills`) when omitted.
+     *
+     * Note a deployment can never contain a *nested* dot-directory — the zip
+     * importer drops any entry containing `/.` — so an app served under a
+     * base path must publish its skills to a non-hidden directory and name it
+     * here.
+     */
+    path?: string;
+
+    /**
+     * Deployment alias to load skills from, e.g. a dedicated `skills` alias.
+     * Falls back to the project-wide `settings.skillsAlias`, and finally to
+     * the deployment serving the request.
+     */
+    alias?: string;
   };
 
   /**

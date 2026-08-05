@@ -194,6 +194,8 @@ export class ProjectsController {
   async listSkills(
     @Param('id') projectId: string,
     @Query('commitSha') commitSha?: string,
+    @Query('path') path?: string,
+    @Query('alias') alias?: string,
     @CurrentUser('id') userId?: string,
   ): Promise<{ skills: SkillSummary[] }> {
     const project = await this.projectsService.getProjectById(projectId);
@@ -201,9 +203,14 @@ export class ProjectsController {
       throw new NotFoundException('Project not found');
     }
 
+    // `?path` and `?alias` let the pipeline editor preview what a single step's
+    // source resolves to, before that step is saved. Both fall back to the
+    // project-wide settings when absent, which is what a project-level skills
+    // picker (and every pre-existing caller) gets.
+    //
     // Resolve commitSha in priority order:
     //   1. explicit ?commitSha query param
-    //   2. the project's configured skills alias (settings.skillsAlias)
+    //   2. ?alias, else the project's skills alias (settings.skillsAlias)
     //   3. the 'production' alias
     //   4. the most recent deployment
     // Steps 3-4 are sensible defaults for when no skills alias is configured;
@@ -211,7 +218,11 @@ export class ProjectsController {
     // 'production' (e.g. 'studio').
     let sha = commitSha;
     if (!sha) {
-      sha = await this.aiSettingsService.resolveSkillsCommitSha(projectId);
+      sha = await this.aiSettingsService.resolveSkillsCommitSha(
+        projectId,
+        undefined,
+        alias,
+      );
     }
     if (!sha) {
       try {
@@ -236,7 +247,8 @@ export class ProjectsController {
       return { skills: [] };
     }
 
-    const skillsPath = await this.aiSettingsService.getSkillsPath(projectId);
+    const skillsPath =
+      path?.trim() || (await this.aiSettingsService.getSkillsPath(projectId));
     const skills = await this.skillsService.listSkills(
       project.owner,
       project.name,

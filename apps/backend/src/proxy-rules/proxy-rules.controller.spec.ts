@@ -253,6 +253,72 @@ describe('ProxyRulesController', () => {
         expect.anything(),
       );
     });
+
+    // "Test" must load skills from the same deployment production would, or a
+    // rule that works in the editor breaks live (and vice versa).
+    describe('skills deployment context', () => {
+      const aiStepRule = (skills: Record<string, unknown>) =>
+        createMockPipelineRule({
+          pipelineConfig: {
+            name: 'Test Pipeline',
+            steps: [
+              { id: 'draft', handlerType: 'ai_handler', config: { skills }, isEnabled: true },
+            ],
+          },
+        });
+
+      beforeEach(() => {
+        mockProjectsService.getProjectById.mockResolvedValue({
+          owner: 'bffless',
+          name: 'studio',
+        } as never);
+        mockDeploymentsService.resolveAlias.mockResolvedValue('sha-1' as never);
+      });
+
+      it("resolves the step's own skills alias instead of production", async () => {
+        mockProxyRulesService.getRuleById.mockResolvedValue(
+          aiStepRule({ mode: 'selected', enabled: ['image-prompts'], alias: 'studio' }),
+        );
+
+        await controller.testPipelineRule('rule-1', {}, mockUser, { file: undefined } as any);
+
+        expect(mockDeploymentsService.resolveAlias).toHaveBeenCalledWith(
+          'bffless/studio',
+          'studio',
+        );
+      });
+
+      it('still falls back to production when no step declares an alias', async () => {
+        mockProxyRulesService.getRuleById.mockResolvedValue(
+          aiStepRule({ mode: 'selected', enabled: ['image-prompts'] }),
+        );
+
+        await controller.testPipelineRule('rule-1', {}, mockUser, { file: undefined } as any);
+
+        expect(mockDeploymentsService.resolveAlias).toHaveBeenCalledWith(
+          'bffless/studio',
+          'production',
+        );
+      });
+
+      it('lets an explicitly requested alias win over the step config', async () => {
+        mockProxyRulesService.getRuleById.mockResolvedValue(
+          aiStepRule({ mode: 'selected', enabled: ['image-prompts'], alias: 'studio' }),
+        );
+
+        await controller.testPipelineRule(
+          'rule-1',
+          { deploymentAlias: 'staging' },
+          mockUser,
+          { file: undefined } as any,
+        );
+
+        expect(mockDeploymentsService.resolveAlias).toHaveBeenCalledWith(
+          'bffless/studio',
+          'staging',
+        );
+      });
+    });
   });
 
   describe('user role fallback', () => {

@@ -326,14 +326,19 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
 
     if (config.skills?.mode !== 'none' && context.deployment) {
       const { owner, repo } = context.deployment;
-      // Use the project's configured skills alias if set; otherwise load skills
-      // from the deployment serving this request.
+      // Source resolution is step-first: this step's own alias/path win, then
+      // the project-wide settings, then the deployment serving this request.
+      // Keeping it per-step is what lets two AI steps in one project load
+      // skills from different deployments or directories.
       const commitSha =
         (await this.projectAISettingsService.resolveSkillsCommitSha(
           context.projectId,
           context.deployment.commitSha,
+          config.skills?.alias,
         )) ?? context.deployment.commitSha;
-      const skillsPath = await this.projectAISettingsService.getSkillsPath(context.projectId);
+      const skillsPath =
+        config.skills?.path?.trim() ||
+        (await this.projectAISettingsService.getSkillsPath(context.projectId));
       this.logger.debug(
         `Skills source for project ${context.projectId}: ${commitSha?.substring(0, 8)} (path: ${skillsPath})`,
       );
