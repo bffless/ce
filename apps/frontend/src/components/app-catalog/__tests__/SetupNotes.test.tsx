@@ -11,6 +11,16 @@ const STEPS = [
     deepLink: '/repo/acme/site/settings?tab=members',
   },
   { id: 'provision-wildcard-cert', title: 'Turn on HTTPS for this app', body: 'Over HTTP now.' },
+  {
+    id: 'add-hf-token',
+    title: 'Optional: HF_TOKEN for speaker diarization',
+    body: 'Create a secret named HF_TOKEN.',
+    deepLink: '/repo/acme/site/settings?tab=ai',
+    externalLink: {
+      label: 'Get a Hugging Face token',
+      url: 'https://huggingface.co/settings/tokens',
+    },
+  },
 ];
 
 describe('SetupNotes', () => {
@@ -65,5 +75,49 @@ describe('SetupNotes', () => {
 
     expect(screen.getByText('Configure something')).toBeInTheDocument();
     expect(document.querySelector('p.text-muted-foreground')).not.toBeInTheDocument();
+  });
+
+  it('renders the external link once expanded', async () => {
+    render(<SetupNotes steps={STEPS} />);
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /HF_TOKEN for speaker diarization/i }),
+    );
+
+    expect(screen.getByRole('link', { name: 'Get a Hugging Face token' })).toHaveAttribute(
+      'href',
+      'https://huggingface.co/settings/tokens',
+    );
+  });
+
+  it('opens the external link in a new tab safely', async () => {
+    render(<SetupNotes steps={STEPS} />);
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /HF_TOKEN for speaker diarization/i }),
+    );
+    const link = screen.getByRole('link', { name: 'Get a Hugging Face token' });
+
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  });
+
+  it('renders both the deep link and the external link side by side', async () => {
+    render(<SetupNotes steps={STEPS} />);
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /HF_TOKEN for speaker diarization/i }),
+    );
+
+    expect(screen.getByRole('link', { name: 'Go' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Get a Hugging Face token' })).toBeInTheDocument();
+  });
+
+  it('renders no external link for a step without one', async () => {
+    render(<SetupNotes steps={STEPS} />);
+
+    await userEvent.click(screen.getByRole('button', { name: /give other people access/i }));
+
+    expect(screen.queryByRole('link', { name: /hugging face/i })).not.toBeInTheDocument();
   });
 });

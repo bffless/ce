@@ -41,11 +41,17 @@ export type AppliesWhen =
   | 'platformMode'
   | 'selfHosted';
 
+export interface AppManualStepExternalLink {
+  label: string;
+  url: string;
+}
+
 export interface AppManualStep {
   id: string;
   title: string;
   body: string;
   deepLink?: string;
+  externalLink?: AppManualStepExternalLink;
   appliesWhen?: AppliesWhen;
 }
 
