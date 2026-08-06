@@ -1165,7 +1165,12 @@ describe('AppInstallerService', () => {
       service.startUpdate(installed as never, ENTRY, 'user-1', { prune: true });
       await service.whenIdle();
 
-      expect(ruleSets.syncRuleSet.mock.calls[0][1].options).toEqual({ dryRun: false, prune: true });
+      // An update preserves dashboard edits the new bundle doesn't touch (three-way).
+      expect(ruleSets.syncRuleSet.mock.calls[0][1].options).toEqual({
+        dryRun: false,
+        prune: true,
+        conflictPolicy: 'preserve',
+      });
       expect(deployments.createDeploymentFromZip.mock.calls[0][1].alias).toBe('handoff');
     });
 

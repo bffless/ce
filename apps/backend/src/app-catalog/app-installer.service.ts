@@ -412,7 +412,11 @@ export class AppInstallerService {
         manifest,
         project.id,
         userId,
-        { prune: opts.prune },
+        // An installed app may have been customized in the dashboard. Compare
+        // against what the last sync wrote, so a local edit the new bundle
+        // doesn't touch is kept rather than silently reverted; genuine
+        // both-sides changes come back in `conflicts` for reporting.
+        { prune: opts.prune, conflictPolicy: 'preserve' },
         progress,
       );
       await this.persistProgress(installed.id, progress);
@@ -843,7 +847,7 @@ export class AppInstallerService {
     manifest: AppManifest,
     projectId: string,
     userId: string,
-    options: { prune: boolean },
+    options: { prune: boolean; conflictPolicy?: 'overwrite' | 'preserve' },
     acc: InstallProgress,
   ): Promise<{ missingSecrets: string[]; warnings: string[] }> {
     const missingSecrets: string[] = [];
@@ -854,7 +858,11 @@ export class AppInstallerService {
         projectId,
         {
           ...ruleSet.dto,
-          options: { dryRun: false, prune: options.prune },
+          options: {
+            dryRun: false,
+            prune: options.prune,
+            ...(options.conflictPolicy ? { conflictPolicy: options.conflictPolicy } : {}),
+          },
           source: { repo: manifest.eject?.repo, path: ruleSet.file },
         } as SyncProxyRuleSetDto,
         userId,

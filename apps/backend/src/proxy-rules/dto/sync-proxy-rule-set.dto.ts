@@ -145,6 +145,18 @@ export class SyncOptionsDto {
   @IsOptional()
   @IsBoolean()
   strictSchemas?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Resolve rules edited locally since this set was last synced by comparing against the most recent sync revision. ' +
+      "'overwrite' (default) keeps two-way behaviour — the payload always wins, which is what rules-as-code CI wants. " +
+      "'preserve' keeps the local edit and reports it, for app upgrades over a customized install.",
+    enum: ['overwrite', 'preserve'],
+    default: 'overwrite',
+  })
+  @IsOptional()
+  @IsIn(['overwrite', 'preserve'])
+  conflictPolicy?: 'overwrite' | 'preserve';
 }
 
 /**
@@ -304,6 +316,22 @@ export class SyncProxyRuleSetResponseDto {
     description: 'Live-only rules NOT deleted because options.prune is false',
   })
   pruneCandidates: SyncRuleRefDto[];
+
+  @ApiProperty({
+    type: [SyncRuleRefDto],
+    description:
+      'Rules kept as-is because they were edited locally and the payload did not change them. ' +
+      'Only non-empty under conflictPolicy=preserve.',
+  })
+  preserved: SyncRuleRefDto[];
+
+  @ApiProperty({
+    type: [SyncRuleRefDto],
+    description:
+      'Rules changed both locally and in the payload since the last sync. Reported under either policy; ' +
+      'conflictPolicy decides which side won.',
+  })
+  conflicts: SyncRuleRefDto[];
 
   @ApiProperty({ type: [SyncSchemaResolutionDto], description: 'How each bundled schema was resolved' })
   schemaResolutions: SyncSchemaResolutionDto[];

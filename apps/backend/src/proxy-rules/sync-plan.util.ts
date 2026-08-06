@@ -99,11 +99,37 @@ export interface SyncPlan {
   toDelete: SyncRuleRef[];
   /** Live-only rules kept because `options.prune` is false. */
   pruneCandidates: SyncRuleRef[];
+  /**
+   * Locally-edited rules the incoming payload leaves untouched, kept as-is.
+   * Only populated when `options.baseRules` is supplied and the policy is
+   * `'preserve'` — otherwise such a rule is an ordinary update.
+   */
+  preserved: SyncRuleRef[];
+  /**
+   * Rules changed on BOTH sides since the base: the payload wants one value and
+   * the local edit wants another. Reported whenever `options.baseRules` is
+   * supplied, whichever side the policy lets win.
+   */
+  conflicts: SyncRuleRef[];
 }
 
 export interface SyncPlanOptions {
   /** When true, live-only rules go to `toDelete`; otherwise to `pruneCandidates`. */
   prune: boolean;
+  /**
+   * What this sync last wrote — the rules from the most recent `sync`-trigger
+   * revision. Supplying it turns the two-way comparison (live vs incoming) into
+   * a three-way one, which is the only way to tell "the app changed this" from
+   * "the user changed this". Omit for today's two-way behaviour, which is what
+   * rules-as-code CI wants: the repo is the single source of truth there.
+   */
+  baseRules?: SyncRuleInput[];
+  /**
+   * How to resolve a rule changed on both sides. `'overwrite'` (the default)
+   * keeps today's behaviour — the payload wins. `'preserve'` keeps the local
+   * edit. Ignored without `baseRules`.
+   */
+  conflictPolicy?: 'overwrite' | 'preserve';
 }
 
 /** Mirrors `PIPELINE_TARGET_URL_DEFAULT` in `packages/cli/src/format/defaults.ts`. */
@@ -340,12 +366,25 @@ export function computeSyncPlan(
     liveByKey.set(key, { row, normalized: normalizeRule(row, 0) });
   }
 
+  // The base is only consulted for rules present on BOTH sides; a live-only
+  // rule the app never wrote follows the existing prune path, not this one.
+  const baseByKey = new Map<string, NormalizedSyncRule>();
+  if (options.baseRules) {
+    const baseFallbackOrder = computeFallbackOrders(options.baseRules);
+    for (const raw of options.baseRules) {
+      baseByKey.set(matchKeyOf(raw), normalizeRule(raw, baseFallbackOrder.get(raw)!));
+    }
+  }
+  const preserveOnConflict = options.conflictPolicy === 'preserve';
+
   const plan: SyncPlan = {
     toCreate: [],
     toUpdate: [],
     unchanged: [],
     toDelete: [],
     pruneCandidates: [],
+    preserved: [],
+    conflicts: [],
   };
 
   const seenIncoming = new Set<string>();
@@ -372,13 +411,34 @@ export function computeSyncPlan(
       matchedLive.add(key);
       if (rulesEqual(liveMatch.normalized, rule)) {
         plan.unchanged.push(ref);
-      } else {
-        plan.toUpdate.push({
-          ...ref,
-          rule,
-          ...(liveMatch.row.id !== undefined ? { liveId: liveMatch.row.id } : {}),
-        });
+        continue;
       }
+
+      // Three-way: with a base we can attribute the difference. `userEdited`
+      // means live drifted from what this sync last wrote; `payloadChanged`
+      // means the incoming payload moved too.
+      const baseRule = baseByKey.get(key);
+      if (baseRule) {
+        const userEdited = !rulesEqual(liveMatch.normalized, baseRule);
+        const payloadChanged = !rulesEqual(rule, baseRule);
+
+        if (userEdited && !payloadChanged) {
+          // Only the user moved — overwriting would discard their edit for no
+          // gain, since the payload still holds the value they started from.
+          plan.preserved.push(ref);
+          continue;
+        }
+        if (userEdited && payloadChanged) {
+          plan.conflicts.push(ref);
+          if (preserveOnConflict) continue;
+        }
+      }
+
+      plan.toUpdate.push({
+        ...ref,
+        rule,
+        ...(liveMatch.row.id !== undefined ? { liveId: liveMatch.row.id } : {}),
+      });
     }
   }
 

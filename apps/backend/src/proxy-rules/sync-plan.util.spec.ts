@@ -646,3 +646,116 @@ describe('sync-plan.util', () => {
     });
   });
 });
+
+/**
+ * Three-way classification (app upgrades over customized rules).
+ *
+ * Without a base, sync can only ask "does live differ from incoming?" — so a
+ * rule the user customized always looks like an update and gets overwritten,
+ * silently discarding their edit. The base (what the app wrote last time, i.e.
+ * the most recent `sync` revision) is what distinguishes "the app changed this"
+ * from "the user changed this".
+ */
+describe('sync-plan.util — three-way', () => {
+  const base = (overrides: Partial<SyncRuleInput> = {}): SyncRuleInput => ({
+    pathPattern: '/api/draft',
+    targetUrl: 'https://api.example.com',
+    ...overrides,
+  })
+  const liveRow = (overrides: Partial<LiveSyncRule> = {}): LiveSyncRule => ({
+    id: 'rule-1',
+    pathPattern: '/api/draft',
+    method: null,
+    methods: null,
+    targetUrl: 'https://api.example.com',
+    stripPrefix: true,
+    order: 0,
+    timeout: 30000,
+    preserveHost: false,
+    forwardCookies: false,
+    headerConfig: null,
+    authTransform: null,
+    internalRewrite: false,
+    proxyType: 'external_proxy',
+    emailHandlerConfig: null,
+    pipelineConfig: null,
+    isEnabled: true,
+    debugEnabled: false,
+    description: null,
+    ...overrides,
+  });
+
+  it('preserves a user-edited rule the incoming bundle did not touch', () => {
+    // The exact reported case: the user repointed a step's skills source; the
+    // app's own copy of that rule is unchanged between versions.
+    const plan = computeSyncPlan(
+      [liveRow({ description: 'user edited' })],
+      [base()],
+      { prune: false, baseRules: [base()], conflictPolicy: 'preserve' },
+    );
+
+    expect(plan.toUpdate).toEqual([]);
+    expect(plan.preserved).toEqual([{ pathPattern: '/api/draft', method: null }]);
+    expect(plan.conflicts).toEqual([]);
+  });
+
+  it('applies an app change to a rule the user never touched', () => {
+    const plan = computeSyncPlan(
+      [liveRow()],
+      [base({ timeout: 60000 })],
+      { prune: false, baseRules: [base()], conflictPolicy: 'preserve' },
+    );
+
+    expect(plan.toUpdate).toHaveLength(1);
+    expect(plan.toUpdate[0].rule.timeout).toBe(60000);
+    expect(plan.preserved).toEqual([]);
+    expect(plan.conflicts).toEqual([]);
+  });
+
+  it('reports a true conflict when both sides changed, keeping the user version under preserve', () => {
+    const plan = computeSyncPlan(
+      [liveRow({ description: 'user edited' })],
+      [base({ timeout: 60000 })],
+      { prune: false, baseRules: [base()], conflictPolicy: 'preserve' },
+    );
+
+    expect(plan.conflicts).toEqual([{ pathPattern: '/api/draft', method: null }]);
+    expect(plan.toUpdate).toEqual([]);
+  });
+
+  it('still overwrites a conflict under the overwrite policy, but reports it', () => {
+    const plan = computeSyncPlan(
+      [liveRow({ description: 'user edited' })],
+      [base({ timeout: 60000 })],
+      { prune: false, baseRules: [base()], conflictPolicy: 'overwrite' },
+    );
+
+    expect(plan.conflicts).toEqual([{ pathPattern: '/api/draft', method: null }]);
+    expect(plan.toUpdate).toHaveLength(1);
+  });
+
+  it('is unchanged from today when no base is supplied (rules-as-code CI parity)', () => {
+    const plan = computeSyncPlan(
+      [liveRow({ description: 'user edited' })],
+      [base()],
+      { prune: false },
+    );
+
+    expect(plan.toUpdate).toHaveLength(1);
+    expect(plan.conflicts).toEqual([]);
+    expect(plan.preserved).toEqual([]);
+  });
+
+  it('treats a rule absent from the base as user-created, never a conflict', () => {
+    // Live-only rules the app never wrote aren't matched by an incoming rule at
+    // all, so they follow the existing prune path — not the conflict path.
+    const plan = computeSyncPlan(
+      [liveRow({ pathPattern: '/api/mine' })],
+      [base()],
+      { prune: false, baseRules: [base()], conflictPolicy: 'preserve' },
+    );
+
+    expect(plan.pruneCandidates).toEqual([{ pathPattern: '/api/mine', method: null }]);
+    expect(plan.conflicts).toEqual([]);
+  });
+});

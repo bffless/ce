@@ -187,6 +187,32 @@ export class ProxyRuleSetRevisionsService {
       .orderBy(desc(proxyRuleSetRevisions.createdAt));
   }
 
+  /**
+   * The newest revision captured by a given trigger, or null if there is none.
+   *
+   * The most recent `'sync'` revision is what a sync last wrote, which makes it
+   * the base for three-way comparison: it's the only way to tell an app-side
+   * change from a local edit made through the dashboard since.
+   */
+  async latestByTrigger(
+    ruleSetId: string,
+    trigger: RevisionTrigger,
+  ): Promise<ProxyRuleSetRevision | null> {
+    const [row] = await db
+      .select()
+      .from(proxyRuleSetRevisions)
+      .where(
+        and(
+          eq(proxyRuleSetRevisions.ruleSetId, ruleSetId),
+          eq(proxyRuleSetRevisions.trigger, trigger),
+        ),
+      )
+      .orderBy(desc(proxyRuleSetRevisions.createdAt))
+      .limit(1);
+
+    return row ?? null;
+  }
+
   /** A single revision, or null if it doesn't exist or belongs to another rule set. */
   async getRevision(ruleSetId: string, revisionId: string): Promise<ProxyRuleSetRevision | null> {
     const [row] = await db

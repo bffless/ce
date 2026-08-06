@@ -1015,6 +1015,7 @@ export class ProxyRuleSetsService {
     }
 
     const prune = dto.options?.prune ?? false;
+    const conflictPolicy = dto.options?.conflictPolicy ?? 'overwrite';
     const dryRun = dto.options?.dryRun ?? false;
     const strictSchemas = dto.options?.strictSchemas ?? false;
 
@@ -1088,9 +1089,33 @@ export class ProxyRuleSetsService {
       }
     }
 
+    // Three-way base: what THIS sync last wrote. Only loaded when a caller asks
+    // to preserve local edits (app upgrades); rules-as-code CI leaves it off so
+    // the repo stays the single source of truth. A set with no prior `sync`
+    // revision — a first sync, or one predating revision history — simply has
+    // no base and falls back to today's two-way comparison.
+    let baseRules: SyncRuleInput[] | undefined;
+    if (existing && conflictPolicy === 'preserve') {
+      try {
+        const baseRevision = await this.proxyRuleSetRevisionsService.latestByTrigger(
+          existing.id,
+          'sync',
+        );
+        baseRules = baseRevision?.snapshot?.rules as SyncRuleInput[] | undefined;
+      } catch (error) {
+        this.logger.warn(
+          `Failed to load sync base revision for rule set ${existing.id}; ` +
+            `falling back to two-way sync: ${(error as Error).message}`,
+        );
+      }
+    }
+
     let plan: SyncPlan;
     try {
-      plan = computeSyncPlan(liveRules, incomingRules, { prune });
+      plan = computeSyncPlan(liveRules, incomingRules, {
+        prune,
+        ...(baseRules ? { baseRules, conflictPolicy } : {}),
+      });
     } catch (error) {
       // Belt-and-braces: duplicates are already rejected above.
       throw new BadRequestException((error as Error).message);
@@ -1109,6 +1134,8 @@ export class ProxyRuleSetsService {
       deleted: this.sortRuleRefs(plan.toDelete),
       unchanged: this.sortRuleRefs(plan.unchanged),
       pruneCandidates: this.sortRuleRefs(plan.pruneCandidates),
+      preserved: this.sortRuleRefs(plan.preserved),
+      conflicts: this.sortRuleRefs(plan.conflicts),
       schemaResolutions: resolutions,
       missingSecrets,
       warnings,
