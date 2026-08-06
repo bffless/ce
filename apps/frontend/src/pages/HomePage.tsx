@@ -7,6 +7,8 @@ import { useGetWildcardCertificateStatusQuery } from '@/services/domainsApi';
 import { useGetPrimarySslStatusQuery } from '@/services/primarySslApi';
 import { useFeatureFlags } from '@/services/featureFlagsApi';
 import { useGetMyRepositoriesQuery } from '@/services/repositoriesApi';
+import { useGetAppCatalogQuery } from '@/services/appCatalogApi';
+import { AppCatalogGrid } from '@/components/app-catalog/AppCatalogGrid';
 import { RootState } from '@/store';
 import { resetOnboarding } from '@/store/slices/setupSlice';
 import { Button } from '@/components/ui/button';
@@ -23,6 +25,9 @@ import { useBranding } from '@/hooks/useBranding';
  * Shows onboarding modal for first-time users
  */
 const SSL_BANNER_DISMISSED_KEY = 'ssl-setup-banner-dismissed';
+
+/** How many catalog apps the home page previews before "View all apps". */
+const FEATURED_APP_COUNT = 3;
 
 export function HomePage() {
   const { data: setupStatus, isLoading: isSetupLoading } = useGetSetupStatusQuery();
@@ -92,6 +97,18 @@ export function HomePage() {
   const { data: myRepos } = useGetMyRepositoriesQuery(undefined, { skip: !user });
   const canCreateRepos = user?.role === 'admin' || user?.role === 'user';
   const showRepositoriesCard = canCreateRepos || (myRepos?.total ?? 0) > 0;
+
+  // Featured apps strip. The catalog endpoint is admin-only and behind the
+  // ENABLE_APP_CATALOG flag (it 401s/403s otherwise), so the query is skipped
+  // under exactly the conditions that gate the "Apps" button below. The strip
+  // shows the first few apps as a shortcut into /apps — it deliberately has
+  // no loading/empty/error chrome of its own; a catalog that can't be reached
+  // just doesn't render here, and /apps stays the place that explains why.
+  const isAppCatalogEnabled = isEnabled('ENABLE_APP_CATALOG');
+  const { data: appCatalog } = useGetAppCatalogQuery(undefined, {
+    skip: !flagsReady || !isAppCatalogEnabled || user?.role !== 'admin',
+  });
+  const featuredApps = (appCatalog?.data ?? []).slice(0, FEATURED_APP_COUNT);
 
   const missingWildcard = certStatus?.exists === false;
   const showExpiryBanner = wildcardExpiring && !isExpiryBannerDismissed;
@@ -233,10 +250,10 @@ export function HomePage() {
         )}
 
         {/* Navigation Cards */}
-        <div className={`grid gap-4 ${user?.role === 'admin' ? 'md:grid-cols-2 lg:grid-cols-4' : showRepositoriesCard ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
+        <div className={`grid gap-4 ${user?.role === 'admin' ? 'md:grid-cols-3 lg:grid-cols-5' : showRepositoriesCard ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
           {showRepositoriesCard && (
             <Link to="/repo" className="group block">
-              <div className="bg-white dark:bg-card border border-[#3a3a3a]/10 dark:border-border rounded-lg p-6 hover:border-[#d96459]/50 hover:shadow-md transition-all duration-200">
+              <div className="h-full bg-white dark:bg-card border border-[#3a3a3a]/10 dark:border-border rounded-lg p-6 hover:border-[#d96459]/50 hover:shadow-md transition-all duration-200">
                 <div className="flex items-start justify-between">
                   <FolderGit2 className="h-8 w-8 text-[#d96459]" />
                   <ArrowRight className="h-5 w-5 text-[#4a4a4a]/30 group-hover:text-[#d96459] group-hover:translate-x-1 transition-all" />
@@ -253,7 +270,7 @@ export function HomePage() {
 
           {user?.role === 'admin' && (
             <Link to="/users" className="group block">
-              <div className="bg-white dark:bg-card border border-[#3a3a3a]/10 dark:border-border rounded-lg p-6 hover:border-[#d96459]/50 hover:shadow-md transition-all duration-200">
+              <div className="h-full bg-white dark:bg-card border border-[#3a3a3a]/10 dark:border-border rounded-lg p-6 hover:border-[#d96459]/50 hover:shadow-md transition-all duration-200">
                 <div className="flex items-start justify-between">
                   <UserCog className="h-8 w-8 text-[#d96459]" />
                   <ArrowRight className="h-5 w-5 text-[#4a4a4a]/30 group-hover:text-[#d96459] group-hover:translate-x-1 transition-all" />
@@ -270,7 +287,7 @@ export function HomePage() {
 
           {user?.role === 'admin' && (
             <Link to="/groups" className="group block">
-              <div className="bg-white dark:bg-card border border-[#3a3a3a]/10 dark:border-border rounded-lg p-6 hover:border-[#d96459]/50 hover:shadow-md transition-all duration-200">
+              <div className="h-full bg-white dark:bg-card border border-[#3a3a3a]/10 dark:border-border rounded-lg p-6 hover:border-[#d96459]/50 hover:shadow-md transition-all duration-200">
                 <div className="flex items-start justify-between">
                   <Users className="h-8 w-8 text-[#d96459]" />
                   <ArrowRight className="h-5 w-5 text-[#4a4a4a]/30 group-hover:text-[#d96459] group-hover:translate-x-1 transition-all" />
@@ -286,7 +303,7 @@ export function HomePage() {
           )}
 
           <Link to="/settings?tab=sites" className="group block">
-            <div className="bg-white dark:bg-card border border-[#3a3a3a]/10 dark:border-border rounded-lg p-6 hover:border-[#d96459]/50 hover:shadow-md transition-all duration-200">
+            <div className="h-full bg-white dark:bg-card border border-[#3a3a3a]/10 dark:border-border rounded-lg p-6 hover:border-[#d96459]/50 hover:shadow-md transition-all duration-200">
               <div className="flex items-start justify-between">
                 <Globe className="h-8 w-8 text-[#d96459]" />
                 <ArrowRight className="h-5 w-5 text-[#4a4a4a]/30 group-hover:text-[#d96459] group-hover:translate-x-1 transition-all" />
@@ -301,7 +318,7 @@ export function HomePage() {
           </Link>
 
           <Link to="/settings" className="group block">
-            <div className="bg-white dark:bg-card border border-[#3a3a3a]/10 dark:border-border rounded-lg p-6 hover:border-[#d96459]/50 hover:shadow-md transition-all duration-200">
+            <div className="h-full bg-white dark:bg-card border border-[#3a3a3a]/10 dark:border-border rounded-lg p-6 hover:border-[#d96459]/50 hover:shadow-md transition-all duration-200">
               <div className="flex items-start justify-between">
                 <Settings className="h-8 w-8 text-[#d96459]" />
                 <ArrowRight className="h-5 w-5 text-[#4a4a4a]/30 group-hover:text-[#d96459] group-hover:translate-x-1 transition-all" />
@@ -315,6 +332,29 @@ export function HomePage() {
             </div>
           </Link>
         </div>
+
+        {/* Featured Apps */}
+        {featuredApps.length > 0 && (
+          <div>
+            <div className="flex items-baseline justify-between gap-4 mb-4">
+              <div>
+                <h2 className="text-lg font-semibold text-[#3a3a3a] dark:text-foreground">
+                  Apps
+                </h2>
+                <p className="text-sm text-[#4a4a4a] dark:text-muted-foreground mt-1">
+                  1-click install apps built on top of BFFless
+                </p>
+              </div>
+              <Link
+                to="/apps"
+                className="shrink-0 text-sm font-medium text-[#d96459] hover:underline"
+              >
+                View all apps
+              </Link>
+            </div>
+            <AppCatalogGrid entries={featuredApps} className="grid gap-4 md:grid-cols-3" />
+          </div>
+        )}
 
         {/* Admin Section */}
         {user?.role === 'admin' && (

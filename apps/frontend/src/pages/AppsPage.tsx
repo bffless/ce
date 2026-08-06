@@ -1,53 +1,23 @@
 import { useState } from 'react';
-import { AppCard } from '@/components/app-catalog/AppCard';
-import { AppDetailsDialog } from '@/components/app-catalog/AppDetailsDialog';
-import { InstallDialog } from '@/components/app-catalog/InstallDialog';
+import { AppCatalogGrid } from '@/components/app-catalog/AppCatalogGrid';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useGetAppCatalogQuery, type CatalogEntry } from '@/services/appCatalogApi';
+import { useGetAppCatalogQuery } from '@/services/appCatalogApi';
 import { AlertTriangle, LayoutGrid, X } from 'lucide-react';
 
 /**
  * AppsPage — the app catalog admin page (Task 12 of the app-catalog spec).
  * Lists every app the registry knows about, each rendered as an `AppCard`
- * with its own install/manage CTA. Registry fetch failures don't block the
- * page — already-installed apps still render (`registryError` becomes a
- * dismissable notice instead of an error state).
+ * (via the shared `AppCatalogGrid`) with its own install/manage CTA. Registry
+ * fetch failures don't block the page — already-installed apps still render
+ * (`registryError` becomes a dismissable notice instead of an error state).
  */
 export function AppsPage() {
   const { data, isLoading, isError, refetch } = useGetAppCatalogQuery();
   const [registryNoticeDismissed, setRegistryNoticeDismissed] = useState(false);
-  // These hold the entry captured at open time — used only as an id lookup
-  // key and as a fallback if the app disappears from the catalog while the
-  // dialog is open. The dialog is actually handed the LIVE entry (derived
-  // below from the current `data`), not this snapshot: server-side mutations
-  // like updateApp invalidate the `AppCatalog` tag and refetch `data`, and a
-  // stale snapshot here would never pick that up (the Done screen's setup
-  // notes would appear stuck on the pre-update list).
-  const [installTargetSnapshot, setInstallTargetSnapshot] = useState<CatalogEntry | null>(null);
-  const [detailsTargetSnapshot, setDetailsTargetSnapshot] = useState<CatalogEntry | null>(null);
-  const [updateTargetSnapshot, setUpdateTargetSnapshot] = useState<{
-    entry: CatalogEntry;
-    jobId: string;
-  } | null>(null);
 
   const entries = data?.data ?? [];
-
-  const installTarget = installTargetSnapshot
-    ? (entries.find((e) => e.id === installTargetSnapshot.id) ?? installTargetSnapshot)
-    : null;
-  const detailsTarget = detailsTargetSnapshot
-    ? (entries.find((e) => e.id === detailsTargetSnapshot.id) ?? detailsTargetSnapshot)
-    : null;
-  const updateTarget = updateTargetSnapshot
-    ? {
-        entry:
-          entries.find((e) => e.id === updateTargetSnapshot.entry.id) ??
-          updateTargetSnapshot.entry,
-        jobId: updateTargetSnapshot.jobId,
-      }
-    : null;
 
   return (
     <div className="container mx-auto py-8">
@@ -104,53 +74,7 @@ export function AppsPage() {
         </div>
       )}
 
-      {!isLoading && entries.length > 0 && (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {entries.map((entry) => (
-            <AppCard
-              key={entry.id}
-              entry={entry}
-              onInstall={setInstallTargetSnapshot}
-              onDetails={setDetailsTargetSnapshot}
-              onUpdateStarted={(updatedEntry, jobId) =>
-                setUpdateTargetSnapshot({ entry: updatedEntry, jobId })
-              }
-            />
-          ))}
-        </div>
-      )}
-
-      {detailsTarget && (
-        <AppDetailsDialog
-          entry={detailsTarget}
-          open={detailsTarget !== null}
-          onOpenChange={(open) => !open && setDetailsTargetSnapshot(null)}
-          // Hand off rather than stack: the details dialog closes and the
-          // install wizard takes its place, so there's only ever one modal.
-          onInstall={(entry) => {
-            setDetailsTargetSnapshot(null);
-            setInstallTargetSnapshot(entry);
-          }}
-        />
-      )}
-
-      {installTarget && (
-        <InstallDialog
-          entry={installTarget}
-          open={installTarget !== null}
-          onOpenChange={(open) => !open && setInstallTargetSnapshot(null)}
-        />
-      )}
-
-      {updateTarget && (
-        <InstallDialog
-          entry={updateTarget.entry}
-          open={updateTarget !== null}
-          onOpenChange={(open) => !open && setUpdateTargetSnapshot(null)}
-          mode="update"
-          initialJobId={updateTarget.jobId}
-        />
-      )}
+      {!isLoading && entries.length > 0 && <AppCatalogGrid entries={entries} />}
     </div>
   );
 }

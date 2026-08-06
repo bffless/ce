@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { HomePage } from './HomePage';
 import type { WildcardCertificateStatus } from '@/services/domainsApi';
@@ -12,6 +12,7 @@ const mockGetSetupStatus = vi.fn();
 const mockGetWildcardStatus = vi.fn();
 const mockGetMyRepositories = vi.fn();
 const mockGetPrimarySslStatus = vi.fn();
+const mockGetAppCatalog = vi.fn();
 
 vi.mock('@/services/authApi', () => ({
   useGetSessionQuery: () => mockGetSession(),
@@ -29,14 +30,38 @@ vi.mock('@/services/primarySslApi', () => ({
   useGetPrimarySslStatusQuery: () => mockGetPrimarySslStatus(),
 }));
 
+// Flipped per-test by the featured-apps suite; every other suite leaves the
+// app catalog off, which is also what a CE instance without the flag sees.
+let mockAppCatalogFlag = false;
+
 vi.mock('@/services/featureFlagsApi', () => ({
   useFeatureFlags: () => ({
     isReady: true,
     isEnabled: (flag: string) =>
       flag === 'ENABLE_WILDCARD_SSL_BANNER' ||
       flag === 'ENABLE_WILDCARD_SSL' ||
-      flag === 'ENABLE_PRIMARY_SSL_MANAGEMENT',
+      flag === 'ENABLE_PRIMARY_SSL_MANAGEMENT' ||
+      (flag === 'ENABLE_APP_CATALOG' && mockAppCatalogFlag),
   }),
+}));
+
+// Honors `skip` so the tests exercise HomePage's own gating (admin + flag)
+// rather than just the presence of data.
+vi.mock('@/services/appCatalogApi', () => ({
+  useGetAppCatalogQuery: (_arg: undefined, options?: { skip?: boolean }) =>
+    options?.skip ? {} : (mockGetAppCatalog() ?? {}),
+}));
+
+// The grid itself (cards, install/details dialogs) is covered by
+// AppsPage.test.tsx; here only the strip's gating and slicing matter.
+vi.mock('@/components/app-catalog/AppCatalogGrid', () => ({
+  AppCatalogGrid: ({ entries }: { entries: Array<{ id: string; name: string }> }) => (
+    <div data-testid="app-catalog-grid">
+      {entries.map((entry) => (
+        <span key={entry.id}>{entry.name}</span>
+      ))}
+    </div>
+  ),
 }));
 
 vi.mock('@/services/repositoriesApi', () => ({
@@ -266,5 +291,72 @@ describe('HomePage — ?onboarding=1 developer override', () => {
 
     expect(screen.queryByTestId('onboarding-modal')).not.toBeInTheDocument();
     expect(mockDispatch).not.toHaveBeenCalled();
+  });
+});
+
+describe('HomePage — featured apps strip', () => {
+  const catalog = (names: string[]) => ({
+    data: { data: names.map((name) => ({ id: name.toLowerCase(), name })) },
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    mockAppCatalogFlag = true;
+    mockGetSession.mockReturnValue({
+      data: { user: { email: 'admin@example.com', role: 'admin' } },
+    });
+    mockGetSetupStatus.mockReturnValue({ data: { isSetupComplete: true }, isLoading: false });
+    mockGetWildcardStatus.mockReturnValue({ data: undefined });
+    mockGetPrimarySslStatus.mockReturnValue({ data: undefined });
+    mockGetMyRepositories.mockReturnValue({ data: { total: 1 } });
+    mockGetAppCatalog.mockReturnValue(catalog(['Handoff', 'Rivulet', 'Studio']));
+  });
+
+  afterEach(() => {
+    mockAppCatalogFlag = false;
+  });
+
+  it('shows the catalog apps with a link through to the full page', () => {
+    renderHomePage();
+
+    const grid = screen.getByTestId('app-catalog-grid');
+    expect(within(grid).getByText('Handoff')).toBeInTheDocument();
+    expect(within(grid).getByText('Rivulet')).toBeInTheDocument();
+    expect(within(grid).getByText('Studio')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'View all apps' })).toHaveAttribute('href', '/apps');
+  });
+
+  it('previews only the first three apps', () => {
+    mockGetAppCatalog.mockReturnValue(catalog(['Handoff', 'Rivulet', 'Studio', 'Fourth']));
+    renderHomePage();
+
+    const grid = screen.getByTestId('app-catalog-grid');
+    expect(within(grid).getByText('Studio')).toBeInTheDocument();
+    expect(within(grid).queryByText('Fourth')).not.toBeInTheDocument();
+  });
+
+  it('renders nothing when the catalog is empty (no loading/empty chrome on the home page)', () => {
+    mockGetAppCatalog.mockReturnValue({ data: { data: [] } });
+    renderHomePage();
+
+    expect(screen.queryByTestId('app-catalog-grid')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'View all apps' })).not.toBeInTheDocument();
+  });
+
+  it('skips the catalog query entirely when ENABLE_APP_CATALOG is off', () => {
+    mockAppCatalogFlag = false;
+    renderHomePage();
+
+    expect(mockGetAppCatalog).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('app-catalog-grid')).not.toBeInTheDocument();
+  });
+
+  it('skips the catalog query for non-admins (the endpoint is admin-only)', () => {
+    mockGetSession.mockReturnValue({ data: { user: { email: 'u@example.com', role: 'user' } } });
+    renderHomePage();
+
+    expect(mockGetAppCatalog).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('app-catalog-grid')).not.toBeInTheDocument();
   });
 });
