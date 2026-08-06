@@ -19,7 +19,10 @@ import { PipelineSchedulesService } from '../pipeline-schedules/pipeline-schedul
 import { PipelineSchemasService } from '../pipelines/pipeline-schemas.service';
 import { ProjectsService } from '../projects/projects.service';
 import { ProxyRuleSetsService } from '../proxy-rules/proxy-rule-sets.service';
-import { SyncProxyRuleSetDto } from '../proxy-rules/dto/sync-proxy-rule-set.dto';
+import {
+  SyncProxyRuleSetDto,
+  SyncRuleConflictDto,
+} from '../proxy-rules/dto/sync-proxy-rule-set.dto';
 import { IStorageAdapter, STORAGE_ADAPTER } from '../storage/storage.interface';
 import { resolveLocalAdapter } from '../storage/local.adapter';
 import { AppBundleService, type LoadedBundle } from './app-bundle.service';
@@ -106,6 +109,9 @@ interface InstallProgress {
   schemaIds: string[];
   deploymentId?: string;
   domainId?: string;
+  /** Rules an update left contested, carried onto the job so the dialog can
+   *  offer a per-field choice after the update finishes. */
+  conflicts: SyncRuleConflictDto[];
 }
 
 /**
@@ -248,6 +254,7 @@ export class AppInstallerService {
         schemaIds: [...(row.schemaIds ?? [])],
         deploymentId: row.deploymentId ?? undefined,
         domainId: row.domainId ?? undefined,
+        conflicts: [],
       };
 
       // ---- 4. sync-rules ----
@@ -406,13 +413,18 @@ export class AppInstallerService {
         schemaIds: [...(installed.schemaIds ?? [])],
         deploymentId: installed.deploymentId ?? undefined,
         domainId: installed.domainId ?? undefined,
+        conflicts: [],
       };
       const { missingSecrets, warnings } = await this.syncRuleSets(
         ruleSets,
         manifest,
         project.id,
         userId,
-        { prune: opts.prune },
+        // An installed app may have been customized in the dashboard. Compare
+        // against what the last sync wrote, so a local edit the new bundle
+        // doesn't touch is kept rather than silently reverted; genuine
+        // both-sides changes come back in `conflicts` for reporting.
+        { prune: opts.prune, conflictPolicy: 'preserve' },
         progress,
       );
       await this.persistProgress(installed.id, progress);
@@ -464,6 +476,7 @@ export class AppInstallerService {
         installedAppId: installed.id,
         manualSteps,
         appUrl,
+        ...(progress.conflicts.length > 0 ? { conflicts: progress.conflicts } : {}),
       });
     } catch (error) {
       await this.failJob(jobId, step, rowId, error, progress);
@@ -843,7 +856,7 @@ export class AppInstallerService {
     manifest: AppManifest,
     projectId: string,
     userId: string,
-    options: { prune: boolean },
+    options: { prune: boolean; conflictPolicy?: 'overwrite' | 'preserve' },
     acc: InstallProgress,
   ): Promise<{ missingSecrets: string[]; warnings: string[] }> {
     const missingSecrets: string[] = [];
@@ -854,7 +867,11 @@ export class AppInstallerService {
         projectId,
         {
           ...ruleSet.dto,
-          options: { dryRun: false, prune: options.prune },
+          options: {
+            dryRun: false,
+            prune: options.prune,
+            ...(options.conflictPolicy ? { conflictPolicy: options.conflictPolicy } : {}),
+          },
           source: { repo: manifest.eject?.repo, path: ruleSet.file },
         } as SyncProxyRuleSetDto,
         userId,
@@ -878,6 +895,31 @@ export class AppInstallerService {
 
       missingSecrets.push(...(response.missingSecrets ?? []));
       warnings.push(...(response.warnings ?? []));
+
+      // Surface what the three-way merge decided. Silently keeping a local edit
+      // is no better than silently discarding one — either way the operator
+      // needs to know the rule they're running isn't the one the app shipped.
+      const preserved = response.preserved ?? [];
+      if (preserved.length > 0) {
+        warnings.push(
+          `Kept your edits to ${preserved.length} rule(s) this update did not change: ` +
+            `${preserved.map((r) => describeRuleRef(r)).join(', ')}`,
+        );
+      }
+      const mergedRules = response.merged ?? [];
+      if (mergedRules.length > 0) {
+        warnings.push(
+          `Merged your edits into ${mergedRules.length} updated rule(s): ` +
+            `${mergedRules.map((r) => describeRuleRef(r)).join(', ')}`,
+        );
+      }
+      for (const conflict of response.conflicts ?? []) {
+        warnings.push(
+          `${describeRuleRef(conflict)} was changed both by you and by this update ` +
+            `(${conflict.fields.map((f) => f.field).join(', ')}); your version was kept`,
+        );
+      }
+      acc.conflicts.push(...(response.conflicts ?? []));
     }
 
     return { missingSecrets, warnings };
@@ -1430,6 +1472,11 @@ export class AppInstallerService {
     if (error instanceof Error) return error.message;
     return typeof error === 'string' ? error : 'Unknown error';
   }
+}
+
+/** "POST /api/thumbnail/draft" / "ANY /api/*" — how a rule is named in operator-facing copy. */
+function describeRuleRef(ref: { pathPattern: string; method: string | null }): string {
+  return `${ref.method ?? 'ANY'} ${ref.pathPattern}`;
 }
 
 function pushUnique(list: string[], value: string): void {

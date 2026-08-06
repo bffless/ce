@@ -143,6 +143,9 @@ function syncResponse(overrides: Record<string, unknown> = {}) {
     deleted: [],
     unchanged: [],
     pruneCandidates: [],
+    preserved: [],
+    merged: [],
+    conflicts: [],
     schemaResolutions: [],
     missingSecrets: [],
     warnings: [],
@@ -1165,8 +1168,55 @@ describe('AppInstallerService', () => {
       service.startUpdate(installed as never, ENTRY, 'user-1', { prune: true });
       await service.whenIdle();
 
-      expect(ruleSets.syncRuleSet.mock.calls[0][1].options).toEqual({ dryRun: false, prune: true });
+      // An update preserves dashboard edits the new bundle doesn't touch (three-way).
+      expect(ruleSets.syncRuleSet.mock.calls[0][1].options).toEqual({
+        dryRun: false,
+        prune: true,
+        conflictPolicy: 'preserve',
+      });
       expect(deployments.createDeploymentFromZip.mock.calls[0][1].alias).toBe('handoff');
+    });
+
+    // Silently KEEPING a local edit is no better than silently discarding one:
+    // either way the operator is running a rule the app didn't ship. Both
+    // outcomes have to reach the progress detail the install dialog renders.
+    it('reports preserved and conflicted rules in the step detail', async () => {
+      mockDb.__queue([]);
+      ruleSets.syncRuleSet = jest.fn().mockResolvedValue(
+        syncResponse({
+          ruleSetId: 'rs-1',
+          preserved: [{ pathPattern: '/api/thumbnail/draft', method: 'POST' }],
+          merged: [{ pathPattern: '/api/refine-scene', method: 'POST', keptFields: ['description'] }],
+          conflicts: [
+            {
+              pathPattern: '/api/scenes',
+              method: 'POST',
+              liveId: 'rule-9',
+              fields: [
+                {
+                  field: 'pipelineConfig.steps.draft.config.skills.enabled',
+                  ours: ['mine'],
+                  theirs: ['theirs'],
+                },
+              ],
+            },
+          ],
+        }),
+      );
+
+      const { jobId } = service.startUpdate(installed as never, ENTRY, 'user-1', { prune: false });
+      await service.whenIdle();
+
+      const details = jobs
+        .get(jobId)!
+        .steps.map((step) => step.detail ?? '')
+        .join(' ');
+
+      expect(details).toContain('POST /api/thumbnail/draft');
+      expect(details).toContain('POST /api/scenes');
+      expect(details).toContain('pipelineConfig.steps.draft.config.skills.enabled');
+      // A clean merge is reported too — the live rule still isn't the shipped one.
+      expect(details).toContain('POST /api/refine-scene');
     });
 
     it('bumps the recorded version on the existing row', async () => {

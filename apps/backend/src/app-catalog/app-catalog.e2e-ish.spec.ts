@@ -371,9 +371,11 @@ describe('App catalog orchestration (fixture bundle, real bytes + real manifest 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(fetchSpy).toHaveBeenCalledWith(ENTRY_V2.bundleUrl, expect.anything());
 
-    // prune false, on both synced rule sets
-    expect(ruleSets.syncRuleSet.mock.calls[0][1].options).toEqual({ dryRun: false, prune: false });
-    expect(ruleSets.syncRuleSet.mock.calls[1][1].options).toEqual({ dryRun: false, prune: false });
+    // prune false, on both synced rule sets; an update also preserves local
+    // dashboard edits the new bundle doesn't touch (three-way sync).
+    const updateOptions = { dryRun: false, prune: false, conflictPolicy: 'preserve' };
+    expect(ruleSets.syncRuleSet.mock.calls[0][1].options).toEqual(updateOptions);
+    expect(ruleSets.syncRuleSet.mock.calls[1][1].options).toEqual(updateOptions);
 
     // Same alias redeployed — not a new one.
     const [zippedFile, deployDto] = deployments.createDeploymentFromZip.mock.calls[0] as [

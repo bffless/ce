@@ -145,6 +145,18 @@ export class SyncOptionsDto {
   @IsOptional()
   @IsBoolean()
   strictSchemas?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Resolve rules edited locally since this set was last synced by comparing against the most recent sync revision. ' +
+      "'overwrite' (default) keeps two-way behaviour — the payload always wins, which is what rules-as-code CI wants. " +
+      "'preserve' keeps the local edit and reports it, for app upgrades over a customized install.",
+    enum: ['overwrite', 'preserve'],
+    default: 'overwrite',
+  })
+  @IsOptional()
+  @IsIn(['overwrite', 'preserve'])
+  conflictPolicy?: 'overwrite' | 'preserve';
 }
 
 /**
@@ -246,6 +258,38 @@ export class SyncRuleRefDto {
   method: string | null;
 }
 
+/** One contested field, with both candidate values so a resolver can offer the
+ *  choice without recomputing the merge. */
+export class SyncFieldConflictDto {
+  @ApiProperty({
+    description: 'Dotted path of the contested field',
+    example: 'pipelineConfig.steps.draft.config.skills.enabled',
+  })
+  field: string;
+
+  @ApiProperty({ description: 'The live (locally-edited) value', nullable: true })
+  ours: unknown;
+
+  @ApiProperty({ description: 'The value the payload wanted', nullable: true })
+  theirs: unknown;
+}
+
+/** A conflicted rule plus the fields both sides changed differently. */
+export class SyncRuleConflictDto extends SyncRuleRefDto {
+  @ApiProperty({ type: [SyncFieldConflictDto], description: 'The contested fields' })
+  fields: SyncFieldConflictDto[];
+
+  @ApiPropertyOptional({ description: 'Id of the live rule, for direct resolution' })
+  liveId?: string;
+}
+
+/** A rule where the payload's changes and a local edit changed different
+ *  fields, so both were applied. */
+export class SyncRuleMergedDto extends SyncRuleRefDto {
+  @ApiProperty({ type: [String], description: 'Dotted paths kept from the live rule' })
+  keptFields: string[];
+}
+
 /** One entry of `schemaResolutions[]` — see `SchemaResolution` in schema-sync.util. */
 export class SyncSchemaResolutionDto {
   @ApiProperty({ description: 'Schema name' })
@@ -304,6 +348,30 @@ export class SyncProxyRuleSetResponseDto {
     description: 'Live-only rules NOT deleted because options.prune is false',
   })
   pruneCandidates: SyncRuleRefDto[];
+
+  @ApiProperty({
+    type: [SyncRuleRefDto],
+    description:
+      'Rules kept as-is because they were edited locally and the payload did not change them. ' +
+      'Only non-empty under conflictPolicy=preserve.',
+  })
+  preserved: SyncRuleRefDto[];
+
+  @ApiProperty({
+    type: [SyncRuleConflictDto],
+    description:
+      'Rules with at least one field both sides changed differently since the last sync. Everything outside ' +
+      '`fields` was merged automatically; conflictPolicy decided those. Reported under either policy.',
+  })
+  conflicts: SyncRuleConflictDto[];
+
+  @ApiProperty({
+    type: [SyncRuleMergedDto],
+    description:
+      'Rules where the payload and a local edit changed different fields, so both were applied. ' +
+      'The outcome is the desired one, but the live rule is still not the one the app shipped.',
+  })
+  merged: SyncRuleMergedDto[];
 
   @ApiProperty({ type: [SyncSchemaResolutionDto], description: 'How each bundled schema was resolved' })
   schemaResolutions: SyncSchemaResolutionDto[];

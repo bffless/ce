@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import type { AppManualStep } from './app-manifest.types';
+import type { SyncRuleConflictDto } from '../proxy-rules/dto/sync-proxy-rule-set.dto';
 
 export type InstallStepId =
   | 'preflight'
@@ -30,6 +31,13 @@ export interface InstallJob {
   /** Manifest steps filtered by `manualStepApplies`, plus cert-synthesized ones. */
   manualSteps?: AppManualStep[];
   appUrl?: string;
+  /**
+   * Rules an update left contested — the payload and a local edit changed the
+   * same field, and (under the update path's `preserve` policy) the local value
+   * was kept. Carried on the job so the dialog can offer a per-field choice
+   * once the update has finished.
+   */
+  conflicts?: SyncRuleConflictDto[];
   error?: string;
   createdAt: string;
   finishedAt?: string;

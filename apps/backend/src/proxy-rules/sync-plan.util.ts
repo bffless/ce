@@ -1,3 +1,4 @@
+import { mergeRuleThreeWay } from './three-way-merge.util';
 import type {
   AuthTransformConfig,
   EmailHandlerConfig,
@@ -75,6 +76,32 @@ export interface SyncRuleRef {
   method: string | null;
 }
 
+/** One field both sides changed differently, with each side's value so a
+ *  caller can offer a choice without recomputing the merge. */
+export interface SyncFieldConflict {
+  /** Dotted path, e.g. `pipelineConfig.steps.draft.config.skills.enabled`. */
+  field: string;
+  /** The live (locally-edited) value. */
+  ours: unknown;
+  /** The value the incoming payload wanted. */
+  theirs: unknown;
+}
+
+/** A rule whose merge left at least one genuinely contested field. */
+export interface SyncPlanConflict extends SyncRuleRef {
+  fields: SyncFieldConflict[];
+  /** The live row's id, when the caller provided one — lets a resolver
+   *  address the rule directly instead of re-matching on (path, method). */
+  liveId?: string;
+}
+
+/** Rules that carried a local edit forward while still taking the payload's
+ *  other changes. Reported so a clean merge isn't silent either. */
+export interface SyncPlanMerged extends SyncRuleRef {
+  /** Dotted paths kept from the live rule. */
+  keptFields: string[];
+}
+
 export interface SyncPlanCreate extends SyncRuleRef {
   /** Defaults-normalized incoming rule, ready for insert (blank `add` values intact). */
   rule: NormalizedSyncRule;
@@ -99,11 +126,44 @@ export interface SyncPlan {
   toDelete: SyncRuleRef[];
   /** Live-only rules kept because `options.prune` is false. */
   pruneCandidates: SyncRuleRef[];
+  /**
+   * Locally-edited rules the incoming payload leaves untouched, kept as-is.
+   * Only populated when `options.baseRules` is supplied and the policy is
+   * `'preserve'` — otherwise such a rule is an ordinary update.
+   */
+  preserved: SyncRuleRef[];
+  /**
+   * Rules with at least one field both sides changed differently. `fields`
+   * holds the dotted paths (e.g. `pipelineConfig.steps.draft.config.skills`).
+   * Everything outside those paths is merged automatically, so a conflict here
+   * means a genuine same-field disagreement, not merely "the rule changed".
+   */
+  conflicts: SyncPlanConflict[];
+  /**
+   * Rules where the payload's changes and a local edit landed in different
+   * fields, so both were applied. The outcome is what you'd want, but it still
+   * means the live rule isn't the one the app shipped — so it's reported.
+   */
+  merged: SyncPlanMerged[];
 }
 
 export interface SyncPlanOptions {
   /** When true, live-only rules go to `toDelete`; otherwise to `pruneCandidates`. */
   prune: boolean;
+  /**
+   * What this sync last wrote — the rules from the most recent `sync`-trigger
+   * revision. Supplying it turns the two-way comparison (live vs incoming) into
+   * a three-way one, which is the only way to tell "the app changed this" from
+   * "the user changed this". Omit for today's two-way behaviour, which is what
+   * rules-as-code CI wants: the repo is the single source of truth there.
+   */
+  baseRules?: SyncRuleInput[];
+  /**
+   * How to resolve a rule changed on both sides. `'overwrite'` (the default)
+   * keeps today's behaviour — the payload wins. `'preserve'` keeps the local
+   * edit. Ignored without `baseRules`.
+   */
+  conflictPolicy?: 'overwrite' | 'preserve';
 }
 
 /** Mirrors `PIPELINE_TARGET_URL_DEFAULT` in `packages/cli/src/format/defaults.ts`. */
@@ -340,12 +400,26 @@ export function computeSyncPlan(
     liveByKey.set(key, { row, normalized: normalizeRule(row, 0) });
   }
 
+  // The base is only consulted for rules present on BOTH sides; a live-only
+  // rule the app never wrote follows the existing prune path, not this one.
+  const baseByKey = new Map<string, NormalizedSyncRule>();
+  if (options.baseRules) {
+    const baseFallbackOrder = computeFallbackOrders(options.baseRules);
+    for (const raw of options.baseRules) {
+      baseByKey.set(matchKeyOf(raw), normalizeRule(raw, baseFallbackOrder.get(raw)!));
+    }
+  }
+  const preserveOnConflict = options.conflictPolicy === 'preserve';
+
   const plan: SyncPlan = {
     toCreate: [],
     toUpdate: [],
     unchanged: [],
     toDelete: [],
     pruneCandidates: [],
+    preserved: [],
+    conflicts: [],
+    merged: [],
   };
 
   const seenIncoming = new Set<string>();
@@ -372,13 +446,59 @@ export function computeSyncPlan(
       matchedLive.add(key);
       if (rulesEqual(liveMatch.normalized, rule)) {
         plan.unchanged.push(ref);
-      } else {
-        plan.toUpdate.push({
-          ...ref,
-          rule,
-          ...(liveMatch.row.id !== undefined ? { liveId: liveMatch.row.id } : {}),
-        });
+        continue;
       }
+
+      // Three-way: with a base we can attribute the difference. `userEdited`
+      // means live drifted from what this sync last wrote; `payloadChanged`
+      // means the incoming payload moved too.
+      const baseRule = baseByKey.get(key);
+      let effectiveRule = rule;
+      if (baseRule) {
+        const userEdited = !rulesEqual(liveMatch.normalized, baseRule);
+        const payloadChanged = !rulesEqual(rule, baseRule);
+
+        if (userEdited && !payloadChanged) {
+          // Only the user moved — overwriting would discard their edit for no
+          // gain, since the payload still holds the value they started from.
+          plan.preserved.push(ref);
+          continue;
+        }
+        if (userEdited && payloadChanged) {
+          // Both moved, but usually in different fields (the app rewrites a
+          // prompt, the user repoints a skills source). Merge per field so both
+          // land; only a same-field disagreement is a real conflict.
+          const { merged, conflicts, keptFromOurs } = mergeRuleThreeWay(
+            baseRule,
+            liveMatch.normalized,
+            rule,
+            preserveOnConflict ? 'preserve' : 'overwrite',
+          );
+          if (conflicts.length > 0) {
+            plan.conflicts.push({
+              ...ref,
+              fields: conflicts,
+              ...(liveMatch.row.id !== undefined ? { liveId: liveMatch.row.id } : {}),
+            });
+          }
+          if (rulesEqual(liveMatch.normalized, merged)) {
+            // The merge resolved entirely to what's already live.
+            plan.preserved.push(ref);
+            continue;
+          }
+          // Both sides landed. Report which fields came from the local edit so
+          // a clean merge isn't silent — the live rule still isn't the one the
+          // app shipped.
+          if (keptFromOurs.length > 0) plan.merged.push({ ...ref, keptFields: keptFromOurs });
+          effectiveRule = merged;
+        }
+      }
+
+      plan.toUpdate.push({
+        ...ref,
+        rule: effectiveRule,
+        ...(liveMatch.row.id !== undefined ? { liveId: liveMatch.row.id } : {}),
+      });
     }
   }
 

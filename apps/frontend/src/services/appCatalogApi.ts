@@ -150,6 +150,21 @@ export interface InstallStepState {
   error?: string;
 }
 
+/** One field an app update and a local edit both changed. */
+export interface SyncFieldConflict {
+  field: string;
+  ours: unknown;
+  theirs: unknown;
+}
+
+/** A rule left contested by an update; the local value was kept. */
+export interface SyncRuleConflict {
+  pathPattern: string;
+  method: string | null;
+  fields: SyncFieldConflict[];
+  liveId?: string;
+}
+
 export interface InstallJob {
   id: string;
   kind: 'install' | 'update';
@@ -162,6 +177,9 @@ export interface InstallJob {
   /** Manifest steps filtered by `manualStepApplies`, plus cert-synthesized ones. */
   manualSteps?: AppManualStep[];
   appUrl?: string;
+  /** Rules where this update and a local edit changed the same field. The local
+   *  value was kept; the dialog offers a per-field choice. */
+  conflicts?: SyncRuleConflict[];
   error?: string;
   createdAt: string;
   finishedAt?: string;

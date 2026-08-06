@@ -646,3 +646,146 @@ describe('sync-plan.util', () => {
     });
   });
 });
+
+/**
+ * Three-way classification (app upgrades over customized rules).
+ *
+ * Without a base, sync can only ask "does live differ from incoming?" — so a
+ * rule the user customized always looks like an update and gets overwritten,
+ * silently discarding their edit. The base (what the app wrote last time, i.e.
+ * the most recent `sync` revision) is what distinguishes "the app changed this"
+ * from "the user changed this".
+ */
+describe('sync-plan.util — three-way', () => {
+  const base = (overrides: Partial<SyncRuleInput> = {}): SyncRuleInput => ({
+    pathPattern: '/api/draft',
+    targetUrl: 'https://api.example.com',
+    ...overrides,
+  })
+  const liveRow = (overrides: Partial<LiveSyncRule> = {}): LiveSyncRule => ({
+    id: 'rule-1',
+    pathPattern: '/api/draft',
+    method: null,
+    methods: null,
+    targetUrl: 'https://api.example.com',
+    stripPrefix: true,
+    order: 0,
+    timeout: 30000,
+    preserveHost: false,
+    forwardCookies: false,
+    headerConfig: null,
+    authTransform: null,
+    internalRewrite: false,
+    proxyType: 'external_proxy',
+    emailHandlerConfig: null,
+    pipelineConfig: null,
+    isEnabled: true,
+    debugEnabled: false,
+    description: null,
+    ...overrides,
+  });
+
+  it('preserves a user-edited rule the incoming bundle did not touch', () => {
+    // The exact reported case: the user repointed a step's skills source; the
+    // app's own copy of that rule is unchanged between versions.
+    const plan = computeSyncPlan(
+      [liveRow({ description: 'user edited' })],
+      [base()],
+      { prune: false, baseRules: [base()], conflictPolicy: 'preserve' },
+    );
+
+    expect(plan.toUpdate).toEqual([]);
+    expect(plan.preserved).toEqual([{ pathPattern: '/api/draft', method: null }]);
+    expect(plan.conflicts).toEqual([]);
+  });
+
+  it('applies an app change to a rule the user never touched', () => {
+    const plan = computeSyncPlan(
+      [liveRow()],
+      [base({ timeout: 60000 })],
+      { prune: false, baseRules: [base()], conflictPolicy: 'preserve' },
+    );
+
+    expect(plan.toUpdate).toHaveLength(1);
+    expect(plan.toUpdate[0].rule.timeout).toBe(60000);
+    expect(plan.preserved).toEqual([]);
+    expect(plan.conflicts).toEqual([]);
+  });
+
+  it('merges edits to different fields instead of calling them a conflict', () => {
+    // The user annotated the rule; the app raised the timeout. Both land.
+    const plan = computeSyncPlan(
+      [liveRow({ description: 'user edited' })],
+      [base({ timeout: 60000 })],
+      { prune: false, baseRules: [base()], conflictPolicy: 'preserve' },
+    );
+
+    expect(plan.conflicts).toEqual([]);
+    expect(plan.toUpdate).toHaveLength(1);
+    expect(plan.toUpdate[0].rule.description).toBe('user edited');
+    expect(plan.toUpdate[0].rule.timeout).toBe(60000);
+    // A clean merge still isn't silent: the carried-forward field is reported.
+    expect(plan.merged).toEqual([
+      { pathPattern: '/api/draft', method: null, keptFields: ['description'] },
+    ]);
+  });
+
+  it('reports the contested field when both sides changed the SAME one', () => {
+    const plan = computeSyncPlan(
+      [liveRow({ timeout: 90000 })],
+      [base({ timeout: 60000 })],
+      { prune: false, baseRules: [base()], conflictPolicy: 'preserve' },
+    );
+
+    expect(plan.conflicts).toEqual([
+      {
+        pathPattern: '/api/draft',
+        method: null,
+        liveId: 'rule-1',
+        // Both candidate values travel with the conflict so a resolver can
+        // offer the choice without recomputing the merge.
+        fields: [{ field: 'timeout', ours: 90000, theirs: 60000 }],
+      },
+    ]);
+    // preserve keeps the user's value, so nothing needs writing.
+    expect(plan.toUpdate).toEqual([]);
+    expect(plan.preserved).toEqual([{ pathPattern: '/api/draft', method: null }]);
+  });
+
+  it('lets the payload win the contested field under overwrite, still reporting it', () => {
+    const plan = computeSyncPlan(
+      [liveRow({ timeout: 90000 })],
+      [base({ timeout: 60000 })],
+      { prune: false, baseRules: [base()], conflictPolicy: 'overwrite' },
+    );
+
+    expect(plan.conflicts.map((c) => c.fields.map((f) => f.field))).toEqual([['timeout']]);
+    expect(plan.toUpdate).toHaveLength(1);
+    expect(plan.toUpdate[0].rule.timeout).toBe(60000);
+  });
+
+  it('is unchanged from today when no base is supplied (rules-as-code CI parity)', () => {
+    const plan = computeSyncPlan(
+      [liveRow({ description: 'user edited' })],
+      [base()],
+      { prune: false },
+    );
+
+    expect(plan.toUpdate).toHaveLength(1);
+    expect(plan.conflicts).toEqual([]);
+    expect(plan.preserved).toEqual([]);
+  });
+
+  it('treats a rule absent from the base as user-created, never a conflict', () => {
+    // Live-only rules the app never wrote aren't matched by an incoming rule at
+    // all, so they follow the existing prune path — not the conflict path.
+    const plan = computeSyncPlan(
+      [liveRow({ pathPattern: '/api/mine' })],
+      [base()],
+      { prune: false, baseRules: [base()], conflictPolicy: 'preserve' },
+    );
+
+    expect(plan.pruneCandidates).toEqual([{ pathPattern: '/api/mine', method: null }]);
+    expect(plan.conflicts).toEqual([]);
+  });
+});
