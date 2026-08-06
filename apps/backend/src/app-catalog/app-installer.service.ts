@@ -3,7 +3,6 @@ import { ConfigService } from '@nestjs/config';
 import { plainToInstance } from 'class-transformer';
 import { validateSync, type ValidationError } from 'class-validator';
 import { and, eq } from 'drizzle-orm';
-import { zipSync } from 'fflate';
 import { db } from '../db/client';
 import {
   deploymentAliases,
@@ -932,16 +931,12 @@ export class AppInstallerService {
     project: ProjectRef,
     userId: string,
   ) {
-    const zipped = this.buildDistZip(bundle, manifest);
+    const distEntries = this.buildDistEntries(bundle, manifest);
     const alias = manifest.install.alias;
     const attachNames = ruleSets.filter((r) => r.attach).map((r) => r.name);
 
-    const response = await this.deploymentsService.createDeploymentFromZip(
-      {
-        buffer: zipped,
-        originalname: `${manifest.id}-bundle.zip`,
-        mimetype: 'application/zip',
-      } as Express.Multer.File,
+    const response = await this.deploymentsService.createDeploymentFromFiles(
+      distEntries,
       {
         repository: `${project.owner}/${project.name}`,
         // The real source commit when the bundle carries one (bffless/apps#276), so the SHA in
@@ -1319,7 +1314,18 @@ export class AppInstallerService {
    * re-keyed under `basePath` (e.g. `dist/index.html` →
    * `apps/handoff/dist/index.html`) so the alias's basePath resolves.
    */
-  private buildDistZip(bundle: LoadedBundle, manifest: AppManifest): Buffer {
+  /**
+   * Select the bundle's deployable subtree and re-key it under the manifest's basePath.
+   *
+   * Returns the bundle's own byte arrays BY REFERENCE — this used to zip them into a Buffer
+   * that `createDeploymentFromZip` immediately unzipped again, which cost two extra full
+   * copies of the payload and OOM-killed the backend on large bundles (Studio ships two
+   * ~31MB wasm blobs). Nothing here may copy or mutate the bytes.
+   */
+  private buildDistEntries(
+    bundle: LoadedBundle,
+    manifest: AppManifest,
+  ): Record<string, Uint8Array> {
     const prefix = `${manifest.install.deployment.path.replace(/\/+$/, '')}/`;
     const base = manifest.install.deployment.basePath.replace(/^\/+/, '').replace(/\/+$/, '');
 
@@ -1335,7 +1341,7 @@ export class AppInstallerService {
       throw new Error(`Bundle has no files under ${manifest.install.deployment.path}/ to deploy`);
     }
 
-    return Buffer.from(zipSync(entries));
+    return entries;
   }
 
   private applicableManualSteps(

@@ -17,6 +17,9 @@ import { GcsStorageConfig, validateGcsConfig } from './gcs.config';
  */
 @Injectable()
 export class GcsStorageAdapter implements IStorageAdapter {
+  /** Resumable-upload chunk size. Must be a multiple of 256KiB — GCS rejects anything else. */
+  static readonly UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024;
+
   private readonly logger = new Logger(GcsStorageAdapter.name);
   private readonly storage: Storage;
   private readonly bucket: Bucket;
@@ -85,6 +88,12 @@ export class GcsStorageAdapter implements IStorageAdapter {
     try {
       await blob.save(file, {
         contentType,
+        // Bound the resumable upload's retry cache. Left unset, the whole payload is treated
+        // as a single chunk and held in memory alongside the Buffer we already have, which
+        // measured ~40MB of extra peak RSS for one 32MB asset — enough to OOM-kill a 384MB
+        // backend container mid-deploy. An 8MB chunk holds that to ~17MB. Must stay a
+        // multiple of 256KiB: GCS rejects resumable chunk sizes that are not.
+        chunkSize: GcsStorageAdapter.UPLOAD_CHUNK_BYTES,
         metadata: {
           metadata: this.normalizeMetadata(metadata),
         },

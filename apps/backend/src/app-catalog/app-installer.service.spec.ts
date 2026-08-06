@@ -195,7 +195,7 @@ describe('AppInstallerService', () => {
   let certStep: { plan: jest.Mock; execute: jest.Mock; schemeFor: jest.Mock };
   let ruleSets: { syncRuleSet: jest.Mock; delete: jest.Mock };
   let deployments: {
-    createDeploymentFromZip: jest.Mock;
+    createDeploymentFromFiles: jest.Mock;
     deleteDeployment: jest.Mock;
     deleteAlias: jest.Mock;
   };
@@ -242,7 +242,7 @@ describe('AppInstallerService', () => {
       delete: jest.fn().mockResolvedValue(undefined),
     };
     deployments = {
-      createDeploymentFromZip: jest.fn().mockResolvedValue(deployResponse()),
+      createDeploymentFromFiles: jest.fn().mockResolvedValue(deployResponse()),
       deleteDeployment: jest.fn().mockResolvedValue(undefined),
       deleteAlias: jest.fn().mockResolvedValue(undefined),
     };
@@ -328,9 +328,9 @@ describe('AppInstallerService', () => {
 
       expect(ruleSets.syncRuleSet).toHaveBeenCalledTimes(2);
       expect(ruleSets.syncRuleSet.mock.invocationCallOrder[1]).toBeLessThan(
-        deployments.createDeploymentFromZip.mock.invocationCallOrder[0],
+        deployments.createDeploymentFromFiles.mock.invocationCallOrder[0],
       );
-      expect(deployments.createDeploymentFromZip.mock.invocationCallOrder[0]).toBeLessThan(
+      expect(deployments.createDeploymentFromFiles.mock.invocationCallOrder[0]).toBeLessThan(
         domains.create.mock.invocationCallOrder[0],
       );
     });
@@ -357,7 +357,7 @@ describe('AppInstallerService', () => {
       service.startInstall(ENTRY, { projectId: 'proj-1' }, 'user-1');
       await service.whenIdle();
 
-      const [file, dto, userId, role] = deployments.createDeploymentFromZip.mock.calls[0];
+      const [entries, dto, userId, role] = deployments.createDeploymentFromFiles.mock.calls[0];
       expect(dto.proxyRuleSetNames).toEqual(['handoff']);
       expect(dto.repository).toBe('acme/site');
       expect(dto.alias).toBe('handoff');
@@ -367,8 +367,7 @@ describe('AppInstallerService', () => {
       expect(dto.source).toBe('manual');
       expect(userId).toBe('user-1');
       expect(role).toBe('admin');
-      expect(file.mimetype).toBe('application/zip');
-      expect(Buffer.isBuffer(file.buffer)).toBe(true);
+      expect(Object.values(entries).every((v) => v instanceof Uint8Array)).toBe(true);
     });
 
     // Provenance: a stamped bundle deploys under the commit that produced it, so the SHA in the
@@ -381,7 +380,7 @@ describe('AppInstallerService', () => {
       service.startInstall(ENTRY, { projectId: 'proj-1' }, 'user-1');
       await service.whenIdle();
 
-      expect(deployments.createDeploymentFromZip.mock.calls[0][1].commitSha).toBe(commit);
+      expect(deployments.createDeploymentFromFiles.mock.calls[0][1].commitSha).toBe(commit);
     });
 
     // Every app published before the stamp existed. Those must keep deploying exactly as they
@@ -393,7 +392,7 @@ describe('AppInstallerService', () => {
       service.startInstall(ENTRY, { projectId: 'proj-1' }, 'user-1');
       await service.whenIdle();
 
-      const { commitSha } = deployments.createDeploymentFromZip.mock.calls[0][1];
+      const { commitSha } = deployments.createDeploymentFromFiles.mock.calls[0][1];
       expect(commitSha).toBe('a'.repeat(40));
       expect(commitSha).toHaveLength(40);
     });
@@ -404,10 +403,25 @@ describe('AppInstallerService', () => {
       service.startInstall(ENTRY, { projectId: 'proj-1' }, 'user-1');
       await service.whenIdle();
 
-      const { unzipSync } = jest.requireActual('fflate') as typeof import('fflate');
-      const file = deployments.createDeploymentFromZip.mock.calls[0][0];
-      const entries = Object.keys(unzipSync(new Uint8Array(file.buffer))).sort();
+      const entries = Object.keys(deployments.createDeploymentFromFiles.mock.calls[0][0]).sort();
       expect(entries).toEqual(['apps/handoff/dist/assets/app.js', 'apps/handoff/dist/index.html']);
+    });
+
+    // The deploy step used to re-zip the bundle it had just decompressed, only for the
+    // deployment service to unzip it again — two extra full copies of the payload. Studio's
+    // 63MB bundle made that the difference between installing and an OOM kill, so the
+    // entries must be handed over by reference, never re-encoded.
+    it('hands the bundle bytes to the deployment without re-zipping them', async () => {
+      queueInstallDb();
+
+      service.startInstall(ENTRY, { projectId: 'proj-1' }, 'user-1');
+      await service.whenIdle();
+
+      const bundle = await bundleService.fetchBundle.mock.results[0].value;
+      const entries = deployments.createDeploymentFromFiles.mock.calls[0][0];
+
+      // Same underlying Uint8Array objects — no copy was made.
+      expect(entries['apps/handoff/dist/index.html']).toBe(bundle.files['dist/index.html']);
     });
 
     it('creates the app domain with SSL and the manifest visibility flags', async () => {
@@ -824,7 +838,7 @@ describe('AppInstallerService', () => {
 
   describe('deploy verification', () => {
     it('fails the step when the returned aliases do not include the app alias', async () => {
-      deployments.createDeploymentFromZip.mockResolvedValue(deployResponse({ aliases: [] }));
+      deployments.createDeploymentFromFiles.mockResolvedValue(deployResponse({ aliases: [] }));
       queueInstallDb();
 
       const { jobId } = service.startInstall(ENTRY, { projectId: 'proj-1' }, 'user-1');
@@ -858,7 +872,7 @@ describe('AppInstallerService', () => {
       // Nothing deployed yet at that point.
       expect(afterSync.deploymentId).toBeNull();
       expect(mockDb.set.mock.invocationCallOrder[0]).toBeLessThan(
-        deployments.createDeploymentFromZip.mock.invocationCallOrder[0],
+        deployments.createDeploymentFromFiles.mock.invocationCallOrder[0],
       );
     });
 
@@ -877,7 +891,7 @@ describe('AppInstallerService', () => {
           }),
         )
         .mockResolvedValueOnce(syncResponse({ ruleSetId: 'rs-2' }));
-      deployments.createDeploymentFromZip.mockResolvedValue(deployResponse({ aliases: [] }));
+      deployments.createDeploymentFromFiles.mockResolvedValue(deployResponse({ aliases: [] }));
       queueInstallDb();
 
       service.startInstall(ENTRY, { projectId: 'proj-1' }, 'user-1');
@@ -911,7 +925,7 @@ describe('AppInstallerService', () => {
     });
 
     it('stamps installedAppId on a failed job once a row exists, so it can still be undone by jobId', async () => {
-      deployments.createDeploymentFromZip.mockResolvedValue(deployResponse({ aliases: [] }));
+      deployments.createDeploymentFromFiles.mockResolvedValue(deployResponse({ aliases: [] }));
       queueInstallDb();
 
       const { jobId } = service.startInstall(ENTRY, { projectId: 'proj-1' }, 'user-1');
@@ -936,7 +950,7 @@ describe('AppInstallerService', () => {
     });
 
     it('persists a failed update run too', async () => {
-      deployments.createDeploymentFromZip.mockResolvedValue(deployResponse({ aliases: [] }));
+      deployments.createDeploymentFromFiles.mockResolvedValue(deployResponse({ aliases: [] }));
 
       service.startUpdate(
         { ...INSTALLED_ROW, status: 'installed', createdResources: {} } as never,
@@ -1145,7 +1159,7 @@ describe('AppInstallerService', () => {
       expect(job.error).toMatch(/below the required minimum 0\.4\.0/);
       expect(bundleService.fetchBundle).not.toHaveBeenCalled();
       expect(ruleSets.syncRuleSet).not.toHaveBeenCalled();
-      expect(deployments.createDeploymentFromZip).not.toHaveBeenCalled();
+      expect(deployments.createDeploymentFromFiles).not.toHaveBeenCalled();
     });
 
     it('leaves the healthy installed row untouched when a gate refuses the update', async () => {
@@ -1174,7 +1188,7 @@ describe('AppInstallerService', () => {
         prune: true,
         conflictPolicy: 'preserve',
       });
-      expect(deployments.createDeploymentFromZip.mock.calls[0][1].alias).toBe('handoff');
+      expect(deployments.createDeploymentFromFiles.mock.calls[0][1].alias).toBe('handoff');
     });
 
     // Silently KEEPING a local edit is no better than silently discarding one:
