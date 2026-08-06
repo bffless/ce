@@ -886,6 +886,23 @@ export class AppInstallerService {
 
       missingSecrets.push(...(response.missingSecrets ?? []));
       warnings.push(...(response.warnings ?? []));
+
+      // Surface what the three-way merge decided. Silently keeping a local edit
+      // is no better than silently discarding one — either way the operator
+      // needs to know the rule they're running isn't the one the app shipped.
+      const preserved = response.preserved ?? [];
+      if (preserved.length > 0) {
+        warnings.push(
+          `Kept your edits to ${preserved.length} rule(s) this update did not change: ` +
+            `${preserved.map((r) => describeRuleRef(r)).join(', ')}`,
+        );
+      }
+      for (const conflict of response.conflicts ?? []) {
+        warnings.push(
+          `${describeRuleRef(conflict)} was changed both by you and by this update ` +
+            `(${conflict.fields.join(', ')}); your version was kept`,
+        );
+      }
     }
 
     return { missingSecrets, warnings };
@@ -1438,6 +1455,11 @@ export class AppInstallerService {
     if (error instanceof Error) return error.message;
     return typeof error === 'string' ? error : 'Unknown error';
   }
+}
+
+/** "POST /api/thumbnail/draft" / "ANY /api/*" — how a rule is named in operator-facing copy. */
+function describeRuleRef(ref: { pathPattern: string; method: string | null }): string {
+  return `${ref.method ?? 'ANY'} ${ref.pathPattern}`;
 }
 
 function pushUnique(list: string[], value: string): void {

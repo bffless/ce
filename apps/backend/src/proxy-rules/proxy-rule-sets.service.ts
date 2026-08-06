@@ -1135,7 +1135,9 @@ export class ProxyRuleSetsService {
       unchanged: this.sortRuleRefs(plan.unchanged),
       pruneCandidates: this.sortRuleRefs(plan.pruneCandidates),
       preserved: this.sortRuleRefs(plan.preserved),
-      conflicts: this.sortRuleRefs(plan.conflicts),
+      conflicts: [...plan.conflicts].sort((a, b) =>
+        a.pathPattern.localeCompare(b.pathPattern) || (a.method ?? '').localeCompare(b.method ?? ''),
+      ),
       schemaResolutions: resolutions,
       missingSecrets,
       warnings,

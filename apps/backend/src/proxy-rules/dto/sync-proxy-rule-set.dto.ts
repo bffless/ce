@@ -258,6 +258,16 @@ export class SyncRuleRefDto {
   method: string | null;
 }
 
+/** A conflicted rule plus the dotted paths of the fields both sides changed. */
+export class SyncRuleConflictDto extends SyncRuleRefDto {
+  @ApiProperty({
+    type: [String],
+    description: 'Dotted paths of the contested fields',
+    example: ['pipelineConfig.steps.draft.config.skills.enabled'],
+  })
+  fields: string[];
+}
+
 /** One entry of `schemaResolutions[]` — see `SchemaResolution` in schema-sync.util. */
 export class SyncSchemaResolutionDto {
   @ApiProperty({ description: 'Schema name' })
@@ -326,12 +336,12 @@ export class SyncProxyRuleSetResponseDto {
   preserved: SyncRuleRefDto[];
 
   @ApiProperty({
-    type: [SyncRuleRefDto],
+    type: [SyncRuleConflictDto],
     description:
-      'Rules changed both locally and in the payload since the last sync. Reported under either policy; ' +
-      'conflictPolicy decides which side won.',
+      'Rules with at least one field both sides changed differently since the last sync. Everything outside ' +
+      '`fields` was merged automatically; conflictPolicy decided those. Reported under either policy.',
   })
-  conflicts: SyncRuleRefDto[];
+  conflicts: SyncRuleConflictDto[];
 
   @ApiProperty({ type: [SyncSchemaResolutionDto], description: 'How each bundled schema was resolved' })
   schemaResolutions: SyncSchemaResolutionDto[];

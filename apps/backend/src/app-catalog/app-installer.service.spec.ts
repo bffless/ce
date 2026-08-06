@@ -143,6 +143,8 @@ function syncResponse(overrides: Record<string, unknown> = {}) {
     deleted: [],
     unchanged: [],
     pruneCandidates: [],
+    preserved: [],
+    conflicts: [],
     schemaResolutions: [],
     missingSecrets: [],
     warnings: [],
@@ -1172,6 +1174,38 @@ describe('AppInstallerService', () => {
         conflictPolicy: 'preserve',
       });
       expect(deployments.createDeploymentFromZip.mock.calls[0][1].alias).toBe('handoff');
+    });
+
+    // Silently KEEPING a local edit is no better than silently discarding one:
+    // either way the operator is running a rule the app didn't ship. Both
+    // outcomes have to reach the progress detail the install dialog renders.
+    it('reports preserved and conflicted rules in the step detail', async () => {
+      mockDb.__queue([]);
+      ruleSets.syncRuleSet = jest.fn().mockResolvedValue(
+        syncResponse({
+          ruleSetId: 'rs-1',
+          preserved: [{ pathPattern: '/api/thumbnail/draft', method: 'POST' }],
+          conflicts: [
+            {
+              pathPattern: '/api/scenes',
+              method: 'POST',
+              fields: ['pipelineConfig.steps.draft.config.skills.enabled'],
+            },
+          ],
+        }),
+      );
+
+      const { jobId } = service.startUpdate(installed as never, ENTRY, 'user-1', { prune: false });
+      await service.whenIdle();
+
+      const details = jobs
+        .get(jobId)!
+        .steps.map((step) => step.detail ?? '')
+        .join(' ');
+
+      expect(details).toContain('POST /api/thumbnail/draft');
+      expect(details).toContain('POST /api/scenes');
+      expect(details).toContain('pipelineConfig.steps.draft.config.skills.enabled');
     });
 
     it('bumps the recorded version on the existing row', async () => {

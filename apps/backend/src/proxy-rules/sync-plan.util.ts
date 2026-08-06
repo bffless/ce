@@ -1,3 +1,4 @@
+import { mergeRuleThreeWay } from './three-way-merge.util';
 import type {
   AuthTransformConfig,
   EmailHandlerConfig,
@@ -75,6 +76,11 @@ export interface SyncRuleRef {
   method: string | null;
 }
 
+/** A rule whose merge left at least one genuinely contested field. */
+export interface SyncPlanConflict extends SyncRuleRef {
+  fields: string[];
+}
+
 export interface SyncPlanCreate extends SyncRuleRef {
   /** Defaults-normalized incoming rule, ready for insert (blank `add` values intact). */
   rule: NormalizedSyncRule;
@@ -106,11 +112,12 @@ export interface SyncPlan {
    */
   preserved: SyncRuleRef[];
   /**
-   * Rules changed on BOTH sides since the base: the payload wants one value and
-   * the local edit wants another. Reported whenever `options.baseRules` is
-   * supplied, whichever side the policy lets win.
+   * Rules with at least one field both sides changed differently. `fields`
+   * holds the dotted paths (e.g. `pipelineConfig.steps.draft.config.skills`).
+   * Everything outside those paths is merged automatically, so a conflict here
+   * means a genuine same-field disagreement, not merely "the rule changed".
    */
-  conflicts: SyncRuleRef[];
+  conflicts: SyncPlanConflict[];
 }
 
 export interface SyncPlanOptions {
@@ -418,6 +425,7 @@ export function computeSyncPlan(
       // means live drifted from what this sync last wrote; `payloadChanged`
       // means the incoming payload moved too.
       const baseRule = baseByKey.get(key);
+      let effectiveRule = rule;
       if (baseRule) {
         const userEdited = !rulesEqual(liveMatch.normalized, baseRule);
         const payloadChanged = !rulesEqual(rule, baseRule);
@@ -429,14 +437,28 @@ export function computeSyncPlan(
           continue;
         }
         if (userEdited && payloadChanged) {
-          plan.conflicts.push(ref);
-          if (preserveOnConflict) continue;
+          // Both moved, but usually in different fields (the app rewrites a
+          // prompt, the user repoints a skills source). Merge per field so both
+          // land; only a same-field disagreement is a real conflict.
+          const { merged, conflicts } = mergeRuleThreeWay(
+            baseRule,
+            liveMatch.normalized,
+            rule,
+            preserveOnConflict ? 'preserve' : 'overwrite',
+          );
+          if (conflicts.length > 0) plan.conflicts.push({ ...ref, fields: conflicts });
+          if (rulesEqual(liveMatch.normalized, merged)) {
+            // The merge resolved entirely to what's already live.
+            plan.preserved.push(ref);
+            continue;
+          }
+          effectiveRule = merged;
         }
       }
 
       plan.toUpdate.push({
         ...ref,
-        rule,
+        rule: effectiveRule,
         ...(liveMatch.row.id !== undefined ? { liveId: liveMatch.row.id } : {}),
       });
     }

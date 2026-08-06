@@ -712,26 +712,47 @@ describe('sync-plan.util — three-way', () => {
     expect(plan.conflicts).toEqual([]);
   });
 
-  it('reports a true conflict when both sides changed, keeping the user version under preserve', () => {
+  it('merges edits to different fields instead of calling them a conflict', () => {
+    // The user annotated the rule; the app raised the timeout. Both land.
     const plan = computeSyncPlan(
       [liveRow({ description: 'user edited' })],
       [base({ timeout: 60000 })],
       { prune: false, baseRules: [base()], conflictPolicy: 'preserve' },
     );
 
-    expect(plan.conflicts).toEqual([{ pathPattern: '/api/draft', method: null }]);
-    expect(plan.toUpdate).toEqual([]);
+    expect(plan.conflicts).toEqual([]);
+    expect(plan.toUpdate).toHaveLength(1);
+    expect(plan.toUpdate[0].rule.description).toBe('user edited');
+    expect(plan.toUpdate[0].rule.timeout).toBe(60000);
   });
 
-  it('still overwrites a conflict under the overwrite policy, but reports it', () => {
+  it('reports the contested field when both sides changed the SAME one', () => {
     const plan = computeSyncPlan(
-      [liveRow({ description: 'user edited' })],
+      [liveRow({ timeout: 90000 })],
+      [base({ timeout: 60000 })],
+      { prune: false, baseRules: [base()], conflictPolicy: 'preserve' },
+    );
+
+    expect(plan.conflicts).toEqual([
+      { pathPattern: '/api/draft', method: null, fields: ['timeout'] },
+    ]);
+    // preserve keeps the user's value, so nothing needs writing.
+    expect(plan.toUpdate).toEqual([]);
+    expect(plan.preserved).toEqual([{ pathPattern: '/api/draft', method: null }]);
+  });
+
+  it('lets the payload win the contested field under overwrite, still reporting it', () => {
+    const plan = computeSyncPlan(
+      [liveRow({ timeout: 90000 })],
       [base({ timeout: 60000 })],
       { prune: false, baseRules: [base()], conflictPolicy: 'overwrite' },
     );
 
-    expect(plan.conflicts).toEqual([{ pathPattern: '/api/draft', method: null }]);
+    expect(plan.conflicts).toEqual([
+      { pathPattern: '/api/draft', method: null, fields: ['timeout'] },
+    ]);
     expect(plan.toUpdate).toHaveLength(1);
+    expect(plan.toUpdate[0].rule.timeout).toBe(60000);
   });
 
   it('is unchanged from today when no base is supplied (rules-as-code CI parity)', () => {
