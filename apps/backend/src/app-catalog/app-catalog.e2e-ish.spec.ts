@@ -148,7 +148,7 @@ describe('App catalog orchestration (fixture bundle, real bytes + real manifest 
   let certStep: { plan: jest.Mock; execute: jest.Mock };
   let ruleSets: { syncRuleSet: jest.Mock; delete: jest.Mock };
   let deployments: {
-    createDeploymentFromZip: jest.Mock;
+    createDeploymentFromFiles: jest.Mock;
     deleteDeployment: jest.Mock;
     deleteAlias: jest.Mock;
   };
@@ -185,7 +185,7 @@ describe('App catalog orchestration (fixture bundle, real bytes + real manifest 
     certStep = { plan: jest.fn(), execute: jest.fn() }; // unused: the fixture manifest declares no domain
     ruleSets = { syncRuleSet: jest.fn(), delete: jest.fn().mockResolvedValue(undefined) };
     deployments = {
-      createDeploymentFromZip: jest.fn().mockResolvedValue(deployResponse()),
+      createDeploymentFromFiles: jest.fn().mockResolvedValue(deployResponse()),
       deleteDeployment: jest.fn().mockResolvedValue(undefined),
       deleteAlias: jest.fn().mockResolvedValue(undefined),
     };
@@ -300,11 +300,12 @@ describe('App catalog orchestration (fixture bundle, real bytes + real manifest 
     expect(finalUpdate.createdResources.ruleSetIds).toEqual(['rs-a', 'rs-b']);
     expect(finalUpdate.createdResources.schemaIdsCreated).toEqual(['sch-items', 'sch-notes']);
 
-    // Real zip built from real bundle bytes: only dist/, re-keyed under basePath.
-    const { unzipSync } = jest.requireActual('fflate') as typeof import('fflate');
-    const zippedFile = deployments.createDeploymentFromZip.mock.calls[0][0] as { buffer: Buffer };
-    const entries = Object.keys(unzipSync(new Uint8Array(zippedFile.buffer))).sort();
-    expect(entries).toEqual(['apps/fixture-app/dist/index.html']);
+    // Real bundle bytes handed over directly: only dist/, re-keyed under basePath.
+    const deployed = deployments.createDeploymentFromFiles.mock.calls[0][0] as Record<
+      string,
+      Uint8Array
+    >;
+    expect(Object.keys(deployed).sort()).toEqual(['apps/fixture-app/dist/index.html']);
   });
 
   it('updates to v2 from real bundle bytes: same alias redeployed, prune false, version bumped', async () => {
@@ -351,7 +352,7 @@ describe('App catalog orchestration (fixture bundle, real bytes + real manifest 
         dryRun: false,
         setCreated: false,
       });
-    deployments.createDeploymentFromZip.mockResolvedValue(deployResponse({ deploymentId: 'dep-fixture-2' }));
+    deployments.createDeploymentFromFiles.mockResolvedValue(deployResponse({ deploymentId: 'dep-fixture-2' }));
     mockDb.__queue([]); // final record update — startUpdate takes the row directly, no db read
 
     const { jobId } = service.startUpdate(installedAfterV1, ENTRY_V2, 'user-1', { prune: false });
@@ -378,8 +379,8 @@ describe('App catalog orchestration (fixture bundle, real bytes + real manifest 
     expect(ruleSets.syncRuleSet.mock.calls[1][1].options).toEqual(updateOptions);
 
     // Same alias redeployed — not a new one.
-    const [zippedFile, deployDto] = deployments.createDeploymentFromZip.mock.calls[0] as [
-      { buffer: Buffer },
+    const [deployed, deployDto] = deployments.createDeploymentFromFiles.mock.calls[0] as [
+      Record<string, Uint8Array>,
       { alias: string },
     ];
     expect(deployDto.alias).toBe('fixture-app');
@@ -396,10 +397,11 @@ describe('App catalog orchestration (fixture bundle, real bytes + real manifest 
     expect(finalUpdate.bundleSha256).toBe(v2.sha256);
     expect(finalUpdate.deploymentId).toBe('dep-fixture-2');
 
-    // Real v2 zip: dist/ changed — index.html content differs and assets/app.js is new.
-    const { unzipSync } = jest.requireActual('fflate') as typeof import('fflate');
-    const entries = Object.keys(unzipSync(new Uint8Array(zippedFile.buffer))).sort();
-    expect(entries).toEqual(['apps/fixture-app/dist/assets/app.js', 'apps/fixture-app/dist/index.html']);
+    // Real v2 bundle: dist/ changed — index.html content differs and assets/app.js is new.
+    expect(Object.keys(deployed).sort()).toEqual([
+      'apps/fixture-app/dist/assets/app.js',
+      'apps/fixture-app/dist/index.html',
+    ]);
   });
 
   describe('uninstall (post v1-install, v2-update state)', () => {

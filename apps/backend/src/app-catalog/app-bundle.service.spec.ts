@@ -179,6 +179,37 @@ describe('AppBundleService', () => {
       expect(second.manifest).toEqual(TEST_MANIFEST);
     });
 
+    // The cache used to be bounded by entry count alone (3 entries), so three big apps could
+    // pin ~190MB of decompressed bundles in a 384MB container. Retaining a bundle must never
+    // cost more than the byte budget, however few entries that is.
+    it('does not retain a bundle larger than the cache byte budget', async () => {
+      // ~12MB of incompressible payload, over the 8MB budget for a single cached bundle.
+      const big = new Uint8Array(12 * 1024 * 1024);
+      for (let i = 0; i < big.length; i++) big[i] = i % 251;
+      const { buf, sha256 } = makeBundle(TEST_MANIFEST, { 'dist/big.wasm': big });
+      fetchSpy.mockResolvedValue(fetchResponse(buf));
+
+      const first = await service.fetchBundle('https://example.com/big.zip', sha256);
+      const second = await service.fetchBundle('https://example.com/big.zip', sha256);
+
+      // Correct content both times — it just gets re-fetched instead of pinned in memory.
+      expect(first.manifest).toEqual(TEST_MANIFEST);
+      expect(second.manifest).toEqual(TEST_MANIFEST);
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+    });
+
+    // Small bundles are the common case and must still be cached, so preflight-then-install
+    // does not download twice.
+    it('still caches bundles that fit the byte budget', async () => {
+      const { buf, sha256 } = makeBundle();
+      fetchSpy.mockResolvedValue(fetchResponse(buf));
+
+      await service.fetchBundle('https://example.com/handoff.zip', sha256);
+      await service.fetchBundle('https://example.com/handoff.zip', sha256);
+
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+    });
+
     it('throws on sha mismatch', async () => {
       const { buf } = makeBundle();
       fetchSpy.mockResolvedValue(fetchResponse(buf));

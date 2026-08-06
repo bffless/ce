@@ -277,6 +277,68 @@ describe('DeploymentsService', () => {
     });
   });
 
+  // The app installer deploys entries it already holds decompressed, instead of re-zipping
+  // them for createDeploymentFromZip to unzip again (two extra full copies of the payload,
+  // which OOM-killed the backend on large app bundles).
+  describe('createDeploymentFromFiles', () => {
+    const dto = {
+      repository: mockRepository,
+      commitSha: mockCommitSha,
+      branch: 'app-catalog',
+    } as any;
+
+    it('uploads each entry without requiring a zip', async () => {
+      setupMockChain([[], [mockAsset], [], []]);
+
+      const result = await service.createDeploymentFromFiles(
+        {
+          'index.html': new TextEncoder().encode('<!doctype html>hi'),
+          'assets/app.js': new TextEncoder().encode('console.log(1)'),
+        },
+        dto,
+        mockUserId,
+        'admin',
+      );
+
+      expect(mockStorageAdapter.upload).toHaveBeenCalledTimes(2);
+      expect(result.deploymentId).toBeDefined();
+    });
+
+    // The per-file Buffer is now a zero-copy VIEW over the entry's ArrayBuffer. Built with the
+    // one-arg Buffer.from it would copy (32MB per large asset); built carelessly with the
+    // three-arg form it would read the WHOLE backing buffer instead of this entry's slice.
+    // fflate hands back views into shared buffers, so this is a real failure mode.
+    it('uploads exactly the entry bytes when entries are views into a shared buffer', async () => {
+      setupMockChain([[], [mockAsset], [], []]);
+
+      // One backing buffer, two entries at non-zero offsets — as fflate produces.
+      const backing = new Uint8Array([...Array(64).keys()]);
+      const entry = backing.subarray(10, 20);
+
+      await service.createDeploymentFromFiles({ 'a.bin': entry }, dto, mockUserId, 'admin');
+
+      const uploaded = mockStorageAdapter.upload.mock.calls[0][0] as Buffer;
+      expect(uploaded.length).toBe(10);
+      expect(Array.from(uploaded)).toEqual([10, 11, 12, 13, 14, 15, 16, 17, 18, 19]);
+      // Same backing memory — proves no duplicate allocation was made. Copying here is what
+      // cost ~32MB of peak RSS per large asset.
+      expect(uploaded.buffer).toBe(entry.buffer);
+    });
+
+    it('enforces project write access the same as the zip path', async () => {
+      mockPermissionsService.getUserProjectRole.mockResolvedValue('viewer');
+
+      await expect(
+        service.createDeploymentFromFiles(
+          { 'index.html': new TextEncoder().encode('x') },
+          dto,
+          mockUserId,
+          'user',
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
   describe('getDeployment', () => {
     it('should return deployment details', async () => {
       // Phase 3H.7: Now returns { asset, project } objects from leftJoin

@@ -40,7 +40,50 @@ export class AppBundleService {
   private readonly MAX_BUNDLE_BYTES = 200 * 1024 * 1024;
   private readonly DOWNLOAD_TIMEOUT_MS = 30_000;
   private readonly MAX_CACHE_ENTRIES = 3;
+  /**
+   * Byte ceiling for what the cache may retain, in total and per bundle.
+   *
+   * The cache exists so preflight-then-install downloads once; it is a latency optimisation,
+   * never a correctness requirement. Bounding it by entry count alone let three large apps
+   * pin ~190MB of decompressed bundles inside a 384MB container, which is most of the budget
+   * the install itself needs. A bundle over this size simply isn't cached — it gets
+   * re-downloaded, which is strictly better than an OOM kill.
+   */
+  private readonly MAX_CACHE_BYTES = 8 * 1024 * 1024;
   private readonly cache = new Map<string, LoadedBundle>();
+
+  /** Decompressed size of a bundle's entries — what retaining it actually costs. */
+  private bundleBytes(files: Record<string, Uint8Array>): number {
+    let total = 0;
+    for (const bytes of Object.values(files)) total += bytes.byteLength;
+    return total;
+  }
+
+  /**
+   * Cache a bundle if it is small enough to be worth the memory, evicting least-recently-used
+   * entries until both the byte and entry ceilings hold. A bundle bigger than the whole
+   * budget is never cached rather than evicting everything else to make room for it.
+   */
+  private retain(loaded: LoadedBundle): void {
+    const bytes = this.bundleBytes(loaded.files);
+    if (bytes > this.MAX_CACHE_BYTES) return;
+
+    this.cache.set(loaded.sha256, loaded);
+
+    let total = 0;
+    for (const entry of this.cache.values()) total += this.bundleBytes(entry.files);
+
+    while (
+      this.cache.size > 0 &&
+      (total > this.MAX_CACHE_BYTES || this.cache.size > this.MAX_CACHE_ENTRIES)
+    ) {
+      const oldestKey = this.cache.keys().next().value as string | undefined;
+      if (oldestKey === undefined || oldestKey === loaded.sha256) break;
+      const evicted = this.cache.get(oldestKey);
+      this.cache.delete(oldestKey);
+      if (evicted) total -= this.bundleBytes(evicted.files);
+    }
+  }
 
   async fetchBundle(url: string, expectedSha256: string): Promise<LoadedBundle> {
     if (expectedSha256) {
@@ -147,11 +190,7 @@ export class AppBundleService {
       sha256: actualSha256,
       build: this.readBuildInfo(files),
     };
-    this.cache.set(actualSha256, loaded);
-    if (this.cache.size > this.MAX_CACHE_ENTRIES) {
-      const oldestKey = this.cache.keys().next().value;
-      if (oldestKey !== undefined) this.cache.delete(oldestKey);
-    }
+    this.retain(loaded);
 
     return loaded;
   }

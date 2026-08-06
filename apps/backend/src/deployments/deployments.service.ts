@@ -188,17 +188,7 @@ export class DeploymentsService {
     userId: string,
     userRole?: string,
   ): Promise<CreateDeploymentResponseDto> {
-    // Parse repository string to get owner and name
-    const [owner, name] = dto.repository.split('/');
-    if (!owner || !name) {
-      throw new BadRequestException('Invalid repository format. Expected "owner/repo"');
-    }
-
-    // Find or create project
-    const project = await this.projectsService.findOrCreateProject(owner, name, userId);
-
-    // Phase 3H.6: Check project access with proper permission system
-    await this.checkProjectAccess(project.id, userId, userRole, 'contributor');
+    const project = await this.resolveDeploymentProject(dto.repository, userId, userRole);
 
     if (!file) {
       throw new BadRequestException('No zip file provided');
@@ -214,6 +204,67 @@ export class DeploymentsService {
       throw new BadRequestException('File must be a zip archive');
     }
 
+    let unzipped: Record<string, Uint8Array>;
+    try {
+      // Parse zip with fflate (async, non-blocking - better CPU performance)
+      unzipped = await new Promise<Record<string, Uint8Array>>((resolve, reject) => {
+        unzip(new Uint8Array(file.buffer), (err, result) => {
+          if (err) reject(new BadRequestException(`Failed to parse zip: ${err.message}`));
+          else resolve(result);
+        });
+      });
+    } catch (error) {
+      if (error instanceof BadRequestException) throw error;
+      throw new BadRequestException(`Failed to process zip file: ${error.message}`);
+    }
+
+    return this.deployEntries(unzipped, project, dto, userId);
+  }
+
+  /**
+   * Deploy an already-decompressed set of entries (entry path -> bytes).
+   *
+   * The app installer already holds the bundle's files in memory, so routing it through
+   * `createDeploymentFromZip` meant re-zipping them only for this service to immediately
+   * unzip them again — two extra full copies of the payload. On a 63MB app bundle in a
+   * 384MB container that was the difference between installing and being OOM-killed
+   * (exit 137), so the installer hands its entries straight to this method instead.
+   *
+   * Entries are borrowed: never mutated, never retained past the call.
+   */
+  async createDeploymentFromFiles(
+    entries: Record<string, Uint8Array>,
+    dto: CreateDeploymentZipDto,
+    userId: string,
+    userRole?: string,
+  ): Promise<CreateDeploymentResponseDto> {
+    const project = await this.resolveDeploymentProject(dto.repository, userId, userRole);
+    return this.deployEntries(entries, project, dto, userId);
+  }
+
+  /** Resolve (creating if needed) the project a deployment targets, enforcing write access. */
+  private async resolveDeploymentProject(repository: string, userId: string, userRole?: string) {
+    // Parse repository string to get owner and name
+    const [owner, name] = repository.split('/');
+    if (!owner || !name) {
+      throw new BadRequestException('Invalid repository format. Expected "owner/repo"');
+    }
+
+    // Find or create project
+    const project = await this.projectsService.findOrCreateProject(owner, name, userId);
+
+    // Phase 3H.6: Check project access with proper permission system
+    await this.checkProjectAccess(project.id, userId, userRole, 'contributor');
+
+    return project;
+  }
+
+  private async deployEntries(
+    unzipped: Record<string, Uint8Array>,
+    project: { id: string },
+    dto: CreateDeploymentZipDto,
+    userId: string,
+  ): Promise<CreateDeploymentResponseDto> {
     const deploymentId = uuidv4();
     const uploadedAssets: (typeof assets.$inferSelect)[] = [];
     const failed: { file: string; error: string }[] = [];
@@ -238,14 +289,6 @@ export class DeploymentsService {
     });
 
     try {
-      // Parse zip with fflate (async, non-blocking - better CPU performance)
-      const unzipped = await new Promise<Record<string, Uint8Array>>((resolve, reject) => {
-        unzip(new Uint8Array(file.buffer), (err, result) => {
-          if (err) reject(new BadRequestException(`Failed to parse zip: ${err.message}`));
-          else resolve(result);
-        });
-      });
-
       // Process each file in the zip
       for (const [entryPath, contentArray] of Object.entries(unzipped)) {
         // Skip directories (fflate marks them with trailing /)
@@ -277,8 +320,14 @@ export class DeploymentsService {
         }
 
         try {
-          // Convert Uint8Array to Buffer
-          const content = Buffer.from(contentArray);
+          // View the entry's bytes as a Buffer WITHOUT copying them. `Buffer.from(uint8array)`
+          // allocates a duplicate, which on a 32MB asset is 32MB of avoidable peak RSS; the
+          // three-arg form wraps the existing ArrayBuffer instead. Read-only from here on.
+          const content = Buffer.from(
+            contentArray.buffer,
+            contentArray.byteOffset,
+            contentArray.byteLength,
+          );
           const fileSize = content.length;
 
           // Check total size limit

@@ -150,6 +150,25 @@ describe('GcsStorageAdapter', () => {
       );
     });
 
+    // Without an explicit chunkSize the resumable upload treats the whole payload as one
+    // chunk and keeps it in its retry cache, roughly doubling peak RSS per file. On a 63MB
+    // app bundle in a 384MB container that is the difference between installing and being
+    // OOM-killed (exit 137). Bounding the chunk bounds the retry cache.
+    it('bounds the resumable upload chunk size so large files do not double peak memory', async () => {
+      await adapter.upload(Buffer.alloc(32 * 1024 * 1024), 'big/file.wasm');
+
+      const opts = mockFile.save.mock.calls[0][1];
+      expect(opts.chunkSize).toBe(8 * 1024 * 1024);
+    });
+
+    // GCS requires resumable chunk sizes to be a multiple of 256 KiB.
+    it('uses a chunk size GCS accepts (multiple of 256KiB)', async () => {
+      await adapter.upload(Buffer.from('test'), 'small/file.txt');
+
+      const { chunkSize } = mockFile.save.mock.calls[0][1];
+      expect(chunkSize % (256 * 1024)).toBe(0);
+    });
+
     it('should reject path traversal', async () => {
       await expect(adapter.upload(Buffer.from('test'), '../etc/passwd')).rejects.toThrow(
         'path traversal detected',
