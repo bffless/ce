@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.22](https://github.com/bffless/ce/compare/v0.4.21...v0.4.22) (2026-08-06)
+
+
+### Features
+
+* preview the app catalog on the admin home page ([#646](https://github.com/bffless/ce/issues/646)) ([a04d246](https://github.com/bffless/ce/commit/a04d246ee02d895f23a5359c3b8ba80620bf3b73))
+
+
+### Bug Fixes
+
+* stop large app installs OOM-killing the backend ([#645](https://github.com/bffless/ce/issues/645)) ([0bb303b](https://github.com/bffless/ce/commit/0bb303b35306bf9d6f4bf2dcc939b8f6da0c1f5b))
+
 ## [0.4.21](https://github.com/bffless/ce/compare/v0.4.20...v0.4.21) (2026-08-06)
 
 
