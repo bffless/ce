@@ -66,7 +66,9 @@ describe('mergeRuleThreeWay', () => {
 
     // Only `enabled` genuinely conflicts: the payload has no `alias`/`path` at
     // all, so those user additions are an only-ours change and survive.
-    expect(conflicts).toEqual(['pipelineConfig.steps.draft.config.skills.enabled']);
+    expect(conflicts.map((c) => c.field)).toEqual([
+      'pipelineConfig.steps.draft.config.skills.enabled',
+    ]);
     expect((merged.pipelineConfig as any).steps[1].config.skills).toEqual(SKILLS_USER);
   });
 
@@ -78,7 +80,9 @@ describe('mergeRuleThreeWay', () => {
 
     const { merged, conflicts } = mergeRuleThreeWay(base, ours, theirs, 'overwrite');
 
-    expect(conflicts).toEqual(['pipelineConfig.steps.draft.config.skills.enabled']);
+    expect(conflicts.map((c) => c.field)).toEqual([
+      'pipelineConfig.steps.draft.config.skills.enabled',
+    ]);
     // The payload wins the contested key; `alias`/`path` are untouched by it,
     // so they survive even under overwrite.
     expect((merged.pipelineConfig as any).steps[1].config.skills).toEqual({
@@ -118,7 +122,7 @@ describe('mergeRuleThreeWay', () => {
 
     const { merged, conflicts } = mergeRuleThreeWay(base, ours, theirs, 'preserve');
 
-    expect(conflicts).toEqual(['pipelineConfig.steps']);
+    expect(conflicts.map((c) => c.field)).toEqual(['pipelineConfig.steps']);
     expect((merged.pipelineConfig as any).steps).toHaveLength(2); // preserve keeps ours
   });
 

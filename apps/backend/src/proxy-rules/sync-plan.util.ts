@@ -76,9 +76,30 @@ export interface SyncRuleRef {
   method: string | null;
 }
 
+/** One field both sides changed differently, with each side's value so a
+ *  caller can offer a choice without recomputing the merge. */
+export interface SyncFieldConflict {
+  /** Dotted path, e.g. `pipelineConfig.steps.draft.config.skills.enabled`. */
+  field: string;
+  /** The live (locally-edited) value. */
+  ours: unknown;
+  /** The value the incoming payload wanted. */
+  theirs: unknown;
+}
+
 /** A rule whose merge left at least one genuinely contested field. */
 export interface SyncPlanConflict extends SyncRuleRef {
-  fields: string[];
+  fields: SyncFieldConflict[];
+  /** The live row's id, when the caller provided one — lets a resolver
+   *  address the rule directly instead of re-matching on (path, method). */
+  liveId?: string;
+}
+
+/** Rules that carried a local edit forward while still taking the payload's
+ *  other changes. Reported so a clean merge isn't silent either. */
+export interface SyncPlanMerged extends SyncRuleRef {
+  /** Dotted paths kept from the live rule. */
+  keptFields: string[];
 }
 
 export interface SyncPlanCreate extends SyncRuleRef {
@@ -118,6 +139,12 @@ export interface SyncPlan {
    * means a genuine same-field disagreement, not merely "the rule changed".
    */
   conflicts: SyncPlanConflict[];
+  /**
+   * Rules where the payload's changes and a local edit landed in different
+   * fields, so both were applied. The outcome is what you'd want, but it still
+   * means the live rule isn't the one the app shipped — so it's reported.
+   */
+  merged: SyncPlanMerged[];
 }
 
 export interface SyncPlanOptions {
@@ -392,6 +419,7 @@ export function computeSyncPlan(
     pruneCandidates: [],
     preserved: [],
     conflicts: [],
+    merged: [],
   };
 
   const seenIncoming = new Set<string>();
@@ -440,18 +468,28 @@ export function computeSyncPlan(
           // Both moved, but usually in different fields (the app rewrites a
           // prompt, the user repoints a skills source). Merge per field so both
           // land; only a same-field disagreement is a real conflict.
-          const { merged, conflicts } = mergeRuleThreeWay(
+          const { merged, conflicts, keptFromOurs } = mergeRuleThreeWay(
             baseRule,
             liveMatch.normalized,
             rule,
             preserveOnConflict ? 'preserve' : 'overwrite',
           );
-          if (conflicts.length > 0) plan.conflicts.push({ ...ref, fields: conflicts });
+          if (conflicts.length > 0) {
+            plan.conflicts.push({
+              ...ref,
+              fields: conflicts,
+              ...(liveMatch.row.id !== undefined ? { liveId: liveMatch.row.id } : {}),
+            });
+          }
           if (rulesEqual(liveMatch.normalized, merged)) {
             // The merge resolved entirely to what's already live.
             plan.preserved.push(ref);
             continue;
           }
+          // Both sides landed. Report which fields came from the local edit so
+          // a clean merge isn't silent — the live rule still isn't the one the
+          // app shipped.
+          if (keptFromOurs.length > 0) plan.merged.push({ ...ref, keptFields: keptFromOurs });
           effectiveRule = merged;
         }
       }

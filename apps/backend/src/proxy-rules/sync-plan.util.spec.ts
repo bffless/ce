@@ -724,6 +724,10 @@ describe('sync-plan.util — three-way', () => {
     expect(plan.toUpdate).toHaveLength(1);
     expect(plan.toUpdate[0].rule.description).toBe('user edited');
     expect(plan.toUpdate[0].rule.timeout).toBe(60000);
+    // A clean merge still isn't silent: the carried-forward field is reported.
+    expect(plan.merged).toEqual([
+      { pathPattern: '/api/draft', method: null, keptFields: ['description'] },
+    ]);
   });
 
   it('reports the contested field when both sides changed the SAME one', () => {
@@ -734,7 +738,14 @@ describe('sync-plan.util — three-way', () => {
     );
 
     expect(plan.conflicts).toEqual([
-      { pathPattern: '/api/draft', method: null, fields: ['timeout'] },
+      {
+        pathPattern: '/api/draft',
+        method: null,
+        liveId: 'rule-1',
+        // Both candidate values travel with the conflict so a resolver can
+        // offer the choice without recomputing the merge.
+        fields: [{ field: 'timeout', ours: 90000, theirs: 60000 }],
+      },
     ]);
     // preserve keeps the user's value, so nothing needs writing.
     expect(plan.toUpdate).toEqual([]);
@@ -748,9 +759,7 @@ describe('sync-plan.util — three-way', () => {
       { prune: false, baseRules: [base()], conflictPolicy: 'overwrite' },
     );
 
-    expect(plan.conflicts).toEqual([
-      { pathPattern: '/api/draft', method: null, fields: ['timeout'] },
-    ]);
+    expect(plan.conflicts.map((c) => c.fields.map((f) => f.field))).toEqual([['timeout']]);
     expect(plan.toUpdate).toHaveLength(1);
     expect(plan.toUpdate[0].rule.timeout).toBe(60000);
   });

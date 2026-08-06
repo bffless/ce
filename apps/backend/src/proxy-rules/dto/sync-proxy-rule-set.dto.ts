@@ -258,14 +258,36 @@ export class SyncRuleRefDto {
   method: string | null;
 }
 
-/** A conflicted rule plus the dotted paths of the fields both sides changed. */
-export class SyncRuleConflictDto extends SyncRuleRefDto {
+/** One contested field, with both candidate values so a resolver can offer the
+ *  choice without recomputing the merge. */
+export class SyncFieldConflictDto {
   @ApiProperty({
-    type: [String],
-    description: 'Dotted paths of the contested fields',
-    example: ['pipelineConfig.steps.draft.config.skills.enabled'],
+    description: 'Dotted path of the contested field',
+    example: 'pipelineConfig.steps.draft.config.skills.enabled',
   })
-  fields: string[];
+  field: string;
+
+  @ApiProperty({ description: 'The live (locally-edited) value', nullable: true })
+  ours: unknown;
+
+  @ApiProperty({ description: 'The value the payload wanted', nullable: true })
+  theirs: unknown;
+}
+
+/** A conflicted rule plus the fields both sides changed differently. */
+export class SyncRuleConflictDto extends SyncRuleRefDto {
+  @ApiProperty({ type: [SyncFieldConflictDto], description: 'The contested fields' })
+  fields: SyncFieldConflictDto[];
+
+  @ApiPropertyOptional({ description: 'Id of the live rule, for direct resolution' })
+  liveId?: string;
+}
+
+/** A rule where the payload's changes and a local edit changed different
+ *  fields, so both were applied. */
+export class SyncRuleMergedDto extends SyncRuleRefDto {
+  @ApiProperty({ type: [String], description: 'Dotted paths kept from the live rule' })
+  keptFields: string[];
 }
 
 /** One entry of `schemaResolutions[]` — see `SchemaResolution` in schema-sync.util. */
@@ -342,6 +364,14 @@ export class SyncProxyRuleSetResponseDto {
       '`fields` was merged automatically; conflictPolicy decided those. Reported under either policy.',
   })
   conflicts: SyncRuleConflictDto[];
+
+  @ApiProperty({
+    type: [SyncRuleMergedDto],
+    description:
+      'Rules where the payload and a local edit changed different fields, so both were applied. ' +
+      'The outcome is the desired one, but the live rule is still not the one the app shipped.',
+  })
+  merged: SyncRuleMergedDto[];
 
   @ApiProperty({ type: [SyncSchemaResolutionDto], description: 'How each bundled schema was resolved' })
   schemaResolutions: SyncSchemaResolutionDto[];

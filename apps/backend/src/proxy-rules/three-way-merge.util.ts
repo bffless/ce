@@ -1,4 +1,4 @@
-import type { NormalizedSyncRule } from './sync-plan.util';
+import type { NormalizedSyncRule, SyncFieldConflict } from './sync-plan.util';
 
 /**
  * Field-level three-way merge for a rule.
@@ -17,9 +17,12 @@ export type ConflictPolicy = 'overwrite' | 'preserve';
 
 export interface MergeResult {
   merged: NormalizedSyncRule;
-  /** Dotted paths of fields both sides changed differently, e.g.
-   *  `pipelineConfig.steps.draft.config.skills`. Empty when fully auto-merged. */
-  conflicts: string[];
+  /** Fields both sides changed differently, each with both candidate values.
+   *  Empty when the merge resolved everything on its own. */
+  conflicts: SyncFieldConflict[];
+  /** Dotted paths taken from the live rule because only it moved — the local
+   *  edits this merge carried forward. */
+  keptFromOurs: string[];
 }
 
 /** Keys whose value is `undefined` are treated as absent (mirrors sync-plan). */
@@ -64,12 +67,17 @@ function mergeValue(
   theirs: unknown,
   policy: ConflictPolicy,
   path: string,
-  conflicts: string[],
+  conflicts: SyncFieldConflict[],
+  keptFromOurs: string[],
 ): unknown {
   // Nobody disagrees, or only one side moved — all decidable without recursing.
   if (deepEqual(ours, theirs)) return ours;
   if (deepEqual(ours, base)) return theirs;
-  if (deepEqual(theirs, base)) return ours;
+  if (deepEqual(theirs, base)) {
+    // Only the local side moved: this is an edit we're carrying forward.
+    if (path) keptFromOurs.push(path);
+    return ours;
+  }
 
   // Both moved. Recurse where the shape lets us attribute the change to a
   // narrower field; otherwise this really is a conflict.
@@ -84,10 +92,18 @@ function mergeValue(
       const byId = (steps: Array<Record<string, unknown>>, id: string) =>
         steps.find((s) => s.id === id);
       return ids.map((id) =>
-        mergeValue(byId(base, id), byId(ours, id), byId(theirs, id), policy, `${path}.${id}`, conflicts),
+        mergeValue(
+          byId(base, id),
+          byId(ours, id),
+          byId(theirs, id),
+          policy,
+          `${path}.${id}`,
+          conflicts,
+          keptFromOurs,
+        ),
       );
     }
-    conflicts.push(path);
+    conflicts.push({ field: path, ours, theirs });
     return policy === 'preserve' ? ours : theirs;
   }
 
@@ -102,6 +118,7 @@ function mergeValue(
         policy,
         path ? `${path}.${key}` : key,
         conflicts,
+        keptFromOurs,
       );
       // Both sides dropping the key must leave it dropped, not set to undefined.
       if (value !== undefined) out[key] = value;
@@ -109,7 +126,7 @@ function mergeValue(
     return out;
   }
 
-  conflicts.push(path);
+  conflicts.push({ field: path, ours, theirs });
   return policy === 'preserve' ? ours : theirs;
 }
 
@@ -124,7 +141,16 @@ export function mergeRuleThreeWay(
   theirs: NormalizedSyncRule,
   policy: ConflictPolicy,
 ): MergeResult {
-  const conflicts: string[] = [];
-  const merged = mergeValue(base, ours, theirs, policy, '', conflicts) as NormalizedSyncRule;
-  return { merged, conflicts };
+  const conflicts: SyncFieldConflict[] = [];
+  const keptFromOurs: string[] = [];
+  const merged = mergeValue(
+    base,
+    ours,
+    theirs,
+    policy,
+    '',
+    conflicts,
+    keptFromOurs,
+  ) as NormalizedSyncRule;
+  return { merged, conflicts, keptFromOurs };
 }

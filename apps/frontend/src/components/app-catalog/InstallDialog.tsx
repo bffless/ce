@@ -26,6 +26,7 @@ import {
   type PreflightRequest,
 } from '@/services/appCatalogApi';
 import { SetupNotes } from './SetupNotes';
+import { ConflictResolver } from './ConflictResolver';
 import { useGetMyRepositoriesQuery } from '@/services/repositoriesApi';
 import {
   AlertTriangle,
@@ -527,6 +528,12 @@ export function InstallDialog({
                   <ExternalLink className="h-4 w-4 ml-1" />
                 </a>
               </Button>
+            )}
+
+            {/* Mounted only when there's something to resolve — it subscribes to
+                the proxy-rules API, and an update with no conflicts shouldn't. */}
+            {(job?.conflicts?.length ?? 0) > 0 && (
+              <ConflictResolver conflicts={job!.conflicts!} />
             )}
 
             <SetupNotes steps={manualSteps} defaultExpanded />

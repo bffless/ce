@@ -144,6 +144,7 @@ function syncResponse(overrides: Record<string, unknown> = {}) {
     unchanged: [],
     pruneCandidates: [],
     preserved: [],
+    merged: [],
     conflicts: [],
     schemaResolutions: [],
     missingSecrets: [],
@@ -1185,11 +1186,19 @@ describe('AppInstallerService', () => {
         syncResponse({
           ruleSetId: 'rs-1',
           preserved: [{ pathPattern: '/api/thumbnail/draft', method: 'POST' }],
+          merged: [{ pathPattern: '/api/refine-scene', method: 'POST', keptFields: ['description'] }],
           conflicts: [
             {
               pathPattern: '/api/scenes',
               method: 'POST',
-              fields: ['pipelineConfig.steps.draft.config.skills.enabled'],
+              liveId: 'rule-9',
+              fields: [
+                {
+                  field: 'pipelineConfig.steps.draft.config.skills.enabled',
+                  ours: ['mine'],
+                  theirs: ['theirs'],
+                },
+              ],
             },
           ],
         }),
@@ -1206,6 +1215,8 @@ describe('AppInstallerService', () => {
       expect(details).toContain('POST /api/thumbnail/draft');
       expect(details).toContain('POST /api/scenes');
       expect(details).toContain('pipelineConfig.steps.draft.config.skills.enabled');
+      // A clean merge is reported too — the live rule still isn't the shipped one.
+      expect(details).toContain('POST /api/refine-scene');
     });
 
     it('bumps the recorded version on the existing row', async () => {

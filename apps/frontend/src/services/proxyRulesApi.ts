@@ -649,6 +649,7 @@ export const {
   useReorderRulesInSetMutation,
   // Individual rule operations
   useGetProxyRuleQuery,
+  useLazyGetProxyRuleQuery,
   useUpdateProxyRuleMutation,
   useDeleteProxyRuleMutation,
   useTestProxyRuleMutation,

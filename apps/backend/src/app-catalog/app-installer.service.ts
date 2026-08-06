@@ -19,7 +19,10 @@ import { PipelineSchedulesService } from '../pipeline-schedules/pipeline-schedul
 import { PipelineSchemasService } from '../pipelines/pipeline-schemas.service';
 import { ProjectsService } from '../projects/projects.service';
 import { ProxyRuleSetsService } from '../proxy-rules/proxy-rule-sets.service';
-import { SyncProxyRuleSetDto } from '../proxy-rules/dto/sync-proxy-rule-set.dto';
+import {
+  SyncProxyRuleSetDto,
+  SyncRuleConflictDto,
+} from '../proxy-rules/dto/sync-proxy-rule-set.dto';
 import { IStorageAdapter, STORAGE_ADAPTER } from '../storage/storage.interface';
 import { resolveLocalAdapter } from '../storage/local.adapter';
 import { AppBundleService, type LoadedBundle } from './app-bundle.service';
@@ -106,6 +109,9 @@ interface InstallProgress {
   schemaIds: string[];
   deploymentId?: string;
   domainId?: string;
+  /** Rules an update left contested, carried onto the job so the dialog can
+   *  offer a per-field choice after the update finishes. */
+  conflicts: SyncRuleConflictDto[];
 }
 
 /**
@@ -248,6 +254,7 @@ export class AppInstallerService {
         schemaIds: [...(row.schemaIds ?? [])],
         deploymentId: row.deploymentId ?? undefined,
         domainId: row.domainId ?? undefined,
+        conflicts: [],
       };
 
       // ---- 4. sync-rules ----
@@ -406,6 +413,7 @@ export class AppInstallerService {
         schemaIds: [...(installed.schemaIds ?? [])],
         deploymentId: installed.deploymentId ?? undefined,
         domainId: installed.domainId ?? undefined,
+        conflicts: [],
       };
       const { missingSecrets, warnings } = await this.syncRuleSets(
         ruleSets,
@@ -468,6 +476,7 @@ export class AppInstallerService {
         installedAppId: installed.id,
         manualSteps,
         appUrl,
+        ...(progress.conflicts.length > 0 ? { conflicts: progress.conflicts } : {}),
       });
     } catch (error) {
       await this.failJob(jobId, step, rowId, error, progress);
@@ -897,12 +906,20 @@ export class AppInstallerService {
             `${preserved.map((r) => describeRuleRef(r)).join(', ')}`,
         );
       }
+      const mergedRules = response.merged ?? [];
+      if (mergedRules.length > 0) {
+        warnings.push(
+          `Merged your edits into ${mergedRules.length} updated rule(s): ` +
+            `${mergedRules.map((r) => describeRuleRef(r)).join(', ')}`,
+        );
+      }
       for (const conflict of response.conflicts ?? []) {
         warnings.push(
           `${describeRuleRef(conflict)} was changed both by you and by this update ` +
-            `(${conflict.fields.join(', ')}); your version was kept`,
+            `(${conflict.fields.map((f) => f.field).join(', ')}); your version was kept`,
         );
       }
+      acc.conflicts.push(...(response.conflicts ?? []));
     }
 
     return { missingSecrets, warnings };
