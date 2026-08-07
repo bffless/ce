@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.23](https://github.com/bffless/ce/compare/v0.4.22...v0.4.23) (2026-08-07)
+
+
+### Bug Fixes
+
+* **frontend:** scroll install dialog when preflight results overflow ([#649](https://github.com/bffless/ce/issues/649)) ([accb397](https://github.com/bffless/ce/commit/accb397c63262e3124e9bc48d2cb04cd8b5f801e))
+
 ## [0.4.22](https://github.com/bffless/ce/compare/v0.4.21...v0.4.22) (2026-08-06)
 
 
