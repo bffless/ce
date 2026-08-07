@@ -303,7 +303,11 @@ export function InstallDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      {/* The review screen grows with the number of preflight gates and synced
+          rule sets, and DialogContent is vertically centred with no height cap
+          of its own, so tall results pushed the title off the top of the
+          viewport with no way to scroll. Cap and scroll instead. */}
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
             {screen === 'done'
