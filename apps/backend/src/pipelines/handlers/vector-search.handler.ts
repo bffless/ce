@@ -104,6 +104,7 @@ export class VectorSearchHandler implements StepHandler<VectorSearchHandlerConfi
         similarity: r.similarity,
         ...(r.chunkText != null ? { chunkText: r.chunkText } : {}),
         ...(r.chunkIndex != null ? { chunkIndex: r.chunkIndex } : {}),
+        ...(r.metadata != null ? { chunkMetadata: r.metadata } : {}),
         ...selected,
       };
     });
