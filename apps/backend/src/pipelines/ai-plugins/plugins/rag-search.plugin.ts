@@ -386,6 +386,7 @@ export class RagSearchPlugin implements AIToolPlugin {
           similarity: Math.round(r.similarity * 1000) / 1000,
           chunkText: cleanText,
           chunkIndex: r.chunkIndex,
+          chunkMetadata: r.metadata ?? undefined,
           ...metadata,
         });
       } else {
