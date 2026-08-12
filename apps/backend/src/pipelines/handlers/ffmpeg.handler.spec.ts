@@ -15,10 +15,10 @@ import { FfmpegHandler } from './ffmpeg.handler';
 function createHandler(
   overrides: {
     capability?: Partial<{
-      isEnabled: () => boolean;
+      isEnabled: () => Promise<boolean>;
       isAvailable: () => boolean;
       getVersion: () => string | null;
-      getOps: () => string[];
+      getOps: () => Promise<string[]>;
     }>;
     runner?: { run: jest.Mock };
     storageAdapter?: Partial<{
@@ -29,10 +29,10 @@ function createHandler(
 ) {
   const registry = { register: jest.fn() };
   const capability = {
-    isEnabled: () => true,
+    isEnabled: async () => true,
     isAvailable: () => true,
     getVersion: () => 'ffmpeg version 6.1.1',
-    getOps: () => ['probe', 'extract_audio', 'slice', 'concat'],
+    getOps: async () => ['probe', 'extract_audio', 'slice', 'concat'],
     ...overrides.capability,
   };
   const runner = overrides.runner ?? {
@@ -130,7 +130,7 @@ describe('probe without input — the capability payload', () => {
 
   it('reports server=false and SUCCEEDS when the capability is off (never fails)', async () => {
     const { handler } = createHandler({
-      capability: { isEnabled: () => false, getOps: () => [], getVersion: () => null },
+      capability: { isEnabled: async () => false, getOps: async () => [], getVersion: () => null },
     });
     const result = await handler.execute(context(), step({ operation: 'probe' }));
     expect(result.success).toBe(true);
@@ -140,13 +140,14 @@ describe('probe without input — the capability payload', () => {
 
 describe('capability gating for real ops', () => {
   it('returns FFMPEG_UNAVAILABLE without touching the runner', async () => {
-    const { handler, runner } = createHandler({ capability: { isEnabled: () => false } });
+    const { handler, runner } = createHandler({ capability: { isEnabled: async () => false } });
     const result = await handler.execute(
       context(),
       step({ operation: 'extract_audio', input: 'media/a.mp4', output: 'media/a.wav' }),
     );
     expect(result.success).toBe(false);
     expect(result.error?.code).toBe('FFMPEG_UNAVAILABLE');
+    expect(result.error?.message).toMatch(/disabled on this instance|ffmpeg is missing/);
     // extract_audio really invokes the runner once past the gate — this
     // assertion is only meaningful now that the gate is checked first.
     expect(runner.run).not.toHaveBeenCalled();

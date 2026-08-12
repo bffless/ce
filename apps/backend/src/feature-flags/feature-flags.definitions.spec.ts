@@ -22,3 +22,15 @@ describe('ENABLE_LOCAL_PRESIGNED_UPLOADS', () => {
     expect(getClientExposedFlagKeys()).toContain('ENABLE_LOCAL_PRESIGNED_UPLOADS');
   });
 });
+
+describe('FFMPEG_HANDLER_ENABLED', () => {
+  it('is defined, OFF by default, and NOT exposed to the client', () => {
+    const flag = FLAG_DEFINITIONS['FFMPEG_HANDLER_ENABLED'];
+    expect(flag).toBeDefined();
+    expect(flag.envKey).toBe('FFMPEG_HANDLER_ENABLED');
+    expect(flag.defaultValue).toBe(false);
+    expect(flag.type).toBe('boolean');
+    expect(flag.category).toBe('features');
+    expect(getClientExposedFlagKeys()).not.toContain('FFMPEG_HANDLER_ENABLED');
+  });
+});
