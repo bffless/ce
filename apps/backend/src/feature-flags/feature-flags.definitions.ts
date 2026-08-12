@@ -589,7 +589,7 @@ export const FLAG_DEFINITIONS: Record<string, FlagDefinition> = {
     description:
       'Run app video operations (slice, concat, audio extract, probe) server-side via the ffmpeg_handler pipeline step. ' +
       'Off by default: apps fall back to in-browser processing. Server video ops want the backend container at >= 1.5-2 GB memory; ' +
-      'per-job memory/disk pre-flights refuse work that does not fit regardless of this flag. Toggle lives in Admin Settings → Infrastructure.',
+      'per-job memory/disk pre-flights refuse work that does not fit regardless of this flag. Toggle lives in Admin Settings → Features.',
     category: 'features',
   },
 };

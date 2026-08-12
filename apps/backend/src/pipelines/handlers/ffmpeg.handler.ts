@@ -89,7 +89,7 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
         error: {
           code: 'FFMPEG_UNAVAILABLE',
           message:
-            'server video ops are disabled on this instance (ffmpeg is missing, or the operator has not turned on the FFMPEG_HANDLER_ENABLED feature flag)',
+            'server video ops are disabled on this instance (enable them in Admin Settings → Features, or ffmpeg is missing)',
         },
       };
     }
