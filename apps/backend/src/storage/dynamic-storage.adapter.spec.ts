@@ -1,3 +1,4 @@
+import { Readable } from 'stream';
 import { DynamicStorageAdapter } from './dynamic-storage.adapter';
 import { IStorageAdapter, FileMetadata } from './storage.interface';
 
@@ -271,6 +272,56 @@ describe('DynamicStorageAdapter', () => {
       adapter.setAdapter(bufferingAdapter);
 
       expect(adapter.downloadStream).toBeUndefined();
+    });
+  });
+
+  describe('uploadStream', () => {
+    it('should expose uploadStream and delegate when the active adapter supports it', async () => {
+      const streamingAdapter: IStorageAdapter = {
+        upload: jest.fn(),
+        download: jest.fn(),
+        delete: jest.fn(),
+        exists: jest.fn(),
+        getUrl: jest.fn(),
+        listKeys: jest.fn(),
+        getMetadata: jest.fn(),
+        testConnection: jest.fn(),
+        deletePrefix: jest.fn(),
+        uploadStream: jest.fn().mockResolvedValue('o/r/uploads/a.mp4'),
+      };
+      adapter.setAdapter(streamingAdapter);
+
+      // Capability detection (mirrors the downloadStream getter above, and for
+      // the same reason: a plain delegating method would always be truthy
+      // even when the live adapter can't stream).
+      expect(typeof adapter.uploadStream).toBe('function');
+
+      const stream = Readable.from(Buffer.from('x'));
+      const result = await adapter.uploadStream!(stream, 'o/r/uploads/a.mp4', 1, {
+        mimeType: 'video/mp4',
+      });
+
+      expect(result).toBe('o/r/uploads/a.mp4');
+      expect(streamingAdapter.uploadStream).toHaveBeenCalledWith(stream, 'o/r/uploads/a.mp4', 1, {
+        mimeType: 'video/mp4',
+      });
+    });
+
+    it('should report no upload-streaming capability when the active adapter lacks uploadStream', () => {
+      const bufferingAdapter: IStorageAdapter = {
+        upload: jest.fn(),
+        download: jest.fn(),
+        delete: jest.fn(),
+        exists: jest.fn(),
+        getUrl: jest.fn(),
+        listKeys: jest.fn(),
+        getMetadata: jest.fn(),
+        testConnection: jest.fn(),
+        deletePrefix: jest.fn(),
+      };
+      adapter.setAdapter(bufferingAdapter);
+
+      expect(adapter.uploadStream).toBeUndefined();
     });
   });
 });

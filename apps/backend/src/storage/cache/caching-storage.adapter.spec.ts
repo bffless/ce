@@ -1,3 +1,4 @@
+import { Readable } from 'stream';
 import { CachingStorageAdapter } from './caching-storage.adapter';
 import { IStorageAdapter, FileMetadata } from '../storage.interface';
 import { ICacheAdapter, CacheStats } from './cache.interface';
@@ -126,6 +127,31 @@ describe('CachingStorageAdapter', () => {
         data,
         86400, // Image TTL (24 hours)
       );
+    });
+  });
+
+  describe('uploadStream', () => {
+    it('should expose uploadStream and invalidate cache (without pre-populating it) when the wrapped adapter supports it', async () => {
+      mockStorage.uploadStream = jest.fn().mockResolvedValue('key');
+
+      expect(typeof cachingAdapter.uploadStream).toBe('function');
+
+      const stream = Readable.from(Buffer.from('x'));
+      const result = await cachingAdapter.uploadStream!(stream, 'key', 1, {
+        mimeType: 'video/mp4',
+      });
+
+      expect(result).toBe('key');
+      expect(mockStorage.uploadStream).toHaveBeenCalledWith(stream, 'key', 1, {
+        mimeType: 'video/mp4',
+      });
+      expect(mockCache.delete).toHaveBeenCalledWith('cache:key');
+      // Unlike upload(), there's no buffer in hand to pre-populate the cache with.
+      expect(mockCache.set).not.toHaveBeenCalled();
+    });
+
+    it('should report no upload-streaming capability when the wrapped adapter lacks uploadStream', () => {
+      expect(cachingAdapter.uploadStream).toBeUndefined();
     });
   });
 

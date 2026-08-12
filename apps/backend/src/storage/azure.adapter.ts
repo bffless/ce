@@ -9,6 +9,7 @@ import {
   BlobSASSignatureValues,
 } from '@azure/storage-blob';
 import { DefaultAzureCredential, ManagedIdentityCredential } from '@azure/identity';
+import { Readable } from 'stream';
 import {
   IStorageAdapter,
   FileMetadata,
@@ -119,6 +120,42 @@ export class AzureBlobStorageAdapter implements IStorageAdapter {
       return sanitizedKey; // Return unprefixed key to caller
     } catch (error: any) {
       this.logger.error(`Failed to upload file to Azure Blob: ${storageKey}`, error);
+      throw new Error(`Azure Blob upload failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Stream a file to Azure Blob Storage without buffering the whole object in memory
+   */
+  async uploadStream(
+    stream: NodeJS.ReadableStream,
+    key: string,
+    size: number,
+    metadata?: Record<string, any>,
+  ): Promise<string> {
+    const sanitizedKey = this.sanitizeKey(key);
+    const storageKey = this.prefixKey(sanitizedKey);
+    const blockBlobClient = this.containerClient.getBlockBlobClient(storageKey);
+
+    const contentType =
+      metadata?.mimeType || metadata?.['content-type'] || 'application/octet-stream';
+
+    try {
+      // bufferSize 8MB, maxConcurrency 5 — the SDK's own recommended defaults
+      // for uploadStream, bounding peak memory to buffer * concurrency instead
+      // of buffering the whole object.
+      await blockBlobClient.uploadStream(stream as Readable, 8 * 1024 * 1024, 5, {
+        blobHTTPHeaders: {
+          blobContentType: contentType,
+        },
+        tier: this.config.accessTier || 'Hot',
+        metadata: this.normalizeMetadata(metadata),
+      });
+
+      this.logger.log(`Streamed file to Azure Blob: ${storageKey}`);
+      return sanitizedKey; // Return unprefixed key to caller
+    } catch (error: any) {
+      this.logger.error(`Failed to stream upload file to Azure Blob: ${storageKey}`, error);
       throw new Error(`Azure Blob upload failed: ${error.message}`);
     }
   }

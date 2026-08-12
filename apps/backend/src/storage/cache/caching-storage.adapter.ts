@@ -62,6 +62,39 @@ export class CachingStorageAdapter implements IStorageAdapter {
   }
 
   /**
+   * Stream upload with cache invalidation.
+   *
+   * Exposed as a getter, mirroring `DynamicStorageAdapter.uploadStream` (see
+   * its doc comment): a plain delegating method would always be truthy even
+   * when the wrapped adapter can't stream, defeating capability-detection
+   * callers like `if (storageAdapter.uploadStream)`.
+   *
+   * Unlike `upload()`, this does not pre-populate the cache — there's no
+   * buffer in hand to cache without defeating the point of streaming. It only
+   * performs the same invalidation `upload()` does, so a stale cached copy of
+   * the key is never served after a streamed overwrite.
+   */
+  get uploadStream():
+    | ((
+        stream: NodeJS.ReadableStream,
+        key: string,
+        size: number,
+        metadata?: Record<string, any>,
+      ) => Promise<string>)
+    | undefined {
+    if (!this.storage.uploadStream) return undefined;
+    return async (stream, key, size, metadata) => {
+      const result = await this.storage.uploadStream!(stream, key, size, metadata);
+
+      // Invalidate any cached version
+      const cacheKey = this.getCacheKey(key);
+      await this.cache.delete(cacheKey);
+
+      return result;
+    };
+  }
+
+  /**
    * Download with caching
    */
   async download(key: string): Promise<Buffer> {

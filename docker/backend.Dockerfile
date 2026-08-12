@@ -36,8 +36,12 @@ FROM node:20-alpine
 # Install pnpm, netcat for health checks, and build tools for native modules.
 # nginx is installed ONLY for `nginx -t` validation of generated blocklist
 # rules (EdgeBlocklistService) — it never serves traffic in this container.
+# ffmpeg + ffprobe power the ffmpeg_handler pipeline step (server video ops);
+# util-linux-misc provides prlimit, which caps ffmpeg's address space so a
+# runaway encode kills ffmpeg, never the backend. Absence of either is fine —
+# the capability probe degrades to off and apps fall back to client-side wasm.
 RUN npm install -g pnpm && \
-    apk add --no-cache netcat-openbsd nginx python3 make g++ && \
+    apk add --no-cache netcat-openbsd nginx python3 make g++ ffmpeg util-linux-misc && \
     ln -sf python3 /usr/bin/python
 
 WORKDIR /app

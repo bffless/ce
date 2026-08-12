@@ -207,4 +207,18 @@ export interface IStorageAdapter {
    * @returns Stream and metadata
    */
   downloadStream?(key: string, opts?: DownloadStreamOptions): Promise<StreamDownloadResult>;
+
+  /**
+   * Streaming upload — write a readable stream to storage without buffering the
+   * whole object in memory. Optional: callers must feature-detect and fall back
+   * to upload(). `size` is the total byte length (known from fs.stat of the temp
+   * file); some backends (MinIO) use it to size the write. Returns the sanitized
+   * key, same as upload().
+   */
+  uploadStream?(
+    stream: NodeJS.ReadableStream,
+    key: string,
+    size: number,
+    metadata?: Record<string, any>,
+  ): Promise<string>;
 }

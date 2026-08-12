@@ -10,6 +10,7 @@ import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import { pipeline } from 'stream/promises';
 import {
   derivePresignKey,
   deriveDownloadKey,
@@ -126,6 +127,37 @@ export class LocalStorageAdapter implements IStorageAdapter {
     }
 
     this.logger.log(`Uploaded file to: ${storageKey}`);
+    return sanitizedKey; // Return unprefixed key to caller
+  }
+
+  /**
+   * Stream a file to local storage without buffering the whole object in memory
+   */
+  async uploadStream(
+    stream: NodeJS.ReadableStream,
+    key: string,
+    size: number,
+    metadata?: Record<string, any>,
+  ): Promise<string> {
+    // Validate and sanitize the key
+    const sanitizedKey = this.sanitizeKey(key);
+    const storageKey = this.prefixKey(sanitizedKey);
+    const fullPath = path.join(this.basePath, storageKey);
+
+    // Ensure directory exists
+    const directory = path.dirname(fullPath);
+    await fs.mkdir(directory, { recursive: true });
+
+    // Stream file to disk
+    await pipeline(stream, fsSync.createWriteStream(fullPath));
+
+    // Optionally store metadata as a separate .meta.json file
+    if (metadata) {
+      const metadataPath = `${fullPath}.meta.json`;
+      await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
+    }
+
+    this.logger.log(`Streamed file to: ${storageKey}`);
     return sanitizedKey; // Return unprefixed key to caller
   }
 

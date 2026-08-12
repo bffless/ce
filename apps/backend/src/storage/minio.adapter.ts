@@ -7,6 +7,7 @@ import {
   SignedUrlOptions,
 } from './storage.interface';
 import * as Minio from 'minio';
+import { Readable } from 'stream';
 
 export interface MinioConfig {
   endPoint: string;
@@ -105,6 +106,47 @@ export class MinioStorageAdapter implements IStorageAdapter {
       return sanitizedKey; // Return unprefixed key to caller
     } catch (error) {
       this.logger.error(`Failed to upload file: ${storageKey}`, error);
+      throw new Error(`Upload failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Stream a file to MinIO without buffering the whole object in memory
+   */
+  async uploadStream(
+    stream: NodeJS.ReadableStream,
+    key: string,
+    size: number,
+    metadata?: Record<string, any>,
+  ): Promise<string> {
+    const sanitizedKey = this.sanitizeKey(key);
+    const storageKey = this.prefixKey(sanitizedKey);
+
+    // Prepare metadata for MinIO
+    const minioMetadata: Record<string, string> = {};
+    if (metadata) {
+      // Convert metadata values to strings (MinIO requirement)
+      for (const [k, v] of Object.entries(metadata)) {
+        if (v !== undefined && v !== null) {
+          minioMetadata[k] = String(v);
+        }
+      }
+    }
+
+    // Set content type if provided
+    const contentType =
+      metadata?.mimeType || metadata?.['content-type'] || 'application/octet-stream';
+
+    try {
+      await this.client.putObject(this.bucket, storageKey, stream as Readable, size, {
+        'Content-Type': contentType,
+        ...minioMetadata,
+      });
+
+      this.logger.log(`Streamed file: ${storageKey}`);
+      return sanitizedKey; // Return unprefixed key to caller
+    } catch (error) {
+      this.logger.error(`Failed to stream upload file: ${storageKey}`, error);
       throw new Error(`Upload failed: ${error.message}`);
     }
   }
