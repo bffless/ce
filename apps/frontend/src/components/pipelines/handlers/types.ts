@@ -384,7 +384,8 @@ export type HandlerConfig =
   | StripeWebhookHandlerConfig
   | XmlFeedParseHandlerConfig
   | DataUpsertManyHandlerConfig
-  | DelayHandlerConfig;
+  | DelayHandlerConfig
+  | FfmpegHandlerConfig;
 
 export interface SignedUrlHandlerConfig extends BaseHandlerConfig {
   /** Storage key / path (supports expressions, e.g. "steps.upload.storage_path") */
@@ -432,6 +433,24 @@ export interface DelayHandlerConfig extends BaseHandlerConfig {
   ms?: number | string;
   /** Delay in seconds (converted to ms). Supports expressions. Ignored if `ms` is set. */
   seconds?: number | string;
+}
+
+export type FfmpegOperation = 'probe' | 'extract_audio' | 'slice' | 'concat';
+
+export interface FfmpegHandlerConfig extends BaseHandlerConfig {
+  operation: FfmpegOperation;
+  /** Source object (probe/extract_audio/slice). Expression or path. */
+  input?: string;
+  /** Concat sources, in order (expression resolving to an array also accepted). */
+  inputs?: string[] | string;
+  /** Kept spans for slice, or an expression resolving to them. */
+  spans?: Array<{ start: number | string; end: number | string }> | string;
+  /** Destination, uploads-relative. Required except for probe. */
+  output?: string;
+  /** slice only: also emit the clip's 16 kHz WAV here. */
+  audioOutput?: string;
+  /** slice only: ~10 ms audio edge fades per span. */
+  audioFades?: boolean;
 }
 
 export interface StripeCheckoutLineItem {

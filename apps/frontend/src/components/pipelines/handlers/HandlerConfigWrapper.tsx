@@ -28,6 +28,7 @@ import { GoogleCalendarConfig } from './GoogleCalendarConfig';
 import { XmlFeedParseConfig } from './XmlFeedParseConfig';
 import { DataUpsertManyConfig } from './DataUpsertManyConfig';
 import { DelayHandlerConfig } from './DelayHandlerConfig';
+import { FfmpegHandlerConfig } from './FfmpegHandlerConfig';
 import { AvailableVariables, type PreviousStep } from './AvailableVariables';
 import type { HandlerConfig } from './types';
 
@@ -419,6 +420,18 @@ export function HandlerConfigWrapper({
         </>
       );
 
+    case 'ffmpeg_handler':
+      return (
+        <>
+          {renderVariablesPanel()}
+          <FfmpegHandlerConfig
+            config={config}
+            onChange={handleChange}
+            previousSteps={previousSteps}
+          />
+        </>
+      );
+
     default:
       return (
         <div className="text-sm text-destructive p-4 bg-destructive/10 rounded-md">
@@ -462,6 +475,7 @@ export function getHandlerDisplayName(type: HandlerType): string {
     xml_feed_parse: 'Parse Feed',
     data_upsert_many: 'Upsert Many',
     delay: 'Delay',
+    ffmpeg_handler: 'FFmpeg Video Ops',
   };
   return names[type] || type;
 }
@@ -500,6 +514,7 @@ export function getHandlerDescription(type: HandlerType): string {
     xml_feed_parse: 'Fetch and parse RSS / Atom / RDF feeds into normalized entries',
     data_upsert_many: 'Insert an array of records into a schema, skipping duplicates',
     delay: 'Pause the pipeline for a configurable duration',
+    ffmpeg_handler: 'Run server-side video operations (slice, concat, audio extract, probe) on files in storage',
   };
   return descriptions[type] || '';
 }
