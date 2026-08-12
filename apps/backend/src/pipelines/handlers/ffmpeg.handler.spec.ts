@@ -6,6 +6,7 @@
 import * as fsp from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
+import { Readable } from 'stream';
 import { ExpressionEvaluator } from '../execution/expression-evaluator';
 import type { PipelineContext } from '../execution/pipeline-context.interface';
 import type { PipelineStep } from '../types';
@@ -20,6 +21,10 @@ function createHandler(
       getOps: () => string[];
     }>;
     runner?: { run: jest.Mock };
+    storageAdapter?: Partial<{
+      downloadStream: jest.Mock;
+      uploadStream: jest.Mock;
+    }>;
   } = {},
 ) {
   const registry = { register: jest.fn() };
@@ -34,7 +39,9 @@ function createHandler(
     run: jest.fn().mockResolvedValue({ stdout: '', stderrTail: '' }),
   };
   const scratch = {
-    createJobDir: jest.fn().mockImplementation(() => fsp.mkdtemp(path.join(os.tmpdir(), 'ffmpeg-hspec-'))),
+    createJobDir: jest
+      .fn()
+      .mockImplementation(() => fsp.mkdtemp(path.join(os.tmpdir(), 'ffmpeg-hspec-'))),
     cleanup: jest.fn().mockResolvedValue(undefined),
     assertFreeSpace: jest.fn().mockResolvedValue(undefined),
   };
@@ -45,6 +52,7 @@ function createHandler(
     download: jest.fn(),
     upload: jest.fn(),
     getMetadata: jest.fn().mockResolvedValue({ size: 1000 }),
+    ...overrides.storageAdapter,
   };
   const handler = new FfmpegHandler(
     registry as never,
@@ -133,13 +141,15 @@ describe('capability gating for real ops', () => {
 });
 
 describe('extract_audio', () => {
-  function extractSetup() {
-    const created = createHandler();
+  function extractSetup(overrides?: Parameters<typeof createHandler>[0]) {
+    const created = createHandler(overrides);
     // The runner "produces" the output by writing the temp file the handler expects.
-    created.runner.run.mockImplementation(async ({ args, cwd }: { args: string[]; cwd: string }) => {
-      await fsp.writeFile(`${cwd}/${args[args.length - 1].split('/').pop()}`, 'wav-bytes');
-      return { stdout: '', stderrTail: '' };
-    });
+    created.runner.run.mockImplementation(
+      async ({ args, cwd }: { args: string[]; cwd: string }) => {
+        await fsp.writeFile(`${cwd}/${args[args.length - 1].split('/').pop()}`, 'wav-bytes');
+        return { stdout: '', stderrTail: '' };
+      },
+    );
     return created;
   }
 
@@ -160,7 +170,38 @@ describe('extract_audio', () => {
     });
     const req = runner.run.mock.calls[0][0];
     expect(req.binary).toBe('ffmpeg');
-    expect(req.args).toEqual(expect.arrayContaining(['-vn', '-ac', '1', '-ar', '16000', '-f', 'wav']));
+    expect(req.args).toEqual(
+      expect.arrayContaining(['-vn', '-ac', '1', '-ar', '16000', '-f', 'wav']),
+    );
+  });
+
+  it('uses the streaming download/upload branch when the adapter supports it', async () => {
+    const downloadStream = jest
+      .fn()
+      .mockResolvedValue({ stream: Readable.from(Buffer.from('mp4-bytes')), size: 9 });
+    const uploadStream = jest.fn().mockResolvedValue('o/r/uploads/studio/a.wav');
+    const { handler, storageAdapter } = extractSetup({
+      storageAdapter: { downloadStream, uploadStream },
+    });
+    const result = await handler.execute(
+      context(),
+      step({ operation: 'extract_audio', input: 'studio/a.mp4', output: 'studio/a.wav' }),
+    );
+    expect(result.success).toBe(true);
+    expect(result.output).toMatchObject({
+      storage_path: 'o/r/uploads/studio/a.wav',
+      content_type: 'audio/wav',
+      size: expect.any(Number),
+    });
+    expect(downloadStream).toHaveBeenCalledWith('o/r/uploads/studio/a.mp4');
+    expect(uploadStream).toHaveBeenCalledWith(
+      expect.any(Readable),
+      'o/r/uploads/studio/a.wav',
+      expect.any(Number),
+      { mimeType: 'audio/wav' },
+    );
+    expect(storageAdapter.download).not.toHaveBeenCalled();
+    expect(storageAdapter.upload).not.toHaveBeenCalled();
   });
 
   it('accepts /api/uploads/... input form and full storage keys', async () => {
@@ -168,7 +209,11 @@ describe('extract_audio', () => {
     storageAdapter.download.mockResolvedValue(Buffer.from('x'));
     const r1 = await handler.execute(
       context(),
-      step({ operation: 'extract_audio', input: '/api/uploads/studio/a.mp4', output: 'studio/a.wav' }),
+      step({
+        operation: 'extract_audio',
+        input: '/api/uploads/studio/a.mp4',
+        output: 'studio/a.wav',
+      }),
     );
     expect(r1.success).toBe(true);
     expect(storageAdapter.download).toHaveBeenCalledWith('o/r/uploads/studio/a.mp4');
@@ -203,7 +248,10 @@ describe('extract_audio', () => {
     const { handler, runner, scratch, storageAdapter } = createHandler();
     storageAdapter.download.mockResolvedValue(Buffer.from('x'));
     runner.run.mockRejectedValue(Object.assign(new Error('boom'), { code: 'FFMPEG_FAILED' }));
-    await handler.execute(context(), step({ operation: 'extract_audio', input: 'a.mp4', output: 'a.wav' }));
+    await handler.execute(
+      context(),
+      step({ operation: 'extract_audio', input: 'a.mp4', output: 'a.wav' }),
+    );
     expect(scratch.createJobDir).toHaveBeenCalledTimes(1);
     expect(scratch.cleanup).toHaveBeenCalledTimes(1);
     expect(scratch.cleanup).toHaveBeenCalledWith(await scratch.createJobDir.mock.results[0].value);
@@ -224,7 +272,7 @@ describe('extract_audio', () => {
 
 describe('probe with input', () => {
   it('parses ffprobe json into duration/format/streams', async () => {
-    const { handler, runner, storageAdapter } = createHandler();
+    const { handler, runner, scratch, storageAdapter } = createHandler();
     storageAdapter.download.mockResolvedValue(Buffer.from('x'));
     runner.run.mockResolvedValue({
       stdout: JSON.stringify({
@@ -235,7 +283,12 @@ describe('probe with input', () => {
     });
     const result = await handler.execute(context(), step({ operation: 'probe', input: 'a.mp4' }));
     expect(result.success).toBe(true);
-    expect(result.output).toMatchObject({ duration: 232.5, streams: [{ codec_type: 'video' }, { codec_type: 'audio' }] });
+    expect(result.output).toMatchObject({
+      duration: 232.5,
+      streams: [{ codec_type: 'video' }, { codec_type: 'audio' }],
+    });
     expect(runner.run.mock.calls[0][0].binary).toBe('ffprobe');
+    // probe downloads the full input to scratch too — the disk pre-flight guard applies.
+    expect(scratch.assertFreeSpace).toHaveBeenCalledTimes(1);
   });
 });

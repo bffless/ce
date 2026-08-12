@@ -226,6 +226,9 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
     stepName: string,
   ): Promise<StepResult> {
     const inputKey = await this.resolveKey(config.input!, context, stepName, 'input');
+    await this.scratch.assertFreeSpace(
+      2 * (await this.inputSizeBytes([inputKey])) + FfmpegHandler.DISK_MARGIN_BYTES,
+    );
     const jobDir = await this.scratch.createJobDir();
     try {
       const localIn = path.join(jobDir, `in${path.posix.extname(inputKey) || '.bin'}`);
