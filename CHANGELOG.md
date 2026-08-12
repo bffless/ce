@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.26](https://github.com/bffless/ce/compare/v0.4.25...v0.4.26) (2026-08-12)
+
+
+### Features
+
+* server video ops become an opt-in admin setting ([#656](https://github.com/bffless/ce/issues/656)) ([c5d7b63](https://github.com/bffless/ce/commit/c5d7b636ce88ef20b57c735bd16d15591bc4a519))
+
 ## [0.4.25](https://github.com/bffless/ce/compare/v0.4.24...v0.4.25) (2026-08-12)
 
 
