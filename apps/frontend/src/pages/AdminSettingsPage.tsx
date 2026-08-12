@@ -2,7 +2,7 @@ import { useNavigate, Link, Outlet, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TabScroller } from '@/components/common/TabScroller';
-import { ArrowLeft, Settings, Paintbrush, Shield, Mail, Server, Lock } from 'lucide-react';
+import { ArrowLeft, Settings, Paintbrush, Shield, Mail, Server, Lock, ToggleRight } from 'lucide-react';
 import { useFeatureFlags } from '@/services/featureFlagsApi';
 
 const TABS = [
@@ -10,6 +10,7 @@ const TABS = [
   { value: 'auth', path: '/admin/settings/auth', label: 'Authentication', icon: Shield },
   { value: 'email', path: '/admin/settings/email', label: 'Email', icon: Mail },
   { value: 'infrastructure', path: '/admin/settings/infrastructure', label: 'Infrastructure', icon: Server },
+  { value: 'features', path: '/admin/settings/features', label: 'Features', icon: ToggleRight },
   { value: 'ssl', path: '/admin/settings/ssl', label: 'SSL', icon: Lock },
 ] as const;
 
@@ -31,9 +32,11 @@ export function AdminSettingsPage() {
       ? 'email'
       : pathAfterSettings.startsWith('/auth')
         ? 'auth'
-        : pathAfterSettings.startsWith('/ssl')
-          ? 'ssl'
-          : 'general';
+        : pathAfterSettings.startsWith('/features')
+          ? 'features'
+          : pathAfterSettings.startsWith('/ssl')
+            ? 'ssl'
+            : 'general';
 
   const visibleTabs = TABS.filter(
     (tab) => tab.value !== 'ssl' || isEnabled('ENABLE_PRIMARY_SSL_MANAGEMENT'),

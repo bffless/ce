@@ -21,4 +21,15 @@ describe('AdminSettingsPage', () => {
     );
     expect(screen.getByText('SSL')).toBeInTheDocument();
   });
+
+  it('shows the Features tab', () => {
+    render(
+      <MemoryRouter initialEntries={['/admin/settings']}>
+        <Routes>
+          <Route path="/admin/settings/*" element={<AdminSettingsPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('Features')).toBeInTheDocument();
+  });
 });
