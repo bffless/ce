@@ -26,19 +26,24 @@ function secs(v: number): string {
   return Number(v.toFixed(3)).toString();
 }
 
-const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
-
 /** ~10ms audio edge fade per kept piece, kills clicks at cut joins (assemble.ts FADE). */
 const FADE = 0.01;
 
 const ENCODE_PROFILE = (threads: number): string[] => [
-  '-fps_mode', 'passthrough',
-  '-c:v', 'libx264',
-  '-preset', 'ultrafast',
-  '-threads', String(threads),
-  '-pix_fmt', 'yuv420p',
-  '-c:a', 'aac',
-  '-movflags', '+faststart',
+  '-fps_mode',
+  'passthrough',
+  '-c:v',
+  'libx264',
+  '-preset',
+  'ultrafast',
+  '-threads',
+  String(threads),
+  '-pix_fmt',
+  'yuv420p',
+  '-c:a',
+  'aac',
+  '-movflags',
+  '+faststart',
 ];
 
 /** 16 kHz mono WAV — the transcription contract (Studio story 01b). */
@@ -88,9 +93,12 @@ export function buildSliceArgs(opts: {
       : ['-i', opts.input];
   return [
     ...inputArgs,
-    '-filter_complex', graph,
-    '-map', '[vout]',
-    '-map', '[aout]',
+    '-filter_complex',
+    graph,
+    '-map',
+    '[vout]',
+    '-map',
+    '[aout]',
     ...ENCODE_PROFILE(opts.threads),
     opts.output,
   ];
