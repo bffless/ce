@@ -120,6 +120,27 @@ export class DynamicStorageAdapter implements IStorageAdapter {
       : undefined;
   }
 
+  /**
+   * Stream a file to the active adapter without buffering it into memory.
+   *
+   * Exposed as a getter for the same reason as `downloadStream` above (see its
+   * doc comment): a plain delegating method would always be truthy even when
+   * the live adapter can't stream, defeating capability-detection callers like
+   * `if (storageAdapter.uploadStream)`.
+   */
+  get uploadStream():
+    | ((
+        stream: NodeJS.ReadableStream,
+        key: string,
+        size: number,
+        metadata?: Record<string, any>,
+      ) => Promise<string>)
+    | undefined {
+    return this.adapter.uploadStream
+      ? (stream, key, size, metadata) => this.adapter.uploadStream!(stream, key, size, metadata)
+      : undefined;
+  }
+
   async delete(key: string): Promise<void> {
     return this.adapter.delete(key);
   }

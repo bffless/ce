@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Storage, Bucket, GetSignedUrlConfig } from '@google-cloud/storage';
+import { pipeline } from 'stream/promises';
 import {
   IStorageAdapter,
   FileMetadata,
@@ -107,6 +108,49 @@ export class GcsStorageAdapter implements IStorageAdapter {
       return sanitizedKey; // Return unprefixed key to caller
     } catch (error: any) {
       this.logger.error(`Failed to upload file to GCS: ${storageKey}`, error);
+      throw new Error(`GCS upload failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Stream a file to GCS without buffering the whole object in memory
+   */
+  async uploadStream(
+    stream: NodeJS.ReadableStream,
+    key: string,
+    size: number,
+    metadata?: Record<string, any>,
+  ): Promise<string> {
+    const sanitizedKey = this.sanitizeKey(key);
+    const storageKey = this.prefixKey(sanitizedKey);
+    const blob = this.bucket.file(storageKey);
+
+    const contentType =
+      metadata?.mimeType || metadata?.['content-type'] || 'application/octet-stream';
+
+    try {
+      // Bound the resumable upload's chunk size for the same reason as upload()
+      // above: an unbounded chunk can OOM a 384MB backend container on a large
+      // (multi-GB ffmpeg output) stream. Must stay a multiple of 256KiB.
+      await pipeline(
+        stream,
+        blob.createWriteStream({
+          contentType,
+          chunkSize: GcsStorageAdapter.UPLOAD_CHUNK_BYTES,
+          metadata: {
+            metadata: this.normalizeMetadata(metadata),
+          },
+          // Set storage class if configured
+          ...(this.config.storageClass && {
+            storageClass: this.config.storageClass,
+          }),
+        }),
+      );
+
+      this.logger.log(`Streamed file to GCS: ${storageKey}`);
+      return sanitizedKey; // Return unprefixed key to caller
+    } catch (error: any) {
+      this.logger.error(`Failed to stream upload file to GCS: ${storageKey}`, error);
       throw new Error(`GCS upload failed: ${error.message}`);
     }
   }

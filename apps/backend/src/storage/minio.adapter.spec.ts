@@ -1,5 +1,6 @@
 import { MinioStorageAdapter } from './minio.adapter';
 import * as Minio from 'minio';
+import { Readable } from 'stream';
 
 // Mock MinIO client
 jest.mock('minio');
@@ -96,6 +97,46 @@ describe('MinioStorageAdapter', () => {
       mockMinioClient.putObject.mockRejectedValue(new Error('Upload failed'));
 
       await expect(adapter.upload(content, key)).rejects.toThrow('Upload failed');
+    });
+  });
+
+  describe('uploadStream', () => {
+    it('should stream-upload a file successfully', async () => {
+      const key = 'owner/repo/abc123/video.mp4';
+      const stream = Readable.from(Buffer.from('streamed bytes'));
+      const metadata = { mimeType: 'video/mp4' };
+
+      mockMinioClient.putObject.mockResolvedValue({} as any);
+
+      const result = await adapter.uploadStream!(stream, key, 14, metadata);
+
+      expect(result).toBe(key);
+      expect(mockMinioClient.putObject).toHaveBeenCalledWith(
+        'test-bucket',
+        key,
+        stream,
+        14,
+        expect.objectContaining({
+          'Content-Type': 'video/mp4',
+        }),
+      );
+    });
+
+    it('should reject path traversal attempts', async () => {
+      const stream = Readable.from(Buffer.from('malicious'));
+
+      await expect(adapter.uploadStream!(stream, '../../../etc/passwd', 9)).rejects.toThrow(
+        'path traversal detected',
+      );
+    });
+
+    it('should handle stream upload errors', async () => {
+      const key = 'owner/repo/abc123/video.mp4';
+      const stream = Readable.from(Buffer.from('bytes'));
+
+      mockMinioClient.putObject.mockRejectedValue(new Error('Upload failed'));
+
+      await expect(adapter.uploadStream!(stream, key, 5)).rejects.toThrow('Upload failed');
     });
   });
 
