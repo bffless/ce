@@ -81,6 +81,19 @@ const step = (config: Record<string, unknown>): PipelineStep =>
     isEnabled: true,
   }) as unknown as PipelineStep;
 
+/**
+ * Shared across extract_audio/slice/concat: the runner "produces" its output
+ * by writing the temp file the handler expects into the cwd it was given.
+ */
+function extractSetup(overrides?: Parameters<typeof createHandler>[0]) {
+  const created = createHandler(overrides);
+  created.runner.run.mockImplementation(async ({ args, cwd }: { args: string[]; cwd: string }) => {
+    await fsp.writeFile(`${cwd}/${args[args.length - 1].split('/').pop()}`, 'wav-bytes');
+    return { stdout: '', stderrTail: '' };
+  });
+  return created;
+}
+
 describe('FfmpegHandler registration & validation', () => {
   it('self-registers with type ffmpeg_handler', () => {
     const { handler, registry } = createHandler();
@@ -141,18 +154,6 @@ describe('capability gating for real ops', () => {
 });
 
 describe('extract_audio', () => {
-  function extractSetup(overrides?: Parameters<typeof createHandler>[0]) {
-    const created = createHandler(overrides);
-    // The runner "produces" the output by writing the temp file the handler expects.
-    created.runner.run.mockImplementation(
-      async ({ args, cwd }: { args: string[]; cwd: string }) => {
-        await fsp.writeFile(`${cwd}/${args[args.length - 1].split('/').pop()}`, 'wav-bytes');
-        return { stdout: '', stderrTail: '' };
-      },
-    );
-    return created;
-  }
-
   it('streams in, runs the 16k mono wav argv, streams out, returns the contract shape', async () => {
     const { handler, runner, storageAdapter } = extractSetup();
     // downloadToFile falls back to download() when downloadStream is absent on the literal mock
@@ -290,5 +291,113 @@ describe('probe with input', () => {
     expect(runner.run.mock.calls[0][0].binary).toBe('ffprobe');
     // probe downloads the full input to scratch too — the disk pre-flight guard applies.
     expect(scratch.assertFreeSpace).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('slice', () => {
+  it('resolves span expressions, runs the trim graph, returns clip + optional wav', async () => {
+    const { handler, runner, storageAdapter } = extractSetup();
+    storageAdapter.download.mockResolvedValue(Buffer.from('mp4'));
+    const ctx = context();
+    (ctx.metadata.body as Record<string, unknown>) = { start: 104, end: 228 };
+    const result = await handler.execute(
+      ctx,
+      step({
+        operation: 'slice',
+        input: 'studio/src.mp4',
+        spans: [{ start: 'request.body.start', end: 'request.body.end' }],
+        output: 'studio/clip.mp4',
+        audioOutput: 'studio/clip.wav',
+      }),
+    );
+    expect(result.success).toBe(true);
+    expect(result.output).toMatchObject({
+      storage_path: 'o/r/uploads/studio/clip.mp4',
+      content_type: 'video/mp4',
+      duration: 124,
+      audio: { storage_path: 'o/r/uploads/studio/clip.wav', content_type: 'audio/wav' },
+    });
+    // First run: the slice; second run: extract_audio ON THE CLIP (small, cheap).
+    expect(runner.run).toHaveBeenCalledTimes(2);
+    const sliceArgs = runner.run.mock.calls[0][0].args as string[];
+    expect(sliceArgs).toEqual(expect.arrayContaining(['-filter_complex', '-copyts']));
+    const wavArgs = runner.run.mock.calls[1][0].args as string[];
+    expect(wavArgs).toEqual(expect.arrayContaining(['-ar', '16000']));
+  });
+
+  it('rejects malformed spans with INVALID_SPANS before any work', async () => {
+    const { handler, runner } = createHandler();
+    for (const spans of [[{ start: 5, end: 2 }], [{ start: 'nope', end: 3 }], [], 'request.body.missing']) {
+      const result = await handler.execute(
+        context(),
+        step({ operation: 'slice', input: 'a.mp4', spans, output: 'b.mp4' }),
+      );
+      expect(result.error?.code).toBe('INVALID_SPANS');
+    }
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  it('accepts spans as an expression resolving to an array', async () => {
+    const { handler, runner, storageAdapter } = extractSetup();
+    storageAdapter.download.mockResolvedValue(Buffer.from('mp4'));
+    const ctx = context();
+    ctx.stepOutputs['job'] = { spans: [{ start: 0, end: 2 }, { start: 5, end: 8 }] };
+    const result = await handler.execute(
+      ctx,
+      step({ operation: 'slice', input: 'a.mp4', spans: 'steps.job.spans', output: 'b.mp4', audioFades: true }),
+    );
+    expect(result.success).toBe(true);
+    const args = runner.run.mock.calls[0][0].args as string[];
+    expect(args.join(' ')).toContain('concat=n=2');
+    expect(args.join(' ')).toContain('afade');
+  });
+});
+
+describe('concat', () => {
+  it('stream-copies, writing a concat list into the job dir', async () => {
+    const { handler, runner, storageAdapter } = extractSetup();
+    storageAdapter.download.mockResolvedValue(Buffer.from('mp4'));
+    const result = await handler.execute(
+      context(),
+      step({ operation: 'concat', inputs: ['studio/s1.mp4', 'studio/s2.mp4'], output: 'studio/final.mp4' }),
+    );
+    expect(result.success).toBe(true);
+    expect(result.output).toMatchObject({
+      storage_path: 'o/r/uploads/studio/final.mp4',
+      content_type: 'video/mp4',
+      reencoded: false,
+    });
+    const args = runner.run.mock.calls[0][0].args as string[];
+    expect(args).toEqual(expect.arrayContaining(['-f', 'concat', '-c', 'copy']));
+  });
+
+  it('falls back to re-encode when stream-copy fails, and reports reencoded: true', async () => {
+    const { handler, runner, storageAdapter } = extractSetup();
+    storageAdapter.download.mockResolvedValue(Buffer.from('mp4'));
+    runner.run
+      .mockRejectedValueOnce(Object.assign(new Error('stream mismatch'), { code: 'FFMPEG_FAILED' }))
+      .mockImplementationOnce(async ({ args, cwd }: { args: string[]; cwd: string }) => {
+        await fsp.writeFile(`${cwd}/${args[args.length - 1].split('/').pop()}`, 'mp4');
+        return { stdout: '', stderrTail: '' };
+      });
+    const result = await handler.execute(
+      context(),
+      step({ operation: 'concat', inputs: ['a.mp4', 'b.mp4'], output: 'final.mp4' }),
+    );
+    expect(result.success).toBe(true);
+    expect(result.output).toMatchObject({ reencoded: true });
+    expect(runner.run).toHaveBeenCalledTimes(2);
+  });
+
+  it('busy/timeout errors from the second (re-encode) attempt are NOT retried', async () => {
+    const { handler, runner, storageAdapter } = createHandler();
+    storageAdapter.download.mockResolvedValue(Buffer.from('mp4'));
+    runner.run.mockRejectedValue(Object.assign(new Error('busy'), { code: 'FFMPEG_BUSY' }));
+    const result = await handler.execute(
+      context(),
+      step({ operation: 'concat', inputs: ['a.mp4', 'b.mp4'], output: 'f.mp4' }),
+    );
+    expect(result.error?.code).toBe('FFMPEG_BUSY');
+    expect(runner.run).toHaveBeenCalledTimes(1); // only FFMPEG_FAILED triggers the fallback
   });
 });

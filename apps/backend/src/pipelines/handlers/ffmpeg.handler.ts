@@ -14,7 +14,14 @@ import { FfmpegCapabilityService } from '../ffmpeg/ffmpeg-capability.service';
 import { FfmpegRunnerService } from '../ffmpeg/ffmpeg-runner.service';
 import { FfmpegScratchService } from '../ffmpeg/ffmpeg-scratch.service';
 import { UploadRecordService } from '../upload-record.service';
-import { buildExtractAudioArgs, buildProbeArgs } from '../ffmpeg/ffmpeg-args';
+import {
+  buildExtractAudioArgs,
+  buildProbeArgs,
+  buildSliceArgs,
+  buildConcatArgs,
+  buildConcatListContent,
+} from '../ffmpeg/ffmpeg-args';
+import { readFfmpegEnv } from '../ffmpeg/ffmpeg-env';
 
 const OPERATIONS = ['probe', 'extract_audio', 'slice', 'concat'] as const;
 
@@ -283,19 +290,165 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
     }
   }
 
+  /** Resolve config.spans (array of literal/expression values, or an expression yielding an array). */
+  private resolveSpans(
+    raw: FfmpegHandlerConfig['spans'],
+    context: PipelineContext,
+    stepName: string,
+  ): Array<{ start: number; end: number }> {
+    const fail = (msg: string): never => {
+      throw Object.assign(new Error(`ffmpeg_handler spans invalid: ${msg}`), {
+        code: 'INVALID_SPANS',
+      });
+    };
+    let list: unknown = raw;
+    if (typeof raw === 'string') {
+      list = this.expressionEvaluator.evaluateExpression(raw, context, stepName);
+    }
+    if (!Array.isArray(list) || list.length === 0) fail('expected a non-empty array');
+    return (list as Array<{ start: unknown; end: unknown }>).map((s, i) => {
+      const resolve = (v: unknown): number => {
+        const value =
+          typeof v === 'string'
+            ? this.expressionEvaluator.evaluateExpression(v, context, stepName)
+            : v;
+        const n = Number(value);
+        if (!Number.isFinite(n)) fail(`span ${i} has a non-numeric bound`);
+        return n;
+      };
+      const start = resolve(s.start);
+      const end = resolve(s.end);
+      if (start < 0 || end <= start)
+        fail(`span ${i} must satisfy 0 <= start < end (got ${start}..${end})`);
+      return { start, end };
+    });
+  }
+
   private async runSlice(
-    _config: FfmpegHandlerConfig,
-    _context: PipelineContext,
-    _stepName: string,
+    config: FfmpegHandlerConfig,
+    context: PipelineContext,
+    stepName: string,
   ): Promise<StepResult> {
-    throw new Error('implemented in Task 8');
+    const spans = this.resolveSpans(config.spans, context, stepName);
+    const inputKey = await this.resolveKey(config.input!, context, stepName, 'input');
+    const outputKey = await this.resolveKey(config.output!, context, stepName, 'output');
+    const audioKey = config.audioOutput
+      ? await this.resolveKey(config.audioOutput, context, stepName, 'output')
+      : null;
+    await this.scratch.assertFreeSpace(
+      2 * (await this.inputSizeBytes([inputKey])) + FfmpegHandler.DISK_MARGIN_BYTES,
+    );
+    const jobDir = await this.scratch.createJobDir();
+    try {
+      const localIn = path.join(jobDir, `in${path.posix.extname(inputKey) || '.mp4'}`);
+      const localOut = path.join(jobDir, 'clip.mp4');
+      await this.downloadToFile(inputKey, localIn);
+      await this.runner.run({
+        binary: 'ffmpeg',
+        args: buildSliceArgs({
+          input: localIn,
+          output: localOut,
+          spans,
+          threads: readFfmpegEnv().threads,
+          audioFades: config.audioFades === true,
+        }),
+        cwd: jobDir,
+      });
+      const { size } = await this.uploadFromFile(localOut, outputKey, 'video/mp4');
+      const duration = spans.reduce((n, s) => n + (s.end - s.start), 0);
+      let audio: { storage_path: string; content_type: string; size: number } | undefined;
+      if (audioKey) {
+        // Second pass on the (small) clip — keeps the slice graph simple; cost is negligible.
+        const localWav = path.join(jobDir, 'clip.wav');
+        await this.runner.run({
+          binary: 'ffmpeg',
+          args: buildExtractAudioArgs(localOut, localWav),
+          cwd: jobDir,
+        });
+        const wav = await this.uploadFromFile(localWav, audioKey, 'audio/wav');
+        audio = { storage_path: audioKey, content_type: 'audio/wav', size: wav.size };
+      }
+      return {
+        success: true,
+        output: {
+          storage_path: outputKey,
+          content_type: 'video/mp4',
+          size,
+          duration: Number(duration.toFixed(3)),
+          ...(audio ? { audio } : {}),
+        },
+      };
+    } finally {
+      await this.scratch.cleanup(jobDir);
+    }
   }
 
   private async runConcat(
-    _config: FfmpegHandlerConfig,
-    _context: PipelineContext,
-    _stepName: string,
+    config: FfmpegHandlerConfig,
+    context: PipelineContext,
+    stepName: string,
   ): Promise<StepResult> {
-    throw new Error('implemented in Task 8');
+    let inputsRaw: unknown = config.inputs;
+    if (typeof inputsRaw === 'string') {
+      inputsRaw = this.expressionEvaluator.evaluateExpression(inputsRaw, context, stepName);
+    }
+    if (!Array.isArray(inputsRaw) || inputsRaw.length === 0) {
+      this.pathError(
+        'INVALID_INPUT_PATH',
+        'ffmpeg_handler concat requires a non-empty inputs array',
+      );
+    }
+    const inputKeys: string[] = [];
+    for (const raw of inputsRaw as unknown[]) {
+      inputKeys.push(await this.resolveKey(String(raw), context, stepName, 'input'));
+    }
+    const outputKey = await this.resolveKey(config.output!, context, stepName, 'output');
+    await this.scratch.assertFreeSpace(
+      2 * (await this.inputSizeBytes(inputKeys)) + FfmpegHandler.DISK_MARGIN_BYTES,
+    );
+    const jobDir = await this.scratch.createJobDir();
+    try {
+      const parts: string[] = [];
+      for (let i = 0; i < inputKeys.length; i++) {
+        const local = path.join(jobDir, `part-${i}${path.posix.extname(inputKeys[i]) || '.mp4'}`);
+        await this.downloadToFile(inputKeys[i], local);
+        parts.push(local);
+      }
+      const listPath = path.join(jobDir, 'concat.txt');
+      await fs.writeFile(listPath, buildConcatListContent(parts));
+      const localOut = path.join(jobDir, 'final.mp4');
+      let reencoded = false;
+      try {
+        await this.runner.run({
+          binary: 'ffmpeg',
+          args: buildConcatArgs(listPath, localOut, {
+            reencode: false,
+            threads: readFfmpegEnv().threads,
+          }),
+          cwd: jobDir,
+        });
+      } catch (error) {
+        // Only a process failure (stream mismatch) triggers the re-encode
+        // fallback; busy/timeout/memory bubble up untouched.
+        if ((error as { code?: string }).code !== 'FFMPEG_FAILED') throw error;
+        reencoded = true;
+        this.logger.warn({ event: 'ffmpeg_concat_reencode_fallback', step: stepName });
+        await this.runner.run({
+          binary: 'ffmpeg',
+          args: buildConcatArgs(listPath, localOut, {
+            reencode: true,
+            threads: readFfmpegEnv().threads,
+          }),
+          cwd: jobDir,
+        });
+      }
+      const { size } = await this.uploadFromFile(localOut, outputKey, 'video/mp4');
+      return {
+        success: true,
+        output: { storage_path: outputKey, content_type: 'video/mp4', size, reencoded },
+      };
+    } finally {
+      await this.scratch.cleanup(jobDir);
+    }
   }
 }
