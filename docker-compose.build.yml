@@ -179,6 +179,14 @@ services:
       CERTBOT_EMAIL: ${CERTBOT_EMAIL:-}
       CERTBOT_WEBROOT: /var/www/certbot
 
+      # Server video ops (ffmpeg_handler) — see .env.example section 13
+      FFMPEG_HANDLER_ENABLED: ${FFMPEG_HANDLER_ENABLED:-}
+      FFMPEG_MEMORY_MB: ${FFMPEG_MEMORY_MB:-}
+      FFMPEG_THREADS: ${FFMPEG_THREADS:-}
+      FFMPEG_QUEUE_MAX: ${FFMPEG_QUEUE_MAX:-}
+      FFMPEG_MAX_SECONDS: ${FFMPEG_MAX_SECONDS:-}
+      FFMPEG_SCRATCH_DIR: ${FFMPEG_SCRATCH_DIR:-}
+
       # Optional Services Configuration
       ENABLE_MINIO: ${ENABLE_MINIO:-true}
     ports:
