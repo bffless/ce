@@ -84,7 +84,8 @@ export type HandlerType =
   | 'google_calendar'
   | 'xml_feed_parse'
   | 'data_upsert_many'
-  | 'delay';
+  | 'delay'
+  | 'ffmpeg_handler';
 
 /**
  * Pipeline step definition for execution.

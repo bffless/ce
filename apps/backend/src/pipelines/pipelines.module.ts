@@ -51,7 +51,11 @@ import {
   XmlFeedParseHandler,
   DataUpsertManyHandler,
   DelayHandler,
+  FfmpegHandler,
 } from './handlers';
+import { FfmpegCapabilityService } from './ffmpeg/ffmpeg-capability.service';
+import { FfmpegRunnerService } from './ffmpeg/ffmpeg-runner.service';
+import { FfmpegScratchService } from './ffmpeg/ffmpeg-scratch.service';
 import { FeedParserService } from './feed-parser.service';
 import { IntegrationsModule } from '../integrations/integrations.module';
 // Embeddings service
@@ -158,6 +162,11 @@ import {
     XmlFeedParseHandler,
     DataUpsertManyHandler,
     DelayHandler,
+    FfmpegHandler,
+    // Server-side video ops (Task 2/4/5) — consumed by FfmpegHandler, not otherwise registered
+    FfmpegCapabilityService,
+    FfmpegRunnerService,
+    FfmpegScratchService,
     // Validators (auto-register on construction)
     AuthRequiredValidator,
     RateLimitValidator,

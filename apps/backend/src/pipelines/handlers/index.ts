@@ -26,3 +26,4 @@ export * from './google-calendar.handler';
 export * from './xml-feed-parse.handler';
 export * from './data-upsert-many.handler';
 export * from './delay.handler';
+export * from './ffmpeg.handler';

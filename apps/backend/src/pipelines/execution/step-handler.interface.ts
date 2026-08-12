@@ -663,6 +663,54 @@ export interface ImageConvertHandlerConfig extends BaseHandlerConfig {
   quality?: number;
 }
 
+// step-handler.interface.ts — this TSDoc is the authoritative handler reference
+// (CE has no per-handler doc pages; agents and humans read this).
+export type FfmpegOperation = 'probe' | 'extract_audio' | 'slice' | 'concat';
+
+/** One kept span of source footage, in source seconds. Values may be literals or expressions. */
+export interface FfmpegSpan {
+  start: number | string;
+  end: number | string;
+}
+
+/**
+ * Server-side video operations on storage objects via a strictly-guarded native
+ * ffmpeg child process. Curated operations only — never raw ffmpeg args.
+ * Inputs/outputs are storage paths (bytes never enter a request body); place
+ * heavy ops in postSteps and poll a job row (the fire-and-poll pattern).
+ *
+ * Operations:
+ * - `probe` — no `input`: capability self-test, never fails; returns
+ *   `{ server, ops, version }`. With `input`: ffprobe essentials
+ *   `{ duration, format, streams }`.
+ * - `extract_audio` — `input` → `output`: 16 kHz mono WAV (`-vn -ac 1 -ar 16000`).
+ * - `slice` — cut the kept `spans` out of `input`, concat into one clip
+ *   (libx264 ultrafast/yuv420p/aac/+faststart, A/V-sync-safe trim graph).
+ *   Optional `audioOutput` also emits the clip's 16 kHz WAV; `audioFades`
+ *   adds ~10 ms edge fades (use for scene assembly).
+ * - `concat` — stitch `inputs` (uniformly-encoded clips) into `output`;
+ *   stream-copy first, automatic re-encode fallback on stream mismatch.
+ *
+ * Path forms: inputs accept `{owner}/{repo}/uploads/...`, an uploads-relative
+ * path, or an `/api/uploads/...` URL; outputs are uploads-relative. All resolve
+ * inside the project's uploads root — traversal is rejected.
+ */
+export interface FfmpegHandlerConfig extends BaseHandlerConfig {
+  operation: FfmpegOperation;
+  /** Source object (probe / extract_audio / slice). Template-resolved. */
+  input?: string;
+  /** Source clips for concat, in order: an array or an expression resolving to one. */
+  inputs?: string[] | string;
+  /** Kept spans for slice: an array (values may be expressions) or an expression resolving to one. */
+  spans?: FfmpegSpan[] | string;
+  /** Destination path, uploads-relative. Template-resolved. Required except for probe. */
+  output?: string;
+  /** slice only: also emit the clip's 16 kHz mono WAV to this uploads-relative path. */
+  audioOutput?: string;
+  /** slice only: ~10 ms audio edge fades per span (assemble parity). Default false. */
+  audioFades?: boolean;
+}
+
 /**
  * Configuration for file_serve_handler
  */
