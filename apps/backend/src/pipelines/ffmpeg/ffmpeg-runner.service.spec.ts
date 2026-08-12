@@ -8,12 +8,16 @@ jest.mock('fs/promises', () => ({
   readFile: jest.fn().mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' })),
 }));
 import { spawn } from 'child_process';
+import * as fsPromises from 'fs/promises';
 import { FfmpegRunnerService } from './ffmpeg-runner.service';
 
 /** Flush pending microtasks (promise chains) without depending on real/fake timers. */
 const flush = async () => {
   for (let i = 0; i < 5; i++) await Promise.resolve();
 };
+
+const enoent = () => Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+const fsReadFile = fsPromises.readFile as jest.Mock;
 
 /** A controllable fake child: emit 'close'/'error' and feed stdout/stderr yourself. */
 function fakeChild() {
@@ -34,7 +38,11 @@ function fakeChild() {
 const spawnMock = spawn as unknown as jest.Mock;
 
 describe('FfmpegRunnerService', () => {
-  beforeEach(() => spawnMock.mockReset());
+  beforeEach(() => {
+    spawnMock.mockReset();
+    // Default: no readable cgroup limit (bare host) — matches this test host.
+    fsReadFile.mockReset().mockRejectedValue(enoent());
+  });
 
   it('wraps the command in prlimit --as and nice -n 10', async () => {
     const child = fakeChild();
@@ -59,6 +67,29 @@ describe('FfmpegRunnerService', () => {
       '-i',
       'a',
       'b',
+    ]);
+  });
+
+  it('wraps ffprobe with only -hide_banner — no ffmpeg-only -nostdin/-y', async () => {
+    const child = fakeChild();
+    spawnMock.mockReturnValue(child);
+    const svc = new FfmpegRunnerService();
+    const done = svc.run({ binary: 'ffprobe', args: ['-show_format', 'in.mp4'], cwd: '/tmp' });
+    await flush();
+    child.emit('close', 0);
+    await done;
+    const [cmd, argv] = spawnMock.mock.calls[0];
+    expect(cmd).toBe('prlimit');
+    expect(argv).toEqual([
+      `--as=${1024 * 1024 * 1024}`,
+      '--',
+      'nice',
+      '-n',
+      '10',
+      'ffprobe',
+      '-hide_banner',
+      '-show_format',
+      'in.mp4',
     ]);
   });
 
@@ -107,6 +138,27 @@ describe('FfmpegRunnerService', () => {
     }
   });
 
+  it('escalates a wedged SIGKILL: rejects FFMPEG_TIMEOUT after the grace window so the slot frees', async () => {
+    jest.useFakeTimers();
+    try {
+      const child = fakeChild();
+      spawnMock.mockReturnValue(child);
+      const svc = new FfmpegRunnerService();
+      const done = svc.run({ binary: 'ffmpeg', args: [], cwd: '/tmp', timeoutSeconds: 5 });
+      await flush();
+      jest.advanceTimersByTime(5001);
+      expect(child.kill).toHaveBeenCalledWith('SIGKILL');
+      // Process never actually exits (e.g. stuck in uninterruptible I/O) — 'close' never fires.
+      // Advance past the 30s escalation grace window: the runner must give up and self-heal.
+      jest.advanceTimersByTime(30001);
+      await expect(done).rejects.toMatchObject({ code: 'FFMPEG_TIMEOUT' });
+      // A late 'close' arriving after the escalation already settled the promise must be a no-op.
+      expect(() => child.emit('close', null)).not.toThrow();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('serializes runs (concurrency 1) and fails fast beyond the queue depth', async () => {
     process.env.FFMPEG_QUEUE_MAX = '1';
     try {
@@ -144,5 +196,51 @@ describe('FfmpegRunnerService', () => {
       code: 'FFMPEG_INSUFFICIENT_MEMORY',
     });
     expect(spawnMock).not.toHaveBeenCalled();
+  });
+
+  it('readCgroupLimitBytes parses cgroup v2/v1 formats', async () => {
+    const svc = new FfmpegRunnerService();
+    const call = () =>
+      (
+        svc as never as { readCgroupLimitBytes: () => Promise<number | null> }
+      ).readCgroupLimitBytes();
+
+    fsReadFile.mockReset().mockResolvedValueOnce('max\n'); // v2 unlimited
+    await expect(call()).resolves.toBeNull();
+
+    fsReadFile.mockReset().mockResolvedValueOnce('9223372036854771712\n'); // v1 unlimited sentinel
+    await expect(call()).resolves.toBeNull();
+
+    fsReadFile.mockReset().mockResolvedValueOnce('536870912\n'); // v2 present, a real limit
+    await expect(call()).resolves.toBe(536870912);
+
+    fsReadFile
+      .mockReset()
+      .mockRejectedValueOnce(enoent()) // v2 file missing
+      .mockResolvedValueOnce('268435456\n'); // v1 file present
+    await expect(call()).resolves.toBe(268435456);
+
+    fsReadFile.mockReset().mockRejectedValue(enoent()); // neither readable (bare host)
+    await expect(call()).resolves.toBeNull();
+  });
+
+  it('assertMemoryHeadroom refuses tight headroom and allows comfortable headroom', async () => {
+    process.env.FFMPEG_MEMORY_MB = '1'; // tiny footprint so the arithmetic is deterministic against real rss
+    try {
+      const svc = new FfmpegRunnerService();
+      const assertHeadroom = () =>
+        (svc as never as { assertMemoryHeadroom: () => Promise<void> }).assertMemoryHeadroom();
+      const rss = process.memoryUsage().rss;
+
+      // limit − rss (~1MB) < memoryMb(1) + headroom(128) MB needed → refuse
+      fsReadFile.mockReset().mockResolvedValueOnce(String(rss + 1024 * 1024));
+      await expect(assertHeadroom()).rejects.toMatchObject({ code: 'FFMPEG_INSUFFICIENT_MEMORY' });
+
+      // limit − rss (~1GB) comfortably clears the ~129MB needed → no throw
+      fsReadFile.mockReset().mockResolvedValueOnce(String(rss + 1024 * 1024 * 1024));
+      await expect(assertHeadroom()).resolves.toBeUndefined();
+    } finally {
+      delete process.env.FFMPEG_MEMORY_MB;
+    }
   });
 });

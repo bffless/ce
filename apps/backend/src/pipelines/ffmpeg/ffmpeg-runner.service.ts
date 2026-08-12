@@ -25,8 +25,12 @@ export interface FfmpegRunResult {
 const STDERR_TAIL_BYTES = 8192;
 /** Headroom demanded beyond FFMPEG_MEMORY_MB before admitting a job (MB). */
 const MEMORY_HEADROOM_MB = 128;
-/** Global flags for every invocation: never prompt, never read stdin. */
-const GLOBAL_FLAGS = ['-nostdin', '-hide_banner', '-y'];
+/** ffmpeg-only global flags: never prompt, never read stdin. */
+const FFMPEG_GLOBAL_FLAGS = ['-nostdin', '-hide_banner', '-y'];
+/** ffprobe shares only the cmdutils `-hide_banner` option — `-nostdin`/`-y` are ffmpeg-only and make ffprobe exit 1. */
+const FFPROBE_GLOBAL_FLAGS = ['-hide_banner'];
+/** Grace period after SIGKILL before we give up waiting for 'close' and self-heal by freeing the slot. */
+const WATCHDOG_ESCALATION_MS = 30_000;
 
 /**
  * The only place ffmpeg/ffprobe are spawned. Containment (all required by the
@@ -116,8 +120,12 @@ export class FfmpegRunnerService {
   // --- spawn -------------------------------------------------------------
 
   /** Guard-wrapping fallback chain: prlimit+nice → nice → bare binary. */
-  private commandChain(binary: string, args: string[]): Array<{ cmd: string; argv: string[] }> {
-    const fullArgs = [...GLOBAL_FLAGS, ...args];
+  private commandChain(
+    binary: FfmpegRunRequest['binary'],
+    args: string[],
+  ): Array<{ cmd: string; argv: string[] }> {
+    const globalFlags = binary === 'ffprobe' ? FFPROBE_GLOBAL_FLAGS : FFMPEG_GLOBAL_FLAGS;
+    const fullArgs = [...globalFlags, ...args];
     const memBytes = readFfmpegEnv().memoryMb * 1024 * 1024;
     return [
       { cmd: 'prlimit', argv: [`--as=${memBytes}`, '--', 'nice', '-n', '10', binary, ...fullArgs] },
@@ -165,10 +173,29 @@ export class FfmpegRunnerService {
       let stdout = '';
       let stderrTail = '';
       let timedOut = false;
+      // Guards against a double-settle: if the escalation timer gives up and
+      // rejects, a subsequent (late) 'close' from a kill that finally landed
+      // must be a no-op rather than resolving/rejecting an already-settled promise.
+      let settled = false;
+      let escalation: ReturnType<typeof setTimeout> | undefined;
 
       const watchdog = setTimeout(() => {
         timedOut = true;
+        this.logger.error({ event: 'ffmpeg_watchdog_kill', pid: child.pid, timeoutMs });
         child.kill('SIGKILL');
+        // If SIGKILL doesn't land (e.g. uninterruptible I/O) 'close' never
+        // fires, the promise never settles, and the queue slot leaks forever.
+        // Give it a grace period, then self-heal: log loudly and free the slot.
+        escalation = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          this.logger.error({ event: 'ffmpeg_watchdog_wedged', pid: child.pid });
+          reject(
+            new FfmpegTimeoutError(
+              `ffmpeg watchdog killed the process after ${timeoutMs / 1000}s but it did not exit within ${WATCHDOG_ESCALATION_MS / 1000}s — freeing the slot`,
+            ),
+          );
+        }, WATCHDOG_ESCALATION_MS);
       }, timeoutMs);
 
       child.stdout.on('data', (d: Buffer) => {
@@ -180,11 +207,17 @@ export class FfmpegRunnerService {
 
       child.on('error', (error) => {
         clearTimeout(watchdog);
+        clearTimeout(escalation);
+        if (settled) return; // already rejected by the wedged-watchdog escalation
+        settled = true;
         reject(error); // ENOENT lands here → fallback chain
       });
 
       child.on('close', (code) => {
         clearTimeout(watchdog);
+        clearTimeout(escalation);
+        if (settled) return; // already rejected by the wedged-watchdog escalation
+        settled = true;
         if (timedOut) {
           reject(
             new FfmpegTimeoutError(`ffmpeg watchdog killed the process after ${timeoutMs / 1000}s`),
