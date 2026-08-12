@@ -1,5 +1,9 @@
 import {
-  buildConcatArgs, buildConcatListContent, buildExtractAudioArgs, buildProbeArgs, buildSliceArgs,
+  buildConcatArgs,
+  buildConcatListContent,
+  buildExtractAudioArgs,
+  buildProbeArgs,
+  buildSliceArgs,
 } from './ffmpeg-args';
 
 const argAfter = (args: string[], flag: string) => args[args.indexOf(flag) + 1];
@@ -7,13 +11,27 @@ const argAfter = (args: string[], flag: string) => args[args.indexOf(flag) + 1];
 describe('buildExtractAudioArgs', () => {
   it('is the 16kHz mono WAV transcription contract', () => {
     expect(buildExtractAudioArgs('in.mp4', 'out.wav')).toEqual([
-      '-i', 'in.mp4', '-vn', '-ac', '1', '-ar', '16000', '-f', 'wav', 'out.wav',
+      '-i',
+      'in.mp4',
+      '-vn',
+      '-ac',
+      '1',
+      '-ar',
+      '16000',
+      '-f',
+      'wav',
+      'out.wav',
     ]);
   });
 });
 
 describe('buildSliceArgs — single span (fast-seek cut, port of slice.ts)', () => {
-  const args = buildSliceArgs({ input: 'src.mp4', output: 'clip.mp4', spans: [{ start: 104, end: 228 }], threads: 2 });
+  const args = buildSliceArgs({
+    input: 'src.mp4',
+    output: 'clip.mp4',
+    spans: [{ start: 104, end: 228 }],
+    threads: 2,
+  });
 
   it('fast-seeks before -i and keeps absolute timestamps', () => {
     expect(args.indexOf('-ss')).toBeLessThan(args.indexOf('-i'));
@@ -41,14 +59,28 @@ describe('buildSliceArgs — single span (fast-seek cut, port of slice.ts)', () 
   });
 
   it('clamps degenerate spans (start<0, end<start)', () => {
-    const a = buildSliceArgs({ input: 's', output: 'o', spans: [{ start: -2, end: -1 }], threads: 1 });
+    const a = buildSliceArgs({
+      input: 's',
+      output: 'o',
+      spans: [{ start: -2, end: -1 }],
+      threads: 1,
+    });
     expect(argAfter(a, '-ss')).toBe('0');
   });
 });
 
 describe('buildSliceArgs — multi-span (assemble, port of assemble.ts)', () => {
-  const spans = [{ start: 0, end: 2 }, { start: 5, end: 8.5 }];
-  const args = buildSliceArgs({ input: 'clip.mp4', output: 'out.mp4', spans, threads: 2, audioFades: true });
+  const spans = [
+    { start: 0, end: 2 },
+    { start: 5, end: 8.5 },
+  ];
+  const args = buildSliceArgs({
+    input: 'clip.mp4',
+    output: 'out.mp4',
+    spans,
+    threads: 2,
+    audioFades: true,
+  });
   const graph = argAfter(args, '-filter_complex');
 
   it('does NOT fast-seek (whole input feeds the graph)', () => {
@@ -76,8 +108,19 @@ describe('buildSliceArgs — multi-span (assemble, port of assemble.ts)', () => 
 describe('buildConcatArgs / buildConcatListContent', () => {
   it('stream-copies via the concat demuxer with regenerated PTS', () => {
     expect(buildConcatArgs('list.txt', 'final.mp4', { reencode: false, threads: 2 })).toEqual([
-      '-f', 'concat', '-safe', '0', '-fflags', '+genpts', '-i', 'list.txt',
-      '-c', 'copy', '-movflags', '+faststart', 'final.mp4',
+      '-f',
+      'concat',
+      '-safe',
+      '0',
+      '-fflags',
+      '+genpts',
+      '-i',
+      'list.txt',
+      '-c',
+      'copy',
+      '-movflags',
+      '+faststart',
+      'final.mp4',
     ]);
   });
 
@@ -101,7 +144,13 @@ describe('buildConcatArgs / buildConcatListContent', () => {
 describe('buildProbeArgs', () => {
   it('asks ffprobe for json format+streams', () => {
     expect(buildProbeArgs('in.mp4')).toEqual([
-      '-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', 'in.mp4',
+      '-v',
+      'error',
+      '-print_format',
+      'json',
+      '-show_format',
+      '-show_streams',
+      'in.mp4',
     ]);
   });
 });

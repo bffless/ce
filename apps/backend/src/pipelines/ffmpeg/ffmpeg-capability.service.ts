@@ -34,9 +34,14 @@ export class FfmpegCapabilityService implements OnModuleInit {
       this.version = null;
       const code = (error as NodeJS.ErrnoException).code;
       if (code === 'ENOENT') {
-        this.logger.warn('ffmpeg/ffprobe not found — server video ops disabled (wasm fallback applies)');
+        this.logger.warn(
+          'ffmpeg/ffprobe not found — server video ops disabled (wasm fallback applies)',
+        );
       } else {
-        this.logger.warn({ event: 'ffmpeg_probe_failed', error: error instanceof Error ? error.message : String(error) });
+        this.logger.warn({
+          event: 'ffmpeg_probe_failed',
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
   }

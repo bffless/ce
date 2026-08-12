@@ -303,7 +303,19 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
     };
     let list: unknown = raw;
     if (typeof raw === 'string') {
-      list = this.expressionEvaluator.evaluateExpression(raw, context, stepName);
+      const trimmed = raw.trim();
+      let parsedAsJson = false;
+      if (trimmed.startsWith('[')) {
+        try {
+          list = JSON.parse(trimmed);
+          parsedAsJson = true;
+        } catch {
+          // Not valid JSON — fall through to expression evaluation below.
+        }
+      }
+      if (!parsedAsJson) {
+        list = this.expressionEvaluator.evaluateExpression(raw, context, stepName);
+      }
     }
     if (!Array.isArray(list) || list.length === 0) fail('expected a non-empty array');
     return (list as Array<{ start: unknown; end: unknown }>).map((s, i) => {
@@ -388,9 +400,23 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
     context: PipelineContext,
     stepName: string,
   ): Promise<StepResult> {
-    let inputsRaw: unknown = config.inputs;
-    if (typeof inputsRaw === 'string') {
-      inputsRaw = this.expressionEvaluator.evaluateExpression(inputsRaw, context, stepName);
+    const configInputs = config.inputs;
+    let inputsRaw: unknown = configInputs;
+    if (typeof configInputs === 'string') {
+      const trimmed = configInputs.trim();
+      let parsed: unknown;
+      let parsedAsJson = false;
+      if (trimmed.startsWith('[')) {
+        try {
+          parsed = JSON.parse(trimmed);
+          parsedAsJson = true;
+        } catch {
+          // Not valid JSON — fall through to expression evaluation below.
+        }
+      }
+      inputsRaw = parsedAsJson
+        ? parsed
+        : this.expressionEvaluator.evaluateExpression(configInputs, context, stepName);
     }
     if (!Array.isArray(inputsRaw) || inputsRaw.length === 0) {
       this.pathError(

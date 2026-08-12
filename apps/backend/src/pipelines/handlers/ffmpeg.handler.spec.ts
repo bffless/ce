@@ -327,7 +327,12 @@ describe('slice', () => {
 
   it('rejects malformed spans with INVALID_SPANS before any work', async () => {
     const { handler, runner } = createHandler();
-    for (const spans of [[{ start: 5, end: 2 }], [{ start: 'nope', end: 3 }], [], 'request.body.missing']) {
+    for (const spans of [
+      [{ start: 5, end: 2 }],
+      [{ start: 'nope', end: 3 }],
+      [],
+      'request.body.missing',
+    ]) {
       const result = await handler.execute(
         context(),
         step({ operation: 'slice', input: 'a.mp4', spans, output: 'b.mp4' }),
@@ -341,15 +346,43 @@ describe('slice', () => {
     const { handler, runner, storageAdapter } = extractSetup();
     storageAdapter.download.mockResolvedValue(Buffer.from('mp4'));
     const ctx = context();
-    ctx.stepOutputs['job'] = { spans: [{ start: 0, end: 2 }, { start: 5, end: 8 }] };
+    ctx.stepOutputs['job'] = {
+      spans: [
+        { start: 0, end: 2 },
+        { start: 5, end: 8 },
+      ],
+    };
     const result = await handler.execute(
       ctx,
-      step({ operation: 'slice', input: 'a.mp4', spans: 'steps.job.spans', output: 'b.mp4', audioFades: true }),
+      step({
+        operation: 'slice',
+        input: 'a.mp4',
+        spans: 'steps.job.spans',
+        output: 'b.mp4',
+        audioFades: true,
+      }),
     );
     expect(result.success).toBe(true);
     const args = runner.run.mock.calls[0][0].args as string[];
     expect(args.join(' ')).toContain('concat=n=2');
     expect(args.join(' ')).toContain('afade');
+  });
+
+  it('accepts spans authored as a JSON-array string (UI/MCP round-trip)', async () => {
+    const { handler, runner, storageAdapter } = extractSetup();
+    storageAdapter.download.mockResolvedValue(Buffer.from('mp4'));
+    const result = await handler.execute(
+      context(),
+      step({
+        operation: 'slice',
+        input: 'a.mp4',
+        spans: '[{"start": 0, "end": 2}]',
+        output: 'b.mp4',
+      }),
+    );
+    expect(result.success).toBe(true);
+    const args = runner.run.mock.calls[0][0].args as string[];
+    expect(args).toEqual(expect.arrayContaining(['-filter_complex', '-copyts']));
   });
 });
 
@@ -359,7 +392,11 @@ describe('concat', () => {
     storageAdapter.download.mockResolvedValue(Buffer.from('mp4'));
     const result = await handler.execute(
       context(),
-      step({ operation: 'concat', inputs: ['studio/s1.mp4', 'studio/s2.mp4'], output: 'studio/final.mp4' }),
+      step({
+        operation: 'concat',
+        inputs: ['studio/s1.mp4', 'studio/s2.mp4'],
+        output: 'studio/final.mp4',
+      }),
     );
     expect(result.success).toBe(true);
     expect(result.output).toMatchObject({
@@ -399,5 +436,22 @@ describe('concat', () => {
     );
     expect(result.error?.code).toBe('FFMPEG_BUSY');
     expect(runner.run).toHaveBeenCalledTimes(1); // only FFMPEG_FAILED triggers the fallback
+  });
+
+  it('accepts inputs authored as a JSON-array string (UI/MCP round-trip)', async () => {
+    const { handler, runner, storageAdapter } = extractSetup();
+    storageAdapter.download.mockResolvedValue(Buffer.from('mp4'));
+    const result = await handler.execute(
+      context(),
+      step({ operation: 'concat', inputs: '["a.mp4","b.mp4"]', output: 'final.mp4' }),
+    );
+    expect(result.success).toBe(true);
+    expect(result.output).toMatchObject({
+      storage_path: 'o/r/uploads/final.mp4',
+      content_type: 'video/mp4',
+      reencoded: false,
+    });
+    const args = runner.run.mock.calls[0][0].args as string[];
+    expect(args).toEqual(expect.arrayContaining(['-f', 'concat', '-c', 'copy']));
   });
 });

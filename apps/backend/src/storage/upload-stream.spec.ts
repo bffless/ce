@@ -21,9 +21,14 @@ describe('LocalStorageAdapter.uploadStream', () => {
 
   it('streams bytes to the key and round-trips via download', async () => {
     const bytes = Buffer.from('streamed-video-bytes');
-    const key = await adapter.uploadStream!(Readable.from(bytes), 'o/r/uploads/a.mp4', bytes.length, {
-      mimeType: 'video/mp4',
-    });
+    const key = await adapter.uploadStream!(
+      Readable.from(bytes),
+      'o/r/uploads/a.mp4',
+      bytes.length,
+      {
+        mimeType: 'video/mp4',
+      },
+    );
     expect(key).toBe('o/r/uploads/a.mp4');
     expect(await adapter.download('o/r/uploads/a.mp4')).toEqual(bytes);
   });

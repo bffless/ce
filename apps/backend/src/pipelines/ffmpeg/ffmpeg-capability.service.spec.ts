@@ -11,7 +11,11 @@ import { execFile } from 'child_process';
 /** Make the mocked callback-style execFile succeed/fail per binary name. */
 function armExecFile(impl: (cmd: string) => { error?: NodeJS.ErrnoException; stdout?: string }) {
   (execFile as unknown as jest.Mock).mockImplementation(
-    (cmd: string, _args: string[], cb: (e: Error | null, out: { stdout: string; stderr: string }) => void) => {
+    (
+      cmd: string,
+      _args: string[],
+      cb: (e: Error | null, out: { stdout: string; stderr: string }) => void,
+    ) => {
       const r = impl(cmd);
       // promisify(execFile) resolves {stdout, stderr} — reproduce that contract
       if (r.error) cb(r.error, { stdout: '', stderr: '' });
@@ -41,7 +45,9 @@ describe('FfmpegCapabilityService', () => {
 
   it('unavailable when ffprobe alone is missing (both binaries are required)', async () => {
     const enoent = Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
-    armExecFile((cmd) => (cmd === 'ffprobe' ? { error: enoent } : { stdout: 'ffmpeg version 6.0' }));
+    armExecFile((cmd) =>
+      cmd === 'ffprobe' ? { error: enoent } : { stdout: 'ffmpeg version 6.0' },
+    );
     const svc = new FfmpegCapabilityService();
     await svc.probe();
     expect(svc.isAvailable()).toBe(false);

@@ -20,11 +20,17 @@ function num(raw: string | undefined, fallback: number): number {
 export function readFfmpegEnv(env: NodeJS.ProcessEnv = process.env): FfmpegEnvConfig {
   const rawEnabled = env.FFMPEG_HANDLER_ENABLED;
   return {
-    enabled: rawEnabled === undefined || rawEnabled === '' || !['false', '0', 'no'].includes(rawEnabled.toLowerCase()),
+    enabled:
+      rawEnabled === undefined ||
+      rawEnabled === '' ||
+      !['false', '0', 'no'].includes(rawEnabled.toLowerCase()),
     memoryMb: num(env.FFMPEG_MEMORY_MB, 1024),
     threads: num(env.FFMPEG_THREADS, Math.max(1, os.cpus().length - 1)),
     queueMax: num(env.FFMPEG_QUEUE_MAX, 8),
     maxSeconds: num(env.FFMPEG_MAX_SECONDS, 1800),
-    scratchDir: env.FFMPEG_SCRATCH_DIR && env.FFMPEG_SCRATCH_DIR !== '' ? env.FFMPEG_SCRATCH_DIR : path.join(os.tmpdir(), 'bffless-ffmpeg'),
+    scratchDir:
+      env.FFMPEG_SCRATCH_DIR && env.FFMPEG_SCRATCH_DIR !== ''
+        ? env.FFMPEG_SCRATCH_DIR
+        : path.join(os.tmpdir(), 'bffless-ffmpeg'),
   };
 }
