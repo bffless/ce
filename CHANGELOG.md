@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.25](https://github.com/bffless/ce/compare/v0.4.24...v0.4.25) (2026-08-12)
+
+
+### Features
+
+* server-side video ops via ffmpeg pipeline handler ([#654](https://github.com/bffless/ce/issues/654)) ([b56cc85](https://github.com/bffless/ce/commit/b56cc858d5b7544ff1eadc9dc8269e20850d33bd))
+
 ## [0.4.24](https://github.com/bffless/ce/compare/v0.4.23...v0.4.24) (2026-08-09)
 
 
