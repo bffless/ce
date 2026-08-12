@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -42,18 +43,25 @@ const FIELDS_BY_OPERATION: Record<FfmpegOperation, Array<keyof Config>> = {
   concat: ['inputs', 'output'],
 };
 
-const ALL_OPERATION_FIELDS: Array<keyof Config> = [
-  'input',
-  'inputs',
-  'spans',
-  'output',
-  'audioOutput',
-  'audioFades',
-];
+/** Deduped union of every field referenced above — kept in sync automatically. */
+const ALL_OPERATION_FIELDS: Array<keyof Config> = Array.from(
+  new Set(Object.values(FIELDS_BY_OPERATION).flat()),
+);
 
 export function FfmpegHandlerConfig({ config, onChange, previousSteps = [] }: Props) {
   const typed = config as unknown as Partial<Config>;
   const operation = typed.operation ?? 'probe';
+
+  // Seed the default operation into the saved config on mount. The Select below
+  // renders 'probe' for an empty config, but onValueChange only fires on a real
+  // selection change — so without this, a step left on the default (no other
+  // field touched) would save `{}` and fail at execution time with "ffmpeg_handler
+  // requires operation". Mirrors FunctionHandlerConfig's default-code seeding.
+  useEffect(() => {
+    if (typed.operation === undefined) {
+      onChange({ ...typed, operation: 'probe' } as Config);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- mount-only seed, not a sync effect
 
   // Field-level edit within the current operation: patch onto the existing config.
   const update = (partial: Partial<Config>) => {
