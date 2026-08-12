@@ -76,20 +76,20 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
       return {
         success: true,
         output: {
-          server: this.capability.isEnabled(),
-          ops: this.capability.getOps(),
+          server: await this.capability.isEnabled(),
+          ops: await this.capability.getOps(),
           version: this.capability.getVersion(),
         },
       };
     }
 
-    if (!this.capability.isEnabled()) {
+    if (!(await this.capability.isEnabled())) {
       return {
         success: false,
         error: {
           code: 'FFMPEG_UNAVAILABLE',
           message:
-            'server video ops are unavailable on this instance (ffmpeg missing or FFMPEG_HANDLER_ENABLED=false)',
+            'server video ops are disabled on this instance (enable them in Admin Settings → Features, or ffmpeg is missing)',
         },
       };
     }

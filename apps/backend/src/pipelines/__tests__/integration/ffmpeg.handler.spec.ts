@@ -75,7 +75,7 @@ const hasFfmpeg =
     adapter = new LocalStorageAdapter({ localPath: baseDir });
     await adapter.upload(await fs.readFile(fixture), SRC_KEY);
 
-    const capability = new FfmpegCapabilityService();
+    const capability = new FfmpegCapabilityService({ isEnabled: async () => true } as never);
     await capability.probe();
     handler = new FfmpegHandler(
       { register: () => undefined } as never,

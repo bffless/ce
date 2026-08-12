@@ -17,6 +17,7 @@ import {
   SystemPipelineTriggerService,
 } from './execution';
 import { PermissionsModule } from '../permissions/permissions.module';
+import { FeatureFlagsModule } from '../feature-flags/feature-flags.module';
 import { SettingsModule } from '../settings/settings.module';
 import { ProjectsModule } from '../projects/projects.module';
 import { CacheRulesModule } from '../cache-rules/cache-rules.module';
@@ -83,6 +84,7 @@ import {
 @Module({
   imports: [
     PermissionsModule,
+    FeatureFlagsModule,
     // forwardRef: AuthModule.forRoot now imports SettingsModule (story 0047 —
     // OidcProvidersService injection into AuthController), which creates a
     // module-evaluation cycle through DomainsModule → … → PipelinesModule that

@@ -694,6 +694,10 @@ export interface FfmpegSpan {
  * Path forms: inputs accept `{owner}/{repo}/uploads/...`, an uploads-relative
  * path, or an `/api/uploads/...` URL; outputs are uploads-relative. All resolve
  * inside the project's uploads root — traversal is rejected.
+ *
+ * Server video ops are an opt-in, instance-level admin setting (FFMPEG_HANDLER_ENABLED
+ * feature flag, default off); when off — or when ffmpeg is absent — probe reports
+ * server:false and every other operation returns FFMPEG_UNAVAILABLE.
  */
 export interface FfmpegHandlerConfig extends BaseHandlerConfig {
   operation: FfmpegOperation;
