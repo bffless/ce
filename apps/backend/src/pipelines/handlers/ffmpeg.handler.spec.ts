@@ -3,6 +3,9 @@
  * this file too from Task 7 on. Pattern per replicate.handler.spec.ts: direct
  * construction, literal collaborators cast `as never`, REAL ExpressionEvaluator.
  */
+import * as fsp from 'fs/promises';
+import * as os from 'os';
+import * as path from 'path';
 import { ExpressionEvaluator } from '../execution/expression-evaluator';
 import type { PipelineContext } from '../execution/pipeline-context.interface';
 import type { PipelineStep } from '../types';
@@ -31,7 +34,7 @@ function createHandler(
     run: jest.fn().mockResolvedValue({ stdout: '', stderrTail: '' }),
   };
   const scratch = {
-    createJobDir: jest.fn().mockResolvedValue('/scratch/job-x'),
+    createJobDir: jest.fn().mockImplementation(() => fsp.mkdtemp(path.join(os.tmpdir(), 'ffmpeg-hspec-'))),
     cleanup: jest.fn().mockResolvedValue(undefined),
     assertFreeSpace: jest.fn().mockResolvedValue(undefined),
   };
@@ -123,6 +126,116 @@ describe('capability gating for real ops', () => {
     );
     expect(result.success).toBe(false);
     expect(result.error?.code).toBe('FFMPEG_UNAVAILABLE');
+    // extract_audio really invokes the runner once past the gate — this
+    // assertion is only meaningful now that the gate is checked first.
     expect(runner.run).not.toHaveBeenCalled();
+  });
+});
+
+describe('extract_audio', () => {
+  function extractSetup() {
+    const created = createHandler();
+    // The runner "produces" the output by writing the temp file the handler expects.
+    created.runner.run.mockImplementation(async ({ args, cwd }: { args: string[]; cwd: string }) => {
+      await fsp.writeFile(`${cwd}/${args[args.length - 1].split('/').pop()}`, 'wav-bytes');
+      return { stdout: '', stderrTail: '' };
+    });
+    return created;
+  }
+
+  it('streams in, runs the 16k mono wav argv, streams out, returns the contract shape', async () => {
+    const { handler, runner, storageAdapter } = extractSetup();
+    // downloadToFile falls back to download() when downloadStream is absent on the literal mock
+    storageAdapter.download.mockResolvedValue(Buffer.from('mp4-bytes'));
+    storageAdapter.upload.mockResolvedValue('o/r/uploads/studio/a.wav');
+    const result = await handler.execute(
+      context(),
+      step({ operation: 'extract_audio', input: 'studio/a.mp4', output: 'studio/a.wav' }),
+    );
+    expect(result.success).toBe(true);
+    expect(result.output).toMatchObject({
+      storage_path: 'o/r/uploads/studio/a.wav',
+      content_type: 'audio/wav',
+      size: expect.any(Number),
+    });
+    const req = runner.run.mock.calls[0][0];
+    expect(req.binary).toBe('ffmpeg');
+    expect(req.args).toEqual(expect.arrayContaining(['-vn', '-ac', '1', '-ar', '16000', '-f', 'wav']));
+  });
+
+  it('accepts /api/uploads/... input form and full storage keys', async () => {
+    const { handler, storageAdapter } = extractSetup();
+    storageAdapter.download.mockResolvedValue(Buffer.from('x'));
+    const r1 = await handler.execute(
+      context(),
+      step({ operation: 'extract_audio', input: '/api/uploads/studio/a.mp4', output: 'studio/a.wav' }),
+    );
+    expect(r1.success).toBe(true);
+    expect(storageAdapter.download).toHaveBeenCalledWith('o/r/uploads/studio/a.mp4');
+  });
+
+  it('rejects traversal in input and output with typed errors', async () => {
+    const { handler, runner } = createHandler();
+    const bad1 = await handler.execute(
+      context(),
+      step({ operation: 'extract_audio', input: '../../etc/passwd', output: 'a.wav' }),
+    );
+    expect(bad1.error?.code).toBe('INVALID_INPUT_PATH');
+    const bad2 = await handler.execute(
+      context(),
+      step({ operation: 'extract_audio', input: 'a.mp4', output: '../escape.wav' }),
+    );
+    expect(bad2.error?.code).toBe('INVALID_OUTPUT_PATH');
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  it('missing input object → FILE_NOT_FOUND', async () => {
+    const { handler, storageAdapter } = createHandler();
+    storageAdapter.download.mockRejectedValue(new Error('File not found: o/r/uploads/a.mp4'));
+    const result = await handler.execute(
+      context(),
+      step({ operation: 'extract_audio', input: 'a.mp4', output: 'a.wav' }),
+    );
+    expect(result.error?.code).toBe('FILE_NOT_FOUND');
+  });
+
+  it('always cleans up the scratch dir, even on runner failure', async () => {
+    const { handler, runner, scratch, storageAdapter } = createHandler();
+    storageAdapter.download.mockResolvedValue(Buffer.from('x'));
+    runner.run.mockRejectedValue(Object.assign(new Error('boom'), { code: 'FFMPEG_FAILED' }));
+    await handler.execute(context(), step({ operation: 'extract_audio', input: 'a.mp4', output: 'a.wav' }));
+    expect(scratch.createJobDir).toHaveBeenCalledTimes(1);
+    expect(scratch.cleanup).toHaveBeenCalledTimes(1);
+    expect(scratch.cleanup).toHaveBeenCalledWith(await scratch.createJobDir.mock.results[0].value);
+  });
+
+  it('an unrecognized runner error maps to FFMPEG_FAILED via the default toErrorResult path', async () => {
+    const { handler, runner, storageAdapter } = createHandler();
+    storageAdapter.download.mockResolvedValue(Buffer.from('x'));
+    runner.run.mockRejectedValue(new Error('some plain, uncoded ffmpeg error'));
+    const result = await handler.execute(
+      context(),
+      step({ operation: 'extract_audio', input: 'a.mp4', output: 'a.wav' }),
+    );
+    expect(result.success).toBe(false);
+    expect(result.error?.code).toBe('FFMPEG_FAILED');
+  });
+});
+
+describe('probe with input', () => {
+  it('parses ffprobe json into duration/format/streams', async () => {
+    const { handler, runner, storageAdapter } = createHandler();
+    storageAdapter.download.mockResolvedValue(Buffer.from('x'));
+    runner.run.mockResolvedValue({
+      stdout: JSON.stringify({
+        format: { duration: '232.5', format_name: 'mov,mp4' },
+        streams: [{ codec_type: 'video' }, { codec_type: 'audio' }],
+      }),
+      stderrTail: '',
+    });
+    const result = await handler.execute(context(), step({ operation: 'probe', input: 'a.mp4' }));
+    expect(result.success).toBe(true);
+    expect(result.output).toMatchObject({ duration: 232.5, streams: [{ codec_type: 'video' }, { codec_type: 'audio' }] });
+    expect(runner.run.mock.calls[0][0].binary).toBe('ffprobe');
   });
 });
