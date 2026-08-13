@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.27](https://github.com/bffless/ce/compare/v0.4.26...v0.4.27) (2026-08-13)
+
+
+### Bug Fixes
+
+* pin SuperTokens core to 12.0.10 and survive role-claim merge failure in signin ([#658](https://github.com/bffless/ce/issues/658)) ([6f15dec](https://github.com/bffless/ce/commit/6f15dec798bb1a1ca9413ff84e6b513ca55a31ed))
+
 ## [0.4.26](https://github.com/bffless/ce/compare/v0.4.25...v0.4.26) (2026-08-12)
 
 
