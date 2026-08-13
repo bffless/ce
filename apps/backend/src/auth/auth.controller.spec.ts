@@ -26,6 +26,22 @@ jest.mock('supertokens-node/recipe/emailverification', () => ({
   },
 }));
 
+jest.mock('supertokens-node/recipe/emailpassword', () => ({
+  __esModule: true,
+  default: {
+    signIn: jest.fn(),
+  },
+}));
+
+jest.mock('supertokens-node/recipe/session', () => ({
+  __esModule: true,
+  default: {
+    createNewSession: jest.fn(),
+  },
+}));
+
+import EmailPassword from 'supertokens-node/recipe/emailpassword';
+import Session from 'supertokens-node/recipe/session';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { SetupService } from '../setup/setup.service';
@@ -148,6 +164,61 @@ describe('AuthController.getSession (project-membership gate, Phase B)', () => {
 
     expect(result.user).toEqual({ id: dbUser.id, email: dbUser.email, role: dbUser.role });
     expect(permissions.getUserProjectRole).toHaveBeenCalledWith(SESSION_USER_ID, 'proj-1');
+  });
+
+  describe('signIn (post-session resilience)', () => {
+    const signInMock = EmailPassword.signIn as jest.Mock;
+    const createNewSessionMock = Session.createNewSession as jest.Mock;
+
+    const makeSession = (mergeImpl: () => Promise<void>) => ({
+      getUserId: () => SESSION_USER_ID,
+      getHandle: () => SESSION_HANDLE,
+      mergeIntoAccessTokenPayload: jest.fn(mergeImpl),
+    });
+
+    const signInReq = () => ({ headers: { host: 'admin.bffless.app' } }) as unknown as Request;
+
+    beforeEach(() => {
+      // ENABLE_EMAIL_PASSWORD must be on; REQUIRE_PROJECT_MEMBERSHIP stays off.
+      featureFlags.isEnabled.mockImplementation(async (flag: string) => flag === 'ENABLE_EMAIL_PASSWORD');
+      authService.getUserByEmail.mockResolvedValue(dbUser as never);
+      signInMock.mockResolvedValue({
+        status: 'OK',
+        recipeUserId: { getAsString: () => SESSION_USER_ID },
+      });
+    });
+
+    it('adds the role to the access token payload on the happy path', async () => {
+      const session = makeSession(() => Promise.resolve());
+      createNewSessionMock.mockResolvedValue(session);
+
+      const result: any = await controller.signIn(
+        { email: dbUser.email, password: 'pw' } as never,
+        signInReq(),
+        {} as never,
+      );
+
+      expect(result.message).toBe('Signed in successfully');
+      expect(session.mergeIntoAccessTokenPayload).toHaveBeenCalledWith({ role: dbUser.role });
+    });
+
+    it('still reports success when the role-claim merge fails after the session was created', async () => {
+      // Once createNewSession has run, the session cookies are already attached
+      // to the response — the user IS signed in. A failure while decorating the
+      // access token (e.g. the SuperTokens core erroring on /recipe/session/
+      // regenerate) must not convert a successful login into a 401.
+      const session = makeSession(() => Promise.reject(new Error('core regenerate blew up')));
+      createNewSessionMock.mockResolvedValue(session);
+
+      const result: any = await controller.signIn(
+        { email: dbUser.email, password: 'pw' } as never,
+        signInReq(),
+        {} as never,
+      );
+
+      expect(result.message).toBe('Signed in successfully');
+      expect(result.user).toEqual({ id: dbUser.id, email: dbUser.email, role: dbUser.role });
+    });
   });
 
   it('uses the SuperTokens session userId for the membership check (works even if DB user is missing)', async () => {

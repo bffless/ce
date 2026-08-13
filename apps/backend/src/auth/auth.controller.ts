@@ -559,10 +559,23 @@ export class AuthController {
       }
 
       // Add role to JWT access token payload for external validation
-      // This allows Control Plane to validate admin access without database lookup
-      await session.mergeIntoAccessTokenPayload({
-        role: user.role,
-      });
+      // This allows Control Plane to validate admin access without database lookup.
+      // Non-fatal: by this point the session cookies are already attached to the
+      // response — the user IS signed in. If the SuperTokens core fails here
+      // (e.g. /recipe/session/regenerate erroring), failing the whole signin
+      // would report "Login failed" for a login that succeeded, while the client
+      // keeps the valid session cookies. CE's own guards read roles from the
+      // database; the claim only degrades external JWT validation.
+      try {
+        await session.mergeIntoAccessTokenPayload({
+          role: user.role,
+        });
+      } catch (mergeError) {
+        this.logger.error(
+          '[Signin] Failed to add role claim to access token (session is still valid, continuing):',
+          mergeError,
+        );
+      }
 
       // Process project invite link if present
       if (body.projectInviteToken) {
