@@ -305,6 +305,28 @@ install_openssl() {
     print_success "OpenSSL installed successfully"
 }
 
+setup_swap_if_needed() {
+    # Low-RAM hosts want a swapfile as an OOM buffer (heavy app installs,
+    # optional server video ops). scripts/setup-swap.sh is idempotent and
+    # exits untouched on hosts with >= 4 GB RAM or existing swap, so calling
+    # it unconditionally here is safe. Opt out with SKIP_SWAP_SETUP=1.
+    if [ -n "${SKIP_SWAP_SETUP:-}" ]; then
+        return 0
+    fi
+    if [ ! -f "scripts/setup-swap.sh" ]; then
+        return 0
+    fi
+    if [ "$(id -u)" -ne 0 ]; then
+        # Swap needs root; setup itself may not. A hint beats a hard failure.
+        print_info "Skipping swap check (not root). Low-RAM hosts can add swap later: sudo ./scripts/setup-swap.sh"
+        return 0
+    fi
+    print_info "Checking swap configuration..."
+    if ! bash scripts/setup-swap.sh; then
+        print_warning "Swap setup did not complete (see above); continuing without it."
+    fi
+}
+
 # Detect OS type
 detect_os() {
     if [ -f /etc/os-release ]; then
@@ -513,6 +535,8 @@ check_prerequisites() {
             exit 1
         fi
     fi
+
+    setup_swap_if_needed
 
     echo ""
     print_success "All prerequisites met!"
