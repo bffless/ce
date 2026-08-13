@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.28](https://github.com/bffless/ce/compare/v0.4.27...v0.4.28) (2026-08-13)
+
+
+### Features
+
+* run swap setup during onboarding and bless docker-compose.override.yml ([#660](https://github.com/bffless/ce/issues/660)) ([428f982](https://github.com/bffless/ce/commit/428f982d9515be58545a313b0f3a9c009362ce83))
+
 ## [0.4.27](https://github.com/bffless/ce/compare/v0.4.26...v0.4.27) (2026-08-13)
 
 
