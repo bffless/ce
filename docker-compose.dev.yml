@@ -52,7 +52,12 @@ services:
       retries: 5
 
   supertokens:
-    image: registry.supertokens.io/supertokens/supertokens-postgresql
+    # Pinned: an unpinned (latest) tag let core 12.1.0 slip in, whose in-place
+    # upgrade migration misses two session_info columns (prev_refresh_token_hash_2,
+    # refresh_token_rotated_at) and breaks session refresh/regenerate with 500s
+    # (signin reports "Failed to sign in" even though the session is created).
+    # Bump deliberately after verifying the upgrade migration on an existing DB.
+    image: registry.supertokens.io/supertokens/supertokens-postgresql:12.0.10
     container_name: assethost-supertokens-dev
     profiles:
       - supertokens                    # Only starts with --profile supertokens (CE local mode)
