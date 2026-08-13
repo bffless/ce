@@ -91,3 +91,8 @@ apps/frontend/storybook-static/
 
 # Impeccable tooling cache
 **/.impeccable/
+
+# Local compose customizations (e.g. raising the backend memory limit for
+# server video ops) — the supported override seam; never edit docker-compose.yml
+# on a deployed instance or `git pull` updates will conflict.
+docker-compose.override.yml
