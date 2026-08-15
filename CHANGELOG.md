@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.29](https://github.com/bffless/ce/compare/v0.4.28...v0.4.29) (2026-08-15)
+
+
+### Added
+
+* preview builds on every merge and stable/preview release channels ([#664](https://github.com/bffless/ce/issues/664)) ([d860730](https://github.com/bffless/ce/commit/d86073063cb45588c967504a1879770c32d0606a))
+
 ## [0.4.28](https://github.com/bffless/ce/compare/v0.4.27...v0.4.28) (2026-08-13)
 
 
