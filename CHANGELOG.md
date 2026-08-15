@@ -7,10 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.29](https://github.com/bffless/ce/compare/v0.4.28...v0.4.29) (2026-08-15)
 
-
 ### Added
+- Preview builds on every merge and stable/preview release channels ([#664](https://github.com/bffless/ce/pull/664), thanks @toshimoto821)
 
-* preview builds on every merge and stable/preview release channels ([#664](https://github.com/bffless/ce/issues/664)) ([d860730](https://github.com/bffless/ce/commit/d86073063cb45588c967504a1879770c32d0606a))
+### Maintenance
+- Generate herdr-style release notes from conventional commits ([#663](https://github.com/bffless/ce/pull/663), thanks @toshimoto821)
 
 ## [0.4.28](https://github.com/bffless/ce/compare/v0.4.27...v0.4.28) (2026-08-13)
 
