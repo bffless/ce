@@ -13,6 +13,7 @@ import { IStorageAdapter, STORAGE_ADAPTER } from '../../storage/storage.interfac
 import { FfmpegCapabilityService } from '../ffmpeg/ffmpeg-capability.service';
 import { FfmpegRunnerService } from '../ffmpeg/ffmpeg-runner.service';
 import { FfmpegScratchService } from '../ffmpeg/ffmpeg-scratch.service';
+import { FfmpegStepTimeoutError } from '../ffmpeg/ffmpeg-errors';
 import { UploadRecordService } from '../upload-record.service';
 import {
   buildExtractAudioArgs,
@@ -94,20 +95,53 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
       };
     }
 
+    const { jobMaxSeconds } = readFfmpegEnv();
     try {
-      switch (config.operation) {
-        case 'probe':
-          return await this.runProbe(config, context, stepName);
-        case 'extract_audio':
-          return await this.runExtractAudio(config, context, stepName); // Task 7
-        case 'slice':
-          return await this.runSlice(config, context, stepName); // Task 8
-        case 'concat':
-          return await this.runConcat(config, context, stepName); // Task 8
-      }
+      // Whole-step ceiling. The runner's watchdog only covers the spawned
+      // process; everything around it (queue wait, storage transfers) used to
+      // be unbounded, so one stalled await left the step pending forever —
+      // fatal for an async job, whose row stays 'running' with nothing to end
+      // it but the client's own poll timeout. A post-step that never settles
+      // also suppresses the execution log on rules that persist one, since the
+      // log write awaits the post-steps promise (#669).
+      const op = (): Promise<StepResult> => {
+        switch (config.operation) {
+          case 'probe':
+            return this.runProbe(config, context, stepName);
+          case 'extract_audio':
+            return this.runExtractAudio(config, context, stepName); // Task 7
+          case 'slice':
+            return this.runSlice(config, context, stepName); // Task 8
+          case 'concat':
+            return this.runConcat(config, context, stepName); // Task 8
+        }
+      };
+      return await this.withDeadline(op(), jobMaxSeconds, `${config.operation} step`);
     } catch (error) {
       return this.toErrorResult(error, stepName);
     }
+  }
+
+  /**
+   * Bound an await that has no timeout of its own. On breach the step fails
+   * with FFMPEG_JOB_TIMEOUT naming the phase; the abandoned work is left to
+   * settle on its own (its `finally` still cleans up, and orphaned scratch
+   * dirs are swept hourly) — the point is that the STEP always settles.
+   */
+  private withDeadline<T>(work: Promise<T>, seconds: number, phase: string): Promise<T> {
+    let timer: ReturnType<typeof setTimeout>;
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        // The abandoned work may reject later with nobody listening.
+        work.catch(() => undefined);
+        reject(
+          new FfmpegStepTimeoutError(
+            `ffmpeg_handler ${phase} exceeded ${seconds}s and was abandoned`,
+          ),
+        );
+      }, seconds * 1000);
+    });
+    return Promise.race([work, deadline]).finally(() => clearTimeout(timer));
   }
 
   /** Map typed runner/scratch errors onto the stable error-code contract. */
@@ -118,6 +152,7 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
       'FFMPEG_INSUFFICIENT_MEMORY',
       'FFMPEG_INSUFFICIENT_DISK',
       'FFMPEG_TIMEOUT',
+      'FFMPEG_JOB_TIMEOUT',
       'FFMPEG_FAILED',
       'INVALID_INPUT_PATH',
       'INVALID_OUTPUT_PATH',
@@ -179,14 +214,26 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
     return normalized;
   }
 
+  /**
+   * Storage calls are the unbounded awaits in this handler: an object-store
+   * socket that stalls mid-transfer never errors and never completes. Each one
+   * gets its own ceiling so the phase that stalled is named in the failure.
+   */
+  private io<T>(work: Promise<T>, phase: string): Promise<T> {
+    return this.withDeadline(work, readFfmpegEnv().ioMaxSeconds, phase);
+  }
+
   private async downloadToFile(key: string, destPath: string): Promise<void> {
     try {
       if (this.storageAdapter.downloadStream) {
-        const { stream } = await this.storageAdapter.downloadStream(key);
-        await pipeline(stream, createWriteStream(destPath));
+        const { stream } = await this.io(
+          this.storageAdapter.downloadStream(key),
+          `download of ${key}`,
+        );
+        await this.io(pipeline(stream, createWriteStream(destPath)), `download of ${key}`);
       } else {
         // Non-streaming backend: buffered fallback (small instances only).
-        const buffer = await this.storageAdapter.download(key);
+        const buffer = await this.io(this.storageAdapter.download(key), `download of ${key}`);
         await fs.writeFile(destPath, buffer);
       }
     } catch (error) {
@@ -207,9 +254,15 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
   ): Promise<{ size: number }> {
     const { size } = await fs.stat(srcPath);
     if (this.storageAdapter.uploadStream) {
-      await this.storageAdapter.uploadStream(createReadStream(srcPath), key, size, { mimeType });
+      await this.io(
+        this.storageAdapter.uploadStream(createReadStream(srcPath), key, size, { mimeType }),
+        `upload of ${key}`,
+      );
     } else {
-      await this.storageAdapter.upload(await fs.readFile(srcPath), key, { mimeType });
+      await this.io(
+        this.storageAdapter.upload(await fs.readFile(srcPath), key, { mimeType }),
+        `upload of ${key}`,
+      );
     }
     return { size };
   }
@@ -219,7 +272,8 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
     let total = 0;
     for (const key of keys) {
       try {
-        total += (await this.storageAdapter.getMetadata(key)).size ?? 0;
+        total +=
+          (await this.io(this.storageAdapter.getMetadata(key), `metadata of ${key}`)).size ?? 0;
       } catch {
         /* pre-flight is best-effort; the FILE_NOT_FOUND surfaces at download */
       }

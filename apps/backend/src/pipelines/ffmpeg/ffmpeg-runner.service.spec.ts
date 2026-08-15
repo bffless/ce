@@ -183,6 +183,92 @@ describe('FfmpegRunnerService', () => {
     }
   });
 
+  /**
+   * #669: a queued caller must never wait forever. If the slot holder stops
+   * making progress the waiter gives up with the same fail-fast BUSY the queue
+   * ceiling produces — and, critically, removes itself from the queue so the
+   * eventual release does not hand the slot to a caller that is no longer there
+   * (which would pin `busy` true for the life of the process).
+   */
+  it('bounds a queue wait: gives up with FFMPEG_BUSY and leaves the queue consistent', async () => {
+    jest.useFakeTimers();
+    process.env.FFMPEG_MAX_SECONDS = '1000'; // process watchdog far beyond the wait ceiling
+    process.env.FFMPEG_JOB_MAX_SECONDS = '10';
+    try {
+      const first = fakeChild();
+      spawnMock.mockReturnValue(first);
+      const svc = new FfmpegRunnerService();
+      const run1 = svc.run({ binary: 'ffmpeg', args: [], cwd: '/tmp' }); // holds the slot
+      await flush();
+      const run2 = svc.run({ binary: 'ffmpeg', args: [], cwd: '/tmp' }).catch((e) => e); // queued
+      await flush();
+      jest.advanceTimersByTime(10_001);
+      expect(await run2).toMatchObject({ code: 'FFMPEG_BUSY' });
+
+      // The holder finishes: the slot must go free, not to the departed waiter.
+      first.emit('close', 0);
+      await run1;
+      await flush();
+      const second = fakeChild();
+      spawnMock.mockReturnValue(second);
+      const run3 = svc.run({ binary: 'ffmpeg', args: [], cwd: '/tmp' });
+      await flush();
+      expect(spawnMock).toHaveBeenCalledTimes(2); // run3 got the slot immediately
+      second.emit('close', 0);
+      await run3;
+    } finally {
+      delete process.env.FFMPEG_MAX_SECONDS;
+      delete process.env.FFMPEG_JOB_MAX_SECONDS;
+      jest.useRealTimers();
+    }
+  });
+
+  /**
+   * #669 item 2: self-heal beyond the watchdog-escalation path. A slot held
+   * longer than any run can legitimately take belongs to a caller that is gone;
+   * the next acquirer reclaims it instead of queueing behind a corpse.
+   */
+  it('reclaims a slot held past the ceiling instead of queueing behind it', async () => {
+    const svc = new FfmpegRunnerService();
+    const internals = svc as never as { holder: { token: number; since: number } | null };
+    internals.holder = { token: 1, since: Date.now() - 24 * 60 * 60 * 1000 }; // held for a day
+    const child = fakeChild();
+    spawnMock.mockReturnValue(child);
+    const done = svc.run({ binary: 'ffmpeg', args: [], cwd: '/tmp' });
+    await flush();
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+    child.emit('close', 0);
+    await expect(done).resolves.toMatchObject({ stdout: '' });
+    expect(internals.holder).toBeNull(); // reclaimed, used, then released cleanly
+  });
+
+  it('reclaiming hands the freed slot to the caller that queued first', async () => {
+    const svc = new FfmpegRunnerService();
+    const internals = svc as never as { holder: { token: number; since: number } | null };
+    internals.holder = { token: 1, since: Date.now() }; // a live run holds the slot
+    const queued = fakeChild();
+    spawnMock.mockReturnValue(queued);
+    const runQueued = svc.run({ binary: 'ffmpeg', args: ['queued'], cwd: '/tmp' });
+    await flush();
+    expect(spawnMock).not.toHaveBeenCalled(); // parked behind the holder
+
+    internals.holder!.since = Date.now() - 24 * 60 * 60 * 1000; // the holder goes wedged
+    const runLater = svc.run({ binary: 'ffmpeg', args: ['later'], cwd: '/tmp' });
+    await flush();
+    // The reclaimed slot goes to the waiter, not to whoever noticed the wedge.
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+    expect(spawnMock.mock.calls[0][1]).toContain('queued');
+
+    const second = fakeChild();
+    spawnMock.mockReturnValue(second);
+    queued.emit('close', 0);
+    await runQueued;
+    await flush();
+    expect(spawnMock.mock.calls[1][1]).toContain('later');
+    second.emit('close', 0);
+    await runLater;
+  });
+
   it('refuses when cgroup headroom is insufficient', async () => {
     const svc = new FfmpegRunnerService();
     // limit − rss < memoryMb + headroom → refuse

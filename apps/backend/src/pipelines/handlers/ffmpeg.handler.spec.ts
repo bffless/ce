@@ -456,3 +456,74 @@ describe('concat', () => {
     expect(args).toEqual(expect.arrayContaining(['-f', 'concat', '-c', 'copy']));
   });
 });
+
+/**
+ * Regression for #669: an accepted async job enqueued, ran its post-steps, and
+ * then went silent — no error, no watchdog, no timeout. The process watchdog
+ * only covers the spawned ffmpeg; every await AROUND it (storage transfers, the
+ * queue wait) was unbounded, so a stalled storage socket left the post-step
+ * pending forever: the job row stayed 'running' and, because the execution log
+ * is only persisted once post-steps resolve, the run left no trace at all.
+ */
+describe('step deadlines (#669)', () => {
+  const withEnv = async (env: Record<string, string>, fn: () => Promise<void>) => {
+    for (const [k, v] of Object.entries(env)) process.env[k] = v;
+    try {
+      await fn();
+    } finally {
+      for (const k of Object.keys(env)) delete process.env[k];
+    }
+  };
+
+  /** Microtask flush — every collaborator on the pre-transfer path is a plain promise. */
+  const flush = async () => {
+    for (let i = 0; i < 50; i++) await Promise.resolve();
+  };
+
+  it('fails a stalled storage download with FFMPEG_JOB_TIMEOUT naming the phase', async () => {
+    await withEnv({ FFMPEG_IO_MAX_SECONDS: '5', FFMPEG_JOB_MAX_SECONDS: '600' }, async () => {
+      jest.useFakeTimers();
+      try {
+        const { handler, scratch, storageAdapter, runner } = createHandler();
+        scratch.createJobDir.mockResolvedValue('/tmp/ffmpeg-hspec-stall');
+        storageAdapter.download.mockReturnValue(new Promise(() => {})); // socket stalls, never settles
+        const done = handler.execute(
+          context(),
+          step({ operation: 'extract_audio', input: 'studio/a.mp4', output: 'studio/a.wav' }),
+        );
+        await flush();
+        jest.advanceTimersByTime(5001);
+        const result = await done;
+        expect(result.success).toBe(false);
+        expect(result.error?.code).toBe('FFMPEG_JOB_TIMEOUT');
+        expect(result.error?.message).toMatch(/download/);
+        expect(runner.run).not.toHaveBeenCalled();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+  });
+
+  it('fails a step whose ffmpeg run never settles with FFMPEG_JOB_TIMEOUT', async () => {
+    await withEnv({ FFMPEG_IO_MAX_SECONDS: '600', FFMPEG_JOB_MAX_SECONDS: '5' }, async () => {
+      jest.useFakeTimers();
+      try {
+        const { handler, scratch, storageAdapter, runner } = createHandler();
+        scratch.createJobDir.mockResolvedValue('/tmp/ffmpeg-hspec-wedged');
+        storageAdapter.download.mockResolvedValue(Buffer.from('mp4-bytes'));
+        runner.run.mockReturnValue(new Promise(() => {})); // slot taken, promise never settles
+        const done = handler.execute(
+          context(),
+          step({ operation: 'extract_audio', input: 'studio/a.mp4', output: 'studio/a.wav' }),
+        );
+        await flush();
+        jest.advanceTimersByTime(5001);
+        const result = await done;
+        expect(result.success).toBe(false);
+        expect(result.error?.code).toBe('FFMPEG_JOB_TIMEOUT');
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+  });
+});

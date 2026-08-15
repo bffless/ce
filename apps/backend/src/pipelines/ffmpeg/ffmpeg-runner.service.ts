@@ -32,6 +32,13 @@ const FFPROBE_GLOBAL_FLAGS = ['-hide_banner'];
 /** Grace period after SIGKILL before we give up waiting for 'close' and self-heal by freeing the slot. */
 const WATCHDOG_ESCALATION_MS = 30_000;
 
+/** A caller parked in the FIFO queue, with the timer that bounds its wait. */
+interface Waiter {
+  resolve: (token: number) => void;
+  reject: (error: Error) => void;
+  timer: ReturnType<typeof setTimeout> | undefined;
+}
+
 /**
  * The only place ffmpeg/ffprobe are spawned. Containment (all required by the
  * spec — a droplet-crash is the failure mode being designed against):
@@ -39,48 +46,109 @@ const WATCHDOG_ESCALATION_MS = 30_000;
  *  - cgroup memory pre-flight: refuse rather than gamble on the OOM killer
  *  - `prlimit --as` so ffmpeg (not the backend) dies on breach; `nice -n 10` +
  *    `-threads` (callers bake threads into argv) so the API stays interactive
- *  - SIGKILL watchdog (FFMPEG_MAX_SECONDS) for wedged processes
+ *  - SIGKILL watchdog (FFMPEG_MAX_SECONDS) for wedged processes; the queue wait
+ *    is bounded too (FFMPEG_JOB_MAX_SECONDS) and a slot held past that ceiling
+ *    is reclaimed, so no caller can park on the queue indefinitely (#669)
  * prlimit/nice may be absent outside Docker (dev hosts) — degrade with one warn.
  */
 @Injectable()
 export class FfmpegRunnerService {
   private readonly logger = new Logger(FfmpegRunnerService.name);
-  private busy = false;
-  private readonly waiting: Array<() => void> = [];
+  /** Whoever holds the single slot. `since` is what makes a wedged slot detectable. */
+  private holder: { token: number; since: number } | null = null;
+  private tokenSeq = 0;
+  private readonly waiting: Waiter[] = [];
   private warnedNoPrlimit = false;
   private warnedNoNice = false;
 
   async run(req: FfmpegRunRequest): Promise<FfmpegRunResult> {
     await this.assertMemoryHeadroom();
-    await this.acquire();
+    const token = await this.acquire();
     try {
       return await this.spawnGuarded(req);
     } finally {
-      this.release();
+      this.release(token);
     }
   }
 
   // --- queue -----------------------------------------------------------
 
-  private async acquire(): Promise<void> {
-    if (!this.busy && this.waiting.length === 0) {
-      this.busy = true;
-      return;
-    }
-    const { queueMax } = readFfmpegEnv();
+  /**
+   * Longest a slot can legitimately be held: the job ceiling, never less than
+   * what the process watchdog plus its escalation grace can take (an operator
+   * lowering FFMPEG_JOB_MAX_SECONDS must not make live runs look wedged).
+   */
+  private holdCeilingMs(): number {
+    const { jobMaxSeconds, maxSeconds } = readFfmpegEnv();
+    return Math.max(jobMaxSeconds * 1000, maxSeconds * 1000 + WATCHDOG_ESCALATION_MS);
+  }
+
+  private take(): number {
+    const token = ++this.tokenSeq;
+    this.holder = { token, since: Date.now() };
+    this.logger.debug({ event: 'ffmpeg_slot_acquired', token, queued: this.waiting.length });
+    return token;
+  }
+
+  /** Give the free slot to the caller that has waited longest, if any. */
+  private handOff(): void {
+    const next = this.waiting.shift();
+    if (!next) return;
+    clearTimeout(next.timer);
+    next.resolve(this.take());
+  }
+
+  /**
+   * Self-heal beyond the watchdog-escalation path: a slot held past the ceiling
+   * belongs to a caller that can no longer release it, so free it rather than
+   * let the queue park behind a corpse for the life of the process (#669).
+   */
+  private reclaimIfWedged(): void {
+    if (!this.holder || Date.now() - this.holder.since <= this.holdCeilingMs()) return;
+    this.logger.error({
+      event: 'ffmpeg_slot_reclaimed',
+      token: this.holder.token,
+      heldMs: Date.now() - this.holder.since,
+    });
+    this.holder = null;
+    this.handOff(); // queued callers get it first — the reclaimer takes its turn below
+  }
+
+  private async acquire(): Promise<number> {
+    this.reclaimIfWedged();
+    if (!this.holder && this.waiting.length === 0) return this.take();
+
+    const { queueMax, jobMaxSeconds } = readFfmpegEnv();
     if (this.waiting.length >= queueMax) {
       throw new FfmpegBusyError(
         `server busy: ffmpeg queue full (${this.waiting.length} waiting, max ${queueMax}) — retry later`,
       );
     }
-    await new Promise<void>((resolve) => this.waiting.push(resolve));
+    this.logger.debug({ event: 'ffmpeg_slot_queued', ahead: this.waiting.length });
+    return new Promise<number>((resolve, reject) => {
+      const waiter: Waiter = { resolve, reject, timer: undefined };
+      // Bound the wait: without this a slot that never frees parks every later
+      // job forever — no error, no log, nothing for a poller to observe.
+      waiter.timer = setTimeout(() => {
+        const index = this.waiting.indexOf(waiter);
+        if (index === -1) return; // already handed the slot
+        this.waiting.splice(index, 1); // never leave a departed waiter to be handed the slot
+        this.logger.warn({ event: 'ffmpeg_slot_wait_timeout', waitedSeconds: jobMaxSeconds });
+        reject(
+          new FfmpegBusyError(
+            `server busy: waited ${jobMaxSeconds}s for the ffmpeg slot without it freeing — retry later`,
+          ),
+        );
+      }, jobMaxSeconds * 1000);
+      this.waiting.push(waiter);
+    });
   }
 
-  private release(): void {
-    const next = this.waiting.shift();
-    if (next)
-      next(); // hand the slot over; busy stays true
-    else this.busy = false;
+  private release(token: number): void {
+    if (this.holder?.token !== token) return; // the slot was reclaimed under us
+    this.holder = null;
+    this.logger.debug({ event: 'ffmpeg_slot_released', token, queued: this.waiting.length });
+    this.handOff();
   }
 
   // --- pre-flight --------------------------------------------------------
