@@ -354,7 +354,7 @@ export function GitHubApiConfig({ config, onChange, previousSteps }: GitHubApiCo
               max={100}
               className="w-full rounded-md border bg-background px-3 py-2 text-sm"
               value={(config.perPage as number) ?? 30}
-              onChange={(e) => onChange({ ...config, perPage: Number(e.target.value) })}
+              onChange={(e) => onChange({ ...config, perPage: e.target.value ? Number(e.target.value) : undefined })}
             />
             <p className="text-xs text-muted-foreground">1-100. Newest runs first.</p>
           </div>
