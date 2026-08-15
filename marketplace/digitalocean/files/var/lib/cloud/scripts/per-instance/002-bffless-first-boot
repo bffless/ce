@@ -12,8 +12,16 @@ for _ in $(seq 1 60); do
     sleep 2
 done
 
-# Best-effort self-update: the image is a warm cache, never a pinned release.
-timeout 120 git pull --ff-only || echo "git pull failed/timed out — continuing with baked tree"
+# Best-effort self-update to the newest stable release: the image is a warm
+# cache, never a pinned release. The tree is pinned to the release tag so
+# compose files / scripts match the :latest images (stable channel).
+# shellcheck disable=SC1091
+source scripts/channel.sh
+if timeout 120 git fetch --tags origin; then
+    git checkout -q --detach "$(channel_ref stable origin)" || echo "checkout failed — continuing with baked tree"
+else
+    echo "git fetch failed/timed out — continuing with baked tree"
+fi
 timeout 600 docker compose --profile postgres --profile minio --profile redis --profile supertokens pull || echo "compose pull failed/timed out — continuing with cached images"
 
 # Generates per-droplet secrets + ONBOARDING_TOKEN, writes .env, exits 0.

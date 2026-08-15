@@ -7,9 +7,18 @@ on:
   workflow_call:
     inputs:
       tag:
-        description: 'Tag to build'
+        description: 'Image tag to publish (vX.Y.Z, or preview-<build-id>)'
         required: true
         type: string
+      ref:
+        description: 'Git ref to build (defaults to the tag)'
+        required: false
+        type: string
+      channel:
+        description: "stable (default: also tags :latest, runs the full test suite) or preview (tags :preview, type-check + build only)"
+        required: false
+        type: string
+        default: 'stable'
   workflow_dispatch:
     inputs:
       tag:
@@ -18,7 +27,7 @@ on:
         type: string
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.tag || github.ref }}
   cancel-in-progress: false
 
 env:
@@ -38,7 +47,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ inputs.tag || github.ref }}
+          ref: ${{ inputs.ref || inputs.tag || github.ref }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -80,15 +89,18 @@ jobs:
           path: apps/frontend/dist
           api-url: ${{ vars.ASSET_HOST_URL }}
           api-key: ${{ secrets.ASSET_HOST_KEY }}
-          alias: production
-          description: 'Frontend build for ${{ github.ref_name }}@${{ github.sha }}'
+          alias: ${{ inputs.channel == 'preview' && 'preview' || 'production' }}
+          description: 'Frontend build for ${{ inputs.tag || github.ref_name }}@${{ github.sha }}'
           summary-title: Frontend Build
 
+      # Preview builds skip the suite: PR CI already ran it on the same commits,
+      # and a preview should land minutes after the merge.
       - name: Run tests with coverage
+        if: inputs.channel != 'preview'
         run: pnpm test
 
       - name: Upload backend coverage
-        if: hashFiles('apps/backend/coverage') != ''
+        if: inputs.channel != 'preview' && hashFiles('apps/backend/coverage') != ''
         continue-on-error: true
         uses: bffless/upload-artifact@v1
         with:
@@ -100,7 +112,7 @@ jobs:
           summary: 'false'
 
       - name: Upload frontend coverage
-        if: hashFiles('apps/frontend/coverage') != ''
+        if: inputs.channel != 'preview' && hashFiles('apps/frontend/coverage') != ''
         continue-on-error: true
         uses: bffless/upload-artifact@v1
         with:
@@ -120,7 +132,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ inputs.tag || github.ref }}
+          ref: ${{ inputs.ref || inputs.tag || github.ref }}
 
       - name: Get version from tag
         id: version
@@ -151,7 +163,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend
           tags: |
-            type=raw,value=latest
+            type=raw,value=${{ inputs.channel == 'preview' && 'preview' || 'latest' }}
             type=raw,value=${{ steps.version.outputs.version }}
             type=sha,prefix=main-
 
@@ -161,7 +173,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend
           tags: |
-            type=raw,value=latest
+            type=raw,value=${{ inputs.channel == 'preview' && 'preview' || 'latest' }}
             type=raw,value=${{ steps.version.outputs.version }}
             type=sha,prefix=main-
 
@@ -191,12 +203,13 @@ jobs:
           path: apps/frontend/dist
           api-url: ${{ vars.ASSET_HOST_URL }}
           api-key: ${{ secrets.ASSET_HOST_KEY }}
-          alias: production
+          alias: ${{ inputs.channel == 'preview' && 'preview' || 'production' }}
           tags: ${{ steps.version.outputs.version }}
           description: 'Frontend build for release ${{ steps.version.outputs.version }}'
           summary: 'false'
 
       - name: Update release with Docker image info
+        if: inputs.channel != 'preview'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

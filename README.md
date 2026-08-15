@@ -1,5 +1,7 @@
 # BFFless
 
+[![Stable](https://img.shields.io/github/v/release/bffless/ce?label=stable&color=2ea44f)](https://github.com/bffless/ce/releases/latest)
+[![Preview](https://img.shields.io/github/v/release/bffless/ce?include_prereleases&filter=preview-*&label=preview&color=blue)](https://github.com/bffless/ce/releases?q=preview&expanded=false)
 [![Main Release](https://github.com/bffless/ce/actions/workflows/main-release.yml/badge.svg)](https://github.com/bffless/ce/actions/workflows/main-release.yml)
 [![PR Tests](https://github.com/bffless/ce/actions/workflows/pr-tests.yml/badge.svg)](https://github.com/bffless/ce/actions/workflows/pr-tests.yml)
 
@@ -66,7 +68,7 @@ to re-run.
 | `./start.sh` | Start services (profile-aware; `--all`, `--minimal`) |
 | `./stop.sh` | Stop services (`--volumes` also deletes data — careful) |
 | `./restart.sh` | `stop.sh` + `start.sh`; flags pass through to `start.sh` |
-| `./update.sh` | Upgrade: `git pull --ff-only` → pull images → restart. Aborts on a dirty tree |
+| `./update.sh` | Upgrade to what your release channel tracks → pull images → restart. Aborts on a dirty tree. `--channel stable\|preview` switches channel |
 | `./logs.sh [service]` | Follow logs for all services, or one (`backend`, `nginx`, ...) |
 | `./status.sh` | Versions (with restart-pending warning), services, RAM/swap/disk, domain, SSL expiry, health check |
 | `./backup.sh` | `backups/bffless-backup-<ts>.tar.gz`: database dump + assets + config. Contains secrets — store securely |
@@ -77,6 +79,27 @@ out containers:
 ```bash
 sudo ./scripts/setup-swap.sh   # idempotent; no-ops on hosts with >= 4 GB RAM
 ```
+
+### Release channels
+
+| Channel | What you run | When it moves |
+| --- | --- | --- |
+| **stable** (default) | The newest [`vX.Y.Z` release](https://github.com/bffless/ce/releases/latest): git tree pinned to that tag, images `ghcr.io/bffless/ce-*:latest` | When a release is cut (batched, roughly weekly) |
+| **preview** | `main`: git tree on `main`, images `ghcr.io/bffless/ce-*:preview` | On every merge — each one is a [pre-release](https://github.com/bffless/ce/releases?q=preview&expanded=false) with generated notes |
+
+```bash
+# New install on the preview channel
+CHANNEL=preview sh -c "$(curl -fsSL https://bffless.dev/install.sh)"
+
+# Switch an existing install (persisted in .env, then followed by ./update.sh)
+./update.sh --channel preview
+./update.sh --channel stable
+```
+
+Preview images are exactly what the next stable release will contain, built minutes
+after each merge — useful for testing a fix before it ships. Every preview
+pre-release lists the changes since the previous one and pins its image tag
+(`preview-YYYY-MM-DD-<sha>`) if you need to reproduce a build.
 
 ## Technology Stack
 

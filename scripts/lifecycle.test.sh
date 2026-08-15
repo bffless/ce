@@ -26,6 +26,7 @@ make_sandbox() {
         [ -f "$REPO_ROOT/$f" ] && cp "$REPO_ROOT/$f" "$SB/app/"
     done
     cp "$REPO_ROOT/scripts/compose-profiles.sh" "$SB/app/scripts/" 2>/dev/null || true
+    cp "$REPO_ROOT/scripts/channel.sh" "$SB/app/scripts/" 2>/dev/null || true
     # Default docker stub: log argv, succeed. Cases overwrite for richer behavior.
     cat > "$SB/bin/docker" <<'STUB'
 #!/bin/bash
@@ -113,6 +114,86 @@ echo "— update.sh: clean tree pulls with detected profiles and restarts —"
         "profile-aware image pull (minio on, redis off)"
     assert_contains "calls.log" "restart" "restart.sh invoked"
     assert_contains "$DOCKER_LOG" "docker image prune -f" "superseded images pruned after restart"
+    cd / && rm -rf "$SB"
+    exit "$FAILURES"
+); FAILURES=$((FAILURES+$?))
+
+echo "— update.sh: stable channel pins the tree to the newest release tag —"
+(
+    make_sandbox
+    FAILURES=0
+    cd "$SB/app" || exit 1
+    printf '{\n  "version": "0.0.1"\n}\n' > package.json
+    # shellcheck disable=SC2016  # $CALLS_LOG must expand at stub run time
+    printf '#!/bin/bash\necho "restart $*" >> "$CALLS_LOG"\n' > restart.sh && chmod +x restart.sh
+    export CALLS_LOG="$SB/calls.log"
+    git init -q -b main && git config user.email t@t && git config user.name t
+    git add -A && git commit -qm init
+    git clone -q --bare . "$SB/origin.git"
+    git remote add origin "$SB/origin.git"
+    # Origin: v0.0.2 tagged, then main moves ahead (unreleased work)
+    git clone -q "$SB/origin.git" "$SB/dev" && (
+        cd "$SB/dev" && git config user.email t@t && git config user.name t
+        printf '{\n  "version": "0.0.2"\n}\n' > package.json && git commit -qam "release 0.0.2"
+        git tag v0.0.2
+        echo ahead > ahead.txt && git add ahead.txt && git commit -qm "feat: unreleased"
+        git push -q origin main --tags
+    )
+    git fetch -q origin && git branch -q --set-upstream-to=origin/main
+    PATH="$SB/bin:$PATH" ./update.sh > "$SB/update.out" 2>&1; rc=$?
+    assert_exit 0 "$rc" "stable update exits 0"
+    assert_contains "$SB/update.out" "channel: stable" "channel reported"
+    tag_at_head=$(git tag --points-at HEAD)
+    if [ "$tag_at_head" = "v0.0.2" ]; then echo "ok: tree pinned to v0.0.2"; else echo "FAIL: tree at '$tag_at_head', want v0.0.2"; FAILURES=$((FAILURES+1)); fi
+    if [ ! -e ahead.txt ]; then echo "ok: unreleased main commit not checked out"; else echo "FAIL: main was checked out"; FAILURES=$((FAILURES+1)); fi
+    assert_contains "$DOCKER_LOG" "pull" "images pulled"
+    assert_contains "$CALLS_LOG" "restart" "restart.sh invoked"
+    # Second run: already pinned, still succeeds
+    PATH="$SB/bin:$PATH" ./update.sh > "$SB/update2.out" 2>&1; rc=$?
+    assert_exit 0 "$rc" "re-running stable update is a no-op success"
+    assert_contains "$SB/update2.out" "Already at v0.0.2" "reports already at tag"
+    cd / && rm -rf "$SB"
+    exit "$FAILURES"
+); FAILURES=$((FAILURES+$?))
+
+echo "— update.sh: --channel preview switches .env and tracks main; invalid channel rejected —"
+(
+    make_sandbox
+    FAILURES=0
+    cd "$SB/app" || exit 1
+    printf '{\n  "version": "0.0.1"\n}\n' > package.json
+    printf 'ENABLE_MINIO=true\n' > .env
+    printf '.env\n' > .gitignore   # like the real repo: .env is untracked
+    # shellcheck disable=SC2016  # $CALLS_LOG must expand at stub run time
+    printf '#!/bin/bash\necho "restart $*" >> "$CALLS_LOG"\n' > restart.sh && chmod +x restart.sh
+    export CALLS_LOG="$SB/calls.log"
+    git init -q -b main && git config user.email t@t && git config user.name t
+    git add -A && git commit -qm init
+    git clone -q --bare . "$SB/origin.git"
+    git remote add origin "$SB/origin.git"
+    git clone -q "$SB/origin.git" "$SB/dev" && (
+        cd "$SB/dev" && git config user.email t@t && git config user.name t
+        git tag v0.0.1
+        echo ahead > ahead.txt && git add ahead.txt && git commit -qm "feat: unreleased"
+        git push -q origin main --tags
+    )
+    git fetch -q origin && git branch -q --set-upstream-to=origin/main
+    PATH="$SB/bin:$PATH" ./update.sh --channel bogus > "$SB/bogus.out" 2>&1; rc=$?
+    assert_exit 1 "$rc" "unknown channel exits 1"
+    assert_not_contains "$DOCKER_LOG" "pull" "no pull on invalid channel"
+    PATH="$SB/bin:$PATH" ./update.sh --channel preview > "$SB/update.out" 2>&1; rc=$?
+    assert_exit 0 "$rc" "preview update exits 0"
+    assert_contains "$SB/update.out" "Switching channel: stable → preview" "switch announced"
+    assert_contains .env "BFFLESS_CHANNEL=preview" "channel persisted in .env"
+    assert_contains .env "BACKEND_TAG=preview" "backend image tag override written"
+    assert_contains .env "ENABLE_MINIO=true" "existing .env keys kept"
+    if [ -e ahead.txt ]; then echo "ok: preview tracks main (unreleased commit present)"; else echo "FAIL: main not checked out"; FAILURES=$((FAILURES+1)); fi
+    assert_contains "$DOCKER_LOG" "docker compose --profile postgres --profile minio --profile supertokens pull" "profiles still detected after switch"
+    # Switch back to stable → tree returns to v0.0.1, tag overrides removed
+    PATH="$SB/bin:$PATH" ./update.sh --channel stable > "$SB/back.out" 2>&1; rc=$?
+    assert_exit 0 "$rc" "switch back to stable exits 0"
+    assert_not_contains .env "BACKEND_TAG=" "stable removes image tag override"
+    if [ ! -e ahead.txt ]; then echo "ok: stable re-pins to v0.0.1"; else echo "FAIL: still on main"; FAILURES=$((FAILURES+1)); fi
     cd / && rm -rf "$SB"
     exit "$FAILURES"
 ); FAILURES=$((FAILURES+$?))

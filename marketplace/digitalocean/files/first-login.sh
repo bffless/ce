@@ -77,8 +77,14 @@ if [ "$answer" != "setup" ]; then
 fi
 
 # ---- Terminal fallback: Coolify-style interactive setup. --------------------
-echo "Self-updating first (safe to skip on network failure)..."
-timeout 120 git pull --ff-only || echo -e "${YELLOW}⚠ git pull failed — continuing with the current version${NC}"
+echo "Self-updating to the newest stable release first (safe to skip on network failure)..."
+# shellcheck disable=SC1091
+source scripts/channel.sh
+if timeout 120 git fetch --tags origin; then
+    git checkout -q --detach "$(channel_ref stable origin)" || echo -e "${YELLOW}⚠ checkout failed — continuing with the current version${NC}"
+else
+    echo -e "${YELLOW}⚠ git fetch failed — continuing with the current version${NC}"
+fi
 timeout 600 docker compose --profile postgres --profile minio --profile redis --profile supertokens pull || echo -e "${YELLOW}⚠ image pull failed — continuing with cached images${NC}"
 
 # Interactive setup.sh will ask before overwriting the bootstrap .env — answer

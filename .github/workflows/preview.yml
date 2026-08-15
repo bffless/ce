@@ -1,0 +1,221 @@
+name: Preview Build
+
+# Every merge to main publishes a preview: ghcr images tagged
+# preview-<YYYY-MM-DD>-<sha12> (+ the moving :preview tag) and a GitHub
+# pre-release whose notes are generated from the conventional commits since
+# the previous preview (scripts/release-notes.mjs). Stable releases are cut
+# separately by merging the release-please PR (see CONTRIBUTING.md → Releases).
+#
+# Self-hosted installs opt in with `CHANNEL=preview` at install time or
+# `./update.sh --channel preview`.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: 'Optional main commit SHA to publish (defaults to HEAD)'
+        required: false
+        type: string
+
+# A newer push supersedes an in-flight preview; its commits are covered by the
+# next preview's notes (the range starts at the last *published* preview).
+concurrency:
+  group: preview
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  KEEP_PREVIEWS: 30
+
+jobs:
+  preflight:
+    name: Plan preview
+    runs-on: ubuntu-latest
+    outputs:
+      should_publish: ${{ steps.plan.outputs.should_publish }}
+      commit: ${{ steps.plan.outputs.commit }}
+      short_sha: ${{ steps.plan.outputs.short_sha }}
+      build_id: ${{ steps.plan.outputs.build_id }}
+      tag: ${{ steps.plan.outputs.tag }}
+      base_version: ${{ steps.plan.outputs.base_version }}
+      previous: ${{ steps.plan.outputs.previous }}
+      cli_changed: ${{ steps.plan.outputs.cli_changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Select preview commit
+        id: plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --tags --force origin
+          requested="${{ github.event.inputs.commit || '' }}"
+          if [ -n "$requested" ]; then
+            commit="$(git rev-parse "${requested}^{commit}")"
+            if ! git merge-base --is-ancestor "$commit" origin/main; then
+              echo "::error::requested commit $commit is not reachable from origin/main"
+              exit 1
+            fi
+          else
+            commit="$(git rev-parse origin/main)"
+          fi
+          subject="$(git log -1 --format=%s "$commit")"
+          # The release merge is built as vX.Y.Z by release-please.yml, and
+          # changelog polish commits carry no code — neither needs a preview.
+          case "$subject" in
+            "chore(main): release"*|"chore: release"*|"chore(changelog):"*)
+              echo "Skipping preview for: $subject"
+              echo "should_publish=false" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+          esac
+          if [ -n "$(git tag --points-at "$commit" 'preview-*')" ]; then
+            echo "A preview already exists for $commit; skipping."
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git checkout -q --detach "$commit"
+          short_sha="$(git rev-parse --short=12 HEAD)"
+          day="$(git show -s --format=%cs HEAD)"
+          build_id="$day-$short_sha"
+          base_version="v$(node -p "require('./package.json').version")"
+          # Range base for the notes: newest previous preview tag on main, else
+          # the newest stable tag.
+          previous="$(git tag --list 'preview-*' --sort=-creatordate --merged "$commit^" 2>/dev/null | head -1)"
+          if [ -z "$previous" ]; then
+            previous="$(git describe --tags --match 'v[0-9]*' --abbrev=0 "$commit^" 2>/dev/null || true)"
+          fi
+          if [ -z "$previous" ]; then
+            previous="$(git rev-list --max-parents=0 "$commit" | tail -1)"
+          fi
+          if git diff --quiet "$previous" "$commit" -- packages/cli; then
+            cli_changed=false
+          else
+            cli_changed=true
+          fi
+          {
+            echo "should_publish=true"
+            echo "commit=$commit"
+            echo "short_sha=$short_sha"
+            echo "build_id=$build_id"
+            echo "tag=preview-$build_id"
+            echo "base_version=$base_version"
+            echo "previous=$previous"
+            echo "cli_changed=$cli_changed"
+          } >> "$GITHUB_OUTPUT"
+          echo "Preview preview-$build_id from $commit (base $base_version, notes since $previous, cli_changed=$cli_changed)"
+
+  build:
+    name: Build preview images
+    needs: preflight
+    if: needs.preflight.outputs.should_publish == 'true'
+    uses: ./.github/workflows/main-release.yml
+    with:
+      tag: ${{ needs.preflight.outputs.tag }}
+      ref: ${{ needs.preflight.outputs.commit }}
+      channel: preview
+    secrets: inherit
+
+  publish:
+    name: Publish pre-release
+    needs: [preflight, build]
+    if: needs.preflight.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ needs.preflight.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.commit }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Generate notes
+        run: |
+          set -euo pipefail
+          git fetch --tags --force origin
+          node scripts/release-notes.mjs authors --range "${{ needs.preflight.outputs.previous }}..${{ needs.preflight.outputs.commit }}" > authors.json
+          node scripts/release-notes.mjs preview \
+            --commit "${{ needs.preflight.outputs.commit }}" \
+            --previous "${{ needs.preflight.outputs.previous }}" \
+            --base-version "${{ needs.preflight.outputs.base_version }}" \
+            --build-id "${{ needs.preflight.outputs.build_id }}" \
+            --authors authors.json > PREVIEW_NOTES.md
+          cat PREVIEW_NOTES.md
+
+      - name: Create preview pre-release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.preflight.outputs.tag }}
+          name: Preview build ${{ needs.preflight.outputs.build_id }}
+          body_path: PREVIEW_NOTES.md
+          prerelease: true
+          make_latest: false
+          target_commitish: ${{ needs.preflight.outputs.commit }}
+
+      - name: Prune old preview pre-releases
+        run: |
+          set -euo pipefail
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 200 --json tagName,isPrerelease,createdAt \
+            | node -e '
+              const rs = JSON.parse(require("fs").readFileSync(0, "utf8"))
+                .filter((r) => r.isPrerelease && String(r.tagName).startsWith("preview-"))
+                .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+              for (const r of rs.slice(Number(process.env.KEEP_PREVIEWS))) console.log(r.tagName);
+            ' > old-previews.txt
+          while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
+            echo "Deleting $tag"
+            gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || echo "::warning::could not delete $tag"
+          done < old-previews.txt
+
+      - name: Summary
+        run: |
+          {
+            echo "## Preview build ${{ needs.preflight.outputs.build_id }}"
+            echo ""
+            echo "- Release: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
+            echo "- Images: \`ghcr.io/${GITHUB_REPOSITORY}-backend:${TAG}\`, \`ghcr.io/${GITHUB_REPOSITORY}-frontend:${TAG}\` (also \`:preview\`)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  publish-cli-next:
+    name: Publish CLI as bffless@next
+    needs: [preflight, build]
+    if: needs.preflight.outputs.should_publish == 'true' && needs.preflight.outputs.cli_changed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.commit }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+      - run: pnpm install --frozen-lockfile
+      - name: Version as prerelease
+        working-directory: packages/cli
+        run: |
+          set -euo pipefail
+          base="$(node -p "require('./package.json').version")"
+          day="$(echo "${{ needs.preflight.outputs.build_id }}" | cut -d- -f1-3 | tr -d -)"
+          version="${base}-next.${day}.g${{ needs.preflight.outputs.short_sha }}"  # g-prefix: keeps an all-digit sha a valid semver identifier
+          npm version "$version" --no-git-tag-version
+          echo "Publishing bffless@$version (dist-tag next)"
+      - run: pnpm --filter ./packages/cli publish --tag next --access public --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
