@@ -25,8 +25,9 @@ jobs:
         run: |
           shellcheck \
             restart.sh update.sh logs.sh status.sh backup.sh \
-            scripts/setup-swap.sh scripts/compose-profiles.sh \
+            scripts/setup-swap.sh scripts/compose-profiles.sh scripts/channel.sh \
             scripts/setup-swap.test.sh scripts/compose-profiles.test.sh scripts/lifecycle.test.sh \
+            scripts/channel.test.sh \
             marketplace/digitalocean/scripts/010-prep.sh \
             marketplace/digitalocean/scripts/020-docker.sh \
             marketplace/digitalocean/scripts/030-bffless.sh \
@@ -41,6 +42,7 @@ jobs:
           bash scripts/setup-swap.test.sh
           bash scripts/compose-profiles.test.sh
           bash scripts/lifecycle.test.sh
+          bash scripts/channel.test.sh
           bash marketplace/digitalocean/files/first-login.test.sh
 
       - uses: actions/setup-node@v4

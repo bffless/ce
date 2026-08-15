@@ -13,7 +13,10 @@
 # Or with custom installation directory:
 #   INSTALL_DIR=/opt/bffless sh -c "$(curl -fsSL https://...)"
 #
-# Or specify a branch/tag:
+# Release channel (default: stable — the newest vX.Y.Z tag + :latest images):
+#   CHANNEL=preview sh -c "$(curl -fsSL https://...)"   # main + :preview images
+#
+# Or pin an explicit branch/tag (overrides the channel's ref):
 #   BRANCH=v1.0.0 sh -c "$(curl -fsSL https://...)"
 #
 # For the old terminal-based onboarding wizard instead of the web bootstrap:
@@ -32,7 +35,11 @@ set -e
 
 # Repository configuration
 REPO_URL="${REPO_URL:-https://github.com/bffless/ce.git}"
-BRANCH="${BRANCH:-main}"
+# Release channel: stable (default) or preview. Persisted to .env after setup;
+# ./update.sh follows it from then on (see scripts/channel.sh).
+CHANNEL="${CHANNEL:-stable}"
+# BRANCH: explicit override; otherwise resolved from the channel in main().
+BRANCH="${BRANCH:-}"
 
 # Installation directory (default: current directory)
 INSTALL_DIR="${INSTALL_DIR:-./ce}"
@@ -102,6 +109,26 @@ print_info() {
 # Check if a command exists
 command_exists() {
     command -v "$1" >/dev/null 2>&1
+}
+
+# Newest stable release tag (vX.Y.Z) on the remote — the stable channel pins
+# the checkout to it so compose files / scripts match the :latest images.
+# Mirrors channel_latest_stable_tag in scripts/channel.sh (not cloned yet here).
+latest_stable_tag() {
+    git ls-remote --tags --refs "$REPO_URL" 'refs/tags/v[0-9]*' 2>/dev/null \
+        | sed -nE 's#^[0-9a-f]+[[:space:]]+refs/tags/(v[0-9]+\.[0-9]+\.[0-9]+)$#\1#p' \
+        | sort -t. -k1.2,1n -k2,2n -k3,3n \
+        | tail -1
+}
+
+# Record the release channel in .env (after setup.sh has created it) so
+# docker compose pulls the matching images and ./update.sh keeps following it.
+persist_channel() {
+    if [ -f ".env" ] && [ -f "scripts/channel.sh" ]; then
+        # shellcheck disable=SC1091
+        . ./scripts/channel.sh
+        channel_write "$CHANNEL" .env
+    fi
 }
 
 # Best-effort public IP detection, for the "open https://<ip>" fallback in
@@ -193,6 +220,29 @@ main() {
         exit 1
     fi
 
+    case "$CHANNEL" in
+        stable|preview) ;;
+        *)
+            print_error "Unknown CHANNEL '$CHANNEL' (stable|preview)."
+            exit 1
+            ;;
+    esac
+
+    # Resolve what to check out: an explicit BRANCH wins; otherwise the
+    # channel decides — stable pins the newest release tag, preview tracks main.
+    if [ -z "$BRANCH" ]; then
+        if [ "$CHANNEL" = "preview" ]; then
+            BRANCH="main"
+        else
+            BRANCH="$(latest_stable_tag)"
+            if [ -z "$BRANCH" ]; then
+                print_warning "Could not resolve the latest release tag; falling back to main."
+                BRANCH="main"
+            fi
+        fi
+    fi
+    print_info "Channel: $CHANNEL (checkout: $BRANCH)"
+
     # Check if installation directory exists
     if [ -d "$INSTALL_DIR" ]; then
         print_warning "Directory $INSTALL_DIR already exists."
@@ -203,9 +253,14 @@ main() {
             [yY][eE][sS]|[yY])
                 print_info "Updating existing installation..."
                 cd "$INSTALL_DIR"
-                git fetch origin
-                git checkout "$BRANCH"
-                git pull origin "$BRANCH"
+                git fetch --tags origin
+                if git show-ref -q --verify "refs/remotes/origin/$BRANCH"; then
+                    git checkout "$BRANCH"
+                    git pull --ff-only origin "$BRANCH"
+                else
+                    # A tag (stable channel): detached checkout, nothing to pull
+                    git checkout --detach "$BRANCH"
+                fi
                 ;;
             *)
                 print_info "Installation cancelled."
@@ -269,6 +324,7 @@ main() {
         print_info "Running setup script (interactive)..."
         echo ""
         BFFLESS_INSTALL_DIR="$ABSOLUTE_INSTALL_DIR" ./setup.sh "$@"
+        persist_channel
         return 0
     fi
 
@@ -285,6 +341,7 @@ main() {
             print_error "Bootstrap setup failed (exit $bootstrap_exit). Not starting the stack."
             exit "$bootstrap_exit"
         fi
+        persist_channel
 
         if [ ! -f "start.sh" ]; then
             print_error "Start script not found at start.sh"
@@ -306,6 +363,7 @@ main() {
     print_info "Running setup script..."
     echo ""
     BFFLESS_INSTALL_DIR="$ABSOLUTE_INSTALL_DIR" ./setup.sh "$@"
+    persist_channel
 }
 
 # Run main function

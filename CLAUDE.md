@@ -317,11 +317,14 @@ pnpm test:e2e -- tests/upload.spec.ts
 ### CI/CD Workflows
 
 - **`pr-tests.yml`** — type check, tests + coverage, frontend build preview on PRs. **`pr-title.yml`** gates conventional PR titles (they become the squash commit subjects the release notes are generated from).
+- **`preview.yml`** — every push to `main` publishes a preview pre-release (`preview-YYYY-MM-DD-<sha>`) with `ghcr.io/bffless/ce-{frontend,backend}:preview` images (built through `main-release.yml` with `channel: preview`), and `bffless@next` on npm when `packages/cli` changed.
 - **`release-please.yml`** — keeps the `chore(main): release X` PR open; merging it tags `vX.Y.Z`, then `main-release.yml` builds `latest` + `vX.Y.Z` images and the `release-notes` job rewrites the release body / `CHANGELOG.md` entry via `scripts/release-notes.mjs`.
 
 ### Releases
 
-Releases are batched: merge PRs freely, cut a stable release by merging the release-please PR. Notes are generated from conventional commit subjects — never hand-edit `CHANGELOG.md` or the release body. See `CONTRIBUTING.md` → *Releases*.
+Releases are batched: merge PRs freely (each merge = a preview build), cut a stable release by merging the release-please PR. Notes are generated from conventional commit subjects — never hand-edit `CHANGELOG.md` or the release body. See `CONTRIBUTING.md` → *Releases*.
+
+Self-hosted installs follow a **release channel** (`scripts/channel.sh`, persisted as `BFFLESS_CHANNEL` in `.env`): `stable` pins the git tree to the newest `vX.Y.Z` tag + `:latest` images; `preview` tracks `main` + `:preview` images. `install.sh` (`CHANNEL=…`) and `update.sh --channel …` manage it.
 
 ```bash
 # Pull specific version

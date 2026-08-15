@@ -9,6 +9,11 @@ MARKETPLACE_DIR="$INSTALL_DIR/marketplace/digitalocean"
 
 git clone https://github.com/bffless/ce.git "$INSTALL_DIR"
 cd "$INSTALL_DIR"
+# Stable channel: bake the newest release tag, not main (droplets re-pin at
+# first boot; main can be ahead of the :latest images between releases).
+# shellcheck disable=SC1091
+source scripts/channel.sh
+git checkout --detach "$(channel_ref stable origin)"
 
 # Pre-pull every profile's images so a droplet's first boot only fetches deltas.
 docker compose --profile postgres --profile minio --profile redis --profile supertokens pull

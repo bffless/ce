@@ -26,9 +26,13 @@ section() {
 }
 
 section "Version"
+# shellcheck disable=SC1091
+source scripts/channel.sh
 PKG_VERSION=$(sed -nE 's/.*"version": *"([^"]+)".*/\1/p' package.json | head -1)
 GIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-echo "Checked-out repo:  v${PKG_VERSION} (${GIT_SHA})"
+PREVIEW_TAG=$(channel_head_preview_tag)
+echo "Checked-out repo:  v${PKG_VERSION} (${GIT_SHA})${PREVIEW_TAG:+ [${PREVIEW_TAG}]}"
+echo "Release channel:   $(channel_read .env)  (switch with ./update.sh --channel stable|preview)"
 
 restart_pending=false
 for svc in backend frontend; do

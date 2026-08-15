@@ -52,6 +52,9 @@ appends `(#N)` on squash.
 
 Releases are **batched**, not cut on every merge:
 
+- Merging to `main` publishes a **preview build** (a pre-release tagged
+  `preview-YYYY-MM-DD-<sha>` with `ghcr.io/bffless/ce-*:preview` images) — see
+  the README's _Release channels_ section.
 - [release-please](https://github.com/googleapis/release-please) keeps a
   `chore(main): release X.Y.Z` PR open that accumulates everything merged since
   the last release. **Merging that PR cuts the stable release**: it tags `vX.Y.Z`,
