@@ -28,18 +28,42 @@ Thank you for your interest in contributing! This document provides guidelines a
 - Write meaningful variable and function names
 - Add comments for complex logic
 
-## Commit Messages
+## Commit Messages and PR Titles
 
-Use clear and descriptive commit messages:
+PRs are squash-merged and **the PR title becomes the commit subject on `main`**.
+Release notes and `CHANGELOG.md` are generated from those subjects, so titles
+must follow [Conventional Commits](https://www.conventionalcommits.org/) — a CI
+check (`PR Title`) enforces it:
 
 ```
-feat: add user authentication
-fix: resolve asset upload bug
-docs: update API documentation
-refactor: simplify storage adapter interface
-test: add tests for asset deletion
-chore: update dependencies
+feat(cli): add login command          → Added
+fix: resolve asset upload bug         → Fixed
+perf: cache nginx config lookups      → Performance
+feat!: drop Node 18 support           → Breaking (and Added)
+docs / ci / test / refactor / chore   → Maintenance (collapsed in release notes)
 ```
+
+Write the description as the line you would want to read in the release notes:
+what changed for the user, not how. Scopes are optional; when present they are
+kept as a prefix (`cli: add login command`). Do not repeat the PR number — GitHub
+appends `(#N)` on squash.
+
+## Releases
+
+Releases are **batched**, not cut on every merge:
+
+- [release-please](https://github.com/googleapis/release-please) keeps a
+  `chore(main): release X.Y.Z` PR open that accumulates everything merged since
+  the last release. **Merging that PR cuts the stable release**: it tags `vX.Y.Z`,
+  builds the `latest` images, and `scripts/release-notes.mjs` rewrites the
+  release body and the `CHANGELOG.md` entry into Added / Fixed / Performance
+  sections with `(#PR, thanks @contributor)` references.
+- Versions bump from commit types (`fix` → patch, `feat` → minor while pre-1.0
+  is configured as patch). To force a specific version, add a
+  `Release-As: X.Y.Z` footer to a commit on `main`.
+
+Nothing in the release notes is hand-written — if a line reads badly, fix the
+PR title before merging.
 
 ## Pull Request Process
 
@@ -64,4 +88,3 @@ Feel free to open an issue for questions or clarifications.
 ## Code of Conduct
 
 Be respectful and constructive in all interactions.
-

@@ -212,6 +212,13 @@ jobs:
           # Get the current release body
           CURRENT_BODY=$(gh release view "$VERSION" --json body -q '.body')
 
+          # The release-notes job (release-please.yml) writes the Docker block
+          # itself; only append when it is missing (manual tag builds).
+          if printf '%s' "$CURRENT_BODY" | grep -q '^## Docker Images'; then
+            echo "Release notes already list Docker images, skipping"
+            exit 0
+          fi
+
           # Append Docker image info
           DOCKER_INFO="
 

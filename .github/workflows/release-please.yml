@@ -32,6 +32,73 @@ jobs:
           echo "Release created: ${{ steps.release.outputs.tag_name }}"
           echo "Version: ${{ steps.release.outputs.version }}"
 
+  # Rewrite the release body (and the CHANGELOG.md entry) from conventional
+  # commits in herdr style — Added / Fixed / Performance sections, (#PR, thanks
+  # @user) refs, no commit hashes. See scripts/release-notes.mjs.
+  release-notes:
+    name: Polish release notes
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ needs.release-please.outputs.tag_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Resolve previous stable tag
+        id: prev
+        run: |
+          set -euo pipefail
+          git fetch --tags --force origin
+          # Nearest v* tag reachable from the parent of the release commit
+          # (excludes preview-* and the CLI's bffless-v* tags).
+          PREV="$(git describe --tags --match 'v[0-9]*' --abbrev=0 "${TAG}^" 2>/dev/null || true)"
+          if [ -z "$PREV" ]; then
+            echo "No previous stable tag found; using root commit"
+            PREV="$(git rev-list --max-parents=0 HEAD | tail -1)"
+          fi
+          echo "previous=$PREV" >> "$GITHUB_OUTPUT"
+          echo "date=$(git log -1 --format=%cs "$TAG")" >> "$GITHUB_OUTPUT"
+          echo "Range: $PREV..$TAG"
+
+      - name: Collect PR authors
+        run: node scripts/release-notes.mjs authors --range "${{ steps.prev.outputs.previous }}..$TAG" > authors.json
+
+      - name: Rewrite GitHub release body
+        run: |
+          set -euo pipefail
+          node scripts/release-notes.mjs stable --tag "$TAG" --previous "${{ steps.prev.outputs.previous }}" --authors authors.json > RELEASE_NOTES.md
+          cat RELEASE_NOTES.md
+          gh release edit "$TAG" --notes-file RELEASE_NOTES.md
+
+      - name: Rewrite CHANGELOG.md entry
+        run: |
+          set -euo pipefail
+          node scripts/release-notes.mjs changelog --tag "$TAG" --previous "${{ steps.prev.outputs.previous }}" --date "${{ steps.prev.outputs.date }}" --authors authors.json
+          if git diff --quiet -- CHANGELOG.md; then
+            echo "CHANGELOG.md unchanged"; exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git commit -m "chore(changelog): polish $TAG notes"
+          # main may have moved while we ran — rebase once and retry.
+          for attempt in 1 2 3; do
+            if git push origin HEAD:main; then exit 0; fi
+            git fetch origin main && git rebase origin/main
+          done
+          echo "::warning::Could not push CHANGELOG.md polish for $TAG"
+
   build-docker:
     name: Build Docker Images
     needs: release-please

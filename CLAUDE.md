@@ -316,34 +316,17 @@ pnpm test:e2e -- tests/upload.spec.ts
 
 ### CI/CD Workflows
 
-The repository uses two GitHub Actions workflows:
-
-**1. `main-release.yml`** - Triggered on push to main
-- Type checking (frontend + backend)
-- Testing with coverage upload
-- Docker image build and push to GHCR
-- Deployment to production (DigitalOcean)
-- Automatic versioning and GitHub release creation
-- Docker images tagged with: `latest`, `vX.Y.Z`, `main-<sha>`
-
-**2. `pr-tests.yml`** - Triggered on pull requests
-- Type checking (frontend + backend)
-- Testing with coverage upload
-- Frontend build preview (for PRs targeting main)
+- **`pr-tests.yml`** — type check, tests + coverage, frontend build preview on PRs. **`pr-title.yml`** gates conventional PR titles (they become the squash commit subjects the release notes are generated from).
+- **`release-please.yml`** — keeps the `chore(main): release X` PR open; merging it tags `vX.Y.Z`, then `main-release.yml` builds `latest` + `vX.Y.Z` images and the `release-notes` job rewrites the release body / `CHANGELOG.md` entry via `scripts/release-notes.mjs`.
 
 ### Releases
 
-Releases are created automatically on successful deploy to main:
-- Version is auto-incremented (patch by default)
-- Can trigger manual minor/major bumps via workflow dispatch
-- Docker images are tagged with semantic version
-- GitHub Release is created with auto-generated changelog
-- `package.json` version is kept in sync
+Releases are batched: merge PRs freely, cut a stable release by merging the release-please PR. Notes are generated from conventional commit subjects — never hand-edit `CHANGELOG.md` or the release body. See `CONTRIBUTING.md` → *Releases*.
 
 ```bash
 # Pull specific version
-docker pull ghcr.io/bffless/ce-frontend:v0.1.5
-docker pull ghcr.io/bffless/ce-backend:v0.1.5
+docker pull ghcr.io/bffless/ce-frontend:v0.4.28
+docker pull ghcr.io/bffless/ce-backend:v0.4.28
 ```
 
 ### Docker

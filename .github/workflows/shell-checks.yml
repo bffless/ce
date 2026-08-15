@@ -42,3 +42,10 @@ jobs:
           bash scripts/compose-profiles.test.sh
           bash scripts/lifecycle.test.sh
           bash marketplace/digitalocean/files/first-login.test.sh
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Script unit tests (node)
+        run: node --test scripts/release-notes.test.mjs
