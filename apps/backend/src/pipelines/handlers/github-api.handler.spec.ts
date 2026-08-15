@@ -172,6 +172,41 @@ describe('GitHubApiHandler', () => {
     });
   });
 
+  describe('get_workflow_run', () => {
+    it('requires owner, repo and runId', () => {
+      expect(() =>
+        handler.validateConfig({ action: 'get_workflow_run', owner: 'o', repo: 'r' } as never),
+      ).toThrow(/runId/);
+    });
+
+    it('fetches a single run by id and maps it', async () => {
+      mockFetch.mockResolvedValue(
+        makeFetchResponse({ status: 200, body: { ...RUN_FIXTURE, status: 'completed', conclusion: 'success' } }),
+      );
+
+      const result = await handler.execute(
+        makeContext(),
+        makeStep({ action: 'get_workflow_run', owner: 'o', repo: 'r', runId: '42' }),
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.output).toMatchObject({ id: 42, status: 'completed', conclusion: 'success' });
+      expect(mockFetch.mock.calls[0][0]).toBe('https://api.github.com/repos/o/r/actions/runs/42');
+    });
+
+    it('returns GITHUB_API_ERROR when the run is gone', async () => {
+      mockFetch.mockResolvedValue(makeFetchResponse({ status: 404, body: { message: 'Not Found' } }));
+
+      const result = await handler.execute(
+        makeContext(),
+        makeStep({ action: 'get_workflow_run', owner: 'o', repo: 'r', runId: '42' }),
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error?.code).toBe('GITHUB_API_ERROR');
+    });
+  });
+
   describe('dispatch (existing action — regression cover)', () => {
     it('POSTs event_type + client_payload and treats 204 as success', async () => {
       mockFetch.mockResolvedValue(makeFetchResponse({ status: 204, body: {} }));
