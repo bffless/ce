@@ -698,6 +698,11 @@ export interface FfmpegSpan {
  * Server video ops are an opt-in, instance-level admin setting (FFMPEG_HANDLER_ENABLED
  * feature flag, default off); when off — or when ffmpeg is absent — probe reports
  * server:false and every other operation returns FFMPEG_UNAVAILABLE.
+ *
+ * Every step is bounded: the queue wait, each storage transfer and the ffmpeg
+ * run all have ceilings (FFMPEG_JOB_MAX_SECONDS / FFMPEG_IO_MAX_SECONDS /
+ * FFMPEG_MAX_SECONDS), so a step always settles — a stalled one fails with
+ * FFMPEG_JOB_TIMEOUT rather than leaving a polled job row 'running' forever.
  */
 export interface FfmpegHandlerConfig extends BaseHandlerConfig {
   operation: FfmpegOperation;
