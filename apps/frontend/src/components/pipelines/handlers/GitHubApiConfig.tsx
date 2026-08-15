@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -49,6 +50,8 @@ export function GitHubApiConfig({ config, onChange, previousSteps }: GitHubApiCo
             <SelectItem value="merge_pull_request">Merge Pull Request</SelectItem>
             <SelectItem value="list_pull_requests">List Pull Requests</SelectItem>
             <SelectItem value="dispatch">Repository Dispatch</SelectItem>
+            <SelectItem value="list_workflow_runs">List Workflow Runs</SelectItem>
+            <SelectItem value="get_workflow_run">Get Workflow Run</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -292,6 +295,86 @@ export function GitHubApiConfig({ config, onChange, previousSteps }: GitHubApiCo
             />
           </div>
         </>
+      )}
+
+      {(action === 'list_workflow_runs' || action === 'get_workflow_run') && (
+        <>
+          <div className="space-y-2">
+            <Label>Owner *</Label>
+            <ExpressionInput
+              value={(config.owner as string) || ''}
+              onChange={(value) => onChange({ ...config, owner: value })}
+              placeholder="bffless"
+              previousSteps={previousSteps}
+            />
+            <p className="text-xs text-muted-foreground">Repository owner (org or user)</p>
+          </div>
+          <div className="space-y-2">
+            <Label>Repo *</Label>
+            <ExpressionInput
+              value={(config.repo as string) || ''}
+              onChange={(value) => onChange({ ...config, repo: value })}
+              placeholder="studio-oneshot"
+              previousSteps={previousSteps}
+            />
+          </div>
+        </>
+      )}
+
+      {action === 'list_workflow_runs' && (
+        <>
+          <div className="space-y-2">
+            <Label>Event</Label>
+            <ExpressionInput
+              value={(config.event as string) || ''}
+              onChange={(value) => onChange({ ...config, event: value })}
+              placeholder="repository_dispatch"
+              previousSteps={previousSteps}
+            />
+            <p className="text-xs text-muted-foreground">
+              Optional. Only return runs triggered by this event.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label>Status</Label>
+            <ExpressionInput
+              value={(config.status as string) || ''}
+              onChange={(value) => onChange({ ...config, status: value })}
+              placeholder="in_progress"
+              previousSteps={previousSteps}
+            />
+            <p className="text-xs text-muted-foreground">
+              Optional. GitHub status or conclusion, e.g. queued, in_progress, completed, success.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label>Per page</Label>
+            <Input
+              type="number"
+              min={1}
+              max={100}
+              value={(config.perPage as number) ?? ''}
+              onChange={(e) => onChange({ ...config, perPage: e.target.value ? Number(e.target.value) : undefined })}
+              placeholder="30"
+            />
+            <p className="text-xs text-muted-foreground">1-100. Newest runs first.</p>
+          </div>
+        </>
+      )}
+
+      {action === 'get_workflow_run' && (
+        <div className="space-y-2">
+          <Label>Run ID *</Label>
+          <ExpressionInput
+            value={(config.runId as string) || ''}
+            onChange={(value) => onChange({ ...config, runId: value })}
+            placeholder="steps.load_run.github_run_id"
+            previousSteps={previousSteps}
+          />
+          <p className="text-xs text-muted-foreground">
+            The GitHub run id, usually stored from an earlier list_workflow_runs match.
+          </p>
+        </div>
       )}
 
       {action === 'create_repo_from_template' && (

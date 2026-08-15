@@ -12,7 +12,7 @@ import { IntegrationsService } from '../../integrations/integrations.service';
  */
 export interface GitHubApiHandlerConfig extends BaseHandlerConfig {
   /** The GitHub API action to perform */
-  action: 'create_repo_from_template' | 'set_repo_variable' | 'create_issue' | 'add_issue_comment' | 'close_issue' | 'close_pull_request' | 'merge_pull_request' | 'list_pull_requests' | 'dispatch';
+  action: 'create_repo_from_template' | 'set_repo_variable' | 'create_issue' | 'add_issue_comment' | 'close_issue' | 'close_pull_request' | 'merge_pull_request' | 'list_pull_requests' | 'dispatch' | 'list_workflow_runs' | 'get_workflow_run';
 
   // --- dispatch fields ---
 
@@ -84,6 +84,20 @@ export interface GitHubApiHandlerConfig extends BaseHandlerConfig {
 
   /** PR state filter (expression, default: open) */
   state?: string;
+
+  // --- workflow run fields ---
+
+  /** Filter runs by triggering event, e.g. "'repository_dispatch'" (expression) */
+  event?: string;
+
+  /** Filter runs by status or conclusion, e.g. "'in_progress'" (expression) */
+  status?: string;
+
+  /** Number of runs to return, 1-100 (default 30) */
+  perPage?: number;
+
+  /** Workflow run id for get_workflow_run (expression) */
+  runId?: string;
 }
 
 const GITHUB_API_BASE = 'https://api.github.com';
@@ -92,7 +106,7 @@ const GITHUB_API_BASE = 'https://api.github.com';
  * GitHub API Handler
  *
  * Interacts with the GitHub REST API using credentials from the GitHub integration.
- * Currently supports creating repositories from templates.
+ * Supports repo/template, issue, pull request, repository-dispatch, and workflow-run actions.
  *
  * Requires GitHub integration to be configured in project settings.
  */
@@ -203,9 +217,29 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
       if (!config.eventType) {
         throw new ConfigurationError('eventType is required for dispatch', 'github_api');
       }
+    } else if (config.action === 'list_workflow_runs') {
+      if (!config.owner) {
+        throw new ConfigurationError('owner is required for list_workflow_runs', 'github_api');
+      }
+      if (!config.repo) {
+        throw new ConfigurationError('repo is required for list_workflow_runs', 'github_api');
+      }
+      if (config.perPage !== undefined && (config.perPage < 1 || config.perPage > 100)) {
+        throw new ConfigurationError('perPage must be between 1 and 100', 'github_api');
+      }
+    } else if (config.action === 'get_workflow_run') {
+      if (!config.owner) {
+        throw new ConfigurationError('owner is required for get_workflow_run', 'github_api');
+      }
+      if (!config.repo) {
+        throw new ConfigurationError('repo is required for get_workflow_run', 'github_api');
+      }
+      if (!config.runId) {
+        throw new ConfigurationError('runId is required for get_workflow_run', 'github_api');
+      }
     } else {
       throw new ConfigurationError(
-        `Unknown action '${config.action}'. Supported: create_repo_from_template, set_repo_variable, create_issue, add_issue_comment, close_issue, close_pull_request, merge_pull_request, list_pull_requests, dispatch`,
+        `Unknown action '${config.action}'. Supported: create_repo_from_template, set_repo_variable, create_issue, add_issue_comment, close_issue, close_pull_request, merge_pull_request, list_pull_requests, dispatch, list_workflow_runs, get_workflow_run`,
         'github_api',
       );
     }
@@ -266,6 +300,14 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
 
     if (config.action === 'dispatch') {
       return this.dispatch(config, context, step, token);
+    }
+
+    if (config.action === 'list_workflow_runs') {
+      return this.listWorkflowRuns(config, context, step, token);
+    }
+
+    if (config.action === 'get_workflow_run') {
+      return this.getWorkflowRun(config, context, step, token);
     }
 
     return {
@@ -821,6 +863,118 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
           body: pr.body,
         })),
       };
+    } catch (error: any) {
+      return { success: false, error: { code: 'GITHUB_API_ERROR', message: `GitHub API request failed: ${error.message}` } };
+    }
+  }
+
+  /** Shape a GitHub workflow-run object down to the fields pipelines actually use. */
+  private mapWorkflowRun(run: any) {
+    return {
+      id: run.id,
+      name: run.name,
+      display_title: run.display_title,
+      status: run.status,
+      conclusion: run.conclusion,
+      html_url: run.html_url,
+      run_number: run.run_number,
+      event: run.event,
+      head_branch: run.head_branch,
+      created_at: run.created_at,
+      updated_at: run.updated_at,
+    };
+  }
+
+  private async listWorkflowRuns(
+    config: GitHubApiHandlerConfig,
+    context: PipelineContext,
+    step: PipelineStep,
+    token: string,
+  ): Promise<StepResult> {
+    const owner = encodeURIComponent(
+      String(this.expressionEvaluator.evaluateExpression(config.owner!, context, step.name)),
+    );
+    const repo = encodeURIComponent(
+      String(this.expressionEvaluator.evaluateExpression(config.repo!, context, step.name)),
+    );
+
+    const params = new URLSearchParams({ per_page: String(config.perPage ?? 30) });
+    if (config.event) {
+      params.set('event', String(this.expressionEvaluator.evaluateExpression(config.event, context, step.name)));
+    }
+    if (config.status) {
+      params.set('status', String(this.expressionEvaluator.evaluateExpression(config.status, context, step.name)));
+    }
+
+    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/actions/runs?${params.toString()}`;
+    this.logger.debug(`Listing workflow runs on '${owner}/${repo}'`);
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+        },
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        return {
+          success: false,
+          error: { code: 'GITHUB_API_ERROR', message: `GitHub API error: ${(errorBody as any).message || response.status}` },
+        };
+      }
+
+      const body = await response.json();
+      const runs = Array.isArray((body as any).workflow_runs) ? (body as any).workflow_runs : [];
+      this.logger.log(`Found ${runs.length} workflow runs on '${owner}/${repo}'`);
+      return { success: true, output: runs.map((run: any) => this.mapWorkflowRun(run)) };
+    } catch (error: any) {
+      return { success: false, error: { code: 'GITHUB_API_ERROR', message: `GitHub API request failed: ${error.message}` } };
+    }
+  }
+
+  private async getWorkflowRun(
+    config: GitHubApiHandlerConfig,
+    context: PipelineContext,
+    step: PipelineStep,
+    token: string,
+  ): Promise<StepResult> {
+    const owner = encodeURIComponent(
+      String(this.expressionEvaluator.evaluateExpression(config.owner!, context, step.name)),
+    );
+    const repo = encodeURIComponent(
+      String(this.expressionEvaluator.evaluateExpression(config.repo!, context, step.name)),
+    );
+    const runId = encodeURIComponent(
+      String(this.expressionEvaluator.evaluateExpression(config.runId!, context, step.name)),
+    );
+
+    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/actions/runs/${runId}`;
+    this.logger.debug(`Fetching workflow run '${runId}' on '${owner}/${repo}'`);
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+        },
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        return {
+          success: false,
+          error: { code: 'GITHUB_API_ERROR', message: `GitHub API error: ${(errorBody as any).message || response.status}` },
+        };
+      }
+
+      const run = await response.json();
+      return { success: true, output: this.mapWorkflowRun(run) };
     } catch (error: any) {
       return { success: false, error: { code: 'GITHUB_API_ERROR', message: `GitHub API request failed: ${error.message}` } };
     }
