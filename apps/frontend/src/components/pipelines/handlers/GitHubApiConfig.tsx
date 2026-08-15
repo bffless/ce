@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -348,13 +349,13 @@ export function GitHubApiConfig({ config, onChange, previousSteps }: GitHubApiCo
           </div>
           <div className="space-y-2">
             <Label>Per page</Label>
-            <input
+            <Input
               type="number"
               min={1}
               max={100}
-              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-              value={(config.perPage as number) ?? 30}
+              value={(config.perPage as number) ?? ''}
               onChange={(e) => onChange({ ...config, perPage: e.target.value ? Number(e.target.value) : undefined })}
+              placeholder="30"
             />
             <p className="text-xs text-muted-foreground">1-100. Newest runs first.</p>
           </div>

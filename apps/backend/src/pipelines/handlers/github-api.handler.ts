@@ -106,7 +106,7 @@ const GITHUB_API_BASE = 'https://api.github.com';
  * GitHub API Handler
  *
  * Interacts with the GitHub REST API using credentials from the GitHub integration.
- * Currently supports creating repositories from templates.
+ * Supports repo/template, issue, pull request, repository-dispatch, and workflow-run actions.
  *
  * Requires GitHub integration to be configured in project settings.
  */
@@ -891,8 +891,12 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
     step: PipelineStep,
     token: string,
   ): Promise<StepResult> {
-    const owner = String(this.expressionEvaluator.evaluateExpression(config.owner!, context, step.name));
-    const repo = String(this.expressionEvaluator.evaluateExpression(config.repo!, context, step.name));
+    const owner = encodeURIComponent(
+      String(this.expressionEvaluator.evaluateExpression(config.owner!, context, step.name)),
+    );
+    const repo = encodeURIComponent(
+      String(this.expressionEvaluator.evaluateExpression(config.repo!, context, step.name)),
+    );
 
     const params = new URLSearchParams({ per_page: String(config.perPage ?? 30) });
     if (config.event) {
@@ -938,9 +942,15 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
     step: PipelineStep,
     token: string,
   ): Promise<StepResult> {
-    const owner = String(this.expressionEvaluator.evaluateExpression(config.owner!, context, step.name));
-    const repo = String(this.expressionEvaluator.evaluateExpression(config.repo!, context, step.name));
-    const runId = String(this.expressionEvaluator.evaluateExpression(config.runId!, context, step.name));
+    const owner = encodeURIComponent(
+      String(this.expressionEvaluator.evaluateExpression(config.owner!, context, step.name)),
+    );
+    const repo = encodeURIComponent(
+      String(this.expressionEvaluator.evaluateExpression(config.repo!, context, step.name)),
+    );
+    const runId = encodeURIComponent(
+      String(this.expressionEvaluator.evaluateExpression(config.runId!, context, step.name)),
+    );
 
     const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/actions/runs/${runId}`;
     this.logger.debug(`Fetching workflow run '${runId}' on '${owner}/${repo}'`);

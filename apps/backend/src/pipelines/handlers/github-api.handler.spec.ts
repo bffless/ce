@@ -122,11 +122,18 @@ describe('GitHubApiHandler', () => {
         },
       ]);
 
-      const calledUrl = mockFetch.mock.calls[0][0] as string;
-      expect(calledUrl).toContain('/repos/o/r/actions/runs?');
-      expect(calledUrl).toContain('per_page=10');
-      expect(calledUrl).toContain('event=repository_dispatch');
-      expect(calledUrl).toContain('status=in_progress');
+      const [calledUrl, init] = mockFetch.mock.calls[0];
+      expect(calledUrl as string).toContain('/repos/o/r/actions/runs?');
+      expect(calledUrl as string).toContain('per_page=10');
+      expect(calledUrl as string).toContain('event=repository_dispatch');
+      expect(calledUrl as string).toContain('status=in_progress');
+
+      expect((init as RequestInit).headers).toMatchObject({
+        Authorization: 'Bearer pat-1',
+        Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+      });
+      expect(JSON.stringify(result)).not.toContain('pat-1');
     });
 
     it('defaults per_page to 30 and omits absent filters', async () => {
@@ -175,6 +182,12 @@ describe('GitHubApiHandler', () => {
   describe('get_workflow_run', () => {
     it('requires owner, repo and runId', () => {
       expect(() =>
+        handler.validateConfig({ action: 'get_workflow_run', repo: 'r', runId: '1' } as never),
+      ).toThrow(/owner/);
+      expect(() =>
+        handler.validateConfig({ action: 'get_workflow_run', owner: 'o', runId: '1' } as never),
+      ).toThrow(/repo/);
+      expect(() =>
         handler.validateConfig({ action: 'get_workflow_run', owner: 'o', repo: 'r' } as never),
       ).toThrow(/runId/);
     });
@@ -191,7 +204,34 @@ describe('GitHubApiHandler', () => {
 
       expect(result.success).toBe(true);
       expect(result.output).toMatchObject({ id: 42, status: 'completed', conclusion: 'success' });
-      expect(mockFetch.mock.calls[0][0]).toBe('https://api.github.com/repos/o/r/actions/runs/42');
+      const [calledUrl, init] = mockFetch.mock.calls[0];
+      expect(calledUrl).toBe('https://api.github.com/repos/o/r/actions/runs/42');
+
+      expect((init as RequestInit).headers).toMatchObject({
+        Authorization: 'Bearer pat-1',
+        Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+      });
+      expect(JSON.stringify(result)).not.toContain('pat-1');
+    });
+
+    it('encodes a runId containing path-traversal segments instead of letting it escape the runs path', async () => {
+      mockFetch.mockResolvedValue(
+        makeFetchResponse({ status: 200, body: { ...RUN_FIXTURE } }),
+      );
+
+      await handler.execute(
+        makeContext(),
+        makeStep({ action: 'get_workflow_run', owner: 'o', repo: 'r', runId: '../../../../user' }),
+      );
+
+      const calledUrl = mockFetch.mock.calls[0][0] as string;
+      expect(calledUrl).toBe(
+        'https://api.github.com/repos/o/r/actions/runs/..%2F..%2F..%2F..%2Fuser',
+      );
+      const runsIndex = calledUrl.indexOf('/actions/runs/');
+      const pathAfterRuns = calledUrl.slice(runsIndex + '/actions/runs/'.length);
+      expect(pathAfterRuns).not.toContain('/');
     });
 
     it('returns GITHUB_API_ERROR when the run is gone', async () => {
