@@ -21,10 +21,10 @@
     }
   },
   "changelog-sections": [
-    { "type": "feat", "section": "Features" },
-    { "type": "fix", "section": "Bug Fixes" },
-    { "type": "perf", "section": "Performance Improvements" },
-    { "type": "revert", "section": "Reverts" },
+    { "type": "feat", "section": "Added" },
+    { "type": "fix", "section": "Fixed" },
+    { "type": "perf", "section": "Performance" },
+    { "type": "revert", "section": "Reverted" },
     { "type": "docs", "section": "Documentation", "hidden": true },
     { "type": "style", "section": "Styles", "hidden": true },
     { "type": "chore", "section": "Miscellaneous Chores", "hidden": true },

@@ -1,0 +1,30 @@
+name: PR Title
+
+# PRs are squash-merged with the PR title as the commit subject, and release
+# notes / CHANGELOG entries are generated from those subjects
+# (scripts/release-notes.mjs). This gate keeps titles conventional so every
+# change lands in the right section (feat → Added, fix → Fixed, ...).
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  check-title:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/release-notes.mjs
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate conventional PR title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: node scripts/release-notes.mjs check --subject "$TITLE"
