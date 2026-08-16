@@ -62,11 +62,21 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR: ${{ github.event.pull_request.number || inputs.pr }}
         run: |
+          # The checkout is pinned to base, so on the PR that first introduces the
+          # agent — and on any PR branched off a main that predates it — the
+          # definition simply isn't here. Skip rather than fail: a missing reviewer
+          # is not a broken build.
+          if [ ! -f .claude/agents/ce-pr-review.md ]; then
+            echo "ce-pr-review is not on the base commit yet — skipping review."
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           claude -p "Review pull request #${PR} in this repository. Output only the review report as GitHub-flavoured markdown, ready to post as a PR comment." --agent ce-pr-review --model claude-sonnet-5 --output-format text --allowedTools "Read" "Grep" "Glob" "Bash(gh pr view:*)" "Bash(gh pr diff:*)" "Bash(gh pr checks:*)" "Bash(gh pr list:*)" "Bash(git show:*)" "Bash(git log:*)" "Bash(git diff:*)" > review.md
           echo "--- review output ---"
           cat review.md
 
       - name: Post review comment
+        if: steps.review.outputs.skipped != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR: ${{ github.event.pull_request.number || inputs.pr }}
