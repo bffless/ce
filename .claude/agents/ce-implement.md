@@ -119,9 +119,15 @@ do not skip, weaken, or `.skip` a test to get green.
    `gh pr create --title "<conventional title>" --body-file - <<'EOF' … EOF` with:
    `Closes #<n>`, what changed and why, compatibility notes (which checklist surfaces
    were touched and how they stay safe), and how it was verified.
-3. Kick off review: run the `ce-pr-review` agent on the new PR number and include its
-   verdict in your report. If it finds real problems, fix them in the same worktree
-   and push again (with approval); do not argue with a correct finding.
+3. **Do not run `ce-pr-review` yourself.** Opening or pushing to the PR triggers
+   `.github/workflows/pr-review.yml`, which runs that agent in CI and posts its report
+   as a "🤖 Automated CE review" comment. Wait for it rather than duplicating it:
+   `gh pr checks <n> --watch` (the job is *Agent review*), then read the comment with
+   `gh pr view <n> --comments`. Include its verdict in your report. If it finds real
+   problems, fix them in the same worktree and push again (with approval) — that
+   re-triggers the review; do not argue with a correct finding. Run the agent locally
+   only if CI skipped it (fork PR, or the agent isn't on the base commit yet) or the
+   user asks.
 4. **After merge** (if you are still running, or on the next run's Step 1): re-sync
    `main` per Step 1 and remove your worktree via the GC script. Delete the remote branch
    only if GitHub didn't auto-delete it (`git push origin --delete <branch>`).
