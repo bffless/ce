@@ -407,7 +407,7 @@ Three agents form the issue → PR loop; each is procedure + guardrails, not sol
 
 | Agent | Role |
 | --- | --- |
-| `issue-triage` | Labels/prioritises open issues; marks fully-specified ones `ready-for-agent`. |
+| `issue-triage` | Labels/prioritises open issues, then runs the readiness gate: `ready-for-agent` (feeds `ce-implement`), `needs-info` (reporter must answer), or `ready-for-human` (maintainer decision). |
 | `ce-implement` | Picks up an issue: syncs `main`, GCs merged worktrees (`.claude/scripts/worktree-gc.sh`), works in `.claude/worktrees/<name>`, verifies, pushes and opens a PR on its own branch (pre-authorised), then waits for the CI review. |
 | `ce-pr-review` | Read-only review of a CE PR against `.claude/ce-pr-review-checklist.md` (backwards-compat first). |
 
