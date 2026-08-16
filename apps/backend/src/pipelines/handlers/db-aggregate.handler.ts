@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { eq, and, or, sql } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { StepHandler, DbAggregateHandlerConfig } from '../execution/step-handler.interface';
 import { StepHandlerRegistry } from '../execution/step-handler.registry';
 import { ExpressionEvaluator } from '../execution/expression-evaluator';
@@ -9,7 +9,7 @@ import { pipelineData } from '../../db/schema';
 import { PipelineSchemasService } from '../pipeline-schemas.service';
 import { db } from '../../db/client';
 import { ConfigurationError, SchemaNotFoundError } from '../errors';
-import { buildInPredicate } from './in-filter.util';
+import { buildFilterConditions, validateFilterOps } from './filter-where.util';
 
 /**
  * DB Aggregate Handler
@@ -52,17 +52,7 @@ export class DbAggregateHandler implements StepHandler<DbAggregateHandlerConfig>
     }
 
     // Validate filter operators
-    if (config.filters) {
-      const validFilterOps = ['eq', 'ne', 'gt', 'lt', 'gte', 'lte', 'like', 'in'];
-      for (const [field, filter] of Object.entries(config.filters)) {
-        if (!validFilterOps.includes(filter.op)) {
-          throw new ConfigurationError(
-            `Invalid operator '${filter.op}' for field '${field}'. Valid operators: ${validFilterOps.join(', ')}`,
-            'db_aggregate',
-          );
-        }
-      }
-    }
+    validateFilterOps(config.filters, 'db_aggregate');
   }
 
   async execute(context: PipelineContext, step: PipelineStep): Promise<StepResult> {
@@ -91,58 +81,11 @@ export class DbAggregateHandler implements StepHandler<DbAggregateHandlerConfig>
     ];
 
     // Build filter conditions on JSONB data fields
-    if (config.filters) {
-      const filterConditions: ReturnType<typeof sql>[] = [];
-
-      for (const [fieldName, filter] of Object.entries(config.filters)) {
-        const value = this.expressionEvaluator.evaluateExpression(
-          filter.value,
-          context,
-          stepName,
-        );
-
-        const fieldPath = sql`${pipelineData.data}->>${sql.raw(`'${fieldName}'`)}`;
-
-        switch (filter.op) {
-          case 'eq':
-            filterConditions.push(sql`${fieldPath} = ${String(value)}`);
-            break;
-          case 'ne':
-            // IS DISTINCT FROM, not !=: for a row whose JSONB lacks the key, `data->>'f'`
-            // is NULL and a bare `!=` yields NULL, silently EXCLUDING the row. Callers
-            // read `ne` as "everything that isn't this value", which must include rows
-            // where the field was never written (a flag added after the rows existed).
-            filterConditions.push(sql`${fieldPath} IS DISTINCT FROM ${String(value)}`);
-            break;
-          case 'gt':
-            filterConditions.push(sql`(${fieldPath})::numeric > ${Number(value)}`);
-            break;
-          case 'lt':
-            filterConditions.push(sql`(${fieldPath})::numeric < ${Number(value)}`);
-            break;
-          case 'gte':
-            filterConditions.push(sql`(${fieldPath})::numeric >= ${Number(value)}`);
-            break;
-          case 'lte':
-            filterConditions.push(sql`(${fieldPath})::numeric <= ${Number(value)}`);
-            break;
-          case 'like':
-            filterConditions.push(sql`${fieldPath} ILIKE ${String(value)}`);
-            break;
-          case 'in':
-            filterConditions.push(buildInPredicate(fieldPath, value));
-            break;
-        }
-      }
-
-      if (filterConditions.length > 0) {
-        const combinedFilters = config.filterLogic === 'or'
-          ? or(...filterConditions)
-          : and(...filterConditions);
-        if (combinedFilters) {
-          baseConditions.push(combinedFilters);
-        }
-      }
+    const combinedFilters = buildFilterConditions(config.filters, config.filterLogic, (value) =>
+      this.expressionEvaluator.evaluateExpression(value, context, stepName),
+    );
+    if (combinedFilters) {
+      baseConditions.push(combinedFilters);
     }
 
     const whereClause = and(...baseConditions);

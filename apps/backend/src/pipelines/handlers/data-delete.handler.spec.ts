@@ -89,7 +89,7 @@ describe('DataDeleteHandler', () => {
     const { handler } = buildHandler();
 
     it('accepts the full data_query operator set', () => {
-      for (const op of ['eq', 'ne', 'gt', 'lt', 'gte', 'lte', 'like']) {
+      for (const op of ['eq', 'ne', 'gt', 'lt', 'gte', 'lte', 'like', 'in']) {
         expect(() =>
           handler.validateConfig({
             schemaId: 'schema-1',
@@ -103,7 +103,7 @@ describe('DataDeleteHandler', () => {
       expect(() =>
         handler.validateConfig({
           schemaId: 'schema-1',
-          filters: { fetchedAt: { op: 'in', value: '123' } },
+          filters: { fetchedAt: { op: 'between', value: '123' } },
         } as any),
       ).toThrow(ConfigurationError);
       expect(() =>
