@@ -111,20 +111,60 @@ do not skip, weaken, or `.skip` a test to get green.
 
 ## Step 6 — hand off
 
-1. **Stop before committing.** Show the user `git status` + a summary of the diff and
-   the proposed commit message / PR title, and ask for approval (CLAUDE.md: always ask
-   before committing). When running unattended (`$CI` set, or the user has explicitly
-   pre-authorised commits for this run), you may proceed.
-2. On approval: commit with a conventional message, `git push -u origin <branch>`, then
-   `gh pr create --title "<conventional title>" --body-file - <<'EOF' … EOF` with:
-   `Closes #<n>`, what changed and why, compatibility notes (which checklist surfaces
-   were touched and how they stay safe), and how it was verified.
+1. **You are pre-authorised to commit, push, and open the PR on your own branch.**
+   This is the one standing exception to CLAUDE.md's "ask before committing": the
+   branch is yours, nothing reaches `main` without a human merging, and the PR *is* the
+   review request. Do not stop to ask. (Approval is still required for anything
+   outside that — see Hard limits.)
+2. Commit with a conventional message, `git push -u origin <branch>`, then
+   `gh pr create --title "<conventional title>" --body-file - <<'EOF' … EOF`.
+
+   **Write the PR for a reader who has not read the issue and will not read the diff.**
+   Lead with the outcome, not with file paths. The maintainer decides whether to merge
+   from the body alone; the reviewer agent reads the diff. Use exactly this structure:
+
+   ```
+   Closes #<n>
+
+   ## Summary
+   2–4 plain-language sentences: the problem a user/operator had, what this PR does
+   about it, and what they will notice afterwards. No file paths here.
+
+   ## Behaviour changes
+   What is different for a user, operator, API client, or stored rule set — as
+   before → after bullets. Say "None — internal refactor only" if that is true.
+   Anything additive vs. breaking is called out explicitly here.
+
+   ## Why
+   The motivation, in one short paragraph: what was wrong / missing, and why this
+   approach (link the issue discussion or ADR if one shaped it).
+
+   ## What changed
+   Grouped by area (backend / frontend / CLI / docs / tests), one line per group,
+   naming the key files. Keep it short — this is a map, not a changelog.
+
+   ## Compatibility
+   Which checklist surfaces (migrations, API/CLI contract, env vars, nginx generation,
+   storage layout, pipeline semantics) are touched and how they stay safe. If none:
+   one line saying so.
+
+   ## Verification
+   The commands run and their real results (counts, not "passed").
+
+   ## Out of scope / follow-ups
+   Adjacent problems noticed but deliberately not fixed here.
+   ```
+
+   Rules of thumb: the **Summary** should make sense to someone who only reads that
+   section; **Behaviour changes** must never be hidden inside Compatibility or What
+   changed; one PR title says one thing — if you need "and" in it, the summary should
+   explain why the two belong together.
 3. **Do not run `ce-pr-review` yourself.** Opening or pushing to the PR triggers
    `.github/workflows/pr-review.yml`, which runs that agent in CI and posts its report
    as a "🤖 Automated CE review" comment. Wait for it rather than duplicating it:
    `gh pr checks <n> --watch` (the job is *Agent review*), then read the comment with
    `gh pr view <n> --comments`. Include its verdict in your report. If it finds real
-   problems, fix them in the same worktree and push again (with approval) — that
+   problems, fix them in the same worktree and push again — that
    re-triggers the review; do not argue with a correct finding. Run the agent locally
    only if CI skipped it (fork PR, or the agent isn't on the base commit yet) or the
    user asks.
@@ -140,12 +180,13 @@ Return a compact report, not a transcript:
 2. **Housekeeping** — main synced? (yes / skipped, why); worktrees removed; worktrees kept and why.
 3. **Change** — worktree path, branch, files touched, compatibility surfaces and how they're kept safe.
 4. **Verification** — the commands run and their real results.
-5. **Status** — awaiting commit approval / PR #n opened / review verdict / merged & cleaned up.
+5. **Status** — PR #n opened / CI review verdict / merged & cleaned up.
 6. **Follow-ups** — adjacent issues noticed, migration commands the user must run, anything blocked.
 
 ## Hard limits
 
-- Never commit or push without approval unless explicitly pre-authorised for the run.
+- Commit/push/PR only on your own `<type>/<n>-<slug>` branch. Never commit to `main`
+  or to a branch you didn't create in this run.
 - Never `git checkout`, `git switch`, `git stash`, `git reset --hard`, or `git merge` in
   the shared checkout. `git pull --ff-only` on a clean `main` is the only mutation allowed there.
 - Never force-push a shared branch. `--force-with-lease` on your own PR branch only.
