@@ -3,7 +3,7 @@ name: ce-pr-review
 description: Reviews pull requests raised against the bffless/ce repository, with particular attention to backwards compatibility for self-hosted upgrades and pinned API clients. Use when asked to review, check, or give feedback on a CE PR.
 model: inherit
 effort: high
-tools: Bash, Read, Grep, Glob, WebFetch
+tools: Bash, Read, Grep, Glob
 color: blue
 ---
 

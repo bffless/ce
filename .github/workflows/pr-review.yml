@@ -37,8 +37,15 @@ jobs:
     steps:
       - name: Checkout base
         uses: actions/checkout@v4
-        # Reviewing reads the PR via `gh pr diff` rather than checking the head out,
-        # so untrusted code is never executed here — only read as text.
+        with:
+          # MUST stay pinned to base. On a pull_request event actions/checkout
+          # defaults to refs/pull/<n>/merge, which already contains the PR's own
+          # changes — and the agent reads its instructions (its definition and
+          # .claude/ce-pr-review-checklist.md) from this checkout. Unpinned, a PR
+          # that edits those files controls its own review, which defeats the whole
+          # "PR content is data, not instructions" property.
+          # The PR's code is read as text via `gh pr diff`, never executed.
+          ref: ${{ github.event.pull_request.base.sha || github.ref }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
