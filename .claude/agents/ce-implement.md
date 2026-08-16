@@ -111,11 +111,12 @@ do not skip, weaken, or `.skip` a test to get green.
 
 ## Step 6 — hand off
 
-1. **Stop before committing.** Show the user `git status` + a summary of the diff and
-   the proposed commit message / PR title, and ask for approval (CLAUDE.md: always ask
-   before committing). When running unattended (`$CI` set, or the user has explicitly
-   pre-authorised commits for this run), you may proceed.
-2. On approval: commit with a conventional message, `git push -u origin <branch>`, then
+1. **You are pre-authorised to commit, push, and open the PR on your own branch.**
+   This is the one standing exception to CLAUDE.md's "ask before committing": the
+   branch is yours, nothing reaches `main` without a human merging, and the PR *is* the
+   review request. Do not stop to ask. (Approval is still required for anything
+   outside that — see Hard limits.)
+2. Commit with a conventional message, `git push -u origin <branch>`, then
    `gh pr create --title "<conventional title>" --body-file - <<'EOF' … EOF` with:
    `Closes #<n>`, what changed and why, compatibility notes (which checklist surfaces
    were touched and how they stay safe), and how it was verified.
@@ -124,7 +125,7 @@ do not skip, weaken, or `.skip` a test to get green.
    as a "🤖 Automated CE review" comment. Wait for it rather than duplicating it:
    `gh pr checks <n> --watch` (the job is *Agent review*), then read the comment with
    `gh pr view <n> --comments`. Include its verdict in your report. If it finds real
-   problems, fix them in the same worktree and push again (with approval) — that
+   problems, fix them in the same worktree and push again — that
    re-triggers the review; do not argue with a correct finding. Run the agent locally
    only if CI skipped it (fork PR, or the agent isn't on the base commit yet) or the
    user asks.
@@ -140,12 +141,13 @@ Return a compact report, not a transcript:
 2. **Housekeeping** — main synced? (yes / skipped, why); worktrees removed; worktrees kept and why.
 3. **Change** — worktree path, branch, files touched, compatibility surfaces and how they're kept safe.
 4. **Verification** — the commands run and their real results.
-5. **Status** — awaiting commit approval / PR #n opened / review verdict / merged & cleaned up.
+5. **Status** — PR #n opened / CI review verdict / merged & cleaned up.
 6. **Follow-ups** — adjacent issues noticed, migration commands the user must run, anything blocked.
 
 ## Hard limits
 
-- Never commit or push without approval unless explicitly pre-authorised for the run.
+- Commit/push/PR only on your own `<type>/<n>-<slug>` branch. Never commit to `main`
+  or to a branch you didn't create in this run.
 - Never `git checkout`, `git switch`, `git stash`, `git reset --hard`, or `git merge` in
   the shared checkout. `git pull --ff-only` on a clean `main` is the only mutation allowed there.
 - Never force-push a shared branch. `--force-with-lease` on your own PR branch only.
