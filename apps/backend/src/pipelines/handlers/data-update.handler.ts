@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql, SQL } from 'drizzle-orm';
 import { StepHandler, DataUpdateHandlerConfig } from '../execution/step-handler.interface';
 import { StepHandlerRegistry } from '../execution/step-handler.registry';
 import { ExpressionEvaluator } from '../execution/expression-evaluator';
@@ -140,16 +140,17 @@ export class DataUpdateHandler implements StepHandler<DataUpdateHandlerConfig> {
       };
     }
 
-    // Update each matching record
+    // Update each matching record. The merge happens in SQL (`jsonb ||`) rather
+    // than as a JS spread over the row we read above, so two concurrent updates
+    // touching different fields of the same record compose instead of the later
+    // writer clobbering the earlier one with a stale whole-blob write (ce#432).
+    const mergeExpression = buildDataMergeExpression(updates);
     const updatedRecords: Array<Record<string, unknown>> = [];
     for (const record of existingRecords) {
-      const existingData = record.data as Record<string, unknown>;
-      const newData = { ...existingData, ...updates };
-
       const [updated] = await db
         .update(pipelineData)
         .set({
-          data: newData,
+          data: mergeExpression,
           updatedAt: new Date(),
         })
         .where(eq(pipelineData.id, record.id))
@@ -184,4 +185,34 @@ export class DataUpdateHandler implements StepHandler<DataUpdateHandlerConfig> {
       },
     };
   }
+}
+
+/**
+ * Build the SQL expression that merges `updates` into the stored `data` blob.
+ *
+ * `jsonb || jsonb` is a shallow merge — the same semantics as the JS spread it
+ * replaces — but evaluated against the row's *current* value at write time, so
+ * it never depends on an earlier read. Fields whose evaluated value is
+ * `undefined` are removed from the record (a JS spread followed by JSON
+ * serialisation dropped them too), which `jsonb - key` reproduces.
+ */
+export function buildDataMergeExpression(updates: Record<string, unknown>): SQL {
+  const toSet: Record<string, unknown> = {};
+  const toRemove: string[] = [];
+  for (const [key, value] of Object.entries(updates)) {
+    if (value === undefined) {
+      toRemove.push(key);
+    } else {
+      toSet[key] = value;
+    }
+  }
+
+  let expression: SQL = sql`${pipelineData.data}`;
+  for (const key of toRemove) {
+    expression = sql`(${expression} - ${key}::text)`;
+  }
+  if (Object.keys(toSet).length > 0) {
+    expression = sql`${expression} || ${JSON.stringify(toSet)}::jsonb`;
+  }
+  return expression;
 }

@@ -13,9 +13,10 @@ jest.mock('../../db/client', () => {
   return { db: chainable };
 });
 
+import { SQL } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { db } from '../../db/client';
-import { DataUpdateHandler } from './data-update.handler';
+import { DataUpdateHandler, buildDataMergeExpression } from './data-update.handler';
 import { ExpressionEvaluator } from '../execution/expression-evaluator';
 import { PipelineSchemasService } from '../pipeline-schemas.service';
 import { PipelineContext } from '../execution/pipeline-context.interface';
@@ -193,8 +194,9 @@ describe('DataUpdateHandler schema type coercion (ce#562)', () => {
     );
 
     expect(result.success).toBe(true);
-    const setArg = mockDb.set.mock.calls[0][0] as { data: Record<string, unknown> };
-    expect(setArg.data.updatedMs).toBe(1704067200000);
+    const setArg = mockDb.set.mock.calls[0][0] as { data: SQL };
+    const { params } = new PgDialect().sqlToQuery(setArg.data);
+    expect(params).toContain(JSON.stringify({ updatedMs: 1704067200000 }));
   });
 
   it('returns VALIDATION_ERROR for a non-coercible value instead of writing it', async () => {
@@ -236,5 +238,90 @@ describe('DataUpdateHandler ne operator is null-safe', () => {
     expect(sql.toLowerCase()).toContain('is distinct from');
     expect(sql).not.toContain('!=');
     expect(params).toEqual(expect.arrayContaining(['false']));
+  });
+});
+
+describe('DataUpdateHandler merges in SQL, not from the earlier read (ce#432)', () => {
+  beforeEach(() => mockDb.__reset());
+
+  const dialect = new PgDialect();
+  const setDataSql = (callIndex: number) =>
+    dialect.sqlToQuery((mockDb.set.mock.calls[callIndex][0] as { data: SQL }).data);
+
+  it('writes `data || <updates>::jsonb` instead of a whole-blob replacement', async () => {
+    const { handler } = buildHandler();
+    mockDb.__queue([{ id: 'n1', data: { mode: 'inheriting', grantsJson: '[]', title: 'Docs' } }]);
+    mockDb.__queue([{ id: 'n1', data: { mode: 'restricted', grantsJson: '[]', title: 'Docs' } }]);
+
+    const result = await handler.execute(
+      context({}),
+      step({ schemaId: 'schema-1', recordId: 'n1', fields: { mode: 'restricted' } }),
+    );
+
+    expect(result.success).toBe(true);
+    const { sql, params } = setDataSql(0);
+    expect(sql).toMatch(/"pipeline_data"\."data" \|\| \$1::jsonb/);
+    // Only the fields this step sets travel to the database — never the stale
+    // copy of the other fields we read a moment ago.
+    expect(params).toEqual([JSON.stringify({ mode: 'restricted' })]);
+    expect(JSON.stringify(params)).not.toContain('grantsJson');
+    expect(JSON.stringify(params)).not.toContain('Docs');
+  });
+
+  it('two concurrent field-disjoint updates each send only their own field', async () => {
+    // Reproduces the Handoff race: PATCH /api/node (mode) and POST /api/grants/revoke
+    // (grantsJson) fired via Promise.all against the same record. Both handlers read
+    // the same pre-update row; neither write may carry the other\'s field.
+    const { handler } = buildHandler();
+    const original = { id: 'n1', data: { mode: 'inheriting', grantsJson: '[]' } };
+    mockDb.__queue([original]); // select for update A
+    mockDb.__queue([original]); // select for update B (stale, same as A)
+    mockDb.__queue([{ id: 'n1', data: { mode: 'restricted', grantsJson: '[]' } }]);
+    mockDb.__queue([{ id: 'n1', data: { mode: 'restricted', grantsJson: '[{"u":"x"}]' } }]);
+
+    const [a, b] = await Promise.all([
+      handler.execute(
+        context({}),
+        step({ schemaId: 'schema-1', recordId: 'n1', fields: { mode: 'restricted' } }),
+      ),
+      handler.execute(
+        context({}),
+        step({ schemaId: 'schema-1', recordId: 'n1', fields: { grantsJson: '[{"u":"x"}]' } }),
+      ),
+    ]);
+
+    expect(a.success).toBe(true);
+    expect(b.success).toBe(true);
+    expect(mockDb.set).toHaveBeenCalledTimes(2);
+    const paramSets = [setDataSql(0).params, setDataSql(1).params].map((p) => JSON.parse(String(p[0])));
+    expect(paramSets).toEqual(
+      expect.arrayContaining([{ mode: 'restricted' }, { grantsJson: '[{"u":"x"}]' }]),
+    );
+    // Neither write mentions the field it did not set, so `||` in Postgres composes
+    // them regardless of commit order.
+    for (const p of paramSets) {
+      expect(Object.keys(p)).toHaveLength(1);
+    }
+  });
+
+  it('removes keys whose evaluated value is undefined (matches the old spread + JSON semantics)', () => {
+    const { sql, params } = dialect.sqlToQuery(
+      buildDataMergeExpression({ keep: 1, gone: undefined }),
+    );
+    expect(sql).toBe('("pipeline_data"."data" - $1::text) || $2::jsonb');
+    expect(params).toEqual(['gone', JSON.stringify({ keep: 1 })]);
+  });
+
+  it('emits a bare `data - key` when every update is undefined', () => {
+    const { sql, params } = dialect.sqlToQuery(buildDataMergeExpression({ gone: undefined }));
+    expect(sql).toBe('("pipeline_data"."data" - $1::text)');
+    expect(params).toEqual(['gone']);
+  });
+
+  it('serialises nested objects and nulls into the jsonb payload', () => {
+    const { params } = dialect.sqlToQuery(
+      buildDataMergeExpression({ meta: { a: [1, 2] }, cleared: null }),
+    );
+    expect(params).toEqual([JSON.stringify({ meta: { a: [1, 2] }, cleared: null })]);
   });
 });
