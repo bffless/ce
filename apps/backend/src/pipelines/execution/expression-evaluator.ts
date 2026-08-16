@@ -216,31 +216,32 @@ export class ExpressionEvaluator {
       return String(template ?? '');
     }
 
-    // First, handle triple braces {{{expr}}} for raw JSON output
-    let result = template.replace(/\{\{\{(.+?)\}\}\}/g, (_, expression) => {
-      const value = this.evaluateExpression(expression.trim(), context, stepName);
-      if (value === null || value === undefined) {
-        return 'null';
-      }
-      // For triple braces, output raw (no HTML escaping)
-      if (typeof value === 'object') {
-        return JSON.stringify(value);
-      }
-      // Primitives: output as-is without JSON quotes
-      return String(value);
-    });
-
-    // Then, handle double braces {{expr}} for string interpolation
-    result = result.replace(/\{\{(.+?)\}\}/g, (_, expression) => {
-      const value = this.evaluateExpression(expression.trim(), context, stepName);
-      if (value === null || value === undefined) {
-        return '';
-      }
-      // For double braces, convert to string (objects become [object Object])
-      return String(value);
-    });
-
-    return result;
+    // Single tokenizing pass: {{{expr}}} (raw/JSON) and {{expr}} (string) are
+    // matched in one scan of the ORIGINAL template, so a substituted value is
+    // terminal and can never be re-interpreted as template syntax (#431).
+    return template.replace(
+      /\{\{\{(.+?)\}\}\}|\{\{(.+?)\}\}/g,
+      (_, tripleExpr: string | undefined, doubleExpr: string | undefined) => {
+        if (tripleExpr !== undefined) {
+          const value = this.evaluateExpression(tripleExpr.trim(), context, stepName);
+          if (value === null || value === undefined) {
+            return 'null';
+          }
+          // Triple braces: raw output (no HTML escaping); objects as JSON
+          if (typeof value === 'object') {
+            return JSON.stringify(value);
+          }
+          // Primitives: output as-is without JSON quotes
+          return String(value);
+        }
+        const value = this.evaluateExpression((doubleExpr as string).trim(), context, stepName);
+        if (value === null || value === undefined) {
+          return '';
+        }
+        // Double braces: convert to string (objects become [object Object])
+        return String(value);
+      },
+    );
   }
 
   /**
