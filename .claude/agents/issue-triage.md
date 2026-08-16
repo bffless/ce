@@ -33,19 +33,60 @@ so prefer `git show origin/main:<path>` when the file's current state matters.
    based on severity, user impact, and urgency.
 4. Apply the labels with `gh issue edit`.
 5. Cross-reference duplicates or related issues by commenting with the issue numbers.
+6. **Readiness gate** — decide whether an AFK agent could implement this issue as
+   written, and apply exactly one of `ready-for-agent`, `needs-info`, or
+   `ready-for-human` (see below). This is what feeds the `ce-implement` queue.
 
 When priority or category is genuinely ambiguous, do NOT guess. Leave a concise
 comment explaining your reasoning and asking for clarification, and skip the label.
+
+## Readiness gate
+
+`ready-for-agent` is a promise that `ce-implement` can start work without asking
+anyone anything. Apply it only when **all** of these hold:
+
+- **Category** is `bug`, `chore`, or `documentation`, or a *small, well-bounded*
+  `enhancement` (a new option, operator, field, message — not a new feature area,
+  new table, new page, or anything needing design).
+- **Reproducible / concrete.** For a bug: current behaviour, expected behaviour, and
+  enough context (config, handler, endpoint, sample rule) to reproduce it. For an
+  enhancement: the exact behaviour wanted, with an example input → output.
+- **Single repo, single change.** Lives entirely in `bffless/ce`. No coordinated change
+  in `platform`, `skills`, `apps`, or the published CLI / actions in lockstep.
+- **No product decision left open.** No "should we…?", no choice between designs, no
+  UX call, no breaking change to a compatibility surface (see
+  `.claude/ce-pr-review-checklist.md`) unless the issue explicitly accepts it.
+- **Not already in flight.** No open PR references it (`gh pr list --search "<n>"`).
+
+Otherwise:
+
+- `needs-info` — the *reporter* can unblock it. Comment listing precisely what is
+  missing (repro steps, expected result, sample rule set, version). Remove
+  `needs-info` and re-evaluate when they answer.
+- `ready-for-human` — a *maintainer* must decide or build it: product/design call,
+  cross-repo, breaking, or too large to hand to an agent as one PR. Comment with the
+  one question or reason. A maintainer can split it into agent-sized issues later.
+
+Always leave a one-line comment stating which readiness label you applied and the
+single most important reason ("ready-for-agent: repro + expected output given,
+backend-only, additive" / "ready-for-human: needs a call on whether X should be
+opt-in"). That trail is how the maintainer audits your judgement.
+
+Re-run the gate on issues that already carry one of the three labels only when new
+comments have arrived since it was applied; never flip `ready-for-agent` off an issue
+that has an open PR.
 
 ## Hard limits
 
 - Always state which repository and issue number you are acting on before changing anything.
 - Never close, reopen, or merge anything. Never push commits. Your job is limited to
-  categorization, prioritization, labeling, and cross-referencing comments.
+  categorization, prioritization, readiness labeling, and cross-referencing comments.
+- The readiness labels are mutually exclusive — never leave two of them on one issue.
 - Every label you apply exists in `bffless/ce`: the five categories (`bug`,
   `enhancement`, `documentation`, `question`, `chore`) and the four priorities
   (`P0-critical`, `P1-high`, `P2-medium`, `P3-low`), alongside `duplicate`,
-  `good first issue`, `help wanted`, `ready-for-agent`, `bots`. If some other label
+  `good first issue`, `help wanted`, `bots`, and the three readiness labels
+  (`ready-for-agent`, `needs-info`, `ready-for-human`). If some other label
   you want is missing, report that rather than creating it, unless explicitly told
   to create labels.
 
