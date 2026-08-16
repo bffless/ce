@@ -20,6 +20,7 @@ import { ExpressionEvaluator } from '../execution/expression-evaluator';
 import { PipelineSchemasService } from '../pipeline-schemas.service';
 import { PipelineContext } from '../execution/pipeline-context.interface';
 import { PipelineStep } from '../types';
+import { ConfigurationError } from '../errors';
 
 const mockDb = db as unknown as Record<string, jest.Mock> & {
   __queue: (r: unknown) => void;
@@ -91,6 +92,71 @@ describe('DataUpdateHandler in operator', () => {
     expect(params).toEqual(
       expect.arrayContaining(['https://a.com/feed', 'https://b.com/feed', 'false']),
     );
+  });
+});
+
+describe('DataUpdateHandler range predicates (ce#415)', () => {
+  beforeEach(() => mockDb.__reset());
+
+  it('validateConfig accepts the full data_query operator set', () => {
+    const { handler } = buildHandler();
+    for (const op of ['eq', 'ne', 'gt', 'lt', 'gte', 'lte', 'like', 'in']) {
+      expect(() =>
+        handler.validateConfig({
+          schemaId: 'schema-1',
+          filters: { fetchedAt: { op, value: '123' } },
+          fields: { read: 'true' },
+        } as any),
+      ).not.toThrow();
+    }
+  });
+
+  it('still rejects unknown operators', () => {
+    const { handler } = buildHandler();
+    expect(() =>
+      handler.validateConfig({
+        schemaId: 'schema-1',
+        filters: { fetchedAt: { op: 'between', value: '123' } },
+        fields: { read: 'true' },
+      } as any),
+    ).toThrow(ConfigurationError);
+    expect(() =>
+      handler.validateConfig({
+        schemaId: 'schema-1',
+        filters: { fetchedAt: { op: 'between', value: '123' } },
+        fields: { read: 'true' },
+      } as any),
+    ).toThrow(/Invalid operator 'between'/);
+  });
+
+  it('marks everything older than a cutoff read: read eq false AND fetchedAt lt cutoff', async () => {
+    const { handler } = buildHandler();
+    mockDb.__queue([{ id: 'old-1', data: { read: false } }, { id: 'old-2', data: { read: false } }]); // select matches
+    mockDb.__queue([{ id: 'old-1', data: { read: true } }]); // update old-1 .returning()
+    mockDb.__queue([{ id: 'old-2', data: { read: true } }]); // update old-2 .returning()
+
+    const result = await handler.execute(
+      context({ cutoff: { cutoff: 1704067200000 } }),
+      step({
+        schemaId: 'schema-1',
+        filters: {
+          read: { op: 'eq', value: 'false' },
+          fetchedAt: { op: 'lt', value: 'steps.cutoff.cutoff' },
+        },
+        fields: { read: 'true' },
+      }),
+    );
+
+    expect(result.success).toBe(true);
+    expect((result.output as { count: number }).count).toBe(2);
+
+    // The lt filter must cast the JSONB field to numeric and bind the resolved
+    // cutoff as a number — the same shape data_query / data_delete emit.
+    const { sql, params } = new PgDialect().sqlToQuery(mockDb.where.mock.calls[0][0]);
+    expect(sql).toContain('::numeric <');
+    expect(params).toContain(1704067200000);
+    expect(params).toContain('false');
+    expect(mockDb.update).toHaveBeenCalledTimes(2);
   });
 });
 

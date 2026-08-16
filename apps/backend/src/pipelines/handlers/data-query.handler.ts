@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { eq, and, or, desc, sql } from 'drizzle-orm';
+import { eq, and, desc, sql } from 'drizzle-orm';
 import { StepHandler, DataQueryHandlerConfig } from '../execution/step-handler.interface';
 import { StepHandlerRegistry } from '../execution/step-handler.registry';
 import { ExpressionEvaluator } from '../execution/expression-evaluator';
@@ -9,7 +9,7 @@ import { pipelineData, PipelineData } from '../../db/schema';
 import { PipelineSchemasService } from '../pipeline-schemas.service';
 import { db } from '../../db/client';
 import { ConfigurationError, SchemaNotFoundError } from '../errors';
-import { buildInPredicate } from './in-filter.util';
+import { buildFilterConditions, validateFilterOps } from './filter-where.util';
 
 /**
  * Data Query Handler
@@ -57,17 +57,7 @@ export class DataQueryHandler implements StepHandler<DataQueryHandlerConfig> {
     }
 
     // Validate filter operators
-    if (config.filters) {
-      const validOps = ['eq', 'ne', 'gt', 'lt', 'gte', 'lte', 'like', 'in'];
-      for (const [field, filter] of Object.entries(config.filters)) {
-        if (!validOps.includes(filter.op)) {
-          throw new ConfigurationError(
-            `Invalid operator '${filter.op}' for field '${field}'. Valid operators: ${validOps.join(', ')}`,
-            'data_query',
-          );
-        }
-      }
-    }
+    validateFilterOps(config.filters, 'data_query');
 
     // Validate orderBy direction
     if (config.orderBy && config.orderBy.direction) {
@@ -115,60 +105,11 @@ export class DataQueryHandler implements StepHandler<DataQueryHandlerConfig> {
       );
       baseConditions.push(eq(pipelineData.id, String(recordIdValue)));
     } else if (config.filters) {
-      // Collect filter conditions on JSON data fields
-      const filterConditions: ReturnType<typeof sql>[] = [];
-
-      for (const [fieldName, filter] of Object.entries(config.filters)) {
-        // Evaluate the filter value as an expression
-        const value = this.expressionEvaluator.evaluateExpression(
-          filter.value,
-          context,
-          stepName,
-        );
-
-        // Build JSONB field accessor for the data column
-        const fieldPath = sql`${pipelineData.data}->>${sql.raw(`'${fieldName}'`)}`;
-
-        switch (filter.op) {
-          case 'eq':
-            filterConditions.push(sql`${fieldPath} = ${String(value)}`);
-            break;
-          case 'ne':
-            // IS DISTINCT FROM, not !=: for a row whose JSONB lacks the key, `data->>'f'`
-            // is NULL and a bare `!=` yields NULL, silently EXCLUDING the row. Callers
-            // read `ne` as "everything that isn't this value", which must include rows
-            // where the field was never written (a flag added after the rows existed).
-            filterConditions.push(sql`${fieldPath} IS DISTINCT FROM ${String(value)}`);
-            break;
-          case 'gt':
-            filterConditions.push(sql`(${fieldPath})::numeric > ${Number(value)}`);
-            break;
-          case 'lt':
-            filterConditions.push(sql`(${fieldPath})::numeric < ${Number(value)}`);
-            break;
-          case 'gte':
-            filterConditions.push(sql`(${fieldPath})::numeric >= ${Number(value)}`);
-            break;
-          case 'lte':
-            filterConditions.push(sql`(${fieldPath})::numeric <= ${Number(value)}`);
-            break;
-          case 'like':
-            filterConditions.push(sql`${fieldPath} ILIKE ${String(value)}`);
-            break;
-          case 'in':
-            filterConditions.push(buildInPredicate(fieldPath, value));
-            break;
-        }
-      }
-
-      // Combine filter conditions with AND or OR based on filterLogic
-      if (filterConditions.length > 0) {
-        const combinedFilters = config.filterLogic === 'or'
-          ? or(...filterConditions)
-          : and(...filterConditions);
-        if (combinedFilters) {
-          baseConditions.push(combinedFilters);
-        }
+      const combinedFilters = buildFilterConditions(config.filters, config.filterLogic, (value) =>
+        this.expressionEvaluator.evaluateExpression(value, context, stepName),
+      );
+      if (combinedFilters) {
+        baseConditions.push(combinedFilters);
       }
     }
 

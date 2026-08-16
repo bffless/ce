@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { eq, and, or, sql, inArray } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { StepHandler, DataDeleteHandlerConfig } from '../execution/step-handler.interface';
 import { StepHandlerRegistry } from '../execution/step-handler.registry';
 import { ExpressionEvaluator } from '../execution/expression-evaluator';
@@ -9,13 +9,14 @@ import { pipelineData } from '../../db/schema';
 import { PipelineSchemasService } from '../pipeline-schemas.service';
 import { db } from '../../db/client';
 import { ConfigurationError, SchemaNotFoundError } from '../errors';
+import { buildFilterConditions, validateFilterOps } from './filter-where.util';
 
 /**
  * Data Delete Handler
  *
  * Deletes records from a pipeline schema, either by recordId or by filter
  * predicate (delete-by-query). Filters support the same operator set as
- * data_query: eq, ne, gt, lt, gte, lte, like.
+ * data_query: eq, ne, gt, lt, gte, lte, like, in (see filter-where.util).
  */
 @Injectable()
 export class DataDeleteHandler implements StepHandler<DataDeleteHandlerConfig> {
@@ -45,15 +46,7 @@ export class DataDeleteHandler implements StepHandler<DataDeleteHandlerConfig> {
 
     // Validate filter operators if filters are provided
     if (hasFilters) {
-      const validOps = ['eq', 'ne', 'gt', 'lt', 'gte', 'lte', 'like'];
-      for (const [field, filter] of Object.entries(config.filters!)) {
-        if (!validOps.includes(filter.op)) {
-          throw new ConfigurationError(
-            `Invalid operator '${filter.op}' for field '${field}'. Valid operators for delete: ${validOps.join(', ')}`,
-            'data_delete',
-          );
-        }
-      }
+      validateFilterOps(config.filters, 'data_delete');
     }
   }
 
@@ -91,57 +84,11 @@ export class DataDeleteHandler implements StepHandler<DataDeleteHandlerConfig> {
       );
       conditions.push(eq(pipelineData.id, String(evaluatedRecordId)));
     } else if (config.filters) {
-      // Collect filter conditions on JSON data fields
-      const filterConditions: ReturnType<typeof sql>[] = [];
-
-      for (const [fieldName, filter] of Object.entries(config.filters)) {
-        // Evaluate the filter value as an expression
-        const value = this.expressionEvaluator.evaluateExpression(
-          filter.value,
-          context,
-          stepName,
-        );
-
-        // Build JSONB field accessor for the data column
-        const fieldPath = sql`${pipelineData.data}->>${sql.raw(`'${fieldName}'`)}`;
-
-        switch (filter.op) {
-          case 'eq':
-            filterConditions.push(sql`${fieldPath} = ${String(value)}`);
-            break;
-          case 'ne':
-            // IS DISTINCT FROM, not !=: for a row whose JSONB lacks the key, `data->>'f'`
-            // is NULL and a bare `!=` yields NULL, silently EXCLUDING the row. Callers
-            // read `ne` as "everything that isn't this value", which must include rows
-            // where the field was never written (a flag added after the rows existed).
-            filterConditions.push(sql`${fieldPath} IS DISTINCT FROM ${String(value)}`);
-            break;
-          case 'gt':
-            filterConditions.push(sql`(${fieldPath})::numeric > ${Number(value)}`);
-            break;
-          case 'lt':
-            filterConditions.push(sql`(${fieldPath})::numeric < ${Number(value)}`);
-            break;
-          case 'gte':
-            filterConditions.push(sql`(${fieldPath})::numeric >= ${Number(value)}`);
-            break;
-          case 'lte':
-            filterConditions.push(sql`(${fieldPath})::numeric <= ${Number(value)}`);
-            break;
-          case 'like':
-            filterConditions.push(sql`${fieldPath} ILIKE ${String(value)}`);
-            break;
-        }
-      }
-
-      // Combine filter conditions with AND or OR based on filterLogic
-      if (filterConditions.length > 0) {
-        const combinedFilters = config.filterLogic === 'or'
-          ? or(...filterConditions)
-          : and(...filterConditions);
-        if (combinedFilters) {
-          conditions.push(combinedFilters);
-        }
+      const combinedFilters = buildFilterConditions(config.filters, config.filterLogic, (value) =>
+        this.expressionEvaluator.evaluateExpression(value, context, stepName),
+      );
+      if (combinedFilters) {
+        conditions.push(combinedFilters);
       }
     }
 

@@ -1,4 +1,5 @@
 import type { AIAttachmentConfig } from '../handlers/ai-attachments.util';
+import type { DataFilters } from '../handlers/filter-where.util';
 import { PipelineContext, StepResult } from './pipeline-context.interface';
 import { HandlerType, PipelineStep } from '../types';
 
@@ -81,11 +82,9 @@ export interface DataQueryHandlerConfig extends BaseHandlerConfig {
 
   /**
    * Filter conditions on JSON data fields: { field: { op: "eq", value: "expression" } }
+   * Operators: eq, ne, gt, lt, gte, lte, like, in (see handlers/filter-where.util).
    */
-  filters?: Record<
-    string,
-    { op: 'eq' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte' | 'like' | 'in'; value: string }
-  >;
+  filters?: DataFilters;
 
   /**
    * How to combine multiple filters: 'and' (all must match) or 'or' (any must match)
@@ -130,9 +129,11 @@ export interface DataUpdateHandlerConfig extends BaseHandlerConfig {
   recordId?: string;
 
   /**
-   * Filter to identify records to update (ignored if recordId is set)
+   * Filter to identify records to update (ignored if recordId is set).
+   * Same operator set as data_query; range ops (gt/lt/gte/lte) cast the field
+   * to numeric, so the stored value must be numeric (e.g. epoch-ms timestamps).
    */
-  filters?: Record<string, { op: 'eq' | 'ne' | 'in'; value: string }>;
+  filters?: DataFilters;
 
   /**
    * How to combine multiple filters: 'and' (all must match) or 'or' (any must match)
@@ -173,10 +174,7 @@ export interface DataDeleteHandlerConfig extends BaseHandlerConfig {
    * Same operator set as data_query; range ops (gt/lt/gte/lte) cast the field
    * to numeric, so the stored value must be numeric (e.g. epoch-ms timestamps).
    */
-  filters?: Record<
-    string,
-    { op: 'eq' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte' | 'like'; value: string }
-  >;
+  filters?: DataFilters;
 
   /**
    * How to combine multiple filters: 'and' (all must match) or 'or' (any must match)
@@ -280,11 +278,9 @@ export interface DbAggregateHandlerConfig extends BaseHandlerConfig {
 
   /**
    * Filter conditions on JSON data fields: { field: { op: "eq", value: "expression" } }
+   * Operators: eq, ne, gt, lt, gte, lte, like, in (see handlers/filter-where.util).
    */
-  filters?: Record<
-    string,
-    { op: 'eq' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte' | 'like' | 'in'; value: string }
-  >;
+  filters?: DataFilters;
 
   /**
    * How to combine multiple filters: 'and' (all must match) or 'or' (any must match)
