@@ -117,9 +117,48 @@ do not skip, weaken, or `.skip` a test to get green.
    review request. Do not stop to ask. (Approval is still required for anything
    outside that — see Hard limits.)
 2. Commit with a conventional message, `git push -u origin <branch>`, then
-   `gh pr create --title "<conventional title>" --body-file - <<'EOF' … EOF` with:
-   `Closes #<n>`, what changed and why, compatibility notes (which checklist surfaces
-   were touched and how they stay safe), and how it was verified.
+   `gh pr create --title "<conventional title>" --body-file - <<'EOF' … EOF`.
+
+   **Write the PR for a reader who has not read the issue and will not read the diff.**
+   Lead with the outcome, not with file paths. The maintainer decides whether to merge
+   from the body alone; the reviewer agent reads the diff. Use exactly this structure:
+
+   ```
+   Closes #<n>
+
+   ## Summary
+   2–4 plain-language sentences: the problem a user/operator had, what this PR does
+   about it, and what they will notice afterwards. No file paths here.
+
+   ## Behaviour changes
+   What is different for a user, operator, API client, or stored rule set — as
+   before → after bullets. Say "None — internal refactor only" if that is true.
+   Anything additive vs. breaking is called out explicitly here.
+
+   ## Why
+   The motivation, in one short paragraph: what was wrong / missing, and why this
+   approach (link the issue discussion or ADR if one shaped it).
+
+   ## What changed
+   Grouped by area (backend / frontend / CLI / docs / tests), one line per group,
+   naming the key files. Keep it short — this is a map, not a changelog.
+
+   ## Compatibility
+   Which checklist surfaces (migrations, API/CLI contract, env vars, nginx generation,
+   storage layout, pipeline semantics) are touched and how they stay safe. If none:
+   one line saying so.
+
+   ## Verification
+   The commands run and their real results (counts, not "passed").
+
+   ## Out of scope / follow-ups
+   Adjacent problems noticed but deliberately not fixed here.
+   ```
+
+   Rules of thumb: the **Summary** should make sense to someone who only reads that
+   section; **Behaviour changes** must never be hidden inside Compatibility or What
+   changed; one PR title says one thing — if you need "and" in it, the summary should
+   explain why the two belong together.
 3. **Do not run `ce-pr-review` yourself.** Opening or pushing to the PR triggers
    `.github/workflows/pr-review.yml`, which runs that agent in CI and posts its report
    as a "🤖 Automated CE review" comment. Wait for it rather than duplicating it:
