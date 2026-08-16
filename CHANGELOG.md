@@ -7,16 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.30](https://github.com/bffless/ce/compare/v0.4.29...v0.4.30) (2026-08-16)
 
-
 ### Added
-
-* **pipelines:** read GitHub Actions run status from github_api ([#666](https://github.com/bffless/ce/issues/666)) ([f6adc49](https://github.com/bffless/ce/commit/f6adc49505013988b9bd8d761fcfa8b3ca48cf6d))
-
+- pipelines: read GitHub Actions run status from github_api ([#666](https://github.com/bffless/ce/pull/666), thanks @toshimoto821)
 
 ### Fixed
+- pipelines: evaluate templates in a single pass so substituted data is never re-evaluated (#431) ([#671](https://github.com/bffless/ce/pull/671), thanks @toshimoto821)
+- pipelines: bound every ffmpeg step so a wedged job fails instead of hanging ([#670](https://github.com/bffless/ce/pull/670), thanks @toshimoto821)
 
-* **pipelines:** bound every ffmpeg step so a wedged job fails instead of hanging ([#670](https://github.com/bffless/ce/issues/670)) ([3b7a028](https://github.com/bffless/ce/commit/3b7a0289220faac5733aecf1b947f9dc976bc6d2)), closes [#669](https://github.com/bffless/ce/issues/669)
-* **pipelines:** evaluate templates in a single pass so substituted data is never re-evaluated ([#431](https://github.com/bffless/ce/issues/431)) ([#671](https://github.com/bffless/ce/issues/671)) ([dcfaf61](https://github.com/bffless/ce/commit/dcfaf61bbf985d5f7702e2b0228d286194e4b9cf))
+### Maintenance
+- Add ce-pr-review agent and PR review workflow ([#672](https://github.com/bffless/ce/pull/672), thanks @toshimoto821)
 
 ## [0.4.29](https://github.com/bffless/ce/compare/v0.4.28...v0.4.29) (2026-08-15)
 
