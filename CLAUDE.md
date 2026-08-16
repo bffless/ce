@@ -400,3 +400,15 @@ Five canonical roles using their default label strings (`needs-triage`, `needs-i
 ### Domain docs
 
 Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+### Subagents (`.claude/agents/`)
+
+Three agents form the issue → PR loop; each is procedure + guardrails, not solution guidance:
+
+| Agent | Role |
+| --- | --- |
+| `issue-triage` | Labels/prioritises open issues; marks fully-specified ones `ready-for-agent`. |
+| `ce-implement` | Picks up an issue: syncs `main`, GCs merged worktrees (`.claude/scripts/worktree-gc.sh`), works in `.claude/worktrees/<name>`, verifies, opens a PR, then hands off to review. Stops for commit approval. |
+| `ce-pr-review` | Read-only review of a CE PR against `.claude/ce-pr-review-checklist.md` (backwards-compat first). |
+
+Implementer and reviewer share the same checklist file — grow it there, not in the agent bodies.
