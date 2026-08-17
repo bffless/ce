@@ -1,7 +1,4 @@
 import { Injectable, Inject, Logger } from '@nestjs/common';
-import { createReadStream, createWriteStream } from 'fs';
-import * as fs from 'fs/promises';
-import { pipeline } from 'stream/promises';
 import * as path from 'path';
 import { StepHandler, FfmpegHandlerConfig } from '../execution/step-handler.interface';
 import { StepHandlerRegistry } from '../execution/step-handler.registry';
@@ -14,6 +11,13 @@ import { FfmpegCapabilityService } from '../ffmpeg/ffmpeg-capability.service';
 import { FfmpegRunnerService } from '../ffmpeg/ffmpeg-runner.service';
 import { FfmpegScratchService } from '../ffmpeg/ffmpeg-scratch.service';
 import { FfmpegStepTimeoutError } from '../ffmpeg/ffmpeg-errors';
+import { LocalFfmpegExecutor } from '../ffmpeg/executor/local-ffmpeg.executor';
+import type {
+  FfmpegJob,
+  FfmpegJobCommand,
+  FfmpegJobOutput,
+  FfmpegJobResult,
+} from '../ffmpeg/executor/ffmpeg-executor.interface';
 import { UploadRecordService } from '../upload-record.service';
 import {
   buildExtractAudioArgs,
@@ -29,21 +33,29 @@ const OPERATIONS = ['probe', 'extract_audio', 'slice', 'concat'] as const;
 /**
  * ffmpeg_handler — see the FfmpegHandlerConfig TSDoc in step-handler.interface.ts
  * for the authoritative operation reference.
+ *
+ * The handler resolves config to storage keys and expresses each operation as an
+ * `FfmpegJob` (named scratch files + argv commands over one scratch dir); an
+ * `FfmpegExecutor` materialises and runs it. Everything about WHERE ffmpeg runs
+ * lives behind that seam.
  */
 @Injectable()
 export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
   readonly type = 'ffmpeg_handler' as const;
   private readonly logger = new Logger(FfmpegHandler.name);
+  /** Task 4 replaces this with injected executors + a per-step selector. */
+  private readonly local: LocalFfmpegExecutor;
 
   constructor(
     private readonly registry: StepHandlerRegistry,
     private readonly expressionEvaluator: ExpressionEvaluator,
     private readonly capability: FfmpegCapabilityService,
-    private readonly runner: FfmpegRunnerService,
-    private readonly scratch: FfmpegScratchService,
+    runner: FfmpegRunnerService,
+    scratch: FfmpegScratchService,
     private readonly uploadRecord: UploadRecordService,
-    @Inject(STORAGE_ADAPTER) private readonly storageAdapter: IStorageAdapter,
+    @Inject(STORAGE_ADAPTER) storageAdapter: IStorageAdapter,
   ) {
+    this.local = new LocalFfmpegExecutor(runner, scratch, storageAdapter);
     this.registry.register(this);
   }
 
@@ -95,31 +107,49 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
       };
     }
 
-    const { jobMaxSeconds } = readFfmpegEnv();
     try {
-      // Whole-step ceiling. The runner's watchdog only covers the spawned
-      // process; everything around it (queue wait, storage transfers) used to
-      // be unbounded, so one stalled await left the step pending forever —
-      // fatal for an async job, whose row stays 'running' with nothing to end
-      // it but the client's own poll timeout. A post-step that never settles
-      // also suppresses the execution log on rules that persist one, since the
-      // log write awaits the post-steps promise (#669).
-      const op = (): Promise<StepResult> => {
-        switch (config.operation) {
-          case 'probe':
-            return this.runProbe(config, context, stepName);
-          case 'extract_audio':
-            return this.runExtractAudio(config, context, stepName); // Task 7
-          case 'slice':
-            return this.runSlice(config, context, stepName); // Task 8
-          case 'concat':
-            return this.runConcat(config, context, stepName); // Task 8
-        }
-      };
-      return await this.withDeadline(op(), jobMaxSeconds, `${config.operation} step`);
+      switch (config.operation) {
+        case 'probe':
+          return await this.runProbe(config, context, stepName);
+        case 'extract_audio':
+          return await this.runExtractAudio(config, context, stepName);
+        case 'slice':
+          return await this.runSlice(config, context, stepName);
+        case 'concat':
+          return await this.runConcat(config, context, stepName);
+      }
     } catch (error) {
       return this.toErrorResult(error, stepName);
     }
+  }
+
+  /**
+   * Run one job under the whole-step ceiling. The runner's watchdog only covers
+   * the spawned process; everything around it (queue wait, storage transfers)
+   * used to be unbounded, so one stalled await left the step pending forever —
+   * fatal for an async job, whose row stays 'running' with nothing to end it but
+   * the client's own poll timeout. A post-step that never settles also
+   * suppresses the execution log on rules that persist one, since the log write
+   * awaits the post-steps promise (#669).
+   */
+  private async runJob(job: FfmpegJob): Promise<FfmpegJobResult> {
+    const controller = new AbortController();
+    return this.withDeadline(
+      this.local.run(job, { signal: controller.signal }),
+      readFfmpegEnv().jobMaxSeconds,
+      `${job.id} step`,
+      () => controller.abort(),
+    );
+  }
+
+  /** Additive observability fields (D11) — present on every op output. */
+  private telemetry(res: FfmpegJobResult) {
+    return {
+      executor: res.executor,
+      timings: res.timings,
+      bytesIn: res.bytesIn,
+      bytesOut: res.bytesOut,
+    };
   }
 
   /**
@@ -127,13 +157,21 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
    * with FFMPEG_JOB_TIMEOUT naming the phase; the abandoned work is left to
    * settle on its own (its `finally` still cleans up, and orphaned scratch
    * dirs are swept hourly) — the point is that the STEP always settles.
+   * `onTimeout` lets the caller signal the abandoned work (a remote executor
+   * cancels its job; the local one has nothing to cancel).
    */
-  private withDeadline<T>(work: Promise<T>, seconds: number, phase: string): Promise<T> {
+  private withDeadline<T>(
+    work: Promise<T>,
+    seconds: number,
+    phase: string,
+    onTimeout?: () => void,
+  ): Promise<T> {
     let timer: ReturnType<typeof setTimeout>;
     const deadline = new Promise<never>((_, reject) => {
       timer = setTimeout(() => {
         // The abandoned work may reject later with nobody listening.
         work.catch(() => undefined);
+        onTimeout?.();
         reject(
           new FfmpegStepTimeoutError(
             `ffmpeg_handler ${phase} exceeded ${seconds}s and was abandoned`,
@@ -166,9 +204,6 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
       error: { code: known.includes(code ?? '') ? code! : 'FFMPEG_FAILED', message },
     };
   }
-
-  /** ~64MB slack demanded beyond the 2× input estimate in the disk pre-flight. */
-  private static readonly DISK_MARGIN_BYTES = 64 * 1024 * 1024;
 
   private pathError(code: 'INVALID_INPUT_PATH' | 'INVALID_OUTPUT_PATH', message: string): never {
     throw Object.assign(new Error(message), { code });
@@ -214,104 +249,40 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
     return normalized;
   }
 
-  /**
-   * Storage calls are the unbounded awaits in this handler: an object-store
-   * socket that stalls mid-transfer never errors and never completes. Each one
-   * gets its own ceiling so the phase that stalled is named in the failure.
-   */
-  private io<T>(work: Promise<T>, phase: string): Promise<T> {
-    return this.withDeadline(work, readFfmpegEnv().ioMaxSeconds, phase);
-  }
-
-  private async downloadToFile(key: string, destPath: string): Promise<void> {
-    try {
-      if (this.storageAdapter.downloadStream) {
-        const { stream } = await this.io(
-          this.storageAdapter.downloadStream(key),
-          `download of ${key}`,
-        );
-        await this.io(pipeline(stream, createWriteStream(destPath)), `download of ${key}`);
-      } else {
-        // Non-streaming backend: buffered fallback (small instances only).
-        const buffer = await this.io(this.storageAdapter.download(key), `download of ${key}`);
-        await fs.writeFile(destPath, buffer);
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (message.includes('not found') || message.includes('ENOENT')) {
-        throw Object.assign(new Error(`input not found in storage: ${key}`), {
-          code: 'FILE_NOT_FOUND',
-        });
-      }
-      throw error;
-    }
-  }
-
-  private async uploadFromFile(
-    srcPath: string,
-    key: string,
-    mimeType: string,
-  ): Promise<{ size: number }> {
-    const { size } = await fs.stat(srcPath);
-    if (this.storageAdapter.uploadStream) {
-      await this.io(
-        this.storageAdapter.uploadStream(createReadStream(srcPath), key, size, { mimeType }),
-        `upload of ${key}`,
-      );
-    } else {
-      await this.io(
-        this.storageAdapter.upload(await fs.readFile(srcPath), key, { mimeType }),
-        `upload of ${key}`,
-      );
-    }
-    return { size };
-  }
-
-  /** Sum of input object sizes for the disk pre-flight; unknown sizes count 0. */
-  private async inputSizeBytes(keys: string[]): Promise<number> {
-    let total = 0;
-    for (const key of keys) {
-      try {
-        total +=
-          (await this.io(this.storageAdapter.getMetadata(key), `metadata of ${key}`)).size ?? 0;
-      } catch {
-        /* pre-flight is best-effort; the FILE_NOT_FOUND surfaces at download */
-      }
-    }
-    return total;
-  }
-
   private async runProbe(
     config: FfmpegHandlerConfig,
     context: PipelineContext,
     stepName: string,
   ): Promise<StepResult> {
     const inputKey = await this.resolveKey(config.input!, context, stepName, 'input');
-    await this.scratch.assertFreeSpace(
-      2 * (await this.inputSizeBytes([inputKey])) + FfmpegHandler.DISK_MARGIN_BYTES,
-    );
-    const jobDir = await this.scratch.createJobDir();
-    try {
-      const localIn = path.join(jobDir, `in${path.posix.extname(inputKey) || '.bin'}`);
-      await this.downloadToFile(inputKey, localIn);
-      const { stdout } = await this.runner.run({
-        binary: 'ffprobe',
-        args: buildProbeArgs(localIn),
-        cwd: jobDir,
-        timeoutSeconds: 60, // probe is cheap; never let it hold the queue long
-      });
-      const parsed = JSON.parse(stdout) as { format?: { duration?: string }; streams?: unknown[] };
-      return {
-        success: true,
-        output: {
-          duration: Number(parsed.format?.duration ?? 0),
-          format: parsed.format ?? {},
-          streams: parsed.streams ?? [],
+    const inName = `in${path.posix.extname(inputKey) || '.bin'}`;
+    const res = await this.runJob({
+      id: stepName,
+      commands: [
+        {
+          id: 'probe',
+          kind: 'ffprobe',
+          argv: buildProbeArgs(`{in:${inName}}`),
+          timeoutSeconds: 60, // probe is cheap; never let it hold the queue long
         },
-      };
-    } finally {
-      await this.scratch.cleanup(jobDir);
-    }
+      ],
+      inputs: [{ name: inName, key: inputKey }],
+      outputs: [],
+      files: [],
+    });
+    const parsed = JSON.parse(res.stdout) as {
+      format?: { duration?: string };
+      streams?: unknown[];
+    };
+    return {
+      success: true,
+      output: {
+        duration: Number(parsed.format?.duration ?? 0),
+        format: parsed.format ?? {},
+        streams: parsed.streams ?? [],
+        ...this.telemetry(res),
+      },
+    };
   }
 
   private async runExtractAudio(
@@ -321,27 +292,29 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
   ): Promise<StepResult> {
     const inputKey = await this.resolveKey(config.input!, context, stepName, 'input');
     const outputKey = await this.resolveKey(config.output!, context, stepName, 'output');
-    await this.scratch.assertFreeSpace(
-      2 * (await this.inputSizeBytes([inputKey])) + FfmpegHandler.DISK_MARGIN_BYTES,
-    );
-    const jobDir = await this.scratch.createJobDir();
-    try {
-      const localIn = path.join(jobDir, `in${path.posix.extname(inputKey) || '.bin'}`);
-      const localOut = path.join(jobDir, 'out.wav');
-      await this.downloadToFile(inputKey, localIn);
-      await this.runner.run({
-        binary: 'ffmpeg',
-        args: buildExtractAudioArgs(localIn, localOut),
-        cwd: jobDir,
-      });
-      const { size } = await this.uploadFromFile(localOut, outputKey, 'audio/wav');
-      return {
-        success: true,
-        output: { storage_path: outputKey, content_type: 'audio/wav', size },
-      };
-    } finally {
-      await this.scratch.cleanup(jobDir);
-    }
+    const inName = `in${path.posix.extname(inputKey) || '.bin'}`;
+    const res = await this.runJob({
+      id: stepName,
+      commands: [
+        {
+          id: 'extract',
+          kind: 'ffmpeg',
+          argv: buildExtractAudioArgs(`{in:${inName}}`, '{out:out.wav}'),
+        },
+      ],
+      inputs: [{ name: inName, key: inputKey }],
+      outputs: [{ name: 'out.wav', key: outputKey, contentType: 'audio/wav' }],
+      files: [],
+    });
+    return {
+      success: true,
+      output: {
+        storage_path: outputKey,
+        content_type: 'audio/wav',
+        size: res.outputs[0].bytes,
+        ...this.telemetry(res),
+      },
+    };
   }
 
   /** Resolve config.spans (array of literal/expression values, or an expression yielding an array). */
@@ -401,52 +374,54 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
     const audioKey = config.audioOutput
       ? await this.resolveKey(config.audioOutput, context, stepName, 'output')
       : null;
-    await this.scratch.assertFreeSpace(
-      2 * (await this.inputSizeBytes([inputKey])) + FfmpegHandler.DISK_MARGIN_BYTES,
-    );
-    const jobDir = await this.scratch.createJobDir();
-    try {
-      const localIn = path.join(jobDir, `in${path.posix.extname(inputKey) || '.mp4'}`);
-      const localOut = path.join(jobDir, 'clip.mp4');
-      await this.downloadToFile(inputKey, localIn);
-      await this.runner.run({
-        binary: 'ffmpeg',
-        args: buildSliceArgs({
-          input: localIn,
-          output: localOut,
+    const inName = `in${path.posix.extname(inputKey) || '.mp4'}`;
+    const commands: FfmpegJobCommand[] = [
+      {
+        id: 'slice',
+        kind: 'ffmpeg',
+        argv: buildSliceArgs({
+          input: `{in:${inName}}`,
+          output: '{out:clip.mp4}',
           spans,
-          threads: readFfmpegEnv().threads,
+          threads: this.local.argvThreads(),
           audioFades: config.audioFades === true,
         }),
-        cwd: jobDir,
+      },
+    ];
+    const outputs: FfmpegJobOutput[] = [
+      { name: 'clip.mp4', key: outputKey, contentType: 'video/mp4' },
+    ];
+    if (audioKey) {
+      // Second pass on the (small) clip — keeps the slice graph simple; cost is negligible.
+      commands.push({
+        id: 'wav',
+        kind: 'ffmpeg',
+        argv: buildExtractAudioArgs('{out:clip.mp4}', '{out:clip.wav}'),
       });
-      const { size } = await this.uploadFromFile(localOut, outputKey, 'video/mp4');
-      const duration = spans.reduce((n, s) => n + (s.end - s.start), 0);
-      let audio: { storage_path: string; content_type: string; size: number } | undefined;
-      if (audioKey) {
-        // Second pass on the (small) clip — keeps the slice graph simple; cost is negligible.
-        const localWav = path.join(jobDir, 'clip.wav');
-        await this.runner.run({
-          binary: 'ffmpeg',
-          args: buildExtractAudioArgs(localOut, localWav),
-          cwd: jobDir,
-        });
-        const wav = await this.uploadFromFile(localWav, audioKey, 'audio/wav');
-        audio = { storage_path: audioKey, content_type: 'audio/wav', size: wav.size };
-      }
-      return {
-        success: true,
-        output: {
-          storage_path: outputKey,
-          content_type: 'video/mp4',
-          size,
-          duration: Number(duration.toFixed(3)),
-          ...(audio ? { audio } : {}),
-        },
-      };
-    } finally {
-      await this.scratch.cleanup(jobDir);
+      outputs.push({ name: 'clip.wav', key: audioKey, contentType: 'audio/wav' });
     }
+    const res = await this.runJob({
+      id: stepName,
+      commands,
+      inputs: [{ name: inName, key: inputKey }],
+      outputs,
+      files: [],
+    });
+    const duration = spans.reduce((n, s) => n + (s.end - s.start), 0);
+    const wav = res.outputs.find((o) => o.name === 'clip.wav');
+    return {
+      success: true,
+      output: {
+        storage_path: outputKey,
+        content_type: 'video/mp4',
+        size: res.outputs[0].bytes,
+        duration: Number(duration.toFixed(3)),
+        ...(wav && audioKey
+          ? { audio: { storage_path: audioKey, content_type: 'audio/wav', size: wav.bytes } }
+          : {}),
+        ...this.telemetry(res),
+      },
+    };
   }
 
   private async runConcat(
@@ -483,52 +458,51 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
       inputKeys.push(await this.resolveKey(String(raw), context, stepName, 'input'));
     }
     const outputKey = await this.resolveKey(config.output!, context, stepName, 'output');
-    await this.scratch.assertFreeSpace(
-      2 * (await this.inputSizeBytes(inputKeys)) + FfmpegHandler.DISK_MARGIN_BYTES,
-    );
-    const jobDir = await this.scratch.createJobDir();
-    try {
-      const parts: string[] = [];
-      for (let i = 0; i < inputKeys.length; i++) {
-        const local = path.join(jobDir, `part-${i}${path.posix.extname(inputKeys[i]) || '.mp4'}`);
-        await this.downloadToFile(inputKeys[i], local);
-        parts.push(local);
-      }
-      const listPath = path.join(jobDir, 'concat.txt');
-      await fs.writeFile(listPath, buildConcatListContent(parts));
-      const localOut = path.join(jobDir, 'final.mp4');
-      let reencoded = false;
-      try {
-        await this.runner.run({
-          binary: 'ffmpeg',
-          args: buildConcatArgs(listPath, localOut, {
+    const inputs = inputKeys.map((key, i) => ({
+      name: `part-${i}${path.posix.extname(key) || '.mp4'}`,
+      key,
+    }));
+    const threads = this.local.argvThreads();
+    // Stream-copy first; only a process failure (stream mismatch) hands over to
+    // the re-encode fallback — busy/timeout/memory abort the job untouched.
+    const res = await this.runJob({
+      id: stepName,
+      commands: [
+        {
+          id: 'copy',
+          kind: 'ffmpeg',
+          argv: buildConcatArgs('{file:concat.txt}', '{out:final.mp4}', {
             reencode: false,
-            threads: readFfmpegEnv().threads,
+            threads,
           }),
-          cwd: jobDir,
-        });
-      } catch (error) {
-        // Only a process failure (stream mismatch) triggers the re-encode
-        // fallback; busy/timeout/memory bubble up untouched.
-        if ((error as { code?: string }).code !== 'FFMPEG_FAILED') throw error;
-        reencoded = true;
-        this.logger.warn({ event: 'ffmpeg_concat_reencode_fallback', step: stepName });
-        await this.runner.run({
-          binary: 'ffmpeg',
-          args: buildConcatArgs(listPath, localOut, {
+        },
+        {
+          id: 'reencode',
+          kind: 'ffmpeg',
+          argv: buildConcatArgs('{file:concat.txt}', '{out:final.mp4}', {
             reencode: true,
-            threads: readFfmpegEnv().threads,
+            threads,
           }),
-          cwd: jobDir,
-        });
-      }
-      const { size } = await this.uploadFromFile(localOut, outputKey, 'video/mp4');
-      return {
-        success: true,
-        output: { storage_path: outputKey, content_type: 'video/mp4', size, reencoded },
-      };
-    } finally {
-      await this.scratch.cleanup(jobDir);
-    }
+          fallbackFor: 'copy',
+        },
+      ],
+      inputs,
+      outputs: [{ name: 'final.mp4', key: outputKey, contentType: 'video/mp4' }],
+      // Scratch-relative names: the concat demuxer resolves each entry against
+      // the list file's own directory, which is the job's scratch dir.
+      files: [{ name: 'concat.txt', content: buildConcatListContent(inputs.map((i) => i.name)) }],
+    });
+    const reencoded = res.commands.some((c) => c.id === 'reencode' && c.ran);
+    if (reencoded) this.logger.warn({ event: 'ffmpeg_concat_reencode_fallback', step: stepName });
+    return {
+      success: true,
+      output: {
+        storage_path: outputKey,
+        content_type: 'video/mp4',
+        size: res.outputs[0].bytes,
+        reencoded,
+        ...this.telemetry(res),
+      },
+    };
   }
 }
