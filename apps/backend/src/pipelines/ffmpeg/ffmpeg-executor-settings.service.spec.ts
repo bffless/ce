@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ServiceUnavailableException } from '@nestjs/common';
 
 jest.mock('../../db/client', () => ({
   db: {
@@ -61,15 +61,22 @@ function make(
     localAvailable?: boolean;
   } = {},
 ) {
-  const storage = {
-    getUrl: async () => 'https://bucket.example.com/x?sig=1',
-    ...(o.presign === false
-      ? {}
+  // `presign: false` = the local-filesystem adapter, which DOES sign — its URLs
+  // just point at CE's own route, so a Worker cannot use them. resolveLocalAdapter()
+  // keys off the `isLocalAdapter` marker (storage/local.adapter.ts), not the shape.
+  const storage =
+    o.presign === false
+      ? {
+          isLocalAdapter: true,
+          getUrl: async () => '/api/storage/local/x',
+          supportsPresignedUrls: () => true,
+          getPresignedUploadUrl: async () => '/api/storage/presigned/local?key=x',
+        }
       : {
+          getUrl: async () => 'https://bucket.example.com/x?sig=1',
           supportsPresignedUrls: () => true,
           getPresignedUploadUrl: async () => 'https://bucket.example.com/x?put=1',
-        }),
-  };
+        };
   const capability = {
     isAvailable: () => o.localAvailable ?? true,
     getVersion: () => ((o.localAvailable ?? true) ? 'ffmpeg version 6.1.1' : null),
@@ -234,11 +241,16 @@ describe('FfmpegExecutorSettingsService', () => {
 
     it("saKeySource is 'env' when FFMPEG_REMOTE_SA_KEY_JSON is set, storagePresignable false on local-FS", async () => {
       mockSelect([]);
-      const { service } = make({ env: { FFMPEG_REMOTE_SA_KEY_JSON: SA_KEY }, presign: false });
+      const { service, storage } = make({
+        env: { FFMPEG_REMOTE_SA_KEY_JSON: SA_KEY },
+        presign: false,
+      });
       await service.reload();
       const status = await service.getStatus();
       expect(status.hasSaKey).toBe(true);
       expect(status.saKeySource).toBe('env');
+      // The local adapter advertises presigning; being LOCAL is what disqualifies it.
+      expect(storage.supportsPresignedUrls?.()).toBe(true);
       expect(status.storagePresignable).toBe(false);
     });
   });
@@ -362,6 +374,62 @@ describe('FfmpegExecutorSettingsService', () => {
       await expect(
         pinned.service.update({ remoteUrl: 'https://other.example.com' }),
       ).rejects.toBeInstanceOf(BadRequestException);
+
+      const pinnedAuth = make({ env: { FFMPEG_REMOTE_AUTH: 'none' } });
+      await pinnedAuth.service.reload();
+      await expect(pinnedAuth.service.update({ remoteAuth: 'none' })).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+
+      const pinnedKey = make({ env: { FFMPEG_REMOTE_SA_KEY_JSON: SA_KEY } });
+      await pinnedKey.service.reload();
+      await expect(pinnedKey.service.update({ saKeyJson: SA_KEY })).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+
+      const pinnedDefault = make({ env: { FFMPEG_EXECUTOR: 'local' } });
+      await pinnedDefault.service.reload();
+      await expect(
+        pinnedDefault.service.update({ defaultExecutor: 'local' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it("saKeyJson '' clears the stored key (a blanked UI field is not a JSON error)", async () => {
+      mockSelect([row({ saKeyEncrypted: encryptString(SA_KEY) })]);
+      const { set } = mockWrite();
+      const { service } = make();
+      await service.reload();
+
+      await service.update({ saKeyJson: '   ' });
+      expect(set.mock.calls[0][0].saKeyEncrypted).toBeNull();
+      expect(service.resolved().remoteSaKeyJson).toBeNull();
+    });
+
+    it('refuses to save while the row could not be loaded — never merges onto defaults', async () => {
+      mockSelectThrows(new Error('relation "ffmpeg_executor_settings" does not exist'));
+      const { set, values } = mockWrite();
+      const { service } = make();
+      await service.reload();
+
+      await expect(service.update({ localEnabled: true })).rejects.toBeInstanceOf(
+        ServiceUnavailableException,
+      );
+      expect(values).not.toHaveBeenCalled();
+      expect(set).not.toHaveBeenCalled();
+    });
+
+    it('a non-Remote save is not blocked by local-FS storage when FFMPEG_REMOTE_URL pins Remote on', async () => {
+      mockSelect([row({ localEnabled: true })]);
+      const { set } = mockWrite();
+      const localFs = make({
+        presign: false,
+        env: { FFMPEG_REMOTE_URL: 'https://env.example.com' },
+      });
+      await localFs.service.reload();
+
+      const status = await localFs.service.update({ localEnabled: true });
+      expect(set).toHaveBeenCalledTimes(1);
+      expect(status.storagePresignable).toBe(false);
     });
   });
 });

@@ -6,11 +6,13 @@ import {
   Logger,
   OnModuleInit,
   Optional,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { ffmpegExecutorSettings, type FfmpegExecutorSettingsRow } from '../../db/schema';
 import { decryptString, encryptString } from '../../common/crypto/aes-gcm';
+import { resolveLocalAdapter } from '../../storage/local.adapter';
 import { IStorageAdapter, STORAGE_ADAPTER } from '../../storage/storage.interface';
 import { FfmpegCapabilityService } from './ffmpeg-capability.service';
 import {
@@ -49,7 +51,7 @@ export interface UpdateFfmpegExecutorInput {
   remoteUrl?: string | null;
   remoteAuth?: FfmpegRemoteAuth;
   defaultExecutor?: FfmpegExecutorSetting;
-  /** undefined = keep the stored key; null = clear it; string = replace it. */
+  /** undefined = keep the stored key; null (or '', a blanked UI field) = clear it; string = replace it. */
   saKeyJson?: string | null;
 }
 
@@ -88,6 +90,13 @@ function normaliseUrl(raw: string | null | undefined): string | null {
 export class FfmpegExecutorSettingsService implements OnModuleInit {
   private readonly logger = new Logger(FfmpegExecutorSettingsService.name);
   private cached: CachedSettings | null = null;
+  /**
+   * Why this exists: a failed load also leaves `cached === null`, which is
+   * indistinguishable from "no row yet". Merging a partial update onto the
+   * DEFAULTS in that state would silently overwrite a real row's URL/auth/
+   * default with defaults, so `update()` refuses while the state is 'error'.
+   */
+  private loadState: 'ok' | 'empty' | 'error' = 'empty';
   private warnedMissing = false;
 
   constructor(
@@ -117,9 +126,11 @@ export class FfmpegExecutorSettingsService implements OnModuleInit {
         });
       }
       this.cached = null;
+      this.loadState = 'error';
       return;
     }
     this.cached = row ? this.decode(row) : null;
+    this.loadState = row ? 'ok' : 'empty';
   }
 
   private decode(row: FfmpegExecutorSettingsRow): CachedSettings {
@@ -134,10 +145,12 @@ export class FfmpegExecutorSettingsService implements OnModuleInit {
         });
       }
     }
+    // Invariant: remoteEnabled ⇒ a URL. A row without one cannot run remote work.
+    const remoteUrl = normaliseUrl(row.remoteUrl);
     return {
       localEnabled: row.localEnabled,
-      remoteEnabled: row.remoteEnabled,
-      remoteUrl: normaliseUrl(row.remoteUrl),
+      remoteEnabled: row.remoteEnabled && remoteUrl !== null,
+      remoteUrl,
       remoteAuth: row.remoteAuth === 'none' ? 'none' : 'google_id_token',
       saKeyJson,
       defaultExecutor: row.defaultExecutor === 'remote' ? 'remote' : 'local',
@@ -156,8 +169,12 @@ export class FfmpegExecutorSettingsService implements OnModuleInit {
 
   /** The effective config: env over the cached DB row. Synchronous by design (executors call it per job). */
   resolved(): FfmpegEnvConfig {
+    return this.resolveWith(this.cached);
+  }
+
+  /** env over `row` — the cached row for `resolved()`, a candidate row when validating a save. */
+  private resolveWith(row: CachedSettings | null): FfmpegEnvConfig {
     const env = readFfmpegEnv(this.processEnv());
-    const row = this.cached;
     if (!row) return env;
     const managed = this.envManaged();
     const remoteUrl = managed.remoteUrl ? env.remoteUrl : row.remoteUrl;
@@ -172,10 +189,20 @@ export class FfmpegExecutorSettingsService implements OnModuleInit {
     };
   }
 
+  /**
+   * Can a Worker fetch inputs / PUT outputs straight from storage?
+   *
+   * `supportsPresignedUrls()` alone is NOT enough: the local-filesystem adapter
+   * also signs, but its URLs point at CE's own `/api/storage/presigned/local`
+   * route (relative, and served only on the app's own domains), which a remote
+   * Worker cannot use. So local is excluded explicitly — the same call
+   * `deployments.controller.ts` makes for the same reason.
+   */
   private storagePresignable(): boolean {
     return (
-      typeof this.storageAdapter.getPresignedUploadUrl === 'function' &&
-      this.storageAdapter.supportsPresignedUrls?.() === true
+      resolveLocalAdapter(this.storageAdapter) === null &&
+      this.storageAdapter.supportsPresignedUrls?.() === true &&
+      typeof this.storageAdapter.getPresignedUploadUrl === 'function'
     );
   }
 
@@ -202,6 +229,13 @@ export class FfmpegExecutorSettingsService implements OnModuleInit {
    * `saKeyJson`: undefined keeps the stored key, null clears it, a string replaces it.
    */
   async update(input: UpdateFfmpegExecutorInput, userId?: string): Promise<FfmpegExecutorStatus> {
+    if (this.loadState === 'error') {
+      await this.reload();
+      if (this.loadState === 'error') {
+        throw new ServiceUnavailableException('Executor settings could not be loaded; try again');
+      }
+    }
+
     const managed = this.envManaged();
     if (input.remoteUrl !== undefined && managed.remoteUrl) {
       throw new BadRequestException('Worker URL is managed by FFMPEG_REMOTE_URL on this instance.');
@@ -253,6 +287,10 @@ export class FfmpegExecutorSettingsService implements OnModuleInit {
     }
     if (typeof next.saKeyJson === 'string') {
       next.saKeyJson = next.saKeyJson.trim();
+    }
+    // A blanked-out UI field means "remove the key", not "here is invalid JSON".
+    if (next.saKeyJson === '') next.saKeyJson = null;
+    if (typeof next.saKeyJson === 'string') {
       let parsed: unknown;
       try {
         parsed = JSON.parse(next.saKeyJson);
@@ -272,7 +310,7 @@ export class FfmpegExecutorSettingsService implements OnModuleInit {
 
     // Validate the EFFECTIVE config (env pins applied) so a save can never leave the
     // instance in a state the selector would refuse.
-    const effective = this.effectiveOf(next);
+    const effective = this.resolveWith(next);
     if (effective.remoteEnabled) {
       if (!effective.remoteUrl)
         throw new BadRequestException('Remote executor needs a Worker URL.');
@@ -287,7 +325,12 @@ export class FfmpegExecutorSettingsService implements OnModuleInit {
           'Worker URL must be https:// when auth is Google ID token (use auth "none" only on a private network).',
         );
       }
-      if (!this.storagePresignable()) {
+      // Only when THIS save turns Remote on: an env-pinned FFMPEG_REMOTE_URL on
+      // local-FS storage must not make every unrelated save (e.g. toggling
+      // localEnabled) fail. `storagePresignable` is reported in status either way.
+      const turningRemoteOn =
+        input.remoteEnabled === true || (next.remoteEnabled && !current.remoteEnabled);
+      if (turningRemoteOn && !this.storagePresignable()) {
         throw new BadRequestException(
           'Remote executor needs bucket storage (S3, GCS, MinIO or Azure) — the Worker fetches inputs and uploads outputs via signed URLs, which local filesystem storage cannot provide.',
         );
@@ -309,17 +352,6 @@ export class FfmpegExecutorSettingsService implements OnModuleInit {
     return this.getStatus();
   }
 
-  /** `resolved()` for a candidate row instead of the cached one. */
-  private effectiveOf(row: CachedSettings): FfmpegEnvConfig {
-    const saved = this.cached;
-    this.cached = row;
-    try {
-      return this.resolved();
-    } finally {
-      this.cached = saved;
-    }
-  }
-
   private async persist(next: CachedSettings, keyChanged: boolean, userId?: string): Promise<void> {
     const base = {
       localEnabled: next.localEnabled,
@@ -330,21 +362,24 @@ export class FfmpegExecutorSettingsService implements OnModuleInit {
       updatedAt: new Date(),
       updatedByUserId: userId ?? null,
     };
-    const keyPatch = keyChanged
-      ? { saKeyEncrypted: next.saKeyJson === null ? null : encryptString(next.saKeyJson) }
-      : {};
+    // undefined = the key was not part of this save, so the stored one is preserved.
+    const encrypted = keyChanged
+      ? next.saKeyJson === null
+        ? null
+        : encryptString(next.saKeyJson)
+      : undefined;
     try {
       const existing = (await db.select().from(ffmpegExecutorSettings).limit(1))[0];
       if (existing) {
         await db
           .update(ffmpegExecutorSettings)
-          .set({ ...base, ...keyPatch })
+          .set({ ...base, ...(encrypted !== undefined ? { saKeyEncrypted: encrypted } : {}) })
           .where(eq(ffmpegExecutorSettings.id, existing.id));
       } else {
-        await db.insert(ffmpegExecutorSettings).values({
-          ...base,
-          saKeyEncrypted: next.saKeyJson === null ? null : encryptString(next.saKeyJson),
-        });
+        // Insert: there is no stored key to preserve, so "not provided" = none.
+        await db
+          .insert(ffmpegExecutorSettings)
+          .values({ ...base, saKeyEncrypted: encrypted ?? null });
       }
     } catch (error) {
       this.logger.error({
