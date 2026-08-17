@@ -259,6 +259,20 @@ services:
     networks:
       - assethost-network
 
+  ffmpeg-worker:
+    # Remote executor for server video ops (docs: Server Video Ops → Remote executor).
+    # Local-dev / private-network profile: plain http, no auth. Cloud Run is the reference deployment.
+    image: ghcr.io/bffless/ce-ffmpeg-worker:${BACKEND_TAG:-latest}
+    container_name: assethost-ffmpeg-worker
+    profiles:
+      - ffmpeg-worker # Only starts with --profile ffmpeg-worker
+    environment:
+      PORT: 8080
+      WORKER_ALLOW_HTTP: '1' # MinIO presigned URLs inside the compose network are http://
+    networks:
+      - assethost-network
+    restart: unless-stopped
+
   backend:
     # Use pre-built image from GitHub Container Registry
     # Override tag via BACKEND_TAG env var (e.g., BACKEND_TAG=global-api-keys)
