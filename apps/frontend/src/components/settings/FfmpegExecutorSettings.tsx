@@ -69,8 +69,12 @@ function diff(s: FfmpegExecutorStatus, d: Draft): UpdateFfmpegExecutorDto {
  * clearing the Worker URL) would otherwise leave a default the server rejects
  * with a 400 on save. Moves to the other executor when that one is selectable;
  * if neither is, leave it and let the server's message surface in the toast.
+ * An env-pinned default (FFMPEG_EXECUTOR) is never moved — the radio group is
+ * disabled and the server ignores the field, so auto-moving it here would
+ * just produce a phantom defaultExecutor change in the diff.
  */
-function withSelectableDefault(d: Draft, localAvailable: boolean): Draft {
+function withSelectableDefault(d: Draft, localAvailable: boolean, defaultPinned: boolean): Draft {
+  if (defaultPinned) return d;
   const localSelectable = d.localEnabled && localAvailable;
   const remoteSelectable = d.remoteEnabled && d.remoteUrl.trim() !== '';
   if (d.defaultExecutor === 'remote' && !remoteSelectable && localSelectable) {
@@ -128,7 +132,15 @@ export function FfmpegExecutorSettings() {
     // A test result describes the draft it was run against — any edit to the
     // connection fields makes it stale.
     if ('remoteUrl' in patch || 'remoteAuth' in patch || 'saKeyJson' in patch) setTestResult(null);
-    setDraft((d) => (d ? withSelectableDefault({ ...d, ...patch }, status.localAvailable) : d));
+    setDraft((d) =>
+      d
+        ? withSelectableDefault(
+            { ...d, ...patch },
+            status.localAvailable,
+            status.envManaged.defaultExecutor,
+          )
+        : d,
+    );
   };
   const localSelectable = draft.localEnabled && status.localAvailable;
   const remoteSelectable = draft.remoteEnabled && draft.remoteUrl.trim() !== '';
@@ -154,7 +166,11 @@ export function FfmpegExecutorSettings() {
       const res = await testConnection({
         remoteUrl: draft.remoteUrl.trim() || null,
         remoteAuth: draft.remoteAuth,
-        ...(draft.saKeyJson.trim() ? { saKeyJson: draft.saKeyJson.trim() } : {}),
+        ...(draft.removeKey
+          ? { saKeyJson: null }
+          : draft.saKeyJson.trim()
+            ? { saKeyJson: draft.saKeyJson.trim() }
+            : {}),
       }).unwrap();
       setTestResult(res);
     } catch (err) {
@@ -288,7 +304,7 @@ export function FfmpegExecutorSettings() {
                 {status.envManaged.saKey && <EnvBadge name="FFMPEG_REMOTE_SA_KEY_JSON" />}
                 {status.hasSaKey && !status.envManaged.saKey && (
                   <Badge variant="outline" className="text-[10px]">
-                    Key stored ({status.saKeySource})
+                    Key stored
                   </Badge>
                 )}
               </div>

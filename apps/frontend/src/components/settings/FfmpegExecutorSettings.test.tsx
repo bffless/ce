@@ -127,6 +127,19 @@ describe('FfmpegExecutorSettings', () => {
     await waitFor(() => expect(update).toHaveBeenCalledWith({ saKeyJson: null }));
   });
 
+  it('Remove key reaches Test connection: sends saKeyJson: null', async () => {
+    status.hasSaKey = true;
+    status.saKeySource = 'db';
+    status.remoteEnabled = true;
+    status.remoteUrl = 'https://w.example.com';
+    render(<FfmpegExecutorSettings />);
+    fireEvent.click(screen.getByRole('button', { name: /Remove key/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Test connection/ }));
+    await waitFor(() =>
+      expect(testConnection).toHaveBeenCalledWith(expect.objectContaining({ saKeyJson: null })),
+    );
+  });
+
   it('local-filesystem storage makes Remote unavailable', () => {
     status.storagePresignable = false;
     render(<FfmpegExecutorSettings />);
@@ -157,6 +170,17 @@ describe('FfmpegExecutorSettings', () => {
     await waitFor(() =>
       expect(update).toHaveBeenCalledWith({ remoteEnabled: false, defaultExecutor: 'local' }),
     );
+  });
+
+  it('an env-pinned default executor never auto-moves', async () => {
+    status.envManaged.defaultExecutor = true;
+    status.defaultExecutor = 'remote';
+    status.remoteEnabled = true;
+    status.remoteUrl = 'https://w.example.com';
+    render(<FfmpegExecutorSettings />);
+    fireEvent.click(screen.getByRole('switch', { name: /Remote/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Save/ }));
+    await waitFor(() => expect(update).toHaveBeenCalledWith({ remoteEnabled: false }));
   });
 
   it('a draft edit clears a stale test result', async () => {
