@@ -352,3 +352,76 @@ test('validateEnvelope rejects unresolvable placeholders, empty commands and max
     assert.equal(error.code, 'BAD_REQUEST');
   }
 });
+
+/** Fake fetch whose `hangOn` method never settles until its signal aborts. */
+function hangingFetch({ hangOn = 'GET' } = {}) {
+  const started = { GET: 0, PUT: 0 };
+  const impl = async (url, init = {}) => {
+    const method = init.method ?? 'GET';
+    started[method] += 1;
+    if (method === hangOn) {
+      await new Promise((_, reject) => {
+        init.signal.addEventListener(
+          'abort',
+          () =>
+            reject(Object.assign(new Error('This operation was aborted'), { name: 'AbortError' })),
+          { once: true },
+        );
+      });
+    }
+    if (method === 'PUT') {
+      for await (const chunk of init.body) void chunk;
+      return new Response('', { status: 200 });
+    }
+    return new Response('INPUT', { status: 200 });
+  };
+  return { impl, started };
+}
+
+test('the deadline is job-wide: a hung input download → FFMPEG_TIMEOUT, nothing spawned, scratch wiped', async () => {
+  const sp = fakeSpawn();
+  const f = hangingFetch({ hangOn: 'GET' });
+  const root = await scratchRoot();
+  const res = await runJob(okEnvelope({ maxSeconds: 0.05 }), {
+    signal: new AbortController().signal,
+    scratchRoot: root,
+    fetchImpl: f.impl,
+    spawnImpl: sp.impl,
+  });
+  assert.deepEqual([res.ok, res.code], [false, 'FFMPEG_TIMEOUT']);
+  assert.match(res.message, /maxSeconds/);
+  assert.equal(sp.calls.length, 0);
+  const { readdir } = await import('node:fs/promises');
+  assert.deepEqual(await readdir(root), []);
+});
+
+test('the deadline aborts a hung upload → FFMPEG_TIMEOUT, not OUTPUT_UPLOAD_FAILED', async () => {
+  const sp = fakeSpawn();
+  const f = hangingFetch({ hangOn: 'PUT' });
+  const res = await runJob(okEnvelope({ maxSeconds: 0.1 }), {
+    signal: new AbortController().signal,
+    scratchRoot: await scratchRoot(),
+    fetchImpl: f.impl,
+    spawnImpl: sp.impl,
+  });
+  assert.deepEqual([res.ok, res.code], [false, 'FFMPEG_TIMEOUT']);
+  assert.equal(sp.calls.length, 1);
+  assert.equal(f.started.PUT, 1);
+  assert.deepEqual(res.outputs, []);
+});
+
+test('a caller abort during a hung download is still CANCELLED, not FFMPEG_TIMEOUT', async () => {
+  const sp = fakeSpawn();
+  const f = hangingFetch({ hangOn: 'GET' });
+  const ac = new AbortController();
+  const p = runJob(okEnvelope(), {
+    signal: ac.signal,
+    scratchRoot: await scratchRoot(),
+    fetchImpl: f.impl,
+    spawnImpl: sp.impl,
+  });
+  setTimeout(() => ac.abort(), 20);
+  const res = await p;
+  assert.deepEqual([res.ok, res.code], [false, 'CANCELLED']);
+  assert.equal(sp.calls.length, 0);
+});

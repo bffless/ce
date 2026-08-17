@@ -60,7 +60,8 @@ export interface WorkerResponse {
 export interface WorkerHealth {
   ok: boolean;
   version: string;
-  ffmpeg: string;
+  /** First line of `ffmpeg -version`, or null when the Worker has no ffmpeg binary (ok:false). */
+  ffmpeg: string | null;
   ops: string[];
   uptimeS: number;
 }

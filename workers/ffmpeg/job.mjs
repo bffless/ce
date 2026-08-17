@@ -244,11 +244,27 @@ export async function runJob(
   let child = null;
   let timedOut = false;
   const kill = () => child?.kill('SIGKILL');
+  // The Worker owns `maxSeconds` for the WHOLE job (D9), not just for a running child:
+  // a hung transfer must end the job too. Every fetch gets this controller's signal, so
+  // the deadline (and a caller disconnect) aborts downloads and uploads as well.
+  const jobAbort = new AbortController();
+  const stop = () => {
+    jobAbort.abort();
+    kill();
+  };
   const deadline = setTimeout(() => {
     timedOut = true;
-    kill();
+    stop();
   }, envelope.maxSeconds * 1000);
-  signal.addEventListener('abort', kill, { once: true });
+  signal.addEventListener('abort', stop, { once: true });
+  const jobSignal = jobAbort.signal;
+  /** Phase boundary: never start the next phase on a job that has already run out. */
+  const checkDeadline = () => {
+    if (timedOut) {
+      throw new JobError('FFMPEG_TIMEOUT', `job exceeded maxSeconds (${envelope.maxSeconds})`);
+    }
+    if (signal.aborted) throw new JobError('CANCELLED', 'caller disconnected');
+  };
 
   try {
     const inputs = envelope.inputs ?? [];
@@ -263,7 +279,7 @@ export async function runJob(
           input,
           path.join(scratch, assertSafeName(input.name)),
           fetchImpl,
-          signal,
+          jobSignal,
         );
       }
       for (const file of files) {
@@ -272,11 +288,13 @@ export async function runJob(
     } finally {
       timings.transferInMs = Date.now() - inStart;
     }
+    checkDeadline();
 
     const runStart = Date.now();
     const failed = new Set();
     try {
       for (const cmd of envelope.commands) {
+        checkDeadline();
         if (cmd.fallbackFor && !failed.has(cmd.fallbackFor)) {
           commandResults.push({ id: cmd.id, ran: false, exitCode: null });
           continue;
@@ -334,9 +352,11 @@ export async function runJob(
       timings.ffmpegMs = Date.now() - runStart;
     }
 
+    checkDeadline();
     const outStart = Date.now();
     try {
       for (const output of outputs) {
+        checkDeadline();
         const file = path.join(scratch, assertSafeName(output.name));
         let size;
         try {
@@ -350,7 +370,7 @@ export async function runJob(
             `output "${output.name}" is ${size} bytes (max ${envelope.limits.maxOutputBytes})`,
           );
         }
-        await uploadOutput(output, file, size, fetchImpl, signal);
+        await uploadOutput(output, file, size, fetchImpl, jobSignal);
         outputResults.push({ name: output.name, bytes: size });
         bytesOut += size;
       }
@@ -360,15 +380,22 @@ export async function runJob(
 
     return done();
   } catch (error) {
-    if (signal.aborted && !(error instanceof JobError && error.code === 'FFMPEG_TIMEOUT')) {
-      return done({ ok: false, code: 'CANCELLED', message: 'caller disconnected' });
+    // A blown deadline outranks whatever error it caused (an aborted fetch, a killed child).
+    if (timedOut) {
+      const message =
+        error instanceof JobError && error.code === 'FFMPEG_TIMEOUT'
+          ? error.message
+          : `job exceeded maxSeconds (${envelope.maxSeconds})`;
+      return done({ ok: false, code: 'FFMPEG_TIMEOUT', message });
     }
+    if (signal.aborted)
+      return done({ ok: false, code: 'CANCELLED', message: 'caller disconnected' });
     if (error instanceof JobError)
       return done({ ok: false, code: error.code, message: error.message });
     throw error;
   } finally {
     clearTimeout(deadline);
-    signal.removeEventListener('abort', kill);
+    signal.removeEventListener('abort', stop);
     await rm(scratch, { recursive: true, force: true });
   }
 }
