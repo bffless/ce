@@ -382,7 +382,7 @@ export class FfmpegExecutorSettingsService implements OnModuleInit {
 
   /**
    * Uncached "Test connection" for the admin UI. `draft` is the unsaved form; env-managed
-   * fields are ignored (env wins). Reports both the raw /healthz answer and what the
+   * fields are ignored (env wins). Reports both the raw /health answer and what the
    * selector's readiness check says about the same config, so the UI can show
    * "reachable but not usable" (e.g. version too old, storage not presignable).
    */
