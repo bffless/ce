@@ -63,3 +63,37 @@ _Avoid_: "access log" (that is nginx's raw artifact), "audit log"
 **Application interceptor**:
 The single cross-topology authority that observes every request reaching the app, records it to the Request log, and applies the Blocklist as a fallback. Consistent regardless of host, because requests reach the app in every topology.
 _Avoid_: "catch-all pipeline", "fallback handler" (it is framework middleware, not a project-scoped proxy rule)
+
+## Server video ops
+
+Where ffmpeg work for an app runs. There are three peers, and "server" on its own is ambiguous — say which.
+
+**Browser**:
+ffmpeg (wasm) running in the person's own tab. Needs nothing from CE. The default an app falls back to when no server executor exists.
+_Avoid_: "client-side", "wasm mode" (in user-facing text)
+
+**Local server**:
+ffmpeg spawned by the CE backend on the instance itself, subject to that box's memory, disk and single-slot queue.
+_Avoid_: "server" alone, "in-process"
+
+**Remote**:
+ffmpeg run by a Worker that CE calls over HTTPS with signed storage URLs, so the bytes never pass through the instance. Cloud Run is the *reference deployment*, not the name — any host running the Worker image is Remote.
+_Avoid_: "cloud run mode", "cloud"
+
+**Server video ops**:
+Local server and Remote together — everything that is not Browser. What the Features toggle switches on.
+
+**Executor**:
+The CE-side strategy that carries out an ffmpeg job: `local` or `remote`. An instance may enable both; the admin picks the default and a pipeline step or an app may ask for one explicitly.
+_Avoid_: "backend" (overloaded), "runner"
+
+**Worker**:
+The stateless ffmpeg service CE calls when the executor is Remote. It knows nothing about ops or projects — it runs the argv it is given against the URLs it is given.
+_Avoid_: "sidecar" (implies same pod), "ffmpeg service"
+
+**Job envelope**:
+The single request CE sends a Worker: kind, argv with named placeholders, signed input/output URLs, deadline and limits.
+_Avoid_: "payload", "job spec"
+
+**Capability probe**:
+The `probe`-without-input result apps read to learn which executors exist and which is default. Additive over time; `server:true` means at least one executor is ready.
