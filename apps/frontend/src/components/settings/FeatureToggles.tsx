@@ -2,6 +2,7 @@
 // Each entry is a DB-backed feature flag (Database > env > default) rendered as a
 // toggle row. Deliberately a registry, not an enumeration of all flags — flags
 // appear here only when an operator-facing toggle is intentional.
+import type { ComponentType } from 'react';
 import {
   useGetFeatureFlagQuery,
   useSetFeatureFlagMutation,
@@ -13,6 +14,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Clapperboard, ToggleRight, type LucideIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { FfmpegExecutorSettings } from './FfmpegExecutorSettings';
 
 type FeatureToggle = {
   flagKey: string;
@@ -21,6 +23,8 @@ type FeatureToggle = {
   description: string; // row description under the label
   enabledToast: { title: string; description: string };
   disabledToast: { title: string; description: string };
+  /** Optional configuration panel rendered under the toggle row. */
+  Panel?: ComponentType;
 };
 
 const FEATURE_TOGGLES: FeatureToggle[] = [
@@ -41,6 +45,7 @@ const FEATURE_TOGGLES: FeatureToggle[] = [
       title: 'Server video ops disabled',
       description: 'Apps fall back to in-browser processing.',
     },
+    Panel: FfmpegExecutorSettings,
   },
 ];
 
@@ -110,7 +115,10 @@ export function FeatureToggles() {
       </CardHeader>
       <CardContent className="space-y-4">
         {FEATURE_TOGGLES.map((toggle) => (
-          <FeatureToggleRow key={toggle.flagKey} toggle={toggle} />
+          <div key={toggle.flagKey} className="space-y-3">
+            <FeatureToggleRow toggle={toggle} />
+            {toggle.Panel && <toggle.Panel />}
+          </div>
         ))}
       </CardContent>
     </Card>
