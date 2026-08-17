@@ -135,7 +135,15 @@ export class FfmpegExecutorSettingsService implements OnModuleInit {
   async reload(): Promise<void> {
     let row: FfmpegExecutorSettingsRow | undefined;
     try {
-      const rows = await db.select().from(ffmpegExecutorSettings).limit(1);
+      // .orderBy(createdAt): with exactly one row this is a no-op, but it makes
+      // "the first row" deterministic instead of whatever order Postgres happens
+      // to return — matters if a stray second row ever exists (e.g. a race on
+      // first insert) so reload() and persist() always agree on the same row.
+      const rows = await db
+        .select()
+        .from(ffmpegExecutorSettings)
+        .orderBy(ffmpegExecutorSettings.createdAt)
+        .limit(1);
       row = rows[0];
     } catch (error) {
       if (!this.warnedMissing) {
@@ -395,13 +403,16 @@ export class FfmpegExecutorSettingsService implements OnModuleInit {
     const credential: FfmpegExecutorTestResult['credential'] =
       effective.remoteAuth === 'none' ? 'none' : effective.remoteSaKeyJson ? 'sa_key' : 'adc';
 
-    // Parse a draft key HERE: deeper down it is JSON.parse'd inside the token
-    // minter, and V8's SyntaxError quotes the offending input — which would put
-    // service-account bytes into the response. Reported through the button's one
-    // error channel, with `update()`'s wording.
-    if (typeof overrides.remoteSaKeyJson === 'string' && overrides.remoteSaKeyJson !== '') {
+    // Validate the EFFECTIVE key — a pasted draft key OR an env-pinned
+    // FFMPEG_REMOTE_SA_KEY_JSON, whichever `effective` ends up with — not just
+    // the draft's. Deeper down the key is JSON.parse'd inside the token minter,
+    // and V8's SyntaxError quotes the offending input, which would put
+    // service-account bytes (draft- or env-sourced) into the response. Caught
+    // here instead, through the button's one error channel, with `update()`'s
+    // wording, before the executor is ever called.
+    if (effective.remoteAuth === 'google_id_token' && effective.remoteSaKeyJson) {
       try {
-        JSON.parse(overrides.remoteSaKeyJson);
+        JSON.parse(effective.remoteSaKeyJson);
       } catch {
         const reason = 'Service-account key must be valid JSON.';
         return {
@@ -452,14 +463,24 @@ export class FfmpegExecutorSettingsService implements OnModuleInit {
       updatedAt: new Date(),
       updatedByUserId: userId ?? null,
     };
-    // undefined = the key was not part of this save, so the stored one is preserved.
-    const encrypted = keyChanged
-      ? next.saKeyJson === null
-        ? null
-        : encryptString(next.saKeyJson)
-      : undefined;
     try {
-      const existing = (await db.select().from(ffmpegExecutorSettings).limit(1))[0];
+      // undefined = the key was not part of this save, so the stored one is
+      // preserved. Computed INSIDE the try: encryptString() throws on a bad/
+      // missing ENCRYPTION_KEY, and that failure must surface through the same
+      // shaped InternalServerErrorException as every other persist failure,
+      // not as a raw crypto error.
+      const encrypted = keyChanged
+        ? next.saKeyJson === null
+          ? null
+          : encryptString(next.saKeyJson)
+        : undefined;
+      const existing = (
+        await db
+          .select()
+          .from(ffmpegExecutorSettings)
+          .orderBy(ffmpegExecutorSettings.createdAt)
+          .limit(1)
+      )[0];
       if (existing) {
         await db
           .update(ffmpegExecutorSettings)

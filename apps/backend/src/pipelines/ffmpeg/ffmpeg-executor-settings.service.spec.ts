@@ -49,12 +49,18 @@ let table: Record<string, unknown>[] = [];
 function mockSelect(rows: unknown[]) {
   table = rows as Record<string, unknown>[];
   db.select.mockReturnValue({
-    from: jest.fn().mockReturnValue({ limit: jest.fn().mockImplementation(async () => table) }),
+    from: jest.fn().mockReturnValue({
+      orderBy: jest.fn().mockReturnValue({
+        limit: jest.fn().mockImplementation(async () => table),
+      }),
+    }),
   });
 }
 function mockSelectThrows(err: Error) {
   db.select.mockReturnValue({
-    from: jest.fn().mockReturnValue({ limit: jest.fn().mockRejectedValue(err) }),
+    from: jest.fn().mockReturnValue({
+      orderBy: jest.fn().mockReturnValue({ limit: jest.fn().mockRejectedValue(err) }),
+    }),
   });
 }
 
@@ -533,6 +539,24 @@ describe('FfmpegExecutorSettingsService', () => {
       expect(res.credential).toBe('sa_key');
       expect(JSON.stringify(res)).not.toContain('BEGIN PRIVATE KEY');
       expect(JSON.stringify(res)).not.toContain(secret.slice(0, 30));
+      expect(remote.testConnection).not.toHaveBeenCalled();
+      expect(remote.ready).not.toHaveBeenCalled();
+    });
+
+    it('a malformed env-pinned key fails through the same channel, without quoting the key back, and never calls the executor', async () => {
+      mockSelect([]);
+      const { service, remote } = makeWithRemote({
+        env: { FFMPEG_REMOTE_SA_KEY_JSON: '{not json -----BEGIN PRIVATE KEY-----' },
+      });
+      await service.reload();
+      const res = await service.testConnection();
+      expect(res.ok).toBe(false);
+      expect(res.error).toBe('Service-account key must be valid JSON.');
+      expect(res.readiness).toEqual({
+        ok: false,
+        reason: 'Service-account key must be valid JSON.',
+      });
+      expect(JSON.stringify(res)).not.toContain('BEGIN PRIVATE KEY');
       expect(remote.testConnection).not.toHaveBeenCalled();
       expect(remote.ready).not.toHaveBeenCalled();
     });
