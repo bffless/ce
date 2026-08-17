@@ -262,6 +262,7 @@ services:
   ffmpeg-worker:
     # Remote executor for server video ops (docs: Server Video Ops → Remote executor).
     # Local-dev / private-network profile: plain http, no auth. Cloud Run is the reference deployment.
+    # Point CE at it with FFMPEG_REMOTE_URL=http://ffmpeg-worker:8080 FFMPEG_REMOTE_AUTH=none, or in Admin Settings → Features → Server video ops → Executor (Worker URL http://ffmpeg-worker:8080, auth None).
     image: ghcr.io/bffless/ce-ffmpeg-worker:${BACKEND_TAG:-latest}
     container_name: assethost-ffmpeg-worker
     profiles:
