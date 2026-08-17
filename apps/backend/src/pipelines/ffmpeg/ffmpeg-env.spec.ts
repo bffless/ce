@@ -73,4 +73,13 @@ describe('remote executor env', () => {
       }),
     ).toMatchObject({ executor: 'local', remoteAuth: 'google_id_token', remoteUrl: null });
   });
+  it('localEnabled is always true from env; remoteEnabled mirrors whether FFMPEG_REMOTE_URL is set', () => {
+    const off = readFfmpegEnv({});
+    expect(off.localEnabled).toBe(true);
+    expect(off.remoteEnabled).toBe(false);
+    const on = readFfmpegEnv({ FFMPEG_REMOTE_URL: 'https://w.example.com/' });
+    expect(on.remoteEnabled).toBe(true);
+    expect(on.remoteUrl).toBe('https://w.example.com');
+    expect(readFfmpegEnv({ FFMPEG_REMOTE_URL: '' }).remoteEnabled).toBe(false);
+  });
 });
