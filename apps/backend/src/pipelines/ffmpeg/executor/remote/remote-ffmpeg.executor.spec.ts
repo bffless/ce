@@ -7,7 +7,7 @@ import {
   RemoteFfmpegExecutor,
   semverLt,
 } from './remote-ffmpeg.executor';
-import { readFfmpegEnv } from '../../ffmpeg-env';
+import { readFfmpegEnv, type FfmpegEnvConfig } from '../../ffmpeg-env';
 import { IdTokenMinter, NoAuth } from './id-token';
 import { WorkerClient, WorkerTransportError } from './worker-client';
 
@@ -57,15 +57,22 @@ function make(envOver: Record<string, string> = {}, storageOver: Record<string, 
     ...storageOver,
   };
   let now = 1_000_000;
+  // Every config the executor built a client for — how the tests below see which
+  // URL/auth a call actually used (the fake client itself is shared).
+  const seenEnvs: FfmpegEnvConfig[] = [];
   const executor = new RemoteFfmpegExecutor(storage as never, {
     env: () => env,
-    clientFactory: () => client as never,
+    clientFactory: (cfg) => {
+      seenEnvs.push(cfg);
+      return client as never;
+    },
     now: () => now,
   });
   return {
     executor,
     client,
     storage,
+    seenEnvs,
     tick: (ms: number) => {
       now += ms;
     },
@@ -149,6 +156,39 @@ describe('ready()', () => {
     tick(2_000);
     await executor.ready();
     expect(client.health).toHaveBeenCalledTimes(2);
+  });
+  it('ready({fresh:true}) bypasses the readiness cache and ready({env}) evaluates a candidate config', async () => {
+    const { executor, client, seenEnvs } = make();
+    await executor.ready();
+    await executor.ready();
+    expect(client.health).toHaveBeenCalledTimes(1); // cached
+    await executor.ready({ fresh: true });
+    expect(client.health).toHaveBeenCalledTimes(2);
+    const candidate = readFfmpegEnv({ FFMPEG_REMOTE_URL: 'https://other.example.com' });
+    const r = await executor.ready({ env: candidate });
+    expect(r).toEqual({ ok: true, version: '0.4.31' });
+    expect(seenEnvs.map((e) => e.remoteUrl)).toContain('https://other.example.com');
+  });
+  it('a candidate/fresh check builds its own client and never evicts the live memoised one', async () => {
+    const { executor, seenEnvs, tick } = make();
+    await executor.ready();
+    expect(seenEnvs).toHaveLength(1); // the live client
+    await executor.ready({ fresh: true });
+    await executor.ready({
+      env: readFfmpegEnv({ FFMPEG_REMOTE_URL: 'https://other.example.com' }),
+    });
+    // Each draft got its OWN client — the last one for a different worker entirely.
+    expect(seenEnvs.map((e) => e.remoteUrl)).toEqual([
+      'https://w',
+      'https://w',
+      'https://other.example.com',
+    ]);
+    // Live path again once the 60 s cache expires: the memo must still hold the
+    // original client (a rebuild here would mean the draft evicted it).
+    tick(61_000);
+    const before = seenEnvs.length;
+    await executor.ready();
+    expect(seenEnvs).toHaveLength(before);
   });
   it('unreachable worker and too-old worker are not ready', async () => {
     const a = make();
@@ -334,5 +374,22 @@ describe('the default client factory', () => {
     expect(
       authOf(buildWorkerClient(env({ FFMPEG_REMOTE_AUTH: 'google_id_token' }))),
     ).toBeInstanceOf(IdTokenMinter);
+  });
+});
+
+describe('testConnection()', () => {
+  it('hits the Worker at the override URL, uncached — and never memoises the draft client', async () => {
+    const { executor, client, seenEnvs } = make();
+    await executor.testConnection({ remoteUrl: 'https://draft.example.com' });
+    expect(seenEnvs.map((e) => e.remoteUrl)).toContain('https://draft.example.com');
+    expect(client.health).toHaveBeenCalledTimes(1);
+    // No overrides → back to the live config, not the draft's client.
+    await executor.testConnection();
+    expect(seenEnvs[seenEnvs.length - 1].remoteUrl).toBe('https://w');
+  });
+  it('refuses without a Worker URL', async () => {
+    await expect(make({ FFMPEG_REMOTE_URL: '' }).executor.testConnection()).rejects.toMatchObject({
+      code: 'FFMPEG_EXECUTOR_UNAVAILABLE',
+    });
   });
 });

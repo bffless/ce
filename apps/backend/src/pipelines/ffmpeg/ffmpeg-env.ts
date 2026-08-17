@@ -20,6 +20,10 @@ export interface FfmpegEnvConfig {
   /** Ceiling for a single storage call (metadata, download, upload). */
   ioMaxSeconds: number;
   scratchDir: string;
+  /** Operator switch for the Local executor (DB-backed; env has no knob → always true here). */
+  localEnabled: boolean;
+  /** Operator switch for the Remote executor. From env alone: on iff FFMPEG_REMOTE_URL is set. */
+  remoteEnabled: boolean;
   /** Which executor runs a step unless the step says otherwise. */
   executor: FfmpegExecutorSetting;
   /** Worker base URL (https), trimmed and trailing-slash-stripped. Setting this enables the remote executor. */
@@ -53,6 +57,7 @@ function str(raw: string | undefined): string | null {
 
 export function readFfmpegEnv(env: NodeJS.ProcessEnv = process.env): FfmpegEnvConfig {
   const maxSeconds = num(env.FFMPEG_MAX_SECONDS, 1800);
+  const remoteUrl = str(env.FFMPEG_REMOTE_URL);
   return {
     memoryMb: num(env.FFMPEG_MEMORY_MB, 1024),
     threads: num(env.FFMPEG_THREADS, Math.max(1, os.cpus().length - 1)),
@@ -65,7 +70,9 @@ export function readFfmpegEnv(env: NodeJS.ProcessEnv = process.env): FfmpegEnvCo
         ? env.FFMPEG_SCRATCH_DIR
         : path.join(os.tmpdir(), 'bffless-ffmpeg'),
     executor: env.FFMPEG_EXECUTOR === 'remote' ? 'remote' : 'local',
-    remoteUrl: str(env.FFMPEG_REMOTE_URL),
+    localEnabled: true,
+    remoteEnabled: remoteUrl !== null,
+    remoteUrl,
     remoteAuth: env.FFMPEG_REMOTE_AUTH === 'none' ? 'none' : 'google_id_token',
     remoteSaKeyJson: str(env.FFMPEG_REMOTE_SA_KEY_JSON),
     remoteMaxInflight: num(env.FFMPEG_REMOTE_MAX_INFLIGHT, 8),

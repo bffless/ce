@@ -186,6 +186,52 @@ export interface UpdateBrandingResponse {
   config: BrandingConfig;
 }
 
+// ─── ffmpeg executor settings (Server video ops → Executor) ───────────────
+// Mirrors the backend's FfmpegExecutorSettingsService types. The
+// service-account key is write-only: the API only ever reports whether one is
+// stored (`hasSaKey`/`saKeySource`), never its value.
+export type FfmpegExecutorName = 'local' | 'remote';
+export type FfmpegRemoteAuth = 'google_id_token' | 'none';
+
+export interface FfmpegExecutorStatus {
+  localAvailable: boolean;
+  localVersion: string | null;
+  localEnabled: boolean;
+  remoteEnabled: boolean;
+  remoteUrl: string | null;
+  remoteAuth: FfmpegRemoteAuth;
+  hasSaKey: boolean;
+  saKeySource: 'db' | 'env' | null;
+  defaultExecutor: FfmpegExecutorName;
+  storagePresignable: boolean;
+  envManaged: { defaultExecutor: boolean; remoteUrl: boolean; remoteAuth: boolean; saKey: boolean };
+}
+
+export interface UpdateFfmpegExecutorDto {
+  localEnabled?: boolean;
+  remoteEnabled?: boolean;
+  remoteUrl?: string | null;
+  remoteAuth?: FfmpegRemoteAuth;
+  defaultExecutor?: FfmpegExecutorName;
+  /** undefined = keep, null = clear, string = replace */
+  saKeyJson?: string | null;
+}
+
+export interface FfmpegExecutorTestDraft {
+  remoteUrl?: string | null;
+  remoteAuth?: FfmpegRemoteAuth;
+  saKeyJson?: string | null;
+}
+
+export interface FfmpegExecutorTestResult {
+  ok: boolean;
+  latencyMs: number | null;
+  worker?: { version: string; ffmpeg: string | null; ops: string[]; uptimeS: number };
+  error?: string;
+  readiness: { ok: boolean; reason?: string };
+  credential: 'sa_key' | 'adc' | 'none';
+}
+
 // ─── SSO provider types (story 0047) ─────────────────────────────────────────
 
 export type SsoProviderKind = 'google' | 'okta' | 'azure-ad' | 'oidc';
@@ -489,6 +535,23 @@ export const settingsApi = api.injectEndpoints({
       invalidatesTags: ['OAuthSettings', 'Integration'],
     }),
 
+    // ─── ffmpeg executor (Admin Settings → Features → Server video ops) ────
+    // Backend: FfmpegExecutorSettingsController (PipelinesModule). The test
+    // mutation runs against the *unsaved* draft, so it deliberately has no tags.
+    getFfmpegExecutorSettings: builder.query<FfmpegExecutorStatus, void>({
+      query: () => '/api/settings/ffmpeg-executor',
+      providesTags: ['FfmpegExecutor'],
+    }),
+
+    updateFfmpegExecutorSettings: builder.mutation<FfmpegExecutorStatus, UpdateFfmpegExecutorDto>({
+      query: (body) => ({ url: '/api/settings/ffmpeg-executor', method: 'PUT', body }),
+      invalidatesTags: ['FfmpegExecutor'],
+    }),
+
+    testFfmpegExecutorConnection: builder.mutation<FfmpegExecutorTestResult, FfmpegExecutorTestDraft>({
+      query: (body) => ({ url: '/api/settings/ffmpeg-executor/test', method: 'POST', body }),
+    }),
+
     // ─── SSO providers (story 0047) ─────────────────────────────────────────
     // CRUD over the `oidc_providers` table. Each mutation also triggers
     // backend syncOidcProviders() server-side, so the new buttons appear on
@@ -574,6 +637,10 @@ export const {
   useGetGoogleIntegrationQuery,
   useUpdateGoogleIntegrationMutation,
   useDeleteGoogleIntegrationMutation,
+  // ffmpeg executor hooks (Server video ops → Executor)
+  useGetFfmpegExecutorSettingsQuery,
+  useUpdateFfmpegExecutorSettingsMutation,
+  useTestFfmpegExecutorConnectionMutation,
   // SSO provider hooks (story 0047)
   useListSsoProvidersQuery,
   useGetSsoProviderQuery,

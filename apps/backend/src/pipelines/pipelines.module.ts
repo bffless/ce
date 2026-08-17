@@ -60,6 +60,9 @@ import { FfmpegScratchService } from './ffmpeg/ffmpeg-scratch.service';
 import { LocalFfmpegExecutor } from './ffmpeg/executor/local-ffmpeg.executor';
 import { RemoteFfmpegExecutor } from './ffmpeg/executor/remote/remote-ffmpeg.executor';
 import { FfmpegExecutorSelector } from './ffmpeg/executor/ffmpeg-executor.selector';
+import { FfmpegExecutorSettingsService } from './ffmpeg/ffmpeg-executor-settings.service';
+import { FfmpegExecutorSettingsController } from './ffmpeg/ffmpeg-executor-settings.controller';
+import { FFMPEG_CONFIG_PROVIDERS } from './ffmpeg/executor/ffmpeg-config.providers';
 import { FeedParserService } from './feed-parser.service';
 import { IntegrationsModule } from '../integrations/integrations.module';
 // Embeddings service
@@ -107,6 +110,7 @@ import {
     PipelineSchemasController,
     PipelineDataController,
     AIPluginsController,
+    FfmpegExecutorSettingsController,
   ],
   providers: [
     // Core services
@@ -175,6 +179,10 @@ import {
     LocalFfmpegExecutor,
     RemoteFfmpegExecutor,
     FfmpegExecutorSelector,
+    // Admin-editable executor config; FFMPEG_CONFIG_PROVIDERS hands the EFFECTIVE
+    // config (env over the saved row) to the selector and the remote executor.
+    FfmpegExecutorSettingsService,
+    ...FFMPEG_CONFIG_PROVIDERS,
     // Validators (auto-register on construction)
     AuthRequiredValidator,
     RateLimitValidator,
@@ -200,6 +208,7 @@ import {
     UploadSchemaGeneratorService,
     UploadSchemaLintService,
     PipelineExecutionLogService,
+    FfmpegExecutorSettingsService,
   ],
 })
 export class PipelinesModule {}

@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { LOCAL_PRESIGN_PATH } from '../../../../storage/local.adapter';
 import { STORAGE_ADAPTER, type IStorageAdapter } from '../../../../storage/storage.interface';
 import { readFfmpegEnv, type FfmpegEnvConfig } from '../../ffmpeg-env';
+import { FFMPEG_REMOTE_DEPS } from '../ffmpeg-config.tokens';
 import {
   FfmpegBusyError,
   FfmpegExecutorUnavailableError,
@@ -106,8 +107,9 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
 
   constructor(
     @Inject(STORAGE_ADAPTER) private readonly storageAdapter: IStorageAdapter,
-    // Test seams only — @Optional() so Nest never tries to resolve a provider for it.
-    @Optional() deps: Deps = {},
+    // The effective config (+ test seams). @Optional() so a hand-built executor
+    // and any wiring without the token keep the plain readFfmpegEnv() default.
+    @Optional() @Inject(FFMPEG_REMOTE_DEPS) deps: Deps = {},
   ) {
     this.env = deps.env ?? (() => readFfmpegEnv());
     this.clientFactory = deps.clientFactory ?? buildWorkerClient;
@@ -119,9 +121,21 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
     return 0;
   }
 
-  async ready(): Promise<FfmpegExecutorReadiness> {
-    const env = this.env();
-    if (!env.remoteUrl) return { ok: false, reason: 'FFMPEG_REMOTE_URL is not set' };
+  /**
+   * `fresh` skips (and does not poison) the shared 60 s cache and `env` judges a
+   * CANDIDATE config — both are what the settings "Test connection" button needs
+   * to report on an unsaved draft without disturbing the live readiness answer.
+   */
+  async ready(
+    opts: { fresh?: boolean; env?: FfmpegEnvConfig } = {},
+  ): Promise<FfmpegExecutorReadiness> {
+    const env = opts.env ?? this.env();
+    if (!env.remoteUrl)
+      return {
+        ok: false,
+        reason:
+          'no Worker URL configured (Admin Settings → Server video ops → Executor, or FFMPEG_REMOTE_URL)',
+      };
     let url: URL;
     try {
       url = new URL(env.remoteUrl);
@@ -132,7 +146,7 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
       return { ok: false, reason: 'remote auth google_id_token requires an https worker URL' };
     }
 
-    const entry = this.cacheEntry(env);
+    const entry = opts.fresh || opts.env ? this.freshEntry(env) : this.cacheEntry(env);
     entry.storage ??= await this.probeStorage();
     if (!entry.storage.ok) return entry.storage;
 
@@ -144,7 +158,7 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
       }
     }
 
-    entry.health ??= await this.probeHealth(env);
+    entry.health ??= await this.probeHealth(env, { throwaway: Boolean(opts.fresh || opts.env) });
     if (!entry.health.ok) return { ok: false, reason: entry.health.reason };
     const health = entry.health.health;
     if (!health.ok) return { ok: false, reason: 'worker reports not ok' };
@@ -157,16 +171,20 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
     return { ok: true, version: health.version };
   }
 
-  /** Uncached liveness check for the settings "Test connection" button. */
-  async testConnection(): Promise<WorkerHealth> {
-    const env = this.env();
-    if (!env.remoteUrl) throw new FfmpegExecutorUnavailableError('FFMPEG_REMOTE_URL is not set');
-    return this.clientFor(env).health();
+  /** Uncached liveness check for the settings "Test connection" button; `overrides` = the unsaved form draft. */
+  async testConnection(
+    overrides: Partial<Pick<FfmpegEnvConfig, 'remoteUrl' | 'remoteAuth' | 'remoteSaKeyJson'>> = {},
+  ): Promise<WorkerHealth> {
+    const env: FfmpegEnvConfig = { ...this.env(), ...overrides };
+    if (!env.remoteUrl) throw new FfmpegExecutorUnavailableError('no Worker URL configured');
+    // Never memoise a draft's client over the live one — a draft may carry a different key.
+    const client = Object.keys(overrides).length ? this.clientFactory(env) : this.clientFor(env);
+    return client.health();
   }
 
   async run(job: FfmpegJob, opts: { signal: AbortSignal }): Promise<FfmpegJobResult> {
     const env = this.env();
-    if (!env.remoteUrl) throw new FfmpegExecutorUnavailableError('FFMPEG_REMOTE_URL is not set');
+    if (!env.remoteUrl) throw new FfmpegExecutorUnavailableError('no Worker URL configured');
     // ready() normally catches this; guard here too so a caller that skipped it
     // gets the typed error instead of a TypeError on an absent optional method.
     if (typeof this.storageAdapter.getPresignedUploadUrl !== 'function') {
@@ -323,13 +341,27 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
     return { ok: true };
   }
 
-  private async probeHealth(env: FfmpegEnvConfig): Promise<NonNullable<CacheEntry['health']>> {
+  /**
+   * `throwaway` = a Test-connection / candidate check: build a one-off client so a
+   * draft config cannot evict the live memoised WorkerClient (and the ID token it
+   * has already minted) out from under running jobs.
+   */
+  private async probeHealth(
+    env: FfmpegEnvConfig,
+    opts: { throwaway?: boolean } = {},
+  ): Promise<NonNullable<CacheEntry['health']>> {
     try {
-      return { ok: true, health: await this.clientFor(env).health() };
+      const client = opts.throwaway ? this.clientFactory(env) : this.clientFor(env);
+      return { ok: true, health: await client.health() };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return { ok: false, reason: `worker unreachable: ${message}` };
     }
+  }
+
+  /** An entry nobody else sees — for Test connection and candidate configs. */
+  private freshEntry(env: FfmpegEnvConfig): CacheEntry {
+    return { key: this.identity(env), at: this.now() };
   }
 
   /** One cache entry per worker identity; a config change invalidates it immediately. */

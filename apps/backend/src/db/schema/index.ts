@@ -25,6 +25,7 @@ export * from './domain-traffic-weights.schema';
 export * from './domain-traffic-rules.schema';
 export * from './path-preferences.schema';
 export * from './feature-flags.schema';
+export * from './ffmpeg-executor-settings.schema';
 export * from './workspace-invitations.schema';
 export * from './retention-rules.schema';
 export * from './cache-rules.schema';

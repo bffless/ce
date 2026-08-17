@@ -221,6 +221,7 @@ export const api = createApi({
     'PrimarySsl',
     'AppCatalog',
     'InstalledApp',
+    'FfmpegExecutor',
   ],
   endpoints: () => ({}),
 });
