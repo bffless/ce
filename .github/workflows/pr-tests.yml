@@ -60,6 +60,10 @@ jobs:
         run: pnpm test
         continue-on-error: false
 
+      - name: Run ffmpeg worker tests
+        # workers/ffmpeg is a zero-dependency Node program outside the pnpm workspace.
+        run: pnpm test:worker
+
       - name: Upload backend coverage
         id: upload-backend-coverage
         if: hashFiles('apps/backend/coverage') != ''

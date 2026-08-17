@@ -8,6 +8,9 @@ const execFileAsync = promisify(execFile);
 /** Flag key: DB > file > env > default-OFF (see FLAG_DEFINITIONS) — the operator's per-instance policy. */
 export const SERVER_VIDEO_OPS_FLAG = 'FFMPEG_HANDLER_ENABLED';
 
+/** The curated operation set — the `ops` of the capability payload. */
+export const FFMPEG_OPS = ['probe', 'extract_audio', 'slice', 'concat'] as const;
+
 /**
  * Boot-time capability probe: ffmpeg + ffprobe both present → server video ops
  * capability. Missing binaries are normal (local dev without ffmpeg, minimal
@@ -64,11 +67,20 @@ export class FfmpegCapabilityService implements OnModuleInit {
     return this.available && (await this.featureFlags.isEnabled(SERVER_VIDEO_OPS_FLAG));
   }
 
+  /**
+   * The operator's policy flag ALONE, without the local-binary requirement
+   * `isEnabled()` folds in: an instance that runs its jobs on a remote Worker
+   * has no local ffmpeg and must still be able to turn server video ops on.
+   */
+  async isFlagOn(): Promise<boolean> {
+    return this.featureFlags.isEnabled(SERVER_VIDEO_OPS_FLAG);
+  }
+
   getVersion(): string | null {
     return this.version;
   }
 
   async getOps(): Promise<string[]> {
-    return (await this.isEnabled()) ? ['probe', 'extract_audio', 'slice', 'concat'] : [];
+    return (await this.isEnabled()) ? [...FFMPEG_OPS] : [];
   }
 }

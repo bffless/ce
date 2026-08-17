@@ -25,6 +25,8 @@ function createHandler(
       downloadStream: jest.Mock;
       uploadStream: jest.Mock;
     }>;
+    /** Omitted → the handler builds its own local-only selector (pre-remote behaviour). */
+    selector?: { pick: jest.Mock; probe: jest.Mock };
   } = {},
 ) {
   const registry = { register: jest.fn() };
@@ -62,6 +64,7 @@ function createHandler(
     scratch as never,
     uploadRecord as never,
     storageAdapter as never,
+    overrides.selector as never,
   );
   return { handler, registry, runner, scratch, storageAdapter };
 }
@@ -125,6 +128,8 @@ describe('probe without input — the capability payload', () => {
       server: true,
       ops: ['probe', 'extract_audio', 'slice', 'concat'],
       version: 'ffmpeg version 6.1.1',
+      executors: ['local'],
+      defaultExecutor: 'local',
     });
   });
 
@@ -134,7 +139,13 @@ describe('probe without input — the capability payload', () => {
     });
     const result = await handler.execute(context(), step({ operation: 'probe' }));
     expect(result.success).toBe(true);
-    expect(result.output).toEqual({ server: false, ops: [], version: null });
+    expect(result.output).toEqual({
+      server: false,
+      ops: [],
+      version: null,
+      executors: ['local'],
+      defaultExecutor: 'local',
+    });
   });
 });
 
@@ -525,5 +536,127 @@ describe('step deadlines (#669)', () => {
         jest.useRealTimers();
       }
     });
+  });
+});
+
+describe('executor selection (remote)', () => {
+  it('config.executor is expression-evaluated and routed; output carries executor + timings', async () => {
+    const remoteRun = jest.fn().mockResolvedValue({
+      executor: 'remote',
+      stdout: '',
+      stderrTail: '',
+      commands: [{ id: 'extract', ran: true, exitCode: 0 }],
+      outputs: [{ name: 'out.wav', key: 'o/r/uploads/studio/a.wav', bytes: 7 }],
+      bytesIn: 3,
+      bytesOut: 7,
+      timings: { queueMs: 0, transferInMs: 1, ffmpegMs: 1, transferOutMs: 1, totalMs: 3 },
+      worker: { version: '0.4.31', ffmpeg: '6' },
+    });
+    const selector = {
+      pick: jest.fn().mockResolvedValue({ name: 'remote', argvThreads: () => 0, run: remoteRun }),
+      probe: jest.fn(),
+    };
+    const { handler } = createHandler({ selector });
+    const ctx = context();
+    (ctx.metadata.body as Record<string, unknown>).executor = 'remote';
+    const result = await handler.execute(
+      ctx,
+      step({
+        operation: 'extract_audio',
+        input: 'studio/a.mp4',
+        output: 'studio/a.wav',
+        executor: '{{request.body.executor}}',
+      }),
+    );
+    expect(selector.pick).toHaveBeenCalledWith('remote');
+    expect(result.output).toMatchObject({
+      storage_path: 'o/r/uploads/studio/a.wav',
+      size: 7,
+      executor: 'remote',
+      bytesIn: 3,
+      bytesOut: 7,
+      timings: { totalMs: 3 },
+    });
+  });
+
+  it('an unset executor asks the selector for the instance default', async () => {
+    const selector = {
+      pick: jest.fn().mockRejectedValue(
+        Object.assign(new Error("executor 'local' is not enabled"), {
+          code: 'FFMPEG_EXECUTOR_UNAVAILABLE',
+        }),
+      ),
+      probe: jest.fn(),
+    };
+    const { handler } = createHandler({ selector });
+    await handler.execute(
+      context(),
+      step({ operation: 'extract_audio', input: 'a.mp4', output: 'a.wav' }),
+    );
+    expect(selector.pick).toHaveBeenCalledWith(undefined);
+  });
+
+  it('an unavailable executor is FFMPEG_EXECUTOR_UNAVAILABLE', async () => {
+    const selector = {
+      pick: jest.fn().mockRejectedValue(
+        Object.assign(new Error('executor remote is not enabled'), {
+          code: 'FFMPEG_EXECUTOR_UNAVAILABLE',
+        }),
+      ),
+      probe: jest.fn(),
+    };
+    const { handler } = createHandler({ selector });
+    const result = await handler.execute(
+      context(),
+      step({ operation: 'extract_audio', input: 'a.mp4', output: 'a.wav', executor: 'remote' }),
+    );
+    expect(result).toMatchObject({
+      success: false,
+      error: { code: 'FFMPEG_EXECUTOR_UNAVAILABLE' },
+    });
+  });
+
+  /**
+   * No selector double: the REAL FfmpegExecutorSelector the handler builds for
+   * itself, so this pins the ruled contract end-to-end — flag ON but nothing to
+   * run on is FFMPEG_EXECUTOR_UNAVAILABLE, not the flag-off FFMPEG_UNAVAILABLE.
+   */
+  it('flag on, no local binaries and no FFMPEG_REMOTE_URL → FFMPEG_EXECUTOR_UNAVAILABLE', async () => {
+    const saved = process.env.FFMPEG_REMOTE_URL;
+    delete process.env.FFMPEG_REMOTE_URL;
+    try {
+      const { handler, runner } = createHandler({
+        capability: { isEnabled: async () => true, isAvailable: () => false },
+      });
+      const result = await handler.execute(
+        context(),
+        step({ operation: 'extract_audio', input: 'a.mp4', output: 'a.wav' }),
+      );
+      expect(result).toMatchObject({
+        success: false,
+        error: { code: 'FFMPEG_EXECUTOR_UNAVAILABLE' },
+      });
+      expect(runner.run).not.toHaveBeenCalled();
+    } finally {
+      if (saved === undefined) delete process.env.FFMPEG_REMOTE_URL;
+      else process.env.FFMPEG_REMOTE_URL = saved;
+    }
+  });
+
+  it('probe without input returns the selector payload verbatim', async () => {
+    const payload = {
+      server: true,
+      ops: ['probe'],
+      version: 'v',
+      executors: ['local', 'remote'],
+      defaultExecutor: 'remote',
+      remote: { ready: true, version: '0.4.31' },
+    };
+    const { handler } = createHandler({
+      selector: { pick: jest.fn(), probe: jest.fn().mockResolvedValue(payload) },
+    });
+    expect((await handler.execute(context(), step({ operation: 'probe' }))).output).toEqual(
+      payload,
+    );
   });
 });

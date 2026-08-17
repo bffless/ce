@@ -259,6 +259,20 @@ services:
     networks:
       - assethost-network
 
+  ffmpeg-worker:
+    # Remote executor for server video ops (docs: Server Video Ops → Remote executor).
+    # Local-dev / private-network profile: plain http, no auth. Cloud Run is the reference deployment.
+    image: ghcr.io/bffless/ce-ffmpeg-worker:${BACKEND_TAG:-latest}
+    container_name: assethost-ffmpeg-worker
+    profiles:
+      - ffmpeg-worker # Only starts with --profile ffmpeg-worker
+    environment:
+      PORT: 8080
+      WORKER_ALLOW_HTTP: '1' # MinIO presigned URLs inside the compose network are http://
+    networks:
+      - assethost-network
+    restart: unless-stopped
+
   backend:
     # Use pre-built image from GitHub Container Registry
     # Override tag via BACKEND_TAG env var (e.g., BACKEND_TAG=global-api-keys)
@@ -378,6 +392,13 @@ services:
       FFMPEG_JOB_MAX_SECONDS: ${FFMPEG_JOB_MAX_SECONDS:-}
       FFMPEG_IO_MAX_SECONDS: ${FFMPEG_IO_MAX_SECONDS:-}
       FFMPEG_SCRATCH_DIR: ${FFMPEG_SCRATCH_DIR:-}
+      FFMPEG_EXECUTOR: ${FFMPEG_EXECUTOR:-}
+      FFMPEG_REMOTE_URL: ${FFMPEG_REMOTE_URL:-}
+      FFMPEG_REMOTE_AUTH: ${FFMPEG_REMOTE_AUTH:-}
+      FFMPEG_REMOTE_SA_KEY_JSON: ${FFMPEG_REMOTE_SA_KEY_JSON:-}
+      FFMPEG_REMOTE_MAX_INFLIGHT: ${FFMPEG_REMOTE_MAX_INFLIGHT:-}
+      FFMPEG_WORKER_MIN_VERSION: ${FFMPEG_WORKER_MIN_VERSION:-}
+      FFMPEG_MAX_OUTPUT_BYTES: ${FFMPEG_MAX_OUTPUT_BYTES:-}
 
       # Optional Services Configuration
       ENABLE_MINIO: ${ENABLE_MINIO:-false}

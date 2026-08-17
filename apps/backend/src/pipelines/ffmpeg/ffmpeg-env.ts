@@ -1,6 +1,9 @@
 import * as os from 'os';
 import * as path from 'path';
 
+export type FfmpegExecutorSetting = 'local' | 'remote';
+export type FfmpegRemoteAuth = 'google_id_token' | 'none';
+
 export interface FfmpegEnvConfig {
   memoryMb: number;
   threads: number;
@@ -17,6 +20,20 @@ export interface FfmpegEnvConfig {
   /** Ceiling for a single storage call (metadata, download, upload). */
   ioMaxSeconds: number;
   scratchDir: string;
+  /** Which executor runs a step unless the step says otherwise. */
+  executor: FfmpegExecutorSetting;
+  /** Worker base URL (https), trimmed and trailing-slash-stripped. Setting this enables the remote executor. */
+  remoteUrl: string | null;
+  /** How CE authenticates to the Worker. */
+  remoteAuth: FfmpegRemoteAuth;
+  /** Service-account JSON key (raw string; parsed lazily by the caller). */
+  remoteSaKeyJson: string | null;
+  /** Max concurrent remote jobs from this instance. */
+  remoteMaxInflight: number;
+  /** Refuse Workers older than this CE version (semver). Unset = any. */
+  workerMinVersion: string | null;
+  /** Cap on a single output object (signed single-request PUT). */
+  maxOutputBytes: number;
 }
 
 /** '' counts as unset — compose passthrough materializes unconfigured vars as empty strings. */
@@ -24,6 +41,14 @@ function num(raw: string | undefined, fallback: number): number {
   if (raw === undefined || raw === '') return fallback;
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+}
+
+/** '' counts as unset, like `num()`. Trims whitespace and strips a single trailing '/'. */
+function str(raw: string | undefined): string | null {
+  if (raw === undefined || raw === '') return null;
+  const trimmed = raw.trim();
+  if (trimmed === '') return null;
+  return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed;
 }
 
 export function readFfmpegEnv(env: NodeJS.ProcessEnv = process.env): FfmpegEnvConfig {
@@ -39,5 +64,12 @@ export function readFfmpegEnv(env: NodeJS.ProcessEnv = process.env): FfmpegEnvCo
       env.FFMPEG_SCRATCH_DIR && env.FFMPEG_SCRATCH_DIR !== ''
         ? env.FFMPEG_SCRATCH_DIR
         : path.join(os.tmpdir(), 'bffless-ffmpeg'),
+    executor: env.FFMPEG_EXECUTOR === 'remote' ? 'remote' : 'local',
+    remoteUrl: str(env.FFMPEG_REMOTE_URL),
+    remoteAuth: env.FFMPEG_REMOTE_AUTH === 'none' ? 'none' : 'google_id_token',
+    remoteSaKeyJson: str(env.FFMPEG_REMOTE_SA_KEY_JSON),
+    remoteMaxInflight: num(env.FFMPEG_REMOTE_MAX_INFLIGHT, 8),
+    workerMinVersion: str(env.FFMPEG_WORKER_MIN_VERSION),
+    maxOutputBytes: num(env.FFMPEG_MAX_OUTPUT_BYTES, 2 * 1024 ** 3),
   };
 }

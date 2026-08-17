@@ -195,6 +195,19 @@ jobs:
           cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-nginx:buildcache-${{ matrix.suffix }}
           cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-nginx:buildcache-${{ matrix.suffix }},mode=max
 
+      - name: Build and push ffmpeg worker
+        uses: docker/build-push-action@v5
+        with:
+          context: ./workers/ffmpeg
+          file: ./workers/ffmpeg/Dockerfile
+          push: true
+          platforms: ${{ matrix.platform }}
+          build-args: |
+            VERSION=${{ inputs.tag }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-ffmpeg-worker:${{ inputs.tag }}-${{ matrix.suffix }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-ffmpeg-worker:buildcache-${{ matrix.suffix }}
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-ffmpeg-worker:buildcache-${{ matrix.suffix }},mode=max
+
   # Create multi-arch manifests combining per-arch images
   create-manifests:
     name: Create Multi-Arch Manifests
@@ -241,6 +254,17 @@ jobs:
           fi
           docker buildx imagetools create -t ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-nginx:${{ inputs.tag }} $IMAGES
 
+      - name: Create ffmpeg worker manifest
+        run: |
+          IMAGES=""
+          if [[ "${{ inputs.platforms }}" == *"linux/amd64"* ]]; then
+            IMAGES="$IMAGES ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-ffmpeg-worker:${{ inputs.tag }}-amd64"
+          fi
+          if [[ "${{ inputs.platforms }}" == *"linux/arm64"* ]]; then
+            IMAGES="$IMAGES ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-ffmpeg-worker:${{ inputs.tag }}-arm64"
+          fi
+          docker buildx imagetools create -t ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-ffmpeg-worker:${{ inputs.tag }} $IMAGES
+
       - name: Summary
         run: |
           echo "## Multi-Arch Build Complete" >> $GITHUB_STEP_SUMMARY
@@ -253,6 +277,7 @@ jobs:
           echo "- \`${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend:${{ inputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- \`${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend:${{ inputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- \`${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-nginx:${{ inputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-ffmpeg-worker:${{ inputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Build Method" >> $GITHUB_STEP_SUMMARY
           echo "Built using **native runners** (no QEMU emulation):" >> $GITHUB_STEP_SUMMARY

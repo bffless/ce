@@ -178,6 +178,7 @@ function dockerBlock(repo, tag) {
     '```bash',
     `docker pull ghcr.io/${repo}-frontend:${tag}`,
     `docker pull ghcr.io/${repo}-backend:${tag}`,
+    `docker pull ghcr.io/${repo}-ffmpeg-worker:${tag}`,
     '```',
     '',
   ].join('\n');
@@ -235,6 +236,7 @@ export function renderPreview({
     '```bash',
     `docker pull ghcr.io/${repo}-frontend:${previewTag}`,
     `docker pull ghcr.io/${repo}-backend:${previewTag}`,
+    `docker pull ghcr.io/${repo}-ffmpeg-worker:${previewTag}`,
     '```',
     '',
     `The moving \`:preview\` tag also points at this build. Opt a self-hosted install into the preview channel with \`CHANNEL=preview\` on install or \`./update.sh --channel preview\`.`,

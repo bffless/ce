@@ -177,6 +177,16 @@ jobs:
             type=raw,value=${{ steps.version.outputs.version }}
             type=sha,prefix=main-
 
+      - name: Extract metadata - ffmpeg worker
+        id: meta-ffmpeg-worker
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-ffmpeg-worker
+          tags: |
+            type=raw,value=${{ inputs.channel == 'preview' && 'preview' || 'latest' }}
+            type=raw,value=${{ steps.version.outputs.version }}
+            type=sha,prefix=main-
+
       - name: Build and push frontend
         uses: docker/build-push-action@v5
         with:
@@ -196,6 +206,17 @@ jobs:
           labels: ${{ steps.meta-backend.outputs.labels }}
           cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend:buildcache
           cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend:buildcache,mode=max
+
+      - name: Build and push ffmpeg worker
+        uses: docker/build-push-action@v5
+        with:
+          context: ./workers/ffmpeg
+          file: ./workers/ffmpeg/Dockerfile
+          push: true
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+          tags: ${{ steps.meta-ffmpeg-worker.outputs.tags }}
+          labels: ${{ steps.meta-ffmpeg-worker.outputs.labels }}
 
       - name: Upload frontend build with release tag
         uses: bffless/upload-artifact@v1
@@ -241,6 +262,7 @@ jobs:
           # Pull images for this release
           docker pull ghcr.io/${{ github.repository }}-frontend:${VERSION}
           docker pull ghcr.io/${{ github.repository }}-backend:${VERSION}
+          docker pull ghcr.io/${{ github.repository }}-ffmpeg-worker:${VERSION}
           \`\`\`"
 
           # Update the release
@@ -258,4 +280,5 @@ jobs:
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
           echo "docker pull ghcr.io/${{ github.repository }}-frontend:${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "docker pull ghcr.io/${{ github.repository }}-backend:${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ghcr.io/${{ github.repository }}-ffmpeg-worker:${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

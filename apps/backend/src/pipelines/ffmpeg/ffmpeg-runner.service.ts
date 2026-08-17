@@ -25,10 +25,14 @@ export interface FfmpegRunResult {
 const STDERR_TAIL_BYTES = 8192;
 /** Headroom demanded beyond FFMPEG_MEMORY_MB before admitting a job (MB). */
 const MEMORY_HEADROOM_MB = 128;
-/** ffmpeg-only global flags: never prompt, never read stdin. */
-const FFMPEG_GLOBAL_FLAGS = ['-nostdin', '-hide_banner', '-y'];
+/**
+ * ffmpeg-only global flags: never prompt, never read stdin. Exported because the
+ * remote envelope prepends the SAME flags — if the two lists drift, local and
+ * remote runs of one step stop being the same command.
+ */
+export const FFMPEG_GLOBAL_FLAGS = ['-nostdin', '-hide_banner', '-y'];
 /** ffprobe shares only the cmdutils `-hide_banner` option — `-nostdin`/`-y` are ffmpeg-only and make ffprobe exit 1. */
-const FFPROBE_GLOBAL_FLAGS = ['-hide_banner'];
+export const FFPROBE_GLOBAL_FLAGS = ['-hide_banner'];
 /** Grace period after SIGKILL before we give up waiting for 'close' and self-heal by freeing the slot. */
 const WATCHDOG_ESCALATION_MS = 30_000;
 

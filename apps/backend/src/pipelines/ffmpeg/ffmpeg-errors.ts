@@ -31,3 +31,11 @@ export class FfmpegProcessError extends Error {
     super(message);
   }
 }
+/**
+ * The remote executor could not be used at all — no Worker configured, the
+ * Worker rejected our envelope as malformed (a CE bug, not a job failure),
+ * or the job was cancelled before it could complete.
+ */
+export class FfmpegExecutorUnavailableError extends Error {
+  readonly code = 'FFMPEG_EXECUTOR_UNAVAILABLE';
+}

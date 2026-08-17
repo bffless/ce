@@ -37,10 +37,11 @@ const OPERATIONS: { value: FfmpegOperation; label: string; hint: string }[] = [
 
 /** Config fields each operation actually uses — drives what gets stripped on switch. */
 const FIELDS_BY_OPERATION: Record<FfmpegOperation, Array<keyof Config>> = {
-  probe: ['input'],
-  extract_audio: ['input', 'output'],
-  slice: ['input', 'output', 'spans', 'audioOutput', 'audioFades'],
-  concat: ['inputs', 'output'],
+  // `executor` is on every operation — a probe WITH input runs a job too.
+  probe: ['input', 'executor'],
+  extract_audio: ['input', 'output', 'executor'],
+  slice: ['input', 'output', 'spans', 'audioOutput', 'audioFades', 'executor'],
+  concat: ['inputs', 'output', 'executor'],
 };
 
 /** Deduped union of every field referenced above — kept in sync automatically. */
@@ -181,6 +182,20 @@ export function FfmpegHandlerConfig({ config, onChange, previousSteps = [] }: Pr
         </>
       )}
 
+      <div className="space-y-2">
+        <Label>Executor (optional)</Label>
+        <ExpressionInput
+          value={typed.executor ?? ''}
+          onChange={(v) => update({ executor: v || undefined })}
+          placeholder="local | remote | {{expression}}"
+          previousSteps={previousSteps}
+        />
+        <p className="text-xs text-muted-foreground">
+          Leave blank for the instance default. <code>local</code> runs ffmpeg on this server;{' '}
+          <code>remote</code> sends the job to the configured worker (bucket storage only).
+        </p>
+      </div>
+
       <div className="rounded-md border bg-muted/30 p-3 space-y-1.5">
         <p className="text-xs font-medium text-muted-foreground">
           Step output (available to subsequent steps)
@@ -192,6 +207,10 @@ export function FfmpegHandlerConfig({ config, onChange, previousSteps = [] }: Pr
           <span className="text-muted-foreground">video/mp4 or audio/wav</span>
           <code className="bg-muted px-1.5 py-0.5 rounded text-[11px]">size</code>
           <span className="text-muted-foreground">Result bytes</span>
+          <code className="bg-muted px-1.5 py-0.5 rounded text-[11px]">executor</code>
+          <span className="text-muted-foreground">Which executor ran it (local/remote)</span>
+          <code className="bg-muted px-1.5 py-0.5 rounded text-[11px]">timings</code>
+          <span className="text-muted-foreground">queue/transfer/ffmpeg/total ms</span>
         </div>
         <p className="text-xs text-muted-foreground">
           Long encodes belong in postSteps with a job row the client polls; this step has no

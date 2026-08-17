@@ -15,4 +15,19 @@ describe('MCP pipelineStepSchema accepts ffmpeg_handler', () => {
     };
     expect(() => pipelineStepSchema.parse(step)).not.toThrow();
   });
+
+  it('parses an ffmpeg_handler step that pins the executor', () => {
+    const step = {
+      id: '2',
+      name: 'extract',
+      handlerType: 'ffmpeg_handler',
+      config: {
+        operation: 'extract_audio',
+        input: 'a.mp4',
+        output: 'a.wav',
+        executor: 'remote',
+      },
+    };
+    expect(() => pipelineStepSchema.parse(step)).not.toThrow();
+  });
 });

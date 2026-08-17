@@ -119,6 +119,23 @@ services:
       - assethost-network
     restart: unless-stopped
 
+  ffmpeg-worker:
+    # Remote executor for server video ops (docs: Server Video Ops → Remote executor).
+    # Local-dev / private-network profile: plain http, no auth. Cloud Run is the reference deployment.
+    build:
+      context: ./workers/ffmpeg
+      args:
+        VERSION: ${VERSION:-dev}
+    container_name: assethost-ffmpeg-worker
+    profiles:
+      - ffmpeg-worker # Only starts with --profile ffmpeg-worker
+    environment:
+      PORT: 8080
+      WORKER_ALLOW_HTTP: '1' # MinIO presigned URLs inside the compose network are http://
+    networks:
+      - assethost-network
+    restart: unless-stopped
+
   backend:
     build:
       context: .
@@ -193,6 +210,13 @@ services:
       FFMPEG_JOB_MAX_SECONDS: ${FFMPEG_JOB_MAX_SECONDS:-}
       FFMPEG_IO_MAX_SECONDS: ${FFMPEG_IO_MAX_SECONDS:-}
       FFMPEG_SCRATCH_DIR: ${FFMPEG_SCRATCH_DIR:-}
+      FFMPEG_EXECUTOR: ${FFMPEG_EXECUTOR:-}
+      FFMPEG_REMOTE_URL: ${FFMPEG_REMOTE_URL:-}
+      FFMPEG_REMOTE_AUTH: ${FFMPEG_REMOTE_AUTH:-}
+      FFMPEG_REMOTE_SA_KEY_JSON: ${FFMPEG_REMOTE_SA_KEY_JSON:-}
+      FFMPEG_REMOTE_MAX_INFLIGHT: ${FFMPEG_REMOTE_MAX_INFLIGHT:-}
+      FFMPEG_WORKER_MIN_VERSION: ${FFMPEG_WORKER_MIN_VERSION:-}
+      FFMPEG_MAX_OUTPUT_BYTES: ${FFMPEG_MAX_OUTPUT_BYTES:-}
 
       # Optional Services Configuration
       ENABLE_MINIO: ${ENABLE_MINIO:-true}
