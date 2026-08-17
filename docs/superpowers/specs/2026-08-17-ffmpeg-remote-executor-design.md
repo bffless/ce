@@ -138,7 +138,7 @@ Non-zero exit → `200` with `ok:false`, `exitCode`, `stderrTail`, `code` ∈
 CE maps `INPUT_FETCH_FAILED` → `FILE_NOT_FOUND`, upload/size failures → `FFMPEG_FAILED`
 with the worker message. Transport-level non-2xx / unreachable → `FFMPEG_EXECUTOR_UNAVAILABLE`.
 
-`GET /healthz` → `{ ok, version, ffmpeg, ops:["ffmpeg","ffprobe"], uptimeS }`.
+`GET /health` → `{ ok, version, ffmpeg, ops:["ffmpeg","ffprobe"], uptimeS }` (**as built:** the path is `/health`, with `/healthz` served only as an alias — Google's front door on `*.run.app` intercepts the literal `/healthz` with an HTML 404 before IAM, so it cannot be the readiness probe).
 
 ### 1.4 Worker (`workers/ffmpeg/`)
 

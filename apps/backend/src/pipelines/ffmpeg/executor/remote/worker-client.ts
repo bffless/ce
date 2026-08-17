@@ -1,5 +1,5 @@
 /**
- * The HTTP half of the remote executor: POST /jobs, GET /healthz, and the one
+ * The HTTP half of the remote executor: POST /jobs, GET /health, and the one
  * retry policy CE is allowed to have.
  *
  * A remote ffmpeg job is NOT idempotent (it re-encodes and re-uploads), so this
@@ -143,7 +143,10 @@ export class WorkerClient {
 
   /** Liveness + version, for readiness and the settings "Test connection" button. Never retried. */
   async health(opts: { signal?: AbortSignal; timeoutMs?: number } = {}): Promise<WorkerHealth> {
-    const url = `${this.baseUrl}/healthz`;
+    // `/health`, NOT `/healthz`: on Cloud Run's *.run.app domain Google's front door
+    // intercepts the literal `/healthz` with an HTML 404 before the request reaches the
+    // service, so a `/healthz` probe would report every Cloud Run worker as unreachable.
+    const url = `${this.baseUrl}/health`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? HEALTH_TIMEOUT_MS);
     const onAbort = () => controller.abort();
@@ -156,23 +159,20 @@ export class WorkerClient {
       });
       if (!res.ok) {
         throw new WorkerTransportError(
-          `worker healthz responded ${res.status}: ${await errorBody(res)}`,
+          `worker health responded ${res.status}: ${await errorBody(res)}`,
           res.status,
           RETRYABLE_STATUSES.has(res.status),
         );
       }
       const body = (await res.json()) as WorkerHealth;
       if (typeof body?.ok !== 'boolean' || typeof body?.version !== 'string') {
-        throw new WorkerTransportError(
-          'worker healthz response was not a WorkerHealth',
-          res.status,
-        );
+        throw new WorkerTransportError('worker health response was not a WorkerHealth', res.status);
       }
       return body;
     } catch (error) {
       if (error instanceof WorkerTransportError) throw error;
       const message = error instanceof Error ? error.message : String(error);
-      throw new WorkerTransportError(`healthz request to ${url} failed: ${message}`);
+      throw new WorkerTransportError(`health request to ${url} failed: ${message}`);
     } finally {
       clearTimeout(timer);
       opts.signal?.removeEventListener('abort', onAbort);

@@ -60,15 +60,17 @@ exited non-zero. Response (always `200` — the _request_ succeeded even when th
 (caller disconnected — CE never sees it, its request is gone). One job at a time per
 process: a second concurrent `POST /jobs` gets `503 {"code":"BUSY"}`.
 
-`GET /healthz` → `{ ok, version, ffmpeg, ops:["ffmpeg","ffprobe"], uptimeS }`, `503` when
-the ffmpeg binary is missing.
+`GET /health` → `{ ok, version, ffmpeg, ops:["ffmpeg","ffprobe"], uptimeS }`, `503` when
+the ffmpeg binary is missing. `/healthz` is served as an alias, but CE probes `/health`:
+on Cloud Run's `*.run.app` domain Google's front door intercepts the literal `/healthz`
+(HTML 404 before IAM ever sees the request), so it cannot be the readiness path.
 
 ## Env
 
 | Var                     | Default       | Meaning                                                      |
 | ----------------------- | ------------- | ------------------------------------------------------------ |
 | `PORT`                  | `8080`        | Listen port                                                  |
-| `WORKER_VERSION`        | `dev`         | Reported in `/healthz` and `worker.version` (CE's version)   |
+| `WORKER_VERSION`        | `dev`         | Reported in `/health` and `worker.version` (CE's version)   |
 | `WORKER_ALLOW_HTTP`     | unset         | `1` allows plain-`http:` signed URLs (private networks only) |
 | `WORKER_SCRATCH_DIR`    | `os.tmpdir()` | Per-job scratch parent; each job dir is wiped in `finally`   |
 | `WORKER_MAX_BODY_BYTES` | `1048576`     | Envelope size cap (`413` beyond)                             |

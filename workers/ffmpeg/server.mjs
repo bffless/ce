@@ -1,6 +1,6 @@
 /**
  * HTTP surface of the BFFless ffmpeg Worker: `POST /jobs` (one envelope in, one
- * WorkerResponse out) and `GET /healthz`. Everything interesting lives in job.mjs —
+ * WorkerResponse out) and `GET /health` (alias `/healthz`). Everything interesting lives in job.mjs —
  * this file is routing, body limits, the one-job-at-a-time fuse and the disconnect →
  * cancel rule.
  *
@@ -66,7 +66,10 @@ export function createServer({
     req.on('error', () => {});
     res.on('error', () => {});
     const url = new URL(req.url, 'http://worker');
-    if (req.method === 'GET' && url.pathname === '/healthz') {
+    // `/health` is the path CE probes. `/healthz` is kept as an alias for local docker/k8s
+    // conventions, but on Cloud Run's *.run.app domain Google's front door intercepts the
+    // literal `/healthz` (HTML 404 before IAM), so it must never be the only route.
+    if (req.method === 'GET' && (url.pathname === '/health' || url.pathname === '/healthz')) {
       sendJson(res, ffmpeg ? 200 : 503, {
         ok: Boolean(ffmpeg),
         version,

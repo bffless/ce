@@ -61,10 +61,10 @@ async function waitForHealth(base: string, deadlineMs = 15_000): Promise<void> {
   let last = 'never answered';
   while (Date.now() < until) {
     try {
-      const res = await fetch(`${base}/healthz`);
+      const res = await fetch(`${base}/health`);
       const body = (await res.json()) as { ok?: boolean; ffmpeg?: string | null };
       if (res.ok && body.ok) return;
-      last = `healthz ${res.status} ${JSON.stringify(body)}`;
+      last = `health ${res.status} ${JSON.stringify(body)}`;
     } catch (error) {
       last = error instanceof Error ? error.message : String(error);
     }

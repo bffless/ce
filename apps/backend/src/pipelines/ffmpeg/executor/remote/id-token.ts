@@ -52,7 +52,7 @@ function flatten(headers: Record<string, string> | Headers): Record<string, stri
  * Mints `Authorization: Bearer <Google ID token>` for the Worker.
  *
  * The audience is the URL's **origin** (Cloud Run signs tokens for the service
- * URL, not per-path), so `/jobs` and `/healthz` share one client. The client is
+ * URL, not per-path), so `/jobs` and `/health` share one client. The client is
  * created lazily — a CE instance that never runs a remote job never touches ADC —
  * and cached per audience because `IdTokenClient` refreshes its own token ~5 min
  * before expiry; caching the *token* here would fight it.

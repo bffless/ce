@@ -110,7 +110,7 @@ it('a 200 with a non-worker body is a transport error (never a silent success)',
   ).rejects.toBeInstanceOf(WorkerTransportError);
 });
 
-it('health() GETs /healthz with auth', async () => {
+it('health() GETs /health (not /healthz — Cloud Run intercepts that path) with auth', async () => {
   const fetchImpl = jest.fn().mockResolvedValue(
     json(200, {
       ok: true,
@@ -123,7 +123,7 @@ it('health() GETs /healthz with auth', async () => {
   await expect(
     new WorkerClient('https://w', auth, fetchImpl as never, noSleep).health(),
   ).resolves.toMatchObject({ ok: true, version: '0.4.31' });
-  expect(fetchImpl.mock.calls[0][0]).toBe('https://w/healthz');
+  expect(fetchImpl.mock.calls[0][0]).toBe('https://w/health');
 });
 
 describe('the default job transport', () => {

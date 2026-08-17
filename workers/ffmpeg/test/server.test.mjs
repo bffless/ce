@@ -52,10 +52,10 @@ const post = (url, body, init = {}) =>
     ...init,
   });
 
-test('GET /healthz reports the worker version, ffmpeg and ops', async () => {
+test('GET /health reports the worker version, ffmpeg and ops', async () => {
   const wk = await boot({ ffmpeg: 'ffmpeg version 6.1.2', runJob: async () => result() });
   try {
-    const res = await fetch(`${wk.url}/healthz`);
+    const res = await fetch(`${wk.url}/health`);
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.equal(body.ok, true);
@@ -63,6 +63,19 @@ test('GET /healthz reports the worker version, ffmpeg and ops', async () => {
     assert.equal(body.ffmpeg, 'ffmpeg version 6.1.2');
     assert.deepEqual(body.ops, ['ffmpeg', 'ffprobe']);
     assert.equal(typeof body.uptimeS, 'number');
+  } finally {
+    await wk.stop();
+  }
+});
+
+test('GET /healthz is served as an alias of /health (same body)', async () => {
+  const wk = await boot({ ffmpeg: 'ffmpeg version 6.1.2', runJob: async () => result() });
+  try {
+    const [a, b] = await Promise.all([fetch(`${wk.url}/health`), fetch(`${wk.url}/healthz`)]);
+    assert.equal(a.status, 200);
+    assert.equal(b.status, 200);
+    const [ja, jb] = await Promise.all([a.json(), b.json()]);
+    assert.deepEqual({ ...ja, uptimeS: 0 }, { ...jb, uptimeS: 0 });
   } finally {
     await wk.stop();
   }
