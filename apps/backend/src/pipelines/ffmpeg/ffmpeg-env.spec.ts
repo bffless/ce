@@ -30,3 +30,47 @@ describe('readFfmpegEnv', () => {
     expect(readFfmpegEnv({ FFMPEG_MAX_SECONDS: '-5' }).maxSeconds).toBe(1800);
   });
 });
+
+describe('remote executor env', () => {
+  it('defaults', () => {
+    const e = readFfmpegEnv({});
+    expect(e).toMatchObject({
+      executor: 'local',
+      remoteUrl: null,
+      remoteAuth: 'google_id_token',
+      remoteSaKeyJson: null,
+      remoteMaxInflight: 8,
+      workerMinVersion: null,
+      maxOutputBytes: 2 * 1024 ** 3,
+    });
+  });
+  it('reads and normalises', () => {
+    const e = readFfmpegEnv({
+      FFMPEG_EXECUTOR: 'remote',
+      FFMPEG_REMOTE_URL: ' https://w.run.app/ ',
+      FFMPEG_REMOTE_AUTH: 'none',
+      FFMPEG_REMOTE_SA_KEY_JSON: '{"type":"service_account"}',
+      FFMPEG_REMOTE_MAX_INFLIGHT: '2',
+      FFMPEG_WORKER_MIN_VERSION: '0.4.31',
+      FFMPEG_MAX_OUTPUT_BYTES: '1024',
+    });
+    expect(e).toMatchObject({
+      executor: 'remote',
+      remoteUrl: 'https://w.run.app',
+      remoteAuth: 'none',
+      remoteSaKeyJson: '{"type":"service_account"}',
+      remoteMaxInflight: 2,
+      workerMinVersion: '0.4.31',
+      maxOutputBytes: 1024,
+    });
+  });
+  it('unknown enum values fall back to defaults; empty strings count as unset', () => {
+    expect(
+      readFfmpegEnv({
+        FFMPEG_EXECUTOR: 'cloud',
+        FFMPEG_REMOTE_AUTH: 'basic',
+        FFMPEG_REMOTE_URL: '',
+      }),
+    ).toMatchObject({ executor: 'local', remoteAuth: 'google_id_token', remoteUrl: null });
+  });
+});
