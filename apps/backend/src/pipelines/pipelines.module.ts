@@ -58,6 +58,7 @@ import { FfmpegCapabilityService } from './ffmpeg/ffmpeg-capability.service';
 import { FfmpegRunnerService } from './ffmpeg/ffmpeg-runner.service';
 import { FfmpegScratchService } from './ffmpeg/ffmpeg-scratch.service';
 import { LocalFfmpegExecutor } from './ffmpeg/executor/local-ffmpeg.executor';
+import { RemoteFfmpegExecutor } from './ffmpeg/executor/remote/remote-ffmpeg.executor';
 import { FeedParserService } from './feed-parser.service';
 import { IntegrationsModule } from '../integrations/integrations.module';
 // Embeddings service
@@ -171,6 +172,7 @@ import {
     FfmpegRunnerService,
     FfmpegScratchService,
     LocalFfmpegExecutor,
+    RemoteFfmpegExecutor,
     // Validators (auto-register on construction)
     AuthRequiredValidator,
     RateLimitValidator,
