@@ -15,6 +15,7 @@ import { decryptString, encryptString } from '../../common/crypto/aes-gcm';
 import { resolveLocalAdapter } from '../../storage/local.adapter';
 import { IStorageAdapter, STORAGE_ADAPTER } from '../../storage/storage.interface';
 import { FfmpegCapabilityService } from './ffmpeg-capability.service';
+import { RemoteFfmpegExecutor } from './executor/remote/remote-ffmpeg.executor';
 import {
   readFfmpegEnv,
   type FfmpegEnvConfig,
@@ -53,6 +54,23 @@ export interface UpdateFfmpegExecutorInput {
   defaultExecutor?: FfmpegExecutorSetting;
   /** undefined = keep the stored key; null (or '', a blanked UI field) = clear it; string = replace it. */
   saKeyJson?: string | null;
+}
+
+/** The unsaved admin form a "Test connection" is run against. */
+export interface FfmpegExecutorTestDraft {
+  remoteUrl?: string | null;
+  remoteAuth?: FfmpegRemoteAuth;
+  saKeyJson?: string | null;
+}
+
+/** What the admin UI shows after a "Test connection". The SA key is never part of it. */
+export interface FfmpegExecutorTestResult {
+  ok: boolean;
+  latencyMs: number | null;
+  worker?: { version: string; ffmpeg: string | null; ops: string[]; uptimeS: number };
+  error?: string;
+  readiness: { ok: boolean; reason?: string };
+  credential: 'sa_key' | 'adc' | 'none';
 }
 
 /** The decrypted, in-memory shape of the DB row. */
@@ -104,6 +122,8 @@ export class FfmpegExecutorSettingsService implements OnModuleInit {
     private readonly capability: FfmpegCapabilityService,
     /** Test seam: the process env to read. */
     @Optional() private readonly processEnv: () => NodeJS.ProcessEnv = () => process.env,
+    /** @Optional() so a hand-built service (and Plan 1's specs) need not supply one. */
+    @Optional() private readonly remote?: RemoteFfmpegExecutor,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -350,6 +370,68 @@ export class FfmpegExecutorSettingsService implements OnModuleInit {
     await this.persist(next, input.saKeyJson !== undefined, userId);
     await this.reload();
     return this.getStatus();
+  }
+
+  /**
+   * Uncached "Test connection" for the admin UI. `draft` is the unsaved form; env-managed
+   * fields are ignored (env wins). Reports both the raw /healthz answer and what the
+   * selector's readiness check says about the same config, so the UI can show
+   * "reachable but not usable" (e.g. version too old, storage not presignable).
+   */
+  async testConnection(draft: FfmpegExecutorTestDraft = {}): Promise<FfmpegExecutorTestResult> {
+    if (!this.remote) throw new InternalServerErrorException('Remote executor is not wired.');
+    const managed = this.envManaged();
+    const overrides: Partial<
+      Pick<FfmpegEnvConfig, 'remoteUrl' | 'remoteAuth' | 'remoteSaKeyJson'>
+    > = {};
+    if (draft.remoteUrl !== undefined && !managed.remoteUrl)
+      overrides.remoteUrl = normaliseUrl(draft.remoteUrl);
+    if (draft.remoteAuth !== undefined && !managed.remoteAuth)
+      overrides.remoteAuth = draft.remoteAuth;
+    if (draft.saKeyJson !== undefined && !managed.saKey)
+      overrides.remoteSaKeyJson = draft.saKeyJson === null ? null : draft.saKeyJson.trim();
+
+    // Parse a draft key HERE: deeper down it is JSON.parse'd inside the token
+    // minter, and V8's SyntaxError quotes the offending input — which would put
+    // service-account bytes into the response. Same message `update()` uses.
+    if (typeof overrides.remoteSaKeyJson === 'string' && overrides.remoteSaKeyJson !== '') {
+      try {
+        JSON.parse(overrides.remoteSaKeyJson);
+      } catch {
+        throw new BadRequestException('Service-account key must be valid JSON.');
+      }
+    }
+
+    const effective: FfmpegEnvConfig = { ...this.resolved(), ...overrides };
+    const credential: FfmpegExecutorTestResult['credential'] =
+      effective.remoteAuth === 'none' ? 'none' : effective.remoteSaKeyJson ? 'sa_key' : 'adc';
+
+    let worker: FfmpegExecutorTestResult['worker'];
+    let error: string | undefined;
+    let latencyMs: number | null = null;
+    const t0 = Date.now();
+    try {
+      const health = await this.remote.testConnection(overrides);
+      latencyMs = Date.now() - t0;
+      worker = {
+        version: health.version,
+        ffmpeg: health.ffmpeg,
+        ops: health.ops,
+        uptimeS: health.uptimeS,
+      };
+      if (!health.ok) error = 'worker reports not ok (no ffmpeg binary?)';
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    }
+    const readiness = await this.remote.ready({ fresh: true, env: effective });
+    return {
+      ok: !error && readiness.ok,
+      latencyMs,
+      ...(worker ? { worker } : {}),
+      ...(error ? { error } : {}),
+      readiness: { ok: readiness.ok, ...(readiness.reason ? { reason: readiness.reason } : {}) },
+      credential,
+    };
   }
 
   private async persist(next: CachedSettings, keyChanged: boolean, userId?: string): Promise<void> {

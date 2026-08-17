@@ -1,4 +1,8 @@
-import { BadRequestException, ServiceUnavailableException } from '@nestjs/common';
+import {
+  BadRequestException,
+  InternalServerErrorException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 
 jest.mock('../../db/client', () => ({
   db: {
@@ -59,6 +63,8 @@ function make(
     env?: NodeJS.ProcessEnv;
     presign?: boolean;
     localAvailable?: boolean;
+    /** The RemoteFfmpegExecutor stand-in — only testConnection() needs one. */
+    remote?: unknown;
   } = {},
 ) {
   // `presign: false` = the local-filesystem adapter, which DOES sign — its URLs
@@ -85,6 +91,7 @@ function make(
     storage as never,
     capability as never,
     () => o.env ?? {},
+    o.remote as never,
   );
   return { service, storage, capability };
 }
@@ -430,6 +437,103 @@ describe('FfmpegExecutorSettingsService', () => {
       const status = await localFs.service.update({ localEnabled: true });
       expect(set).toHaveBeenCalledTimes(1);
       expect(status.storagePresignable).toBe(false);
+    });
+  });
+
+  describe('testConnection()', () => {
+    const HEALTH = {
+      ok: true,
+      version: '0.4.31',
+      ffmpeg: 'ffmpeg version 6.1.1',
+      ops: ['probe', 'extract_audio', 'slice', 'concat'],
+      uptimeS: 12,
+    };
+    function makeWithRemote(
+      o: {
+        health?: () => Promise<unknown>;
+        readiness?: { ok: boolean; reason?: string };
+        env?: NodeJS.ProcessEnv;
+      } = {},
+    ) {
+      const remote = {
+        testConnection: jest.fn(async (_overrides?: Record<string, unknown>) =>
+          o.health ? o.health() : HEALTH,
+        ),
+        ready: jest.fn(
+          async (_opts?: Record<string, unknown>) => o.readiness ?? { ok: true, version: '0.4.31' },
+        ),
+      };
+      const { service } = make({ env: o.env, remote });
+      return { service, remote };
+    }
+
+    it('returns worker health + latency + readiness; credential=adc when no key stored', async () => {
+      mockSelect([row({ remoteEnabled: true, remoteUrl: 'https://w.example.com' })]);
+      const { service, remote } = makeWithRemote();
+      await service.reload();
+      const res = await service.testConnection();
+      expect(res.ok).toBe(true);
+      expect(res.worker?.version).toBe('0.4.31');
+      expect(res.worker?.ops).toContain('slice');
+      expect(typeof res.latencyMs).toBe('number');
+      expect(res.readiness).toEqual({ ok: true });
+      expect(res.credential).toBe('adc');
+      expect(remote.ready).toHaveBeenCalledWith(expect.objectContaining({ fresh: true }));
+    });
+
+    it('draft overrides reach the executor; env-managed fields cannot be overridden; credential reflects the draft key', async () => {
+      mockSelect([]);
+      const { service, remote } = makeWithRemote({ env: { FFMPEG_REMOTE_AUTH: 'none' } });
+      await service.reload();
+      const res = await service.testConnection({
+        remoteUrl: 'https://draft.example.com',
+        remoteAuth: 'google_id_token',
+        saKeyJson: SA_KEY,
+      });
+      expect(remote.testConnection).toHaveBeenCalledWith(
+        expect.objectContaining({
+          remoteUrl: 'https://draft.example.com',
+          remoteSaKeyJson: SA_KEY,
+        }),
+      );
+      expect(remote.testConnection.mock.calls[0][0]).not.toHaveProperty('remoteAuth'); // pinned by env
+      expect(res.credential).toBe('none'); // effective auth is env's 'none'
+    });
+
+    it('unreachable worker → ok:false with error, latency null, readiness reason passed through', async () => {
+      mockSelect([row({ remoteEnabled: true, remoteUrl: 'https://w.example.com' })]);
+      const { service } = makeWithRemote({
+        health: async () => {
+          throw new Error('worker unreachable: connect ECONNREFUSED');
+        },
+        readiness: { ok: false, reason: 'worker unreachable: connect ECONNREFUSED' },
+      });
+      await service.reload();
+      const res = await service.testConnection();
+      expect(res.ok).toBe(false);
+      expect(res.error).toMatch(/ECONNREFUSED/);
+      expect(res.latencyMs).toBeNull();
+      expect(res.readiness.reason).toMatch(/ECONNREFUSED/);
+      expect(res.worker).toBeUndefined();
+    });
+
+    it('a malformed draft key is rejected before anything can quote it back', async () => {
+      mockSelect([]);
+      const { service, remote } = makeWithRemote();
+      await service.reload();
+      const secret = '{"type":"service_account","private_key":"-----BEGIN PRIVATE KEY-----abc';
+      await expect(service.testConnection({ saKeyJson: secret })).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      await expect(service.testConnection({ saKeyJson: secret })).rejects.not.toThrow(/BEGIN/);
+      expect(remote.testConnection).not.toHaveBeenCalled();
+    });
+
+    it('without a wired remote executor it fails loudly instead of reporting a healthy worker', async () => {
+      mockSelect([]);
+      const { service } = make();
+      await service.reload();
+      await expect(service.testConnection()).rejects.toBeInstanceOf(InternalServerErrorException);
     });
   });
 });
