@@ -10,7 +10,7 @@ import { IStorageAdapter, STORAGE_ADAPTER } from '../../storage/storage.interfac
 import { FfmpegCapabilityService } from '../ffmpeg/ffmpeg-capability.service';
 import { FfmpegRunnerService } from '../ffmpeg/ffmpeg-runner.service';
 import { FfmpegScratchService } from '../ffmpeg/ffmpeg-scratch.service';
-import { FfmpegStepTimeoutError } from '../ffmpeg/ffmpeg-errors';
+import { withDeadline } from '../ffmpeg/with-deadline';
 import { LocalFfmpegExecutor } from '../ffmpeg/executor/local-ffmpeg.executor';
 import type {
   FfmpegJob,
@@ -107,39 +107,49 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
       };
     }
 
-    try {
+    // One ceiling over the WHOLE step — key resolution, storage transfers, the
+    // queue wait and ffmpeg together — not just the spawned process (that's the
+    // runner's watchdog). Every await around the process used to be unbounded,
+    // so one stalled await left the step pending forever: fatal for an async
+    // job, whose row stays 'running' with nothing to end it but the client's own
+    // poll timeout. A post-step that never settles also suppresses the execution
+    // log on rules that persist one, since the log write awaits the post-steps
+    // promise (#669). The controller is per-step (this handler is a singleton
+    // serving concurrent steps) and lets an executor cancel work it can cancel.
+    const controller = new AbortController();
+    const { signal } = controller;
+    const op = (): Promise<StepResult> => {
       switch (config.operation) {
         case 'probe':
-          return await this.runProbe(config, context, stepName);
+          return this.runProbe(config, context, stepName, signal);
         case 'extract_audio':
-          return await this.runExtractAudio(config, context, stepName);
+          return this.runExtractAudio(config, context, stepName, signal);
         case 'slice':
-          return await this.runSlice(config, context, stepName);
+          return this.runSlice(config, context, stepName, signal);
         case 'concat':
-          return await this.runConcat(config, context, stepName);
+          return this.runConcat(config, context, stepName, signal);
       }
+    };
+    try {
+      return await withDeadline(
+        op(),
+        readFfmpegEnv().jobMaxSeconds,
+        `${config.operation} step`,
+        () => controller.abort(),
+      );
     } catch (error) {
       return this.toErrorResult(error, stepName);
     }
   }
 
   /**
-   * Run one job under the whole-step ceiling. The runner's watchdog only covers
-   * the spawned process; everything around it (queue wait, storage transfers)
-   * used to be unbounded, so one stalled await left the step pending forever —
-   * fatal for an async job, whose row stays 'running' with nothing to end it but
-   * the client's own poll timeout. A post-step that never settles also
-   * suppresses the execution log on rules that persist one, since the log write
-   * awaits the post-steps promise (#669).
+   * Run one job on the chosen executor. The step ceiling that makes #669 hold
+   * lives in `execute`, wrapped around the whole op — `signal` is the abort it
+   * raises on breach, threaded through so an executor that CAN cancel (remote)
+   * does; the local one runs to completion and is simply abandoned.
    */
-  private async runJob(job: FfmpegJob): Promise<FfmpegJobResult> {
-    const controller = new AbortController();
-    return this.withDeadline(
-      this.local.run(job, { signal: controller.signal }),
-      readFfmpegEnv().jobMaxSeconds,
-      `${job.id} step`,
-      () => controller.abort(),
-    );
+  private async runJob(job: FfmpegJob, signal: AbortSignal): Promise<FfmpegJobResult> {
+    return this.local.run(job, { signal });
   }
 
   /** Additive observability fields (D11) — present on every op output. */
@@ -150,36 +160,6 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
       bytesIn: res.bytesIn,
       bytesOut: res.bytesOut,
     };
-  }
-
-  /**
-   * Bound an await that has no timeout of its own. On breach the step fails
-   * with FFMPEG_JOB_TIMEOUT naming the phase; the abandoned work is left to
-   * settle on its own (its `finally` still cleans up, and orphaned scratch
-   * dirs are swept hourly) — the point is that the STEP always settles.
-   * `onTimeout` lets the caller signal the abandoned work (a remote executor
-   * cancels its job; the local one has nothing to cancel).
-   */
-  private withDeadline<T>(
-    work: Promise<T>,
-    seconds: number,
-    phase: string,
-    onTimeout?: () => void,
-  ): Promise<T> {
-    let timer: ReturnType<typeof setTimeout>;
-    const deadline = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => {
-        // The abandoned work may reject later with nobody listening.
-        work.catch(() => undefined);
-        onTimeout?.();
-        reject(
-          new FfmpegStepTimeoutError(
-            `ffmpeg_handler ${phase} exceeded ${seconds}s and was abandoned`,
-          ),
-        );
-      }, seconds * 1000);
-    });
-    return Promise.race([work, deadline]).finally(() => clearTimeout(timer));
   }
 
   /** Map typed runner/scratch errors onto the stable error-code contract. */
@@ -253,23 +233,27 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
     config: FfmpegHandlerConfig,
     context: PipelineContext,
     stepName: string,
+    signal: AbortSignal,
   ): Promise<StepResult> {
     const inputKey = await this.resolveKey(config.input!, context, stepName, 'input');
     const inName = `in${path.posix.extname(inputKey) || '.bin'}`;
-    const res = await this.runJob({
-      id: stepName,
-      commands: [
-        {
-          id: 'probe',
-          kind: 'ffprobe',
-          argv: buildProbeArgs(`{in:${inName}}`),
-          timeoutSeconds: 60, // probe is cheap; never let it hold the queue long
-        },
-      ],
-      inputs: [{ name: inName, key: inputKey }],
-      outputs: [],
-      files: [],
-    });
+    const res = await this.runJob(
+      {
+        id: stepName,
+        commands: [
+          {
+            id: 'probe',
+            kind: 'ffprobe',
+            argv: buildProbeArgs(`{in:${inName}}`),
+            timeoutSeconds: 60, // probe is cheap; never let it hold the queue long
+          },
+        ],
+        inputs: [{ name: inName, key: inputKey }],
+        outputs: [],
+        files: [],
+      },
+      signal,
+    );
     const parsed = JSON.parse(res.stdout) as {
       format?: { duration?: string };
       streams?: unknown[];
@@ -289,23 +273,27 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
     config: FfmpegHandlerConfig,
     context: PipelineContext,
     stepName: string,
+    signal: AbortSignal,
   ): Promise<StepResult> {
     const inputKey = await this.resolveKey(config.input!, context, stepName, 'input');
     const outputKey = await this.resolveKey(config.output!, context, stepName, 'output');
     const inName = `in${path.posix.extname(inputKey) || '.bin'}`;
-    const res = await this.runJob({
-      id: stepName,
-      commands: [
-        {
-          id: 'extract',
-          kind: 'ffmpeg',
-          argv: buildExtractAudioArgs(`{in:${inName}}`, '{out:out.wav}'),
-        },
-      ],
-      inputs: [{ name: inName, key: inputKey }],
-      outputs: [{ name: 'out.wav', key: outputKey, contentType: 'audio/wav' }],
-      files: [],
-    });
+    const res = await this.runJob(
+      {
+        id: stepName,
+        commands: [
+          {
+            id: 'extract',
+            kind: 'ffmpeg',
+            argv: buildExtractAudioArgs(`{in:${inName}}`, '{out:out.wav}'),
+          },
+        ],
+        inputs: [{ name: inName, key: inputKey }],
+        outputs: [{ name: 'out.wav', key: outputKey, contentType: 'audio/wav' }],
+        files: [],
+      },
+      signal,
+    );
     return {
       success: true,
       output: {
@@ -367,6 +355,7 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
     config: FfmpegHandlerConfig,
     context: PipelineContext,
     stepName: string,
+    signal: AbortSignal,
   ): Promise<StepResult> {
     const spans = this.resolveSpans(config.spans, context, stepName);
     const inputKey = await this.resolveKey(config.input!, context, stepName, 'input');
@@ -400,13 +389,16 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
       });
       outputs.push({ name: 'clip.wav', key: audioKey, contentType: 'audio/wav' });
     }
-    const res = await this.runJob({
-      id: stepName,
-      commands,
-      inputs: [{ name: inName, key: inputKey }],
-      outputs,
-      files: [],
-    });
+    const res = await this.runJob(
+      {
+        id: stepName,
+        commands,
+        inputs: [{ name: inName, key: inputKey }],
+        outputs,
+        files: [],
+      },
+      signal,
+    );
     const duration = spans.reduce((n, s) => n + (s.end - s.start), 0);
     const wav = res.outputs.find((o) => o.name === 'clip.wav');
     return {
@@ -428,6 +420,7 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
     config: FfmpegHandlerConfig,
     context: PipelineContext,
     stepName: string,
+    signal: AbortSignal,
   ): Promise<StepResult> {
     const configInputs = config.inputs;
     let inputsRaw: unknown = configInputs;
@@ -465,33 +458,36 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
     const threads = this.local.argvThreads();
     // Stream-copy first; only a process failure (stream mismatch) hands over to
     // the re-encode fallback — busy/timeout/memory abort the job untouched.
-    const res = await this.runJob({
-      id: stepName,
-      commands: [
-        {
-          id: 'copy',
-          kind: 'ffmpeg',
-          argv: buildConcatArgs('{file:concat.txt}', '{out:final.mp4}', {
-            reencode: false,
-            threads,
-          }),
-        },
-        {
-          id: 'reencode',
-          kind: 'ffmpeg',
-          argv: buildConcatArgs('{file:concat.txt}', '{out:final.mp4}', {
-            reencode: true,
-            threads,
-          }),
-          fallbackFor: 'copy',
-        },
-      ],
-      inputs,
-      outputs: [{ name: 'final.mp4', key: outputKey, contentType: 'video/mp4' }],
-      // Scratch-relative names: the concat demuxer resolves each entry against
-      // the list file's own directory, which is the job's scratch dir.
-      files: [{ name: 'concat.txt', content: buildConcatListContent(inputs.map((i) => i.name)) }],
-    });
+    const res = await this.runJob(
+      {
+        id: stepName,
+        commands: [
+          {
+            id: 'copy',
+            kind: 'ffmpeg',
+            argv: buildConcatArgs('{file:concat.txt}', '{out:final.mp4}', {
+              reencode: false,
+              threads,
+            }),
+          },
+          {
+            id: 'reencode',
+            kind: 'ffmpeg',
+            argv: buildConcatArgs('{file:concat.txt}', '{out:final.mp4}', {
+              reencode: true,
+              threads,
+            }),
+            fallbackFor: 'copy',
+          },
+        ],
+        inputs,
+        outputs: [{ name: 'final.mp4', key: outputKey, contentType: 'video/mp4' }],
+        // Scratch-relative names: the concat demuxer resolves each entry against
+        // the list file's own directory, which is the job's scratch dir.
+        files: [{ name: 'concat.txt', content: buildConcatListContent(inputs.map((i) => i.name)) }],
+      },
+      signal,
+    );
     const reencoded = res.commands.some((c) => c.id === 'reencode' && c.ran);
     if (reencoded) this.logger.warn({ event: 'ffmpeg_concat_reencode_fallback', step: stepName });
     return {

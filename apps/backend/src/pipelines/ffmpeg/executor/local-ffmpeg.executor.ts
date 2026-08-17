@@ -5,9 +5,9 @@ import * as path from 'path';
 import { pipeline } from 'stream/promises';
 import { STORAGE_ADAPTER, type IStorageAdapter } from '../../../storage/storage.interface';
 import { readFfmpegEnv } from '../ffmpeg-env';
-import { FfmpegStepTimeoutError } from '../ffmpeg-errors';
 import { FfmpegRunnerService } from '../ffmpeg-runner.service';
 import { FfmpegScratchService } from '../ffmpeg-scratch.service';
+import { withDeadline } from '../with-deadline';
 import type {
   FfmpegExecutor,
   FfmpegExecutorReadiness,
@@ -133,29 +133,7 @@ export class LocalFfmpegExecutor implements FfmpegExecutor {
     }
   }
 
-  // ---- moved verbatim from FfmpegHandler (withDeadline / io / downloadToFile / uploadFromFile / inputSizeBytes) ----
-
-  /**
-   * Bound an await that has no timeout of its own. On breach the step fails
-   * with FFMPEG_JOB_TIMEOUT naming the phase; the abandoned work is left to
-   * settle on its own (its `finally` still cleans up, and orphaned scratch
-   * dirs are swept hourly) — the point is that the STEP always settles.
-   */
-  private withDeadline<T>(work: Promise<T>, seconds: number, phase: string): Promise<T> {
-    let timer: ReturnType<typeof setTimeout>;
-    const deadline = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => {
-        // The abandoned work may reject later with nobody listening.
-        work.catch(() => undefined);
-        reject(
-          new FfmpegStepTimeoutError(
-            `ffmpeg_handler ${phase} exceeded ${seconds}s and was abandoned`,
-          ),
-        );
-      }, seconds * 1000);
-    });
-    return Promise.race([work, deadline]).finally(() => clearTimeout(timer));
-  }
+  // ---- moved verbatim from FfmpegHandler (io / downloadToFile / uploadFromFile / inputSizeBytes) ----
 
   /**
    * Storage calls are the unbounded awaits in this executor: an object-store
@@ -163,7 +141,7 @@ export class LocalFfmpegExecutor implements FfmpegExecutor {
    * gets its own ceiling so the phase that stalled is named in the failure.
    */
   private io<T>(work: Promise<T>, phase: string): Promise<T> {
-    return this.withDeadline(work, readFfmpegEnv().ioMaxSeconds, phase);
+    return withDeadline(work, readFfmpegEnv().ioMaxSeconds, phase);
   }
 
   private async downloadToFile(key: string, destPath: string): Promise<void> {
