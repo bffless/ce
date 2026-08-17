@@ -226,6 +226,12 @@ with the worker message. Transport-level non-2xx / unreachable → `FFMPEG_EXECU
   documented; failure surfaces as `FFMPEG_EXECUTOR_UNAVAILABLE` with the Google error.
 - **Egress:** input from a non-GCP bucket → Cloud Run is cross-cloud egress; the docs
   cost example must say so.
+- **Presigned PUT headers (settled):** the integration suite
+  (`apps/backend/src/pipelines/__tests__/integration/ffmpeg.remote.spec.ts`) proved against a
+  real MinIO that a SigV4 query-signed PUT accepts the Worker's unsigned `content-type` and
+  `content-length` headers and persists the content type on the object. S3 and GCS V4 signed
+  PUTs behave the same way for unsigned headers; only a provider that pins
+  `SignedHeaders=content-type` would need CE to sign it into the URL instead.
 
 ## Rollout
 

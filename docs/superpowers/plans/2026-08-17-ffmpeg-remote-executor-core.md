@@ -1312,7 +1312,7 @@ git commit -m "feat(ffmpeg): ffmpeg Worker image (workers/ffmpeg) — dumb argv 
 
 **Gate:** `hasFfmpeg` (as the existing integration spec) AND `process.env.FFMPEG_IT_MINIO_ENDPOINT` (e.g. `http://localhost:9000`, with `FFMPEG_IT_MINIO_ACCESS_KEY`/`SECRET_KEY`, default `minioadmin`/`minioadmin`, bucket `ffmpeg-it` created by the test). Otherwise `describe.skip`. Start MinIO with `docker compose --profile minio up -d minio` (host port mapping: check `docker-compose.yml` `minio` service — if the port is not published, use `docker run -d -p 9000:9000 minio/minio server /data` for the test).
 
-- [ ] **Step 1: Write the spec**
+- [x] **Step 1: Write the spec**
 
 ```ts
 // Boots workers/ffmpeg/server.mjs as a child process on a free port with WORKER_ALLOW_HTTP=1,
@@ -1331,7 +1331,7 @@ git commit -m "feat(ffmpeg): ffmpeg Worker image (workers/ffmpeg) — dumb argv 
 ```
 Write it fully (≈150 lines) modelled on `__tests__/integration/ffmpeg.handler.spec.ts` (fixture generation, `beforeAll` env, `afterAll` cleanup incl. `child.kill()` and bucket purge via `deletePrefix`). Assert the `ffmpeg_remote_job` log line by spying on `Logger.prototype.log` and finding an arg with `event === 'ffmpeg_remote_job'`.
 
-- [ ] **Step 2: Run it for real**
+- [x] **Step 2: Run it for real**
 
 ```bash
 docker run -d --rm -p 9000:9000 --name it-minio minio/minio server /data
@@ -1340,11 +1340,39 @@ docker stop it-minio
 ```
 Expected: all cases PASS on the VPS (ffmpeg is installed here? `which ffmpeg` — if not, `sudo apt-get install -y ffmpeg` in a real terminal, or run the suite inside the backend image). Fix whatever real MinIO/undici/streaming behaviour the unit tests could not see (e.g. `content-length` on PUT, MinIO presigned PUT rejecting an unexpected `content-type` — if it does, sign the content type into the URL or drop the header for MinIO; record the finding in the spec's Risks).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add -A && git commit -m "test(ffmpeg): remote executor integration — CE ↔ real worker over MinIO for all four ops"
 ```
+
+**Verified (how to run).**
+
+```bash
+docker run -d --rm -p 9000:9000 --name it-minio minio/minio server /data
+cd apps/backend && FFMPEG_IT_MINIO_ENDPOINT=http://localhost:9000 \
+  pnpm test:integration -- src/pipelines/__tests__/integration/ffmpeg.remote.spec.ts
+docker stop it-minio
+```
+
+`pnpm test:integration -- <pattern>` does reach jest as `--testPathPattern`, but the pattern
+is matched against the ABSOLUTE path: inside a worktree named `…/ffmpeg-remote-executor-impl`
+the loose pattern `ffmpeg.remote` matches every suite (`.` is a regex wildcard, so it hits the
+directory name too). Pass the file path (above) or an anchored pattern
+(`'ffmpeg\.remote\.spec'`) to actually filter.
+
+The Worker runs as a host child process on a free port (`WORKER_ALLOW_HTTP=1`,
+`WORKER_VERSION=it`, `WORKER_SCRATCH_DIR` in a temp dir), so the `localhost:9000`
+presigned URLs CE signs are reachable from it. Without `FFMPEG_IT_MINIO_ENDPOINT` the
+suite self-skips, so the normal `pnpm test` / CI run is unaffected (no MinIO in CI).
+
+**Findings from the real run** (no production-code change was needed):
+- MinIO's presigned PUT (`presignedPutObject`, SigV4 query auth, `SignedHeaders=host`)
+  **accepts** the Worker's unsigned `content-type` header and stores it — the object comes
+  back from `statObject` with `content-type: audio/wav`. No need to sign the content type
+  into the URL or drop the header.
+- The Worker's `content-length` + web-stream `body` + `duplex:'half'` PUT works unchanged
+  through undici against MinIO.
 
 ---
 
