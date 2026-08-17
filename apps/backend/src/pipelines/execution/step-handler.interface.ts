@@ -701,8 +701,11 @@ export interface FfmpegSpan {
  * transferInMs, ffmpegMs, transferOutMs, totalMs), `bytesIn` and `bytesOut`.
  *
  * Server video ops are an opt-in, instance-level admin setting (FFMPEG_HANDLER_ENABLED
- * feature flag, default off); when off — or when no executor is available — probe
- * reports server:false and every other operation returns FFMPEG_UNAVAILABLE.
+ * feature flag, default off). Probe reports server:false when the flag is off OR no
+ * enabled executor is ready. For every other operation the two refusals are distinct:
+ * the flag being off is FFMPEG_UNAVAILABLE, while the flag being ON with no executor
+ * enabled or ready (no ffmpeg binaries, no FFMPEG_REMOTE_URL, worker unreachable) is
+ * FFMPEG_EXECUTOR_UNAVAILABLE.
  *
  * Every step is bounded: the queue wait, each storage transfer and the ffmpeg
  * run all have ceilings (FFMPEG_JOB_MAX_SECONDS / FFMPEG_IO_MAX_SECONDS /

@@ -1,9 +1,15 @@
 import { Logger } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { STORAGE_ADAPTER } from '../../../../storage/storage.interface';
-import { RemoteFfmpegExecutor, semverLt } from './remote-ffmpeg.executor';
+import {
+  authFor,
+  buildWorkerClient,
+  RemoteFfmpegExecutor,
+  semverLt,
+} from './remote-ffmpeg.executor';
 import { readFfmpegEnv } from '../../ffmpeg-env';
-import { WorkerTransportError } from './worker-client';
+import { IdTokenMinter, NoAuth } from './id-token';
+import { WorkerClient, WorkerTransportError } from './worker-client';
 
 const okBody = (over = {}) => ({
   v: 1,
@@ -104,6 +110,19 @@ describe('ready()', () => {
       ).executor.ready(),
     ).toMatchObject({ ok: false, reason: expect.stringContaining('local filesystem') });
   });
+  // With PUBLIC_ORIGIN set the local adapter presigns an ABSOLUTE URL, so
+  // "not relative" is not enough to tell a bucket from CE's own route.
+  it('is false for an ABSOLUTE local-presign URL (PUBLIC_ORIGIN configured)', async () => {
+    expect(
+      await make(
+        {},
+        {
+          getPresignedUploadUrl: async () =>
+            'https://ce.example.com/api/storage/presigned/local?key=abc&exp=1&sig=x',
+        },
+      ).executor.ready(),
+    ).toMatchObject({ ok: false, reason: expect.stringContaining('local filesystem') });
+  });
   it('requires https for google_id_token', async () => {
     expect(
       await make({
@@ -192,7 +211,9 @@ describe('run()', () => {
   });
   it('transport failure → FFMPEG_EXECUTOR_UNAVAILABLE; worker ok:false codes map through result-mapping', async () => {
     const a = make();
-    a.client.postJob.mockRejectedValue(new WorkerTransportError('503', 503, true));
+    a.client.postJob.mockRejectedValue(
+      new WorkerTransportError('worker responded 500', 500, false),
+    );
     await expect(a.executor.run(job, { signal: sig() })).rejects.toMatchObject({
       code: 'FFMPEG_EXECUTOR_UNAVAILABLE',
     });
@@ -229,7 +250,89 @@ describe('run()', () => {
       executor: 'remote',
     });
   });
+  it('a retryable transport answer (429/503 after the retry) is FFMPEG_BUSY, not unavailable', async () => {
+    // The Worker's own 503 BUSY and Cloud Run's front-door 429/503 mean "come
+    // back later" — callers already back off from FFMPEG_BUSY, whereas
+    // "executor unavailable" reads as a misconfiguration.
+    for (const status of [429, 503]) {
+      const { executor, client } = make();
+      client.postJob.mockRejectedValue(new WorkerTransportError(`${status}`, status, true));
+      await expect(executor.run(job, { signal: sig() })).rejects.toMatchObject({
+        code: 'FFMPEG_BUSY',
+        message: expect.stringContaining('remote worker busy'),
+      });
+    }
+    // A retryable error with no status is a thrown fetch: still unavailable.
+    const { executor, client } = make();
+    client.postJob.mockRejectedValue(
+      new WorkerTransportError('request to https://w/jobs failed: ECONNREFUSED', undefined, true),
+    );
+    await expect(executor.run(job, { signal: sig() })).rejects.toMatchObject({
+      code: 'FFMPEG_EXECUTOR_UNAVAILABLE',
+    });
+  });
+  it('the in-flight fuse logs the ffmpeg_remote_job line it failed on', async () => {
+    const { executor, client } = make({ FFMPEG_REMOTE_MAX_INFLIGHT: '1' });
+    let release!: (v: unknown) => void;
+    client.postJob.mockReturnValueOnce(
+      new Promise((r) => {
+        release = r;
+      }),
+    );
+    const first = executor.run(job, { signal: sig() });
+    await expect(executor.run(job, { signal: sig() })).rejects.toMatchObject({
+      code: 'FFMPEG_BUSY',
+    });
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'ffmpeg_remote_job',
+        job: 'j',
+        ok: false,
+        code: 'FFMPEG_BUSY',
+      }),
+    );
+    release(okBody());
+    await first;
+  });
+  // The step ceiling (#669) is the only thing that ends a wedged remote job:
+  // the abort must come back as FFMPEG_JOB_TIMEOUT, not as a transport fault.
+  it('an abort while the job POST is in flight is FFMPEG_JOB_TIMEOUT', async () => {
+    const { executor, client } = make();
+    const controller = new AbortController();
+    client.postJob.mockImplementation(
+      (_envelope: unknown, opts: { signal: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          const abort = () =>
+            reject(Object.assign(new Error('This operation was aborted'), { name: 'AbortError' }));
+          if (opts.signal.aborted) abort();
+          else opts.signal.addEventListener('abort', abort, { once: true });
+        }),
+    );
+    const running = executor.run(job, { signal: controller.signal });
+    // The envelope is signed first, so give run() a turn to reach postJob.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    controller.abort();
+    await expect(running).rejects.toMatchObject({
+      code: 'FFMPEG_JOB_TIMEOUT',
+      message: expect.stringContaining('aborted'),
+    });
+  });
   it('argvThreads() is 0 (auto on the worker)', () => {
     expect(make().executor.argvThreads()).toBe(0);
+  });
+});
+
+describe('the default client factory', () => {
+  const env = (over: Record<string, string> = {}) =>
+    readFfmpegEnv({ FFMPEG_REMOTE_URL: 'https://w', FFMPEG_REMOTE_AUTH: 'none', ...over });
+  const authOf = (client: WorkerClient) => (client as unknown as { auth: unknown }).auth;
+
+  it("uses NoAuth for remoteAuth 'none' and an ID-token minter otherwise", () => {
+    expect(authFor(env())).toBeInstanceOf(NoAuth);
+    expect(authFor(env({ FFMPEG_REMOTE_AUTH: 'google_id_token' }))).toBeInstanceOf(IdTokenMinter);
+    expect(authOf(buildWorkerClient(env()))).toBeInstanceOf(NoAuth);
+    expect(
+      authOf(buildWorkerClient(env({ FFMPEG_REMOTE_AUTH: 'google_id_token' }))),
+    ).toBeInstanceOf(IdTokenMinter);
   });
 });

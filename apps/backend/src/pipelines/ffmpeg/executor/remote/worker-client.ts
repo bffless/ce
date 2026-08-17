@@ -8,15 +8,29 @@
  * (429 / 503, which on Cloud Run is the front end, not the container). Every
  * other non-2xx is final. Anything the caller aborted is never retried.
  *
+ * The transport is undici's `fetch` with header/body timeouts disabled: a job POST
+ * stays open for the WHOLE job (see JOB_AGENT_OPTIONS). `health()` shares it but
+ * bounds itself with its own 5 s AbortController.
+ *
  * See docs/superpowers/specs/2026-08-17-ffmpeg-remote-executor-design.md §2.4.
  */
 
+import { Agent, fetch as undiciFetch, type Dispatcher } from 'undici';
 import type { WorkerEnvelope, WorkerHealth, WorkerResponse } from './envelope';
 import type { AuthHeaderProvider } from './id-token';
 import { isWorkerResponse } from './result-mapping';
 
 /** Pause between the single retry attempt. */
 const RETRY_DELAY_MS = 500;
+/**
+ * The Worker answers a job POST only when the job is DONE — it sends no header
+ * until then — so the transport must not police the wait. undici (which is what
+ * Node's global `fetch` is) defaults `headersTimeout`/`bodyTimeout` to 300 s, and
+ * a job over five minutes therefore died with UND_ERR_HEADERS_TIMEOUT and was
+ * retried once. 0 disables both; the bound on a job is CE's own step deadline
+ * (`opts.signal`) plus the Worker's job-wide `maxSeconds`, never a socket timer.
+ */
+export const JOB_AGENT_OPTIONS = { headersTimeout: 0, bodyTimeout: 0 } as const;
 const HEALTH_TIMEOUT_MS = 5_000;
 /** Statuses that mean "the Worker never took this job" — the only retryable ones. */
 const RETRYABLE_STATUSES = new Set([429, 503]);
@@ -46,11 +60,30 @@ async function errorBody(res: Response): Promise<string> {
   }
 }
 
+/**
+ * The default transport: undici's own `fetch` pinned to a no-timeout Agent.
+ * Both seams exist for tests — production always calls this with no arguments.
+ */
+export function createJobFetch(
+  underlying: typeof undiciFetch = undiciFetch,
+  makeDispatcher: () => Dispatcher = () => new Agent(JOB_AGENT_OPTIONS),
+): typeof fetch {
+  const dispatcher = makeDispatcher();
+  return ((input: unknown, init: Record<string, unknown> = {}) =>
+    underlying(input as never, { ...init, dispatcher } as never)) as unknown as typeof fetch;
+}
+
+/** One Agent (and its connection pool) for the whole process, built on first use. */
+let sharedJobFetch: typeof fetch | undefined;
+export function jobFetch(): typeof fetch {
+  return (sharedJobFetch ??= createJobFetch());
+}
+
 export class WorkerClient {
   constructor(
     private readonly baseUrl: string,
     private readonly auth: AuthHeaderProvider,
-    private readonly fetchImpl: typeof fetch = fetch,
+    private readonly fetchImpl: typeof fetch = jobFetch(),
     private readonly sleep: (ms: number) => Promise<void> = (ms) =>
       new Promise((resolve) => setTimeout(resolve, ms)),
   ) {}

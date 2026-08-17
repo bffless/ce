@@ -93,6 +93,12 @@ interface FfmpegExecutor {
 
 ### 1.3 Job envelope (wire contract, v1)
 
+> **As built:** the envelope carries `commands: [{id, kind, argv, timeoutSeconds?, fallbackFor?}]`
+> instead of a single top-level `kind`/`argv` — slice+audioOutput and concat's re-encode
+> fallback are two invocations over one scratch dir; the Worker stays a dumb argv runner (it
+> loops). The response mirrors it with `commands: [{id, ran, exitCode}]`. The published image
+> is `ghcr.io/bffless/ce-ffmpeg-worker`.
+
 `POST /jobs` — `Content-Type: application/json`
 
 ```jsonc

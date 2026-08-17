@@ -1,4 +1,11 @@
-import { WorkerClient, WorkerTransportError } from './worker-client';
+import { Agent } from 'undici';
+import {
+  createJobFetch,
+  jobFetch,
+  JOB_AGENT_OPTIONS,
+  WorkerClient,
+  WorkerTransportError,
+} from './worker-client';
 
 const okBody = {
   v: 1,
@@ -117,4 +124,35 @@ it('health() GETs /healthz with auth', async () => {
     new WorkerClient('https://w', auth, fetchImpl as never, noSleep).health(),
   ).resolves.toMatchObject({ ok: true, version: '0.4.31' });
   expect(fetchImpl.mock.calls[0][0]).toBe('https://w/healthz');
+});
+
+describe('the default job transport', () => {
+  // The Worker sends no response byte until the job is finished, so undici's
+  // 300 s headersTimeout would kill exactly the long jobs this feature exists
+  // for (and the client would then re-post the job). Both timers must be off.
+  it('disables undici header/body timeouts on the dispatcher it passes', async () => {
+    expect(JOB_AGENT_OPTIONS).toEqual({ headersTimeout: 0, bodyTimeout: 0 });
+
+    const underlying = jest.fn().mockResolvedValue(json(200, okBody));
+    const agent = new Agent(JOB_AGENT_OPTIONS);
+    const fetchImpl = createJobFetch(underlying as never, () => agent);
+    await new WorkerClient('https://w', auth, fetchImpl, noSleep).postJob(envelope as never, {
+      signal: new AbortController().signal,
+    });
+    const [url, init] = underlying.mock.calls[0];
+    expect(url).toBe('https://w/jobs');
+    expect(init.method).toBe('POST');
+    expect(init.dispatcher).toBe(agent);
+    await agent.close();
+  });
+
+  it('builds a real undici Agent by default, shared across clients', async () => {
+    const underlying = jest.fn().mockResolvedValue(json(200, okBody));
+    const built = createJobFetch(underlying as never);
+    await built('https://w/jobs', { method: 'POST' });
+    const dispatcher = underlying.mock.calls[0][1].dispatcher as Agent;
+    expect(dispatcher).toBeInstanceOf(Agent);
+    await dispatcher.close();
+    expect(jobFetch()).toBe(jobFetch());
+  });
 });

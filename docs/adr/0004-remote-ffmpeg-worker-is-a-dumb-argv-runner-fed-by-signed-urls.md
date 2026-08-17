@@ -10,6 +10,8 @@ When the `ffmpeg_handler` runs a job through the Remote executor, CE still build
 
 The alternative — an op-aware Worker with its own API (`/extract-audio`, `/slice` …) — was rejected for the drift and lockstep-release costs above; proxying bytes through CE was rejected because it defeats the purpose.
 
+**As built:** the envelope carries `commands: [{id, kind, argv, timeoutSeconds?, fallbackFor?}]` instead of a single top-level `kind`/`argv` — slice+audioOutput and concat's re-encode fallback are two invocations over one scratch dir; the Worker stays a dumb argv runner (it loops). The published image is `ghcr.io/bffless/ce-ffmpeg-worker`.
+
 ## Consequences
 
 - The Worker image is generic and versioned with CE; CE checks a minimum Worker version via `/healthz`, but a Worker rarely needs to move.

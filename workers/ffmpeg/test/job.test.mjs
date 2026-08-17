@@ -1,12 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
+import { createReadStream, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
-import { substituteArgv, validateEnvelope, runJob } from '../job.mjs';
+import { substituteArgv, validateEnvelope, runJob, httpPut } from '../job.mjs';
 
 test('substituteArgv maps {in|out|file:NAME} to scratch paths and rejects unknown/unsafe names', () => {
   assert.deepEqual(
@@ -108,6 +108,7 @@ test('happy path: downloads, substitutes, runs, uploads only on exit 0, reports 
     signal: new AbortController().signal,
     scratchRoot: await scratchRoot(),
     fetchImpl: f.impl,
+    uploadImpl: f.impl,
     spawnImpl: sp.impl,
   });
   assert.equal(res.ok, true);
@@ -129,6 +130,7 @@ test('input 404 → INPUT_FETCH_FAILED, nothing spawned', async () => {
     signal: new AbortController().signal,
     scratchRoot: await scratchRoot(),
     fetchImpl: f.impl,
+    uploadImpl: f.impl,
     spawnImpl: sp.impl,
   });
   assert.deepEqual([res.ok, res.code], [false, 'INPUT_FETCH_FAILED']);
@@ -141,6 +143,7 @@ test('non-zero exit → FFMPEG_FAILED with stderr tail, no upload', async () => 
     signal: new AbortController().signal,
     scratchRoot: await scratchRoot(),
     fetchImpl: f.impl,
+    uploadImpl: f.impl,
     spawnImpl: sp.impl,
   });
   assert.deepEqual([res.ok, res.code], [false, 'FFMPEG_FAILED']);
@@ -164,6 +167,7 @@ test('fallbackFor runs the fallback only after its target fails', async () => {
     signal: new AbortController().signal,
     scratchRoot: await scratchRoot(),
     fetchImpl: f.impl,
+    uploadImpl: f.impl,
     spawnImpl: impl,
   });
   assert.equal(res.ok, true);
@@ -179,6 +183,7 @@ test('maxSeconds → SIGKILL → FFMPEG_TIMEOUT', async () => {
     signal: new AbortController().signal,
     scratchRoot: await scratchRoot(),
     fetchImpl: f.impl,
+    uploadImpl: f.impl,
     spawnImpl: sp.impl,
   });
   assert.deepEqual([res.ok, res.code], [false, 'FFMPEG_TIMEOUT']);
@@ -191,6 +196,7 @@ test('abort signal (client disconnect) kills the child and reports FFMPEG_TIMEOU
     signal: ac.signal,
     scratchRoot: await scratchRoot(),
     fetchImpl: f.impl,
+    uploadImpl: f.impl,
     spawnImpl: sp.impl,
   });
   setTimeout(() => ac.abort(), 20);
@@ -204,6 +210,7 @@ test('output over maxOutputBytes → OUTPUT_TOO_LARGE; upload non-2xx → OUTPUT
     signal: new AbortController().signal,
     scratchRoot: await scratchRoot(),
     fetchImpl: f1.impl,
+    uploadImpl: f1.impl,
     spawnImpl: fakeSpawn().impl,
   });
   assert.equal(r1.code, 'OUTPUT_TOO_LARGE');
@@ -213,6 +220,7 @@ test('output over maxOutputBytes → OUTPUT_TOO_LARGE; upload non-2xx → OUTPUT
     signal: new AbortController().signal,
     scratchRoot: await scratchRoot(),
     fetchImpl: f2.impl,
+    uploadImpl: f2.impl,
     spawnImpl: fakeSpawn().impl,
   });
   assert.equal(r2.code, 'OUTPUT_UPLOAD_FAILED');
@@ -225,6 +233,7 @@ test('the scratch dir is removed afterwards', async () => {
     signal: new AbortController().signal,
     scratchRoot: root,
     fetchImpl: f.impl,
+    uploadImpl: f.impl,
     spawnImpl: fakeSpawn().impl,
   });
   const { readdir } = await import('node:fs/promises');
@@ -253,6 +262,7 @@ test('files are written to scratch and {file:NAME} resolves to them', async () =
     signal: new AbortController().signal,
     scratchRoot: await scratchRoot(),
     fetchImpl: f.impl,
+    uploadImpl: f.impl,
     spawnImpl,
   });
   assert.equal(res.ok, true);
@@ -272,6 +282,7 @@ test('ffprobe commands run the ffprobe binary and return its stdout', async () =
     signal: new AbortController().signal,
     scratchRoot: await scratchRoot(),
     fetchImpl: f.impl,
+    uploadImpl: f.impl,
     spawnImpl: sp.impl,
   });
   assert.equal(res.ok, true);
@@ -290,6 +301,7 @@ test('a declared output the command never wrote → FFMPEG_FAILED', async () => 
     signal: new AbortController().signal,
     scratchRoot: await scratchRoot(),
     fetchImpl: f.impl,
+    uploadImpl: f.impl,
     spawnImpl: fakeSpawn().impl,
   });
   assert.deepEqual([res.ok, res.code], [false, 'FFMPEG_FAILED']);
@@ -310,6 +322,7 @@ test('a fallback is skipped (ran:false) when its target succeeded', async () => 
     signal: new AbortController().signal,
     scratchRoot: await scratchRoot(),
     fetchImpl: f.impl,
+    uploadImpl: f.impl,
     spawnImpl: sp.impl,
   });
   assert.equal(res.ok, true);
@@ -386,6 +399,7 @@ test('the deadline is job-wide: a hung input download → FFMPEG_TIMEOUT, nothin
     signal: new AbortController().signal,
     scratchRoot: root,
     fetchImpl: f.impl,
+    uploadImpl: f.impl,
     spawnImpl: sp.impl,
   });
   assert.deepEqual([res.ok, res.code], [false, 'FFMPEG_TIMEOUT']);
@@ -402,6 +416,7 @@ test('the deadline aborts a hung upload → FFMPEG_TIMEOUT, not OUTPUT_UPLOAD_FA
     signal: new AbortController().signal,
     scratchRoot: await scratchRoot(),
     fetchImpl: f.impl,
+    uploadImpl: f.impl,
     spawnImpl: sp.impl,
   });
   assert.deepEqual([res.ok, res.code], [false, 'FFMPEG_TIMEOUT']);
@@ -418,10 +433,72 @@ test('a caller abort during a hung download is still CANCELLED, not FFMPEG_TIMEO
     signal: ac.signal,
     scratchRoot: await scratchRoot(),
     fetchImpl: f.impl,
+    uploadImpl: f.impl,
     spawnImpl: sp.impl,
   });
   setTimeout(() => ac.abort(), 20);
   const res = await p;
   assert.deepEqual([res.ok, res.code], [false, 'CANCELLED']);
   assert.equal(sp.calls.length, 0);
+});
+
+/** A one-shot http server that records the PUT it receives and answers `status`. */
+async function putServer(status = 200, body = '') {
+  const http = await import('node:http');
+  const received = { bytes: 0, headers: null, method: null };
+  const server = http.createServer((req, res) => {
+    received.method = req.method;
+    received.headers = req.headers;
+    req.on('data', (chunk) => {
+      received.bytes += chunk.length;
+    });
+    req.on('end', () => {
+      res.writeHead(status);
+      res.end(body);
+    });
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  return { received, url: `http://127.0.0.1:${server.address().port}/o.wav`, server };
+}
+
+test('httpPut streams the file to a real server with no socket timeout, and reports the status', async () => {
+  const src = path.join(await mkdtemp(path.join(tmpdir(), 'put-')), 'o.wav');
+  await writeFile(src, 'wav-bytes');
+
+  const ok = await putServer(200);
+  const res = await httpPut(ok.url, {
+    headers: { 'content-type': 'audio/wav', 'content-length': '9' },
+    body: createReadStream(src),
+    signal: new AbortController().signal,
+  });
+  assert.equal(res.ok, true);
+  assert.equal(res.status, 200);
+  assert.equal(ok.received.method, 'PUT');
+  assert.equal(ok.received.bytes, 9);
+  assert.equal(ok.received.headers['content-type'], 'audio/wav');
+  ok.server.close();
+
+  const denied = await putServer(403, 'AccessDenied');
+  const bad = await httpPut(denied.url, { body: createReadStream(src) });
+  assert.equal(bad.ok, false);
+  assert.equal(bad.status, 403);
+  assert.equal(await bad.text(), 'AccessDenied');
+  denied.server.close();
+});
+
+test('httpPut destroys the request when the job deadline aborts it', async () => {
+  const src = path.join(await mkdtemp(path.join(tmpdir(), 'put-')), 'o.wav');
+  await writeFile(src, 'wav-bytes');
+  // A server that never answers: only the abort can settle this.
+  const http = await import('node:http');
+  const server = http.createServer(() => {});
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const ac = new AbortController();
+  const p = httpPut(`http://127.0.0.1:${server.address().port}/o.wav`, {
+    body: createReadStream(src),
+    signal: ac.signal,
+  });
+  setTimeout(() => ac.abort(), 20);
+  await assert.rejects(p, (error) => error.name === 'AbortError');
+  server.close();
 });

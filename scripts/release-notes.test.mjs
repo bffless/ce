@@ -122,7 +122,7 @@ test('renderStable: sections + docker + install + compare', () => {
   assert.match(out, /<summary>Maintenance<\/summary>/);
   assert.match(
     out,
-    /## Docker Images\n\n```bash\ndocker pull ghcr\.io\/bffless\/ce-frontend:v0\.5\.0\ndocker pull ghcr\.io\/bffless\/ce-backend:v0\.5\.0\n```/,
+    /## Docker Images\n\n```bash\ndocker pull ghcr\.io\/bffless\/ce-frontend:v0\.5\.0\ndocker pull ghcr\.io\/bffless\/ce-backend:v0\.5\.0\ndocker pull ghcr\.io\/bffless\/ce-ffmpeg-worker:v0\.5\.0\n```/,
   );
   assert.match(out, /## Install \/ Update/);
   assert.match(out, /https:\/\/bffless\.dev\/install\.sh/);

@@ -616,6 +616,33 @@ describe('executor selection (remote)', () => {
     });
   });
 
+  /**
+   * No selector double: the REAL FfmpegExecutorSelector the handler builds for
+   * itself, so this pins the ruled contract end-to-end — flag ON but nothing to
+   * run on is FFMPEG_EXECUTOR_UNAVAILABLE, not the flag-off FFMPEG_UNAVAILABLE.
+   */
+  it('flag on, no local binaries and no FFMPEG_REMOTE_URL → FFMPEG_EXECUTOR_UNAVAILABLE', async () => {
+    const saved = process.env.FFMPEG_REMOTE_URL;
+    delete process.env.FFMPEG_REMOTE_URL;
+    try {
+      const { handler, runner } = createHandler({
+        capability: { isEnabled: async () => true, isAvailable: () => false },
+      });
+      const result = await handler.execute(
+        context(),
+        step({ operation: 'extract_audio', input: 'a.mp4', output: 'a.wav' }),
+      );
+      expect(result).toMatchObject({
+        success: false,
+        error: { code: 'FFMPEG_EXECUTOR_UNAVAILABLE' },
+      });
+      expect(runner.run).not.toHaveBeenCalled();
+    } finally {
+      if (saved === undefined) delete process.env.FFMPEG_REMOTE_URL;
+      else process.env.FFMPEG_REMOTE_URL = saved;
+    }
+  });
+
   it('probe without input returns the selector payload verbatim', async () => {
     const payload = {
       server: true,

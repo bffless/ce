@@ -95,8 +95,17 @@ gcloud run services add-iam-policy-binding bffless-ffmpeg --member serviceAccoun
 gcloud iam service-accounts keys create key.json --iam-account bffless-ffmpeg-caller@PROJECT.iam.gserviceaccount.com
 ```
 
-Set `--timeout` at or above CE's `FFMPEG_JOB_MAX_SECONDS`. `SIGTERM` stops new requests and
-lets the in-flight job finish; no `--no-cpu-throttling` is needed because the request stays open.
+Set `--timeout` at or above CE's `FFMPEG_JOB_MAX_SECONDS`: **`POST /jobs` answers only when the
+job is finished**, so the request is held open for the whole encode — every hop in between
+(Cloud Run's request timeout, any load balancer or proxy idle timeout) must outlast the longest
+job you allow, or the caller sees a transport failure while the Worker is still encoding. CE's
+own side is already unbounded: it posts with an undici Agent whose `headersTimeout`/`bodyTimeout`
+are 0, bounded instead by the step deadline it aborts on. Output uploads are likewise streamed
+with a raw `node:http(s)` request rather than `fetch`, because S3/GCS answer a PUT only once the
+whole body has landed and `fetch` gives up after 300 s.
+
+`SIGTERM` stops new requests and lets the in-flight job finish; no `--no-cpu-throttling` is
+needed because the request stays open.
 
 ## Security
 

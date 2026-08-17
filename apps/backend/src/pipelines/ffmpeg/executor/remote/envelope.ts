@@ -9,12 +9,12 @@
  */
 
 import type { FfmpegEnvConfig } from '../../ffmpeg-env';
+// The SAME arrays the local runner prepends — one source, so local and remote
+// argv can never drift apart.
+import { FFMPEG_GLOBAL_FLAGS, FFPROBE_GLOBAL_FLAGS } from '../../ffmpeg-runner.service';
 import type { FfmpegJob } from '../ffmpeg-executor.interface';
 
-/** ffmpeg-only global flags: never prompt, never read stdin. Mirrors ffmpeg-runner.service.ts. */
-export const FFMPEG_GLOBAL_FLAGS = ['-nostdin', '-hide_banner', '-y'];
-/** ffprobe shares only the cmdutils `-hide_banner` option. Mirrors ffmpeg-runner.service.ts. */
-export const FFPROBE_GLOBAL_FLAGS = ['-hide_banner'];
+export { FFMPEG_GLOBAL_FLAGS, FFPROBE_GLOBAL_FLAGS };
 
 export interface WorkerEnvelope {
   v: 1;

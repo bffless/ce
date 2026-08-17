@@ -10,6 +10,8 @@
 
 import { spawn } from 'node:child_process';
 import { createReadStream, createWriteStream } from 'node:fs';
+import http from 'node:http';
+import https from 'node:https';
 import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { Readable } from 'node:stream';
@@ -174,14 +176,74 @@ async function downloadInput(input, dest, fetchImpl, signal) {
   return (await stat(dest)).size;
 }
 
-async function uploadOutput(output, src, size, fetchImpl, signal) {
+/** Response bodies only ever appear in an error message — keep them log-sized. */
+const UPLOAD_ERROR_BODY_BYTES = 200;
+
+/**
+ * PUT one file with node:http(s) instead of fetch.
+ *
+ * S3/GCS answer a PUT only once the WHOLE body has arrived, and fetch (undici)
+ * gives up waiting for response headers after 300 s — so any upload slower than
+ * five minutes failed as OUTPUT_UPLOAD_FAILED even though the bytes were fine.
+ * A raw request has no such timer; the only bound is the job deadline, which
+ * arrives as `signal` and destroys the request.
+ *
+ * Returns the fetch-shaped subset `uploadOutput` uses, so a test can pass a
+ * fetch-like fake in its place.
+ */
+export function httpPut(url, { headers = {}, body, signal } = {}) {
+  return new Promise((resolve, reject) => {
+    let parsed;
+    try {
+      parsed = new URL(url);
+    } catch (error) {
+      reject(error);
+      return;
+    }
+    const transport = parsed.protocol === 'http:' ? http : https;
+    let settled = false;
+    const onAbort = () =>
+      req.destroy(Object.assign(new Error('This operation was aborted'), { name: 'AbortError' }));
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      signal?.removeEventListener('abort', onAbort);
+      fn(value);
+    };
+    const req = transport.request(parsed, { method: 'PUT', headers }, (res) => {
+      const chunks = [];
+      let kept = 0;
+      res.on('data', (chunk) => {
+        if (kept >= UPLOAD_ERROR_BODY_BYTES) return;
+        kept += chunk.length;
+        chunks.push(chunk);
+      });
+      res.on('error', (error) => finish(reject, error));
+      res.on('end', () =>
+        finish(resolve, {
+          ok: res.statusCode >= 200 && res.statusCode < 300,
+          status: res.statusCode,
+          text: async () => Buffer.concat(chunks).toString('utf8'),
+        }),
+      );
+    });
+    req.on('error', (error) => finish(reject, error));
+    if (signal) {
+      if (signal.aborted) onAbort();
+      else signal.addEventListener('abort', onAbort, { once: true });
+    }
+    // Streams the file and ends the request; a read error surfaces here.
+    pipeline(body, req).catch((error) => finish(reject, error));
+  });
+}
+
+async function uploadOutput(output, src, size, uploadImpl, signal) {
   let res;
   try {
-    res = await fetchImpl(output.url, {
+    res = await uploadImpl(output.url, {
       method: 'PUT',
       headers: { 'content-type': output.contentType, 'content-length': String(size) },
-      body: Readable.toWeb(createReadStream(src)),
-      duplex: 'half',
+      body: createReadStream(src),
       signal,
     });
   } catch (error) {
@@ -192,7 +254,7 @@ async function uploadOutput(output, src, size, fetchImpl, signal) {
     );
   }
   if (!res.ok) {
-    const body = (await res.text().catch(() => '')).slice(0, 200);
+    const body = (await res.text().catch(() => '')).slice(0, UPLOAD_ERROR_BODY_BYTES);
     throw new JobError(
       'OUTPUT_UPLOAD_FAILED',
       `output "${output.name}" upload failed: HTTP ${res.status} ${body}`.trim(),
@@ -212,6 +274,7 @@ export async function runJob(
     ffmpegBin = 'ffmpeg',
     ffprobeBin = 'ffprobe',
     fetchImpl = fetch,
+    uploadImpl = httpPut,
     spawnImpl = spawn,
     version = 'dev',
     ffmpegVersion = '',
@@ -370,7 +433,7 @@ export async function runJob(
             `output "${output.name}" is ${size} bytes (max ${envelope.limits.maxOutputBytes})`,
           );
         }
-        await uploadOutput(output, file, size, fetchImpl, jobSignal);
+        await uploadOutput(output, file, size, uploadImpl, jobSignal);
         outputResults.push({ name: output.name, bytes: size });
         bytesOut += size;
       }

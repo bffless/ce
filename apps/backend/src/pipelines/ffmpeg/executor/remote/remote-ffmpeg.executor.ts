@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { LOCAL_PRESIGN_PATH } from '../../../../storage/local.adapter';
 import { STORAGE_ADAPTER, type IStorageAdapter } from '../../../../storage/storage.interface';
 import { readFfmpegEnv, type FfmpegEnvConfig } from '../../ffmpeg-env';
 import {
@@ -14,9 +15,18 @@ import type {
   FfmpegJobResult,
 } from '../ffmpeg-executor.interface';
 import { buildEnvelope, type WorkerHealth, type WorkerResponse } from './envelope';
-import { NoAuth, IdTokenMinter } from './id-token';
+import { NoAuth, IdTokenMinter, type AuthHeaderProvider } from './id-token';
 import { mapWorkerResponse } from './result-mapping';
 import { WorkerClient, WorkerTransportError } from './worker-client';
+
+/** CE's own presign route, whether the adapter returned it relative or absolute. */
+function isLocalPresignUrl(probe: string): boolean {
+  try {
+    return new URL(probe, 'http://ce.invalid').pathname.startsWith(LOCAL_PRESIGN_PATH);
+  } catch {
+    return false;
+  }
+}
 
 /** How long a readiness answer (storage probe + healthz) is reused. */
 const READINESS_CACHE_MS = 60_000;
@@ -41,6 +51,20 @@ export function semverLt(a: string, b: string): boolean {
     if (diff !== 0) return diff < 0;
   }
   return false;
+}
+
+/**
+ * D4: `none` is only for a Worker on a trusted network — everything else mints a
+ * Google ID token for the Worker's URL. Module-level so the choice is testable
+ * without reaching into a WorkerClient.
+ */
+export function authFor(env: FfmpegEnvConfig): AuthHeaderProvider {
+  return env.remoteAuth === 'none' ? new NoAuth() : new IdTokenMinter(env.remoteSaKeyJson);
+}
+
+/** The default `clientFactory`: a client for this env's worker URL and auth mode. */
+export function buildWorkerClient(env: FfmpegEnvConfig): WorkerClient {
+  return new WorkerClient(env.remoteUrl!, authFor(env));
 }
 
 interface Deps {
@@ -86,7 +110,7 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
     @Optional() deps: Deps = {},
   ) {
     this.env = deps.env ?? (() => readFfmpegEnv());
-    this.clientFactory = deps.clientFactory ?? ((env) => this.buildClient(env));
+    this.clientFactory = deps.clientFactory ?? buildWorkerClient;
     this.now = deps.now ?? (() => Date.now());
   }
 
@@ -150,13 +174,16 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
         'storage adapter cannot presign (remote executor needs bucket storage: S3/GCS/MinIO/Azure)',
       );
     }
+    const t0 = this.now();
     // Fail fast rather than queue: a remote job holds no local resource worth
-    // waiting for, and the handler would rather retry than sit on a slot.
+    // waiting for, and the handler would rather retry than sit on a slot. Logged
+    // like any other failed job so the fuse is visible in the same log line.
     if (this.inflight >= env.remoteMaxInflight) {
-      throw new FfmpegBusyError('remote executor at capacity (FFMPEG_REMOTE_MAX_INFLIGHT)');
+      const busy = new FfmpegBusyError('remote executor at capacity (FFMPEG_REMOTE_MAX_INFLIGHT)');
+      this.logFailure(job, busy, t0);
+      throw busy;
     }
     this.inflight++;
-    const t0 = this.now();
     try {
       const envelope = await buildEnvelope(
         job,
@@ -173,6 +200,14 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
         response = await this.clientFor(env).postJob(envelope, { signal: opts.signal });
       } catch (error) {
         if (error instanceof WorkerTransportError) {
+          // A status-carrying retryable answer is the Worker's own 503 BUSY or
+          // Cloud Run's front-door 429/503 — after our one retry it means "still
+          // busy", which callers already know how to back off from. A retryable
+          // error with no status is a thrown fetch (connection refused, DNS):
+          // a real transport fault, not capacity.
+          if (error.retryable && error.status !== undefined) {
+            throw new FfmpegBusyError(`remote worker busy: ${error.message}`);
+          }
           throw new FfmpegExecutorUnavailableError(`worker request failed: ${error.message}`);
         }
         if ((error as { name?: string })?.name === 'AbortError' || opts.signal.aborted) {
@@ -234,28 +269,35 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
       });
       return result;
     } catch (error) {
-      this.logger.warn({
-        event: 'ffmpeg_remote_job',
-        job: job.id,
-        ok: false,
-        code: (error as { code?: string })?.code,
-        message: error instanceof Error ? error.message : String(error),
-        durationMs: this.now() - t0,
-      });
+      this.logFailure(job, error, t0);
       throw error;
     } finally {
       this.inflight--;
     }
   }
 
+  /** One structured line per failed job, whatever failed it (fuse included). */
+  private logFailure(job: FfmpegJob, error: unknown, t0: number): void {
+    this.logger.warn({
+      event: 'ffmpeg_remote_job',
+      job: job.id,
+      ok: false,
+      code: (error as { code?: string })?.code,
+      message: error instanceof Error ? error.message : String(error),
+      durationMs: this.now() - t0,
+    });
+  }
+
   // ---- readiness helpers ----
 
   /**
    * Rules (3) and (4): the Worker fetches and uploads on its own, so the adapter
-   * must be able to presign, and the URL it presigns must be absolute. A relative
-   * URL (`/api/storage/presigned/local?…`) is the local-filesystem adapter — nothing
-   * a Worker on another host can resolve. Probed rather than sniffed by class name,
-   * so a wrapping adapter (Dynamic/Caching) is judged on what it actually returns.
+   * must be able to presign, and the URL it presigns must point at a bucket. The
+   * local-filesystem adapter presigns CE's own route instead — relative by
+   * default, but ABSOLUTE (`https://<PUBLIC_ORIGIN>/api/storage/presigned/local?…`)
+   * once a public origin is configured, so relativity alone does not catch it and
+   * every byte would transit CE. Probed rather than sniffed by class name, so a
+   * wrapping adapter (Dynamic/Caching) is judged on what it actually returns.
    */
   private async probeStorage(): Promise<FfmpegExecutorReadiness> {
     const cannotPresign: FfmpegExecutorReadiness = {
@@ -275,7 +317,7 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
     } catch {
       return cannotPresign;
     }
-    if (probe.startsWith('/')) {
+    if (probe.startsWith('/') || isLocalPresignUrl(probe)) {
       return { ok: false, reason: 'local filesystem storage cannot be reached by a worker' };
     }
     return { ok: true };
@@ -308,12 +350,5 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
     const key = this.identity(env);
     if (this.client?.key !== key) this.client = { key, client: this.clientFactory(env) };
     return this.client.client;
-  }
-
-  private buildClient(env: FfmpegEnvConfig): WorkerClient {
-    return new WorkerClient(
-      env.remoteUrl!,
-      env.remoteAuth === 'none' ? new NoAuth() : new IdTokenMinter(env.remoteSaKeyJson),
-    );
   }
 }
