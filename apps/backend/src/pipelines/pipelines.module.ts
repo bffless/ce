@@ -61,6 +61,7 @@ import { LocalFfmpegExecutor } from './ffmpeg/executor/local-ffmpeg.executor';
 import { RemoteFfmpegExecutor } from './ffmpeg/executor/remote/remote-ffmpeg.executor';
 import { FfmpegExecutorSelector } from './ffmpeg/executor/ffmpeg-executor.selector';
 import { FfmpegExecutorSettingsService } from './ffmpeg/ffmpeg-executor-settings.service';
+import { FfmpegExecutorSettingsController } from './ffmpeg/ffmpeg-executor-settings.controller';
 import { FFMPEG_CONFIG_PROVIDERS } from './ffmpeg/executor/ffmpeg-config.providers';
 import { FeedParserService } from './feed-parser.service';
 import { IntegrationsModule } from '../integrations/integrations.module';
@@ -109,6 +110,7 @@ import {
     PipelineSchemasController,
     PipelineDataController,
     AIPluginsController,
+    FfmpegExecutorSettingsController,
   ],
   providers: [
     // Core services
