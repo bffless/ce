@@ -73,6 +73,10 @@ export class IdTokenMinter implements AuthHeaderProvider {
     if (!client) {
       this.auth ??= this.authFactory(this.saKeyJson);
       client = this.auth.getIdTokenClient(audience);
+      // Only a *successful* client is cached: ADC / metadata-server discovery can
+      // fail transiently, and a cached rejected promise would rethrow that stale
+      // error on every later job until the process restarts.
+      client.catch(() => this.clients.delete(audience));
       this.clients.set(audience, client);
     }
     return flatten(await (await client).getRequestHeaders(url));

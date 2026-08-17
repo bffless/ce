@@ -24,3 +24,15 @@ it('accepts a Headers instance from the library and flattens it', async () => {
   }));
   expect(await minter.headers('https://w/x')).toEqual({ authorization: 'Bearer h' });
 });
+
+it('does not cache a failed client creation — a later call retries', async () => {
+  const getRequestHeaders = jest.fn().mockResolvedValue({ Authorization: 'Bearer tok' });
+  const getIdTokenClient = jest
+    .fn()
+    .mockRejectedValueOnce(new Error('could not load the default credentials'))
+    .mockResolvedValueOnce({ getRequestHeaders });
+  const minter = new IdTokenMinter(null, () => ({ getIdTokenClient }));
+  await expect(minter.headers('https://w/jobs')).rejects.toThrow('default credentials');
+  expect(await minter.headers('https://w/jobs')).toEqual({ Authorization: 'Bearer tok' });
+  expect(getIdTokenClient).toHaveBeenCalledTimes(2);
+});
