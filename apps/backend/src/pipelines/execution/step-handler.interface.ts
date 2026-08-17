@@ -677,8 +677,9 @@ export interface FfmpegSpan {
  *
  * Operations:
  * - `probe` — no `input`: capability self-test, never fails; returns
- *   `{ server, ops, version }`. With `input`: ffprobe essentials
- *   `{ duration, format, streams }`.
+ *   `{ server, ops, version, executors, defaultExecutor, remote? }` (`version`
+ *   is the LOCAL ffmpeg's; the Worker's is `remote.version`). With `input`:
+ *   ffprobe essentials `{ duration, format, streams }`.
  * - `extract_audio` — `input` → `output`: 16 kHz mono WAV (`-vn -ac 1 -ar 16000`).
  * - `slice` — cut the kept `spans` out of `input`, concat into one clip
  *   (libx264 ultrafast/yuv420p/aac/+faststart, A/V-sync-safe trim graph).
@@ -691,9 +692,17 @@ export interface FfmpegSpan {
  * path, or an `/api/uploads/...` URL; outputs are uploads-relative. All resolve
  * inside the project's uploads root — traversal is rejected.
  *
+ * Executors: `local` runs ffmpeg in this backend; `remote` sends the job to a
+ * Worker over signed storage URLs (bucket storage only; see the Server Video Ops
+ * docs). Which one a step gets is `executor` if it names one, else the instance
+ * default (FFMPEG_EXECUTOR, falling back to whatever is configured); asking for
+ * one that is not configured or not ready fails with FFMPEG_EXECUTOR_UNAVAILABLE.
+ * Every op output additionally reports `executor`, `timings` (queueMs,
+ * transferInMs, ffmpegMs, transferOutMs, totalMs), `bytesIn` and `bytesOut`.
+ *
  * Server video ops are an opt-in, instance-level admin setting (FFMPEG_HANDLER_ENABLED
- * feature flag, default off); when off — or when ffmpeg is absent — probe reports
- * server:false and every other operation returns FFMPEG_UNAVAILABLE.
+ * feature flag, default off); when off — or when no executor is available — probe
+ * reports server:false and every other operation returns FFMPEG_UNAVAILABLE.
  *
  * Every step is bounded: the queue wait, each storage transfer and the ffmpeg
  * run all have ceilings (FFMPEG_JOB_MAX_SECONDS / FFMPEG_IO_MAX_SECONDS /
@@ -714,6 +723,12 @@ export interface FfmpegHandlerConfig extends BaseHandlerConfig {
   audioOutput?: string;
   /** slice only: ~10 ms audio edge fades per span (assemble parity). Default false. */
   audioFades?: boolean;
+  /**
+   * Which executor runs the job: 'local' (this backend) | 'remote' (Worker) | a
+   * `{{expression}}` resolving to one. Default: the instance's default executor.
+   * Unavailable → FFMPEG_EXECUTOR_UNAVAILABLE.
+   */
+  executor?: 'local' | 'remote' | string;
 }
 
 /**

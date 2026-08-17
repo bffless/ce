@@ -451,6 +451,11 @@ export interface FfmpegHandlerConfig extends BaseHandlerConfig {
   audioOutput?: string;
   /** slice only: ~10 ms audio edge fades per span. */
   audioFades?: boolean;
+  /**
+   * Which executor runs the job: 'local' (this backend) | 'remote' (Worker) | a
+   * `{{expression}}` resolving to one. Default: the instance's default executor.
+   */
+  executor?: 'local' | 'remote' | string;
 }
 
 export interface StripeCheckoutLineItem {

@@ -1,4 +1,4 @@
-import { Injectable, Inject, Logger } from '@nestjs/common';
+import { Injectable, Inject, Logger, Optional } from '@nestjs/common';
 import * as path from 'path';
 import { StepHandler, FfmpegHandlerConfig } from '../execution/step-handler.interface';
 import { StepHandlerRegistry } from '../execution/step-handler.registry';
@@ -12,7 +12,10 @@ import { FfmpegRunnerService } from '../ffmpeg/ffmpeg-runner.service';
 import { FfmpegScratchService } from '../ffmpeg/ffmpeg-scratch.service';
 import { withDeadline } from '../ffmpeg/with-deadline';
 import { LocalFfmpegExecutor } from '../ffmpeg/executor/local-ffmpeg.executor';
+import { RemoteFfmpegExecutor } from '../ffmpeg/executor/remote/remote-ffmpeg.executor';
+import { FfmpegExecutorSelector, ffmpegFlagOn } from '../ffmpeg/executor/ffmpeg-executor.selector';
 import type {
+  FfmpegExecutor,
   FfmpegJob,
   FfmpegJobCommand,
   FfmpegJobOutput,
@@ -43,8 +46,8 @@ const OPERATIONS = ['probe', 'extract_audio', 'slice', 'concat'] as const;
 export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
   readonly type = 'ffmpeg_handler' as const;
   private readonly logger = new Logger(FfmpegHandler.name);
-  /** Task 4 replaces this with injected executors + a per-step selector. */
-  private readonly local: LocalFfmpegExecutor;
+  /** Where a step's job runs — see FfmpegExecutorSelector. */
+  private readonly executors: FfmpegExecutorSelector;
 
   constructor(
     private readonly registry: StepHandlerRegistry,
@@ -54,8 +57,17 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
     scratch: FfmpegScratchService,
     private readonly uploadRecord: UploadRecordService,
     @Inject(STORAGE_ADAPTER) storageAdapter: IStorageAdapter,
+    @Optional() selector?: FfmpegExecutorSelector,
   ) {
-    this.local = new LocalFfmpegExecutor(runner, scratch, storageAdapter);
+    // Directly-constructed handlers (unit tests) get a selector built from the
+    // same collaborators, so behaviour matches the injected wiring exactly.
+    this.executors =
+      selector ??
+      new FfmpegExecutorSelector(
+        new LocalFfmpegExecutor(runner, scratch, storageAdapter),
+        new RemoteFfmpegExecutor(storageAdapter),
+        capability,
+      );
     this.registry.register(this);
   }
 
@@ -86,17 +98,12 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
 
     if (config.operation === 'probe' && !config.input) {
       // Capability self-test — the /api/video/capabilities payload. Never fails.
-      return {
-        success: true,
-        output: {
-          server: await this.capability.isEnabled(),
-          ops: await this.capability.getOps(),
-          version: this.capability.getVersion(),
-        },
-      };
+      return { success: true, output: await this.executors.probe() };
     }
 
-    if (!(await this.capability.isEnabled())) {
+    // The operator's flag only: a remote-only instance has no local binaries and
+    // must still run steps, so this must NOT be the binaries-aware isEnabled().
+    if (!(await ffmpegFlagOn(this.capability))) {
       return {
         success: false,
         error: {
@@ -118,16 +125,19 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
     // serving concurrent steps) and lets an executor cancel work it can cancel.
     const controller = new AbortController();
     const { signal } = controller;
-    const op = (): Promise<StepResult> => {
+    const op = async (): Promise<StepResult> => {
+      // Inside the deadline: picking an executor can touch the network (the
+      // remote readiness probe), and that await must be bounded like the rest.
+      const executor = await this.executors.pick(this.requestedExecutor(config, context, stepName));
       switch (config.operation) {
         case 'probe':
-          return this.runProbe(config, context, stepName, signal);
+          return this.runProbe(config, context, stepName, executor, signal);
         case 'extract_audio':
-          return this.runExtractAudio(config, context, stepName, signal);
+          return this.runExtractAudio(config, context, stepName, executor, signal);
         case 'slice':
-          return this.runSlice(config, context, stepName, signal);
+          return this.runSlice(config, context, stepName, executor, signal);
         case 'concat':
-          return this.runConcat(config, context, stepName, signal);
+          return this.runConcat(config, context, stepName, executor, signal);
       }
     };
     try {
@@ -143,13 +153,34 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
   }
 
   /**
+   * `config.executor` as a name the selector understands, or undefined for "the
+   * instance default". Template-resolved like `input`/`output`, so it can be
+   * `remote`, `{{request.body.executor}}`, or `{{steps.decide.executor}}`.
+   */
+  private requestedExecutor(
+    config: FfmpegHandlerConfig,
+    context: PipelineContext,
+    stepName: string,
+  ): string | undefined {
+    if (!config.executor) return undefined;
+    return (
+      this.expressionEvaluator.evaluateTemplate(config.executor, context, stepName).trim() ||
+      undefined
+    );
+  }
+
+  /**
    * Run one job on the chosen executor. The step ceiling that makes #669 hold
    * lives in `execute`, wrapped around the whole op — `signal` is the abort it
    * raises on breach, threaded through so an executor that CAN cancel (remote)
    * does; the local one runs to completion and is simply abandoned.
    */
-  private async runJob(job: FfmpegJob, signal: AbortSignal): Promise<FfmpegJobResult> {
-    return this.local.run(job, { signal });
+  private async runJob(
+    executor: FfmpegExecutor,
+    job: FfmpegJob,
+    signal: AbortSignal,
+  ): Promise<FfmpegJobResult> {
+    return executor.run(job, { signal });
   }
 
   /** Additive observability fields (D11) — present on every op output. */
@@ -171,6 +202,7 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
       'FFMPEG_INSUFFICIENT_DISK',
       'FFMPEG_TIMEOUT',
       'FFMPEG_JOB_TIMEOUT',
+      'FFMPEG_EXECUTOR_UNAVAILABLE',
       'FFMPEG_FAILED',
       'INVALID_INPUT_PATH',
       'INVALID_OUTPUT_PATH',
@@ -233,11 +265,13 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
     config: FfmpegHandlerConfig,
     context: PipelineContext,
     stepName: string,
+    executor: FfmpegExecutor,
     signal: AbortSignal,
   ): Promise<StepResult> {
     const inputKey = await this.resolveKey(config.input!, context, stepName, 'input');
     const inName = `in${path.posix.extname(inputKey) || '.bin'}`;
     const res = await this.runJob(
+      executor,
       {
         id: stepName,
         commands: [
@@ -273,12 +307,14 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
     config: FfmpegHandlerConfig,
     context: PipelineContext,
     stepName: string,
+    executor: FfmpegExecutor,
     signal: AbortSignal,
   ): Promise<StepResult> {
     const inputKey = await this.resolveKey(config.input!, context, stepName, 'input');
     const outputKey = await this.resolveKey(config.output!, context, stepName, 'output');
     const inName = `in${path.posix.extname(inputKey) || '.bin'}`;
     const res = await this.runJob(
+      executor,
       {
         id: stepName,
         commands: [
@@ -355,6 +391,7 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
     config: FfmpegHandlerConfig,
     context: PipelineContext,
     stepName: string,
+    executor: FfmpegExecutor,
     signal: AbortSignal,
   ): Promise<StepResult> {
     const spans = this.resolveSpans(config.spans, context, stepName);
@@ -372,7 +409,7 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
           input: `{in:${inName}}`,
           output: '{out:clip.mp4}',
           spans,
-          threads: this.local.argvThreads(),
+          threads: executor.argvThreads(),
           audioFades: config.audioFades === true,
         }),
       },
@@ -390,6 +427,7 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
       outputs.push({ name: 'clip.wav', key: audioKey, contentType: 'audio/wav' });
     }
     const res = await this.runJob(
+      executor,
       {
         id: stepName,
         commands,
@@ -420,6 +458,7 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
     config: FfmpegHandlerConfig,
     context: PipelineContext,
     stepName: string,
+    executor: FfmpegExecutor,
     signal: AbortSignal,
   ): Promise<StepResult> {
     const configInputs = config.inputs;
@@ -455,10 +494,11 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
       name: `part-${i}${path.posix.extname(key) || '.mp4'}`,
       key,
     }));
-    const threads = this.local.argvThreads();
+    const threads = executor.argvThreads();
     // Stream-copy first; only a process failure (stream mismatch) hands over to
     // the re-encode fallback — busy/timeout/memory abort the job untouched.
     const res = await this.runJob(
+      executor,
       {
         id: stepName,
         commands: [
