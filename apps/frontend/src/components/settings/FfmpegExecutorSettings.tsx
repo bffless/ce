@@ -64,6 +64,24 @@ function diff(s: FfmpegExecutorStatus, d: Draft): UpdateFfmpegExecutorDto {
   return out;
 }
 
+/**
+ * Keep the draft's default executor selectable: turning an executor off (or
+ * clearing the Worker URL) would otherwise leave a default the server rejects
+ * with a 400 on save. Moves to the other executor when that one is selectable;
+ * if neither is, leave it and let the server's message surface in the toast.
+ */
+function withSelectableDefault(d: Draft, localAvailable: boolean): Draft {
+  const localSelectable = d.localEnabled && localAvailable;
+  const remoteSelectable = d.remoteEnabled && d.remoteUrl.trim() !== '';
+  if (d.defaultExecutor === 'remote' && !remoteSelectable && localSelectable) {
+    return { ...d, defaultExecutor: 'local' };
+  }
+  if (d.defaultExecutor === 'local' && !localSelectable && remoteSelectable) {
+    return { ...d, defaultExecutor: 'remote' };
+  }
+  return d;
+}
+
 function EnvBadge({ name }: { name: string }) {
   return (
     <Badge variant="secondary" className="font-mono text-[10px]">
@@ -106,7 +124,12 @@ export function FfmpegExecutorSettings() {
   }
   if (isLoading || !draft || !status) return <Skeleton className="h-40 w-full" />;
 
-  const set = (patch: Partial<Draft>) => setDraft((d) => (d ? { ...d, ...patch } : d));
+  const set = (patch: Partial<Draft>) => {
+    // A test result describes the draft it was run against — any edit to the
+    // connection fields makes it stale.
+    if ('remoteUrl' in patch || 'remoteAuth' in patch || 'saKeyJson' in patch) setTestResult(null);
+    setDraft((d) => (d ? withSelectableDefault({ ...d, ...patch }, status.localAvailable) : d));
+  };
   const localSelectable = draft.localEnabled && status.localAvailable;
   const remoteSelectable = draft.remoteEnabled && draft.remoteUrl.trim() !== '';
   const showKeyEditor = !status.hasSaKey || replacingKey;
@@ -193,17 +216,15 @@ export function FfmpegExecutorSettings() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {/* Only while the detail block is collapsed — it carries its own badge. */}
-          {status.envManaged.remoteUrl && !draft.remoteEnabled && <EnvBadge name="FFMPEG_REMOTE_URL" />}
-          <Switch
-            id="ffmpeg-remote"
-            aria-label="Remote"
-            checked={draft.remoteEnabled}
-            disabled={!status.storagePresignable}
-            onCheckedChange={(v) => set({ remoteEnabled: v })}
-          />
-        </div>
+        {/* An env-pinned Worker URL forces Remote on server-side (resolveWith), so
+            the switch is read-only rather than a toggle that snaps back. */}
+        <Switch
+          id="ffmpeg-remote"
+          aria-label="Remote"
+          checked={draft.remoteEnabled}
+          disabled={!status.storagePresignable || status.envManaged.remoteUrl}
+          onCheckedChange={(v) => set({ remoteEnabled: v })}
+        />
       </div>
 
       {draft.remoteEnabled && (
@@ -347,20 +368,29 @@ export function FfmpegExecutorSettings() {
             {testResult && (
               <div className="space-y-1 text-xs">
                 <div className="flex items-center gap-2">
-                  {testResult.worker && !testResult.error ? (
+                  {testResult.ok ? (
                     <CheckCircle2 className="h-4 w-4 text-green-600" />
                   ) : (
                     <XCircle className="h-4 w-4 text-destructive" />
                   )}
-                  {testResult.worker ? (
-                    <span>
-                      Worker {testResult.worker.version} · {testResult.worker.ffmpeg ?? 'no ffmpeg'}{' '}
-                      · ops {testResult.worker.ops.join(', ')}
-                      {testResult.latencyMs !== null && <> · {testResult.latencyMs} ms</>}
-                    </span>
-                  ) : (
-                    <span>{testResult.error}</span>
-                  )}
+                  <span>
+                    {testResult.worker && (
+                      <>
+                        Worker {testResult.worker.version} ·{' '}
+                        {testResult.worker.ffmpeg ?? 'no ffmpeg'} · ops{' '}
+                        {testResult.worker.ops.join(', ')}
+                        {testResult.latencyMs !== null && <> · {testResult.latencyMs} ms</>}
+                      </>
+                    )}
+                    {/* A reachable Worker can still report an error (e.g. a bad key). */}
+                    {testResult.error && (
+                      <>
+                        {testResult.worker ? ' · ' : ''}
+                        {testResult.error}
+                      </>
+                    )}
+                    {!testResult.worker && !testResult.error && 'No response from the Worker.'}
+                  </span>
                 </div>
                 <div className={testResult.readiness.ok ? 'text-muted-foreground' : 'text-destructive'}>
                   {testResult.readiness.ok

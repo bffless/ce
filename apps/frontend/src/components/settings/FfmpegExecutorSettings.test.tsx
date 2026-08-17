@@ -63,6 +63,9 @@ describe('FfmpegExecutorSettings', () => {
     render(<FfmpegExecutorSettings />);
     expect(screen.getByLabelText(/Worker URL/)).toBeDisabled();
     expect(screen.getByText(/Managed by FFMPEG_REMOTE_URL/)).toBeInTheDocument();
+    // The backend forces remoteEnabled on when FFMPEG_REMOTE_URL is set, so the
+    // switch must be read-only rather than a toggle that snaps back.
+    expect(screen.getByRole('switch', { name: /Remote/ })).toBeDisabled();
   });
 
   it('Test connection sends the draft and renders version, ops, latency and the ADC note', async () => {
@@ -84,7 +87,7 @@ describe('FfmpegExecutorSettings', () => {
     expect(screen.getByText(/Using Application Default Credentials/)).toBeInTheDocument();
   });
 
-  it('Save sends only changed fields; a pasted key is sent as saKeyJson; stored key offers Replace/Remove', async () => {
+  it('Save sends only the changed fields, with a pasted key as saKeyJson', async () => {
     render(<FfmpegExecutorSettings />);
     fireEvent.click(screen.getByRole('switch', { name: /Remote/ }));
     fireEvent.change(screen.getByLabelText(/Worker URL/), { target: { value: 'https://w.example.com' } });
@@ -99,7 +102,9 @@ describe('FfmpegExecutorSettings', () => {
         saKeyJson: '{"type":"service_account"}',
       }),
     );
+  });
 
+  it('a stored key offers Replace/Remove instead of a textarea', () => {
     status.hasSaKey = true;
     status.saKeySource = 'db';
     status.remoteEnabled = true;
@@ -108,5 +113,59 @@ describe('FfmpegExecutorSettings', () => {
     expect(screen.getByText(/Key stored/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Replace key/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Remove key/ })).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/service_account/)).not.toBeInTheDocument();
+  });
+
+  it('Remove key sends saKeyJson: null and nothing else', async () => {
+    status.hasSaKey = true;
+    status.saKeySource = 'db';
+    status.remoteEnabled = true;
+    status.remoteUrl = 'https://w.example.com';
+    render(<FfmpegExecutorSettings />);
+    fireEvent.click(screen.getByRole('button', { name: /Remove key/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Save/ }));
+    await waitFor(() => expect(update).toHaveBeenCalledWith({ saKeyJson: null }));
+  });
+
+  it('local-filesystem storage makes Remote unavailable', () => {
+    status.storagePresignable = false;
+    render(<FfmpegExecutorSettings />);
+    expect(screen.getByRole('switch', { name: /Remote/ })).toBeDisabled();
+    expect(screen.getByText(/Needs bucket storage/)).toBeInTheDocument();
+  });
+
+  it('an env-managed service-account key is a badge, not an editable field', () => {
+    status.remoteEnabled = true;
+    status.remoteUrl = 'https://w.example.com';
+    status.hasSaKey = true;
+    status.saKeySource = 'env';
+    status.envManaged.saKey = true;
+    render(<FfmpegExecutorSettings />);
+    expect(screen.getByText(/Managed by FFMPEG_REMOTE_SA_KEY_JSON/)).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/service_account/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Replace key/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Remove key/ })).not.toBeInTheDocument();
+  });
+
+  it('moves the default off an executor the draft just disabled', async () => {
+    status.remoteEnabled = true;
+    status.remoteUrl = 'https://w.example.com';
+    status.defaultExecutor = 'remote';
+    render(<FfmpegExecutorSettings />);
+    fireEvent.click(screen.getByRole('switch', { name: /Remote/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Save/ }));
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith({ remoteEnabled: false, defaultExecutor: 'local' }),
+    );
+  });
+
+  it('a draft edit clears a stale test result', async () => {
+    status.remoteEnabled = true;
+    status.remoteUrl = 'https://w.example.com';
+    render(<FfmpegExecutorSettings />);
+    fireEvent.click(screen.getByRole('button', { name: /Test connection/ }));
+    expect(await screen.findByText(/0\.4\.31/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/Worker URL/), { target: { value: 'https://other.example.com' } });
+    expect(screen.queryByText(/0\.4\.31/)).not.toBeInTheDocument();
   });
 });
