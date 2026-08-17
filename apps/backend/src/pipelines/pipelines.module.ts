@@ -60,6 +60,8 @@ import { FfmpegScratchService } from './ffmpeg/ffmpeg-scratch.service';
 import { LocalFfmpegExecutor } from './ffmpeg/executor/local-ffmpeg.executor';
 import { RemoteFfmpegExecutor } from './ffmpeg/executor/remote/remote-ffmpeg.executor';
 import { FfmpegExecutorSelector } from './ffmpeg/executor/ffmpeg-executor.selector';
+import { FfmpegExecutorSettingsService } from './ffmpeg/ffmpeg-executor-settings.service';
+import { FFMPEG_CONFIG, FFMPEG_REMOTE_DEPS } from './ffmpeg/executor/ffmpeg-config.tokens';
 import { FeedParserService } from './feed-parser.service';
 import { IntegrationsModule } from '../integrations/integrations.module';
 // Embeddings service
@@ -175,6 +177,21 @@ import {
     LocalFfmpegExecutor,
     RemoteFfmpegExecutor,
     FfmpegExecutorSelector,
+    // Admin-editable executor config; the two tokens below hand the EFFECTIVE
+    // config (env over the saved row) to the selector and the remote executor.
+    FfmpegExecutorSettingsService,
+    {
+      provide: FFMPEG_CONFIG,
+      useFactory: (settings: FfmpegExecutorSettingsService) => () => settings.resolved(),
+      inject: [FfmpegExecutorSettingsService],
+    },
+    {
+      provide: FFMPEG_REMOTE_DEPS,
+      useFactory: (settings: FfmpegExecutorSettingsService) => ({
+        env: () => settings.resolved(),
+      }),
+      inject: [FfmpegExecutorSettingsService],
+    },
     // Validators (auto-register on construction)
     AuthRequiredValidator,
     RateLimitValidator,
@@ -200,6 +217,7 @@ import {
     UploadSchemaGeneratorService,
     UploadSchemaLintService,
     PipelineExecutionLogService,
+    FfmpegExecutorSettingsService,
   ],
 })
 export class PipelinesModule {}

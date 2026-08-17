@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { LOCAL_PRESIGN_PATH } from '../../../../storage/local.adapter';
 import { STORAGE_ADAPTER, type IStorageAdapter } from '../../../../storage/storage.interface';
 import { readFfmpegEnv, type FfmpegEnvConfig } from '../../ffmpeg-env';
+import { FFMPEG_REMOTE_DEPS } from '../ffmpeg-config.tokens';
 import {
   FfmpegBusyError,
   FfmpegExecutorUnavailableError,
@@ -106,8 +107,9 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
 
   constructor(
     @Inject(STORAGE_ADAPTER) private readonly storageAdapter: IStorageAdapter,
-    // Test seams only — @Optional() so Nest never tries to resolve a provider for it.
-    @Optional() deps: Deps = {},
+    // The effective config (+ test seams). @Optional() so a hand-built executor
+    // and any wiring without the token keep the plain readFfmpegEnv() default.
+    @Optional() @Inject(FFMPEG_REMOTE_DEPS) deps: Deps = {},
   ) {
     this.env = deps.env ?? (() => readFfmpegEnv());
     this.clientFactory = deps.clientFactory ?? buildWorkerClient;

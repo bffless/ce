@@ -3,7 +3,7 @@
  * which one a step gets, and the additive capability payload. Literal
  * collaborators cast `as never`, per the repo's handler-spec pattern.
  */
-import { readFfmpegEnv } from '../ffmpeg-env';
+import { readFfmpegEnv, type FfmpegEnvConfig } from '../ffmpeg-env';
 import { FfmpegExecutorSelector } from './ffmpeg-executor.selector';
 
 function make(
@@ -12,6 +12,8 @@ function make(
     localAvailable?: boolean;
     flag?: boolean;
     remoteReady?: { ok: boolean; reason?: string; version?: string };
+    /** Overrides on the RESOLVED config — what FfmpegExecutorSettingsService.resolved() would hand back. */
+    cfg?: Partial<FfmpegEnvConfig>;
   } = {},
 ) {
   const local = {
@@ -33,7 +35,7 @@ function make(
     getOps: async () => ['probe', 'extract_audio', 'slice', 'concat'],
     isFlagOn: async () => o.flag ?? true,
   };
-  const env = readFfmpegEnv(envOver);
+  const env = { ...readFfmpegEnv(envOver), ...(o.cfg ?? {}) };
   return {
     selector: new FfmpegExecutorSelector(
       local as never,
@@ -107,4 +109,26 @@ it('probe(): server = flag && any ready; additive executors/defaultExecutor/remo
       { localAvailable: false, remoteReady: { ok: false, reason: 'nope' } },
     ).selector.probe(),
   ).resolves.toMatchObject({ server: false, remote: { ready: false, reason: 'nope' } });
+});
+
+it('enabled(): localEnabled=false hides local even with binaries; remoteEnabled=false hides remote even with a URL', () => {
+  expect(make({}, { cfg: { localEnabled: false } }).selector.enabled()).toEqual([]);
+  expect(
+    make(
+      {},
+      { cfg: { remoteEnabled: false, remoteUrl: 'https://w.example.com' } },
+    ).selector.enabled(),
+  ).toEqual(['local']);
+  expect(
+    make(
+      {},
+      { cfg: { localEnabled: false, remoteEnabled: true, remoteUrl: 'https://w.example.com' } },
+    ).selector.enabled(),
+  ).toEqual(['remote']);
+});
+
+it("pick('remote') when remote is switched off says so without pointing only at the env var", async () => {
+  const { selector } = make({}, { cfg: { remoteEnabled: false } });
+  await expect(selector.pick('remote')).rejects.toThrow(/not enabled on this instance/);
+  await expect(selector.pick('remote')).rejects.toThrow(/Admin Settings/);
 });

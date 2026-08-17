@@ -1,8 +1,9 @@
-import { Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { FFMPEG_OPS, FfmpegCapabilityService } from '../ffmpeg-capability.service';
-import { readFfmpegEnv, type FfmpegEnvConfig } from '../ffmpeg-env';
+import { readFfmpegEnv } from '../ffmpeg-env';
 import { FfmpegExecutorUnavailableError } from '../ffmpeg-errors';
 import type { FfmpegExecutor, FfmpegExecutorName } from './ffmpeg-executor.interface';
+import { FFMPEG_CONFIG, type FfmpegConfigResolver } from './ffmpeg-config.tokens';
 import { LocalFfmpegExecutor } from './local-ffmpeg.executor';
 import { RemoteFfmpegExecutor } from './remote/remote-ffmpeg.executor';
 
@@ -44,14 +45,15 @@ export class FfmpegExecutorSelector {
     private readonly local: LocalFfmpegExecutor,
     private readonly remote: RemoteFfmpegExecutor,
     private readonly capability: FfmpegCapabilityService,
-    @Optional() private readonly env: () => FfmpegEnvConfig = readFfmpegEnv,
+    @Optional() @Inject(FFMPEG_CONFIG) private readonly env: FfmpegConfigResolver = readFfmpegEnv,
   ) {}
 
-  /** Executors an operator has enabled: local iff ffmpeg binaries are present; remote iff FFMPEG_REMOTE_URL is set. */
+  /** Executors an operator has enabled: local iff binaries present AND localEnabled; remote iff remoteEnabled AND a Worker URL. */
   enabled(): FfmpegExecutorName[] {
+    const cfg = this.env();
     const names: FfmpegExecutorName[] = [];
-    if (this.capability.isAvailable()) names.push('local');
-    if (this.env().remoteUrl) names.push('remote');
+    if (this.capability.isAvailable() && cfg.localEnabled) names.push('local');
+    if (cfg.remoteEnabled && cfg.remoteUrl) names.push('remote');
     return names;
   }
 
@@ -78,7 +80,7 @@ export class FfmpegExecutorSelector {
     if (!this.enabled().includes(name)) {
       throw new FfmpegExecutorUnavailableError(
         name === 'remote'
-          ? "ffmpeg_handler: executor 'remote' is not enabled on this instance (set FFMPEG_REMOTE_URL)"
+          ? "ffmpeg_handler: executor 'remote' is not enabled on this instance (enable it in Admin Settings → Features → Server video ops, or set FFMPEG_REMOTE_URL)"
           : "ffmpeg_handler: executor 'local' is not enabled on this instance (ffmpeg is not installed)",
       );
     }
