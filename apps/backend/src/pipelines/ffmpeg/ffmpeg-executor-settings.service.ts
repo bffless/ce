@@ -391,20 +391,28 @@ export class FfmpegExecutorSettingsService implements OnModuleInit {
     if (draft.saKeyJson !== undefined && !managed.saKey)
       overrides.remoteSaKeyJson = draft.saKeyJson === null ? null : draft.saKeyJson.trim();
 
+    const effective: FfmpegEnvConfig = { ...this.resolved(), ...overrides };
+    const credential: FfmpegExecutorTestResult['credential'] =
+      effective.remoteAuth === 'none' ? 'none' : effective.remoteSaKeyJson ? 'sa_key' : 'adc';
+
     // Parse a draft key HERE: deeper down it is JSON.parse'd inside the token
     // minter, and V8's SyntaxError quotes the offending input — which would put
-    // service-account bytes into the response. Same message `update()` uses.
+    // service-account bytes into the response. Reported through the button's one
+    // error channel, with `update()`'s wording.
     if (typeof overrides.remoteSaKeyJson === 'string' && overrides.remoteSaKeyJson !== '') {
       try {
         JSON.parse(overrides.remoteSaKeyJson);
       } catch {
-        throw new BadRequestException('Service-account key must be valid JSON.');
+        const reason = 'Service-account key must be valid JSON.';
+        return {
+          ok: false,
+          latencyMs: null,
+          error: reason,
+          readiness: { ok: false, reason },
+          credential,
+        };
       }
     }
-
-    const effective: FfmpegEnvConfig = { ...this.resolved(), ...overrides };
-    const credential: FfmpegExecutorTestResult['credential'] =
-      effective.remoteAuth === 'none' ? 'none' : effective.remoteSaKeyJson ? 'sa_key' : 'adc';
 
     let worker: FfmpegExecutorTestResult['worker'];
     let error: string | undefined;

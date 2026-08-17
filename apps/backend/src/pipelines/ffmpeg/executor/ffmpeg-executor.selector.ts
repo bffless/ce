@@ -81,7 +81,7 @@ export class FfmpegExecutorSelector {
       throw new FfmpegExecutorUnavailableError(
         name === 'remote'
           ? "ffmpeg_handler: executor 'remote' is not enabled on this instance (enable it in Admin Settings → Features → Server video ops, or set FFMPEG_REMOTE_URL)"
-          : "ffmpeg_handler: executor 'local' is not enabled on this instance (ffmpeg is not installed)",
+          : "ffmpeg_handler: executor 'local' is not enabled on this instance (needs ffmpeg installed and Local switched on in Admin Settings → Features → Server video ops)",
       );
     }
     const executor: FfmpegExecutor = name === 'local' ? this.local : this.remote;

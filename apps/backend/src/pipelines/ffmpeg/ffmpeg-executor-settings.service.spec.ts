@@ -517,16 +517,39 @@ describe('FfmpegExecutorSettingsService', () => {
       expect(res.worker).toBeUndefined();
     });
 
-    it('a malformed draft key is rejected before anything can quote it back', async () => {
+    it('a malformed draft key fails through the same channel, without quoting the key back', async () => {
       mockSelect([]);
       const { service, remote } = makeWithRemote();
       await service.reload();
       const secret = '{"type":"service_account","private_key":"-----BEGIN PRIVATE KEY-----abc';
-      await expect(service.testConnection({ saKeyJson: secret })).rejects.toBeInstanceOf(
-        BadRequestException,
-      );
-      await expect(service.testConnection({ saKeyJson: secret })).rejects.not.toThrow(/BEGIN/);
+      const res = await service.testConnection({ saKeyJson: secret });
+      expect(res.ok).toBe(false);
+      expect(res.error).toBe('Service-account key must be valid JSON.');
+      expect(res.readiness).toEqual({
+        ok: false,
+        reason: 'Service-account key must be valid JSON.',
+      });
+      expect(res.latencyMs).toBeNull();
+      expect(res.credential).toBe('sa_key');
+      expect(JSON.stringify(res)).not.toContain('BEGIN PRIVATE KEY');
+      expect(JSON.stringify(res)).not.toContain(secret.slice(0, 30));
       expect(remote.testConnection).not.toHaveBeenCalled();
+      expect(remote.ready).not.toHaveBeenCalled();
+    });
+
+    it('credential=sa_key when a key is stored in the DB, and the key never reaches the result', async () => {
+      mockSelect([
+        row({
+          remoteEnabled: true,
+          remoteUrl: 'https://w.example.com',
+          saKeyEncrypted: encryptString(SA_KEY),
+        }),
+      ]);
+      const { service } = makeWithRemote();
+      await service.reload();
+      const res = await service.testConnection();
+      expect(res.credential).toBe('sa_key');
+      expect(JSON.stringify(res)).not.toContain('gserviceaccount');
     });
 
     it('without a wired remote executor it fails loudly instead of reporting a healthy worker', async () => {

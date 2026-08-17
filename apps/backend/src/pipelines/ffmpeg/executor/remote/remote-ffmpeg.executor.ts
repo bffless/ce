@@ -158,7 +158,7 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
       }
     }
 
-    entry.health ??= await this.probeHealth(env);
+    entry.health ??= await this.probeHealth(env, { throwaway: Boolean(opts.fresh || opts.env) });
     if (!entry.health.ok) return { ok: false, reason: entry.health.reason };
     const health = entry.health.health;
     if (!health.ok) return { ok: false, reason: 'worker reports not ok' };
@@ -184,7 +184,7 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
 
   async run(job: FfmpegJob, opts: { signal: AbortSignal }): Promise<FfmpegJobResult> {
     const env = this.env();
-    if (!env.remoteUrl) throw new FfmpegExecutorUnavailableError('FFMPEG_REMOTE_URL is not set');
+    if (!env.remoteUrl) throw new FfmpegExecutorUnavailableError('no Worker URL configured');
     // ready() normally catches this; guard here too so a caller that skipped it
     // gets the typed error instead of a TypeError on an absent optional method.
     if (typeof this.storageAdapter.getPresignedUploadUrl !== 'function') {
@@ -341,9 +341,18 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
     return { ok: true };
   }
 
-  private async probeHealth(env: FfmpegEnvConfig): Promise<NonNullable<CacheEntry['health']>> {
+  /**
+   * `throwaway` = a Test-connection / candidate check: build a one-off client so a
+   * draft config cannot evict the live memoised WorkerClient (and the ID token it
+   * has already minted) out from under running jobs.
+   */
+  private async probeHealth(
+    env: FfmpegEnvConfig,
+    opts: { throwaway?: boolean } = {},
+  ): Promise<NonNullable<CacheEntry['health']>> {
     try {
-      return { ok: true, health: await this.clientFor(env).health() };
+      const client = opts.throwaway ? this.clientFactory(env) : this.clientFor(env);
+      return { ok: true, health: await client.health() };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return { ok: false, reason: `worker unreachable: ${message}` };

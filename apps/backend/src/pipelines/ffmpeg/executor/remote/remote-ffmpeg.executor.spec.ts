@@ -169,6 +169,27 @@ describe('ready()', () => {
     expect(r).toEqual({ ok: true, version: '0.4.31' });
     expect(seenEnvs.map((e) => e.remoteUrl)).toContain('https://other.example.com');
   });
+  it('a candidate/fresh check builds its own client and never evicts the live memoised one', async () => {
+    const { executor, seenEnvs, tick } = make();
+    await executor.ready();
+    expect(seenEnvs).toHaveLength(1); // the live client
+    await executor.ready({ fresh: true });
+    await executor.ready({
+      env: readFfmpegEnv({ FFMPEG_REMOTE_URL: 'https://other.example.com' }),
+    });
+    // Each draft got its OWN client — the last one for a different worker entirely.
+    expect(seenEnvs.map((e) => e.remoteUrl)).toEqual([
+      'https://w',
+      'https://w',
+      'https://other.example.com',
+    ]);
+    // Live path again once the 60 s cache expires: the memo must still hold the
+    // original client (a rebuild here would mean the draft evicted it).
+    tick(61_000);
+    const before = seenEnvs.length;
+    await executor.ready();
+    expect(seenEnvs).toHaveLength(before);
+  });
   it('unreachable worker and too-old worker are not ready', async () => {
     const a = make();
     a.client.health.mockRejectedValue(new WorkerTransportError('ECONNREFUSED'));
