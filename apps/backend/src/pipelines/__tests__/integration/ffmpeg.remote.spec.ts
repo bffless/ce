@@ -248,12 +248,12 @@ async function waitForHealth(base: string, deadlineMs = 15_000): Promise<void> {
         server: boolean;
         executors: string[];
         defaultExecutor: string;
-        remote?: { ready: boolean; version?: string };
+        remote?: { ready: boolean; version?: string; maxInflight: number };
       };
       expect(out.server).toBe(true);
       expect(out.executors).toEqual(expect.arrayContaining(['local', 'remote']));
       expect(out.defaultExecutor).toBe('remote');
-      expect(out.remote).toEqual({ ready: true, version: 'it' });
+      expect(out.remote).toEqual({ ready: true, version: 'it', maxInflight: 8 });
     });
 
     it('probe runs on the worker and reads the fixture back through a signed GET', async () => {

@@ -19,7 +19,8 @@ export interface FfmpegCapabilityProbe {
   version: string | null;
   executors: FfmpegExecutorName[];
   defaultExecutor: FfmpegExecutorName;
-  remote?: { version?: string; ready: boolean; reason?: string };
+  /** `maxInflight` = the resolved connection's cap, so a client can size its own queue. */
+  remote?: { version?: string; ready: boolean; maxInflight: number; reason?: string };
 }
 
 /**
@@ -104,6 +105,7 @@ export class FfmpegExecutorSelector {
       const readiness = await this.remote.ready();
       remote = {
         ready: readiness.ok,
+        maxInflight: this.env().remoteMaxInflight,
         ...(readiness.version ? { version: readiness.version } : {}),
         ...(readiness.reason ? { reason: readiness.reason } : {}),
       };

@@ -95,7 +95,7 @@ it('probe(): server = flag && any ready; additive executors/defaultExecutor/remo
     version: null,
     executors: ['remote'],
     defaultExecutor: 'remote',
-    remote: { ready: true, version: '0.4.31' },
+    remote: { ready: true, version: '0.4.31', maxInflight: 8 },
   });
   await expect(make({}, { flag: false }).selector.probe()).resolves.toMatchObject({
     server: false,
@@ -109,6 +109,10 @@ it('probe(): server = flag && any ready; additive executors/defaultExecutor/remo
       { localAvailable: false, remoteReady: { ok: false, reason: 'nope' } },
     ).selector.probe(),
   ).resolves.toMatchObject({ server: false, remote: { ready: false, reason: 'nope' } });
+  // The cap comes from the resolved connection, so apps can size their own queue.
+  await expect(
+    make({ FFMPEG_REMOTE_URL: 'https://w' }, { cfg: { remoteMaxInflight: 2 } }).selector.probe(),
+  ).resolves.toMatchObject({ remote: { ready: true, maxInflight: 2 } });
 });
 
 it('enabled(): localEnabled=false hides local even with binaries; remoteEnabled=false hides remote even with a URL', () => {

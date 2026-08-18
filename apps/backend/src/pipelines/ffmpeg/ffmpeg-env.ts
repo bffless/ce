@@ -26,7 +26,18 @@ export interface FfmpegEnvConfig {
   remoteEnabled: boolean;
   /** Which executor runs a step unless the step says otherwise. */
   executor: FfmpegExecutorSetting;
-  /** Worker base URL (https), trimmed and trailing-slash-stripped. Setting this enables the remote executor. */
+  /**
+   * Which remote connection (`remote_connections.name`) the Remote executor uses.
+   * `FFMPEG_REMOTE_CONNECTION` names it directly; the legacy `FFMPEG_REMOTE_URL`
+   * implies the connection named `ffmpeg` (which the connections env reader
+   * synthesises from the same FFMPEG_REMOTE_* vars).
+   */
+  remoteConnection: string | null;
+  /**
+   * Worker base URL (https), trimmed and trailing-slash-stripped. From env alone
+   * this is FFMPEG_REMOTE_URL; in the effective config it is DERIVED from the
+   * resolved connection (`FfmpegExecutorSettingsService.resolved()`).
+   */
   remoteUrl: string | null;
   /** How CE authenticates to the Worker. */
   remoteAuth: FfmpegRemoteAuth;
@@ -72,6 +83,9 @@ export function readFfmpegEnv(env: NodeJS.ProcessEnv = process.env): FfmpegEnvCo
     executor: env.FFMPEG_EXECUTOR === 'remote' ? 'remote' : 'local',
     localEnabled: true,
     remoteEnabled: remoteUrl !== null,
+    // A bare FFMPEG_REMOTE_URL still selects a connection — the one the
+    // connections env reader synthesises from it, named 'ffmpeg'.
+    remoteConnection: str(env.FFMPEG_REMOTE_CONNECTION) ?? (remoteUrl ? 'ffmpeg' : null),
     remoteUrl,
     remoteAuth: env.FFMPEG_REMOTE_AUTH === 'none' ? 'none' : 'google_id_token',
     remoteSaKeyJson: str(env.FFMPEG_REMOTE_SA_KEY_JSON),

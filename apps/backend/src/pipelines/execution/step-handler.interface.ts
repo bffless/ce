@@ -677,8 +677,10 @@ export interface FfmpegSpan {
  *
  * Operations:
  * - `probe` — no `input`: capability self-test, never fails; returns
- *   `{ server, ops, version, executors, defaultExecutor, remote? }` (`version`
- *   is the LOCAL ffmpeg's; the Worker's is `remote.version`). With `input`:
+ *   `{ server, ops, version, executors, defaultExecutor, remote? }`, where
+ *   `remote` is `{ ready, version?, maxInflight, reason? }` (`version` at the
+ *   top level is the LOCAL ffmpeg's; the Worker's is `remote.version`, and
+ *   `remote.maxInflight` is the connection's concurrency cap). With `input`:
  *   ffprobe essentials `{ duration, format, streams }`.
  * - `extract_audio` — `input` → `output`: 16 kHz mono WAV (`-vn -ac 1 -ar 16000`).
  * - `slice` — cut the kept `spans` out of `input`, concat into one clip
@@ -695,7 +697,8 @@ export interface FfmpegSpan {
  * Executors: `local` runs ffmpeg in this backend; `remote` sends the job to a
  * Worker over signed storage URLs (bucket storage only; see the Server Video Ops
  * docs). Which one a step gets is `executor` if it names one, else the instance
- * default (FFMPEG_EXECUTOR, falling back to whatever is configured); asking for
+ * default (FFMPEG_EXECUTOR / FFMPEG_REMOTE_CONNECTION, falling back to whatever
+ * is configured); asking for
  * one that is not configured or not ready fails with FFMPEG_EXECUTOR_UNAVAILABLE.
  * Every op output additionally reports `executor`, `timings` (queueMs,
  * transferInMs, ffmpegMs, transferOutMs, totalMs), `bytesIn` and `bytesOut`.

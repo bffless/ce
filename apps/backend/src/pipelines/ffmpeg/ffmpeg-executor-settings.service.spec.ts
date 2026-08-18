@@ -15,7 +15,9 @@ jest.mock('../../db/client', () => ({
 const { db } = require('../../db/client');
 
 import { FfmpegExecutorSettingsService } from './ffmpeg-executor-settings.service';
-import { encryptString, __resetKeyForTests } from '../../common/crypto/aes-gcm';
+import { __resetKeyForTests } from '../../common/crypto/aes-gcm';
+import { InflightFuse } from '../../remote-connections/fuse';
+import type { ResolvedConnection } from '../../remote-connections/remote-connections.types';
 
 const TEST_KEY = Buffer.alloc(32, 7).toString('base64');
 const SA_KEY = JSON.stringify({
@@ -23,15 +25,40 @@ const SA_KEY = JSON.stringify({
   client_email: 'x@p.iam.gserviceaccount.com',
 });
 
-/** A row as Drizzle would return it. */
+/** A resolved connection as RemoteConnectionsService.list() would hand one back. */
+function conn(over: Partial<ResolvedConnection> = {}): ResolvedConnection {
+  const source: ResolvedConnection['source'] = {
+    url: 'db',
+    auth: 'db',
+    credential: 'db',
+    maxInflight: 'db',
+    healthPath: 'db',
+    envOnly: false,
+    ...(over.source ?? {}),
+  };
+  return {
+    id: 'c1',
+    name: 'ffmpeg',
+    url: 'https://w.run.app',
+    auth: 'google_id_token',
+    credential: SA_KEY,
+    maxInflight: 8,
+    healthPath: '/health',
+    ...over,
+    source,
+  };
+}
+
+/** A row as Drizzle would return it. The remote_url/auth/sa_key columns are deprecated (Plan 4) and must be ignored. */
 function row(over: Partial<Record<string, unknown>> = {}) {
   return {
     id: 'row-1',
     localEnabled: true,
     remoteEnabled: false,
-    remoteUrl: null,
-    remoteAuth: 'google_id_token',
-    saKeyEncrypted: null,
+    remoteUrl: 'https://legacy.example.com',
+    remoteAuth: 'none',
+    saKeyEncrypted: 'legacy-ciphertext',
+    remoteConnectionId: null,
     defaultExecutor: 'local',
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -69,6 +96,8 @@ function make(
     env?: NodeJS.ProcessEnv;
     presign?: boolean;
     localAvailable?: boolean;
+    /** What RemoteConnectionsService would resolve on this instance. */
+    connections?: ResolvedConnection[];
     /** The RemoteFfmpegExecutor stand-in — only testConnection() needs one. */
     remote?: unknown;
   } = {},
@@ -93,13 +122,22 @@ function make(
     isAvailable: () => o.localAvailable ?? true,
     getVersion: () => ((o.localAvailable ?? true) ? 'ffmpeg version 6.1.1' : null),
   };
+  const list = o.connections ?? [];
+  const connections = {
+    list: () => list,
+    resolve: (n: string) => list.find((c) => c.name === n) ?? null,
+    byId: (id: string) => list.find((c) => c.id === id) ?? null,
+    registerUsageProbe: jest.fn(),
+    fuse: new InflightFuse(),
+  };
   const service = new FfmpegExecutorSettingsService(
     storage as never,
     capability as never,
+    connections as never,
     () => o.env ?? {},
     o.remote as never,
   );
-  return { service, storage, capability };
+  return { service, storage, capability, connections };
 }
 
 describe('FfmpegExecutorSettingsService', () => {
@@ -117,96 +155,103 @@ describe('FfmpegExecutorSettingsService', () => {
   });
 
   describe('resolved()', () => {
-    it('with no row behaves exactly like readFfmpegEnv (Plan 1 semantics)', async () => {
+    it('with no row and no connection selected: Remote is off and nothing remote is derived', async () => {
       mockSelect([]);
-      const { service } = make({ env: { FFMPEG_REMOTE_URL: 'https://w.example.com' } });
-      await service.reload();
-      const cfg = service.resolved();
-      expect(cfg.localEnabled).toBe(true);
-      expect(cfg.remoteEnabled).toBe(true);
-      expect(cfg.remoteUrl).toBe('https://w.example.com');
-      expect(cfg.executor).toBe('local');
-    });
-
-    it('DB row fills fields env leaves unset; the SA key is decrypted into memory', async () => {
-      mockSelect([
-        row({
-          localEnabled: false,
-          remoteEnabled: true,
-          remoteUrl: 'https://db.example.com/',
-          remoteAuth: 'none',
-          saKeyEncrypted: encryptString(SA_KEY),
-          defaultExecutor: 'remote',
-        }),
-      ]);
       const { service } = make();
       await service.reload();
       const cfg = service.resolved();
-      expect(cfg.localEnabled).toBe(false);
-      expect(cfg.remoteEnabled).toBe(true);
-      expect(cfg.remoteUrl).toBe('https://db.example.com'); // trailing slash stripped like env
-      expect(cfg.remoteAuth).toBe('none');
-      expect(cfg.remoteSaKeyJson).toBe(SA_KEY);
-      expect(cfg.executor).toBe('remote');
+      expect(cfg.localEnabled).toBe(true);
+      expect(cfg.remoteEnabled).toBe(false);
+      expect(cfg.remoteConnection).toBeNull();
+      expect(cfg.remoteUrl).toBeNull();
+      expect(cfg.remoteSaKeyJson).toBeNull();
+      expect(cfg.remoteMaxInflight).toBe(8);
+      expect(cfg.executor).toBe('local');
     });
 
-    it('env wins per field, and FFMPEG_REMOTE_URL forces remoteEnabled', async () => {
+    it('a row pointing at a connection derives url/auth/credential/maxInflight from it', async () => {
       mockSelect([
-        row({
-          remoteEnabled: false,
-          remoteUrl: 'https://db.example.com',
-          remoteAuth: 'none',
-          defaultExecutor: 'remote',
-          saKeyEncrypted: encryptString(SA_KEY),
-        }),
+        row({ remoteEnabled: true, remoteConnectionId: 'c1', defaultExecutor: 'remote' }),
       ]);
+      const { service } = make({ connections: [conn({ maxInflight: 8 })] });
+      await service.reload();
+      expect(service.resolved()).toMatchObject({
+        remoteEnabled: true,
+        remoteConnection: 'ffmpeg',
+        remoteUrl: 'https://w.run.app',
+        remoteAuth: 'google_id_token',
+        remoteSaKeyJson: SA_KEY,
+        remoteMaxInflight: 8,
+        executor: 'remote',
+      });
+      // The deprecated columns on the row are never read.
+      expect(service.resolved().remoteUrl).not.toBe('https://legacy.example.com');
+    });
+
+    it("auth 'none' on the connection carries through", async () => {
+      mockSelect([row({ remoteEnabled: true, remoteConnectionId: 'c1' })]);
       const { service } = make({
-        env: {
-          FFMPEG_EXECUTOR: 'local',
-          FFMPEG_REMOTE_URL: 'https://env.example.com',
-          FFMPEG_REMOTE_AUTH: 'google_id_token',
-          FFMPEG_REMOTE_SA_KEY_JSON: '{"type":"service_account","env":true}',
-        },
+        connections: [conn({ auth: 'none', credential: null, maxInflight: 2 })],
       });
       await service.reload();
-      const cfg = service.resolved();
-      expect(cfg.executor).toBe('local');
-      expect(cfg.remoteEnabled).toBe(true);
-      expect(cfg.remoteUrl).toBe('https://env.example.com');
-      expect(cfg.remoteAuth).toBe('google_id_token');
-      expect(cfg.remoteSaKeyJson).toBe('{"type":"service_account","env":true}');
-      expect(service.envManaged()).toEqual({
-        defaultExecutor: true,
-        remoteUrl: true,
-        remoteAuth: true,
-        saKey: true,
+      expect(service.resolved()).toMatchObject({
+        remoteAuth: 'none',
+        remoteSaKeyJson: null,
+        remoteMaxInflight: 2,
       });
+    });
+
+    it('a dangling remoteConnectionId (the connection was deleted) leaves Remote off', async () => {
+      mockSelect([row({ remoteEnabled: true, remoteConnectionId: 'gone' })]);
+      const { service } = make({ connections: [conn()] });
+      await service.reload();
+      expect(service.resolved().remoteEnabled).toBe(false);
+      expect(service.resolved().remoteConnection).toBeNull();
+      expect((await service.getStatus()).remoteConnection).toBeNull();
+    });
+
+    it('FFMPEG_REMOTE_URL pins the connection named ffmpeg regardless of the row, and forces Remote on', async () => {
+      mockSelect([row({ remoteEnabled: false, remoteConnectionId: null })]);
+      const { service } = make({
+        env: { FFMPEG_REMOTE_URL: 'https://env.example.com' },
+        connections: [conn({ id: null, source: { envOnly: true } as never })],
+      });
+      await service.reload();
+      expect(service.resolved()).toMatchObject({
+        remoteConnection: 'ffmpeg',
+        remoteEnabled: true,
+        remoteUrl: 'https://w.run.app',
+      });
+      expect(service.envManaged()).toEqual({ defaultExecutor: false, remoteConnection: true });
+    });
+
+    it('FFMPEG_REMOTE_CONNECTION selects by name and is env-managed', async () => {
+      mockSelect([row({ remoteEnabled: false, remoteConnectionId: 'c1' })]);
+      const { service } = make({
+        env: { FFMPEG_REMOTE_CONNECTION: 'pdf' },
+        connections: [conn(), conn({ id: 'c2', name: 'pdf', url: 'https://pdf.run.app' })],
+      });
+      await service.reload();
+      expect(service.resolved()).toMatchObject({
+        remoteConnection: 'pdf',
+        remoteUrl: 'https://pdf.run.app',
+        remoteEnabled: true,
+      });
+      expect(service.envManaged().remoteConnection).toBe(true);
     });
 
     it("'' env values count as unset (compose passthrough)", async () => {
       mockSelect([
-        row({
-          remoteEnabled: true,
-          remoteUrl: 'https://db.example.com',
-          defaultExecutor: 'remote',
-        }),
+        row({ remoteEnabled: true, remoteConnectionId: 'c1', defaultExecutor: 'remote' }),
       ]);
       const { service } = make({
-        env: {
-          FFMPEG_EXECUTOR: '',
-          FFMPEG_REMOTE_URL: '',
-          FFMPEG_REMOTE_AUTH: '',
-          FFMPEG_REMOTE_SA_KEY_JSON: '',
-        },
+        env: { FFMPEG_EXECUTOR: '', FFMPEG_REMOTE_URL: '', FFMPEG_REMOTE_CONNECTION: '' },
+        connections: [conn()],
       });
       await service.reload();
-      expect(service.resolved().remoteUrl).toBe('https://db.example.com');
-      expect(service.envManaged()).toEqual({
-        defaultExecutor: false,
-        remoteUrl: false,
-        remoteAuth: false,
-        saKey: false,
-      });
+      expect(service.resolved().remoteConnection).toBe('ffmpeg');
+      expect(service.resolved().executor).toBe('remote');
+      expect(service.envManaged()).toEqual({ defaultExecutor: false, remoteConnection: false });
     });
 
     it('a missing table (pre-migration boot) is tolerated: env-only, no throw', async () => {
@@ -215,56 +260,73 @@ describe('FfmpegExecutorSettingsService', () => {
       await expect(service.reload()).resolves.toBeUndefined();
       expect(service.resolved().localEnabled).toBe(true);
     });
-
-    it('an undecryptable key is treated as absent (does not poison the config)', async () => {
-      mockSelect([row({ saKeyEncrypted: 'not-a-ciphertext' })]);
-      const { service } = make();
-      await service.reload();
-      expect(service.resolved().remoteSaKeyJson).toBeNull();
-    });
   });
 
   describe('getStatus()', () => {
-    it('never includes the key; reports source + envManaged + storagePresignable', async () => {
-      mockSelect([
-        row({
-          remoteEnabled: true,
-          remoteUrl: 'https://db.example.com',
-          saKeyEncrypted: encryptString(SA_KEY),
-        }),
-      ]);
-      const { service } = make();
+    it('reports the selected connection + the dropdown list + envManaged, and never the credential', async () => {
+      mockSelect([row({ remoteEnabled: true, remoteConnectionId: 'c1' })]);
+      const { service } = make({ connections: [conn()] });
       await service.reload();
       const status = await service.getStatus();
       expect(JSON.stringify(status)).not.toContain('service_account');
+      expect(JSON.stringify(status)).not.toContain('gserviceaccount');
       expect(status).toEqual({
         localAvailable: true,
         localVersion: 'ffmpeg version 6.1.1',
         localEnabled: true,
         remoteEnabled: true,
-        remoteUrl: 'https://db.example.com',
-        remoteAuth: 'google_id_token',
-        hasSaKey: true,
-        saKeySource: 'db',
+        remoteConnection: {
+          id: 'c1',
+          name: 'ffmpeg',
+          url: 'https://w.run.app',
+          auth: 'google_id_token',
+          hasCredential: true,
+          credentialSource: 'db',
+          envOnly: false,
+        },
+        connections: [{ id: 'c1', name: 'ffmpeg', auth: 'google_id_token', envOnly: false }],
         defaultExecutor: 'local',
         storagePresignable: true,
-        envManaged: { defaultExecutor: false, remoteUrl: false, remoteAuth: false, saKey: false },
+        envManaged: { defaultExecutor: false, remoteConnection: false },
       });
     });
 
-    it("saKeySource is 'env' when FFMPEG_REMOTE_SA_KEY_JSON is set, storagePresignable false on local-FS", async () => {
+    it('an env-only connection reports envOnly + credentialSource env; storagePresignable false on local-FS', async () => {
       mockSelect([]);
       const { service, storage } = make({
-        env: { FFMPEG_REMOTE_SA_KEY_JSON: SA_KEY },
         presign: false,
+        env: { FFMPEG_REMOTE_URL: 'https://env.example.com' },
+        connections: [
+          conn({
+            id: null,
+            source: { credential: 'env', envOnly: true } as never,
+          }),
+        ],
       });
       await service.reload();
       const status = await service.getStatus();
-      expect(status.hasSaKey).toBe(true);
-      expect(status.saKeySource).toBe('env');
+      expect(status.remoteConnection).toMatchObject({
+        id: null,
+        envOnly: true,
+        hasCredential: true,
+        credentialSource: 'env',
+      });
+      expect(status.connections).toEqual([
+        { id: null, name: 'ffmpeg', auth: 'google_id_token', envOnly: true },
+      ]);
       // The local adapter advertises presigning; being LOCAL is what disqualifies it.
       expect(storage.supportsPresignedUrls?.()).toBe(true);
       expect(status.storagePresignable).toBe(false);
+    });
+
+    it('remoteConnection is null when nothing is selected', async () => {
+      mockSelect([]);
+      const { service } = make({ connections: [conn()] });
+      await service.reload();
+      const status = await service.getStatus();
+      expect(status.remoteConnection).toBeNull();
+      expect(status.remoteEnabled).toBe(false);
+      expect(status.connections).toHaveLength(1);
     });
   });
 
@@ -283,77 +345,97 @@ describe('FfmpegExecutorSettingsService', () => {
       return { set, values };
     }
 
-    it('inserts when no row exists, encrypts the key, refreshes the cache and returns status', async () => {
+    it('inserts the connection FK (never a URL or a key), refreshes the cache and returns status', async () => {
       mockSelect([]);
       const { values } = mockWrite();
-      const { service } = make();
+      const { service } = make({ connections: [conn()] });
       await service.reload();
-      // After the write, reload() re-reads: return the row the write produced.
-      const status = await service
-        .update(
-          {
-            remoteEnabled: true,
-            remoteUrl: 'https://w.example.com/',
-            remoteAuth: 'google_id_token',
-            defaultExecutor: 'remote',
-            saKeyJson: SA_KEY,
-          },
-          'user-1',
-        )
-        .catch((e) => {
-          throw e;
-        });
+      const status = await service.update(
+        { remoteEnabled: true, remoteConnection: 'ffmpeg', defaultExecutor: 'remote' },
+        'user-1',
+      );
       expect(values).toHaveBeenCalledTimes(1);
       const inserted = values.mock.calls[0][0];
-      expect(inserted.remoteUrl).toBe('https://w.example.com');
-      expect(inserted.saKeyEncrypted).not.toContain('service_account');
+      expect(inserted.remoteConnectionId).toBe('c1');
+      expect(inserted).not.toHaveProperty('remoteUrl');
+      expect(inserted).not.toHaveProperty('saKeyEncrypted');
       expect(inserted.updatedByUserId).toBe('user-1');
-      expect(status.hasSaKey).toBe(true);
+      expect(status.remoteConnection?.name).toBe('ffmpeg');
       expect(status.defaultExecutor).toBe('remote');
       expect(service.resolved().remoteSaKeyJson).toBe(SA_KEY);
     });
 
-    it('updates the existing row; saKeyJson undefined keeps the stored key, null clears it', async () => {
-      const stored = encryptString(SA_KEY);
-      mockSelect([
-        row({ remoteEnabled: true, remoteUrl: 'https://w.example.com', saKeyEncrypted: stored }),
-      ]);
+    it('remoteConnection null clears the selection (and switches Remote off with it)', async () => {
+      mockSelect([row({ remoteEnabled: true, remoteConnectionId: 'c1' })]);
       const { set } = mockWrite();
-      const { service } = make();
+      const { service } = make({ connections: [conn()] });
       await service.reload();
-
-      await service.update({ remoteAuth: 'none' });
-      expect(set.mock.calls[0][0]).not.toHaveProperty('saKeyEncrypted');
-      expect(service.resolved().remoteSaKeyJson).toBe(SA_KEY);
-
-      await service.update({ saKeyJson: null });
-      expect(set.mock.calls[1][0].saKeyEncrypted).toBeNull();
-      expect(service.resolved().remoteSaKeyJson).toBeNull();
+      const status = await service.update({ remoteEnabled: false, remoteConnection: null });
+      expect(set.mock.calls[0][0].remoteConnectionId).toBeNull();
+      expect(status.remoteConnection).toBeNull();
+      expect(service.resolved().remoteEnabled).toBe(false);
     });
 
-    it('rejects: remote on without URL / bad URL / http with google_id_token / non-service-account key / default not enabled', async () => {
+    it('rejects an unknown connection name', async () => {
       mockSelect([]);
       mockWrite();
-      const { service } = make();
+      const { service } = make({ connections: [conn()] });
       await service.reload();
-      await expect(service.update({ remoteEnabled: true, remoteUrl: null })).rejects.toBeInstanceOf(
+      await expect(service.update({ remoteConnection: 'nope' })).rejects.toThrow(
+        /Unknown remote connection 'nope'/,
+      );
+      await expect(service.update({ remoteConnection: 'nope' })).rejects.toBeInstanceOf(
         BadRequestException,
       );
-      await expect(
-        service.update({ remoteEnabled: true, remoteUrl: 'not a url' }),
-      ).rejects.toBeInstanceOf(BadRequestException);
-      await expect(
-        service.update({
-          remoteEnabled: true,
-          remoteUrl: 'http://w.example.com',
-          remoteAuth: 'google_id_token',
-        }),
-      ).rejects.toBeInstanceOf(BadRequestException);
-      await expect(
-        service.update({ saKeyJson: '{"type":"authorized_user"}' }),
-      ).rejects.toBeInstanceOf(BadRequestException);
-      await expect(service.update({ saKeyJson: '{not json' })).rejects.toBeInstanceOf(
+    });
+
+    it('rejects an env-only connection: it has no row to point the FK at', async () => {
+      mockSelect([]);
+      mockWrite();
+      const { service } = make({
+        connections: [conn({ id: null, source: { envOnly: true } as never })],
+      });
+      await service.reload();
+      await expect(service.update({ remoteConnection: 'ffmpeg' })).rejects.toThrow(
+        /FFMPEG_REMOTE_CONNECTION/,
+      );
+    });
+
+    it('refuses to edit the connection while FFMPEG_REMOTE_URL / FFMPEG_REMOTE_CONNECTION pins it', async () => {
+      mockSelect([]);
+      mockWrite();
+      const pinnedUrl = make({
+        env: { FFMPEG_REMOTE_URL: 'https://env.example.com' },
+        connections: [conn()],
+      });
+      await pinnedUrl.service.reload();
+      await expect(pinnedUrl.service.update({ remoteConnection: 'ffmpeg' })).rejects.toThrow(
+        /FFMPEG_REMOTE_CONNECTION \/ FFMPEG_REMOTE_URL/,
+      );
+
+      const pinnedName = make({
+        env: { FFMPEG_REMOTE_CONNECTION: 'ffmpeg' },
+        connections: [conn()],
+      });
+      await pinnedName.service.reload();
+      await expect(pinnedName.service.update({ remoteConnection: null })).rejects.toBeInstanceOf(
         BadRequestException,
+      );
+
+      const pinnedDefault = make({ env: { FFMPEG_EXECUTOR: 'local' }, connections: [conn()] });
+      await pinnedDefault.service.reload();
+      await expect(
+        pinnedDefault.service.update({ defaultExecutor: 'local' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rejects Remote on with no connection, and a default executor that is not enabled', async () => {
+      mockSelect([]);
+      mockWrite();
+      const { service } = make({ connections: [] });
+      await service.reload();
+      await expect(service.update({ remoteEnabled: true })).rejects.toThrow(
+        /Remote executor needs a connection/,
       );
       await expect(service.update({ defaultExecutor: 'remote' })).rejects.toBeInstanceOf(
         BadRequestException,
@@ -361,61 +443,19 @@ describe('FfmpegExecutorSettingsService', () => {
       await expect(service.update({ localEnabled: false })).rejects.toBeInstanceOf(
         BadRequestException,
       ); // default 'local' would not be enabled
+      await expect(service.update({ defaultExecutor: 'cloud' as never })).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
     });
 
-    it('http URL is fine with auth none; refuses Remote on non-presignable storage; refuses editing env-managed fields', async () => {
+    it('refuses Remote on non-presignable (local-FS) storage', async () => {
       mockSelect([]);
       mockWrite();
-      const ok = make();
-      await ok.service.reload();
-      await expect(
-        ok.service.update({
-          remoteEnabled: true,
-          remoteUrl: 'http://ffmpeg-worker:8080',
-          remoteAuth: 'none',
-        }),
-      ).resolves.toBeDefined();
-
-      const localFs = make({ presign: false });
+      const localFs = make({ presign: false, connections: [conn()] });
       await localFs.service.reload();
       await expect(
-        localFs.service.update({ remoteEnabled: true, remoteUrl: 'https://w.example.com' }),
-      ).rejects.toBeInstanceOf(BadRequestException);
-
-      const pinned = make({ env: { FFMPEG_REMOTE_URL: 'https://env.example.com' } });
-      await pinned.service.reload();
-      await expect(
-        pinned.service.update({ remoteUrl: 'https://other.example.com' }),
-      ).rejects.toBeInstanceOf(BadRequestException);
-
-      const pinnedAuth = make({ env: { FFMPEG_REMOTE_AUTH: 'none' } });
-      await pinnedAuth.service.reload();
-      await expect(pinnedAuth.service.update({ remoteAuth: 'none' })).rejects.toBeInstanceOf(
-        BadRequestException,
-      );
-
-      const pinnedKey = make({ env: { FFMPEG_REMOTE_SA_KEY_JSON: SA_KEY } });
-      await pinnedKey.service.reload();
-      await expect(pinnedKey.service.update({ saKeyJson: SA_KEY })).rejects.toBeInstanceOf(
-        BadRequestException,
-      );
-
-      const pinnedDefault = make({ env: { FFMPEG_EXECUTOR: 'local' } });
-      await pinnedDefault.service.reload();
-      await expect(
-        pinnedDefault.service.update({ defaultExecutor: 'local' }),
-      ).rejects.toBeInstanceOf(BadRequestException);
-    });
-
-    it("saKeyJson '' clears the stored key (a blanked UI field is not a JSON error)", async () => {
-      mockSelect([row({ saKeyEncrypted: encryptString(SA_KEY) })]);
-      const { set } = mockWrite();
-      const { service } = make();
-      await service.reload();
-
-      await service.update({ saKeyJson: '   ' });
-      expect(set.mock.calls[0][0].saKeyEncrypted).toBeNull();
-      expect(service.resolved().remoteSaKeyJson).toBeNull();
+        localFs.service.update({ remoteEnabled: true, remoteConnection: 'ffmpeg' }),
+      ).rejects.toThrow(/bucket storage/);
     });
 
     it('refuses to save while the row could not be loaded — never merges onto defaults', async () => {
@@ -437,12 +477,29 @@ describe('FfmpegExecutorSettingsService', () => {
       const localFs = make({
         presign: false,
         env: { FFMPEG_REMOTE_URL: 'https://env.example.com' },
+        connections: [conn({ id: null, source: { envOnly: true } as never })],
       });
       await localFs.service.reload();
 
       const status = await localFs.service.update({ localEnabled: true });
       expect(set).toHaveBeenCalledTimes(1);
       expect(status.storagePresignable).toBe(false);
+    });
+  });
+
+  describe('registerUsage()', () => {
+    it('tells the connections service which connection the Remote executor is on', async () => {
+      mockSelect([row({ remoteEnabled: true, remoteConnectionId: 'c1' })]);
+      const { service, connections } = make({ connections: [conn()] });
+      await service.reload();
+      service.registerUsage();
+      expect(connections.registerUsageProbe).toHaveBeenCalledWith(
+        'ffmpegExecutor',
+        expect.any(Function),
+      );
+      const probe = connections.registerUsageProbe.mock.calls[0][1] as (n: string) => boolean;
+      expect(probe('ffmpeg')).toBe(true);
+      expect(probe('pdf')).toBe(false);
     });
   });
 
@@ -459,6 +516,7 @@ describe('FfmpegExecutorSettingsService', () => {
         health?: () => Promise<unknown>;
         readiness?: { ok: boolean; reason?: string };
         env?: NodeJS.ProcessEnv;
+        connections?: ResolvedConnection[];
       } = {},
     ) {
       const remote = {
@@ -469,13 +527,15 @@ describe('FfmpegExecutorSettingsService', () => {
           async (_opts?: Record<string, unknown>) => o.readiness ?? { ok: true, version: '0.4.31' },
         ),
       };
-      const { service } = make({ env: o.env, remote });
+      const { service } = make({ env: o.env, remote, connections: o.connections });
       return { service, remote };
     }
 
-    it('returns worker health + latency + readiness; credential=adc when no key stored', async () => {
-      mockSelect([row({ remoteEnabled: true, remoteUrl: 'https://w.example.com' })]);
-      const { service, remote } = makeWithRemote();
+    it('returns worker health + latency + readiness for the saved connection', async () => {
+      mockSelect([row({ remoteEnabled: true, remoteConnectionId: 'c1' })]);
+      const { service, remote } = makeWithRemote({
+        connections: [conn({ credential: null })],
+      });
       await service.reload();
       const res = await service.testConnection();
       expect(res.ok).toBe(true);
@@ -487,28 +547,53 @@ describe('FfmpegExecutorSettingsService', () => {
       expect(remote.ready).toHaveBeenCalledWith(expect.objectContaining({ fresh: true }));
     });
 
-    it('draft overrides reach the executor; env-managed fields cannot be overridden; credential reflects the draft key', async () => {
+    it('a draft connection is resolved into url/auth/credential overrides for the executor', async () => {
       mockSelect([]);
-      const { service, remote } = makeWithRemote({ env: { FFMPEG_REMOTE_AUTH: 'none' } });
-      await service.reload();
-      const res = await service.testConnection({
-        remoteUrl: 'https://draft.example.com',
-        remoteAuth: 'google_id_token',
-        saKeyJson: SA_KEY,
+      const { service, remote } = makeWithRemote({
+        connections: [conn(), conn({ id: 'c2', name: 'pdf', url: 'https://pdf.run.app' })],
       });
-      expect(remote.testConnection).toHaveBeenCalledWith(
+      await service.reload();
+      const res = await service.testConnection({ remoteConnection: 'pdf' });
+      expect(remote.testConnection).toHaveBeenCalledWith({
+        remoteUrl: 'https://pdf.run.app',
+        remoteAuth: 'google_id_token',
+        remoteSaKeyJson: SA_KEY,
+      });
+      expect(remote.ready).toHaveBeenCalledWith(
         expect.objectContaining({
-          remoteUrl: 'https://draft.example.com',
-          remoteSaKeyJson: SA_KEY,
+          fresh: true,
+          env: expect.objectContaining({ remoteUrl: 'https://pdf.run.app' }),
         }),
       );
-      expect(remote.testConnection.mock.calls[0][0]).not.toHaveProperty('remoteAuth'); // pinned by env
-      expect(res.credential).toBe('none'); // effective auth is env's 'none'
+      expect(res.credential).toBe('sa_key');
+      expect(JSON.stringify(res)).not.toContain('gserviceaccount');
+    });
+
+    it('an env-pinned connection cannot be overridden by a draft', async () => {
+      mockSelect([]);
+      const { service, remote } = makeWithRemote({
+        env: { FFMPEG_REMOTE_CONNECTION: 'ffmpeg' },
+        connections: [conn(), conn({ id: 'c2', name: 'pdf', url: 'https://pdf.run.app' })],
+      });
+      await service.reload();
+      await service.testConnection({ remoteConnection: 'pdf' });
+      expect(remote.testConnection).toHaveBeenCalledWith({});
+    });
+
+    it('an unknown draft connection is refused', async () => {
+      mockSelect([]);
+      const { service, remote } = makeWithRemote({ connections: [conn()] });
+      await service.reload();
+      await expect(service.testConnection({ remoteConnection: 'nope' })).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(remote.testConnection).not.toHaveBeenCalled();
     });
 
     it('unreachable worker → ok:false with error, latency null, readiness reason passed through', async () => {
-      mockSelect([row({ remoteEnabled: true, remoteUrl: 'https://w.example.com' })]);
+      mockSelect([row({ remoteEnabled: true, remoteConnectionId: 'c1' })]);
       const { service } = makeWithRemote({
+        connections: [conn()],
         health: async () => {
           throw new Error('worker unreachable: connect ECONNREFUSED');
         },
@@ -523,17 +608,19 @@ describe('FfmpegExecutorSettingsService', () => {
       expect(res.worker).toBeUndefined();
     });
 
-    it('a malformed draft key fails through the same channel, without quoting the key back', async () => {
-      mockSelect([]);
-      const { service, remote } = makeWithRemote();
-      await service.reload();
+    it('a malformed credential fails through the same channel, without quoting the key back', async () => {
+      mockSelect([row({ remoteEnabled: true, remoteConnectionId: 'c1' })]);
       const secret = '{"type":"service_account","private_key":"-----BEGIN PRIVATE KEY-----abc';
-      const res = await service.testConnection({ saKeyJson: secret });
+      const { service, remote } = makeWithRemote({
+        connections: [conn({ credential: secret })],
+      });
+      await service.reload();
+      const res = await service.testConnection();
       expect(res.ok).toBe(false);
-      expect(res.error).toBe('Service-account key must be valid JSON.');
+      expect(res.error).toBe('The connection credential must be valid JSON.');
       expect(res.readiness).toEqual({
         ok: false,
-        reason: 'Service-account key must be valid JSON.',
+        reason: 'The connection credential must be valid JSON.',
       });
       expect(res.latencyMs).toBeNull();
       expect(res.credential).toBe('sa_key');
@@ -543,42 +630,9 @@ describe('FfmpegExecutorSettingsService', () => {
       expect(remote.ready).not.toHaveBeenCalled();
     });
 
-    it('a malformed env-pinned key fails through the same channel, without quoting the key back, and never calls the executor', async () => {
-      mockSelect([]);
-      const { service, remote } = makeWithRemote({
-        env: { FFMPEG_REMOTE_SA_KEY_JSON: '{not json -----BEGIN PRIVATE KEY-----' },
-      });
-      await service.reload();
-      const res = await service.testConnection();
-      expect(res.ok).toBe(false);
-      expect(res.error).toBe('Service-account key must be valid JSON.');
-      expect(res.readiness).toEqual({
-        ok: false,
-        reason: 'Service-account key must be valid JSON.',
-      });
-      expect(JSON.stringify(res)).not.toContain('BEGIN PRIVATE KEY');
-      expect(remote.testConnection).not.toHaveBeenCalled();
-      expect(remote.ready).not.toHaveBeenCalled();
-    });
-
-    it('credential=sa_key when a key is stored in the DB, and the key never reaches the result', async () => {
-      mockSelect([
-        row({
-          remoteEnabled: true,
-          remoteUrl: 'https://w.example.com',
-          saKeyEncrypted: encryptString(SA_KEY),
-        }),
-      ]);
-      const { service } = makeWithRemote();
-      await service.reload();
-      const res = await service.testConnection();
-      expect(res.credential).toBe('sa_key');
-      expect(JSON.stringify(res)).not.toContain('gserviceaccount');
-    });
-
     it('without a wired remote executor it fails loudly instead of reporting a healthy worker', async () => {
       mockSelect([]);
-      const { service } = make();
+      const { service } = make({ connections: [conn()] });
       await service.reload();
       await expect(service.testConnection()).rejects.toBeInstanceOf(InternalServerErrorException);
     });

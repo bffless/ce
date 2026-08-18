@@ -11,6 +11,7 @@ import { readFfmpegEnv, type FfmpegEnvConfig } from '../../ffmpeg-env';
 import { IdTokenMinter, NoAuth } from '../../../../remote-connections/auth/id-token';
 import { RemoteResponseTooLargeError } from '../../../../remote-connections/remote-errors';
 import { WorkerClient, WorkerTransportError } from './worker-client';
+import { InflightFuse } from '../../../../remote-connections/fuse';
 
 const okBody = (over = {}) => ({
   v: 1,
@@ -40,7 +41,11 @@ const job = {
   files: [],
 };
 
-function make(envOver: Record<string, string> = {}, storageOver: Record<string, unknown> = {}) {
+function make(
+  envOver: Record<string, string> = {},
+  storageOver: Record<string, unknown> = {},
+  fuse?: InflightFuse,
+) {
   const env = readFfmpegEnv({
     FFMPEG_REMOTE_URL: 'https://w',
     FFMPEG_REMOTE_AUTH: 'none',
@@ -68,6 +73,7 @@ function make(envOver: Record<string, string> = {}, storageOver: Record<string, 
       return client as never;
     },
     now: () => now,
+    ...(fuse ? { fuse } : {}),
   });
   return {
     executor,
@@ -100,10 +106,14 @@ describe('semverLt()', () => {
 });
 
 describe('ready()', () => {
-  it('is false without a URL', async () => {
+  it('is false without a connection', async () => {
     expect(await make({ FFMPEG_REMOTE_URL: '' }).executor.ready()).toMatchObject({
       ok: false,
-      reason: expect.stringContaining('FFMPEG_REMOTE_URL'),
+      reason: expect.stringContaining('no remote connection selected'),
+    });
+    // The env vars an operator can reach for are still named in the reason.
+    expect(await make({ FFMPEG_REMOTE_URL: '' }).executor.ready()).toMatchObject({
+      reason: expect.stringContaining('FFMPEG_REMOTE_CONNECTION'),
     });
   });
   it('is false when storage cannot presign / presigns relative (local-FS) URLs', async () => {
@@ -299,6 +309,30 @@ describe('run()', () => {
     release(okBody());
     await first;
     await expect(executor.run(job, { signal: sig() })).resolves.toMatchObject({
+      executor: 'remote',
+    });
+  });
+  it('shares the fuse: a second executor built with the same InflightFuse sees the first job in flight', async () => {
+    // Same connection, two consumers (the executor and a remote_request step):
+    // one process-wide counter, not one per object.
+    const fuse = new InflightFuse();
+    const a = make({ FFMPEG_REMOTE_MAX_INFLIGHT: '1' }, {}, fuse);
+    const b = make({ FFMPEG_REMOTE_MAX_INFLIGHT: '1' }, {}, fuse);
+    let release!: (v: unknown) => void;
+    a.client.postJob.mockReturnValueOnce(
+      new Promise((r) => {
+        release = r;
+      }),
+    );
+    const first = a.executor.run(job, { signal: sig() });
+    await expect(b.executor.run(job, { signal: sig() })).rejects.toMatchObject({
+      code: 'FFMPEG_BUSY',
+    });
+    expect(fuse.inflight('ffmpeg')).toBe(1);
+    release(okBody());
+    await first;
+    expect(fuse.inflight('ffmpeg')).toBe(0);
+    await expect(b.executor.run(job, { signal: sig() })).resolves.toMatchObject({
       executor: 'remote',
     });
   });
