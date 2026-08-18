@@ -93,6 +93,35 @@ async function readBody(res: Response, maxResponseBytes = MAX_RESPONSE_BYTES): P
 }
 
 /**
+ * Builds the header bag that goes on the wire.
+ *
+ * HTTP header names are case-insensitive but object keys are NOT: a caller
+ * passing `Authorization` next to a minted `authorization` would put BOTH on the
+ * request, and undici concatenates them (`Bearer caller, Bearer minted`) — a
+ * request the remote rejects, with the caller's value smuggled in. So caller keys
+ * are lower-cased first, and the connection's own headers (the JSON content-type
+ * and everything the auth provider mints) are applied last, dropping any caller
+ * key that collides with them in ANY casing. The connection always wins.
+ */
+function mergeHeaders(
+  caller: Record<string, string> | undefined,
+  connection: Record<string, string>,
+): Record<string, string> {
+  const merged: Record<string, string> = {};
+  for (const [key, value] of Object.entries(caller ?? {})) merged[key.toLowerCase()] = value;
+  for (const [key, value] of Object.entries(connection)) {
+    const lower = key.toLowerCase();
+    for (const existing of Object.keys(merged)) {
+      if (existing.toLowerCase() === lower) delete merged[existing];
+    }
+    // The auth provider's own casing is preserved (google-auth-library mints
+    // `Authorization`); only duplicates are removed.
+    merged[key] = value;
+  }
+  return merged;
+}
+
+/**
  * The default transport: undici's own `fetch` pinned to a no-timeout Agent.
  * Both seams exist for tests — production always calls this with no arguments.
  */
@@ -118,7 +147,11 @@ export interface RemoteRequestOpts {
   body?: string;
   signal: AbortSignal;
   maxResponseBytes?: number;
-  /** Default true. False for a call the caller knows must not be repeated. */
+  /**
+   * Default true. False for a call the caller knows must not be repeated — note
+   * that a 429/503 it cannot retry is still a RemoteTransportError, not a
+   * resolved `ok: false` (see `request`).
+   */
   retry?: boolean;
 }
 
@@ -149,9 +182,13 @@ export class RemoteClient {
   /**
    * One request to the remote. Resolves for ANY status the remote answered with —
    * deciding what a 404 or a 422 means is the caller's job. It throws only when
-   * there is no answer to hand back: a transport fault, a 429/503 that survived
-   * the retry (RemoteTransportError, `retryable: true`), or a body over the cap
+   * there is no answer to hand back: a transport fault, a 429/503 this call could
+   * not retry away — whether the retry was spent, refused (`retry: false`) or
+   * pointless (the signal is already aborted) — which is always a
+   * RemoteTransportError with `retryable: true`, or a body over the cap
    * (RemoteResponseTooLargeError). The caller's AbortError is rethrown as-is.
+   *
+   * Caller headers can never override the connection's own (see `mergeHeaders`).
    */
   async request(opts: RemoteRequestOpts): Promise<RemoteResponse> {
     const url = `${this.baseUrl}${opts.path}`;
@@ -161,13 +198,10 @@ export class RemoteClient {
       try {
         res = await this.fetchImpl(url, {
           method: opts.method,
-          // Auth is applied last on purpose: a caller can add headers but can
-          // never override the Authorization the connection is configured with.
-          headers: {
+          headers: mergeHeaders(opts.headers, {
             ...(opts.body !== undefined ? { 'content-type': 'application/json' } : {}),
-            ...opts.headers,
             ...(await this.auth.headers(url)),
-          },
+          }),
           ...(opts.body !== undefined ? { body: opts.body } : {}),
           signal: opts.signal,
         });
@@ -187,7 +221,8 @@ export class RemoteClient {
           await this.sleep(RETRY_DELAY_MS);
           continue;
         }
-        // Still "come back later" after the retry: there is no answer to return.
+        // Still "come back later" and the retry is gone (spent, refused, or the
+        // signal is aborted): there is no answer worth returning.
         throw new RemoteTransportError(
           `remote responded ${res.status}: ${await errorBody(res)}`,
           res.status,

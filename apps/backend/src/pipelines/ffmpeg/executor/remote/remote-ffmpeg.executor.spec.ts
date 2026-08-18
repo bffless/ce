@@ -9,6 +9,7 @@ import {
 } from './remote-ffmpeg.executor';
 import { readFfmpegEnv, type FfmpegEnvConfig } from '../../ffmpeg-env';
 import { IdTokenMinter, NoAuth } from '../../../../remote-connections/auth/id-token';
+import { RemoteResponseTooLargeError } from '../../../../remote-connections/remote-errors';
 import { WorkerClient, WorkerTransportError } from './worker-client';
 
 const okBody = (over = {}) => ({
@@ -272,6 +273,17 @@ describe('run()', () => {
       code: 'FILE_NOT_FOUND',
     });
   });
+  it('an oversized worker response → FFMPEG_EXECUTOR_UNAVAILABLE (never an unmapped throw)', async () => {
+    const { executor, client } = make();
+    client.postJob.mockRejectedValue(
+      new RemoteResponseTooLargeError('response is 20000000 bytes, over the 16777216 byte limit'),
+    );
+    await expect(executor.run(job, { signal: sig() })).rejects.toMatchObject({
+      code: 'FFMPEG_EXECUTOR_UNAVAILABLE',
+      message: expect.stringContaining('worker response too large'),
+    });
+  });
+
   it('the in-flight fuse fails fast with FFMPEG_BUSY and releases in finally', async () => {
     const { executor, client } = make({ FFMPEG_REMOTE_MAX_INFLIGHT: '1' });
     let release!: (v: unknown) => void;

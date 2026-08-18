@@ -89,6 +89,64 @@ describe('RemoteClient.request', () => {
     ).rejects.toBe(abort);
   });
 
+  it("never lets a caller header override the connection's own, whatever its casing", async () => {
+    const fetchImpl = jest.fn().mockResolvedValueOnce(json(200, {}));
+    await new RemoteClient(
+      'https://svc',
+      { headers: async () => ({ authorization: 'Bearer minted' }) },
+      fetchImpl as never,
+      noSleep,
+    ).request({
+      path: '/jobs',
+      method: 'POST',
+      body: '{}',
+      headers: { Authorization: 'Bearer caller', 'Content-Type': 'text/plain', 'x-trace': 'abc' },
+      signal: sig(),
+    });
+    const sent = fetchImpl.mock.calls[0][1].headers as Record<string, string>;
+    // One authorization header, not two concatenated on the wire.
+    expect(Object.keys(sent).filter((k) => k.toLowerCase() === 'authorization')).toEqual([
+      'authorization',
+    ]);
+    expect(sent.authorization).toBe('Bearer minted');
+    expect(Object.keys(sent).filter((k) => k.toLowerCase() === 'content-type')).toHaveLength(1);
+    expect(sent['content-type']).toBe('application/json');
+    // Anything that does NOT collide is passed through untouched.
+    expect(sent['x-trace']).toBe('abc');
+  });
+
+  it('drops a caller header that collides with a differently-cased minted one', async () => {
+    const fetchImpl = jest.fn().mockResolvedValueOnce(json(200, {}));
+    await new RemoteClient(
+      'https://svc',
+      { headers: async () => ({ Authorization: 'Bearer minted' }) },
+      fetchImpl as never,
+      noSleep,
+    ).request({
+      path: '/',
+      method: 'GET',
+      headers: { authorization: 'Bearer caller' },
+      signal: sig(),
+    });
+    const sent = fetchImpl.mock.calls[0][1].headers as Record<string, string>;
+    expect(Object.entries(sent).filter(([k]) => k.toLowerCase() === 'authorization')).toEqual([
+      ['Authorization', 'Bearer minted'],
+    ]);
+  });
+
+  it('throws a retryable transport error for a 429 it was told not to retry', async () => {
+    const f = jest.fn().mockResolvedValue(json(429, { err: 'slow down' }));
+    await expect(
+      new RemoteClient('https://svc', new NoAuth(), f as never, noSleep).request({
+        path: '/',
+        method: 'POST',
+        signal: sig(),
+        retry: false,
+      }),
+    ).rejects.toMatchObject({ name: 'RemoteTransportError', status: 429, retryable: true });
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects bodies over maxResponseBytes', async () => {
     const big = new Response('x'.repeat(2000), {
       status: 200,

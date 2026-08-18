@@ -21,6 +21,7 @@ import {
   IdTokenMinter,
   type AuthHeaderProvider,
 } from '../../../../remote-connections/auth/id-token';
+import { RemoteResponseTooLargeError } from '../../../../remote-connections/remote-errors';
 import { mapWorkerResponse } from './result-mapping';
 import { WorkerClient, WorkerTransportError } from './worker-client';
 
@@ -221,6 +222,11 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
       try {
         response = await this.clientFor(env).postJob(envelope, { signal: opts.signal });
       } catch (error) {
+        // The shared transport refuses to buffer an oversized body, so the job has
+        // no result to map — same class of "the Worker is not usable" as a 500.
+        if (error instanceof RemoteResponseTooLargeError) {
+          throw new FfmpegExecutorUnavailableError(`worker response too large: ${error.message}`);
+        }
         if (error instanceof WorkerTransportError) {
           // A status-carrying retryable answer is the Worker's own 503 BUSY or
           // Cloud Run's front-door 429/503 — after our one retry it means "still
