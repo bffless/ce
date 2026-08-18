@@ -432,7 +432,7 @@ export class RemoteClient {
 }
 export function authProviderFor(auth: string, credential: string | null): AuthHeaderProvider  // 'none' → NoAuth, 'google_id_token' → IdTokenMinter(credential), else throws RemoteUnavailableError
 ```
-- `WorkerClient extends RemoteClient` keeps `postJob(envelope, {signal}): Promise<WorkerResponse>` and `health(): Promise<WorkerHealth>` with EXACTLY today's semantics (built on `request`/`super.health`), so `worker-client.spec.ts` and the executor spec stay green. `WorkerTransportError` becomes `export { RemoteTransportError as WorkerTransportError }` re-export.
+- `WorkerClient extends RemoteClient` keeps `postJob(envelope, {signal}): Promise<WorkerResponse>` and `health(): Promise<WorkerHealth>` with EXACTLY today's semantics (built on `request`/`this.probe`), so `worker-client.spec.ts` and the executor spec stay green. `WorkerTransportError` becomes `export { RemoteTransportError as WorkerTransportError }` re-export.
 
 - [ ] **Step 1: `git mv` the id-token files, update imports, run the moved spec + executor spec** — `npx jest --testPathPattern 'remote-connections/auth|executor/remote'` PASS. Commit `refactor(remote-connections): move ID-token minter under remote-connections/auth`.
 
