@@ -428,7 +428,7 @@ export interface RemoteResponse { status: number; ok: boolean; headers: Headers;
 export class RemoteClient {
   constructor(baseUrl: string, auth: AuthHeaderProvider, fetchImpl = jobFetch(), sleep = …)
   request(opts: RemoteRequestOpts): Promise<RemoteResponse>   // resolves for ANY status; throws RemoteTransportError on transport failure / non-retryable-after-retry, caller's AbortError untouched, RemoteResponseTooLargeError
-  health(opts?: { path?: string; signal?: AbortSignal; timeoutMs?: number }): Promise<{ status: number; ok: boolean; body: unknown; latencyMs: number }>  // never retried, 5 s bound
+  probe(opts?: { path?: string; signal?: AbortSignal; timeoutMs?: number }): Promise<{ status: number; ok: boolean; body: unknown; latencyMs: number }>  // never retried, 5 s bound
 }
 export function authProviderFor(auth: string, credential: string | null): AuthHeaderProvider  // 'none' → NoAuth, 'google_id_token' → IdTokenMinter(credential), else throws RemoteUnavailableError
 ```
@@ -487,10 +487,10 @@ describe('RemoteClient.request', () => {
   });
 });
 
-describe('RemoteClient.health', () => {
+describe('RemoteClient.probe', () => {
   it('GETs the given path with a 5 s bound and reports latency, never retries', async () => {
     const f = jest.fn().mockResolvedValueOnce(json(200, { ok: true, version: '1.2.3' }));
-    const res = await new RemoteClient('https://svc', new NoAuth(), f as never, noSleep).health({ path: '/healthz' });
+    const res = await new RemoteClient('https://svc', new NoAuth(), f as never, noSleep).probe({ path: '/healthz' });
     expect(f.mock.calls[0][0]).toBe('https://svc/healthz');
     expect(res).toMatchObject({ status: 200, ok: true, body: { version: '1.2.3' } });
     expect(typeof res.latencyMs).toBe('number');
@@ -498,7 +498,7 @@ describe('RemoteClient.health', () => {
 });
 ```
 
-- [ ] **Step 3: Run — FAIL. Implement `remote-client.ts`** by moving the transport code out of `worker-client.ts`: `RETRY_DELAY_MS`, `JOB_AGENT_OPTIONS`, `HEALTH_TIMEOUT_MS`, `RETRYABLE_STATUSES`, `isAbort`, `errorBody`, `createJobFetch`, `jobFetch`, the error class (renamed `RemoteTransportError`, same fields). `request()` = today's `postJob` loop, generalised: URL = `${baseUrl}${path}`; headers = `{ ...(body !== undefined ? {'content-type':'application/json'} : {}), ...opts.headers, ...(await this.auth.headers(url)) }` (auth wins — the caller can never override Authorization); `canRetry = opts.retry !== false && attempt === 0 && !signal.aborted`; on `!res.ok` with a retryable status and `canRetry` → sleep + continue; **otherwise do NOT throw on non-2xx** — parse and return `{status, ok: res.ok, headers, body, attempts}` (the callers decide). Size cap: if `content-length` header > `maxResponseBytes` (default `16 * 1024 * 1024`) throw `RemoteResponseTooLargeError` before reading; else read `await res.text()`, check `Buffer.byteLength(text) > max` → throw; parse JSON when `content-type` includes `application/json` (JSON parse failure → return the raw text as body). After a retried 429/503 pair, throw `RemoteTransportError('… responded 503 …', 503, true)` (keeps the ffmpeg BUSY mapping). `health({path='/health', timeoutMs=5000, signal})` = today's `health()` with `path` param, returning `{status, ok, body, latencyMs}` and NOT validating the body shape (WorkerClient does that). Add `authProviderFor(auth, credential)`.
+- [ ] **Step 3: Run — FAIL. Implement `remote-client.ts`** by moving the transport code out of `worker-client.ts`: `RETRY_DELAY_MS`, `JOB_AGENT_OPTIONS`, `HEALTH_TIMEOUT_MS`, `RETRYABLE_STATUSES`, `isAbort`, `errorBody`, `createJobFetch`, `jobFetch`, the error class (renamed `RemoteTransportError`, same fields). `request()` = today's `postJob` loop, generalised: URL = `${baseUrl}${path}`; headers = `{ ...(body !== undefined ? {'content-type':'application/json'} : {}), ...opts.headers, ...(await this.auth.headers(url)) }` (auth wins — the caller can never override Authorization); `canRetry = opts.retry !== false && attempt === 0 && !signal.aborted`; on `!res.ok` with a retryable status and `canRetry` → sleep + continue; **otherwise do NOT throw on non-2xx** — parse and return `{status, ok: res.ok, headers, body, attempts}` (the callers decide). Size cap: if `content-length` header > `maxResponseBytes` (default `16 * 1024 * 1024`) throw `RemoteResponseTooLargeError` before reading; else read `await res.text()`, check `Buffer.byteLength(text) > max` → throw; parse JSON when `content-type` includes `application/json` (JSON parse failure → return the raw text as body). After a retried 429/503 pair, throw `RemoteTransportError('… responded 503 …', 503, true)` (keeps the ffmpeg BUSY mapping). `probe({path='/health', timeoutMs=5000, signal})` = today's `health()` with a `path` param, returning `{status, ok, body, latencyMs}` and NOT validating the body shape (WorkerClient does that). Add `authProviderFor(auth, credential)`.
 
 - [ ] **Step 4: Rewrite `worker-client.ts` as a thin subclass** — keep the module docblock; `export { RemoteTransportError as WorkerTransportError, JOB_AGENT_OPTIONS, createJobFetch, jobFetch } from '../../../../remote-connections/remote-client'`; then:
 
@@ -515,7 +515,7 @@ export class WorkerClient extends RemoteClient {
   }
   /** Liveness + version. */
   async health(opts: { signal?: AbortSignal; timeoutMs?: number } = {}): Promise<WorkerHealth> {
-    const res = await super.health({ path: '/health', ...opts });
+    const res = await this.probe({ path: '/health', ...opts });
     if (!res.ok) throw new WorkerTransportError(`worker health responded ${res.status}`, res.status, RETRYABLE_STATUSES.has(res.status));
     const body = res.body as WorkerHealth;
     if (typeof body?.ok !== 'boolean' || typeof body?.version !== 'string') throw new WorkerTransportError('worker health response was not a WorkerHealth', res.status);
@@ -523,7 +523,7 @@ export class WorkerClient extends RemoteClient {
   }
 }
 ```
-(export `RETRYABLE_STATUSES` from remote-client.) Note the TS override signature: `RemoteClient.health` returns a different type — declare `WorkerClient.health` with `// eslint-disable-next-line @typescript-eslint/ban-ts-comment` + `// @ts-expect-error` if needed, or better: name the generic one `probe()` in RemoteClient and keep `WorkerClient.health()` calling `this.probe()`. **Do the latter** (`RemoteClient.probe(opts)`; the spec above uses `.health(` — rename to `.probe(` in the spec).
+(export `RETRYABLE_STATUSES` from remote-client.) The generic probe is named `probe()` on `RemoteClient` precisely so `WorkerClient.health()` can keep its own return type without an override clash.
 
 - [ ] **Step 5: Run all three specs — PASS:** `npx jest --testPathPattern 'remote-connections/|executor/remote'`. Existing `worker-client.spec.ts` must pass unchanged except import paths; if an assertion depended on `postJob` throwing on a non-JSON 2xx ("worker response was not JSON"), it now throws "was not a WorkerResponse" — update that one message expectation only.
 
