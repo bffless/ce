@@ -357,6 +357,31 @@ export interface HttpRequestHandlerConfig extends BaseHandlerConfig {
   failOnError?: boolean;
 }
 
+/**
+ * Mirrors the backend's `RemoteRequestHandlerConfig`.
+ *
+ * Unlike http_request there is no `url`: the target is a NAMED connection an
+ * admin configured on this instance (Settings → Infrastructure → Remote
+ * connections), which supplies the base URL and the identity. A step can
+ * therefore never point CE's platform credentials at an arbitrary host.
+ */
+export interface RemoteRequestHandlerConfig extends BaseHandlerConfig {
+  /** Name of an admin-configured remote connection. */
+  connection: string;
+  /** Path appended to the connection's URL; expression or template. Default: '/' */
+  path?: string;
+  /** HTTP method. Default: POST */
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  /** Request body expression, or a map of { field: expression }. Never sent on GET. */
+  body?: string | Record<string, string>;
+  /** Extra headers (values are expressions). `Authorization` is rejected server-side. */
+  headers?: Record<string, string>;
+  /** How long CE holds the request open, in SECONDS. Default: 300 */
+  timeoutSeconds?: number;
+  /** Treat a non-2xx response as a step failure. Default: true */
+  failOnError?: boolean;
+}
+
 export type HandlerConfig =
   | FormHandlerConfig
   | DataCreateHandlerConfig
@@ -377,6 +402,7 @@ export type HandlerConfig =
   | EmbedStoreHandlerConfig
   | VectorSearchHandlerConfig
   | HttpRequestHandlerConfig
+  | RemoteRequestHandlerConfig
   | SignedUrlHandlerConfig
   | PresignedUploadHandlerConfig
   | RegisterUploadHandlerConfig

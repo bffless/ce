@@ -68,7 +68,7 @@ const HANDLER_GROUPS: { label: string; types: HandlerType[] }[] = [
   { label: 'AI & ML', types: ['ai_handler', 'replicate', 'embed_store', 'vector_search'] },
   { label: 'Payments', types: ['stripe_checkout', 'stripe_webhook'] },
   { label: 'Integrations', types: ['github_api', 'google_calendar'] },
-  { label: 'Other', types: ['email_handler', 'function_handler', 'http_request', 'xml_feed_parse', 'delay'] },
+  { label: 'Other', types: ['email_handler', 'function_handler', 'http_request', 'remote_request', 'xml_feed_parse', 'delay'] },
 ];
 
 function HandlerTypeSelectContent({

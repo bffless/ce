@@ -18,6 +18,7 @@ import { ReplicateHandlerConfig } from './ReplicateHandlerConfig';
 import { EmbedStoreConfig } from './EmbedStoreConfig';
 import { VectorSearchConfig } from './VectorSearchConfig';
 import { HttpRequestConfig } from './HttpRequestConfig';
+import { RemoteRequestConfig } from './RemoteRequestConfig';
 import { StripeCheckoutConfig } from './StripeCheckoutConfig';
 import { StripeWebhookConfig } from './StripeWebhookConfig';
 import { SignedUrlHandlerConfig } from './SignedUrlHandlerConfig';
@@ -302,6 +303,18 @@ export function HandlerConfigWrapper({
         </>
       );
 
+    case 'remote_request':
+      return (
+        <>
+          {renderVariablesPanel()}
+          <RemoteRequestConfig
+            config={config}
+            onChange={handleChange}
+            previousSteps={previousSteps}
+          />
+        </>
+      );
+
     case 'stripe_checkout':
       return (
         <>
@@ -465,6 +478,7 @@ export function getHandlerDisplayName(type: HandlerType): string {
     embed_store: 'Store Embedding',
     vector_search: 'Vector Search',
     http_request: 'HTTP Request',
+    remote_request: 'Remote Request',
     stripe_checkout: 'Stripe Checkout',
     stripe_webhook: 'Stripe Webhook',
     signed_url: 'Signed URL',
@@ -504,6 +518,8 @@ export function getHandlerDescription(type: HandlerType): string {
     embed_store: 'Store embedding vectors in pgvector for similarity search',
     vector_search: 'Search stored embeddings by cosine similarity',
     http_request: 'Make an outbound HTTP request to an external URL',
+    remote_request:
+      'Call an admin-configured remote connection (Cloud Run etc.) with the platform identity',
     stripe_checkout: 'Create a Stripe Checkout Session and return the payment URL',
     stripe_webhook: 'Verify Stripe webhook signature and parse the event',
     signed_url: 'Generate a time-limited presigned URL for a file in storage',
