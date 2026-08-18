@@ -1,5 +1,7 @@
 import { pgTable, uuid, boolean, varchar, text, timestamp } from 'drizzle-orm/pg-core';
 
+import { remoteConnections } from './remote-connections.schema';
+
 /**
  * Instance-level configuration of the ffmpeg executors (Local server / Remote
  * Worker) edited in Admin Settings → Features → Server video ops → Executor.
@@ -23,11 +25,18 @@ export const ffmpegExecutorSettings = pgTable('ffmpeg_executor_settings', {
 
   // Remote executor: a Worker CE calls over HTTPS (Cloud Run is the reference).
   remoteEnabled: boolean('remote_enabled').default(false).notNull(),
+  /** @deprecated Plan 4 moved this to remote_connections (backfilled by migration 0044); dropped in the next release. Not read by code. */
   remoteUrl: text('remote_url'),
-  // 'google_id_token' | 'none'
+  /** @deprecated Plan 4 moved this to remote_connections (backfilled by migration 0044); dropped in the next release. Not read by code. */
   remoteAuth: varchar('remote_auth', { length: 32 }).default('google_id_token').notNull(),
-  // encryptString(<service-account JSON>) or null (= use ADC / no key)
+  /** @deprecated Plan 4 moved this to remote_connections (backfilled by migration 0044); dropped in the next release. Not read by code. */
   saKeyEncrypted: text('sa_key_encrypted'),
+
+  // Which remote connection the Remote executor uses (Plan 4). Env
+  // FFMPEG_REMOTE_CONNECTION / legacy FFMPEG_REMOTE_URL win over this.
+  remoteConnectionId: uuid('remote_connection_id').references(() => remoteConnections.id, {
+    onDelete: 'set null',
+  }),
 
   // 'local' | 'remote' — which executor a step runs on unless it names one.
   defaultExecutor: varchar('default_executor', { length: 16 }).default('local').notNull(),
