@@ -8,7 +8,12 @@ const testConnection = vi.fn(() => ({
     Promise.resolve({
       ok: true,
       latencyMs: 42,
-      worker: { version: '0.4.31', ffmpeg: 'ffmpeg version 6.1.1', ops: ['probe', 'slice'], uptimeS: 3 },
+      worker: {
+        version: '0.4.31',
+        ffmpeg: 'ffmpeg version 6.1.1',
+        ops: ['probe', 'slice'],
+        uptimeS: 3,
+      },
       readiness: { ok: true },
       credential: 'adc',
     }),
@@ -23,6 +28,25 @@ vi.mock('@/services/settingsApi', () => ({
 }));
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 
+/** The saved-connection block the status embeds when a connection is selected. */
+const savedFfmpeg = {
+  id: 'c1',
+  name: 'ffmpeg',
+  url: 'https://worker.example.com',
+  auth: 'google_id_token',
+  hasCredential: true,
+  credentialSource: 'db',
+  envOnly: false,
+};
+
+const connectionPicker = () => screen.getByRole('combobox', { name: /connection/i });
+
+/** Radix Select: open the trigger, then click the option by its accessible name. */
+const pickConnection = (name: string) => {
+  fireEvent.click(connectionPicker());
+  fireEvent.click(screen.getByRole('option', { name }));
+};
+
 beforeEach(() => {
   update.mockClear();
   testConnection.mockClear();
@@ -31,112 +55,109 @@ beforeEach(() => {
     localVersion: 'ffmpeg version 6.1.1',
     localEnabled: true,
     remoteEnabled: false,
-    remoteUrl: null,
-    remoteAuth: 'google_id_token',
-    hasSaKey: false,
-    saKeySource: null,
+    remoteConnection: null,
+    connections: [{ id: 'c1', name: 'ffmpeg', auth: 'google_id_token', envOnly: false }],
     defaultExecutor: 'local',
     storagePresignable: true,
-    envManaged: { defaultExecutor: false, remoteUrl: false, remoteAuth: false, saKey: false },
+    envManaged: { defaultExecutor: false, remoteConnection: false },
   };
 });
 
 describe('FfmpegExecutorSettings', () => {
-  it('shows the local version and disables the remote radio until Remote has a URL', () => {
+  it('shows the local version and disables the remote radio until a connection is picked', () => {
     render(<FfmpegExecutorSettings />);
     expect(screen.getByText(/ffmpeg version 6\.1\.1/)).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /remote/i })).toBeDisabled();
   });
 
-  it('shows the red banner for auth none', () => {
-    status.remoteEnabled = true;
-    status.remoteUrl = 'http://ffmpeg-worker:8080';
-    status.remoteAuth = 'none';
+  it('enabling Remote and picking a connection saves both fields', async () => {
     render(<FfmpegExecutorSettings />);
-    expect(screen.getByText(/No authentication/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('switch', { name: /Remote/ }));
+    pickConnection('ffmpeg');
+    fireEvent.click(screen.getByRole('button', { name: /^Save/ }));
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith({ remoteEnabled: true, remoteConnection: 'ffmpeg' }),
+    );
   });
 
-  it('env-managed URL is read-only with a badge', () => {
-    status.remoteEnabled = true;
-    status.remoteUrl = 'https://env.example.com';
-    status.envManaged.remoteUrl = true;
+  it('picking a connection makes Remote selectable as the default executor', () => {
     render(<FfmpegExecutorSettings />);
-    expect(screen.getByLabelText(/Worker URL/)).toBeDisabled();
-    expect(screen.getByText(/Managed by FFMPEG_REMOTE_URL/)).toBeInTheDocument();
-    // The backend forces remoteEnabled on when FFMPEG_REMOTE_URL is set, so the
-    // switch must be read-only rather than a toggle that snaps back.
+    fireEvent.click(screen.getByRole('switch', { name: /Remote/ }));
+    expect(screen.getByRole('radio', { name: /remote/i })).toBeDisabled();
+    pickConnection('ffmpeg');
+    expect(screen.getByRole('radio', { name: /remote/i })).not.toBeDisabled();
+  });
+
+  it('shows the selected connection host, auth and credential', () => {
+    status.remoteEnabled = true;
+    status.remoteConnection = savedFfmpeg;
+    render(<FfmpegExecutorSettings />);
+    expect(screen.getByText(/worker\.example\.com/)).toBeInTheDocument();
+    expect(screen.getByText(/Google ID token/)).toBeInTheDocument();
+    expect(screen.getByText(/Key stored/)).toBeInTheDocument();
+  });
+
+  it('an env-managed connection is a disabled picker with a badge', () => {
+    status.remoteEnabled = true;
+    status.remoteConnection = savedFfmpeg;
+    status.envManaged.remoteConnection = true;
+    render(<FfmpegExecutorSettings />);
+    expect(connectionPicker()).toBeDisabled();
+    expect(
+      screen.getByText(/Managed by FFMPEG_REMOTE_CONNECTION \/ FFMPEG_REMOTE_URL/),
+    ).toBeInTheDocument();
+    // The backend forces remoteEnabled on when the connection is env-pinned, so
+    // the switch must be read-only rather than a toggle that snaps back.
     expect(screen.getByRole('switch', { name: /Remote/ })).toBeDisabled();
   });
 
-  it('Test connection sends the draft and renders version, ops, latency and the ADC note', async () => {
+  it('an env-only connection is offered but not selectable', () => {
+    status.connections.push({ id: null, name: 'env-worker', auth: 'none', envOnly: true });
     status.remoteEnabled = true;
     render(<FfmpegExecutorSettings />);
-    fireEvent.change(screen.getByLabelText(/Worker URL/), {
-      target: { value: 'https://draft.example.com' },
-    });
+    fireEvent.click(connectionPicker());
+    expect(
+      screen.getByRole('option', { name: /env-worker \(env — select with FFMPEG_REMOTE_CONNECTION\)/ }),
+    ).toHaveAttribute('data-disabled');
+  });
+
+  it('Test connection sends the picked connection and renders the worker facts', async () => {
+    status.remoteEnabled = true;
+    status.remoteConnection = savedFfmpeg;
+    render(<FfmpegExecutorSettings />);
     fireEvent.click(screen.getByRole('button', { name: /Test connection/ }));
     await waitFor(() =>
-      expect(testConnection).toHaveBeenCalledWith(
-        expect.objectContaining({ remoteUrl: 'https://draft.example.com' }),
-      ),
+      expect(testConnection).toHaveBeenCalledWith({ remoteConnection: 'ffmpeg' }),
     );
-    expect(await screen.findByText(/0\.4\.31/)).toBeInTheDocument();
+    expect(await screen.findByText(/Worker 0\.4\.31/)).toBeInTheDocument();
     expect(screen.getByText(/42 ms/)).toBeInTheDocument();
-    // "Application Default Credentials" also appears in the empty-key helper text,
-    // so assert on the credential note's own wording.
     expect(screen.getByText(/Using Application Default Credentials/)).toBeInTheDocument();
   });
 
-  it('Save sends only the changed fields, with a pasted key as saKeyJson', async () => {
+  it('Test connection is disabled until a connection is picked', () => {
+    status.remoteEnabled = true;
     render(<FfmpegExecutorSettings />);
-    fireEvent.click(screen.getByRole('switch', { name: /Remote/ }));
-    fireEvent.change(screen.getByLabelText(/Worker URL/), { target: { value: 'https://w.example.com' } });
-    fireEvent.change(screen.getByLabelText(/Service-account key/), {
-      target: { value: '{"type":"service_account"}' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^Save/ }));
-    await waitFor(() =>
-      expect(update).toHaveBeenCalledWith({
-        remoteEnabled: true,
-        remoteUrl: 'https://w.example.com',
-        saKeyJson: '{"type":"service_account"}',
-      }),
-    );
+    expect(screen.getByRole('button', { name: /Test connection/ })).toBeDisabled();
   });
 
-  it('a stored key offers Replace/Remove instead of a textarea', () => {
-    status.hasSaKey = true;
-    status.saKeySource = 'db';
-    status.remoteEnabled = true;
-    status.remoteUrl = 'https://w.example.com';
+  it('no connections at all: helper text, and the Remote switch still toggles', () => {
+    status.connections = [];
     render(<FfmpegExecutorSettings />);
-    expect(screen.getByText(/Key stored/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Replace key/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Remove key/ })).toBeInTheDocument();
-    expect(screen.queryByPlaceholderText(/service_account/)).not.toBeInTheDocument();
+    const remote = screen.getByRole('switch', { name: /Remote/ });
+    expect(remote).not.toBeDisabled();
+    fireEvent.click(remote);
+    expect(
+      screen.getByText(/No remote connections yet — add one under Infrastructure/),
+    ).toBeInTheDocument();
   });
 
-  it('Remove key sends saKeyJson: null and nothing else', async () => {
-    status.hasSaKey = true;
-    status.saKeySource = 'db';
+  it('links to the Infrastructure tab where connections are managed', () => {
     status.remoteEnabled = true;
-    status.remoteUrl = 'https://w.example.com';
+    status.remoteConnection = savedFfmpeg;
     render(<FfmpegExecutorSettings />);
-    fireEvent.click(screen.getByRole('button', { name: /Remove key/ }));
-    fireEvent.click(screen.getByRole('button', { name: /^Save/ }));
-    await waitFor(() => expect(update).toHaveBeenCalledWith({ saKeyJson: null }));
-  });
-
-  it('Remove key reaches Test connection: sends saKeyJson: null', async () => {
-    status.hasSaKey = true;
-    status.saKeySource = 'db';
-    status.remoteEnabled = true;
-    status.remoteUrl = 'https://w.example.com';
-    render(<FfmpegExecutorSettings />);
-    fireEvent.click(screen.getByRole('button', { name: /Remove key/ }));
-    fireEvent.click(screen.getByRole('button', { name: /Test connection/ }));
-    await waitFor(() =>
-      expect(testConnection).toHaveBeenCalledWith(expect.objectContaining({ saKeyJson: null })),
+    expect(screen.getByRole('link', { name: /Manage connections in Infrastructure/ })).toHaveAttribute(
+      'href',
+      '/admin/settings/infrastructure',
     );
   });
 
@@ -147,22 +168,9 @@ describe('FfmpegExecutorSettings', () => {
     expect(screen.getByText(/Needs bucket storage/)).toBeInTheDocument();
   });
 
-  it('an env-managed service-account key is a badge, not an editable field', () => {
-    status.remoteEnabled = true;
-    status.remoteUrl = 'https://w.example.com';
-    status.hasSaKey = true;
-    status.saKeySource = 'env';
-    status.envManaged.saKey = true;
-    render(<FfmpegExecutorSettings />);
-    expect(screen.getByText(/Managed by FFMPEG_REMOTE_SA_KEY_JSON/)).toBeInTheDocument();
-    expect(screen.queryByPlaceholderText(/service_account/)).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Replace key/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Remove key/ })).not.toBeInTheDocument();
-  });
-
   it('moves the default off an executor the draft just disabled', async () => {
     status.remoteEnabled = true;
-    status.remoteUrl = 'https://w.example.com';
+    status.remoteConnection = savedFfmpeg;
     status.defaultExecutor = 'remote';
     render(<FfmpegExecutorSettings />);
     fireEvent.click(screen.getByRole('switch', { name: /Remote/ }));
@@ -176,20 +184,21 @@ describe('FfmpegExecutorSettings', () => {
     status.envManaged.defaultExecutor = true;
     status.defaultExecutor = 'remote';
     status.remoteEnabled = true;
-    status.remoteUrl = 'https://w.example.com';
+    status.remoteConnection = savedFfmpeg;
     render(<FfmpegExecutorSettings />);
     fireEvent.click(screen.getByRole('switch', { name: /Remote/ }));
     fireEvent.click(screen.getByRole('button', { name: /^Save/ }));
     await waitFor(() => expect(update).toHaveBeenCalledWith({ remoteEnabled: false }));
   });
 
-  it('a draft edit clears a stale test result', async () => {
+  it('changing the picked connection clears a stale test result', async () => {
     status.remoteEnabled = true;
-    status.remoteUrl = 'https://w.example.com';
+    status.remoteConnection = savedFfmpeg;
+    status.connections.push({ id: 'c2', name: 'other', auth: 'none', envOnly: false });
     render(<FfmpegExecutorSettings />);
     fireEvent.click(screen.getByRole('button', { name: /Test connection/ }));
-    expect(await screen.findByText(/0\.4\.31/)).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText(/Worker URL/), { target: { value: 'https://other.example.com' } });
-    expect(screen.queryByText(/0\.4\.31/)).not.toBeInTheDocument();
+    expect(await screen.findByText(/Worker 0\.4\.31/)).toBeInTheDocument();
+    pickConnection('other');
+    expect(screen.queryByText(/Worker 0\.4\.31/)).not.toBeInTheDocument();
   });
 });

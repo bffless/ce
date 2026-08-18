@@ -40,6 +40,22 @@ export function EnvBadge({ name }: { name: string }) {
   );
 }
 
+/** Hosts are what an admin recognises; the scheme and path are noise in a summary. */
+export function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
+/** The wire carries a free string — an instance can run an auth mode this build doesn't know. */
+export function authLabel(auth: string): string {
+  if (auth === 'google_id_token') return 'Google ID token';
+  if (auth === 'none') return 'None';
+  return auth;
+}
+
 export function errorMessage(err: unknown): string {
   return err && typeof err === 'object' && 'data' in err
     ? (err as { data?: { message?: string } }).data?.message || 'An error occurred'

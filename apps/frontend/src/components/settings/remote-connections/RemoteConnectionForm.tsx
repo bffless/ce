@@ -201,7 +201,16 @@ export function RemoteConnectionForm({
         <RadioGroup
           value={draft.auth}
           disabled={pinned('auth')}
-          onValueChange={(v) => set({ auth: v as RemoteConnectionAuth })}
+          // Switching to 'none' hides the credential editor, so anything pasted
+          // into it must leave the draft too — otherwise a key the admin can no
+          // longer see would still be sent (or cleared) on save.
+          onValueChange={(v) =>
+            set(
+              v === 'none'
+                ? { auth: 'none', credential: '', removeCredential: false }
+                : { auth: v as RemoteConnectionAuth },
+            )
+          }
           className="flex gap-4"
         >
           <div className="flex items-center gap-2">

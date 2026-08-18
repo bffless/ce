@@ -51,24 +51,9 @@ import {
   toUpsertDto,
   type ConnectionDraft,
 } from './RemoteConnectionForm';
-import { TestResultLine, errorMessage } from './shared';
+import { TestResultLine, authLabel, errorMessage, hostOf } from './shared';
 
 const IN_USE_BY_FFMPEG = 'In use by the ffmpeg Remote executor';
-
-/** Hosts are what an admin recognises; the scheme and path are noise in a table. */
-function hostOf(url: string): string {
-  try {
-    return new URL(url).host;
-  } catch {
-    return url;
-  }
-}
-
-function authLabel(auth: string): string {
-  if (auth === 'google_id_token') return 'Google ID token';
-  if (auth === 'none') return 'None';
-  return auth;
-}
 
 /** What identity a call would use, given what the API is willing to tell us. */
 function credentialLabel(c: RemoteConnectionStatus): string {
@@ -113,15 +98,19 @@ export function RemoteConnectionsSettings() {
     setOpen(true);
   };
 
-  const dto = toUpsertDto(editing, draft);
+  // ONE predicate decides both the DTO shape and the mutation: an env-only
+  // connection has no row to PATCH, so diffing it like an edit and then POSTing
+  // that diff to create() would drop the fields the create needs.
+  const existing = editing?.id ? editing : undefined;
+  const dto = toUpsertDto(existing, draft);
   const saveDisabled =
-    !isDraftValid(draft) || creating || updating || (!!editing && Object.keys(dto).length === 0);
+    !isDraftValid(draft) || creating || updating || (!!existing && Object.keys(dto).length === 0);
 
   const onSave = async () => {
     try {
-      if (editing?.id) await update({ id: editing.id, body: dto }).unwrap();
+      if (existing?.id) await update({ id: existing.id, body: dto }).unwrap();
       else await create(dto).unwrap();
-      toast({ title: editing ? 'Connection updated' : 'Connection created' });
+      toast({ title: existing ? 'Connection updated' : 'Connection created' });
       setOpen(false);
     } catch (err) {
       toast({
