@@ -1,6 +1,6 @@
 import { nameFromEnv, type RemoteConnectionAuth } from './remote-connections.types';
 
-/** Fields an env var can pin. `credential: null` / `healthPath: null` are explicit "none". */
+/** Fields an env var can pin. `healthPath: null` (env value 'none') disables the probe; a credential can be pinned but not cleared from env. */
 export interface EnvConnectionFields {
   url?: string;
   auth?: RemoteConnectionAuth;
