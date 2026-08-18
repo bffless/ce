@@ -938,3 +938,6 @@ export type { SignedUrlHandlerConfig } from '../handlers/signed-url.handler';
 
 // HttpRequestHandlerConfig is defined in handlers/http-request.handler.ts
 export type { HttpRequestHandlerConfig } from '../handlers/http-request.handler';
+
+// RemoteRequestHandlerConfig is defined in handlers/remote-request.handler.ts
+export type { RemoteRequestHandlerConfig } from '../handlers/remote-request.handler';

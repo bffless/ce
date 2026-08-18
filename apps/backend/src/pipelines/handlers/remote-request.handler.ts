@@ -4,8 +4,7 @@ import { StepHandlerRegistry } from '../execution/step-handler.registry';
 import { ExpressionEvaluator } from '../execution/expression-evaluator';
 import { PipelineContext, StepResult } from '../execution/pipeline-context.interface';
 import { PipelineStep } from '../types';
-import { ConfigurationError } from '../errors/configuration.error';
-import { PipelineError } from '../errors/pipeline.error';
+import { ConfigurationError, PipelineError } from '../errors';
 import {
   REMOTE_CONNECTIONS,
   type RemoteConnectionsPort,
@@ -14,7 +13,9 @@ import { RemoteTransportError } from '../../remote-connections/remote-client';
 import {
   RemoteBusyError,
   RemoteResponseTooLargeError,
+  RemoteUnavailableError,
 } from '../../remote-connections/remote-errors';
+import { isValidConnectionName } from '../../remote-connections/remote-connections.types';
 
 /**
  * Configuration for the remote_request handler.
@@ -124,6 +125,15 @@ export class RemoteRequestHandler implements StepHandler<RemoteRequestHandlerCon
       );
     }
 
+    // The connection is a NAME, never an expression: it is what binds this step
+    // to an admin-approved target, so it has to be resolvable at save time.
+    if (!isValidConnectionName(config.connection)) {
+      throw new ConfigurationError(
+        'connection must be a lower-case slug (letters, digits, dashes)',
+        'remote_request',
+      );
+    }
+
     if (config.method && !METHODS.includes(config.method)) {
       throw new ConfigurationError(
         `Invalid method '${config.method}'. Must be ${METHODS.join(', ')}`,
@@ -180,14 +190,34 @@ export class RemoteRequestHandler implements StepHandler<RemoteRequestHandlerCon
   async execute(context: PipelineContext, step: PipelineStep): Promise<StepResult> {
     const config = step.config as RemoteRequestHandlerConfig;
     const method = config.method || 'POST';
+    // ONE structured event per step, whatever happens — same shape as the
+    // ffmpeg remote executor's `ffmpeg_remote_job` line, so a remote call is
+    // greppable by `event` and filterable by `code` across both surfaces.
+    // `path` starts as configured and is overwritten once it is resolved, so a
+    // failure before evaluation still says which path was asked for.
+    let path = config.path ?? '/';
+    let startedAt: number | undefined;
 
-    const fail = (code: string, message: string, details?: unknown): StepResult => {
-      this.logger.warn(
-        `remote_request step ${step.name} failed [${code}] connection=${config.connection}: ${message}`,
-      );
+    const fail = (
+      code: string,
+      message: string,
+      extra: { details?: unknown; status?: number; attempts?: number } = {},
+    ): StepResult => {
+      this.logEvent(false, {
+        connection: config.connection,
+        path,
+        method,
+        code,
+        ...(extra.status !== undefined ? { status: extra.status } : {}),
+        ...(startedAt !== undefined ? { latencyMs: Date.now() - startedAt } : {}),
+        ...(extra.attempts !== undefined ? { attempts: extra.attempts } : {}),
+      });
       return {
         success: false,
-        error: details === undefined ? { code, message } : { code, message, details },
+        error:
+          extra.details === undefined
+            ? { code, message }
+            : { code, message, details: extra.details },
       };
     };
 
@@ -216,10 +246,9 @@ export class RemoteRequestHandler implements StepHandler<RemoteRequestHandlerCon
       ) * 1000;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
-    const startedAt = Date.now();
 
     try {
-      const path = this.resolvePath(config.path, context, step.name);
+      path = this.resolvePath(config.path, context, step.name);
       if (!path.startsWith('/')) {
         return fail(
           'REMOTE_INVALID_PATH',
@@ -230,6 +259,7 @@ export class RemoteRequestHandler implements StepHandler<RemoteRequestHandlerCon
       const headers = this.buildHeaders(config, context, step.name);
       const body = this.buildBody(config, method, context, step.name);
 
+      startedAt = Date.now();
       const response = await this.connections.client(conn).request({
         path,
         method,
@@ -247,17 +277,25 @@ export class RemoteRequestHandler implements StepHandler<RemoteRequestHandlerCon
         connection: conn.name,
         attempts: response.attempts,
       };
-      this.logger.log(
-        `remote_request connection=${conn.name} ${method} ${path} -> ${response.status} in ${output.latencyMs}ms (attempts=${response.attempts})`,
-      );
 
       if (!response.ok && config.failOnError !== false) {
         return fail('REMOTE_REQUEST_ERROR', `${conn.name} responded ${response.status}`, {
+          details: { status: response.status, body: response.body },
           status: response.status,
-          body: response.body,
+          attempts: response.attempts,
         });
       }
 
+      // The step succeeded. A tolerated non-2xx (failOnError: false) is still
+      // worth a warn — one line, no `code`, since nothing failed.
+      this.logEvent(response.ok, {
+        connection: conn.name,
+        path,
+        method,
+        status: response.status,
+        latencyMs: output.latencyMs,
+        attempts: response.attempts,
+      });
       return { success: true, output };
     } catch (error) {
       // A bad expression / bad config is the pipeline's own fault, not the
@@ -272,17 +310,32 @@ export class RemoteRequestHandler implements StepHandler<RemoteRequestHandlerCon
           `remote request to ${conn.name} timed out after ${timeoutMs} ms`,
         );
       }
-      if (error instanceof RemoteTransportError) {
+      // Both the transport's own failure and an unusable auth mode
+      // (RemoteUnavailableError from the client factory) are "the remote could
+      // not be talked to", and both may carry the status that says so.
+      if (error instanceof RemoteTransportError || error instanceof RemoteUnavailableError) {
         return fail(
           'REMOTE_UNAVAILABLE',
           `remote connection '${conn.name}' unavailable: ${error.message}`,
-          error.status !== undefined ? { status: error.status } : undefined,
+          error.status !== undefined
+            ? { details: { status: error.status }, status: error.status }
+            : {},
         );
       }
       return fail('REMOTE_UNAVAILABLE', error instanceof Error ? error.message : String(error));
     } finally {
       clearTimeout(timer);
       release();
+    }
+  }
+
+  /** One line per step: `log` when the remote answered 2xx, `warn` otherwise. */
+  private logEvent(ok: boolean, fields: Record<string, unknown>): void {
+    const payload = { event: 'remote_request', ok, ...fields };
+    if (ok) {
+      this.logger.log(payload);
+    } else {
+      this.logger.warn(payload);
     }
   }
 

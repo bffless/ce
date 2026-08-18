@@ -110,6 +110,19 @@ describe('RemoteRequestHandler registration & validateConfig', () => {
     expect(() => handler.validateConfig({ connection: 42 } as never)).toThrow(/connection/);
   });
 
+  it('requires the connection to be a slug — never a label or an expression', () => {
+    const { handler } = createHandler();
+    // A connection is bound at save time to an admin-approved target; a space or
+    // a template means the step is trying to choose its target at run time.
+    expect(() => handler.validateConfig({ connection: 'My Service' } as never)).toThrow(
+      /lower-case slug/,
+    );
+    expect(() => handler.validateConfig({ connection: '{{request.body.svc}}' } as never)).toThrow(
+      /lower-case slug/,
+    );
+    expect(() => handler.validateConfig({ connection: 'pdf-renderer' } as never)).not.toThrow();
+  });
+
   it('rejects an unknown method', () => {
     const { handler } = createHandler();
     expect(() => handler.validateConfig({ connection: 'svc', method: 'HEAD' } as never)).toThrow(
@@ -366,6 +379,60 @@ describe('RemoteRequestHandler execute', () => {
     ).rejects.toThrow(/bogus/);
     expect(request).not.toHaveBeenCalled();
     expect(release).toHaveBeenCalledTimes(1);
+  });
+
+  it('emits ONE structured event per step — log on success, warn on failure', async () => {
+    const ok = createHandler();
+    const okLogger = (ok.handler as unknown as { logger: { log: jest.Mock; warn: jest.Mock } })
+      .logger;
+    const okLog = jest.spyOn(okLogger, 'log').mockImplementation(() => undefined);
+    const okWarn = jest.spyOn(okLogger, 'warn').mockImplementation(() => undefined);
+
+    await ok.handler.execute(makeContext(), makeStep({ connection: 'svc', path: '/jobs' }));
+
+    expect(okWarn).not.toHaveBeenCalled();
+    expect(okLog).toHaveBeenCalledTimes(1);
+    expect(okLog).toHaveBeenCalledWith({
+      event: 'remote_request',
+      ok: true,
+      connection: 'svc',
+      path: '/jobs',
+      method: 'POST',
+      status: 200,
+      latencyMs: expect.any(Number),
+      attempts: 1,
+    });
+
+    const bad = createHandler({
+      request: jest.fn().mockResolvedValue({
+        status: 500,
+        ok: false,
+        headers: new Headers(),
+        body: { error: 'boom' },
+        attempts: 2,
+      }),
+    });
+    const badLogger = (bad.handler as unknown as { logger: { log: jest.Mock; warn: jest.Mock } })
+      .logger;
+    const badLog = jest.spyOn(badLogger, 'log').mockImplementation(() => undefined);
+    const badWarn = jest.spyOn(badLogger, 'warn').mockImplementation(() => undefined);
+
+    await bad.handler.execute(makeContext(), makeStep({ connection: 'svc', path: '/jobs' }));
+
+    expect(badLog).not.toHaveBeenCalled();
+    expect(badWarn).toHaveBeenCalledTimes(1);
+    expect(badWarn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'remote_request',
+        ok: false,
+        code: 'REMOTE_REQUEST_ERROR',
+        connection: 'svc',
+        path: '/jobs',
+        method: 'POST',
+        status: 500,
+        attempts: 2,
+      }),
+    );
   });
 
   it('maps an oversized response to REMOTE_RESPONSE_TOO_LARGE', async () => {
