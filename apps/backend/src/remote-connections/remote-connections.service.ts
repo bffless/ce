@@ -154,8 +154,18 @@ export class RemoteConnectionsService implements OnModuleInit {
    */
   private loadState: 'ok' | 'empty' | 'error' = 'empty';
   private warnedMissing = false;
+  /** Names already warned about a malformed credential — one line per name, ever. */
+  private readonly warnedInvalidCredential = new Set<string>();
   private readonly clients = new Map<string, { fingerprint: string; client: RemoteClient }>();
   private readonly usageProbes = new Map<string, UsageProbe>();
+  /**
+   * `readRemoteConnectionsEnv` scans every process env var with a regex — cheap
+   * once, wasteful on the per-request `list()`/`resolve()`/`byId()` path. Computed
+   * lazily on first use and invalidated by `reload()` (the only thing that can
+   * observe a changed env is a fresh process, but `reload()` is also what tests
+   * use to start a scenario clean).
+   */
+  private envFieldsCache?: Map<string, EnvConnectionFields>;
 
   constructor(
     /** Test seam: the process env to read. */
@@ -173,6 +183,7 @@ export class RemoteConnectionsService implements OnModuleInit {
 
   /** DB → cache. A missing table (instance not yet migrated) or a DB error leaves env-only connections working. */
   async reload(): Promise<void> {
+    this.envFieldsCache = undefined;
     let rows: RemoteConnectionRow[];
     try {
       rows = await db.select().from(remoteConnections).orderBy(remoteConnections.name);
@@ -219,7 +230,7 @@ export class RemoteConnectionsService implements OnModuleInit {
   }
 
   private envFields(): Map<string, EnvConnectionFields> {
-    return readRemoteConnectionsEnv(this.processEnv());
+    return (this.envFieldsCache ??= readRemoteConnectionsEnv(this.processEnv()));
   }
 
   /** env over DB, field by field, recording where each value came from. */
@@ -247,6 +258,10 @@ export class RemoteConnectionsService implements OnModuleInit {
     const maxInflight = pick('maxInflight', row?.maxInflight ?? null, DEFAULT_MAX_INFLIGHT);
     const healthPath = pick('healthPath', row?.healthPath ?? null, DEFAULT_HEALTH_PATH);
 
+    if ((auth.value ?? DEFAULT_AUTH) === 'google_id_token' && credential.value !== null) {
+      this.warnIfCredentialInvalid(name, credential.value, credential.source);
+    }
+
     return {
       id: row?.id ?? null,
       name,
@@ -265,6 +280,22 @@ export class RemoteConnectionsService implements OnModuleInit {
         envOnly: !row,
       },
     };
+  }
+
+  /**
+   * A malformed credential must never take the connection down at boot — the auth
+   * minter's own guard (see `defaultAuthFactory`) is the safety net that keeps it
+   * out of a request/response; this is just a once-per-name breadcrumb for an
+   * admin, with no credential text in it.
+   */
+  private warnIfCredentialInvalid(name: string, credential: string, source: FieldSource): void {
+    if (this.warnedInvalidCredential.has(name)) return;
+    try {
+      JSON.parse(credential);
+    } catch {
+      this.warnedInvalidCredential.add(name);
+      this.logger.warn({ event: 'remote_connection_credential_invalid', name, source });
+    }
   }
 
   /** DB rows (env applied) ∪ env-only names, by name. Synchronous by design. */
@@ -365,6 +396,9 @@ export class RemoteConnectionsService implements OnModuleInit {
     if (this.rows.some((row) => row.name === name)) {
       throw new BadRequestException(`A connection named '${name}' already exists.`);
     }
+    // A name can be env-pinned before any row exists under it (env is keyed by
+    // name, not by row) — the same refusal `update()` gives an existing row.
+    this.assertNotEnvManaged(name, input);
     const next: DecodedRow = {
       id: '',
       name,

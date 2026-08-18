@@ -192,6 +192,11 @@ export class RemoteClient {
    */
   async request(opts: RemoteRequestOpts): Promise<RemoteResponse> {
     const url = `${this.baseUrl}${opts.path}`;
+    // Minted OUTSIDE the fetch try/catch: an auth-minting failure (e.g. a
+    // malformed credential) is a misconfiguration, not a transport fault — it
+    // must never be rewrapped as a RemoteTransportError, retried, or have its
+    // message text touched.
+    const authHeaders = await this.auth.headers(url);
     for (let attempt = 0; ; attempt++) {
       const canRetry = opts.retry !== false && attempt === 0 && !opts.signal.aborted;
       let res: Response;
@@ -200,7 +205,7 @@ export class RemoteClient {
           method: opts.method,
           headers: mergeHeaders(opts.headers, {
             ...(opts.body !== undefined ? { 'content-type': 'application/json' } : {}),
-            ...(await this.auth.headers(url)),
+            ...authHeaders,
           }),
           ...(opts.body !== undefined ? { body: opts.body } : {}),
           signal: opts.signal,
@@ -253,6 +258,10 @@ export class RemoteClient {
     // before the request reaches the service, so a `/healthz` probe would report
     // every Cloud Run worker as unreachable.
     const url = `${this.baseUrl}${opts.path ?? '/health'}`;
+    // Minted OUTSIDE the try/catch, same reasoning as `request()`: an
+    // auth-minting failure must propagate as-is, never rewrapped as a
+    // RemoteTransportError.
+    const authHeaders = await this.auth.headers(url);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? HEALTH_TIMEOUT_MS);
     const onAbort = () => controller.abort();
@@ -261,7 +270,7 @@ export class RemoteClient {
     try {
       const res = await this.fetchImpl(url, {
         method: 'GET',
-        headers: await this.auth.headers(url),
+        headers: authHeaders,
         signal: controller.signal,
       });
       const body = await readBody(res);

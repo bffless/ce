@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  Logger,
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
@@ -209,6 +210,40 @@ describe('RemoteConnectionsService', () => {
       });
       expect(conn?.source).toMatchObject({ url: 'env', credential: 'env', envOnly: true });
     });
+
+    it('a malformed env credential warns once (never throws at boot) and never leaks into status()', async () => {
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      try {
+        mockSelect([]);
+        const service = make({
+          REMOTE_CONNECTION_PDF_RENDERER_URL: 'https://pdf.run.app',
+          REMOTE_CONNECTION_PDF_RENDERER_CREDENTIAL_JSON:
+            '{"type":"service_account","private_key":"BEGIN PRIVATE KEY zzz"',
+        });
+        await service.reload();
+
+        // list()/resolve()/status() all funnel through the same merge() — call a
+        // few of them to prove the warn fires once, not once per call.
+        expect(service.resolve('pdf-renderer')?.credential).toContain('BEGIN PRIVATE');
+        service.list();
+        const status = await service.status();
+
+        const credentialWarnings = warnSpy.mock.calls.filter(
+          ([entry]) =>
+            (entry as { event?: string })?.event === 'remote_connection_credential_invalid',
+        );
+        expect(credentialWarnings).toHaveLength(1);
+        expect(credentialWarnings[0][0]).toMatchObject({
+          event: 'remote_connection_credential_invalid',
+          name: 'pdf-renderer',
+        });
+
+        expect(JSON.stringify(status)).not.toContain('BEGIN PRIVATE');
+        expect(JSON.stringify(status)).not.toContain('service_account');
+      } finally {
+        warnSpy.mockRestore();
+      }
+    });
   });
 
   describe('create()', () => {
@@ -306,6 +341,30 @@ describe('RemoteConnectionsService', () => {
       await expect(
         service.create({ name: 'lan', url: 'http://renderer:8080', auth: 'none' }),
       ).resolves.toMatchObject({ name: 'lan', hasCredential: false });
+    });
+
+    it('refuses to create a row under a name whose fields are env-pinned, naming the variable', async () => {
+      mockSelect([]);
+      const { values } = mockWrite();
+      const service = make({ REMOTE_CONNECTION_PDF_RENDERER_URL: 'https://env.run.app' });
+      await service.reload();
+
+      await expect(
+        service.create({ name: 'pdf-renderer', url: 'https://other.run.app', auth: 'none' }),
+      ).rejects.toThrow(/managed by REMOTE_CONNECTION_PDF_RENDERER_URL on this instance/);
+      expect(values).not.toHaveBeenCalled();
+    });
+
+    it('a field env does not pin may still be set on create', async () => {
+      mockSelect([]);
+      mockWrite();
+      // Only max_inflight is pinned for this name — url/auth are free to set.
+      const service = make({ REMOTE_CONNECTION_PDF_RENDERER_MAX_INFLIGHT: '16' });
+      await service.reload();
+
+      await expect(
+        service.create({ name: 'pdf-renderer', url: 'https://pdf.run.app', auth: 'none' }),
+      ).resolves.toMatchObject({ name: 'pdf-renderer', maxInflight: 16 });
     });
   });
 

@@ -147,6 +147,24 @@ describe('RemoteClient.request', () => {
     expect(f).toHaveBeenCalledTimes(1);
   });
 
+  it('an auth-minting failure propagates as-is, is never retried, and never touches fetch', async () => {
+    const authError = new RemoteUnavailableError('connection credential is not valid JSON');
+    const fetchImpl = jest.fn();
+    await expect(
+      new RemoteClient(
+        'https://svc',
+        {
+          headers: async () => {
+            throw authError;
+          },
+        },
+        fetchImpl as never,
+        noSleep,
+      ).request({ path: '/jobs', method: 'POST', signal: sig() }),
+    ).rejects.toBe(authError);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it('rejects bodies over maxResponseBytes', async () => {
     const big = new Response('x'.repeat(2000), {
       status: 200,
@@ -172,6 +190,24 @@ describe('RemoteClient.probe', () => {
     expect(f.mock.calls[0][0]).toBe('https://svc/healthz');
     expect(res).toMatchObject({ status: 200, ok: true, body: { version: '1.2.3' } });
     expect(typeof res.latencyMs).toBe('number');
+  });
+
+  it('an auth-minting failure propagates as-is and never touches fetch', async () => {
+    const authError = new RemoteUnavailableError('connection credential is not valid JSON');
+    const fetchImpl = jest.fn();
+    await expect(
+      new RemoteClient(
+        'https://svc',
+        {
+          headers: async () => {
+            throw authError;
+          },
+        },
+        fetchImpl as never,
+        noSleep,
+      ).probe({ path: '/health' }),
+    ).rejects.toBe(authError);
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });
 

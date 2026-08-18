@@ -10,6 +10,7 @@
  */
 
 import { GoogleAuth } from 'google-auth-library';
+import { RemoteUnavailableError } from '../remote-errors';
 
 export interface AuthHeaderProvider {
   headers(url: string): Promise<Record<string, string>>;
@@ -30,10 +31,22 @@ export interface AuthLike {
   getIdTokenClient(audience: string): Promise<IdTokenClientLike>;
 }
 
+/**
+ * A malformed credential reaches here from env (`REMOTE_CONNECTION_<NAME>_CREDENTIAL_JSON`
+ * / legacy `FFMPEG_REMOTE_SA_KEY_JSON`) unguarded — the write paths validate JSON at
+ * save time, but env is applied on every read. `JSON.parse` on bad input throws a
+ * SyntaxError that QUOTES a prefix of the offending string, which would put private-key
+ * bytes into a step error / pipeline response / log line. Never let that escape.
+ */
 export function defaultAuthFactory(saKeyJson: string | null): AuthLike {
-  return new GoogleAuth(
-    saKeyJson ? { credentials: JSON.parse(saKeyJson) as Record<string, unknown> } : {},
-  ) as unknown as AuthLike;
+  if (!saKeyJson) return new GoogleAuth({}) as unknown as AuthLike;
+  let credentials: Record<string, unknown>;
+  try {
+    credentials = JSON.parse(saKeyJson) as Record<string, unknown>;
+  } catch {
+    throw new RemoteUnavailableError('connection credential is not valid JSON');
+  }
+  return new GoogleAuth({ credentials }) as unknown as AuthLike;
 }
 
 function flatten(headers: Record<string, string> | Headers): Record<string, string> {

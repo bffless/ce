@@ -9,7 +9,10 @@ import {
 } from './remote-ffmpeg.executor';
 import { readFfmpegEnv, type FfmpegEnvConfig } from '../../ffmpeg-env';
 import { IdTokenMinter, NoAuth } from '../../../../remote-connections/auth/id-token';
-import { RemoteResponseTooLargeError } from '../../../../remote-connections/remote-errors';
+import {
+  RemoteResponseTooLargeError,
+  RemoteUnavailableError,
+} from '../../../../remote-connections/remote-errors';
 import { WorkerClient, WorkerTransportError } from './worker-client';
 import { InflightFuse } from '../../../../remote-connections/fuse';
 
@@ -292,6 +295,17 @@ describe('run()', () => {
       code: 'FFMPEG_EXECUTOR_UNAVAILABLE',
       message: expect.stringContaining('worker response too large'),
     });
+  });
+
+  it('an auth-minting failure (malformed connection credential) → FFMPEG_EXECUTOR_UNAVAILABLE, never a key fragment', async () => {
+    const { executor, client } = make();
+    client.postJob.mockRejectedValue(
+      new RemoteUnavailableError('connection credential is not valid JSON'),
+    );
+    const err = await executor.run(job, { signal: sig() }).catch((e) => e);
+    expect(err).toMatchObject({ code: 'FFMPEG_EXECUTOR_UNAVAILABLE' });
+    expect(String(err.message)).not.toContain('BEGIN PRIVATE');
+    expect(String(err.message)).not.toContain('service_account');
   });
 
   it('the in-flight fuse fails fast with FFMPEG_BUSY and releases in finally', async () => {

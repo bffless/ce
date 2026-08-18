@@ -22,6 +22,7 @@ import { InflightFuse } from '../../../../remote-connections/fuse';
 import {
   RemoteBusyError,
   RemoteResponseTooLargeError,
+  RemoteUnavailableError,
 } from '../../../../remote-connections/remote-errors';
 import { mapWorkerResponse } from './result-mapping';
 import { WorkerClient, WorkerTransportError } from './worker-client';
@@ -159,7 +160,7 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
     try {
       url = new URL(env.remoteUrl);
     } catch {
-      return { ok: false, reason: `FFMPEG_REMOTE_URL is not a valid URL: ${env.remoteUrl}` };
+      return { ok: false, reason: `remote connection URL is not valid: ${env.remoteUrl}` };
     }
     if (env.remoteAuth !== 'none' && url.protocol !== 'https:') {
       return { ok: false, reason: 'remote auth google_id_token requires an https worker URL' };
@@ -195,7 +196,7 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
     overrides: Partial<Pick<FfmpegEnvConfig, 'remoteUrl' | 'remoteAuth' | 'remoteSaKeyJson'>> = {},
   ): Promise<WorkerHealth> {
     const env: FfmpegEnvConfig = { ...this.env(), ...overrides };
-    if (!env.remoteUrl) throw new FfmpegExecutorUnavailableError('no Worker URL configured');
+    if (!env.remoteUrl) throw new FfmpegExecutorUnavailableError('no remote connection selected');
     // Never memoise a draft's client over the live one — a draft may carry a different key.
     const client = Object.keys(overrides).length ? this.clientFactory(env) : this.clientFor(env);
     return client.health();
@@ -203,7 +204,7 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
 
   async run(job: FfmpegJob, opts: { signal: AbortSignal }): Promise<FfmpegJobResult> {
     const env = this.env();
-    if (!env.remoteUrl) throw new FfmpegExecutorUnavailableError('no Worker URL configured');
+    if (!env.remoteUrl) throw new FfmpegExecutorUnavailableError('no remote connection selected');
     // ready() normally catches this; guard here too so a caller that skipped it
     // gets the typed error instead of a TypeError on an absent optional method.
     if (typeof this.storageAdapter.getPresignedUploadUrl !== 'function') {
@@ -247,6 +248,12 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
         // no result to map — same class of "the Worker is not usable" as a 500.
         if (error instanceof RemoteResponseTooLargeError) {
           throw new FfmpegExecutorUnavailableError(`worker response too large: ${error.message}`);
+        }
+        // Auth-minting failure (e.g. a malformed connection credential) — never a
+        // transport fault, so it never went through WorkerTransportError; the
+        // message is already safe (no key text), just re-typed for this executor.
+        if (error instanceof RemoteUnavailableError) {
+          throw new FfmpegExecutorUnavailableError(error.message);
         }
         if (error instanceof WorkerTransportError) {
           // A status-carrying retryable answer is the Worker's own 503 BUSY or

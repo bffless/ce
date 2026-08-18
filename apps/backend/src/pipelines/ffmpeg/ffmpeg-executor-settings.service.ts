@@ -217,12 +217,13 @@ export class FfmpegExecutorSettingsService implements OnModuleInit {
    */
   private connectionFor(row: CachedSettings | null): ResolvedConnection | null {
     const managed = this.envManaged();
-    const name = managed.remoteConnection
-      ? readFfmpegEnv(this.processEnv()).remoteConnection
-      : row?.remoteConnectionId
-        ? (this.connections.byId(row.remoteConnectionId)?.name ?? null)
-        : null;
-    return name ? this.connections.resolve(name) : null;
+    if (managed.remoteConnection) {
+      const name = readFfmpegEnv(this.processEnv()).remoteConnection;
+      return name ? this.connections.resolve(name) : null;
+    }
+    // byId() already returns the fully resolved connection — no need to throw
+    // its name away and scan `list()` again with resolve().
+    return row?.remoteConnectionId ? this.connections.byId(row.remoteConnectionId) : null;
   }
 
   /** env + connection over `row` — the cached row for `resolved()`, a candidate row when validating a save. */

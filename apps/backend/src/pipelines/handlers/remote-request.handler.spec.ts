@@ -16,6 +16,7 @@ import { RemoteTransportError } from '../../remote-connections/remote-client';
 import {
   RemoteBusyError,
   RemoteResponseTooLargeError,
+  RemoteUnavailableError,
 } from '../../remote-connections/remote-errors';
 import type { ResolvedConnection } from '../../remote-connections/remote-connections.types';
 import { RemoteRequestHandler } from './remote-request.handler';
@@ -313,6 +314,18 @@ describe('RemoteRequestHandler execute', () => {
     const b = await noStatus.handler.execute(makeContext(), makeStep({ connection: 'svc' }));
     expect(b.error?.code).toBe('REMOTE_UNAVAILABLE');
     expect(b.error?.details).toBeUndefined();
+  });
+
+  it('maps a RemoteUnavailableError from a malformed connection credential to REMOTE_UNAVAILABLE, with its message', async () => {
+    const bad = createHandler({
+      request: jest
+        .fn()
+        .mockRejectedValue(new RemoteUnavailableError('connection credential is not valid JSON')),
+    });
+    const result = await bad.handler.execute(makeContext(), makeStep({ connection: 'svc' }));
+    expect(result.success).toBe(false);
+    expect(result.error?.code).toBe('REMOTE_UNAVAILABLE');
+    expect(result.error?.message).toContain('connection credential is not valid JSON');
   });
 
   it('fails with REMOTE_TIMEOUT when the step deadline aborts the request', async () => {
