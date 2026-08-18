@@ -49,15 +49,12 @@ function conn(over: Partial<ResolvedConnection> = {}): ResolvedConnection {
   };
 }
 
-/** A row as Drizzle would return it. The remote_url/auth/sa_key columns are deprecated (Plan 4) and must be ignored. */
+/** A row as Drizzle would return it (the legacy remote_url/auth/sa_key columns were dropped by migration 0045). */
 function row(over: Partial<Record<string, unknown>> = {}) {
   return {
     id: 'row-1',
     localEnabled: true,
     remoteEnabled: false,
-    remoteUrl: 'https://legacy.example.com',
-    remoteAuth: 'none',
-    saKeyEncrypted: 'legacy-ciphertext',
     remoteConnectionId: null,
     defaultExecutor: 'local',
     createdAt: new Date(),
@@ -184,8 +181,6 @@ describe('FfmpegExecutorSettingsService', () => {
         remoteMaxInflight: 8,
         executor: 'remote',
       });
-      // The deprecated columns on the row are never read.
-      expect(service.resolved().remoteUrl).not.toBe('https://legacy.example.com');
     });
 
     it("auth 'none' on the connection carries through", async () => {
