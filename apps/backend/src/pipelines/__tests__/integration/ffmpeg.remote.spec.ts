@@ -28,6 +28,7 @@ import { FfmpegExecutorSelector } from '../../ffmpeg/executor/ffmpeg-executor.se
 import { LocalFfmpegExecutor } from '../../ffmpeg/executor/local-ffmpeg.executor';
 import { RemoteFfmpegExecutor } from '../../ffmpeg/executor/remote/remote-ffmpeg.executor';
 import { FfmpegHandler } from '../../handlers/ffmpeg.handler';
+import { InflightFuse } from '../../../remote-connections/fuse';
 import type { PipelineContext } from '../../execution/pipeline-context.interface';
 import type { PipelineStep } from '../../types';
 
@@ -87,6 +88,8 @@ async function waitForHealth(base: string, deadlineMs = 15_000): Promise<void> {
     let logSpy: jest.SpyInstance;
     const silenced: jest.SpyInstance[] = [];
     const savedEnv: Record<string, string | undefined> = {};
+    /** Shared per-connection counter (D5) — proves the executor draws on it and always releases. */
+    const fuse = new InflightFuse();
 
     const context = () =>
       ({
@@ -212,7 +215,7 @@ async function waitForHealth(base: string, deadlineMs = 15_000): Promise<void> {
         new FfmpegScratchService() as never,
         adapter as never,
       );
-      const remote = new RemoteFfmpegExecutor(adapter as never);
+      const remote = new RemoteFfmpegExecutor(adapter as never, { fuse });
       const selector = new FfmpegExecutorSelector(local, remote, capability as never);
       handler = new FfmpegHandler(
         { register: () => undefined } as never,
@@ -248,12 +251,12 @@ async function waitForHealth(base: string, deadlineMs = 15_000): Promise<void> {
         server: boolean;
         executors: string[];
         defaultExecutor: string;
-        remote?: { ready: boolean; version?: string };
+        remote?: { ready: boolean; version?: string; maxInflight: number };
       };
       expect(out.server).toBe(true);
       expect(out.executors).toEqual(expect.arrayContaining(['local', 'remote']));
       expect(out.defaultExecutor).toBe('remote');
-      expect(out.remote).toEqual({ ready: true, version: 'it' });
+      expect(out.remote).toEqual({ ready: true, version: 'it', maxInflight: 8 });
     });
 
     it('probe runs on the worker and reads the fixture back through a signed GET', async () => {
@@ -305,6 +308,10 @@ async function waitForHealth(base: string, deadlineMs = 15_000): Promise<void> {
       const logged = remoteJobLogs();
       expect(logged.length).toBe(1);
       expect(logged[0]).toMatchObject({ ok: true, worker: { version: 'it' } });
+
+      // D5: the executor drew on the shared fuse (keyed 'ffmpeg' — no remoteConnection
+      // name configured here) and released it once the job finished.
+      expect(fuse.inflight('ffmpeg')).toBe(0);
     });
 
     it('slice writes both the clip and its wav sidecar', async () => {

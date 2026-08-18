@@ -40,6 +40,7 @@ describe('remote executor env', () => {
       remoteAuth: 'google_id_token',
       remoteSaKeyJson: null,
       remoteMaxInflight: 8,
+      remoteConnection: null,
       workerMinVersion: null,
       maxOutputBytes: 2 * 1024 ** 3,
     });
@@ -72,6 +73,17 @@ describe('remote executor env', () => {
         FFMPEG_REMOTE_URL: '',
       }),
     ).toMatchObject({ executor: 'local', remoteAuth: 'google_id_token', remoteUrl: null });
+  });
+  it('remoteConnection: FFMPEG_REMOTE_CONNECTION, else the legacy FFMPEG_REMOTE_URL implies the connection named ffmpeg', () => {
+    expect(readFfmpegEnv({ FFMPEG_REMOTE_URL: 'https://w' }).remoteConnection).toBe('ffmpeg');
+    expect(readFfmpegEnv({ FFMPEG_REMOTE_CONNECTION: 'pdf' }).remoteConnection).toBe('pdf');
+    // An explicit name wins over the legacy alias.
+    expect(
+      readFfmpegEnv({ FFMPEG_REMOTE_CONNECTION: 'pdf', FFMPEG_REMOTE_URL: 'https://w' })
+        .remoteConnection,
+    ).toBe('pdf');
+    expect(readFfmpegEnv({}).remoteConnection).toBeNull();
+    expect(readFfmpegEnv({ FFMPEG_REMOTE_CONNECTION: '' }).remoteConnection).toBeNull();
   });
   it('localEnabled is always true from env; remoteEnabled mirrors whether FFMPEG_REMOTE_URL is set', () => {
     const off = readFfmpegEnv({});

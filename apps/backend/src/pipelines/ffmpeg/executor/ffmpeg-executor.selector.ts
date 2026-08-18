@@ -19,7 +19,8 @@ export interface FfmpegCapabilityProbe {
   version: string | null;
   executors: FfmpegExecutorName[];
   defaultExecutor: FfmpegExecutorName;
-  remote?: { version?: string; ready: boolean; reason?: string };
+  /** `maxInflight` = the resolved connection's cap, so a client can size its own queue. */
+  remote?: { version?: string; ready: boolean; maxInflight: number; reason?: string };
 }
 
 /**
@@ -80,7 +81,7 @@ export class FfmpegExecutorSelector {
     if (!this.enabled().includes(name)) {
       throw new FfmpegExecutorUnavailableError(
         name === 'remote'
-          ? "ffmpeg_handler: executor 'remote' is not enabled on this instance (enable it in Admin Settings → Features → Server video ops, or set FFMPEG_REMOTE_URL)"
+          ? "ffmpeg_handler: executor 'remote' is not enabled on this instance (enable it in Admin Settings → Features → Server video ops, or select a remote connection (Admin Settings → Server video ops → Executor, or FFMPEG_REMOTE_CONNECTION))"
           : "ffmpeg_handler: executor 'local' is not enabled on this instance (needs ffmpeg installed and Local switched on in Admin Settings → Features → Server video ops)",
       );
     }
@@ -104,6 +105,7 @@ export class FfmpegExecutorSelector {
       const readiness = await this.remote.ready();
       remote = {
         ready: readiness.ok,
+        maxInflight: this.env().remoteMaxInflight,
         ...(readiness.version ? { version: readiness.version } : {}),
         ...(readiness.reason ? { reason: readiness.reason } : {}),
       };

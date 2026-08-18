@@ -309,6 +309,13 @@
       "when": 1787008710122,
       "tag": "0043_swift_namorita",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1787068771116,
+      "tag": "0044_curved_warlock",
+      "breakpoints": true
     }
   ]
 }

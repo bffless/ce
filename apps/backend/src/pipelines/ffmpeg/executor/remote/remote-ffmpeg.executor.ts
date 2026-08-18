@@ -16,7 +16,14 @@ import type {
   FfmpegJobResult,
 } from '../ffmpeg-executor.interface';
 import { buildEnvelope, type WorkerHealth, type WorkerResponse } from './envelope';
-import { NoAuth, IdTokenMinter, type AuthHeaderProvider } from './id-token';
+import type { AuthHeaderProvider } from '../../../../remote-connections/auth/id-token';
+import { authProviderFor } from '../../../../remote-connections/remote-client';
+import { InflightFuse } from '../../../../remote-connections/fuse';
+import {
+  RemoteBusyError,
+  RemoteResponseTooLargeError,
+  RemoteUnavailableError,
+} from '../../../../remote-connections/remote-errors';
 import { mapWorkerResponse } from './result-mapping';
 import { WorkerClient, WorkerTransportError } from './worker-client';
 
@@ -56,11 +63,12 @@ export function semverLt(a: string, b: string): boolean {
 
 /**
  * D4: `none` is only for a Worker on a trusted network — everything else mints a
- * Google ID token for the Worker's URL. Module-level so the choice is testable
- * without reaching into a WorkerClient.
+ * Google ID token for the Worker's URL. A thin alias over the shared
+ * `authProviderFor` (the ffmpeg config's auth field is the same narrow union),
+ * kept module-level so the choice is testable without reaching into a WorkerClient.
  */
 export function authFor(env: FfmpegEnvConfig): AuthHeaderProvider {
-  return env.remoteAuth === 'none' ? new NoAuth() : new IdTokenMinter(env.remoteSaKeyJson);
+  return authProviderFor(env.remoteAuth, env.remoteSaKeyJson);
 }
 
 /** The default `clientFactory`: a client for this env's worker URL and auth mode. */
@@ -72,6 +80,8 @@ interface Deps {
   env?: () => FfmpegEnvConfig;
   clientFactory?: (env: FfmpegEnvConfig) => WorkerClient;
   now?: () => number;
+  /** The shared per-connection in-flight counter; a private one when nothing supplies it. */
+  fuse?: InflightFuse;
 }
 
 interface CacheEntry {
@@ -100,8 +110,13 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
   private readonly clientFactory: (env: FfmpegEnvConfig) => WorkerClient;
   private readonly now: () => number;
 
-  /** Jobs this CE instance has posted and not yet settled — the fuse `remoteMaxInflight` blows. */
-  private inflight = 0;
+  /**
+   * Jobs in flight against the CONNECTION, not against this object: the same
+   * counter every other consumer of that connection draws from (spec D5), so a
+   * remote_request step and an ffmpeg job share one ceiling.
+   */
+  private readonly sharedFuse: () => InflightFuse | undefined;
+  private ownFuse?: InflightFuse;
   private cache?: CacheEntry;
   private client?: { key: string; client: WorkerClient };
 
@@ -114,6 +129,11 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
     this.env = deps.env ?? (() => readFfmpegEnv());
     this.clientFactory = deps.clientFactory ?? buildWorkerClient;
     this.now = deps.now ?? (() => Date.now());
+    // Read per job, never here: FFMPEG_REMOTE_DEPS exposes the shared fuse
+    // through a lazy getter, and resolving it in this constructor would race
+    // Nest's provider instantiation order — silently falling back to a private
+    // counter, which is exactly the bug the shared fuse exists to prevent.
+    this.sharedFuse = () => deps.fuse;
   }
 
   /** 0 = let ffmpeg pick, sized to the Worker's cores — CE's own FFMPEG_THREADS says nothing about them. */
@@ -134,13 +154,13 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
       return {
         ok: false,
         reason:
-          'no Worker URL configured (Admin Settings → Server video ops → Executor, or FFMPEG_REMOTE_URL)',
+          'no remote connection selected (Admin Settings → Server video ops → Executor, or FFMPEG_REMOTE_CONNECTION / FFMPEG_REMOTE_URL)',
       };
     let url: URL;
     try {
       url = new URL(env.remoteUrl);
     } catch {
-      return { ok: false, reason: `FFMPEG_REMOTE_URL is not a valid URL: ${env.remoteUrl}` };
+      return { ok: false, reason: `remote connection URL is not valid: ${env.remoteUrl}` };
     }
     if (env.remoteAuth !== 'none' && url.protocol !== 'https:') {
       return { ok: false, reason: 'remote auth google_id_token requires an https worker URL' };
@@ -176,7 +196,7 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
     overrides: Partial<Pick<FfmpegEnvConfig, 'remoteUrl' | 'remoteAuth' | 'remoteSaKeyJson'>> = {},
   ): Promise<WorkerHealth> {
     const env: FfmpegEnvConfig = { ...this.env(), ...overrides };
-    if (!env.remoteUrl) throw new FfmpegExecutorUnavailableError('no Worker URL configured');
+    if (!env.remoteUrl) throw new FfmpegExecutorUnavailableError('no remote connection selected');
     // Never memoise a draft's client over the live one — a draft may carry a different key.
     const client = Object.keys(overrides).length ? this.clientFactory(env) : this.clientFor(env);
     return client.health();
@@ -184,7 +204,7 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
 
   async run(job: FfmpegJob, opts: { signal: AbortSignal }): Promise<FfmpegJobResult> {
     const env = this.env();
-    if (!env.remoteUrl) throw new FfmpegExecutorUnavailableError('no Worker URL configured');
+    if (!env.remoteUrl) throw new FfmpegExecutorUnavailableError('no remote connection selected');
     // ready() normally catches this; guard here too so a caller that skipped it
     // gets the typed error instead of a TypeError on an absent optional method.
     if (typeof this.storageAdapter.getPresignedUploadUrl !== 'function') {
@@ -196,12 +216,19 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
     // Fail fast rather than queue: a remote job holds no local resource worth
     // waiting for, and the handler would rather retry than sit on a slot. Logged
     // like any other failed job so the fuse is visible in the same log line.
-    if (this.inflight >= env.remoteMaxInflight) {
-      const busy = new FfmpegBusyError('remote executor at capacity (FFMPEG_REMOTE_MAX_INFLIGHT)');
-      this.logFailure(job, busy, t0);
-      throw busy;
+    let release: () => void;
+    try {
+      release = this.fuse().acquire(env.remoteConnection ?? 'ffmpeg', env.remoteMaxInflight);
+    } catch (error) {
+      if (error instanceof RemoteBusyError) {
+        const busy = new FfmpegBusyError(
+          'remote executor at capacity (connection max_inflight / FFMPEG_REMOTE_MAX_INFLIGHT)',
+        );
+        this.logFailure(job, busy, t0);
+        throw busy;
+      }
+      throw error;
     }
-    this.inflight++;
     try {
       const envelope = await buildEnvelope(
         job,
@@ -217,6 +244,17 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
       try {
         response = await this.clientFor(env).postJob(envelope, { signal: opts.signal });
       } catch (error) {
+        // The shared transport refuses to buffer an oversized body, so the job has
+        // no result to map — same class of "the Worker is not usable" as a 500.
+        if (error instanceof RemoteResponseTooLargeError) {
+          throw new FfmpegExecutorUnavailableError(`worker response too large: ${error.message}`);
+        }
+        // Auth-minting failure (e.g. a malformed connection credential) — never a
+        // transport fault, so it never went through WorkerTransportError; the
+        // message is already safe (no key text), just re-typed for this executor.
+        if (error instanceof RemoteUnavailableError) {
+          throw new FfmpegExecutorUnavailableError(error.message);
+        }
         if (error instanceof WorkerTransportError) {
           // A status-carrying retryable answer is the Worker's own 503 BUSY or
           // Cloud Run's front-door 429/503 — after our one retry it means "still
@@ -290,8 +328,13 @@ export class RemoteFfmpegExecutor implements FfmpegExecutor {
       this.logFailure(job, error, t0);
       throw error;
     } finally {
-      this.inflight--;
+      release();
     }
+  }
+
+  /** The shared per-connection counter, or a private one when nothing supplies it (hand-built executors, unit tests). */
+  private fuse(): InflightFuse {
+    return this.sharedFuse() ?? (this.ownFuse ??= new InflightFuse());
   }
 
   /** One structured line per failed job, whatever failed it (fuse included). */

@@ -1,16 +1,17 @@
 import { pgTable, uuid, boolean, varchar, text, timestamp } from 'drizzle-orm/pg-core';
 
+import { remoteConnections } from './remote-connections.schema';
+
 /**
  * Instance-level configuration of the ffmpeg executors (Local server / Remote
  * Worker) edited in Admin Settings → Features → Server video ops → Executor.
  * Exactly one row (the service upserts; there is no natural key beyond "the
- * instance"). Env vars override individual fields — FFMPEG_EXECUTOR,
- * FFMPEG_REMOTE_URL, FFMPEG_REMOTE_AUTH, FFMPEG_REMOTE_SA_KEY_JSON — see
+ * instance"). The Remote executor's connection (URL, auth, credential) lives
+ * in `remote_connections` (Plan 4); this row only points at it via
+ * `remote_connection_id`. Env `FFMPEG_REMOTE_CONNECTION` (or legacy
+ * `FFMPEG_REMOTE_URL`, which implies the connection named `ffmpeg`) and
+ * `FFMPEG_EXECUTOR` override the row — see
  * `pipelines/ffmpeg/ffmpeg-executor-settings.service.ts` (`resolved()`).
- *
- * The service-account key is AES-256-GCM encrypted with common/crypto/aes-gcm.ts
- * (same wire format as oidc_providers.config_encrypted) and is WRITE-ONLY: the
- * API reports only whether one is stored.
  *
  * Spec: docs/superpowers/specs/2026-08-17-ffmpeg-remote-executor-design.md §1.5.
  */
@@ -23,11 +24,18 @@ export const ffmpegExecutorSettings = pgTable('ffmpeg_executor_settings', {
 
   // Remote executor: a Worker CE calls over HTTPS (Cloud Run is the reference).
   remoteEnabled: boolean('remote_enabled').default(false).notNull(),
+  /** @deprecated Plan 4 moved this to remote_connections (backfilled by migration 0044); dropped in the next release. Not read by code. */
   remoteUrl: text('remote_url'),
-  // 'google_id_token' | 'none'
+  /** @deprecated Plan 4 moved this to remote_connections (backfilled by migration 0044); dropped in the next release. Not read by code. */
   remoteAuth: varchar('remote_auth', { length: 32 }).default('google_id_token').notNull(),
-  // encryptString(<service-account JSON>) or null (= use ADC / no key)
+  /** @deprecated Plan 4 moved this to remote_connections (backfilled by migration 0044); dropped in the next release. Not read by code. */
   saKeyEncrypted: text('sa_key_encrypted'),
+
+  // Which remote connection the Remote executor uses (Plan 4). Env
+  // FFMPEG_REMOTE_CONNECTION / legacy FFMPEG_REMOTE_URL win over this.
+  remoteConnectionId: uuid('remote_connection_id').references(() => remoteConnections.id, {
+    onDelete: 'set null',
+  }),
 
   // 'local' | 'remote' — which executor a step runs on unless it names one.
   defaultExecutor: varchar('default_executor', { length: 16 }).default('local').notNull(),

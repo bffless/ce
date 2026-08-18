@@ -222,6 +222,7 @@ export const api = createApi({
     'AppCatalog',
     'InstalledApp',
     'FfmpegExecutor',
+    'RemoteConnection',
   ],
   endpoints: () => ({}),
 });

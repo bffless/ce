@@ -186,41 +186,115 @@ export interface UpdateBrandingResponse {
   config: BrandingConfig;
 }
 
+// ─── remote connections (Admin Settings → Infrastructure) ─────────────────
+// Mirrors the backend's RemoteConnectionsService types. The credential is
+// write-only: the API only ever reports whether one is stored
+// (`hasCredential` + `source.credential`), never its value.
+export type RemoteConnectionAuth = 'google_id_token' | 'none';
+/** Which layer supplied a field: the DB row, or a REMOTE_CONNECTION_<NAME>_* env var. */
+export type RemoteConnectionFieldSource = 'db' | 'env';
+
+export interface RemoteConnectionStatus {
+  /** null for an env-only connection (no DB row → nothing to edit or delete). */
+  id: string | null;
+  name: string;
+  url: string;
+  /** A free string on the wire: an instance can carry an auth mode this build doesn't know. */
+  auth: RemoteConnectionAuth | string;
+  hasCredential: boolean;
+  maxInflight: number;
+  healthPath: string | null;
+  source: {
+    url: RemoteConnectionFieldSource;
+    auth: RemoteConnectionFieldSource;
+    /** null when there is no credential at all — nothing to attribute. */
+    credential: RemoteConnectionFieldSource | null;
+    maxInflight: RemoteConnectionFieldSource;
+    healthPath: RemoteConnectionFieldSource;
+    envOnly: boolean;
+  };
+  envOnly: boolean;
+  usedBy: { ffmpegExecutor: boolean; rules: number };
+}
+
+/**
+ * Partial update. The backend refuses any env-pinned field that is PRESENT in
+ * the body, so only ever send the fields that actually changed.
+ */
+export interface UpsertRemoteConnectionDto {
+  name?: string;
+  url?: string;
+  auth?: RemoteConnectionAuth;
+  /** undefined = keep the stored credential, null = clear it, string = replace it */
+  credential?: string | null;
+  maxInflight?: number;
+  healthPath?: string | null;
+}
+
+/** The unsaved admin form a "Test connection" runs against. */
+export interface RemoteConnectionTestDraft {
+  /** Fall back to this stored connection for anything the draft omits (esp. the credential). */
+  id?: string;
+  name?: string;
+  url?: string;
+  auth?: RemoteConnectionAuth;
+  credential?: string | null;
+  healthPath?: string | null;
+}
+
+export interface RemoteConnectionTestResult {
+  ok: boolean;
+  status: number | null;
+  latencyMs: number | null;
+  version?: string;
+  error?: string;
+  credential: 'sa_key' | 'adc' | 'none';
+}
+
+/** GET /api/remote-connections — any authenticated user, for rule authoring. */
+export interface RemoteConnectionName {
+  name: string;
+  auth: string;
+}
+
 // ─── ffmpeg executor settings (Server video ops → Executor) ───────────────
-// Mirrors the backend's FfmpegExecutorSettingsService types. The
-// service-account key is write-only: the API only ever reports whether one is
-// stored (`hasSaKey`/`saKeySource`), never its value.
+// Mirrors the backend's FfmpegExecutorSettingsService types. Since Plan 4 the
+// executor no longer owns a URL/auth/key: it points at a remote connection,
+// which is where those live (and where they are edited).
 export type FfmpegExecutorName = 'local' | 'remote';
-export type FfmpegRemoteAuth = 'google_id_token' | 'none';
 
 export interface FfmpegExecutorStatus {
   localAvailable: boolean;
   localVersion: string | null;
   localEnabled: boolean;
   remoteEnabled: boolean;
-  remoteUrl: string | null;
-  remoteAuth: FfmpegRemoteAuth;
-  hasSaKey: boolean;
-  saKeySource: 'db' | 'env' | null;
+  /** The connection the Remote executor calls, or null when none is selected/resolvable. */
+  remoteConnection: {
+    id: string | null;
+    name: string;
+    url: string;
+    auth: string;
+    hasCredential: boolean;
+    credentialSource: 'db' | 'env' | null;
+    envOnly: boolean;
+  } | null;
+  /** The connection dropdown's options. */
+  connections: { id: string | null; name: string; auth: string; envOnly: boolean }[];
   defaultExecutor: FfmpegExecutorName;
   storagePresignable: boolean;
-  envManaged: { defaultExecutor: boolean; remoteUrl: boolean; remoteAuth: boolean; saKey: boolean };
+  envManaged: { defaultExecutor: boolean; remoteConnection: boolean };
 }
 
 export interface UpdateFfmpegExecutorDto {
   localEnabled?: boolean;
   remoteEnabled?: boolean;
-  remoteUrl?: string | null;
-  remoteAuth?: FfmpegRemoteAuth;
+  /** A remote connection NAME (undefined = keep, null = clear). */
+  remoteConnection?: string | null;
   defaultExecutor?: FfmpegExecutorName;
-  /** undefined = keep, null = clear, string = replace */
-  saKeyJson?: string | null;
 }
 
 export interface FfmpegExecutorTestDraft {
-  remoteUrl?: string | null;
-  remoteAuth?: FfmpegRemoteAuth;
-  saKeyJson?: string | null;
+  remoteConnection?: string;
 }
 
 export interface FfmpegExecutorTestResult {
@@ -552,6 +626,52 @@ export const settingsApi = api.injectEndpoints({
       query: (body) => ({ url: '/api/settings/ffmpeg-executor/test', method: 'POST', body }),
     }),
 
+    // ─── remote connections (Admin Settings → Infrastructure) ──────────────
+    // Backend: RemoteConnectionsController. Mutations also invalidate
+    // 'FfmpegExecutor' because the executor status embeds the connection it
+    // points at (URL, auth, hasCredential) and its dropdown options.
+    listRemoteConnections: builder.query<RemoteConnectionStatus[], void>({
+      query: () => '/api/settings/remote-connections',
+      providesTags: ['RemoteConnection'],
+    }),
+
+    createRemoteConnection: builder.mutation<RemoteConnectionStatus, UpsertRemoteConnectionDto>({
+      query: (body) => ({ url: '/api/settings/remote-connections', method: 'POST', body }),
+      invalidatesTags: ['RemoteConnection', 'FfmpegExecutor'],
+    }),
+
+    updateRemoteConnection: builder.mutation<
+      RemoteConnectionStatus,
+      { id: string; body: UpsertRemoteConnectionDto }
+    >({
+      query: ({ id, body }) => ({
+        url: `/api/settings/remote-connections/${encodeURIComponent(id)}`,
+        method: 'PUT',
+        body,
+      }),
+      invalidatesTags: ['RemoteConnection', 'FfmpegExecutor'],
+    }),
+
+    deleteRemoteConnection: builder.mutation<void, { id: string }>({
+      query: ({ id }) => ({
+        url: `/api/settings/remote-connections/${encodeURIComponent(id)}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['RemoteConnection', 'FfmpegExecutor'],
+    }),
+
+    // Runs against the *unsaved* draft, so it deliberately has no tags.
+    testRemoteConnection: builder.mutation<RemoteConnectionTestResult, RemoteConnectionTestDraft>({
+      query: (body) => ({ url: '/api/settings/remote-connections/test', method: 'POST', body }),
+    }),
+
+    // Any authenticated user (rule authors naming a connection in a
+    // `remote_request` step) — name + auth only, no URL or credential.
+    listRemoteConnectionNames: builder.query<RemoteConnectionName[], void>({
+      query: () => '/api/remote-connections',
+      providesTags: ['RemoteConnection'],
+    }),
+
     // ─── SSO providers (story 0047) ─────────────────────────────────────────
     // CRUD over the `oidc_providers` table. Each mutation also triggers
     // backend syncOidcProviders() server-side, so the new buttons appear on
@@ -641,6 +761,13 @@ export const {
   useGetFfmpegExecutorSettingsQuery,
   useUpdateFfmpegExecutorSettingsMutation,
   useTestFfmpegExecutorConnectionMutation,
+  // Remote connection hooks (Infrastructure → Remote connections)
+  useListRemoteConnectionsQuery,
+  useCreateRemoteConnectionMutation,
+  useUpdateRemoteConnectionMutation,
+  useDeleteRemoteConnectionMutation,
+  useTestRemoteConnectionMutation,
+  useListRemoteConnectionNamesQuery,
   // SSO provider hooks (story 0047)
   useListSsoProvidersQuery,
   useGetSsoProviderQuery,

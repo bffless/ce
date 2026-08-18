@@ -1,4 +1,5 @@
 import { IdTokenMinter, NoAuth } from './id-token';
+import { RemoteUnavailableError } from '../remote-errors';
 
 it('NoAuth sends no headers', async () => {
   expect(await new NoAuth().headers('https://w')).toEqual({});
@@ -23,6 +24,21 @@ it('accepts a Headers instance from the library and flattens it', async () => {
     getIdTokenClient: async () => ({ getRequestHeaders }),
   }));
   expect(await minter.headers('https://w/x')).toEqual({ authorization: 'Bearer h' });
+});
+
+it('a malformed credential (default factory, no mock) rejects with RemoteUnavailableError and never echoes the key text', async () => {
+  // No factory override: this exercises the real `defaultAuthFactory`, whose
+  // unguarded JSON.parse used to let V8's SyntaxError (which quotes a prefix of
+  // the offending input) leak private-key bytes into the rejection message.
+  const malformed = '{"type":"service_account","private_key":"BEGIN PRIVATE KEY zzz"';
+  const minter = new IdTokenMinter(malformed);
+  await expect(minter.headers('https://w/jobs')).rejects.toBeInstanceOf(RemoteUnavailableError);
+  await expect(minter.headers('https://w/jobs')).rejects.toMatchObject({
+    message: expect.not.stringContaining('BEGIN PRIVATE'),
+  });
+  await expect(minter.headers('https://w/jobs')).rejects.toMatchObject({
+    message: expect.not.stringContaining('service_account'),
+  });
 });
 
 it('does not cache a failed client creation — a later call retries', async () => {

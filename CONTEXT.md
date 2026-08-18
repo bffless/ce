@@ -97,3 +97,19 @@ _Avoid_: "payload", "job spec"
 
 **Capability probe**:
 The `probe`-without-input result apps read to learn which executors exist and which is default. Additive over time; `server:true` means at least one executor is ready.
+
+## Remote connections
+
+Instance-level infrastructure for calling services CE itself owns, not third-party APIs. Generalises the Remote ffmpeg Worker's transport so any private service gets the same treatment.
+
+**Remote connection**:
+An admin-owned, named service URL + auth mode CE calls with its own identity (a minted Google ID token, or none on a private network), configured once (DB, or pinned via `REMOTE_CONNECTION_<NAME>_*` env) and referenced by name — from `remote_request` pipeline steps and from the ffmpeg Remote executor — rather than by a raw URL a step could point anywhere.
+_Avoid_: "webhook target", "external API" (those are `http_request`'s domain, not this)
+
+**Fuse**:
+The per-connection in-flight ceiling: every caller of the same named connection — a `remote_request` step, the ffmpeg Remote executor — draws on one shared counter, so an admin's `max_inflight` actually bounds the connection, not just one caller of it. Fails fast (no queueing) once at capacity.
+_Avoid_: "rate limit" (this is a concurrency ceiling, not a rate)
+
+**`remote_request`**:
+The pipeline step handler that calls a named Remote connection: resolves the connection, acquires its Fuse, sends the request with the connection's own identity, and always resolves with a step output (`ok`/`status`/`body`) rather than throwing on a non-2xx — a later step branches on the result.
+_Avoid_: "the remote handler" (ambiguous with the ffmpeg Remote executor)

@@ -38,6 +38,7 @@ import { ProjectInviteLinksModule } from './project-invite-links/project-invite-
 import { PlatformModule } from './platform/platform.module';
 import { StorageUsageModule } from './storage/storage-usage.module';
 import { OnboardingRulesModule } from './onboarding-rules/onboarding-rules.module';
+import { RemoteConnectionsModule } from './remote-connections/remote-connections.module';
 import { PipelinesModule } from './pipelines/pipelines.module';
 import { PipelineSchedulesModule } from './pipeline-schedules/pipeline-schedules.module';
 import { McpModule, McpTransportType } from '@rekog/mcp-nest';
@@ -159,6 +160,7 @@ import { AppCatalogModule } from './app-catalog/app-catalog.module';
     CacheRulesModule,
     ShareLinksModule,    // Must come BEFORE ProjectsModule (route ordering)
     ProjectInviteLinksModule, // Must come BEFORE ProjectsModule (route ordering)
+    RemoteConnectionsModule, // Must come BEFORE PipelinesModule (PipelinesModule imports it)
     PipelinesModule,     // Must come BEFORE ProjectsModule (route ordering)
     PipelineSchedulesModule, // Cron-scheduled pipelines (own /api/pipeline-schedules prefix)
     ResponseHeaderRulesModule, // Must come BEFORE ProjectsModule (route ordering)

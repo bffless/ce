@@ -1,3 +1,4 @@
+import type { InflightFuse } from '../../../remote-connections/fuse';
 import type { FfmpegEnvConfig } from '../ffmpeg-env';
 
 /**
@@ -12,4 +13,10 @@ export type FfmpegConfigResolver = () => FfmpegEnvConfig;
 export const FFMPEG_REMOTE_DEPS = Symbol('FFMPEG_REMOTE_DEPS');
 export interface FfmpegRemoteDeps {
   env?: FfmpegConfigResolver;
+  /**
+   * The process-wide per-connection in-flight counter (spec D5). Shared with
+   * every other consumer of the same connection (remote_request steps), so the
+   * cap is a property of the CONNECTION, not of this executor object.
+   */
+  fuse?: InflightFuse;
 }

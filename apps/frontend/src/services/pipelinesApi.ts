@@ -49,6 +49,7 @@ export type HandlerType =
   | 'embed_store'
   | 'vector_search'
   | 'http_request'
+  | 'remote_request'
   | 'stripe_checkout'
   | 'stripe_webhook'
   | 'signed_url'

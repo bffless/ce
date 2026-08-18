@@ -11,35 +11,46 @@ import {
 import { eq } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { ffmpegExecutorSettings, type FfmpegExecutorSettingsRow } from '../../db/schema';
-import { decryptString, encryptString } from '../../common/crypto/aes-gcm';
+import { RemoteConnectionsService } from '../../remote-connections/remote-connections.service';
+import type { ResolvedConnection } from '../../remote-connections/remote-connections.types';
 import { resolveLocalAdapter } from '../../storage/local.adapter';
 import { IStorageAdapter, STORAGE_ADAPTER } from '../../storage/storage.interface';
 import { FfmpegCapabilityService } from './ffmpeg-capability.service';
 import { RemoteFfmpegExecutor } from './executor/remote/remote-ffmpeg.executor';
-import {
-  readFfmpegEnv,
-  type FfmpegEnvConfig,
-  type FfmpegExecutorSetting,
-  type FfmpegRemoteAuth,
-} from './ffmpeg-env';
+import { readFfmpegEnv, type FfmpegEnvConfig, type FfmpegExecutorSetting } from './ffmpeg-env';
 
 export interface FfmpegExecutorEnvManaged {
   defaultExecutor: boolean;
-  remoteUrl: boolean;
-  remoteAuth: boolean;
-  saKey: boolean;
+  /** FFMPEG_REMOTE_CONNECTION, or the legacy FFMPEG_REMOTE_URL that implies the `ffmpeg` connection. */
+  remoteConnection: boolean;
 }
 
-/** What the admin UI renders. The service-account key itself is NEVER part of this. */
+/** One row of the connection dropdown. */
+export interface FfmpegExecutorConnectionOption {
+  /** null for an env-only connection: there is no row to point the FK at. */
+  id: string | null;
+  name: string;
+  auth: string;
+  envOnly: boolean;
+}
+
+/** What the admin UI renders. The connection's credential itself is NEVER part of this. */
 export interface FfmpegExecutorStatus {
   localAvailable: boolean;
   localVersion: string | null;
   localEnabled: boolean;
   remoteEnabled: boolean;
-  remoteUrl: string | null;
-  remoteAuth: FfmpegRemoteAuth;
-  hasSaKey: boolean;
-  saKeySource: 'db' | 'env' | null;
+  /** The connection the Remote executor calls, or null when none is selected/resolvable. */
+  remoteConnection: {
+    id: string | null;
+    name: string;
+    url: string;
+    auth: string;
+    hasCredential: boolean;
+    credentialSource: 'db' | 'env' | null;
+    envOnly: boolean;
+  } | null;
+  connections: FfmpegExecutorConnectionOption[];
   defaultExecutor: FfmpegExecutorSetting;
   /** false on the local-FS adapter: a Worker cannot fetch CE-relative URLs (D3), so Remote cannot be enabled. */
   storagePresignable: boolean;
@@ -49,21 +60,17 @@ export interface FfmpegExecutorStatus {
 export interface UpdateFfmpegExecutorInput {
   localEnabled?: boolean;
   remoteEnabled?: boolean;
-  remoteUrl?: string | null;
-  remoteAuth?: FfmpegRemoteAuth;
+  /** A remote connection NAME (undefined = keep, null = clear). Must be a DB-backed connection. */
+  remoteConnection?: string | null;
   defaultExecutor?: FfmpegExecutorSetting;
-  /** undefined = keep the stored key; null (or '', a blanked UI field) = clear it; string = replace it. */
-  saKeyJson?: string | null;
 }
 
 /** The unsaved admin form a "Test connection" is run against. */
 export interface FfmpegExecutorTestDraft {
-  remoteUrl?: string | null;
-  remoteAuth?: FfmpegRemoteAuth;
-  saKeyJson?: string | null;
+  remoteConnection?: string;
 }
 
-/** What the admin UI shows after a "Test connection". The SA key is never part of it. */
+/** What the admin UI shows after a "Test connection". The credential is never part of it. */
 export interface FfmpegExecutorTestResult {
   ok: boolean;
   latencyMs: number | null;
@@ -73,13 +80,12 @@ export interface FfmpegExecutorTestResult {
   credential: 'sa_key' | 'adc' | 'none';
 }
 
-/** The decrypted, in-memory shape of the DB row. */
+/** The in-memory shape of the DB row. */
 interface CachedSettings {
   localEnabled: boolean;
   remoteEnabled: boolean;
-  remoteUrl: string | null;
-  remoteAuth: FfmpegRemoteAuth;
-  saKeyJson: string | null;
+  /** FK into remote_connections (Plan 4). The URL/auth/credential live there. */
+  remoteConnectionId: string | null;
   defaultExecutor: FfmpegExecutorSetting;
 }
 
@@ -88,21 +94,20 @@ function envSet(env: NodeJS.ProcessEnv, key: string): boolean {
   return (env[key] ?? '').trim() !== '';
 }
 
-/** Same normalisation `ffmpeg-env.ts` applies to FFMPEG_REMOTE_URL. */
-function normaliseUrl(raw: string | null | undefined): string | null {
-  if (raw === undefined || raw === null) return null;
-  const trimmed = raw.trim();
-  if (trimmed === '') return null;
-  return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed;
-}
-
 /**
- * Admin-editable executor configuration (spec §1.5). One DB row, decrypted into
- * memory at boot and after every save so the executors can read it SYNCHRONOUSLY
- * through `resolved()` — the same `FfmpegEnvConfig` shape `readFfmpegEnv()` returns,
- * with env winning over the DB per field (FFMPEG_EXECUTOR, FFMPEG_REMOTE_URL,
- * FFMPEG_REMOTE_AUTH, FFMPEG_REMOTE_SA_KEY_JSON). CE runs one backend process per
- * instance, so an in-process cache refreshed on write is sufficient.
+ * Admin-editable executor configuration (spec §1.5). One DB row, read into memory
+ * at boot and after every save so the executors can read it SYNCHRONOUSLY through
+ * `resolved()` — the same `FfmpegEnvConfig` shape `readFfmpegEnv()` returns.
+ *
+ * Since Plan 4 the row no longer holds a URL/auth/key: it points at a
+ * `remote_connections` row, and `resolved()` DERIVES `remoteUrl` / `remoteAuth` /
+ * `remoteSaKeyJson` / `remoteMaxInflight` from the connection
+ * `RemoteConnectionsService` resolves (which applies its own
+ * `REMOTE_CONNECTION_<NAME>_*` env pins on top). Env still wins here for WHICH
+ * connection is used (FFMPEG_REMOTE_CONNECTION, or the legacy FFMPEG_REMOTE_URL
+ * that implies the connection named `ffmpeg`) and for the default executor
+ * (FFMPEG_EXECUTOR). CE runs one backend process per instance, so an in-process
+ * cache refreshed on write is sufficient.
  */
 @Injectable()
 export class FfmpegExecutorSettingsService implements OnModuleInit {
@@ -111,7 +116,7 @@ export class FfmpegExecutorSettingsService implements OnModuleInit {
   /**
    * Why this exists: a failed load also leaves `cached === null`, which is
    * indistinguishable from "no row yet". Merging a partial update onto the
-   * DEFAULTS in that state would silently overwrite a real row's URL/auth/
+   * DEFAULTS in that state would silently overwrite a real row's connection/
    * default with defaults, so `update()` refuses while the state is 'error'.
    */
   private loadState: 'ok' | 'empty' | 'error' = 'empty';
@@ -120,6 +125,12 @@ export class FfmpegExecutorSettingsService implements OnModuleInit {
   constructor(
     @Inject(STORAGE_ADAPTER) private readonly storageAdapter: IStorageAdapter,
     private readonly capability: FfmpegCapabilityService,
+    /**
+     * Injected directly (not through a lazy token): RemoteConnectionsModule
+     * depends on nothing in pipelines/, so this edge closes no cycle. The
+     * EXECUTORS still read their config through the lazy FFMPEG_CONFIG tokens.
+     */
+    private readonly connections: RemoteConnectionsService,
     /** Test seam: the process env to read. */
     @Optional() private readonly processEnv: () => NodeJS.ProcessEnv = () => process.env,
     /** @Optional() so a hand-built service (and Plan 1's specs) need not supply one. */
@@ -127,8 +138,23 @@ export class FfmpegExecutorSettingsService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
+    // Before the test-env bail-out: the connections admin UI must be able to say
+    // "in use by the ffmpeg Remote executor" even on an instance that never loads.
+    this.registerUsage();
     if (process.env.NODE_ENV === 'test') return;
     await this.reload();
+  }
+
+  /**
+   * Tell RemoteConnectionsService which connection the Remote executor is on, so
+   * a delete can be refused. Registered rather than imported — the connections
+   * service must not depend on pipelines/ (module cycle).
+   */
+  registerUsage(): void {
+    this.connections.registerUsageProbe(
+      'ffmpegExecutor',
+      (name) => this.resolved().remoteConnection === name,
+    );
   }
 
   /** DB → cache. A missing table (instance not yet migrated) or a DB error leaves the cache empty = env-only. */
@@ -162,25 +188,10 @@ export class FfmpegExecutorSettingsService implements OnModuleInit {
   }
 
   private decode(row: FfmpegExecutorSettingsRow): CachedSettings {
-    let saKeyJson: string | null = null;
-    if (row.saKeyEncrypted) {
-      try {
-        saKeyJson = decryptString(row.saKeyEncrypted);
-      } catch (error) {
-        this.logger.error({
-          event: 'ffmpeg_executor_sa_key_undecryptable',
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-    // Invariant: remoteEnabled ⇒ a URL. A row without one cannot run remote work.
-    const remoteUrl = normaliseUrl(row.remoteUrl);
     return {
       localEnabled: row.localEnabled,
-      remoteEnabled: row.remoteEnabled && remoteUrl !== null,
-      remoteUrl,
-      remoteAuth: row.remoteAuth === 'none' ? 'none' : 'google_id_token',
-      saKeyJson,
+      remoteEnabled: row.remoteEnabled,
+      remoteConnectionId: row.remoteConnectionId ?? null,
       defaultExecutor: row.defaultExecutor === 'remote' ? 'remote' : 'local',
     };
   }
@@ -189,31 +200,49 @@ export class FfmpegExecutorSettingsService implements OnModuleInit {
     const env = this.processEnv();
     return {
       defaultExecutor: envSet(env, 'FFMPEG_EXECUTOR'),
-      remoteUrl: envSet(env, 'FFMPEG_REMOTE_URL'),
-      remoteAuth: envSet(env, 'FFMPEG_REMOTE_AUTH'),
-      saKey: envSet(env, 'FFMPEG_REMOTE_SA_KEY_JSON'),
+      // The legacy var is an alias for "the connection named ffmpeg" (ffmpeg-env.ts).
+      remoteConnection: envSet(env, 'FFMPEG_REMOTE_CONNECTION') || envSet(env, 'FFMPEG_REMOTE_URL'),
     };
   }
 
-  /** The effective config: env over the cached DB row. Synchronous by design (executors call it per job). */
+  /** The effective config: the selected connection over env. Synchronous by design (executors call it per job). */
   resolved(): FfmpegEnvConfig {
     return this.resolveWith(this.cached);
   }
 
-  /** env over `row` — the cached row for `resolved()`, a candidate row when validating a save. */
+  /**
+   * The connection `row` would use: the env-pinned name when one is set, else the
+   * row's FK resolved back to a name. null = nothing selected, or the selection
+   * no longer resolves (deleted connection, unknown env name).
+   */
+  private connectionFor(row: CachedSettings | null): ResolvedConnection | null {
+    const managed = this.envManaged();
+    if (managed.remoteConnection) {
+      const name = readFfmpegEnv(this.processEnv()).remoteConnection;
+      return name ? this.connections.resolve(name) : null;
+    }
+    // byId() already returns the fully resolved connection — no need to throw
+    // its name away and scan `list()` again with resolve().
+    return row?.remoteConnectionId ? this.connections.byId(row.remoteConnectionId) : null;
+  }
+
+  /** env + connection over `row` — the cached row for `resolved()`, a candidate row when validating a save. */
   private resolveWith(row: CachedSettings | null): FfmpegEnvConfig {
     const env = readFfmpegEnv(this.processEnv());
-    if (!row) return env;
     const managed = this.envManaged();
-    const remoteUrl = managed.remoteUrl ? env.remoteUrl : row.remoteUrl;
+    const conn = this.connectionFor(row);
     return {
       ...env,
-      localEnabled: row.localEnabled,
-      remoteEnabled: managed.remoteUrl ? true : row.remoteEnabled,
-      remoteUrl,
-      remoteAuth: managed.remoteAuth ? env.remoteAuth : row.remoteAuth,
-      remoteSaKeyJson: managed.saKey ? env.remoteSaKeyJson : row.saKeyJson,
-      executor: managed.defaultExecutor ? env.executor : row.defaultExecutor,
+      localEnabled: row?.localEnabled ?? true,
+      executor: managed.defaultExecutor ? env.executor : (row?.defaultExecutor ?? env.executor),
+      remoteConnection: conn?.name ?? null,
+      // No connection = nothing to call, whatever the row or the env says.
+      remoteEnabled:
+        conn !== null && (managed.remoteConnection ? true : (row?.remoteEnabled ?? false)),
+      remoteUrl: conn?.url ?? null,
+      remoteAuth: conn?.auth === 'none' ? 'none' : 'google_id_token',
+      remoteSaKeyJson: conn?.credential ?? null,
+      remoteMaxInflight: conn?.maxInflight ?? env.remoteMaxInflight,
     };
   }
 
@@ -237,15 +266,29 @@ export class FfmpegExecutorSettingsService implements OnModuleInit {
   async getStatus(): Promise<FfmpegExecutorStatus> {
     const cfg = this.resolved();
     const managed = this.envManaged();
+    const conn = this.connectionFor(this.cached);
     return {
       localAvailable: this.capability.isAvailable(),
       localVersion: this.capability.getVersion(),
       localEnabled: cfg.localEnabled,
       remoteEnabled: cfg.remoteEnabled,
-      remoteUrl: cfg.remoteUrl,
-      remoteAuth: cfg.remoteAuth,
-      hasSaKey: cfg.remoteSaKeyJson !== null,
-      saKeySource: cfg.remoteSaKeyJson === null ? null : managed.saKey ? 'env' : 'db',
+      remoteConnection: conn
+        ? {
+            id: conn.id,
+            name: conn.name,
+            url: conn.url,
+            auth: conn.auth,
+            hasCredential: conn.credential !== null,
+            credentialSource: conn.source.credential,
+            envOnly: conn.source.envOnly,
+          }
+        : null,
+      connections: this.connections.list().map((c) => ({
+        id: c.id,
+        name: c.name,
+        auth: c.auth,
+        envOnly: c.source.envOnly,
+      })),
       defaultExecutor: cfg.executor,
       storagePresignable: this.storagePresignable(),
       envManaged: managed,
@@ -254,7 +297,7 @@ export class FfmpegExecutorSettingsService implements OnModuleInit {
 
   /**
    * Validate → upsert → reload → status. Partial: only the provided fields change.
-   * `saKeyJson`: undefined keeps the stored key, null clears it, a string replaces it.
+   * `remoteConnection` is a connection NAME (undefined keeps the selection, null clears it).
    */
   async update(input: UpdateFfmpegExecutorInput, userId?: string): Promise<FfmpegExecutorStatus> {
     if (this.loadState === 'error') {
@@ -265,46 +308,15 @@ export class FfmpegExecutorSettingsService implements OnModuleInit {
     }
 
     const managed = this.envManaged();
-    if (input.remoteUrl !== undefined && managed.remoteUrl) {
-      throw new BadRequestException('Worker URL is managed by FFMPEG_REMOTE_URL on this instance.');
-    }
-    if (input.remoteAuth !== undefined && managed.remoteAuth) {
-      throw new BadRequestException('Auth mode is managed by FFMPEG_REMOTE_AUTH on this instance.');
-    }
-    if (input.saKeyJson !== undefined && managed.saKey) {
+    if (input.remoteConnection !== undefined && managed.remoteConnection) {
       throw new BadRequestException(
-        'The service-account key is managed by FFMPEG_REMOTE_SA_KEY_JSON on this instance.',
+        'The remote connection is managed by FFMPEG_REMOTE_CONNECTION / FFMPEG_REMOTE_URL on this instance.',
       );
     }
     if (input.defaultExecutor !== undefined && managed.defaultExecutor) {
       throw new BadRequestException(
         'The default executor is managed by FFMPEG_EXECUTOR on this instance.',
       );
-    }
-
-    const current: CachedSettings = this.cached ?? {
-      localEnabled: true,
-      remoteEnabled: false,
-      remoteUrl: null,
-      remoteAuth: 'google_id_token',
-      saKeyJson: null,
-      defaultExecutor: 'local',
-    };
-    const next: CachedSettings = {
-      localEnabled: input.localEnabled ?? current.localEnabled,
-      remoteEnabled: input.remoteEnabled ?? current.remoteEnabled,
-      remoteUrl: input.remoteUrl === undefined ? current.remoteUrl : normaliseUrl(input.remoteUrl),
-      remoteAuth: input.remoteAuth ?? current.remoteAuth,
-      saKeyJson: input.saKeyJson === undefined ? current.saKeyJson : input.saKeyJson,
-      defaultExecutor: input.defaultExecutor ?? current.defaultExecutor,
-    };
-
-    if (
-      input.remoteAuth !== undefined &&
-      input.remoteAuth !== 'google_id_token' &&
-      input.remoteAuth !== 'none'
-    ) {
-      throw new BadRequestException("Auth mode must be 'google_id_token' or 'none'.");
     }
     if (
       input.defaultExecutor !== undefined &&
@@ -313,47 +325,59 @@ export class FfmpegExecutorSettingsService implements OnModuleInit {
     ) {
       throw new BadRequestException("Default executor must be 'local' or 'remote'.");
     }
-    if (typeof next.saKeyJson === 'string') {
-      next.saKeyJson = next.saKeyJson.trim();
-    }
-    // A blanked-out UI field means "remove the key", not "here is invalid JSON".
-    if (next.saKeyJson === '') next.saKeyJson = null;
-    if (typeof next.saKeyJson === 'string') {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(next.saKeyJson);
-      } catch {
-        throw new BadRequestException('Service-account key must be valid JSON.');
+
+    // A NAME is what the UI sends; the FK is what we store. An env-only
+    // connection has no row to point at, so it can only be selected from env.
+    let remoteConnectionId: string | null | undefined;
+    if (input.remoteConnection !== undefined) {
+      if (input.remoteConnection === null) {
+        remoteConnectionId = null;
+      } else {
+        const picked = this.connections.resolve(input.remoteConnection);
+        if (!picked) {
+          throw new BadRequestException(`Unknown remote connection '${input.remoteConnection}'.`);
+        }
+        if (picked.id === null) {
+          throw new BadRequestException(
+            `'${picked.name}' is defined by environment variables only and has no saved connection to select — select it with FFMPEG_REMOTE_CONNECTION instead.`,
+          );
+        }
+        remoteConnectionId = picked.id;
       }
-      if (
-        !parsed ||
-        typeof parsed !== 'object' ||
-        (parsed as { type?: unknown }).type !== 'service_account'
-      ) {
+    }
+
+    const current: CachedSettings = this.cached ?? {
+      localEnabled: true,
+      remoteEnabled: false,
+      remoteConnectionId: null,
+      defaultExecutor: 'local',
+    };
+    const next: CachedSettings = {
+      localEnabled: input.localEnabled ?? current.localEnabled,
+      remoteEnabled: input.remoteEnabled ?? current.remoteEnabled,
+      remoteConnectionId:
+        remoteConnectionId === undefined ? current.remoteConnectionId : remoteConnectionId,
+      defaultExecutor: input.defaultExecutor ?? current.defaultExecutor,
+    };
+
+    const conn = this.connectionFor(next);
+    if (!managed.remoteConnection && next.remoteEnabled && conn === null) {
+      // A save that ASKS for Remote gets a refusal it can act on; a save that
+      // merely inherited a stale selection (the connection was deleted under it)
+      // heals instead of blocking every unrelated edit.
+      if (input.remoteEnabled === true || input.remoteConnection !== undefined) {
         throw new BadRequestException(
-          'Service-account key must be a Google service-account JSON key ("type": "service_account").',
+          'Remote executor needs a connection — create one under Admin Settings → Remote connections and select it here.',
         );
       }
+      next.remoteEnabled = false;
     }
 
     // Validate the EFFECTIVE config (env pins applied) so a save can never leave the
     // instance in a state the selector would refuse.
     const effective = this.resolveWith(next);
     if (effective.remoteEnabled) {
-      if (!effective.remoteUrl)
-        throw new BadRequestException('Remote executor needs a Worker URL.');
-      let url: URL;
-      try {
-        url = new URL(effective.remoteUrl);
-      } catch {
-        throw new BadRequestException(`Worker URL is not a valid URL: ${effective.remoteUrl}`);
-      }
-      if (effective.remoteAuth !== 'none' && url.protocol !== 'https:') {
-        throw new BadRequestException(
-          'Worker URL must be https:// when auth is Google ID token (use auth "none" only on a private network).',
-        );
-      }
-      // Only when THIS save turns Remote on: an env-pinned FFMPEG_REMOTE_URL on
+      // Only when THIS save turns Remote on: an env-pinned connection on
       // local-FS storage must not make every unrelated save (e.g. toggling
       // localEnabled) fail. `storagePresignable` is reported in status either way.
       const turningRemoteOn =
@@ -366,25 +390,26 @@ export class FfmpegExecutorSettingsService implements OnModuleInit {
     }
     const enabled: FfmpegExecutorSetting[] = [];
     if (this.capability.isAvailable() && effective.localEnabled) enabled.push('local');
-    if (effective.remoteEnabled && effective.remoteUrl) enabled.push('remote');
+    if (effective.remoteEnabled) enabled.push('remote');
     if (!enabled.includes(effective.executor)) {
       throw new BadRequestException(
         enabled.length === 0
-          ? 'At least one executor must be enabled (Local needs ffmpeg installed on this server; Remote needs a Worker URL).'
+          ? 'At least one executor must be enabled (Local needs ffmpeg installed on this server; Remote needs a remote connection).'
           : `Default executor '${effective.executor}' is not enabled — pick one of: ${enabled.join(', ')}.`,
       );
     }
 
-    await this.persist(next, input.saKeyJson !== undefined, userId);
+    await this.persist(next, userId);
     await this.reload();
     return this.getStatus();
   }
 
   /**
-   * Uncached "Test connection" for the admin UI. `draft` is the unsaved form; env-managed
-   * fields are ignored (env wins). Reports both the raw /health answer and what the
-   * selector's readiness check says about the same config, so the UI can show
-   * "reachable but not usable" (e.g. version too old, storage not presignable).
+   * Uncached "Test connection" for the admin UI. `draft.remoteConnection` is the
+   * connection the unsaved form has picked; an env-pinned selection ignores it
+   * (env wins). Reports both the raw /health answer and what the selector's
+   * readiness check says about the same config, so the UI can show "reachable
+   * but not usable" (e.g. version too old, storage not presignable).
    */
   async testConnection(draft: FfmpegExecutorTestDraft = {}): Promise<FfmpegExecutorTestResult> {
     if (!this.remote) throw new InternalServerErrorException('Remote executor is not wired.');
@@ -392,29 +417,30 @@ export class FfmpegExecutorSettingsService implements OnModuleInit {
     const overrides: Partial<
       Pick<FfmpegEnvConfig, 'remoteUrl' | 'remoteAuth' | 'remoteSaKeyJson'>
     > = {};
-    if (draft.remoteUrl !== undefined && !managed.remoteUrl)
-      overrides.remoteUrl = normaliseUrl(draft.remoteUrl);
-    if (draft.remoteAuth !== undefined && !managed.remoteAuth)
-      overrides.remoteAuth = draft.remoteAuth;
-    if (draft.saKeyJson !== undefined && !managed.saKey)
-      overrides.remoteSaKeyJson = draft.saKeyJson === null ? null : draft.saKeyJson.trim();
+    if (draft.remoteConnection !== undefined && !managed.remoteConnection) {
+      const picked = this.connections.resolve(draft.remoteConnection);
+      if (!picked) {
+        throw new BadRequestException(`Unknown remote connection '${draft.remoteConnection}'.`);
+      }
+      overrides.remoteUrl = picked.url;
+      overrides.remoteAuth = picked.auth === 'none' ? 'none' : 'google_id_token';
+      overrides.remoteSaKeyJson = picked.credential;
+    }
 
     const effective: FfmpegEnvConfig = { ...this.resolved(), ...overrides };
     const credential: FfmpegExecutorTestResult['credential'] =
       effective.remoteAuth === 'none' ? 'none' : effective.remoteSaKeyJson ? 'sa_key' : 'adc';
 
-    // Validate the EFFECTIVE key — a pasted draft key OR an env-pinned
-    // FFMPEG_REMOTE_SA_KEY_JSON, whichever `effective` ends up with — not just
-    // the draft's. Deeper down the key is JSON.parse'd inside the token minter,
-    // and V8's SyntaxError quotes the offending input, which would put
-    // service-account bytes (draft- or env-sourced) into the response. Caught
-    // here instead, through the button's one error channel, with `update()`'s
-    // wording, before the executor is ever called.
+    // Validate the EFFECTIVE credential before the executor is ever called.
+    // Deeper down it is JSON.parse'd inside the token minter, and V8's
+    // SyntaxError quotes the offending input, which would put service-account
+    // bytes into the response. Caught here instead, through the button's one
+    // error channel.
     if (effective.remoteAuth === 'google_id_token' && effective.remoteSaKeyJson) {
       try {
         JSON.parse(effective.remoteSaKeyJson);
       } catch {
-        const reason = 'Service-account key must be valid JSON.';
+        const reason = 'The connection credential must be valid JSON.';
         return {
           ok: false,
           latencyMs: null,
@@ -453,27 +479,16 @@ export class FfmpegExecutorSettingsService implements OnModuleInit {
     };
   }
 
-  private async persist(next: CachedSettings, keyChanged: boolean, userId?: string): Promise<void> {
+  private async persist(next: CachedSettings, userId?: string): Promise<void> {
     const base = {
       localEnabled: next.localEnabled,
       remoteEnabled: next.remoteEnabled,
-      remoteUrl: next.remoteUrl,
-      remoteAuth: next.remoteAuth,
+      remoteConnectionId: next.remoteConnectionId,
       defaultExecutor: next.defaultExecutor,
       updatedAt: new Date(),
       updatedByUserId: userId ?? null,
     };
     try {
-      // undefined = the key was not part of this save, so the stored one is
-      // preserved. Computed INSIDE the try: encryptString() throws on a bad/
-      // missing ENCRYPTION_KEY, and that failure must surface through the same
-      // shaped InternalServerErrorException as every other persist failure,
-      // not as a raw crypto error.
-      const encrypted = keyChanged
-        ? next.saKeyJson === null
-          ? null
-          : encryptString(next.saKeyJson)
-        : undefined;
       const existing = (
         await db
           .select()
@@ -484,13 +499,10 @@ export class FfmpegExecutorSettingsService implements OnModuleInit {
       if (existing) {
         await db
           .update(ffmpegExecutorSettings)
-          .set({ ...base, ...(encrypted !== undefined ? { saKeyEncrypted: encrypted } : {}) })
+          .set(base)
           .where(eq(ffmpegExecutorSettings.id, existing.id));
       } else {
-        // Insert: there is no stored key to preserve, so "not provided" = none.
-        await db
-          .insert(ffmpegExecutorSettings)
-          .values({ ...base, saKeyEncrypted: encrypted ?? null });
+        await db.insert(ffmpegExecutorSettings).values(base);
       }
     } catch (error) {
       this.logger.error({
