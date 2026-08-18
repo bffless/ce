@@ -7,18 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.31](https://github.com/bffless/ce/compare/v0.4.30...v0.4.31) (2026-08-18)
 
-
 ### Added
-
-* **ffmpeg:** admin-editable executor settings — Local/Remote, encrypted SA key, test connection ([#686](https://github.com/bffless/ce/issues/686)) ([305246f](https://github.com/bffless/ce/commit/305246f7d91055432ad8cd07260e79fa7298da86))
-* **ffmpeg:** remote executor — run ffmpeg jobs on a Worker (Cloud Run reference) behind the unchanged ffmpeg_handler ([#684](https://github.com/bffless/ce/issues/684)) ([c658c02](https://github.com/bffless/ce/commit/c658c02fb65cf1692271ca8deb6011da0c51de99))
-* **pipelines:** remote connections + remote_request handler — lift the Cloud Run connection out of ffmpeg settings (Plan 4) ([#687](https://github.com/bffless/ce/issues/687)) ([4b7ee0b](https://github.com/bffless/ce/commit/4b7ee0b4da1e6d78979e59ba970ab408f1a08e1f))
-
+- pipelines: remote connections + remote_request handler — lift the Cloud Run connection out of ffmpeg settings (Plan 4) ([#687](https://github.com/bffless/ce/pull/687), thanks @toshimoto821)
+- ffmpeg: admin-editable executor settings — Local/Remote, encrypted SA key, test connection ([#686](https://github.com/bffless/ce/pull/686), thanks @toshimoto821)
+- ffmpeg: remote executor — run ffmpeg jobs on a Worker (Cloud Run reference) behind the unchanged ffmpeg_handler ([#684](https://github.com/bffless/ce/pull/684), thanks @toshimoto821)
 
 ### Fixed
+- ffmpeg: probe the Worker at /health — Cloud Run's front door intercepts /healthz ([#685](https://github.com/bffless/ce/pull/685), thanks @toshimoto821)
+- pipelines: merge data_update fields in SQL so concurrent field-disjoint updates compose (#432) ([#678](https://github.com/bffless/ce/pull/678), thanks @toshimoto821)
 
-* **ffmpeg:** probe the Worker at /health — Cloud Run's front door intercepts /healthz ([#685](https://github.com/bffless/ce/issues/685)) ([1bd521c](https://github.com/bffless/ce/commit/1bd521cd6bcf4b4bf477b8175969d01b553ffafc))
-* **pipelines:** merge data_update fields in SQL so concurrent field-disjoint updates compose ([#432](https://github.com/bffless/ce/issues/432)) ([#678](https://github.com/bffless/ce/issues/678)) ([8b114f9](https://github.com/bffless/ce/commit/8b114f916890b728b205050f7cfb0471cda1c8e1))
+### Maintenance
+- agents: issue-triage applies the readiness gate (ready-for-agent / needs-info / ready-for-human) ([#677](https://github.com/bffless/ce/pull/677), thanks @toshimoto821)
+- agents: ce-implement is pre-authorised to commit/push/PR on its own branch ([#676](https://github.com/bffless/ce/pull/676), thanks @toshimoto821)
+- pipelines: share filter-where util across data handlers, widen data_update operators (#415) ([#675](https://github.com/bffless/ce/pull/675), thanks @toshimoto821)
+- Add ce-implement agent and worktree GC script ([#674](https://github.com/bffless/ce/pull/674), thanks @toshimoto821)
+- agents: publish issue-triage summaries to Handoff ([#673](https://github.com/bffless/ce/pull/673), thanks @toshimoto821)
 
 ## [0.4.30](https://github.com/bffless/ce/compare/v0.4.29...v0.4.30) (2026-08-16)
 
