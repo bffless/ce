@@ -22,6 +22,7 @@ import { SettingsModule } from '../settings/settings.module';
 import { ProjectsModule } from '../projects/projects.module';
 import { CacheRulesModule } from '../cache-rules/cache-rules.module';
 import { ProxyRulesModule } from '../proxy-rules/proxy-rules.module';
+import { RemoteConnectionsModule } from '../remote-connections/remote-connections.module';
 // Step handlers
 import {
   FormHandler,
@@ -105,6 +106,9 @@ import {
     // ProxyRulesService + ProxyRuleSetRevisionsService — to capture a revision
     // for the rule sets they write.
     forwardRef(() => ProxyRulesModule),
+    // Server-side video ops (Task 5/6): REMOTE_CONNECTIONS is the lazy port the
+    // ffmpeg remote executor resolves connections through.
+    RemoteConnectionsModule,
   ],
   controllers: [
     PipelineSchemasController,
