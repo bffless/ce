@@ -2,6 +2,7 @@ import { SslSettings } from '@/components/settings/SslSettings';
 import { CacheSettings } from '@/components/settings/CacheSettings';
 import { StorageUsageCard } from '@/components/storage/StorageUsageCard';
 import { StorageSettings } from '@/components/settings/StorageSettings';
+import { RemoteConnectionsSettings } from '@/components/settings/remote-connections/RemoteConnectionsSettings';
 
 export function InfrastructureTab() {
   return (
@@ -10,6 +11,7 @@ export function InfrastructureTab() {
       <CacheSettings />
       <StorageUsageCard />
       <StorageSettings />
+      <RemoteConnectionsSettings />
     </div>
   );
 }
