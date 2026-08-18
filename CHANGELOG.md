@@ -7,10 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.32](https://github.com/bffless/ce/compare/v0.4.31...v0.4.32) (2026-08-18)
 
-
 ### Added
-
-* **db:** drop the legacy ffmpeg_executor_settings remote_url / remote_auth / sa_key_encrypted columns (migration 0045) ([#690](https://github.com/bffless/ce/issues/690)) ([08dc04a](https://github.com/bffless/ce/commit/08dc04ad0dcc29be604cfd34e033f99262258a13))
+- db: drop the legacy ffmpeg_executor_settings remote_url / remote_auth / sa_key_encrypted columns (migration 0045) ([#690](https://github.com/bffless/ce/pull/690), thanks @toshimoto821)
 
 ## [0.4.31](https://github.com/bffless/ce/compare/v0.4.30...v0.4.31) (2026-08-18)
 
