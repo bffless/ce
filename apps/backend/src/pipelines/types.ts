@@ -85,7 +85,8 @@ export type HandlerType =
   | 'xml_feed_parse'
   | 'data_upsert_many'
   | 'delay'
-  | 'ffmpeg_handler';
+  | 'ffmpeg_handler'
+  | 'remote_request';
 
 /**
  * Pipeline step definition for execution.
