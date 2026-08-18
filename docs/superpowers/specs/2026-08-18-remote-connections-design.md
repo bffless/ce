@@ -375,3 +375,60 @@ above; the ffmpeg DTO/status types change per 2.5.
   the service refuses the delete while referenced — belt and braces.
 - **Response size cap** may bite a service that returns big JSON; 16 MiB default,
   env-tunable, documented.
+
+## As-built notes (2026-08-18)
+
+Deltas between this spec and what actually shipped, recorded here rather than edited
+into the plan above so the design intent stays legible.
+
+- (a) Connection names forbid `_`: `CONNECTION_NAME_RE = ^[a-z0-9][a-z0-9-]{0,63}$` — the
+  env-name mapping (`-` ⇄ `_`) would otherwise be ambiguous for a name containing both.
+- (b) `FfmpegEnvConfig` **keeps** `remoteUrl`/`remoteAuth`/`remoteSaKeyJson`/
+  `remoteMaxInflight` as fields, now *derived* from the resolved connection (plus a new
+  `remoteConnection: string | null` naming it) rather than being dropped in favour of a
+  bare connection object — smaller executor churn, same shape the executor already reads.
+- (c) `WorkerClient extends RemoteClient`: the transport (fetch, retry, abort handling)
+  lives in the shared base; ffmpeg's envelope-shaped `postJob`/`health` stay on the
+  subclass. ID-token minters are per-client, never shared between the ffmpeg executor's
+  `WorkerClient` and a `remote_request` step's `RemoteClient` for the same connection —
+  each holds its own token cache.
+- (d) `RemoteClient.request` resolves (does not throw) for **every** HTTP status the
+  remote answers with, 2xx or not — the caller (`remote_request`'s `failOnError`) decides
+  what a status means. It only throws for a genuine transport fault or an exhausted
+  429/503 retry.
+- (e) `REMOTE_INVALID_PATH` error code added: a `path` that evaluates (expression or
+  `{{template}}`) to something not starting with `/` fails the step with this code,
+  distinct from a static bad path caught at `validateConfig` time.
+- (f) `usedBy.rules` (the connections list's "in use by N rules" count) is a best-effort
+  `LIKE '%"connection":"<name>"%'` scan over `proxy_rules.pipeline_config`, not a parsed
+  reference count — any query error (unmigrated table, bad plan) returns 0 rather than
+  failing the listing.
+- (g) `FFMPEG_REMOTE_CONNECTION` env var added: names a Remote connection directly,
+  ahead of the legacy `FFMPEG_REMOTE_URL`/`FFMPEG_REMOTE_AUTH`/`FFMPEG_REMOTE_SA_KEY_JSON`
+  trio in precedence.
+- (h) `WorkerClient.health()` keeps its existing name (ffmpeg-specific: worker version +
+  `ffmpeg`/`ops`/`uptimeS`). The generalised, connection-agnostic liveness probe on the
+  shared base is `RemoteClient.probe()`, used by the connections "Test connection" button.
+- (i) `remote_request`'s `path` supports `{{ }}` template interpolation
+  (`ExpressionEvaluator.evaluateTemplate`) as well as a bare expression — there is no
+  separate string-concatenation expression syntax; a dynamic path is either a template or
+  a single expression resolving directly to a path string.
+- (j) A `PipelineError`/`ExpressionError` thrown while resolving the path, headers or body
+  (a bad expression, a bad `condition`) is **rethrown**, not caught and mapped to
+  `REMOTE_UNAVAILABLE` — it is the pipeline's own configuration fault, not a remote-side
+  failure, so it surfaces like any other handler's configuration error.
+- (k) `RemoteConnectionsService.update()` refuses renaming an env-pinned connection (its
+  fields are keyed by name; a rename would strand the env vars as a second, phantom
+  env-only connection under the old name). An unknown `id` on `update()`/`remove()` is a
+  404. The "managed by …" refusal on a pinned field names only the env var(s) actually
+  set on the instance (checking the legacy ffmpeg alias too), not every var that could
+  theoretically pin it.
+- (l) `RemoteFfmpegExecutor` reads `deps.fuse` **per job**, through a lazy getter
+  (`sharedFuse: () => deps.fuse`), never resolved once in the constructor — resolving it
+  eagerly would race Nest's provider instantiation order and could silently fall back to
+  a private, unshared `InflightFuse` instead of the connection's real one.
+- (m) Frontend `services/pipelinesApi.ts`'s `HandlerType` union gained `'remote_request'`
+  alongside the existing handler types, so the step editor recognises it.
+- (n) `RemoteRequestConfig` preserves `condition` across a re-save; `HttpRequestConfig`
+  does **not** (pre-existing behaviour, unrelated to this feature — noted here only
+  because the two configs are easy to assume are symmetric and are not).
