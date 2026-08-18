@@ -111,6 +111,9 @@ export function FfmpegExecutorSettings() {
 
   const changes = useMemo(() => (status && draft ? diff(status, draft) : {}), [status, draft]);
   const dirty = Object.keys(changes).length > 0;
+  // The server refuses Remote-on-without-a-connection outright ("Remote executor
+  // needs a connection"), so don't offer the round trip.
+  const incomplete = !!draft?.remoteEnabled && !draft.remoteConnection;
 
   if (error) {
     return (
@@ -403,7 +406,7 @@ export function FfmpegExecutorSettings() {
       </div>
 
       <div className="flex justify-end">
-        <Button type="button" size="sm" onClick={onSave} disabled={!dirty || saving}>
+        <Button type="button" size="sm" onClick={onSave} disabled={!dirty || incomplete || saving}>
           {saving ? 'Saving…' : 'Save executor settings'}
         </Button>
       </div>

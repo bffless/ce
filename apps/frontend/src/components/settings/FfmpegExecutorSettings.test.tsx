@@ -80,6 +80,16 @@ describe('FfmpegExecutorSettings', () => {
     );
   });
 
+  it('Save is gated on a connection while Remote is on', () => {
+    render(<FfmpegExecutorSettings />);
+    fireEvent.click(screen.getByRole('switch', { name: /Remote/ }));
+    // The server refuses this exact combination with "Remote executor needs a
+    // connection", so the button must not offer the round trip.
+    expect(screen.getByRole('button', { name: /^Save/ })).toBeDisabled();
+    pickConnection('ffmpeg');
+    expect(screen.getByRole('button', { name: /^Save/ })).not.toBeDisabled();
+  });
+
   it('picking a connection makes Remote selectable as the default executor', () => {
     render(<FfmpegExecutorSettings />);
     fireEvent.click(screen.getByRole('switch', { name: /Remote/ }));

@@ -1,18 +1,24 @@
 import { useState, useCallback } from 'react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { RemoteRequestConfig } from './RemoteRequestConfig';
 import type { RemoteRequestHandlerConfig } from './types';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-let connections: any = [
-  { name: 'ffmpeg', auth: 'google_id_token' },
-  { name: 'pdf', auth: 'none' },
-];
+let connections: any;
+let listLoading: boolean;
 
 vi.mock('@/services/settingsApi', () => ({
-  useListRemoteConnectionNamesQuery: () => ({ data: connections, isLoading: false }),
+  useListRemoteConnectionNamesQuery: () => ({ data: connections, isLoading: listLoading }),
 }));
+
+beforeEach(() => {
+  connections = [
+    { name: 'ffmpeg', auth: 'google_id_token' },
+    { name: 'pdf', auth: 'none' },
+  ];
+  listLoading = false;
+});
 
 /**
  * Controlled harness mirroring how the real editor feeds config back in.
@@ -89,10 +95,14 @@ describe('RemoteRequestConfig', () => {
         /No remote connections configured — an admin adds them under Settings → Infrastructure/,
       ),
     ).toBeInTheDocument();
-    connections = [
-      { name: 'ffmpeg', auth: 'google_id_token' },
-      { name: 'pdf', auth: 'none' },
-    ];
+  });
+
+  it('does not claim there are no connections while the list is still loading', () => {
+    connections = undefined;
+    listLoading = true;
+    render(<Harness />);
+    expect(screen.queryByText(/No remote connections configured/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: /connection/i })).not.toBeInTheDocument();
   });
 
   it('clamps the timeout to 1..3600 seconds', () => {
@@ -112,6 +122,30 @@ describe('RemoteRequestConfig', () => {
     render(<Harness initial={{ connection: 'pdf' }} sink={sink} />);
     fireEvent.click(screen.getByRole('switch', { name: /Fail on non-2xx/ }));
     expect(sink.current.failOnError).toBe(false);
+  });
+
+  it('keeps a condition it did not author (rules-as-code writes one, this editor has no field)', () => {
+    const sink = { current: {} as Record<string, unknown> };
+    render(
+      <Harness initial={{ connection: 'pdf', condition: 'request.query.go' }} sink={sink} />,
+    );
+    expect(sink.current.condition).toBe('request.query.go');
+
+    fireEvent.change(screen.getByPlaceholderText('/render'), { target: { value: '/go' } });
+    expect(sink.current).toMatchObject({ path: '/go', condition: 'request.query.go' });
+  });
+
+  it('drops an Authorization header and says why', () => {
+    const sink = { current: {} as Record<string, unknown> };
+    render(<Harness initial={{ connection: 'pdf' }} sink={sink} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Add Header/ }));
+    fireEvent.change(screen.getByPlaceholderText('Header-Name'), {
+      target: { value: 'Authorization' },
+    });
+
+    expect(sink.current).not.toHaveProperty('headers');
+    expect(screen.getByText(/the connection supplies the identity/i)).toBeInTheDocument();
   });
 
   it('round-trips a stored config without the author touching anything', () => {

@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Plus, Trash2, HelpCircle } from 'lucide-react';
 import {
   Select,
@@ -20,12 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useListRemoteConnectionNamesQuery } from '@/services/settingsApi';
 import { ExpressionInput } from './ExpressionInput';
 import type { RemoteRequestHandlerConfig } from './types';
@@ -41,6 +37,15 @@ const DEFAULT_TIMEOUT_SECONDS = 300;
 const REMOTE_REQUEST_MAX_SECONDS_UI = 3600;
 
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as const;
+
+/**
+ * The transport mints the connection's own Authorization header and makes it
+ * win, and the server rejects the config outright — so the editor drops it
+ * before it can be saved instead of letting the step fail later.
+ */
+function isAuthorizationHeader(key: string): boolean {
+  return key.trim().toLowerCase() === 'authorization';
+}
 
 function clampTimeout(n: number): number {
   if (n < 1) return 1;
@@ -59,7 +64,10 @@ export function RemoteRequestConfig({
   onChange,
   previousSteps = [],
 }: RemoteRequestConfigProps) {
-  const { data: connections } = useListRemoteConnectionNamesQuery();
+  const { data: connections, isLoading } = useListRemoteConnectionNamesQuery();
+  // This editor has no `condition` field, but rules-as-code can author one —
+  // rebuilding the config from local state must not silently drop it.
+  const condition = config.condition;
   const [connection, setConnection] = useState(config.connection || '');
   const [path, setPath] = useState(config.path || '');
   const [method, setMethod] = useState<RemoteRequestHandlerConfig['method']>(
@@ -82,8 +90,8 @@ export function RemoteRequestConfig({
   const [failOnError, setFailOnError] = useState(config.failOnError !== false);
 
   useEffect(() => {
-    const headerObj =
-      headers.length > 0 ? Object.fromEntries(headers.filter(([k]) => k.trim())) : undefined;
+    const usableHeaders = headers.filter(([k]) => k.trim() && !isAuthorizationHeader(k));
+    const headerObj = usableHeaders.length > 0 ? Object.fromEntries(usableHeaders) : undefined;
 
     let resolvedBody: string | Record<string, string> | undefined;
     if (method !== 'GET') {
@@ -99,6 +107,7 @@ export function RemoteRequestConfig({
     // stored config, and an explicit `body: undefined` would survive into the
     // rule JSON diffing as a change that isn't one.
     onChange({
+      ...(condition ? { condition } : {}),
       connection,
       ...(path.trim() ? { path: path.trim() } : {}),
       method,
@@ -108,6 +117,7 @@ export function RemoteRequestConfig({
       failOnError,
     });
   }, [
+    condition,
     connection,
     path,
     method,
@@ -129,10 +139,11 @@ export function RemoteRequestConfig({
         {/* Connection */}
         <div className="space-y-2">
           <Label htmlFor="remote-connection">Connection *</Label>
-          {options.length === 0 ? (
+          {isLoading ? (
+            <Skeleton className="h-9 w-72" />
+          ) : options.length === 0 ? (
             <p className="text-xs text-muted-foreground">
-              No remote connections configured — an admin adds them under Settings →
-              Infrastructure
+              No remote connections configured — an admin adds them under Settings → Infrastructure
             </p>
           ) : (
             <Select value={connection} onValueChange={setConnection}>
@@ -158,8 +169,8 @@ export function RemoteRequestConfig({
             </Select>
           )}
           <p className="text-xs text-muted-foreground">
-            The connection supplies the base URL and the identity. Admins manage them under
-            Settings → Infrastructure → Remote connections.
+            The connection supplies the base URL and the identity. Admins manage them under Settings
+            → Infrastructure → Remote connections.
           </p>
         </div>
 
@@ -353,36 +364,43 @@ export function RemoteRequestConfig({
             </Button>
           </div>
           {headers.map(([key, value], i) => (
-            <div key={i} className="flex items-center gap-2">
-              <Input
-                value={key}
-                onChange={(e) => {
-                  const updated = [...headers];
-                  updated[i] = [e.target.value, value];
-                  setHeaders(updated);
-                }}
-                placeholder="Header-Name"
-                className="w-1/3"
-              />
-              <ExpressionInput
-                value={value}
-                onChange={(v) => {
-                  const updated = [...headers];
-                  updated[i] = [key, v];
-                  setHeaders(updated);
-                }}
-                placeholder="value or expression"
-                previousSteps={previousSteps}
-                className="flex-1"
-              />
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setHeaders(headers.filter((_, j) => j !== i))}
-              >
-                <Trash2 className="h-4 w-4 text-muted-foreground" />
-              </Button>
+            <div key={i} className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Input
+                  value={key}
+                  onChange={(e) => {
+                    const updated = [...headers];
+                    updated[i] = [e.target.value, value];
+                    setHeaders(updated);
+                  }}
+                  placeholder="Header-Name"
+                  className="w-1/3"
+                />
+                <ExpressionInput
+                  value={value}
+                  onChange={(v) => {
+                    const updated = [...headers];
+                    updated[i] = [key, v];
+                    setHeaders(updated);
+                  }}
+                  placeholder="value or expression"
+                  previousSteps={previousSteps}
+                  className="flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setHeaders(headers.filter((_, j) => j !== i))}
+                >
+                  <Trash2 className="h-4 w-4 text-muted-foreground" />
+                </Button>
+              </div>
+              {isAuthorizationHeader(key) && (
+                <p className="text-xs text-destructive">
+                  Authorization is dropped — the connection supplies the identity.
+                </p>
+              )}
             </div>
           ))}
           {headers.length === 0 && (
@@ -395,8 +413,11 @@ export function RemoteRequestConfig({
 
         <p className="text-xs text-muted-foreground">
           Output is always{' '}
-          <code className="text-[10px]">{'{ ok, status, body, latencyMs, connection, attempts }'}</code>{' '}
-          — read fields as <code className="text-[10px]">steps.&lt;name&gt;.body.&lt;field&gt;</code>.
+          <code className="text-[10px]">
+            {'{ ok, status, body, latencyMs, connection, attempts }'}
+          </code>{' '}
+          — read fields as{' '}
+          <code className="text-[10px]">steps.&lt;name&gt;.body.&lt;field&gt;</code>.
         </p>
       </div>
     </TooltipProvider>
