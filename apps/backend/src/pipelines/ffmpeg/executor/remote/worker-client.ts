@@ -17,7 +17,7 @@
 
 import { Agent, fetch as undiciFetch, type Dispatcher } from 'undici';
 import type { WorkerEnvelope, WorkerHealth, WorkerResponse } from './envelope';
-import type { AuthHeaderProvider } from './id-token';
+import type { AuthHeaderProvider } from '../../../../remote-connections/auth/id-token';
 import { isWorkerResponse } from './result-mapping';
 
 /** Pause between the single retry attempt. */

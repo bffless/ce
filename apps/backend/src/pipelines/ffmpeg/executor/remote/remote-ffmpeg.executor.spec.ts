@@ -8,7 +8,7 @@ import {
   semverLt,
 } from './remote-ffmpeg.executor';
 import { readFfmpegEnv, type FfmpegEnvConfig } from '../../ffmpeg-env';
-import { IdTokenMinter, NoAuth } from './id-token';
+import { IdTokenMinter, NoAuth } from '../../../../remote-connections/auth/id-token';
 import { WorkerClient, WorkerTransportError } from './worker-client';
 
 const okBody = (over = {}) => ({

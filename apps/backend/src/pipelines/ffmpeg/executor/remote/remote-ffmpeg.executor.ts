@@ -16,7 +16,11 @@ import type {
   FfmpegJobResult,
 } from '../ffmpeg-executor.interface';
 import { buildEnvelope, type WorkerHealth, type WorkerResponse } from './envelope';
-import { NoAuth, IdTokenMinter, type AuthHeaderProvider } from './id-token';
+import {
+  NoAuth,
+  IdTokenMinter,
+  type AuthHeaderProvider,
+} from '../../../../remote-connections/auth/id-token';
 import { mapWorkerResponse } from './result-mapping';
 import { WorkerClient, WorkerTransportError } from './worker-client';
 
