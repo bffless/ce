@@ -119,7 +119,9 @@ describe('FeedParserService', () => {
     });
 
     it('throws on well-formed but non-feed XML', () => {
-      expect(() => parser.parse('<html><body>hi</body></html>')).toThrow(/Unrecognized feed format/);
+      expect(() => parser.parse('<html><body>hi</body></html>')).toThrow(
+        /Unrecognized feed format/,
+      );
     });
   });
 });

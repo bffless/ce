@@ -26,7 +26,11 @@ export class SecretsTools {
    */
   private assertProjectAllowed(request: Request, projectId: string): void {
     const apiKeyProjectId = (request as any)?.user?.apiKeyProjectId;
-    if (apiKeyProjectId !== undefined && apiKeyProjectId !== null && apiKeyProjectId !== projectId) {
+    if (
+      apiKeyProjectId !== undefined &&
+      apiKeyProjectId !== null &&
+      apiKeyProjectId !== projectId
+    ) {
       throw new ForbiddenException('API key is not scoped to this project');
     }
   }
@@ -39,11 +43,7 @@ export class SecretsTools {
       projectId: z.string().describe('Project ID'),
     }),
   })
-  async listSecrets(
-    { projectId }: { projectId: string },
-    _context: Context,
-    request: Request,
-  ) {
+  async listSecrets({ projectId }: { projectId: string }, _context: Context, request: Request) {
     this.assertProjectAllowed(request, projectId);
     const result = await this.secretsService.listSecrets(projectId);
     return JSON.stringify(result);

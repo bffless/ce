@@ -31,12 +31,17 @@ export class AppsRegistryService {
 
   constructor(private readonly configService: ConfigService) {
     this.url =
-      this.configService.get<string>('APPS_REGISTRY_URL') || 'https://apps.bffless.dev/registry.json';
+      this.configService.get<string>('APPS_REGISTRY_URL') ||
+      'https://apps.bffless.dev/registry.json';
   }
 
   async getRegistry(force?: boolean): Promise<RegistryResult> {
     if (!force && this.cache && Date.now() - this.cache.fetchedAt < this.TTL_MS) {
-      return { ok: true, registry: this.cache.registry, fetchedAt: new Date(this.cache.fetchedAt).toISOString() };
+      return {
+        ok: true,
+        registry: this.cache.registry,
+        fetchedAt: new Date(this.cache.fetchedAt).toISOString(),
+      };
     }
 
     try {

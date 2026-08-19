@@ -84,20 +84,14 @@ export class StorageUsageService {
     this.controlPlaneUrl = configService.get<string>('CONTROL_PLANE_URL');
     this.workspaceId = configService.get<string>('WORKSPACE_ID');
     this.workspaceSecret = configService.get<string>('WORKSPACE_SECRET');
-    this.isPlatformMode = !!(
-      this.controlPlaneUrl &&
-      this.workspaceId &&
-      this.workspaceSecret
-    );
+    this.isPlatformMode = !!(this.controlPlaneUrl && this.workspaceId && this.workspaceSecret);
 
     if (this.isPlatformMode) {
       this.logger.log(
         `Storage usage service running in platform mode (workspace: ${this.workspaceId})`,
       );
     } else {
-      this.logger.debug(
-        'Storage usage service running in CE mode (unlimited storage)',
-      );
+      this.logger.debug('Storage usage service running in CE mode (unlimited storage)');
     }
   }
 
@@ -160,10 +154,7 @@ export class StorageUsageService {
       .orderBy(desc(sum(assets.size)));
 
     // Calculate total for percentages
-    const total = results.reduce(
-      (sum, r) => sum + Number(r.totalBytes ?? 0),
-      0,
-    );
+    const total = results.reduce((sum, r) => sum + Number(r.totalBytes ?? 0), 0);
 
     return results.map((r) => ({
       projectId: r.projectId,
@@ -206,20 +197,14 @@ export class StorageUsageService {
     );
 
     // Calculate project total for percentages
-    const projectTotal = results.reduce(
-      (sum, r) => sum + Number(r.totalBytes ?? 0),
-      0,
-    );
+    const projectTotal = results.reduce((sum, r) => sum + Number(r.totalBytes ?? 0), 0);
 
     return results.map((r) => ({
       branch: r.branch || 'unknown',
       assetCount: Number(r.assetCount),
       totalBytes: Number(r.totalBytes ?? 0),
       commitCount: commitCountByBranch[r.branch || 'unknown'] || 0,
-      percentOfProject:
-        projectTotal > 0
-          ? (Number(r.totalBytes ?? 0) / projectTotal) * 100
-          : 0,
+      percentOfProject: projectTotal > 0 ? (Number(r.totalBytes ?? 0) / projectTotal) * 100 : 0,
     }));
   }
 

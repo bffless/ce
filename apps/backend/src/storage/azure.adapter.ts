@@ -41,8 +41,7 @@ export class AzureBlobStorageAdapter implements IStorageAdapter {
     this.keyPrefix = config.keyPrefix || '';
 
     // Determine endpoint
-    const endpoint =
-      config.endpoint || `https://${config.accountName}.blob.core.windows.net`;
+    const endpoint = config.endpoint || `https://${config.accountName}.blob.core.windows.net`;
 
     // Initialize client based on authentication method
     if (config.connectionString) {
@@ -50,10 +49,7 @@ export class AzureBlobStorageAdapter implements IStorageAdapter {
       // Extract account key from connection string for SAS generation
       const keyMatch = config.connectionString.match(/AccountKey=([^;]+)/);
       if (keyMatch) {
-        this.sharedKeyCredential = new StorageSharedKeyCredential(
-          config.accountName,
-          keyMatch[1],
-        );
+        this.sharedKeyCredential = new StorageSharedKeyCredential(config.accountName, keyMatch[1]);
       }
     } else if (config.accountKey) {
       this.sharedKeyCredential = new StorageSharedKeyCredential(
@@ -193,10 +189,7 @@ export class AzureBlobStorageAdapter implements IStorageAdapter {
   /**
    * Download a file as a stream without buffering into memory
    */
-  async downloadStream(
-    key: string,
-    opts?: DownloadStreamOptions,
-  ): Promise<StreamDownloadResult> {
+  async downloadStream(key: string, opts?: DownloadStreamOptions): Promise<StreamDownloadResult> {
     const sanitizedKey = this.sanitizeKey(key);
     const storageKey = this.prefixKey(sanitizedKey);
     const blockBlobClient = this.containerClient.getBlockBlobClient(storageKey);
@@ -264,11 +257,7 @@ export class AzureBlobStorageAdapter implements IStorageAdapter {
   /**
    * Get a SAS URL for accessing the file (read)
    */
-  async getUrl(
-    key: string,
-    expiresIn?: number,
-    options?: SignedUrlOptions,
-  ): Promise<string> {
+  async getUrl(key: string, expiresIn?: number, options?: SignedUrlOptions): Promise<string> {
     const sanitizedKey = this.sanitizeKey(key);
     const storageKey = this.prefixKey(sanitizedKey);
     const blockBlobClient = this.containerClient.getBlockBlobClient(storageKey);
@@ -521,9 +510,7 @@ export class AzureBlobStorageAdapter implements IStorageAdapter {
 
       // Azure metadata keys must be valid C# identifiers
       // Start with letter, contain only letters, numbers, underscores
-      const normalizedKey = key
-        .replace(/[^a-zA-Z0-9_]/g, '_')
-        .replace(/^[^a-zA-Z]/, 'x');
+      const normalizedKey = key.replace(/[^a-zA-Z0-9_]/g, '_').replace(/^[^a-zA-Z]/, 'x');
 
       if (normalizedKey && value !== undefined && value !== null) {
         normalized[normalizedKey] = String(value).substring(0, 1024);

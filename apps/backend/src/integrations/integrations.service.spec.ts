@@ -122,9 +122,7 @@ describe('IntegrationsService — google-calendar', () => {
       refreshToken: 'rt-must-not-leak',
       tokenExpiry: 1_700_000_000_000,
       connectedEmail: 'owner@example.com',
-      availableCalendars: [
-        { id: 'primary@x', summary: 'Primary', primary: true, timeZone: 'UTC' },
-      ],
+      availableCalendars: [{ id: 'primary@x', summary: 'Primary', primary: true, timeZone: 'UTC' }],
     };
 
     await service.setConfig(projectId, 'google-calendar', 'production', { ...config });

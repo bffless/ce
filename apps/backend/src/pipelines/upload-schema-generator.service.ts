@@ -54,12 +54,7 @@ export class UploadSchemaGeneratorService {
     const [existingSchema] = await db
       .select()
       .from(pipelineSchemas)
-      .where(
-        and(
-          eq(pipelineSchemas.projectId, dto.projectId),
-          eq(pipelineSchemas.name, dto.name),
-        ),
-      )
+      .where(and(eq(pipelineSchemas.projectId, dto.projectId), eq(pipelineSchemas.name, dto.name)))
       .limit(1);
 
     if (existingSchema) {
@@ -90,18 +85,11 @@ export class UploadSchemaGeneratorService {
       const [existingRuleSet] = await db
         .select()
         .from(proxyRuleSets)
-        .where(
-          and(
-            eq(proxyRuleSets.id, dto.ruleSetId),
-            eq(proxyRuleSets.projectId, dto.projectId),
-          ),
-        )
+        .where(and(eq(proxyRuleSets.id, dto.ruleSetId), eq(proxyRuleSets.projectId, dto.projectId)))
         .limit(1);
 
       if (!existingRuleSet) {
-        throw new Error(
-          `Rule set ${dto.ruleSetId} not found or does not belong to this project`,
-        );
+        throw new Error(`Rule set ${dto.ruleSetId} not found or does not belong to this project`);
       }
 
       ruleSet = existingRuleSet;
@@ -177,9 +165,7 @@ export class UploadSchemaGeneratorService {
       method: 'GET',
     });
 
-    this.logger.log(
-      `Created ${pipelines.length} pipelines for upload schema '${dto.name}'`,
-    );
+    this.logger.log(`Created ${pipelines.length} pipelines for upload schema '${dto.name}'`);
 
     // Post-write, best-effort: capture the generated state so a later rollback
     // can't restore a revision that predates these rules and prune them away.
@@ -243,9 +229,7 @@ export class UploadSchemaGeneratorService {
     return {
       name: `Upload ${dto.name}`,
       description: `Upload files to ${dto.name}`,
-      validators: [
-        { type: 'auth_required', config: { allowApiKey: true } },
-      ] as ValidatorConfig[],
+      validators: [{ type: 'auth_required', config: { allowApiKey: true } }] as ValidatorConfig[],
       steps,
     };
   }
@@ -289,5 +273,4 @@ export class UploadSchemaGeneratorService {
       steps,
     };
   }
-
 }

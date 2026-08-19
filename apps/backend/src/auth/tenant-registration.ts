@@ -74,9 +74,7 @@ export async function deleteTenant(
 ): Promise<{ tenantId: string; status: string }> {
   // In single-tenant mode (default), skip tenant deletion
   if (!isMultiTenantMode()) {
-    console.log(
-      `[SingleTenant] Skipping tenant deletion for '${tenantId}' - single-tenant mode`,
-    );
+    console.log(`[SingleTenant] Skipping tenant deletion for '${tenantId}' - single-tenant mode`);
     return { tenantId, status: 'single_tenant_mode' };
   }
 

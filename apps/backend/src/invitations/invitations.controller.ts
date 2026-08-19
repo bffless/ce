@@ -46,7 +46,10 @@ export class InvitationsController {
    */
   private getBaseUrl(req: Request): string {
     const forwardedHost = req.headers['x-forwarded-host'];
-    const host = (Array.isArray(forwardedHost) ? forwardedHost[0] : forwardedHost) || req.headers.host || 'localhost';
+    const host =
+      (Array.isArray(forwardedHost) ? forwardedHost[0] : forwardedHost) ||
+      req.headers.host ||
+      'localhost';
 
     // Force https for non-localhost domains (production behind SSL-terminating proxy)
     // Only allow http for local development
@@ -159,7 +162,10 @@ export class InvitationsController {
     description: 'Invitation resent successfully',
     type: CreateInvitationResponseDto,
   })
-  @ApiResponse({ status: 400, description: 'Registration is disabled or cannot resend accepted invitation' })
+  @ApiResponse({
+    status: 400,
+    description: 'Registration is disabled or cannot resend accepted invitation',
+  })
   @ApiResponse({ status: 401, description: 'Not authenticated' })
   @ApiResponse({ status: 403, description: 'Access denied - Admin only' })
   @ApiResponse({ status: 404, description: 'Invitation not found' })
@@ -242,7 +248,10 @@ export class InvitationsController {
     description: 'Invitation accepted successfully',
     type: AcceptInvitationResponseDto,
   })
-  @ApiResponse({ status: 400, description: 'Registration is disabled, invalid invitation, or email mismatch' })
+  @ApiResponse({
+    status: 400,
+    description: 'Registration is disabled, invalid invitation, or email mismatch',
+  })
   @ApiResponse({ status: 401, description: 'Not authenticated' })
   @ApiResponse({ status: 404, description: 'Invitation not found' })
   @ApiResponse({ status: 409, description: 'Already a member of this workspace' })

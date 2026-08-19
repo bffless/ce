@@ -1,12 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as vm from 'vm';
-import {
-  createHash,
-  createHmac,
-  randomBytes,
-  randomUUID,
-  timingSafeEqual,
-} from 'crypto';
+import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'crypto';
 
 /**
  * Crypto helpers exposed to pipeline function handlers as the global `utils`
@@ -130,9 +124,7 @@ export class FunctionRunnerService {
         process.env.PIPELINE_SIGNING_SECRET ||
         process.env.ENCRYPTION_KEY ||
         'bffless-pipeline-dev-signing-secret';
-      this.signingKeyCache = createHash('sha256')
-        .update(`${base}|pipeline-fn-sign`)
-        .digest();
+      this.signingKeyCache = createHash('sha256').update(`${base}|pipeline-fn-sign`).digest();
     }
     return this.signingKeyCache;
   }
@@ -147,8 +139,7 @@ export class FunctionRunnerService {
       createHmac('sha256', key).update(String(message)).digest('hex');
 
     return {
-      sha256: (message) =>
-        createHash('sha256').update(String(message)).digest('hex'),
+      sha256: (message) => createHash('sha256').update(String(message)).digest('hex'),
       hmacSha256: (message, key) => hmacHex(message, String(key)),
       sign: (message) => hmacHex(message, signingKey),
       verify: (message, signature) => {
@@ -163,8 +154,7 @@ export class FunctionRunnerService {
         return randomBytes(n).toString('hex');
       },
       randomUUID: () => randomUUID(),
-      base64urlEncode: (value) =>
-        Buffer.from(String(value), 'utf8').toString('base64url'),
+      base64urlEncode: (value) => Buffer.from(String(value), 'utf8').toString('base64url'),
       base64urlDecode: (value) => {
         try {
           return Buffer.from(String(value), 'base64url').toString('utf8');

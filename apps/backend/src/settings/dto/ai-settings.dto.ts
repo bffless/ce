@@ -178,7 +178,10 @@ export class AIProviderInfoDto {
   @ApiProperty({ description: 'Provider display name', example: 'OpenAI' })
   displayName: string;
 
-  @ApiProperty({ description: 'Provider description', example: 'GPT-5.4, GPT-5.3, and GPT-4o models' })
+  @ApiProperty({
+    description: 'Provider description',
+    example: 'GPT-5.4, GPT-5.3, and GPT-4o models',
+  })
   description: string;
 
   @ApiProperty({

@@ -15,10 +15,7 @@ import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { CurrentUserData } from '../auth';
 import { PublicProjectAccess } from '../auth/decorators/public-project-access.decorator';
-import {
-  MyProjectMembership,
-  PermissionsService,
-} from '../permissions/permissions.service';
+import { MyProjectMembership, PermissionsService } from '../permissions/permissions.service';
 
 /**
  * Cross-project endpoints for the signed-in user. Lives at `/api/me/*` and
@@ -48,9 +45,7 @@ export class MeController {
   })
   @ApiResponse({ status: 200, description: 'Memberships listed successfully' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async listMyProjects(
-    @CurrentUser() user: CurrentUserData,
-  ): Promise<MyProjectMembership[]> {
+  async listMyProjects(@CurrentUser() user: CurrentUserData): Promise<MyProjectMembership[]> {
     return this.permissions.listUserProjectMemberships(user.id);
   }
 
@@ -75,9 +70,7 @@ export class MeController {
       // Reframe the generic owner-block as a user-actionable 400, leaving the
       // 404 (no membership) path untouched.
       if (err instanceof ForbiddenException) {
-        throw new BadRequestException(
-          'You cannot leave a site you own. Transfer ownership first.',
-        );
+        throw new BadRequestException('You cannot leave a site you own. Transfer ownership first.');
       }
       if (err instanceof NotFoundException) {
         throw new NotFoundException('You are not a member of this site');

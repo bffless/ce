@@ -119,7 +119,9 @@ export class IntegrationsService {
     const publicFields = IntegrationsService.PUBLIC_CONFIG_FIELDS[id];
     if (publicFields && stored?.enabled) {
       // For single-environment integrations (e.g. github), prefer production slot
-      const env = stored.production?.config ? 'production' : (stored.activeEnvironment ?? 'production');
+      const env = stored.production?.config
+        ? 'production'
+        : (stored.activeEnvironment ?? 'production');
       const envConfig = stored[env];
       if (envConfig?.config) {
         try {
@@ -183,7 +185,9 @@ export class IntegrationsService {
     allIntegrations[integrationId] = stored;
     await this.saveAllIntegrations(projectId, allIntegrations);
 
-    this.logger.log(`Saved ${environment} config for integration '${integrationId}' in project ${projectId}`);
+    this.logger.log(
+      `Saved ${environment} config for integration '${integrationId}' in project ${projectId}`,
+    );
 
     return this.getIntegration(projectId, integrationId);
   }
@@ -352,7 +356,10 @@ export class IntegrationsService {
       if (integrationId === 'google-calendar') {
         const token = await this.googleCalendarOAuthService.getValidAccessToken(projectId, env);
         if (!token) {
-          return { success: false, error: 'Google Calendar not connected (complete OAuth flow first)' };
+          return {
+            success: false,
+            error: 'Google Calendar not connected (complete OAuth flow first)',
+          };
         }
         const response = await fetch(
           'https://www.googleapis.com/calendar/v3/users/me/calendarList',

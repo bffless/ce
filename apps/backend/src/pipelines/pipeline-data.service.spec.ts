@@ -84,9 +84,7 @@ describe('PipelineDataService — api-key project scoping', () => {
     });
 
     it('proceeds normally when no api-key scope is present (session auth)', async () => {
-      await expect(
-        service.update(recordId, { x: 1 }, userId, 'user'),
-      ).resolves.toBeDefined();
+      await expect(service.update(recordId, { x: 1 }, userId, 'user')).resolves.toBeDefined();
 
       expect(permissionsService.requireProjectAccess).toHaveBeenCalledWith(
         recordOwningProject,

@@ -319,7 +319,9 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
     let tools: Record<string, any> | undefined;
 
     // Log skills configuration for debugging
-    this.logger.debug(`Skills config for step '${stepName}': mode=${config.skills?.mode || 'undefined'}`);
+    this.logger.debug(
+      `Skills config for step '${stepName}': mode=${config.skills?.mode || 'undefined'}`,
+    );
     this.logger.debug(
       `Deployment context for step '${stepName}': ${context.deployment ? `${context.deployment.owner}/${context.deployment.repo}@${context.deployment.commitSha?.substring(0, 8)}` : 'NOT SET'}`,
     );
@@ -345,7 +347,9 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
 
       try {
         const allSkills = await this.skillsService.listSkills(owner, repo, commitSha, skillsPath);
-        this.logger.debug(`Found ${allSkills.length} skills: ${allSkills.map((s) => s.name).join(', ') || 'none'}`);
+        this.logger.debug(
+          `Found ${allSkills.length} skills: ${allSkills.map((s) => s.name).join(', ') || 'none'}`,
+        );
 
         const enabledSkills = this.filterSkills(allSkills, config.skills);
         this.logger.debug(
@@ -574,7 +578,15 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
         // Save AI response after streaming completes if persistence is enabled
         if (config.persistMessages && config.persistMessagesSchemaId) {
           try {
-            await this.saveAIResponse(context, stepName, config, text, usage, finishReason, finishSteps);
+            await this.saveAIResponse(
+              context,
+              stepName,
+              config,
+              text,
+              usage,
+              finishReason,
+              finishSteps,
+            );
           } catch (error) {
             this.logger.error(`Failed to save AI response: ${error.message}`, error.stack);
             // Don't throw - response has already been sent to client
@@ -1029,9 +1041,10 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
       // Create new conversation
       // Extract client IP from request headers (behind proxy) or direct connection
       const forwardedFor = context.request?.headers?.['x-forwarded-for'];
-      const ipAddress = typeof forwardedFor === 'string'
-        ? forwardedFor.split(',')[0].trim()
-        : context.request?.ip || context.request?.socket?.remoteAddress || null;
+      const ipAddress =
+        typeof forwardedFor === 'string'
+          ? forwardedFor.split(',')[0].trim()
+          : context.request?.ip || context.request?.socket?.remoteAddress || null;
 
       const conversationData: Record<string, unknown> = {
         chat_id: chatId,
@@ -1043,10 +1056,18 @@ export class AIHandler implements StepHandler<AIHandlerConfig> {
       };
 
       // Merge extra conversation fields
-      if (config.extraConversationFields && Object.keys(config.extraConversationFields).length > 0) {
-        const extraData = this.evaluateFieldMappings(config.extraConversationFields, context, stepName, {
-          __conversationId: chatId,
-        });
+      if (
+        config.extraConversationFields &&
+        Object.keys(config.extraConversationFields).length > 0
+      ) {
+        const extraData = this.evaluateFieldMappings(
+          config.extraConversationFields,
+          context,
+          stepName,
+          {
+            __conversationId: chatId,
+          },
+        );
         Object.assign(conversationData, extraData);
       }
 

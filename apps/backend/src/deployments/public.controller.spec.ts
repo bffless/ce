@@ -91,7 +91,10 @@ describe('PublicController', () => {
     updatedAt: new Date('2025-01-01'),
   };
 
-  const createMockRequest = (user?: any, path: string = '/public/owner/repo/abc123def456/index.html') => {
+  const createMockRequest = (
+    user?: any,
+    path: string = '/public/owner/repo/abc123def456/index.html',
+  ) => {
     const req = {
       user,
       headers: {},
@@ -170,7 +173,11 @@ describe('PublicController', () => {
 
     mockTrafficRoutingService = {
       selectVariant: jest.fn().mockResolvedValue(null), // No multivariant by default
-      getTrafficConfig: jest.fn().mockResolvedValue({ weights: [], stickySessionsEnabled: true, stickySessionDuration: 86400 }),
+      getTrafficConfig: jest.fn().mockResolvedValue({
+        weights: [],
+        stickySessionsEnabled: true,
+        stickySessionDuration: 86400,
+      }),
       setTrafficWeights: jest.fn().mockResolvedValue(undefined),
       clearTrafficWeights: jest.fn().mockResolvedValue(undefined),
       getAvailableAliases: jest.fn().mockResolvedValue([]),
@@ -216,22 +223,22 @@ describe('PublicController', () => {
     };
 
     mockCacheConfigService = {
-      getCacheConfig: jest.fn().mockImplementation(
-        (_projectId: string, filePath: string, isImmutable: boolean) => {
+      getCacheConfig: jest
+        .fn()
+        .mockImplementation((_projectId: string, filePath: string, isImmutable: boolean) => {
           if (isImmutable) return Promise.resolve(defaultImmutableConfig);
           const isHtml = /\.html?$/i.test(filePath);
           return Promise.resolve(isHtml ? defaultMutableHtmlConfig : defaultMutableConfig);
-        },
-      ),
-      buildCacheControlHeader: jest.fn().mockImplementation(
-        (config: CacheConfig, isPublicContent: boolean) => {
+        }),
+      buildCacheControlHeader: jest
+        .fn()
+        .mockImplementation((config: CacheConfig, isPublicContent: boolean) => {
           const cacheability = config.cacheability ?? (isPublicContent ? 'public' : 'private');
           if (config.immutable) {
             return `${cacheability}, max-age=${config.browserMaxAge}, immutable`;
           }
           return `${cacheability}, max-age=${config.browserMaxAge}, must-revalidate`;
-        },
-      ),
+        }),
       calculateRedisTtl: jest.fn().mockReturnValue(300),
       invalidateProjectCache: jest.fn(),
       clearAllCache: jest.fn(),
@@ -329,7 +336,10 @@ describe('PublicController', () => {
       await controller.serveDefault(mockOwner, mockRepo, req, res);
 
       expect(mockDeploymentsService.getDefaultAlias).toHaveBeenCalledWith(mockRepository);
-      expect(res.redirect).toHaveBeenCalledWith(301, `/public/${mockRepository}/commits/${mockCommitSha}/`);
+      expect(res.redirect).toHaveBeenCalledWith(
+        301,
+        `/public/${mockRepository}/commits/${mockCommitSha}/`,
+      );
     });
 
     it('should return 404 HTML page when no default deployment found', async () => {
@@ -379,7 +389,10 @@ describe('PublicController', () => {
 
       await controller.serveDefault(mockOwner, mockRepo, req, res);
 
-      expect(res.redirect).toHaveBeenCalledWith(301, `/public/${mockRepository}/commits/${mockCommitSha}/`);
+      expect(res.redirect).toHaveBeenCalledWith(
+        301,
+        `/public/${mockRepository}/commits/${mockCommitSha}/`,
+      );
     });
   });
 
@@ -493,7 +506,14 @@ describe('PublicController', () => {
       const req = createMockRequest();
       const res = createMockResponse();
 
-      await controller.serveCommitAsset(mockOwner, mockRepo, mockCommitSha, 'missing.html', req, res);
+      await controller.serveCommitAsset(
+        mockOwner,
+        mockRepo,
+        mockCommitSha,
+        'missing.html',
+        req,
+        res,
+      );
 
       expect(res.status).toHaveBeenCalledWith(404);
       expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/html; charset=utf-8');
@@ -511,7 +531,9 @@ describe('PublicController', () => {
       const contentHash = createHash('md5').update(fileBuffer).digest('hex');
       // Immutable SHA-based URL with public project → "public, max-age=31536000, immutable"
       const cacheControlHeader = 'public, max-age=31536000, immutable';
-      const combined = createHash('md5').update(`${contentHash}:${cacheControlHeader}`).digest('hex');
+      const combined = createHash('md5')
+        .update(`${contentHash}:${cacheControlHeader}`)
+        .digest('hex');
       const expectedEtag = `"${combined}"`;
       res.req.headers['if-none-match'] = expectedEtag;
 

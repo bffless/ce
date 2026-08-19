@@ -357,7 +357,11 @@ export const proxyRules = pgTable(
      * Each rule set can only have one rule per path pattern + method combination.
      * This allows separate rules for GET /api/items vs POST /api/items.
      */
-    uniqueIndex('proxy_rules_rule_set_path_method_unique').on(table.ruleSetId, table.pathPattern, table.method),
+    uniqueIndex('proxy_rules_rule_set_path_method_unique').on(
+      table.ruleSetId,
+      table.pathPattern,
+      table.method,
+    ),
 
     /**
      * Index for efficient lookup by rule set.

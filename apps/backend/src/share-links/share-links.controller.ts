@@ -18,16 +18,9 @@ import {
   ApiSecurity,
 } from '@nestjs/swagger';
 import { ShareLinksService } from './share-links.service';
-import {
-  CreateShareLinkDto,
-  UpdateShareLinkDto,
-  ShareLinkResponseDto,
-} from './dto';
+import { CreateShareLinkDto, UpdateShareLinkDto, ShareLinkResponseDto } from './dto';
 import { ApiKeyGuard } from '../auth/api-key.guard';
-import {
-  CurrentUser,
-  CurrentUserData,
-} from '../auth/decorators/current-user.decorator';
+import { CurrentUser, CurrentUserData } from '../auth/decorators/current-user.decorator';
 
 @ApiTags('Share Links')
 @ApiBearerAuth()
@@ -67,8 +60,7 @@ export class ShareLinksController {
   async getByDomain(
     @Param('domainMappingId', ParseUUIDPipe) domainMappingId: string,
   ): Promise<{ shareLinks: ShareLinkResponseDto[] }> {
-    const links =
-      await this.shareLinksService.getByDomainMappingId(domainMappingId);
+    const links = await this.shareLinksService.getByDomainMappingId(domainMappingId);
     return { shareLinks: links as unknown as ShareLinkResponseDto[] };
   }
 
@@ -107,9 +99,7 @@ export class ShareLinksController {
   @ApiOperation({ summary: 'Delete a share link' })
   @ApiParam({ name: 'id', type: 'string', description: 'Share link ID' })
   @ApiResponse({ status: 200, description: 'Share link deleted' })
-  async delete(
-    @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<{ success: boolean }> {
+  async delete(@Param('id', ParseUUIDPipe) id: string): Promise<{ success: boolean }> {
     await this.shareLinksService.delete(id);
     return { success: true };
   }
@@ -122,9 +112,7 @@ export class ShareLinksController {
     description: 'Share link token regenerated',
     type: ShareLinkResponseDto,
   })
-  async regenerateToken(
-    @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<ShareLinkResponseDto> {
+  async regenerateToken(@Param('id', ParseUUIDPipe) id: string): Promise<ShareLinkResponseDto> {
     const link = await this.shareLinksService.regenerateToken(id);
     return link as unknown as ShareLinkResponseDto;
   }

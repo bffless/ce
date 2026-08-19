@@ -25,7 +25,12 @@ import {
   ApiSecurity,
 } from '@nestjs/swagger';
 import { PipelineDataService } from './pipeline-data.service';
-import { PaginatedDataResponseDto, PipelineDataResponseDto, CreatePipelineDataDto, UpdatePipelineDataDto } from './dto';
+import {
+  PaginatedDataResponseDto,
+  PipelineDataResponseDto,
+  CreatePipelineDataDto,
+  UpdatePipelineDataDto,
+} from './dto';
 import { ApiKeyGuard } from '../auth/api-key.guard';
 import { CurrentUser, CurrentUserData } from '../auth/decorators/current-user.decorator';
 
@@ -46,15 +51,60 @@ export class PipelineDataController {
   @ApiParam({ name: 'schemaId', type: 'string' })
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
   @ApiQuery({ name: 'pageSize', required: false, type: Number, example: 20 })
-  @ApiQuery({ name: 'search', required: false, type: String, description: 'Search text across ID and text fields' })
-  @ApiQuery({ name: 'createdAfter', required: false, type: String, description: 'ISO date for createdAt >= filter' })
-  @ApiQuery({ name: 'createdBefore', required: false, type: String, description: 'ISO date for createdAt <= filter' })
-  @ApiQuery({ name: 'updatedAfter', required: false, type: String, description: 'ISO date for updatedAt >= filter' })
-  @ApiQuery({ name: 'updatedBefore', required: false, type: String, description: 'ISO date for updatedAt <= filter' })
-  @ApiQuery({ name: 'filters', required: false, type: String, description: 'JSON string of field filters: {"fieldName":{"op":"eq","value":"xxx"}}. Ops: eq, ne, gt, lt, gte, lte, like, exists (value "true"/"false" — filters on the field being present rather than its value)' })
-  @ApiQuery({ name: 'sortBy', required: false, type: String, description: 'Field to sort by (createdAt, updatedAt, or data field name)' })
-  @ApiQuery({ name: 'sortOrder', required: false, enum: ['asc', 'desc'], description: 'Sort order' })
-  @ApiResponse({ status: 200, description: 'Paginated data records', type: PaginatedDataResponseDto })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    type: String,
+    description: 'Search text across ID and text fields',
+  })
+  @ApiQuery({
+    name: 'createdAfter',
+    required: false,
+    type: String,
+    description: 'ISO date for createdAt >= filter',
+  })
+  @ApiQuery({
+    name: 'createdBefore',
+    required: false,
+    type: String,
+    description: 'ISO date for createdAt <= filter',
+  })
+  @ApiQuery({
+    name: 'updatedAfter',
+    required: false,
+    type: String,
+    description: 'ISO date for updatedAt >= filter',
+  })
+  @ApiQuery({
+    name: 'updatedBefore',
+    required: false,
+    type: String,
+    description: 'ISO date for updatedAt <= filter',
+  })
+  @ApiQuery({
+    name: 'filters',
+    required: false,
+    type: String,
+    description:
+      'JSON string of field filters: {"fieldName":{"op":"eq","value":"xxx"}}. Ops: eq, ne, gt, lt, gte, lte, like, exists (value "true"/"false" — filters on the field being present rather than its value)',
+  })
+  @ApiQuery({
+    name: 'sortBy',
+    required: false,
+    type: String,
+    description: 'Field to sort by (createdAt, updatedAt, or data field name)',
+  })
+  @ApiQuery({
+    name: 'sortOrder',
+    required: false,
+    enum: ['asc', 'desc'],
+    description: 'Sort order',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Paginated data records',
+    type: PaginatedDataResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Schema not found' })
   async listRecords(
     @Param('schemaId', ParseUUIDPipe) schemaId: string,
@@ -221,12 +271,7 @@ export class PipelineDataController {
     @Param('recordId', ParseUUIDPipe) recordId: string,
     @CurrentUser() user: CurrentUserData,
   ): Promise<{ success: boolean }> {
-    await this.dataService.delete(
-      recordId,
-      user.id,
-      user.role || 'user',
-      user.apiKeyProjectId,
-    );
+    await this.dataService.delete(recordId, user.id, user.role || 'user', user.apiKeyProjectId);
     return { success: true };
   }
 }

@@ -18,9 +18,10 @@ const mockX509Certificate = {
   validTo: new Date('2025-06-01T00:00:00Z').toISOString(),
   validFrom: new Date('2024-01-01T00:00:00Z').toISOString(),
   subject: 'CN=*.example.com',
-  issuer: 'O=Let\'s Encrypt, CN=R3',
+  issuer: "O=Let's Encrypt, CN=R3",
   serialNumber: '1234567890ABCDEF',
-  fingerprint256: 'AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99',
+  fingerprint256:
+    'AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99',
   get subjectAltName() {
     return mockSubjectAltName;
   },
@@ -193,10 +194,7 @@ describe('SslInfoService', () => {
 
       expect(result).not.toBeNull();
       expect(result?.type).toBe('individual');
-      expect(mockReadFile).toHaveBeenCalledWith(
-        expect.stringContaining('fullchain.pem'),
-        'utf-8',
-      );
+      expect(mockReadFile).toHaveBeenCalledWith(expect.stringContaining('fullchain.pem'), 'utf-8');
     });
 
     it('should return null if fullchain.pem is missing', async () => {
@@ -226,10 +224,7 @@ describe('SslInfoService', () => {
 
       await service.getServedPrimaryCertInfo();
 
-      expect(mockReadFile).toHaveBeenCalledWith(
-        '/custom/ssl/dir/fullchain.pem',
-        'utf-8',
-      );
+      expect(mockReadFile).toHaveBeenCalledWith('/custom/ssl/dir/fullchain.pem', 'utf-8');
       if (prev === undefined) delete process.env.SSL_CERT_PATH;
       else process.env.SSL_CERT_PATH = prev;
     });

@@ -1,14 +1,7 @@
-import {
-  BadRequestException,
-  ForbiddenException,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 
 import { MeController } from './me.controller';
-import {
-  MyProjectMembership,
-  PermissionsService,
-} from '../permissions/permissions.service';
+import { MyProjectMembership, PermissionsService } from '../permissions/permissions.service';
 import { CurrentUserData } from '../auth';
 
 const makeUser = (id = 'user-1'): CurrentUserData => ({
@@ -94,9 +87,7 @@ describe('MeController', () => {
       const boom = new Error('db down');
       permissions.revokeSystemPermission.mockRejectedValue(boom);
 
-      await expect(
-        controller.leaveProject(makeUser(), 'project-1'),
-      ).rejects.toBe(boom);
+      await expect(controller.leaveProject(makeUser(), 'project-1')).rejects.toBe(boom);
     });
   });
 });

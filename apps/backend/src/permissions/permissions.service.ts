@@ -158,11 +158,12 @@ export class PermissionsService {
    * Throws ForbiddenException when the api-key is scoped to a different project.
    * No-op for session auth (`undefined`) and global api-keys (`null`).
    */
-  enforceApiKeyProjectScope(
-    apiKeyProjectId: string | null | undefined,
-    projectId: string,
-  ): void {
-    if (apiKeyProjectId !== undefined && apiKeyProjectId !== null && apiKeyProjectId !== projectId) {
+  enforceApiKeyProjectScope(apiKeyProjectId: string | null | undefined, projectId: string): void {
+    if (
+      apiKeyProjectId !== undefined &&
+      apiKeyProjectId !== null &&
+      apiKeyProjectId !== projectId
+    ) {
       throw new ForbiddenException('API key is not authorized for this project');
     }
   }
@@ -350,17 +351,12 @@ export class PermissionsService {
 
     const projectIds = Array.from(aggregated.keys());
 
-    const projectRows = await db
-      .select()
-      .from(projects)
-      .where(inArray(projects.id, projectIds));
+    const projectRows = await db.select().from(projects).where(inArray(projects.id, projectIds));
 
     const domainRows = await db
       .select()
       .from(domainMappings)
-      .where(
-        and(inArray(domainMappings.projectId, projectIds), eq(domainMappings.isActive, true)),
-      );
+      .where(and(inArray(domainMappings.projectId, projectIds), eq(domainMappings.isActive, true)));
 
     const ownerRows = await db
       .select({ projectId: projectPermissions.projectId, email: users.email })
@@ -456,11 +452,7 @@ export class PermissionsService {
    * marker for system-granted memberships. Callers should be deliberate —
    * grep for `grantSystemPermission` to audit every bypass site.
    */
-  async grantSystemPermission(
-    projectId: string,
-    userId: string,
-    role: ProjectRole,
-  ): Promise<void> {
+  async grantSystemPermission(projectId: string, userId: string, role: ProjectRole): Promise<void> {
     if (role === 'owner') {
       throw new ForbiddenException('Cannot grant owner role via system. Use transfer ownership.');
     }

@@ -142,10 +142,7 @@ export class PipelineDataService {
     const whereClause = and(...conditions);
 
     // Get total count with filters applied
-    const [countResult] = await db
-      .select({ count: count() })
-      .from(pipelineData)
-      .where(whereClause);
+    const [countResult] = await db.select({ count: count() }).from(pipelineData).where(whereClause);
 
     const total = countResult?.count ?? 0;
     const totalPages = Math.ceil(total / pageSize);
@@ -165,9 +162,8 @@ export class PipelineDataService {
       } else {
         // Sort by JSONB field
         const fieldPath = sql`${pipelineData.data}->>${sql.raw(`'${filterOptions.sortBy}'`)}`;
-        orderByClause = filterOptions.sortOrder === 'asc'
-          ? sql`${fieldPath} ASC`
-          : sql`${fieldPath} DESC`;
+        orderByClause =
+          filterOptions.sortOrder === 'asc' ? sql`${fieldPath} ASC` : sql`${fieldPath} DESC`;
       }
     } else {
       orderByClause = desc(pipelineData.createdAt);
@@ -551,9 +547,7 @@ export class PipelineDataService {
     // Delete all records that belong to the same project
     const result = await db
       .delete(pipelineData)
-      .where(
-        and(eq(pipelineData.projectId, record.projectId), inArray(pipelineData.id, ids)),
-      )
+      .where(and(eq(pipelineData.projectId, record.projectId), inArray(pipelineData.id, ids)))
       .returning({ id: pipelineData.id });
 
     this.logger.log(`Deleted ${result.length} data records`);
@@ -603,7 +597,7 @@ export class PipelineDataService {
           id: r.id,
           alias: r.alias,
           version: r.version,
-          ...r.data as Record<string, unknown>,
+          ...(r.data as Record<string, unknown>),
           createdAt: r.createdAt,
           updatedAt: r.updatedAt,
         })),

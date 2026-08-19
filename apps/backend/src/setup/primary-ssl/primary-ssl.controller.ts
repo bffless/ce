@@ -1,4 +1,13 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { SessionAuthGuard } from '../../auth/session-auth.guard';
 import { RolesGuard } from '../../auth/roles.guard';
@@ -16,32 +25,50 @@ export class PrimarySslController {
   constructor(private readonly svc: PrimarySslService) {}
 
   @Get('status')
-  status() { return this.svc.getStatus(); }
+  status() {
+    return this.svc.getStatus();
+  }
 
   @Post('preflight')
   @HttpCode(HttpStatus.OK)
-  preflight() { return this.svc.preflight(); }
+  preflight() {
+    return this.svc.preflight();
+  }
 
   @Post('certificate')
   @HttpCode(HttpStatus.OK)
-  certificate(@Body() dto: PrimarySslPasteDto) { return this.svc.stagePaste(dto); }
+  certificate(@Body() dto: PrimarySslPasteDto) {
+    return this.svc.stagePaste(dto);
+  }
 
   @Post('letsencrypt')
   @HttpCode(HttpStatus.OK)
-  letsencrypt() { return this.svc.issueLetsEncrypt(); }
+  letsencrypt() {
+    return this.svc.issueLetsEncrypt();
+  }
 
   @Post('apply')
   @HttpCode(HttpStatus.OK)
-  apply(@Body() dto: PrimarySslApplyDto) { return this.svc.apply(dto); }
+  apply(@Body() dto: PrimarySslApplyDto) {
+    return this.svc.apply(dto);
+  }
 
   @Post('confirm')
   @HttpCode(HttpStatus.OK)
-  confirm() { this.svc.confirm(); return { confirmed: true }; }
+  confirm() {
+    this.svc.confirm();
+    return { confirmed: true };
+  }
 
   @Post('rollback')
   @HttpCode(HttpStatus.OK)
-  rollback() { this.svc.rollback(); return { rolledBack: true }; }
+  rollback() {
+    this.svc.rollback();
+    return { rolledBack: true };
+  }
 
   @Delete('staged')
-  discardStaged() { return this.svc.discardStaged(); }
+  discardStaged() {
+    return this.svc.discardStaged();
+  }
 }

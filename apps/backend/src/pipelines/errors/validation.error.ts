@@ -5,11 +5,7 @@ import { PipelineError } from './pipeline.error';
  * Error thrown when pipeline input validation fails
  */
 export class ValidationError extends PipelineError {
-  constructor(
-    message: string,
-    details?: Record<string, unknown>,
-    step?: string,
-  ) {
+  constructor(message: string, details?: Record<string, unknown>, step?: string) {
     super('VALIDATION_ERROR', message, step, details, HttpStatus.BAD_REQUEST);
   }
 }
@@ -36,10 +32,7 @@ export class AuthorizationError extends PipelineError {
  * Error thrown when rate limit is exceeded
  */
 export class RateLimitError extends PipelineError {
-  constructor(
-    message = 'Rate limit exceeded',
-    retryAfter?: number,
-  ) {
+  constructor(message = 'Rate limit exceeded', retryAfter?: number) {
     super('RATE_LIMIT_EXCEEDED', message, undefined, { retryAfter }, HttpStatus.TOO_MANY_REQUESTS);
   }
 }

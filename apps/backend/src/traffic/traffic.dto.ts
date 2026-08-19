@@ -82,7 +82,10 @@ export class ListTrafficIpRollupsQueryDto {
   @MaxLength(45)
   ip?: string;
 
-  @ApiPropertyOptional({ enum: ['requestCount', 'lastSeenAt', 'firstSeenAt'], default: 'requestCount' })
+  @ApiPropertyOptional({
+    enum: ['requestCount', 'lastSeenAt', 'firstSeenAt'],
+    default: 'requestCount',
+  })
   @IsOptional()
   @IsIn(['requestCount', 'lastSeenAt', 'firstSeenAt'])
   sortBy?: 'requestCount' | 'lastSeenAt' | 'firstSeenAt' = 'requestCount';

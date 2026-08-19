@@ -180,10 +180,7 @@ export class MinioStorageAdapter implements IStorageAdapter {
   /**
    * Download a file as a stream without buffering into memory
    */
-  async downloadStream(
-    key: string,
-    opts?: DownloadStreamOptions,
-  ): Promise<StreamDownloadResult> {
+  async downloadStream(key: string, opts?: DownloadStreamOptions): Promise<StreamDownloadResult> {
     const sanitizedKey = this.sanitizeKey(key);
     const storageKey = this.prefixKey(sanitizedKey);
 
@@ -253,11 +250,7 @@ export class MinioStorageAdapter implements IStorageAdapter {
   /**
    * Get presigned URL for accessing the file (GET)
    */
-  async getUrl(
-    key: string,
-    expiresIn: number = 3600,
-    options?: SignedUrlOptions,
-  ): Promise<string> {
+  async getUrl(key: string, expiresIn: number = 3600, options?: SignedUrlOptions): Promise<string> {
     const sanitizedKey = this.sanitizeKey(key);
     const storageKey = this.prefixKey(sanitizedKey);
 

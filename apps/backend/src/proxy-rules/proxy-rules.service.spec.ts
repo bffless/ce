@@ -1,6 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { ProxyRulesService } from './proxy-rules.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { NginxRegenerationService } from '../domains/nginx-regeneration.service';
@@ -441,7 +446,7 @@ describe('ProxyRulesService', () => {
 
         mockDb.__setResults([
           [createMockRuleSet()], // rule set lookup (limit)
-          [existingRule],        // findRuleByPattern (orderBy) — sig 'GET,POST' matches 'POST,GET' sorted
+          [existingRule], // findRuleByPattern (orderBy) — sig 'GET,POST' matches 'POST,GET' sorted
         ]);
 
         await expect(
@@ -465,8 +470,8 @@ describe('ProxyRulesService', () => {
 
         mockDb.__setResults([
           [createMockRuleSet()], // rule set lookup (limit)
-          [existingRule],        // findRuleByPattern (orderBy) — sig mismatch → returns null
-          [],                    // getNextOrder (orderBy) — empty → order 0
+          [existingRule], // findRuleByPattern (orderBy) — sig mismatch → returns null
+          [], // getNextOrder (orderBy) — empty → order 0
           // insert returning uses mock fallback [{id:'test-id'}]
         ]);
 
@@ -491,8 +496,8 @@ describe('ProxyRulesService', () => {
 
         mockDb.__setResults([
           [createMockRuleSet()], // rule set lookup (limit)
-          [existingAnyMethod],   // findRuleByPattern (orderBy) — sig '' vs 'GET' → no match → null
-          [],                    // getNextOrder (orderBy)
+          [existingAnyMethod], // findRuleByPattern (orderBy) — sig '' vs 'GET' → no match → null
+          [], // getNextOrder (orderBy)
         ]);
 
         await expect(
@@ -514,13 +519,21 @@ describe('ProxyRulesService', () => {
       it('should throw ConflictException when new methods collide with a different existing rule', async () => {
         // rule-1 currently has methods:['GET']; we change it to methods:['DELETE']
         // rule-2 already owns methods:['DELETE'] on the same path → conflict
-        const existingRule = createMockRule({ id: 'rule-1', pathPattern: '/api/*', methods: ['GET'] });
-        const collidingRule = createMockRule({ id: 'rule-2', pathPattern: '/api/*', methods: ['DELETE'] });
+        const existingRule = createMockRule({
+          id: 'rule-1',
+          pathPattern: '/api/*',
+          methods: ['GET'],
+        });
+        const collidingRule = createMockRule({
+          id: 'rule-2',
+          pathPattern: '/api/*',
+          methods: ['DELETE'],
+        });
 
         mockDb.__setResults([
-          [existingRule],        // findById (limit)
+          [existingRule], // findById (limit)
           [createMockRuleSet()], // rule set lookup (limit)
-          [collidingRule],       // findRuleByPattern (orderBy) — sig 'DELETE' matches → collision
+          [collidingRule], // findRuleByPattern (orderBy) — sig 'DELETE' matches → collision
         ]);
 
         await expect(
@@ -533,9 +546,9 @@ describe('ProxyRulesService', () => {
         const existingRule = createMockRule({ id: 'rule-1' });
 
         mockDb.__setResults([
-          [existingRule],                                           // findById (limit)
-          [createMockRuleSet()],                                    // rule set lookup (limit)
-          [createMockRule({ id: 'rule-1', description: 'new' })],  // update.returning()
+          [existingRule], // findById (limit)
+          [createMockRuleSet()], // rule set lookup (limit)
+          [createMockRule({ id: 'rule-1', description: 'new' })], // update.returning()
         ]);
 
         const findRuleByPatternSpy = jest.spyOn(service as any, 'findRuleByPattern');
@@ -561,7 +574,9 @@ describe('ProxyRulesService', () => {
             { id: 's1', name: 'parse', handlerType: 'form_handler', config: { a: 1 } },
             { id: 's2', name: 'send', handlerType: 'email_handler', config: { to: 'x@y.z' } },
           ],
-          postSteps: [{ id: 'p1', name: 'log', handlerType: 'function_handler', config: { code: 'old' } }],
+          postSteps: [
+            { id: 'p1', name: 'log', handlerType: 'function_handler', config: { code: 'old' } },
+          ],
         },
         ...overrides,
       });
@@ -592,9 +607,7 @@ describe('ProxyRulesService', () => {
 
     it('replaces the target step config by default and delegates to update()', async () => {
       mockDb.__setResults([[makePipelineRule()]]);
-      const updateSpy = jest
-        .spyOn(service, 'update')
-        .mockResolvedValue(createMockRule() as never);
+      const updateSpy = jest.spyOn(service, 'update').mockResolvedValue(createMockRule() as never);
 
       await service.updateStep(
         'pipe-1',
@@ -615,9 +628,7 @@ describe('ProxyRulesService', () => {
 
     it('shallow-merges config when mergeConfig is true', async () => {
       mockDb.__setResults([[makePipelineRule()]]);
-      const updateSpy = jest
-        .spyOn(service, 'update')
-        .mockResolvedValue(createMockRule() as never);
+      const updateSpy = jest.spyOn(service, 'update').mockResolvedValue(createMockRule() as never);
 
       await service.updateStep(
         'pipe-1',
@@ -632,9 +643,7 @@ describe('ProxyRulesService', () => {
 
     it('patches a step in postSteps when target is postSteps', async () => {
       mockDb.__setResults([[makePipelineRule()]]);
-      const updateSpy = jest
-        .spyOn(service, 'update')
-        .mockResolvedValue(createMockRule() as never);
+      const updateSpy = jest.spyOn(service, 'update').mockResolvedValue(createMockRule() as never);
 
       await service.updateStep(
         'pipe-1',
@@ -689,13 +698,16 @@ describe('ProxyRulesService', () => {
           userId: 'user-1',
         });
         // Backfill must run BEFORE the post-mutation capture (pre- vs post-mutation state).
-        const backfillOrder = mockRevisionsService.captureIfUnrevisioned.mock.invocationCallOrder[0];
+        const backfillOrder =
+          mockRevisionsService.captureIfUnrevisioned.mock.invocationCallOrder[0];
         const captureOrder = mockRevisionsService.capture.mock.invocationCallOrder[0];
         expect(backfillOrder).toBeLessThan(captureOrder);
       });
 
       it('does not fail the create when the revisions service rejects', async () => {
-        mockRevisionsService.captureIfUnrevisioned.mockRejectedValueOnce(new Error('backfill boom'));
+        mockRevisionsService.captureIfUnrevisioned.mockRejectedValueOnce(
+          new Error('backfill boom'),
+        );
         mockRevisionsService.capture.mockRejectedValueOnce(new Error('capture boom'));
 
         const createdRule = createMockRule({ id: 'new-rule' });
@@ -703,7 +715,11 @@ describe('ProxyRulesService', () => {
 
         await expect(
           service.create(
-            { ruleSetId: 'rule-set-1', pathPattern: '/api/*', targetUrl: 'https://api.example.com' },
+            {
+              ruleSetId: 'rule-set-1',
+              pathPattern: '/api/*',
+              targetUrl: 'https://api.example.com',
+            },
             'user-1',
             'admin',
           ),
@@ -745,7 +761,9 @@ describe('ProxyRulesService', () => {
       });
 
       it('does not fail the update when the revisions service rejects', async () => {
-        mockRevisionsService.captureIfUnrevisioned.mockRejectedValueOnce(new Error('backfill boom'));
+        mockRevisionsService.captureIfUnrevisioned.mockRejectedValueOnce(
+          new Error('backfill boom'),
+        );
         mockRevisionsService.capture.mockRejectedValueOnce(new Error('capture boom'));
 
         const existingRule = createMockRule({ id: 'rule-1' });
@@ -790,7 +808,9 @@ describe('ProxyRulesService', () => {
       });
 
       it('does not fail the delete when the revisions service rejects', async () => {
-        mockRevisionsService.captureIfUnrevisioned.mockRejectedValueOnce(new Error('backfill boom'));
+        mockRevisionsService.captureIfUnrevisioned.mockRejectedValueOnce(
+          new Error('backfill boom'),
+        );
         mockRevisionsService.capture.mockRejectedValueOnce(new Error('capture boom'));
 
         const existingRule = createMockRule({ id: 'rule-1' });
@@ -833,7 +853,9 @@ describe('ProxyRulesService', () => {
       });
 
       it('does not fail the reorder when the revisions service rejects', async () => {
-        mockRevisionsService.captureIfUnrevisioned.mockRejectedValueOnce(new Error('backfill boom'));
+        mockRevisionsService.captureIfUnrevisioned.mockRejectedValueOnce(
+          new Error('backfill boom'),
+        );
         mockRevisionsService.capture.mockRejectedValueOnce(new Error('capture boom'));
 
         mockDb.__setResults([[ruleSet], [ruleA, ruleB], [ruleB, ruleA]]);

@@ -24,10 +24,8 @@ jest.mock('../db/client', () => {
   for (const method of methods) {
     chainable[method] = jest.fn(() => chainable);
   }
-  chainable.then = (
-    resolve: (value: unknown) => unknown,
-    reject: (reason: unknown) => unknown,
-  ) => Promise.resolve(queued.length > 0 ? queued.shift() : []).then(resolve, reject);
+  chainable.then = (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) =>
+    Promise.resolve(queued.length > 0 ? queued.shift() : []).then(resolve, reject);
   chainable.transaction = jest.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb(chainable));
   chainable.__queue = (result: unknown) => queued.push(result);
   chainable.__reset = () => {
@@ -380,9 +378,7 @@ describe('BlocklistService', () => {
 
     it('rejects a duplicate name', async () => {
       mockDb.__queue([listRow()]); // name-uniqueness check finds a clash
-      await expect(service.createBlocklist({ name: 'my-list' })).rejects.toThrow(
-        ConflictException,
-      );
+      await expect(service.createBlocklist({ name: 'my-list' })).rejects.toThrow(ConflictException);
     });
 
     it('update replaces entries only when provided', async () => {
@@ -435,9 +431,7 @@ describe('BlocklistService', () => {
         ],
       });
 
-      expect(mockDb.values).toHaveBeenCalledWith([
-        expect.objectContaining({ value: '/Probe' }),
-      ]);
+      expect(mockDb.values).toHaveBeenCalledWith([expect.objectContaining({ value: '/Probe' })]);
     });
   });
 
@@ -498,9 +492,7 @@ describe('BlocklistService', () => {
       expect(domainStates.get('dom-2')!.blockSource).toContain('/scoped-probe');
 
       expect(service.getCompiledStateForDomain('dom-2').blockSource).toContain('/scoped-probe');
-      expect(service.getCompiledStateForDomain('dom-1').blockSource).not.toContain(
-        '/scoped-probe',
-      );
+      expect(service.getCompiledStateForDomain('dom-1').blockSource).not.toContain('/scoped-probe');
       expect(service.getCompiledStateForDomain('unknown').blockSource).not.toContain(
         '/scoped-probe',
       );

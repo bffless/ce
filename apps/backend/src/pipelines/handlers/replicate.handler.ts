@@ -55,7 +55,10 @@ export class ReplicateHandler implements StepHandler<ReplicateHandlerConfig> {
     }
 
     if (!config.input || Object.keys(config.input).length === 0) {
-      throw new ConfigurationError('input is required and must have at least one field', 'replicate');
+      throw new ConfigurationError(
+        'input is required and must have at least one field',
+        'replicate',
+      );
     }
   }
 
@@ -81,10 +84,7 @@ export class ReplicateHandler implements StepHandler<ReplicateHandlerConfig> {
     // Evaluate input expressions
     const evaluatedInput: Record<string, unknown> = {};
     for (const [key, expression] of Object.entries(config.input)) {
-      evaluatedInput[key] = this.expressionEvaluator.evaluateExpression(
-        expression,
-        context,
-      );
+      evaluatedInput[key] = this.expressionEvaluator.evaluateExpression(expression, context);
     }
 
     // Resolve file references: read from storage and upload to Replicate or inline as data URI
@@ -134,7 +134,11 @@ export class ReplicateHandler implements StepHandler<ReplicateHandlerConfig> {
       let prediction = (await response.json()) as Record<string, unknown>;
 
       // If not completed yet, poll until succeeded/failed
-      if (prediction.status !== 'succeeded' && prediction.status !== 'failed' && prediction.status !== 'canceled') {
+      if (
+        prediction.status !== 'succeeded' &&
+        prediction.status !== 'failed' &&
+        prediction.status !== 'canceled'
+      ) {
         const timeoutMs = config.timeout || DEFAULT_MAX_POLL_ATTEMPTS * POLL_INTERVAL_MS;
         const maxAttempts = Math.ceil(timeoutMs / POLL_INTERVAL_MS);
         prediction = await this.pollPrediction(
@@ -271,8 +275,8 @@ export class ReplicateHandler implements StepHandler<ReplicateHandlerConfig> {
     apiToken: string,
   ): Promise<string | null> {
     try {
-      const contentType = this.findContentTypeFromSteps(storagePath, context) ||
-        this.guessContentType(storagePath);
+      const contentType =
+        this.findContentTypeFromSteps(storagePath, context) || this.guessContentType(storagePath);
       const filename = storagePath.split('/').pop() || 'file';
 
       const buffer = await this.storageAdapter.download(storagePath);
@@ -285,7 +289,9 @@ export class ReplicateHandler implements StepHandler<ReplicateHandlerConfig> {
       }
 
       // Large file: upload via Replicate Files API
-      this.logger.debug(`File ${filename} (${buffer.length} bytes) — uploading via Replicate Files API`);
+      this.logger.debug(
+        `File ${filename} (${buffer.length} bytes) — uploading via Replicate Files API`,
+      );
       return await this.uploadToReplicateFiles(buffer, contentType, filename, apiToken);
     } catch (error) {
       this.logger.warn(`Failed to resolve file for Replicate input: ${storagePath}`, error);
@@ -389,16 +395,15 @@ export class ReplicateHandler implements StepHandler<ReplicateHandlerConfig> {
    */
   private async resolveLatestVersion(model: string, apiToken: string): Promise<string> {
     try {
-      const response = await fetch(
-        `${REPLICATE_API_BASE}/models/${model}/versions`,
-        {
-          headers: { Authorization: `Bearer ${apiToken}` },
-        },
-      );
+      const response = await fetch(`${REPLICATE_API_BASE}/models/${model}/versions`, {
+        headers: { Authorization: `Bearer ${apiToken}` },
+      });
 
       if (!response.ok) {
         // Fallback: try using the model identifier directly (works for official models)
-        this.logger.warn(`Could not fetch versions for ${model} (${response.status}), using model ID directly`);
+        this.logger.warn(
+          `Could not fetch versions for ${model} (${response.status}), using model ID directly`,
+        );
         return model;
       }
 
@@ -426,14 +431,11 @@ export class ReplicateHandler implements StepHandler<ReplicateHandlerConfig> {
     for (let i = 0; i < maxAttempts; i++) {
       await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
 
-      const response = await fetch(
-        `${REPLICATE_API_BASE}/predictions/${predictionId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${apiToken}`,
-          },
+      const response = await fetch(`${REPLICATE_API_BASE}/predictions/${predictionId}`, {
+        headers: {
+          Authorization: `Bearer ${apiToken}`,
         },
-      );
+      });
 
       if (!response.ok) {
         throw new Error(`Failed to poll prediction: ${response.statusText}`);

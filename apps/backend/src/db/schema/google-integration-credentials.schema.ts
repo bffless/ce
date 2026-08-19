@@ -48,8 +48,7 @@ export const googleIntegrationCredentials = pgTable(
 );
 
 export type GoogleIntegrationCredentialsRow = typeof googleIntegrationCredentials.$inferSelect;
-export type NewGoogleIntegrationCredentialsRow =
-  typeof googleIntegrationCredentials.$inferInsert;
+export type NewGoogleIntegrationCredentialsRow = typeof googleIntegrationCredentials.$inferInsert;
 
 export type GoogleService = 'calendar' | 'drive' | 'sheets' | 'gmail';
 

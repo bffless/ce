@@ -13,7 +13,9 @@ describe('FeatureFlagsService.reconcileWildcardSslVisibility', () => {
   let getSources: jest.SpyInstance;
 
   beforeEach(() => {
-    service = new FeatureFlagsService({ get: jest.fn(() => './config/features.json') } as unknown as ConfigService);
+    service = new FeatureFlagsService({
+      get: jest.fn(() => './config/features.json'),
+    } as unknown as ConfigService);
     setFlag = jest.spyOn(service, 'setFlag').mockResolvedValue({} as never);
     getSources = jest.spyOn(service as never, 'getSources' as never);
   });

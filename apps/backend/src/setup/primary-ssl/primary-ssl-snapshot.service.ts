@@ -1,7 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
-import { bootstrapDir, loadInstanceConfig, writeInstanceConfig } from '../../bootstrap/instance-config';
+import {
+  bootstrapDir,
+  loadInstanceConfig,
+  writeInstanceConfig,
+} from '../../bootstrap/instance-config';
 
 const CERT_FILES_STATIC = ['fullchain.pem', 'privkey.pem'];
 
@@ -19,7 +23,9 @@ export class PrimarySslSnapshotService {
   private certFiles(): string[] {
     const cfg = loadInstanceConfig();
     const d = cfg?.primaryDomain;
-    return d ? [...CERT_FILES_STATIC, `wildcard.${d}.crt`, `wildcard.${d}.key`] : [...CERT_FILES_STATIC];
+    return d
+      ? [...CERT_FILES_STATIC, `wildcard.${d}.crt`, `wildcard.${d}.key`]
+      : [...CERT_FILES_STATIC];
   }
 
   snapshot(): void {
@@ -78,7 +84,11 @@ export class PrimarySslSnapshotService {
     const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
     // Restore certs referenced by the SNAPSHOT's domain (before rewriting instance.json).
     const files = cfg.primaryDomain
-      ? [...CERT_FILES_STATIC, `wildcard.${cfg.primaryDomain}.crt`, `wildcard.${cfg.primaryDomain}.key`]
+      ? [
+          ...CERT_FILES_STATIC,
+          `wildcard.${cfg.primaryDomain}.crt`,
+          `wildcard.${cfg.primaryDomain}.key`,
+        ]
       : [...CERT_FILES_STATIC];
     for (const f of files) {
       const src = path.join(snap, f);

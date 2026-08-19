@@ -7,7 +7,12 @@ import Multitenancy from 'supertokens-node/recipe/multitenancy';
 import * as crypto from 'crypto';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client';
-import { oidcProviders, type OidcProvider, type OidcProviderConfig, type OidcProviderKind } from '../db/schema';
+import {
+  oidcProviders,
+  type OidcProvider,
+  type OidcProviderConfig,
+  type OidcProviderKind,
+} from '../db/schema';
 import { createEmailDeliveryConfig } from './email-delivery.service';
 
 // CE always runs SuperTokens single-tenant; workspace isolation comes from
@@ -201,10 +206,7 @@ export async function syncOidcProviders(): Promise<void> {
   await backfillEnvGoogleProviderIfMissing();
   await rotateEnvGoogleProviderIfChanged();
 
-  const rows = await db
-    .select()
-    .from(oidcProviders)
-    .where(eq(oidcProviders.enabled, true));
+  const rows = await db.select().from(oidcProviders).where(eq(oidcProviders.enabled, true));
 
   for (const row of rows) {
     const cfg = decryptConfig(row.configEncrypted);
@@ -348,7 +350,9 @@ function getEncryptionKey(): Buffer {
     cachedEncryptionKey = Buffer.from(key, 'base64');
   } else {
     cachedEncryptionKey = crypto.randomBytes(32);
-    console.warn('[Auth] No ENCRYPTION_KEY found. Generated temporary key — OIDC creds unrecoverable across restarts.');
+    console.warn(
+      '[Auth] No ENCRYPTION_KEY found. Generated temporary key — OIDC creds unrecoverable across restarts.',
+    );
   }
   return cachedEncryptionKey;
 }

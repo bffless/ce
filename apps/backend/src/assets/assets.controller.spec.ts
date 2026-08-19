@@ -182,7 +182,12 @@ describe('AssetsController', () => {
 
       expect(result.data).toHaveLength(1);
       expect(result.meta.page).toBe(1);
-      expect(service.findAll).toHaveBeenCalledWith(mockQuery, mockUser.id, mockUser.role, undefined);
+      expect(service.findAll).toHaveBeenCalledWith(
+        mockQuery,
+        mockUser.id,
+        mockUser.role,
+        undefined,
+      );
     });
   });
 

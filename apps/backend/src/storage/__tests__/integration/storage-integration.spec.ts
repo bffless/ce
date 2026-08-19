@@ -141,9 +141,7 @@ describe('Storage Integration Tests', () => {
     });
 
     it('should not throw when deleting non-existent file', async () => {
-      await expect(
-        adapter.delete('non-existent-key-' + Date.now()),
-      ).resolves.not.toThrow();
+      await expect(adapter.delete('non-existent-key-' + Date.now())).resolves.not.toThrow();
     });
   };
 
@@ -169,35 +167,41 @@ describe('Storage Integration Tests', () => {
 
   // S3 Tests
   (runS3Tests ? describe : describe.skip)('S3StorageAdapter', () => {
-    runAdapterTests('S3', () =>
-      new S3StorageAdapter({
-        region: process.env.TEST_S3_REGION!,
-        bucket: process.env.TEST_S3_BUCKET!,
-        accessKeyId: process.env.TEST_S3_ACCESS_KEY!,
-        secretAccessKey: process.env.TEST_S3_SECRET_KEY!,
-      }),
+    runAdapterTests(
+      'S3',
+      () =>
+        new S3StorageAdapter({
+          region: process.env.TEST_S3_REGION!,
+          bucket: process.env.TEST_S3_BUCKET!,
+          accessKeyId: process.env.TEST_S3_ACCESS_KEY!,
+          secretAccessKey: process.env.TEST_S3_SECRET_KEY!,
+        }),
     );
   });
 
   // GCS Tests
   (runGcsTests ? describe : describe.skip)('GcsStorageAdapter', () => {
-    runAdapterTests('GCS', () =>
-      new GcsStorageAdapter({
-        projectId: process.env.TEST_GCS_PROJECT!,
-        bucket: process.env.TEST_GCS_BUCKET!,
-        keyFilename: process.env.TEST_GCS_KEY_FILE,
-      }),
+    runAdapterTests(
+      'GCS',
+      () =>
+        new GcsStorageAdapter({
+          projectId: process.env.TEST_GCS_PROJECT!,
+          bucket: process.env.TEST_GCS_BUCKET!,
+          keyFilename: process.env.TEST_GCS_KEY_FILE,
+        }),
     );
   });
 
   // Azure Tests
   (runAzureTests ? describe : describe.skip)('AzureBlobStorageAdapter', () => {
-    runAdapterTests('Azure', () =>
-      new AzureBlobStorageAdapter({
-        accountName: process.env.TEST_AZURE_ACCOUNT!,
-        containerName: process.env.TEST_AZURE_CONTAINER!,
-        accountKey: process.env.TEST_AZURE_KEY,
-      }),
+    runAdapterTests(
+      'Azure',
+      () =>
+        new AzureBlobStorageAdapter({
+          accountName: process.env.TEST_AZURE_ACCOUNT!,
+          containerName: process.env.TEST_AZURE_CONTAINER!,
+          accountKey: process.env.TEST_AZURE_KEY,
+        }),
     );
   });
 });

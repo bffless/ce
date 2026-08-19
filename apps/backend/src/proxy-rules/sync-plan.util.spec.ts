@@ -89,11 +89,9 @@ describe('sync-plan.util', () => {
     });
 
     it('marks live-only rules toDelete when prune is on', () => {
-      const plan = computeSyncPlan(
-        [live(), live({ pathPattern: '/legacy', method: 'GET' })],
-        [],
-        { prune: true },
-      );
+      const plan = computeSyncPlan([live(), live({ pathPattern: '/legacy', method: 'GET' })], [], {
+        prune: true,
+      });
 
       expect(plan.toDelete).toEqual([
         { pathPattern: '/api/*', method: null },
@@ -103,11 +101,9 @@ describe('sync-plan.util', () => {
     });
 
     it('marks live-only rules pruneCandidates when prune is off', () => {
-      const plan = computeSyncPlan(
-        [live(), live({ pathPattern: '/legacy', method: 'GET' })],
-        [],
-        { prune: false },
-      );
+      const plan = computeSyncPlan([live(), live({ pathPattern: '/legacy', method: 'GET' })], [], {
+        prune: false,
+      });
 
       expect(plan.pruneCandidates).toEqual([
         { pathPattern: '/api/*', method: null },
@@ -149,11 +145,9 @@ describe('sync-plan.util', () => {
 
   describe('match key (pathPattern, method ?? null)', () => {
     it('treats method null and method "GET" on the same path as distinct rules', () => {
-      const plan = computeSyncPlan(
-        [live({ method: null })],
-        [incoming({ method: 'GET' })],
-        { prune: false },
-      );
+      const plan = computeSyncPlan([live({ method: null })], [incoming({ method: 'GET' })], {
+        prune: false,
+      });
 
       expect(plan.toCreate).toMatchObject([{ pathPattern: '/api/*', method: 'GET' }]);
       expect(plan.pruneCandidates).toEqual([{ pathPattern: '/api/*', method: null }]);
@@ -162,10 +156,7 @@ describe('sync-plan.util', () => {
     it('matches same-path rules with different methods independently', () => {
       const plan = computeSyncPlan(
         [live({ method: 'GET' }), live({ id: 'rule-live-2', method: 'POST', order: 1 })],
-        [
-          incoming({ method: 'GET' }),
-          incoming({ method: 'POST', order: 1, timeout: 60000 }),
-        ],
+        [incoming({ method: 'GET' }), incoming({ method: 'POST', order: 1, timeout: 60000 })],
         { prune: true },
       );
 
@@ -183,7 +174,11 @@ describe('sync-plan.util', () => {
       ['preserveHost false', { preserveHost: false }, { preserveHost: false }],
       ['forwardCookies false', { forwardCookies: false }, { forwardCookies: false }],
       ['internalRewrite false', { internalRewrite: false }, { internalRewrite: false }],
-      ['proxyType external_proxy', { proxyType: 'external_proxy' }, { proxyType: 'external_proxy' }],
+      [
+        'proxyType external_proxy',
+        { proxyType: 'external_proxy' },
+        { proxyType: 'external_proxy' },
+      ],
       ['isEnabled true', { isEnabled: true }, { isEnabled: true }],
       ['debugEnabled false', { debugEnabled: false }, { debugEnabled: false }],
     ] as Array<[string, Partial<LiveSyncRule>, Partial<SyncRuleInput>]>)(
@@ -259,12 +254,18 @@ describe('sync-plan.util', () => {
       ['methods array', { methods: ['GET', 'HEAD'] }],
       ['timeout', { timeout: 60000 }],
       ['isEnabled', { isEnabled: false }],
-      ['authTransform', { authTransform: { type: 'cookie-to-bearer' as const, cookieName: 'sAccessToken' } }],
-    ] as Array<[string, Partial<SyncRuleInput>]>)('%s change lands in toUpdate', (_label, override) => {
-      const plan = computeSyncPlan([live()], [incoming(override)], { prune: false });
-      expect(plan.toUpdate).toHaveLength(1);
-      expect(plan.unchanged).toEqual([]);
-    });
+      [
+        'authTransform',
+        { authTransform: { type: 'cookie-to-bearer' as const, cookieName: 'sAccessToken' } },
+      ],
+    ] as Array<[string, Partial<SyncRuleInput>]>)(
+      '%s change lands in toUpdate',
+      (_label, override) => {
+        const plan = computeSyncPlan([live()], [incoming(override)], { prune: false });
+        expect(plan.toUpdate).toHaveLength(1);
+        expect(plan.unchanged).toEqual([]);
+      },
+    );
 
     it('treats removing a live description as a change', () => {
       const plan = computeSyncPlan(
@@ -282,8 +283,7 @@ describe('sync-plan.util', () => {
   });
 
   describe('headerConfig comparison and blank-secret semantics', () => {
-    const liveWithSecret = () =>
-      live({ headerConfig: { add: { 'X-API-Key': 'sk_live_secret' } } });
+    const liveWithSecret = () => live({ headerConfig: { add: { 'X-API-Key': 'sk_live_secret' } } });
 
     it('blank incoming value compares equal to any live value for that header (decision 1)', () => {
       const plan = computeSyncPlan(
@@ -437,7 +437,12 @@ describe('sync-plan.util', () => {
     it('infers email_form_handler from emailHandlerConfig presence', () => {
       const plan = computeSyncPlan(
         [],
-        [{ pathPattern: '/api/contact', emailHandlerConfig: { destinationEmail: 'a@b.c' } as never }],
+        [
+          {
+            pathPattern: '/api/contact',
+            emailHandlerConfig: { destinationEmail: 'a@b.c' } as never,
+          },
+        ],
         { prune: false },
       );
       expect(plan.toCreate[0].rule.proxyType).toBe('email_form_handler');
@@ -581,11 +586,9 @@ describe('sync-plan.util', () => {
     });
 
     it('toCreate carries blank add values intact for missingSecrets reporting', () => {
-      const plan = computeSyncPlan(
-        [],
-        [incoming({ headerConfig: { add: { 'X-API-Key': '' } } })],
-        { prune: false },
-      );
+      const plan = computeSyncPlan([], [incoming({ headerConfig: { add: { 'X-API-Key': '' } } })], {
+        prune: false,
+      });
       expect(plan.toCreate[0].rule.headerConfig).toEqual({ add: { 'X-API-Key': '' } });
     });
 
@@ -615,7 +618,11 @@ describe('sync-plan.util', () => {
       const rules = [
         incoming({ pathPattern: '/b', order: 5 }),
         incoming({ pathPattern: '/a' }), // no order → fallback index 0 in the (order ?? 0)-sorted list
-        incoming({ pathPattern: '/pipe', targetUrl: undefined, pipelineConfig: { name: 'p', steps: [] } }),
+        incoming({
+          pathPattern: '/pipe',
+          targetUrl: undefined,
+          pipelineConfig: { name: 'p', steps: [] },
+        }),
       ];
 
       const normalized = normalizeSyncRules(rules);
@@ -661,7 +668,7 @@ describe('sync-plan.util — three-way', () => {
     pathPattern: '/api/draft',
     targetUrl: 'https://api.example.com',
     ...overrides,
-  })
+  });
   const liveRow = (overrides: Partial<LiveSyncRule> = {}): LiveSyncRule => ({
     id: 'rule-1',
     pathPattern: '/api/draft',
@@ -688,11 +695,11 @@ describe('sync-plan.util — three-way', () => {
   it('preserves a user-edited rule the incoming bundle did not touch', () => {
     // The exact reported case: the user repointed a step's skills source; the
     // app's own copy of that rule is unchanged between versions.
-    const plan = computeSyncPlan(
-      [liveRow({ description: 'user edited' })],
-      [base()],
-      { prune: false, baseRules: [base()], conflictPolicy: 'preserve' },
-    );
+    const plan = computeSyncPlan([liveRow({ description: 'user edited' })], [base()], {
+      prune: false,
+      baseRules: [base()],
+      conflictPolicy: 'preserve',
+    });
 
     expect(plan.toUpdate).toEqual([]);
     expect(plan.preserved).toEqual([{ pathPattern: '/api/draft', method: null }]);
@@ -700,11 +707,11 @@ describe('sync-plan.util — three-way', () => {
   });
 
   it('applies an app change to a rule the user never touched', () => {
-    const plan = computeSyncPlan(
-      [liveRow()],
-      [base({ timeout: 60000 })],
-      { prune: false, baseRules: [base()], conflictPolicy: 'preserve' },
-    );
+    const plan = computeSyncPlan([liveRow()], [base({ timeout: 60000 })], {
+      prune: false,
+      baseRules: [base()],
+      conflictPolicy: 'preserve',
+    });
 
     expect(plan.toUpdate).toHaveLength(1);
     expect(plan.toUpdate[0].rule.timeout).toBe(60000);
@@ -731,11 +738,11 @@ describe('sync-plan.util — three-way', () => {
   });
 
   it('reports the contested field when both sides changed the SAME one', () => {
-    const plan = computeSyncPlan(
-      [liveRow({ timeout: 90000 })],
-      [base({ timeout: 60000 })],
-      { prune: false, baseRules: [base()], conflictPolicy: 'preserve' },
-    );
+    const plan = computeSyncPlan([liveRow({ timeout: 90000 })], [base({ timeout: 60000 })], {
+      prune: false,
+      baseRules: [base()],
+      conflictPolicy: 'preserve',
+    });
 
     expect(plan.conflicts).toEqual([
       {
@@ -753,11 +760,11 @@ describe('sync-plan.util — three-way', () => {
   });
 
   it('lets the payload win the contested field under overwrite, still reporting it', () => {
-    const plan = computeSyncPlan(
-      [liveRow({ timeout: 90000 })],
-      [base({ timeout: 60000 })],
-      { prune: false, baseRules: [base()], conflictPolicy: 'overwrite' },
-    );
+    const plan = computeSyncPlan([liveRow({ timeout: 90000 })], [base({ timeout: 60000 })], {
+      prune: false,
+      baseRules: [base()],
+      conflictPolicy: 'overwrite',
+    });
 
     expect(plan.conflicts.map((c) => c.fields.map((f) => f.field))).toEqual([['timeout']]);
     expect(plan.toUpdate).toHaveLength(1);
@@ -765,11 +772,9 @@ describe('sync-plan.util — three-way', () => {
   });
 
   it('is unchanged from today when no base is supplied (rules-as-code CI parity)', () => {
-    const plan = computeSyncPlan(
-      [liveRow({ description: 'user edited' })],
-      [base()],
-      { prune: false },
-    );
+    const plan = computeSyncPlan([liveRow({ description: 'user edited' })], [base()], {
+      prune: false,
+    });
 
     expect(plan.toUpdate).toHaveLength(1);
     expect(plan.conflicts).toEqual([]);
@@ -779,11 +784,11 @@ describe('sync-plan.util — three-way', () => {
   it('treats a rule absent from the base as user-created, never a conflict', () => {
     // Live-only rules the app never wrote aren't matched by an incoming rule at
     // all, so they follow the existing prune path — not the conflict path.
-    const plan = computeSyncPlan(
-      [liveRow({ pathPattern: '/api/mine' })],
-      [base()],
-      { prune: false, baseRules: [base()], conflictPolicy: 'preserve' },
-    );
+    const plan = computeSyncPlan([liveRow({ pathPattern: '/api/mine' })], [base()], {
+      prune: false,
+      baseRules: [base()],
+      conflictPolicy: 'preserve',
+    });
 
     expect(plan.pruneCandidates).toEqual([{ pathPattern: '/api/mine', method: null }]);
     expect(plan.conflicts).toEqual([]);

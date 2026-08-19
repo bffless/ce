@@ -68,7 +68,10 @@ export class ExportedProxyRuleDto {
   })
   headerConfig?: HeaderConfigDto;
 
-  @ApiPropertyOptional({ type: AuthTransformConfigDto, description: 'Auth transform configuration' })
+  @ApiPropertyOptional({
+    type: AuthTransformConfigDto,
+    description: 'Auth transform configuration',
+  })
   authTransform?: AuthTransformConfigDto;
 
   @ApiPropertyOptional({ description: 'Rewrite internally instead of proxying' })
@@ -80,7 +83,10 @@ export class ExportedProxyRuleDto {
   })
   proxyType?: string;
 
-  @ApiPropertyOptional({ type: EmailHandlerConfigDto, description: 'Email form handler configuration' })
+  @ApiPropertyOptional({
+    type: EmailHandlerConfigDto,
+    description: 'Email form handler configuration',
+  })
   emailHandlerConfig?: EmailHandlerConfigDto;
 
   @ApiPropertyOptional({ type: PipelineConfigDto, description: 'Pipeline configuration' })

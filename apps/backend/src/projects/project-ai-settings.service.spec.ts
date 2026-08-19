@@ -110,7 +110,9 @@ describe('ProjectAISettingsService', () => {
     it('reports live:false and falls back when the fetch throws', async () => {
       global.fetch = jest
         .fn()
-        .mockRejectedValue(new Error('getaddrinfo ENOTFOUND api.anthropic.com')) as unknown as typeof fetch;
+        .mockRejectedValue(
+          new Error('getaddrinfo ENOTFOUND api.anthropic.com'),
+        ) as unknown as typeof fetch;
       const service = buildService();
 
       const result = await service.previewProviderModels('anthropic', uniqueKey());

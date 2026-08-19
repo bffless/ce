@@ -151,11 +151,7 @@ function validateSchedules(schedules: unknown, path: string, errors: string[]): 
 /** Any `{token}` at all, so unknown ones can be named in the error. */
 const ANY_TOKEN_RE = /\{([^}]*)\}/g;
 
-function validateStepPlaceholders(
-  value: unknown,
-  fieldPath: string,
-  errors: string[],
-): void {
+function validateStepPlaceholders(value: unknown, fieldPath: string, errors: string[]): void {
   if (typeof value !== 'string') return;
 
   for (const match of value.matchAll(ANY_TOKEN_RE)) {
@@ -495,7 +491,10 @@ function canExpand(text: string, values: StepPlaceholders): boolean {
  * null if the step's title has an unresolvable token — a note without a title
  * is worse than no note.
  */
-export function interpolateStep(step: AppManualStep, values: StepPlaceholders): AppManualStep | null {
+export function interpolateStep(
+  step: AppManualStep,
+  values: StepPlaceholders,
+): AppManualStep | null {
   // If title has any unresolvable token, drop the entire step.
   if (!canExpand(step.title, values)) {
     return null;
@@ -503,7 +502,10 @@ export function interpolateStep(step: AppManualStep, values: StepPlaceholders): 
 
   const result: AppManualStep = {
     ...step,
-    title: step.title.replace(TOKEN_RE, (_match, token: PlaceholderToken) => values[token] as string),
+    title: step.title.replace(
+      TOKEN_RE,
+      (_match, token: PlaceholderToken) => values[token] as string,
+    ),
     body: expandBody(step.body, values),
   };
 

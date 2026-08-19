@@ -1,13 +1,5 @@
 import { relations } from 'drizzle-orm';
-import {
-  pgTable,
-  timestamp,
-  uuid,
-  varchar,
-  integer,
-  boolean,
-  index,
-} from 'drizzle-orm/pg-core';
+import { pgTable, timestamp, uuid, varchar, integer, boolean, index } from 'drizzle-orm/pg-core';
 import { domainMappings } from './domain-mappings.schema';
 
 export const domainTrafficRules = pgTable(

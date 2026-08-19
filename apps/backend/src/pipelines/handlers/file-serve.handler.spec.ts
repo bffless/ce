@@ -209,10 +209,7 @@ describe('FileServeHandler — streaming & range', () => {
       config: { subDir: 'export', cacheability: '{{steps.gate.cacheability}}' },
     } as unknown as PipelineStep;
 
-    await handler.execute(
-      buildContext(res, {}, { gate: { cacheability: 'public' } }),
-      gatedStep,
-    );
+    await handler.execute(buildContext(res, {}, { gate: { cacheability: 'public' } }), gatedStep);
 
     expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'public, max-age=3600');
   });
@@ -230,10 +227,7 @@ describe('FileServeHandler — streaming & range', () => {
       config: { subDir: 'export', cacheability: '{{steps.gate.cacheability}}' },
     } as unknown as PipelineStep;
 
-    await handler.execute(
-      buildContext(res, {}, { gate: { cacheability: 'private' } }),
-      gatedStep,
-    );
+    await handler.execute(buildContext(res, {}, { gate: { cacheability: 'private' } }), gatedStep);
 
     expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'private, max-age=3600');
   });

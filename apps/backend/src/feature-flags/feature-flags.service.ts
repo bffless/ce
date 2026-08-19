@@ -280,7 +280,10 @@ export class FeatureFlagsService implements OnModuleInit {
   async reconcileWildcardSslVisibility(proxyMode: 'cloudflare' | 'proxy' | 'none'): Promise<void> {
     if (proxyMode !== 'none') return;
 
-    const sources = await this.getSources('ENABLE_WILDCARD_SSL', getFlagDefinition('ENABLE_WILDCARD_SSL')!);
+    const sources = await this.getSources(
+      'ENABLE_WILDCARD_SSL',
+      getFlagDefinition('ENABLE_WILDCARD_SSL')!,
+    );
     const disabledByEnv = sources.env === false && sources.database === undefined;
     if (!disabledByEnv) return;
 

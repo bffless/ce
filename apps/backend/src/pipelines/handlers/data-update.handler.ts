@@ -42,7 +42,10 @@ export class DataUpdateHandler implements StepHandler<DataUpdateHandlerConfig> {
     const hasFilters = config.filters && Object.keys(config.filters).length > 0;
 
     if (!hasRecordId && !hasFilters) {
-      throw new ConfigurationError('Either recordId or at least one filter is required', 'data_update');
+      throw new ConfigurationError(
+        'Either recordId or at least one filter is required',
+        'data_update',
+      );
     }
 
     if (!config.fields || Object.keys(config.fields).length === 0) {
@@ -104,9 +107,7 @@ export class DataUpdateHandler implements StepHandler<DataUpdateHandlerConfig> {
       .from(pipelineData)
       .where(and(...conditions));
 
-    const existingRecords = config.single
-      ? await query.limit(1)
-      : await query;
+    const existingRecords = config.single ? await query.limit(1) : await query;
 
     if (existingRecords.length === 0) {
       this.logger.debug(`No records found matching filters`);

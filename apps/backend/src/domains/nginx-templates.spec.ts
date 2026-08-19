@@ -40,14 +40,13 @@ const baseCtx = {
  *  `render-main-conf.sh` emits for the primary server block. */
 function expectAcmeLocation(config: string): void {
   expect(config).toContain('location /.well-known/acme-challenge/');
-  expect(config).toMatch(/location \/\.well-known\/acme-challenge\/ \{\s*root \/var\/www\/certbot;/);
+  expect(config).toMatch(
+    /location \/\.well-known\/acme-challenge\/ \{\s*root \/var\/www\/certbot;/,
+  );
 }
 
 describe('shipped nginx templates: ACME challenge reachability', () => {
-  describe.each([
-    ['subdomain.conf.hbs'],
-    ['custom-domain.conf.hbs'],
-  ])('%s', (template) => {
+  describe.each([['subdomain.conf.hbs'], ['custom-domain.conf.hbs']])('%s', (template) => {
     it('serves the ACME challenge on the HTTP server block when SSL is off', async () => {
       const config = await render(template, { ...baseCtx, sslEnabled: false });
       expectAcmeLocation(config);

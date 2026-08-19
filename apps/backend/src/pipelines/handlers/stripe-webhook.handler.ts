@@ -83,7 +83,8 @@ export class StripeWebhookHandler implements StepHandler<StripeWebhookHandlerCon
         success: false,
         error: {
           code: 'STRIPE_WEBHOOK_NO_RAW_BODY',
-          message: 'Raw body not available for signature verification. Ensure rawBody is enabled in NestJS.',
+          message:
+            'Raw body not available for signature verification. Ensure rawBody is enabled in NestJS.',
         },
       };
     }
@@ -100,7 +101,8 @@ export class StripeWebhookHandler implements StepHandler<StripeWebhookHandlerCon
         success: false,
         error: {
           code: 'STRIPE_WEBHOOK_NOT_CONFIGURED',
-          message: 'Stripe integration is not configured with webhook secret. Configure it in Project Settings > Integrations.',
+          message:
+            'Stripe integration is not configured with webhook secret. Configure it in Project Settings > Integrations.',
         },
       };
     }

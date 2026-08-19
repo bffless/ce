@@ -175,11 +175,7 @@ export class CachingStorageAdapter implements IStorageAdapter {
    * Forwards `options` — a dropped `downloadFilename` here would silently strip
    * `Content-Disposition` from every presigned URL on cache-enabled deployments.
    */
-  async getUrl(
-    key: string,
-    expiresIn?: number,
-    options?: SignedUrlOptions,
-  ): Promise<string> {
+  async getUrl(key: string, expiresIn?: number, options?: SignedUrlOptions): Promise<string> {
     return this.storage.getUrl(key, expiresIn, options);
   }
 
@@ -223,10 +219,7 @@ export class CachingStorageAdapter implements IStorageAdapter {
    * Large files (video/audio) should not be cached in the application layer.
    * CDN and browser caching via Cache-Control/ETag headers handle repeat requests.
    */
-  async downloadStream(
-    key: string,
-    opts?: DownloadStreamOptions,
-  ): Promise<StreamDownloadResult> {
+  async downloadStream(key: string, opts?: DownloadStreamOptions): Promise<StreamDownloadResult> {
     if (!this.storage.downloadStream) {
       throw new Error('Underlying storage adapter does not support streaming');
     }

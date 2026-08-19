@@ -28,10 +28,7 @@ export class FormHandler implements StepHandler<FormHandlerConfig> {
     // Validate each field definition
     for (const [fieldName, fieldConfig] of Object.entries(config.fields)) {
       if (!fieldConfig.type) {
-        throw new ConfigurationError(
-          `Field '${fieldName}' must have a type`,
-          'form_handler',
-        );
+        throw new ConfigurationError(`Field '${fieldName}' must have a type`, 'form_handler');
       }
 
       const validTypes = ['string', 'number', 'email', 'boolean'];
@@ -82,7 +79,10 @@ export class FormHandler implements StepHandler<FormHandlerConfig> {
       const rawValue = input[fieldName];
 
       // Check required
-      if (fieldConfig.required && (rawValue === undefined || rawValue === null || rawValue === '')) {
+      if (
+        fieldConfig.required &&
+        (rawValue === undefined || rawValue === null || rawValue === '')
+      ) {
         errors[fieldName] = `${fieldName} is required`;
         continue;
       }

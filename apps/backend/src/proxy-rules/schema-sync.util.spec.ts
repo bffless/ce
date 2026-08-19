@@ -29,7 +29,10 @@ describe('schema-sync.util', () => {
     });
 
     it('reports a field only present in the incoming definition', () => {
-      const incoming: SchemaField[] = [...existing, { name: 'extra', type: 'number', required: false }];
+      const incoming: SchemaField[] = [
+        ...existing,
+        { name: 'extra', type: 'number', required: false },
+      ];
       const result = compareSchemaFields(incoming, existing);
       expect(result.match).toBe(false);
       expect(result.mismatches).toEqual(['field "extra" is only in the incoming definition']);

@@ -453,9 +453,11 @@ describe('DeploymentsService', () => {
   describe('resolveProxyRuleSetIds (plural resolver)', () => {
     // Private method — invoked via cast for direct unit coverage
     const callResolve = (input: Record<string, unknown>) =>
-      (service as unknown as {
-        resolveProxyRuleSetIds: (projectId: string, input: unknown) => Promise<string[]>;
-      }).resolveProxyRuleSetIds(mockProjectId, input);
+      (
+        service as unknown as {
+          resolveProxyRuleSetIds: (projectId: string, input: unknown) => Promise<string[]>;
+        }
+      ).resolveProxyRuleSetIds(mockProjectId, input);
 
     it('returns empty array when nothing provided', async () => {
       const result = await callResolve({});
@@ -708,7 +710,14 @@ describe('DeploymentsService', () => {
     it('clears an override when explicitly passed null for each field', async () => {
       setupMockChain([
         [mockAliasWithOverrides],
-        [{ ...mockAliasWithOverrides, isPublic: null, unauthorizedBehavior: null, requiredRole: null }],
+        [
+          {
+            ...mockAliasWithOverrides,
+            isPublic: null,
+            unauthorizedBehavior: null,
+            requiredRole: null,
+          },
+        ],
       ]);
 
       await service.updateAliasVisibility(

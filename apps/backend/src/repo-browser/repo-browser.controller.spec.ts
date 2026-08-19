@@ -351,14 +351,26 @@ describe('RepoBrowserController', () => {
       const result = await controller.getAliases(mockOwner, mockRepo, defaultQuery, mockUser);
 
       expect(result).toEqual(mockAliasesResponse);
-      expect(mockRepoBrowserService.getAliases).toHaveBeenCalledWith(mockOwner, mockRepo, false, mockUser.id, mockUser.role);
+      expect(mockRepoBrowserService.getAliases).toHaveBeenCalledWith(
+        mockOwner,
+        mockRepo,
+        false,
+        mockUser.id,
+        mockUser.role,
+      );
     });
 
     it('should work without authentication for public repos', async () => {
       const result = await controller.getAliases(mockOwner, mockRepo, defaultQuery, undefined);
 
       expect(result).toEqual(mockAliasesResponse);
-      expect(mockRepoBrowserService.getAliases).toHaveBeenCalledWith(mockOwner, mockRepo, false, null, undefined);
+      expect(mockRepoBrowserService.getAliases).toHaveBeenCalledWith(
+        mockOwner,
+        mockRepo,
+        false,
+        null,
+        undefined,
+      );
     });
 
     it('should return empty aliases list when no aliases exist', async () => {
@@ -388,7 +400,13 @@ describe('RepoBrowserController', () => {
       const queryWithAutoPreview = { includeAutoPreview: true };
       await controller.getAliases(mockOwner, mockRepo, queryWithAutoPreview, mockUser);
 
-      expect(mockRepoBrowserService.getAliases).toHaveBeenCalledWith(mockOwner, mockRepo, true, mockUser.id, mockUser.role);
+      expect(mockRepoBrowserService.getAliases).toHaveBeenCalledWith(
+        mockOwner,
+        mockRepo,
+        true,
+        mockUser.id,
+        mockUser.role,
+      );
     });
   });
 

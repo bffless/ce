@@ -77,40 +77,53 @@ const dtoCases: DtoCase[] = [
 const propertiesWithErrors = (errors: { property: string }[]) => errors.map((e) => e.property);
 
 describe.each(dtoCases)('$name plural proxy-rule-set fields', ({ build }) => {
-
   it('accepts proxyRuleSetNames as a CSV string, transformed to an array', async () => {
     const dto = build({ proxyRuleSetNames: 'a,b' });
     const errors = await validate(dto, VALIDATE_OPTIONS);
     expect(errors).toEqual([]);
-    expect((dto as unknown as { proxyRuleSetNames?: string[] }).proxyRuleSetNames).toEqual(['a', 'b']);
+    expect((dto as unknown as { proxyRuleSetNames?: string[] }).proxyRuleSetNames).toEqual([
+      'a',
+      'b',
+    ]);
   });
 
   it('accepts proxyRuleSetNames as a bare (single) string — the multer single-field case', async () => {
     const dto = build({ proxyRuleSetNames: 'solo' });
     const errors = await validate(dto, VALIDATE_OPTIONS);
     expect(errors).toEqual([]);
-    expect((dto as unknown as { proxyRuleSetNames?: string[] }).proxyRuleSetNames).toEqual(['solo']);
+    expect((dto as unknown as { proxyRuleSetNames?: string[] }).proxyRuleSetNames).toEqual([
+      'solo',
+    ]);
   });
 
   it('accepts proxyRuleSetNames as a real array, unchanged', async () => {
     const dto = build({ proxyRuleSetNames: ['a', 'b'] });
     const errors = await validate(dto, VALIDATE_OPTIONS);
     expect(errors).toEqual([]);
-    expect((dto as unknown as { proxyRuleSetNames?: string[] }).proxyRuleSetNames).toEqual(['a', 'b']);
+    expect((dto as unknown as { proxyRuleSetNames?: string[] }).proxyRuleSetNames).toEqual([
+      'a',
+      'b',
+    ]);
   });
 
   it('accepts proxyRuleSetIds as a CSV string of valid UUIDs', async () => {
     const dto = build({ proxyRuleSetIds: `${UUID_1},${UUID_2}` });
     const errors = await validate(dto, VALIDATE_OPTIONS);
     expect(errors).toEqual([]);
-    expect((dto as unknown as { proxyRuleSetIds?: string[] }).proxyRuleSetIds).toEqual([UUID_1, UUID_2]);
+    expect((dto as unknown as { proxyRuleSetIds?: string[] }).proxyRuleSetIds).toEqual([
+      UUID_1,
+      UUID_2,
+    ]);
   });
 
   it('accepts proxyRuleSetIds as a real array of valid UUIDs, unchanged', async () => {
     const dto = build({ proxyRuleSetIds: [UUID_1, UUID_2] });
     const errors = await validate(dto, VALIDATE_OPTIONS);
     expect(errors).toEqual([]);
-    expect((dto as unknown as { proxyRuleSetIds?: string[] }).proxyRuleSetIds).toEqual([UUID_1, UUID_2]);
+    expect((dto as unknown as { proxyRuleSetIds?: string[] }).proxyRuleSetIds).toEqual([
+      UUID_1,
+      UUID_2,
+    ]);
   });
 
   it('rejects proxyRuleSetIds when a CSV segment is not a UUID', async () => {
@@ -155,14 +168,21 @@ describe('CreateDeploymentDto proxy-rule-set full matrix', () => {
     const dto = build({ proxyRuleSetNames: ' a , b ,c ' });
     const errors = await validate(dto, VALIDATE_OPTIONS);
     expect(errors).toEqual([]);
-    expect((dto as unknown as { proxyRuleSetNames?: string[] }).proxyRuleSetNames).toEqual(['a', 'b', 'c']);
+    expect((dto as unknown as { proxyRuleSetNames?: string[] }).proxyRuleSetNames).toEqual([
+      'a',
+      'b',
+      'c',
+    ]);
   });
 
   it('drops empty segments from a CSV string with trailing/leading commas', async () => {
     const dto = build({ proxyRuleSetNames: 'a,,b,' });
     const errors = await validate(dto, VALIDATE_OPTIONS);
     expect(errors).toEqual([]);
-    expect((dto as unknown as { proxyRuleSetNames?: string[] }).proxyRuleSetNames).toEqual(['a', 'b']);
+    expect((dto as unknown as { proxyRuleSetNames?: string[] }).proxyRuleSetNames).toEqual([
+      'a',
+      'b',
+    ]);
   });
 
   it('does not affect the singular proxyRuleSetName field (still a plain string)', async () => {

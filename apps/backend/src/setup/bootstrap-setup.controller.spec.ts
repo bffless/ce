@@ -64,7 +64,12 @@ describe('BootstrapSetupController', () => {
     preflight.run.mockResolvedValue({ ok: true, checks: [] });
     sslCert.initialize.mockResolvedValue(undefined);
     const featureFlags = { reconcileWildcardSslVisibility: jest.fn().mockResolvedValue(undefined) };
-    controller = new BootstrapSetupController(svc as any, preflight as any, sslCert as any, featureFlags as any);
+    controller = new BootstrapSetupController(
+      svc as any,
+      preflight as any,
+      sslCert as any,
+      featureFlags as any,
+    );
     (controller as any).scheduleExit = exitFn; // do not actually exit in tests
   });
 
@@ -77,9 +82,18 @@ describe('BootstrapSetupController', () => {
         servingMode: 'cloudflare',
       });
       expect(svc.assertBootstrapAllowed).toHaveBeenCalled();
-      expect(svc.validateCertificatePair).toHaveBeenCalledWith('CERT', 'KEY', 'example.com', 'cloudflare');
+      expect(svc.validateCertificatePair).toHaveBeenCalledWith(
+        'CERT',
+        'KEY',
+        'example.com',
+        'cloudflare',
+      );
       expect(svc.saveCertificates).toHaveBeenCalledWith('CERT', 'KEY', 'example.com');
-      expect(res).toEqual({ saved: true, sans: ['example.com', '*.example.com'], wildcardCovered: true });
+      expect(res).toEqual({
+        saved: true,
+        sans: ['example.com', '*.example.com'],
+        wildcardCovered: true,
+      });
     });
 
     it('validates the claim token (after the mode gate, before any cert work)', async () => {
@@ -150,7 +164,9 @@ describe('BootstrapSetupController', () => {
       // awaited after validateCertificatePair/saveCertificates instead of
       // before, this test fails because the mocks would have been called
       // despite the guard rejecting.
-      svc.assertBootstrapAllowed.mockRejectedValueOnce(new BadRequestException('Bootstrap setup is disabled'));
+      svc.assertBootstrapAllowed.mockRejectedValueOnce(
+        new BadRequestException('Bootstrap setup is disabled'),
+      );
       await expect(
         controller.uploadCertificates({
           domain: 'example.com',
@@ -169,11 +185,19 @@ describe('BootstrapSetupController', () => {
       const writeSpy = jest
         .spyOn(require('../bootstrap/instance-config'), 'writeInstanceConfig')
         .mockImplementation(() => undefined);
-      const res = await controller.apply({ domain: 'example.com', proxyMode: 'cloudflare', sslMode: 'paste' });
+      const res = await controller.apply({
+        domain: 'example.com',
+        proxyMode: 'cloudflare',
+        sslMode: 'paste',
+      });
       expect(svc.assertBootstrapAllowed).toHaveBeenCalled();
       expect(svc.assertStagedCertificateCovers).toHaveBeenCalledWith('example.com', 'cloudflare');
       expect(writeSpy).toHaveBeenCalledWith(
-        expect.objectContaining({ state: 'applied', primaryDomain: 'example.com', proxyMode: 'cloudflare' }),
+        expect.objectContaining({
+          state: 'applied',
+          primaryDomain: 'example.com',
+          proxyMode: 'cloudflare',
+        }),
       );
       expect(res).toEqual({ applying: true, adminUrl: 'https://admin.example.com' });
       // m5: second arg is the client IP via extractClientIp() — undefined
@@ -236,7 +260,12 @@ describe('BootstrapSetupController', () => {
         throw new BadRequestException('Invalid onboarding token');
       });
       await expect(
-        controller.apply({ domain: 'example.com', proxyMode: 'cloudflare', sslMode: 'paste', token: 'wrong' }),
+        controller.apply({
+          domain: 'example.com',
+          proxyMode: 'cloudflare',
+          sslMode: 'paste',
+          token: 'wrong',
+        }),
       ).rejects.toThrow('Invalid onboarding token');
       expect(svc.certificatesPresent).not.toHaveBeenCalled();
       expect(writeSpy).not.toHaveBeenCalled();
@@ -255,9 +284,15 @@ describe('BootstrapSetupController', () => {
       const writeSpy = jest
         .spyOn(require('../bootstrap/instance-config'), 'writeInstanceConfig')
         .mockImplementation(() => undefined);
-      const res = await controller.apply({ domain: 'Example.COM', proxyMode: 'none', sslMode: 'paste' });
+      const res = await controller.apply({
+        domain: 'Example.COM',
+        proxyMode: 'none',
+        sslMode: 'paste',
+      });
       expect(svc.validateDomain).toHaveBeenCalledWith('Example.COM');
-      expect(writeSpy).toHaveBeenCalledWith(expect.objectContaining({ primaryDomain: 'example.com' }));
+      expect(writeSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ primaryDomain: 'example.com' }),
+      );
       expect(res.adminUrl).toBe('https://admin.example.com');
       writeSpy.mockRestore();
     });
@@ -327,7 +362,9 @@ describe('BootstrapSetupController', () => {
       // Pins that assertBootstrapAllowed runs before the certificate
       // presence check — a platform-managed deployment must be refused
       // without touching the filesystem at all.
-      svc.assertBootstrapAllowed.mockRejectedValueOnce(new Error('Not available on platform-managed deployments'));
+      svc.assertBootstrapAllowed.mockRejectedValueOnce(
+        new Error('Not available on platform-managed deployments'),
+      );
       await expect(
         controller.apply({ domain: 'example.com', proxyMode: 'cloudflare', sslMode: 'paste' }),
       ).rejects.toThrow('Not available on platform-managed deployments');
@@ -342,15 +379,25 @@ describe('BootstrapSetupController', () => {
         .mockImplementation(() => undefined);
       svc.validateDomain.mockReturnValue('example.com');
       svc.validateApplyConfig.mockReturnValue({
-        proxyMode: 'proxy', sslMode: 'selfsigned', port80: 'redirect', realIp: null,
+        proxyMode: 'proxy',
+        sslMode: 'selfsigned',
+        port80: 'redirect',
+        realIp: null,
       });
       const res = await controller.apply({
-        domain: 'example.com', proxyMode: 'proxy', sslMode: 'selfsigned',
+        domain: 'example.com',
+        proxyMode: 'proxy',
+        sslMode: 'selfsigned',
       } as ApplyBootstrapDto);
       expect(svc.certificatesPresent).not.toHaveBeenCalled();
       expect(svc.assertStagedCertificateCovers).not.toHaveBeenCalled();
       expect(writeSpy).toHaveBeenCalledWith(
-        expect.objectContaining({ version: 2, state: 'applied', sslMode: 'selfsigned', proxyMode: 'proxy' }),
+        expect.objectContaining({
+          version: 2,
+          state: 'applied',
+          sslMode: 'selfsigned',
+          proxyMode: 'proxy',
+        }),
       );
       expect(res.adminUrl).toBe('https://admin.example.com');
       writeSpy.mockRestore();
@@ -366,11 +413,15 @@ describe('BootstrapSetupController', () => {
       // (no `Once`), so relying on the shared default dto-passthrough
       // implementation here would be order-dependent.
       svc.validateApplyConfig.mockReturnValueOnce({
-        proxyMode: 'cloudflare', sslMode: 'paste', port80: 'redirect', realIp: null,
+        proxyMode: 'cloudflare',
+        sslMode: 'paste',
+        port80: 'redirect',
+        realIp: null,
       });
       await controller.apply({ domain: 'example.com', proxyMode: 'cloudflare', sslMode: 'paste' });
       expect(staging.promoteStagedCertificates).toHaveBeenCalled();
-      const promoteOrder = (staging.promoteStagedCertificates as jest.Mock).mock.invocationCallOrder[0];
+      const promoteOrder = (staging.promoteStagedCertificates as jest.Mock).mock
+        .invocationCallOrder[0];
       const writeOrder = writeSpy.mock.invocationCallOrder[0];
       expect(promoteOrder).toBeLessThan(writeOrder);
       writeSpy.mockRestore();
@@ -381,10 +432,15 @@ describe('BootstrapSetupController', () => {
         .spyOn(require('../bootstrap/instance-config'), 'writeInstanceConfig')
         .mockImplementation(() => undefined);
       svc.validateApplyConfig.mockReturnValueOnce({
-        proxyMode: 'proxy', sslMode: 'selfsigned', port80: 'redirect', realIp: null,
+        proxyMode: 'proxy',
+        sslMode: 'selfsigned',
+        port80: 'redirect',
+        realIp: null,
       });
       await controller.apply({
-        domain: 'example.com', proxyMode: 'proxy', sslMode: 'selfsigned',
+        domain: 'example.com',
+        proxyMode: 'proxy',
+        sslMode: 'selfsigned',
       } as ApplyBootstrapDto);
       expect(staging.discardStagedCertificates).toHaveBeenCalled();
       expect(staging.promoteStagedCertificates).not.toHaveBeenCalled();
@@ -440,10 +496,10 @@ describe('BootstrapSetupController', () => {
     it('schedules an unref-ed 500ms timer that calls process.exit(0)', () => {
       jest.useFakeTimers();
       const setTimeoutSpy = jest.spyOn(global, 'setTimeout');
-      const exitSpy = jest.spyOn(process, 'exit').mockImplementation(((() => {
+      const exitSpy = jest.spyOn(process, 'exit').mockImplementation((() => {
         // Never actually exit the Jest worker.
         return undefined as never;
-      }) as unknown) as (code?: number) => never);
+      }) as unknown as (code?: number) => never);
 
       const freshController = new BootstrapSetupController(
         svc as any,
@@ -485,33 +541,48 @@ describe('BootstrapSetupController', () => {
 
     it('issue-certificate re-runs preflight server-side and 400s when it fails', async () => {
       preflight.run.mockResolvedValue({ ok: false, checks: [] });
-      await expect(
-        controller.issueCertificate({ domain: 'example.com' }),
-      ).rejects.toThrow(BadRequestException);
+      await expect(controller.issueCertificate({ domain: 'example.com' })).rejects.toThrow(
+        BadRequestException,
+      );
       expect(sslCert.requestPrimaryDomainCertificate).not.toHaveBeenCalled();
     });
 
     it('issue-certificate returns SANs on success, delegating with the validated domain', async () => {
       preflight.run.mockResolvedValue({ ok: true, checks: [] });
       sslCert.requestPrimaryDomainCertificate.mockResolvedValue({
-        success: true, sans: ['example.com', 'www.example.com', 'admin.example.com'],
+        success: true,
+        sans: ['example.com', 'www.example.com', 'admin.example.com'],
       });
       const res = await controller.issueCertificate({ domain: 'Example.com' });
       expect(svc.validateDomain).toHaveBeenCalledWith('Example.com');
-      expect(sslCert.requestPrimaryDomainCertificate).toHaveBeenCalledWith('example.com', { target: 'staging' });
-      expect(res).toEqual({ issued: true, sans: ['example.com', 'www.example.com', 'admin.example.com'] });
+      expect(sslCert.requestPrimaryDomainCertificate).toHaveBeenCalledWith('example.com', {
+        target: 'staging',
+      });
+      expect(res).toEqual({
+        issued: true,
+        sans: ['example.com', 'www.example.com', 'admin.example.com'],
+      });
     });
 
     it('issue-certificate surfaces the ACME error as a 400', async () => {
       preflight.run.mockResolvedValue({ ok: true, checks: [] });
-      sslCert.requestPrimaryDomainCertificate.mockResolvedValue({ success: false, error: 'rateLimited' });
-      await expect(controller.issueCertificate({ domain: 'example.com' })).rejects.toThrow(/rateLimited/);
+      sslCert.requestPrimaryDomainCertificate.mockResolvedValue({
+        success: false,
+        error: 'rateLimited',
+      });
+      await expect(controller.issueCertificate({ domain: 'example.com' })).rejects.toThrow(
+        /rateLimited/,
+      );
     });
 
     it('wildcard start delegates with the validated domain', async () => {
       sslCert.startWildcardCertificateRequest.mockResolvedValue({
-        domain: 'example.com', recordName: '_acme-challenge.example.com',
-        recordValue: 'v1', recordValues: ['v1', 'v2'], token: 'tok', expiresAt: new Date('2026-08-01T00:00:00Z'),
+        domain: 'example.com',
+        recordName: '_acme-challenge.example.com',
+        recordValue: 'v1',
+        recordValues: ['v1', 'v2'],
+        token: 'tok',
+        expiresAt: new Date('2026-08-01T00:00:00Z'),
       });
       const start = await controller.wildcardStart({ domain: 'Example.com' });
       expect(svc.validateDomain).toHaveBeenCalledWith('Example.com');

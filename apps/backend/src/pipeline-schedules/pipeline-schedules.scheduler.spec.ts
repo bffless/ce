@@ -10,7 +10,9 @@ function makeService(runImpl?: () => Promise<{ due: number; ran: number }>) {
 describe('PipelineSchedulesScheduler', () => {
   it('delegates a tick to runDueSchedules', async () => {
     const service = makeService(async () => ({ due: 2, ran: 1 }));
-    const scheduler = new PipelineSchedulesScheduler(service as unknown as PipelineSchedulesService);
+    const scheduler = new PipelineSchedulesScheduler(
+      service as unknown as PipelineSchedulesService,
+    );
 
     await scheduler.pollDueSchedules();
 
@@ -26,7 +28,9 @@ describe('PipelineSchedulesScheduler', () => {
       await gate;
       return { due: 1, ran: 1 };
     });
-    const scheduler = new PipelineSchedulesScheduler(service as unknown as PipelineSchedulesService);
+    const scheduler = new PipelineSchedulesScheduler(
+      service as unknown as PipelineSchedulesService,
+    );
 
     const first = scheduler.pollDueSchedules(); // holds the lock on `gate`
     await scheduler.pollDueSchedules(); // should early-return, not call again
@@ -44,7 +48,9 @@ describe('PipelineSchedulesScheduler', () => {
     const service = makeService(async () => {
       throw new Error('boom');
     });
-    const scheduler = new PipelineSchedulesScheduler(service as unknown as PipelineSchedulesService);
+    const scheduler = new PipelineSchedulesScheduler(
+      service as unknown as PipelineSchedulesService,
+    );
 
     await expect(scheduler.pollDueSchedules()).resolves.toBeUndefined();
     // Lock was released despite the throw, so the next tick still runs.

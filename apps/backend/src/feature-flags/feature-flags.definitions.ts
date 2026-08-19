@@ -475,8 +475,7 @@ export const FLAG_DEFINITIONS: Record<string, FlagDefinition> = {
     envKey: 'FEATURE_TOS_URL',
     defaultValue: '',
     type: 'string',
-    description:
-      'URL to Terms of Service page. Used when REQUIRE_TOS_ACCEPTANCE is enabled.',
+    description: 'URL to Terms of Service page. Used when REQUIRE_TOS_ACCEPTANCE is enabled.',
     category: 'features',
     exposeToClient: true,
   },

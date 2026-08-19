@@ -9,7 +9,11 @@ describe('PrimarySslApplyDto', () => {
     expect(validateSync(dto).length).toBeGreaterThan(0);
   });
   it('accepts a valid serving config', () => {
-    const dto = plainToInstance(PrimarySslApplyDto, { proxyMode: 'proxy', sslMode: 'selfsigned', port80: 'redirect' });
+    const dto = plainToInstance(PrimarySslApplyDto, {
+      proxyMode: 'proxy',
+      sslMode: 'selfsigned',
+      port80: 'redirect',
+    });
     expect(validateSync(dto)).toHaveLength(0);
   });
 });

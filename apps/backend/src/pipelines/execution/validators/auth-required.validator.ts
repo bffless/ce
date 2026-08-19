@@ -24,27 +24,20 @@ export class AuthRequiredValidator implements Validator<AuthRequiredValidatorCon
   validateConfig(config: AuthRequiredValidatorConfig): void {
     // roles is optional, but if provided must be an array
     if (config.roles !== undefined && !Array.isArray(config.roles)) {
-      throw new ConfigurationError(
-        'auth_required validator: roles must be an array of strings',
-      );
+      throw new ConfigurationError('auth_required validator: roles must be an array of strings');
     }
 
     // Validate each role is a string
     if (config.roles) {
       for (const role of config.roles) {
         if (typeof role !== 'string') {
-          throw new ConfigurationError(
-            'auth_required validator: each role must be a string',
-          );
+          throw new ConfigurationError('auth_required validator: each role must be a string');
         }
       }
     }
   }
 
-  async validate(
-    context: PipelineContext,
-    validatorConfig: ValidatorConfig,
-  ): Promise<void> {
+  async validate(context: PipelineContext, validatorConfig: ValidatorConfig): Promise<void> {
     // Type narrowing via discriminated union
     if (validatorConfig.type !== 'auth_required') {
       throw new ConfigurationError(
@@ -67,9 +60,7 @@ export class AuthRequiredValidator implements Validator<AuthRequiredValidatorCon
 
       if (!userRole) {
         this.logger.debug('User has no role but roles are required');
-        throw new AuthorizationError(
-          `Access denied. Required roles: ${config.roles.join(', ')}`,
-        );
+        throw new AuthorizationError(`Access denied. Required roles: ${config.roles.join(', ')}`);
       }
 
       // Check if user's role matches any of the required roles
@@ -81,9 +72,7 @@ export class AuthRequiredValidator implements Validator<AuthRequiredValidatorCon
         this.logger.debug(
           `User role '${userRole}' does not match required roles: ${config.roles.join(', ')}`,
         );
-        throw new AuthorizationError(
-          `Access denied. Required roles: ${config.roles.join(', ')}`,
-        );
+        throw new AuthorizationError(`Access denied. Required roles: ${config.roles.join(', ')}`);
       }
 
       this.logger.debug(`User role '${userRole}' matches required roles`);

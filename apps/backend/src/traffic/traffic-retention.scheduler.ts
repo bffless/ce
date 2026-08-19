@@ -21,7 +21,10 @@ export class TrafficRetentionScheduler {
       return;
     }
     if (this.isRunning) {
-      this.logger.warn({ event: 'traffic_retention_skipped', reason: 'previous run still in progress' });
+      this.logger.warn({
+        event: 'traffic_retention_skipped',
+        reason: 'previous run still in progress',
+      });
       return;
     }
     this.isRunning = true;

@@ -24,7 +24,7 @@ export interface InstanceConfig {
   primaryDomain?: string;
   proxyMode?: ProxyMode;
   sslMode?: SslMode;
-  port80?: Port80Mode;   // v2; derived from proxyMode when absent (v1 files)
+  port80?: Port80Mode; // v2; derived from proxyMode when absent (v1 files)
   realIp?: RealIpConfig; // v2; derived from proxyMode when absent (v1 files)
   platformIp?: string;
 }
@@ -39,8 +39,7 @@ export interface ResolvedKnobs {
 export function deriveKnobs(cfg: InstanceConfig): ResolvedKnobs {
   // port80 uses ?? (no null variant), while realIp checks !== undefined because
   // explicit null is a meaningful "no realip" choice that must not be re-derived.
-  const port80: Port80Mode =
-    cfg.port80 ?? (cfg.proxyMode === 'cloudflare' ? 'closed' : 'redirect');
+  const port80: Port80Mode = cfg.port80 ?? (cfg.proxyMode === 'cloudflare' ? 'closed' : 'redirect');
   const realIp: RealIpConfig =
     cfg.realIp !== undefined
       ? cfg.realIp
@@ -146,7 +145,9 @@ export function envIdentity(
   const d = env.PRIMARY_DOMAIN;
   if (!d || d === 'localhost') return null;
   if (!ADOPTABLE_HOSTNAME_RE.test(d.toLowerCase())) {
-    console.warn(`[bootstrap] PRIMARY_DOMAIN=${JSON.stringify(d)} is not a valid hostname — not adoptable`);
+    console.warn(
+      `[bootstrap] PRIMARY_DOMAIN=${JSON.stringify(d)} is not a valid hostname — not adoptable`,
+    );
     return null;
   }
   const pm = env.PROXY_MODE;
@@ -337,11 +338,7 @@ export function hydrateProcessEnv(dir: string = bootstrapDir()): InstanceConfig 
 export function writeInstanceConfig(cfg: InstanceConfig, dir: string = bootstrapDir()): void {
   // Validate shell-safety of custom realIp before writing any files.
   const knobs = deriveKnobs(cfg);
-  if (
-    knobs.realIp &&
-    'header' in knobs.realIp &&
-    'ranges' in knobs.realIp
-  ) {
+  if (knobs.realIp && 'header' in knobs.realIp && 'ranges' in knobs.realIp) {
     assertShellSafeRealIp(knobs.realIp.header, knobs.realIp.ranges);
   }
 

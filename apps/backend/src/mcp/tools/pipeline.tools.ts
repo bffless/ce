@@ -33,11 +33,7 @@ export class PipelineTools {
       projectId: z.string().describe('Project ID'),
     }),
   })
-  async listSchemas(
-    { projectId }: { projectId: string },
-    _context: Context,
-    request: Request,
-  ) {
+  async listSchemas({ projectId }: { projectId: string }, _context: Context, request: Request) {
     const apiKeyProjectId = (request as any)?.user?.apiKeyProjectId;
     const result = await this.schemasService.getByProjectId(projectId, apiKeyProjectId);
     return JSON.stringify(result);
@@ -122,11 +118,7 @@ export class PipelineTools {
     }),
     annotations: { destructiveHint: true },
   })
-  async deleteSchema(
-    { id }: { id: string },
-    _context: Context,
-    request: Request,
-  ) {
+  async deleteSchema({ id }: { id: string }, _context: Context, request: Request) {
     const user = await getUserContext(request, this.authService);
     await this.schemasService.delete(id, user.id, user.role, user.apiKeyProjectId);
     return JSON.stringify({ success: true, id });
@@ -170,9 +162,17 @@ export class PipelineTools {
   ) {
     const user = await getUserContext(request, this.authService);
     const { id, ...dto } = args;
-    const updateDto: { name?: string; fields?: Array<{ name: string; type: SchemaFieldType; required?: boolean }> } = {};
+    const updateDto: {
+      name?: string;
+      fields?: Array<{ name: string; type: SchemaFieldType; required?: boolean }>;
+    } = {};
     if (dto.name) updateDto.name = dto.name;
-    if (dto.fields) updateDto.fields = dto.fields.map((f) => ({ name: f.name, type: f.type, required: f.required }));
+    if (dto.fields)
+      updateDto.fields = dto.fields.map((f) => ({
+        name: f.name,
+        type: f.type,
+        required: f.required,
+      }));
     const result = await this.schemasService.update(
       id,
       updateDto,
@@ -249,8 +249,7 @@ export class PipelineTools {
 
   @Tool({
     name: 'query_pipeline_data',
-    description:
-      'Query pipeline data records by schema ID with pagination, search, and filters.',
+    description: 'Query pipeline data records by schema ID with pagination, search, and filters.',
     parameters: z.object({
       schemaId: z.string().describe('Schema ID to query'),
       page: z.number().optional().describe('Page number (default 1)'),
@@ -296,11 +295,7 @@ export class PipelineTools {
       id: z.string().describe('Record ID'),
     }),
   })
-  async getRecord(
-    { id }: { id: string },
-    _context: Context,
-    request: Request,
-  ) {
+  async getRecord({ id }: { id: string }, _context: Context, request: Request) {
     const user = await getUserContext(request, this.authService);
     const result = await this.dataService.getByIdWithAccess(
       id,
@@ -367,11 +362,7 @@ export class PipelineTools {
     }),
     annotations: { destructiveHint: true },
   })
-  async deleteRecord(
-    { id }: { id: string },
-    _context: Context,
-    request: Request,
-  ) {
+  async deleteRecord({ id }: { id: string }, _context: Context, request: Request) {
     const user = await getUserContext(request, this.authService);
     await this.dataService.delete(id, user.id, user.role, user.apiKeyProjectId);
     return JSON.stringify({ success: true, id });
@@ -383,7 +374,8 @@ export class PipelineTools {
 
   @Tool({
     name: 'enable_pipeline_debug',
-    description: 'Toggle debug logging on a proxy rule. When enabled, pipeline execution results are persisted for debugging.',
+    description:
+      'Toggle debug logging on a proxy rule. When enabled, pipeline execution results are persisted for debugging.',
     parameters: z.object({
       ruleId: z.string().describe('Proxy rule ID'),
       enabled: z.boolean().describe('Whether to enable debug logging'),
@@ -406,7 +398,8 @@ export class PipelineTools {
 
   @Tool({
     name: 'list_pipeline_logs',
-    description: 'List execution logs for a proxy rule. Shows recent pipeline runs with status, duration, and errors.',
+    description:
+      'List execution logs for a proxy rule. Shows recent pipeline runs with status, duration, and errors.',
     parameters: z.object({
       ruleId: z.string().describe('Proxy rule ID'),
       page: z.number().optional().describe('Page number (default 1)'),
@@ -428,16 +421,13 @@ export class PipelineTools {
 
   @Tool({
     name: 'get_pipeline_log',
-    description: 'Get full detail of a single pipeline execution log, including all step debug data (input/output/timing).',
+    description:
+      'Get full detail of a single pipeline execution log, including all step debug data (input/output/timing).',
     parameters: z.object({
       id: z.string().describe('Execution log ID'),
     }),
   })
-  async getLog(
-    { id }: { id: string },
-    _context: Context,
-    _request: Request,
-  ) {
+  async getLog({ id }: { id: string }, _context: Context, _request: Request) {
     const result = await this.executionLogService.getById(id);
     if (!result) {
       return JSON.stringify({ error: 'Log not found' });
@@ -447,7 +437,7 @@ export class PipelineTools {
 
   @Tool({
     name: 'get_pipeline_log_step',
-    description: 'Get a specific step\'s input/output from a pipeline execution log.',
+    description: "Get a specific step's input/output from a pipeline execution log.",
     parameters: z.object({
       logId: z.string().describe('Execution log ID'),
       stepName: z.string().describe('Step name to find'),

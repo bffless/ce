@@ -67,15 +67,13 @@ describe('EdgeBlocklistService', () => {
   });
 
   it('rolls back to no edge rules when nginx -t rejects the snippet', async () => {
-    mockExecFile.mockImplementation(
-      (_cmd: string, _args: string[], cb: (err: unknown) => void) => {
-        const error = new Error('nginx: configuration file test failed') as Error & {
-          stderr: string;
-        };
-        error.stderr = 'nginx: [emerg] invalid regex';
-        cb(error);
-      },
-    );
+    mockExecFile.mockImplementation((_cmd: string, _args: string[], cb: (err: unknown) => void) => {
+      const error = new Error('nginx: configuration file test failed') as Error & {
+        stderr: string;
+      };
+      error.stderr = 'nginx: [emerg] invalid regex';
+      cb(error);
+    });
     // No rules were applied before and none after, so there is nothing for a
     // caller to regenerate — sync() reports the APPLIED delta, not the
     // intended one (#607).
@@ -89,7 +87,9 @@ describe('EdgeBlocklistService', () => {
 
     state = { ...state, blockSource: '(?:^/wp\\-admin|^/new)' };
     mockExecFile.mockImplementation((_cmd: string, _args: string[], cb: (err: unknown) => void) => {
-      const error = new Error('nginx: configuration file test failed') as Error & { stderr: string };
+      const error = new Error('nginx: configuration file test failed') as Error & {
+        stderr: string;
+      };
       error.stderr = 'nginx: [emerg] invalid regex';
       cb(error);
     });
@@ -105,7 +105,9 @@ describe('EdgeBlocklistService', () => {
     // fingerprint. One transient `nginx -t` failure during an upgrade was
     // enough to disable edge enforcement permanently.
     mockExecFile.mockImplementation((_cmd: string, _args: string[], cb: (err: unknown) => void) => {
-      const error = new Error('nginx: configuration file test failed') as Error & { stderr: string };
+      const error = new Error('nginx: configuration file test failed') as Error & {
+        stderr: string;
+      };
       error.stderr = 'nginx: [emerg] invalid regex';
       cb(error);
     });
@@ -124,7 +126,9 @@ describe('EdgeBlocklistService', () => {
   it('reports no change while a rolled-back pair keeps failing', async () => {
     // Retrying is right; rewriting every nginx config every 30s is not.
     mockExecFile.mockImplementation((_cmd: string, _args: string[], cb: (err: unknown) => void) => {
-      const error = new Error('nginx: configuration file test failed') as Error & { stderr: string };
+      const error = new Error('nginx: configuration file test failed') as Error & {
+        stderr: string;
+      };
       error.stderr = 'nginx: [emerg] invalid regex';
       cb(error);
     });
@@ -137,28 +141,24 @@ describe('EdgeBlocklistService', () => {
   });
 
   it('accepts rules when only the sandbox environment fails (nginx reported syntax ok)', async () => {
-    mockExecFile.mockImplementation(
-      (_cmd: string, _args: string[], cb: (err: unknown) => void) => {
-        const error = new Error('nginx: configuration file test failed') as Error & {
-          stderr: string;
-        };
-        error.stderr =
-          'nginx: the configuration file syntax is ok\nnginx: [emerg] open() "pid" failed (13: Permission denied)';
-        cb(error);
-      },
-    );
+    mockExecFile.mockImplementation((_cmd: string, _args: string[], cb: (err: unknown) => void) => {
+      const error = new Error('nginx: configuration file test failed') as Error & {
+        stderr: string;
+      };
+      error.stderr =
+        'nginx: the configuration file syntax is ok\nnginx: [emerg] open() "pid" failed (13: Permission denied)';
+      cb(error);
+    });
     await expect(service.sync()).resolves.toBe(true);
     expect(service.getServerRules('444')).toContain('return 444;');
   });
 
   it('accepts rules when no nginx binary exists (validation falls back to charset guarantees)', async () => {
-    mockExecFile.mockImplementation(
-      (_cmd: string, _args: string[], cb: (err: unknown) => void) => {
-        const error = new Error('spawn nginx ENOENT') as NodeJS.ErrnoException;
-        error.code = 'ENOENT';
-        cb(error);
-      },
-    );
+    mockExecFile.mockImplementation((_cmd: string, _args: string[], cb: (err: unknown) => void) => {
+      const error = new Error('spawn nginx ENOENT') as NodeJS.ErrnoException;
+      error.code = 'ENOENT';
+      cb(error);
+    });
     await expect(service.sync()).resolves.toBe(true);
     expect(service.getServerRules('444')).toContain('return 444;');
   });

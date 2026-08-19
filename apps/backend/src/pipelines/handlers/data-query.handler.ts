@@ -183,7 +183,7 @@ export class DataQueryHandler implements StepHandler<DataQueryHandlerConfig> {
     // object, overriding the explicit `single` flag and silently dropping the
     // row for any array-shaped consumer — see bffless/ce#428.)
     const returnSingle = config.recordId || config.single;
-    const output = returnSingle ? (results[0] || null) : results;
+    const output = returnSingle ? results[0] || null : results;
 
     return {
       success: true,

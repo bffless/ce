@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { eq, asc, and, desc } from 'drizzle-orm';
 import { db } from '../db/client';
 import {
@@ -40,12 +36,7 @@ export class OnboardingRulesService {
     return db
       .select()
       .from(onboardingRules)
-      .where(
-        and(
-          eq(onboardingRules.enabled, true),
-          eq(onboardingRules.trigger, trigger),
-        ),
-      )
+      .where(and(eq(onboardingRules.enabled, true), eq(onboardingRules.trigger, trigger)))
       .orderBy(asc(onboardingRules.priority), asc(onboardingRules.createdAt));
   }
 
@@ -105,7 +96,8 @@ export class OnboardingRulesService {
     if ('description' in dto) updateData.description = dto.description ?? null;
     if ('trigger' in dto) updateData.trigger = dto.trigger;
     if ('actions' in dto) updateData.actions = dto.actions as OnboardingAction[] | undefined;
-    if ('conditions' in dto) updateData.conditions = (dto.conditions as OnboardingCondition[] | null) ?? null;
+    if ('conditions' in dto)
+      updateData.conditions = (dto.conditions as OnboardingCondition[] | null) ?? null;
     if ('enabled' in dto) updateData.enabled = dto.enabled;
     if ('priority' in dto) updateData.priority = dto.priority;
 

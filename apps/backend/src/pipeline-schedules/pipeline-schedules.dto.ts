@@ -19,7 +19,11 @@ export class CreatePipelineScheduleDto {
   @MaxLength(120)
   cronExpression: string;
 
-  @ApiPropertyOptional({ description: 'IANA timezone', default: 'UTC', example: 'America/New_York' })
+  @ApiPropertyOptional({
+    description: 'IANA timezone',
+    default: 'UTC',
+    example: 'America/New_York',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(64)

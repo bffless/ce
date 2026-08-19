@@ -32,10 +32,10 @@ function makeCert(commonName: string, altNames: string[]): { certPem: string; ke
 
 // A genuine DNS-01 wildcard cert for example.com — carries *.example.com in
 // its SAN list, which is what installedWildcardIsReal() keys off of.
-const { certPem: REAL_WILDCARD_CERT_PEM, keyPem: REAL_WILDCARD_KEY_PEM } = makeCert(
+const { certPem: REAL_WILDCARD_CERT_PEM, keyPem: REAL_WILDCARD_KEY_PEM } = makeCert('example.com', [
+  '*.example.com',
   'example.com',
-  ['*.example.com', 'example.com'],
-);
+]);
 
 describe('SslCertificateService.requestPrimaryDomainCertificate', () => {
   let sslDir: string;
@@ -56,7 +56,12 @@ describe('SslCertificateService.requestPrimaryDomainCertificate', () => {
     const res = await service.requestPrimaryDomainCertificate('example.com');
     expect(res.success).toBe(true);
     expect(res.sans).toEqual(['example.com', 'www.example.com', 'admin.example.com']);
-    for (const f of ['fullchain.pem', 'privkey.pem', 'wildcard.example.com.crt', 'wildcard.example.com.key']) {
+    for (const f of [
+      'fullchain.pem',
+      'privkey.pem',
+      'wildcard.example.com.crt',
+      'wildcard.example.com.key',
+    ]) {
       expect(fs.existsSync(path.join(sslDir, f))).toBe(true);
     }
   });
@@ -96,7 +101,9 @@ describe('SslCertificateService.requestPrimaryDomainCertificate', () => {
   describe('target (#514)', () => {
     it("target 'staging' writes the issued cert under staging/, not live", async () => {
       const service = new SslCertificateService();
-      const res = await service.requestPrimaryDomainCertificate('example.com', { target: 'staging' });
+      const res = await service.requestPrimaryDomainCertificate('example.com', {
+        target: 'staging',
+      });
       expect(res.success).toBe(true);
       expect(fs.existsSync(path.join(sslDir, 'staging', 'fullchain.pem'))).toBe(true);
       expect(fs.existsSync(path.join(sslDir, 'staging', 'privkey.pem'))).toBe(true);
@@ -124,7 +131,9 @@ describe('SslCertificateService.requestPrimaryDomainCertificate', () => {
     it("a valid staged cert IS reused for target 'staging'", async () => {
       const service = new SslCertificateService();
       await service.requestPrimaryDomainCertificate('example.com', { target: 'staging' });
-      const res = await service.requestPrimaryDomainCertificate('example.com', { target: 'staging' });
+      const res = await service.requestPrimaryDomainCertificate('example.com', {
+        target: 'staging',
+      });
       expect(res.reused).toBe(true);
     });
 
@@ -151,12 +160,16 @@ describe('SslCertificateService.requestPrimaryDomainCertificate', () => {
 
     it("a staged fullchain.pem WITHOUT its matching privkey.pem is not reused for target 'staging' (#514 F2)", async () => {
       const service = new SslCertificateService();
-      const first = await service.requestPrimaryDomainCertificate('example.com', { target: 'staging' });
+      const first = await service.requestPrimaryDomainCertificate('example.com', {
+        target: 'staging',
+      });
       expect(first.reused).toBeFalsy();
       // Simulate a torn stage: drop the privkey but leave the fullchain.
       fs.unlinkSync(path.join(sslDir, 'staging', 'privkey.pem'));
 
-      const res = await service.requestPrimaryDomainCertificate('example.com', { target: 'staging' });
+      const res = await service.requestPrimaryDomainCertificate('example.com', {
+        target: 'staging',
+      });
       expect(res.reused).toBeFalsy();
       // A fresh, complete stage was written (F1's discard-before-write).
       expect(fs.existsSync(path.join(sslDir, 'staging', 'privkey.pem'))).toBe(true);

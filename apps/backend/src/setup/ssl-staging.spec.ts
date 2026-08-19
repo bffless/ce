@@ -61,7 +61,10 @@ describe('ssl-staging', () => {
     stage('wildcard.example.com.key', 'WKEY');
     const promoted = promoteStagedCertificates();
     expect(promoted.sort()).toEqual([
-      'fullchain.pem', 'privkey.pem', 'wildcard.example.com.crt', 'wildcard.example.com.key',
+      'fullchain.pem',
+      'privkey.pem',
+      'wildcard.example.com.crt',
+      'wildcard.example.com.key',
     ]);
     expect(fs.readFileSync(path.join(liveDir, 'fullchain.pem'), 'utf8')).toBe('CERT');
     expect(fs.readFileSync(path.join(liveDir, 'wildcard.example.com.key'), 'utf8')).toBe('WKEY');

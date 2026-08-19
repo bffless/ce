@@ -127,10 +127,7 @@ describe('ReplicateHandler — file inputs', () => {
     const { handler } = createHandler();
 
     await handler.execute(
-      createContext([
-        'https://cdn.test/a.png',
-        'bffless/studio/uploads/thumbnails/face.png',
-      ]),
+      createContext(['https://cdn.test/a.png', 'bffless/studio/uploads/thumbnails/face.png']),
       step({ prompt: "'x'", image_input: 'steps.prep.images' }),
     );
 

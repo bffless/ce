@@ -106,10 +106,7 @@ export class PendingUploadsService {
   async findExpired(): Promise<PendingUpload[]> {
     const now = new Date();
 
-    return db
-      .select()
-      .from(pendingUploads)
-      .where(lt(pendingUploads.expiresAt, now));
+    return db.select().from(pendingUploads).where(lt(pendingUploads.expiresAt, now));
   }
 
   /**
@@ -121,10 +118,7 @@ export class PendingUploadsService {
 
     let deletedCount = 0;
     for (const id of ids) {
-      const result = await db
-        .delete(pendingUploads)
-        .where(eq(pendingUploads.id, id))
-        .returning();
+      const result = await db.delete(pendingUploads).where(eq(pendingUploads.id, id)).returning();
       if (result.length > 0) deletedCount++;
     }
 

@@ -1,5 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsArray, IsBoolean, IsInt, IsOptional, IsString, Max, Min, ValidateNested } from 'class-validator';
+import {
+  IsArray,
+  IsBoolean,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class TrafficWeightItemDto {
@@ -13,7 +22,9 @@ export class TrafficWeightItemDto {
   @Max(100)
   weight: number;
 
-  @ApiPropertyOptional({ description: 'Optional path override within the deployment (e.g., /site-v0/dist)' })
+  @ApiPropertyOptional({
+    description: 'Optional path override within the deployment (e.g., /site-v0/dist)',
+  })
   @IsOptional()
   @IsString()
   path?: string;
@@ -31,7 +42,10 @@ export class SetTrafficWeightsDto {
   @IsBoolean()
   stickySessionsEnabled?: boolean;
 
-  @ApiPropertyOptional({ description: 'Sticky session duration in seconds. 0 = no expiration.', default: 86400 })
+  @ApiPropertyOptional({
+    description: 'Sticky session duration in seconds. 0 = no expiration.',
+    default: 86400,
+  })
   @IsOptional()
   @IsInt()
   @Min(0) // 0 = no expiration

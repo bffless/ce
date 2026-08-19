@@ -295,7 +295,10 @@ function addMapsEqual(live: Record<string, string>, incoming: Record<string, str
  * a real change rather than second-guessing downstream semantics. `add` uses
  * blank-secret semantics (see addMapsEqual). `null` vs an object is a change.
  */
-function headerConfigEqual(live: ProxyHeaderConfig | null, incoming: ProxyHeaderConfig | null): boolean {
+function headerConfigEqual(
+  live: ProxyHeaderConfig | null,
+  incoming: ProxyHeaderConfig | null,
+): boolean {
   if (live === null || incoming === null) return live === incoming;
   const liveObj = live as Record<string, unknown>;
   const incomingObj = incoming as Record<string, unknown>;

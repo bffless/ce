@@ -1,18 +1,8 @@
-import {
-  Injectable,
-  Logger,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { and, eq, lt, lte, or, isNull, sql } from 'drizzle-orm';
 import parser from 'cron-parser';
 import { db } from '../db/client';
-import {
-  pipelineSchedules,
-  PipelineSchedule,
-  proxyRules,
-  proxyRuleSets,
-} from '../db/schema';
+import { pipelineSchedules, PipelineSchedule, proxyRules, proxyRuleSets } from '../db/schema';
 import { PermissionsService } from '../permissions/permissions.service';
 import { SystemPipelineTriggerService } from '../pipelines/execution/system-pipeline-trigger.service';
 import {
@@ -93,9 +83,7 @@ export class PipelineSchedulesService {
       })
       .from(proxyRules)
       .innerJoin(proxyRuleSets, eq(proxyRules.ruleSetId, proxyRuleSets.id))
-      .where(
-        and(eq(proxyRuleSets.projectId, projectId), eq(proxyRules.proxyType, 'pipeline')),
-      );
+      .where(and(eq(proxyRuleSets.projectId, projectId), eq(proxyRules.proxyType, 'pipeline')));
 
     return rows.map((r) => ({
       id: r.id,

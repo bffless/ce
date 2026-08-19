@@ -49,12 +49,7 @@ export class StateSchemaGeneratorService {
     const [existingSchema] = await db
       .select()
       .from(pipelineSchemas)
-      .where(
-        and(
-          eq(pipelineSchemas.projectId, dto.projectId),
-          eq(pipelineSchemas.name, dto.name),
-        ),
-      )
+      .where(and(eq(pipelineSchemas.projectId, dto.projectId), eq(pipelineSchemas.name, dto.name)))
       .limit(1);
 
     if (existingSchema) {
@@ -85,12 +80,7 @@ export class StateSchemaGeneratorService {
       const [existingRuleSet] = await db
         .select()
         .from(proxyRuleSets)
-        .where(
-          and(
-            eq(proxyRuleSets.id, dto.ruleSetId),
-            eq(proxyRuleSets.projectId, dto.projectId),
-          ),
-        )
+        .where(and(eq(proxyRuleSets.id, dto.ruleSetId), eq(proxyRuleSets.projectId, dto.projectId)))
         .limit(1);
 
       if (!existingRuleSet) {
@@ -470,5 +460,4 @@ function handler({ user, request, steps }) {
       steps,
     };
   }
-
 }

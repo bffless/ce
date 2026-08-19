@@ -107,9 +107,7 @@ export class RagSearchPlugin implements AIToolPlugin {
     category: 'information',
     icon: 'database',
     pipelineOptionsSchema: z.object({
-      sources: z
-        .array(z.any())
-        .describe('Data sources — each creates its own tool for the AI'),
+      sources: z.array(z.any()).describe('Data sources — each creates its own tool for the AI'),
     }),
   };
 
@@ -131,9 +129,7 @@ export class RagSearchPlugin implements AIToolPlugin {
 
     for (const source of sources) {
       if (source.instructions) {
-        sections.push(
-          `**\`rag-search_${source.toolName}\`**: ${source.instructions}`,
-        );
+        sections.push(`**\`rag-search_${source.toolName}\`**: ${source.instructions}`);
       } else {
         const typeLabel = source.type === 'vector_search' ? 'semantic search' : 'data lookup';
         sections.push(
@@ -217,16 +213,17 @@ export class RagSearchPlugin implements AIToolPlugin {
 
     if (source.filterSource === 'tool_input') {
       const label = source.filterInputLabel || source.filterField || 'value';
-      inputFields[label] = z.string().describe(
-        source.filterInputDescription || `Value to filter by ${source.filterField || 'field'}`,
-      );
+      inputFields[label] = z
+        .string()
+        .describe(
+          source.filterInputDescription || `Value to filter by ${source.filterField || 'field'}`,
+        );
     }
 
     tools.push({
       name: source.toolName,
       description:
-        source.toolDescription ||
-        'Look up records from the database. Returns matching records.',
+        source.toolDescription || 'Look up records from the database. Returns matching records.',
       inputSchema: z.object(inputFields),
       execute: async (args: Record<string, string>, context: AIToolContext) => {
         return this.dataQuery(args, source, context);
@@ -240,10 +237,7 @@ export class RagSearchPlugin implements AIToolPlugin {
         inputSchema: z.object({
           data: z.record(z.string(), z.unknown()).describe('The data fields to store'),
         }),
-        execute: async (
-          args: { data: Record<string, unknown> },
-          context: AIToolContext,
-        ) => {
+        execute: async (args: { data: Record<string, unknown> }, context: AIToolContext) => {
           return this.dataSaveNote(args.data, source, context.projectId);
         },
       });
@@ -266,7 +260,11 @@ export class RagSearchPlugin implements AIToolPlugin {
       const inputField = source.embeddingInputField || 'text';
       const inputTemplate = source.embeddingInputTemplate || '{{query}}';
       const queryVector = await this.generateEmbedding(
-        query, source.embeddingModel, projectId, inputField, inputTemplate,
+        query,
+        source.embeddingModel,
+        projectId,
+        inputField,
+        inputTemplate,
       );
 
       if (!queryVector) {
@@ -290,7 +288,9 @@ export class RagSearchPlugin implements AIToolPlugin {
       // Post-process: filter, deduplicate, and diversify results
       const formatted = this.formatAndDiversifyResults(results, requestedLimit);
 
-      this.logger.debug(`Vector search [${source.toolName}] for "${query}" returned ${formatted.length} results (from ${results.length} raw)`);
+      this.logger.debug(
+        `Vector search [${source.toolName}] for "${query}" returned ${formatted.length} results (from ${results.length} raw)`,
+      );
       return { results: formatted };
     } catch (error) {
       this.logger.error(`Vector search failed: ${(error as Error).message}`);
@@ -315,11 +315,19 @@ export class RagSearchPlugin implements AIToolPlugin {
       const inputField = source.embeddingInputField || 'text';
       const inputTemplate = source.embeddingInputTemplate || '{{query}}';
       const embedding = await this.generateEmbedding(
-        textToEmbed, source.embeddingModel, projectId, inputField, inputTemplate,
+        textToEmbed,
+        source.embeddingModel,
+        projectId,
+        inputField,
+        inputTemplate,
       );
 
       if (!embedding) {
-        return { success: true, id: record.id, error: 'Record saved but embedding generation failed.' };
+        return {
+          success: true,
+          id: record.id,
+          error: 'Record saved but embedding generation failed.',
+        };
       }
 
       await this.embeddingsService.storeEmbedding({
@@ -475,9 +483,7 @@ export class RagSearchPlugin implements AIToolPlugin {
         orderBy = sortDir === 'asc' ? asc(sortExpr) : desc(sortExpr);
       }
 
-      const whereClause = conditions.length > 1
-        ? sql.join(conditions, sql` AND `)
-        : conditions[0];
+      const whereClause = conditions.length > 1 ? sql.join(conditions, sql` AND `) : conditions[0];
 
       const results = await db
         .select()
@@ -530,7 +536,10 @@ export class RagSearchPlugin implements AIToolPlugin {
     inputField: string = 'text',
     inputTemplate: string = '{{query}}',
   ): Promise<number[] | null> {
-    const serviceConfig = await this.projectAISettingsService.getServiceConfig(projectId, 'replicate');
+    const serviceConfig = await this.projectAISettingsService.getServiceConfig(
+      projectId,
+      'replicate',
+    );
     if (!serviceConfig) {
       this.logger.warn('Replicate API token not configured');
       return null;
@@ -553,13 +562,19 @@ export class RagSearchPlugin implements AIToolPlugin {
 
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
-        this.logger.error(`Replicate API error: ${(errorBody as Record<string, string>).detail || response.statusText}`);
+        this.logger.error(
+          `Replicate API error: ${(errorBody as Record<string, string>).detail || response.statusText}`,
+        );
         return null;
       }
 
       let prediction = (await response.json()) as Record<string, unknown>;
 
-      if (prediction.status !== 'succeeded' && prediction.status !== 'failed' && prediction.status !== 'canceled') {
+      if (
+        prediction.status !== 'succeeded' &&
+        prediction.status !== 'failed' &&
+        prediction.status !== 'canceled'
+      ) {
         prediction = await this.pollPrediction(prediction.id as string, serviceConfig.apiToken);
       }
 
@@ -613,7 +628,10 @@ export class RagSearchPlugin implements AIToolPlugin {
     }
   }
 
-  private async pollPrediction(predictionId: string, apiToken: string): Promise<Record<string, unknown>> {
+  private async pollPrediction(
+    predictionId: string,
+    apiToken: string,
+  ): Promise<Record<string, unknown>> {
     for (let i = 0; i < MAX_POLL_ATTEMPTS; i++) {
       await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
       const response = await fetch(`${REPLICATE_API_BASE}/predictions/${predictionId}`, {
@@ -621,7 +639,11 @@ export class RagSearchPlugin implements AIToolPlugin {
       });
       if (!response.ok) throw new Error(`Failed to poll prediction: ${response.statusText}`);
       const prediction = (await response.json()) as Record<string, unknown>;
-      if (prediction.status === 'succeeded' || prediction.status === 'failed' || prediction.status === 'canceled') {
+      if (
+        prediction.status === 'succeeded' ||
+        prediction.status === 'failed' ||
+        prediction.status === 'canceled'
+      ) {
         return prediction;
       }
     }

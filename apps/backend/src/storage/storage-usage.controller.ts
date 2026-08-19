@@ -1,7 +1,12 @@
 import { Controller, Get, Param, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { ApiKeyGuard } from '../auth/api-key.guard';
-import { StorageUsageService, WorkspaceStorageUsage, ProjectUsage, BranchUsage } from './storage-usage.service';
+import {
+  StorageUsageService,
+  WorkspaceStorageUsage,
+  ProjectUsage,
+  BranchUsage,
+} from './storage-usage.service';
 
 /**
  * Storage Usage Controller
@@ -37,7 +42,11 @@ export class StorageUsageController {
       properties: {
         totalBytes: { type: 'number', description: 'Total storage used in bytes' },
         assetCount: { type: 'number', description: 'Number of assets' },
-        quotaBytes: { type: 'number', nullable: true, description: 'Quota limit in bytes (null = unlimited)' },
+        quotaBytes: {
+          type: 'number',
+          nullable: true,
+          description: 'Quota limit in bytes (null = unlimited)',
+        },
         usagePercent: { type: 'number', nullable: true, description: 'Percentage of quota used' },
         overageBytes: { type: 'number', description: 'Bytes over quota (0 if under)' },
         isOverQuota: { type: 'boolean', description: 'Whether currently over quota' },

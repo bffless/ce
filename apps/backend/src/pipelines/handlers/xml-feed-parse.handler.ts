@@ -221,7 +221,11 @@ export class XmlFeedParseHandler implements StepHandler<XmlFeedParseHandlerConfi
       });
 
       if (!response.ok) {
-        return { source: url, entries: [], error: `HTTP ${response.status} ${response.statusText}` };
+        return {
+          source: url,
+          entries: [],
+          error: `HTTP ${response.status} ${response.statusText}`,
+        };
       }
 
       const body = await response.text();
@@ -229,8 +233,7 @@ export class XmlFeedParseHandler implements StepHandler<XmlFeedParseHandlerConfi
       return { source: url, entries: parsed.entries };
     } catch (error) {
       const err = error as Error;
-      const message =
-        err.name === 'AbortError' ? `Timed out after ${timeoutMs}ms` : err.message;
+      const message = err.name === 'AbortError' ? `Timed out after ${timeoutMs}ms` : err.message;
       this.logger.warn(`Feed source failed (${url}): ${message}`);
       return { source: url, entries: [], error: message };
     } finally {

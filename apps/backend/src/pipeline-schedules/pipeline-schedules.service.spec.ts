@@ -21,10 +21,8 @@ jest.mock('../db/client', () => {
   for (const method of methods) {
     chainable[method] = jest.fn(() => chainable);
   }
-  chainable.then = (
-    resolve: (value: unknown) => unknown,
-    reject: (reason: unknown) => unknown,
-  ) => Promise.resolve(queued.length > 0 ? queued.shift() : []).then(resolve, reject);
+  chainable.then = (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) =>
+    Promise.resolve(queued.length > 0 ? queued.shift() : []).then(resolve, reject);
   chainable.__queue = (result: unknown) => queued.push(result);
   chainable.__reset = () => {
     queued.length = 0;
@@ -69,7 +67,8 @@ function buildService(triggerImpl?: jest.Mock) {
   const permissions = {} as unknown as PermissionsService;
   const systemTrigger = {
     triggerByProxyRuleId:
-      triggerImpl ?? jest.fn(async () => ({ found: true, hasPipeline: true, result: { success: true } })),
+      triggerImpl ??
+      jest.fn(async () => ({ found: true, hasPipeline: true, result: { success: true } })),
   } as unknown as jest.Mocked<Pick<SystemPipelineTriggerService, 'triggerByProxyRuleId'>>;
   const service = new PipelineSchedulesService(
     permissions,

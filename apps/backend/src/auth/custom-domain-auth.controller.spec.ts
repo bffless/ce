@@ -321,11 +321,7 @@ describe('CustomDomainAuthController.signUp (existing-email orphan re-create)', 
         disabled: false,
       } as any);
 
-      await controller.signUp(
-        { email: EMAIL, password: PASSWORD },
-        reqForSignup(),
-        resForSignup(),
-      );
+      await controller.signUp({ email: EMAIL, password: PASSWORD }, reqForSignup(), resForSignup());
 
       expect(authService.createUser).toHaveBeenCalledWith(EMAIL, 'admin', ST_USER_ID);
     } finally {

@@ -158,7 +158,11 @@ export class ProxyRulesController {
   @UseInterceptors(FileInterceptor('file', { storage: require('multer').memoryStorage() }))
   @ApiOperation({ summary: 'Test a pipeline proxy rule with sample data' })
   @ApiParam({ name: 'id', type: 'string' })
-  @ApiResponse({ status: 200, description: 'Test result with debug info', type: PipelineTestResultDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Test result with debug info',
+    type: PipelineTestResultDto,
+  })
   @ApiResponse({ status: 400, description: 'Rule is not a pipeline type' })
   @ApiResponse({ status: 404, description: 'Rule not found' })
   async testPipelineRule(
@@ -312,7 +316,8 @@ export class ProxyRulesController {
 
     // Check if any step requires deployment context (file uploads need owner/repo for storage keys)
     const needsDeploymentContext = (pipelineConfig.steps || []).some(
-      (step) => step.handlerType === 'file_upload_handler' || step.handlerType === 'file_serve_handler',
+      (step) =>
+        step.handlerType === 'file_upload_handler' || step.handlerType === 'file_serve_handler',
     );
 
     // Explicit request wins, then a step's own skills alias, then "production"
@@ -368,9 +373,7 @@ export class ProxyRulesController {
 @Controller('api/pipeline-logs')
 @UseGuards(ApiKeyGuard)
 export class PipelineLogsController {
-  constructor(
-    private readonly executionLogService: PipelineExecutionLogService,
-  ) {}
+  constructor(private readonly executionLogService: PipelineExecutionLogService) {}
 
   @Get(':logId')
   @ApiOperation({ summary: 'Get a single pipeline execution log' })

@@ -31,10 +31,7 @@ jest.mock('../db/client', () => {
   for (const method of methods) {
     chainable[method] = jest.fn(() => chainable);
   }
-  chainable.then = (
-    resolve: (value: unknown) => unknown,
-    reject: (reason: unknown) => unknown,
-  ) => {
+  chainable.then = (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) => {
     const result = mockResults[callIdx];
     callIdx++;
     if (result instanceof Error) {

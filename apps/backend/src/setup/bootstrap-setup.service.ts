@@ -287,7 +287,10 @@ export class BootstrapSetupService {
     fs.mkdirSync(dir, { recursive: true });
 
     const write = (name: string, content: string, mode: number) => {
-      const tmp = path.join(dir, `.${name}.${process.pid}-${crypto.randomBytes(4).toString('hex')}.tmp`);
+      const tmp = path.join(
+        dir,
+        `.${name}.${process.pid}-${crypto.randomBytes(4).toString('hex')}.tmp`,
+      );
       // `mode` is requested at creation time (masked by umask, which can
       // only narrow it further, never widen it) so a 0o600 key is never
       // briefly world- or group-readable. chmodSync afterwards is
@@ -373,12 +376,12 @@ export class BootstrapSetupService {
       // TLS and expects its own Origin Certificate.
       if (dto.proxyMode !== 'none' && dto.proxyMode !== 'proxy') {
         throw new BadRequestException(
-          'Let\'s Encrypt needs direct serving or a CDN that passes ACME through — not Cloudflare (use its Origin Certificate)',
+          "Let's Encrypt needs direct serving or a CDN that passes ACME through — not Cloudflare (use its Origin Certificate)",
         );
       }
       if (dto.port80 === 'closed') {
         throw new BadRequestException(
-          'Port 80 must stay open (redirect) with Let\'s Encrypt — renewal uses HTTP-01 challenges',
+          "Port 80 must stay open (redirect) with Let's Encrypt — renewal uses HTTP-01 challenges",
         );
       }
     }

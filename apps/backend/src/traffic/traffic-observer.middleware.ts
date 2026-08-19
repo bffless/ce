@@ -73,7 +73,10 @@ export function createTrafficObserver(events: TrafficEventsService, blocklist?: 
       if (chunk) {
         bytes += Buffer.isBuffer(chunk)
           ? chunk.length
-          : Buffer.byteLength(String(chunk), typeof encoding === 'string' ? (encoding as BufferEncoding) : 'utf8');
+          : Buffer.byteLength(
+              String(chunk),
+              typeof encoding === 'string' ? (encoding as BufferEncoding) : 'utf8',
+            );
       }
     };
 

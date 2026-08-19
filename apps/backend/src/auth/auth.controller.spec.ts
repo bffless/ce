@@ -180,7 +180,9 @@ describe('AuthController.getSession (project-membership gate, Phase B)', () => {
 
     beforeEach(() => {
       // ENABLE_EMAIL_PASSWORD must be on; REQUIRE_PROJECT_MEMBERSHIP stays off.
-      featureFlags.isEnabled.mockImplementation(async (flag: string) => flag === 'ENABLE_EMAIL_PASSWORD');
+      featureFlags.isEnabled.mockImplementation(
+        async (flag: string) => flag === 'ENABLE_EMAIL_PASSWORD',
+      );
       authService.getUserByEmail.mockResolvedValue(dbUser as never);
       signInMock.mockResolvedValue({
         status: 'OK',

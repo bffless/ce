@@ -62,9 +62,7 @@ export class PipelineEmbeddingsService {
   /**
    * Store multiple embeddings (for chunked documents)
    */
-  async storeEmbeddings(
-    params: Array<StoreEmbeddingParams>,
-  ): Promise<string[]> {
+  async storeEmbeddings(params: Array<StoreEmbeddingParams>): Promise<string[]> {
     if (params.length === 0) return [];
 
     const first = params[0];
@@ -88,9 +86,8 @@ export class PipelineEmbeddingsService {
     const { schemaId, fieldName, queryVector, limit = 10, threshold, projectId } = params;
 
     const vectorLiteral = sql.raw(toVectorLiteral(queryVector));
-    const thresholdClause = threshold != null
-      ? sql`AND (1 - (e.embedding <=> ${vectorLiteral})) >= ${threshold}`
-      : sql``;
+    const thresholdClause =
+      threshold != null ? sql`AND (1 - (e.embedding <=> ${vectorLiteral})) >= ${threshold}` : sql``;
 
     const results = await db.execute(sql`
       SELECT

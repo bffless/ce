@@ -82,8 +82,6 @@ describe('LocalStorageAdapter', () => {
 
       await expect(adapter.upload(content, key)).rejects.toThrow('path traversal detected');
     });
-
-
   });
 
   describe('download', () => {

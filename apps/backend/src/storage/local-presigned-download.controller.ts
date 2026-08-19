@@ -124,9 +124,7 @@ export class LocalPresignedDownloadController {
 
     // 4. Signature — before ANY filesystem access, so an unsigned request can
     //    never probe for the existence of a key.
-    if (
-      !verifyLocalDownload({ key: storageKey, exp, dl }, sig, local.getDownloadPresignKey())
-    ) {
+    if (!verifyLocalDownload({ key: storageKey, exp, dl }, sig, local.getDownloadPresignKey())) {
       this.logger.warn(`Rejected signed download with invalid signature for key: ${storageKey}`);
       throw new ForbiddenException('Invalid download signature');
     }

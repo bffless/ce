@@ -393,9 +393,7 @@ describe('SetupService', () => {
           expect(() => (service as any).validateOnboardingToken('wrong')).toThrow(/invalid/i);
         }
         // Locked out while still inside the window.
-        expect(() => (service as any).validateOnboardingToken('right-token')).toThrow(
-          /too many/i,
-        );
+        expect(() => (service as any).validateOnboardingToken('right-token')).toThrow(/too many/i);
 
         // Advance past the 15-minute window.
         jest.advanceTimersByTime(15 * 60 * 1000 + 1);
@@ -420,7 +418,9 @@ describe('SetupService', () => {
       for (let i = 0; i < 5; i++) {
         expect(() => service.validateOnboardingToken('wrong', '1.1.1.1')).toThrow();
       }
-      expect(() => service.validateOnboardingToken('right', '1.1.1.1')).toThrow(UnauthorizedException); // locked
+      expect(() => service.validateOnboardingToken('right', '1.1.1.1')).toThrow(
+        UnauthorizedException,
+      ); // locked
       expect(() => service.validateOnboardingToken('right', '2.2.2.2')).not.toThrow(); // different IP fine
     });
 
@@ -428,10 +428,16 @@ describe('SetupService', () => {
       process.env.ONBOARDING_TOKEN = 'right';
       for (let ip = 0; ip < 10; ip++) {
         for (let i = 0; i < 5; i++) {
-          try { service.validateOnboardingToken('wrong', `10.0.0.${ip}`); } catch { /* per-IP throws expected */ }
+          try {
+            service.validateOnboardingToken('wrong', `10.0.0.${ip}`);
+          } catch {
+            /* per-IP throws expected */
+          }
         }
       }
-      expect(() => service.validateOnboardingToken('right', '99.99.99.99')).toThrow(UnauthorizedException);
+      expect(() => service.validateOnboardingToken('right', '99.99.99.99')).toThrow(
+        UnauthorizedException,
+      );
     });
   });
 });

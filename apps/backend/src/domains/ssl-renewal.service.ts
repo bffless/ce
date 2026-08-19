@@ -207,7 +207,8 @@ export class SslRenewalService {
    */
   private async checkAndRenewPrimary(thresholdDays: number): Promise<RenewalResult | null> {
     const cfg = loadInstanceConfig();
-    if (cfg?.state !== 'applied' || cfg.sslMode !== 'letsencrypt' || !cfg.primaryDomain) return null;
+    if (cfg?.state !== 'applied' || cfg.sslMode !== 'letsencrypt' || !cfg.primaryDomain)
+      return null;
     if (pendingServingRevertExists()) {
       // A day-2 serving change is inside its confirm window; a renewal now
       // would be silently undone by auto-revert/rollback (v0.2.18 review,
@@ -264,7 +265,9 @@ export class SslRenewalService {
     if (last && Date.now() - new Date(last).getTime() < 7 * 86_400_000) return;
     const to = await this.getReminderRecipient();
     if (!to) {
-      this.logger.warn('Primary cert expiring but no reminder recipient (no notification_email, no admin user)');
+      this.logger.warn(
+        'Primary cert expiring but no reminder recipient (no notification_email, no admin user)',
+      );
       return;
     }
     const domain = cfg.primaryDomain;
@@ -281,7 +284,9 @@ export class SslRenewalService {
     if (result.success) {
       await this.updateSetting('primary_cert_reminder_last_sent', new Date().toISOString());
     } else {
-      this.logger.error(`Failed to send primary cert expiry reminder for ${domain}: ${result.error}`);
+      this.logger.error(
+        `Failed to send primary cert expiry reminder for ${domain}: ${result.error}`,
+      );
     }
   }
 
@@ -470,7 +475,9 @@ export class SslRenewalService {
     if (last && Date.now() - new Date(last).getTime() < 7 * 86_400_000) return;
     const to = await this.getReminderRecipient();
     if (!to) {
-      this.logger.warn('Wildcard cert expiring but no reminder recipient (no notification_email, no admin user)');
+      this.logger.warn(
+        'Wildcard cert expiring but no reminder recipient (no notification_email, no admin user)',
+      );
       return;
     }
     const baseDomain = process.env.PRIMARY_DOMAIN || '';

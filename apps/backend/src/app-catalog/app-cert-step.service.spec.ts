@@ -151,7 +151,11 @@ describe('AppCertStepService.execute', () => {
     expect(result.detail).toContain(APP_HOST);
     expect(result.detail.toLowerCase()).toContain('http');
     expect(result.manualStep).toEqual(
-      expect.objectContaining({ id: 'provision-wildcard-cert', deepLink: '/domains', appliesWhen: 'selfHosted' }),
+      expect.objectContaining({
+        id: 'provision-wildcard-cert',
+        deepLink: '/domains',
+        appliesWhen: 'selfHosted',
+      }),
     );
     expect(result.manualStep!.body.toLowerCase()).toContain('wildcard');
   });

@@ -1,10 +1,5 @@
 import { PipelineContext } from './pipeline-context.interface';
-import {
-  ValidatorType,
-  ValidatorConfig,
-  AuthRequiredConfig,
-  RateLimitConfig,
-} from '../types';
+import { ValidatorType, ValidatorConfig, AuthRequiredConfig, RateLimitConfig } from '../types';
 
 // Re-export config types for validators to use
 export type { AuthRequiredConfig as AuthRequiredValidatorConfig };

@@ -1,19 +1,6 @@
 import { TrafficEvent } from './traffic-event.interface';
 
-const MONTHS = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'May',
-  'Jun',
-  'Jul',
-  'Aug',
-  'Sep',
-  'Oct',
-  'Nov',
-  'Dec',
-];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /**
  * Format a date like nginx's $time_local: 02/Jul/2026:10:15:30 +0000
@@ -37,7 +24,15 @@ export function formatNginxTime(date: Date): string {
 export function formatAccessLogLine(
   event: Pick<
     TrafficEvent,
-    'timestamp' | 'ip' | 'method' | 'path' | 'httpVersion' | 'status' | 'bytes' | 'referer' | 'userAgent'
+    | 'timestamp'
+    | 'ip'
+    | 'method'
+    | 'path'
+    | 'httpVersion'
+    | 'status'
+    | 'bytes'
+    | 'referer'
+    | 'userAgent'
   >,
 ): string {
   const time = formatNginxTime(new Date(event.timestamp));

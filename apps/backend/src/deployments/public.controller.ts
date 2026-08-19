@@ -50,7 +50,6 @@ interface ServeFileOptions {
   filePath: string;
 }
 
-
 @ApiTags('Public')
 @Controller('public')
 @SkipThrottle()
@@ -398,7 +397,12 @@ export class PublicController {
       if (mapping?.path) {
         const originalPrefix = mapping.path.replace(/^\/+/, '').replace(/\/+$/, '');
         const variantPrefix = variantSelection.selectedPath.replace(/^\/+/, '').replace(/\/+$/, '');
-        if (originalPrefix && variantPrefix && originalPrefix !== variantPrefix && fullPath.startsWith(originalPrefix)) {
+        if (
+          originalPrefix &&
+          variantPrefix &&
+          originalPrefix !== variantPrefix &&
+          fullPath.startsWith(originalPrefix)
+        ) {
           fullPath = variantPrefix + fullPath.slice(originalPrefix.length);
           this.logger.debug(
             `[serveAliasAsset] Swapped path prefix for traffic variant: ${originalPrefix} -> ${variantPrefix}, fullPath=${fullPath}`,
@@ -565,9 +569,7 @@ export class PublicController {
       }
 
       // Serve image placeholder for image requests, HTML page otherwise
-      return this.isImageRequest(req)
-        ? this.serve404Image(res)
-        : this.serve404Page(res);
+      return this.isImageRequest(req) ? this.serve404Image(res) : this.serve404Page(res);
     }
 
     // Add response headers
@@ -645,7 +647,8 @@ export class PublicController {
       // Generate ETag - use pre-computed contentHash if available, otherwise compute MD5
       // Include cache-control header in ETag so CDN refetches when cache rules change
       // (without this, CDN revalidation returns 304 and keeps stale headers)
-      const contentHash = asset.contentHash ?? crypto.createHash('md5').update(fileBuffer).digest('hex');
+      const contentHash =
+        asset.contentHash ?? crypto.createHash('md5').update(fileBuffer).digest('hex');
       const etag = this.generateETag(contentHash, cacheControlHeader);
 
       // Check If-None-Match header for 304 response
@@ -1173,7 +1176,10 @@ export class PublicController {
    * otherwise CDN revalidation returns 304 and keeps serving stale response headers.
    */
   private generateETag(contentHash: string, cacheControlHeader: string): string {
-    const combined = crypto.createHash('md5').update(`${contentHash}:${cacheControlHeader}`).digest('hex');
+    const combined = crypto
+      .createHash('md5')
+      .update(`${contentHash}:${cacheControlHeader}`)
+      .digest('hex');
     return `"${combined}"`;
   }
 

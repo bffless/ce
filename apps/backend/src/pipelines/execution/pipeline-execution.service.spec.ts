@@ -156,7 +156,15 @@ describe('PipelineExecutionService — early termination', () => {
 
       const service = buildService({ execute: mainExecute }, { execute: jest.fn() });
       const pipeline = buildPipeline(
-        [{ id: 'work', name: 'work', handlerType: 'main', isEnabled: true, config: {} } as PipelineStep],
+        [
+          {
+            id: 'work',
+            name: 'work',
+            handlerType: 'main',
+            isEnabled: true,
+            config: {},
+          } as PipelineStep,
+        ],
         [],
       );
 
@@ -182,7 +190,15 @@ describe('PipelineExecutionService — early termination', () => {
 
       const service = buildService({ execute: mainExecute }, { execute: jest.fn() });
       const pipeline = buildPipeline(
-        [{ id: 'work', name: 'work', handlerType: 'main', isEnabled: true, config: {} } as PipelineStep],
+        [
+          {
+            id: 'work',
+            name: 'work',
+            handlerType: 'main',
+            isEnabled: true,
+            config: {},
+          } as PipelineStep,
+        ],
         [],
       );
 

@@ -375,11 +375,7 @@ export class ProxyRuleSetsService {
     apiKeyProjectId?: string | null,
   ): Promise<ProxyRuleSetResponseDto> {
     // Verify project exists
-    const [project] = await db
-      .select()
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
+    const [project] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
 
     if (!project) {
       throw new NotFoundException(`Project ${projectId} not found`);
@@ -396,7 +392,9 @@ export class ProxyRuleSetsService {
     // Check for duplicate name within project
     const existing = await this.findByName(projectId, dto.name);
     if (existing) {
-      throw new ConflictException(`A rule set with name "${dto.name}" already exists in this project`);
+      throw new ConflictException(
+        `A rule set with name "${dto.name}" already exists in this project`,
+      );
     }
 
     const [ruleSet] = await db
@@ -446,7 +444,9 @@ export class ProxyRuleSetsService {
     if (dto.name && dto.name !== existing.name) {
       const duplicate = await this.findByName(existing.projectId, dto.name);
       if (duplicate && duplicate.id !== id) {
-        throw new ConflictException(`A rule set with name "${dto.name}" already exists in this project`);
+        throw new ConflictException(
+          `A rule set with name "${dto.name}" already exists in this project`,
+        );
       }
     }
 
@@ -599,11 +599,7 @@ export class ProxyRuleSetsService {
     apiKeyProjectId?: string | null,
   ): Promise<ProxyRuleSetWithRulesResponseDto> {
     // Verify project exists
-    const [project] = await db
-      .select()
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
+    const [project] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
 
     if (!project) {
       throw new NotFoundException(`Project ${projectId} not found`);
@@ -687,7 +683,7 @@ export class ProxyRuleSetsService {
 
     // Remap schema references to the resolved target-project ids, then insert
     // rules in their declared order so evaluation order is preserved
-    const sourceRules = idMap.size > 0 ? remapSchemaIds(dto.rules ?? [], idMap) : dto.rules ?? [];
+    const sourceRules = idMap.size > 0 ? remapSchemaIds(dto.rules ?? [], idMap) : (dto.rules ?? []);
     const rules = [...sourceRules].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     for (let i = 0; i < rules.length; i++) {
       const rule = rules[i];
@@ -991,11 +987,7 @@ export class ProxyRuleSetsService {
     captureTrigger?: RevisionTrigger,
   ): Promise<SyncProxyRuleSetResponseDto> {
     // Verify project exists (import parity)
-    const [project] = await db
-      .select()
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
+    const [project] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
 
     if (!project) {
       throw new NotFoundException(`Project ${projectId} not found`);
@@ -1121,7 +1113,12 @@ export class ProxyRuleSetsService {
       throw new BadRequestException((error as Error).message);
     }
 
-    const missingSecrets = await this.collectMissingSecrets(projectId, incomingRules, plan, liveRules);
+    const missingSecrets = await this.collectMissingSecrets(
+      projectId,
+      incomingRules,
+      plan,
+      liveRules,
+    );
     const contentHash = this.computeSyncContentHash(
       { name, description: dto.ruleSet.description, environment: dto.ruleSet.environment },
       incomingRules,
@@ -1140,8 +1137,10 @@ export class ProxyRuleSetsService {
           a.pathPattern.localeCompare(b.pathPattern) ||
           (a.method ?? '').localeCompare(b.method ?? ''),
       ),
-      conflicts: [...plan.conflicts].sort((a, b) =>
-        a.pathPattern.localeCompare(b.pathPattern) || (a.method ?? '').localeCompare(b.method ?? ''),
+      conflicts: [...plan.conflicts].sort(
+        (a, b) =>
+          a.pathPattern.localeCompare(b.pathPattern) ||
+          (a.method ?? '').localeCompare(b.method ?? ''),
       ),
       schemaResolutions: resolutions,
       missingSecrets,
@@ -1165,10 +1164,7 @@ export class ProxyRuleSetsService {
 
     // Decrypted live rules by match key, for blank-secret preservation on updates
     const liveByKey = new Map(
-      liveRules.map((rule) => [
-        JSON.stringify([rule.pathPattern, rule.method ?? null]),
-        rule,
-      ]),
+      liveRules.map((rule) => [JSON.stringify([rule.pathPattern, rule.method ?? null]), rule]),
     );
 
     let ruleSetId = existing?.id ?? '';
@@ -1198,10 +1194,16 @@ export class ProxyRuleSetsService {
           source,
           updatedAt: syncedAt,
         };
-        if (dto.ruleSet.description !== undefined && dto.ruleSet.description !== existing.description) {
+        if (
+          dto.ruleSet.description !== undefined &&
+          dto.ruleSet.description !== existing.description
+        ) {
           setUpdate.description = dto.ruleSet.description;
         }
-        if (dto.ruleSet.environment !== undefined && dto.ruleSet.environment !== existing.environment) {
+        if (
+          dto.ruleSet.environment !== undefined &&
+          dto.ruleSet.environment !== existing.environment
+        ) {
           setUpdate.environment = dto.ruleSet.environment;
         }
         await tx.update(proxyRuleSets).set(setUpdate).where(eq(proxyRuleSets.id, existing.id));
@@ -1348,7 +1350,8 @@ export class ProxyRuleSetsService {
     const add: Record<string, string> = {};
     for (const [header, value] of Object.entries(incoming.add)) {
       const liveValue = live?.add?.[header];
-      add[header] = value === '' && typeof liveValue === 'string' && liveValue !== '' ? liveValue : value;
+      add[header] =
+        value === '' && typeof liveValue === 'string' && liveValue !== '' ? liveValue : value;
     }
     return { ...incoming, add };
   }
@@ -1455,10 +1458,7 @@ export class ProxyRuleSetsService {
       .map((rule) => serializeRuleForExport(rule))
       .sort(canonicalRuleCompare);
 
-    return crypto
-      .createHash('sha256')
-      .update(JSON.stringify({ ruleSet, rules }))
-      .digest('hex');
+    return crypto.createHash('sha256').update(JSON.stringify({ ruleSet, rules })).digest('hex');
   }
 
   /**
@@ -1520,7 +1520,11 @@ export class ProxyRuleSetsService {
 
     // Also find aliases using the legacy column
     const affectedLegacyAliases = await db
-      .select({ id: deploymentAliases.id, projectId: deploymentAliases.projectId, alias: deploymentAliases.alias })
+      .select({
+        id: deploymentAliases.id,
+        projectId: deploymentAliases.projectId,
+        alias: deploymentAliases.alias,
+      })
       .from(deploymentAliases)
       .where(eq(deploymentAliases.proxyRuleSetId, id));
 
@@ -1532,9 +1536,7 @@ export class ProxyRuleSetsService {
       const joinAliases = await db
         .select({ projectId: deploymentAliases.projectId, alias: deploymentAliases.alias })
         .from(deploymentAliases)
-        .where(
-          inArray(deploymentAliases.id, aliasIdsFromJoin),
-        );
+        .where(inArray(deploymentAliases.id, aliasIdsFromJoin));
       affectedAliases.push(...joinAliases);
     }
 
@@ -1556,7 +1558,9 @@ export class ProxyRuleSetsService {
       }
     }
 
-    this.logger.log(`Deleted proxy rule set ${id}, regenerated nginx for ${uniqueAliases.length} aliases`);
+    this.logger.log(
+      `Deleted proxy rule set ${id}, regenerated nginx for ${uniqueAliases.length} aliases`,
+    );
   }
 
   // ==================== Helper Methods ====================

@@ -106,7 +106,13 @@ export class RepoBrowserController {
     @Query() query: RepositoryRefsQueryDto,
     @CurrentUser() user?: CurrentUserData,
   ): Promise<GetRepositoryRefsResponseDto> {
-    return this.repoBrowserService.getRepositoryRefs(owner, repo, query, user?.id || null, user?.role);
+    return this.repoBrowserService.getRepositoryRefs(
+      owner,
+      repo,
+      query,
+      user?.id || null,
+      user?.role,
+    );
   }
 
   @Get(':owner/:repo/deployments')
@@ -194,7 +200,13 @@ export class RepoBrowserController {
     @Query() query: GetAliasesQueryDto,
     @CurrentUser() user?: CurrentUserData,
   ): Promise<GetAliasesResponseDto> {
-    return this.repoBrowserService.getAliases(owner, repo, query.includeAutoPreview ?? false, user?.id || null, user?.role);
+    return this.repoBrowserService.getAliases(
+      owner,
+      repo,
+      query.includeAutoPreview ?? false,
+      user?.id || null,
+      user?.role,
+    );
   }
 
   @Post(':owner/:repo/aliases')
@@ -357,6 +369,12 @@ export class RepoBrowserController {
     @Param('commitSha') commitSha: string,
     @CurrentUser() user?: CurrentUserData,
   ): Promise<GetCommitDetailsResponseDto> {
-    return this.repoBrowserService.getCommitDetails(owner, repo, commitSha, user?.id || null, user?.role);
+    return this.repoBrowserService.getCommitDetails(
+      owner,
+      repo,
+      commitSha,
+      user?.id || null,
+      user?.role,
+    );
   }
 }

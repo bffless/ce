@@ -309,16 +309,31 @@ describe('BootstrapSetupService', () => {
 
   describe('validateCertificatePair (path-aware, ECDSA)', () => {
     it('accepts an ECDSA pair covering apex + wildcard (cloudflare policy)', () => {
-      const res = service.validateCertificatePair(EC_CERT_PEM, EC_KEY_PEM, 'example.com', 'cloudflare');
+      const res = service.validateCertificatePair(
+        EC_CERT_PEM,
+        EC_KEY_PEM,
+        'example.com',
+        'cloudflare',
+      );
       expect(res.wildcardCovered).toBe(true);
       expect(res.sans).toEqual(expect.arrayContaining(['example.com', '*.example.com']));
     });
 
     it('hard-requires the wildcard SAN only on the cloudflare path', () => {
       expect(() =>
-        service.validateCertificatePair(APEX_ONLY_CERT_PEM, APEX_ONLY_KEY_PEM, 'example.com', 'cloudflare'),
+        service.validateCertificatePair(
+          APEX_ONLY_CERT_PEM,
+          APEX_ONLY_KEY_PEM,
+          'example.com',
+          'cloudflare',
+        ),
       ).toThrow(/wildcard/);
-      const res = service.validateCertificatePair(APEX_ONLY_CERT_PEM, APEX_ONLY_KEY_PEM, 'example.com', 'none');
+      const res = service.validateCertificatePair(
+        APEX_ONLY_CERT_PEM,
+        APEX_ONLY_KEY_PEM,
+        'example.com',
+        'none',
+      );
       expect(res.wildcardCovered).toBe(false);
     });
 
@@ -357,8 +372,12 @@ describe('BootstrapSetupService', () => {
       const stagingDir = path.join(sslDir, 'staging');
       expect(fs.readFileSync(path.join(stagingDir, 'fullchain.pem'), 'utf8')).toBe(certPem);
       expect(fs.readFileSync(path.join(stagingDir, 'privkey.pem'), 'utf8')).toBe(keyPem);
-      expect(fs.readFileSync(path.join(stagingDir, 'wildcard.example.com.crt'), 'utf8')).toBe(certPem);
-      expect(fs.readFileSync(path.join(stagingDir, 'wildcard.example.com.key'), 'utf8')).toBe(keyPem);
+      expect(fs.readFileSync(path.join(stagingDir, 'wildcard.example.com.crt'), 'utf8')).toBe(
+        certPem,
+      );
+      expect(fs.readFileSync(path.join(stagingDir, 'wildcard.example.com.key'), 'utf8')).toBe(
+        keyPem,
+      );
     });
 
     it('leaves no stray .tmp files behind', () => {
@@ -495,9 +514,7 @@ describe('BootstrapSetupService', () => {
         { isPlatformManaged: () => true, isBootstrapModeActive: async () => true } as any,
         { isEnabled: () => true } as any,
       );
-      await expect(svc.assertBootstrapAllowed()).rejects.toThrow(
-        /platform-managed/i,
-      );
+      await expect(svc.assertBootstrapAllowed()).rejects.toThrow(/platform-managed/i);
     });
 
     it('throws BadRequestException when the flag is disabled', async () => {
@@ -533,7 +550,9 @@ describe('BootstrapSetupService', () => {
     it('passes when the staged fullchain.pem covers the domain', () => {
       const { certPem, keyPem } = makeCert('example.com', keyA);
       service.saveCertificates(certPem, keyPem, 'example.com');
-      expect(() => service.assertStagedCertificateCovers('example.com', 'cloudflare')).not.toThrow();
+      expect(() =>
+        service.assertStagedCertificateCovers('example.com', 'cloudflare'),
+      ).not.toThrow();
     });
 
     it('rejects the change-of-mind sequence: upload A, apply A (promotes to live), upload B, apply A again', () => {
@@ -576,9 +595,9 @@ describe('BootstrapSetupService', () => {
     });
 
     it('rejects a path-traversal domain before touching the filesystem', () => {
-      expect(() => service.assertStagedCertificateCovers('../../etc/nginx/evil', 'cloudflare')).toThrow(
-        /invalid domain/i,
-      );
+      expect(() =>
+        service.assertStagedCertificateCovers('../../etc/nginx/evil', 'cloudflare'),
+      ).toThrow(/invalid domain/i);
     });
 
     it('reports (rather than throws) a missing wildcard on the non-cloudflare path', () => {
@@ -597,7 +616,12 @@ describe('BootstrapSetupService', () => {
     it('saveCertificates writes the four files into staging/, not the live dir', () => {
       const { certPem, keyPem } = makeCert('example.com', keyA);
       service.saveCertificates(certPem, keyPem, 'example.com');
-      for (const f of ['fullchain.pem', 'privkey.pem', 'wildcard.example.com.crt', 'wildcard.example.com.key']) {
+      for (const f of [
+        'fullchain.pem',
+        'privkey.pem',
+        'wildcard.example.com.crt',
+        'wildcard.example.com.key',
+      ]) {
         expect(fs.existsSync(path.join(stagingDir(), f))).toBe(true);
         expect(fs.existsSync(path.join(sslDir, f))).toBe(false);
       }
@@ -643,7 +667,9 @@ describe('BootstrapSetupService', () => {
       // staged cert covers bbb.com → passes even though live covers only aaa.com
       expect(() => service.assertStagedCertificateCovers('bbb.com', 'proxy')).not.toThrow();
       // and correctly fails for aaa.com (staged takes precedence)
-      expect(() => service.assertStagedCertificateCovers('aaa.com', 'proxy')).toThrow(/does not cover/);
+      expect(() => service.assertStagedCertificateCovers('aaa.com', 'proxy')).toThrow(
+        /does not cover/,
+      );
     });
 
     it('assertStagedCertificateCovers falls back to the live fullchain when nothing is staged', () => {
@@ -657,33 +683,60 @@ describe('BootstrapSetupService', () => {
     const base = { domain: 'example.com', token: undefined };
 
     it('resolves cloudflare preset defaults', () => {
-      const cfg = service.validateApplyConfig({ ...base, proxyMode: 'cloudflare', sslMode: 'paste' } as ApplyBootstrapDto);
+      const cfg = service.validateApplyConfig({
+        ...base,
+        proxyMode: 'cloudflare',
+        sslMode: 'paste',
+      } as ApplyBootstrapDto);
       expect(cfg).toEqual({
-        proxyMode: 'cloudflare', sslMode: 'paste', port80: 'redirect', realIp: { preset: 'cloudflare' },
+        proxyMode: 'cloudflare',
+        sslMode: 'paste',
+        port80: 'redirect',
+        realIp: { preset: 'cloudflare' },
       });
     });
 
     it('resolves direct + letsencrypt', () => {
-      const cfg = service.validateApplyConfig({ ...base, proxyMode: 'none', sslMode: 'letsencrypt' } as ApplyBootstrapDto);
-      expect(cfg).toEqual({ proxyMode: 'none', sslMode: 'letsencrypt', port80: 'redirect', realIp: null });
+      const cfg = service.validateApplyConfig({
+        ...base,
+        proxyMode: 'none',
+        sslMode: 'letsencrypt',
+      } as ApplyBootstrapDto);
+      expect(cfg).toEqual({
+        proxyMode: 'none',
+        sslMode: 'letsencrypt',
+        port80: 'redirect',
+        realIp: null,
+      });
     });
 
     it('rejects letsencrypt on cloudflare (needs its own Origin Certificate)', () => {
       expect(() =>
-        service.validateApplyConfig({ ...base, proxyMode: 'cloudflare', sslMode: 'letsencrypt' } as ApplyBootstrapDto),
+        service.validateApplyConfig({
+          ...base,
+          proxyMode: 'cloudflare',
+          sslMode: 'letsencrypt',
+        } as ApplyBootstrapDto),
       ).toThrow(BadRequestException);
     });
 
     it('rejects closed port 80 on a direct install', () => {
       expect(() =>
-        service.validateApplyConfig({ ...base, proxyMode: 'none', sslMode: 'paste', port80: 'closed' } as ApplyBootstrapDto),
+        service.validateApplyConfig({
+          ...base,
+          proxyMode: 'none',
+          sslMode: 'paste',
+          port80: 'closed',
+        } as ApplyBootstrapDto),
       ).toThrow(BadRequestException);
     });
 
     it('rejects custom realIp outside proxy mode', () => {
       expect(() =>
         service.validateApplyConfig({
-          ...base, proxyMode: 'cloudflare', sslMode: 'paste',
+          ...base,
+          proxyMode: 'cloudflare',
+          sslMode: 'paste',
           realIp: { header: 'X-Forwarded-For', ranges: ['1.2.3.0/24'] },
         } as ApplyBootstrapDto),
       ).toThrow(BadRequestException);
@@ -691,19 +744,30 @@ describe('BootstrapSetupService', () => {
 
     it('accepts valid custom realIp for proxy mode (v4 + v6 CIDRs)', () => {
       const cfg = service.validateApplyConfig({
-        ...base, proxyMode: 'proxy', sslMode: 'paste',
+        ...base,
+        proxyMode: 'proxy',
+        sslMode: 'paste',
         realIp: { header: 'True-Client-IP', ranges: ['151.101.0.0/16', '2a04:4e40::/32'] },
       } as ApplyBootstrapDto);
-      expect(cfg.realIp).toEqual({ header: 'True-Client-IP', ranges: ['151.101.0.0/16', '2a04:4e40::/32'] });
+      expect(cfg.realIp).toEqual({
+        header: 'True-Client-IP',
+        ranges: ['151.101.0.0/16', '2a04:4e40::/32'],
+      });
       expect(cfg.port80).toBe('redirect');
     });
 
     it.each([
-      ['not-a-cidr'], ['1.2.3.4'], ['1.2.3.0/33'], ['1.2.3.0/24; rm -rf /'], ['2a04:4e40::/129'],
+      ['not-a-cidr'],
+      ['1.2.3.4'],
+      ['1.2.3.0/33'],
+      ['1.2.3.0/24; rm -rf /'],
+      ['2a04:4e40::/129'],
     ])('rejects malformed CIDR %s', (range) => {
       expect(() =>
         service.validateApplyConfig({
-          ...base, proxyMode: 'proxy', sslMode: 'paste',
+          ...base,
+          proxyMode: 'proxy',
+          sslMode: 'paste',
           realIp: { header: 'X-Forwarded-For', ranges: [range] },
         } as ApplyBootstrapDto),
       ).toThrow(BadRequestException);
@@ -712,7 +776,9 @@ describe('BootstrapSetupService', () => {
     it('rejects a header that is not an HTTP token', () => {
       expect(() =>
         service.validateApplyConfig({
-          ...base, proxyMode: 'proxy', sslMode: 'paste',
+          ...base,
+          proxyMode: 'proxy',
+          sslMode: 'paste',
           realIp: { header: 'X-Forwarded-For\nset_real_ip_from 0.0.0.0/0', ranges: ['1.2.3.0/24'] },
         } as ApplyBootstrapDto),
       ).toThrow(BadRequestException);
@@ -720,47 +786,74 @@ describe('BootstrapSetupService', () => {
 
     it('resolves proxy + selfsigned (the default CDN case)', () => {
       const cfg = service.validateApplyConfig({
-        domain: 'example.com', proxyMode: 'proxy', sslMode: 'selfsigned',
+        domain: 'example.com',
+        proxyMode: 'proxy',
+        sslMode: 'selfsigned',
       } as ApplyBootstrapDto);
-      expect(cfg).toEqual({ proxyMode: 'proxy', sslMode: 'selfsigned', port80: 'redirect', realIp: null });
+      expect(cfg).toEqual({
+        proxyMode: 'proxy',
+        sslMode: 'selfsigned',
+        port80: 'redirect',
+        realIp: null,
+      });
     });
 
     it('allows letsencrypt on the proxy path (CDN ACME pass-through)', () => {
       const cfg = service.validateApplyConfig({
-        domain: 'example.com', proxyMode: 'proxy', sslMode: 'letsencrypt',
+        domain: 'example.com',
+        proxyMode: 'proxy',
+        sslMode: 'letsencrypt',
       } as ApplyBootstrapDto);
       expect(cfg.sslMode).toBe('letsencrypt');
       expect(cfg.port80).toBe('redirect');
     });
 
     it('rejects selfsigned on the direct path (browser would see the warning)', () => {
-      expect(() => service.validateApplyConfig({
-        domain: 'example.com', proxyMode: 'none', sslMode: 'selfsigned',
-      } as ApplyBootstrapDto)).toThrow(BadRequestException);
+      expect(() =>
+        service.validateApplyConfig({
+          domain: 'example.com',
+          proxyMode: 'none',
+          sslMode: 'selfsigned',
+        } as ApplyBootstrapDto),
+      ).toThrow(BadRequestException);
     });
 
     it('rejects selfsigned on the cloudflare path', () => {
-      expect(() => service.validateApplyConfig({
-        domain: 'example.com', proxyMode: 'cloudflare', sslMode: 'selfsigned',
-      } as ApplyBootstrapDto)).toThrow(BadRequestException);
+      expect(() =>
+        service.validateApplyConfig({
+          domain: 'example.com',
+          proxyMode: 'cloudflare',
+          sslMode: 'selfsigned',
+        } as ApplyBootstrapDto),
+      ).toThrow(BadRequestException);
     });
 
     it('rejects letsencrypt with port 80 closed even on the proxy path', () => {
-      expect(() => service.validateApplyConfig({
-        domain: 'example.com', proxyMode: 'proxy', sslMode: 'letsencrypt', port80: 'closed',
-      } as ApplyBootstrapDto)).toThrow(/Port 80 must stay open/);
+      expect(() =>
+        service.validateApplyConfig({
+          domain: 'example.com',
+          proxyMode: 'proxy',
+          sslMode: 'letsencrypt',
+          port80: 'closed',
+        } as ApplyBootstrapDto),
+      ).toThrow(/Port 80 must stay open/);
     });
 
     it('m13: cloudflare apply with no explicit port80 defaults to redirect (fresh CF zones have Always-Use-HTTPS off; closed → edge 520s)', () => {
       const out = service.validateApplyConfig({
-        domain: 'example.com', proxyMode: 'cloudflare', sslMode: 'paste',
+        domain: 'example.com',
+        proxyMode: 'cloudflare',
+        sslMode: 'paste',
       } as ApplyBootstrapDto);
       expect(out.port80).toBe('redirect');
     });
 
     it('m13: explicit closed on cloudflare is still honored', () => {
       const out = service.validateApplyConfig({
-        domain: 'example.com', proxyMode: 'cloudflare', sslMode: 'paste', port80: 'closed',
+        domain: 'example.com',
+        proxyMode: 'cloudflare',
+        sslMode: 'paste',
+        port80: 'closed',
       } as ApplyBootstrapDto);
       expect(out.port80).toBe('closed');
     });

@@ -36,9 +36,7 @@ export const projects = pgTable(
      * - 'authenticated': Any logged-in user (default)
      * - 'viewer' | 'contributor' | 'admin' | 'owner': Specific role level
      */
-    requiredRole: varchar('required_role', { length: 20 })
-      .default('authenticated')
-      .notNull(),
+    requiredRole: varchar('required_role', { length: 20 }).default('authenticated').notNull(),
     /**
      * When true, anonymous visitors can self-register on this project's site
      * and are auto-granted a `guest` membership. Only consulted when the

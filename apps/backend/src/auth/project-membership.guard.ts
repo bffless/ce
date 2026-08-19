@@ -58,10 +58,10 @@ export class ProjectMembershipGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const isPublic = this.reflector.getAllAndOverride<boolean>(
-      PUBLIC_PROJECT_ACCESS_KEY,
-      [context.getHandler(), context.getClass()],
-    );
+    const isPublic = this.reflector.getAllAndOverride<boolean>(PUBLIC_PROJECT_ACCESS_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
     if (isPublic) return true;
 
     if (!(await this.featureFlags.isEnabled('REQUIRE_PROJECT_MEMBERSHIP'))) {
@@ -70,9 +70,7 @@ export class ProjectMembershipGuard implements CanActivate {
 
     const req = context
       .switchToHttp()
-      .getRequest<
-        Request & { user?: { id?: string; apiKeyId?: string } }
-      >();
+      .getRequest<Request & { user?: { id?: string; apiKeyId?: string } }>();
 
     const user = req.user;
     if (!user?.id) return true;

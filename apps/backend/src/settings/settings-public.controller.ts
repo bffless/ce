@@ -28,7 +28,8 @@ export class SettingsPublicController {
   @Get('email/status-public')
   @ApiOperation({
     summary: 'Check if email service is configured (public)',
-    description: 'Returns whether the email service is configured. Used to show/hide email-dependent features.',
+    description:
+      'Returns whether the email service is configured. Used to show/hide email-dependent features.',
   })
   @ApiResponse({
     status: 200,
@@ -44,7 +45,8 @@ export class SettingsPublicController {
   @Get('branding/public')
   @ApiOperation({
     summary: 'Get public branding configuration',
-    description: 'Returns site name and whether custom logos are set. Used by auth pages and header.',
+    description:
+      'Returns site name and whether custom logos are set. Used by auth pages and header.',
   })
   @ApiResponse({ status: 200, description: 'Public branding configuration' })
   async getPublicBranding(): Promise<PublicBrandingConfig> {
@@ -58,10 +60,7 @@ export class SettingsPublicController {
   })
   @ApiResponse({ status: 200, description: 'Logo image file' })
   @ApiResponse({ status: 404, description: 'No custom logo set' })
-  async getLogoImage(
-    @Param('type') type: string,
-    @Res() res: Response,
-  ): Promise<void> {
+  async getLogoImage(@Param('type') type: string, @Res() res: Response): Promise<void> {
     const result = await this.brandingService.getLogoBuffer(type);
     if (!result) {
       throw new NotFoundException('No custom logo set for this type');

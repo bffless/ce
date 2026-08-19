@@ -31,8 +31,7 @@ export interface LocalPresignParams {
  * signatures survive restarts with no extra configuration.
  */
 export function derivePresignKey(env: NodeJS.ProcessEnv = process.env): Buffer {
-  const base =
-    env.LOCAL_PRESIGN_SECRET || env.ENCRYPTION_KEY || 'bffless-local-presign-dev-secret';
+  const base = env.LOCAL_PRESIGN_SECRET || env.ENCRYPTION_KEY || 'bffless-local-presign-dev-secret';
   return createHash('sha256').update(`${base}|${PRESIGN_DOMAIN_LABEL}`).digest();
 }
 

@@ -20,13 +20,15 @@ export class GenerateStateSchemaDto {
   projectId: string;
 
   @ApiProperty({
-    description: 'Schema name (unique within project). Use lowercase letters, numbers, and underscores.',
+    description:
+      'Schema name (unique within project). Use lowercase letters, numbers, and underscores.',
     example: 'user_state',
   })
   @IsString()
   @MaxLength(255)
   @Matches(/^[a-z][a-z0-9_]*$/, {
-    message: 'Schema name must start with a letter and contain only lowercase letters, numbers, and underscores',
+    message:
+      'Schema name must start with a letter and contain only lowercase letters, numbers, and underscores',
   })
   name: string;
 
@@ -39,7 +41,8 @@ export class GenerateStateSchemaDto {
   scope: StateScope;
 
   @ApiPropertyOptional({
-    description: 'Existing rule set ID to add pipelines to. If not provided, a new rule set will be created.',
+    description:
+      'Existing rule set ID to add pipelines to. If not provided, a new rule set will be created.',
   })
   @IsOptional()
   @IsUUID()

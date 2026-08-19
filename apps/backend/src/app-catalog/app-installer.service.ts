@@ -286,7 +286,14 @@ export class AppInstallerService {
 
       // ---- 6. domain ----
       step = 'domain';
-      const domainOutcome = await this.applyDomainStep(jobId, manifest, row, project.id, appHost, userId);
+      const domainOutcome = await this.applyDomainStep(
+        jobId,
+        manifest,
+        row,
+        project.id,
+        appHost,
+        userId,
+      );
       if (domainOutcome.domainId) {
         created.domainId = domainOutcome.domainId;
         progress.domainId = domainOutcome.domainId;
@@ -313,10 +320,7 @@ export class AppInstallerService {
         projectPath: `${project.owner}/${project.name}`,
         appHost: appHost ?? undefined,
       };
-      const manualSteps = [
-        ...this.applicableManualSteps(manifest, stepValues),
-        ...certManualSteps,
-      ];
+      const manualSteps = [...this.applicableManualSteps(manifest, stepValues), ...certManualSteps];
       // Scheme follows the serving model, not wishful thinking: a direct+LE
       // instance with no certificate covering this host yet serves it over
       // plain HTTP, and linking to https:// there lands the operator on the
@@ -346,7 +350,9 @@ export class AppInstallerService {
 
       this.jobs.setStep(jobId, step, { status: 'done', detail: 'Install recorded.' });
       this.jobs.finish(jobId, 'succeeded', { installedAppId: row.id, manualSteps, appUrl });
-      this.logger.log(`Installed app ${manifest.id} v${manifest.version} into project ${project.id}`);
+      this.logger.log(
+        `Installed app ${manifest.id} v${manifest.version} into project ${project.id}`,
+      );
     } catch (error) {
       await this.failJob(jobId, step, rowId, error, progress);
     }
@@ -496,9 +502,14 @@ export class AppInstallerService {
    * (each `tryRun` treats an already-gone resource as success, so a retry
    * only re-attempts what's still actually live).
    */
-  async undo(installedAppId: string, userId: string): Promise<{ removed: string[]; failures?: string[] }> {
+  async undo(
+    installedAppId: string,
+    userId: string,
+  ): Promise<{ removed: string[]; failures?: string[] }> {
     const row = await this.requireRow(installedAppId);
-    const { removed, failures } = await this.deleteCreatedResources(row, userId, { includeSchemas: true });
+    const { removed, failures } = await this.deleteCreatedResources(row, userId, {
+      includeSchemas: true,
+    });
 
     if (failures.length > 0) {
       await db
@@ -518,7 +529,9 @@ export class AppInstallerService {
     const job = this.jobs.findByInstalledApp(row.id);
     if (job) this.jobs.finish(job.id, 'undone');
 
-    this.logger.log(`Undid app install ${row.appId} (${row.id}): removed ${removed.join(', ') || 'nothing'}`);
+    this.logger.log(
+      `Undid app install ${row.appId} (${row.id}): removed ${removed.join(', ') || 'nothing'}`,
+    );
     return { removed };
   }
 
@@ -1020,7 +1033,10 @@ export class AppInstallerService {
     // A subdomain's sslEnabled is silently downgraded when no wildcard cert
     // exists — read it back rather than assuming what we asked for.
     const sslDowngraded = createdDomain?.sslEnabled === false;
-    this.jobs.setStep(jobId, 'domain', { status: 'done', detail: `${appHost} mapped to this app.` });
+    this.jobs.setStep(jobId, 'domain', {
+      status: 'done',
+      detail: `${appHost} mapped to this app.`,
+    });
     return { domainId: createdDomain.id, sslDowngraded };
   }
 
@@ -1344,10 +1360,7 @@ export class AppInstallerService {
     return entries;
   }
 
-  private applicableManualSteps(
-    manifest: AppManifest,
-    values: StepPlaceholders,
-  ): AppManualStep[] {
+  private applicableManualSteps(manifest: AppManifest, values: StepPlaceholders): AppManualStep[] {
     const ctx = this.instanceContext();
     return (manifest.install.manualSteps ?? [])
       .filter((step) => manualStepApplies(step, ctx))
@@ -1401,7 +1414,9 @@ export class AppInstallerService {
       .from(domainMappings)
       .where(eq(domainMappings.id, domainId))
       .limit(1);
-    return mapping ? { domain: mapping.domain, sslEnabled: Boolean(mapping.sslEnabled) } : undefined;
+    return mapping
+      ? { domain: mapping.domain, sslEnabled: Boolean(mapping.sslEnabled) }
+      : undefined;
   }
 
   /**
@@ -1411,7 +1426,11 @@ export class AppInstallerService {
    * overriding the subdomain never changes the alias. Naming both here
    * avoids reading like the override was ignored.
    */
-  private deployDetail(fileCount: number, alias: string, appHost: string | null | undefined): string {
+  private deployDetail(
+    fileCount: number,
+    alias: string,
+    appHost: string | null | undefined,
+  ): string {
     return appHost
       ? `Deployed ${fileCount} file(s) to deployment alias "${alias}" (serving at ${appHost}).`
       : `Deployed ${fileCount} file(s) to alias "${alias}".`;
@@ -1465,13 +1484,18 @@ export class AppInstallerService {
           })
           .where(eq(installedApps.id, rowId));
       } catch (updateError) {
-        this.logger.error(`Could not mark install row ${rowId} failed: ${this.messageOf(updateError)}`);
+        this.logger.error(
+          `Could not mark install row ${rowId} failed: ${this.messageOf(updateError)}`,
+        );
       }
     }
 
     // Stamp installedAppId even on failure (when a row exists): the catalog's
     // undo-by-jobId route (Task 11) has no other way to find what to undo.
-    this.jobs.finish(jobId, 'failed', { error: message, ...(rowId ? { installedAppId: rowId } : {}) });
+    this.jobs.finish(jobId, 'failed', {
+      error: message,
+      ...(rowId ? { installedAppId: rowId } : {}),
+    });
   }
 
   private messageOf(error: unknown): string {

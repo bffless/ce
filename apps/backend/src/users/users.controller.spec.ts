@@ -157,7 +157,11 @@ describe('UsersController', () => {
     it('should update user role', async () => {
       // Current user is a different user than the one being updated
       const currentUser = { id: 'admin-uuid', email: 'admin@example.com', role: 'admin' };
-      const result = await controller.updateRole('test-uuid-1234', { role: UserRole.ADMIN }, currentUser);
+      const result = await controller.updateRole(
+        'test-uuid-1234',
+        { role: UserRole.ADMIN },
+        currentUser,
+      );
 
       expect(result.message).toBe('User role updated successfully');
       expect(result.user.role).toBe('admin');

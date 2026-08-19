@@ -20,7 +20,7 @@ const reqFor = (host: string, forwardedHost?: string): Request =>
       host,
       ...(forwardedHost ? { 'x-forwarded-host': forwardedHost } : {}),
     },
-  } as unknown as Request);
+  }) as unknown as Request;
 
 describe('ProjectResolverService', () => {
   let service: ProjectResolverService;
@@ -89,9 +89,9 @@ describe('ProjectResolverService', () => {
     });
 
     it('uses x-forwarded-host when present', async () => {
-      mockedDb.limit.mockResolvedValueOnce([{ projectId: 'proj-3' }]).mockResolvedValueOnce([
-        { id: 'proj-3' },
-      ]);
+      mockedDb.limit
+        .mockResolvedValueOnce([{ projectId: 'proj-3' }])
+        .mockResolvedValueOnce([{ id: 'proj-3' }]);
 
       await service.resolveProjectFromRequest(reqFor('internal.example', 'www.bella.com'));
 
@@ -102,9 +102,9 @@ describe('ProjectResolverService', () => {
     });
 
     it('strips port and lowercases the hostname', async () => {
-      mockedDb.limit.mockResolvedValueOnce([{ projectId: 'proj-4' }]).mockResolvedValueOnce([
-        { id: 'proj-4' },
-      ]);
+      mockedDb.limit
+        .mockResolvedValueOnce([{ projectId: 'proj-4' }])
+        .mockResolvedValueOnce([{ id: 'proj-4' }]);
 
       const result = await service.resolveProjectFromRequest(reqFor('Foo.Sites.BFFLESS.APP:8080'));
 

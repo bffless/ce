@@ -1,7 +1,13 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
-  ArrayNotEmpty, IsArray, IsIn, IsNotEmpty, IsOptional, IsString, ValidateNested,
+  ArrayNotEmpty,
+  IsArray,
+  IsIn,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  ValidateNested,
 } from 'class-validator';
 
 class PrimaryRealIpDto {
@@ -19,11 +25,14 @@ export class PrimarySslApplyDto {
   sslMode: 'paste' | 'letsencrypt' | 'selfsigned';
 
   @ApiProperty({ required: false, enum: ['closed', 'redirect'] })
-  @IsOptional() @IsIn(['closed', 'redirect'])
+  @IsOptional()
+  @IsIn(['closed', 'redirect'])
   port80?: 'closed' | 'redirect';
 
   @ApiProperty({ required: false, type: PrimaryRealIpDto })
-  @IsOptional() @ValidateNested() @Type(() => PrimaryRealIpDto)
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PrimaryRealIpDto)
   realIp?: PrimaryRealIpDto;
 }
 

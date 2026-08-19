@@ -65,16 +65,12 @@ export class ResponseHeaderConfigService {
    * Evaluates rules in priority order; first match wins.
    * Returns null if no rule matches (use default behavior).
    */
-  async getHeaderConfig(
-    projectId: string,
-    filePath: string,
-  ): Promise<ResponseHeaderConfig | null> {
+  async getHeaderConfig(projectId: string, filePath: string): Promise<ResponseHeaderConfig | null> {
     let cached = this.ruleCache.get(projectId);
     const now = Date.now();
 
     if (!cached || now - cached.cachedAt > RULE_CACHE_TTL_MS) {
-      const rules =
-        await this.responseHeaderRulesService.getEnabledRulesByProjectId(projectId);
+      const rules = await this.responseHeaderRulesService.getEnabledRulesByProjectId(projectId);
       const matchers = rules.map((r) => picomatch(r.pathPattern));
       cached = { rules, matchers, cachedAt: now };
       this.ruleCache.set(projectId, cached);
@@ -113,14 +109,8 @@ export class ResponseHeaderConfigService {
     switch (config.framePolicy) {
       case 'allow': {
         // Merge custom allowed origins with default ancestors (admin panel, etc.)
-        const allOrigins = new Set([
-          ...this.defaultFrameAncestors,
-          ...config.allowedOrigins,
-        ]);
-        res.setHeader(
-          'Content-Security-Policy',
-          `frame-ancestors ${[...allOrigins].join(' ')}`,
-        );
+        const allOrigins = new Set([...this.defaultFrameAncestors, ...config.allowedOrigins]);
+        res.setHeader('Content-Security-Policy', `frame-ancestors ${[...allOrigins].join(' ')}`);
         // Remove X-Frame-Options since CSP frame-ancestors takes precedence
         res.removeHeader('X-Frame-Options');
         break;
@@ -153,9 +143,7 @@ export class ResponseHeaderConfigService {
 
   invalidateProjectCache(projectId: string): void {
     this.ruleCache.delete(projectId);
-    this.logger.debug(
-      `Invalidated response header rule cache for project ${projectId}`,
-    );
+    this.logger.debug(`Invalidated response header rule cache for project ${projectId}`);
   }
 
   clearAllCache(): void {

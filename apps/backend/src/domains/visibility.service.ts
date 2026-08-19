@@ -345,7 +345,9 @@ export class VisibilityService {
       expiresAt: Date.now() + this.cacheTtlMs,
     });
 
-    this.logger.debug(`Cached domain visibility for ${cacheKey}: ${accessControl?.isPublic ?? 'not found'}`);
+    this.logger.debug(
+      `Cached domain visibility for ${cacheKey}: ${accessControl?.isPublic ?? 'not found'}`,
+    );
     return accessControl;
   }
 
@@ -357,9 +359,7 @@ export class VisibilityService {
    */
   invalidateDomainCache(domain: string): void {
     const normalized = domain.toLowerCase().split(':')[0];
-    const alternate = normalized.startsWith('www.')
-      ? normalized.slice(4)
-      : `www.${normalized}`;
+    const alternate = normalized.startsWith('www.') ? normalized.slice(4) : `www.${normalized}`;
 
     this.domainVisibilityCache.delete(normalized);
     this.domainVisibilityCache.delete(alternate);

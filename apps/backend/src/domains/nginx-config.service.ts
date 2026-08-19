@@ -619,7 +619,6 @@ ${serverBlocks}
 `;
   }
 
-
   // =========================================================================
   // THE APP-SERVING CONTRACT (ce#598)
   //
@@ -1030,7 +1029,10 @@ ${spaFallback}
    *  fullchain.pem normally, the built-in self-signed pair for a selfsigned install. */
   private primaryCertPaths(): { cert: string; key: string } {
     return this.isSelfSignedMode()
-      ? { cert: '/etc/nginx/ssl/bootstrap-selfsigned.crt', key: '/etc/nginx/ssl/bootstrap-selfsigned.key' }
+      ? {
+          cert: '/etc/nginx/ssl/bootstrap-selfsigned.crt',
+          key: '/etc/nginx/ssl/bootstrap-selfsigned.key',
+        }
       : { cert: '/etc/nginx/ssl/fullchain.pem', key: '/etc/nginx/ssl/privkey.pem' };
   }
 

@@ -99,7 +99,8 @@ export class ImageConvertHandler implements StepHandler<ImageConvertHandlerConfi
         success: false,
         error: {
           code: 'UNSUPPORTED_FORMAT',
-          message: 'HEIC/HEIF files must be converted to JPEG or WebP in the browser before uploading.',
+          message:
+            'HEIC/HEIF files must be converted to JPEG or WebP in the browser before uploading.',
         },
       };
     }

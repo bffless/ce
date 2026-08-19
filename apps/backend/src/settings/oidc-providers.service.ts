@@ -149,8 +149,7 @@ export class OidcProvidersService {
       const merged: OidcProviderConfig = {
         clientId: input.config.clientId ?? current.clientId,
         clientSecret: input.config.clientSecret ?? current.clientSecret,
-        oidcDiscoveryEndpoint:
-          input.config.oidcDiscoveryEndpoint ?? current.oidcDiscoveryEndpoint,
+        oidcDiscoveryEndpoint: input.config.oidcDiscoveryEndpoint ?? current.oidcDiscoveryEndpoint,
         oktaDomain: input.config.oktaDomain ?? current.oktaDomain,
         directoryId: input.config.directoryId ?? current.directoryId,
         scope: input.config.scope ?? current.scope,
@@ -235,11 +234,11 @@ export class OidcProvidersService {
         .replace(/\/+$/, '');
     }
     if (kind === 'okta' && !config.oktaDomain?.trim()) {
-      throw new BadRequestException("Okta providers require oktaDomain (e.g. dev-xxxx.okta.com).");
+      throw new BadRequestException('Okta providers require oktaDomain (e.g. dev-xxxx.okta.com).');
     }
     if (kind === 'azure-ad' && !config.directoryId?.trim()) {
       throw new BadRequestException(
-        "Azure AD providers require directoryId (the tenant / directory ID).",
+        'Azure AD providers require directoryId (the tenant / directory ID).',
       );
     }
   }

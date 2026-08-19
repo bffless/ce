@@ -20,9 +20,7 @@ export class StorageTools {
     parameters: z.object({
       storagePath: z
         .string()
-        .describe(
-          'Full storage path (e.g., "owner/repo/uploads/images/uuid-file.png")',
-        ),
+        .describe('Full storage path (e.g., "owner/repo/uploads/images/uuid-file.png")'),
       expiresIn: z
         .number()
         .optional()
@@ -35,10 +33,11 @@ export class StorageTools {
     request: Request,
   ) {
     await getUserContext(request, this.authService);
-    const url = await this.storageAdapter.getUrl(
-      args.storagePath,
-      args.expiresIn ?? 3600,
-    );
-    return JSON.stringify({ url, storagePath: args.storagePath, expiresIn: args.expiresIn ?? 3600 });
+    const url = await this.storageAdapter.getUrl(args.storagePath, args.expiresIn ?? 3600);
+    return JSON.stringify({
+      url,
+      storagePath: args.storagePath,
+      expiresIn: args.expiresIn ?? 3600,
+    });
   }
 }

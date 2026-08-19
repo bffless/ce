@@ -398,7 +398,9 @@ export class NginxStartupService implements OnModuleInit {
       const alias = await db
         .select()
         .from(deploymentAliases)
-        .where(and(eq(deploymentAliases.projectId, projectId), eq(deploymentAliases.alias, aliasName)))
+        .where(
+          and(eq(deploymentAliases.projectId, projectId), eq(deploymentAliases.alias, aliasName)),
+        )
         .limit(1);
 
       if (alias.length === 0) {
@@ -683,9 +685,7 @@ export class NginxStartupService implements OnModuleInit {
     // it crash-loop on restart. Skip generating it, and remove any stale one
     // left from a previous booted-with-certs state so a restart stays safe.
     if (this.nginxConfigService.isCertlessBootstrapMode()) {
-      this.logger.log(
-        'Bootstrap mode (no SSL certificate yet) - skipping welcome page config',
-      );
+      this.logger.log('Bootstrap mode (no SSL certificate yet) - skipping welcome page config');
       await this.cleanupLegacyPrimaryContentConfig();
       return 0;
     }

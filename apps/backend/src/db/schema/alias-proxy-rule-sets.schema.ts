@@ -1,11 +1,4 @@
-import {
-  pgTable,
-  uuid,
-  integer,
-  timestamp,
-  uniqueIndex,
-  index,
-} from 'drizzle-orm/pg-core';
+import { pgTable, uuid, integer, timestamp, uniqueIndex, index } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { deploymentAliases } from './deployment-aliases.schema';
 import { proxyRuleSets } from './proxy-rule-sets.schema';

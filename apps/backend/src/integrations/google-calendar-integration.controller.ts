@@ -66,7 +66,9 @@ export class GoogleCalendarIntegrationController {
   }
 
   @Get('oauth/initiate')
-  @ApiOperation({ summary: 'Initiate Google Calendar OAuth flow (uses workspace OAuth credentials)' })
+  @ApiOperation({
+    summary: 'Initiate Google Calendar OAuth flow (uses workspace OAuth credentials)',
+  })
   @ApiParam({ name: 'projectId', description: 'Project UUID' })
   async initiateOAuth(
     @Param('projectId') projectId: string,
@@ -126,15 +128,15 @@ export class GoogleCalendarIntegrationController {
       code,
       redirectUri,
     );
-    this.logger.log(
-      `Google Calendar connected for project ${projectId}: ${result.connectedEmail}`,
-    );
+    this.logger.log(`Google Calendar connected for project ${projectId}: ${result.connectedEmail}`);
     return { success: true, connectedEmail: result.connectedEmail };
   }
 
   @Delete('oauth')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Disconnect Google Calendar — revoke tokens + clear connected-account state' })
+  @ApiOperation({
+    summary: 'Disconnect Google Calendar — revoke tokens + clear connected-account state',
+  })
   @ApiParam({ name: 'projectId', description: 'Project UUID' })
   async disconnectOAuth(@Param('projectId') projectId: string): Promise<void> {
     const stored = await this.integrationsService.getStoredIntegration(
@@ -171,9 +173,7 @@ export class GoogleCalendarIntegrationController {
   @Get('calendars')
   @ApiOperation({ summary: 'List sub-calendars on the connected Google account' })
   @ApiParam({ name: 'projectId', description: 'Project UUID' })
-  async listCalendars(
-    @Param('projectId') projectId: string,
-  ): Promise<{
+  async listCalendars(@Param('projectId') projectId: string): Promise<{
     calendars: Array<{ id: string; summary: string; primary?: boolean; timeZone: string }>;
   }> {
     try {

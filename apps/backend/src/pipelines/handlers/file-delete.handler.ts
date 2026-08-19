@@ -61,10 +61,7 @@ export class FileDeleteHandler implements StepHandler<FileDeleteHandlerConfig> {
       );
     }
     if (modes === 0) {
-      throw new ConfigurationError(
-        'One of "prefix", "key", or "keys" is required',
-        'file_delete',
-      );
+      throw new ConfigurationError('One of "prefix", "key", or "keys" is required', 'file_delete');
     }
 
     if (hasKeys) {

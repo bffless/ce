@@ -4,9 +4,7 @@ import * as path from 'path';
 /** Package identity check: the CE release version lives in the ROOT package.json
  * ("@bffless/ce"). apps/backend/package.json is a never-bumped 1.0.0 — matching
  * on the name is what keeps us from repeating telemetry's bug. */
-export function resolveCeVersion(
-  candidates: Array<{ name?: string; version?: string }>,
-): string {
+export function resolveCeVersion(candidates: Array<{ name?: string; version?: string }>): string {
   for (const pkg of candidates) {
     if (pkg?.name === '@bffless/ce' && pkg.version) return String(pkg.version);
   }

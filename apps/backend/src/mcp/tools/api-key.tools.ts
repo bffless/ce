@@ -21,11 +21,7 @@ export class ApiKeyTools {
       limit: z.number().optional().describe('Items per page (default 20)'),
     }),
   })
-  async listApiKeys(
-    args: { page?: number; limit?: number },
-    _context: Context,
-    request: Request,
-  ) {
+  async listApiKeys(args: { page?: number; limit?: number }, _context: Context, request: Request) {
     const user = await getUserContext(request, this.authService);
     const result = await this.apiKeysService.findAll(user.id, args);
     return JSON.stringify(result);
@@ -72,11 +68,7 @@ export class ApiKeyTools {
     }),
     annotations: { destructiveHint: true },
   })
-  async deleteApiKey(
-    { id }: { id: string },
-    _context: Context,
-    request: Request,
-  ) {
+  async deleteApiKey({ id }: { id: string }, _context: Context, request: Request) {
     const user = await getUserContext(request, this.authService);
     await this.apiKeysService.remove(id, user.id);
     return JSON.stringify({ success: true, id });

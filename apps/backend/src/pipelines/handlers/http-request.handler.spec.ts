@@ -22,11 +22,7 @@ function makeFetchResponse(opts: {
     statusText,
     headers: {
       get: (name: string) =>
-        name.toLowerCase() === 'content-type'
-          ? isJson
-            ? 'application/json'
-            : 'text/html'
-          : null,
+        name.toLowerCase() === 'content-type' ? (isJson ? 'application/json' : 'text/html') : null,
     },
     json: async () => body,
     text: async () => (typeof body === 'string' ? body : JSON.stringify(body)),
@@ -109,9 +105,7 @@ describe('HttpRequestHandler', () => {
 
   describe('execute — backward-compat default (failOnError: true)', () => {
     it('returns flat body output on 2xx', async () => {
-      mockFetch.mockResolvedValue(
-        makeFetchResponse({ status: 200, body: { hello: 'world' } }),
-      );
+      mockFetch.mockResolvedValue(makeFetchResponse({ status: 200, body: { hello: 'world' } }));
 
       const result = await handler.execute(
         makeContext(),
@@ -211,9 +205,7 @@ describe('HttpRequestHandler', () => {
       );
 
       expect(result.success).toBe(true);
-      expect(
-        (result.output as { status: number; ok: boolean }).status,
-      ).toBe(500);
+      expect((result.output as { status: number; ok: boolean }).status).toBe(500);
       expect((result.output as { ok: boolean }).ok).toBe(false);
     });
 
@@ -246,10 +238,7 @@ describe('HttpRequestHandler', () => {
 
   describe('execute — invalid url', () => {
     it('returns INVALID_URL when not http(s)', async () => {
-      const result = await handler.execute(
-        makeContext(),
-        makeStep({ url: 'file:///etc/passwd' }),
-      );
+      const result = await handler.execute(makeContext(), makeStep({ url: 'file:///etc/passwd' }));
       expect(result.success).toBe(false);
       expect(result.error?.code).toBe('HTTP_REQUEST_INVALID_URL');
       expect(mockFetch).not.toHaveBeenCalled();
@@ -262,7 +251,9 @@ describe('HttpRequestHandler', () => {
     }
 
     it('omits Content-Type on a bodyless GET (strict upstreams 415 otherwise)', async () => {
-      mockFetch.mockResolvedValue(makeFetchResponse({ status: 200, body: '<rss/>', isJson: false }));
+      mockFetch.mockResolvedValue(
+        makeFetchResponse({ status: 200, body: '<rss/>', isJson: false }),
+      );
 
       await handler.execute(makeContext(), makeStep({ url: 'https://example.com/rss' }));
 
@@ -281,7 +272,9 @@ describe('HttpRequestHandler', () => {
     });
 
     it('lets a caller override Content-Type via config.headers', async () => {
-      mockFetch.mockResolvedValue(makeFetchResponse({ status: 200, body: '<rss/>', isJson: false }));
+      mockFetch.mockResolvedValue(
+        makeFetchResponse({ status: 200, body: '<rss/>', isJson: false }),
+      );
 
       await handler.execute(
         makeContext(),

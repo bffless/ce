@@ -29,8 +29,7 @@ export class UpdateDomainDto {
   isPublic?: boolean | null;
 
   @ApiPropertyOptional({
-    description:
-      'Unauthorized behavior override: null = inherit from alias/project',
+    description: 'Unauthorized behavior override: null = inherit from alias/project',
     enum: ['not_found', 'redirect_login'],
     nullable: true,
   })
@@ -39,8 +38,7 @@ export class UpdateDomainDto {
   unauthorizedBehavior?: 'not_found' | 'redirect_login' | null;
 
   @ApiPropertyOptional({
-    description:
-      'Required role override: null = inherit from alias/project',
+    description: 'Required role override: null = inherit from alias/project',
     enum: ['authenticated', 'guest', 'viewer', 'contributor', 'admin', 'owner'],
     nullable: true,
   })
@@ -49,8 +47,7 @@ export class UpdateDomainDto {
   requiredRole?: 'authenticated' | 'guest' | 'viewer' | 'contributor' | 'admin' | 'owner' | null;
 
   @ApiPropertyOptional({
-    description:
-      'Enable SPA mode: when true, 404s fallback to index.html for client-side routing',
+    description: 'Enable SPA mode: when true, 404s fallback to index.html for client-side routing',
   })
   @IsOptional()
   @IsBoolean()

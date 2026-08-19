@@ -1,4 +1,13 @@
-import { pgTable, serial, uuid, varchar, boolean, timestamp, unique, index } from 'drizzle-orm/pg-core';
+import {
+  pgTable,
+  serial,
+  uuid,
+  varchar,
+  boolean,
+  timestamp,
+  unique,
+  index,
+} from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { projects } from './projects.schema';
 

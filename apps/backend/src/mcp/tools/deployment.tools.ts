@@ -18,10 +18,7 @@ export class DeploymentTools {
     description:
       'List deployments with optional filters by repository (owner/name), branch, or commit SHA.',
     parameters: z.object({
-      repository: z
-        .string()
-        .optional()
-        .describe('Filter by repository in "owner/name" format'),
+      repository: z.string().optional().describe('Filter by repository in "owner/name" format'),
       branch: z.string().optional().describe('Filter by branch name'),
       commitSha: z.string().optional().describe('Filter by commit SHA prefix'),
       page: z.number().optional().describe('Page number (default 1)'),
@@ -56,7 +53,8 @@ export class DeploymentTools {
 
   @Tool({
     name: 'get_deployment',
-    description: 'Get detailed information about a specific deployment including files and aliases.',
+    description:
+      'Get detailed information about a specific deployment including files and aliases.',
     parameters: z.object({
       deploymentId: z.string().describe('Deployment ID (UUID)'),
     }),
@@ -93,17 +91,10 @@ export class DeploymentTools {
     name: 'list_aliases',
     description: 'List deployment aliases, optionally filtered by repository.',
     parameters: z.object({
-      repository: z
-        .string()
-        .optional()
-        .describe('Filter by repository in "owner/name" format'),
+      repository: z.string().optional().describe('Filter by repository in "owner/name" format'),
     }),
   })
-  async listAliases(
-    args: { repository?: string },
-    _context: Context,
-    request: Request,
-  ) {
+  async listAliases(args: { repository?: string }, _context: Context, request: Request) {
     const user = await getUserContext(request, this.authService);
     const result = await this.deploymentsService.listAliases(
       { repository: args.repository },
@@ -115,7 +106,8 @@ export class DeploymentTools {
 
   @Tool({
     name: 'create_alias',
-    description: 'Create or update a deployment alias (e.g. "production", "staging"). NOTE: If the project has proxy rules, assign the rule set to this alias via update_alias(proxyRuleSetId) after creation.',
+    description:
+      'Create or update a deployment alias (e.g. "production", "staging"). NOTE: If the project has proxy rules, assign the rule set to this alias via update_alias(proxyRuleSetId) after creation.',
     parameters: z.object({
       deploymentId: z.string().describe('Deployment ID to alias'),
       alias: z.string().describe('Alias name (e.g. "production")'),
@@ -160,7 +152,13 @@ export class DeploymentTools {
     }),
   })
   async updateAlias(
-    args: { repository: string; alias: string; commitSha?: string; proxyRuleSetId?: string; proxyRuleSetIds?: string[] },
+    args: {
+      repository: string;
+      alias: string;
+      commitSha?: string;
+      proxyRuleSetId?: string;
+      proxyRuleSetIds?: string[];
+    },
     _context: Context,
     request: Request,
   ) {
@@ -168,7 +166,11 @@ export class DeploymentTools {
     const result = await this.deploymentsService.updateAlias(
       args.repository,
       args.alias,
-      { commitSha: args.commitSha, proxyRuleSetId: args.proxyRuleSetId, proxyRuleSetIds: args.proxyRuleSetIds },
+      {
+        commitSha: args.commitSha,
+        proxyRuleSetId: args.proxyRuleSetId,
+        proxyRuleSetIds: args.proxyRuleSetIds,
+      },
       user.id,
       user.role,
     );
@@ -190,12 +192,7 @@ export class DeploymentTools {
     request: Request,
   ) {
     const user = await getUserContext(request, this.authService);
-    await this.deploymentsService.deleteAlias(
-      args.repository,
-      args.alias,
-      user.id,
-      user.role,
-    );
+    await this.deploymentsService.deleteAlias(args.repository, args.alias, user.id, user.role);
     return JSON.stringify({ success: true, alias: args.alias });
   }
 }

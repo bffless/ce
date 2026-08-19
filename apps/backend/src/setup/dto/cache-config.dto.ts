@@ -161,7 +161,8 @@ export class TestRedisConnectionDto {
   useLocalPassword?: boolean;
 
   @ApiPropertyOptional({
-    description: 'Use the MANAGED_REDIS_* env vars from server environment (for platform-managed Redis)',
+    description:
+      'Use the MANAGED_REDIS_* env vars from server environment (for platform-managed Redis)',
   })
   @IsOptional()
   @IsBoolean()

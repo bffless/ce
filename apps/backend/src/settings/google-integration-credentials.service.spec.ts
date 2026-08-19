@@ -65,7 +65,10 @@ describe('GoogleIntegrationCredentialsService', () => {
     });
 
     it('returns masked clientId when row exists', async () => {
-      const blob = encryptJson({ clientId: 'cid-12345-67890.apps.googleusercontent.com', clientSecret: 'sec' });
+      const blob = encryptJson({
+        clientId: 'cid-12345-67890.apps.googleusercontent.com',
+        clientSecret: 'sec',
+      });
       mockSelect([{ id: 'row-1', configEncrypted: blob, configured: true }]);
 
       const status = await service.getStatus('calendar');
@@ -155,7 +158,13 @@ describe('GoogleIntegrationCredentialsService', () => {
     });
 
     it('deletes the row when present', async () => {
-      mockSelect([{ id: 'row-1', configEncrypted: encryptJson({ clientId: 'c', clientSecret: 's' }), configured: true }]);
+      mockSelect([
+        {
+          id: 'row-1',
+          configEncrypted: encryptJson({ clientId: 'c', clientSecret: 's' }),
+          configured: true,
+        },
+      ]);
       const deleteWhere = jest.fn().mockResolvedValue(undefined);
       db.delete.mockReturnValue({ where: deleteWhere });
 

@@ -5,11 +5,7 @@ import { PipelineError } from './pipeline.error';
  * Error thrown when a pipeline step fails during execution
  */
 export class StepExecutionError extends PipelineError {
-  constructor(
-    message: string,
-    step: string,
-    details?: unknown,
-  ) {
+  constructor(message: string, step: string, details?: unknown) {
     super('STEP_EXECUTION_ERROR', message, step, details, HttpStatus.INTERNAL_SERVER_ERROR);
   }
 }

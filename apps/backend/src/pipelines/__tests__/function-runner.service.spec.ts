@@ -27,19 +27,25 @@ describe('FunctionRunnerService', () => {
     });
 
     it('should reject code with new Function()', () => {
-      const result = service.validateCode('function handler({ input }) { return new Function("return 1")(); }');
+      const result = service.validateCode(
+        'function handler({ input }) { return new Function("return 1")(); }',
+      );
       expect(result.valid).toBe(false);
       expect(result.errors).toContain('Prohibited pattern detected: \\bnew\\s+Function\\s*\\(');
     });
 
     it('should reject code with require()', () => {
-      const result = service.validateCode('function handler({ input }) { const fs = require("fs"); return fs; }');
+      const result = service.validateCode(
+        'function handler({ input }) { const fs = require("fs"); return fs; }',
+      );
       expect(result.valid).toBe(false);
       expect(result.errors).toContain('Prohibited pattern detected: \\brequire\\s*\\(');
     });
 
     it('should reject code with process access', () => {
-      const result = service.validateCode('function handler({ input }) { return process.env.SECRET; }');
+      const result = service.validateCode(
+        'function handler({ input }) { return process.env.SECRET; }',
+      );
       expect(result.valid).toBe(false);
       expect(result.errors).toContain('Prohibited pattern detected: \\bprocess\\s*\\.');
     });
@@ -72,19 +78,17 @@ describe('FunctionRunnerService', () => {
       });
 
       it('should execute handler function with destructured params', async () => {
-        const result = await service.run(
-          'function handler({ input }) { return input.name; }',
-          { input: { name: 'test' } },
-        );
+        const result = await service.run('function handler({ input }) { return input.name; }', {
+          input: { name: 'test' },
+        });
         expect(result.success).toBe(true);
         expect(result.output).toBe('test');
       });
 
       it('should execute handler function with data param (backward compat)', async () => {
-        const result = await service.run(
-          'function handler(data) { return data.input.name; }',
-          { input: { name: 'test' } },
-        );
+        const result = await service.run('function handler(data) { return data.input.name; }', {
+          input: { name: 'test' },
+        });
         expect(result.success).toBe(true);
         expect(result.output).toBe('test');
       });
@@ -92,31 +96,24 @@ describe('FunctionRunnerService', () => {
 
     describe('basic execution', () => {
       it('should execute simple return statement', async () => {
-        const result = await service.run(
-          'function handler({ input }) { return 42; }',
-          {},
-        );
+        const result = await service.run('function handler({ input }) { return 42; }', {});
         expect(result.success).toBe(true);
         expect(result.output).toBe(42);
       });
 
       it('should have access to input', async () => {
-        const result = await service.run(
-          'function handler({ input }) { return input.name; }',
-          { input: { name: 'test' } },
-        );
+        const result = await service.run('function handler({ input }) { return input.name; }', {
+          input: { name: 'test' },
+        });
         expect(result.success).toBe(true);
         expect(result.output).toBe('test');
       });
 
       it('should have access to user', async () => {
-        const result = await service.run(
-          'function handler({ user }) { return user.email; }',
-          {
-            input: {},
-            user: { id: '1', email: 'test@example.com', role: 'admin' },
-          },
-        );
+        const result = await service.run('function handler({ user }) { return user.email; }', {
+          input: {},
+          user: { id: '1', email: 'test@example.com', role: 'admin' },
+        });
         expect(result.success).toBe(true);
         expect(result.output).toBe('test@example.com');
       });
@@ -384,10 +381,9 @@ describe('FunctionRunnerService', () => {
       });
 
       it('should catch and report type errors', async () => {
-        const result = await service.run(
-          'function handler({ input }) { return input.foo.bar; }',
-          { input: {} },
-        );
+        const result = await service.run('function handler({ input }) { return input.foo.bar; }', {
+          input: {},
+        });
         expect(result.success).toBe(false);
         expect(result.error?.code).toBe('EXECUTION_ERROR');
       });
@@ -395,10 +391,7 @@ describe('FunctionRunnerService', () => {
 
     describe('execution time tracking', () => {
       it('should track execution time', async () => {
-        const result = await service.run(
-          'function handler({ input }) { return 1; }',
-          {},
-        );
+        const result = await service.run('function handler({ input }) { return 1; }', {});
         expect(result.success).toBe(true);
         expect(result.executionTime).toBeDefined();
         expect(result.executionTime).toBeGreaterThanOrEqual(0);
@@ -414,10 +407,7 @@ describe('FunctionRunnerService', () => {
         expect(viaArg.success).toBe(true);
         expect(viaArg.output).toBe('function');
 
-        const viaGlobal = await service.run(
-          'function handler() { return typeof utils.sign; }',
-          {},
-        );
+        const viaGlobal = await service.run('function handler() { return typeof utils.sign; }', {});
         expect(viaGlobal.success).toBe(true);
         expect(viaGlobal.output).toBe('function');
       });
@@ -455,14 +445,8 @@ describe('FunctionRunnerService', () => {
       });
 
       it('the same message always signs to the same value (stable key)', async () => {
-        const a = await service.run(
-          'function handler({ utils }) { return utils.sign("x"); }',
-          {},
-        );
-        const b = await service.run(
-          'function handler({ utils }) { return utils.sign("x"); }',
-          {},
-        );
+        const a = await service.run('function handler({ utils }) { return utils.sign("x"); }', {});
+        const b = await service.run('function handler({ utils }) { return utils.sign("x"); }', {});
         expect(a.output).toBe(b.output);
         expect(typeof a.output).toBe('string');
       });

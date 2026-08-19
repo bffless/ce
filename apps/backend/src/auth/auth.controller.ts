@@ -117,7 +117,8 @@ export class AuthController {
    * (sites.bffless.app) instead of admin.<workspace>.<domain>.
    */
   private resolveRequestOrigin(req: Request, redirect?: string | null): string | undefined {
-    const headerOrigin = (req.headers.origin as string | undefined) || (req.headers.referer as string | undefined);
+    const headerOrigin =
+      (req.headers.origin as string | undefined) || (req.headers.referer as string | undefined);
     if (headerOrigin) return headerOrigin;
     if (redirect) {
       try {
@@ -184,7 +185,11 @@ export class AuthController {
       properties: {
         email: { type: 'string', format: 'email', example: 'user@example.com' },
         password: { type: 'string', minLength: 8, example: 'SecurePassword123!' },
-        redirect: { type: 'string', example: 'https://example.com/', description: 'URL to redirect to after email verification' },
+        redirect: {
+          type: 'string',
+          example: 'https://example.com/',
+          description: 'URL to redirect to after email verification',
+        },
       },
       required: ['email', 'password'],
     },
@@ -211,7 +216,9 @@ export class AuthController {
     // Master switch for built-in email/password auth. When off, the workspace
     // is OIDC-only — reject email/password registration entirely.
     if (!(await this.featureFlagsService.isEnabled('ENABLE_EMAIL_PASSWORD'))) {
-      throw new ForbiddenException('Email/password sign-up is disabled. Please use single sign-on.');
+      throw new ForbiddenException(
+        'Email/password sign-up is disabled. Please use single sign-on.',
+      );
     }
 
     // Check registration settings
@@ -245,9 +252,7 @@ export class AuthController {
 
     // Project-level public-signup gate (REQUIRE_PROJECT_MEMBERSHIP master switch).
     // Resolved once and reused below for the auto-grant after user creation.
-    const membershipGateOn = await this.featureFlagsService.isEnabled(
-      'REQUIRE_PROJECT_MEMBERSHIP',
-    );
+    const membershipGateOn = await this.featureFlagsService.isEnabled('REQUIRE_PROJECT_MEMBERSHIP');
     const requestProject = membershipGateOn
       ? await this.projectResolver.resolveProjectFromRequest(req)
       : null;
@@ -488,7 +493,9 @@ export class AuthController {
     // Master switch for built-in email/password auth. When off, the workspace
     // is OIDC-only — reject email/password sign-in.
     if (!(await this.featureFlagsService.isEnabled('ENABLE_EMAIL_PASSWORD'))) {
-      throw new ForbiddenException('Email/password sign-in is disabled. Please use single sign-on.');
+      throw new ForbiddenException(
+        'Email/password sign-in is disabled. Please use single sign-on.',
+      );
     }
 
     try {
@@ -601,8 +608,8 @@ export class AuthController {
       console.error('[Signin] Unexpected error during signin:', error);
       console.warn(
         '[Signin] If login fails after a backup restore, the SuperTokens database may be out of sync. ' +
-        'Check if the user exists in SuperTokens: ' +
-        'psql -U postgres -d supertokens -c "SELECT user_id, email FROM emailpassword_users;"',
+          'Check if the user exists in SuperTokens: ' +
+          'psql -U postgres -d supertokens -c "SELECT user_id, email FROM emailpassword_users;"',
       );
       throw new UnauthorizedException('Failed to sign in');
     }
@@ -828,12 +835,12 @@ export class AuthController {
           console.error('[Password Reset] Error:', resetError);
           console.warn(
             '[Password Reset] If the user exists in the app database but not in SuperTokens, ' +
-            'you may need to re-create the user in SuperTokens. See container logs for details. ' +
-            'You can create the user via the SuperTokens API: ' +
-            'curl -X POST http://<supertokens-host>:3567/recipe/signup ' +
-            '-H "Content-Type: application/json" -H "rid: emailpassword" ' +
-            '-d \'{"email":"<email>","password":"<new-password>"}\'  ' +
-            'Then update the user ID in the app database to match.',
+              'you may need to re-create the user in SuperTokens. See container logs for details. ' +
+              'You can create the user via the SuperTokens API: ' +
+              'curl -X POST http://<supertokens-host>:3567/recipe/signup ' +
+              '-H "Content-Type: application/json" -H "rid: emailpassword" ' +
+              '-d \'{"email":"<email>","password":"<new-password>"}\'  ' +
+              'Then update the user ID in the app database to match.',
           );
         }
       } else {
@@ -1148,12 +1155,7 @@ export class AuthController {
     const [mapping] = await db
       .select()
       .from(domainMappings)
-      .where(
-        and(
-          eq(domainMappings.domain, targetDomain),
-          eq(domainMappings.isActive, true),
-        ),
-      )
+      .where(and(eq(domainMappings.domain, targetDomain), eq(domainMappings.isActive, true)))
       .limit(1);
 
     if (!mapping) {
@@ -1187,13 +1189,12 @@ export class AuthController {
     const callbackPath = '/_bffless/auth/callback';
     const redirectParam = redirectPath ? `&redirect=${encodeURIComponent(redirectPath)}` : '';
     // Only allow targetOrigin override for localhost development
-    const isLocalhostDev = targetOrigin && (targetDomain === 'localhost' || targetDomain === '127.0.0.1');
+    const isLocalhostDev =
+      targetOrigin && (targetDomain === 'localhost' || targetDomain === '127.0.0.1');
     const origin = isLocalhostDev ? targetOrigin : `https://${targetDomain}`;
     const redirectUrl = `${origin}${callbackPath}?token=${encodeURIComponent(token)}${redirectParam}`;
 
-    this.logger.log(
-      `Created domain token for user ${user.id} targeting ${targetDomain}`,
-    );
+    this.logger.log(`Created domain token for user ${user.id} targeting ${targetDomain}`);
 
     return { token, redirectUrl };
   }
@@ -1248,9 +1249,7 @@ export class AuthController {
       throw new UnauthorizedException('User not found');
     }
 
-    const hasPassword = stUser.loginMethods.some(
-      (method) => method.recipeId === 'emailpassword',
-    );
+    const hasPassword = stUser.loginMethods.some((method) => method.recipeId === 'emailpassword');
 
     const hasGoogle = stUser.loginMethods.some(
       (method) => method.recipeId === 'thirdparty' && method.thirdParty?.id === 'google',
@@ -1366,7 +1365,8 @@ export class AuthController {
   @Get('oauth/providers')
   @ApiOperation({
     summary: 'Get enabled OAuth/OIDC sign-in providers',
-    description: 'Public endpoint. Returns the list of enabled providers (Google / Okta / Azure AD / generic OIDC) for rendering sign-in buttons.',
+    description:
+      'Public endpoint. Returns the list of enabled providers (Google / Okta / Azure AD / generic OIDC) for rendering sign-in buttons.',
   })
   @ApiResponse({
     status: 200,
@@ -1379,7 +1379,10 @@ export class AuthController {
           items: {
             type: 'object',
             properties: {
-              id: { type: 'string', description: 'Provider slug, used as :providerId in /oauth/:providerId/url' },
+              id: {
+                type: 'string',
+                description: 'Provider slug, used as :providerId in /oauth/:providerId/url',
+              },
               kind: { type: 'string', enum: ['google', 'okta', 'azure-ad', 'oidc'] },
               displayName: { type: 'string' },
             },
@@ -1388,7 +1391,9 @@ export class AuthController {
       },
     },
   })
-  async getOAuthProviders(): Promise<{ providers: Array<{ id: string; kind: string; displayName: string }> }> {
+  async getOAuthProviders(): Promise<{
+    providers: Array<{ id: string; kind: string; displayName: string }>;
+  }> {
     try {
       const masterEnabled = await this.featureFlagsService.isEnabled('ENABLE_OIDC_PROVIDERS');
       if (!masterEnabled) return { providers: [] };
@@ -1403,11 +1408,19 @@ export class AuthController {
   @Get('oauth/:providerId/url')
   @ApiOperation({
     summary: 'Get OAuth authorization URL for a provider',
-    description: 'Public endpoint. Returns the URL to redirect the user to for sign-in via the named provider.',
+    description:
+      'Public endpoint. Returns the URL to redirect the user to for sign-in via the named provider.',
   })
-  @ApiQuery({ name: 'redirectUrl', required: true, description: 'OAuth redirect URI (callback URL)' })
+  @ApiQuery({
+    name: 'redirectUrl',
+    required: true,
+    description: 'OAuth redirect URI (callback URL)',
+  })
   @ApiResponse({ status: 200, description: 'Provider authorization URL' })
-  @ApiResponse({ status: 400, description: 'Provider not configured, not enabled, or feature disabled' })
+  @ApiResponse({
+    status: 400,
+    description: 'Provider not configured, not enabled, or feature disabled',
+  })
   async getOAuthUrl(
     @Param('providerId') providerId: string,
     @Query('redirectUrl') redirectUrl: string,
@@ -1427,7 +1440,9 @@ export class AuthController {
     }
     const row = await this.oidcProvidersService.findByProviderId(providerId);
     if (!row || !row.enabled) {
-      throw new BadRequestException(`OIDC provider '${providerId}' is not configured or not enabled`);
+      throw new BadRequestException(
+        `OIDC provider '${providerId}' is not configured or not enabled`,
+      );
     }
 
     // For kind='google' the SuperTokens thirdPartyId is forced to 'google';
@@ -1455,14 +1470,18 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Complete OAuth/OIDC sign-in for a provider',
-    description: 'Exchanges OAuth code for tokens, creates/links user, and creates session. Provider-agnostic.',
+    description:
+      'Exchanges OAuth code for tokens, creates/links user, and creates session. Provider-agnostic.',
   })
   @ApiBody({
     schema: {
       type: 'object',
       properties: {
         code: { type: 'string' },
-        redirectUrl: { type: 'string', description: 'The redirect URI used in the authorization request' },
+        redirectUrl: {
+          type: 'string',
+          description: 'The redirect URI used in the authorization request',
+        },
         pkceCodeVerifier: { type: 'string' },
         projectInviteToken: { type: 'string' },
       },
@@ -1473,7 +1492,13 @@ export class AuthController {
   @ApiResponse({ status: 400, description: 'OAuth flow failed' })
   async oauthCallback(
     @Param('providerId') providerId: string,
-    @Body() body: { code: string; redirectUrl: string; pkceCodeVerifier?: string; projectInviteToken?: string },
+    @Body()
+    body: {
+      code: string;
+      redirectUrl: string;
+      pkceCodeVerifier?: string;
+      projectInviteToken?: string;
+    },
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
@@ -1482,7 +1507,12 @@ export class AuthController {
 
   private async completeOAuthCallback(
     providerId: string,
-    body: { code: string; redirectUrl: string; pkceCodeVerifier?: string; projectInviteToken?: string },
+    body: {
+      code: string;
+      redirectUrl: string;
+      pkceCodeVerifier?: string;
+      projectInviteToken?: string;
+    },
     req: Request,
     res: Response,
   ) {
@@ -1496,7 +1526,9 @@ export class AuthController {
 
     const row = await this.oidcProvidersService.findByProviderId(providerId);
     if (!row || !row.enabled) {
-      throw new BadRequestException(`OIDC provider '${providerId}' is not configured or not enabled`);
+      throw new BadRequestException(
+        `OIDC provider '${providerId}' is not configured or not enabled`,
+      );
     }
     const stThirdPartyId = row.kind === 'google' ? 'google' : row.providerId;
     const providerLabel = row.displayName;
@@ -1541,7 +1573,10 @@ export class AuthController {
       );
 
       if (signInUpResponse.status !== 'OK') {
-        this.logger.error(`[${providerLabel} OAuth] manuallyCreateOrUpdateUser failed:`, signInUpResponse);
+        this.logger.error(
+          `[${providerLabel} OAuth] manuallyCreateOrUpdateUser failed:`,
+          signInUpResponse,
+        );
         throw new BadRequestException(`Failed to create or link ${providerLabel} user`);
       }
 
@@ -1606,7 +1641,15 @@ export class AuthController {
     req: Request;
     res: Response;
   }) {
-    const { email, providerLabel, createdNewRecipeUser, supertokensUserId, projectInviteToken, req, res } = input;
+    const {
+      email,
+      providerLabel,
+      createdNewRecipeUser,
+      supertokensUserId,
+      projectInviteToken,
+      req,
+      res,
+    } = input;
 
     let dbUser = await this.authService.getUserByEmail(email);
 
@@ -1679,15 +1722,9 @@ export class AuthController {
     // safeguard consulted before email/password login can be disabled via the
     // admin UI (see settings.controller `PATCH auth/email-password`).
     try {
-      await db
-        .update(users)
-        .set({ oidcVerifiedAt: new Date() })
-        .where(eq(users.id, dbUser.id));
+      await db.update(users).set({ oidcVerifiedAt: new Date() }).where(eq(users.id, dbUser.id));
     } catch (stampError) {
-      this.logger.error(
-        `[${providerLabel} OAuth] Failed to stamp oidcVerifiedAt:`,
-        stampError,
-      );
+      this.logger.error(`[${providerLabel} OAuth] Failed to stamp oidcVerifiedAt:`, stampError);
     }
 
     const sessionRecipeUserId = new RecipeUserId(dbUser.id);

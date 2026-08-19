@@ -59,17 +59,16 @@ export class EmailHandler implements StepHandler<EmailHandlerConfig> {
     }
 
     // Evaluate recipient (expression) - supports a single email string or an array of emails
-    const toRaw = this.expressionEvaluator.evaluateExpression(
-      config.to,
-      context,
-      stepName,
-    );
+    const toRaw = this.expressionEvaluator.evaluateExpression(config.to, context, stepName);
 
     // Normalize to array
     const toList: string[] = Array.isArray(toRaw)
       ? toRaw.map(String)
       : typeof toRaw === 'string'
-        ? toRaw.split(',').map((e) => e.trim()).filter(Boolean)
+        ? toRaw
+            .split(',')
+            .map((e) => e.trim())
+            .filter(Boolean)
         : [];
 
     // Validate all emails
@@ -79,9 +78,10 @@ export class EmailHandler implements StepHandler<EmailHandlerConfig> {
         success: false,
         error: {
           code: 'INVALID_RECIPIENT',
-          message: invalidEmails.length > 0
-            ? `Invalid email recipient(s): ${invalidEmails.join(', ')}`
-            : `Missing email recipient`,
+          message:
+            invalidEmails.length > 0
+              ? `Invalid email recipient(s): ${invalidEmails.join(', ')}`
+              : `Missing email recipient`,
           details: { to: toRaw },
         },
       };
@@ -91,18 +91,10 @@ export class EmailHandler implements StepHandler<EmailHandlerConfig> {
     const to = toList.join(', ');
 
     // Evaluate subject (template)
-    const subject = this.expressionEvaluator.evaluateTemplate(
-      config.subject,
-      context,
-      stepName,
-    );
+    const subject = this.expressionEvaluator.evaluateTemplate(config.subject, context, stepName);
 
     // Evaluate body (template)
-    const body = this.expressionEvaluator.evaluateTemplate(
-      config.body,
-      context,
-      stepName,
-    );
+    const body = this.expressionEvaluator.evaluateTemplate(config.body, context, stepName);
 
     // Evaluate replyTo if provided (expression)
     let replyTo: string | undefined;

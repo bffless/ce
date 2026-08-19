@@ -1,5 +1,16 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsInt, Min, Max, IsEnum, Matches, IsBoolean, IsUUID, IsArray } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsInt,
+  Min,
+  Max,
+  IsEnum,
+  Matches,
+  IsBoolean,
+  IsUUID,
+  IsArray,
+} from 'class-validator';
 import { Transform } from 'class-transformer';
 
 // Response DTOs for GET /api/repo/:owner/:repo/:commitSha/files
@@ -391,7 +402,8 @@ export class CreateAliasRequestDto {
   proxyRuleSetId?: string;
 
   @ApiPropertyOptional({
-    description: 'Ordered array of proxy rule set IDs to apply to this alias. Overrides proxyRuleSetId if both are provided.',
+    description:
+      'Ordered array of proxy rule set IDs to apply to this alias. Overrides proxyRuleSetId if both are provided.',
     type: [String],
   })
   @IsOptional()
@@ -417,7 +429,8 @@ export class UpdateAliasRequestDto {
   proxyRuleSetId?: string | null;
 
   @ApiPropertyOptional({
-    description: 'Ordered array of proxy rule set IDs to apply to this alias. Overrides proxyRuleSetId if both are provided.',
+    description:
+      'Ordered array of proxy rule set IDs to apply to this alias. Overrides proxyRuleSetId if both are provided.',
     type: [String],
   })
   @IsOptional()
@@ -533,4 +546,3 @@ export class GetCommitDetailsResponseDto {
   @ApiPropertyOptional({ description: 'Path to README file if exists' })
   readmePath?: string;
 }
-

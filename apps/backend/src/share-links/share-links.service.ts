@@ -1,9 +1,4 @@
-import {
-  Injectable,
-  BadRequestException,
-  NotFoundException,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
 import { eq, and, sql } from 'drizzle-orm';
 import crypto from 'crypto';
 import { db } from '../db/client';
@@ -16,9 +11,7 @@ export class ShareLinksService {
 
   async create(dto: CreateShareLinkDto, userId: string): Promise<ShareLink> {
     if (!dto.projectId && !dto.domainMappingId) {
-      throw new BadRequestException(
-        'Either projectId or domainMappingId must be provided',
-      );
+      throw new BadRequestException('Either projectId or domainMappingId must be provided');
     }
 
     const token = crypto.randomBytes(6).toString('base64url');
@@ -37,25 +30,15 @@ export class ShareLinksService {
   }
 
   async getByProjectId(projectId: string): Promise<ShareLink[]> {
-    return db
-      .select()
-      .from(shareLinks)
-      .where(eq(shareLinks.projectId, projectId));
+    return db.select().from(shareLinks).where(eq(shareLinks.projectId, projectId));
   }
 
   async getByDomainMappingId(domainMappingId: string): Promise<ShareLink[]> {
-    return db
-      .select()
-      .from(shareLinks)
-      .where(eq(shareLinks.domainMappingId, domainMappingId));
+    return db.select().from(shareLinks).where(eq(shareLinks.domainMappingId, domainMappingId));
   }
 
   async getById(id: string): Promise<ShareLink | null> {
-    const [link] = await db
-      .select()
-      .from(shareLinks)
-      .where(eq(shareLinks.id, id))
-      .limit(1);
+    const [link] = await db.select().from(shareLinks).where(eq(shareLinks.id, id)).limit(1);
     return link || null;
   }
 
@@ -126,11 +109,7 @@ export class ShareLinksService {
   ): Promise<ShareLink | null> {
     // First try domain-scoped link if domainMappingId provided
     if (domainMappingId) {
-      const domainLink = await this.findAndValidateToken(
-        token,
-        null,
-        domainMappingId,
-      );
+      const domainLink = await this.findAndValidateToken(token, null, domainMappingId);
       if (domainLink) return domainLink;
     }
 
@@ -143,10 +122,7 @@ export class ShareLinksService {
     projectId: string | null,
     domainMappingId: string | null,
   ): Promise<ShareLink | null> {
-    const conditions = [
-      eq(shareLinks.token, token),
-      eq(shareLinks.isActive, true),
-    ];
+    const conditions = [eq(shareLinks.token, token), eq(shareLinks.isActive, true)];
 
     if (projectId) {
       conditions.push(eq(shareLinks.projectId, projectId));

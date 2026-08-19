@@ -24,7 +24,12 @@ function buildHandler() {
     getById: jest.fn(async () => SCHEMA),
   } as unknown as PipelineSchemasService;
   return {
-    handler: new VectorSearchHandler(registry as any, expressionEvaluator, embeddingsService, schemasService),
+    handler: new VectorSearchHandler(
+      registry as any,
+      expressionEvaluator,
+      embeddingsService,
+      schemasService,
+    ),
     embeddingsService,
   };
 }

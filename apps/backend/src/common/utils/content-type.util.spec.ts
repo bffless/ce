@@ -13,7 +13,9 @@ describe('resolveContentType', () => {
       expect(resolveContentType('mod.mjs')).toBe('application/javascript; charset=utf-8');
       expect(resolveContentType('lib.wasm')).toBe('application/wasm');
       expect(resolveContentType('photo.avif')).toBe('image/avif');
-      expect(resolveContentType('site.webmanifest')).toBe('application/manifest+json; charset=utf-8');
+      expect(resolveContentType('site.webmanifest')).toBe(
+        'application/manifest+json; charset=utf-8',
+      );
     });
 
     it('leaves binary types without a charset', () => {

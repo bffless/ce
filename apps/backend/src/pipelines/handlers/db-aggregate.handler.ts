@@ -91,7 +91,9 @@ export class DbAggregateHandler implements StepHandler<DbAggregateHandlerConfig>
     const whereClause = and(...baseConditions);
     const { operation, field, groupBy } = config;
 
-    this.logger.debug(`Running ${operation} aggregation${field ? ` on field '${field}'` : ''}${groupBy ? ` grouped by '${groupBy}'` : ''}`);
+    this.logger.debug(
+      `Running ${operation} aggregation${field ? ` on field '${field}'` : ''}${groupBy ? ` grouped by '${groupBy}'` : ''}`,
+    );
 
     // When groupBy is set, we SELECT the group key + aggregate, with GROUP BY
     if (groupBy) {
@@ -175,7 +177,9 @@ export class DbAggregateHandler implements StepHandler<DbAggregateHandlerConfig>
       case 'avg': {
         const rows = await db
           .select({
-            result: sql<string | null>`AVG((${pipelineData.data}->>${sql.raw(`'${field!}'`)})::numeric)`,
+            result: sql<
+              string | null
+            >`AVG((${pipelineData.data}->>${sql.raw(`'${field!}'`)})::numeric)`,
           })
           .from(pipelineData)
           .where(whereClause);
@@ -186,7 +190,9 @@ export class DbAggregateHandler implements StepHandler<DbAggregateHandlerConfig>
       case 'min': {
         const rows = await db
           .select({
-            result: sql<string | null>`MIN((${pipelineData.data}->>${sql.raw(`'${field!}'`)})::numeric)`,
+            result: sql<
+              string | null
+            >`MIN((${pipelineData.data}->>${sql.raw(`'${field!}'`)})::numeric)`,
           })
           .from(pipelineData)
           .where(whereClause);
@@ -197,7 +203,9 @@ export class DbAggregateHandler implements StepHandler<DbAggregateHandlerConfig>
       case 'max': {
         const rows = await db
           .select({
-            result: sql<string | null>`MAX((${pipelineData.data}->>${sql.raw(`'${field!}'`)})::numeric)`,
+            result: sql<
+              string | null
+            >`MAX((${pipelineData.data}->>${sql.raw(`'${field!}'`)})::numeric)`,
           })
           .from(pipelineData)
           .where(whereClause);

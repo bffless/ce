@@ -49,7 +49,13 @@ export class PipelineExecutionLogService {
       errorMessage: result.error?.message ?? null,
       errorStep: result.error?.step ?? null,
       requestMeta,
-      debug: result.debug ?? { validators: [], steps: [], totalDurationMs: 0, startTime: '', endTime: '' },
+      debug: result.debug ?? {
+        validators: [],
+        steps: [],
+        totalDurationMs: 0,
+        startTime: '',
+        endTime: '',
+      },
     });
 
     // Cleanup old entries beyond retention limit
@@ -146,9 +152,7 @@ export class PipelineExecutionLogService {
    * Delete all logs for a rule.
    */
   async deleteByRuleId(ruleId: string): Promise<void> {
-    await db
-      .delete(pipelineExecutionLogs)
-      .where(eq(pipelineExecutionLogs.proxyRuleId, ruleId));
+    await db.delete(pipelineExecutionLogs).where(eq(pipelineExecutionLogs.proxyRuleId, ruleId));
   }
 
   /**

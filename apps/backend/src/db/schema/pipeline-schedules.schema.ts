@@ -1,12 +1,4 @@
-import {
-  pgTable,
-  uuid,
-  varchar,
-  boolean,
-  timestamp,
-  text,
-  index,
-} from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, boolean, timestamp, text, index } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { projects } from './projects.schema';
 import { proxyRules } from './proxy-rules.schema';

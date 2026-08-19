@@ -33,8 +33,7 @@ describe('LocalPresignedDownloadController', () => {
 
   const get = (query: string) => request(app.getHttpServer()).get(`${LOCAL_PRESIGN_PATH}${query}`);
 
-  const rawQuery = (params: Record<string, string>) =>
-    `?${new URLSearchParams(params).toString()}`;
+  const rawQuery = (params: Record<string, string>) => `?${new URLSearchParams(params).toString()}`;
 
   const encodeKey = (key: string) => Buffer.from(key, 'utf8').toString('base64url');
 
@@ -216,9 +215,9 @@ describe('LocalPresignedDownloadController', () => {
     });
 
     it('sets Content-Disposition attachment when dl is signed in', async () => {
-      const res = await get(
-        await mint(KEY, 600, { downloadFilename: 'Holiday Clip.mp4' }),
-      ).expect(200);
+      const res = await get(await mint(KEY, 600, { downloadFilename: 'Holiday Clip.mp4' })).expect(
+        200,
+      );
 
       expect(res.headers['content-disposition']).toBe('attachment; filename="Holiday Clip.mp4"');
     });
@@ -248,9 +247,9 @@ describe('LocalPresignedDownloadController', () => {
     });
 
     it('leaves a pure-ASCII filename in the plain quoted form (no filename*)', async () => {
-      const res = await get(
-        await mint(KEY, 600, { downloadFilename: 'Holiday Clip.mp4' }),
-      ).expect(200);
+      const res = await get(await mint(KEY, 600, { downloadFilename: 'Holiday Clip.mp4' })).expect(
+        200,
+      );
 
       expect(res.headers['content-disposition']).not.toContain('filename*');
     });
@@ -267,7 +266,9 @@ describe('LocalPresignedDownloadController', () => {
 
   describe('range requests', () => {
     it('serves a byte range as 206 with Content-Range', async () => {
-      const res = await get(await mint()).set('Range', 'bytes=4-7').expect(206);
+      const res = await get(await mint())
+        .set('Range', 'bytes=4-7')
+        .expect(206);
 
       expect(res.headers['content-range']).toBe(`bytes 4-7/${BODY.length}`);
       expect(res.headers['content-length']).toBe('4');
@@ -275,7 +276,9 @@ describe('LocalPresignedDownloadController', () => {
     });
 
     it('serves an open-ended range to the end of the file', async () => {
-      const res = await get(await mint()).set('Range', 'bytes=8-').expect(206);
+      const res = await get(await mint())
+        .set('Range', 'bytes=8-')
+        .expect(206);
 
       expect(res.headers['content-range']).toBe(`bytes 8-${BODY.length - 1}/${BODY.length}`);
       expect(Buffer.from(res.body)).toEqual(BODY.subarray(8));
@@ -285,7 +288,9 @@ describe('LocalPresignedDownloadController', () => {
     // Reading the empty first group as a defaulted 0 served bytes 0..N and
     // mislabelled them in Content-Range, which a player renders as garbage.
     it('serves a suffix range as the LAST N bytes (curl -r -5)', async () => {
-      const res = await get(await mint()).set('Range', 'bytes=-5').expect(206);
+      const res = await get(await mint())
+        .set('Range', 'bytes=-5')
+        .expect(206);
 
       expect(res.headers['content-range']).toBe(`bytes 11-15/${BODY.length}`);
       expect(res.headers['content-length']).toBe('5');
@@ -293,24 +298,32 @@ describe('LocalPresignedDownloadController', () => {
     });
 
     it('serves the whole file when the suffix exceeds its size', async () => {
-      const res = await get(await mint()).set('Range', 'bytes=-999').expect(206);
+      const res = await get(await mint())
+        .set('Range', 'bytes=-999')
+        .expect(206);
 
       expect(res.headers['content-range']).toBe(`bytes 0-${BODY.length - 1}/${BODY.length}`);
       expect(Buffer.from(res.body)).toEqual(BODY);
     });
 
     it('416s a zero-length suffix range', async () => {
-      const res = await get(await mint()).set('Range', 'bytes=-0').expect(416);
+      const res = await get(await mint())
+        .set('Range', 'bytes=-0')
+        .expect(416);
       expect(res.headers['content-range']).toBe(`bytes */${BODY.length}`);
     });
 
     it('416s an unsatisfiable range', async () => {
-      const res = await get(await mint()).set('Range', 'bytes=999-1200').expect(416);
+      const res = await get(await mint())
+        .set('Range', 'bytes=999-1200')
+        .expect(416);
       expect(res.headers['content-range']).toBe(`bytes */${BODY.length}`);
     });
 
     it('ignores a malformed Range header shape it cannot parse', async () => {
-      const res = await get(await mint()).set('Range', 'items=1-2').expect(200);
+      const res = await get(await mint())
+        .set('Range', 'items=1-2')
+        .expect(200);
       expect(Buffer.from(res.body)).toEqual(BODY);
     });
   });

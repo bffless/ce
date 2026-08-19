@@ -1,8 +1,5 @@
 import { Request } from 'express';
-import {
-  GoogleCalendarHandler,
-  GoogleCalendarHandlerConfig,
-} from './google-calendar.handler';
+import { GoogleCalendarHandler, GoogleCalendarHandlerConfig } from './google-calendar.handler';
 import { StepHandlerRegistry } from '../execution/step-handler.registry';
 import { ExpressionEvaluator } from '../execution/expression-evaluator';
 import { GoogleCalendarOAuthService } from '../../integrations/google-calendar-oauth.service';
@@ -13,10 +10,7 @@ import { ConfigurationError } from '../errors';
 const mockFetch = jest.fn();
 global.fetch = mockFetch as unknown as typeof fetch;
 
-function makeFetchResponse(opts: {
-  status: number;
-  body?: unknown;
-}): Response {
+function makeFetchResponse(opts: { status: number; body?: unknown }): Response {
   const { status, body = {} } = opts;
   return {
     ok: status >= 200 && status < 300,
@@ -95,9 +89,9 @@ describe('GoogleCalendarHandler', () => {
 
     it('create_event requires calendarId, summary, startTime, endTime', () => {
       expect(() => handler.validateConfig({ action: 'create_event' })).toThrow(/calendarId/);
-      expect(() =>
-        handler.validateConfig({ action: 'create_event', calendarId: 'c' }),
-      ).toThrow(/summary/);
+      expect(() => handler.validateConfig({ action: 'create_event', calendarId: 'c' })).toThrow(
+        /summary/,
+      );
       expect(() =>
         handler.validateConfig({
           action: 'create_event',
@@ -109,16 +103,16 @@ describe('GoogleCalendarHandler', () => {
 
     it('update_event requires calendarId + eventId', () => {
       expect(() => handler.validateConfig({ action: 'update_event' })).toThrow(/calendarId/);
-      expect(() =>
-        handler.validateConfig({ action: 'update_event', calendarId: 'c' }),
-      ).toThrow(/eventId/);
+      expect(() => handler.validateConfig({ action: 'update_event', calendarId: 'c' })).toThrow(
+        /eventId/,
+      );
     });
 
     it('delete_event requires calendarId + eventId', () => {
       expect(() => handler.validateConfig({ action: 'delete_event' })).toThrow(/calendarId/);
-      expect(() =>
-        handler.validateConfig({ action: 'delete_event', calendarId: 'c' }),
-      ).toThrow(/eventId/);
+      expect(() => handler.validateConfig({ action: 'delete_event', calendarId: 'c' })).toThrow(
+        /eventId/,
+      );
     });
 
     it('list_events requires calendarId', () => {
@@ -132,10 +126,7 @@ describe('GoogleCalendarHandler', () => {
     it('short-circuits with NOT_CONFIGURED when no access token', async () => {
       oauthService.getValidAccessToken.mockResolvedValueOnce(null);
 
-      const result = await handler.execute(
-        makeContext(),
-        makeStep({ action: 'list_calendars' }),
-      );
+      const result = await handler.execute(makeContext(), makeStep({ action: 'list_calendars' }));
 
       expect(result.success).toBe(false);
       expect(result.error?.code).toBe('GOOGLE_CALENDAR_NOT_CONFIGURED');
@@ -177,7 +168,7 @@ describe('GoogleCalendarHandler', () => {
       mockFetch.mockResolvedValue(
         makeFetchResponse({
           status: 200,
-          body: { calendars: { 'primary': { busy: [{ start: 's', end: 'e' }] } } },
+          body: { calendars: { primary: { busy: [{ start: 's', end: 'e' }] } } },
         }),
       );
 
@@ -388,10 +379,7 @@ describe('GoogleCalendarHandler', () => {
         makeFetchResponse({ status: 429, body: { error: { message: 'rate' } } }),
       );
 
-      const result = await handler.execute(
-        makeContext(),
-        makeStep({ action: 'list_calendars' }),
-      );
+      const result = await handler.execute(makeContext(), makeStep({ action: 'list_calendars' }));
 
       expect(result.error?.code).toBe('GOOGLE_CALENDAR_RATE_LIMITED');
     });
@@ -401,10 +389,7 @@ describe('GoogleCalendarHandler', () => {
         makeFetchResponse({ status: 500, body: { error: { message: 'internal' } } }),
       );
 
-      const result = await handler.execute(
-        makeContext(),
-        makeStep({ action: 'list_calendars' }),
-      );
+      const result = await handler.execute(makeContext(), makeStep({ action: 'list_calendars' }));
 
       expect(result.error?.code).toBe('GOOGLE_CALENDAR_API_ERROR');
     });
@@ -415,9 +400,7 @@ describe('GoogleCalendarHandler', () => {
       // First call returns 401, second call returns 200
       mockFetch
         .mockResolvedValueOnce(makeFetchResponse({ status: 401, body: {} }))
-        .mockResolvedValueOnce(
-          makeFetchResponse({ status: 200, body: { items: [] } }),
-        );
+        .mockResolvedValueOnce(makeFetchResponse({ status: 200, body: { items: [] } }));
 
       // First getValidAccessToken (initial) returns the stale token; second
       // returns the fresh one for the retry.
@@ -425,10 +408,7 @@ describe('GoogleCalendarHandler', () => {
         .mockResolvedValueOnce('stale-tok')
         .mockResolvedValueOnce('fresh-tok');
 
-      const result = await handler.execute(
-        makeContext(),
-        makeStep({ action: 'list_calendars' }),
-      );
+      const result = await handler.execute(makeContext(), makeStep({ action: 'list_calendars' }));
 
       expect(result.success).toBe(true);
       expect(mockFetch).toHaveBeenCalledTimes(2);
@@ -444,10 +424,7 @@ describe('GoogleCalendarHandler', () => {
         .mockResolvedValueOnce('stale-tok')
         .mockResolvedValueOnce(null); // refresh failed
 
-      const result = await handler.execute(
-        makeContext(),
-        makeStep({ action: 'list_calendars' }),
-      );
+      const result = await handler.execute(makeContext(), makeStep({ action: 'list_calendars' }));
 
       expect(result.success).toBe(false);
       expect(result.error?.code).toBe('GOOGLE_CALENDAR_AUTH_FAILED');

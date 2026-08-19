@@ -5,7 +5,13 @@ import { BootstrapDnsPreflightService, PreflightResult } from '../bootstrap-dns-
 import { SslInfoService, SslCertificateInfo } from '../../domains/ssl-info.service';
 import { PrimarySslSnapshotService } from './primary-ssl-snapshot.service';
 import { FeatureFlagsService } from '../../feature-flags/feature-flags.service';
-import { deriveKnobs, loadInstanceConfig, writeInstanceConfig, InstanceConfig, ProxyMode } from '../../bootstrap/instance-config';
+import {
+  deriveKnobs,
+  loadInstanceConfig,
+  writeInstanceConfig,
+  InstanceConfig,
+  ProxyMode,
+} from '../../bootstrap/instance-config';
 import { PrimarySslPasteDto, PrimarySslApplyDto } from './primary-ssl.dto';
 import {
   discardStagedCertificates,
@@ -41,7 +47,9 @@ export class PrimarySslService {
 
   assertEnabled(): void {
     if (process.env.PLATFORM_MODE === 'true' || process.env.SSL_MANAGED_EXTERNALLY === 'true') {
-      throw new ForbiddenException('Primary SSL management is disabled when SSL is handled at the platform edge');
+      throw new ForbiddenException(
+        'Primary SSL management is disabled when SSL is handled at the platform edge',
+      );
     }
   }
 
@@ -93,10 +101,15 @@ export class PrimarySslService {
     this.assertEnabled();
     const domain = this.requireDomain();
     if (this.snap.readPendingRevert()) {
-      throw new BadRequestException('A serving change is pending confirmation; confirm or roll it back first');
+      throw new BadRequestException(
+        'A serving change is pending confirmation; confirm or roll it back first',
+      );
     }
     const result = this.bootstrap.validateCertificatePair(
-      dto.certificatePem, dto.privateKeyPem, domain, dto.servingMode as ProxyMode,
+      dto.certificatePem,
+      dto.privateKeyPem,
+      domain,
+      dto.servingMode as ProxyMode,
     );
     // #514: saveCertificates writes into staging/ — nothing live changes, so
     // no snapshot is needed here. apply() snapshots before promoting.
@@ -119,11 +132,15 @@ export class PrimarySslService {
     );
   }
 
-  async issueLetsEncrypt(opts?: { extraSans?: string[] }): Promise<{ issued: boolean; sans: string[]; reused: boolean }> {
+  async issueLetsEncrypt(opts?: {
+    extraSans?: string[];
+  }): Promise<{ issued: boolean; sans: string[]; reused: boolean }> {
     this.assertEnabled();
     const domain = this.requireDomain();
     if (this.snap.readPendingRevert()) {
-      throw new BadRequestException('A serving change is pending confirmation; confirm or roll it back first');
+      throw new BadRequestException(
+        'A serving change is pending confirmation; confirm or roll it back first',
+      );
     }
     const pre = await this.preflightSvc.run(domain);
     if (!pre.ok) {
@@ -134,7 +151,9 @@ export class PrimarySslService {
     // reduction of the existing hard gate, purely additive.
     const extraSans = opts?.extraSans ?? [];
     if (extraSans.length > 0) {
-      const extraChecks = await Promise.all(extraSans.map((host) => this.preflightSvc.probeHost(host)));
+      const extraChecks = await Promise.all(
+        extraSans.map((host) => this.preflightSvc.probeHost(host)),
+      );
       const failed = extraChecks.filter((c) => !c.probeOk);
       if (failed.length > 0) {
         throw new BadRequestException(
@@ -155,23 +174,32 @@ export class PrimarySslService {
     return { issued: true, sans: res.sans ?? [], reused: res.reused ?? false };
   }
 
-  async apply(dto: PrimarySslApplyDto): Promise<{ applied: true; kind: 'cert-only' | 'serving'; deadlineMs?: number }> {
+  async apply(
+    dto: PrimarySslApplyDto,
+  ): Promise<{ applied: true; kind: 'cert-only' | 'serving'; deadlineMs?: number }> {
     this.assertEnabled();
     if (this.snap.readPendingRevert()) {
-      throw new BadRequestException('A serving change is pending confirmation; confirm or roll it back first');
+      throw new BadRequestException(
+        'A serving change is pending confirmation; confirm or roll it back first',
+      );
     }
     // A torn stage (only one of fullchain.pem/privkey.pem present — an
     // interrupted write or manual tampering) must fail loudly rather than
     // silently no-op: stagingPopulated() alone would just treat it as
     // "nothing staged" and quietly skip promotion.
     if (stagingPartiallyPopulated()) {
-      throw new BadRequestException('Staged certificate is incomplete — discard it and stage again');
+      throw new BadRequestException(
+        'Staged certificate is incomplete — discard it and stage again',
+      );
     }
     const cur = loadInstanceConfig();
     if (!cur?.primaryDomain) throw new BadRequestException('No primary domain is configured yet');
 
     // validateApplyConfig expects the bootstrap ApplyBootstrapDto shape; supply the fixed domain.
-    const applied = this.bootstrap.validateApplyConfig({ ...dto, domain: cur.primaryDomain } as any);
+    const applied = this.bootstrap.validateApplyConfig({
+      ...dto,
+      domain: cur.primaryDomain,
+    } as any);
 
     // Every non-selfsigned mode must have staged certs present + covering the domain.
     if (applied.sslMode !== 'selfsigned') {

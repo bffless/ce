@@ -104,7 +104,10 @@ export class EdgeBlocklistService {
       if (cached) {
         return cached;
       }
-      let result: EdgeRuleSources = { blockSource: pair.blockSource, allowSource: pair.allowSource };
+      let result: EdgeRuleSources = {
+        blockSource: pair.blockSource,
+        allowSource: pair.allowSource,
+      };
       if (result.blockSource) {
         const rules = this.renderOrNull(result.blockSource, result.allowSource);
         const valid = rules !== null && (await this.validateWithNginx(rules));
@@ -203,7 +206,9 @@ export class EdgeBlocklistService {
         );
         return true;
       }
-      this.logger.error(`nginx -t rejected generated blocklist rules: ${err.stderr || String(error)}`);
+      this.logger.error(
+        `nginx -t rejected generated blocklist rules: ${err.stderr || String(error)}`,
+      );
       return false;
     } finally {
       if (dir) {

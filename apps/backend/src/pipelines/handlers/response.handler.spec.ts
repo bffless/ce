@@ -16,15 +16,19 @@ describe('ResponseHandler', () => {
       name: 'respond',
       handlerType: 'response_handler',
       config,
-    } as unknown as PipelineStep);
+    }) as unknown as PipelineStep;
 
   const contextWithStep = (name: string, output: unknown): PipelineContext =>
     ({
       stepOutputs: { [name]: output },
       request: {},
-    } as unknown as PipelineContext);
+    }) as unknown as PipelineContext;
 
-  const responseOf = async (handler: ResponseHandler, config: Record<string, unknown>, ctx: PipelineContext) => {
+  const responseOf = async (
+    handler: ResponseHandler,
+    config: Record<string, unknown>,
+    ctx: PipelineContext,
+  ) => {
     const result = await handler.execute(ctx, step(config));
     expect(result.success).toBe(true);
     return { result, output: result.output as Record<string, unknown> };
@@ -92,7 +96,11 @@ describe('ResponseHandler', () => {
       const handler = buildHandler();
       const ctx = contextWithStep('who', 'John Doe');
 
-      const { result, output } = await responseOf(handler, { body: '{ name: {{steps.who}} }' }, ctx);
+      const { result, output } = await responseOf(
+        handler,
+        { body: '{ name: {{steps.who}} }' },
+        ctx,
+      );
 
       expect(output.body).toEqual({ message: '{ name: John Doe }' });
       expect(result.warning).toContain('invalid JSON');
@@ -113,7 +121,11 @@ describe('ResponseHandler', () => {
       const handler = buildHandler();
       const ctx = contextWithStep('user', { id: 'u1' });
 
-      const { output } = await responseOf(handler, { body: { user: 'steps.user', ok: 'true' } }, ctx);
+      const { output } = await responseOf(
+        handler,
+        { body: { user: 'steps.user', ok: 'true' } },
+        ctx,
+      );
 
       expect(output.body).toEqual({ user: { id: 'u1' }, ok: true });
     });

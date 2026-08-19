@@ -35,8 +35,7 @@ describe('TrafficController', () => {
 
   const makeReq = () => ({ res: { setHeader: jest.fn() } }) as unknown as Request;
 
-  const makeRes = () =>
-    ({ setHeader: jest.fn(), send: jest.fn() }) as unknown as Response;
+  const makeRes = () => ({ setHeader: jest.fn(), send: jest.fn() }) as unknown as Response;
 
   beforeEach(() => {
     events = new TrafficEventsService();

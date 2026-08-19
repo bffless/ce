@@ -10,7 +10,9 @@ function makeBundle(
 ): { buf: Uint8Array; sha256: string } {
   const buf = zipSync({
     'bffless-app.json': strToU8(JSON.stringify(manifest)),
-    'rulesets/handoff.json': strToU8(JSON.stringify({ ruleSet: { name: 'handoff' }, rules: [], schemas: [] })),
+    'rulesets/handoff.json': strToU8(
+      JSON.stringify({ ruleSet: { name: 'handoff' }, rules: [], schemas: [] }),
+    ),
     'rulesets/handoff-rss-feed.json': strToU8(
       JSON.stringify({ ruleSet: { name: 'handoff-rss-feed' }, rules: [], schemas: [] }),
     ),
@@ -32,9 +34,11 @@ function fetchResponse(bytes: Uint8Array, opts: { contentLength?: number } = {})
     ok: true,
     status: 200,
     headers: {
-      get: (name: string) => (name.toLowerCase() === 'content-length' ? String(contentLength) : null),
+      get: (name: string) =>
+        name.toLowerCase() === 'content-length' ? String(contentLength) : null,
     },
-    arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+    arrayBuffer: async () =>
+      bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
   } as unknown as Response;
 }
 
@@ -115,7 +119,9 @@ describe('AppBundleService', () => {
     it('throws BadRequestException mentioning sha256 on mismatch, before parsing', async () => {
       const { buf } = makeBundle();
 
-      await expect(service.loadFromBuffer(buf, 'f'.repeat(64))).rejects.toThrow(BadRequestException);
+      await expect(service.loadFromBuffer(buf, 'f'.repeat(64))).rejects.toThrow(
+        BadRequestException,
+      );
       await expect(service.loadFromBuffer(buf, 'f'.repeat(64))).rejects.toThrow(/sha256/i);
     });
 
@@ -137,7 +143,9 @@ describe('AppBundleService', () => {
     it('throws when a declared ruleSets file is missing from the zip', async () => {
       const buf = zipSync({
         'bffless-app.json': strToU8(JSON.stringify(TEST_MANIFEST)),
-        'rulesets/handoff.json': strToU8(JSON.stringify({ ruleSet: { name: 'handoff' }, rules: [], schemas: [] })),
+        'rulesets/handoff.json': strToU8(
+          JSON.stringify({ ruleSet: { name: 'handoff' }, rules: [], schemas: [] }),
+        ),
         // rulesets/handoff-rss-feed.json intentionally omitted
         'dist/index.html': strToU8('<!doctype html>ok'),
       });

@@ -50,9 +50,7 @@ describe('MigrationController', () => {
     canResume: true,
   });
 
-  const createMockJob = (
-    status: MigrationStatus = MigrationStatus.IN_PROGRESS,
-  ): MigrationJob => ({
+  const createMockJob = (status: MigrationStatus = MigrationStatus.IN_PROGRESS): MigrationJob => ({
     id: 'job-123',
     sourceProvider: 'local',
     targetProvider: 's3',
@@ -168,7 +166,10 @@ describe('MigrationController', () => {
       const result = await controller.calculateScope('owner/repo');
 
       expect(result).toEqual(mockScope);
-      expect(migrationService.calculateScope).toHaveBeenCalledWith(mockCurrentStorage, 'owner/repo');
+      expect(migrationService.calculateScope).toHaveBeenCalledWith(
+        mockCurrentStorage,
+        'owner/repo',
+      );
     });
   });
 

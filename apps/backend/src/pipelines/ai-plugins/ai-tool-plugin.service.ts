@@ -218,9 +218,7 @@ export class AIToolPluginService {
       }
 
       try {
-        const decryptedConfig = stored.config
-          ? JSON.parse(this.decryptData(stored.config))
-          : {};
+        const decryptedConfig = stored.config ? JSON.parse(this.decryptData(stored.config)) : {};
 
         const pipelineOptions = pipelinePluginOptions?.[pluginId];
 
@@ -282,7 +280,9 @@ export class AIToolPluginService {
           instructions.push(instruction);
         }
       } catch (error) {
-        this.logger.warn(`Failed to get prompt instructions for plugin '${pluginId}': ${error.message}`);
+        this.logger.warn(
+          `Failed to get prompt instructions for plugin '${pluginId}': ${error.message}`,
+        );
       }
     }
 
@@ -291,9 +291,7 @@ export class AIToolPluginService {
 
   // ===== Private helpers =====
 
-  private async getStoredPlugins(
-    projectId: string,
-  ): Promise<Record<string, StoredPluginConfig>> {
+  private async getStoredPlugins(projectId: string): Promise<Record<string, StoredPluginConfig>> {
     const [project] = await db
       .select({ settings: projects.settings })
       .from(projects)

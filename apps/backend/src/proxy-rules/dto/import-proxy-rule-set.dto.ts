@@ -84,7 +84,8 @@ export class ImportProxyRuleSetDto {
 
   @ApiPropertyOptional({
     type: [ImportSchemaResolutionDto],
-    description: 'Schema dependencies bundled in the export, with how to resolve each in the target project',
+    description:
+      'Schema dependencies bundled in the export, with how to resolve each in the target project',
   })
   @IsOptional()
   @IsArray()

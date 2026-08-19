@@ -91,13 +91,11 @@ export class BrandingService {
     return current;
   }
 
-  async uploadLogo(
-    type: string,
-    file: Buffer,
-    mimeType: string,
-  ): Promise<BrandingConfig> {
+  async uploadLogo(type: string, file: Buffer, mimeType: string): Promise<BrandingConfig> {
     if (!ALLOWED_LOGO_TYPES.includes(type as LogoType)) {
-      throw new BadRequestException(`Invalid logo type. Must be one of: ${ALLOWED_LOGO_TYPES.join(', ')}`);
+      throw new BadRequestException(
+        `Invalid logo type. Must be one of: ${ALLOWED_LOGO_TYPES.join(', ')}`,
+      );
     }
 
     if (!this.storageAdapter) {
@@ -142,7 +140,9 @@ export class BrandingService {
 
   async deleteLogo(type: string): Promise<BrandingConfig> {
     if (!ALLOWED_LOGO_TYPES.includes(type as LogoType)) {
-      throw new BadRequestException(`Invalid logo type. Must be one of: ${ALLOWED_LOGO_TYPES.join(', ')}`);
+      throw new BadRequestException(
+        `Invalid logo type. Must be one of: ${ALLOWED_LOGO_TYPES.join(', ')}`,
+      );
     }
 
     const current = await this.getBrandingConfig();

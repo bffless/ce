@@ -86,7 +86,9 @@ export class CreateOnboardingRuleDto {
   @ApiProperty({
     description: 'Actions to execute when rule matches',
     type: [OnboardingActionDto],
-    example: [{ type: 'grant_repo_access', params: { repository: 'bffless/demo', role: 'viewer' } }],
+    example: [
+      { type: 'grant_repo_access', params: { repository: 'bffless/demo', role: 'viewer' } },
+    ],
   })
   @IsArray()
   @ValidateNested({ each: true })

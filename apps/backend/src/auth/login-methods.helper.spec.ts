@@ -20,8 +20,8 @@ const makeFlags = (
     // default) unless a test overrides it; every other flag defaults to false.
     isEnabled: jest.fn(async (key: string) =>
       key === 'ENABLE_EMAIL_PASSWORD'
-        ? values.ENABLE_EMAIL_PASSWORD ?? true
-        : values[key as keyof typeof values] ?? false,
+        ? (values.ENABLE_EMAIL_PASSWORD ?? true)
+        : (values[key as keyof typeof values] ?? false),
     ),
   }) as unknown as FeatureFlagsService;
 
@@ -30,13 +30,19 @@ const makeSetup = (canPublicSignup: boolean): SetupService =>
     canPublicSignup: jest.fn(async () => canPublicSignup),
   }) as unknown as SetupService;
 
-const makeResolver = (project: { id: string; allowPublicSignup: boolean } | null): ProjectResolverService =>
+const makeResolver = (
+  project: { id: string; allowPublicSignup: boolean } | null,
+): ProjectResolverService =>
   ({
     resolveProjectFromRequest: jest.fn(async () => project),
   }) as unknown as ProjectResolverService;
 
 const makeOidc = (
-  providers: Array<{ id: string; kind: 'google' | 'okta' | 'azure-ad' | 'oidc'; displayName: string }>,
+  providers: Array<{
+    id: string;
+    kind: 'google' | 'okta' | 'azure-ad' | 'oidc';
+    displayName: string;
+  }>,
 ): OidcProvidersService =>
   ({
     listEnabled: jest.fn(async () => providers),
@@ -49,9 +55,7 @@ describe('buildLoginMethodsResponse', () => {
         featureFlagsService: makeFlags({ ENABLE_OIDC_PROVIDERS: true }),
         setupService: makeSetup(true),
         projectResolver: makeResolver(null),
-        oidcProvidersService: makeOidc([
-          { id: 'google', kind: 'google', displayName: 'Google' },
-        ]),
+        oidcProvidersService: makeOidc([{ id: 'google', kind: 'google', displayName: 'Google' }]),
         req: reqStub,
       });
 

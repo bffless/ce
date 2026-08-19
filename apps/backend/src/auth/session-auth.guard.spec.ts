@@ -98,7 +98,9 @@ describe('SessionAuthGuard', () => {
       const mockDbChain = {
         from: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
-        limit: jest.fn().mockResolvedValue([{ id: 'user-123', email: 'test@example.com', role: 'admin' }]),
+        limit: jest
+          .fn()
+          .mockResolvedValue([{ id: 'user-123', email: 'test@example.com', role: 'admin' }]),
       };
       (db.select as jest.Mock).mockReturnValue(mockDbChain);
 

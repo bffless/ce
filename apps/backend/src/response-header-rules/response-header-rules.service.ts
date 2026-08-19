@@ -47,10 +47,7 @@ export class ResponseHeaderRulesService {
       .select()
       .from(responseHeaderRules)
       .where(
-        and(
-          eq(responseHeaderRules.projectId, projectId),
-          eq(responseHeaderRules.isEnabled, true),
-        ),
+        and(eq(responseHeaderRules.projectId, projectId), eq(responseHeaderRules.isEnabled, true)),
       )
       .orderBy(asc(responseHeaderRules.priority));
   }
@@ -70,11 +67,7 @@ export class ResponseHeaderRulesService {
     userId: string,
     userRole: string,
   ): Promise<ResponseHeaderRule> {
-    const [project] = await db
-      .select()
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
+    const [project] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
     if (!project) {
       throw new NotFoundException(`Project ${projectId} not found`);
     }
@@ -83,9 +76,7 @@ export class ResponseHeaderRulesService {
 
     const existingRule = await this.findRuleByPattern(projectId, dto.pathPattern);
     if (existingRule) {
-      throw new ConflictException(
-        `A rule with path pattern "${dto.pathPattern}" already exists`,
-      );
+      throw new ConflictException(`A rule with path pattern "${dto.pathPattern}" already exists`);
     }
 
     const priority = dto.priority ?? (await this.getNextPriority(projectId));
@@ -130,9 +121,7 @@ export class ResponseHeaderRulesService {
     if (dto.pathPattern && dto.pathPattern !== existing.pathPattern) {
       const duplicate = await this.findRuleByPattern(existing.projectId, dto.pathPattern);
       if (duplicate && duplicate.id !== id) {
-        throw new ConflictException(
-          `A rule with path pattern "${dto.pathPattern}" already exists`,
-        );
+        throw new ConflictException(`A rule with path pattern "${dto.pathPattern}" already exists`);
       }
     }
 
@@ -185,11 +174,7 @@ export class ResponseHeaderRulesService {
     userId: string,
     userRole: string,
   ): Promise<ResponseHeaderRule[]> {
-    const [project] = await db
-      .select()
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
+    const [project] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
     if (!project) {
       throw new NotFoundException(`Project ${projectId} not found`);
     }

@@ -121,7 +121,9 @@ export class GoogleCalendarOAuthService {
     if (!tokenResponse.ok) {
       const error = await tokenResponse.json().catch(() => ({}));
       this.logger.error(`Token exchange failed: ${JSON.stringify(error)}`);
-      throw new Error(error.error_description || `Token exchange failed (HTTP ${tokenResponse.status})`);
+      throw new Error(
+        error.error_description || `Token exchange failed (HTTP ${tokenResponse.status})`,
+      );
     }
 
     const tokens = await tokenResponse.json();

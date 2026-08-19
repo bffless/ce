@@ -110,7 +110,10 @@ export class OnboardingExecutorService implements OnModuleInit {
       status = 'success';
     } else if (successCount === 0) {
       status = 'failed';
-      errorMessage = results.map((r) => r.error).filter(Boolean).join('; ');
+      errorMessage = results
+        .map((r) => r.error)
+        .filter(Boolean)
+        .join('; ');
     } else {
       status = 'partial';
       errorMessage = results
@@ -151,9 +154,7 @@ export class OnboardingExecutorService implements OnModuleInit {
         // Glob-like pattern matching
         try {
           const pattern = condition.value.toLowerCase();
-          const regex = new RegExp(
-            '^' + pattern.replace(/\*/g, '.*').replace(/\?/g, '.') + '$',
-          );
+          const regex = new RegExp('^' + pattern.replace(/\*/g, '.*').replace(/\?/g, '.') + '$');
           return regex.test(emailLower);
         } catch {
           this.logger.warn(`Invalid email pattern: ${condition.value}`);
@@ -183,20 +184,11 @@ export class OnboardingExecutorService implements OnModuleInit {
             context,
           );
         case 'assign_role':
-          return await this.executeAssignRole(
-            action.params as AssignRoleParams,
-            context,
-          );
+          return await this.executeAssignRole(action.params as AssignRoleParams, context);
         case 'add_to_group':
-          return await this.executeAddToGroup(
-            action.params as AddToGroupParams,
-            context,
-          );
+          return await this.executeAddToGroup(action.params as AddToGroupParams, context);
         case 'run_pipeline':
-          return await this.executeRunPipeline(
-            action.params as RunPipelineParams,
-            context,
-          );
+          return await this.executeRunPipeline(action.params as RunPipelineParams, context);
         default:
           return {
             action,
@@ -256,10 +248,7 @@ export class OnboardingExecutorService implements OnModuleInit {
       .select()
       .from(projectPermissions)
       .where(
-        and(
-          eq(projectPermissions.projectId, project.id),
-          eq(projectPermissions.userId, userId),
-        ),
+        and(eq(projectPermissions.projectId, project.id), eq(projectPermissions.userId, userId)),
       )
       .limit(1);
 
@@ -338,12 +327,7 @@ export class OnboardingExecutorService implements OnModuleInit {
     const [existing] = await db
       .select()
       .from(userGroupMembers)
-      .where(
-        and(
-          eq(userGroupMembers.groupId, groupId),
-          eq(userGroupMembers.userId, userId),
-        ),
-      )
+      .where(and(eq(userGroupMembers.groupId, groupId), eq(userGroupMembers.userId, userId)))
       .limit(1);
 
     if (existing) {
@@ -420,13 +404,20 @@ export class OnboardingExecutorService implements OnModuleInit {
 
     // Persist execution log (fire-and-forget, same as proxy middleware)
     if (rule?.debugEnabled && outcome.projectId) {
-      this.executionLogService.log(proxyRuleId, outcome.projectId, result, {
-        ip: '127.0.0.1',
-        userAgent: 'onboarding-executor',
-        userId,
-      }, 'POST', '/internal/onboarding-pipeline').catch((err) =>
-        this.logger.error('Failed to persist pipeline execution log', err),
-      );
+      this.executionLogService
+        .log(
+          proxyRuleId,
+          outcome.projectId,
+          result,
+          {
+            ip: '127.0.0.1',
+            userAgent: 'onboarding-executor',
+            userId,
+          },
+          'POST',
+          '/internal/onboarding-pipeline',
+        )
+        .catch((err) => this.logger.error('Failed to persist pipeline execution log', err));
     }
 
     if (result.success) {

@@ -71,9 +71,9 @@ describe('AIHandler.validateConfig — attachments', () => {
   });
 
   it('rejects a non-array attachments value', () => {
-    expect(() =>
-      handler.validateConfig({ ...base, attachments: 'nope' as never }),
-    ).toThrow(/attachments must be an array/);
+    expect(() => handler.validateConfig({ ...base, attachments: 'nope' as never })).toThrow(
+      /attachments must be an array/,
+    );
   });
 
   it('rejects an invalid attachment type', () => {
