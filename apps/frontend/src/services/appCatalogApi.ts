@@ -81,17 +81,28 @@ export interface CatalogEntry {
   gates: GateResult[];
   /** Every instance gate passed AND the app is present in the registry. */
   installable: boolean;
-  installed?: {
-    installedAppId: string;
-    version: string;
-    projectId: string;
-    projectName: string;
-    alias: string;
-    appUrl?: string;
-    status: InstalledAppStatus;
-    updateAvailable: boolean;
-    manualSteps: AppManualStep[];
-  };
+  /**
+   * Every install of this app on the instance, oldest first — an app can be
+   * installed into many projects, each on its own version, so `updateAvailable`
+   * is per element. Empty when the app isn't installed anywhere.
+   */
+  installs: InstalledSummary[];
+}
+
+/** One installed_apps row, as the catalog presents it. */
+export interface InstalledSummary {
+  installedAppId: string;
+  version: string;
+  projectId: string;
+  projectName: string;
+  alias: string;
+  appUrl?: string;
+  status: InstalledAppStatus;
+  updateAvailable: boolean;
+  /** ISO timestamps — `updatedAt` moves on every update job. */
+  installedAt: string;
+  updatedAt: string;
+  manualSteps: AppManualStep[];
 }
 
 export interface CatalogListResult {
@@ -131,6 +142,12 @@ export interface PreflightResponse {
   syncPlans: SyncPlanSummary[];
   appHost: string | null;
   appUrl?: string;
+  /**
+   * A free subdomain to prefill when the manifest's default host is already
+   * mapped (install-again into another project). Only present when the request
+   * carried no `subdomain`.
+   */
+  suggestedSubdomain?: string;
 }
 
 export type InstallStepId =

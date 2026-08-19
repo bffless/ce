@@ -65,6 +65,23 @@ const baseEntry: CatalogEntry = {
   summary: 'Share files with clients',
   gates: [],
   installable: true,
+  installs: [],
+};
+
+const existingInstall: CatalogEntry['installs'][number] = {
+  installedAppId: 'installed-1',
+  installedAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+  version: '1.0.0',
+  projectId: 'proj-1',
+  projectName: 'acme/handoff-site',
+  alias: 'production',
+  appUrl: 'https://handoff.example.com',
+  status: 'installed',
+  updateAvailable: false,
+  manualSteps: [
+    { id: 'installed-step', title: 'Rotate the signing secret', body: 'Do it in Settings.' },
+  ],
 };
 
 function makePreflight(overrides: Partial<PreflightResponse> = {}): PreflightResponse {
@@ -556,23 +573,8 @@ describe('InstallDialog — Done screen', () => {
     ).toBeInTheDocument();
   });
 
-  it('prefers the durable entry.installed manual steps over the job’s', async () => {
-    const entryWithInstall: CatalogEntry = {
-      ...baseEntry,
-      installed: {
-        installedAppId: 'installed-1',
-        version: '1.0.0',
-        projectId: 'proj-1',
-        projectName: 'acme/handoff-site',
-        alias: 'production',
-        appUrl: 'https://handoff.example.com',
-        status: 'installed',
-        updateAvailable: false,
-        manualSteps: [
-          { id: 'installed-step', title: 'Rotate the signing secret', body: 'Do it in Settings.' },
-        ],
-      },
-    };
+  it('prefers the durable catalog install’s manual steps (matched by the job’s installedAppId) over the job’s', async () => {
+    const entryWithInstall: CatalogEntry = { ...baseEntry, installs: [existingInstall] };
     jobQueryResult = {
       data: makeJob({
         status: 'succeeded',
@@ -586,6 +588,89 @@ describe('InstallDialog — Done screen', () => {
 
     expect(await screen.findByText('Rotate the signing secret')).toBeInTheDocument();
     expect(screen.queryByText('Set the SIGNING_SECRET')).not.toBeInTheDocument();
+  });
+
+  it('never shows ANOTHER install’s notes/URL: a second install’s Done screen matches on installedAppId', async () => {
+    // The app is already installed in project A; this job installed it into B.
+    const entryWithInstall: CatalogEntry = { ...baseEntry, installs: [existingInstall] };
+    jobQueryResult = {
+      data: makeJob({
+        status: 'succeeded',
+        installedAppId: 'installed-2',
+        appUrl: 'https://handoff-blog.example.com',
+        manualSteps: [{ id: 'job-step', title: 'Set the SIGNING_SECRET', body: 'From the job.' }],
+      }),
+    };
+
+    render(<InstallDialog entry={entryWithInstall} open onOpenChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /^install$/i }));
+
+    expect(await screen.findByText('Set the SIGNING_SECRET')).toBeInTheDocument();
+    expect(screen.queryByText('Rotate the signing secret')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /open/i })).toHaveAttribute(
+      'href',
+      'https://handoff-blog.example.com',
+    );
+  });
+});
+
+describe('InstallDialog — install again (app already installed elsewhere)', () => {
+  const entryWithInstall: CatalogEntry = { ...baseEntry, installs: [existingInstall] };
+
+  it('titles the wizard as installing in another project', () => {
+    render(<InstallDialog entry={entryWithInstall} open onOpenChange={vi.fn()} />);
+
+    expect(screen.getByRole('heading', { name: 'Install Handoff in another project' })).toBeInTheDocument();
+  });
+
+  it('prefills the suggested subdomain from preflight and explains which install owns the default', () => {
+    preflightState = {
+      data: makePreflight({
+        gates: [{ id: 'name-collision', status: 'fail', message: 'The domain "handoff.example.com" is already mapped' }],
+        appHost: 'handoff.example.com',
+        appUrl: 'https://handoff.example.com',
+        suggestedSubdomain: 'handoff-blog',
+      }),
+      isLoading: false,
+    };
+
+    render(<InstallDialog entry={entryWithInstall} open onOpenChange={vi.fn()} />);
+
+    const input = screen.getByLabelText(/subdomain/i) as HTMLInputElement;
+    expect(input.value).toBe('handoff-blog');
+    expect(
+      screen.getByText('The default subdomain "handoff" is used by the install in acme/handoff-site.'),
+    ).toBeInTheDocument();
+  });
+
+  it('does not overwrite a subdomain the operator already typed', () => {
+    preflightState = { data: makePreflight({ appHost: 'handoff.example.com' }), isLoading: false };
+    const { rerender } = render(<InstallDialog entry={entryWithInstall} open onOpenChange={vi.fn()} />);
+
+    fireEvent.change(screen.getByLabelText(/subdomain/i), { target: { value: 'mine' } });
+
+    preflightState = {
+      data: makePreflight({ appHost: 'mine.example.com', suggestedSubdomain: 'handoff-blog' }),
+      isLoading: false,
+    };
+    rerender(<InstallDialog entry={entryWithInstall} open onOpenChange={vi.fn()} />);
+
+    expect((screen.getByLabelText(/subdomain/i) as HTMLInputElement).value).toBe('mine');
+  });
+
+  it('uses generic wording when no existing install owns the default host', () => {
+    const unrelated: CatalogEntry = {
+      ...baseEntry,
+      installs: [{ ...existingInstall, appUrl: 'https://files.example.com' }],
+    };
+    preflightState = {
+      data: makePreflight({ appHost: 'handoff.example.com', suggestedSubdomain: 'handoff-blog' }),
+      isLoading: false,
+    };
+
+    render(<InstallDialog entry={unrelated} open onOpenChange={vi.fn()} />);
+
+    expect(screen.getByText('The default subdomain "handoff" is already in use.')).toBeInTheDocument();
   });
 });
 

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client';
 import {
+  deploymentAliases,
   domainMappings,
   installedApps,
   type InstalledApp,
@@ -28,7 +29,13 @@ import {
 import { AppInstallJobsService, type InstallJob } from './app-install-jobs.service';
 import { AppCertStepService } from './app-cert-step.service';
 import { compareSemver } from './ce-version.util';
-import { manualStepApplies, interpolateStep, type StepPlaceholders } from './app-manifest.util';
+import {
+  manualStepApplies,
+  interpolateStep,
+  isReservedSubdomain,
+  type StepPlaceholders,
+} from './app-manifest.util';
+import { suggestSubdomain } from './suggest-subdomain.util';
 import type { AppManifest, AppManualStep, AppRegistryEntry } from './app-manifest.types';
 import type { PreflightRequestDto } from './app-catalog.dtos';
 
@@ -70,17 +77,29 @@ export interface CatalogEntry {
   gates: GateResult[];
   /** Every instance gate passed AND the app is present in the registry. */
   installable: boolean;
-  installed?: {
-    installedAppId: string;
-    version: string;
-    projectId: string;
-    projectName: string;
-    alias: string;
-    appUrl?: string;
-    status: InstalledAppStatus;
-    updateAvailable: boolean;
-    manualSteps: AppManualStep[];
-  };
+  /**
+   * Every install of this app on the instance, oldest first. An app can be
+   * installed into many projects (`installed_apps` is unique on
+   * `(app_id, project_id)`), each on its own version — so this is a list, and
+   * `updateAvailable` is per element. Empty when the app isn't installed.
+   */
+  installs: InstalledSummary[];
+}
+
+/** One installed_apps row, as the catalog presents it. */
+export interface InstalledSummary {
+  installedAppId: string;
+  version: string;
+  projectId: string;
+  projectName: string;
+  alias: string;
+  appUrl?: string;
+  status: InstalledAppStatus;
+  updateAvailable: boolean;
+  /** ISO timestamps — the per-install version trail (`updatedAt` moves on every update job). */
+  installedAt: string;
+  updatedAt: string;
+  manualSteps: AppManualStep[];
 }
 
 export interface CatalogListResult {
@@ -93,6 +112,12 @@ export interface PreflightResult {
   syncPlans: SyncPlanSummary[];
   appHost: string | null;
   appUrl?: string;
+  /**
+   * A free subdomain the wizard can prefill when the manifest's default host
+   * is already mapped (the app is being installed again, into another
+   * project). Only computed when the request carries no `subdomain` of its own.
+   */
+  suggestedSubdomain?: string;
 }
 
 /**
@@ -161,28 +186,97 @@ export class AppCatalogService {
   }
 
   /** Combined instance + project gates, for the install wizard's preview screen. */
-  async preflight(appId: string, dto: PreflightRequestDto, userId: string): Promise<PreflightResult> {
+  async preflight(
+    appId: string,
+    dto: PreflightRequestDto,
+    userId: string,
+  ): Promise<PreflightResult> {
     const entry = await this.requireRegistryEntry(appId);
     const target = this.toInstallTarget(dto);
     const bundle = await this.bundleService.fetchBundle(entry.bundleUrl, entry.sha256);
 
     const instanceGates = await this.preflightService.instanceGates(entry.requires);
-    const { gates: projectGates, syncPlans, appHost } = await this.preflightService.projectGates(
+    const {
+      gates: projectGates,
+      syncPlans,
+      appHost,
+    } = await this.preflightService.projectGates(
       bundle,
       this.toPreflightTarget(target),
       userId,
       dto.subdomain,
     );
 
+    const suggestedSubdomain =
+      dto.subdomain === undefined
+        ? await this.suggestFreeSubdomain(bundle.manifest, target)
+        : undefined;
+
     return {
       gates: [...instanceGates, ...projectGates],
       syncPlans,
       appHost,
       appUrl: appHost ? `https://${appHost}` : undefined,
+      ...(suggestedSubdomain ? { suggestedSubdomain } : {}),
     };
   }
 
-  async install(appId: string, dto: PreflightRequestDto, userId: string): Promise<{ jobId: string }> {
+  /**
+   * Install-again support: when the manifest's default host is already mapped
+   * (by this app's install in another project, typically), propose
+   * `<default>-<project>` so the operator isn't left to invent a host that
+   * clears the name-collision gate. `undefined` whenever the default is free,
+   * the manifest has no default host, or no candidate turns out to be free.
+   */
+  private async suggestFreeSubdomain(
+    manifest: AppManifest,
+    target: InstallTarget,
+  ): Promise<string | undefined> {
+    const defaultSubdomain = manifest.install.domain?.subdomain;
+    const primaryDomain = this.configService.get<string>('PRIMARY_DOMAIN') || '';
+    if (!defaultSubdomain || !primaryDomain) return undefined;
+
+    if (!(await this.hostIsMapped(`${defaultSubdomain}.${primaryDomain}`))) return undefined;
+
+    const projectName = target.projectId
+      ? (await this.projectsService.getProjectById(target.projectId)).name
+      : target.newProject?.name;
+    if (!projectName) return undefined;
+
+    return suggestSubdomain({
+      defaultSubdomain,
+      projectName,
+      isReserved: isReservedSubdomain,
+      isTaken: async (candidate) =>
+        (await this.hostIsMapped(`${candidate}.${primaryDomain}`)) ||
+        (await this.aliasExistsAnywhere(candidate)),
+    });
+  }
+
+  private async hostIsMapped(host: string): Promise<boolean> {
+    const [row] = await db
+      .select({ id: domainMappings.id })
+      .from(domainMappings)
+      .where(eq(domainMappings.domain, host))
+      .limit(1);
+    return Boolean(row);
+  }
+
+  /** Any project's alias of that name would answer at `<name>.PRIMARY_DOMAIN` via the wildcard route. */
+  private async aliasExistsAnywhere(alias: string): Promise<boolean> {
+    const [row] = await db
+      .select({ id: deploymentAliases.id })
+      .from(deploymentAliases)
+      .where(eq(deploymentAliases.alias, alias))
+      .limit(1);
+    return Boolean(row);
+  }
+
+  async install(
+    appId: string,
+    dto: PreflightRequestDto,
+    userId: string,
+  ): Promise<{ jobId: string }> {
     const entry = await this.requireRegistryEntry(appId);
     const target = this.toInstallTarget(dto);
     return this.installerService.startInstall(entry, target, userId, dto.subdomain);
@@ -217,7 +311,10 @@ export class AppCatalogService {
    * click away from that. An update has its own, non-destructive rollback: the
    * alias's deployment history still points at the previous version.
    */
-  async undoJob(jobId: string, userId: string): Promise<{ removed: string[]; failures?: string[] }> {
+  async undoJob(
+    jobId: string,
+    userId: string,
+  ): Promise<{ removed: string[]; failures?: string[] }> {
     const job = this.getJob(jobId);
     if (job.kind === 'update') {
       throw new BadRequestException(
@@ -236,7 +333,11 @@ export class AppCatalogService {
     return this.installerService.uninstallPreview(installedAppId);
   }
 
-  uninstall(installedAppId: string, deleteData: boolean, userId: string): Promise<UninstallSummary> {
+  uninstall(
+    installedAppId: string,
+    deleteData: boolean,
+    userId: string,
+  ): Promise<UninstallSummary> {
     return this.installerService.uninstall(installedAppId, userId, { deleteData });
   }
 
@@ -293,11 +394,9 @@ export class AppCatalogService {
       registryVersion: entry.version,
       gates,
       installable: gates.every((gate) => gate.status !== 'fail'),
+      installs: await this.buildInstalledSummaries(rows, entry.version, domainsById),
     };
-    if (rows.length === 0) return base;
-
-    const row = pickPrimaryRow(rows);
-    return { ...base, installed: await this.buildInstalledSummary(row, entry.version, domainsById) };
+    return base;
   }
 
   /** An installed app whose app id isn't (or no longer is) in the registry. */
@@ -305,8 +404,10 @@ export class AppCatalogService {
     rows: InstalledApp[],
     domainsById: Map<string, DomainRef>,
   ): Promise<CatalogEntry> {
-    const row = pickPrimaryRow(rows);
-    const manifest = row.manifest as AppManifest;
+    // Every row of a delisted app carries the same app's manifest (possibly at
+    // different versions); the metadata fields read here are stable across
+    // versions, so any row will do — take the oldest install's.
+    const manifest = sortByInstalledAt(rows)[0].manifest as AppManifest;
     const gates = await this.preflightService.instanceGates(manifest.requires);
 
     // `description`/`thumbnailUrl`/`screenshots` are registry-only (the store
@@ -322,15 +423,27 @@ export class AppCatalogService {
       sourceUrl: manifest.sourceUrl,
       gates,
       installable: false, // no registry entry to install/reinstall from
-      installed: await this.buildInstalledSummary(row, undefined, domainsById),
+      installs: await this.buildInstalledSummaries(rows, undefined, domainsById),
     };
+  }
+
+  private async buildInstalledSummaries(
+    rows: InstalledApp[],
+    registryVersion: string | undefined,
+    domainsById: Map<string, DomainRef>,
+  ): Promise<InstalledSummary[]> {
+    return Promise.all(
+      sortByInstalledAt(rows).map((row) =>
+        this.buildInstalledSummary(row, registryVersion, domainsById),
+      ),
+    );
   }
 
   private async buildInstalledSummary(
     row: InstalledApp,
     registryVersion: string | undefined,
     domainsById: Map<string, DomainRef>,
-  ): Promise<NonNullable<CatalogEntry['installed']>> {
+  ): Promise<InstalledSummary> {
     const manifest = row.manifest as AppManifest;
     const project = await this.projectsService.getProjectById(row.projectId);
     const updateAvailable =
@@ -349,6 +462,8 @@ export class AppCatalogService {
       appUrl,
       status: row.status,
       updateAvailable,
+      installedAt: row.installedAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
       manualSteps: [
         ...this.applicableManualSteps(manifest, { projectPath, appHost }),
         ...(await this.certManualStep(appHost)),
@@ -404,7 +519,9 @@ export class AppCatalogService {
    * installed row.
    */
   private async fetchDomainsById(rows: InstalledApp[]): Promise<Map<string, DomainRef>> {
-    const domainIds = [...new Set(rows.map((row) => row.domainId).filter((id): id is string => Boolean(id)))];
+    const domainIds = [
+      ...new Set(rows.map((row) => row.domainId).filter((id): id is string => Boolean(id))),
+    ];
     if (domainIds.length === 0) return new Map();
 
     const mappings = await db
@@ -453,10 +570,7 @@ export class AppCatalogService {
     return `${scheme}://${ref.domain}`;
   }
 
-  private applicableManualSteps(
-    manifest: AppManifest,
-    values: StepPlaceholders,
-  ): AppManualStep[] {
+  private applicableManualSteps(manifest: AppManifest, values: StepPlaceholders): AppManualStep[] {
     const ctx = this.instanceContext();
     return (manifest.install.manualSteps ?? [])
       .filter((step) => manualStepApplies(step, ctx))
@@ -510,12 +624,7 @@ export class AppCatalogService {
   }
 }
 
-/**
- * An app can (in principle) be installed into more than one project, but
- * `CatalogEntry.installed` is singular — the catalog is a browse view, not a
- * per-project inventory. Picks the most recently touched row so the entry
- * reflects whatever the operator did last.
- */
-function pickPrimaryRow(rows: InstalledApp[]): InstalledApp {
-  return rows.reduce((latest, row) => (row.updatedAt > latest.updatedAt ? row : latest));
+/** Oldest install first — a stable order that doesn't reshuffle on every update. */
+function sortByInstalledAt(rows: InstalledApp[]): InstalledApp[] {
+  return [...rows].sort((a, b) => a.installedAt.getTime() - b.installedAt.getTime());
 }

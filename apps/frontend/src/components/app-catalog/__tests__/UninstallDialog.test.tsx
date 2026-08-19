@@ -33,18 +33,23 @@ const entry: CatalogEntry = {
   name: 'Handoff',
   gates: [],
   installable: true,
-  installed: {
-    installedAppId: 'installed-1',
-    version: '1.2.0',
-    projectId: 'proj-1',
-    projectName: 'acme/handoff',
-    alias: 'production',
-    appUrl: 'https://handoff.example.com',
-    status: 'installed',
-    updateAvailable: false,
-    manualSteps: [],
-  },
+  installs: [
+    {
+      installedAppId: 'installed-1',
+      installedAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      version: '1.2.0',
+      projectId: 'proj-1',
+      projectName: 'acme/handoff',
+      alias: 'production',
+      appUrl: 'https://handoff.example.com',
+      status: 'installed',
+      updateAvailable: false,
+      manualSteps: [],
+    },
+  ],
 };
+const install = entry.installs[0];
 
 function makePreview(overrides: Partial<UninstallPreview> = {}): UninstallPreview {
   return {
@@ -67,11 +72,11 @@ beforeEach(() => {
 
 describe('UninstallDialog', () => {
   it('shows the default keeps-data copy without the checkbox checked', () => {
-    render(<UninstallDialog entry={entry} open onOpenChange={vi.fn()} />);
+    render(<UninstallDialog entry={entry} install={install} open onOpenChange={vi.fn()} />);
 
     expect(
       screen.getByText(
-        "Removes the app's rule sets, alias, domain, and deployment. Your data tables and uploaded files are kept.",
+        "Removes the app's rule sets, alias, domain, and deployment from acme/handoff. Your data tables and uploaded files are kept.",
       ),
     ).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: /also delete the app's data tables/i })).not.toBeChecked();
@@ -79,7 +84,7 @@ describe('UninstallDialog', () => {
   });
 
   it('reveals the real record counts only after the checkbox is checked', () => {
-    render(<UninstallDialog entry={entry} open onOpenChange={vi.fn()} />);
+    render(<UninstallDialog entry={entry} install={install} open onOpenChange={vi.fn()} />);
 
     const checkbox = screen.getByRole('checkbox', { name: /also delete the app's data tables/i });
     fireEvent.click(checkbox);
@@ -89,7 +94,7 @@ describe('UninstallDialog', () => {
   });
 
   it('lists reused tables as kept regardless of the checkbox', () => {
-    render(<UninstallDialog entry={entry} open onOpenChange={vi.fn()} />);
+    render(<UninstallDialog entry={entry} install={install} open onOpenChange={vi.fn()} />);
 
     expect(screen.getByText(/users/)).toBeInTheDocument();
 
@@ -100,7 +105,7 @@ describe('UninstallDialog', () => {
   });
 
   it('confirms uninstall with deleteData: false by default', () => {
-    render(<UninstallDialog entry={entry} open onOpenChange={vi.fn()} />);
+    render(<UninstallDialog entry={entry} install={install} open onOpenChange={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: /^uninstall$/i }));
 
@@ -108,7 +113,7 @@ describe('UninstallDialog', () => {
   });
 
   it('confirms uninstall with deleteData: true when the checkbox is checked', () => {
-    render(<UninstallDialog entry={entry} open onOpenChange={vi.fn()} />);
+    render(<UninstallDialog entry={entry} install={install} open onOpenChange={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('checkbox', { name: /also delete the app's data tables/i }));
     fireEvent.click(screen.getByRole('button', { name: /^uninstall$/i }));
@@ -118,7 +123,7 @@ describe('UninstallDialog', () => {
 
   it('shows a summary toast and closes the dialog on success', async () => {
     const onOpenChange = vi.fn();
-    render(<UninstallDialog entry={entry} open onOpenChange={onOpenChange} />);
+    render(<UninstallDialog entry={entry} install={install} open onOpenChange={onOpenChange} />);
 
     fireEvent.click(screen.getByRole('button', { name: /^uninstall$/i }));
 
@@ -136,7 +141,7 @@ describe('UninstallDialog', () => {
     };
     uninstallTrigger.mockReturnValue({ unwrap: () => Promise.resolve(partialSummary) });
 
-    render(<UninstallDialog entry={entry} open onOpenChange={onOpenChange} />);
+    render(<UninstallDialog entry={entry} install={install} open onOpenChange={onOpenChange} />);
 
     fireEvent.click(screen.getByRole('button', { name: /^uninstall$/i }));
 

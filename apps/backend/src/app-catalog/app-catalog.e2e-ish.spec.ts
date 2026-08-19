@@ -23,10 +23,8 @@ jest.mock('../db/client', () => {
   for (const method of methods) {
     chainable[method] = jest.fn(() => chainable);
   }
-  chainable.then = (
-    resolve: (value: unknown) => unknown,
-    reject: (reason: unknown) => unknown,
-  ) => Promise.resolve(queued.length > 0 ? queued.shift() : []).then(resolve, reject);
+  chainable.then = (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) =>
+    Promise.resolve(queued.length > 0 ? queued.shift() : []).then(resolve, reject);
   chainable.__queue = (result: unknown) => queued.push(result);
   chainable.__reset = () => {
     queued.length = 0;
@@ -68,8 +66,12 @@ function fetchResponse(bytes: Uint8Array): Response {
   return {
     ok: true,
     status: 200,
-    headers: { get: (name: string) => (name.toLowerCase() === 'content-length' ? String(bytes.byteLength) : null) },
-    arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+    headers: {
+      get: (name: string) =>
+        name.toLowerCase() === 'content-length' ? String(bytes.byteLength) : null,
+    },
+    arrayBuffer: async () =>
+      bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
   } as unknown as Response;
 }
 
@@ -191,7 +193,9 @@ describe('App catalog orchestration (fixture bundle, real bytes + real manifest 
     };
     domains = { create: jest.fn(), remove: jest.fn().mockResolvedValue(undefined) };
     projects = {
-      findOrCreateProject: jest.fn().mockResolvedValue({ id: 'proj-1', owner: 'acme', name: 'site' }),
+      findOrCreateProject: jest
+        .fn()
+        .mockResolvedValue({ id: 'proj-1', owner: 'acme', name: 'site' }),
       projectExists: jest.fn().mockResolvedValue(true),
       getProjectById: jest.fn().mockResolvedValue({ id: 'proj-1', owner: 'acme', name: 'site' }),
       deleteProject: jest.fn().mockResolvedValue(undefined),
@@ -203,7 +207,9 @@ describe('App catalog orchestration (fixture bundle, real bytes + real manifest 
       deleteSchedule: jest.fn().mockResolvedValue(undefined),
     };
     schemas = { delete: jest.fn().mockResolvedValue(undefined), getByIdWithCount: jest.fn() };
-    config = { get: jest.fn((key: string) => (key === 'PRIMARY_DOMAIN' ? 'example.com' : undefined)) };
+    config = {
+      get: jest.fn((key: string) => (key === 'PRIMARY_DOMAIN' ? 'example.com' : undefined)),
+    };
 
     service = new AppInstallerService(
       jobs,
@@ -227,7 +233,9 @@ describe('App catalog orchestration (fixture bundle, real bytes + real manifest 
 
   function queueInstallDb() {
     mockDb.__queue([]); // select existing installed_apps row (none)
-    mockDb.__queue([{ ...POST_UPDATE_ROW, id: 'ia-fixture', version: '1.0.0', status: 'installing' }]); // insert ... returning
+    mockDb.__queue([
+      { ...POST_UPDATE_ROW, id: 'ia-fixture', version: '1.0.0', status: 'installing' },
+    ]); // insert ... returning
     mockDb.__queue([]); // extra buffer (unused, non-`.returning()` awaits don't destructure)
   }
 
@@ -241,7 +249,14 @@ describe('App catalog orchestration (fixture bundle, real bytes + real manifest 
         deleted: [],
         unchanged: [],
         pruneCandidates: [],
-        schemaResolutions: [{ name: 'fixture_items', action: 'create', targetSchemaId: 'sch-items', fieldMismatch: false }],
+        schemaResolutions: [
+          {
+            name: 'fixture_items',
+            action: 'create',
+            targetSchemaId: 'sch-items',
+            fieldMismatch: false,
+          },
+        ],
         missingSecrets: [],
         warnings: [],
         dryRun: false,
@@ -255,8 +270,18 @@ describe('App catalog orchestration (fixture bundle, real bytes + real manifest 
         unchanged: [],
         pruneCandidates: [],
         schemaResolutions: [
-          { name: 'fixture_items', action: 'reuse', targetSchemaId: 'sch-items', fieldMismatch: false },
-          { name: 'fixture_notes', action: 'create', targetSchemaId: 'sch-notes', fieldMismatch: false },
+          {
+            name: 'fixture_items',
+            action: 'reuse',
+            targetSchemaId: 'sch-items',
+            fieldMismatch: false,
+          },
+          {
+            name: 'fixture_notes',
+            action: 'create',
+            targetSchemaId: 'sch-notes',
+            fieldMismatch: false,
+          },
         ],
         missingSecrets: [],
         warnings: [],
@@ -308,6 +333,71 @@ describe('App catalog orchestration (fixture bundle, real bytes + real manifest 
     expect(Object.keys(deployed).sort()).toEqual(['apps/fixture-app/dist/index.html']);
   });
 
+  it('installs v1 AGAIN into a second project: a second row keyed (app, project B), scoped to B end to end', async () => {
+    // `installed_apps` is unique on (app_id, project_id), so the same app in a
+    // second project is a fresh row with its own version trail — the first
+    // project's install is not consulted or touched anywhere in this run.
+    projects.getProjectById.mockResolvedValue({ id: 'proj-2', owner: 'acme', name: 'blog' });
+    ruleSets.syncRuleSet.mockReset().mockResolvedValue({
+      ruleSetId: 'rs-b2',
+      created: [{ pathPattern: '/api/items', method: 'GET' }],
+      updated: [],
+      deleted: [],
+      unchanged: [],
+      pruneCandidates: [],
+      schemaResolutions: [],
+      missingSecrets: [],
+      warnings: [],
+      dryRun: false,
+      setCreated: true,
+    });
+    mockDb.__queue([]); // select existing (app, proj-2) row: none — project A's row doesn't match
+    mockDb.__queue([
+      {
+        ...POST_UPDATE_ROW,
+        id: 'ia-fixture-b',
+        projectId: 'proj-2',
+        version: '1.0.0',
+        status: 'installing',
+      },
+    ]);
+    mockDb.__queue([]);
+
+    const { jobId } = service.startInstall(
+      ENTRY_V1,
+      { projectId: 'proj-2' },
+      'user-1',
+      'fixture-blog',
+    );
+    await service.whenIdle();
+
+    const job = jobs.get(jobId)!;
+    expect(job.status).toBe('succeeded');
+    expect(job.installedAppId).toBe('ia-fixture-b');
+
+    const inserted = mockDb.values.mock.calls[0][0] as {
+      appId: string;
+      projectId: string;
+      version: string;
+    };
+    expect(inserted).toMatchObject({ appId: 'fixture-app', projectId: 'proj-2', version: '1.0.0' });
+
+    // Every side effect is scoped to project B.
+    for (const call of ruleSets.syncRuleSet.mock.calls) expect(call[0]).toBe('proj-2');
+    const deployDto = deployments.createDeploymentFromFiles.mock.calls[0][1] as {
+      repository: string;
+      alias: string;
+    };
+    expect(deployDto.repository).toBe('acme/blog');
+    expect(deployDto.alias).toBe('fixture-app'); // alias is per project, so the manifest default is reused
+    expect(preflight.projectGates).toHaveBeenCalledWith(
+      expect.anything(),
+      { projectId: 'proj-2' },
+      'user-1',
+      'fixture-blog',
+    );
+  });
+
   it('updates to v2 from real bundle bytes: same alias redeployed, prune false, version bumped', async () => {
     const installedAfterV1: InstalledApp = {
       ...POST_UPDATE_ROW,
@@ -330,7 +420,14 @@ describe('App catalog orchestration (fixture bundle, real bytes + real manifest 
         deleted: [],
         unchanged: [{ pathPattern: '/api/items', method: 'GET' }],
         pruneCandidates: [],
-        schemaResolutions: [{ name: 'fixture_items', action: 'reuse', targetSchemaId: 'sch-items', fieldMismatch: false }],
+        schemaResolutions: [
+          {
+            name: 'fixture_items',
+            action: 'reuse',
+            targetSchemaId: 'sch-items',
+            fieldMismatch: false,
+          },
+        ],
         missingSecrets: [],
         warnings: [],
         dryRun: false,
@@ -344,15 +441,27 @@ describe('App catalog orchestration (fixture bundle, real bytes + real manifest 
         unchanged: [{ pathPattern: '/api/notes', method: 'GET' }],
         pruneCandidates: [],
         schemaResolutions: [
-          { name: 'fixture_items', action: 'reuse', targetSchemaId: 'sch-items', fieldMismatch: false },
-          { name: 'fixture_notes', action: 'reuse', targetSchemaId: 'sch-notes', fieldMismatch: false },
+          {
+            name: 'fixture_items',
+            action: 'reuse',
+            targetSchemaId: 'sch-items',
+            fieldMismatch: false,
+          },
+          {
+            name: 'fixture_notes',
+            action: 'reuse',
+            targetSchemaId: 'sch-notes',
+            fieldMismatch: false,
+          },
         ],
         missingSecrets: [],
         warnings: [],
         dryRun: false,
         setCreated: false,
       });
-    deployments.createDeploymentFromFiles.mockResolvedValue(deployResponse({ deploymentId: 'dep-fixture-2' }));
+    deployments.createDeploymentFromFiles.mockResolvedValue(
+      deployResponse({ deploymentId: 'dep-fixture-2' }),
+    );
     mockDb.__queue([]); // final record update — startUpdate takes the row directly, no db read
 
     const { jobId } = service.startUpdate(installedAfterV1, ENTRY_V2, 'user-1', { prune: false });
@@ -407,7 +516,8 @@ describe('App catalog orchestration (fixture bundle, real bytes + real manifest 
   describe('uninstall (post v1-install, v2-update state)', () => {
     beforeEach(() => {
       schemas.getByIdWithCount = jest.fn((id: string) => {
-        if (id === 'sch-items') return Promise.resolve({ id, name: 'fixture_items', recordCount: 5 });
+        if (id === 'sch-items')
+          return Promise.resolve({ id, name: 'fixture_items', recordCount: 5 });
         return Promise.resolve({ id, name: 'fixture_notes', recordCount: 12 });
       });
     });
@@ -420,7 +530,12 @@ describe('App catalog orchestration (fixture bundle, real bytes + real manifest 
 
       expect(schemas.delete).not.toHaveBeenCalled();
       expect(ruleSets.delete).toHaveBeenCalledTimes(2);
-      expect(deployments.deleteAlias).toHaveBeenCalledWith('acme/site', 'fixture-app', 'user-1', 'admin');
+      expect(deployments.deleteAlias).toHaveBeenCalledWith(
+        'acme/site',
+        'fixture-app',
+        'user-1',
+        'admin',
+      );
       expect(deployments.deleteDeployment).toHaveBeenCalledWith('dep-fixture-2', 'user-1', 'admin');
       expect(summary.dataTables.deleted).toEqual([]);
       expect(summary.dataTables.kept.slice().sort()).toEqual(['fixture_items', 'fixture_notes']);

@@ -128,6 +128,10 @@ export function InstallDialog({
   // empty — the manifest default is only shown as a placeholder (see
   // `defaultSubdomainLabel` below), never forced into the field's value.
   const [subdomain, setSubdomain] = useState('');
+  // Set the moment the operator types in the subdomain field. A server-side
+  // suggestion (install-again: the default host is taken) may prefill the
+  // field, but only while it is untouched — it must never overwrite typing.
+  const [subdomainTouched, setSubdomainTouched] = useState(false);
   // Seeded once from the FIRST preflight response's appHost, so later
   // preflights (e.g. after a project change) don't keep overwriting a
   // placeholder the operator is already looking at.
@@ -186,6 +190,7 @@ export function InstallDialog({
       setNewOwner('');
       setNewName('');
       setSubdomain('');
+      setSubdomainTouched(false);
       setDefaultSubdomainLabel(undefined);
       setSelectedProjectId(undefined);
       setLastJobStatus(undefined);
@@ -249,6 +254,19 @@ export function InstallDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preflightData?.appHost]);
 
+  // Install-again: the manifest's default host already belongs to another
+  // install (typically this app in another project), so the backend proposes
+  // a free `<default>-<project>` subdomain. Adopt it while the field is
+  // untouched — that re-runs preflight with the override and clears the
+  // collision gate without the operator having to invent a host.
+  useEffect(() => {
+    const suggested = preflightData?.suggestedSubdomain;
+    if (suggested && !subdomainTouched && !trimmedSubdomain) {
+      setSubdomain(suggested);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preflightData?.suggestedSubdomain]);
+
   const handleProjectChange = (value: string) => {
     if (value === NEW_PROJECT_VALUE) {
       setCreatingNew(true);
@@ -287,8 +305,15 @@ export function InstallDialog({
     undoJob(jobId);
   };
 
-  const manualSteps = entry.installed?.manualSteps ?? job?.manualSteps ?? [];
-  const doneAppUrl = entry.installed?.appUrl ?? job?.appUrl;
+  // The Done screen reads the LIVE install this job produced (the catalog is
+  // refetched on the job's terminal status), matched by the job's row id so a
+  // second install of the same app never shows the first install's notes/URL.
+  const jobInstall = job?.installedAppId
+    ? entry.installs.find((install) => install.installedAppId === job.installedAppId)
+    : undefined;
+  const manualSteps = jobInstall?.manualSteps ?? job?.manualSteps ?? [];
+  const doneAppUrl = jobInstall?.appUrl ?? job?.appUrl;
+  const isInstallAgain = !isUpdate && entry.installs.length > 0;
 
   const screen: 'review' | 'working' | 'done' = !jobId
     ? 'review'
@@ -314,7 +339,9 @@ export function InstallDialog({
               ? `${entry.name} ${isUpdate ? 'updated' : 'installed'}`
               : isUpdate
                 ? `Updating ${entry.name}`
-                : `Install ${entry.name}`}
+                : isInstallAgain
+                  ? `Install ${entry.name} in another project`
+                  : `Install ${entry.name}`}
           </DialogTitle>
           {screen === 'review' && (
             <DialogDescription>
@@ -378,9 +405,17 @@ export function InstallDialog({
                 <Input
                   id="install-subdomain"
                   value={subdomain}
-                  onChange={(e) => setSubdomain(e.target.value)}
+                  onChange={(e) => {
+                    setSubdomainTouched(true);
+                    setSubdomain(e.target.value);
+                  }}
                   placeholder={defaultSubdomainLabel}
                 />
+                {isInstallAgain && defaultSubdomainLabel && trimmedSubdomain && trimmedSubdomain !== defaultSubdomainLabel && (
+                  <p className="text-xs text-muted-foreground">
+                    {describeDefaultHostOwner(entry, defaultSubdomainLabel)}
+                  </p>
+                )}
                 {preflightData?.appUrl && (
                   <p className="text-xs text-muted-foreground">
                     Will be available at <code className="text-xs">{preflightData.appUrl}</code>
@@ -561,4 +596,25 @@ export function InstallDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+/**
+ * "`handoff.example.com` is used by the install in acme/site" — names which
+ * existing install owns the manifest-default host, so a prefilled or hand-typed
+ * alternative reads as deliberate rather than as the wizard ignoring the
+ * default. Falls back to generic wording when no install's URL matches (the
+ * default may be mapped by something that isn't this app).
+ */
+function describeDefaultHostOwner(entry: CatalogEntry, defaultSubdomain: string): string {
+  const owner = entry.installs.find((install) => {
+    if (!install.appUrl) return false;
+    try {
+      return new URL(install.appUrl).hostname.split('.')[0] === defaultSubdomain;
+    } catch {
+      return false;
+    }
+  });
+  return owner
+    ? `The default subdomain "${defaultSubdomain}" is used by the install in ${owner.projectName}.`
+    : `The default subdomain "${defaultSubdomain}" is already in use.`;
 }
