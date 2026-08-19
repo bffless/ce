@@ -16,9 +16,10 @@ import type {
 let catalogResult: { data?: CatalogListResult; isLoading: boolean; isError: boolean };
 const refetchMock = vi.fn();
 const updateTrigger = vi.fn();
-const getInstallJobQueryMock = vi.fn<
-  (jobId: string, options?: { pollingInterval?: number; skip?: boolean }) => { data?: InstallJob }
->();
+const getInstallJobQueryMock =
+  vi.fn<
+    (jobId: string, options?: { pollingInterval?: number; skip?: boolean }) => { data?: InstallJob }
+  >();
 let jobQueryResult: { data?: InstallJob };
 
 vi.mock('@/services/appCatalogApi', () => ({
@@ -29,10 +30,8 @@ vi.mock('@/services/appCatalogApi', () => ({
   useGetEjectPayloadQuery: () => ({ data: undefined, isFetching: false }),
   usePreflightAppMutation: () => [vi.fn(), { data: undefined, isLoading: false, reset: vi.fn() }],
   useInstallAppMutation: () => [vi.fn(), { isLoading: false }],
-  useGetInstallJobQuery: (
-    jobId: string,
-    options?: { pollingInterval?: number; skip?: boolean },
-  ) => getInstallJobQueryMock(jobId, options),
+  useGetInstallJobQuery: (jobId: string, options?: { pollingInterval?: number; skip?: boolean }) =>
+    getInstallJobQueryMock(jobId, options),
   useUndoJobMutation: () => [vi.fn(), { isLoading: false }],
 }));
 

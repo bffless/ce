@@ -30,12 +30,7 @@ import {
   Server,
   Shield,
 } from 'lucide-react';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
 
 type ConfigMode = 'configure' | 'skip';
@@ -122,7 +117,6 @@ export function CacheStep() {
     }
   }, [redisDefaults, redisSource]);
 
-
   // Set initial cache type from default
   useEffect(() => {
     if (cacheOptions && !currentConfig?.isConfigured) {
@@ -142,8 +136,8 @@ export function CacheStep() {
       setConnectionSuccess(false);
       setTestLatency(null);
 
-      const host = redisSource === 'local' ? (redisDefaults?.host || 'redis') : redisHost;
-      const port = redisSource === 'local' ? (redisDefaults?.port || 6379) : redisPort;
+      const host = redisSource === 'local' ? redisDefaults?.host || 'redis' : redisHost;
+      const port = redisSource === 'local' ? redisDefaults?.port || 6379 : redisPort;
 
       const result = await testConnection({
         host,
@@ -185,8 +179,8 @@ export function CacheStep() {
       } else if (cacheType === 'redis') {
         config.redisSource = redisSource;
         config.redis = {
-          host: redisSource === 'local' ? (redisDefaults?.host || 'redis') : redisHost,
-          port: redisSource === 'local' ? (redisDefaults?.port || 6379) : redisPort,
+          host: redisSource === 'local' ? redisDefaults?.host || 'redis' : redisHost,
+          port: redisSource === 'local' ? redisDefaults?.port || 6379 : redisPort,
           password: redisPassword || undefined,
         };
       }
@@ -219,8 +213,12 @@ export function CacheStep() {
 
   // If we should skip this step, show a read-only pre-configured view
   if (shouldSkipStep) {
-    const cacheTypeName = defaultCacheType === 'managed' ? 'Platform Managed Redis' :
-                          defaultCacheType === 'redis' ? 'Redis' : 'In-Memory (LRU)';
+    const cacheTypeName =
+      defaultCacheType === 'managed'
+        ? 'Platform Managed Redis'
+        : defaultCacheType === 'redis'
+          ? 'Redis'
+          : 'In-Memory (LRU)';
 
     const handleSkipContinue = async () => {
       // Save the pre-configured settings and continue
@@ -265,8 +263,8 @@ export function CacheStep() {
                 {defaultCacheType === 'managed'
                   ? 'Platform-managed Redis cache with automatic configuration'
                   : defaultCacheType === 'redis'
-                  ? 'Redis cache for high-performance caching'
-                  : 'In-memory LRU cache for fast, local caching'}
+                    ? 'Redis cache for high-performance caching'
+                    : 'In-memory LRU cache for fast, local caching'}
               </p>
             </div>
           </div>
@@ -390,7 +388,9 @@ export function CacheStep() {
                 <div className="flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-medium">Managed Redis</span>
-                    <Badge variant="secondary" className="text-xs">Platform</Badge>
+                    <Badge variant="secondary" className="text-xs">
+                      Platform
+                    </Badge>
                     <span className="inline-flex items-center text-xs bg-blue-500/20 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded">
                       Recommended
                     </span>
@@ -428,7 +428,8 @@ export function CacheStep() {
                     )}
                   </div>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Fast, single-instance cache. Lost on restart. Best for development or single-server deployments.
+                    Fast, single-instance cache. Lost on restart. Best for development or
+                    single-server deployments.
                   </p>
                 </div>
               </button>
@@ -444,7 +445,8 @@ export function CacheStep() {
                       onClick={() => {
                         if (!isDockerRedisDisabled || enableExternalRedis) {
                           setCacheType('redis');
-                          const newSource = enableLocalRedis && !isDockerRedisDisabled ? 'local' : 'external';
+                          const newSource =
+                            enableLocalRedis && !isDockerRedisDisabled ? 'local' : 'external';
                           setRedisSource(newSource);
                           // Clear host when switching to external to avoid showing local defaults
                           if (newSource === 'external') {
@@ -470,10 +472,14 @@ export function CacheStep() {
                             {enableManagedRedis ? 'External Redis' : 'Redis'}
                           </span>
                           {isDockerRedisDisabled && !enableExternalRedis && (
-                            <Badge variant="outline" className="text-xs">Unavailable</Badge>
+                            <Badge variant="outline" className="text-xs">
+                              Unavailable
+                            </Badge>
                           )}
                           {enableManagedRedis && (
-                            <Badge variant="outline" className="text-xs">BYOB</Badge>
+                            <Badge variant="outline" className="text-xs">
+                              BYOB
+                            </Badge>
                           )}
                           {!enableManagedRedis && enableLocalRedis && (
                             <span className="inline-flex items-center text-xs bg-blue-500/20 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded">
@@ -488,7 +494,15 @@ export function CacheStep() {
                         </p>
                         {!enableManagedRedis && isDockerRedisDisabled && enableExternalRedis && (
                           <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
-                            Bundled Redis is disabled. Set <code className="bg-amber-100 dark:bg-amber-950/50 px-1 rounded">ENABLE_REDIS=true</code> in <code className="bg-amber-100 dark:bg-amber-950/50 px-1 rounded">.env</code> and restart Docker, or configure an external Redis server below.
+                            Bundled Redis is disabled. Set{' '}
+                            <code className="bg-amber-100 dark:bg-amber-950/50 px-1 rounded">
+                              ENABLE_REDIS=true
+                            </code>{' '}
+                            in{' '}
+                            <code className="bg-amber-100 dark:bg-amber-950/50 px-1 rounded">
+                              .env
+                            </code>{' '}
+                            and restart Docker, or configure an external Redis server below.
                           </p>
                         )}
                       </div>
@@ -498,8 +512,8 @@ export function CacheStep() {
                     <TooltipContent side="bottom" className="max-w-xs">
                       <p>{constraints?.redis.reason}</p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        You can still use external Redis by selecting memory cache and then configuring
-                        external Redis in admin settings after setup.
+                        You can still use external Redis by selecting memory cache and then
+                        configuring external Redis in admin settings after setup.
                       </p>
                     </TooltipContent>
                   )}
@@ -585,8 +599,8 @@ export function CacheStep() {
                                 )}
                               </div>
                               <div className="text-sm text-muted-foreground">
-                                Use the bundled Redis service from Docker Compose. No additional setup
-                                required.
+                                Use the bundled Redis service from Docker Compose. No additional
+                                setup required.
                               </div>
                             </div>
                           </label>
@@ -616,8 +630,8 @@ export function CacheStep() {
                       <div>
                         <div className="font-medium">External Redis</div>
                         <div className="text-sm text-muted-foreground">
-                          Connect to AWS ElastiCache, Google Memorystore, Azure Cache, Redis Cloud, or
-                          self-hosted Redis.
+                          Connect to AWS ElastiCache, Google Memorystore, Azure Cache, Redis Cloud,
+                          or self-hosted Redis.
                         </div>
                       </div>
                     </label>
@@ -678,9 +692,7 @@ export function CacheStep() {
               <Button
                 variant="outline"
                 onClick={handleTestConnection}
-                disabled={
-                  isTesting || (redisSource === 'external' && (!redisHost || !redisPort))
-                }
+                disabled={isTesting || (redisSource === 'external' && (!redisHost || !redisPort))}
               >
                 {isTesting ? (
                   <>
@@ -741,7 +753,9 @@ export function CacheStep() {
                   min={1}
                   max={50}
                 />
-                <p className="text-xs text-muted-foreground">Files larger than this are not cached</p>
+                <p className="text-xs text-muted-foreground">
+                  Files larger than this are not cached
+                </p>
               </div>
             </div>
           </div>
@@ -790,9 +804,7 @@ export function CacheStep() {
                 <Button
                   variant="outline"
                   onClick={handleTestConnection}
-                  disabled={
-                    isTesting || (redisSource === 'external' && (!redisHost || !redisPort))
-                  }
+                  disabled={isTesting || (redisSource === 'external' && (!redisHost || !redisPort))}
                 >
                   {isTesting ? (
                     <>

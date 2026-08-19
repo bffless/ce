@@ -17,11 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { useCreateAliasMutation, useGetDeploymentsQuery } from '@/services/repoApi';
@@ -66,7 +62,7 @@ export function CreateAliasDialog({
     },
     {
       skip: !open, // Only fetch when dialog is open
-    }
+    },
   );
 
   // Fetch rule sets for proxy rules selection
@@ -75,17 +71,19 @@ export function CreateAliasDialog({
   });
 
   // Deduplicate commits - keep only unique commit SHAs
-  const uniqueDeployments = deploymentsData?.deployments.reduce((acc, deployment) => {
-    if (!acc.find(d => d.commitSha === deployment.commitSha)) {
-      acc.push(deployment);
-    }
-    return acc;
-  }, [] as typeof deploymentsData.deployments) || [];
+  const uniqueDeployments =
+    deploymentsData?.deployments.reduce(
+      (acc, deployment) => {
+        if (!acc.find((d) => d.commitSha === deployment.commitSha)) {
+          acc.push(deployment);
+        }
+        return acc;
+      },
+      [] as typeof deploymentsData.deployments,
+    ) || [];
 
   // Create a map of rule set ID to rule set for display
-  const ruleSetNameMap = new Map(
-    ruleSetsData?.ruleSets.map((rs) => [rs.id, rs]) || []
-  );
+  const ruleSetNameMap = new Map(ruleSetsData?.ruleSets.map((rs) => [rs.id, rs]) || []);
 
   // Validate alias name
   const validateAliasName = (name: string): boolean => {
@@ -105,7 +103,7 @@ export function CreateAliasDialog({
   // Toggle a rule set in the selection
   const toggleRuleSet = (id: string) => {
     setSelectedRuleSetIds((prev) =>
-      prev.includes(id) ? prev.filter((rid) => rid !== id) : [...prev, id]
+      prev.includes(id) ? prev.filter((rid) => rid !== id) : [...prev, id],
     );
   };
 
@@ -157,8 +155,7 @@ export function CreateAliasDialog({
       onOpenChange(false);
     } catch (error: any) {
       // Handle error
-      const errorMessage =
-        error?.data?.message || error?.message || 'Failed to create alias';
+      const errorMessage = error?.data?.message || error?.message || 'Failed to create alias';
       toast({
         title: 'Error',
         description: errorMessage,
@@ -207,9 +204,7 @@ export function CreateAliasDialog({
                 onBlur={() => validateAliasName(aliasName)}
                 className={nameError ? 'border-destructive' : ''}
               />
-              {nameError && (
-                <p className="text-sm text-destructive">{nameError}</p>
-              )}
+              {nameError && <p className="text-sm text-destructive">{nameError}</p>}
               <p className="text-xs text-muted-foreground">
                 Only letters, numbers, hyphens, and underscores
               </p>
@@ -253,7 +248,10 @@ export function CreateAliasDialog({
                       <ChevronDown className="h-4 w-4 ml-2 shrink-0 opacity-50" />
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-2" align="start">
+                  <PopoverContent
+                    className="w-[var(--radix-popover-trigger-width)] p-2"
+                    align="start"
+                  >
                     {ruleSetsData.ruleSets.map((ruleSet) => (
                       <label
                         key={ruleSet.id}
@@ -265,7 +263,9 @@ export function CreateAliasDialog({
                         />
                         <span className="text-sm">{ruleSet.name}</span>
                         {ruleSet.environment && (
-                          <span className="text-xs text-muted-foreground">({ruleSet.environment})</span>
+                          <span className="text-xs text-muted-foreground">
+                            ({ruleSet.environment})
+                          </span>
                         )}
                       </label>
                     ))}

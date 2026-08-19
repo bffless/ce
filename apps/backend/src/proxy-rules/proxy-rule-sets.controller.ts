@@ -63,15 +63,16 @@ export class ProxyRuleSetsController {
   @Get('project/:projectId')
   @ApiOperation({ summary: 'List all rule sets for a project' })
   @ApiParam({ name: 'projectId', type: 'string' })
-  @ApiResponse({ status: 200, description: 'List of rule sets', type: ProxyRuleSetsListResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'List of rule sets',
+    type: ProxyRuleSetsListResponseDto,
+  })
   async listByProject(
     @Param('projectId', ParseUUIDPipe) projectId: string,
     @CurrentUser() user: CurrentUserData,
   ): Promise<ProxyRuleSetsListResponseDto> {
-    const ruleSets = await this.proxyRuleSetsService.listByProject(
-      projectId,
-      user.apiKeyProjectId,
-    );
+    const ruleSets = await this.proxyRuleSetsService.listByProject(projectId, user.apiKeyProjectId);
     return { ruleSets };
   }
 
@@ -99,7 +100,11 @@ export class ProxyRuleSetsController {
   @Post('project/:projectId/import')
   @ApiOperation({ summary: 'Import a rule set (with rules) from an exported JSON definition' })
   @ApiParam({ name: 'projectId', type: 'string' })
-  @ApiResponse({ status: 201, description: 'Imported rule set with rules', type: ProxyRuleSetWithRulesResponseDto })
+  @ApiResponse({
+    status: 201,
+    description: 'Imported rule set with rules',
+    type: ProxyRuleSetWithRulesResponseDto,
+  })
   @ApiResponse({ status: 400, description: 'Invalid import payload' })
   @ApiResponse({ status: 403, description: 'Not authorized' })
   async import(
@@ -133,7 +138,11 @@ export class ProxyRuleSetsController {
     description: 'The sync change report (also the dryRun plan)',
     type: SyncProxyRuleSetResponseDto,
   })
-  @ApiResponse({ status: 400, description: 'Invalid payload (duplicate rule keys, forbidden targetUrl, strict schema mismatch)' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Invalid payload (duplicate rule keys, forbidden targetUrl, strict schema mismatch)',
+  })
   @ApiResponse({ status: 403, description: 'Not authorized' })
   @ApiResponse({ status: 404, description: 'Project not found' })
   async sync(
@@ -187,7 +196,7 @@ export class ProxyRuleSetsController {
     description:
       'Point-in-time snapshots captured on mutation (sync/import/create/copy/rule edits/rollback), ' +
       'newest first. `current` is computed by hashing the live rule set state per request and ' +
-      'comparing it against each revision\'s stored contentHash.',
+      "comparing it against each revision's stored contentHash.",
   })
   @ApiParam({ name: 'id', type: 'string' })
   @ApiResponse({
@@ -241,7 +250,7 @@ export class ProxyRuleSetsController {
     summary: 'Roll back a rule set to a previously captured revision',
     description:
       'Replays a captured revision snapshot through the sync endpoint (options.prune: true) — ' +
-      "history only moves forward, like `git revert`. Never renames or (re)creates the set: the " +
+      'history only moves forward, like `git revert`. Never renames or (re)creates the set: the ' +
       "snapshot's ruleSet.name is ignored in favor of the current name, with a warning appended " +
       'if they differ. Non-dryRun rollbacks capture exactly one new revision with trigger ' +
       "'rollback'. Known limitation: a snapshot of a methods-split set fails replay with the same " +
@@ -276,7 +285,11 @@ export class ProxyRuleSetsController {
   @Get(':id')
   @ApiOperation({ summary: 'Get a rule set with its rules' })
   @ApiParam({ name: 'id', type: 'string' })
-  @ApiResponse({ status: 200, description: 'Rule set details with rules', type: ProxyRuleSetWithRulesResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Rule set details with rules',
+    type: ProxyRuleSetWithRulesResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Rule set not found' })
   async getById(
     @Param('id', ParseUUIDPipe) id: string,
@@ -329,7 +342,11 @@ export class ProxyRuleSetsController {
   @Post(':id/copy')
   @ApiOperation({ summary: 'Copy a rule set with all its rules' })
   @ApiParam({ name: 'id', type: 'string' })
-  @ApiResponse({ status: 201, description: 'Copied rule set with rules', type: ProxyRuleSetWithRulesResponseDto })
+  @ApiResponse({
+    status: 201,
+    description: 'Copied rule set with rules',
+    type: ProxyRuleSetWithRulesResponseDto,
+  })
   @ApiResponse({ status: 403, description: 'Not authorized' })
   @ApiResponse({ status: 404, description: 'Rule set not found' })
   async copy(
@@ -345,9 +362,7 @@ export class ProxyRuleSetsController {
   @ApiOperation({ summary: 'List all rules in a rule set' })
   @ApiParam({ name: 'id', type: 'string' })
   @ApiResponse({ status: 200, description: 'List of rules', type: ProxyRulesListResponseDto })
-  async listRules(
-    @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<ProxyRulesListResponseDto> {
+  async listRules(@Param('id', ParseUUIDPipe) id: string): Promise<ProxyRulesListResponseDto> {
     const rules = await this.proxyRulesService.getRulesByRuleSetId(id);
     return { rules: rules as ProxyRuleResponseDto[] };
   }

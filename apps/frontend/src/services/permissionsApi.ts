@@ -90,10 +90,7 @@ export const permissionsApi = api.injectEndpoints({
       ],
     }),
 
-    revokeUserPermission: builder.mutation<
-      void,
-      { owner: string; repo: string; userId: string }
-    >({
+    revokeUserPermission: builder.mutation<void, { owner: string; repo: string; userId: string }>({
       query: ({ owner, repo, userId }) => ({
         url: `/api/projects/${owner}/${repo}/permissions/users/${userId}`,
         method: 'DELETE',
@@ -117,18 +114,17 @@ export const permissionsApi = api.injectEndpoints({
       ],
     }),
 
-    revokeGroupPermission: builder.mutation<
-      void,
-      { owner: string; repo: string; groupId: string }
-    >({
-      query: ({ owner, repo, groupId }) => ({
-        url: `/api/projects/${owner}/${repo}/permissions/groups/${groupId}`,
-        method: 'DELETE',
-      }),
-      invalidatesTags: (_result, _error, { owner, repo }) => [
-        { type: 'Permission' as const, id: `${owner}/${repo}` },
-      ],
-    }),
+    revokeGroupPermission: builder.mutation<void, { owner: string; repo: string; groupId: string }>(
+      {
+        query: ({ owner, repo, groupId }) => ({
+          url: `/api/projects/${owner}/${repo}/permissions/groups/${groupId}`,
+          method: 'DELETE',
+        }),
+        invalidatesTags: (_result, _error, { owner, repo }) => [
+          { type: 'Permission' as const, id: `${owner}/${repo}` },
+        ],
+      },
+    ),
   }),
 });
 

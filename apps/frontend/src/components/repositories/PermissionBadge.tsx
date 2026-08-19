@@ -1,10 +1,6 @@
 import { Crown, Shield, Edit, Eye } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
 // Permission level descriptions
@@ -68,12 +64,7 @@ export function PermissionBadge({
 
   const badgeContent = (
     <Badge
-      className={cn(
-        'inline-flex items-center gap-1 border',
-        config.color,
-        badgeSize,
-        className
-      )}
+      className={cn('inline-flex items-center gap-1 border', config.color, badgeSize, className)}
     >
       <Icon className={iconSize} />
       {!iconOnly && <span>{config.label}</span>}
@@ -87,9 +78,7 @@ export function PermissionBadge({
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="inline-flex">
-          {badgeContent}
-        </span>
+        <span className="inline-flex">{badgeContent}</span>
       </TooltipTrigger>
       <TooltipContent>
         <p className="max-w-xs">{PERMISSION_DESCRIPTIONS[level]}</p>

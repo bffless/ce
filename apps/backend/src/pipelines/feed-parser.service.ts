@@ -194,10 +194,7 @@ export class FeedParserService {
     };
   }
 
-  private rssEnclosures(
-    item: Record<string, unknown>,
-    base: string | undefined,
-  ): FeedEnclosure[] {
+  private rssEnclosures(item: Record<string, unknown>, base: string | undefined): FeedEnclosure[] {
     return toArray(item.enclosure)
       .map((enc) => {
         const url = this.resolveUrl(this.attr(enc, 'url'), base);
@@ -223,9 +220,7 @@ export class FeedParserService {
       format: 'atom',
       title: this.text(feed.title),
       link: feedLink,
-      entries: entries.map((entry) =>
-        this.atomEntry(entry, source ?? this.text(feed.title), base),
-      ),
+      entries: entries.map((entry) => this.atomEntry(entry, source ?? this.text(feed.title), base)),
     };
   }
 

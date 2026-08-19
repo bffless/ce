@@ -23,16 +23,14 @@ export class DomainResponseDto {
   isActive: boolean;
 
   @ApiPropertyOptional({
-    description:
-      'WWW behavior: how to handle www/apex redirects for custom domains',
+    description: 'WWW behavior: how to handle www/apex redirects for custom domains',
     enum: ['redirect-to-www', 'redirect-to-root', 'serve-both'],
     nullable: true,
   })
   wwwBehavior?: 'redirect-to-www' | 'redirect-to-root' | 'serve-both' | null;
 
   @ApiPropertyOptional({
-    description:
-      'Target domain for redirect type (e.g., "new-brand.com")',
+    description: 'Target domain for redirect type (e.g., "new-brand.com")',
   })
   redirectTarget?: string;
 
@@ -51,16 +49,14 @@ export class DomainResponseDto {
   isPublic?: boolean | null;
 
   @ApiPropertyOptional({
-    description:
-      'Unauthorized behavior override: null = inherit from alias/project',
+    description: 'Unauthorized behavior override: null = inherit from alias/project',
     enum: ['not_found', 'redirect_login'],
     nullable: true,
   })
   unauthorizedBehavior?: 'not_found' | 'redirect_login' | null;
 
   @ApiPropertyOptional({
-    description:
-      'Required role override: null = inherit from alias/project',
+    description: 'Required role override: null = inherit from alias/project',
     enum: ['authenticated', 'guest', 'viewer', 'contributor', 'admin', 'owner'],
     nullable: true,
   })
@@ -73,8 +69,7 @@ export class DomainResponseDto {
   isPrimary?: boolean;
 
   @ApiProperty({
-    description:
-      'SPA mode: when true, 404s fallback to index.html for client-side routing',
+    description: 'SPA mode: when true, 404s fallback to index.html for client-side routing',
   })
   isSpa: boolean;
 

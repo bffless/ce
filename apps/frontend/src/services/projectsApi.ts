@@ -185,10 +185,7 @@ export const projectsApi = api.injectEndpoints({
       ],
     }),
 
-    updateProject: builder.mutation<
-      Project,
-      { id: string; updates: UpdateProjectDto }
-    >({
+    updateProject: builder.mutation<Project, { id: string; updates: UpdateProjectDto }>({
       query: ({ id, updates }) => ({
         url: `/api/projects/${id}`,
         method: 'PATCH',
@@ -205,18 +202,13 @@ export const projectsApi = api.injectEndpoints({
         url: `/api/projects/${id}`,
         method: 'DELETE',
       }),
-      invalidatesTags: [
-        { type: 'Project' as const, id: 'LIST' },
-        'Repository',
-      ],
+      invalidatesTags: [{ type: 'Project' as const, id: 'LIST' }, 'Repository'],
     }),
 
     // AI Settings endpoints
     getProjectAIStatus: builder.query<AIStatusResponse, string>({
       query: (projectId) => `/api/projects/${projectId}/ai`,
-      providesTags: (_result, _error, projectId) => [
-        { type: 'ProjectAI' as const, id: projectId },
-      ],
+      providesTags: (_result, _error, projectId) => [{ type: 'ProjectAI' as const, id: projectId }],
     }),
 
     addProjectAIProvider: builder.mutation<
@@ -270,10 +262,7 @@ export const projectsApi = api.injectEndpoints({
       }),
     }),
 
-    getAvailableAIProviders: builder.query<
-      { providers: AvailableProvider[] },
-      string
-    >({
+    getAvailableAIProviders: builder.query<{ providers: AvailableProvider[] }, string>({
       query: (projectId) => `/api/projects/${projectId}/ai/providers`,
     }),
 
@@ -328,10 +317,7 @@ export const projectsApi = api.injectEndpoints({
       ],
     }),
 
-    disableProjectPlugin: builder.mutation<
-      void,
-      { projectId: string; pluginId: string }
-    >({
+    disableProjectPlugin: builder.mutation<void, { projectId: string; pluginId: string }>({
       query: ({ projectId, pluginId }) => ({
         url: `/api/projects/${projectId}/ai-plugins/${pluginId}`,
         method: 'DELETE',
@@ -364,10 +350,7 @@ export const projectsApi = api.injectEndpoints({
       ],
     }),
 
-    disconnectPluginOAuth: builder.mutation<
-      void,
-      { projectId: string; pluginId: string }
-    >({
+    disconnectPluginOAuth: builder.mutation<void, { projectId: string; pluginId: string }>({
       query: ({ projectId, pluginId }) => ({
         url: `/api/projects/${projectId}/ai-plugins/${pluginId}/oauth`,
         method: 'DELETE',
@@ -377,12 +360,8 @@ export const projectsApi = api.injectEndpoints({
       ],
     }),
 
-    listPluginCalendars: builder.query<
-      { calendars: CalendarListItem[] },
-      string
-    >({
-      query: (projectId) =>
-        `/api/projects/${projectId}/ai-plugins/google-calendar/calendars`,
+    listPluginCalendars: builder.query<{ calendars: CalendarListItem[] }, string>({
+      query: (projectId) => `/api/projects/${projectId}/ai-plugins/google-calendar/calendars`,
     }),
 
     // AI Services endpoints
@@ -453,18 +432,17 @@ export const projectsApi = api.injectEndpoints({
       ],
     }),
 
-    deleteProjectSecret: builder.mutation<
-      SecretsListResponse,
-      { projectId: string; name: string }
-    >({
-      query: ({ projectId, name }) => ({
-        url: `/api/projects/${projectId}/secrets/${encodeURIComponent(name)}`,
-        method: 'DELETE',
-      }),
-      invalidatesTags: (_result, _error, { projectId }) => [
-        { type: 'ProjectSecrets' as const, id: projectId },
-      ],
-    }),
+    deleteProjectSecret: builder.mutation<SecretsListResponse, { projectId: string; name: string }>(
+      {
+        query: ({ projectId, name }) => ({
+          url: `/api/projects/${projectId}/secrets/${encodeURIComponent(name)}`,
+          method: 'DELETE',
+        }),
+        invalidatesTags: (_result, _error, { projectId }) => [
+          { type: 'ProjectSecrets' as const, id: projectId },
+        ],
+      },
+    ),
 
     // Skills endpoint
     listProjectSkills: builder.query<
@@ -488,10 +466,7 @@ export const projectsApi = api.injectEndpoints({
       ],
     }),
     // Skills path
-    getProjectSkillsPath: builder.query<
-      { skillsPath: string },
-      { projectId: string }
-    >({
+    getProjectSkillsPath: builder.query<{ skillsPath: string }, { projectId: string }>({
       query: ({ projectId }) => `/api/projects/${projectId}/ai/skills-path`,
       providesTags: (_result, _error, { projectId }) => [
         { type: 'ProjectAI' as const, id: `${projectId}-skills-path` },
@@ -512,10 +487,7 @@ export const projectsApi = api.injectEndpoints({
       ],
     }),
     // Skills alias (which deployment alias skills are loaded from)
-    getProjectSkillsAlias: builder.query<
-      { skillsAlias: string | null },
-      { projectId: string }
-    >({
+    getProjectSkillsAlias: builder.query<{ skillsAlias: string | null }, { projectId: string }>({
       query: ({ projectId }) => `/api/projects/${projectId}/ai/skills-alias`,
       providesTags: (_result, _error, { projectId }) => [
         { type: 'ProjectAI' as const, id: `${projectId}-skills-alias` },

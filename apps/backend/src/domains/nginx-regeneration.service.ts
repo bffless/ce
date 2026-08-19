@@ -1,6 +1,13 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { db } from '../db/client';
-import { domainMappings, deploymentAliases, projects, pathRedirects, aliasProxyRuleSets, projectDefaultProxyRuleSets } from '../db/schema';
+import {
+  domainMappings,
+  deploymentAliases,
+  projects,
+  pathRedirects,
+  aliasProxyRuleSets,
+  projectDefaultProxyRuleSets,
+} from '../db/schema';
 import { eq, and, inArray, asc } from 'drizzle-orm';
 import { NginxConfigService, NginxProxyRule, NginxPathRedirect } from './nginx-config.service';
 import { NginxReloadService } from './nginx-reload.service';

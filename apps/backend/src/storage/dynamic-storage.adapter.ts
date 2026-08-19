@@ -149,11 +149,7 @@ export class DynamicStorageAdapter implements IStorageAdapter {
     return this.adapter.exists(key);
   }
 
-  async getUrl(
-    key: string,
-    expiresIn?: number,
-    options?: SignedUrlOptions,
-  ): Promise<string> {
+  async getUrl(key: string, expiresIn?: number, options?: SignedUrlOptions): Promise<string> {
     return this.adapter.getUrl(key, expiresIn, options);
   }
 

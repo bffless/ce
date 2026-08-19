@@ -188,7 +188,12 @@ describe('ProxyRulesController', () => {
       await controller.testPipelineRule(
         'rule-1',
         {
-          mockUser: { id: 'mock-user-1', email: 'mock@example.com', role: 'user', groups: ['group-a', 'group-b'] },
+          mockUser: {
+            id: 'mock-user-1',
+            email: 'mock@example.com',
+            role: 'user',
+            groups: ['group-a', 'group-b'],
+          },
         },
         mockUser,
         { file: undefined } as any,
@@ -306,12 +311,9 @@ describe('ProxyRulesController', () => {
           aiStepRule({ mode: 'selected', enabled: ['image-prompts'], alias: 'studio' }),
         );
 
-        await controller.testPipelineRule(
-          'rule-1',
-          { deploymentAlias: 'staging' },
-          mockUser,
-          { file: undefined } as any,
-        );
+        await controller.testPipelineRule('rule-1', { deploymentAlias: 'staging' }, mockUser, {
+          file: undefined,
+        } as any);
 
         expect(mockDeploymentsService.resolveAlias).toHaveBeenCalledWith(
           'bffless/studio',

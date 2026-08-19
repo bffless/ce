@@ -131,10 +131,16 @@ export class ExpressionEvaluator {
         // request.path -> metadata.path
         // request.headers -> metadata.headers
         if (parts.length < 2) {
-          throw new ExpressionError(expression, 'Request reference requires property (body, query, method, path, headers)', stepName);
+          throw new ExpressionError(
+            expression,
+            'Request reference requires property (body, query, method, path, headers)',
+            stepName,
+          );
         }
         const requestProp = parts[1];
-        if (!['body', 'query', 'method', 'path', 'headers', 'ip', 'userAgent'].includes(requestProp)) {
+        if (
+          !['body', 'query', 'method', 'path', 'headers', 'ip', 'userAgent'].includes(requestProp)
+        ) {
           throw new ExpressionError(
             expression,
             `Unknown request property '${requestProp}'. Valid: body, query, method, path, headers, ip, userAgent`,

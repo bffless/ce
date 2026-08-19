@@ -14,7 +14,8 @@ import { useToast } from '@/hooks/use-toast';
 export function RegistrationSettings() {
   const { toast } = useToast();
   const { data, isLoading, error } = useGetRegistrationSettingsQuery();
-  const [updateAllowPublicSignups, { isLoading: isUpdating }] = useUpdateAllowPublicSignupsMutation();
+  const [updateAllowPublicSignups, { isLoading: isUpdating }] =
+    useUpdateAllowPublicSignupsMutation();
 
   const handleToggle = async (checked: boolean) => {
     try {
@@ -24,9 +25,10 @@ export function RegistrationSettings() {
         description: result.message,
       });
     } catch (err: unknown) {
-      const errorMessage = err && typeof err === 'object' && 'data' in err
-        ? (err.data as { message?: string })?.message || 'An error occurred'
-        : 'An error occurred';
+      const errorMessage =
+        err && typeof err === 'object' && 'data' in err
+          ? (err.data as { message?: string })?.message || 'An error occurred'
+          : 'An error occurred';
       toast({
         title: 'Failed to update setting',
         description: errorMessage,
@@ -116,8 +118,12 @@ export function RegistrationSettings() {
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle>Registration Disabled</AlertTitle>
             <AlertDescription>
-              The <code className="text-xs bg-muted px-1 py-0.5 rounded">ENABLE_USER_REGISTRATION</code> feature flag is set to <code className="text-xs bg-muted px-1 py-0.5 rounded">false</code>.
-              All user registration (including invitations) is blocked. Contact your system administrator to enable registration.
+              The{' '}
+              <code className="text-xs bg-muted px-1 py-0.5 rounded">ENABLE_USER_REGISTRATION</code>{' '}
+              feature flag is set to{' '}
+              <code className="text-xs bg-muted px-1 py-0.5 rounded">false</code>. All user
+              registration (including invitations) is blocked. Contact your system administrator to
+              enable registration.
             </AlertDescription>
           </Alert>
         )}

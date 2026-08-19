@@ -256,11 +256,7 @@ export function ProxyRuleSetsPage() {
                     <div className="absolute right-12 top-1/2 -translate-y-1/2">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={(e) => e.stopPropagation()}
-                          >
+                          <Button variant="ghost" size="icon" onClick={(e) => e.stopPropagation()}>
                             <MoreHorizontal className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
@@ -326,7 +322,10 @@ export function ProxyRuleSetsPage() {
 
       {/* Delete Confirmation Dialog */}
       {canEdit && (
-        <AlertDialog open={!!deletingRuleSet} onOpenChange={(open) => !open && setDeletingRuleSet(null)}>
+        <AlertDialog
+          open={!!deletingRuleSet}
+          onOpenChange={(open) => !open && setDeletingRuleSet(null)}
+        >
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Delete Rule Set</AlertDialogTitle>

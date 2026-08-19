@@ -188,9 +188,8 @@ export function ProjectGroupsTab({ owner, repo }: ProjectGroupsTabProps) {
   }
 
   const groups = data?.groupPermissions || [];
-  const groupsToAdd = availableGroups?.filter(
-    (g) => !groups.some((pg) => pg.groupId === g.id)
-  ) || [];
+  const groupsToAdd =
+    availableGroups?.filter((g) => !groups.some((pg) => pg.groupId === g.id)) || [];
 
   return (
     <Card>
@@ -198,9 +197,7 @@ export function ProjectGroupsTab({ owner, repo }: ProjectGroupsTabProps) {
         <div className="flex items-center justify-between">
           <div>
             <CardTitle>Project Groups</CardTitle>
-            <CardDescription>
-              Grant access to entire groups of users
-            </CardDescription>
+            <CardDescription>Grant access to entire groups of users</CardDescription>
           </div>
           <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
             <DialogTrigger asChild>
@@ -243,7 +240,10 @@ export function ProjectGroupsTab({ owner, repo }: ProjectGroupsTabProps) {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="role">Role</Label>
-                  <Select value={newGroupRole} onValueChange={(value) => setNewGroupRole(value as ProjectGroupRole)}>
+                  <Select
+                    value={newGroupRole}
+                    onValueChange={(value) => setNewGroupRole(value as ProjectGroupRole)}
+                  >
                     <SelectTrigger id="role">
                       <SelectValue />
                     </SelectTrigger>
@@ -287,9 +287,7 @@ export function ProjectGroupsTab({ owner, repo }: ProjectGroupsTabProps) {
             <TableBody>
               {groups.map((permission) => (
                 <TableRow key={permission.id}>
-                  <TableCell className="font-medium">
-                    {permission.group.name}
-                  </TableCell>
+                  <TableCell className="font-medium">{permission.group.name}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {permission.group.description || '-'}
                   </TableCell>
@@ -305,9 +303,7 @@ export function ProjectGroupsTab({ owner, repo }: ProjectGroupsTabProps) {
                     <div className="flex items-center justify-end gap-2">
                       <Dialog
                         open={editingGroup === permission.groupId}
-                        onOpenChange={(open) =>
-                          setEditingGroup(open ? permission.groupId : null)
-                        }
+                        onOpenChange={(open) => setEditingGroup(open ? permission.groupId : null)}
                       >
                         <DialogTrigger asChild>
                           <Button
@@ -344,18 +340,13 @@ export function ProjectGroupsTab({ owner, repo }: ProjectGroupsTabProps) {
                                   <SelectItem value="contributor">
                                     Contributor - Can deploy
                                   </SelectItem>
-                                  <SelectItem value="admin">
-                                    Admin - Can manage settings
-                                  </SelectItem>
+                                  <SelectItem value="admin">Admin - Can manage settings</SelectItem>
                                 </SelectContent>
                               </Select>
                             </div>
                           </div>
                           <DialogFooter>
-                            <Button
-                              variant="outline"
-                              onClick={() => setEditingGroup(null)}
-                            >
+                            <Button variant="outline" onClick={() => setEditingGroup(null)}>
                               Cancel
                             </Button>
                             <Button
@@ -370,9 +361,7 @@ export function ProjectGroupsTab({ owner, repo }: ProjectGroupsTabProps) {
 
                       <AlertDialog
                         open={removingGroup === permission.groupId}
-                        onOpenChange={(open) =>
-                          setRemovingGroup(open ? permission.groupId : null)
-                        }
+                        onOpenChange={(open) => setRemovingGroup(open ? permission.groupId : null)}
                       >
                         <DialogTrigger asChild>
                           <Button
@@ -387,8 +376,8 @@ export function ProjectGroupsTab({ owner, repo }: ProjectGroupsTabProps) {
                           <AlertDialogHeader>
                             <AlertDialogTitle>Remove Group</AlertDialogTitle>
                             <AlertDialogDescription>
-                              Are you sure you want to remove {permission.group.name} from
-                              this project? All group members will lose access immediately.
+                              Are you sure you want to remove {permission.group.name} from this
+                              project? All group members will lose access immediately.
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>

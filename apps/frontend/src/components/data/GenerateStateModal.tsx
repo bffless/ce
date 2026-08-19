@@ -162,8 +162,8 @@ export function GenerateStateModal({
                       User-scoped
                     </Label>
                     <p className="text-xs text-muted-foreground">
-                      State is isolated per user/guest. Uses auth user ID or guest ID cookie.
-                      Best for: carts, preferences, session data.
+                      State is isolated per user/guest. Uses auth user ID or guest ID cookie. Best
+                      for: carts, preferences, session data.
                     </p>
                   </div>
                 </div>
@@ -174,8 +174,8 @@ export function GenerateStateModal({
                       Global
                     </Label>
                     <p className="text-xs text-muted-foreground">
-                      State is shared across all users. Lookup by key only.
-                      Best for: feature flags, site settings, public data.
+                      State is shared across all users. Lookup by key only. Best for: feature flags,
+                      site settings, public data.
                     </p>
                   </div>
                 </div>
@@ -184,11 +184,7 @@ export function GenerateStateModal({
 
             <div className="space-y-2">
               <Label htmlFor="rule-set">Proxy Rule Set</Label>
-              <Select
-                value={ruleSetId}
-                onValueChange={setRuleSetId}
-                disabled={isLoading}
-              >
+              <Select value={ruleSetId} onValueChange={setRuleSetId} disabled={isLoading}>
                 <SelectTrigger id="rule-set">
                   <SelectValue placeholder="Create new rule set" />
                 </SelectTrigger>

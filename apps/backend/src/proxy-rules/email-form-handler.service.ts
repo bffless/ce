@@ -74,7 +74,9 @@ export class EmailFormHandlerService {
         // Response already sent by validateSession
         return;
       }
-      this.logger.debug(`Authenticated form submission by user: ${authenticatedUser.email || authenticatedUser.id}`);
+      this.logger.debug(
+        `Authenticated form submission by user: ${authenticatedUser.email || authenticatedUser.id}`,
+      );
     }
 
     // 5. Check rate limit
@@ -406,10 +408,7 @@ export class EmailFormHandlerService {
    * Validate the session and return authenticated user details.
    * Returns null and sends error response if not authenticated.
    */
-  private async validateSession(
-    req: Request,
-    res: Response,
-  ): Promise<AuthenticatedUser | null> {
+  private async validateSession(req: Request, res: Response): Promise<AuthenticatedUser | null> {
     return new Promise((resolve) => {
       verifySession()(req, res, async (err) => {
         if (err) {

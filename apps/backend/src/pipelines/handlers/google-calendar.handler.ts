@@ -154,7 +154,10 @@ export class GoogleCalendarHandler implements StepHandler<GoogleCalendarHandlerC
 
       case 'create_event':
         if (!config.calendarId) {
-          throw new ConfigurationError('calendarId is required for create_event', 'google_calendar');
+          throw new ConfigurationError(
+            'calendarId is required for create_event',
+            'google_calendar',
+          );
         }
         if (!config.summary) {
           throw new ConfigurationError('summary is required for create_event', 'google_calendar');
@@ -169,7 +172,10 @@ export class GoogleCalendarHandler implements StepHandler<GoogleCalendarHandlerC
 
       case 'update_event':
         if (!config.calendarId) {
-          throw new ConfigurationError('calendarId is required for update_event', 'google_calendar');
+          throw new ConfigurationError(
+            'calendarId is required for update_event',
+            'google_calendar',
+          );
         }
         if (!config.eventId) {
           throw new ConfigurationError('eventId is required for update_event', 'google_calendar');
@@ -178,7 +184,10 @@ export class GoogleCalendarHandler implements StepHandler<GoogleCalendarHandlerC
 
       case 'delete_event':
         if (!config.calendarId) {
-          throw new ConfigurationError('calendarId is required for delete_event', 'google_calendar');
+          throw new ConfigurationError(
+            'calendarId is required for delete_event',
+            'google_calendar',
+          );
         }
         if (!config.eventId) {
           throw new ConfigurationError('eventId is required for delete_event', 'google_calendar');
@@ -250,9 +259,7 @@ export class GoogleCalendarHandler implements StepHandler<GoogleCalendarHandlerC
         }
       }
     } catch (error: any) {
-      this.logger.error(
-        `google_calendar request failed for step '${step.name}': ${error.message}`,
-      );
+      this.logger.error(`google_calendar request failed for step '${step.name}': ${error.message}`);
       return {
         success: false,
         error: {
@@ -269,10 +276,7 @@ export class GoogleCalendarHandler implements StepHandler<GoogleCalendarHandlerC
    * pass through unchanged because they're transient — pipelines should
    * surface them, not pretend nothing happened.
    */
-  private maybeSoftFail(
-    result: StepResult,
-    config: GoogleCalendarHandlerConfig,
-  ): StepResult {
+  private maybeSoftFail(result: StepResult, config: GoogleCalendarHandlerConfig): StepResult {
     if (result.success) return result;
     if (!config.optional) return result;
     const code = result.error?.code;
@@ -543,9 +547,7 @@ export class GoogleCalendarHandler implements StepHandler<GoogleCalendarHandlerC
 
     if (config.attendees && config.attendees.length > 0) {
       body.attendees = config.attendees.map((a) => ({
-        email: String(
-          this.expressionEvaluator.evaluateExpression(a.email, context, step.name),
-        ),
+        email: String(this.expressionEvaluator.evaluateExpression(a.email, context, step.name)),
       }));
     }
 
@@ -581,13 +583,16 @@ export class GoogleCalendarHandler implements StepHandler<GoogleCalendarHandlerC
     url: string,
     init: RequestInit,
   ): Promise<Response> {
-    let response = await fetch(url, init);
+    const response = await fetch(url, init);
     if (response.status !== 401) return response;
 
     const fresh = await this.googleCalendarOAuthService.getValidAccessToken(context.projectId);
     if (!fresh) return response; // refresh failed — let httpErrorResult map the original 401
 
-    const headers = { ...(init.headers as Record<string, string>), Authorization: `Bearer ${fresh}` };
+    const headers = {
+      ...(init.headers as Record<string, string>),
+      Authorization: `Bearer ${fresh}`,
+    };
     return fetch(url, { ...init, headers });
   }
 

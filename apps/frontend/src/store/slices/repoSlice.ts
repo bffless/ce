@@ -42,7 +42,7 @@ export const repoSlice = createSlice({
         name: string;
         size?: number;
         mimeType?: string;
-      } | null>
+      } | null>,
     ) => {
       state.selectedFile = action.payload;
     },
@@ -55,12 +55,7 @@ export const repoSlice = createSlice({
   },
 });
 
-export const {
-  setCurrentRepo,
-  setCurrentRef,
-  setCurrentFilePath,
-  selectFile,
-  clearRepoState,
-} = repoSlice.actions;
+export const { setCurrentRepo, setCurrentRef, setCurrentFilePath, selectFile, clearRepoState } =
+  repoSlice.actions;
 
 export default repoSlice.reducer;

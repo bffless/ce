@@ -11,8 +11,7 @@ const createStore = () =>
     reducer: {
       [api.reducerPath]: api.reducer,
     },
-    middleware: (getDefaultMiddleware) =>
-      getDefaultMiddleware().concat(api.middleware),
+    middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(api.middleware),
   });
 
 // Mock data for setup status
@@ -168,16 +167,18 @@ export const ManagedStorage: Story = {
           HttpResponse.json({
             ...mockSetupStatus,
             storageProvider: 'managed',
-          })
+          }),
         ),
         http.get('/api/setup/storage-config', () =>
           HttpResponse.json({
             isConfigured: true,
             // No additional config shown for managed storage
-          })
+          }),
         ),
         http.get('/api/setup/constraints', () => HttpResponse.json(mockConstraints)),
-        http.get('/api/setup/available-options', () => HttpResponse.json(mockAvailableOptionsPlatform)),
+        http.get('/api/setup/available-options', () =>
+          HttpResponse.json(mockAvailableOptionsPlatform),
+        ),
         http.get('/api/migration/job', () => HttpResponse.json({ status: 'none' })),
       ],
     },
@@ -193,15 +194,17 @@ export const ManagedStorageOnly: Story = {
           HttpResponse.json({
             ...mockSetupStatus,
             storageProvider: 'managed',
-          })
+          }),
         ),
         http.get('/api/setup/storage-config', () =>
           HttpResponse.json({
             isConfigured: true,
-          })
+          }),
         ),
         http.get('/api/setup/constraints', () => HttpResponse.json(mockConstraints)),
-        http.get('/api/setup/available-options', () => HttpResponse.json(mockAvailableOptionsPlatformManagedOnly)),
+        http.get('/api/setup/available-options', () =>
+          HttpResponse.json(mockAvailableOptionsPlatformManagedOnly),
+        ),
         http.get('/api/migration/job', () => HttpResponse.json({ status: 'none' })),
       ],
     },
@@ -217,13 +220,13 @@ export const LocalFilesystem: Story = {
           HttpResponse.json({
             ...mockSetupStatus,
             storageProvider: 'local',
-          })
+          }),
         ),
         http.get('/api/setup/storage-config', () =>
           HttpResponse.json({
             isConfigured: true,
             localPath: './uploads',
-          })
+          }),
         ),
         http.get('/api/setup/constraints', () => HttpResponse.json(mockConstraints)),
         http.get('/api/setup/available-options', () => HttpResponse.json(mockAvailableOptionsCE)),
@@ -242,7 +245,7 @@ export const MinIOStorage: Story = {
           HttpResponse.json({
             ...mockSetupStatus,
             storageProvider: 'minio',
-          })
+          }),
         ),
         http.get('/api/setup/storage-config', () =>
           HttpResponse.json({
@@ -250,7 +253,7 @@ export const MinIOStorage: Story = {
             endpoint: 'minio',
             port: 9000,
             bucket: 'assets',
-          })
+          }),
         ),
         http.get('/api/setup/constraints', () => HttpResponse.json(mockConstraints)),
         http.get('/api/setup/available-options', () => HttpResponse.json(mockAvailableOptionsCE)),
@@ -269,7 +272,7 @@ export const MinIODisabledWarning: Story = {
           HttpResponse.json({
             ...mockSetupStatus,
             storageProvider: 'minio',
-          })
+          }),
         ),
         http.get('/api/setup/storage-config', () =>
           HttpResponse.json({
@@ -277,13 +280,13 @@ export const MinIODisabledWarning: Story = {
             endpoint: 'minio',
             port: 9000,
             bucket: 'assets',
-          })
+          }),
         ),
         http.get('/api/setup/constraints', () =>
           HttpResponse.json({
             minio: { enabled: false, reason: 'ENABLE_MINIO=false is set in environment' },
             redis: { enabled: true, reason: null },
-          })
+          }),
         ),
         http.get('/api/setup/available-options', () => HttpResponse.json(mockAvailableOptionsCE)),
         http.get('/api/migration/job', () => HttpResponse.json({ status: 'none' })),
@@ -309,7 +312,7 @@ export const MigrationInProgress: Story = {
             totalFiles: 1500,
             processedFiles: 750,
             progress: 50,
-          })
+          }),
         ),
       ],
     },

@@ -526,10 +526,7 @@ export class DomainsController {
   @Delete('traffic/rules/:ruleId')
   @ApiOperation({ summary: 'Delete a traffic rule' })
   @ApiResponse({ status: 200 })
-  async deleteTrafficRule(
-    @Param('ruleId') ruleId: string,
-    @CurrentUser('id') userId: string,
-  ) {
+  async deleteTrafficRule(@Param('ruleId') ruleId: string, @CurrentUser('id') userId: string) {
     return this.trafficRulesService.remove(ruleId, userId);
   }
 
@@ -600,12 +597,7 @@ export class DomainsController {
     @CurrentUser('id') userId: string,
     @CurrentUser('apiKeyProjectId') apiKeyProjectId: string | null | undefined,
   ): Promise<DomainResponseDto> {
-    const domain = await this.domainsService.update(
-      id,
-      updateDomainDto,
-      userId,
-      apiKeyProjectId,
-    );
+    const domain = await this.domainsService.update(id, updateDomainDto, userId, apiKeyProjectId);
     return this.toResponseDto(domain);
   }
 

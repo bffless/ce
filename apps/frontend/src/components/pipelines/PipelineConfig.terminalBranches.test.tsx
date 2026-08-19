@@ -19,7 +19,11 @@ vi.mock('@/services/projectsApi', () => ({
 const branchedConfig = (): Partial<PipelineConfigData> => ({
   name: 'landing_episodes',
   steps: [
-    { name: 'fetch_playlist', handlerType: 'http_request', config: { url: 'https://example.com', failOnError: false } },
+    {
+      name: 'fetch_playlist',
+      handlerType: 'http_request',
+      config: { url: 'https://example.com', failOnError: false },
+    },
     { name: 'shape', handlerType: 'function_handler', config: { code: 'return 1;' } },
     {
       name: 'unavailable',
@@ -176,7 +180,11 @@ describe('PipelineConfig terminal response branches', () => {
     const config: Partial<PipelineConfigData> = {
       name: 'early_responder',
       steps: [
-        { name: 'maybe_reply', handlerType: 'response_handler', config: { status: 200, body: 'x' } },
+        {
+          name: 'maybe_reply',
+          handlerType: 'response_handler',
+          config: { status: 200, body: 'x' },
+        },
         { name: 'log', handlerType: 'function_handler', config: { code: 'return 1;' } },
       ],
     };

@@ -32,9 +32,10 @@ jest.mock('../db/client', () => {
             let rows: unknown[] = [];
             if (table === schema.sslSettings) {
               const key = cond?.value as string | undefined;
-              rows = key !== undefined && settingsStore[key] !== undefined
-                ? [{ key, value: settingsStore[key] }]
-                : [];
+              rows =
+                key !== undefined && settingsStore[key] !== undefined
+                  ? [{ key, value: settingsStore[key] }]
+                  : [];
             } else if (table === schema.users) {
               rows = adminUserStore ? [adminUserStore] : [];
             } else if (table === schema.domainMappings) {
@@ -106,9 +107,16 @@ const certInfo = (overrides: Partial<SslCertificateInfo> = {}): SslCertificateIn
 
 describe('SslRenewalService', () => {
   let service: SslRenewalService;
-  let sslCert: jest.Mocked<Pick<SslCertificateService,
-    'getPrimaryCertificateExpiryDays' | 'requestPrimaryDomainCertificate' | 'renewWildcardCertificate' | 'requestCustomDomainCertificate' | 'getPrimaryCertificateSans'
-  >>;
+  let sslCert: jest.Mocked<
+    Pick<
+      SslCertificateService,
+      | 'getPrimaryCertificateExpiryDays'
+      | 'requestPrimaryDomainCertificate'
+      | 'renewWildcardCertificate'
+      | 'requestCustomDomainCertificate'
+      | 'getPrimaryCertificateSans'
+    >
+  >;
   let sslInfo: jest.Mocked<Pick<SslInfoService, 'getWildcardCertInfo' | 'getDomainSslInfo'>>;
   let email: jest.Mocked<Pick<EmailService, 'sendEmail'>>;
 
@@ -193,10 +201,9 @@ describe('SslRenewalService', () => {
 
       await service.checkAndRenewCertificates();
 
-      expect(sslCert.requestPrimaryDomainCertificate).toHaveBeenCalledWith(
-        'example.com',
-        { extraSans: ['example.com', 'www.example.com', 'admin.example.com', 'minio.example.com'] },
-      );
+      expect(sslCert.requestPrimaryDomainCertificate).toHaveBeenCalledWith('example.com', {
+        extraSans: ['example.com', 'www.example.com', 'admin.example.com', 'minio.example.com'],
+      });
     });
 
     it('renews a wizard install without a SAN override', async () => {
@@ -464,19 +471,30 @@ describe('SslRenewalService', () => {
   describe('paste primary-cert expiry reminder', () => {
     it('emails when a pasted primary cert is within the threshold', async () => {
       (loadInstanceConfig as jest.Mock).mockReturnValue({
-        version: 2, state: 'applied', primaryDomain: 'example.com', proxyMode: 'none', sslMode: 'paste',
+        version: 2,
+        state: 'applied',
+        primaryDomain: 'example.com',
+        proxyMode: 'none',
+        sslMode: 'paste',
       });
       sslCert.getPrimaryCertificateExpiryDays.mockReturnValue(12);
       settingsStore['notification_email'] = 'admin@example.com';
       await service.checkAndRenewCertificates();
       expect(email.sendEmail).toHaveBeenCalledWith(
-        expect.objectContaining({ to: 'admin@example.com', subject: expect.stringMatching(/certificate .* expires/i) }),
+        expect.objectContaining({
+          to: 'admin@example.com',
+          subject: expect.stringMatching(/certificate .* expires/i),
+        }),
       );
     });
 
     it('points the paste reminder body at Admin → Settings → SSL for re-paste/re-issue', async () => {
       (loadInstanceConfig as jest.Mock).mockReturnValue({
-        version: 2, state: 'applied', primaryDomain: 'example.com', proxyMode: 'cloudflare', sslMode: 'paste',
+        version: 2,
+        state: 'applied',
+        primaryDomain: 'example.com',
+        proxyMode: 'cloudflare',
+        sslMode: 'paste',
       });
       sslCert.getPrimaryCertificateExpiryDays.mockReturnValue(12);
       settingsStore['notification_email'] = 'admin@example.com';
@@ -491,10 +509,17 @@ describe('SslRenewalService', () => {
 
     it('does not remind for a letsencrypt primary cert (it auto-renews)', async () => {
       (loadInstanceConfig as jest.Mock).mockReturnValue({
-        version: 2, state: 'applied', primaryDomain: 'example.com', proxyMode: 'none', sslMode: 'letsencrypt',
+        version: 2,
+        state: 'applied',
+        primaryDomain: 'example.com',
+        proxyMode: 'none',
+        sslMode: 'letsencrypt',
       });
       sslCert.getPrimaryCertificateExpiryDays.mockReturnValue(12);
-      sslCert.requestPrimaryDomainCertificate.mockResolvedValue({ success: true, expiresAt: new Date() });
+      sslCert.requestPrimaryDomainCertificate.mockResolvedValue({
+        success: true,
+        expiresAt: new Date(),
+      });
       await service.checkAndRenewCertificates();
       // the LE path renews; it must not ALSO send the paste reminder
       expect(email.sendEmail).not.toHaveBeenCalledWith(
@@ -504,7 +529,11 @@ describe('SslRenewalService', () => {
 
     it('does not remind for a selfsigned install', async () => {
       (loadInstanceConfig as jest.Mock).mockReturnValue({
-        version: 2, state: 'applied', primaryDomain: 'example.com', proxyMode: 'proxy', sslMode: 'selfsigned',
+        version: 2,
+        state: 'applied',
+        primaryDomain: 'example.com',
+        proxyMode: 'proxy',
+        sslMode: 'selfsigned',
       });
       sslCert.getPrimaryCertificateExpiryDays.mockReturnValue(5);
       await service.checkAndRenewCertificates();
@@ -513,7 +542,11 @@ describe('SslRenewalService', () => {
 
     it('does not re-send within 7 days', async () => {
       (loadInstanceConfig as jest.Mock).mockReturnValue({
-        version: 2, state: 'applied', primaryDomain: 'example.com', proxyMode: 'none', sslMode: 'paste',
+        version: 2,
+        state: 'applied',
+        primaryDomain: 'example.com',
+        proxyMode: 'none',
+        sslMode: 'paste',
       });
       sslCert.getPrimaryCertificateExpiryDays.mockReturnValue(12);
       settingsStore['notification_email'] = 'admin@example.com';
@@ -581,7 +614,10 @@ describe('SslRenewalService', () => {
       ]);
 
       expect(email.sendEmail).toHaveBeenCalled();
-      expect(updateSettingSpy).toHaveBeenCalledWith('renewal_failure_last_sent', expect.any(String));
+      expect(updateSettingSpy).toHaveBeenCalledWith(
+        'renewal_failure_last_sent',
+        expect.any(String),
+      );
     });
   });
 });

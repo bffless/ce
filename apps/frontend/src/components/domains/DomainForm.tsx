@@ -15,11 +15,7 @@ import type { CreateDomainDto, WwwBehavior } from '@/services/domainsApi';
 import { useFeatureFlags } from '@/services/featureFlagsApi';
 import { useGetPrimaryContentProjectsQuery } from '@/services/settingsApi';
 import { PathTypeahead } from './PathTypeahead';
-import {
-  HOSTNAME_PATTERN,
-  SOURCE_DOMAIN_PATTERN,
-  SUBDOMAIN_LABEL_PATTERN,
-} from './domainPatterns';
+import { HOSTNAME_PATTERN, SOURCE_DOMAIN_PATTERN, SUBDOMAIN_LABEL_PATTERN } from './domainPatterns';
 
 interface DomainFormProps {
   projectId: string;
@@ -128,8 +124,7 @@ export function DomainForm({
       if (!subdomain) {
         newErrors.domain = 'Subdomain is required';
       } else if (!SUBDOMAIN_LABEL_PATTERN.test(subdomain)) {
-        newErrors.domain =
-          'Subdomain must start and end with alphanumeric, can contain hyphens';
+        newErrors.domain = 'Subdomain must start and end with alphanumeric, can contain hyphens';
       }
     } else if (domainType === 'custom' || domainType === 'redirect') {
       if (!customDomain) {
@@ -174,8 +169,7 @@ export function DomainForm({
 
     if (!validateForm()) return;
 
-    const domain =
-      domainType === 'subdomain' ? `${subdomain}.${baseDomain}` : customDomain;
+    const domain = domainType === 'subdomain' ? `${subdomain}.${baseDomain}` : customDomain;
 
     const dto: CreateDomainDto = {
       domain,
@@ -238,7 +232,11 @@ export function DomainForm({
 
       <div>
         <Label htmlFor="domain">
-          {domainType === 'subdomain' ? 'Subdomain' : domainType === 'redirect' ? 'Source Domain' : 'Custom Domain'}
+          {domainType === 'subdomain'
+            ? 'Subdomain'
+            : domainType === 'redirect'
+              ? 'Source Domain'
+              : 'Custom Domain'}
         </Label>
         <div className="flex items-center gap-2">
           {domainType === 'subdomain' ? (
@@ -250,9 +248,7 @@ export function DomainForm({
                 onChange={(e) => setSubdomain(e.target.value.toLowerCase())}
                 className="min-w-0 flex-1"
               />
-              <span className="text-sm text-muted-foreground whitespace-nowrap">
-                .{baseDomain}
-              </span>
+              <span className="text-sm text-muted-foreground whitespace-nowrap">.{baseDomain}</span>
             </>
           ) : (
             <Input
@@ -269,9 +265,8 @@ export function DomainForm({
         ) : (
           domainType !== 'subdomain' && (
             <p className="text-xs text-muted-foreground mt-1">
-              Start with <code>*.</code> to match every subdomain (e.g.{' '}
-              <code>*.example.com</code>). An exact domain mapping always wins over a
-              wildcard.
+              Start with <code>*.</code> to match every subdomain (e.g. <code>*.example.com</code>).
+              An exact domain mapping always wins over a wildcard.
             </p>
           )
         )}
@@ -348,10 +343,14 @@ export function DomainForm({
             </SelectContent>
           </Select>
           <p className="text-xs text-muted-foreground mt-1">
-            {wwwBehavior === 'none' && `You can add ${alternateInfo.alternate} as a separate domain later`}
-            {wwwBehavior === 'redirect-to-www' && `${alternateInfo.isWww ? alternateInfo.alternate : customDomain} will redirect to ${alternateInfo.isWww ? customDomain : alternateInfo.alternate}`}
-            {wwwBehavior === 'redirect-to-root' && `${alternateInfo.isWww ? customDomain : alternateInfo.alternate} will redirect to ${alternateInfo.isWww ? alternateInfo.alternate : customDomain}`}
-            {wwwBehavior === 'serve-both' && `Both ${customDomain} and ${alternateInfo.alternate} will serve the same content`}
+            {wwwBehavior === 'none' &&
+              `You can add ${alternateInfo.alternate} as a separate domain later`}
+            {wwwBehavior === 'redirect-to-www' &&
+              `${alternateInfo.isWww ? alternateInfo.alternate : customDomain} will redirect to ${alternateInfo.isWww ? customDomain : alternateInfo.alternate}`}
+            {wwwBehavior === 'redirect-to-root' &&
+              `${alternateInfo.isWww ? customDomain : alternateInfo.alternate} will redirect to ${alternateInfo.isWww ? alternateInfo.alternate : customDomain}`}
+            {wwwBehavior === 'serve-both' &&
+              `Both ${customDomain} and ${alternateInfo.alternate} will serve the same content`}
           </p>
         </div>
       )}
@@ -407,12 +406,8 @@ export function DomainForm({
             placeholder="/apps/frontend/coverage"
             disabled={!selectedProject}
           />
-          {errors.path && (
-            <p className="text-sm text-destructive mt-1">{errors.path}</p>
-          )}
-          <p className="text-xs text-muted-foreground mt-1">
-            Subdirectory within the deployment
-          </p>
+          {errors.path && <p className="text-sm text-destructive mt-1">{errors.path}</p>}
+          <p className="text-xs text-muted-foreground mt-1">Subdirectory within the deployment</p>
         </div>
       )}
 
@@ -459,11 +454,7 @@ export function DomainForm({
       {/* SPA Mode - only for subdomain and custom domains */}
       {domainType !== 'redirect' && (
         <div className="flex items-center gap-2">
-          <Switch
-            id="isSpa"
-            checked={isSpa}
-            onCheckedChange={setIsSpa}
-          />
+          <Switch id="isSpa" checked={isSpa} onCheckedChange={setIsSpa} />
           <Label htmlFor="isSpa" className="flex flex-col">
             <span>SPA Mode</span>
             <span className="text-xs text-muted-foreground font-normal">
@@ -476,11 +467,7 @@ export function DomainForm({
       {/* SSL toggle - only for subdomain domains when enabled */}
       {showSslToggle && domainType === 'subdomain' && (
         <div className="flex items-center gap-2">
-          <Switch
-            id="sslEnabled"
-            checked={sslEnabled}
-            onCheckedChange={setSslEnabled}
-          />
+          <Switch id="sslEnabled" checked={sslEnabled} onCheckedChange={setSslEnabled} />
           <Label htmlFor="sslEnabled" className="flex flex-col">
             <span>Enable SSL</span>
           </Label>

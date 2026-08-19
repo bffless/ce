@@ -21,7 +21,11 @@ function makeRuleRow(overrides: Partial<ProxyRule> = {}): Partial<ProxyRule> {
     timeout: 30000,
     preserveHost: false,
     forwardCookies: false,
-    headerConfig: { forward: ['accept'], strip: ['cookie'], add: { 'X-API-Key': 'sk_live_secret' } },
+    headerConfig: {
+      forward: ['accept'],
+      strip: ['cookie'],
+      add: { 'X-API-Key': 'sk_live_secret' },
+    },
     authTransform: { type: 'cookie-to-bearer', cookieName: 'sAccessToken' },
     internalRewrite: false,
     proxyType: 'external_proxy',
@@ -221,7 +225,11 @@ describe('export-format.util', () => {
   describe('buildExportEnvelope', () => {
     const rules = [serializeRuleForExport(makeRuleRow())];
     const schemas = [
-      { id: 'sch-1', name: 'comments', fields: [{ name: 'body', type: 'string' as const, required: true }] },
+      {
+        id: 'sch-1',
+        name: 'comments',
+        fields: [{ name: 'body', type: 'string' as const, required: true }],
+      },
     ];
     const exportedAt = '2026-07-11T00:00:00.000Z';
 
@@ -272,7 +280,9 @@ describe('export-format.util', () => {
 
     it('sorts rules canonically by (order, pathPattern, method) — CLI sortRules parity', () => {
       const mk = (pathPattern: string, order: number, method?: string) =>
-        serializeRuleForExport(makeRuleRow({ pathPattern, order, method: method ?? null, methods: null }));
+        serializeRuleForExport(
+          makeRuleRow({ pathPattern, order, method: method ?? null, methods: null }),
+        );
       const unsorted = [mk('/b', 1), mk('/a', 1, 'POST'), mk('/a', 1, 'GET'), mk('/z', 0)];
       const out = buildExportEnvelope({ ruleSet: { name: 'api' }, rules: unsorted, exportedAt });
       expect(out.rules.map((r) => [r.pathPattern, r.order, r.method ?? null])).toEqual([

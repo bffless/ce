@@ -70,9 +70,7 @@ describe('ResponseHandlerConfig content type', () => {
     fireEvent.click(screen.getByText('HTML (text/html)'));
 
     expect(sink.current.contentType).toBe('text/html');
-    expect(screen.getByRole('combobox', { name: /content type/i })).toHaveTextContent(
-      'text/html',
-    );
+    expect(screen.getByRole('combobox', { name: /content type/i })).toHaveTextContent('text/html');
   });
 
   it('shows the full preset list on open even with a custom value stored, so it stays pickable', () => {

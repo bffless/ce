@@ -9,7 +9,10 @@ const getEjectPayloadQueryMock = vi.fn<
 >(() => ejectState);
 const createApiKeyTrigger = vi.fn();
 
-let ejectState: { data?: EjectPayload; isFetching: boolean } = { data: undefined, isFetching: false };
+let ejectState: { data?: EjectPayload; isFetching: boolean } = {
+  data: undefined,
+  isFetching: false,
+};
 let createApiKeyState: { isLoading: boolean } = { isLoading: false };
 const toastMock = vi.fn();
 
@@ -103,7 +106,13 @@ describe('EjectPanel', () => {
   it('mints an API key scoped to the app project when clicked', async () => {
     const response: CreateApiKeyResponse = {
       message: 'ok',
-      data: { id: 'key-1', name: 'x', projectId: 'proj-1', expiresAt: null, createdAt: '2026-07-30' },
+      data: {
+        id: 'key-1',
+        name: 'x',
+        projectId: 'proj-1',
+        expiresAt: null,
+        createdAt: '2026-07-30',
+      },
       key: 'bffless_sk_abc123',
     };
     createApiKeyTrigger.mockReturnValue({ unwrap: () => Promise.resolve(response) });

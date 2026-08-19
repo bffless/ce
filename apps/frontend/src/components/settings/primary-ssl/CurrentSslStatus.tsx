@@ -1,10 +1,4 @@
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardContent,
-  CardDescription,
-} from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useGetPrimarySslStatusQuery } from '@/services/primarySslApi';
 import { Shield } from 'lucide-react';
@@ -51,9 +45,7 @@ export function CurrentSslStatus() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="text-muted-foreground">
-            No primary domain configured
-          </div>
+          <div className="text-muted-foreground">No primary domain configured</div>
         </CardContent>
       </Card>
     );
@@ -66,9 +58,7 @@ export function CurrentSslStatus() {
           <Shield className="h-5 w-5" />
           Current SSL Status
         </CardTitle>
-        <CardDescription>
-          {data.domain}
-        </CardDescription>
+        <CardDescription>{data.domain}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid grid-cols-2 gap-4">

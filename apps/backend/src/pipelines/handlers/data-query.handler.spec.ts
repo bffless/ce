@@ -44,7 +44,9 @@ function buildHandler() {
       return expr;
     }),
   } as unknown as ExpressionEvaluator;
-  const schemasService = { getById: jest.fn(async () => SCHEMA) } as unknown as PipelineSchemasService;
+  const schemasService = {
+    getById: jest.fn(async () => SCHEMA),
+  } as unknown as PipelineSchemasService;
   return { handler: new DataQueryHandler(registry as any, expressionEvaluator, schemasService) };
 }
 
@@ -82,9 +84,7 @@ describe('DataQueryHandler in operator', () => {
     );
     const { sql, params } = selectWhereQuery();
     expect(sql.toLowerCase()).toContain('in (');
-    expect(params).toEqual(
-      expect.arrayContaining(['https://a.com/feed', 'https://b.com/feed']),
-    );
+    expect(params).toEqual(expect.arrayContaining(['https://a.com/feed', 'https://b.com/feed']));
   });
 });
 
@@ -128,10 +128,7 @@ describe('DataQueryHandler output shape (array vs single object)', () => {
     // silently dropped the row for any array-shaped consumer.
     const { handler } = buildHandler();
     mockDb.__queue([row('g1')]);
-    const result = await handler.execute(
-      context(),
-      step({ schemaId: 'schema-1', limit: 1 }),
-    );
+    const result = await handler.execute(context(), step({ schemaId: 'schema-1', limit: 1 }));
     expect(Array.isArray(result.output)).toBe(true);
     expect(result.output).toHaveLength(1);
     expect((result.output as Array<{ guid: string }>)[0].guid).toBe('g1');
@@ -140,10 +137,7 @@ describe('DataQueryHandler output shape (array vs single object)', () => {
   it('returns a single OBJECT when single:true is set explicitly', async () => {
     const { handler } = buildHandler();
     mockDb.__queue([row('g1')]);
-    const result = await handler.execute(
-      context(),
-      step({ schemaId: 'schema-1', single: true }),
-    );
+    const result = await handler.execute(context(), step({ schemaId: 'schema-1', single: true }));
     expect(Array.isArray(result.output)).toBe(false);
     expect((result.output as { guid: string }).guid).toBe('g1');
   });
@@ -151,10 +145,7 @@ describe('DataQueryHandler output shape (array vs single object)', () => {
   it('returns null when single:true matches no rows', async () => {
     const { handler } = buildHandler();
     mockDb.__queue([]);
-    const result = await handler.execute(
-      context(),
-      step({ schemaId: 'schema-1', single: true }),
-    );
+    const result = await handler.execute(context(), step({ schemaId: 'schema-1', single: true }));
     expect(result.output).toBeNull();
   });
 

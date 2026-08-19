@@ -41,7 +41,10 @@ export class DataDeleteHandler implements StepHandler<DataDeleteHandlerConfig> {
     const hasFilters = config.filters && Object.keys(config.filters).length > 0;
 
     if (!hasRecordId && !hasFilters) {
-      throw new ConfigurationError('Either recordId or at least one filter is required', 'data_delete');
+      throw new ConfigurationError(
+        'Either recordId or at least one filter is required',
+        'data_delete',
+      );
     }
 
     // Validate filter operators if filters are provided
@@ -115,10 +118,7 @@ export class DataDeleteHandler implements StepHandler<DataDeleteHandlerConfig> {
     const deleted = await db
       .delete(pipelineData)
       .where(
-        and(
-          eq(pipelineData.projectId, context.projectId),
-          inArray(pipelineData.id, idsToDelete),
-        ),
+        and(eq(pipelineData.projectId, context.projectId), inArray(pipelineData.id, idsToDelete)),
       )
       .returning({ id: pipelineData.id });
 

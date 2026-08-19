@@ -58,9 +58,7 @@ export const cacheRules = pgTable(
      * Cache directive: public (can be cached by CDNs) or private (browser only).
      * null = inherit from project visibility
      */
-    cacheability: varchar('cacheability', { length: 10 }).$type<
-      'public' | 'private' | null
-    >(),
+    cacheability: varchar('cacheability', { length: 10 }).$type<'public' | 'private' | null>(),
 
     /**
      * Rule priority. Lower = higher priority (evaluated first).

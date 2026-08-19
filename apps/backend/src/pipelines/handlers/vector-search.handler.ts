@@ -93,9 +93,7 @@ export class VectorSearchHandler implements StepHandler<VectorSearchHandlerConfi
       const dataFields = (r.data ?? {}) as Record<string, unknown>;
       const selected = config.select
         ? Object.fromEntries(
-            config.select
-              .filter((key) => key in dataFields)
-              .map((key) => [key, dataFields[key]]),
+            config.select.filter((key) => key in dataFields).map((key) => [key, dataFields[key]]),
           )
         : dataFields;
 

@@ -99,7 +99,9 @@ export class DataCreateHandler implements StepHandler<DataCreateHandlerConfig> {
       schema.version,
     );
 
-    this.logger.debug(`Created data record ${record.id} in schema ${config.schemaId} (alias: ${alias}, version: ${schema.version})`);
+    this.logger.debug(
+      `Created data record ${record.id} in schema ${config.schemaId} (alias: ${alias}, version: ${schema.version})`,
+    );
 
     return {
       success: true,
@@ -107,7 +109,7 @@ export class DataCreateHandler implements StepHandler<DataCreateHandlerConfig> {
         id: record.id,
         alias: record.alias,
         version: record.version,
-        ...record.data as Record<string, unknown>,
+        ...(record.data as Record<string, unknown>),
         createdAt: record.createdAt,
       },
     };

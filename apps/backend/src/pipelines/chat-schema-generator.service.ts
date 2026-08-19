@@ -3,7 +3,10 @@ import { db } from '../db/client';
 import { pipelineSchemas, proxyRuleSets, proxyRules, NewPipelineSchema } from '../db/schema';
 import { PermissionsService } from '../permissions/permissions.service';
 import { ProjectAISettingsService, AIProviderType } from '../projects/project-ai-settings.service';
-import { GenerateChatSchemaDto, GenerateChatSchemaResponseDto } from './dto/generate-chat-schema.dto';
+import {
+  GenerateChatSchemaDto,
+  GenerateChatSchemaResponseDto,
+} from './dto/generate-chat-schema.dto';
 import type { SchemaField } from '../db/schema/pipeline-schemas.schema';
 import type { PipelineConfig, PipelineStepConfig } from '../db/schema/proxy-rules.schema';
 import type { ProxyRuleSet } from '../db/schema/proxy-rule-sets.schema';
@@ -92,10 +95,7 @@ export class ChatSchemaGeneratorService {
       .select()
       .from(pipelineSchemas)
       .where(
-        and(
-          eq(pipelineSchemas.projectId, dto.projectId),
-          eq(pipelineSchemas.name, messagesName),
-        ),
+        and(eq(pipelineSchemas.projectId, dto.projectId), eq(pipelineSchemas.name, messagesName)),
       )
       .limit(1);
 
@@ -115,7 +115,9 @@ export class ChatSchemaGeneratorService {
       } as NewPipelineSchema)
       .returning();
 
-    this.logger.log(`Created conversations schema '${conversationsName}' (${conversationsSchema.id})`);
+    this.logger.log(
+      `Created conversations schema '${conversationsName}' (${conversationsSchema.id})`,
+    );
 
     // Create messages schema
     const messagesFields = this.getMessagesFields();
@@ -139,12 +141,7 @@ export class ChatSchemaGeneratorService {
       const [existingRuleSet] = await db
         .select()
         .from(proxyRuleSets)
-        .where(
-          and(
-            eq(proxyRuleSets.id, dto.ruleSetId),
-            eq(proxyRuleSets.projectId, dto.projectId),
-          ),
-        )
+        .where(and(eq(proxyRuleSets.id, dto.ruleSetId), eq(proxyRuleSets.projectId, dto.projectId)))
         .limit(1);
 
       if (!existingRuleSet) {
@@ -299,10 +296,7 @@ export class ChatSchemaGeneratorService {
    * Create GET pipeline to retrieve messages for a conversation.
    * Queries by conversationId query param, ordered by created_at ascending.
    */
-  private createGetChatPipeline(
-    name: string,
-    messagesSchemaId: string,
-  ): PipelineConfig {
+  private createGetChatPipeline(name: string, messagesSchemaId: string): PipelineConfig {
     const stepId = `step_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
     const steps: PipelineStepConfig[] = [
@@ -375,5 +369,4 @@ export class ChatSchemaGeneratorService {
       steps,
     };
   }
-
 }

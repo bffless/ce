@@ -53,8 +53,7 @@ export function AppCatalogGrid({
   const updateTarget = updateTargetSnapshot
     ? {
         entry:
-          entries.find((e) => e.id === updateTargetSnapshot.entry.id) ??
-          updateTargetSnapshot.entry,
+          entries.find((e) => e.id === updateTargetSnapshot.entry.id) ?? updateTargetSnapshot.entry,
         jobId: updateTargetSnapshot.jobId,
       }
     : null;

@@ -55,7 +55,13 @@ function splitFrontmatter(raw: string): {
   return { frontmatter: entries.length > 0 ? entries : null, body };
 }
 
-export function MarkdownViewer({ owner, repo, gitRef, filepath, leftActions }: MarkdownViewerProps) {
+export function MarkdownViewer({
+  owner,
+  repo,
+  gitRef,
+  filepath,
+  leftActions,
+}: MarkdownViewerProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [content, setContent] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
@@ -207,7 +213,11 @@ export function MarkdownViewer({ owner, repo, gitRef, filepath, leftActions }: M
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="sm" onClick={handleCopy} className="h-7 w-7 p-0">
-                  {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                  {copied ? (
+                    <Check className="h-4 w-4 text-green-500" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
                 </Button>
               </TooltipTrigger>
               <TooltipContent>{copied ? 'Copied!' : 'Copy markdown'}</TooltipContent>

@@ -24,7 +24,10 @@ export type PathMode = 'include' | 'exclude';
  * DTO for creating a new retention rule
  */
 export class CreateRetentionRuleDto {
-  @ApiProperty({ description: 'User-friendly name for the rule', example: 'Clean up feature branches' })
+  @ApiProperty({
+    description: 'User-friendly name for the rule',
+    example: 'Clean up feature branches',
+  })
   @IsString()
   @MaxLength(100)
   name: string;
@@ -90,7 +93,8 @@ export class CreateRetentionRuleDto {
   pathPatterns?: string[];
 
   @ApiPropertyOptional({
-    description: 'How to apply pathPatterns: "exclude" deletes matching files, "include" keeps only matching files',
+    description:
+      'How to apply pathPatterns: "exclude" deletes matching files, "include" keeps only matching files',
     enum: ['include', 'exclude'],
     example: 'exclude',
   })
@@ -160,7 +164,8 @@ export class UpdateRetentionRuleDto {
   pathPatterns?: string[];
 
   @ApiPropertyOptional({
-    description: 'How to apply pathPatterns: "exclude" deletes matching files, "include" keeps only matching files',
+    description:
+      'How to apply pathPatterns: "exclude" deletes matching files, "include" keeps only matching files',
     enum: ['include', 'exclude'],
   })
   @IsOptional()
@@ -325,7 +330,9 @@ export class RetentionLogResponseDto {
   @ApiProperty({ description: 'Project ID' })
   projectId: string;
 
-  @ApiPropertyOptional({ description: 'Rule ID that triggered deletion (null if rule was deleted)' })
+  @ApiPropertyOptional({
+    description: 'Rule ID that triggered deletion (null if rule was deleted)',
+  })
   ruleId?: string;
 
   @ApiProperty({ description: 'Deleted commit SHA' })

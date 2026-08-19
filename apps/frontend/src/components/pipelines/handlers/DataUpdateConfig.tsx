@@ -36,7 +36,12 @@ interface FieldMapping {
   expression: string;
 }
 
-export function DataUpdateConfig({ config, onChange, projectId, previousSteps = [] }: DataUpdateConfigProps) {
+export function DataUpdateConfig({
+  config,
+  onChange,
+  projectId,
+  previousSteps = [],
+}: DataUpdateConfigProps) {
   const [schemaId, setSchemaId] = useState(config.schemaId || '');
   const [recordId, setRecordId] = useState(config.recordId || '');
   const [single, setSingle] = useState(config.single || false);
@@ -44,7 +49,11 @@ export function DataUpdateConfig({ config, onChange, projectId, previousSteps = 
     const existing = config.filters || {};
     const entries = Object.entries(existing);
     return entries.length > 0
-      ? entries.map(([field, conf]) => ({ field, op: conf.op, value: displayFilterValue(conf.value) }))
+      ? entries.map(([field, conf]) => ({
+          field,
+          op: conf.op,
+          value: displayFilterValue(conf.value),
+        }))
       : [{ field: '', op: 'eq' as const, value: '' }];
   });
   const [filterLogic, setFilterLogic] = useState<'and' | 'or'>(config.filterLogic || 'and');
@@ -60,7 +69,10 @@ export function DataUpdateConfig({ config, onChange, projectId, previousSteps = 
     const filtersRecord: Record<string, { op: 'eq' | 'ne' | 'in'; value: string | string[] }> = {};
     for (const filter of filters) {
       if (filter.field.trim()) {
-        filtersRecord[filter.field.trim()] = { op: filter.op, value: serializeFilterValue(filter.op, filter.value) };
+        filtersRecord[filter.field.trim()] = {
+          op: filter.op,
+          value: serializeFilterValue(filter.op, filter.value),
+        };
       }
     }
 
@@ -109,9 +121,7 @@ export function DataUpdateConfig({ config, onChange, projectId, previousSteps = 
   };
 
   const handleMappingChange = (index: number, updates: Partial<FieldMapping>) => {
-    setFieldMappings(
-      fieldMappings.map((m, i) => (i === index ? { ...m, ...updates } : m)),
-    );
+    setFieldMappings(fieldMappings.map((m, i) => (i === index ? { ...m, ...updates } : m)));
   };
 
   return (
@@ -138,14 +148,10 @@ export function DataUpdateConfig({ config, onChange, projectId, previousSteps = 
         <div className="space-y-0.5">
           <Label htmlFor="single">Return Single Object</Label>
           <p className="text-xs text-muted-foreground">
-            Update only first match and return object instead of {"{ count, updated: [] }"}
+            Update only first match and return object instead of {'{ count, updated: [] }'}
           </p>
         </div>
-        <Switch
-          id="single"
-          checked={single}
-          onCheckedChange={setSingle}
-        />
+        <Switch id="single" checked={single} onCheckedChange={setSingle} />
       </div>
 
       <div className="space-y-2">
@@ -187,7 +193,9 @@ export function DataUpdateConfig({ config, onChange, projectId, previousSteps = 
                 <ExpressionInput
                   value={filter.value}
                   onChange={(value) => handleFilterChange(index, { value })}
-                  placeholder={filter.op === 'in' ? 'Expression, or comma-separated list' : 'Expression'}
+                  placeholder={
+                    filter.op === 'in' ? 'Expression, or comma-separated list' : 'Expression'
+                  }
                   previousSteps={previousSteps}
                 />
               </div>
@@ -229,9 +237,7 @@ export function DataUpdateConfig({ config, onChange, projectId, previousSteps = 
                 </Button>
               </div>
               <span className="text-xs text-muted-foreground">
-                {filterLogic === 'and'
-                  ? 'All conditions must match'
-                  : 'Any condition can match'}
+                {filterLogic === 'and' ? 'All conditions must match' : 'Any condition can match'}
               </span>
             </div>
           )}

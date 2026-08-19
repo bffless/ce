@@ -46,9 +46,7 @@ interface ParsedSkillFile {
 export class SkillsService {
   private readonly logger = new Logger(SkillsService.name);
 
-  constructor(
-    @Inject(STORAGE_ADAPTER) private readonly storageAdapter: IStorageAdapter,
-  ) {}
+  constructor(@Inject(STORAGE_ADAPTER) private readonly storageAdapter: IStorageAdapter) {}
 
   /**
    * List all available skills for a deployment.

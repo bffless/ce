@@ -183,10 +183,7 @@ export class LocalStorageAdapter implements IStorageAdapter {
   /**
    * Download a file as a stream without buffering into memory
    */
-  async downloadStream(
-    key: string,
-    opts?: DownloadStreamOptions,
-  ): Promise<StreamDownloadResult> {
+  async downloadStream(key: string, opts?: DownloadStreamOptions): Promise<StreamDownloadResult> {
     const sanitizedKey = this.sanitizeKey(key);
     const storageKey = this.prefixKey(sanitizedKey);
     const fullPath = path.join(this.basePath, storageKey);
@@ -293,7 +290,11 @@ export class LocalStorageAdapter implements IStorageAdapter {
    * a holder of the URL cannot rewrite the filename the response is served
    * under; the route re-sanitizes it before it reaches the header regardless.
    */
-  async getUrl(key: string, expiresIn = MAX_EXPIRES_IN_SECONDS, options?: SignedUrlOptions): Promise<string> {
+  async getUrl(
+    key: string,
+    expiresIn = MAX_EXPIRES_IN_SECONDS,
+    options?: SignedUrlOptions,
+  ): Promise<string> {
     if (!Number.isFinite(expiresIn)) {
       throw new TypeError('expiresIn must be a finite number');
     }
@@ -420,12 +421,16 @@ export class LocalStorageAdapter implements IStorageAdapter {
   async listKeys(prefix?: string): Promise<string[]> {
     const sanitizedPrefix = prefix ? this.sanitizeKey(prefix) : '';
     const storagePrefix = this.prefixKey(sanitizedPrefix);
-    const searchPath = storagePrefix ? path.join(this.basePath, storagePrefix) : path.join(this.basePath, this.keyPrefix || '');
+    const searchPath = storagePrefix
+      ? path.join(this.basePath, storagePrefix)
+      : path.join(this.basePath, this.keyPrefix || '');
 
     const keys: string[] = [];
 
     try {
-      const baseForRelative = this.keyPrefix ? path.join(this.basePath, this.keyPrefix) : this.basePath;
+      const baseForRelative = this.keyPrefix
+        ? path.join(this.basePath, this.keyPrefix)
+        : this.basePath;
       await this.listKeysRecursive(searchPath, baseForRelative, keys);
     } catch (error) {
       if (error.code === 'ENOENT') {

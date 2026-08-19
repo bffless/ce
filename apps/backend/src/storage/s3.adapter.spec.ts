@@ -58,7 +58,9 @@ describe('S3StorageAdapter', () => {
     });
 
     it('should accept valid presignedUrlExpiration', () => {
-      expect(() => validateS3Config({ ...validConfig, presignedUrlExpiration: 3600 })).not.toThrow();
+      expect(() =>
+        validateS3Config({ ...validConfig, presignedUrlExpiration: 3600 }),
+      ).not.toThrow();
       expect(() => validateS3Config({ ...validConfig, presignedUrlExpiration: 1 })).not.toThrow();
       expect(() =>
         validateS3Config({ ...validConfig, presignedUrlExpiration: 604800 }),

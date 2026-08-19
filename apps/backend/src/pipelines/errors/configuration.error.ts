@@ -5,11 +5,7 @@ import { PipelineError } from './pipeline.error';
  * Error thrown when pipeline or step configuration is invalid
  */
 export class ConfigurationError extends PipelineError {
-  constructor(
-    message: string,
-    step?: string,
-    details?: unknown,
-  ) {
+  constructor(message: string, step?: string, details?: unknown) {
     super('CONFIGURATION_ERROR', message, step, details, HttpStatus.BAD_REQUEST);
   }
 }
@@ -33,11 +29,7 @@ export class SchemaNotFoundError extends PipelineError {
  * Error thrown when an expression fails to evaluate
  */
 export class ExpressionError extends PipelineError {
-  constructor(
-    expression: string,
-    reason: string,
-    step?: string,
-  ) {
+  constructor(expression: string, reason: string, step?: string) {
     super(
       'EXPRESSION_ERROR',
       `Failed to evaluate expression '${expression}': ${reason}`,

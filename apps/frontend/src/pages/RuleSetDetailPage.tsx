@@ -47,7 +47,11 @@ export function RuleSetDetailPage() {
   const { canEdit } = useProjectRole(owner!, repo!);
 
   // Fetch the rule set with its rules
-  const { data: ruleSet, isLoading, error } = useGetRuleSetQuery(ruleSetId!, {
+  const {
+    data: ruleSet,
+    isLoading,
+    error,
+  } = useGetRuleSetQuery(ruleSetId!, {
     skip: !ruleSetId,
   });
 
@@ -192,9 +196,7 @@ export function RuleSetDetailPage() {
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <CardTitle>{ruleSet.name}</CardTitle>
-              {ruleSet.environment && (
-                <Badge variant="outline">{ruleSet.environment}</Badge>
-              )}
+              {ruleSet.environment && <Badge variant="outline">{ruleSet.environment}</Badge>}
               <ManagedFromGitBadge source={ruleSet.source} />
               {canEdit && (
                 <Button
@@ -209,7 +211,8 @@ export function RuleSetDetailPage() {
               )}
             </div>
             <CardDescription className="mt-1">
-              {ruleSet.description || 'Configure proxy rules for this rule set. Rules are evaluated in order.'}
+              {ruleSet.description ||
+                'Configure proxy rules for this rule set. Rules are evaluated in order.'}
             </CardDescription>
           </div>
           {canEdit && (
@@ -249,11 +252,7 @@ export function RuleSetDetailPage() {
       </Card>
 
       {/* Edit Rule Set Dialog */}
-      <EditRuleSetDialog
-        ruleSet={ruleSet}
-        open={editDialogOpen}
-        onOpenChange={setEditDialogOpen}
-      />
+      <EditRuleSetDialog ruleSet={ruleSet} open={editDialogOpen} onOpenChange={setEditDialogOpen} />
     </div>
   );
 }

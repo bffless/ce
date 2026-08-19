@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  HOSTNAME_PATTERN,
-  SOURCE_DOMAIN_PATTERN,
-  SUBDOMAIN_LABEL_PATTERN,
-} from './domainPatterns';
+import { HOSTNAME_PATTERN, SOURCE_DOMAIN_PATTERN, SUBDOMAIN_LABEL_PATTERN } from './domainPatterns';
 
 describe('SOURCE_DOMAIN_PATTERN', () => {
   it.each([

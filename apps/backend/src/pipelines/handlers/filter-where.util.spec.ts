@@ -22,9 +22,7 @@ describe('filter-where.util', () => {
   describe('validateFilterOps', () => {
     it('accepts every operator in DATA_FILTER_OPS', () => {
       for (const op of DATA_FILTER_OPS) {
-        expect(() =>
-          validateFilterOps({ f: { op, value: 'x' } }, 'data_query'),
-        ).not.toThrow();
+        expect(() => validateFilterOps({ f: { op, value: 'x' } }, 'data_query')).not.toThrow();
       }
     });
 
@@ -38,7 +36,9 @@ describe('filter-where.util', () => {
       ).toThrow(ConfigurationError);
       expect(() =>
         validateFilterOps({ fetchedAt: { op: 'between', value: '1' } }, 'data_update'),
-      ).toThrow(/Invalid operator 'between' for field 'fetchedAt'\. Valid operators: eq, ne, gt, lt, gte, lte, like, in/);
+      ).toThrow(
+        /Invalid operator 'between' for field 'fetchedAt'\. Valid operators: eq, ne, gt, lt, gte, lte, like, in/,
+      );
     });
   });
 
@@ -90,7 +90,11 @@ describe('filter-where.util', () => {
       const evaluate = (value: string): unknown =>
         value === 'steps.prep.urls' ? ['https://a.com', 'https://b.com'] : value;
       const { sql, params } = render(
-        buildFilterConditions({ feedId: { op: 'in', value: 'steps.prep.urls' } }, undefined, evaluate),
+        buildFilterConditions(
+          { feedId: { op: 'in', value: 'steps.prep.urls' } },
+          undefined,
+          evaluate,
+        ),
       );
       expect(sql.toLowerCase()).toContain('in (');
       expect(params).toEqual(['https://a.com', 'https://b.com']);

@@ -1,7 +1,10 @@
 import { useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Mail, CheckCircle, XCircle, Loader2, Home, LogIn, UserPlus } from 'lucide-react';
-import { useValidateInvitationTokenQuery, useAcceptInvitationMutation } from '@/services/invitationsApi';
+import {
+  useValidateInvitationTokenQuery,
+  useAcceptInvitationMutation,
+} from '@/services/invitationsApi';
 import { useGetSessionQuery, useSignOutMutation } from '@/services/authApi';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -62,8 +65,10 @@ export function InvitationAcceptPage() {
 
         // If user is already a member (409) or invitation was already accepted (400),
         // treat as success - invitation was likely accepted during signup process
-        const isAlreadyMember = statusCode === 409 && errorMessageLower.includes('already a member');
-        const isAlreadyAccepted = statusCode === 400 && errorMessageLower.includes('already been accepted');
+        const isAlreadyMember =
+          statusCode === 409 && errorMessageLower.includes('already a member');
+        const isAlreadyAccepted =
+          statusCode === 400 && errorMessageLower.includes('already been accepted');
 
         if (isAlreadyMember || isAlreadyAccepted) {
           toast({
@@ -184,7 +189,8 @@ export function InvitationAcceptPage() {
 
   // Valid invitation - check if user is logged in with correct email
   const isLoggedIn = !!session?.user;
-  const emailMatches = isLoggedIn && session.user?.email.toLowerCase() === validation.email?.toLowerCase();
+  const emailMatches =
+    isLoggedIn && session.user?.email.toLowerCase() === validation.email?.toLowerCase();
 
   // User is logged in but with wrong email
   if (isLoggedIn && !emailMatches) {

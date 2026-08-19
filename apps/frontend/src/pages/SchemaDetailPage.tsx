@@ -16,7 +16,11 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { ArrowLeft, Download, Pencil, Trash2 } from 'lucide-react';
-import { useGetSchemaQuery, useDeleteSchemaMutation, downloadSchemaExport } from '@/services/pipelineSchemasApi';
+import {
+  useGetSchemaQuery,
+  useDeleteSchemaMutation,
+  downloadSchemaExport,
+} from '@/services/pipelineSchemasApi';
 import { useProjectRole } from '@/hooks/useProjectRole';
 import { useToast } from '@/hooks/use-toast';
 import { SchemaFieldsTable } from '@/components/data/SchemaFieldsTable';
@@ -39,7 +43,11 @@ export function SchemaDetailPage() {
   const [isExporting, setIsExporting] = useState(false);
 
   // Fetch schema
-  const { data: schema, isLoading, error } = useGetSchemaQuery(schemaId || '', {
+  const {
+    data: schema,
+    isLoading,
+    error,
+  } = useGetSchemaQuery(schemaId || '', {
     skip: !schemaId,
   });
 

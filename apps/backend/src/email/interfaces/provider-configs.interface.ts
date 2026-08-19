@@ -64,7 +64,14 @@ export type EmailProviderConfig =
   | { provider: 'managed'; config: ManagedEmailConfig };
 
 // Email provider type enum
-export type EmailProviderType = 'smtp' | 'sendgrid' | 'ses' | 'mailgun' | 'resend' | 'postmark' | 'managed';
+export type EmailProviderType =
+  | 'smtp'
+  | 'sendgrid'
+  | 'ses'
+  | 'mailgun'
+  | 'resend'
+  | 'postmark'
+  | 'managed';
 
 // Provider metadata for UI display
 export interface EmailProviderMetadata {

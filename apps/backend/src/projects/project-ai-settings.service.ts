@@ -1,4 +1,9 @@
-import { Injectable, Logger, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { db } from '../db/client';
 import { projects, deploymentAliases } from '../db/schema';
@@ -66,12 +71,27 @@ export const AI_PROVIDER_METADATA: Record<
     models: [
       // Premium tier
       { id: 'gpt-4o', name: 'GPT-4o', tier: 'premium', description: 'Most capable, multimodal' },
-      { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', tier: 'premium', description: 'Fast GPT-4 with vision' },
+      {
+        id: 'gpt-4-turbo',
+        name: 'GPT-4 Turbo',
+        tier: 'premium',
+        description: 'Fast GPT-4 with vision',
+      },
       { id: 'gpt-4', name: 'GPT-4', tier: 'premium', description: 'Complex reasoning' },
       // Balanced tier
-      { id: 'gpt-4o-mini', name: 'GPT-4o Mini', tier: 'balanced', description: 'Fast and affordable' },
+      {
+        id: 'gpt-4o-mini',
+        name: 'GPT-4o Mini',
+        tier: 'balanced',
+        description: 'Fast and affordable',
+      },
       // Economy tier
-      { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', tier: 'economy', description: 'Fast and cost-effective' },
+      {
+        id: 'gpt-3.5-turbo',
+        name: 'GPT-3.5 Turbo',
+        tier: 'economy',
+        description: 'Fast and cost-effective',
+      },
     ],
   },
   anthropic: {
@@ -81,11 +101,26 @@ export const AI_PROVIDER_METADATA: Record<
     description: 'Claude Opus 4.8, Sonnet 5, and Haiku 4.5',
     models: [
       // Premium tier
-      { id: 'claude-opus-4-8', name: 'Claude Opus 4.8', tier: 'premium', description: 'Most intelligent for agents and coding' },
+      {
+        id: 'claude-opus-4-8',
+        name: 'Claude Opus 4.8',
+        tier: 'premium',
+        description: 'Most intelligent for agents and coding',
+      },
       // Balanced tier
-      { id: 'claude-sonnet-5', name: 'Claude Sonnet 5', tier: 'balanced', description: 'Best balance of speed and intelligence' },
+      {
+        id: 'claude-sonnet-5',
+        name: 'Claude Sonnet 5',
+        tier: 'balanced',
+        description: 'Best balance of speed and intelligence',
+      },
       // Economy tier
-      { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', tier: 'economy', description: 'Fastest with near-frontier intelligence' },
+      {
+        id: 'claude-haiku-4-5',
+        name: 'Claude Haiku 4.5',
+        tier: 'economy',
+        description: 'Fastest with near-frontier intelligence',
+      },
     ],
   },
   google: {
@@ -93,11 +128,26 @@ export const AI_PROVIDER_METADATA: Record<
     description: 'Gemini Pro and Flash models',
     models: [
       // Premium tier
-      { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', tier: 'premium', description: '1M token context, best reasoning' },
+      {
+        id: 'gemini-1.5-pro',
+        name: 'Gemini 1.5 Pro',
+        tier: 'premium',
+        description: '1M token context, best reasoning',
+      },
       // Balanced tier
-      { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', tier: 'balanced', description: 'Fast multimodal' },
+      {
+        id: 'gemini-1.5-flash',
+        name: 'Gemini 1.5 Flash',
+        tier: 'balanced',
+        description: 'Fast multimodal',
+      },
       // Economy tier
-      { id: 'gemini-1.5-flash-8b', name: 'Gemini 1.5 Flash 8B', tier: 'economy', description: 'Most cost-effective' },
+      {
+        id: 'gemini-1.5-flash-8b',
+        name: 'Gemini 1.5 Flash 8B',
+        tier: 'economy',
+        description: 'Most cost-effective',
+      },
     ],
   },
 };
@@ -290,7 +340,9 @@ export class ProjectAISettingsService {
         })
         .where(eq(projects.id, projectId));
 
-      this.logger.log(`AI provider ${dto.provider} ${existingIndex >= 0 ? 'updated' : 'added'} for project ${projectId}`);
+      this.logger.log(
+        `AI provider ${dto.provider} ${existingIndex >= 0 ? 'updated' : 'added'} for project ${projectId}`,
+      );
 
       return this.getAIStatus(projectId);
     } catch (error) {
@@ -439,7 +491,10 @@ export class ProjectAISettingsService {
   /**
    * Get decrypted config for a specific provider (for use by handlers)
    */
-  async getProviderConfig(projectId: string, provider?: AIProviderType): Promise<AIProviderConfig | null> {
+  async getProviderConfig(
+    projectId: string,
+    provider?: AIProviderType,
+  ): Promise<AIProviderConfig | null> {
     const providers = await this.getAllProviders(projectId);
 
     if (providers.length === 0) {
@@ -630,7 +685,9 @@ export class ProjectAISettingsService {
    * family name trails the version, and are likewise left untouched.
    */
   private normalizeAnthropicModelId(id: string): string {
-    const match = id.match(/^(claude-(?:opus|sonnet|haiku|fable|mythos)-(\d+)(?:-(\d+))?)-20\d{6}$/);
+    const match = id.match(
+      /^(claude-(?:opus|sonnet|haiku|fable|mythos)-(\d+)(?:-(\d+))?)-20\d{6}$/,
+    );
     if (!match) return id;
 
     const [, alias, major, minor] = match;
@@ -773,12 +830,7 @@ export class ProjectAISettingsService {
       const [record] = await db
         .select({ commitSha: deploymentAliases.commitSha })
         .from(deploymentAliases)
-        .where(
-          and(
-            eq(deploymentAliases.projectId, projectId),
-            eq(deploymentAliases.alias, alias),
-          ),
-        )
+        .where(and(eq(deploymentAliases.projectId, projectId), eq(deploymentAliases.alias, alias)))
         .limit(1);
       if (record?.commitSha) {
         return record.commitSha;
@@ -849,7 +901,9 @@ export class ProjectAISettingsService {
         })
         .where(eq(projects.id, projectId));
 
-      this.logger.log(`AI service ${service} ${existingIndex >= 0 ? 'updated' : 'added'} for project ${projectId}`);
+      this.logger.log(
+        `AI service ${service} ${existingIndex >= 0 ? 'updated' : 'added'} for project ${projectId}`,
+      );
       return this.getAIServicesStatus(projectId);
     } catch (error) {
       this.logger.error('Error adding/updating AI service:', error);
@@ -861,7 +915,10 @@ export class ProjectAISettingsService {
   /**
    * Remove an AI service from a project
    */
-  async removeService(projectId: string, service: AIServiceType): Promise<AIServicesStatusResponse> {
+  async removeService(
+    projectId: string,
+    service: AIServiceType,
+  ): Promise<AIServicesStatusResponse> {
     try {
       const project = await this.getProject(projectId);
       if (!project) {
@@ -897,7 +954,10 @@ export class ProjectAISettingsService {
   /**
    * Get decrypted service config (for use by handlers)
    */
-  async getServiceConfig(projectId: string, service: AIServiceType): Promise<AIServiceConfig | null> {
+  async getServiceConfig(
+    projectId: string,
+    service: AIServiceType,
+  ): Promise<AIServiceConfig | null> {
     try {
       const stored = await this.getStoredServices(projectId);
       const entry = stored.find((s) => s.service === service);

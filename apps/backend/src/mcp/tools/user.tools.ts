@@ -53,11 +53,7 @@ export class UserTools {
       id: z.string().describe('User ID'),
     }),
   })
-  async getUser(
-    { id }: { id: string },
-    _context: Context,
-    request: Request,
-  ) {
+  async getUser({ id }: { id: string }, _context: Context, request: Request) {
     const user = await getUserContext(request, this.authService);
     if (user.role !== 'admin') {
       throw new ForbiddenException('Admin role required');
@@ -68,7 +64,7 @@ export class UserTools {
 
   @Tool({
     name: 'update_user_role',
-    description: 'Update a user\'s role. Requires admin role.',
+    description: "Update a user's role. Requires admin role.",
     parameters: z.object({
       id: z.string().describe('User ID'),
       role: z.enum(['admin', 'user']).describe('New role'),

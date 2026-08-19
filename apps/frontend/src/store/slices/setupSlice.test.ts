@@ -13,7 +13,10 @@ describe('setupSlice - bootstrap SSL wizard state', () => {
     let state = reducer(undefined, setServingMode('cloudflare'));
     expect(state.wizard.servingMode).toBe('cloudflare');
     expect(state.wizard.bootstrapSslMode).toBe('paste');
-    state = reducer(state, setBootstrapRealIp({ header: 'X-Forwarded-For', ranges: ['1.2.3.0/24'] }));
+    state = reducer(
+      state,
+      setBootstrapRealIp({ header: 'X-Forwarded-For', ranges: ['1.2.3.0/24'] }),
+    );
     state = reducer(state, setDnsPreflightPassed(true));
     state = reducer(state, setServingMode('none'));
     expect(state.wizard.bootstrapSslMode).toBeNull(); // direct: user must pick LE vs BYO

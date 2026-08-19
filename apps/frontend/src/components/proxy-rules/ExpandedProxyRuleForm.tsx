@@ -157,7 +157,8 @@ export function ExpandedProxyRuleForm({
       name: pipelineConfig.name,
       description: pipelineConfig.description,
       steps: pipelineConfig.steps,
-      ...(pipelineConfig.postSteps && pipelineConfig.postSteps.length > 0 && { postSteps: pipelineConfig.postSteps }),
+      ...(pipelineConfig.postSteps &&
+        pipelineConfig.postSteps.length > 0 && { postSteps: pipelineConfig.postSteps }),
       validators: validators,
       // Include rule metadata for context
       _meta: {
@@ -406,13 +407,14 @@ export function ExpandedProxyRuleForm({
           preserveHost,
           forwardCookies,
           // Only include headerConfig if headers were modified or there are headers to send
-          headerConfig: headersModified || customHeaders.some(h => h.key)
-            ? {
-                add: Object.fromEntries(
-                  customHeaders.filter(h => h.key).map(h => [h.key, h.value])
-                ),
-              }
-            : undefined,
+          headerConfig:
+            headersModified || customHeaders.some((h) => h.key)
+              ? {
+                  add: Object.fromEntries(
+                    customHeaders.filter((h) => h.key).map((h) => [h.key, h.value]),
+                  ),
+                }
+              : undefined,
           authTransform: authTransformEnabled
             ? { type: 'cookie-to-bearer' as const, cookieName }
             : undefined,
@@ -754,7 +756,12 @@ export function ExpandedProxyRuleForm({
 
       {/* Pipeline Test Panel - Only shown when rule is saved */}
       {isPipeline && initialData?.id && (
-        <PipelineTestCard ruleId={initialData.id} pathPattern={pathPattern} method={method} steps={pipelineConfig.steps} />
+        <PipelineTestCard
+          ruleId={initialData.id}
+          pathPattern={pathPattern}
+          method={method}
+          steps={pipelineConfig.steps}
+        />
       )}
 
       {/* External Proxy Options */}
@@ -866,7 +873,9 @@ export function ExpandedProxyRuleForm({
                       />
                       <Input
                         type="password"
-                        placeholder={initialData?.headerConfig?.add?.[header.key] ? '(unchanged)' : 'Value'}
+                        placeholder={
+                          initialData?.headerConfig?.add?.[header.key] ? '(unchanged)' : 'Value'
+                        }
                         value={header.value}
                         onChange={(e) => {
                           const newHeaders = [...customHeaders];

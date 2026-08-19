@@ -130,7 +130,14 @@ function getLanguageFromFilepath(filepath: string): string {
   return languageMap[extension] || 'text';
 }
 
-export function CodeViewer({ owner, repo, gitRef, filepath, mimeType, leftActions }: CodeViewerProps) {
+export function CodeViewer({
+  owner,
+  repo,
+  gitRef,
+  filepath,
+  mimeType,
+  leftActions,
+}: CodeViewerProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [highlightedCode, setHighlightedCode] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
@@ -301,12 +308,7 @@ export function CodeViewer({ owner, repo, gitRef, filepath, mimeType, leftAction
             {/* View Mode Toggle */}
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 w-7 p-0 bg-accent"
-                  disabled
-                >
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0 bg-accent" disabled>
                   <Code className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
@@ -340,17 +342,14 @@ export function CodeViewer({ owner, repo, gitRef, filepath, mimeType, leftAction
                   <WrapText className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>{wrapLines ? 'Disable line wrapping' : 'Enable line wrapping'}</TooltipContent>
+              <TooltipContent>
+                {wrapLines ? 'Disable line wrapping' : 'Enable line wrapping'}
+              </TooltipContent>
             </Tooltip>
 
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleCopy}
-                  className="h-7 w-7 p-0"
-                >
+                <Button variant="ghost" size="sm" onClick={handleCopy} className="h-7 w-7 p-0">
                   {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                 </Button>
               </TooltipTrigger>
@@ -359,12 +358,7 @@ export function CodeViewer({ owner, repo, gitRef, filepath, mimeType, leftAction
 
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleDownload}
-                  className="h-7 w-7 p-0"
-                >
+                <Button variant="ghost" size="sm" onClick={handleDownload} className="h-7 w-7 p-0">
                   <Download className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>

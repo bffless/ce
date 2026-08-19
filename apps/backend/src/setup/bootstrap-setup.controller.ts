@@ -15,7 +15,11 @@ import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 import { BootstrapDnsPreflightService, PreflightResult } from './bootstrap-dns-preflight.service';
 import { SslCertificateService } from '../domains/ssl-certificate.service';
 import { writeInstanceConfig } from '../bootstrap/instance-config';
-import { discardStagedCertificates, promoteStagedCertificates, stagingPartiallyPopulated } from './ssl-staging';
+import {
+  discardStagedCertificates,
+  promoteStagedCertificates,
+  stagingPartiallyPopulated,
+} from './ssl-staging';
 import { ApplyBootstrapDto, BootstrapDomainActionDto, UploadCertificatesDto } from './setup.dto';
 
 @ApiTags('Setup')
@@ -35,7 +39,9 @@ export class BootstrapSetupController {
   // Docker's restart policy revive the backend, which re-runs main.ts
   // hydration and adopts the new identity. There is no docker socket here,
   // so a file write + process exit is the only way to "apply" the change.
-  private async reconcileWildcardSslVisibility(proxyMode: 'cloudflare' | 'proxy' | 'none'): Promise<void> {
+  private async reconcileWildcardSslVisibility(
+    proxyMode: 'cloudflare' | 'proxy' | 'none',
+  ): Promise<void> {
     try {
       await this.featureFlags.reconcileWildcardSslVisibility(proxyMode);
     } catch (err) {
@@ -100,7 +106,9 @@ export class BootstrapSetupController {
       // fail loudly rather than silently no-op-ing through promote — see
       // stagingPartiallyPopulated's doc comment.
       if (stagingPartiallyPopulated()) {
-        throw new BadRequestException('Staged certificate is incomplete — discard it and stage again');
+        throw new BadRequestException(
+          'Staged certificate is incomplete — discard it and stage again',
+        );
       }
       if (!this.bootstrap.certificatesPresent(dto.domain)) {
         throw new BadRequestException('Install certificates before applying');
@@ -156,7 +164,9 @@ export class BootstrapSetupController {
       // Failed fs write with setup already finalized = permanently dead
       // wizard AND no identity (M3). Log the original (more actionable) disk
       // error before anything else — the recovery below can itself fail.
-      this.logger.error(`[bootstrap] apply failed writing instance config: ${(err as Error).message}`);
+      this.logger.error(
+        `[bootstrap] apply failed writing instance config: ${(err as Error).message}`,
+      );
       try {
         // Put the wizard back so Apply can be retried from the browser once
         // the underlying problem (disk space, mount perms) is fixed.
@@ -209,7 +219,9 @@ export class BootstrapSetupController {
       );
     }
     await this.sslCert.initialize();
-    const result = await this.sslCert.requestPrimaryDomainCertificate(domain, { target: 'staging' });
+    const result = await this.sslCert.requestPrimaryDomainCertificate(domain, {
+      target: 'staging',
+    });
     if (!result.success) {
       throw new BadRequestException(`Certificate issuance failed: ${result.error}`);
     }

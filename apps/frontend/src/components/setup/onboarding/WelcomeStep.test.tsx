@@ -42,7 +42,7 @@ describe('WelcomeStep', () => {
     expect(iframe).not.toBeNull();
     // youtube-nocookie keeps a self-hosted install off Google's cookie domain.
     expect(iframe?.getAttribute('src')).toContain(
-      'https://www.youtube-nocookie.com/embed/cNqh02HyD0s'
+      'https://www.youtube-nocookie.com/embed/cNqh02HyD0s',
     );
   });
 

@@ -117,11 +117,7 @@ export function UploadsListPage() {
             <CardDescription>Manage file uploads and uploaded files</CardDescription>
           </div>
           {canEdit && (
-            <Button
-              size="sm"
-              className="gap-2"
-              onClick={() => setShowGenerateModal(true)}
-            >
+            <Button size="sm" className="gap-2" onClick={() => setShowGenerateModal(true)}>
               <Zap className="h-4 w-4" />
               Generate Upload Schema
             </Button>
@@ -168,7 +164,8 @@ export function UploadsListPage() {
                       <SelectContent>
                         {otherSchemas.map((schema) => (
                           <SelectItem key={schema.id} value={schema.id}>
-                            {schema.name} ({schema.recordCount} record{schema.recordCount !== 1 ? 's' : ''})
+                            {schema.name} ({schema.recordCount} record
+                            {schema.recordCount !== 1 ? 's' : ''})
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -205,13 +202,7 @@ export function UploadsListPage() {
   );
 }
 
-function SchemaCard({
-  schema,
-  onClick,
-}: {
-  schema: PipelineSchemaWithCount;
-  onClick: () => void;
-}) {
+function SchemaCard({ schema, onClick }: { schema: PipelineSchemaWithCount; onClick: () => void }) {
   // `recordCount` counts every row in the schema, so for a schema that also
   // holds non-file rows it overstates the uploads (a file tree stored as one
   // schema counts its folders). Ask for the same file-only total the detail
@@ -228,10 +219,7 @@ function SchemaCard({
   const nonFileCount = fileCount === undefined ? 0 : Math.max(0, schema.recordCount - fileCount);
 
   return (
-    <Card
-      className="cursor-pointer hover:bg-muted/50 transition-colors"
-      onClick={onClick}
-    >
+    <Card className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={onClick}>
       <CardContent className="p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -246,7 +234,8 @@ function SchemaCard({
                 ) : (
                   <span>
                     {fileCount} file{fileCount !== 1 ? 's' : ''}
-                    {nonFileCount > 0 && ` · ${nonFileCount} non-file record${nonFileCount !== 1 ? 's' : ''}`}
+                    {nonFileCount > 0 &&
+                      ` · ${nonFileCount} non-file record${nonFileCount !== 1 ? 's' : ''}`}
                   </span>
                 )}
               </div>

@@ -92,7 +92,8 @@ export class EmailContactPlugin implements AIToolPlugin {
       requiredDesc = ` You MUST collect the following before calling this tool: ${requiredFields.join(', ')}.`;
     }
     if (needsContactMethodReminder) {
-      requiredDesc += ' You MUST also collect at least one contact method (email or phone) so the visitor can be reached.';
+      requiredDesc +=
+        ' You MUST also collect at least one contact method (email or phone) so the visitor can be reached.';
     }
 
     // Build input schema dynamically based on required field settings
@@ -191,7 +192,8 @@ export class EmailContactPlugin implements AIToolPlugin {
         ? `You MUST collect the following before sending: ${requiredItems.join(', ')}.`
         : '';
     if (needsContactMethodReminder) {
-      requiredLine += ' You MUST also collect at least one contact method (email address or phone number) so the visitor can be reached.';
+      requiredLine +=
+        ' You MUST also collect at least one contact method (email address or phone number) so the visitor can be reached.';
     }
     const optionalLine =
       optionalItems.length > 0

@@ -70,9 +70,7 @@ export function SkillsConfig({ config, onChange, projectId }: SkillsConfigProps)
         <Label>Skills Mode</Label>
         <Select
           value={config.mode}
-          onValueChange={(v) =>
-            onChange({ ...config, mode: v as SkillsConfigValue['mode'] })
-          }
+          onValueChange={(v) => onChange({ ...config, mode: v as SkillsConfigValue['mode'] })}
         >
           <SelectTrigger>
             <SelectValue />
@@ -95,9 +93,7 @@ export function SkillsConfig({ config, onChange, projectId }: SkillsConfigProps)
           <Label>Skills Source (Alias)</Label>
           <Select
             value={config.alias || AUTO}
-            onValueChange={(v) =>
-              onChange({ ...config, alias: v === AUTO ? undefined : v })
-            }
+            onValueChange={(v) => onChange({ ...config, alias: v === AUTO ? undefined : v })}
           >
             <SelectTrigger>
               <SelectValue />
@@ -117,8 +113,8 @@ export function SkillsConfig({ config, onChange, projectId }: SkillsConfigProps)
           </Select>
           <p className="text-xs text-muted-foreground">
             Which deployment alias this step loads{' '}
-            <code className="bg-muted px-1 rounded">SKILL.md</code> files from. Saved with the
-            rule, so each AI step can use its own.
+            <code className="bg-muted px-1 rounded">SKILL.md</code> files from. Saved with the rule,
+            so each AI step can use its own.
           </p>
         </div>
       )}
@@ -133,9 +129,8 @@ export function SkillsConfig({ config, onChange, projectId }: SkillsConfigProps)
             className="font-mono text-sm"
           />
           <p className="text-xs text-muted-foreground">
-            Path within the deployment where{' '}
-            <code className="bg-muted px-1 rounded">SKILL.md</code> files live. Leave blank to
-            inherit the project default (
+            Path within the deployment where <code className="bg-muted px-1 rounded">SKILL.md</code>{' '}
+            files live. Leave blank to inherit the project default (
             <code className="bg-muted px-1 rounded">{projectPath}</code>). An app served under a
             base path publishes skills to a non-hidden directory — e.g.{' '}
             <code className="bg-muted px-1 rounded">apps/studio/dist/bffless/skills</code>.
@@ -184,9 +179,7 @@ export function SkillsConfig({ config, onChange, projectId }: SkillsConfigProps)
                     >
                       {skill.name}
                     </label>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {skill.description}
-                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">{skill.description}</p>
                   </div>
                 </div>
               ))}
@@ -199,8 +192,9 @@ export function SkillsConfig({ config, onChange, projectId }: SkillsConfigProps)
         <Alert className="border-blue-500/30 bg-blue-500/5">
           <Info className="h-4 w-4 text-blue-600" />
           <AlertDescription className="text-xs">
-            When skills are enabled, the AI can use the <code className="bg-muted px-1 rounded">load_skill</code> tool
-            to retrieve detailed instructions for specific tasks.
+            When skills are enabled, the AI can use the{' '}
+            <code className="bg-muted px-1 rounded">load_skill</code> tool to retrieve detailed
+            instructions for specific tasks.
           </AlertDescription>
         </Alert>
       )}

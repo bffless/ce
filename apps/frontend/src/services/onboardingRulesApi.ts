@@ -5,7 +5,11 @@ import { api } from './api';
 // ============================================================================
 
 export type OnboardingTrigger = 'user_signup' | 'invite_accepted';
-export type OnboardingActionType = 'grant_repo_access' | 'assign_role' | 'add_to_group' | 'run_pipeline';
+export type OnboardingActionType =
+  | 'grant_repo_access'
+  | 'assign_role'
+  | 'add_to_group'
+  | 'run_pipeline';
 
 export interface OnboardingAction {
   type: OnboardingActionType;
@@ -121,7 +125,10 @@ export const onboardingRulesApi = api.injectEndpoints({
     }),
 
     // Update an onboarding rule
-    updateOnboardingRule: builder.mutation<OnboardingRule, { id: string; data: UpdateOnboardingRuleDto }>({
+    updateOnboardingRule: builder.mutation<
+      OnboardingRule,
+      { id: string; data: UpdateOnboardingRuleDto }
+    >({
       query: ({ id, data }) => ({
         url: `/api/onboarding-rules/${id}`,
         method: 'PATCH',

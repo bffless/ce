@@ -75,7 +75,8 @@ export function EjectPanel({ entry, install, open, onOpenChange }: EjectPanelPro
         description: "Copy it now — it won't be shown again.",
       });
     } catch (err) {
-      const message = (err as { data?: { message?: string } })?.data?.message ?? 'Failed to mint API key';
+      const message =
+        (err as { data?: { message?: string } })?.data?.message ?? 'Failed to mint API key';
       toast({ title: 'Error', description: message, variant: 'destructive' });
     }
   };
@@ -200,8 +201,8 @@ export function EjectPanel({ entry, install, open, onOpenChange }: EjectPanelPro
             </div>
 
             <p className="text-muted-foreground">
-              The workflow&apos;s first deploy lands on this same alias — your install becomes
-              the fork&apos;s deploy target.
+              The workflow&apos;s first deploy lands on this same alias — your install becomes the
+              fork&apos;s deploy target.
             </p>
           </div>
         )}

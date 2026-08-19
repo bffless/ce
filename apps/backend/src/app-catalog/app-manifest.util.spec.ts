@@ -104,9 +104,7 @@ describe('validateAppManifest', () => {
       ...TEST_MANIFEST,
       install: {
         ...TEST_MANIFEST.install,
-        manualSteps: [
-          { id: 'x', title: 'X', body: 'Y', appliesWhen: 'sometimes' },
-        ],
+        manualSteps: [{ id: 'x', title: 'X', body: 'Y', appliesWhen: 'sometimes' }],
       },
     };
     const result = validateAppManifest(manifest);
@@ -241,9 +239,7 @@ describe('validateAppManifest', () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.errors).toContain(
-        'install.manualSteps[0].externalLink.label: required string',
-      );
+      expect(result.errors).toContain('install.manualSteps[0].externalLink.label: required string');
     }
   });
 
@@ -276,9 +272,7 @@ describe('validateAppManifest', () => {
       ...TEST_MANIFEST,
       install: {
         ...TEST_MANIFEST.install,
-        manualSteps: [
-          { id: 'a', title: 'T', body: 'B', externalLink: 'https://example.com' },
-        ],
+        manualSteps: [{ id: 'a', title: 'T', body: 'B', externalLink: 'https://example.com' }],
       },
     });
 
@@ -420,7 +414,10 @@ describe('manualStepApplies', () => {
   it('applies when appliesWhen is "always" or omitted', () => {
     expect(manualStepApplies(baseStep, { bucketStorage: false, platformMode: false })).toBe(true);
     expect(
-      manualStepApplies({ ...baseStep, appliesWhen: 'always' }, { bucketStorage: false, platformMode: false }),
+      manualStepApplies(
+        { ...baseStep, appliesWhen: 'always' },
+        { bucketStorage: false, platformMode: false },
+      ),
     ).toBe(true);
   });
 
@@ -515,10 +512,7 @@ describe('interpolateStep', () => {
   });
 
   it('returns null when title has an unresolvable token', () => {
-    const result = interpolateStep(
-      { id: 'x', title: 'Configure on {projectPath}', body: 'B' },
-      {},
-    );
+    const result = interpolateStep({ id: 'x', title: 'Configure on {projectPath}', body: 'B' }, {});
 
     expect(result).toBeNull();
   });
@@ -535,7 +529,11 @@ describe('interpolateStep', () => {
 
   it('survives when only body has an unresolvable token', () => {
     const result = interpolateStep(
-      { id: 'x', title: 'Configure CORS', body: 'Allow PUT from {appHost}. But also configure locally.' },
+      {
+        id: 'x',
+        title: 'Configure CORS',
+        body: 'Allow PUT from {appHost}. But also configure locally.',
+      },
       {},
     );
 
@@ -590,7 +588,10 @@ describe('interpolateStep', () => {
     ['no period at all', 'No terminator here'],
     ['single sentence', 'Just one sentence.'],
     ['multi-sentence', 'First one. Second one. Third one.'],
-    ['ends without a terminator (dot present but unterminated)', 'See docs at v2 spec.io for details'],
+    [
+      'ends without a terminator (dot present but unterminated)',
+      'See docs at v2 spec.io for details',
+    ],
   ])('round-trips a body with no unresolvable tokens byte-identically: %s', (_label, body) => {
     const result = interpolateStep({ id: 'x', title: 'T', body }, {});
 

@@ -17,7 +17,11 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { ProjectsService } from './projects.service';
-import { ProjectAISettingsService, AIProviderType, AIServiceType } from './project-ai-settings.service';
+import {
+  ProjectAISettingsService,
+  AIProviderType,
+  AIServiceType,
+} from './project-ai-settings.service';
 import { ProjectSecretsService } from './project-secrets.service';
 import { ApiKeyGuard } from '../auth/api-key.guard';
 import { ProjectPermissionGuard } from '../auth/guards/project-permission.guard';
@@ -39,7 +43,10 @@ import {
   ModelInfoDto,
 } from '../settings/dto/ai-settings.dto';
 import { SkillsService, SkillSummary } from '../pipelines/skills.service';
-import { AIToolPluginService, PluginListItem } from '../pipelines/ai-plugins/ai-tool-plugin.service';
+import {
+  AIToolPluginService,
+  PluginListItem,
+} from '../pipelines/ai-plugins/ai-tool-plugin.service';
 import { DeploymentsService } from '../deployments/deployments.service';
 import { IntegrationsService, IntegrationInfo } from '../integrations/integrations.service';
 
@@ -218,11 +225,7 @@ export class ProjectsController {
     // 'production' (e.g. 'studio').
     let sha = commitSha;
     if (!sha) {
-      sha = await this.aiSettingsService.resolveSkillsCommitSha(
-        projectId,
-        undefined,
-        alias,
-      );
+      sha = await this.aiSettingsService.resolveSkillsCommitSha(projectId, undefined, alias);
     }
     if (!sha) {
       try {
@@ -238,17 +241,14 @@ export class ProjectsController {
       }
     }
     if (!sha) {
-      sha =
-        (await this.deploymentsService.getLatestDeploymentSha(projectId)) ??
-        undefined;
+      sha = (await this.deploymentsService.getLatestDeploymentSha(projectId)) ?? undefined;
     }
 
     if (!sha) {
       return { skills: [] };
     }
 
-    const skillsPath =
-      path?.trim() || (await this.aiSettingsService.getSkillsPath(projectId));
+    const skillsPath = path?.trim() || (await this.aiSettingsService.getSkillsPath(projectId));
     const skills = await this.skillsService.listSkills(
       project.owner,
       project.name,
@@ -264,9 +264,7 @@ export class ProjectsController {
   @RequireProjectRole('admin')
   @ApiOperation({ summary: 'Get the skills path for a project' })
   @ApiResponse({ status: 200, description: 'Skills path configuration' })
-  async getSkillsPath(
-    @Param('id') projectId: string,
-  ): Promise<{ skillsPath: string }> {
+  async getSkillsPath(@Param('id') projectId: string): Promise<{ skillsPath: string }> {
     const skillsPath = await this.aiSettingsService.getSkillsPath(projectId);
     return { skillsPath };
   }
@@ -289,9 +287,7 @@ export class ProjectsController {
   @RequireProjectRole('admin')
   @ApiOperation({ summary: 'Get the alias skills are loaded from for a project' })
   @ApiResponse({ status: 200, description: 'Skills alias configuration' })
-  async getSkillsAlias(
-    @Param('id') projectId: string,
-  ): Promise<{ skillsAlias: string | null }> {
+  async getSkillsAlias(@Param('id') projectId: string): Promise<{ skillsAlias: string | null }> {
     const skillsAlias = await this.aiSettingsService.getSkillsAlias(projectId);
     return { skillsAlias };
   }
@@ -341,10 +337,7 @@ export class ProjectsController {
   @RequireProjectRole('admin')
   @ApiOperation({ summary: 'Remove an AI service from this project' })
   @ApiResponse({ status: 200, description: 'Service removed' })
-  async removeAIService(
-    @Param('id') id: string,
-    @Param('service') service: AIServiceType,
-  ) {
+  async removeAIService(@Param('id') id: string, @Param('service') service: AIServiceType) {
     return this.aiSettingsService.removeService(id, service);
   }
 
@@ -446,10 +439,7 @@ export class ProjectsController {
   @RequireProjectRole('admin')
   @ApiOperation({ summary: 'Disable a plugin for this project' })
   @ApiResponse({ status: 204, description: 'Plugin disabled' })
-  async disablePlugin(
-    @Param('id') id: string,
-    @Param('pluginId') pluginId: string,
-  ): Promise<void> {
+  async disablePlugin(@Param('id') id: string, @Param('pluginId') pluginId: string): Promise<void> {
     return this.pluginService.disablePlugin(id, pluginId);
   }
 
@@ -612,13 +602,9 @@ export class ProjectsController {
       ...project,
       settings: project.settings as Record<string, any> | null,
       createdAt:
-        project.createdAt instanceof Date
-          ? project.createdAt.toISOString()
-          : project.createdAt,
+        project.createdAt instanceof Date ? project.createdAt.toISOString() : project.createdAt,
       updatedAt:
-        project.updatedAt instanceof Date
-          ? project.updatedAt.toISOString()
-          : project.updatedAt,
+        project.updatedAt instanceof Date ? project.updatedAt.toISOString() : project.updatedAt,
     };
   }
 
@@ -631,9 +617,8 @@ export class ProjectsController {
     if (!dto.defaultProxyRuleSetIds) {
       const ids = await this.projectsService.getProjectDefaultProxyRuleSetIds(project.id);
       // Fall back to legacy column if join table is empty
-      dto.defaultProxyRuleSetIds = ids.length > 0
-        ? ids
-        : project.defaultProxyRuleSetId ? [project.defaultProxyRuleSetId] : [];
+      dto.defaultProxyRuleSetIds =
+        ids.length > 0 ? ids : project.defaultProxyRuleSetId ? [project.defaultProxyRuleSetId] : [];
     }
     return dto;
   }

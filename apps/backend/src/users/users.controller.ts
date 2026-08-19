@@ -95,7 +95,8 @@ export class UsersController {
   @Roles('admin')
   @ApiOperation({
     summary: 'Get user by email',
-    description: 'Look up a user by their email address. Admin only. Useful for Console UI validation.',
+    description:
+      'Look up a user by their email address. Admin only. Useful for Console UI validation.',
   })
   @ApiParam({ name: 'email', description: 'User email address', type: 'string' })
   @ApiResponse({

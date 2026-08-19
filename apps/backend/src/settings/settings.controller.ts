@@ -20,7 +20,10 @@ import { PrimaryContentService, PrimaryContentConfig } from './primary-content.s
 import { SmtpService } from './smtp.service';
 import { EmailSettingsService } from './email-settings.service';
 import { GoogleIntegrationCredentialsService } from './google-integration-credentials.service';
-import { GOOGLE_SERVICES, type GoogleService } from '../db/schema/google-integration-credentials.schema';
+import {
+  GOOGLE_SERVICES,
+  type GoogleService,
+} from '../db/schema/google-integration-credentials.schema';
 import {
   OidcProvidersService,
   type CreateOidcProviderInput,
@@ -336,7 +339,7 @@ export class SettingsController {
       if (!googleConfigured) {
         throw new BadRequestException(
           'Cannot enable Google OAuth: credentials are not configured. ' +
-          'Google OAuth credentials must be configured at the platform level in SuperTokens.',
+            'Google OAuth credentials must be configured at the platform level in SuperTokens.',
         );
       }
     }
@@ -508,7 +511,10 @@ export class SettingsController {
       'Body: { providerId (URL slug), displayName, kind: "google"|"okta"|"azure-ad"|"oidc", config: {...kind-specific...}, enabled? }',
   })
   @ApiResponse({ status: 201, description: 'Provider created' })
-  @ApiResponse({ status: 400, description: 'Invalid input (missing fields, bad slug, kind/config mismatch)' })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid input (missing fields, bad slug, kind/config mismatch)',
+  })
   @ApiResponse({ status: 409, description: 'A provider with that providerId already exists' })
   async createSsoProvider(
     @Body() body: CreateOidcProviderInput,
@@ -553,16 +559,21 @@ export class SettingsController {
   @Post('sso/providers/:id/test')
   @Roles('admin')
   @ApiOperation({
-    summary: 'Probe an OIDC provider\'s discovery endpoint',
+    summary: "Probe an OIDC provider's discovery endpoint",
     description:
       'For kind="oidc", fetches the configured discovery URL and reports back the issuer + authorization_endpoint. Pure read — no token issued. For other kinds (Google/Okta/Azure AD), returns ok=true if the row decrypts (no upstream call).',
   })
-  async testSsoProvider(@Param('id') id: string): Promise<{ ok: boolean; issuer?: string; authorizationEndpoint?: string; error?: string }> {
+  async testSsoProvider(
+    @Param('id') id: string,
+  ): Promise<{ ok: boolean; issuer?: string; authorizationEndpoint?: string; error?: string }> {
     const row = await this.oidcProvidersService.findById(id);
     if (!row) throw new BadRequestException(`Provider ${id} not found`);
     const cfg = this.oidcProvidersService.decryptConfig(row);
     if (!cfg) {
-      return { ok: false, error: 'Failed to decrypt credentials. Re-enter clientId / clientSecret.' };
+      return {
+        ok: false,
+        error: 'Failed to decrypt credentials. Re-enter clientId / clientSecret.',
+      };
     }
     if (row.kind !== 'oidc') {
       // Non-discovery kinds: we don't call out (Google/Okta/Azure don't use a
@@ -580,8 +591,7 @@ export class SettingsController {
     const discoveryUrl =
       cfg.oidcDiscoveryEndpoint
         .replace(/\/+$/, '')
-        .replace(/\/\.well-known\/openid-configuration$/, '') +
-      '/.well-known/openid-configuration';
+        .replace(/\/\.well-known\/openid-configuration$/, '') + '/.well-known/openid-configuration';
     try {
       const res = await fetch(discoveryUrl, { redirect: 'follow' });
       if (!res.ok) {

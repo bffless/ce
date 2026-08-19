@@ -22,10 +22,8 @@ jest.mock('../db/client', () => {
   for (const method of methods) {
     chainable[method] = jest.fn(() => chainable);
   }
-  chainable.then = (
-    resolve: (value: unknown) => unknown,
-    reject: (reason: unknown) => unknown,
-  ) => Promise.resolve(queued.length > 0 ? queued.shift() : []).then(resolve, reject);
+  chainable.then = (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) =>
+    Promise.resolve(queued.length > 0 ? queued.shift() : []).then(resolve, reject);
   chainable.__queue = (result: unknown) => queued.push(result);
   chainable.__reset = () => {
     queued.length = 0;
@@ -119,7 +117,9 @@ function makeBundle(
             version: 2,
             kind: 'proxy-rule-set',
             ruleSet: { name: 'handoff', description: 'Handoff API' },
-            rules: [{ pathPattern: '/api/nodes', method: 'GET', targetUrl: 'https://api.example.com' }],
+            rules: [
+              { pathPattern: '/api/nodes', method: 'GET', targetUrl: 'https://api.example.com' },
+            ],
             schemas: [],
           },
         ),
@@ -161,7 +161,10 @@ function deployResponse(overrides: Record<string, unknown> = {}) {
     commitSha: 'a'.repeat(40),
     fileCount: 2,
     totalSize: 100,
-    urls: { sha: 'https://admin.example.com/sha', default: 'https://admin.example.com/alias/handoff' },
+    urls: {
+      sha: 'https://admin.example.com/sha',
+      default: 'https://admin.example.com/alias/handoff',
+    },
     aliases: ['handoff'],
     ...overrides,
   };
@@ -220,7 +223,9 @@ describe('AppInstallerService', () => {
     jobs = new AppInstallJobsService();
     bundleService = { fetchBundle: jest.fn().mockResolvedValue(makeBundle()) };
     preflight = {
-      instanceGates: jest.fn().mockResolvedValue([{ id: 'storage', status: 'pass', message: 'ok' }]),
+      instanceGates: jest
+        .fn()
+        .mockResolvedValue([{ id: 'storage', status: 'pass', message: 'ok' }]),
       projectGates: jest.fn().mockResolvedValue({
         gates: [{ id: 'dns', status: 'pass', message: 'ok' }],
         syncPlans: [],
@@ -247,11 +252,15 @@ describe('AppInstallerService', () => {
       deleteAlias: jest.fn().mockResolvedValue(undefined),
     };
     domains = {
-      create: jest.fn().mockResolvedValue({ id: 'dom-1', domain: 'handoff.example.com', sslEnabled: true }),
+      create: jest
+        .fn()
+        .mockResolvedValue({ id: 'dom-1', domain: 'handoff.example.com', sslEnabled: true }),
       remove: jest.fn().mockResolvedValue(undefined),
     };
     projects = {
-      findOrCreateProject: jest.fn().mockResolvedValue({ id: 'proj-1', owner: 'acme', name: 'site' }),
+      findOrCreateProject: jest
+        .fn()
+        .mockResolvedValue({ id: 'proj-1', owner: 'acme', name: 'site' }),
       projectExists: jest.fn().mockResolvedValue(true),
       getProjectById: jest.fn().mockResolvedValue({ id: 'proj-1', owner: 'acme', name: 'site' }),
       deleteProject: jest.fn().mockResolvedValue(undefined),
@@ -264,9 +273,7 @@ describe('AppInstallerService', () => {
     };
     schemas = {
       delete: jest.fn().mockResolvedValue(undefined),
-      getByIdWithCount: jest.fn((id: string) =>
-        Promise.resolve({ id, name: id, recordCount: 0 }),
-      ),
+      getByIdWithCount: jest.fn((id: string) => Promise.resolve({ id, name: id, recordCount: 0 })),
     };
     config = {
       get: jest.fn((key: string) => (key === 'PRIMARY_DOMAIN' ? 'example.com' : undefined)),
@@ -652,7 +659,9 @@ describe('AppInstallerService', () => {
       expect(projects.projectExists.mock.invocationCallOrder[0]).toBeLessThan(
         projects.findOrCreateProject.mock.invocationCallOrder[0],
       );
-      const finalUpdate = mockDb.set.mock.calls.at(-1)![0] as { createdResources: CreatedResources };
+      const finalUpdate = mockDb.set.mock.calls.at(-1)![0] as {
+        createdResources: CreatedResources;
+      };
       expect(finalUpdate.createdResources.projectCreated).toBe(true);
     });
 
@@ -740,11 +749,20 @@ describe('AppInstallerService', () => {
 
     it('aborts on the fetch step when a bundled rule set fails DTO validation (SSRF parity)', async () => {
       bundleService.fetchBundle.mockResolvedValue(
-        makeBundle({}, {
-          ruleSet: { name: 'handoff' },
-          rules: [{ pathPattern: '/api/meta', method: 'GET', targetUrl: 'http://169.254.169.254/latest' }],
-          schemas: [],
-        }),
+        makeBundle(
+          {},
+          {
+            ruleSet: { name: 'handoff' },
+            rules: [
+              {
+                pathPattern: '/api/meta',
+                method: 'GET',
+                targetUrl: 'http://169.254.169.254/latest',
+              },
+            ],
+            schemas: [],
+          },
+        ),
       );
 
       const { jobId } = service.startInstall(ENTRY, { projectId: 'proj-1' }, 'user-1');
@@ -762,18 +780,21 @@ describe('AppInstallerService', () => {
       // `whitelist` alone would silently DELETE this key and sync a payload
       // that is not what the bundle shipped; the HTTP endpoint 400s on it.
       bundleService.fetchBundle.mockResolvedValue(
-        makeBundle({}, {
-          ruleSet: { name: 'handoff' },
-          rules: [
-            {
-              pathPattern: '/api/nodes',
-              method: 'GET',
-              targetUrl: 'https://api.example.com',
-              futureFeatureFlag: true,
-            },
-          ],
-          schemas: [],
-        }),
+        makeBundle(
+          {},
+          {
+            ruleSet: { name: 'handoff' },
+            rules: [
+              {
+                pathPattern: '/api/nodes',
+                method: 'GET',
+                targetUrl: 'https://api.example.com',
+                futureFeatureFlag: true,
+              },
+            ],
+            schemas: [],
+          },
+        ),
       );
 
       const { jobId } = service.startInstall(ENTRY, { projectId: 'proj-1' }, 'user-1');
@@ -796,8 +817,18 @@ describe('AppInstallerService', () => {
           syncResponse({
             ruleSetId: 'rs-1',
             schemaResolutions: [
-              { name: 'handoff_nodes', action: 'create', targetSchemaId: 'sch-new', fieldMismatch: false },
-              { name: 'handoff_acl', action: 'reuse', targetSchemaId: 'sch-existing', fieldMismatch: false },
+              {
+                name: 'handoff_nodes',
+                action: 'create',
+                targetSchemaId: 'sch-new',
+                fieldMismatch: false,
+              },
+              {
+                name: 'handoff_acl',
+                action: 'reuse',
+                targetSchemaId: 'sch-existing',
+                fieldMismatch: false,
+              },
             ],
           }),
         )
@@ -886,7 +917,12 @@ describe('AppInstallerService', () => {
           syncResponse({
             ruleSetId: 'rs-1',
             schemaResolutions: [
-              { name: 'handoff_nodes', action: 'create', targetSchemaId: 'sch-new', fieldMismatch: false },
+              {
+                name: 'handoff_nodes',
+                action: 'create',
+                targetSchemaId: 'sch-new',
+                fieldMismatch: false,
+              },
             ],
           }),
         )
@@ -990,7 +1026,9 @@ describe('AppInstallerService', () => {
     });
 
     it('does not recreate a domain already recorded on this app row (re-run)', async () => {
-      mockDb.__queue([{ ...INSTALLED_ROW, status: 'failed', createdResources: { domainId: 'dom-1' } }]);
+      mockDb.__queue([
+        { ...INSTALLED_ROW, status: 'failed', createdResources: { domainId: 'dom-1' } },
+      ]);
       mockDb.__queue([{ ...INSTALLED_ROW, createdResources: { domainId: 'dom-1' } }]);
       mockDb.__queue([]);
 
@@ -1027,7 +1065,11 @@ describe('AppInstallerService', () => {
     });
 
     it('notes a silently downgraded sslEnabled in the certificate detail', async () => {
-      domains.create.mockResolvedValue({ id: 'dom-1', domain: 'handoff.example.com', sslEnabled: false });
+      domains.create.mockResolvedValue({
+        id: 'dom-1',
+        domain: 'handoff.example.com',
+        sslEnabled: false,
+      });
       queueInstallDb();
 
       const { jobId } = service.startInstall(ENTRY, { projectId: 'proj-1' }, 'user-1');
@@ -1088,7 +1130,9 @@ describe('AppInstallerService', () => {
         null,
       );
       expect(jobs.get(jobId)!.steps.find((s) => s.id === 'schedules')!.status).toBe('done');
-      const finalUpdate = mockDb.set.mock.calls.at(-1)![0] as { createdResources: CreatedResources };
+      const finalUpdate = mockDb.set.mock.calls.at(-1)![0] as {
+        createdResources: CreatedResources;
+      };
       expect(finalUpdate.createdResources.scheduleIds).toEqual(['sched-1']);
     });
 
@@ -1200,7 +1244,9 @@ describe('AppInstallerService', () => {
         syncResponse({
           ruleSetId: 'rs-1',
           preserved: [{ pathPattern: '/api/thumbnail/draft', method: 'POST' }],
-          merged: [{ pathPattern: '/api/refine-scene', method: 'POST', keptFields: ['description'] }],
+          merged: [
+            { pathPattern: '/api/refine-scene', method: 'POST', keptFields: ['description'] },
+          ],
           conflicts: [
             {
               pathPattern: '/api/scenes',
@@ -1344,14 +1390,21 @@ describe('AppInstallerService', () => {
     };
 
     it('deletes only the created resources, in reverse order', async () => {
-      mockDb.__queue([{ ...INSTALLED_ROW, schemaIds: ['sch-new', 'sch-reused'], createdResources: created }]);
+      mockDb.__queue([
+        { ...INSTALLED_ROW, schemaIds: ['sch-new', 'sch-reused'], createdResources: created },
+      ]);
       mockDb.__queue([]); // delete installed_apps row
 
       const result = await service.undo('ia-1', 'user-1');
 
       expect(schedules.deleteSchedule).toHaveBeenCalledWith('sched-1', 'user-1', 'admin', null);
       expect(domains.remove).toHaveBeenCalledWith('dom-1', 'user-1', undefined, null);
-      expect(deployments.deleteAlias).toHaveBeenCalledWith('acme/site', 'handoff', 'user-1', 'admin');
+      expect(deployments.deleteAlias).toHaveBeenCalledWith(
+        'acme/site',
+        'handoff',
+        'user-1',
+        'admin',
+      );
       expect(deployments.deleteDeployment).toHaveBeenCalledWith('dep-1', 'user-1', 'admin');
       expect(ruleSets.delete).toHaveBeenCalledWith('rs-1', 'user-1', 'admin', null);
       expect(schemas.delete).toHaveBeenCalledWith('sch-new', 'user-1', 'admin', null);
@@ -1369,7 +1422,12 @@ describe('AppInstallerService', () => {
         schemas.delete.mock.invocationCallOrder[0],
       );
       expect(result.removed).toEqual(
-        expect.arrayContaining(['schedule:sched-1', 'domain:dom-1', 'ruleSet:rs-1', 'schema:sch-new']),
+        expect.arrayContaining([
+          'schedule:sched-1',
+          'domain:dom-1',
+          'ruleSet:rs-1',
+          'schema:sch-new',
+        ]),
       );
     });
 
@@ -1394,7 +1452,11 @@ describe('AppInstallerService', () => {
 
     it('does not touch a domain or project it did not create', async () => {
       mockDb.__queue([
-        { ...INSTALLED_ROW, domainId: 'dom-preexisting', createdResources: { ruleSetIds: ['rs-1'] } },
+        {
+          ...INSTALLED_ROW,
+          domainId: 'dom-preexisting',
+          createdResources: { ruleSetIds: ['rs-1'] },
+        },
       ]);
       mockDb.__queue([]);
 
@@ -1493,7 +1555,8 @@ describe('AppInstallerService', () => {
 
     beforeEach(() => {
       schemas.getByIdWithCount = jest.fn((id: string) => {
-        if (id === 'sch-new') return Promise.resolve({ id, name: 'handoff_nodes', recordCount: 42 });
+        if (id === 'sch-new')
+          return Promise.resolve({ id, name: 'handoff_nodes', recordCount: 42 });
         if (id === 'sch-reused') {
           return Promise.resolve({ id, name: 'handoff_shared_table', recordCount: 7 });
         }
@@ -1520,7 +1583,12 @@ describe('AppInstallerService', () => {
       expect(schemas.delete).not.toHaveBeenCalled();
       expect(ruleSets.delete).toHaveBeenCalledWith('rs-1', 'user-1', 'admin', null);
       expect(ruleSets.delete).toHaveBeenCalledWith('rs-adopted', 'user-1', 'admin', null);
-      expect(deployments.deleteAlias).toHaveBeenCalledWith('acme/site', 'handoff', 'user-1', 'admin');
+      expect(deployments.deleteAlias).toHaveBeenCalledWith(
+        'acme/site',
+        'handoff',
+        'user-1',
+        'admin',
+      );
       expect(deployments.deleteDeployment).toHaveBeenCalledWith('dep-1', 'user-1', 'admin');
       expect(domains.remove).toHaveBeenCalledWith('dom-1', 'user-1', undefined, null);
       expect(schedules.deleteSchedule).toHaveBeenCalledWith('sched-1', 'user-1', 'admin', null);
@@ -1573,7 +1641,9 @@ describe('AppInstallerService', () => {
 
       expect(summary.failures).toEqual(['schema:sch-new']);
       expect(summary.dataTables.deleted).toEqual([]);
-      expect(summary.dataTables.kept).toEqual(expect.arrayContaining(['handoff_nodes', 'handoff_shared_table']));
+      expect(summary.dataTables.kept).toEqual(
+        expect.arrayContaining(['handoff_nodes', 'handoff_shared_table']),
+      );
       expect(summary.dataTables.deletedRecordCounts).toEqual({});
       expect(mockDb.delete).not.toHaveBeenCalled();
       expect(mockDb.set).toHaveBeenCalledWith(expect.objectContaining({ status: 'failed' }));
@@ -1661,7 +1731,8 @@ describe('AppInstallerService', () => {
         },
       ]);
       schemas.getByIdWithCount = jest.fn((id: string) => {
-        if (id === 'sch-new') return Promise.resolve({ id, name: 'handoff_nodes', recordCount: 42 });
+        if (id === 'sch-new')
+          return Promise.resolve({ id, name: 'handoff_nodes', recordCount: 42 });
         return Promise.resolve({ id, name: 'handoff_shared_table', recordCount: 7 });
       });
 

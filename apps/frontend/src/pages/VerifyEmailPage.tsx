@@ -66,9 +66,7 @@ export function VerifyEmailPage() {
         })
         .catch((error: any) => {
           setVerifyState('error');
-          setVerifyError(
-            error?.data?.message || 'Verification link is invalid or expired.',
-          );
+          setVerifyError(error?.data?.message || 'Verification link is invalid or expired.');
         });
     }
   }, [token, verifyState, verifyEmail, navigate]);
@@ -164,8 +162,16 @@ export function VerifyEmailPage() {
                     <AlertCircle className="h-4 w-4" />
                     <AlertDescription>{verifyError}</AlertDescription>
                   </Alert>
-                  <Button className="w-full" onClick={handleResend} disabled={isSending || resendCooldown > 0}>
-                    {isSending ? 'Sending...' : resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Request New Link'}
+                  <Button
+                    className="w-full"
+                    onClick={handleResend}
+                    disabled={isSending || resendCooldown > 0}
+                  >
+                    {isSending
+                      ? 'Sending...'
+                      : resendCooldown > 0
+                        ? `Resend in ${resendCooldown}s`
+                        : 'Request New Link'}
                   </Button>
                   <Button variant="outline" className="w-full" onClick={handleSignOut}>
                     Sign Out
@@ -195,9 +201,7 @@ export function VerifyEmailPage() {
         <Card>
           <CardHeader className="space-y-1">
             <CardTitle className="text-2xl font-bold">Verify Your Email</CardTitle>
-            <CardDescription>
-              We sent a verification link to your email address
-            </CardDescription>
+            <CardDescription>We sent a verification link to your email address</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center gap-3 rounded-lg border p-4 bg-muted/50">

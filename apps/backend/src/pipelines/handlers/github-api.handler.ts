@@ -12,7 +12,18 @@ import { IntegrationsService } from '../../integrations/integrations.service';
  */
 export interface GitHubApiHandlerConfig extends BaseHandlerConfig {
   /** The GitHub API action to perform */
-  action: 'create_repo_from_template' | 'set_repo_variable' | 'create_issue' | 'add_issue_comment' | 'close_issue' | 'close_pull_request' | 'merge_pull_request' | 'list_pull_requests' | 'dispatch' | 'list_workflow_runs' | 'get_workflow_run';
+  action:
+    | 'create_repo_from_template'
+    | 'set_repo_variable'
+    | 'create_issue'
+    | 'add_issue_comment'
+    | 'close_issue'
+    | 'close_pull_request'
+    | 'merge_pull_request'
+    | 'list_pull_requests'
+    | 'dispatch'
+    | 'list_workflow_runs'
+    | 'get_workflow_run';
 
   // --- dispatch fields ---
 
@@ -130,16 +141,28 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
 
     if (config.action === 'create_repo_from_template') {
       if (!config.templateOwner) {
-        throw new ConfigurationError('templateOwner is required for create_repo_from_template', 'github_api');
+        throw new ConfigurationError(
+          'templateOwner is required for create_repo_from_template',
+          'github_api',
+        );
       }
       if (!config.templateRepo) {
-        throw new ConfigurationError('templateRepo is required for create_repo_from_template', 'github_api');
+        throw new ConfigurationError(
+          'templateRepo is required for create_repo_from_template',
+          'github_api',
+        );
       }
       if (!config.targetOrg) {
-        throw new ConfigurationError('targetOrg is required for create_repo_from_template', 'github_api');
+        throw new ConfigurationError(
+          'targetOrg is required for create_repo_from_template',
+          'github_api',
+        );
       }
       if (!config.repoName) {
-        throw new ConfigurationError('repoName is required for create_repo_from_template', 'github_api');
+        throw new ConfigurationError(
+          'repoName is required for create_repo_from_template',
+          'github_api',
+        );
       }
     } else if (config.action === 'set_repo_variable') {
       if (!config.owner) {
@@ -149,10 +172,16 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
         throw new ConfigurationError('repo is required for set_repo_variable', 'github_api');
       }
       if (!config.variableName) {
-        throw new ConfigurationError('variableName is required for set_repo_variable', 'github_api');
+        throw new ConfigurationError(
+          'variableName is required for set_repo_variable',
+          'github_api',
+        );
       }
       if (!config.variableValue) {
-        throw new ConfigurationError('variableValue is required for set_repo_variable', 'github_api');
+        throw new ConfigurationError(
+          'variableValue is required for set_repo_variable',
+          'github_api',
+        );
       }
     } else if (config.action === 'create_issue') {
       if (!config.owner) {
@@ -198,7 +227,10 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
         throw new ConfigurationError('repo is required for merge_pull_request', 'github_api');
       }
       if (!config.issueNumber) {
-        throw new ConfigurationError('issueNumber (PR number) is required for merge_pull_request', 'github_api');
+        throw new ConfigurationError(
+          'issueNumber (PR number) is required for merge_pull_request',
+          'github_api',
+        );
       }
     } else if (config.action === 'list_pull_requests') {
       if (!config.owner) {
@@ -259,7 +291,8 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
         success: false,
         error: {
           code: 'GITHUB_NOT_CONFIGURED',
-          message: 'GitHub integration is not configured for this project. Configure it in Project Settings > Integrations.',
+          message:
+            'GitHub integration is not configured for this project. Configure it in Project Settings > Integrations.',
         },
       };
     }
@@ -340,7 +373,11 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
 
     let description = '';
     if (config.description) {
-      const resolved = this.expressionEvaluator.evaluateExpression(config.description, context, step.name);
+      const resolved = this.expressionEvaluator.evaluateExpression(
+        config.description,
+        context,
+        step.name,
+      );
       if (resolved) {
         description = String(resolved);
       }
@@ -440,9 +477,7 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
 
     const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/actions/variables/${variableName}`;
 
-    this.logger.debug(
-      `Setting variable '${variableName}' on '${owner}/${repo}'`,
-    );
+    this.logger.debug(`Setting variable '${variableName}' on '${owner}/${repo}'`);
 
     try {
       // Try PATCH first (update existing variable)
@@ -458,18 +493,15 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
 
       // If variable doesn't exist (404), create it with POST
       if (response.status === 404) {
-        response = await fetch(
-          `${GITHUB_API_BASE}/repos/${owner}/${repo}/actions/variables`,
-          {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${token}`,
-              Accept: 'application/vnd.github+json',
-              'X-GitHub-Api-Version': '2022-11-28',
-            },
-            body: JSON.stringify({ name: variableName, value: variableValue }),
+        response = await fetch(`${GITHUB_API_BASE}/repos/${owner}/${repo}/actions/variables`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/vnd.github+json',
+            'X-GitHub-Api-Version': '2022-11-28',
           },
-        );
+          body: JSON.stringify({ name: variableName, value: variableValue }),
+        });
       }
 
       if (!response.ok) {
@@ -696,9 +728,15 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
     step: PipelineStep,
     token: string,
   ): Promise<StepResult> {
-    const owner = String(this.expressionEvaluator.evaluateExpression(config.owner!, context, step.name));
-    const repo = String(this.expressionEvaluator.evaluateExpression(config.repo!, context, step.name));
-    const issueNumber = String(this.expressionEvaluator.evaluateExpression(config.issueNumber!, context, step.name));
+    const owner = String(
+      this.expressionEvaluator.evaluateExpression(config.owner!, context, step.name),
+    );
+    const repo = String(
+      this.expressionEvaluator.evaluateExpression(config.repo!, context, step.name),
+    );
+    const issueNumber = String(
+      this.expressionEvaluator.evaluateExpression(config.issueNumber!, context, step.name),
+    );
 
     const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/issues/${issueNumber}`;
     this.logger.debug(`Closing issue #${issueNumber} on '${owner}/${repo}'`);
@@ -718,15 +756,24 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
         const errorBody = await response.json().catch(() => ({}));
         return {
           success: false,
-          error: { code: 'GITHUB_API_ERROR', message: `GitHub API error: ${(errorBody as any).message || response.status}` },
+          error: {
+            code: 'GITHUB_API_ERROR',
+            message: `GitHub API error: ${(errorBody as any).message || response.status}`,
+          },
         };
       }
 
       const issue = await response.json();
       this.logger.log(`Closed issue #${issueNumber} on '${owner}/${repo}'`);
-      return { success: true, output: { number: issue.number, state: issue.state, html_url: issue.html_url } };
+      return {
+        success: true,
+        output: { number: issue.number, state: issue.state, html_url: issue.html_url },
+      };
     } catch (error: any) {
-      return { success: false, error: { code: 'GITHUB_API_ERROR', message: `GitHub API request failed: ${error.message}` } };
+      return {
+        success: false,
+        error: { code: 'GITHUB_API_ERROR', message: `GitHub API request failed: ${error.message}` },
+      };
     }
   }
 
@@ -736,9 +783,15 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
     step: PipelineStep,
     token: string,
   ): Promise<StepResult> {
-    const owner = String(this.expressionEvaluator.evaluateExpression(config.owner!, context, step.name));
-    const repo = String(this.expressionEvaluator.evaluateExpression(config.repo!, context, step.name));
-    const prNumber = String(this.expressionEvaluator.evaluateExpression(config.issueNumber!, context, step.name));
+    const owner = String(
+      this.expressionEvaluator.evaluateExpression(config.owner!, context, step.name),
+    );
+    const repo = String(
+      this.expressionEvaluator.evaluateExpression(config.repo!, context, step.name),
+    );
+    const prNumber = String(
+      this.expressionEvaluator.evaluateExpression(config.issueNumber!, context, step.name),
+    );
 
     const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/pulls/${prNumber}`;
     this.logger.debug(`Closing PR #${prNumber} on '${owner}/${repo}'`);
@@ -758,15 +811,24 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
         const errorBody = await response.json().catch(() => ({}));
         return {
           success: false,
-          error: { code: 'GITHUB_API_ERROR', message: `GitHub API error: ${(errorBody as any).message || response.status}` },
+          error: {
+            code: 'GITHUB_API_ERROR',
+            message: `GitHub API error: ${(errorBody as any).message || response.status}`,
+          },
         };
       }
 
       const pr = await response.json();
       this.logger.log(`Closed PR #${prNumber} on '${owner}/${repo}'`);
-      return { success: true, output: { number: pr.number, state: pr.state, html_url: pr.html_url } };
+      return {
+        success: true,
+        output: { number: pr.number, state: pr.state, html_url: pr.html_url },
+      };
     } catch (error: any) {
-      return { success: false, error: { code: 'GITHUB_API_ERROR', message: `GitHub API request failed: ${error.message}` } };
+      return {
+        success: false,
+        error: { code: 'GITHUB_API_ERROR', message: `GitHub API request failed: ${error.message}` },
+      };
     }
   }
 
@@ -776,13 +838,21 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
     step: PipelineStep,
     token: string,
   ): Promise<StepResult> {
-    const owner = String(this.expressionEvaluator.evaluateExpression(config.owner!, context, step.name));
-    const repo = String(this.expressionEvaluator.evaluateExpression(config.repo!, context, step.name));
-    const prNumber = String(this.expressionEvaluator.evaluateExpression(config.issueNumber!, context, step.name));
+    const owner = String(
+      this.expressionEvaluator.evaluateExpression(config.owner!, context, step.name),
+    );
+    const repo = String(
+      this.expressionEvaluator.evaluateExpression(config.repo!, context, step.name),
+    );
+    const prNumber = String(
+      this.expressionEvaluator.evaluateExpression(config.issueNumber!, context, step.name),
+    );
 
     let mergeMethod = 'merge';
     if (config.mergeMethod) {
-      mergeMethod = String(this.expressionEvaluator.evaluateExpression(config.mergeMethod, context, step.name));
+      mergeMethod = String(
+        this.expressionEvaluator.evaluateExpression(config.mergeMethod, context, step.name),
+      );
     }
 
     const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/pulls/${prNumber}/merge`;
@@ -803,15 +873,24 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
         const errorBody = await response.json().catch(() => ({}));
         return {
           success: false,
-          error: { code: 'GITHUB_API_ERROR', message: `GitHub API error: ${(errorBody as any).message || response.status}` },
+          error: {
+            code: 'GITHUB_API_ERROR',
+            message: `GitHub API error: ${(errorBody as any).message || response.status}`,
+          },
         };
       }
 
       const result = await response.json();
       this.logger.log(`Merged PR #${prNumber} on '${owner}/${repo}'`);
-      return { success: true, output: { sha: result.sha, merged: result.merged, message: result.message } };
+      return {
+        success: true,
+        output: { sha: result.sha, merged: result.merged, message: result.message },
+      };
     } catch (error: any) {
-      return { success: false, error: { code: 'GITHUB_API_ERROR', message: `GitHub API request failed: ${error.message}` } };
+      return {
+        success: false,
+        error: { code: 'GITHUB_API_ERROR', message: `GitHub API request failed: ${error.message}` },
+      };
     }
   }
 
@@ -821,8 +900,12 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
     step: PipelineStep,
     token: string,
   ): Promise<StepResult> {
-    const owner = String(this.expressionEvaluator.evaluateExpression(config.owner!, context, step.name));
-    const repo = String(this.expressionEvaluator.evaluateExpression(config.repo!, context, step.name));
+    const owner = String(
+      this.expressionEvaluator.evaluateExpression(config.owner!, context, step.name),
+    );
+    const repo = String(
+      this.expressionEvaluator.evaluateExpression(config.repo!, context, step.name),
+    );
 
     let state = 'open';
     if (config.state) {
@@ -846,7 +929,10 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
         const errorBody = await response.json().catch(() => ({}));
         return {
           success: false,
-          error: { code: 'GITHUB_API_ERROR', message: `GitHub API error: ${(errorBody as any).message || response.status}` },
+          error: {
+            code: 'GITHUB_API_ERROR',
+            message: `GitHub API error: ${(errorBody as any).message || response.status}`,
+          },
         };
       }
 
@@ -864,7 +950,10 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
         })),
       };
     } catch (error: any) {
-      return { success: false, error: { code: 'GITHUB_API_ERROR', message: `GitHub API request failed: ${error.message}` } };
+      return {
+        success: false,
+        error: { code: 'GITHUB_API_ERROR', message: `GitHub API request failed: ${error.message}` },
+      };
     }
   }
 
@@ -900,10 +989,16 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
 
     const params = new URLSearchParams({ per_page: String(config.perPage ?? 30) });
     if (config.event) {
-      params.set('event', String(this.expressionEvaluator.evaluateExpression(config.event, context, step.name)));
+      params.set(
+        'event',
+        String(this.expressionEvaluator.evaluateExpression(config.event, context, step.name)),
+      );
     }
     if (config.status) {
-      params.set('status', String(this.expressionEvaluator.evaluateExpression(config.status, context, step.name)));
+      params.set(
+        'status',
+        String(this.expressionEvaluator.evaluateExpression(config.status, context, step.name)),
+      );
     }
 
     const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/actions/runs?${params.toString()}`;
@@ -923,7 +1018,10 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
         const errorBody = await response.json().catch(() => ({}));
         return {
           success: false,
-          error: { code: 'GITHUB_API_ERROR', message: `GitHub API error: ${(errorBody as any).message || response.status}` },
+          error: {
+            code: 'GITHUB_API_ERROR',
+            message: `GitHub API error: ${(errorBody as any).message || response.status}`,
+          },
         };
       }
 
@@ -932,7 +1030,10 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
       this.logger.log(`Found ${runs.length} workflow runs on '${owner}/${repo}'`);
       return { success: true, output: runs.map((run: any) => this.mapWorkflowRun(run)) };
     } catch (error: any) {
-      return { success: false, error: { code: 'GITHUB_API_ERROR', message: `GitHub API request failed: ${error.message}` } };
+      return {
+        success: false,
+        error: { code: 'GITHUB_API_ERROR', message: `GitHub API request failed: ${error.message}` },
+      };
     }
   }
 
@@ -969,14 +1070,20 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
         const errorBody = await response.json().catch(() => ({}));
         return {
           success: false,
-          error: { code: 'GITHUB_API_ERROR', message: `GitHub API error: ${(errorBody as any).message || response.status}` },
+          error: {
+            code: 'GITHUB_API_ERROR',
+            message: `GitHub API error: ${(errorBody as any).message || response.status}`,
+          },
         };
       }
 
       const run = await response.json();
       return { success: true, output: this.mapWorkflowRun(run) };
     } catch (error: any) {
-      return { success: false, error: { code: 'GITHUB_API_ERROR', message: `GitHub API request failed: ${error.message}` } };
+      return {
+        success: false,
+        error: { code: 'GITHUB_API_ERROR', message: `GitHub API request failed: ${error.message}` },
+      };
     }
   }
 
@@ -986,9 +1093,15 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
     step: PipelineStep,
     token: string,
   ): Promise<StepResult> {
-    const owner = String(this.expressionEvaluator.evaluateExpression(config.owner!, context, step.name));
-    const repo = String(this.expressionEvaluator.evaluateExpression(config.repo!, context, step.name));
-    const eventType = String(this.expressionEvaluator.evaluateExpression(config.eventType!, context, step.name));
+    const owner = String(
+      this.expressionEvaluator.evaluateExpression(config.owner!, context, step.name),
+    );
+    const repo = String(
+      this.expressionEvaluator.evaluateExpression(config.repo!, context, step.name),
+    );
+    const eventType = String(
+      this.expressionEvaluator.evaluateExpression(config.eventType!, context, step.name),
+    );
 
     const clientPayload: Record<string, unknown> = {};
     if (config.clientPayload && typeof config.clientPayload === 'object') {
@@ -1023,7 +1136,9 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
 
       const errorBody = await response.json().catch(() => ({}));
       const message = (errorBody as any).message || `HTTP ${response.status}`;
-      this.logger.error(`GitHub API error for step '${step.name}': ${response.status} - ${message}`);
+      this.logger.error(
+        `GitHub API error for step '${step.name}': ${response.status} - ${message}`,
+      );
       return {
         success: false,
         error: {
@@ -1034,7 +1149,10 @@ export class GitHubApiHandler implements StepHandler<GitHubApiHandlerConfig> {
       };
     } catch (error: any) {
       this.logger.error(`GitHub API request failed for step '${step.name}': ${error.message}`);
-      return { success: false, error: { code: 'GITHUB_API_ERROR', message: `GitHub API request failed: ${error.message}` } };
+      return {
+        success: false,
+        error: { code: 'GITHUB_API_ERROR', message: `GitHub API request failed: ${error.message}` },
+      };
     }
   }
 }

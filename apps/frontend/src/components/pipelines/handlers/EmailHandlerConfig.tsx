@@ -3,12 +3,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { HelpCircle } from 'lucide-react';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { EmailHandlerConfig } from './types';
 
 // Lazy load Monaco Editor to reduce initial bundle size
@@ -83,114 +78,120 @@ export function EmailHandlerConfig({ config, onChange }: EmailHandlerConfigProps
           <div className="flex items-center gap-2">
             <Label htmlFor="to">Recipient (To)</Label>
             <Tooltip>
-            <TooltipTrigger asChild>
-              <button type="button" className="cursor-help">
-                <HelpCircle className="h-4 w-4 text-muted-foreground" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Use an expression like <code>request.body.email</code> or <code>user.email</code></p>
-            </TooltipContent>
-          </Tooltip>
+              <TooltipTrigger asChild>
+                <button type="button" className="cursor-help">
+                  <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>
+                  Use an expression like <code>request.body.email</code> or <code>user.email</code>
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+          <Input
+            id="to"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+            placeholder="request.body.email"
+          />
         </div>
-        <Input
-          id="to"
-          value={to}
-          onChange={(e) => setTo(e.target.value)}
-          placeholder="request.body.email"
-        />
-      </div>
 
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <Label htmlFor="subject">Subject</Label>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button type="button" className="cursor-help">
-                <HelpCircle className="h-4 w-4 text-muted-foreground" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Use template syntax: <code>{'{{request.body.name}}'}</code> for dynamic values</p>
-            </TooltipContent>
-          </Tooltip>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Label htmlFor="subject">Subject</Label>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button type="button" className="cursor-help">
+                  <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>
+                  Use template syntax: <code>{'{{request.body.name}}'}</code> for dynamic values
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+          <Input
+            id="subject"
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+            placeholder="New submission from {{request.body.name}}"
+          />
         </div>
-        <Input
-          id="subject"
-          value={subject}
-          onChange={(e) => setSubject(e.target.value)}
-          placeholder="New submission from {{request.body.name}}"
-        />
-      </div>
 
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <Label htmlFor="body">Body (HTML)</Label>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button type="button" className="cursor-help">
-                <HelpCircle className="h-4 w-4 text-muted-foreground" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent className="max-w-xs">
-              <p>HTML email body with template syntax.</p>
-              <p className="mt-1">Example:</p>
-              <code className="text-xs">{'<p>Hello {{request.body.name}},</p>'}</code>
-            </TooltipContent>
-          </Tooltip>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Label htmlFor="body">Body (HTML)</Label>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button type="button" className="cursor-help">
+                  <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                <p>HTML email body with template syntax.</p>
+                <p className="mt-1">Example:</p>
+                <code className="text-xs">{'<p>Hello {{request.body.name}},</p>'}</code>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+          <div className="border rounded-md overflow-hidden">
+            <Suspense fallback={<Skeleton className="h-[300px] w-full" />}>
+              <Editor
+                height="300px"
+                defaultLanguage="html"
+                value={body}
+                onChange={(value) => setBody(value || '')}
+                options={{
+                  minimap: { enabled: false },
+                  lineNumbers: 'off',
+                  scrollBeyondLastLine: false,
+                  wordWrap: 'on',
+                  fontSize: 13,
+                  tabSize: 2,
+                  padding: { top: 8, bottom: 8 },
+                  renderLineHighlight: 'none',
+                  overviewRulerLanes: 0,
+                  hideCursorInOverviewRuler: true,
+                  overviewRulerBorder: false,
+                  scrollbar: {
+                    vertical: 'auto',
+                    horizontal: 'hidden',
+                  },
+                }}
+                theme="vs-dark"
+              />
+            </Suspense>
+          </div>
         </div>
-        <div className="border rounded-md overflow-hidden">
-          <Suspense fallback={<Skeleton className="h-[300px] w-full" />}>
-            <Editor
-              height="300px"
-              defaultLanguage="html"
-              value={body}
-              onChange={(value) => setBody(value || '')}
-              options={{
-                minimap: { enabled: false },
-                lineNumbers: 'off',
-                scrollBeyondLastLine: false,
-                wordWrap: 'on',
-                fontSize: 13,
-                tabSize: 2,
-                padding: { top: 8, bottom: 8 },
-                renderLineHighlight: 'none',
-                overviewRulerLanes: 0,
-                hideCursorInOverviewRuler: true,
-                overviewRulerBorder: false,
-                scrollbar: {
-                  vertical: 'auto',
-                  horizontal: 'hidden',
-                },
-              }}
-              theme="vs-dark"
-            />
-          </Suspense>
-        </div>
-      </div>
 
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <Label htmlFor="replyTo">Reply-To (optional)</Label>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button type="button" className="cursor-help">
-                <HelpCircle className="h-4 w-4 text-muted-foreground" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Expression for reply-to address, e.g., <code>request.body.email</code></p>
-            </TooltipContent>
-          </Tooltip>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Label htmlFor="replyTo">Reply-To (optional)</Label>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button type="button" className="cursor-help">
+                  <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>
+                  Expression for reply-to address, e.g., <code>request.body.email</code>
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+          <Input
+            id="replyTo"
+            value={replyTo}
+            onChange={(e) => setReplyTo(e.target.value)}
+            placeholder="request.body.email (optional)"
+          />
         </div>
-        <Input
-          id="replyTo"
-          value={replyTo}
-          onChange={(e) => setReplyTo(e.target.value)}
-          placeholder="request.body.email (optional)"
-        />
       </div>
-    </div>
     </TooltipProvider>
   );
 }

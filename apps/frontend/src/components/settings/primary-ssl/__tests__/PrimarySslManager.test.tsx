@@ -8,10 +8,25 @@ let enabled = true;
 let stagedCert: PrimarySslStatus['stagedCert'] = null;
 const discardStaged = vi.fn();
 const mockToast = vi.fn();
-vi.mock('@/services/featureFlagsApi', () => ({ useFeatureFlags: () => ({ isEnabled: () => enabled }) }));
+vi.mock('@/services/featureFlagsApi', () => ({
+  useFeatureFlags: () => ({ isEnabled: () => enabled }),
+}));
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: mockToast }) }));
 vi.mock('@/services/primarySslApi', () => ({
-  useGetPrimarySslStatusQuery: () => ({ data: { domain: 'a.com', sslMode: 'paste', proxyMode: 'none', port80: 'redirect', realIp: null, cert: null, stagedCert, wildcardCovered: false, pendingRevert: null }, isLoading: false }),
+  useGetPrimarySslStatusQuery: () => ({
+    data: {
+      domain: 'a.com',
+      sslMode: 'paste',
+      proxyMode: 'none',
+      port80: 'redirect',
+      realIp: null,
+      cert: null,
+      stagedCert,
+      wildcardCovered: false,
+      pendingRevert: null,
+    },
+    isLoading: false,
+  }),
   useApplyPrimarySslMutation: () => [vi.fn(), {}],
   useConfirmPrimarySslMutation: () => [vi.fn(), {}],
   useRollbackPrimarySslMutation: () => [vi.fn(), {}],
@@ -122,7 +137,10 @@ describe('toApplyBody', () => {
       realIp: { header: 'CF-Connecting-IP', ranges: '1.2.3.4/24 5.6.7.8/24' },
     };
     const body = toApplyBody(editor);
-    expect(body.realIp).toEqual({ header: 'CF-Connecting-IP', ranges: ['1.2.3.4/24', '5.6.7.8/24'] });
+    expect(body.realIp).toEqual({
+      header: 'CF-Connecting-IP',
+      ranges: ['1.2.3.4/24', '5.6.7.8/24'],
+    });
     expect(body.proxyMode).toBe('proxy');
     expect(body.sslMode).toBe('paste');
     expect(body.port80).toBe('closed');
@@ -160,7 +178,12 @@ describe('toApplyBody', () => {
   });
 
   it('carries proxyMode/sslMode/port80 through regardless of realIp', () => {
-    const editor: EditorState = { ...base, servingMode: 'none', sslMode: 'selfsigned', port80: 'closed' };
+    const editor: EditorState = {
+      ...base,
+      servingMode: 'none',
+      sslMode: 'selfsigned',
+      port80: 'closed',
+    };
     const body = toApplyBody(editor);
     expect(body).toEqual({ proxyMode: 'none', sslMode: 'selfsigned', port80: 'closed' });
   });
@@ -168,13 +191,25 @@ describe('toApplyBody', () => {
 
 describe('canApply (#512)', () => {
   const status = (over: Partial<PrimarySslStatus> = {}): PrimarySslStatus => ({
-    domain: 'example.com', proxyMode: 'proxy', sslMode: 'paste', port80: 'closed',
-    realIp: null, cert: { commonName: 'example.com' } as any, stagedCert: null,
-    wildcardCovered: false, pendingRevert: null, ...over,
+    domain: 'example.com',
+    proxyMode: 'proxy',
+    sslMode: 'paste',
+    port80: 'closed',
+    realIp: null,
+    cert: { commonName: 'example.com' } as any,
+    stagedCert: null,
+    wildcardCovered: false,
+    pendingRevert: null,
+    ...over,
   });
   const editor = (over: Partial<EditorState> = {}): EditorState => ({
-    servingMode: 'proxy', sslMode: 'paste', port80: 'closed',
-    realIp: null, certificatePem: '', privateKeyPem: '', ...over,
+    servingMode: 'proxy',
+    sslMode: 'paste',
+    port80: 'closed',
+    realIp: null,
+    certificatePem: '',
+    privateKeyPem: '',
+    ...over,
   });
 
   it('selfsigned needs no cert', () => {
@@ -182,7 +217,12 @@ describe('canApply (#512)', () => {
   });
   it('a staged cert enables Apply for paste/letsencrypt', () => {
     expect(canApply(editor(), status({ stagedCert: { commonName: 'x' } as any }))).toBe(true);
-    expect(canApply(editor({ sslMode: 'letsencrypt' }), status({ stagedCert: { commonName: 'x' } as any }))).toBe(true);
+    expect(
+      canApply(
+        editor({ sslMode: 'letsencrypt' }),
+        status({ stagedCert: { commonName: 'x' } as any }),
+      ),
+    ).toBe(true);
   });
   it('knob-only changes on the already-active mode stay enabled (live cert present)', () => {
     expect(canApply(editor(), status())).toBe(true); // editor paste === status paste, cert present

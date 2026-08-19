@@ -1,7 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { ExpressionInput } from './ExpressionInput';
 import type { ImageConvertHandlerConfig as Config } from './types';
 import type { PreviousStep } from './AvailableVariables';
@@ -16,7 +22,9 @@ export function ImageConvertHandlerConfig({ config, onChange, previousSteps = []
   const typedConfig = config as unknown as Partial<Config>;
 
   const [inputPath, setInputPath] = useState(typedConfig.inputPath || '');
-  const [outputFormat, setOutputFormat] = useState<'png' | 'jpeg' | 'webp'>(typedConfig.outputFormat || 'png');
+  const [outputFormat, setOutputFormat] = useState<'png' | 'jpeg' | 'webp'>(
+    typedConfig.outputFormat || 'png',
+  );
   const [quality, setQuality] = useState<number | undefined>(typedConfig.quality);
 
   useEffect(() => {
@@ -38,14 +46,17 @@ export function ImageConvertHandlerConfig({ config, onChange, previousSteps = []
           previousSteps={previousSteps}
         />
         <p className="text-xs text-muted-foreground">
-          Expression resolving to the storage path of the file to convert.
-          Typically references a previous file upload step's <code>storage_path</code> output.
+          Expression resolving to the storage path of the file to convert. Typically references a
+          previous file upload step's <code>storage_path</code> output.
         </p>
       </div>
 
       <div className="space-y-2">
         <Label>Output Format</Label>
-        <Select value={outputFormat} onValueChange={(v) => setOutputFormat(v as 'png' | 'jpeg' | 'webp')}>
+        <Select
+          value={outputFormat}
+          onValueChange={(v) => setOutputFormat(v as 'png' | 'jpeg' | 'webp')}
+        >
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
@@ -56,7 +67,8 @@ export function ImageConvertHandlerConfig({ config, onChange, previousSteps = []
           </SelectContent>
         </Select>
         <p className="text-xs text-muted-foreground">
-          Target format. If the file is already in this format or is not an image, it passes through unchanged.
+          Target format. If the file is already in this format or is not an image, it passes through
+          unchanged.
         </p>
       </div>
 
@@ -71,9 +83,7 @@ export function ImageConvertHandlerConfig({ config, onChange, previousSteps = []
             onChange={(e) => setQuality(e.target.value ? Number(e.target.value) : undefined)}
             placeholder="90"
           />
-          <p className="text-xs text-muted-foreground">
-            Quality for lossy formats. Default: 90.
-          </p>
+          <p className="text-xs text-muted-foreground">Quality for lossy formats. Default: 90.</p>
         </div>
       )}
 

@@ -53,10 +53,7 @@ describe('refSelectorSlice', () => {
 
     it('should persist isOpen to localStorage', () => {
       reducer(initialState, setRefSelectorOpen(true));
-      expect(localStorageMock.setItem).toHaveBeenCalledWith(
-        'refSelector.isOpen',
-        'true'
-      );
+      expect(localStorageMock.setItem).toHaveBeenCalledWith('refSelector.isOpen', 'true');
     });
   });
 
@@ -74,10 +71,7 @@ describe('refSelectorSlice', () => {
 
     it('should persist toggled state to localStorage', () => {
       reducer(initialState, toggleRefSelector());
-      expect(localStorageMock.setItem).toHaveBeenCalledWith(
-        'refSelector.isOpen',
-        'true'
-      );
+      expect(localStorageMock.setItem).toHaveBeenCalledWith('refSelector.isOpen', 'true');
     });
   });
 
@@ -138,10 +132,7 @@ describe('refSelectorSlice', () => {
 
     it('should persist active tab to localStorage', () => {
       reducer(initialState, setActiveTab('branches'));
-      expect(localStorageMock.setItem).toHaveBeenCalledWith(
-        'refSelector.activeTab',
-        'branches'
-      );
+      expect(localStorageMock.setItem).toHaveBeenCalledWith('refSelector.activeTab', 'branches');
     });
   });
 
@@ -150,7 +141,7 @@ describe('refSelectorSlice', () => {
       reducer(initialState, setRefSearchQuery('test'));
       expect(localStorageMock.setItem).not.toHaveBeenCalledWith(
         'refSelector.searchQuery',
-        expect.anything()
+        expect.anything(),
       );
     });
   });

@@ -93,7 +93,9 @@ export class DomainTokenService {
         algorithms: ['HS256'],
       }) as DomainTokenPayload;
 
-      this.logger.debug(`Verified domain token for user ${decoded.sub} targeting ${decoded.targetDomain}`);
+      this.logger.debug(
+        `Verified domain token for user ${decoded.sub} targeting ${decoded.targetDomain}`,
+      );
 
       return decoded;
     } catch (error) {

@@ -71,7 +71,8 @@ export function RevisionHistoryPanel({ ruleSetId, canEdit = true }: RevisionHist
       setRestoreTarget(null);
     } catch (err: unknown) {
       const errorMessage =
-        (err as { data?: { message?: string } })?.data?.message || 'Failed to restore this revision';
+        (err as { data?: { message?: string } })?.data?.message ||
+        'Failed to restore this revision';
       toast({
         title: 'Error',
         description: errorMessage,
@@ -133,7 +134,11 @@ export function RevisionHistoryPanel({ ruleSetId, canEdit = true }: RevisionHist
                       </div>
                     </div>
                     {canEdit && !revision.current && (
-                      <Button variant="outline" size="sm" onClick={() => setRestoreTarget(revision)}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setRestoreTarget(revision)}
+                      >
                         Restore
                       </Button>
                     )}

@@ -88,22 +88,23 @@ export function EmailStep() {
 
   // Filter to only show implemented providers based on feature flags
   // Note: 'managed' is excluded since we have a custom card for it
-  const implementedProviders = (providersData?.providers.filter((p) => {
-    if (!p.implemented) return false;
-    // Filter based on feature flags
-    switch (p.id) {
-      case 'smtp':
-        return enableSmtp;
-      case 'sendgrid':
-        return enableSendGrid;
-      case 'resend':
-        return enableResend;
-      case 'managed':
-        return false; // Handled by custom "Managed Email" card
-      default:
-        return true;
-    }
-  }) || []);
+  const implementedProviders =
+    providersData?.providers.filter((p) => {
+      if (!p.implemented) return false;
+      // Filter based on feature flags
+      switch (p.id) {
+        case 'smtp':
+          return enableSmtp;
+        case 'sendgrid':
+          return enableSendGrid;
+        case 'resend':
+          return enableResend;
+        case 'managed':
+          return false; // Handled by custom "Managed Email" card
+        default:
+          return true;
+      }
+    }) || [];
 
   // Auto-select managed email or first recommended provider
   useEffect(() => {
@@ -118,7 +119,6 @@ export function EmailStep() {
       }
     }
   }, [enableManagedEmail, defaultEmailType, implementedProviders, selectedProvider]);
-
 
   const getConfigForProvider = (): EmailConfig | null => {
     switch (selectedProvider) {
@@ -221,10 +221,15 @@ export function EmailStep() {
 
   // If we should skip this step, show a read-only pre-configured view
   if (shouldSkipStep) {
-    const emailTypeName = enableManagedEmail ? 'Platform Managed Email' :
-                          defaultEmailType === 'sendgrid' ? 'SendGrid' :
-                          defaultEmailType === 'resend' ? 'Resend' :
-                          defaultEmailType === 'smtp' ? 'SMTP' : 'Skipped';
+    const emailTypeName = enableManagedEmail
+      ? 'Platform Managed Email'
+      : defaultEmailType === 'sendgrid'
+        ? 'SendGrid'
+        : defaultEmailType === 'resend'
+          ? 'Resend'
+          : defaultEmailType === 'smtp'
+            ? 'SMTP'
+            : 'Skipped';
 
     const handleSkipContinue = async () => {
       if (enableManagedEmail) {
@@ -403,11 +408,13 @@ export function EmailStep() {
                       </p>
                     </div>
                   </div>
-                  <div className={`w-4 h-4 rounded-full border-2 shrink-0 mt-0.5 ${
-                    selectedProvider === 'managed'
-                      ? 'border-primary bg-primary'
-                      : 'border-muted-foreground/30'
-                  }`}>
+                  <div
+                    className={`w-4 h-4 rounded-full border-2 shrink-0 mt-0.5 ${
+                      selectedProvider === 'managed'
+                        ? 'border-primary bg-primary'
+                        : 'border-muted-foreground/30'
+                    }`}
+                  >
                     {selectedProvider === 'managed' && (
                       <div className="w-full h-full flex items-center justify-center">
                         <div className="w-1.5 h-1.5 rounded-full bg-white" />
@@ -454,11 +461,13 @@ export function EmailStep() {
                       <p className="mt-1 text-sm text-muted-foreground">{provider.description}</p>
                     </div>
                   </div>
-                  <div className={`w-4 h-4 rounded-full border-2 shrink-0 mt-0.5 ${
-                    selectedProvider === provider.id
-                      ? 'border-primary bg-primary'
-                      : 'border-muted-foreground/30'
-                  }`}>
+                  <div
+                    className={`w-4 h-4 rounded-full border-2 shrink-0 mt-0.5 ${
+                      selectedProvider === provider.id
+                        ? 'border-primary bg-primary'
+                        : 'border-muted-foreground/30'
+                    }`}
+                  >
                     {selectedProvider === provider.id && (
                       <div className="w-full h-full flex items-center justify-center">
                         <div className="w-1.5 h-1.5 rounded-full bg-white" />
@@ -599,8 +608,8 @@ export function EmailStep() {
                             className="text-primary hover:underline"
                           >
                             App Password
-                          </a>
-                          {' '}(not your regular Gmail password)
+                          </a>{' '}
+                          (not your regular Gmail password)
                         </p>
                       )}
                     </div>

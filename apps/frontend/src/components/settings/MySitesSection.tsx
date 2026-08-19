@@ -22,13 +22,14 @@ import {
 import { ExternalLink, LogOut, Globe, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
-const ROLE_BADGE_VARIANT: Record<MyProjectMembership['role'], 'default' | 'secondary' | 'outline'> = {
-  owner: 'default',
-  admin: 'default',
-  contributor: 'secondary',
-  viewer: 'secondary',
-  guest: 'outline',
-};
+const ROLE_BADGE_VARIANT: Record<MyProjectMembership['role'], 'default' | 'secondary' | 'outline'> =
+  {
+    owner: 'default',
+    admin: 'default',
+    contributor: 'secondary',
+    viewer: 'secondary',
+    guest: 'outline',
+  };
 
 function formatJoinedAt(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', {
@@ -134,8 +135,8 @@ export function MySitesSection() {
       <CardHeader>
         <CardTitle>My Sites{data ? ` (${data.length})` : ''}</CardTitle>
         <CardDescription>
-          Sites where your BFFless Auth account is a member. You can leave any site you
-          don&apos;t own.
+          Sites where your BFFless Auth account is a member. You can leave any site you don&apos;t
+          own.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -164,18 +165,13 @@ export function MySitesSection() {
         ))}
       </CardContent>
 
-      <AlertDialog
-        open={!!pendingLeave}
-        onOpenChange={(open) => !open && setPendingLeave(null)}
-      >
+      <AlertDialog open={!!pendingLeave} onOpenChange={(open) => !open && setPendingLeave(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              Leave {pendingLeave?.projectName}?
-            </AlertDialogTitle>
+            <AlertDialogTitle>Leave {pendingLeave?.projectName}?</AlertDialogTitle>
             <AlertDialogDescription>
-              You&apos;ll lose access to this site. The site owner can re-invite you any time.
-              Your BFFless Auth account stays active.
+              You&apos;ll lose access to this site. The site owner can re-invite you any time. Your
+              BFFless Auth account stays active.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

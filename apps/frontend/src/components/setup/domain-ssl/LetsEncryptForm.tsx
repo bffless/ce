@@ -63,7 +63,9 @@ export function LetsEncryptForm({ domain, onBack }: Props) {
       setWildcardStage('offering');
     } catch (err: unknown) {
       const apiError = err as { data?: { message?: string } };
-      setIssueError(apiError?.data?.message ?? 'Issuance failed — check DNS is still pointing at this server.');
+      setIssueError(
+        apiError?.data?.message ?? 'Issuance failed — check DNS is still pointing at this server.',
+      );
     }
   };
 
@@ -89,7 +91,9 @@ export function LetsEncryptForm({ domain, onBack }: Props) {
       finish(true);
     } catch (err: unknown) {
       const apiError = err as { data?: { message?: string } };
-      setWildcardError(apiError?.data?.message ?? 'Verification failed — DNS may not have propagated yet.');
+      setWildcardError(
+        apiError?.data?.message ?? 'Verification failed — DNS may not have propagated yet.',
+      );
       // Retryable: keep the TXT records on screen so the user can just hit verify again.
       setWildcardStage('started');
     }
@@ -100,7 +104,9 @@ export function LetsEncryptForm({ domain, onBack }: Props) {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-medium text-foreground">Issue a Let&apos;s Encrypt certificate</h3>
+        <h3 className="text-lg font-medium text-foreground">
+          Issue a Let&apos;s Encrypt certificate
+        </h3>
         <p className="mt-2 text-sm text-muted-foreground">
           Issued right here for <code className="bg-muted px-1 rounded">{domain}</code>,{' '}
           <code className="bg-muted px-1 rounded">www.{domain}</code> and{' '}
@@ -144,8 +150,8 @@ export function LetsEncryptForm({ domain, onBack }: Props) {
                 certificate warning?
               </p>
               <p className="text-sm text-muted-foreground">
-                Renews manually every ~90 days — we&apos;ll warn you in the admin panel and by
-                email before it expires.
+                Renews manually every ~90 days — we&apos;ll warn you in the admin panel and by email
+                before it expires.
               </p>
               {wildcardError && <p className="text-sm text-destructive">{wildcardError}</p>}
               <div className="flex gap-2">
@@ -164,8 +170,8 @@ export function LetsEncryptForm({ domain, onBack }: Props) {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Preview subdomains will show a certificate warning. You can add a wildcard later
-                in Settings → SSL.
+                Preview subdomains will show a certificate warning. You can add a wildcard later in
+                Settings → SSL.
               </p>
             </div>
           )}
@@ -193,7 +199,9 @@ export function LetsEncryptForm({ domain, onBack }: Props) {
                 <div className="p-2 space-y-0.5">
                   <div className="text-xs font-medium text-muted-foreground">Value</div>
                   {wildcardRecord.recordValues.map((v) => (
-                    <div key={v} className="font-mono break-all">{v}</div>
+                    <div key={v} className="font-mono break-all">
+                      {v}
+                    </div>
                   ))}
                 </div>
               </div>

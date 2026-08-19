@@ -82,7 +82,8 @@ describe('GcsStorageAdapter', () => {
             bucket: 'test-bucket',
             credentials: {
               client_email: 'test@test-project.iam.gserviceaccount.com',
-              private_key: '-----BEGIN RSA PRIVATE KEY-----\nMIIE...\n-----END RSA PRIVATE KEY-----\n',
+              private_key:
+                '-----BEGIN RSA PRIVATE KEY-----\nMIIE...\n-----END RSA PRIVATE KEY-----\n',
             },
             keyFilename: '/path/to/key.json',
           }),
@@ -174,7 +175,6 @@ describe('GcsStorageAdapter', () => {
         'path traversal detected',
       );
     });
-
 
     it('should strip leading slashes from key', async () => {
       await adapter.upload(Buffer.from('test'), '/test/file.txt');
@@ -362,7 +362,9 @@ describe('GcsStorageAdapter', () => {
     it('should throw error on signed URL failure', async () => {
       mockFile.getSignedUrl.mockRejectedValueOnce(new Error('No credentials'));
 
-      await expect(adapter.getUrl('test/file.txt')).rejects.toThrow('Failed to generate signed URL');
+      await expect(adapter.getUrl('test/file.txt')).rejects.toThrow(
+        'Failed to generate signed URL',
+      );
     });
 
     it('sets promptSaveAs when a downloadFilename is given', async () => {
@@ -441,7 +443,10 @@ describe('GcsStorageAdapter', () => {
       const mockFiles = [
         { name: 'owner/repo/abc123/file1.txt', delete: jest.fn().mockResolvedValue(undefined) },
         { name: 'owner/repo/abc123/file2.txt', delete: jest.fn().mockResolvedValue(undefined) },
-        { name: 'owner/repo/abc123/nested/file3.txt', delete: jest.fn().mockResolvedValue(undefined) },
+        {
+          name: 'owner/repo/abc123/nested/file3.txt',
+          delete: jest.fn().mockResolvedValue(undefined),
+        },
       ];
 
       mockBucket.getFiles.mockResolvedValueOnce([mockFiles]);
@@ -491,7 +496,10 @@ describe('GcsStorageAdapter', () => {
     it('should track failed deletions', async () => {
       const mockFiles = [
         { name: 'prefix/file1.txt', delete: jest.fn().mockResolvedValue(undefined) },
-        { name: 'prefix/file2.txt', delete: jest.fn().mockRejectedValue(new Error('Delete failed')) },
+        {
+          name: 'prefix/file2.txt',
+          delete: jest.fn().mockRejectedValue(new Error('Delete failed')),
+        },
         { name: 'prefix/file3.txt', delete: jest.fn().mockResolvedValue(undefined) },
       ];
 

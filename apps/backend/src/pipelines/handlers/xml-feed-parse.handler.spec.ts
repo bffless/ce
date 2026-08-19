@@ -41,7 +41,7 @@ function buildHandler() {
 
 const context = {} as PipelineContext;
 const step = (config: unknown): PipelineStep =>
-  ({ name: 'feeds', handlerType: 'xml_feed_parse', config } as unknown as PipelineStep);
+  ({ name: 'feeds', handlerType: 'xml_feed_parse', config }) as unknown as PipelineStep;
 
 describe('XmlFeedParseHandler', () => {
   afterEach(() => {
@@ -52,17 +52,23 @@ describe('XmlFeedParseHandler', () => {
     it('requires exactly one of urls or xml', () => {
       const { handler } = buildHandler();
       expect(() => handler.validateConfig({})).toThrow(ConfigurationError);
-      expect(() =>
-        handler.validateConfig({ urls: 'steps.x.urls', xml: 'steps.x.body' }),
-      ).toThrow(ConfigurationError);
+      expect(() => handler.validateConfig({ urls: 'steps.x.urls', xml: 'steps.x.body' })).toThrow(
+        ConfigurationError,
+      );
       expect(() => handler.validateConfig({ urls: 'steps.x.urls' })).not.toThrow();
     });
 
     it('rejects out-of-range concurrency and timeout', () => {
       const { handler } = buildHandler();
-      expect(() => handler.validateConfig({ urls: 'u', concurrency: 0 })).toThrow(ConfigurationError);
-      expect(() => handler.validateConfig({ urls: 'u', concurrency: 999 })).toThrow(ConfigurationError);
-      expect(() => handler.validateConfig({ urls: 'u', timeoutMs: 10 })).toThrow(ConfigurationError);
+      expect(() => handler.validateConfig({ urls: 'u', concurrency: 0 })).toThrow(
+        ConfigurationError,
+      );
+      expect(() => handler.validateConfig({ urls: 'u', concurrency: 999 })).toThrow(
+        ConfigurationError,
+      );
+      expect(() => handler.validateConfig({ urls: 'u', timeoutMs: 10 })).toThrow(
+        ConfigurationError,
+      );
     });
   });
 

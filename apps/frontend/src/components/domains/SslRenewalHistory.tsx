@@ -8,25 +8,18 @@ interface SslRenewalHistoryProps {
   limit?: number;
 }
 
-export function SslRenewalHistory({
-  domainId,
-  limit = 5,
-}: SslRenewalHistoryProps) {
+export function SslRenewalHistory({ domainId, limit = 5 }: SslRenewalHistoryProps) {
   const { data: history = [], isLoading } = useGetSslRenewalHistoryQuery({
     domainId,
     limit,
   });
 
   if (isLoading) {
-    return (
-      <div className="text-sm text-muted-foreground">Loading history...</div>
-    );
+    return <div className="text-sm text-muted-foreground">Loading history...</div>;
   }
 
   if (history.length === 0) {
-    return (
-      <div className="text-sm text-muted-foreground">No renewal history</div>
-    );
+    return <div className="text-sm text-muted-foreground">No renewal history</div>;
   }
 
   return (
@@ -39,12 +32,8 @@ export function SslRenewalHistory({
             className="flex items-center justify-between p-2 border rounded text-sm"
           >
             <div className="flex items-center gap-2">
-              {record.status === 'success' && (
-                <CheckCircle className="h-4 w-4 text-green-500" />
-              )}
-              {record.status === 'failed' && (
-                <XCircle className="h-4 w-4 text-red-500" />
-              )}
+              {record.status === 'success' && <CheckCircle className="h-4 w-4 text-green-500" />}
+              {record.status === 'failed' && <XCircle className="h-4 w-4 text-red-500" />}
               {record.status === 'skipped' && (
                 <MinusCircle className="h-4 w-4 text-muted-foreground" />
               )}

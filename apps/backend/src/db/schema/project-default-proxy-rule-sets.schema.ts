@@ -1,11 +1,4 @@
-import {
-  pgTable,
-  uuid,
-  integer,
-  timestamp,
-  uniqueIndex,
-  index,
-} from 'drizzle-orm/pg-core';
+import { pgTable, uuid, integer, timestamp, uniqueIndex, index } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { projects } from './projects.schema';
 import { proxyRuleSets } from './proxy-rule-sets.schema';
@@ -49,16 +42,19 @@ export const projectDefaultProxyRuleSets = pgTable(
   ],
 );
 
-export const projectDefaultProxyRuleSetsRelations = relations(projectDefaultProxyRuleSets, ({ one }) => ({
-  project: one(projects, {
-    fields: [projectDefaultProxyRuleSets.projectId],
-    references: [projects.id],
+export const projectDefaultProxyRuleSetsRelations = relations(
+  projectDefaultProxyRuleSets,
+  ({ one }) => ({
+    project: one(projects, {
+      fields: [projectDefaultProxyRuleSets.projectId],
+      references: [projects.id],
+    }),
+    proxyRuleSet: one(proxyRuleSets, {
+      fields: [projectDefaultProxyRuleSets.proxyRuleSetId],
+      references: [proxyRuleSets.id],
+    }),
   }),
-  proxyRuleSet: one(proxyRuleSets, {
-    fields: [projectDefaultProxyRuleSets.proxyRuleSetId],
-    references: [proxyRuleSets.id],
-  }),
-}));
+);
 
 export type ProjectDefaultProxyRuleSet = typeof projectDefaultProxyRuleSets.$inferSelect;
 export type NewProjectDefaultProxyRuleSet = typeof projectDefaultProxyRuleSets.$inferInsert;

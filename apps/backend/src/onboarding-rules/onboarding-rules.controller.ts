@@ -65,7 +65,15 @@ export class OnboardingRulesController {
   @Get('pipeline-rules')
   @ApiOperation({ summary: 'List all pipeline-type proxy rules for use in onboarding actions' })
   @ApiResponse({ status: 200, description: 'List of pipeline proxy rules' })
-  async getPipelineRules(): Promise<{ rules: { id: string; name: string; projectOwner: string; projectName: string; pathPattern: string }[] }> {
+  async getPipelineRules(): Promise<{
+    rules: {
+      id: string;
+      name: string;
+      projectOwner: string;
+      projectName: string;
+      pathPattern: string;
+    }[];
+  }> {
     const results = await db
       .select({
         id: proxyRules.id,
@@ -104,9 +112,7 @@ export class OnboardingRulesController {
     type: OnboardingRuleResponseDto,
   })
   @ApiResponse({ status: 404, description: 'Rule not found' })
-  async getRule(
-    @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<OnboardingRuleResponseDto> {
+  async getRule(@Param('id', ParseUUIDPipe) id: string): Promise<OnboardingRuleResponseDto> {
     const rule = await this.onboardingRulesService.getRuleById(id);
     if (!rule) {
       throw new NotFoundException(`Onboarding rule ${id} not found`);
@@ -165,9 +171,7 @@ export class OnboardingRulesController {
   @ApiResponse({ status: 200, description: 'Rule deleted' })
   @ApiResponse({ status: 403, description: 'Not authorized (admin only)' })
   @ApiResponse({ status: 404, description: 'Rule not found' })
-  async deleteRule(
-    @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<{ success: boolean }> {
+  async deleteRule(@Param('id', ParseUUIDPipe) id: string): Promise<{ success: boolean }> {
     await this.onboardingRulesService.delete(id);
     return { success: true };
   }
@@ -191,9 +195,7 @@ export class OnboardingRulesController {
   async getRecentExecutions(
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
   ): Promise<{ executions: OnboardingRuleExecutionResponseDto[] }> {
-    const executions = await this.onboardingRulesService.getRecentExecutions(
-      Math.min(limit, 100),
-    );
+    const executions = await this.onboardingRulesService.getRecentExecutions(Math.min(limit, 100));
     return { executions: executions as OnboardingRuleExecutionResponseDto[] };
   }
 }

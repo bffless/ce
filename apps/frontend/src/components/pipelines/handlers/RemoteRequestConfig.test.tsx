@@ -126,9 +126,7 @@ describe('RemoteRequestConfig', () => {
 
   it('keeps a condition it did not author (rules-as-code writes one, this editor has no field)', () => {
     const sink = { current: {} as Record<string, unknown> };
-    render(
-      <Harness initial={{ connection: 'pdf', condition: 'request.query.go' }} sink={sink} />,
-    );
+    render(<Harness initial={{ connection: 'pdf', condition: 'request.query.go' }} sink={sink} />);
     expect(sink.current.condition).toBe('request.query.go');
 
     fireEvent.change(screen.getByPlaceholderText('/render'), { target: { value: '/go' } });

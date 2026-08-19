@@ -96,9 +96,9 @@ describe('RepoBrowserService', () => {
         }),
       });
 
-      await expect(service.getFileTree('owner', 'repo', 'abc123', 'user-123', 'user')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.getFileTree('owner', 'repo', 'abc123', 'user-123', 'user'),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('should throw UnauthorizedException for private project when not authenticated', async () => {
@@ -115,9 +115,9 @@ describe('RepoBrowserService', () => {
       mockProjectsService.getProjectByOwnerName.mockResolvedValue(mockPrivateProject);
       mockPermissionsService.getUserProjectRole.mockResolvedValue(null);
 
-      await expect(service.getFileTree('owner', 'repo', 'abc123', 'user-123', 'user')).rejects.toThrow(
-        ForbiddenException,
-      );
+      await expect(
+        service.getFileTree('owner', 'repo', 'abc123', 'user-123', 'user'),
+      ).rejects.toThrow(ForbiddenException);
     });
 
     it('should resolve alias to commit SHA', async () => {
@@ -223,7 +223,13 @@ describe('RepoBrowserService', () => {
       });
 
       // Admin role bypasses permission check
-      const result = await service.getFileTree('owner', 'repo', 'abc123def456', 'admin-123', 'admin');
+      const result = await service.getFileTree(
+        'owner',
+        'repo',
+        'abc123def456',
+        'admin-123',
+        'admin',
+      );
 
       expect(result.commitSha).toBe('abc123def456');
       expect(mockPermissionsService.getUserProjectRole).not.toHaveBeenCalled();
@@ -257,7 +263,11 @@ describe('RepoBrowserService', () => {
 
     // Sets up the three sequential db.select() calls made by getAliases():
     // 1) select aliases, 2) select matching asset (branch lookup), 3) select join-table rule set rows.
-    const mockAliasesQueryChain = (aliasRows: any[], assetRows: any[] = [], joinRows: any[] = []) => {
+    const mockAliasesQueryChain = (
+      aliasRows: any[],
+      assetRows: any[] = [],
+      joinRows: any[] = [],
+    ) => {
       (mockDb.select as jest.Mock)
         .mockImplementationOnce(() => ({
           from: jest.fn().mockReturnValue({

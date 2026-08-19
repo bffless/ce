@@ -34,7 +34,10 @@ export function RefSelectorTabs({
     >
       {/* Tab List */}
       <div className="border-b px-2">
-        <TabsList className="w-full h-10 bg-transparent p-0 justify-start gap-1" aria-label="Reference categories">
+        <TabsList
+          className="w-full h-10 bg-transparent p-0 justify-start gap-1"
+          aria-label="Reference categories"
+        >
           <TabsTrigger
             value="aliases"
             id="tab-aliases"
@@ -42,7 +45,7 @@ export function RefSelectorTabs({
             className={cn(
               'flex-1 data-[state=active]:bg-accent data-[state=active]:shadow-none',
               'rounded-b-none border-b-2 border-transparent',
-              'data-[state=active]:border-primary'
+              'data-[state=active]:border-primary',
             )}
           >
             <Tag className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
@@ -57,7 +60,7 @@ export function RefSelectorTabs({
             className={cn(
               'flex-1 data-[state=active]:bg-accent data-[state=active]:shadow-none',
               'rounded-b-none border-b-2 border-transparent',
-              'data-[state=active]:border-primary'
+              'data-[state=active]:border-primary',
             )}
           >
             <GitBranch className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
@@ -72,7 +75,7 @@ export function RefSelectorTabs({
             className={cn(
               'flex-1 data-[state=active]:bg-accent data-[state=active]:shadow-none',
               'rounded-b-none border-b-2 border-transparent',
-              'data-[state=active]:border-primary'
+              'data-[state=active]:border-primary',
             )}
           >
             <GitCommit className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />

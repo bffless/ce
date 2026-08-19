@@ -36,7 +36,7 @@ export function CompleteStep() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { adminEmail, smtpConfigured, smtpSkipped } = useSelector(
-    (state: RootState) => state.setup.wizard
+    (state: RootState) => state.setup.wizard,
   );
 
   const { data: setupStatus } = useGetSetupStatusQuery();
@@ -116,7 +116,8 @@ export function CompleteStep() {
         <div className="flex items-center">
           <CheckCircle className="w-5 h-5 text-green-500 mr-2" />
           <span className="text-sm">
-            Storage configured: <strong>{getStorageProviderLabel(setupStatus?.storageProvider || null)}</strong>
+            Storage configured:{' '}
+            <strong>{getStorageProviderLabel(setupStatus?.storageProvider || null)}</strong>
           </span>
         </div>
 
@@ -171,8 +172,7 @@ export function CompleteStep() {
               ))}
             </div>
             <p className="text-sm">
-              Then restart:{' '}
-              <code className="bg-muted px-1 rounded">./stop.sh</code>, edit{' '}
+              Then restart: <code className="bg-muted px-1 rounded">./stop.sh</code>, edit{' '}
               <code className="bg-muted px-1 rounded">.env</code>, then{' '}
               <code className="bg-muted px-1 rounded">./start.sh</code>
             </p>
@@ -190,14 +190,17 @@ export function CompleteStep() {
             className="mt-0.5"
           />
           <div className="space-y-1">
-            <label htmlFor="telemetry" className="text-sm font-medium text-foreground cursor-pointer">
+            <label
+              htmlFor="telemetry"
+              className="text-sm font-medium text-foreground cursor-pointer"
+            >
               Send anonymous usage data to help improve BFFless
             </label>
             <p className="text-xs text-muted-foreground">
-              A weekly anonymous ping with a random install ID, version, OS, and{' '}
-              <em>bucketed</em> counts (e.g. "2–5") of projects, deployments, and users. Never your
-              domains, content, or any personal data. You can change this later in Settings or disable
-              it entirely with <code className="bg-muted px-1 rounded">TELEMETRY=off</code>.
+              A weekly anonymous ping with a random install ID, version, OS, and <em>bucketed</em>{' '}
+              counts (e.g. "2–5") of projects, deployments, and users. Never your domains, content,
+              or any personal data. You can change this later in Settings or disable it entirely
+              with <code className="bg-muted px-1 rounded">TELEMETRY=off</code>.
             </p>
           </div>
         </div>

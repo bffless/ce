@@ -122,10 +122,7 @@ export class RateLimitValidator implements Validator<RateLimitValidatorConfig> {
    * - Different pipelines
    * - Different rate limit configs on the same pipeline
    */
-  private generateKey(
-    context: PipelineContext,
-    config: RateLimitValidatorConfig,
-  ): string | null {
+  private generateKey(context: PipelineContext, config: RateLimitValidatorConfig): string | null {
     const { limit, windowSeconds, keyBy = 'ip' } = config;
     const pipelineId = context.pipelineId;
     const ip = context.metadata.ip || 'unknown';

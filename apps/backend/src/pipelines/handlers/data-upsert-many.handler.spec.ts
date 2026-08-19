@@ -81,7 +81,7 @@ const baseContext = {
 } as unknown as PipelineContext;
 
 const step = (config: unknown): PipelineStep =>
-  ({ name: 'upsert', handlerType: 'data_upsert_many', config } as unknown as PipelineStep);
+  ({ name: 'upsert', handlerType: 'data_upsert_many', config }) as unknown as PipelineStep;
 
 const defaultConfig = (items: unknown[]) => ({
   schemaId: 'schema-1',
@@ -98,7 +98,7 @@ const defaultConfig = (items: unknown[]) => ({
 
 /** Put the array into stepOutputs.feed so "steps.feed.items" resolves to it. */
 const contextWith = (items: unknown[]): PipelineContext =>
-  ({ ...baseContext, stepOutputs: { feed: { items } } } as PipelineContext);
+  ({ ...baseContext, stepOutputs: { feed: { items } } }) as PipelineContext;
 
 describe('DataUpsertManyHandler', () => {
   describe('validateConfig', () => {
@@ -236,9 +236,7 @@ describe('DataUpsertManyHandler', () => {
     it('inserts new items and updates changed existing ones in one batch', async () => {
       const { handler, dataService } = buildHandler();
       dataService.findExistingRecordsByKeys.mockResolvedValueOnce(
-        new Map([
-          ['a', { id: 'row-a', data: { guid: 'a', title: 'Old A', read: true } }],
-        ]),
+        new Map([['a', { id: 'row-a', data: { guid: 'a', title: 'Old A', read: true } }]]),
       );
       const items = [
         { guid: 'a', title: 'New A' }, // exists, changed → update
@@ -294,10 +292,7 @@ describe('DataUpsertManyHandler', () => {
       const { handler, dataService } = buildHandler();
       dataService.findExistingRecordsByKeys.mockResolvedValueOnce(
         new Map([
-          [
-            'a',
-            { id: 'row-a', data: { guid: 'a', title: 'Old', summary: 'Sum', read: true } },
-          ],
+          ['a', { id: 'row-a', data: { guid: 'a', title: 'Old', summary: 'Sum', read: true } }],
         ]),
       );
       const items = [{ guid: 'a', title: 'New' }]; // title changed; summary absent → undefined
@@ -337,7 +332,11 @@ describe('DataUpsertManyHandler', () => {
     expect(projectId).toBe('proj-1');
     expect(createdBy).toBe('user-1');
     expect(version).toBe(3);
-    expect(records[0]).toMatchObject({ guid: 'a', title: 'A', fetchedAt: '2024-01-01T00:00:00.000Z' });
+    expect(records[0]).toMatchObject({
+      guid: 'a',
+      title: 'A',
+      fetchedAt: '2024-01-01T00:00:00.000Z',
+    });
   });
 
   it('skips records whose dedup key already exists (insert-only, idempotent)', async () => {

@@ -16,12 +16,18 @@ import { Label } from '@/components/ui/label';
 import { Loader2, CheckCircle2, AlertCircle, User, LogOut } from 'lucide-react';
 
 type AuthMode = 'create' | 'signin';
-type EmailStatus = 'idle' | 'checking' | 'valid' | 'exists-can-adopt' | 'exists-in-workspace' | 'error';
+type EmailStatus =
+  | 'idle'
+  | 'checking'
+  | 'valid'
+  | 'exists-can-adopt'
+  | 'exists-in-workspace'
+  | 'error';
 
 export function AdminAccountStep() {
   const dispatch = useDispatch();
   const { adminEmail, adminPassword, claimToken } = useSelector(
-    (state: RootState) => state.setup.wizard
+    (state: RootState) => state.setup.wizard,
   );
 
   // The onboarding/claim token: populated by SetupWizard on mount from `?token=`
@@ -89,7 +95,7 @@ export function AdminAccountStep() {
         setEmailMessage('');
       }
     },
-    [checkEmail]
+    [checkEmail],
   );
 
   // Debounced email check
@@ -102,7 +108,7 @@ export function AdminAccountStep() {
         performEmailCheck(emailValue);
       }, 500);
     },
-    [performEmailCheck]
+    [performEmailCheck],
   );
 
   // Clean up timer on unmount
@@ -123,7 +129,7 @@ export function AdminAccountStep() {
       setEmailMessage('');
       debouncedCheckEmail(newEmail);
     },
-    [debouncedCheckEmail]
+    [debouncedCheckEmail],
   );
 
   // Check initial email on mount if one was stored
@@ -241,9 +247,7 @@ export function AdminAccountStep() {
         <div className="flex items-center gap-3 p-4 bg-green-50 dark:bg-green-950/30 rounded-lg border border-green-200 dark:border-green-900">
           <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />
           <div>
-            <p className="text-sm font-medium text-green-800 dark:text-green-200">
-              Step Completed
-            </p>
+            <p className="text-sm font-medium text-green-800 dark:text-green-200">Step Completed</p>
             <p className="text-xs text-green-700 dark:text-green-300">
               You can continue to the next step or sign in to make changes.
             </p>
@@ -279,11 +283,7 @@ export function AdminAccountStep() {
         </div>
 
         <div className="space-y-3">
-          <Button
-            onClick={handleUseCurrentAccount}
-            disabled={isAdoptingSession}
-            className="w-full"
-          >
+          <Button onClick={handleUseCurrentAccount} disabled={isAdoptingSession} className="w-full">
             {isAdoptingSession ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -380,8 +380,8 @@ export function AdminAccountStep() {
                 emailStatus === 'exists-in-workspace' || emailStatus === 'error'
                   ? 'text-destructive'
                   : emailStatus === 'exists-can-adopt'
-                  ? 'text-blue-600 dark:text-blue-400'
-                  : 'text-muted-foreground'
+                    ? 'text-blue-600 dark:text-blue-400'
+                    : 'text-muted-foreground'
               }`}
             >
               {emailMessage}

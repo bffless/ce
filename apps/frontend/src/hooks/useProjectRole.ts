@@ -21,7 +21,7 @@ export function useProjectRole(owner: string, repo: string): UseProjectRoleResul
 
   const { data: permissions, isLoading: isLoadingPermissions } = useGetProjectPermissionsQuery(
     { owner, repo },
-    { skip: !owner || !repo || !currentUser || isGlobalAdmin }
+    { skip: !owner || !repo || !currentUser || isGlobalAdmin },
   );
 
   // Global admins are project owners on every project in their workspace —
@@ -41,7 +41,7 @@ export function useProjectRole(owner: string, repo: string): UseProjectRoleResul
 
   // Find user's direct permission
   const userPermission = permissions?.userPermissions.find(
-    (perm) => perm.userId === currentUser?.id
+    (perm) => perm.userId === currentUser?.id,
   );
 
   // For now, we only check direct user permissions

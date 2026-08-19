@@ -34,7 +34,12 @@ describe('FileDeleteHandler', () => {
   };
 
   const step = (config: Record<string, unknown>): PipelineStep =>
-    ({ id: 'delete', name: 'delete', handlerType: 'file_delete', config } as unknown as PipelineStep);
+    ({
+      id: 'delete',
+      name: 'delete',
+      handlerType: 'file_delete',
+      config,
+    }) as unknown as PipelineStep;
 
   const context = {} as PipelineContext;
 
@@ -88,14 +93,16 @@ describe('FileDeleteHandler', () => {
 
     it('rejects an empty keys array', () => {
       const handler = buildHandler({});
-      expect(() => handler.validateConfig({ keys: [] })).toThrow(/keys.*non-empty|non-empty.*keys/i);
+      expect(() => handler.validateConfig({ keys: [] })).toThrow(
+        /keys.*non-empty|non-empty.*keys/i,
+      );
     });
 
     it('rejects a keys array containing a non-string entry', () => {
       const handler = buildHandler({});
-      expect(() =>
-        handler.validateConfig({ keys: ['a/b', 123 as unknown as string] }),
-      ).toThrow(/string/i);
+      expect(() => handler.validateConfig({ keys: ['a/b', 123 as unknown as string] })).toThrow(
+        /string/i,
+      );
     });
   });
 
@@ -127,9 +134,10 @@ describe('FileDeleteHandler', () => {
     });
 
     it('surfaces partial deletion failures as an error', async () => {
-      const deletePrefix = jest
-        .fn()
-        .mockResolvedValue({ deleted: 2, failed: ['o/r/uploads/projects/abc/x', 'o/r/uploads/projects/abc/y'] });
+      const deletePrefix = jest.fn().mockResolvedValue({
+        deleted: 2,
+        failed: ['o/r/uploads/projects/abc/x', 'o/r/uploads/projects/abc/y'],
+      });
       const handler = buildHandler({ deletePrefix });
 
       await expect(handler.execute(context, step({ prefix: 'projects/abc/' }))).rejects.toThrow(
@@ -141,7 +149,11 @@ describe('FileDeleteHandler', () => {
       const deletePrefix = jest.fn();
       const listKeys = jest
         .fn()
-        .mockResolvedValue(['o/r/uploads/projects/abc/1', 'o/r/uploads/projects/abc/2', 'o/r/uploads/projects/abc/3']);
+        .mockResolvedValue([
+          'o/r/uploads/projects/abc/1',
+          'o/r/uploads/projects/abc/2',
+          'o/r/uploads/projects/abc/3',
+        ]);
       const handler = buildHandler({ deletePrefix, listKeys });
 
       const result = await handler.execute(
@@ -161,9 +173,9 @@ describe('FileDeleteHandler', () => {
       const deletePrefix = jest.fn();
       const handler = buildHandler({ deletePrefix }, () => '   ');
 
-      await expect(handler.execute(context, step({ prefix: '{{steps.prep.prefix}}' }))).rejects.toThrow(
-        /empty/i,
-      );
+      await expect(
+        handler.execute(context, step({ prefix: '{{steps.prep.prefix}}' })),
+      ).rejects.toThrow(/empty/i);
       expect(deletePrefix).not.toHaveBeenCalled();
     });
 
@@ -289,15 +301,11 @@ describe('FileDeleteHandler', () => {
     it('interpolates each key expression against the uploads root', async () => {
       const exists = jest.fn().mockResolvedValue(true);
       const del = jest.fn().mockResolvedValue(undefined);
-      const handler = buildHandler(
-        { exists, delete: del },
-        (expr) => expr.replace('{{hash}}', 'deadbeef'),
+      const handler = buildHandler({ exists, delete: del }, (expr) =>
+        expr.replace('{{hash}}', 'deadbeef'),
       );
 
-      const result = await handler.execute(
-        context,
-        step({ keys: ['content/{{hash}}'] }),
-      );
+      const result = await handler.execute(context, step({ keys: ['content/{{hash}}'] }));
 
       expect(del).toHaveBeenCalledWith(`${UPLOADS_ROOT}content/deadbeef`);
       expect(result).toEqual({
@@ -393,8 +401,14 @@ describe('FileDeleteHandler', () => {
     });
 
     it('throws when the expression resolves to a non-array', async () => {
-      const handler = buildHandler({ exists: jest.fn(), delete: jest.fn() }, (expr) => expr, () => 'not-an-array');
-      await expect(handler.execute(context, step({ keys: KEYS_EXPR }))).rejects.toThrow(/must resolve to an array/i);
+      const handler = buildHandler(
+        { exists: jest.fn(), delete: jest.fn() },
+        (expr) => expr,
+        () => 'not-an-array',
+      );
+      await expect(handler.execute(context, step({ keys: KEYS_EXPR }))).rejects.toThrow(
+        /must resolve to an array/i,
+      );
     });
 
     it('throws when the resolved array contains a non-string entry', async () => {
@@ -403,7 +417,9 @@ describe('FileDeleteHandler', () => {
         (expr) => expr,
         () => ['content/ok', 42],
       );
-      await expect(handler.execute(context, step({ keys: KEYS_EXPR }))).rejects.toThrow(/array of strings/i);
+      await expect(handler.execute(context, step({ keys: KEYS_EXPR }))).rejects.toThrow(
+        /array of strings/i,
+      );
     });
 
     it('still guards each resolved key against traversal before any storage call', async () => {
@@ -415,7 +431,9 @@ describe('FileDeleteHandler', () => {
         () => ['content/ok', '../../secret.env'],
       );
 
-      await expect(handler.execute(context, step({ keys: KEYS_EXPR }))).rejects.toThrow(/traversal/i);
+      await expect(handler.execute(context, step({ keys: KEYS_EXPR }))).rejects.toThrow(
+        /traversal/i,
+      );
       expect(exists).not.toHaveBeenCalled();
       expect(del).not.toHaveBeenCalled();
     });

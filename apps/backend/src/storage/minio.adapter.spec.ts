@@ -519,7 +519,9 @@ describe('MinioStorageAdapter', () => {
       };
 
       mockMinioClient.listObjectsV2.mockReturnValue(mockStream as any);
-      (mockMinioClient as any).removeObjects = jest.fn().mockRejectedValue(new Error('Network error'));
+      (mockMinioClient as any).removeObjects = jest
+        .fn()
+        .mockRejectedValue(new Error('Network error'));
 
       const result = await adapter.deletePrefix('prefix');
 

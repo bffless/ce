@@ -32,11 +32,19 @@ vi.mock('@/components/ui/alert-dialog', () => {
     AlertDialogFooter: Passthrough,
     AlertDialogTitle: ({ children }: Props) => <h2>{children}</h2>,
     AlertDialogDescription: ({ children }: Props) => <p>{children}</p>,
-    AlertDialogAction: ({ children, onClick, disabled }: Props & { onClick?: () => void; disabled?: boolean }) => (
-      <button type="button" onClick={onClick} disabled={disabled}>{children}</button>
+    AlertDialogAction: ({
+      children,
+      onClick,
+      disabled,
+    }: Props & { onClick?: () => void; disabled?: boolean }) => (
+      <button type="button" onClick={onClick} disabled={disabled}>
+        {children}
+      </button>
     ),
     AlertDialogCancel: ({ children, disabled }: Props & { disabled?: boolean }) => (
-      <button type="button" disabled={disabled}>{children}</button>
+      <button type="button" disabled={disabled}>
+        {children}
+      </button>
     ),
   };
 });

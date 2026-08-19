@@ -215,9 +215,7 @@ describe('ProxyRuleSetsService', () => {
         environment: 'production',
       });
       // No schemas referenced → schemas key omitted entirely
-      expect(Object.keys(result)).toEqual(
-        ENVELOPE_KEY_ORDER.filter((k) => k !== 'schemas'),
-      );
+      expect(Object.keys(result)).toEqual(ENVELOPE_KEY_ORDER.filter((k) => k !== 'schemas'));
       // Fresh exportedAt: valid ISO timestamp within this test's window
       const exportedAt = Date.parse(result.exportedAt);
       expect(exportedAt).toBeGreaterThanOrEqual(before);
@@ -233,7 +231,10 @@ describe('ProxyRuleSetsService', () => {
           headerConfig: { forward: ['accept'] },
           authTransform: { type: 'cookie-to-bearer' },
           emailHandlerConfig: { destinationEmail: 'a@b.c' },
-          pipelineConfig: { name: 'p', steps: [{ name: 's', handlerType: 'data_query', config: {} }] },
+          pipelineConfig: {
+            name: 'p',
+            steps: [{ name: 's', handlerType: 'data_query', config: {} }],
+          },
           description: 'a rule',
         }),
       ]);
@@ -332,7 +333,9 @@ describe('ProxyRuleSetsService', () => {
           targetUrl: 'http://internal/pipeline',
           pipelineConfig: {
             name: 'comments',
-            steps: [{ name: 'query', handlerType: 'data_query', config: { schemaId: 'schema-gone' } }],
+            steps: [
+              { name: 'query', handlerType: 'data_query', config: { schemaId: 'schema-gone' } },
+            ],
           },
         }),
       ]);
@@ -356,7 +359,9 @@ describe('ProxyRuleSetsService', () => {
           targetUrl: 'http://internal/pipeline',
           pipelineConfig: {
             name: 'comments',
-            steps: [{ name: 'query', handlerType: 'data_query', config: { schemaId: 'schema-other' } }],
+            steps: [
+              { name: 'query', handlerType: 'data_query', config: { schemaId: 'schema-other' } },
+            ],
           },
         }),
       ]);
@@ -500,9 +505,9 @@ describe('ProxyRuleSetsService', () => {
     it('throws NotFoundException when the rule set does not exist', async () => {
       mockDb.__setResults([[]]);
 
-      await expect(
-        service.listRevisions('missing-set', 'user-1', 'user'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.listRevisions('missing-set', 'user-1', 'user')).rejects.toThrow(
+        NotFoundException,
+      );
       expect(mockProxyRuleSetRevisionsService.listRevisions).not.toHaveBeenCalled();
     });
   });
@@ -646,8 +651,8 @@ describe('ProxyRuleSetsService', () => {
 
     beforeEach(() => {
       mockPipelineSchemasService.getByProjectId.mockResolvedValue([existingComments]);
-      mockPipelineSchemasService.create.mockImplementation(
-        (dto: { name: string }) => Promise.resolve({ id: `created-${dto.name}`, ...dto }),
+      mockPipelineSchemasService.create.mockImplementation((dto: { name: string }) =>
+        Promise.resolve({ id: `created-${dto.name}`, ...dto }),
       );
     });
 
@@ -766,7 +771,13 @@ describe('ProxyRuleSetsService', () => {
 
       expect(mockPipelineSchemasService.create).not.toHaveBeenCalled();
       expect(result.resolutions).toEqual([
-        { name: 'brand-new', action: 'create', targetSchemaId: null, fieldMismatch: false, kindAdopted: false },
+        {
+          name: 'brand-new',
+          action: 'create',
+          targetSchemaId: null,
+          fieldMismatch: false,
+          kindAdopted: false,
+        },
       ]);
       expect(result.idMap.has('src-1')).toBe(false);
     });
@@ -796,7 +807,13 @@ describe('ProxyRuleSetsService', () => {
           fieldMismatch: false,
           kindAdopted: false,
         },
-        { name: 'votes', action: 'reuse', targetSchemaId: 'existing-votes-id', fieldMismatch: true, kindAdopted: false },
+        {
+          name: 'votes',
+          action: 'reuse',
+          targetSchemaId: 'existing-votes-id',
+          fieldMismatch: true,
+          kindAdopted: false,
+        },
         {
           name: 'brand-new',
           action: 'create',
@@ -853,11 +870,23 @@ describe('ProxyRuleSetsService', () => {
 
     it('dryRun reuse still resolves the real target id and populates the idMap', async () => {
       const result = await resolve(
-        [{ id: 'src-1', name: 'comments', fields: [{ name: 'body', type: 'text', required: true }] }],
+        [
+          {
+            id: 'src-1',
+            name: 'comments',
+            fields: [{ name: 'body', type: 'text', required: true }],
+          },
+        ],
         { strictSchemas: false, dryRun: true },
       );
       expect(result.resolutions).toEqual([
-        { name: 'comments', action: 'reuse', targetSchemaId: 'existing-comments-id', fieldMismatch: false, kindAdopted: false },
+        {
+          name: 'comments',
+          action: 'reuse',
+          targetSchemaId: 'existing-comments-id',
+          fieldMismatch: false,
+          kindAdopted: false,
+        },
       ]);
       expect(result.idMap.get('src-1')).toBe('existing-comments-id');
       expect(mockPipelineSchemasService.create).not.toHaveBeenCalled();
@@ -865,10 +894,10 @@ describe('ProxyRuleSetsService', () => {
 
     it('strictSchemas mismatch throws 400 even under dryRun (CI must fail loudly)', async () => {
       await expect(
-        resolve(
-          [{ id: 'src-1', name: 'comments', fields: [{ name: 'body', type: 'number' }] }],
-          { strictSchemas: true, dryRun: true },
-        ),
+        resolve([{ id: 'src-1', name: 'comments', fields: [{ name: 'body', type: 'number' }] }], {
+          strictSchemas: true,
+          dryRun: true,
+        }),
       ).rejects.toThrow(BadRequestException);
       expect(mockPipelineSchemasService.create).not.toHaveBeenCalled();
     });
@@ -1001,7 +1030,9 @@ describe('ProxyRuleSetsService', () => {
 
     it('captures a revision with trigger "import" carrying the inserted rules', async () => {
       const newRuleSet = createMockRuleSet({ id: 'imported-set-id', name: 'Imported Set' });
-      const insertedRules = [createMockRule({ id: 'imported-rule-1', ruleSetId: 'imported-set-id' })];
+      const insertedRules = [
+        createMockRule({ id: 'imported-rule-1', ruleSetId: 'imported-set-id' }),
+      ];
 
       mockDb.__setResults([
         [mockProject], // project lookup
@@ -1066,9 +1097,7 @@ describe('ProxyRuleSetsService', () => {
           if (!hc.add) return { ...hc };
           return {
             ...hc,
-            add: Object.fromEntries(
-              Object.entries(hc.add).map(([k, v]) => [k, `enc(${v})`]),
-            ),
+            add: Object.fromEntries(Object.entries(hc.add).map(([k, v]) => [k, `enc(${v})`])),
           };
         },
       );
@@ -1148,7 +1177,11 @@ describe('ProxyRuleSetsService', () => {
       const result = await sync(
         syncDto({
           rules: [{ ...baseRule(), headerConfig: { add: { 'X-Api-Key': 'secretv' } } }],
-          source: { repo: 'bffless/apps', path: 'apps/studio/.bffless/proxy-rules/studio', gitSha: 'abc123' },
+          source: {
+            repo: 'bffless/apps',
+            path: 'apps/studio/.bffless/proxy-rules/studio',
+            gitSha: 'abc123',
+          },
         }),
       );
 
@@ -1373,7 +1406,9 @@ describe('ProxyRuleSetsService', () => {
       await expect(
         sync(
           syncDto({
-            schemas: [{ id: 'src-1', name: 'comments', fields: [{ name: 'body', type: 'string' }] }],
+            schemas: [
+              { id: 'src-1', name: 'comments', fields: [{ name: 'body', type: 'string' }] },
+            ],
             options: { strictSchemas: true },
           }),
         ),
@@ -1825,11 +1860,8 @@ describe('ProxyRuleSetsService', () => {
         ...overrides,
       });
 
-    const rollback = (
-      ruleSetId: string,
-      revisionId: string,
-      options: { dryRun?: boolean } = {},
-    ) => service.rollbackToRevision(ruleSetId, revisionId, options, 'user-1', 'admin', 'project-1');
+    const rollback = (ruleSetId: string, revisionId: string, options: { dryRun?: boolean } = {}) =>
+      service.rollbackToRevision(ruleSetId, revisionId, options, 'user-1', 'admin', 'project-1');
 
     beforeEach(() => {
       mockPipelineSchemasService.getByProjectId.mockResolvedValue([]);

@@ -79,11 +79,7 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
       // The key is relative to the project's uploads root, mirroring
       // file_delete's `key`. This keeps a Site's assets served in-place under
       // /api/sites/<id>/<rel> so relative sub-resources re-enter the manifest.
-      const resolved = this.expressionEvaluator.evaluateTemplate(
-        config.key!,
-        context,
-        stepName,
-      );
+      const resolved = this.expressionEvaluator.evaluateTemplate(config.key!, context, stepName);
       const trimmed = (resolved ?? '').trim();
       if (!trimmed || trimmed === '/') {
         return {
@@ -347,7 +343,10 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
     res.setHeader('Accept-Ranges', 'bytes');
     if (etag) {
       // Mix cache-control into ETag so CDN refetches when cache rules change
-      const combined = crypto.createHash('md5').update(`${etag.replace(/"/g, '')}:${cacheControlHeader}`).digest('hex');
+      const combined = crypto
+        .createHash('md5')
+        .update(`${etag.replace(/"/g, '')}:${cacheControlHeader}`)
+        .digest('hex');
       res.setHeader('ETag', `"${combined}"`);
     }
 

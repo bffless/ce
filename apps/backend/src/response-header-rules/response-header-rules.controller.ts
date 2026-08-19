@@ -35,9 +35,7 @@ import { CurrentUser, CurrentUserData } from '../auth/decorators/current-user.de
 @Controller('api/response-header-rules')
 @UseGuards(ApiKeyGuard)
 export class ResponseHeaderRulesController {
-  constructor(
-    private readonly responseHeaderRulesService: ResponseHeaderRulesService,
-  ) {}
+  constructor(private readonly responseHeaderRulesService: ResponseHeaderRulesService) {}
 
   @Get('project/:projectId')
   @ApiOperation({ summary: 'List response header rules for a project' })
@@ -50,8 +48,7 @@ export class ResponseHeaderRulesController {
   async getProjectRules(
     @Param('projectId', ParseUUIDPipe) projectId: string,
   ): Promise<{ rules: ResponseHeaderRuleResponseDto[] }> {
-    const rules =
-      await this.responseHeaderRulesService.getRulesByProjectId(projectId);
+    const rules = await this.responseHeaderRulesService.getRulesByProjectId(projectId);
     return { rules: rules as ResponseHeaderRuleResponseDto[] };
   }
 
@@ -111,9 +108,7 @@ export class ResponseHeaderRulesController {
     type: ResponseHeaderRuleResponseDto,
   })
   @ApiResponse({ status: 404, description: 'Rule not found' })
-  async getRule(
-    @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<ResponseHeaderRuleResponseDto> {
+  async getRule(@Param('id', ParseUUIDPipe) id: string): Promise<ResponseHeaderRuleResponseDto> {
     const rule = await this.responseHeaderRulesService.getRuleById(id);
     if (!rule) {
       throw new NotFoundException(`Response header rule ${id} not found`);
@@ -150,11 +145,7 @@ export class ResponseHeaderRulesController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: CurrentUserData,
   ): Promise<{ success: boolean }> {
-    await this.responseHeaderRulesService.delete(
-      id,
-      user.id,
-      user.role || 'user',
-    );
+    await this.responseHeaderRulesService.delete(id, user.id, user.role || 'user');
     return { success: true };
   }
 }

@@ -226,11 +226,7 @@ export function GlobalApiKeysTab() {
                     <div className="space-y-2">
                       <Label>API Key</Label>
                       <div className="flex items-center gap-2">
-                        <Input
-                          value={newKeyResponse.key}
-                          readOnly
-                          className="font-mono text-sm"
-                        />
+                        <Input value={newKeyResponse.key} readOnly className="font-mono text-sm" />
                         <Button
                           variant="outline"
                           size="sm"
@@ -343,11 +339,7 @@ export function GlobalApiKeysTab() {
                       onOpenChange={(open) => setDeletingKey(open ? key.id : null)}
                     >
                       <AlertDialogTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setDeletingKey(key.id)}
-                        >
+                        <Button variant="ghost" size="sm" onClick={() => setDeletingKey(key.id)}>
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </AlertDialogTrigger>

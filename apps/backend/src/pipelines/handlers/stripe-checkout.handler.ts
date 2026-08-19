@@ -120,18 +120,12 @@ export class StripeCheckoutHandler implements StepHandler<StripeCheckoutHandlerC
   validateConfig(config: StripeCheckoutHandlerConfig): void {
     const hasLineItems = Array.isArray(config.lineItems) && config.lineItems.length > 0;
     if (!config.priceId && !hasLineItems) {
-      throw new ConfigurationError(
-        'Either priceId or lineItems is required',
-        'stripe_checkout',
-      );
+      throw new ConfigurationError('Either priceId or lineItems is required', 'stripe_checkout');
     }
     if (hasLineItems) {
       config.lineItems!.forEach((item, i) => {
         if (!item || !item.price) {
-          throw new ConfigurationError(
-            `lineItems[${i}].price is required`,
-            'stripe_checkout',
-          );
+          throw new ConfigurationError(`lineItems[${i}].price is required`, 'stripe_checkout');
         }
       });
     }
@@ -188,7 +182,8 @@ export class StripeCheckoutHandler implements StepHandler<StripeCheckoutHandlerC
         success: false,
         error: {
           code: 'STRIPE_NOT_CONFIGURED',
-          message: 'Stripe integration is not configured for this project. Configure it in Project Settings > Integrations.',
+          message:
+            'Stripe integration is not configured for this project. Configure it in Project Settings > Integrations.',
         },
       };
     }
@@ -212,9 +207,7 @@ export class StripeCheckoutHandler implements StepHandler<StripeCheckoutHandlerC
     let lineItems: Array<{ price: string; quantity: number }>;
     if (Array.isArray(config.lineItems) && config.lineItems.length > 0) {
       lineItems = config.lineItems.map((item) => ({
-        price: String(
-          this.expressionEvaluator.evaluateExpression(item.price, context, step.name),
-        ),
+        price: String(this.expressionEvaluator.evaluateExpression(item.price, context, step.name)),
         quantity: resolveQuantity(item.quantity),
       }));
     } else {

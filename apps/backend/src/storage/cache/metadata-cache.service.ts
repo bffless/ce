@@ -21,7 +21,9 @@ export class MetadataCacheService {
     @Optional() @Inject(CACHE_ADAPTER) private readonly cacheAdapter: ICacheAdapter | null,
   ) {
     if (this.cacheAdapter) {
-      this.logger.log(`MetadataCacheService initialized with ${this.cacheAdapter.cacheType ?? 'memory'} cache`);
+      this.logger.log(
+        `MetadataCacheService initialized with ${this.cacheAdapter.cacheType ?? 'memory'} cache`,
+      );
     } else {
       this.logger.log('MetadataCacheService initialized without cache adapter (caching disabled)');
     }

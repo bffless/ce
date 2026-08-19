@@ -424,7 +424,9 @@ export class CurrentStorageConfigResponseDto {
   @ApiPropertyOptional({ description: 'Storage account name (for Azure)' })
   accountName?: string;
 
-  @ApiPropertyOptional({ description: 'Whether this is an S3-compatible service (has custom endpoint)' })
+  @ApiPropertyOptional({
+    description: 'Whether this is an S3-compatible service (has custom endpoint)',
+  })
   isS3Compatible?: boolean;
 
   @ApiPropertyOptional({ description: 'Storage class (for GCS)' })
@@ -1041,7 +1043,10 @@ export class UploadCertificatesDto {
   @IsString()
   token?: string;
 
-  @ApiProperty({ description: 'Serving path — drives the SAN policy', enum: ['cloudflare', 'proxy', 'none'] })
+  @ApiProperty({
+    description: 'Serving path — drives the SAN policy',
+    enum: ['cloudflare', 'proxy', 'none'],
+  })
   @IsIn(['cloudflare', 'proxy', 'none'])
   servingMode: 'cloudflare' | 'proxy' | 'none';
 }
@@ -1088,16 +1093,27 @@ export class ApplyBootstrapDto {
   })
   proxyMode: 'cloudflare' | 'proxy' | 'none';
 
-  @ApiProperty({ description: 'Where the certificate came from', enum: ['paste', 'letsencrypt', 'selfsigned'] })
+  @ApiProperty({
+    description: 'Where the certificate came from',
+    enum: ['paste', 'letsencrypt', 'selfsigned'],
+  })
   @IsIn(['paste', 'letsencrypt', 'selfsigned'])
   sslMode: 'paste' | 'letsencrypt' | 'selfsigned';
 
-  @ApiProperty({ required: false, enum: ['closed', 'redirect'], description: 'Port-80 behavior; defaults from proxyMode' })
+  @ApiProperty({
+    required: false,
+    enum: ['closed', 'redirect'],
+    description: 'Port-80 behavior; defaults from proxyMode',
+  })
   @IsOptional()
   @IsIn(['closed', 'redirect'])
   port80?: 'closed' | 'redirect';
 
-  @ApiProperty({ required: false, type: RealIpDto, description: 'Custom real-IP trust (proxy mode only)' })
+  @ApiProperty({
+    required: false,
+    type: RealIpDto,
+    description: 'Custom real-IP trust (proxy mode only)',
+  })
   @IsOptional()
   @ValidateNested()
   @Type(() => RealIpDto)

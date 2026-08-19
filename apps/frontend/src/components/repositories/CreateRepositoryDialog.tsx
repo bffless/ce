@@ -65,8 +65,8 @@ export function CreateRepositoryDialog({ open, onOpenChange }: CreateRepositoryD
         <DialogHeader>
           <DialogTitle>Create Repository</DialogTitle>
           <DialogDescription>
-            Create a repository to store your deployments. This typically matches your
-            GitHub repository structure.
+            Create a repository to store your deployments. This typically matches your GitHub
+            repository structure.
           </DialogDescription>
         </DialogHeader>
 

@@ -22,11 +22,7 @@ export function generatePreviewAliasName(
     .replace(/[^a-z0-9]/gi, '')
     .substring(0, 8)
     .toLowerCase();
-  const repoHash = crypto
-    .createHash('sha256')
-    .update(repository)
-    .digest('hex')
-    .substring(0, 4);
+  const repoHash = crypto.createHash('sha256').update(repository).digest('hex').substring(0, 4);
 
   // Hash the basePath (normalized: remove trailing slashes, default to '/')
   const normalizedBasePath = (basePath || '/').replace(/\/+$/, '') || '/';

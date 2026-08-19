@@ -66,7 +66,10 @@ export function GlobalSearchBar() {
 
   return (
     <div className="relative max-w-xl" role="search">
-      <Search className="absolute left-3 top-2.5 h-5 w-5 text-muted-foreground" aria-hidden="true" />
+      <Search
+        className="absolute left-3 top-2.5 h-5 w-5 text-muted-foreground"
+        aria-hidden="true"
+      />
       <Input
         ref={inputRef}
         type="search"

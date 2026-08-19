@@ -103,15 +103,15 @@ describe('AzureBlobStorageAdapter', () => {
     });
 
     it('should throw error without accountName', () => {
-      expect(
-        () => new AzureBlobStorageAdapter({ ...testConfig, accountName: '' }),
-      ).toThrow('Azure configuration requires accountName');
+      expect(() => new AzureBlobStorageAdapter({ ...testConfig, accountName: '' })).toThrow(
+        'Azure configuration requires accountName',
+      );
     });
 
     it('should throw error without containerName', () => {
-      expect(
-        () => new AzureBlobStorageAdapter({ ...testConfig, containerName: '' }),
-      ).toThrow('Azure configuration requires containerName');
+      expect(() => new AzureBlobStorageAdapter({ ...testConfig, containerName: '' })).toThrow(
+        'Azure configuration requires containerName',
+      );
     });
 
     it('should throw error without authentication', () => {
@@ -169,11 +169,9 @@ describe('AzureBlobStorageAdapter', () => {
 
   describe('upload', () => {
     it('should upload file successfully', async () => {
-      const result = await adapter.upload(
-        Buffer.from('test content'),
-        'test/file.txt',
-        { mimeType: 'text/plain' },
-      );
+      const result = await adapter.upload(Buffer.from('test content'), 'test/file.txt', {
+        mimeType: 'text/plain',
+      });
 
       expect(result).toBe('test/file.txt');
       expect(mockContainerClient.getBlockBlobClient).toHaveBeenCalledWith('test/file.txt');
@@ -187,11 +185,10 @@ describe('AzureBlobStorageAdapter', () => {
     });
 
     it('should reject path traversal', async () => {
-      await expect(
-        adapter.upload(Buffer.from('test'), '../etc/passwd'),
-      ).rejects.toThrow('path traversal detected');
+      await expect(adapter.upload(Buffer.from('test'), '../etc/passwd')).rejects.toThrow(
+        'path traversal detected',
+      );
     });
-
 
     it('should strip leading slashes from key', async () => {
       await adapter.upload(Buffer.from('test'), '/test/file.txt');
@@ -213,9 +210,9 @@ describe('AzureBlobStorageAdapter', () => {
     it('should throw error on upload failure', async () => {
       mockBlockBlobClient.upload.mockRejectedValueOnce(new Error('Upload failed'));
 
-      await expect(
-        adapter.upload(Buffer.from('test'), 'test/file.txt'),
-      ).rejects.toThrow('Azure Blob upload failed');
+      await expect(adapter.upload(Buffer.from('test'), 'test/file.txt')).rejects.toThrow(
+        'Azure Blob upload failed',
+      );
     });
   });
 
@@ -238,9 +235,7 @@ describe('AzureBlobStorageAdapter', () => {
     it('should throw error for other download failures', async () => {
       mockBlockBlobClient.download.mockRejectedValueOnce(new Error('Network error'));
 
-      await expect(adapter.download('test/file.txt')).rejects.toThrow(
-        'Azure Blob download failed',
-      );
+      await expect(adapter.download('test/file.txt')).rejects.toThrow('Azure Blob download failed');
     });
 
     it('should throw error for empty response body', async () => {
@@ -248,9 +243,7 @@ describe('AzureBlobStorageAdapter', () => {
         readableStreamBody: null,
       });
 
-      await expect(adapter.download('test/file.txt')).rejects.toThrow(
-        'Empty response body',
-      );
+      await expect(adapter.download('test/file.txt')).rejects.toThrow('Empty response body');
     });
   });
 

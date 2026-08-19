@@ -106,8 +106,8 @@ export function XmlFeedParseConfig({ config, onChange, previousSteps = [] }: Pro
             previousSteps={previousSteps}
           />
           <p className="text-xs text-muted-foreground">
-            An expression resolving to raw feed XML (RSS 2.0 / Atom / RDF) fetched by a prior step or
-            uploaded by a user.
+            An expression resolving to raw feed XML (RSS 2.0 / Atom / RDF) fetched by a prior step
+            or uploaded by a user.
           </p>
         </div>
       )}

@@ -65,11 +65,7 @@ export function ForgotPasswordPage() {
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <Button
-            variant="ghost"
-            onClick={() => navigate('/')}
-            className="mb-4 gap-2"
-          >
+          <Button variant="ghost" onClick={() => navigate('/')} className="mb-4 gap-2">
             <Home className="h-4 w-4" />
             <img src={headerLogoUrl} alt={siteName} className="h-4 w-4" />
             <span className="font-semibold">{siteName}</span>

@@ -223,7 +223,12 @@ export class CustomDomainAuthService {
    * @param refreshToken - The refresh token to set
    * @param secure - Whether to set Secure flag (should be true in production)
    */
-  setAuthCookies(res: Response, accessToken: string, refreshToken: string, secure: boolean = true): void {
+  setAuthCookies(
+    res: Response,
+    accessToken: string,
+    refreshToken: string,
+    secure: boolean = true,
+  ): void {
     // Access cookie - available site-wide
     // Uses long cookie expiry (~13 months) so expired JWTs can trigger refresh flow
     res.cookie(CustomDomainAuthService.ACCESS_COOKIE_NAME, accessToken, {

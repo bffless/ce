@@ -287,9 +287,9 @@ describe('StorageMigrationService', () => {
 
   describe('resumeMigration', () => {
     it('should throw if no migration to resume', async () => {
-      await expect(
-        service.resumeMigration(mockSource, mockTarget),
-      ).rejects.toThrow('No migration to resume');
+      await expect(service.resumeMigration(mockSource, mockTarget)).rejects.toThrow(
+        'No migration to resume',
+      );
     });
 
     it('should resume from checkpoint', async () => {

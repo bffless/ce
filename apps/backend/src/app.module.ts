@@ -158,10 +158,10 @@ import { AppCatalogModule } from './app-catalog/app-catalog.module';
     ProxyRulesModule,
     RetentionModule,
     CacheRulesModule,
-    ShareLinksModule,    // Must come BEFORE ProjectsModule (route ordering)
+    ShareLinksModule, // Must come BEFORE ProjectsModule (route ordering)
     ProjectInviteLinksModule, // Must come BEFORE ProjectsModule (route ordering)
     RemoteConnectionsModule, // Must come BEFORE PipelinesModule (PipelinesModule imports it)
-    PipelinesModule,     // Must come BEFORE ProjectsModule (route ordering)
+    PipelinesModule, // Must come BEFORE ProjectsModule (route ordering)
     PipelineSchedulesModule, // Cron-scheduled pipelines (own /api/pipeline-schedules prefix)
     ResponseHeaderRulesModule, // Must come BEFORE ProjectsModule (route ordering)
     ProjectsModule,
@@ -199,15 +199,11 @@ import { AppCatalogModule } from './app-catalog/app-catalog.module';
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     // SecurityHeadersMiddleware must run first to set default security headers
-    consumer
-      .apply(SecurityHeadersMiddleware)
-      .forRoutes('*');
+    consumer.apply(SecurityHeadersMiddleware).forRoutes('*');
 
     // Apply middleware chain to all routes
     // Order matters: PlatformAliasCookieMiddleware must run before TenantMiddleware
     // to intercept Set-Cookie headers before auth runs
-    consumer
-      .apply(PlatformAliasCookieMiddleware, TenantMiddleware)
-      .forRoutes('*');
+    consumer.apply(PlatformAliasCookieMiddleware, TenantMiddleware).forRoutes('*');
   }
 }

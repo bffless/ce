@@ -95,7 +95,8 @@ export class StorageQuotaService {
         overageBytes,
         isOverage: true,
         behavior: 'block',
-        message: `Storage quota exceeded. Current usage: ${this.formatBytes(usage.totalBytes)}, ` +
+        message:
+          `Storage quota exceeded. Current usage: ${this.formatBytes(usage.totalBytes)}, ` +
           `Quota: ${this.formatBytes(usage.quotaBytes)}, ` +
           `Upload size: ${this.formatBytes(uploadSize)}`,
       };

@@ -11,12 +11,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Plus, Trash2, HelpCircle } from 'lucide-react';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { ProxyForwardConfig } from './types';
 
 interface ProxyForwardConfigProps {
@@ -42,9 +37,7 @@ export function ProxyForwardConfig({ config, onChange }: ProxyForwardConfigProps
   const [headers, setHeaders] = useState<HeaderEntry[]>(() => {
     const existing = config.headers || {};
     const entries = Object.entries(existing);
-    return entries.length > 0
-      ? entries.map(([key, value]) => ({ key, value }))
-      : [];
+    return entries.length > 0 ? entries.map(([key, value]) => ({ key, value })) : [];
   });
 
   useEffect(() => {
@@ -92,11 +85,8 @@ export function ProxyForwardConfig({ config, onChange }: ProxyForwardConfigProps
               </TooltipTrigger>
               <TooltipContent className="max-w-xs">
                 <p>
-                  The URL to forward the request to. You can use template
-                  expressions like{' '}
-                  <code className="bg-muted px-1 rounded">
-                    {'{{steps.myStep.id}}'}
-                  </code>
+                  The URL to forward the request to. You can use template expressions like{' '}
+                  <code className="bg-muted px-1 rounded">{'{{steps.myStep.id}}'}</code>
                 </p>
               </TooltipContent>
             </Tooltip>
@@ -108,8 +98,8 @@ export function ProxyForwardConfig({ config, onChange }: ProxyForwardConfigProps
             placeholder="https://api.example.com/webhook"
           />
           <p className="text-xs text-muted-foreground">
-            Use <code className="bg-muted px-1 rounded">{'{{expression}}'}</code>{' '}
-            for dynamic values from pipeline data.
+            Use <code className="bg-muted px-1 rounded">{'{{expression}}'}</code> for dynamic values
+            from pipeline data.
           </p>
         </div>
 
@@ -154,11 +144,7 @@ export function ProxyForwardConfig({ config, onChange }: ProxyForwardConfigProps
                 Forward the original or modified request body
               </p>
             </div>
-            <Switch
-              id="includeBody"
-              checked={includeBody}
-              onCheckedChange={setIncludeBody}
-            />
+            <Switch id="includeBody" checked={includeBody} onCheckedChange={setIncludeBody} />
           </div>
 
           <div className="flex items-center justify-between">
@@ -187,18 +173,13 @@ export function ProxyForwardConfig({ config, onChange }: ProxyForwardConfigProps
                 </TooltipTrigger>
                 <TooltipContent className="max-w-xs">
                   <p>
-                    Add or override headers on the forwarded request. Values
-                    support template expressions.
+                    Add or override headers on the forwarded request. Values support template
+                    expressions.
                   </p>
                 </TooltipContent>
               </Tooltip>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleAddHeader}
-            >
+            <Button type="button" variant="outline" size="sm" onClick={handleAddHeader}>
               <Plus className="h-4 w-4 mr-1" />
               Add Header
             </Button>
@@ -210,18 +191,14 @@ export function ProxyForwardConfig({ config, onChange }: ProxyForwardConfigProps
                 <div key={index} className="flex items-center gap-2">
                   <Input
                     value={header.key}
-                    onChange={(e) =>
-                      handleHeaderChange(index, { key: e.target.value })
-                    }
+                    onChange={(e) => handleHeaderChange(index, { key: e.target.value })}
                     placeholder="Header-Name"
                     className="flex-1"
                   />
                   <span className="text-muted-foreground">:</span>
                   <Input
                     value={header.value}
-                    onChange={(e) =>
-                      handleHeaderChange(index, { value: e.target.value })
-                    }
+                    onChange={(e) => handleHeaderChange(index, { value: e.target.value })}
                     placeholder="value (can use {{expression}})"
                     className="flex-1"
                   />

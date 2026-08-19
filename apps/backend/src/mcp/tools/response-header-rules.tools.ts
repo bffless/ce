@@ -42,13 +42,8 @@ export class ResponseHeaderRulesTools {
       projectId: z.string().describe('Project ID'),
     }),
   })
-  async listRules(
-    { projectId }: { projectId: string },
-    _context: Context,
-    _request: Request,
-  ) {
-    const result =
-      await this.responseHeaderRulesService.getRulesByProjectId(projectId);
+  async listRules({ projectId }: { projectId: string }, _context: Context, _request: Request) {
+    const result = await this.responseHeaderRulesService.getRulesByProjectId(projectId);
     return JSON.stringify(result);
   }
 
@@ -83,10 +78,7 @@ export class ResponseHeaderRulesTools {
         .number()
         .optional()
         .describe('Rule priority. Lower = evaluated first. Auto-assigned if omitted.'),
-      isEnabled: z
-        .boolean()
-        .optional()
-        .describe('Whether the rule is active (default true).'),
+      isEnabled: z.boolean().optional().describe('Whether the rule is active (default true).'),
       name: z.string().optional().describe('Human-readable rule name.'),
       description: z.string().optional().describe("Explanation of the rule's purpose."),
     }),
@@ -108,12 +100,7 @@ export class ResponseHeaderRulesTools {
   ) {
     const user = await getUserContext(request, this.authService);
     const { projectId, ...dto } = args;
-    const result = await this.responseHeaderRulesService.create(
-      projectId,
-      dto,
-      user.id,
-      user.role,
-    );
+    const result = await this.responseHeaderRulesService.create(projectId, dto, user.id, user.role);
     return JSON.stringify(result);
   }
 
@@ -151,12 +138,7 @@ export class ResponseHeaderRulesTools {
   ) {
     const user = await getUserContext(request, this.authService);
     const { id, ...dto } = args;
-    const result = await this.responseHeaderRulesService.update(
-      id,
-      dto,
-      user.id,
-      user.role,
-    );
+    const result = await this.responseHeaderRulesService.update(id, dto, user.id, user.role);
     return JSON.stringify(result);
   }
 
@@ -168,11 +150,7 @@ export class ResponseHeaderRulesTools {
     }),
     annotations: { destructiveHint: true },
   })
-  async deleteRule(
-    { id }: { id: string },
-    _context: Context,
-    request: Request,
-  ) {
+  async deleteRule({ id }: { id: string }, _context: Context, request: Request) {
     const user = await getUserContext(request, this.authService);
     await this.responseHeaderRulesService.delete(id, user.id, user.role);
     return JSON.stringify({ success: true, id });

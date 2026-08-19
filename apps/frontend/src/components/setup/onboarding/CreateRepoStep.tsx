@@ -42,8 +42,8 @@ export function CreateRepoStep({ onNext, onSkip }: CreateRepoStepProps) {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Create a repository to store your deployments. This typically matches your
-        GitHub repository structure.
+        Create a repository to store your deployments. This typically matches your GitHub repository
+        structure.
       </p>
 
       {error && (

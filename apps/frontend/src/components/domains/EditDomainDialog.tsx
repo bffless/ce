@@ -51,7 +51,10 @@ function getAlternateInfo(domain: string): { alternate: string; isWww: boolean }
   }
   // Check if it's an apex domain (no subdomain other than potential www)
   const parts = domain.split('.');
-  if (parts.length === 2 || (parts.length === 3 && ['co', 'com', 'org', 'net'].includes(parts[parts.length - 2]))) {
+  if (
+    parts.length === 2 ||
+    (parts.length === 3 && ['co', 'com', 'org', 'net'].includes(parts[parts.length - 2]))
+  ) {
     return { alternate: `www.${domain}`, isWww: false };
   }
   return null;
@@ -82,7 +85,9 @@ export function EditDomainDialog({ domain, open, onOpenChange }: EditDomainDialo
   // Phase B5: Visibility state - 'inherit' | 'public' | 'private'
   const [visibility, setVisibility] = useState<'inherit' | 'public' | 'private'>('inherit');
   // Access control overrides ('inherit' means null)
-  const [unauthorizedBehavior, setUnauthorizedBehavior] = useState<'inherit' | UnauthorizedBehavior>('inherit');
+  const [unauthorizedBehavior, setUnauthorizedBehavior] = useState<
+    'inherit' | UnauthorizedBehavior
+  >('inherit');
   const [requiredRole, setRequiredRole] = useState<'inherit' | RequiredRole>('inherit');
   // SPA mode
   const [isSpa, setIsSpa] = useState(false);
@@ -148,7 +153,8 @@ export function EditDomainDialog({ domain, open, onOpenChange }: EditDomainDialo
     }
 
     // Check if access control overrides changed
-    const newUnauthorizedBehavior = unauthorizedBehavior === 'inherit' ? null : unauthorizedBehavior;
+    const newUnauthorizedBehavior =
+      unauthorizedBehavior === 'inherit' ? null : unauthorizedBehavior;
     const originalUnauthorizedBehavior = domain.unauthorizedBehavior ?? null;
     if (newUnauthorizedBehavior !== originalUnauthorizedBehavior) {
       updates.unauthorizedBehavior = newUnauthorizedBehavior;
@@ -201,8 +207,7 @@ export function EditDomainDialog({ domain, open, onOpenChange }: EditDomainDialo
       onOpenChange(false);
     } catch (err: unknown) {
       const errorMessage =
-        (err as { data?: { message?: string } })?.data?.message ||
-        'Failed to update domain';
+        (err as { data?: { message?: string } })?.data?.message || 'Failed to update domain';
       toast({
         title: 'Error',
         description: errorMessage,
@@ -212,7 +217,6 @@ export function EditDomainDialog({ domain, open, onOpenChange }: EditDomainDialo
   };
 
   if (!domain) return null;
-
 
   // For redirect domains, hide most tabs as they only need general settings and SSL
   const isRedirectDomain = domain.domainType === 'redirect';
@@ -233,9 +237,7 @@ export function EditDomainDialog({ domain, open, onOpenChange }: EditDomainDialo
           <DialogDescription>
             Update settings for <strong>{domain.domain}</strong>
             {isRedirectDomain && domain.redirectTarget && (
-              <span className="block text-xs mt-1">
-                Redirects to: {domain.redirectTarget}
-              </span>
+              <span className="block text-xs mt-1">Redirects to: {domain.redirectTarget}</span>
             )}
           </DialogDescription>
         </DialogHeader>
@@ -276,8 +278,8 @@ export function EditDomainDialog({ domain, open, onOpenChange }: EditDomainDialo
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground">
-                      <strong>301</strong> is permanent and cached by browsers and search
-                      engines (recommended for SEO). <strong>302</strong> is temporary.
+                      <strong>301</strong> is permanent and cached by browsers and search engines
+                      (recommended for SEO). <strong>302</strong> is temporary.
                     </p>
                   </div>
                 </>
@@ -341,38 +343,39 @@ export function EditDomainDialog({ domain, open, onOpenChange }: EditDomainDialo
               )}
 
               {/* WWW Behavior - only for custom domains */}
-              {domain.domainType === 'custom' && (() => {
-                const alternateInfo = getAlternateInfo(domain.domain);
-                if (!alternateInfo) return null;
-                return (
-                  <div className="space-y-2">
-                    <Label htmlFor="wwwBehavior">
-                      WWW / Apex Redirect
-                    </Label>
-                    <Select
-                      value={wwwBehavior}
-                      onValueChange={(v) => setWwwBehavior(v as WwwBehavior | 'none')}
-                    >
-                      <SelectTrigger id="wwwBehavior">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">No redirect configured</SelectItem>
-                        <SelectItem value="redirect-to-www">
-                          Redirect {alternateInfo.isWww ? alternateInfo.alternate : domain.domain} → {alternateInfo.isWww ? domain.domain : alternateInfo.alternate}
-                        </SelectItem>
-                        <SelectItem value="redirect-to-root">
-                          Redirect {alternateInfo.isWww ? domain.domain : alternateInfo.alternate} → {alternateInfo.isWww ? alternateInfo.alternate : domain.domain}
-                        </SelectItem>
-                        <SelectItem value="serve-both">Serve both (no redirect)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-muted-foreground">
-                      Configure how to handle {alternateInfo.alternate}
-                    </p>
-                  </div>
-                );
-              })()}
+              {domain.domainType === 'custom' &&
+                (() => {
+                  const alternateInfo = getAlternateInfo(domain.domain);
+                  if (!alternateInfo) return null;
+                  return (
+                    <div className="space-y-2">
+                      <Label htmlFor="wwwBehavior">WWW / Apex Redirect</Label>
+                      <Select
+                        value={wwwBehavior}
+                        onValueChange={(v) => setWwwBehavior(v as WwwBehavior | 'none')}
+                      >
+                        <SelectTrigger id="wwwBehavior">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">No redirect configured</SelectItem>
+                          <SelectItem value="redirect-to-www">
+                            Redirect {alternateInfo.isWww ? alternateInfo.alternate : domain.domain}{' '}
+                            → {alternateInfo.isWww ? domain.domain : alternateInfo.alternate}
+                          </SelectItem>
+                          <SelectItem value="redirect-to-root">
+                            Redirect {alternateInfo.isWww ? domain.domain : alternateInfo.alternate}{' '}
+                            → {alternateInfo.isWww ? alternateInfo.alternate : domain.domain}
+                          </SelectItem>
+                          <SelectItem value="serve-both">Serve both (no redirect)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Configure how to handle {alternateInfo.alternate}
+                      </p>
+                    </div>
+                  );
+                })()}
 
               {/* Phase B5: Visibility control - only for non-redirect domains */}
               {!isRedirectDomain && (
@@ -408,7 +411,8 @@ export function EditDomainDialog({ domain, open, onOpenChange }: EditDomainDialo
                   </Select>
                   {visibilityInfo && visibility === 'inherit' && (
                     <p className="text-xs text-muted-foreground">
-                      Currently inherits "{visibilityInfo.effectiveVisibility}" from {visibilityInfo.source}
+                      Currently inherits "{visibilityInfo.effectiveVisibility}" from{' '}
+                      {visibilityInfo.source}
                     </p>
                   )}
                 </div>
@@ -426,7 +430,9 @@ export function EditDomainDialog({ domain, open, onOpenChange }: EditDomainDialo
                     <Label htmlFor="unauthorizedBehavior">Unauthorized Behavior</Label>
                     <Select
                       value={unauthorizedBehavior}
-                      onValueChange={(v) => setUnauthorizedBehavior(v as 'inherit' | UnauthorizedBehavior)}
+                      onValueChange={(v) =>
+                        setUnauthorizedBehavior(v as 'inherit' | UnauthorizedBehavior)
+                      }
                     >
                       <SelectTrigger id="unauthorizedBehavior">
                         <SelectValue />
@@ -443,7 +449,8 @@ export function EditDomainDialog({ domain, open, onOpenChange }: EditDomainDialo
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground">
-                      {unauthorizedBehavior === 'inherit' && visibilityInfo?.effectiveUnauthorizedBehavior
+                      {unauthorizedBehavior === 'inherit' &&
+                      visibilityInfo?.effectiveUnauthorizedBehavior
                         ? `Inherits "${visibilityInfo.effectiveUnauthorizedBehavior}" from ${visibilityInfo.source}`
                         : 'How to handle unauthenticated users'}
                     </p>
@@ -490,11 +497,7 @@ export function EditDomainDialog({ domain, open, onOpenChange }: EditDomainDialo
                     Enable or disable this domain mapping
                   </p>
                 </div>
-                <Switch
-                  id="active"
-                  checked={isActive}
-                  onCheckedChange={setIsActive}
-                />
+                <Switch id="active" checked={isActive} onCheckedChange={setIsActive} />
               </div>
 
               {/* SPA mode toggle - only for non-redirect domains */}
@@ -503,24 +506,16 @@ export function EditDomainDialog({ domain, open, onOpenChange }: EditDomainDialo
                   <div className="space-y-0.5">
                     <Label htmlFor="spa">Single Page Application (SPA)</Label>
                     <p className="text-xs text-muted-foreground">
-                      Enable for React, Vue, or Angular apps with client-side routing.
-                      Non-existent paths will serve index.html instead of 404.
+                      Enable for React, Vue, or Angular apps with client-side routing. Non-existent
+                      paths will serve index.html instead of 404.
                     </p>
                   </div>
-                  <Switch
-                    id="spa"
-                    checked={isSpa}
-                    onCheckedChange={setIsSpa}
-                  />
+                  <Switch id="spa" checked={isSpa} onCheckedChange={setIsSpa} />
                 </div>
               )}
 
               <div className="flex justify-end gap-2 pt-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => onOpenChange(false)}
-                >
+                <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                   Cancel
                 </Button>
                 <Button type="submit" disabled={isLoading}>
@@ -532,11 +527,7 @@ export function EditDomainDialog({ domain, open, onOpenChange }: EditDomainDialo
 
           {showSslTab && (
             <TabsContent value="ssl" className="mt-4">
-              <SslTab
-                domainId={domain.id}
-                domain={domain.domain}
-                domainType={domain.domainType}
-              />
+              <SslTab domainId={domain.id} domain={domain.domain} domainType={domain.domainType} />
             </TabsContent>
           )}
 
@@ -551,7 +542,11 @@ export function EditDomainDialog({ domain, open, onOpenChange }: EditDomainDialo
 
           {!isRedirectDomain && (
             <TabsContent value="share-links" className="mt-4">
-              <DomainShareLinksSection domainId={domain.id} domain={domain.domain} wwwBehavior={domain.wwwBehavior} />
+              <DomainShareLinksSection
+                domainId={domain.id}
+                domain={domain.domain}
+                wwwBehavior={domain.wwwBehavior}
+              />
             </TabsContent>
           )}
         </Tabs>

@@ -604,7 +604,12 @@ export class BlocklistService implements OnModuleInit {
     const [normalized] = this.normalizeAndValidate([entry], 'entries');
     await db
       .insert(blocklistEntries)
-      .values({ blocklistId: id, kind: 'block', matchType: normalized.matchType, value: normalized.value })
+      .values({
+        blocklistId: id,
+        kind: 'block',
+        matchType: normalized.matchType,
+        value: normalized.value,
+      })
       .onConflictDoNothing();
     await db.update(blocklists).set({ updatedAt: new Date() }).where(eq(blocklists.id, id));
 
@@ -658,7 +663,9 @@ export class BlocklistService implements OnModuleInit {
     }
 
     await db.transaction(async (tx) => {
-      await tx.delete(domainBlocklists).where(eq(domainBlocklists.domainMappingId, domainMappingId));
+      await tx
+        .delete(domainBlocklists)
+        .where(eq(domainBlocklists.domainMappingId, domainMappingId));
       if (unique.length > 0) {
         await tx
           .insert(domainBlocklists)
@@ -716,7 +723,11 @@ export class BlocklistService implements OnModuleInit {
       let value = entry.value?.trim() ?? '';
       // A path pattern that doesn't start with "/" would never match; treat
       // the leading slash as implied for path-anchored match types.
-      if ((entry.matchType === 'prefix' || entry.matchType === 'exact') && value !== '' && !value.startsWith('/')) {
+      if (
+        (entry.matchType === 'prefix' || entry.matchType === 'exact') &&
+        value !== '' &&
+        !value.startsWith('/')
+      ) {
         value = `/${value}`;
       }
       const error = validateBlocklistValue(value);

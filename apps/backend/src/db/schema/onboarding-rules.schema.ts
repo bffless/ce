@@ -14,7 +14,11 @@ import { users } from './users.schema';
 /**
  * Action types for onboarding rules
  */
-export type OnboardingActionType = 'grant_repo_access' | 'assign_role' | 'add_to_group' | 'run_pipeline';
+export type OnboardingActionType =
+  | 'grant_repo_access'
+  | 'assign_role'
+  | 'add_to_group'
+  | 'run_pipeline';
 
 /**
  * Parameters for grant_repo_access action
@@ -53,7 +57,11 @@ export interface RunPipelineParams {
 /**
  * Union type for action parameters
  */
-export type OnboardingActionParams = GrantRepoAccessParams | AssignRoleParams | AddToGroupParams | RunPipelineParams;
+export type OnboardingActionParams =
+  | GrantRepoAccessParams
+  | AssignRoleParams
+  | AddToGroupParams
+  | RunPipelineParams;
 
 /**
  * An onboarding action to execute

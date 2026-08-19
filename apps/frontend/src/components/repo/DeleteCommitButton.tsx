@@ -2,12 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Trash2, AlertTriangle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -88,9 +83,7 @@ export function DeleteCommitButton({
       toast({
         variant: 'destructive',
         title: 'Cannot delete commit',
-        description: errorAliases
-          ? `${errorMessage}: ${errorAliases.join(', ')}`
-          : errorMessage,
+        description: errorAliases ? `${errorMessage}: ${errorAliases.join(', ')}` : errorMessage,
       });
 
       setIsOpen(false);
@@ -117,9 +110,7 @@ export function DeleteCommitButton({
           {hasAliases && (
             <TooltipContent>
               <p>Cannot delete: commit has active aliases</p>
-              <p className="text-muted-foreground">
-                ({aliases.join(', ')})
-              </p>
+              <p className="text-muted-foreground">({aliases.join(', ')})</p>
             </TooltipContent>
           )}
         </Tooltip>
@@ -133,17 +124,15 @@ export function DeleteCommitButton({
               Delete Commit?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this commit? This action cannot be undone.
-              All files and deployments associated with this commit will be permanently deleted.
+              Are you sure you want to delete this commit? This action cannot be undone. All files
+              and deployments associated with this commit will be permanently deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>
 
           <div className="my-4 p-4 bg-muted rounded-lg space-y-3">
             <div className="flex justify-between items-center">
               <span className="text-sm text-muted-foreground">SHA</span>
-              <code className="text-sm font-mono bg-background px-2 py-1 rounded">
-                {shortSha}
-              </code>
+              <code className="text-sm font-mono bg-background px-2 py-1 rounded">{shortSha}</code>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm text-muted-foreground">Deployments</span>

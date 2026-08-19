@@ -102,8 +102,7 @@ export function RecordEditorDialog({
           break;
         case 'json':
           try {
-            processedData[field.name] =
-              typeof value === 'string' ? JSON.parse(value) : value;
+            processedData[field.name] = typeof value === 'string' ? JSON.parse(value) : value;
           } catch {
             toast({
               title: 'Invalid JSON',
@@ -204,11 +203,7 @@ export function RecordEditorDialog({
           <Input
             id={field.name}
             type="datetime-local"
-            value={
-              value
-                ? new Date(value as string).toISOString().slice(0, 16)
-                : ''
-            }
+            value={value ? new Date(value as string).toISOString().slice(0, 16) : ''}
             onChange={(e) =>
               handleFieldChange(
                 field.name,
@@ -253,12 +248,8 @@ export function RecordEditorDialog({
               <div key={field.name} className="space-y-2">
                 <Label htmlFor={field.name} className="flex items-center gap-2">
                   {field.name}
-                  {field.required && (
-                    <span className="text-destructive text-xs">*</span>
-                  )}
-                  <span className="text-xs text-muted-foreground">
-                    ({field.type})
-                  </span>
+                  {field.required && <span className="text-destructive text-xs">*</span>}
+                  <span className="text-xs text-muted-foreground">({field.type})</span>
                 </Label>
                 {renderField(field)}
               </div>

@@ -52,10 +52,7 @@ export class CacheRulesController {
     @Param('projectId', ParseUUIDPipe) projectId: string,
     @CurrentUser() user: CurrentUserData,
   ): Promise<{ rules: CacheRuleResponseDto[] }> {
-    const rules = await this.cacheRulesService.getRulesByProjectId(
-      projectId,
-      user.apiKeyProjectId,
-    );
+    const rules = await this.cacheRulesService.getRulesByProjectId(projectId, user.apiKeyProjectId);
     return { rules: rules as CacheRuleResponseDto[] };
   }
 

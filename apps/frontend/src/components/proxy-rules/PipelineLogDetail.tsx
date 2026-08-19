@@ -44,14 +44,8 @@ function StepRow({
           {step.handlerType}
         </Badge>
         <span className="text-muted-foreground">{step.durationMs}ms</span>
-        {step.warning && (
-          <AlertTriangle className="h-3 w-3 text-yellow-500 flex-shrink-0" />
-        )}
-        {step.error && (
-          <span className="text-red-500 truncate ml-auto">
-            {step.error.message}
-          </span>
-        )}
+        {step.warning && <AlertTriangle className="h-3 w-3 text-yellow-500 flex-shrink-0" />}
+        {step.error && <span className="text-red-500 truncate ml-auto">{step.error.message}</span>}
       </div>
       {isExpanded && (
         <div className="ml-7 pl-3 border-l space-y-2 pb-2">
@@ -61,7 +55,8 @@ function StepRow({
               <code className="bg-muted px-1 rounded">{step.condition}</code>
               {step.conditionResult !== undefined && (
                 <span className={step.conditionResult ? 'text-green-600' : 'text-red-500'}>
-                  {' '}({step.conditionResult ? 'met' : 'not met'})
+                  {' '}
+                  ({step.conditionResult ? 'met' : 'not met'})
                 </span>
               )}
             </div>
@@ -73,7 +68,9 @@ function StepRow({
           )}
           {step.error && (
             <div className="text-xs text-red-600 bg-red-50 dark:bg-red-950 p-2 rounded">
-              <div className="font-medium">{step.error.code}: {step.error.message}</div>
+              <div className="font-medium">
+                {step.error.code}: {step.error.message}
+              </div>
               {step.error.details != null && (
                 <pre className="mt-1 text-[10px] overflow-auto max-h-32">
                   {String(JSON.stringify(step.error.details, null, 2))}
@@ -134,7 +131,9 @@ export function PipelineLogDetail({ logId }: PipelineLogDetailProps) {
         <Badge variant={log.success ? 'default' : 'destructive'}>
           {log.success ? 'Success' : 'Failed'}
         </Badge>
-        <span className="font-mono">{log.method} {log.path}</span>
+        <span className="font-mono">
+          {log.method} {log.path}
+        </span>
         <span className="text-muted-foreground">{log.statusCode}</span>
         <span className="text-muted-foreground">{debug.totalDurationMs}ms total</span>
       </div>

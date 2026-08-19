@@ -75,9 +75,7 @@ const DEFAULT_MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
  * identical in the database. The bytes never pass through the backend.
  */
 @Injectable()
-export class RegisterUploadHandler
-  implements StepHandler<RegisterUploadHandlerConfig>
-{
+export class RegisterUploadHandler implements StepHandler<RegisterUploadHandlerConfig> {
   readonly type = 'register_upload' as const;
   private readonly logger = new Logger(RegisterUploadHandler.name);
 

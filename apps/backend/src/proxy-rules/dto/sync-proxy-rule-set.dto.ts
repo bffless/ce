@@ -123,7 +123,8 @@ export class SyncSchemaDto {
 
 export class SyncOptionsDto {
   @ApiPropertyOptional({
-    description: 'Delete live rules absent from the payload (default: report them as pruneCandidates)',
+    description:
+      'Delete live rules absent from the payload (default: report them as pruneCandidates)',
     default: false,
   })
   @IsOptional()
@@ -139,7 +140,8 @@ export class SyncOptionsDto {
   dryRun?: boolean;
 
   @ApiPropertyOptional({
-    description: 'Fail with 400 when a name-reused schema has mismatched field definitions (default: warn)',
+    description:
+      'Fail with 400 when a name-reused schema has mismatched field definitions (default: warn)',
     default: false,
   })
   @IsOptional()
@@ -211,12 +213,18 @@ export class SyncProxyRuleSetDto {
   @IsString()
   kind?: string;
 
-  @ApiProperty({ type: CreateProxyRuleSetDto, description: 'Rule set metadata; name is the identity' })
+  @ApiProperty({
+    type: CreateProxyRuleSetDto,
+    description: 'Rule set metadata; name is the identity',
+  })
   @ValidateNested()
   @Type(() => CreateProxyRuleSetDto)
   ruleSet: CreateProxyRuleSetDto;
 
-  @ApiProperty({ type: [SyncProxyRuleDto], description: 'The desired rules (full declarative state)' })
+  @ApiProperty({
+    type: [SyncProxyRuleDto],
+    description: 'The desired rules (full declarative state)',
+  })
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => SyncProxyRuleDto)
@@ -309,7 +317,7 @@ export class SyncSchemaResolutionDto {
 
   @ApiProperty({
     description:
-      'Whether the payload\'s declared kind was written onto a live schema that had none ' +
+      "Whether the payload's declared kind was written onto a live schema that had none " +
       '(true under dryRun means it would be). Adoption only ever fills a null — a declared ' +
       'kind is never rewritten.',
   })
@@ -340,7 +348,10 @@ export class SyncProxyRuleSetResponseDto {
   })
   deleted: SyncRuleRefDto[];
 
-  @ApiProperty({ type: [SyncRuleRefDto], description: 'Rules that matched their live form exactly' })
+  @ApiProperty({
+    type: [SyncRuleRefDto],
+    description: 'Rules that matched their live form exactly',
+  })
   unchanged: SyncRuleRefDto[];
 
   @ApiProperty({
@@ -373,7 +384,10 @@ export class SyncProxyRuleSetResponseDto {
   })
   merged: SyncRuleMergedDto[];
 
-  @ApiProperty({ type: [SyncSchemaResolutionDto], description: 'How each bundled schema was resolved' })
+  @ApiProperty({
+    type: [SyncSchemaResolutionDto],
+    description: 'How each bundled schema was resolved',
+  })
   schemaResolutions: SyncSchemaResolutionDto[];
 
   @ApiProperty({
@@ -384,7 +398,10 @@ export class SyncProxyRuleSetResponseDto {
   })
   missingSecrets: string[];
 
-  @ApiProperty({ type: [String], description: 'Non-fatal warnings (schema mismatches, nginx failures)' })
+  @ApiProperty({
+    type: [String],
+    description: 'Non-fatal warnings (schema mismatches, nginx failures)',
+  })
   warnings: string[];
 
   @ApiProperty({ description: 'Whether this was a dry run (nothing was written)' })

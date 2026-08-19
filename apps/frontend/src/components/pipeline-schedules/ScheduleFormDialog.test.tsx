@@ -76,13 +76,7 @@ describe('ScheduleFormDialog', () => {
   });
 
   it('shows the cron description for a valid expression and requires an explicit target rule before enabling submit', () => {
-    render(
-      <ScheduleFormDialog
-        projectId="proj-1"
-        open
-        onOpenChange={() => {}}
-      />,
-    );
+    render(<ScheduleFormDialog projectId="proj-1" open onOpenChange={() => {}} />);
     fireEvent.change(screen.getByLabelText(/name/i), { target: { value: 'My schedule' } });
     // default cron field starts blank; type a valid expression
     fireEvent.change(screen.getByLabelText(/cron/i), { target: { value: '0 * * * *' } });
@@ -98,37 +92,20 @@ describe('ScheduleFormDialog', () => {
   });
 
   it('blocks submit when the cron expression is invalid', () => {
-    render(
-      <ScheduleFormDialog
-        projectId="proj-1"
-        open
-        onOpenChange={() => {}}
-      />,
-    );
+    render(<ScheduleFormDialog projectId="proj-1" open onOpenChange={() => {}} />);
     fireEvent.change(screen.getByLabelText(/cron/i), { target: { value: 'nonsense' } });
     expect(screen.getByRole('button', { name: /create schedule/i })).toBeDisabled();
   });
 
   it('applies a preset to the cron field', () => {
-    render(
-      <ScheduleFormDialog
-        projectId="proj-1"
-        open
-        onOpenChange={() => {}}
-      />,
-    );
+    render(<ScheduleFormDialog projectId="proj-1" open onOpenChange={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: /hourly/i }));
     expect(screen.getByLabelText(/cron/i)).toHaveValue('0 * * * *');
   });
 
   it('prefills fields in edit mode', () => {
     render(
-      <ScheduleFormDialog
-        projectId="proj-1"
-        schedule={schedule()}
-        open
-        onOpenChange={() => {}}
-      />,
+      <ScheduleFormDialog projectId="proj-1" schedule={schedule()} open onOpenChange={() => {}} />,
     );
     expect(screen.getByLabelText(/name/i)).toHaveValue('Refresh feeds');
     expect(screen.getByLabelText(/cron/i)).toHaveValue('*/15 * * * *');

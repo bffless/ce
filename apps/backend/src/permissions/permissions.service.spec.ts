@@ -169,7 +169,13 @@ describe('PermissionsService', () => {
       const spy = jest.spyOn(service, 'getUserProjectRole');
 
       await expect(
-        service.requireProjectAccess(targetProject, mockUserId, 'admin', 'contributor', otherProject),
+        service.requireProjectAccess(
+          targetProject,
+          mockUserId,
+          'admin',
+          'contributor',
+          otherProject,
+        ),
       ).rejects.toThrow(ForbiddenException);
 
       // Important: scope check must reject before consulting role hierarchy.
@@ -180,7 +186,13 @@ describe('PermissionsService', () => {
       const spy = jest.spyOn(service, 'getUserProjectRole');
 
       await expect(
-        service.requireProjectAccess(targetProject, mockUserId, 'user', 'contributor', targetProject),
+        service.requireProjectAccess(
+          targetProject,
+          mockUserId,
+          'user',
+          'contributor',
+          targetProject,
+        ),
       ).resolves.toBeUndefined();
 
       // Scope match short-circuits — no need to look up the user role.
@@ -357,9 +369,7 @@ describe('PermissionsService', () => {
 
         await expect(
           service.grantPermission(mockProjectId, mockUserId, 'admin', mockGrantedBy),
-        ).rejects.toThrow(
-          /global 'member' role and cannot be granted the project 'admin' role/,
-        );
+        ).rejects.toThrow(/global 'member' role and cannot be granted the project 'admin' role/);
       });
 
       it('rejects granting project contributor to a global member', async () => {
@@ -708,9 +718,9 @@ describe('PermissionsService', () => {
       (db.select as jest.Mock).mockReturnValueOnce({
         from: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
-        limit: jest.fn().mockResolvedValue([
-          { projectId: mockProjectId, userId: mockUserId, role: 'guest' },
-        ]),
+        limit: jest
+          .fn()
+          .mockResolvedValue([{ projectId: mockProjectId, userId: mockUserId, role: 'guest' }]),
       });
 
       const deleteWhere = jest.fn().mockResolvedValue(undefined);
@@ -729,23 +739,23 @@ describe('PermissionsService', () => {
         limit: jest.fn().mockResolvedValue([]),
       });
 
-      await expect(
-        service.revokeSystemPermission(mockProjectId, mockUserId),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.revokeSystemPermission(mockProjectId, mockUserId)).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('throws ForbiddenException when target role is owner', async () => {
       (db.select as jest.Mock).mockReturnValueOnce({
         from: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
-        limit: jest.fn().mockResolvedValue([
-          { projectId: mockProjectId, userId: mockUserId, role: 'owner' },
-        ]),
+        limit: jest
+          .fn()
+          .mockResolvedValue([{ projectId: mockProjectId, userId: mockUserId, role: 'owner' }]),
       });
 
-      await expect(
-        service.revokeSystemPermission(mockProjectId, mockUserId),
-      ).rejects.toThrow(ForbiddenException);
+      await expect(service.revokeSystemPermission(mockProjectId, mockUserId)).rejects.toThrow(
+        ForbiddenException,
+      );
     });
   });
 
@@ -756,9 +766,7 @@ describe('PermissionsService', () => {
       // 1. directRows query
       (db.select as jest.Mock).mockReturnValueOnce({
         from: jest.fn().mockReturnThis(),
-        where: jest.fn().mockResolvedValue([
-          { projectId: 'p-1', role: 'guest', grantedAt },
-        ]),
+        where: jest.fn().mockResolvedValue([{ projectId: 'p-1', role: 'guest', grantedAt }]),
       });
 
       // 2. groupRows query (innerJoin chain)
@@ -860,9 +868,7 @@ describe('PermissionsService', () => {
 
       (db.select as jest.Mock).mockReturnValueOnce({
         from: jest.fn().mockReturnThis(),
-        where: jest.fn().mockResolvedValue([
-          { projectId: 'p-3', role: 'guest', grantedAt },
-        ]),
+        where: jest.fn().mockResolvedValue([{ projectId: 'p-3', role: 'guest', grantedAt }]),
       });
       (db.select as jest.Mock).mockReturnValueOnce({
         from: jest.fn().mockReturnThis(),
@@ -871,9 +877,11 @@ describe('PermissionsService', () => {
       });
       (db.select as jest.Mock).mockReturnValueOnce({
         from: jest.fn().mockReturnThis(),
-        where: jest.fn().mockResolvedValue([
-          { id: 'p-3', owner: 'acme', name: 'unmapped', displayName: 'Unmapped' },
-        ]),
+        where: jest
+          .fn()
+          .mockResolvedValue([
+            { id: 'p-3', owner: 'acme', name: 'unmapped', displayName: 'Unmapped' },
+          ]),
       });
       (db.select as jest.Mock).mockReturnValueOnce({
         from: jest.fn().mockReturnThis(),

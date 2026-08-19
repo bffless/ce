@@ -22,13 +22,18 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Trash2, ChevronDown, ChevronRight, ChevronLeft, Database, Plus, Pencil, Copy, Check } from 'lucide-react';
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+  Trash2,
+  ChevronDown,
+  ChevronRight,
+  ChevronLeft,
+  Database,
+  Plus,
+  Pencil,
+  Copy,
+  Check,
+} from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   useGetSchemaDataQuery,
   useDeleteRecordMutation,
@@ -77,7 +82,10 @@ export function DataBrowser({ schemaId, fields, canEdit }: DataBrowserProps) {
   });
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'single' | 'bulk'; ids: string[] } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    type: 'single' | 'bulk';
+    ids: string[];
+  } | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<PipelineDataRecord | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -213,7 +221,8 @@ export function DataBrowser({ schemaId, fields, canEdit }: DataBrowserProps) {
     setCreatedBefore(before);
   };
 
-  const hasActiveFilters = !!debouncedSearch || !!createdAfter || !!createdBefore || Object.keys(filters).length > 0;
+  const hasActiveFilters =
+    !!debouncedSearch || !!createdAfter || !!createdBefore || Object.keys(filters).length > 0;
 
   // Loading state
   if (isLoading && !data) {
@@ -278,11 +287,7 @@ export function DataBrowser({ schemaId, fields, canEdit }: DataBrowserProps) {
               </Button>
             )}
             {canEdit && (
-              <Button
-                size="sm"
-                className="gap-2"
-                onClick={handleAddRecord}
-              >
+              <Button size="sm" className="gap-2" onClick={handleAddRecord}>
                 <Plus className="h-4 w-4" />
                 Add Record
               </Button>
@@ -358,9 +363,7 @@ export function DataBrowser({ schemaId, fields, canEdit }: DataBrowserProps) {
                             <TableCell>
                               <Checkbox
                                 checked={selectedIds.has(record.id)}
-                                onCheckedChange={(checked) =>
-                                  handleSelectOne(record.id, !!checked)
-                                }
+                                onCheckedChange={(checked) => handleSelectOne(record.id, !!checked)}
                                 aria-label={`Select record ${record.id}`}
                               />
                             </TableCell>
@@ -397,7 +400,10 @@ export function DataBrowser({ schemaId, fields, canEdit }: DataBrowserProps) {
                                     )}
                                   </button>
                                 </TooltipTrigger>
-                                <TooltipContent side="top" className="font-mono text-xs max-w-md break-all">
+                                <TooltipContent
+                                  side="top"
+                                  className="font-mono text-xs max-w-md break-all"
+                                >
                                   <p>{record.id}</p>
                                   <p className="text-muted-foreground mt-1">Click to copy</p>
                                 </TooltipContent>
@@ -409,7 +415,9 @@ export function DataBrowser({ schemaId, fields, canEdit }: DataBrowserProps) {
                             {JSON.stringify(record.data).length > 100 && '...'}
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
-                            {record.alias || <span className="text-muted-foreground/50">&mdash;</span>}
+                            {record.alias || (
+                              <span className="text-muted-foreground/50">&mdash;</span>
+                            )}
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
                             {record.version}
@@ -444,10 +452,7 @@ export function DataBrowser({ schemaId, fields, canEdit }: DataBrowserProps) {
                         </TableRow>
                         {expandedId === record.id && (
                           <TableRow>
-                            <TableCell
-                              colSpan={canEdit ? 8 : 6}
-                              className="bg-muted/30 p-4"
-                            >
+                            <TableCell colSpan={canEdit ? 8 : 6} className="bg-muted/30 p-4">
                               <pre className="text-xs overflow-auto max-h-96 whitespace-pre-wrap">
                                 {JSON.stringify(record.data, null, 2)}
                               </pre>
@@ -495,7 +500,9 @@ export function DataBrowser({ schemaId, fields, canEdit }: DataBrowserProps) {
       <AlertDialog open={!!deleteConfirm} onOpenChange={(open) => !open && setDeleteConfirm(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Record{deleteConfirm?.ids.length === 1 ? '' : 's'}</AlertDialogTitle>
+            <AlertDialogTitle>
+              Delete Record{deleteConfirm?.ids.length === 1 ? '' : 's'}
+            </AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to delete{' '}
               {deleteConfirm?.ids.length === 1

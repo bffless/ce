@@ -108,16 +108,9 @@ function DurationPicker({
   presets?: ReadonlyArray<{ label: string; value: number }>;
   description?: string;
 }) {
-  const isCustom =
-    value != null &&
-    !presets.some((p) => p.value === value);
+  const isCustom = value != null && !presets.some((p) => p.value === value);
 
-  const selectValue =
-    value == null
-      ? 'null'
-      : isCustom
-        ? 'custom'
-        : String(value);
+  const selectValue = value == null ? 'null' : isCustom ? 'custom' : String(value);
 
   return (
     <div className="space-y-2">
@@ -138,9 +131,7 @@ function DurationPicker({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {nullable && (
-            <SelectItem value="null">{nullLabel || 'Not set'}</SelectItem>
-          )}
+          {nullable && <SelectItem value="null">{nullLabel || 'Not set'}</SelectItem>}
           {presets
             .filter((p) => p.value <= max)
             .map((p) => (
@@ -170,9 +161,7 @@ function DurationPicker({
           </span>
         </div>
       )}
-      {description && (
-        <p className="text-xs text-muted-foreground">{description}</p>
-      )}
+      {description && <p className="text-xs text-muted-foreground">{description}</p>}
     </div>
   );
 }
@@ -233,11 +222,7 @@ export function ProjectCacheRulesTab({ project }: ProjectCacheRulesTabProps) {
   const [ruleToDelete, setRuleToDelete] = useState<CacheRule | null>(null);
 
   // Queries
-  const {
-    data: rules,
-    isLoading,
-    error,
-  } = useGetCacheRulesQuery(project.id);
+  const { data: rules, isLoading, error } = useGetCacheRulesQuery(project.id);
 
   // Mutations
   const [createRule, { isLoading: isCreating }] = useCreateCacheRuleMutation();
@@ -357,9 +342,7 @@ export function ProjectCacheRulesTab({ project }: ProjectCacheRulesTabProps) {
     return (
       <Alert variant="destructive">
         <AlertCircle className="h-4 w-4" />
-        <AlertDescription>
-          Failed to load cache rules. Please try again.
-        </AlertDescription>
+        <AlertDescription>Failed to load cache rules. Please try again.</AlertDescription>
       </Alert>
     );
   }
@@ -392,9 +375,10 @@ export function ProjectCacheRulesTab({ project }: ProjectCacheRulesTabProps) {
             <Shield className="h-4 w-4" />
             <AlertDescription>
               <strong>Security:</strong> Private content automatically uses{' '}
-              <code className="text-xs bg-muted px-1 rounded">Cache-Control: private</code> to prevent CDN
-              caching. Public content uses{' '}
-              <code className="text-xs bg-muted px-1 rounded">public</code> for optimal CDN performance.
+              <code className="text-xs bg-muted px-1 rounded">Cache-Control: private</code> to
+              prevent CDN caching. Public content uses{' '}
+              <code className="text-xs bg-muted px-1 rounded">public</code> for optimal CDN
+              performance.
             </AlertDescription>
           </Alert>
 
@@ -467,11 +451,7 @@ export function ProjectCacheRulesTab({ project }: ProjectCacheRulesTabProps) {
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleEditRule(rule)}
-                        >
+                        <Button variant="ghost" size="icon" onClick={() => handleEditRule(rule)}>
                           <Edit className="h-4 w-4" />
                         </Button>
                         <Button
@@ -687,10 +667,8 @@ export function ProjectCacheRulesTab({ project }: ProjectCacheRulesTabProps) {
             <AlertDialogTitle>Delete Cache Rule?</AlertDialogTitle>
             <AlertDialogDescription>
               This will delete the cache rule for pattern{' '}
-              <code className="font-mono bg-muted px-1 rounded">
-                {ruleToDelete?.pathPattern}
-              </code>
-              . This action cannot be undone.
+              <code className="font-mono bg-muted px-1 rounded">{ruleToDelete?.pathPattern}</code>.
+              This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

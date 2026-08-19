@@ -83,7 +83,7 @@ function isBinaryFile(filepath: string, mimeType?: string): boolean {
       'application/x-rpm',
     ];
 
-    if (binaryMimeTypes.some(type => mimeType.startsWith(type))) return true;
+    if (binaryMimeTypes.some((type) => mimeType.startsWith(type))) return true;
 
     // Audio and video are binary
     if (mimeType.startsWith('audio/') || mimeType.startsWith('video/')) return true;
@@ -96,27 +96,78 @@ function isBinaryFile(filepath: string, mimeType?: string): boolean {
   const extension = filepath.split('.').pop()?.toLowerCase();
   const binaryExtensions = [
     // Archives
-    'zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz', 'tgz',
+    'zip',
+    'rar',
+    '7z',
+    'tar',
+    'gz',
+    'bz2',
+    'xz',
+    'tgz',
     // Documents
-    'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
+    'pdf',
+    'doc',
+    'docx',
+    'xls',
+    'xlsx',
+    'ppt',
+    'pptx',
     // Executables
-    'exe', 'dll', 'so', 'dylib', 'bin', 'dmg', 'app', 'deb', 'rpm',
+    'exe',
+    'dll',
+    'so',
+    'dylib',
+    'bin',
+    'dmg',
+    'app',
+    'deb',
+    'rpm',
     // Java/compiled
-    'jar', 'war', 'class', 'pyc', 'pyo',
+    'jar',
+    'war',
+    'class',
+    'pyc',
+    'pyo',
     // Audio
-    'mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a', 'wma',
+    'mp3',
+    'wav',
+    'flac',
+    'aac',
+    'ogg',
+    'm4a',
+    'wma',
     // Video
-    'mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'webm',
+    'mp4',
+    'avi',
+    'mkv',
+    'mov',
+    'wmv',
+    'flv',
+    'webm',
     // Fonts
-    'ttf', 'otf', 'woff', 'woff2', 'eot',
+    'ttf',
+    'otf',
+    'woff',
+    'woff2',
+    'eot',
     // Other binary
-    'iso', 'img', 'sqlite', 'db',
+    'iso',
+    'img',
+    'sqlite',
+    'db',
   ];
 
   return binaryExtensions.includes(extension || '');
 }
 
-export function ContentViewer({ owner, repo, gitRef, filepath, fileData, leftActions }: ContentViewerProps) {
+export function ContentViewer({
+  owner,
+  repo,
+  gitRef,
+  filepath,
+  fileData,
+  leftActions,
+}: ContentViewerProps) {
   const isImage = isImageFile(filepath, fileData?.mimeType);
   const isHtml = isHtmlFile(filepath, fileData?.mimeType);
   const isMarkdown = isMarkdownFile(filepath, fileData?.mimeType);

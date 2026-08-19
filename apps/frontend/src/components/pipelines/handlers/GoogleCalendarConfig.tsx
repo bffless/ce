@@ -1,5 +1,11 @@
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { ExpressionInput } from './ExpressionInput';
@@ -11,7 +17,11 @@ interface GoogleCalendarConfigProps {
   previousSteps: PreviousStep[];
 }
 
-export function GoogleCalendarConfig({ config, onChange, previousSteps }: GoogleCalendarConfigProps) {
+export function GoogleCalendarConfig({
+  config,
+  onChange,
+  previousSteps,
+}: GoogleCalendarConfigProps) {
   const action = (config.action as string) || 'freebusy';
 
   const calendarIdsValue = Array.isArray(config.calendarIds)
@@ -22,10 +32,7 @@ export function GoogleCalendarConfig({ config, onChange, previousSteps }: Google
     <div className="space-y-4">
       <div className="space-y-2">
         <Label>Action</Label>
-        <Select
-          value={action}
-          onValueChange={(value) => onChange({ ...config, action: value })}
-        >
+        <Select value={action} onValueChange={(value) => onChange({ ...config, action: value })}>
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
@@ -39,7 +46,8 @@ export function GoogleCalendarConfig({ config, onChange, previousSteps }: Google
           </SelectContent>
         </Select>
         <p className="text-xs text-muted-foreground">
-          Requires the Google Calendar integration to be configured in Project Settings → Integrations.
+          Requires the Google Calendar integration to be configured in Project Settings →
+          Integrations.
         </p>
       </div>
 
@@ -52,7 +60,10 @@ export function GoogleCalendarConfig({ config, onChange, previousSteps }: Google
               onChange={(value) =>
                 onChange({
                   ...config,
-                  calendarIds: value.split(',').map((s: string) => s.trim()).filter(Boolean),
+                  calendarIds: value
+                    .split(',')
+                    .map((s: string) => s.trim())
+                    .filter(Boolean),
                 })
               }
               placeholder="primary, steps.resource.google_calendar_id"
@@ -128,7 +139,10 @@ export function GoogleCalendarConfig({ config, onChange, previousSteps }: Google
               type="number"
               value={(config.maxResults as number) || ''}
               onChange={(e) =>
-                onChange({ ...config, maxResults: e.target.value ? Number(e.target.value) : undefined })
+                onChange({
+                  ...config,
+                  maxResults: e.target.value ? Number(e.target.value) : undefined,
+                })
               }
               placeholder="250"
             />

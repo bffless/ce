@@ -1,4 +1,11 @@
-import { Injectable, Inject, NotFoundException, ConflictException, Optional, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Inject,
+  NotFoundException,
+  ConflictException,
+  Optional,
+  Logger,
+} from '@nestjs/common';
 import { eq, and, asc, desc, sql, or, ilike, count, sum, max } from 'drizzle-orm';
 import { db } from '../db/client';
 import {
@@ -206,8 +213,13 @@ export class ProjectsService {
   /**
    * Sync the join table entries for a project's default proxy rule sets.
    */
-  private async syncProjectDefaultProxyRuleSets(projectId: string, ruleSetIds: string[]): Promise<void> {
-    await db.delete(projectDefaultProxyRuleSets).where(eq(projectDefaultProxyRuleSets.projectId, projectId));
+  private async syncProjectDefaultProxyRuleSets(
+    projectId: string,
+    ruleSetIds: string[],
+  ): Promise<void> {
+    await db
+      .delete(projectDefaultProxyRuleSets)
+      .where(eq(projectDefaultProxyRuleSets.projectId, projectId));
 
     if (ruleSetIds.length > 0) {
       await db.insert(projectDefaultProxyRuleSets).values(
@@ -270,7 +282,9 @@ export class ProjectsService {
         `Deleted ${result.deleted} storage files for project ${existingProject.owner}/${existingProject.name}`,
       );
       if (result.failed.length > 0) {
-        this.logger.warn(`Failed to delete ${result.failed.length} storage files: ${result.failed.slice(0, 5).join(', ')}`);
+        this.logger.warn(
+          `Failed to delete ${result.failed.length} storage files: ${result.failed.slice(0, 5).join(', ')}`,
+        );
       }
     } catch (error) {
       this.logger.error(`Failed to delete storage files for ${storagePrefix}: ${error}`);
@@ -347,7 +361,10 @@ export class ProjectsService {
    * Returns minimal data sorted alphabetically by name
    * Limited to 100 repos max
    */
-  async getMyRepositories(userId: string, userRole?: string): Promise<{
+  async getMyRepositories(
+    userId: string,
+    userRole?: string,
+  ): Promise<{
     total: number;
     repositories: Array<{
       id: string;
@@ -378,16 +395,16 @@ export class ProjectsService {
         .select({ id: projects.id })
         .from(projects)
         .where(eq(projects.createdBy, userId));
-      owned.forEach(p => ownedIds.add(p.id));
+      owned.forEach((p) => ownedIds.add(p.id));
 
       // Get direct permissions
       const direct = await db
         .select({ projectId: projectPermissions.projectId, role: projectPermissions.role })
         .from(projectPermissions)
         .where(eq(projectPermissions.userId, userId));
-      direct.forEach(p => directPermissions.set(p.projectId, p.role));
+      direct.forEach((p) => directPermissions.set(p.projectId, p.role));
 
-      const repositories = allRepos.map(repo => {
+      const repositories = allRepos.map((repo) => {
         let permissionType: 'owner' | 'direct' | 'group' | 'admin' = 'admin';
         let role: 'owner' | 'admin' | 'contributor' | 'viewer' = 'admin';
 

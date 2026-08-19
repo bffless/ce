@@ -14,9 +14,13 @@ export function CertificatePhase({ domain, onBack }: CertificatePhaseProps) {
   const { servingMode, bootstrapSslMode } = useSelector((s: RootState) => s.setup.wizard);
 
   const certView =
-    bootstrapSslMode === 'selfsigned' ? <SelfSignedConfirm domain={domain} onBack={onBack} />
-    : bootstrapSslMode === 'letsencrypt' ? <LetsEncryptForm domain={domain} onBack={onBack} />
-    : <PasteCertificateForm domain={domain} onBack={onBack} />;
+    bootstrapSslMode === 'selfsigned' ? (
+      <SelfSignedConfirm domain={domain} onBack={onBack} />
+    ) : bootstrapSslMode === 'letsencrypt' ? (
+      <LetsEncryptForm domain={domain} onBack={onBack} />
+    ) : (
+      <PasteCertificateForm domain={domain} onBack={onBack} />
+    );
 
   // The proxy path's real-IP / port-80 knobs apply to all three cert modes, so
   // they render above the cert-specific view (not inside the paste form).

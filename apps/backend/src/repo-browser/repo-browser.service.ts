@@ -173,10 +173,12 @@ export class RepoBrowserService {
     const aliasesData = await db
       .select()
       .from(deploymentAliases)
-      .where(and(
-        eq(deploymentAliases.projectId, project.id),
-        eq(deploymentAliases.isAutoPreview, false),
-      ))
+      .where(
+        and(
+          eq(deploymentAliases.projectId, project.id),
+          eq(deploymentAliases.isAutoPreview, false),
+        ),
+      )
       .orderBy(desc(deploymentAliases.updatedAt));
 
     const aliases: AliasRefDto[] = aliasesData.map((alias) => ({
@@ -485,10 +487,12 @@ export class RepoBrowserService {
     const aliasCountResult = await db
       .select({ count: count() })
       .from(deploymentAliases)
-      .where(and(
-        eq(deploymentAliases.projectId, project.id),
-        eq(deploymentAliases.isAutoPreview, false),
-      ));
+      .where(
+        and(
+          eq(deploymentAliases.projectId, project.id),
+          eq(deploymentAliases.isAutoPreview, false),
+        ),
+      );
 
     const aliasCount = Number(aliasCountResult[0]?.count || 0);
 
@@ -560,9 +564,12 @@ export class RepoBrowserService {
           .where(eq(aliasProxyRuleSets.aliasId, alias.id))
           .orderBy(asc(aliasProxyRuleSets.order));
 
-        const proxyRuleSetIds = joinRows.length > 0
-          ? joinRows.map((r) => r.proxyRuleSetId)
-          : alias.proxyRuleSetId ? [alias.proxyRuleSetId] : [];
+        const proxyRuleSetIds =
+          joinRows.length > 0
+            ? joinRows.map((r) => r.proxyRuleSetId)
+            : alias.proxyRuleSetId
+              ? [alias.proxyRuleSetId]
+              : [];
 
         return {
           id: alias.id,
@@ -581,7 +588,8 @@ export class RepoBrowserService {
           // do not coerce to undefined, since the edit dialog distinguishes "inherit"
           // (null) from "not returned" (undefined) when initializing its form state.
           isPublic: alias.isPublic,
-          unauthorizedBehavior: alias.unauthorizedBehavior as AliasDetailDto['unauthorizedBehavior'],
+          unauthorizedBehavior:
+            alias.unauthorizedBehavior as AliasDetailDto['unauthorizedBehavior'],
           requiredRole: alias.requiredRole as AliasDetailDto['requiredRole'],
         };
       }),
@@ -663,7 +671,11 @@ export class RepoBrowserService {
     const aliasResponse = await this.deploymentsService.updateAlias(
       repository,
       aliasName,
-      { commitSha: dto.commitSha, proxyRuleSetId: dto.proxyRuleSetId, proxyRuleSetIds: dto.proxyRuleSetIds },
+      {
+        commitSha: dto.commitSha,
+        proxyRuleSetId: dto.proxyRuleSetId,
+        proxyRuleSetIds: dto.proxyRuleSetIds,
+      },
       userId,
       userRole,
     );

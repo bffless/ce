@@ -31,10 +31,7 @@ describe('derivePresignKey', () => {
   it('is domain-separated from the pipeline signing key', () => {
     // function-runner derives sha256(`${base}|pipeline-fn-sign`); ours must differ.
     const ours = derivePresignKey({ ENCRYPTION_KEY: 'k' });
-    const theirs = require('crypto')
-      .createHash('sha256')
-      .update('k|pipeline-fn-sign')
-      .digest();
+    const theirs = require('crypto').createHash('sha256').update('k|pipeline-fn-sign').digest();
     expect(ours.equals(theirs)).toBe(false);
   });
 });
@@ -89,7 +86,11 @@ describe('explicitPublicOrigin', () => {
 
 describe('signLocalUpload / verifyLocalUpload', () => {
   const presignKey = derivePresignKey({ ENCRYPTION_KEY: 'test' });
-  const params = { key: 'o/r/uploads/content/abc', exp: 1_800_000_000, max: DEFAULT_MAX_UPLOAD_BYTES };
+  const params = {
+    key: 'o/r/uploads/content/abc',
+    exp: 1_800_000_000,
+    max: DEFAULT_MAX_UPLOAD_BYTES,
+  };
 
   it('round-trips a valid signature', () => {
     expect(verifyLocalUpload(params, signLocalUpload(params, presignKey), presignKey)).toBe(true);
@@ -97,7 +98,9 @@ describe('signLocalUpload / verifyLocalUpload', () => {
 
   it('rejects a tampered key', () => {
     const sig = signLocalUpload(params, presignKey);
-    expect(verifyLocalUpload({ ...params, key: 'o/r/uploads/content/EVIL' }, sig, presignKey)).toBe(false);
+    expect(verifyLocalUpload({ ...params, key: 'o/r/uploads/content/EVIL' }, sig, presignKey)).toBe(
+      false,
+    );
   });
 
   it('rejects a tampered exp', () => {
@@ -128,15 +131,23 @@ describe('signLocalUpload / verifyLocalUpload', () => {
   });
 
   it('throws TypeError when exp is not a finite number', () => {
-    expect(() => signLocalUpload({ ...params, exp: 'not-a-number' as any }, presignKey)).toThrow(TypeError);
-    expect(() => verifyLocalUpload({ ...params, exp: 'not-a-number' as any }, '', presignKey)).toThrow(TypeError);
+    expect(() => signLocalUpload({ ...params, exp: 'not-a-number' as any }, presignKey)).toThrow(
+      TypeError,
+    );
+    expect(() =>
+      verifyLocalUpload({ ...params, exp: 'not-a-number' as any }, '', presignKey),
+    ).toThrow(TypeError);
     expect(() => signLocalUpload({ ...params, exp: Infinity }, presignKey)).toThrow(TypeError);
     expect(() => verifyLocalUpload({ ...params, exp: NaN }, '', presignKey)).toThrow(TypeError);
   });
 
   it('throws TypeError when max is not a finite number', () => {
-    expect(() => signLocalUpload({ ...params, max: 'not-a-number' as any }, presignKey)).toThrow(TypeError);
-    expect(() => verifyLocalUpload({ ...params, max: 'not-a-number' as any }, '', presignKey)).toThrow(TypeError);
+    expect(() => signLocalUpload({ ...params, max: 'not-a-number' as any }, presignKey)).toThrow(
+      TypeError,
+    );
+    expect(() =>
+      verifyLocalUpload({ ...params, max: 'not-a-number' as any }, '', presignKey),
+    ).toThrow(TypeError);
     expect(() => signLocalUpload({ ...params, max: Infinity }, presignKey)).toThrow(TypeError);
     expect(() => verifyLocalUpload({ ...params, max: NaN }, '', presignKey)).toThrow(TypeError);
   });

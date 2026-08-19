@@ -2,11 +2,7 @@ import { act, render, screen, fireEvent, within } from '@testing-library/react';
 import { vi } from 'vitest';
 import { InstallDialog } from '../InstallDialog';
 import { api } from '@/services/api';
-import type {
-  CatalogEntry,
-  InstallJob,
-  PreflightResponse,
-} from '@/services/appCatalogApi';
+import type { CatalogEntry, InstallJob, PreflightResponse } from '@/services/appCatalogApi';
 
 const preflightTrigger = vi.fn();
 const resetPreflightMock = vi.fn();
@@ -30,10 +26,8 @@ vi.mock('@/services/appCatalogApi', () => ({
     { ...preflightState, reset: resetPreflightMock },
   ],
   useInstallAppMutation: () => [installTrigger, installState],
-  useGetInstallJobQuery: (
-    jobId: string,
-    options?: { pollingInterval?: number; skip?: boolean },
-  ) => getInstallJobQueryMock(jobId, options),
+  useGetInstallJobQuery: (jobId: string, options?: { pollingInterval?: number; skip?: boolean }) =>
+    getInstallJobQueryMock(jobId, options),
   useUndoJobMutation: () => [undoTrigger, undoState],
 }));
 
@@ -42,7 +36,13 @@ vi.mock('@/services/repositoriesApi', () => ({
     data: {
       total: 1,
       repositories: [
-        { id: 'proj-1', owner: 'acme', name: 'handoff-site', permissionType: 'owner', role: 'admin' },
+        {
+          id: 'proj-1',
+          owner: 'acme',
+          name: 'handoff-site',
+          permissionType: 'owner',
+          role: 'admin',
+        },
       ],
     },
     isLoading: false,
@@ -224,7 +224,8 @@ describe('InstallDialog — Review screen', () => {
           {
             id: 'app-host-tls',
             status: 'fail',
-            message: 'handoff.example.com could only be served over http:// — no wildcard certificate yet.',
+            message:
+              'handoff.example.com could only be served over http:// — no wildcard certificate yet.',
             remediation: 'Provision a wildcard certificate on the Domains page.',
             deepLink: '/domains',
             retryable: true,
@@ -244,7 +245,9 @@ describe('InstallDialog — Review screen', () => {
     expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /why\?/i }));
-    expect(screen.getByText('Provision a wildcard certificate on the Domains page.')).toBeInTheDocument();
+    expect(
+      screen.getByText('Provision a wildcard certificate on the Domains page.'),
+    ).toBeInTheDocument();
   });
 
   it('enables Install when every gate passes', () => {
@@ -338,9 +341,7 @@ describe('InstallDialog — Review screen', () => {
 
     expect(screen.getByLabelText(/owner/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/^name$/i)).toBeInTheDocument();
-    expect(
-      screen.getByText("A project's owner/name can never be renamed."),
-    ).toBeInTheDocument();
+    expect(screen.getByText("A project's owner/name can never be renamed.")).toBeInTheDocument();
   });
 
   it('shows the subdomain field empty, placeholder-defaulted from the first preflight appHost', () => {
@@ -355,7 +356,10 @@ describe('InstallDialog — Review screen', () => {
 
   it('shows the resulting URL from the preflight response next to the subdomain field', () => {
     preflightState = {
-      data: makePreflight({ appHost: 'handoff.example.com', appUrl: 'https://handoff.example.com' }),
+      data: makePreflight({
+        appHost: 'handoff.example.com',
+        appUrl: 'https://handoff.example.com',
+      }),
       isLoading: false,
     };
 
@@ -491,7 +495,9 @@ describe('InstallDialog — Working screen', () => {
   });
 
   it('stops polling (pollingInterval 0) once the job reaches a terminal status', async () => {
-    jobQueryResult = { data: makeJob({ status: 'succeeded', appUrl: 'https://handoff.example.com' }) };
+    jobQueryResult = {
+      data: makeJob({ status: 'succeeded', appUrl: 'https://handoff.example.com' }),
+    };
 
     render(<InstallDialog entry={baseEntry} open onOpenChange={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: /^install$/i }));
@@ -620,13 +626,21 @@ describe('InstallDialog — install again (app already installed elsewhere)', ()
   it('titles the wizard as installing in another project', () => {
     render(<InstallDialog entry={entryWithInstall} open onOpenChange={vi.fn()} />);
 
-    expect(screen.getByRole('heading', { name: 'Install Handoff in another project' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Install Handoff in another project' }),
+    ).toBeInTheDocument();
   });
 
   it('prefills the suggested subdomain from preflight and explains which install owns the default', () => {
     preflightState = {
       data: makePreflight({
-        gates: [{ id: 'name-collision', status: 'fail', message: 'The domain "handoff.example.com" is already mapped' }],
+        gates: [
+          {
+            id: 'name-collision',
+            status: 'fail',
+            message: 'The domain "handoff.example.com" is already mapped',
+          },
+        ],
         appHost: 'handoff.example.com',
         appUrl: 'https://handoff.example.com',
         suggestedSubdomain: 'handoff-blog',
@@ -639,13 +653,17 @@ describe('InstallDialog — install again (app already installed elsewhere)', ()
     const input = screen.getByLabelText(/subdomain/i) as HTMLInputElement;
     expect(input.value).toBe('handoff-blog');
     expect(
-      screen.getByText('The default subdomain "handoff" is used by the install in acme/handoff-site.'),
+      screen.getByText(
+        'The default subdomain "handoff" is used by the install in acme/handoff-site.',
+      ),
     ).toBeInTheDocument();
   });
 
   it('does not overwrite a subdomain the operator already typed', () => {
     preflightState = { data: makePreflight({ appHost: 'handoff.example.com' }), isLoading: false };
-    const { rerender } = render(<InstallDialog entry={entryWithInstall} open onOpenChange={vi.fn()} />);
+    const { rerender } = render(
+      <InstallDialog entry={entryWithInstall} open onOpenChange={vi.fn()} />,
+    );
 
     fireEvent.change(screen.getByLabelText(/subdomain/i), { target: { value: 'mine' } });
 
@@ -670,7 +688,9 @@ describe('InstallDialog — install again (app already installed elsewhere)', ()
 
     render(<InstallDialog entry={unrelated} open onOpenChange={vi.fn()} />);
 
-    expect(screen.getByText('The default subdomain "handoff" is already in use.')).toBeInTheDocument();
+    expect(
+      screen.getByText('The default subdomain "handoff" is already in use.'),
+    ).toBeInTheDocument();
   });
 });
 

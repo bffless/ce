@@ -14,10 +14,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import {
-  Dialog,
-  DialogContent,
-} from '@/components/ui/dialog';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import {
   Table,
   TableBody,
@@ -26,7 +23,16 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { ArrowLeft, Trash2, Copy, Download, ChevronLeft, ChevronRight, Image, Search } from 'lucide-react';
+import {
+  ArrowLeft,
+  Trash2,
+  Copy,
+  Download,
+  ChevronLeft,
+  ChevronRight,
+  Image,
+  Search,
+} from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import {
   useGetSchemaQuery,
@@ -99,10 +105,7 @@ export function UploadDetailPage() {
   // Fetch uploaded files (pipeline data records). Waits for the schema so the
   // file filter is known up front — otherwise the first render would briefly
   // list non-file records.
-  const {
-    data: filesData,
-    isLoading: isLoadingFiles,
-  } = useGetSchemaDataQuery(
+  const { data: filesData, isLoading: isLoadingFiles } = useGetSchemaDataQuery(
     {
       schemaId: schemaId!,
       page,
@@ -247,7 +250,10 @@ export function UploadDetailPage() {
                 <Input
                   type="date"
                   value={dateFrom}
-                  onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
+                  onChange={(e) => {
+                    setDateFrom(e.target.value);
+                    setPage(1);
+                  }}
                   className="w-[150px] text-sm"
                   title="From date"
                 />
@@ -255,7 +261,10 @@ export function UploadDetailPage() {
                 <Input
                   type="date"
                   value={dateTo}
-                  onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
+                  onChange={(e) => {
+                    setDateTo(e.target.value);
+                    setPage(1);
+                  }}
                   className="w-[150px] text-sm"
                   title="To date"
                 />
@@ -263,7 +272,11 @@ export function UploadDetailPage() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => { setDateFrom(''); setDateTo(''); setPage(1); }}
+                    onClick={() => {
+                      setDateFrom('');
+                      setDateTo('');
+                      setPage(1);
+                    }}
                     className="text-xs"
                   >
                     Clear
@@ -293,7 +306,8 @@ export function UploadDetailPage() {
                   <TableBody>
                     {files.map((record) => {
                       const data = record.data || {};
-                      const storagePath = typeof data.storage_path === 'string' ? data.storage_path : '';
+                      const storagePath =
+                        typeof data.storage_path === 'string' ? data.storage_path : '';
                       const filename = String(data.original_name || data.filename || 'file');
                       const isImage = isImageType(data.content_type);
 

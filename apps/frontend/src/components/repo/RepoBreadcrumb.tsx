@@ -17,7 +17,13 @@ interface RepoBreadcrumbProps {
   suffixLabel?: string;
 }
 
-export function RepoBreadcrumb({ owner, repo, gitRef, filepath, suffixLabel }: RepoBreadcrumbProps) {
+export function RepoBreadcrumb({
+  owner,
+  repo,
+  gitRef,
+  filepath,
+  suffixLabel,
+}: RepoBreadcrumbProps) {
   // Parse filepath into segments
   const pathSegments = filepath ? filepath.split('/').filter(Boolean) : [];
 

@@ -36,13 +36,21 @@ function LogoUploadField({
 
     // Validate client-side
     if (file.size > 2 * 1024 * 1024) {
-      toast({ title: 'File too large', description: 'Logo must be 2MB or less', variant: 'destructive' });
+      toast({
+        title: 'File too large',
+        description: 'Logo must be 2MB or less',
+        variant: 'destructive',
+      });
       return;
     }
 
     const allowed = ['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp', 'image/gif'];
     if (!allowed.includes(file.type)) {
-      toast({ title: 'Invalid file type', description: 'Use PNG, JPG, SVG, WebP, or GIF', variant: 'destructive' });
+      toast({
+        title: 'Invalid file type',
+        description: 'Use PNG, JPG, SVG, WebP, or GIF',
+        variant: 'destructive',
+      });
       return;
     }
 
@@ -89,13 +97,12 @@ function LogoUploadField({
               alt={label}
               className={type === 'header' ? 'h-8 w-8 object-contain' : 'h-20 w-20 object-contain'}
             />
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={handleDelete}
-              disabled={isDeleting}
-            >
-              {isDeleting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Trash2 className="h-4 w-4 mr-1" />}
+            <Button variant="destructive" size="sm" onClick={handleDelete} disabled={isDeleting}>
+              {isDeleting ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-1" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-1" />
+              )}
               Remove
             </Button>
           </div>
@@ -117,7 +124,11 @@ function LogoUploadField({
             onClick={() => fileInputRef.current?.click()}
             disabled={isUploading}
           >
-            {isUploading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Upload className="h-4 w-4 mr-1" />}
+            {isUploading ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-1" />
+            ) : (
+              <Upload className="h-4 w-4 mr-1" />
+            )}
             {currentKey ? 'Replace' : 'Upload'}
           </Button>
         </div>
@@ -188,9 +199,7 @@ export function BrandingSettings() {
         <CardContent>
           <Alert variant="destructive">
             <XCircle className="h-4 w-4" />
-            <AlertDescription>
-              Failed to load branding settings. Please try again.
-            </AlertDescription>
+            <AlertDescription>Failed to load branding settings. Please try again.</AlertDescription>
           </Alert>
         </CardContent>
       </Card>
@@ -215,7 +224,9 @@ export function BrandingSettings() {
       <CardContent className="space-y-6">
         {/* Site Name */}
         <div className="space-y-2">
-          <Label htmlFor="site-name" className="text-base font-medium">Site Name</Label>
+          <Label htmlFor="site-name" className="text-base font-medium">
+            Site Name
+          </Label>
           <p className="text-sm text-muted-foreground">
             Displayed in the header navigation and browser tab
           </p>
@@ -229,12 +240,12 @@ export function BrandingSettings() {
               className="max-w-xs"
             />
             {hasChanges && (
-              <Button
-                size="sm"
-                onClick={handleSaveName}
-                disabled={isUpdating}
-              >
-                {isUpdating ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
+              <Button size="sm" onClick={handleSaveName} disabled={isUpdating}>
+                {isUpdating ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                ) : (
+                  <Save className="h-4 w-4 mr-1" />
+                )}
                 Save
               </Button>
             )}

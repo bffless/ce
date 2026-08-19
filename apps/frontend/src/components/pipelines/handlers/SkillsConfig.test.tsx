@@ -9,7 +9,10 @@ const setSkillsAlias = vi.fn();
 vi.mock('@/services/projectsApi', () => ({
   useListProjectSkillsQuery: (args: unknown) => {
     listSkillsQuery(args);
-    return { data: { skills: [{ name: 'image-prompts', description: 'thumbnails' }] }, isLoading: false };
+    return {
+      data: { skills: [{ name: 'image-prompts', description: 'thumbnails' }] },
+      isLoading: false,
+    };
   },
   useGetProjectSkillsPathQuery: () => ({ data: { skillsPath: '.bffless/skills' } }),
   useSetProjectSkillsPathMutation: () => [setSkillsPath, { isLoading: false }],
@@ -34,7 +37,11 @@ describe('SkillsConfig — step-scoped source', () => {
   it('edits the path into the step config rather than the project setting', async () => {
     const onChange = vi.fn();
     render(
-      <SkillsConfig config={{ mode: 'selected', enabled: [] }} onChange={onChange} projectId="proj-1" />,
+      <SkillsConfig
+        config={{ mode: 'selected', enabled: [] }}
+        onChange={onChange}
+        projectId="proj-1"
+      />,
     );
 
     await userEvent.type(screen.getByPlaceholderText('.bffless/skills'), 'x');
@@ -49,7 +56,12 @@ describe('SkillsConfig — step-scoped source', () => {
   it("lists skills from the step's own path and alias", () => {
     render(
       <SkillsConfig
-        config={{ mode: 'selected', enabled: [], path: 'apps/studio/dist/bffless/skills', alias: 'studio' }}
+        config={{
+          mode: 'selected',
+          enabled: [],
+          path: 'apps/studio/dist/bffless/skills',
+          alias: 'studio',
+        }}
         onChange={vi.fn()}
         projectId="proj-1"
       />,
@@ -66,7 +78,11 @@ describe('SkillsConfig — step-scoped source', () => {
 
   it('shows the project default as the placeholder when the step sets no path', () => {
     render(
-      <SkillsConfig config={{ mode: 'selected', enabled: [] }} onChange={vi.fn()} projectId="proj-1" />,
+      <SkillsConfig
+        config={{ mode: 'selected', enabled: [] }}
+        onChange={vi.fn()}
+        projectId="proj-1"
+      />,
     );
 
     expect(screen.getByPlaceholderText('.bffless/skills')).toHaveValue('');

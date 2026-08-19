@@ -184,20 +184,12 @@ export function BinaryFileViewer({
             </p>
 
             <div className="flex flex-col sm:flex-row gap-2 justify-center">
-              <Button
-                onClick={handleDownload}
-                disabled={isDownloading}
-                className="gap-2"
-              >
+              <Button onClick={handleDownload} disabled={isDownloading} className="gap-2">
                 <Download className="h-4 w-4" />
                 {isDownloading ? 'Downloading...' : 'Download File'}
               </Button>
 
-              <Button
-                variant="outline"
-                onClick={handleOpenInNewTab}
-                className="gap-2"
-              >
+              <Button variant="outline" onClick={handleOpenInNewTab} className="gap-2">
                 <ExternalLink className="h-4 w-4" />
                 Open in New Tab
               </Button>

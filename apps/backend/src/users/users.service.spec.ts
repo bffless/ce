@@ -69,10 +69,7 @@ describe('UsersService', () => {
     jest.clearAllMocks();
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        UsersService,
-        { provide: ConfigService, useValue: mockConfigService },
-      ],
+      providers: [UsersService, { provide: ConfigService, useValue: mockConfigService }],
     }).compile();
 
     service = module.get<UsersService>(UsersService);

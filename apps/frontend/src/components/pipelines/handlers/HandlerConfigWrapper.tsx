@@ -81,12 +81,7 @@ export function HandlerConfigWrapper({
 
   switch (handlerType) {
     case 'form_handler':
-      return (
-        <FormHandlerConfig
-          config={config}
-          onChange={handleChange}
-        />
-      );
+      return <FormHandlerConfig config={config} onChange={handleChange} />;
 
     case 'data_create':
       return (
@@ -144,10 +139,7 @@ export function HandlerConfigWrapper({
       return (
         <>
           {renderVariablesPanel()}
-          <EmailHandlerConfig
-            config={config}
-            onChange={handleChange}
-          />
+          <EmailHandlerConfig config={config} onChange={handleChange} />
         </>
       );
 
@@ -328,12 +320,7 @@ export function HandlerConfigWrapper({
       );
 
     case 'stripe_webhook':
-      return (
-        <StripeWebhookConfig
-          config={config}
-          onChange={handleChange}
-        />
-      );
+      return <StripeWebhookConfig config={config} onChange={handleChange} />;
 
     case 'signed_url':
       return (
@@ -376,11 +363,7 @@ export function HandlerConfigWrapper({
       return (
         <>
           {renderVariablesPanel()}
-          <GitHubApiConfig
-            config={config}
-            onChange={handleChange}
-            previousSteps={previousSteps}
-          />
+          <GitHubApiConfig config={config} onChange={handleChange} previousSteps={previousSteps} />
         </>
       );
 
@@ -530,7 +513,8 @@ export function getHandlerDescription(type: HandlerType): string {
     xml_feed_parse: 'Fetch and parse RSS / Atom / RDF feeds into normalized entries',
     data_upsert_many: 'Insert an array of records into a schema, skipping duplicates',
     delay: 'Pause the pipeline for a configurable duration',
-    ffmpeg_handler: 'Run server-side video operations (slice, concat, audio extract, probe) on files in storage',
+    ffmpeg_handler:
+      'Run server-side video operations (slice, concat, audio extract, probe) on files in storage',
   };
   return descriptions[type] || '';
 }

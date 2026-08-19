@@ -184,7 +184,7 @@ export const authApi = api.injectEndpoints({
               user: null,
               emailVerified: undefined,
               emailVerificationRequired: undefined,
-            }))
+            })),
           );
         } catch {
           // If logout fails, don't update cache
@@ -212,7 +212,10 @@ export const authApi = api.injectEndpoints({
       query: () => '/api/auth/registration-status',
     }),
 
-    sendVerificationEmail: builder.mutation<SendVerificationEmailResponse, { redirect?: string } | void>({
+    sendVerificationEmail: builder.mutation<
+      SendVerificationEmailResponse,
+      { redirect?: string } | void
+    >({
       query: (data) => ({
         url: '/api/auth/send-verification-email',
         method: 'POST',

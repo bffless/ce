@@ -88,58 +88,58 @@ export function Pagination({ currentPage, totalPages, total }: PaginationProps) 
 
         {/* Pagination controls */}
         <div className="flex items-center gap-2">
-        {/* Previous button */}
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handlePrevious}
-          disabled={currentPage === 1}
-          aria-label="Previous page"
-        >
-          <ChevronLeft className="h-4 w-4" />
-          <span className="ml-1">Previous</span>
-        </Button>
+          {/* Previous button */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handlePrevious}
+            disabled={currentPage === 1}
+            aria-label="Previous page"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            <span className="ml-1">Previous</span>
+          </Button>
 
-        {/* Page numbers */}
-        <div className="hidden sm:flex items-center gap-1">
-          {pageNumbers.map((page) => {
-            if (typeof page === 'string') {
-              // Ellipsis
+          {/* Page numbers */}
+          <div className="hidden sm:flex items-center gap-1">
+            {pageNumbers.map((page) => {
+              if (typeof page === 'string') {
+                // Ellipsis
+                return (
+                  <span key={page} className="px-2 text-muted-foreground">
+                    ...
+                  </span>
+                );
+              }
+
               return (
-                <span key={page} className="px-2 text-muted-foreground">
-                  ...
-                </span>
+                <Button
+                  key={page}
+                  variant={currentPage === page ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => handlePageClick(page)}
+                  className="min-w-[2.5rem]"
+                  aria-label={`Page ${page}`}
+                  aria-current={currentPage === page ? 'page' : undefined}
+                >
+                  {page}
+                </Button>
               );
-            }
+            })}
+          </div>
 
-            return (
-              <Button
-                key={page}
-                variant={currentPage === page ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => handlePageClick(page)}
-                className="min-w-[2.5rem]"
-                aria-label={`Page ${page}`}
-                aria-current={currentPage === page ? 'page' : undefined}
-              >
-                {page}
-              </Button>
-            );
-          })}
+          {/* Next button */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleNext}
+            disabled={currentPage === totalPages}
+            aria-label="Next page"
+          >
+            <span className="mr-1">Next</span>
+            <ChevronRight className="h-4 w-4" />
+          </Button>
         </div>
-
-        {/* Next button */}
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleNext}
-          disabled={currentPage === totalPages}
-          aria-label="Next page"
-        >
-          <span className="mr-1">Next</span>
-          <ChevronRight className="h-4 w-4" />
-        </Button>
-      </div>
       </div>
     </nav>
   );

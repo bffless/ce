@@ -14,7 +14,6 @@ describe('VisibilityBadge', () => {
       expect(screen.getByText('Public')).toBeInTheDocument();
     });
 
-
     it('uses outline variant for public repositories', () => {
       const { container } = renderBadge(true);
       const badge = container.querySelector('.text-foreground');
@@ -27,7 +26,6 @@ describe('VisibilityBadge', () => {
       renderBadge(false);
       expect(screen.getByText('Private')).toBeInTheDocument();
     });
-
 
     it('uses secondary variant for private repositories', () => {
       const { container } = renderBadge(false);

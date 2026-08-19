@@ -30,7 +30,8 @@
     "docker:reset:force": "./apps/backend/scripts/reset-setup.sh --force",
     "docker:reset:soft": "docker-compose restart",
     "docker:reset:volumes": "docker-compose down -v && docker-compose up -d && sleep 10 && cd apps/backend && pnpm db:migrate",
-    "docker:reset:full": "docker-compose down -v && docker-compose build && docker-compose up -d"
+    "docker:reset:full": "docker-compose down -v && docker-compose build && docker-compose up -d",
+    "prepare": "husky || true"
   },
   "keywords": [
     "asset-hosting",
@@ -45,6 +46,8 @@
   "devDependencies": {
     "@types/node": "^20.10.0",
     "concurrently": "^8.2.2",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
     "prettier": "^3.1.0",
     "typescript": "^5.3.3"
   },
@@ -57,5 +60,9 @@
       "bcrypt",
       "esbuild"
     ]
+  },
+  "lint-staged": {
+    "apps/backend/src/**/*.ts": "prettier --write",
+    "apps/frontend/src/**/*.{ts,tsx}": "prettier --write"
   }
 }

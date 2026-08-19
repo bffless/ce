@@ -129,7 +129,8 @@ export class FileUploadHandler implements StepHandler<FileUploadHandlerConfig> {
           success: false,
           error: {
             code: 'UNSUPPORTED_FORMAT',
-            message: 'HEIC/HEIF files must be converted to JPEG or WebP in the browser before uploading.',
+            message:
+              'HEIC/HEIF files must be converted to JPEG or WebP in the browser before uploading.',
           },
         };
       }
@@ -141,9 +142,15 @@ export class FileUploadHandler implements StepHandler<FileUploadHandlerConfig> {
           let pipeline = sharp(fileBuffer);
 
           switch (config.convertTo) {
-            case 'png': pipeline = pipeline.png(); break;
-            case 'jpeg': pipeline = pipeline.jpeg({ quality: 90 }); break;
-            case 'webp': pipeline = pipeline.webp({ quality: 90 }); break;
+            case 'png':
+              pipeline = pipeline.png();
+              break;
+            case 'jpeg':
+              pipeline = pipeline.jpeg({ quality: 90 });
+              break;
+            case 'webp':
+              pipeline = pipeline.webp({ quality: 90 });
+              break;
           }
 
           fileBuffer = await pipeline.toBuffer();
@@ -250,11 +257,7 @@ export class FileUploadHandler implements StepHandler<FileUploadHandlerConfig> {
     filename?: string;
     error?: StepResult;
   }> {
-    const url = this.expressionEvaluator.evaluateExpression(
-      sourceUrlExpression,
-      context,
-      stepName,
-    );
+    const url = this.expressionEvaluator.evaluateExpression(sourceUrlExpression, context, stepName);
 
     if (!url || typeof url !== 'string') {
       return {

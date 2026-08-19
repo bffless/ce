@@ -33,9 +33,10 @@ export function ApiKeyStep({ projectId, onNext, onSkip }: ApiKeyStepProps) {
   const [createApiKey, { isLoading }] = useCreateApiKeyMutation();
 
   // Pre-select the created project if available
-  const defaultRepo = projectId && projects?.find(p => p.id === projectId)
-    ? `${projects.find(p => p.id === projectId)?.owner}/${projects.find(p => p.id === projectId)?.name}`
-    : '';
+  const defaultRepo =
+    projectId && projects?.find((p) => p.id === projectId)
+      ? `${projects.find((p) => p.id === projectId)?.owner}/${projects.find((p) => p.id === projectId)?.name}`
+      : '';
 
   const handleGenerate = async () => {
     setError('');
@@ -71,10 +72,12 @@ export function ApiKeyStep({ projectId, onNext, onSkip }: ApiKeyStepProps) {
           <div className="flex items-start">
             <AlertTriangle className="w-5 h-5 text-yellow-600 dark:text-yellow-500 mt-0.5 mr-3 flex-shrink-0" />
             <div>
-              <h4 className="font-medium text-yellow-800 dark:text-yellow-400">Save this API key now!</h4>
+              <h4 className="font-medium text-yellow-800 dark:text-yellow-400">
+                Save this API key now!
+              </h4>
               <p className="text-sm text-yellow-700 dark:text-yellow-500 mt-1">
-                This key will only be shown once. Store it securely - you won't be able
-                to see it again.
+                This key will only be shown once. Store it securely - you won't be able to see it
+                again.
               </p>
             </div>
           </div>
@@ -84,11 +87,7 @@ export function ApiKeyStep({ projectId, onNext, onSkip }: ApiKeyStepProps) {
           <Label>Your API Key</Label>
           <div className="flex mt-1 gap-2">
             <Input value={generatedKey} readOnly className="font-mono text-sm" />
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleCopy}
-            >
+            <Button type="button" variant="outline" onClick={handleCopy}>
               <Copy className="w-4 h-4 mr-2" />
               {copied ? 'Copied!' : 'Copy'}
             </Button>
@@ -128,10 +127,7 @@ export function ApiKeyStep({ projectId, onNext, onSkip }: ApiKeyStepProps) {
 
       <div>
         <Label htmlFor="repository">Repository</Label>
-        <Select
-          value={selectedRepo || defaultRepo}
-          onValueChange={setSelectedRepo}
-        >
+        <Select value={selectedRepo || defaultRepo} onValueChange={setSelectedRepo}>
           <SelectTrigger className="mt-1">
             <SelectValue placeholder="Select a repository" />
           </SelectTrigger>

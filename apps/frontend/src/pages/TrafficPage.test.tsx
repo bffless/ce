@@ -27,8 +27,7 @@ vi.mock('@/components/traffic/TrafficRollupTab', () => ({
 // The live tail embeds the add-to-blocklist dialog (#393), which talks to RTK
 // Query; stub it for the same reason as the tabs above.
 vi.mock('@/components/traffic/AddToBlocklistDialog', () => ({
-  AddToBlocklistDialog: ({ target }: any) =>
-    target ? <div>ADD-TO-BLOCKLIST-DIALOG</div> : null,
+  AddToBlocklistDialog: ({ target }: any) => (target ? <div>ADD-TO-BLOCKLIST-DIALOG</div> : null),
 }));
 
 type Listener = (event: { data: string }) => void;

@@ -12,9 +12,12 @@ export class CreateDomainTokenDto {
   })
   @IsString()
   @IsNotEmpty()
-  @Matches(/^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/, {
-    message: 'targetDomain must be a valid domain name',
-  })
+  @Matches(
+    /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/,
+    {
+      message: 'targetDomain must be a valid domain name',
+    },
+  )
   targetDomain: string;
 
   @ApiPropertyOptional({
@@ -26,7 +29,8 @@ export class CreateDomainTokenDto {
   redirectPath?: string;
 
   @ApiPropertyOptional({
-    description: 'Full origin (protocol + host + port) for the callback URL. Used for localhost development where the default https://{domain} does not work.',
+    description:
+      'Full origin (protocol + host + port) for the callback URL. Used for localhost development where the default https://{domain} does not work.',
     example: 'http://localhost:4321',
   })
   @IsString()

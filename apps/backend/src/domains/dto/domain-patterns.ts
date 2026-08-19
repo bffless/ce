@@ -8,8 +8,7 @@
  */
 
 /** A plain hostname: `example.com`, `docs.example.com`, `localhost`. */
-export const HOSTNAME_PATTERN =
-  /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
+export const HOSTNAME_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
 
 /**
  * A hostname that may carry a leading `*.` wildcard label: `*.example.com`.

@@ -34,10 +34,16 @@ describe('BootstrapDnsPreflightService', () => {
     jest.spyOn(service as never, 'resolveA' as never).mockResolvedValue(['203.0.113.7'] as never);
     jest
       .spyOn(service as never, 'fetchProbe' as never)
-      .mockImplementation((async (_host: string, _ip: string, _token: string, content: string) => content) as never);
+      .mockImplementation(
+        (async (_host: string, _ip: string, _token: string, content: string) => content) as never,
+      );
     const res = await service.run('example.com');
     expect(res.ok).toBe(true);
-    expect(res.checks.map((c) => c.host)).toEqual(['example.com', 'www.example.com', 'admin.example.com']);
+    expect(res.checks.map((c) => c.host)).toEqual([
+      'example.com',
+      'www.example.com',
+      'admin.example.com',
+    ]);
     expect(res.checks.every((c) => c.probeOk)).toBe(true);
   });
 
@@ -55,7 +61,9 @@ describe('BootstrapDnsPreflightService', () => {
 
   it('cleans up the probe file from the webroot', async () => {
     jest.spyOn(service as never, 'resolveA' as never).mockResolvedValue([] as never);
-    jest.spyOn(service as never, 'fetchProbe' as never).mockRejectedValue(new Error('unreachable') as never);
+    jest
+      .spyOn(service as never, 'fetchProbe' as never)
+      .mockRejectedValue(new Error('unreachable') as never);
     await service.run('example.com');
     expect(fs.readdirSync(path.join(webroot, '.well-known', 'acme-challenge'))).toEqual([]);
   });
@@ -78,10 +86,10 @@ describe('BootstrapDnsPreflightService', () => {
     });
 
     it('m6: public addresses still probe', async () => {
-      jest.spyOn(service as never, 'resolveA' as never).mockResolvedValue(['93.184.216.34'] as never);
       jest
-        .spyOn(service as never, 'fetchProbe' as never)
-        .mockResolvedValue('tokenbody' as never);
+        .spyOn(service as never, 'resolveA' as never)
+        .mockResolvedValue(['93.184.216.34'] as never);
+      jest.spyOn(service as never, 'fetchProbe' as never).mockResolvedValue('tokenbody' as never);
       const result = await service.run('example.com');
       expect(result.checks[0].error === 'resolves to a private or reserved address').toBe(false);
     });
@@ -89,7 +97,9 @@ describe('BootstrapDnsPreflightService', () => {
 
   describe('m6 TOCTOU fix: probe connects to the vetted IP, not the hostname', () => {
     it('pins the connection to the resolved IP and sends the real hostname via the Host header', async () => {
-      jest.spyOn(service as never, 'resolveA' as never).mockResolvedValue(['93.184.216.34'] as never);
+      jest
+        .spyOn(service as never, 'resolveA' as never)
+        .mockResolvedValue(['93.184.216.34'] as never);
       const transportSpy = jest
         .spyOn(service as never, 'sendProbeRequest' as never)
         .mockResolvedValue({ statusCode: 200, body: '' } as never);
@@ -130,7 +140,9 @@ describe('BootstrapDnsPreflightService', () => {
 
   describe('probeHost extraction', () => {
     it('probeHost probes exactly the given host', async () => {
-      const resolveA = jest.spyOn(service as never, 'resolveA' as never).mockResolvedValue(['203.0.113.7'] as never);
+      const resolveA = jest
+        .spyOn(service as never, 'resolveA' as never)
+        .mockResolvedValue(['203.0.113.7'] as never);
       jest.spyOn(service as never, 'fetchProbe' as never).mockResolvedValue('irrelevant' as never);
       const check = await service.probeHost('handoff.example.com');
       expect(check.host).toBe('handoff.example.com');
@@ -142,7 +154,11 @@ describe('BootstrapDnsPreflightService', () => {
         .spyOn(service, 'probeHost')
         .mockResolvedValue({ host: 'x', resolvedIps: [], probeOk: true });
       await service.run('example.com');
-      expect(probe.mock.calls.map((c) => c[0])).toEqual(['example.com', 'www.example.com', 'admin.example.com']);
+      expect(probe.mock.calls.map((c) => c[0])).toEqual([
+        'example.com',
+        'www.example.com',
+        'admin.example.com',
+      ]);
     });
   });
 

@@ -222,10 +222,7 @@ export class PipelineSchemasController {
   @ApiResponse({ status: 200, description: 'File content' })
   @ApiResponse({ status: 400, description: 'Invalid path' })
   @ApiResponse({ status: 404, description: 'File not found' })
-  async serveStorageFile(
-    @Query('path') storagePath: string,
-    @Res() res: Response,
-  ): Promise<void> {
+  async serveStorageFile(@Query('path') storagePath: string, @Res() res: Response): Promise<void> {
     if (!storagePath || storagePath.includes('..')) {
       throw new BadRequestException('Invalid storage path');
     }
@@ -236,9 +233,14 @@ export class PipelineSchemasController {
       // Determine content type from extension
       const ext = storagePath.split('.').pop()?.toLowerCase() || '';
       const mimeTypes: Record<string, string> = {
-        png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
-        gif: 'image/gif', svg: 'image/svg+xml', webp: 'image/webp',
-        pdf: 'application/pdf', ico: 'image/x-icon',
+        png: 'image/png',
+        jpg: 'image/jpeg',
+        jpeg: 'image/jpeg',
+        gif: 'image/gif',
+        svg: 'image/svg+xml',
+        webp: 'image/webp',
+        pdf: 'application/pdf',
+        ico: 'image/x-icon',
       };
       const contentType = mimeTypes[ext] || 'application/octet-stream';
 

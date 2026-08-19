@@ -128,7 +128,13 @@ export function ImportRuleSetDialog({ projectId, open, onOpenChange }: ImportRul
       const target = chosenFor(s.id, s.name);
       return target === CREATE
         ? { sourceId: s.id, name: s.name, fields: s.fields, action: 'create' }
-        : { sourceId: s.id, name: s.name, fields: s.fields, action: 'reuse', targetSchemaId: target };
+        : {
+            sourceId: s.id,
+            name: s.name,
+            fields: s.fields,
+            action: 'reuse',
+            targetSchemaId: target,
+          };
     });
 
     try {
@@ -192,7 +198,11 @@ export function ImportRuleSetDialog({ projectId, open, onOpenChange }: ImportRul
             <p className="text-sm text-muted-foreground mb-4">
               Select a <code>.proxy-rules.json</code> export file to import.
             </p>
-            <Button variant="outline" className="gap-2" onClick={() => fileInputRef.current?.click()}>
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() => fileInputRef.current?.click()}
+            >
               <Upload className="h-4 w-4" />
               Select file
             </Button>

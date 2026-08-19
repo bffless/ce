@@ -35,7 +35,14 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
-export function ImageViewer({ owner, repo, gitRef, filepath, fileSize, leftActions }: ImageViewerProps) {
+export function ImageViewer({
+  owner,
+  repo,
+  gitRef,
+  filepath,
+  fileSize,
+  leftActions,
+}: ImageViewerProps) {
   const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);

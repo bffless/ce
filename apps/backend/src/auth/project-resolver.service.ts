@@ -46,10 +46,7 @@ export class ProjectResolverService {
     const primary = process.env.PRIMARY_DOMAIN;
     if (!primary) return false;
     const primaryLower = primary.toLowerCase();
-    return (
-      hostname === `admin.${primaryLower}` ||
-      hostname === `admin.sites.${primaryLower}`
-    );
+    return hostname === `admin.${primaryLower}` || hostname === `admin.sites.${primaryLower}`;
   }
 
   private async findProjectIdForHostname(hostname: string): Promise<string | null> {
@@ -63,11 +60,7 @@ export class ProjectResolverService {
   }
 
   private async loadProject(projectId: string): Promise<Project | null> {
-    const [project] = await db
-      .select()
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
+    const [project] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
     return project ?? null;
   }
 }

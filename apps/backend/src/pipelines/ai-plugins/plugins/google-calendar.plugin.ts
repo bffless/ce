@@ -122,11 +122,18 @@ export class GoogleCalendarPlugin implements AIToolPlugin {
           endTime: z
             .string()
             .describe('End time in ISO 8601 format (e.g., "2024-03-15T15:00:00Z")'),
-          description: z.string().optional().describe('Event description/notes. Always include relevant context, agenda items, or a summary of what was discussed so attendees understand the purpose of the meeting.'),
+          description: z
+            .string()
+            .optional()
+            .describe(
+              'Event description/notes. Always include relevant context, agenda items, or a summary of what was discussed so attendees understand the purpose of the meeting.',
+            ),
           attendees: z
             .array(z.string().email())
             .optional()
-            .describe('Email addresses of attendees. Always include attendee emails when known so they receive a calendar invite.'),
+            .describe(
+              'Email addresses of attendees. Always include attendee emails when known so they receive a calendar invite.',
+            ),
           timezone: z
             .string()
             .optional()

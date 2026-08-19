@@ -35,7 +35,19 @@ import { ProjectAISettingsTab } from '@/components/project/ProjectAISettingsTab'
 import { ProjectIntegrationsTab } from '@/components/project/ProjectIntegrationsTab';
 import { RepoBreadcrumb } from '@/components/repo/RepoBreadcrumb';
 
-type TabValue = 'general' | 'members' | 'invite-links' | 'groups' | 'api-keys' | 'proxy-rules' | 'storage' | 'cache-rules' | 'response-headers' | 'share-links' | 'ai' | 'integrations';
+type TabValue =
+  | 'general'
+  | 'members'
+  | 'invite-links'
+  | 'groups'
+  | 'api-keys'
+  | 'proxy-rules'
+  | 'storage'
+  | 'cache-rules'
+  | 'response-headers'
+  | 'share-links'
+  | 'ai'
+  | 'integrations';
 
 /**
  * ProjectSettingsPage - Project settings and permissions management
@@ -54,7 +66,17 @@ export function ProjectSettingsPage() {
   // Get tab from query params, default to 'general'
   const tabParam = searchParams.get('tab');
   const currentTab: TabValue =
-    tabParam === 'members' || tabParam === 'invite-links' || tabParam === 'groups' || tabParam === 'api-keys' || tabParam === 'proxy-rules' || tabParam === 'storage' || tabParam === 'cache-rules' || tabParam === 'response-headers' || tabParam === 'share-links' || tabParam === 'ai' || tabParam === 'integrations'
+    tabParam === 'members' ||
+    tabParam === 'invite-links' ||
+    tabParam === 'groups' ||
+    tabParam === 'api-keys' ||
+    tabParam === 'proxy-rules' ||
+    tabParam === 'storage' ||
+    tabParam === 'cache-rules' ||
+    tabParam === 'response-headers' ||
+    tabParam === 'share-links' ||
+    tabParam === 'ai' ||
+    tabParam === 'integrations'
       ? tabParam
       : 'general';
 
@@ -106,8 +128,7 @@ export function ProjectSettingsPage() {
     (perm) => perm.userId === currentUser?.id,
   );
   const hasAdminAccess =
-    isGlobalAdmin ||
-    (userPermission ? ['owner', 'admin'].includes(userPermission.role) : false);
+    isGlobalAdmin || (userPermission ? ['owner', 'admin'].includes(userPermission.role) : false);
   const hasOwnerAccess = isGlobalAdmin || userPermission?.role === 'owner';
 
   const isLoading = isLoadingSession || isLoadingProject || isLoadingPermissions;
@@ -120,8 +141,12 @@ export function ProjectSettingsPage() {
   const [isPublic, setIsPublic] = useState(false);
   const [displayName, setDisplayName] = useState('');
   const [description, setDescription] = useState('');
-  const [unauthorizedBehavior, setUnauthorizedBehavior] = useState<'not_found' | 'redirect_login'>('not_found');
-  const [requiredRole, setRequiredRole] = useState<'authenticated' | 'guest' | 'viewer' | 'contributor' | 'admin' | 'owner'>('authenticated');
+  const [unauthorizedBehavior, setUnauthorizedBehavior] = useState<'not_found' | 'redirect_login'>(
+    'not_found',
+  );
+  const [requiredRole, setRequiredRole] = useState<
+    'authenticated' | 'guest' | 'viewer' | 'contributor' | 'admin' | 'owner'
+  >('authenticated');
   const [hasChanges, setHasChanges] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
@@ -275,18 +300,18 @@ export function ProjectSettingsPage() {
         <Tabs value={currentTab} onValueChange={handleTabChange}>
           <TabScroller>
             <TabsList>
-            <TabsTrigger value="general">General</TabsTrigger>
-            <TabsTrigger value="members">Members</TabsTrigger>
-            <TabsTrigger value="invite-links">Invite Links</TabsTrigger>
-            <TabsTrigger value="groups">Groups</TabsTrigger>
-            <TabsTrigger value="api-keys">API Keys</TabsTrigger>
-            <TabsTrigger value="proxy-rules">Proxy Rules</TabsTrigger>
-            <TabsTrigger value="storage">Storage</TabsTrigger>
-            <TabsTrigger value="cache-rules">Cache Rules</TabsTrigger>
-            <TabsTrigger value="response-headers">Response Headers</TabsTrigger>
-            <TabsTrigger value="share-links">Share Links</TabsTrigger>
-            <TabsTrigger value="ai">AI</TabsTrigger>
-            <TabsTrigger value="integrations">Integrations</TabsTrigger>
+              <TabsTrigger value="general">General</TabsTrigger>
+              <TabsTrigger value="members">Members</TabsTrigger>
+              <TabsTrigger value="invite-links">Invite Links</TabsTrigger>
+              <TabsTrigger value="groups">Groups</TabsTrigger>
+              <TabsTrigger value="api-keys">API Keys</TabsTrigger>
+              <TabsTrigger value="proxy-rules">Proxy Rules</TabsTrigger>
+              <TabsTrigger value="storage">Storage</TabsTrigger>
+              <TabsTrigger value="cache-rules">Cache Rules</TabsTrigger>
+              <TabsTrigger value="response-headers">Response Headers</TabsTrigger>
+              <TabsTrigger value="share-links">Share Links</TabsTrigger>
+              <TabsTrigger value="ai">AI</TabsTrigger>
+              <TabsTrigger value="integrations">Integrations</TabsTrigger>
             </TabsList>
           </TabScroller>
 
@@ -296,9 +321,7 @@ export function ProjectSettingsPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Project Information</CardTitle>
-                <CardDescription>
-                  Basic information about your project
-                </CardDescription>
+                <CardDescription>Basic information about your project</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
@@ -355,11 +378,7 @@ export function ProjectSettingsPage() {
                     <span className="text-sm text-muted-foreground">
                       {isPublic ? 'Public' : 'Private'}
                     </span>
-                    <Switch
-                      id="visibility"
-                      checked={isPublic}
-                      onCheckedChange={setIsPublic}
-                    />
+                    <Switch id="visibility" checked={isPublic} onCheckedChange={setIsPublic} />
                   </div>
                 </div>
               </CardContent>
@@ -382,7 +401,9 @@ export function ProjectSettingsPage() {
                     <Label htmlFor="unauthorizedBehavior">Unauthorized Behavior</Label>
                     <Select
                       value={unauthorizedBehavior}
-                      onValueChange={(value: 'not_found' | 'redirect_login') => setUnauthorizedBehavior(value)}
+                      onValueChange={(value: 'not_found' | 'redirect_login') =>
+                        setUnauthorizedBehavior(value)
+                      }
                     >
                       <SelectTrigger id="unauthorizedBehavior">
                         <SelectValue />
@@ -403,7 +424,15 @@ export function ProjectSettingsPage() {
                     <Label htmlFor="requiredRole">Required Role</Label>
                     <Select
                       value={requiredRole}
-                      onValueChange={(value: 'authenticated' | 'guest' | 'viewer' | 'contributor' | 'admin' | 'owner') => setRequiredRole(value)}
+                      onValueChange={(
+                        value:
+                          | 'authenticated'
+                          | 'guest'
+                          | 'viewer'
+                          | 'contributor'
+                          | 'admin'
+                          | 'owner',
+                      ) => setRequiredRole(value)}
                     >
                       <SelectTrigger id="requiredRole">
                         <SelectValue />
@@ -418,7 +447,8 @@ export function ProjectSettingsPage() {
                       </SelectContent>
                     </Select>
                     <p className="text-sm text-muted-foreground">
-                      Minimum role required to access this project's deployments. Users without this role will see a 403 error.
+                      Minimum role required to access this project's deployments. Users without this
+                      role will see a 403 error.
                     </p>
                   </div>
                 </CardContent>
@@ -446,13 +476,11 @@ export function ProjectSettingsPage() {
                     <div className="space-y-0.5">
                       <p className="font-medium">Delete this repository</p>
                       <p className="text-sm text-muted-foreground">
-                        Permanently delete this repository and all of its data, including deployments, aliases, and uploaded files.
+                        Permanently delete this repository and all of its data, including
+                        deployments, aliases, and uploaded files.
                       </p>
                     </div>
-                    <Button
-                      variant="destructive"
-                      onClick={() => setDeleteDialogOpen(true)}
-                    >
+                    <Button variant="destructive" onClick={() => setDeleteDialogOpen(true)}>
                       <Trash2 className="h-4 w-4 mr-2" />
                       Delete Repository
                     </Button>

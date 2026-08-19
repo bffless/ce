@@ -74,7 +74,13 @@ interface AppCardProps {
  * banner and a `category` badge here, with the long-form description and
  * screenshots one click away in `AppDetailsDialog`.
  */
-export function AppCard({ entry, onInstall, onDetails, onUpdateStarted, onUpdateAll }: AppCardProps) {
+export function AppCard({
+  entry,
+  onInstall,
+  onDetails,
+  onUpdateStarted,
+  onUpdateAll,
+}: AppCardProps) {
   const { installs } = entry;
   // The card has room to act on ONE install. With several, it summarises and
   // hands off to the details dialog's per-install list.
@@ -190,7 +196,11 @@ export function AppCard({ entry, onInstall, onDetails, onUpdateStarted, onUpdate
 
         {soleInstall && (
           <>
-            <InstallUpdateButton entry={entry} install={soleInstall} onUpdateStarted={onUpdateStarted} />
+            <InstallUpdateButton
+              entry={entry}
+              install={soleInstall}
+              onUpdateStarted={onUpdateStarted}
+            />
 
             {soleInstall.appUrl && (
               <Button asChild variant={soleInstall.updateAvailable ? 'outline' : 'default'}>
@@ -213,16 +223,31 @@ export function AppCard({ entry, onInstall, onDetails, onUpdateStarted, onUpdate
                   common action on an installed card is Open/Update, and a
                   second primary "Install" next to "Installed" reads as a bug.
                 */}
-                <DropdownMenuItem disabled={!entry.installable || Boolean(failedGate)} onSelect={() => onInstall(entry)}>
+                <DropdownMenuItem
+                  disabled={!entry.installable || Boolean(failedGate)}
+                  onSelect={() => onInstall(entry)}
+                >
                   Install in another project
                 </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => setUninstallOpen(true)}>Uninstall</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setUninstallOpen(true)}>
+                  Uninstall
+                </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => setEjectOpen(true)}>Eject</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <UninstallDialog entry={entry} install={soleInstall} open={uninstallOpen} onOpenChange={setUninstallOpen} />
-            <EjectPanel entry={entry} install={soleInstall} open={ejectOpen} onOpenChange={setEjectOpen} />
+            <UninstallDialog
+              entry={entry}
+              install={soleInstall}
+              open={uninstallOpen}
+              onOpenChange={setUninstallOpen}
+            />
+            <EjectPanel
+              entry={entry}
+              install={soleInstall}
+              open={ejectOpen}
+              onOpenChange={setEjectOpen}
+            />
           </>
         )}
 
@@ -233,10 +258,15 @@ export function AppCard({ entry, onInstall, onDetails, onUpdateStarted, onUpdate
               offers the batch action and a way into the per-install list.
             */}
             {updatable.length > 0 && !failedGate && (
-              <Button onClick={() => onUpdateAll(entry)}>{`Update all (${updatable.length})`}</Button>
+              <Button
+                onClick={() => onUpdateAll(entry)}
+              >{`Update all (${updatable.length})`}</Button>
             )}
             {updatable.length > 0 && failedGate && <GateBlockedCta gate={failedGate} />}
-            <Button variant={updatable.length > 0 ? 'outline' : 'default'} onClick={() => onDetails(entry)}>
+            <Button
+              variant={updatable.length > 0 ? 'outline' : 'default'}
+              onClick={() => onDetails(entry)}
+            >
               Manage installs
             </Button>
 
@@ -247,7 +277,10 @@ export function AppCard({ entry, onInstall, onDetails, onUpdateStarted, onUpdate
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem disabled={!entry.installable || Boolean(failedGate)} onSelect={() => onInstall(entry)}>
+                <DropdownMenuItem
+                  disabled={!entry.installable || Boolean(failedGate)}
+                  onSelect={() => onInstall(entry)}
+                >
                   Install in another project
                 </DropdownMenuItem>
               </DropdownMenuContent>

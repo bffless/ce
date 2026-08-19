@@ -62,7 +62,9 @@ function ruleSetA(): unknown {
     version: 2,
     kind: 'proxy-rule-set',
     ruleSet: { name: 'fixture-app-a', description: 'Fixture rule set A' },
-    rules: [{ pathPattern: '/api/items', method: 'GET', targetUrl: 'https://api.example.com/items' }],
+    rules: [
+      { pathPattern: '/api/items', method: 'GET', targetUrl: 'https://api.example.com/items' },
+    ],
     schemas: [
       {
         id: FIXTURE_ITEMS_SCHEMA_ID,
@@ -74,9 +76,15 @@ function ruleSetA(): unknown {
 }
 
 function ruleSetB(version: '1.0.0' | '2.0.0'): unknown {
-  const rules = [{ pathPattern: '/api/notes', method: 'GET', targetUrl: 'https://api.example.com/notes' }];
+  const rules = [
+    { pathPattern: '/api/notes', method: 'GET', targetUrl: 'https://api.example.com/notes' },
+  ];
   if (version === '2.0.0') {
-    rules.push({ pathPattern: '/api/notes', method: 'POST', targetUrl: 'https://api.example.com/notes' });
+    rules.push({
+      pathPattern: '/api/notes',
+      method: 'POST',
+      targetUrl: 'https://api.example.com/notes',
+    });
   }
   return {
     version: 2,

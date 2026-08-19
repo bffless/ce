@@ -6,11 +6,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser, type CurrentUserData } from '../auth/decorators/current-user.decorator';
 import { FeatureFlagGuard, RequireFeatureFlags } from '../feature-flags/feature-flag.guard';
 import { AppCatalogService } from './app-catalog.service';
-import {
-  PreflightRequestDto,
-  UninstallQueryDto,
-  UpdateInstalledAppDto,
-} from './app-catalog.dtos';
+import { PreflightRequestDto, UninstallQueryDto, UpdateInstalledAppDto } from './app-catalog.dtos';
 
 /**
  * The full admin HTTP surface for the app catalog (Task 11 of the app-catalog

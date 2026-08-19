@@ -40,7 +40,7 @@ describe('GlobalSearchBar', () => {
     render(
       <ReduxWrapper store={store}>
         <GlobalSearchBar />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     const input = screen.getByPlaceholderText(/Search all repositories.../i);
@@ -51,19 +51,22 @@ describe('GlobalSearchBar', () => {
     render(
       <ReduxWrapper store={store}>
         <GlobalSearchBar />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     const searchBox = screen.getByRole('searchbox');
     expect(searchBox).toBeInTheDocument();
-    expect(searchBox).toHaveAttribute('aria-label', 'Search repositories by name, owner, or description');
+    expect(searchBox).toHaveAttribute(
+      'aria-label',
+      'Search repositories by name, owner, or description',
+    );
   });
 
   it('has search role on container', () => {
     render(
       <ReduxWrapper store={store}>
         <GlobalSearchBar />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     const searchContainer = screen.getByRole('search');
@@ -74,7 +77,7 @@ describe('GlobalSearchBar', () => {
     const { container } = render(
       <ReduxWrapper store={store}>
         <GlobalSearchBar />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     // Search icon should be present
@@ -86,7 +89,7 @@ describe('GlobalSearchBar', () => {
     render(
       <ReduxWrapper store={store}>
         <GlobalSearchBar />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     const input = screen.getByRole('searchbox') as HTMLInputElement;
@@ -100,7 +103,7 @@ describe('GlobalSearchBar', () => {
     render(
       <ReduxWrapper store={store}>
         <GlobalSearchBar />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     const input = screen.getByRole('searchbox');
@@ -119,7 +122,7 @@ describe('GlobalSearchBar', () => {
     render(
       <ReduxWrapper store={store}>
         <GlobalSearchBar />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     const input = screen.getByRole('searchbox') as HTMLInputElement;
@@ -140,7 +143,7 @@ describe('GlobalSearchBar', () => {
     render(
       <ReduxWrapper store={store}>
         <GlobalSearchBar />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     const input = screen.getByRole('searchbox');
@@ -156,7 +159,7 @@ describe('GlobalSearchBar', () => {
       () => {
         expect(store.getState().repositoryList.feedSearch).toBe('test search');
       },
-      { timeout: 500 }
+      { timeout: 500 },
     );
   });
 
@@ -166,7 +169,7 @@ describe('GlobalSearchBar', () => {
     render(
       <ReduxWrapper store={storeWithSearch}>
         <GlobalSearchBar />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     const input = screen.getByRole('searchbox') as HTMLInputElement;
@@ -179,7 +182,7 @@ describe('GlobalSearchBar', () => {
     render(
       <ReduxWrapper store={store}>
         <GlobalSearchBar />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     const input = screen.getByRole('searchbox') as HTMLInputElement;
@@ -198,7 +201,7 @@ describe('GlobalSearchBar', () => {
     render(
       <ReduxWrapper store={store}>
         <GlobalSearchBar />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     const input = screen.getByRole('searchbox') as HTMLInputElement;
@@ -217,7 +220,7 @@ describe('GlobalSearchBar', () => {
     render(
       <ReduxWrapper store={store}>
         <GlobalSearchBar />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     const input = screen.getByRole('searchbox') as HTMLInputElement;
@@ -238,7 +241,7 @@ describe('GlobalSearchBar', () => {
     render(
       <ReduxWrapper store={store}>
         <GlobalSearchBar />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     const input = screen.getByRole('searchbox') as HTMLInputElement;
@@ -257,7 +260,7 @@ describe('GlobalSearchBar', () => {
     render(
       <ReduxWrapper store={store}>
         <GlobalSearchBar />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     const input = screen.getByRole('searchbox') as HTMLInputElement;
@@ -277,7 +280,7 @@ describe('GlobalSearchBar', () => {
     render(
       <ReduxWrapper store={store}>
         <GlobalSearchBar />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     const input = screen.getByRole('searchbox');
@@ -291,7 +294,7 @@ describe('GlobalSearchBar', () => {
     render(
       <ReduxWrapper store={store}>
         <GlobalSearchBar />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     const input = screen.getByRole('searchbox');
@@ -311,7 +314,7 @@ describe('GlobalSearchBar', () => {
     render(
       <ReduxWrapper store={store}>
         <GlobalSearchBar />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     const input = screen.getByPlaceholderText('Search all repositories...');
@@ -335,7 +338,7 @@ describe('GlobalSearchBar', () => {
       render(
         <ReduxWrapper store={store}>
           <GlobalSearchBar />
-        </ReduxWrapper>
+        </ReduxWrapper>,
       );
 
       const input = screen.getByPlaceholderText(/press \/ to focus/i);

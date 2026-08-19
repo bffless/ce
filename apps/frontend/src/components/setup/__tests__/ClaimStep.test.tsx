@@ -21,7 +21,7 @@ function renderClaimStep() {
   return render(
     <Provider store={store}>
       <ClaimStep />
-    </Provider>
+    </Provider>,
   );
 }
 

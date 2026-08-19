@@ -103,7 +103,11 @@ export function ServingModelEditor({
       }).unwrap();
       toast({ title: 'Certificate staged', description: 'Ready to apply.' });
     } catch (error: unknown) {
-      toast({ title: 'Error', description: errorMessage(error, 'Failed to validate certificate'), variant: 'destructive' });
+      toast({
+        title: 'Error',
+        description: errorMessage(error, 'Failed to validate certificate'),
+        variant: 'destructive',
+      });
     }
   };
 
@@ -112,7 +116,11 @@ export function ServingModelEditor({
       const result = await runPreflight().unwrap();
       setPreflightResult(result);
     } catch (error: unknown) {
-      toast({ title: 'Error', description: errorMessage(error, 'DNS preflight failed'), variant: 'destructive' });
+      toast({
+        title: 'Error',
+        description: errorMessage(error, 'DNS preflight failed'),
+        variant: 'destructive',
+      });
     }
   };
 
@@ -120,12 +128,19 @@ export function ServingModelEditor({
     try {
       const result = await issueLetsEncrypt().unwrap();
       if (result.reused) {
-        toast({ title: 'Certificate already valid', description: "Nothing to renew — it renews automatically." });
+        toast({
+          title: 'Certificate already valid',
+          description: 'Nothing to renew — it renews automatically.',
+        });
       } else {
         toast({ title: 'New certificate issued', description: 'Certificate is ready to apply.' });
       }
     } catch (error: unknown) {
-      toast({ title: 'Error', description: errorMessage(error, "Failed to issue Let's Encrypt certificate"), variant: 'destructive' });
+      toast({
+        title: 'Error',
+        description: errorMessage(error, "Failed to issue Let's Encrypt certificate"),
+        variant: 'destructive',
+      });
     }
   };
 
@@ -188,7 +203,10 @@ export function ServingModelEditor({
               Port 80 stays open so Let&apos;s Encrypt can validate over HTTP-01.
             </p>
           ) : (
-            <Port80Choice value={value.port80} onChange={(port80) => onChange({ ...value, port80 })} />
+            <Port80Choice
+              value={value.port80}
+              onChange={(port80) => onChange({ ...value, port80 })}
+            />
           )}
           <RealIpFields
             header={value.realIp?.header ?? ''}
@@ -198,7 +216,10 @@ export function ServingModelEditor({
         </div>
       ) : (
         <div className="space-y-4 pl-1">
-          <Port80Choice value={value.port80} onChange={(port80) => onChange({ ...value, port80 })} />
+          <Port80Choice
+            value={value.port80}
+            onChange={(port80) => onChange({ ...value, port80 })}
+          />
         </div>
       )}
 
@@ -236,11 +257,13 @@ export function ServingModelEditor({
       {value.sslMode === 'letsencrypt' && isCurrentlyLetsEncrypt && (
         <div className="space-y-4">
           <p className="text-sm text-foreground">
-            Let&apos;s Encrypt is active — covers your apex, www, and admin hostnames. Renews automatically.
+            Let&apos;s Encrypt is active — covers your apex, www, and admin hostnames. Renews
+            automatically.
             {typeof currentCertDaysLeft === 'number' && ` ${currentCertDaysLeft} days left.`}
           </p>
           <p className="text-sm text-muted-foreground">
-            Wildcard (*.yourdomain) is issued separately via DNS-01 under Domains → SSL — this does not renew it.
+            Wildcard (*.yourdomain) is issued separately via DNS-01 under Domains → SSL — this does
+            not renew it.
           </p>
           <div className="flex gap-2 items-center">
             <Button
@@ -251,7 +274,9 @@ export function ServingModelEditor({
               {isIssuing ? 'Renewing…' : 'Renew now'}
             </Button>
             {currentCertDaysLeft != null && currentCertDaysLeft > 30 && (
-              <p className="text-sm text-muted-foreground">Not due yet — renews automatically at 30 days.</p>
+              <p className="text-sm text-muted-foreground">
+                Not due yet — renews automatically at 30 days.
+              </p>
             )}
           </div>
         </div>

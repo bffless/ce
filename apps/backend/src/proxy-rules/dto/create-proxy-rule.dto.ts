@@ -222,7 +222,6 @@ export class PipelineStepDto {
   isEnabled?: boolean;
 }
 
-
 /**
  * Pipeline configuration for pipeline proxy rules.
  * Contains the pipeline definition with steps and execution settings.
@@ -327,7 +326,8 @@ export class EmailHandlerConfigDto {
   corsOrigin?: string;
 
   @ApiPropertyOptional({
-    description: 'Name of a honeypot field for spam protection. If this field is filled, submission is silently ignored.',
+    description:
+      'Name of a honeypot field for spam protection. If this field is filled, submission is silently ignored.',
     example: 'website',
   })
   @IsOptional()
@@ -343,7 +343,8 @@ export class EmailHandlerConfigDto {
   replyToField?: string;
 
   @ApiPropertyOptional({
-    description: 'Require authentication to submit the form. When enabled, user details are included in the email.',
+    description:
+      'Require authentication to submit the form. When enabled, user details are included in the email.',
     default: false,
     example: false,
   })
@@ -485,7 +486,8 @@ export class CreateProxyRuleDto {
   proxyType?: ProxyType;
 
   @ApiPropertyOptional({
-    description: 'Configuration for email_form_handler proxy type. Required when proxyType is email_form_handler.',
+    description:
+      'Configuration for email_form_handler proxy type. Required when proxyType is email_form_handler.',
     type: EmailHandlerConfigDto,
     example: { destinationEmail: 'contact@example.com', subject: 'Contact Form' },
   })
@@ -500,7 +502,10 @@ export class CreateProxyRuleDto {
     example: {
       name: 'Contact Form Pipeline',
       steps: [
-        { handlerType: 'form_handler', config: { fields: { email: { type: 'email', required: true } } } },
+        {
+          handlerType: 'form_handler',
+          config: { fields: { email: { type: 'email', required: true } } },
+        },
       ],
     },
   })
@@ -526,7 +531,8 @@ export class CreateProxyRuleDto {
   isEnabled?: boolean;
 
   @ApiPropertyOptional({
-    description: 'Enable debug logging for pipeline execution. When enabled, execution results are persisted for debugging.',
+    description:
+      'Enable debug logging for pipeline execution. When enabled, execution results are persisted for debugging.',
     default: false,
   })
   @IsOptional()

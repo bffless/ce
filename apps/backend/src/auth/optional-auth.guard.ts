@@ -209,7 +209,9 @@ export class OptionalAuthGuard implements CanActivate {
         allowedRepositories: undefined, // Custom domain users don't have repo restrictions
       };
 
-      this.logger.debug(`Custom domain auth: authenticated user ${payload.sub} on domain ${payload.domain}`);
+      this.logger.debug(
+        `Custom domain auth: authenticated user ${payload.sub} on domain ${payload.domain}`,
+      );
       return true;
     } catch (error) {
       // Silently fail - this is optional auth

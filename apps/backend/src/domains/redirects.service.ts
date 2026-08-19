@@ -143,7 +143,8 @@ export class RedirectsService {
       );
       if (!sslResult.success) {
         throw new ConflictException(
-          sslResult.error || 'Failed to set up SSL for redirect. Ensure the main domain has SSL enabled.',
+          sslResult.error ||
+            'Failed to set up SSL for redirect. Ensure the main domain has SSL enabled.',
         );
       }
     }

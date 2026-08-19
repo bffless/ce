@@ -140,14 +140,22 @@ describe('instance-config', () => {
 
     it('derives knobs from a v1 cloudflare config (forward-read)', () => {
       const v1: InstanceConfig = {
-        version: 1, state: 'applied', primaryDomain: 'example.com',
-        proxyMode: 'cloudflare', sslMode: 'paste',
+        version: 1,
+        state: 'applied',
+        primaryDomain: 'example.com',
+        proxyMode: 'cloudflare',
+        sslMode: 'paste',
       };
       expect(deriveKnobs(v1)).toEqual({ port80: 'closed', realIp: { preset: 'cloudflare' } });
     });
 
     it('derives knobs from a v1 none config (forward-read)', () => {
-      const v1: InstanceConfig = { version: 1, state: 'applied', primaryDomain: 'x.com', proxyMode: 'none' };
+      const v1: InstanceConfig = {
+        version: 1,
+        state: 'applied',
+        primaryDomain: 'x.com',
+        proxyMode: 'none',
+      };
       expect(deriveKnobs(v1)).toEqual({ port80: 'redirect', realIp: null });
     });
 
@@ -167,7 +175,13 @@ describe('instance-config', () => {
 
     it('writes REALIP_MODE=cloudflare for the cloudflare preset', () => {
       writeInstanceConfig(
-        { version: 2, state: 'applied', primaryDomain: 'x.com', proxyMode: 'cloudflare', sslMode: 'paste' },
+        {
+          version: 2,
+          state: 'applied',
+          primaryDomain: 'x.com',
+          proxyMode: 'cloudflare',
+          sslMode: 'paste',
+        },
         dir,
       );
       const env = fs.readFileSync(path.join(dir, 'instance.env'), 'utf8');
@@ -187,7 +201,13 @@ describe('instance-config', () => {
 
     it('writes REALIP_MODE=off for proxyMode=none', () => {
       writeInstanceConfig(
-        { version: 2, state: 'applied', primaryDomain: 'x.com', proxyMode: 'none', sslMode: 'paste' },
+        {
+          version: 2,
+          state: 'applied',
+          primaryDomain: 'x.com',
+          proxyMode: 'none',
+          sslMode: 'paste',
+        },
         dir,
       );
       const env = fs.readFileSync(path.join(dir, 'instance.env'), 'utf8');
@@ -275,15 +295,11 @@ describe('instance-config', () => {
     });
 
     it('assertShellSafeRealIp rejects header with "&"', () => {
-      expect(() => assertShellSafeRealIp('X-Real&Header', [])).toThrow(
-        /unsafe characters/,
-      );
+      expect(() => assertShellSafeRealIp('X-Real&Header', [])).toThrow(/unsafe characters/);
     });
 
     it('assertShellSafeRealIp rejects header with "|"', () => {
-      expect(() => assertShellSafeRealIp('X-Real|Header', [])).toThrow(
-        /unsafe characters/,
-      );
+      expect(() => assertShellSafeRealIp('X-Real|Header', [])).toThrow(/unsafe characters/);
     });
 
     it('sources a written instance.env in a subshell and round-trips a valid REALIP_HEADER literally, with no injected side effect', () => {
@@ -295,7 +311,9 @@ describe('instance-config', () => {
         ['-c', `. ${envPath} >/dev/null 2>&1; printf "%s" "$REALIP_HEADER"`],
         { encoding: 'utf8' },
       );
-      expect(output).toBe(v2Custom.realIp && 'header' in v2Custom.realIp ? v2Custom.realIp.header : '');
+      expect(output).toBe(
+        v2Custom.realIp && 'header' in v2Custom.realIp ? v2Custom.realIp.header : '',
+      );
       expect(fs.existsSync(sideEffectMarker)).toBe(false);
     });
 
@@ -334,12 +352,25 @@ describe('instance-config', () => {
     });
 
     function mintCert(subj: string): void {
-      execFileSync('openssl', [
-        'req', '-x509', '-nodes', '-days', '2', '-newkey', 'rsa:2048',
-        '-keyout', path.join(sslTmp, 'privkey.pem'),
-        '-out', path.join(sslTmp, 'fullchain.pem'),
-        '-subj', subj,
-      ], { stdio: 'ignore' });
+      execFileSync(
+        'openssl',
+        [
+          'req',
+          '-x509',
+          '-nodes',
+          '-days',
+          '2',
+          '-newkey',
+          'rsa:2048',
+          '-keyout',
+          path.join(sslTmp, 'privkey.pem'),
+          '-out',
+          path.join(sslTmp, 'fullchain.pem'),
+          '-subj',
+          subj,
+        ],
+        { stdio: 'ignore' },
+      );
     }
 
     it('returns letsencrypt for an LE-issued cert when PROXY_MODE is not cloudflare', () => {
@@ -379,18 +410,31 @@ describe('instance-config', () => {
     let envBackup: NodeJS.ProcessEnv;
 
     const legacyEnv = (over: Record<string, string | undefined> = {}): NodeJS.ProcessEnv =>
-      ({ PRIMARY_DOMAIN: 'legacy.com', PROXY_MODE: 'cloudflare', ...over } as NodeJS.ProcessEnv);
+      ({ PRIMARY_DOMAIN: 'legacy.com', PROXY_MODE: 'cloudflare', ...over }) as NodeJS.ProcessEnv;
 
     // A genuine legacy setup.sh install has real certs in ssl/ and no bootstrap
     // marker — the C1 first-adoption gate. Mint a throwaway self-signed pair
     // (non-LE subject so sniffSslMode stays 'paste').
     const mintCerts = (dir: string): void => {
-      execFileSync('openssl', [
-        'req', '-x509', '-nodes', '-days', '2', '-newkey', 'rsa:2048',
-        '-keyout', path.join(dir, 'privkey.pem'),
-        '-out', path.join(dir, 'fullchain.pem'),
-        '-subj', '/CN=legacy.com',
-      ], { stdio: 'ignore' });
+      execFileSync(
+        'openssl',
+        [
+          'req',
+          '-x509',
+          '-nodes',
+          '-days',
+          '2',
+          '-newkey',
+          'rsa:2048',
+          '-keyout',
+          path.join(dir, 'privkey.pem'),
+          '-out',
+          path.join(dir, 'fullchain.pem'),
+          '-subj',
+          '/CN=legacy.com',
+        ],
+        { stdio: 'ignore' },
+      );
     };
 
     beforeEach(() => {
@@ -406,14 +450,20 @@ describe('instance-config', () => {
       mintCerts(sslTmp);
       const cfg = adoptOrResyncEnvInstall(dir, legacyEnv(), sslTmp);
       expect(cfg).toMatchObject({
-        version: 2, state: 'applied', origin: 'env',
-        primaryDomain: 'legacy.com', proxyMode: 'cloudflare', sslMode: 'paste',
+        version: 2,
+        state: 'applied',
+        origin: 'env',
+        primaryDomain: 'legacy.com',
+        proxyMode: 'cloudflare',
+        sslMode: 'paste',
       });
       expect(cfg!.port80).toBeUndefined();
       expect(cfg!.realIp).toBeUndefined();
       const onDisk = loadInstanceConfig(dir);
       expect(onDisk).toEqual(cfg);
-      expect(fs.readFileSync(path.join(dir, 'instance.env'), 'utf8')).toContain('PRIMARY_DOMAIN=legacy.com');
+      expect(fs.readFileSync(path.join(dir, 'instance.env'), 'utf8')).toContain(
+        'PRIMARY_DOMAIN=legacy.com',
+      );
     });
 
     it('omits proxyMode when PROXY_MODE is unset or unknown', () => {
@@ -426,15 +476,30 @@ describe('instance-config', () => {
     });
 
     it('skips adoption for localhost, missing domain, and platform mode', () => {
-      expect(adoptOrResyncEnvInstall(dir, legacyEnv({ PRIMARY_DOMAIN: 'localhost' }), sslTmp)).toBeNull();
-      expect(adoptOrResyncEnvInstall(dir, legacyEnv({ PRIMARY_DOMAIN: undefined }), sslTmp)).toBeNull();
+      expect(
+        adoptOrResyncEnvInstall(dir, legacyEnv({ PRIMARY_DOMAIN: 'localhost' }), sslTmp),
+      ).toBeNull();
+      expect(
+        adoptOrResyncEnvInstall(dir, legacyEnv({ PRIMARY_DOMAIN: undefined }), sslTmp),
+      ).toBeNull();
       expect(adoptOrResyncEnvInstall(dir, legacyEnv({ PLATFORM_MODE: 'true' }), sslTmp)).toBeNull();
-      expect(adoptOrResyncEnvInstall(dir, legacyEnv({ SSL_MANAGED_EXTERNALLY: 'true' }), sslTmp)).toBeNull();
+      expect(
+        adoptOrResyncEnvInstall(dir, legacyEnv({ SSL_MANAGED_EXTERNALLY: 'true' }), sslTmp),
+      ).toBeNull();
       expect(fs.existsSync(path.join(dir, 'instance.json'))).toBe(false);
     });
 
     it('never touches a wizard-origin file (explicit or absent origin)', () => {
-      writeInstanceConfig({ version: 2, state: 'applied', primaryDomain: 'wizard.com', proxyMode: 'none', sslMode: 'paste' }, dir);
+      writeInstanceConfig(
+        {
+          version: 2,
+          state: 'applied',
+          primaryDomain: 'wizard.com',
+          proxyMode: 'none',
+          sslMode: 'paste',
+        },
+        dir,
+      );
       const before = fs.readFileSync(path.join(dir, 'instance.json'), 'utf8');
       expect(adoptOrResyncEnvInstall(dir, legacyEnv(), sslTmp)).toBeNull();
       expect(fs.readFileSync(path.join(dir, 'instance.json'), 'utf8')).toBe(before);
@@ -460,7 +525,11 @@ describe('instance-config', () => {
       const writeSpy = jest.spyOn(require('fs'), 'writeFileSync');
       adoptOrResyncEnvInstall(dir, legacyEnv(), sslTmp); // unchanged
       expect(writeSpy).not.toHaveBeenCalled();
-      const cfg = adoptOrResyncEnvInstall(dir, legacyEnv({ PRIMARY_DOMAIN: 'renamed.com' }), sslTmp);
+      const cfg = adoptOrResyncEnvInstall(
+        dir,
+        legacyEnv({ PRIMARY_DOMAIN: 'renamed.com' }),
+        sslTmp,
+      );
       expect(cfg!.primaryDomain).toBe('renamed.com');
       expect(loadInstanceConfig(dir)!.primaryDomain).toBe('renamed.com');
       writeSpy.mockRestore();
@@ -478,7 +547,17 @@ describe('instance-config', () => {
     });
 
     it('hydrateProcessEnv still overrides process.env for wizard files', () => {
-      writeInstanceConfig({ version: 2, state: 'applied', origin: 'wizard', primaryDomain: 'wizard.com', proxyMode: 'none', sslMode: 'paste' }, dir);
+      writeInstanceConfig(
+        {
+          version: 2,
+          state: 'applied',
+          origin: 'wizard',
+          primaryDomain: 'wizard.com',
+          proxyMode: 'none',
+          sslMode: 'paste',
+        },
+        dir,
+      );
       hydrateProcessEnv(dir);
       expect(process.env.PRIMARY_DOMAIN).toBe('wizard.com');
       expect(process.env.FRONTEND_URL).toBe('https://www.wizard.com');
@@ -524,7 +603,11 @@ describe('instance-config', () => {
         // the re-sync still runs because the file already proved adoptable.
         fs.rmSync(path.join(sslTmp, 'fullchain.pem'));
         fs.rmSync(path.join(sslTmp, 'privkey.pem'));
-        const cfg = adoptOrResyncEnvInstall(dir, legacyEnv({ PRIMARY_DOMAIN: 'renamed.com' }), sslTmp);
+        const cfg = adoptOrResyncEnvInstall(
+          dir,
+          legacyEnv({ PRIMARY_DOMAIN: 'renamed.com' }),
+          sslTmp,
+        );
         expect(cfg!.primaryDomain).toBe('renamed.com');
         expect(loadInstanceConfig(dir)!.primaryDomain).toBe('renamed.com');
       });
@@ -547,7 +630,14 @@ describe('instance-config', () => {
 
       it('leaves a wizard-origin file untouched under the same env flip', () => {
         writeInstanceConfig(
-          { version: 2, state: 'applied', origin: 'wizard', primaryDomain: 'wizard.com', proxyMode: 'none', sslMode: 'paste' },
+          {
+            version: 2,
+            state: 'applied',
+            origin: 'wizard',
+            primaryDomain: 'wizard.com',
+            proxyMode: 'none',
+            sslMode: 'paste',
+          },
           dir,
         );
         const before = fs.readFileSync(path.join(dir, 'instance.json'), 'utf8');
@@ -574,7 +664,16 @@ describe('instance-config', () => {
 
     it('m2: does not warn about divergence when .env holds the compose placeholder', () => {
       const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
-      writeInstanceConfig({ version: 2, state: 'applied', origin: 'wizard', primaryDomain: 'example.com', sslMode: 'paste' }, dir);
+      writeInstanceConfig(
+        {
+          version: 2,
+          state: 'applied',
+          origin: 'wizard',
+          primaryDomain: 'example.com',
+          sslMode: 'paste',
+        },
+        dir,
+      );
       adoptOrResyncEnvInstall(dir, { PRIMARY_DOMAIN: 'yourdomain.com' } as NodeJS.ProcessEnv, ssl);
       expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('differs from wizard-managed'));
       warn.mockRestore();
@@ -582,7 +681,16 @@ describe('instance-config', () => {
 
     it('m2: still warns when .env holds a genuinely different real domain', () => {
       const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
-      writeInstanceConfig({ version: 2, state: 'applied', origin: 'wizard', primaryDomain: 'example.com', sslMode: 'paste' }, dir);
+      writeInstanceConfig(
+        {
+          version: 2,
+          state: 'applied',
+          origin: 'wizard',
+          primaryDomain: 'example.com',
+          sslMode: 'paste',
+        },
+        dir,
+      );
       adoptOrResyncEnvInstall(dir, { PRIMARY_DOMAIN: 'other.com' } as NodeJS.ProcessEnv, ssl);
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('differs from wizard-managed'));
       warn.mockRestore();
@@ -593,7 +701,11 @@ describe('instance-config', () => {
       // real certs on disk so only the hostname gate can refuse
       fs.writeFileSync(path.join(ssl, 'fullchain.pem'), 'x');
       fs.writeFileSync(path.join(ssl, 'privkey.pem'), 'x');
-      const out = adoptOrResyncEnvInstall(dir, { PRIMARY_DOMAIN: 'evil.com; rm -rf /' } as NodeJS.ProcessEnv, ssl);
+      const out = adoptOrResyncEnvInstall(
+        dir,
+        { PRIMARY_DOMAIN: 'evil.com; rm -rf /' } as NodeJS.ProcessEnv,
+        ssl,
+      );
       expect(out).toBeNull();
       expect(fs.existsSync(path.join(dir, 'instance.json'))).toBe(false);
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('not a valid hostname'));

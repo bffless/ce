@@ -166,13 +166,7 @@ function SidebarError() {
 }
 
 // Empty state
-function EmptyState({
-  search,
-  onCreateClick,
-}: {
-  search: string;
-  onCreateClick?: () => void;
-}) {
+function EmptyState({ search, onCreateClick }: { search: string; onCreateClick?: () => void }) {
   if (search) {
     return (
       <div className="text-sm text-muted-foreground text-center py-4">

@@ -10,11 +10,7 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ChevronsUpDown, Check, Plus, Trash2, Info, ExternalLink, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ReplicateHandlerConfig as Config } from './types';
@@ -53,7 +49,13 @@ const MODEL_PRESETS: ModelPreset[] = [
     label: 'CLIP Embeddings',
     description: 'Generate CLIP feature vectors from text or images',
     inputs: [
-      { name: 'inputs', type: 'text', required: true, description: 'Text string to embed', defaultExpression: 'request.body.text' },
+      {
+        name: 'inputs',
+        type: 'text',
+        required: true,
+        description: 'Text string to embed',
+        defaultExpression: 'request.body.text',
+      },
     ],
     outputDescription: 'Array of objects with embedding vectors',
     outputExample: '[{ embedding: [0.1, 0.2, ...], input: "text" }]',
@@ -63,7 +65,13 @@ const MODEL_PRESETS: ModelPreset[] = [
     label: 'Text Embeddings (E5)',
     description: 'Multilingual text embeddings for semantic search',
     inputs: [
-      { name: 'texts', type: 'text', required: true, description: 'JSON array of texts to embed, e.g. ["hello world"]', defaultExpression: 'request.body.texts' },
+      {
+        name: 'texts',
+        type: 'text',
+        required: true,
+        description: 'JSON array of texts to embed, e.g. ["hello world"]',
+        defaultExpression: 'request.body.texts',
+      },
     ],
     outputDescription: 'Array of embedding vectors (one per input text)',
     outputExample: '[[0.013, -0.028, 0.051, ...]]',
@@ -73,9 +81,27 @@ const MODEL_PRESETS: ModelPreset[] = [
     label: 'Image Generation (Flux)',
     description: 'Fast high-quality image generation from text',
     inputs: [
-      { name: 'prompt', type: 'text', required: true, description: 'Text description of the image to generate', defaultExpression: 'request.body.prompt' },
-      { name: 'num_outputs', type: 'number', required: false, description: 'Number of images (1-4)', defaultExpression: '1' },
-      { name: 'aspect_ratio', type: 'text', required: false, description: 'e.g., 1:1, 16:9, 4:3', defaultExpression: '1:1' },
+      {
+        name: 'prompt',
+        type: 'text',
+        required: true,
+        description: 'Text description of the image to generate',
+        defaultExpression: 'request.body.prompt',
+      },
+      {
+        name: 'num_outputs',
+        type: 'number',
+        required: false,
+        description: 'Number of images (1-4)',
+        defaultExpression: '1',
+      },
+      {
+        name: 'aspect_ratio',
+        type: 'text',
+        required: false,
+        description: 'e.g., 1:1, 16:9, 4:3',
+        defaultExpression: '1:1',
+      },
     ],
     outputDescription: 'Array of image URLs (expire after 1 hour)',
     outputExample: '["https://replicate.delivery/...png"]',
@@ -85,7 +111,13 @@ const MODEL_PRESETS: ModelPreset[] = [
     label: 'Background Removal',
     description: 'Remove background from an image',
     inputs: [
-      { name: 'image', type: 'file', required: true, description: 'Image file to process', defaultExpression: 'steps.upload.storage_path' },
+      {
+        name: 'image',
+        type: 'file',
+        required: true,
+        description: 'Image file to process',
+        defaultExpression: 'steps.upload.storage_path',
+      },
     ],
     outputDescription: 'Image URL of the result (expires after 1 hour)',
     outputExample: '"https://replicate.delivery/...png"',
@@ -95,7 +127,13 @@ const MODEL_PRESETS: ModelPreset[] = [
     label: 'PDF to Text',
     description: 'Extract structured text from a PDF document',
     inputs: [
-      { name: 'document', type: 'file', required: true, description: 'PDF document to extract', defaultExpression: 'steps.upload.storage_path' },
+      {
+        name: 'document',
+        type: 'file',
+        required: true,
+        description: 'PDF document to extract',
+        defaultExpression: 'steps.upload.storage_path',
+      },
     ],
     outputDescription: 'Extracted text in markdown format',
     outputExample: '"# Document Title\\n\\nParagraph text..."',
@@ -105,8 +143,20 @@ const MODEL_PRESETS: ModelPreset[] = [
     label: 'Speech Transcription',
     description: 'Transcribe speech from an audio file',
     inputs: [
-      { name: 'audio', type: 'file', required: true, description: 'Audio file to transcribe', defaultExpression: 'steps.upload.storage_path' },
-      { name: 'task', type: 'text', required: false, description: '"transcribe" or "translate"', defaultExpression: 'transcribe' },
+      {
+        name: 'audio',
+        type: 'file',
+        required: true,
+        description: 'Audio file to transcribe',
+        defaultExpression: 'steps.upload.storage_path',
+      },
+      {
+        name: 'task',
+        type: 'text',
+        required: false,
+        description: '"transcribe" or "translate"',
+        defaultExpression: 'transcribe',
+      },
     ],
     outputDescription: 'Object with transcribed text and segments',
     outputExample: '{ text: "Hello world", chunks: [...] }',
@@ -197,9 +247,7 @@ export function ReplicateHandlerConfig({ config, onChange, previousSteps = [] }:
                 <span className="flex items-center gap-2">
                   <span className="font-mono text-sm">{model}</span>
                   {selectedPreset && (
-                    <span className="text-xs text-muted-foreground">
-                      ({selectedPreset.label})
-                    </span>
+                    <span className="text-xs text-muted-foreground">({selectedPreset.label})</span>
                   )}
                 </span>
               ) : (
@@ -222,50 +270,62 @@ export function ReplicateHandlerConfig({ config, onChange, previousSteps = [] }:
                   </div>
                 </CommandEmpty>
                 <CommandGroup heading="Text Input Models">
-                  {MODEL_PRESETS.filter((p) => p.inputs.every((i) => i.type !== 'file')).map((preset) => (
-                    <CommandItem
-                      key={preset.id}
-                      value={preset.id}
-                      onSelect={() => selectPreset(preset)}
-                    >
-                      <Check
-                        className={cn(
-                          'mr-2 h-4 w-4 shrink-0',
-                          model === preset.id ? 'opacity-100' : 'opacity-0',
-                        )}
-                      />
-                      <div className="flex flex-col min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-sm">{preset.label}</span>
-                          <span className="text-xs text-muted-foreground font-mono truncate">{preset.id}</span>
+                  {MODEL_PRESETS.filter((p) => p.inputs.every((i) => i.type !== 'file')).map(
+                    (preset) => (
+                      <CommandItem
+                        key={preset.id}
+                        value={preset.id}
+                        onSelect={() => selectPreset(preset)}
+                      >
+                        <Check
+                          className={cn(
+                            'mr-2 h-4 w-4 shrink-0',
+                            model === preset.id ? 'opacity-100' : 'opacity-0',
+                          )}
+                        />
+                        <div className="flex flex-col min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-sm">{preset.label}</span>
+                            <span className="text-xs text-muted-foreground font-mono truncate">
+                              {preset.id}
+                            </span>
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            {preset.description}
+                          </span>
                         </div>
-                        <span className="text-xs text-muted-foreground">{preset.description}</span>
-                      </div>
-                    </CommandItem>
-                  ))}
+                      </CommandItem>
+                    ),
+                  )}
                 </CommandGroup>
                 <CommandGroup heading="File Input Models (pair with File Upload step)">
-                  {MODEL_PRESETS.filter((p) => p.inputs.some((i) => i.type === 'file')).map((preset) => (
-                    <CommandItem
-                      key={preset.id}
-                      value={preset.id}
-                      onSelect={() => selectPreset(preset)}
-                    >
-                      <Check
-                        className={cn(
-                          'mr-2 h-4 w-4 shrink-0',
-                          model === preset.id ? 'opacity-100' : 'opacity-0',
-                        )}
-                      />
-                      <div className="flex flex-col min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-sm">{preset.label}</span>
-                          <span className="text-xs text-muted-foreground font-mono truncate">{preset.id}</span>
+                  {MODEL_PRESETS.filter((p) => p.inputs.some((i) => i.type === 'file')).map(
+                    (preset) => (
+                      <CommandItem
+                        key={preset.id}
+                        value={preset.id}
+                        onSelect={() => selectPreset(preset)}
+                      >
+                        <Check
+                          className={cn(
+                            'mr-2 h-4 w-4 shrink-0',
+                            model === preset.id ? 'opacity-100' : 'opacity-0',
+                          )}
+                        />
+                        <div className="flex flex-col min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-sm">{preset.label}</span>
+                            <span className="text-xs text-muted-foreground font-mono truncate">
+                              {preset.id}
+                            </span>
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            {preset.description}
+                          </span>
                         </div>
-                        <span className="text-xs text-muted-foreground">{preset.description}</span>
-                      </div>
-                    </CommandItem>
-                  ))}
+                      </CommandItem>
+                    ),
+                  )}
                 </CommandGroup>
               </CommandList>
             </Command>
@@ -346,7 +406,9 @@ export function ReplicateHandlerConfig({ config, onChange, previousSteps = [] }:
 
       {/* Version */}
       <div className="space-y-2">
-        <Label>Version {!version && <span className="text-yellow-600 font-normal">(recommended)</span>}</Label>
+        <Label>
+          Version {!version && <span className="text-yellow-600 font-normal">(recommended)</span>}
+        </Label>
         <Input
           value={version}
           onChange={(e) => setVersion(e.target.value)}
@@ -357,7 +419,8 @@ export function ReplicateHandlerConfig({ config, onChange, previousSteps = [] }:
           Pin a version hash for deterministic results and faster execution.
           {model && (
             <>
-              {' '}Find versions on the{' '}
+              {' '}
+              Find versions on the{' '}
               <a
                 href={`${getModelUrl(model)}/versions`}
                 target="_blank"
@@ -400,7 +463,11 @@ export function ReplicateHandlerConfig({ config, onChange, previousSteps = [] }:
                   <ExpressionInput
                     value={value}
                     onChange={(v) => updateInputValue(index, v)}
-                    placeholder={presetInput?.type === 'file' ? 'steps.upload.storage_path' : 'e.g., request.body.text'}
+                    placeholder={
+                      presetInput?.type === 'file'
+                        ? 'steps.upload.storage_path'
+                        : 'e.g., request.body.text'
+                    }
                     previousSteps={previousSteps}
                     className="flex-1"
                   />
@@ -418,7 +485,8 @@ export function ReplicateHandlerConfig({ config, onChange, previousSteps = [] }:
                 {presetInput && (
                   <p className="text-xs text-muted-foreground pl-1">
                     {presetInput.description}
-                    {presetInput.type === 'file' && ' — automatically uploaded to Replicate from storage'}
+                    {presetInput.type === 'file' &&
+                      ' — automatically uploaded to Replicate from storage'}
                   </p>
                 )}
               </div>
@@ -430,8 +498,11 @@ export function ReplicateHandlerConfig({ config, onChange, previousSteps = [] }:
             <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
             <span>
               File inputs: use{' '}
-              <code className="px-1 py-0.5 rounded bg-blue-100 dark:bg-blue-900/50 font-mono">steps.&lt;upload_step&gt;.storage_path</code>{' '}
-              to reference an uploaded file. It's automatically read from storage and uploaded to Replicate — no public URL needed.
+              <code className="px-1 py-0.5 rounded bg-blue-100 dark:bg-blue-900/50 font-mono">
+                steps.&lt;upload_step&gt;.storage_path
+              </code>{' '}
+              to reference an uploaded file. It's automatically read from storage and uploaded to
+              Replicate — no public URL needed.
             </span>
           </div>
         )}
@@ -472,10 +543,10 @@ export function ReplicateHandlerConfig({ config, onChange, previousSteps = [] }:
           className="font-mono text-sm"
         />
         <p className="text-xs text-muted-foreground">
-          Max time to wait for the prediction. Default 30000ms. Slow models (e.g. large
-          LLMs with high thinking effort) may need more. Note: values above ~60s also
-          require raising <code className="font-mono">proxy_read_timeout</code> in your
-          nginx config, or the request is cut short at the proxy.
+          Max time to wait for the prediction. Default 30000ms. Slow models (e.g. large LLMs with
+          high thinking effort) may need more. Note: values above ~60s also require raising{' '}
+          <code className="font-mono">proxy_read_timeout</code> in your nginx config, or the request
+          is cut short at the proxy.
         </p>
       </div>
     </div>

@@ -4,7 +4,9 @@ import { ActivityBadge } from './ActivityBadge';
 
 // Render without tooltips by default to avoid TooltipProvider issues in tests
 const renderBadge = (lastDeployedAt: string | null, otherProps = {}) => {
-  return render(<ActivityBadge lastDeployedAt={lastDeployedAt} showTooltip={false} {...otherProps} />);
+  return render(
+    <ActivityBadge lastDeployedAt={lastDeployedAt} showTooltip={false} {...otherProps} />,
+  );
 };
 
 describe('ActivityBadge', () => {

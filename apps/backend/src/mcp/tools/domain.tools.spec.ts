@@ -39,9 +39,9 @@ describe('traffic-splitting MCP tools', () => {
     });
 
     it('rejects an empty weights array', () => {
-      expect(
-        setTrafficWeightsParameters.safeParse({ domainId: 'd1', weights: [] }).success,
-      ).toBe(false);
+      expect(setTrafficWeightsParameters.safeParse({ domainId: 'd1', weights: [] }).success).toBe(
+        false,
+      );
     });
 
     it('preserves the optional per-weight path', () => {
@@ -59,12 +59,7 @@ describe('traffic-splitting MCP tools', () => {
   describe('setTrafficWeights', () => {
     it('forwards domainId, dto, and userId to TrafficRoutingService', async () => {
       const setTrafficWeights = jest.fn().mockResolvedValue({ weights: [] });
-      const tools = new DomainTools(
-        {} as any,
-        { setTrafficWeights } as any,
-        {} as any,
-        {} as any,
-      );
+      const tools = new DomainTools({} as any, { setTrafficWeights } as any, {} as any, {} as any);
       stubUser();
 
       await tools.setTrafficWeights(
@@ -96,12 +91,7 @@ describe('traffic-splitting MCP tools', () => {
   describe('createTrafficRule', () => {
     it('splits domainId out and forwards the rule dto plus userId', async () => {
       const create = jest.fn().mockResolvedValue({ id: 'r1' });
-      const tools = new DomainTools(
-        {} as any,
-        {} as any,
-        { create } as any,
-        {} as any,
-      );
+      const tools = new DomainTools({} as any, {} as any, { create } as any, {} as any);
       stubUser();
 
       await tools.createTrafficRule(
@@ -135,12 +125,7 @@ describe('traffic-splitting MCP tools', () => {
   describe('updateTrafficRule', () => {
     it('forwards ruleId separately from the patch dto', async () => {
       const update = jest.fn().mockResolvedValue({ id: 'r1' });
-      const tools = new DomainTools(
-        {} as any,
-        {} as any,
-        { update } as any,
-        {} as any,
-      );
+      const tools = new DomainTools({} as any, {} as any, { update } as any, {} as any);
       stubUser();
 
       await tools.updateTrafficRule(

@@ -139,8 +139,7 @@ export class PrimaryContentService {
 
         // Generate welcome page config so the primary domain still serves something
         this.logger.log(`Generating welcome page config for ${baseDomain}`);
-        const { tempPath, finalPath } =
-          await this.nginxConfigService.generateWelcomePageConfig();
+        const { tempPath, finalPath } = await this.nginxConfigService.generateWelcomePageConfig();
         const result = await this.nginxReloadService.validateAndReload(tempPath, finalPath);
         if (!result.success) {
           this.logger.warn(`Failed to generate welcome page config: ${result.error}`);

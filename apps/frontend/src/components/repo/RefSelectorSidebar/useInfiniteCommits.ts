@@ -39,7 +39,7 @@ export function useInfiniteCommits({
   // Fetch current page
   const { data, isLoading, isFetching, error } = useGetRepositoryRefsQuery(
     { owner, repo, cursor: currentCursor, limit },
-    { skip: false }
+    { skip: false },
   );
 
   // Reset state when owner/repo changes
@@ -61,9 +61,7 @@ export function useInfiniteCommits({
     // Append new commits (avoid duplicates)
     setAdditionalCommits((prev) => {
       const existingShas = new Set(prev.map((c) => c.sha));
-      const newCommits = data.recentCommits.filter(
-        (c) => !existingShas.has(c.sha)
-      );
+      const newCommits = data.recentCommits.filter((c) => !existingShas.has(c.sha));
       if (newCommits.length === 0) return prev;
       return [...prev, ...newCommits];
     });
@@ -79,9 +77,7 @@ export function useInfiniteCommits({
     }
     // Merge first page with additional commits, avoiding duplicates
     const firstPageShas = new Set(firstPageCommits.map((c) => c.sha));
-    const uniqueAdditional = additionalCommits.filter(
-      (c) => !firstPageShas.has(c.sha)
-    );
+    const uniqueAdditional = additionalCommits.filter((c) => !firstPageShas.has(c.sha));
     return [...firstPageCommits, ...uniqueAdditional];
   }, [data?.recentCommits, additionalCommits]);
 

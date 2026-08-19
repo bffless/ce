@@ -46,7 +46,9 @@ function buildHandler() {
       return expr;
     }),
   } as unknown as ExpressionEvaluator;
-  const schemasService = { getById: jest.fn(async () => SCHEMA) } as unknown as PipelineSchemasService;
+  const schemasService = {
+    getById: jest.fn(async () => SCHEMA),
+  } as unknown as PipelineSchemasService;
   return { handler: new DataUpdateHandler(registry as any, expressionEvaluator, schemasService) };
 }
 
@@ -71,7 +73,10 @@ describe('DataUpdateHandler in operator', () => {
 
   it('marks all matching folder items read via feedId IN (urls)', async () => {
     const { handler } = buildHandler();
-    mockDb.__queue([{ id: 'i1', data: { read: false } }, { id: 'i2', data: { read: false } }]); // select matches
+    mockDb.__queue([
+      { id: 'i1', data: { read: false } },
+      { id: 'i2', data: { read: false } },
+    ]); // select matches
     mockDb.__queue([{ id: 'i1', data: { read: true } }]); // update i1 .returning()
     mockDb.__queue([{ id: 'i2', data: { read: true } }]); // update i2 .returning()
 
@@ -132,7 +137,10 @@ describe('DataUpdateHandler range predicates (ce#415)', () => {
 
   it('marks everything older than a cutoff read: read eq false AND fetchedAt lt cutoff', async () => {
     const { handler } = buildHandler();
-    mockDb.__queue([{ id: 'old-1', data: { read: false } }, { id: 'old-2', data: { read: false } }]); // select matches
+    mockDb.__queue([
+      { id: 'old-1', data: { read: false } },
+      { id: 'old-2', data: { read: false } },
+    ]); // select matches
     mockDb.__queue([{ id: 'old-1', data: { read: true } }]); // update old-1 .returning()
     mockDb.__queue([{ id: 'old-2', data: { read: true } }]); // update old-2 .returning()
 
@@ -293,7 +301,9 @@ describe('DataUpdateHandler merges in SQL, not from the earlier read (ce#432)', 
     expect(a.success).toBe(true);
     expect(b.success).toBe(true);
     expect(mockDb.set).toHaveBeenCalledTimes(2);
-    const paramSets = [setDataSql(0).params, setDataSql(1).params].map((p) => JSON.parse(String(p[0])));
+    const paramSets = [setDataSql(0).params, setDataSql(1).params].map((p) =>
+      JSON.parse(String(p[0])),
+    );
     expect(paramSets).toEqual(
       expect.arrayContaining([{ mode: 'restricted' }, { grantsJson: '[{"u":"x"}]' }]),
     );

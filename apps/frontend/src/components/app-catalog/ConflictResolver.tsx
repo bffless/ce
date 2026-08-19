@@ -1,10 +1,7 @@
 import { useState } from 'react';
 import { AlertTriangle, Check } from 'lucide-react';
 import type { SyncRuleConflict } from '@/services/appCatalogApi';
-import {
-  useLazyGetProxyRuleQuery,
-  useUpdateProxyRuleMutation,
-} from '@/services/proxyRulesApi';
+import { useLazyGetProxyRuleQuery, useUpdateProxyRuleMutation } from '@/services/proxyRulesApi';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { applyConflictField } from './applyConflictField';
@@ -68,7 +65,8 @@ export function ConflictResolver({ conflicts }: Props) {
         <AlertTriangle className="h-4 w-4 text-amber-600" />
         <AlertDescription className="text-xs">
           This update changed {conflicts.length === 1 ? 'a field' : 'fields'} you had also edited.
-          <strong> Your version was kept</strong> — take the app&apos;s instead only where you want it.
+          <strong> Your version was kept</strong> — take the app&apos;s instead only where you want
+          it.
         </AlertDescription>
       </Alert>
 

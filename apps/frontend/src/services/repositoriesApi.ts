@@ -77,7 +77,4 @@ export const repositoriesApi = api.injectEndpoints({
   }),
 });
 
-export const {
-  useGetMyRepositoriesQuery,
-  useGetRepositoryFeedQuery,
-} = repositoriesApi;
+export const { useGetMyRepositoriesQuery, useGetRepositoryFeedQuery } = repositoriesApi;

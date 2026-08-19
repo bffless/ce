@@ -1,5 +1,8 @@
 import { http, HttpResponse } from 'msw';
-import type { GetMyRepositoriesResponse, GetRepositoryFeedResponse } from '@/services/repositoriesApi';
+import type {
+  GetMyRepositoriesResponse,
+  GetRepositoryFeedResponse,
+} from '@/services/repositoriesApi';
 
 // Mock data generators
 export const mockRepositories = {

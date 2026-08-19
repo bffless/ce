@@ -85,9 +85,7 @@ export async function buildLoginMethodsResponse({
     .isEnabled('ENABLE_OIDC_PROVIDERS')
     .catch(() => false);
 
-  const providers = oidcEnabled
-    ? await oidcProvidersService.listEnabled().catch(() => [])
-    : [];
+  const providers = oidcEnabled ? await oidcProvidersService.listEnabled().catch(() => []) : [];
 
   // hasGoogle stays true whenever any kind=google provider is enabled, so
   // AuthDialog ≤0.17.x bundles deployed on customer sites keep rendering the
@@ -102,9 +100,7 @@ export async function buildLoginMethodsResponse({
     .isEnabled('REQUIRE_PROJECT_MEMBERSHIP')
     .catch(() => false);
 
-  const project = membershipGateOn
-    ? await projectResolver.resolveProjectFromRequest(req)
-    : null;
+  const project = membershipGateOn ? await projectResolver.resolveProjectFromRequest(req) : null;
 
   return {
     hasPassword,

@@ -38,7 +38,11 @@ export function SchemaFieldPicker({
   placeholder = 'Select field',
   allowClear = true,
 }: SchemaFieldPickerProps) {
-  const { data: schema, isLoading, error } = useGetSchemaQuery(schemaId, {
+  const {
+    data: schema,
+    isLoading,
+    error,
+  } = useGetSchemaQuery(schemaId, {
     skip: !schemaId,
   });
 
@@ -97,11 +101,7 @@ export function SchemaFieldPicker({
           fields.map((field) => {
             const isUsed = usedFields.includes(field.name) && field.name !== value;
             return (
-              <SelectItem
-                key={field.name}
-                value={field.name}
-                disabled={isUsed}
-              >
+              <SelectItem key={field.name} value={field.name} disabled={isUsed}>
                 <div className="flex items-center gap-2">
                   <span>{field.name}</span>
                   <Badge
@@ -110,9 +110,7 @@ export function SchemaFieldPicker({
                   >
                     {field.type}
                   </Badge>
-                  {field.required && (
-                    <span className="text-destructive text-xs">*</span>
-                  )}
+                  {field.required && <span className="text-destructive text-xs">*</span>}
                   {isUsed && (
                     <span className="text-xs text-muted-foreground">(already mapped)</span>
                   )}

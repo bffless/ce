@@ -5,9 +5,7 @@ import { FileIcon, getFileIcon } from './FileIcon';
 describe('FileIcon', () => {
   describe('directories', () => {
     it('should render folder icon for directories', () => {
-      const { container } = render(
-        <FileIcon fileName="test-folder" isDirectory={true} />
-      );
+      const { container } = render(<FileIcon fileName="test-folder" isDirectory={true} />);
 
       const svg = container.querySelector('svg');
       expect(svg).toBeInTheDocument();
@@ -16,7 +14,7 @@ describe('FileIcon', () => {
 
     it('should render open folder icon when isOpen is true', () => {
       const { container } = render(
-        <FileIcon fileName="test-folder" isDirectory={true} isOpen={true} />
+        <FileIcon fileName="test-folder" isDirectory={true} isOpen={true} />,
       );
 
       const svg = container.querySelector('svg');
@@ -26,7 +24,7 @@ describe('FileIcon', () => {
 
     it('should render closed folder icon when isOpen is false', () => {
       const { container } = render(
-        <FileIcon fileName="test-folder" isDirectory={true} isOpen={false} />
+        <FileIcon fileName="test-folder" isDirectory={true} isOpen={false} />,
       );
 
       const svg = container.querySelector('svg');
@@ -223,9 +221,7 @@ describe('FileIcon', () => {
 
   describe('custom className', () => {
     it('should apply custom className', () => {
-      const { container } = render(
-        <FileIcon fileName="test.js" className="custom-class" />
-      );
+      const { container } = render(<FileIcon fileName="test.js" className="custom-class" />);
 
       const svg = container.querySelector('svg');
       expect(svg).toHaveClass('custom-class');

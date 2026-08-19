@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import type { StorageProvider } from '@/services/setupApi';
-import { DOCS, VIDEOS, CLOUDFLARE_DOCS, storageDocsFor, youtubeUrl, formatTimestamp } from './docsLinks';
+import {
+  DOCS,
+  VIDEOS,
+  CLOUDFLARE_DOCS,
+  storageDocsFor,
+  youtubeUrl,
+  formatTimestamp,
+} from './docsLinks';
 
 /** Depth-first walk of the DOCS tree, yielding [dottedPath, url] for every leaf. */
 function leaves(node: unknown, path: string[] = []): Array<[string, string]> {
@@ -66,10 +73,13 @@ describe('storageDocsFor', () => {
 });
 
 describe('CLOUDFLARE_DOCS', () => {
-  it.each(['dns', 'cert'] as const)('%s pairs a DOCS.cloudflare href with a non-empty label', (key) => {
-    expect(CLOUDFLARE_DOCS[key].href).toBe(DOCS.cloudflare[key]);
-    expect(CLOUDFLARE_DOCS[key].label.length).toBeGreaterThan(0);
-  });
+  it.each(['dns', 'cert'] as const)(
+    '%s pairs a DOCS.cloudflare href with a non-empty label',
+    (key) => {
+      expect(CLOUDFLARE_DOCS[key].href).toBe(DOCS.cloudflare[key]);
+      expect(CLOUDFLARE_DOCS[key].label.length).toBeGreaterThan(0);
+    },
+  );
 });
 
 describe('youtubeUrl', () => {

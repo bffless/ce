@@ -11,8 +11,7 @@ const createStore = () =>
     reducer: {
       [api.reducerPath]: api.reducer,
     },
-    middleware: (getDefaultMiddleware) =>
-      getDefaultMiddleware().concat(api.middleware),
+    middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(api.middleware),
   });
 
 // Mock email status - SMTP configured
@@ -201,13 +200,13 @@ export const Default: Story = {
         http.get('/api/setup/email/providers', () => HttpResponse.json(mockProviders)),
         http.get('/api/setup/available-options', () => HttpResponse.json(mockAvailableOptionsCE)),
         http.put('/api/settings/email', () =>
-          HttpResponse.json({ success: true, message: 'Email settings updated' })
+          HttpResponse.json({ success: true, message: 'Email settings updated' }),
         ),
         http.post('/api/settings/email/test', () =>
-          HttpResponse.json({ success: true, message: 'Connection successful' })
+          HttpResponse.json({ success: true, message: 'Connection successful' }),
         ),
         http.post('/api/settings/email/send-test', () =>
-          HttpResponse.json({ success: true, message: 'Test email sent', messageId: 'msg-123' })
+          HttpResponse.json({ success: true, message: 'Test email sent', messageId: 'msg-123' }),
         ),
       ],
     },
@@ -223,13 +222,13 @@ export const SendGridConfigured: Story = {
         http.get('/api/setup/email/providers', () => HttpResponse.json(mockProviders)),
         http.get('/api/setup/available-options', () => HttpResponse.json(mockAvailableOptionsCE)),
         http.put('/api/settings/email', () =>
-          HttpResponse.json({ success: true, message: 'Email settings updated' })
+          HttpResponse.json({ success: true, message: 'Email settings updated' }),
         ),
         http.post('/api/settings/email/test', () =>
-          HttpResponse.json({ success: true, message: 'Connection successful' })
+          HttpResponse.json({ success: true, message: 'Connection successful' }),
         ),
         http.post('/api/settings/email/send-test', () =>
-          HttpResponse.json({ success: true, message: 'Test email sent', messageId: 'msg-123' })
+          HttpResponse.json({ success: true, message: 'Test email sent', messageId: 'msg-123' }),
         ),
       ],
     },
@@ -243,15 +242,17 @@ export const ManagedEmail: Story = {
       handlers: [
         http.get('/api/settings/email', () => HttpResponse.json(mockEmailStatusManaged)),
         http.get('/api/setup/email/providers', () => HttpResponse.json(mockProviders)),
-        http.get('/api/setup/available-options', () => HttpResponse.json(mockAvailableOptionsPlatform)),
+        http.get('/api/setup/available-options', () =>
+          HttpResponse.json(mockAvailableOptionsPlatform),
+        ),
         http.put('/api/settings/email', () =>
-          HttpResponse.json({ success: true, message: 'Email settings updated' })
+          HttpResponse.json({ success: true, message: 'Email settings updated' }),
         ),
         http.post('/api/settings/email/test', () =>
-          HttpResponse.json({ success: true, message: 'Connection successful' })
+          HttpResponse.json({ success: true, message: 'Connection successful' }),
         ),
         http.post('/api/settings/email/send-test', () =>
-          HttpResponse.json({ success: true, message: 'Test email sent', messageId: 'msg-123' })
+          HttpResponse.json({ success: true, message: 'Test email sent', messageId: 'msg-123' }),
         ),
       ],
     },
@@ -265,15 +266,17 @@ export const ManagedEmailOnly: Story = {
       handlers: [
         http.get('/api/settings/email', () => HttpResponse.json(mockEmailStatusManaged)),
         http.get('/api/setup/email/providers', () => HttpResponse.json(mockProviders)),
-        http.get('/api/setup/available-options', () => HttpResponse.json(mockAvailableOptionsPlatformManagedOnly)),
+        http.get('/api/setup/available-options', () =>
+          HttpResponse.json(mockAvailableOptionsPlatformManagedOnly),
+        ),
         http.put('/api/settings/email', () =>
-          HttpResponse.json({ success: true, message: 'Email settings updated' })
+          HttpResponse.json({ success: true, message: 'Email settings updated' }),
         ),
         http.post('/api/settings/email/test', () =>
-          HttpResponse.json({ success: true, message: 'Connection successful' })
+          HttpResponse.json({ success: true, message: 'Connection successful' }),
         ),
         http.post('/api/settings/email/send-test', () =>
-          HttpResponse.json({ success: true, message: 'Test email sent', messageId: 'msg-123' })
+          HttpResponse.json({ success: true, message: 'Test email sent', messageId: 'msg-123' }),
         ),
       ],
     },
@@ -289,10 +292,10 @@ export const NotConfigured: Story = {
         http.get('/api/setup/email/providers', () => HttpResponse.json(mockProviders)),
         http.get('/api/setup/available-options', () => HttpResponse.json(mockAvailableOptionsCE)),
         http.put('/api/settings/email', () =>
-          HttpResponse.json({ success: true, message: 'Email settings updated' })
+          HttpResponse.json({ success: true, message: 'Email settings updated' }),
         ),
         http.post('/api/settings/email/test', () =>
-          HttpResponse.json({ success: true, message: 'Connection successful' })
+          HttpResponse.json({ success: true, message: 'Connection successful' }),
         ),
       ],
     },
@@ -306,12 +309,14 @@ export const NotConfiguredPlatform: Story = {
       handlers: [
         http.get('/api/settings/email', () => HttpResponse.json(mockEmailStatusNotConfigured)),
         http.get('/api/setup/email/providers', () => HttpResponse.json(mockProviders)),
-        http.get('/api/setup/available-options', () => HttpResponse.json(mockAvailableOptionsPlatform)),
+        http.get('/api/setup/available-options', () =>
+          HttpResponse.json(mockAvailableOptionsPlatform),
+        ),
         http.put('/api/settings/email', () =>
-          HttpResponse.json({ success: true, message: 'Email settings updated' })
+          HttpResponse.json({ success: true, message: 'Email settings updated' }),
         ),
         http.post('/api/settings/email/test', () =>
-          HttpResponse.json({ success: true, message: 'Connection successful' })
+          HttpResponse.json({ success: true, message: 'Connection successful' }),
         ),
       ],
     },
@@ -327,21 +332,21 @@ export const ConnectionTestFailed: Story = {
         http.get('/api/setup/email/providers', () => HttpResponse.json(mockProviders)),
         http.get('/api/setup/available-options', () => HttpResponse.json(mockAvailableOptionsCE)),
         http.put('/api/settings/email', () =>
-          HttpResponse.json({ success: true, message: 'Email settings updated' })
+          HttpResponse.json({ success: true, message: 'Email settings updated' }),
         ),
         http.post('/api/settings/email/test', () =>
           HttpResponse.json({
             success: false,
             message: 'Connection failed',
             error: 'ECONNREFUSED: Unable to connect to SMTP server',
-          })
+          }),
         ),
         http.post('/api/settings/email/send-test', () =>
           HttpResponse.json({
             success: false,
             message: 'Failed to send test email',
             error: 'Connection timed out',
-          })
+          }),
         ),
       ],
     },

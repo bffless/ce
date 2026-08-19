@@ -53,8 +53,7 @@ export function DeleteAliasDialog({
       onOpenChange(false);
     } catch (error: any) {
       // Handle error
-      const errorMessage =
-        error?.data?.message || error?.message || 'Failed to delete alias';
+      const errorMessage = error?.data?.message || error?.message || 'Failed to delete alias';
       toast({
         title: 'Error',
         description: errorMessage,

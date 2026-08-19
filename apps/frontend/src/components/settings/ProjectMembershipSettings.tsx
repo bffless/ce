@@ -1,7 +1,4 @@
-import {
-  useGetFeatureFlagQuery,
-  useSetFeatureFlagMutation,
-} from '@/services/featureFlagsApi';
+import { useGetFeatureFlagQuery, useSetFeatureFlagMutation } from '@/services/featureFlagsApi';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -23,9 +20,7 @@ export function ProjectMembershipSettings() {
     try {
       await setFeatureFlag({ key: FLAG_KEY, value: next, enabled: true }).unwrap();
       toast({
-        title: next
-          ? 'Project-membership gating enabled'
-          : 'Project-membership gating disabled',
+        title: next ? 'Project-membership gating enabled' : 'Project-membership gating disabled',
         description: next
           ? 'Users now need a project membership to sign in to a specific site.'
           : 'Workspace members can again authenticate against any project.',
@@ -51,9 +46,7 @@ export function ProjectMembershipSettings() {
             <Users className="h-5 w-5" />
             <div>
               <CardTitle>Project membership</CardTitle>
-              <CardDescription>
-                Restrict signin to users with project membership
-              </CardDescription>
+              <CardDescription>Restrict signin to users with project membership</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -72,9 +65,7 @@ export function ProjectMembershipSettings() {
             <Users className="h-5 w-5" />
             <div>
               <CardTitle>Project membership</CardTitle>
-              <CardDescription>
-                Restrict signin to users with project membership
-              </CardDescription>
+              <CardDescription>Restrict signin to users with project membership</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -107,8 +98,8 @@ export function ProjectMembershipSettings() {
               Require project membership for site authentication
             </Label>
             <p className="text-sm text-muted-foreground">
-              When enabled, signing in on a project's site requires a project membership.
-              Each project independently controls public signups via{' '}
+              When enabled, signing in on a project's site requires a project membership. Each
+              project independently controls public signups via{' '}
               <span className="font-medium">Allow public signups</span> in its Members tab.
               Recommended for workspaces hosting unrelated whitelabel sites; leave off for
               single-owner workspaces that want SSO across their own projects.

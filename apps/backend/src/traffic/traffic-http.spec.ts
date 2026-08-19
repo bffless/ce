@@ -97,7 +97,10 @@ describe('Traffic observation at the HTTP boundary', () => {
         { provide: ConfigService, useValue: { get: jest.fn() } },
         { provide: CacheConfigService, useValue: cacheConfigService },
         { provide: ShareLinksService, useValue: { validateToken: jest.fn() } },
-        { provide: ResponseHeaderConfigService, useValue: { getHeaderConfig: jest.fn().mockResolvedValue(null) } },
+        {
+          provide: ResponseHeaderConfigService,
+          useValue: { getHeaderConfig: jest.fn().mockResolvedValue(null) },
+        },
         { provide: MetadataCacheService, useValue: metadataCache },
       ],
     })
@@ -171,7 +174,9 @@ describe('Traffic observation at the HTTP boundary', () => {
       userAgent: 'test-agent',
     });
     expect(observed[0].bytes).toBeGreaterThan(0);
-    expect(observed[0].line).toContain('"GET /public/acme/site/alias/production/index.html HTTP/1.1" 200');
+    expect(observed[0].line).toContain(
+      '"GET /public/acme/site/alias/production/index.html HTTP/1.1" 200',
+    );
   });
 
   it('answers an Unmatched request with a generic 404 that leaks no paths, and observes it', async () => {

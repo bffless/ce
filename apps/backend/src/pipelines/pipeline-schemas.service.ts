@@ -55,7 +55,11 @@ export class PipelineSchemasService {
    * Get a schema by ID
    */
   async getById(id: string): Promise<PipelineSchema | null> {
-    const [schema] = await db.select().from(pipelineSchemas).where(eq(pipelineSchemas.id, id)).limit(1);
+    const [schema] = await db
+      .select()
+      .from(pipelineSchemas)
+      .where(eq(pipelineSchemas.id, id))
+      .limit(1);
     return schema || null;
   }
 

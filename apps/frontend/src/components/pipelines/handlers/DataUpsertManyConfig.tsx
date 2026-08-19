@@ -2,12 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Plus, Trash2, HelpCircle } from 'lucide-react';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { SchemaPicker } from './SchemaPicker';
 import { SchemaFieldPicker } from './SchemaFieldPicker';
 import { ExpressionInput } from './ExpressionInput';
@@ -117,8 +112,8 @@ export function DataUpsertManyConfig({ config, onChange, projectId, previousStep
             placeholder="Select the column that stores the dedup key"
           />
           <p className="text-xs text-muted-foreground">
-            The schema column whose value uniquely identifies a record. Existing rows with a matching
-            value are skipped (insert-only — never overwritten).
+            The schema column whose value uniquely identifies a record. Existing rows with a
+            matching value are skipped (insert-only — never overwritten).
           </p>
         </div>
 
@@ -190,10 +185,18 @@ export function DataUpsertManyConfig({ config, onChange, projectId, previousStep
                 <TooltipContent className="max-w-xs">
                   <p>Map schema columns to expressions, evaluated per array element. Paths:</p>
                   <ul className="list-disc list-inside mt-1 text-xs">
-                    <li><code>steps.item.field</code> - Current array element</li>
-                    <li><code>steps.stepName.field</code> - Another step's output</li>
-                    <li><code>now()</code> - Current timestamp</li>
-                    <li><code>request.body.field</code> - Request body</li>
+                    <li>
+                      <code>steps.item.field</code> - Current array element
+                    </li>
+                    <li>
+                      <code>steps.stepName.field</code> - Another step's output
+                    </li>
+                    <li>
+                      <code>now()</code> - Current timestamp
+                    </li>
+                    <li>
+                      <code>request.body.field</code> - Request body
+                    </li>
                   </ul>
                 </TooltipContent>
               </Tooltip>
@@ -202,7 +205,9 @@ export function DataUpsertManyConfig({ config, onChange, projectId, previousStep
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => setFieldMappings([...fieldMappings, { schemaField: '', expression: '' }])}
+              onClick={() =>
+                setFieldMappings([...fieldMappings, { schemaField: '', expression: '' }])
+              }
             >
               <Plus className="h-4 w-4 mr-1" />
               Add Field

@@ -114,9 +114,7 @@ export interface PresignedUploadHandlerConfig {
  * use `file_upload_handler` (proxied) instead.
  */
 @Injectable()
-export class PresignedUploadHandler
-  implements StepHandler<PresignedUploadHandlerConfig>
-{
+export class PresignedUploadHandler implements StepHandler<PresignedUploadHandlerConfig> {
   readonly type = 'presigned_upload' as const;
   private readonly logger = new Logger(PresignedUploadHandler.name);
 

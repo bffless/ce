@@ -310,7 +310,10 @@ export class PipelineTestResultDto {
   @ApiProperty()
   durationMs: number;
 
-  @ApiPropertyOptional({ type: PipelineDebugInfoDto, description: 'Debug information with step-by-step details' })
+  @ApiPropertyOptional({
+    type: PipelineDebugInfoDto,
+    description: 'Debug information with step-by-step details',
+  })
   debug?: PipelineDebugInfoDto;
 }
 

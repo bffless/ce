@@ -70,9 +70,7 @@ describe('useDocumentTitle', () => {
 
   it('overrides the route-derived title', async () => {
     renderAt('/groups/g1', <Page title="Platform admins" />);
-    await waitFor(() =>
-      expect(document.title).toBe('Platform admins · User groups · BFFLESS'),
-    );
+    await waitFor(() => expect(document.title).toBe('Platform admins · User groups · BFFLESS'));
   });
 
   it('keeps the route-derived title while the page data is loading', async () => {
@@ -82,9 +80,7 @@ describe('useDocumentTitle', () => {
 
   it('preserves parts that contain spaces', async () => {
     renderAt('/groups/g1', <Page title="Two Word Name" />);
-    await waitFor(() =>
-      expect(document.title).toBe('Two Word Name · User groups · BFFLESS'),
-    );
+    await waitFor(() => expect(document.title).toBe('Two Word Name · User groups · BFFLESS'));
   });
 
   it('falls back to the route title when the overriding page unmounts', async () => {
@@ -101,9 +97,7 @@ describe('useDocumentTitle', () => {
     }
 
     renderAt('/groups/g1', <Harness />);
-    await waitFor(() =>
-      expect(document.title).toBe('Platform admins · User groups · BFFLESS'),
-    );
+    await waitFor(() => expect(document.title).toBe('Platform admins · User groups · BFFLESS'));
 
     await user.click(screen.getByRole('button', { name: 'unmount' }));
     await waitFor(() => expect(document.title).toBe('Group · User groups · BFFLESS'));

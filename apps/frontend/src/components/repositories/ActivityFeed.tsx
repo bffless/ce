@@ -13,7 +13,7 @@ import { CreateRepositoryDialog } from './CreateRepositoryDialog';
 export function ActivityFeed() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const { currentPage, sortBy, sortOrder, feedSearch } = useAppSelector(
-    (state) => state.repositoryList
+    (state) => state.repositoryList,
   );
 
   const { data: sessionData } = useGetSessionQuery();
@@ -53,9 +53,7 @@ export function ActivityFeed() {
     <div className="space-y-6">
       {/* Heading */}
       <div>
-        <h2 className="text-2xl font-bold">
-          {feedSearch ? 'Search Results' : 'Recently Updated'}
-        </h2>
+        <h2 className="text-2xl font-bold">{feedSearch ? 'Search Results' : 'Recently Updated'}</h2>
         <p className="text-muted-foreground" aria-live="polite">
           {data.total} {data.total === 1 ? 'repository' : 'repositories'}
         </p>
@@ -113,9 +111,7 @@ function FeedError({ error, onRetry }: { error: any; onRetry: () => void }) {
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Access Denied</AlertTitle>
-          <AlertDescription>
-            You don't have permission to view repositories.
-          </AlertDescription>
+          <AlertDescription>You don't have permission to view repositories.</AlertDescription>
         </Alert>
       );
     }
@@ -154,21 +150,13 @@ function FeedError({ error, onRetry }: { error: any; onRetry: () => void }) {
 }
 
 // Empty state
-function EmptyFeed({
-  search,
-  onCreateClick,
-}: {
-  search: string;
-  onCreateClick?: () => void;
-}) {
+function EmptyFeed({ search, onCreateClick }: { search: string; onCreateClick?: () => void }) {
   if (search) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
         <FolderOpen className="h-16 w-16 text-muted-foreground mb-4" />
         <h3 className="text-lg font-semibold mb-2">No repositories found</h3>
-        <p className="text-muted-foreground">
-          No repositories match your search for "{search}"
-        </p>
+        <p className="text-muted-foreground">No repositories match your search for "{search}"</p>
       </div>
     );
   }

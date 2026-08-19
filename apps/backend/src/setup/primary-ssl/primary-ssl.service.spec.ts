@@ -10,23 +10,47 @@ let mockCur: any;
 const makeDeps = () => ({
   featureFlags: { reconcileWildcardSslVisibility: jest.fn().mockResolvedValue(undefined) },
   bootstrap: {
-    validateCertificatePair: jest.fn().mockReturnValue({ sans: ['a.com', '*.a.com'], wildcardCovered: true }),
+    validateCertificatePair: jest
+      .fn()
+      .mockReturnValue({ sans: ['a.com', '*.a.com'], wildcardCovered: true }),
     saveCertificates: jest.fn(),
-    validateApplyConfig: jest.fn((d) => ({ proxyMode: d.proxyMode, sslMode: d.sslMode, port80: d.port80 ?? 'redirect', realIp: d.realIp ?? null })),
+    validateApplyConfig: jest.fn((d) => ({
+      proxyMode: d.proxyMode,
+      sslMode: d.sslMode,
+      port80: d.port80 ?? 'redirect',
+      realIp: d.realIp ?? null,
+    })),
     certificatesPresent: jest.fn().mockReturnValue(true),
     assertStagedCertificateCovers: jest.fn(),
   },
   ssl: { requestPrimaryDomainCertificate: jest.fn() },
   preflight: {
     run: jest.fn().mockResolvedValue({ ok: true, checks: [] }),
-    probeHost: jest.fn().mockResolvedValue({ host: 'extra.a.com', resolvedIps: ['1.2.3.4'], probeOk: true }),
+    probeHost: jest
+      .fn()
+      .mockResolvedValue({ host: 'extra.a.com', resolvedIps: ['1.2.3.4'], probeOk: true }),
   },
   info: {
-    getWildcardCertInfo: jest.fn().mockResolvedValue({ type: 'wildcard', expiresAt: new Date(), isValid: true }),
-    getServedPrimaryCertInfo: jest.fn().mockResolvedValue({ type: 'individual', expiresAt: new Date(), isValid: true }),
+    getWildcardCertInfo: jest
+      .fn()
+      .mockResolvedValue({ type: 'wildcard', expiresAt: new Date(), isValid: true }),
+    getServedPrimaryCertInfo: jest
+      .fn()
+      .mockResolvedValue({ type: 'individual', expiresAt: new Date(), isValid: true }),
     getStagedPrimaryCertInfo: jest.fn().mockResolvedValue(null),
   },
-  snap: { snapshot: jest.fn(), snapshotForChangeCycle: jest.fn(), clearSnapshot: jest.fn(), restore: jest.fn(), hasSnapshot: jest.fn().mockReturnValue(false), writePendingRevert: jest.fn(), readPendingRevert: jest.fn().mockReturnValue(null), clearPendingRevert: jest.fn(), isApplied: jest.fn().mockReturnValue(false), markApplied: jest.fn() },
+  snap: {
+    snapshot: jest.fn(),
+    snapshotForChangeCycle: jest.fn(),
+    clearSnapshot: jest.fn(),
+    restore: jest.fn(),
+    hasSnapshot: jest.fn().mockReturnValue(false),
+    writePendingRevert: jest.fn(),
+    readPendingRevert: jest.fn().mockReturnValue(null),
+    clearPendingRevert: jest.fn(),
+    isApplied: jest.fn().mockReturnValue(false),
+    markApplied: jest.fn(),
+  },
 });
 
 jest.mock('../../bootstrap/instance-config', () => ({
@@ -44,10 +68,31 @@ jest.mock('../ssl-staging', () => ({
   discardStagedCertificates: jest.fn(),
 }));
 
-const build = () => { const d = makeDeps(); return { d, svc: new PrimarySslService(d.bootstrap as any, d.ssl as any, d.preflight as any, d.info as any, d.snap as any, d.featureFlags as any) }; };
+const build = () => {
+  const d = makeDeps();
+  return {
+    d,
+    svc: new PrimarySslService(
+      d.bootstrap as any,
+      d.ssl as any,
+      d.preflight as any,
+      d.info as any,
+      d.snap as any,
+      d.featureFlags as any,
+    ),
+  };
+};
 
 beforeEach(() => {
-  mockCur = { version: 2, state: 'applied', primaryDomain: 'a.com', proxyMode: 'none', sslMode: 'paste', port80: 'redirect', realIp: null };
+  mockCur = {
+    version: 2,
+    state: 'applied',
+    primaryDomain: 'a.com',
+    proxyMode: 'none',
+    sslMode: 'paste',
+    port80: 'redirect',
+    realIp: null,
+  };
   // Module mocks persist across tests (no global resetMocks), so re-baseline
   // the staging module's defaults here — same reason mockCur is reset above.
   (staging.stagingPopulated as jest.Mock).mockReset().mockReturnValue(false);
@@ -68,7 +113,10 @@ beforeEach(() => {
 });
 
 describe('PrimarySslService', () => {
-  afterEach(() => { delete process.env.PLATFORM_MODE; delete process.env.SSL_MANAGED_EXTERNALLY; });
+  afterEach(() => {
+    delete process.env.PLATFORM_MODE;
+    delete process.env.SSL_MANAGED_EXTERNALLY;
+  });
 
   it('assertEnabled throws in platform mode', () => {
     process.env.PLATFORM_MODE = 'true';
@@ -89,7 +137,14 @@ describe('PrimarySslService', () => {
     // effective knob for cloudflare is 'closed'. The status must report that
     // derived value — reporting the raw null made the day-2 editor seed its
     // hardcoded 'redirect' default, silently flipping the install on apply.
-    mockCur = { version: 1, state: 'applied', origin: 'env', primaryDomain: 'a.com', proxyMode: 'cloudflare', sslMode: 'paste' };
+    mockCur = {
+      version: 1,
+      state: 'applied',
+      origin: 'env',
+      primaryDomain: 'a.com',
+      proxyMode: 'cloudflare',
+      sslMode: 'paste',
+    };
     const { svc } = build();
     const s = await svc.getStatus();
     expect(s.port80).toBe('closed');
@@ -98,7 +153,14 @@ describe('PrimarySslService', () => {
   });
 
   it('getStatus derives port80 redirect for a knob-less non-cloudflare config', async () => {
-    mockCur = { version: 1, state: 'applied', origin: 'env', primaryDomain: 'a.com', proxyMode: 'none', sslMode: 'paste' };
+    mockCur = {
+      version: 1,
+      state: 'applied',
+      origin: 'env',
+      primaryDomain: 'a.com',
+      proxyMode: 'none',
+      sslMode: 'paste',
+    };
     const { svc } = build();
     const s = await svc.getStatus();
     expect(s.port80).toBe('redirect');
@@ -106,7 +168,15 @@ describe('PrimarySslService', () => {
   });
 
   it('getStatus keeps an explicit port80 over the proxyMode-derived default', async () => {
-    mockCur = { version: 2, state: 'applied', primaryDomain: 'a.com', proxyMode: 'cloudflare', sslMode: 'paste', port80: 'redirect', realIp: null };
+    mockCur = {
+      version: 2,
+      state: 'applied',
+      primaryDomain: 'a.com',
+      proxyMode: 'cloudflare',
+      sslMode: 'paste',
+      port80: 'redirect',
+      realIp: null,
+    };
     const { svc } = build();
     const s = await svc.getStatus();
     expect(s.port80).toBe('redirect');
@@ -123,7 +193,12 @@ describe('PrimarySslService', () => {
 
   it('getStatus.cert comes from getServedPrimaryCertInfo (the SERVED cert), not getWildcardCertInfo', async () => {
     const { d, svc } = build();
-    const served = { type: 'individual', commonName: 'served.a.com', expiresAt: new Date(), isValid: true };
+    const served = {
+      type: 'individual',
+      commonName: 'served.a.com',
+      expiresAt: new Date(),
+      isValid: true,
+    };
     d.info.getServedPrimaryCertInfo.mockResolvedValue(served);
     const s = await svc.getStatus();
     expect(s.cert).toEqual(served);
@@ -132,7 +207,11 @@ describe('PrimarySslService', () => {
   it('getStatus.wildcardCovered reflects getWildcardCertInfo independently of the served cert', async () => {
     const { d, svc } = build();
     // served cert present, no wildcard cert file -> not covered
-    d.info.getServedPrimaryCertInfo.mockResolvedValue({ type: 'individual', expiresAt: new Date(), isValid: true });
+    d.info.getServedPrimaryCertInfo.mockResolvedValue({
+      type: 'individual',
+      expiresAt: new Date(),
+      isValid: true,
+    });
     d.info.getWildcardCertInfo.mockResolvedValue(null);
     let s = await svc.getStatus();
     expect(s.wildcardCovered).toBe(false);
@@ -140,7 +219,11 @@ describe('PrimarySslService', () => {
 
     // served cert missing/unparseable, wildcard cert present -> covered, but no served cert
     d.info.getServedPrimaryCertInfo.mockResolvedValue(null);
-    d.info.getWildcardCertInfo.mockResolvedValue({ type: 'wildcard', expiresAt: new Date(), isValid: true });
+    d.info.getWildcardCertInfo.mockResolvedValue({
+      type: 'wildcard',
+      expiresAt: new Date(),
+      isValid: true,
+    });
     s = await svc.getStatus();
     expect(s.wildcardCovered).toBe(true);
     expect(s.cert).toBeNull();
@@ -148,7 +231,11 @@ describe('PrimarySslService', () => {
 
   it('stagePaste validates then saves WITHOUT touching the snapshot (staging is provisional)', () => {
     const { d, svc } = build();
-    const res = svc.stagePaste({ certificatePem: 'C', privateKeyPem: 'K', servingMode: 'none' } as any);
+    const res = svc.stagePaste({
+      certificatePem: 'C',
+      privateKeyPem: 'K',
+      servingMode: 'none',
+    } as any);
     expect(d.bootstrap.validateCertificatePair).toHaveBeenCalledWith('C', 'K', domain, 'none');
     expect(d.bootstrap.saveCertificates).toHaveBeenCalledWith('C', 'K', domain);
     expect(res.wildcardCovered).toBe(true);
@@ -159,8 +246,13 @@ describe('PrimarySslService', () => {
 
   it('stagePaste throws when a serving revert is pending', () => {
     const { d, svc } = build();
-    d.snap.readPendingRevert.mockReturnValue({ deadlineMs: Date.now() + 1000, appliedAt: Date.now() });
-    expect(() => svc.stagePaste({ certificatePem: 'C', privateKeyPem: 'K', servingMode: 'none' } as any)).toThrow();
+    d.snap.readPendingRevert.mockReturnValue({
+      deadlineMs: Date.now() + 1000,
+      appliedAt: Date.now(),
+    });
+    expect(() =>
+      svc.stagePaste({ certificatePem: 'C', privateKeyPem: 'K', servingMode: 'none' } as any),
+    ).toThrow();
     expect(d.bootstrap.saveCertificates).not.toHaveBeenCalled();
   });
 
@@ -179,7 +271,9 @@ describe('PrimarySslService', () => {
   it('stagePaste throws in platform mode', () => {
     process.env.PLATFORM_MODE = 'true';
     const { svc } = build();
-    expect(() => svc.stagePaste({ certificatePem: 'C', privateKeyPem: 'K', servingMode: 'none' } as any)).toThrow(ForbiddenException);
+    expect(() =>
+      svc.stagePaste({ certificatePem: 'C', privateKeyPem: 'K', servingMode: 'none' } as any),
+    ).toThrow(ForbiddenException);
   });
 });
 
@@ -188,7 +282,12 @@ describe('PrimarySslService.apply classification', () => {
     const { d, svc } = build();
     mockCur.proxyMode = 'cloudflare';
     (staging.stagingPopulated as jest.Mock).mockReturnValue(true); // a cert was staged this cycle
-    const r = await svc.apply({ proxyMode: 'cloudflare', sslMode: 'paste', port80: 'redirect', realIp: undefined } as any);
+    const r = await svc.apply({
+      proxyMode: 'cloudflare',
+      sslMode: 'paste',
+      port80: 'redirect',
+      realIp: undefined,
+    } as any);
     expect(r.kind).toBe('cert-only');
     expect(r.deadlineMs).toBeUndefined();
     expect(d.snap.snapshotForChangeCycle).toHaveBeenCalled();
@@ -199,7 +298,12 @@ describe('PrimarySslService.apply classification', () => {
   it('cert change on direct serving gets the confirm window (pending revert + deadline, kind stays cert-only)', async () => {
     const { d, svc } = build();
     (staging.stagingPopulated as jest.Mock).mockReturnValue(true); // staged-but-unpromoted cert in flight
-    const r = await svc.apply({ proxyMode: 'none', sslMode: 'paste', port80: 'redirect', realIp: undefined } as any);
+    const r = await svc.apply({
+      proxyMode: 'none',
+      sslMode: 'paste',
+      port80: 'redirect',
+      realIp: undefined,
+    } as any);
     expect(r.kind).toBe('cert-only');
     expect(typeof r.deadlineMs).toBe('number');
     expect(d.snap.writePendingRevert).toHaveBeenCalled();
@@ -209,7 +313,12 @@ describe('PrimarySslService.apply classification', () => {
   it('sslMode-only swap on direct serving gets the confirm window even with no staged files', async () => {
     const { d, svc } = build();
     d.snap.hasSnapshot.mockReturnValue(false);
-    const r = await svc.apply({ proxyMode: 'none', sslMode: 'selfsigned', port80: 'redirect', realIp: undefined } as any);
+    const r = await svc.apply({
+      proxyMode: 'none',
+      sslMode: 'selfsigned',
+      port80: 'redirect',
+      realIp: undefined,
+    } as any);
     expect(r.kind).toBe('cert-only');
     expect(typeof r.deadlineMs).toBe('number');
     expect(d.snap.writePendingRevert).toHaveBeenCalled();
@@ -220,7 +329,12 @@ describe('PrimarySslService.apply classification', () => {
     // stagingPopulated() defaults to false (beforeEach) and sslMode is
     // unchanged, so certAffecting is simply false — there's no "stale applied
     // snapshot" leftover state to guard against under the new staging model.
-    const r = await svc.apply({ proxyMode: 'none', sslMode: 'paste', port80: 'redirect', realIp: undefined } as any);
+    const r = await svc.apply({
+      proxyMode: 'none',
+      sslMode: 'paste',
+      port80: 'redirect',
+      realIp: undefined,
+    } as any);
     expect(r.deadlineMs).toBeUndefined();
     expect(d.snap.writePendingRevert).not.toHaveBeenCalled();
     expect(d.snap.markApplied).toHaveBeenCalled();
@@ -232,7 +346,8 @@ describe('PrimarySslService.apply classification', () => {
     await svc.apply({ proxyMode: 'proxy', sslMode: 'paste', port80: 'closed' } as any);
     expect(staging.promoteStagedCertificates).toHaveBeenCalled();
     const snapOrder = d.snap.snapshotForChangeCycle.mock.invocationCallOrder[0];
-    const promoteOrder = (staging.promoteStagedCertificates as jest.Mock).mock.invocationCallOrder[0];
+    const promoteOrder = (staging.promoteStagedCertificates as jest.Mock).mock
+      .invocationCallOrder[0];
     expect(snapOrder).toBeLessThan(promoteOrder);
   });
 
@@ -271,7 +386,12 @@ describe('PrimarySslService.apply classification', () => {
 
   it('apply stamps origin: wizard, graduating an env-adopted install to UI-managed identity', async () => {
     const { svc } = build();
-    const dto = { proxyMode: 'cloudflare', sslMode: 'paste', port80: 'redirect', realIp: undefined } as any;
+    const dto = {
+      proxyMode: 'cloudflare',
+      sslMode: 'paste',
+      port80: 'redirect',
+      realIp: undefined,
+    } as any;
     mockCur.proxyMode = 'cloudflare'; // no reachability change; mirrors the "cert-only change behind a proxy" case above
 
     // A wizard (origin-absent) install stays wizard-owned; the write makes it explicit.
@@ -295,7 +415,12 @@ describe('PrimarySslService.apply classification', () => {
       const { svc } = build();
       // No reachability change (proxyMode matches cur) so apply commits cleanly.
       mockCur.proxyMode = 'cloudflare';
-      const dto = { proxyMode: 'cloudflare', sslMode: 'paste', port80: 'redirect', realIp: undefined } as any;
+      const dto = {
+        proxyMode: 'cloudflare',
+        sslMode: 'paste',
+        port80: 'redirect',
+        realIp: undefined,
+      } as any;
 
       // env-origin apply graduates the install -> a graduation notice is logged.
       mockCur.origin = 'env';
@@ -315,7 +440,12 @@ describe('PrimarySslService.apply classification', () => {
   it('serving change writes a pending revert with a deadline and does not mark applied', async () => {
     process.env.SSL_SERVING_CONFIRM_TIMEOUT_MS = '1000';
     const { d, svc } = build();
-    const r = await svc.apply({ proxyMode: 'cloudflare', sslMode: 'paste', port80: 'redirect', realIp: undefined } as any);
+    const r = await svc.apply({
+      proxyMode: 'cloudflare',
+      sslMode: 'paste',
+      port80: 'redirect',
+      realIp: undefined,
+    } as any);
     expect(r.kind).toBe('serving');
     expect(d.snap.writePendingRevert).toHaveBeenCalled();
     expect(typeof r.deadlineMs).toBe('number');
@@ -325,7 +455,10 @@ describe('PrimarySslService.apply classification', () => {
 
   it('rejects a second apply while a revert is pending', async () => {
     const { d, svc } = build();
-    d.snap.readPendingRevert.mockReturnValue({ deadlineMs: Date.now() + 1000, appliedAt: Date.now() });
+    d.snap.readPendingRevert.mockReturnValue({
+      deadlineMs: Date.now() + 1000,
+      appliedAt: Date.now(),
+    });
     await expect(svc.apply({ proxyMode: 'none', sslMode: 'paste' } as any)).rejects.toThrow();
   });
 
@@ -345,18 +478,28 @@ describe('PrimarySslService.issueLetsEncrypt', () => {
     d.ssl.requestPrimaryDomainCertificate.mockResolvedValue({ success: true, sans: ['a.com'] });
     const r = await svc.issueLetsEncrypt();
     expect(d.preflight.run).toHaveBeenCalledWith('a.com');
-    expect(d.ssl.requestPrimaryDomainCertificate).toHaveBeenCalledWith('a.com', { target: 'staging' });
+    expect(d.ssl.requestPrimaryDomainCertificate).toHaveBeenCalledWith('a.com', {
+      target: 'staging',
+    });
     expect(r.issued).toBe(true);
   });
   it('surfaces reused: true when the underlying call reports the cert was reused (no-op re-issue)', async () => {
     const { d, svc } = build();
-    d.ssl.requestPrimaryDomainCertificate.mockResolvedValue({ success: true, sans: ['a.com'], reused: true });
+    d.ssl.requestPrimaryDomainCertificate.mockResolvedValue({
+      success: true,
+      sans: ['a.com'],
+      reused: true,
+    });
     const r = await svc.issueLetsEncrypt();
     expect(r.reused).toBe(true);
   });
   it('surfaces reused: false when the underlying call actually issued/renewed', async () => {
     const { d, svc } = build();
-    d.ssl.requestPrimaryDomainCertificate.mockResolvedValue({ success: true, sans: ['a.com'], reused: false });
+    d.ssl.requestPrimaryDomainCertificate.mockResolvedValue({
+      success: true,
+      sans: ['a.com'],
+      reused: false,
+    });
     const r = await svc.issueLetsEncrypt();
     expect(r.reused).toBe(false);
   });
@@ -375,7 +518,10 @@ describe('PrimarySslService.issueLetsEncrypt', () => {
   });
   it('throws when a serving revert is pending, without snapshotting or issuing', async () => {
     const { d, svc } = build();
-    d.snap.readPendingRevert.mockReturnValue({ deadlineMs: Date.now() + 1000, appliedAt: Date.now() });
+    d.snap.readPendingRevert.mockReturnValue({
+      deadlineMs: Date.now() + 1000,
+      appliedAt: Date.now(),
+    });
     await expect(svc.issueLetsEncrypt()).rejects.toThrow();
     expect(d.snap.snapshotForChangeCycle).not.toHaveBeenCalled();
     expect(d.ssl.requestPrimaryDomainCertificate).not.toHaveBeenCalled();
@@ -387,13 +533,18 @@ describe('PrimarySslService.issueLetsEncrypt', () => {
     const { d, svc } = build();
     d.ssl.requestPrimaryDomainCertificate.mockResolvedValue({ success: true, sans: ['a.com'] });
     await svc.issueLetsEncrypt();
-    expect(d.ssl.requestPrimaryDomainCertificate).toHaveBeenCalledWith('a.com', { target: 'staging' });
+    expect(d.ssl.requestPrimaryDomainCertificate).toHaveBeenCalledWith('a.com', {
+      target: 'staging',
+    });
     expect(d.preflight.probeHost).not.toHaveBeenCalled();
   });
 
   it('with extraSans: probes the extra host(s) and passes extraSans through to requestPrimaryDomainCertificate', async () => {
     const { d, svc } = build();
-    d.ssl.requestPrimaryDomainCertificate.mockResolvedValue({ success: true, sans: ['a.com', 'handoff.example.com'] });
+    d.ssl.requestPrimaryDomainCertificate.mockResolvedValue({
+      success: true,
+      sans: ['a.com', 'handoff.example.com'],
+    });
     const r = await svc.issueLetsEncrypt({ extraSans: ['handoff.example.com'] });
     expect(d.preflight.probeHost).toHaveBeenCalledWith('handoff.example.com');
     expect(d.ssl.requestPrimaryDomainCertificate).toHaveBeenCalledWith('a.com', {
@@ -412,7 +563,12 @@ describe('PrimarySslService.issueLetsEncrypt', () => {
 
   it('with extraSans: throws (does not issue) when the extra host fails its preflight probe', async () => {
     const { d, svc } = build();
-    d.preflight.probeHost.mockResolvedValue({ host: 'handoff.example.com', resolvedIps: [], probeOk: false, error: 'does not resolve' });
+    d.preflight.probeHost.mockResolvedValue({
+      host: 'handoff.example.com',
+      resolvedIps: [],
+      probeOk: false,
+      error: 'does not resolve',
+    });
     await expect(svc.issueLetsEncrypt({ extraSans: ['handoff.example.com'] })).rejects.toThrow();
     expect(d.ssl.requestPrimaryDomainCertificate).not.toHaveBeenCalled();
   });

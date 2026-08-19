@@ -42,17 +42,22 @@ export const setTrafficWeightsParameters = z
     stickySessionsEnabled: z
       .boolean()
       .optional()
-      .describe('Pin a visitor to their first-selected variant via the __bffless_variant cookie (default true)'),
+      .describe(
+        'Pin a visitor to their first-selected variant via the __bffless_variant cookie (default true)',
+      ),
     stickySessionDuration: z
       .number()
       .int()
       .min(0)
       .max(2592000)
       .optional()
-      .describe('Sticky session cookie lifetime in seconds; 0 = no expiration, max 30 days (default 86400)'),
+      .describe(
+        'Sticky session cookie lifetime in seconds; 0 = no expiration, max 30 days (default 86400)',
+      ),
   })
   .refine((v) => v.weights.reduce((sum, w) => sum + w.weight, 0) === 100, {
-    message: 'Traffic weights must sum to 100. Use clear_traffic_weights to return to a single alias.',
+    message:
+      'Traffic weights must sum to 100. Use clear_traffic_weights to return to a single alias.',
     path: ['weights'],
   });
 
@@ -67,7 +72,8 @@ export class DomainTools {
 
   @Tool({
     name: 'list_domains',
-    description: 'List all domain mappings, optionally filtered by project, type, or active status.',
+    description:
+      'List all domain mappings, optionally filtered by project, type, or active status.',
     parameters: z.object({
       projectId: z.string().optional().describe('Filter by project ID'),
       domainType: z
@@ -102,11 +108,7 @@ export class DomainTools {
       id: z.string().describe('Domain mapping ID (UUID)'),
     }),
   })
-  async getDomain(
-    { id }: { id: string },
-    _context: Context,
-    request: Request,
-  ) {
+  async getDomain({ id }: { id: string }, _context: Context, request: Request) {
     const user = await getUserContext(request, this.authService);
     const result = await this.domainsService.findOne(id, user.id, user.apiKeyProjectId);
     return JSON.stringify(result);
@@ -118,27 +120,19 @@ export class DomainTools {
       'Create a new domain mapping (subdomain, custom domain, or redirect). Requires admin role. NOTE: The domain serves content from a deployment alias. For proxy rules (API endpoints) to work, the alias must have a proxy rule set assigned via update_alias(proxyRuleSetId).',
     parameters: z.object({
       domain: z.string().describe('The domain name (e.g. "app.example.com")'),
-      domainType: z
-        .enum(['subdomain', 'custom', 'redirect'])
-        .describe('Type of domain mapping'),
+      domainType: z.enum(['subdomain', 'custom', 'redirect']).describe('Type of domain mapping'),
       projectId: z
         .string()
         .optional()
         .describe('Project ID to map to (required for subdomain/custom)'),
-      alias: z
-        .string()
-        .optional()
-        .describe('Deployment alias to serve (e.g. "production")'),
+      alias: z.string().optional().describe('Deployment alias to serve (e.g. "production")'),
       path: z
         .string()
         .optional()
         .describe(
           'Subdirectory within the deployment to serve as the root (e.g. "apps/myapp/dist" for monorepo deployments where files are nested under a build path)',
         ),
-      redirectTarget: z
-        .string()
-        .optional()
-        .describe('Target URL for redirect domains'),
+      redirectTarget: z.string().optional().describe('Target URL for redirect domains'),
       redirectType: z
         .enum(['301', '302'])
         .optional()
@@ -197,7 +191,10 @@ export class DomainTools {
         .nullable()
         .optional()
         .describe('Visibility: true=public, false=private, null=inherit from alias/project'),
-      isSpa: z.boolean().optional().describe('Enable SPA fallback (serve index.html for all paths)'),
+      isSpa: z
+        .boolean()
+        .optional()
+        .describe('Enable SPA fallback (serve index.html for all paths)'),
       wwwBehavior: z
         .enum(['redirect-to-www', 'redirect-to-root', 'serve-both'])
         .optional()
@@ -241,11 +238,7 @@ export class DomainTools {
     }),
     annotations: { destructiveHint: true },
   })
-  async deleteDomain(
-    { id }: { id: string },
-    _context: Context,
-    request: Request,
-  ) {
+  async deleteDomain({ id }: { id: string }, _context: Context, request: Request) {
     const user = await getUserContext(request, this.authService);
     const result = await this.domainsService.remove(id, user.id, undefined, user.apiKeyProjectId);
     return JSON.stringify(result);
@@ -263,11 +256,7 @@ export class DomainTools {
       domainId: z.string().describe('Domain mapping ID (UUID)'),
     }),
   })
-  async getTrafficConfig(
-    { domainId }: { domainId: string },
-    _context: Context,
-    request: Request,
-  ) {
+  async getTrafficConfig({ domainId }: { domainId: string }, _context: Context, request: Request) {
     const user = await getUserContext(request, this.authService);
     const result = await this.trafficRoutingService.getTrafficConfig(domainId, user.id);
     return JSON.stringify(result);
@@ -312,7 +301,7 @@ export class DomainTools {
   @Tool({
     name: 'list_traffic_aliases',
     description:
-      'List the deployment aliases available to weight for a domain (the aliases that exist on the domain\'s project). Use this to discover valid alias names before calling set_traffic_weights.',
+      "List the deployment aliases available to weight for a domain (the aliases that exist on the domain's project). Use this to discover valid alias names before calling set_traffic_weights.",
     parameters: z.object({
       domainId: z.string().describe('Domain mapping ID (UUID)'),
     }),
@@ -339,11 +328,7 @@ export class DomainTools {
       domainId: z.string().describe('Domain mapping ID (UUID)'),
     }),
   })
-  async listTrafficRules(
-    { domainId }: { domainId: string },
-    _context: Context,
-    request: Request,
-  ) {
+  async listTrafficRules({ domainId }: { domainId: string }, _context: Context, request: Request) {
     const user = await getUserContext(request, this.authService);
     const result = await this.trafficRulesService.findByDomain(domainId, user.id);
     return JSON.stringify(result);
@@ -437,11 +422,7 @@ export class DomainTools {
     }),
     annotations: { destructiveHint: true },
   })
-  async deleteTrafficRule(
-    { ruleId }: { ruleId: string },
-    _context: Context,
-    request: Request,
-  ) {
+  async deleteTrafficRule({ ruleId }: { ruleId: string }, _context: Context, request: Request) {
     const user = await getUserContext(request, this.authService);
     const result = await this.trafficRulesService.remove(ruleId, user.id);
     return JSON.stringify(result);

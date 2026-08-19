@@ -228,10 +228,15 @@ export class RequestLogService implements OnModuleInit, OnModuleDestroy {
           .update(trafficIpRollups)
           .set({
             requestCount: existing.requestCount + group.count,
-            firstSeenAt: existing.firstSeenAt < group.firstSeen ? existing.firstSeenAt : group.firstSeen,
+            firstSeenAt:
+              existing.firstSeenAt < group.firstSeen ? existing.firstSeenAt : group.firstSeen,
             lastSeenAt: existing.lastSeenAt > group.lastSeen ? existing.lastSeenAt : group.lastSeen,
             samplePaths: mergeSamples(existing.samplePaths, group.paths, SAMPLE_PATHS_CAP),
-            sampleUserAgents: mergeSamples(existing.sampleUserAgents, group.userAgents, SAMPLE_UAS_CAP),
+            sampleUserAgents: mergeSamples(
+              existing.sampleUserAgents,
+              group.userAgents,
+              SAMPLE_UAS_CAP,
+            ),
             updatedAt: new Date(),
           })
           .where(eq(trafficIpRollups.id, existing.id));
@@ -276,7 +281,12 @@ export class RequestLogService implements OnModuleInit, OnModuleDestroy {
     );
     const rollupsDeletedOverCap = await this.enforceRollupRowCap();
 
-    return { requestsDeletedByAge, requestsDeletedOverCap, rollupsDeletedByAge, rollupsDeletedOverCap };
+    return {
+      requestsDeletedByAge,
+      requestsDeletedOverCap,
+      rollupsDeletedByAge,
+      rollupsDeletedOverCap,
+    };
   }
 
   /** Trim traffic_requests to maxRows, dropping the oldest first. */
@@ -291,7 +301,11 @@ export class RequestLogService implements OnModuleInit, OnModuleDestroy {
       .from(trafficRequests)
       .orderBy(asc(trafficRequests.timestamp))
       .limit(excess);
-    await this.deleteByIds(trafficRequests, trafficRequests.id, victims.map((v) => v.id));
+    await this.deleteByIds(
+      trafficRequests,
+      trafficRequests.id,
+      victims.map((v) => v.id),
+    );
     return victims.length;
   }
 
@@ -307,7 +321,11 @@ export class RequestLogService implements OnModuleInit, OnModuleDestroy {
       .from(trafficIpRollups)
       .orderBy(asc(trafficIpRollups.lastSeenAt))
       .limit(excess);
-    await this.deleteByIds(trafficIpRollups, trafficIpRollups.id, victims.map((v) => v.id));
+    await this.deleteByIds(
+      trafficIpRollups,
+      trafficIpRollups.id,
+      victims.map((v) => v.id),
+    );
     return victims.length;
   }
 
@@ -334,7 +352,10 @@ export class RequestLogService implements OnModuleInit, OnModuleDestroy {
     pageSize: number,
   ): Promise<PaginatedResult<RequestLogEntry>> {
     const where = buildRequestWhere(filters);
-    const [{ value: total }] = await db.select({ value: count() }).from(trafficRequests).where(where);
+    const [{ value: total }] = await db
+      .select({ value: count() })
+      .from(trafficRequests)
+      .where(where);
     const rows = await db
       .select()
       .from(trafficRequests)
@@ -359,7 +380,10 @@ export class RequestLogService implements OnModuleInit, OnModuleDestroy {
     pageSize: number,
   ): Promise<PaginatedResult<TrafficIpRollup>> {
     const where = buildRollupWhere(filters);
-    const [{ value: total }] = await db.select({ value: count() }).from(trafficIpRollups).where(where);
+    const [{ value: total }] = await db
+      .select({ value: count() })
+      .from(trafficIpRollups)
+      .where(where);
     const sortColumn = {
       requestCount: trafficIpRollups.requestCount,
       lastSeenAt: trafficIpRollups.lastSeenAt,
@@ -438,7 +462,14 @@ export class RequestLogService implements OnModuleInit, OnModuleDestroy {
     if (format === 'json') {
       return JSON.stringify(rows, null, 2);
     }
-    const headers = ['ip', 'requestCount', 'firstSeenAt', 'lastSeenAt', 'samplePaths', 'sampleUserAgents'];
+    const headers = [
+      'ip',
+      'requestCount',
+      'firstSeenAt',
+      'lastSeenAt',
+      'samplePaths',
+      'sampleUserAgents',
+    ];
     const lines = [headers.join(',')];
     for (const r of rows) {
       lines.push(
@@ -461,7 +492,8 @@ function buildRequestWhere(filters: RequestLogFilters) {
   if (filters.ip) conditions.push(eq(trafficRequests.ip, filters.ip));
   if (filters.path) conditions.push(ilike(trafficRequests.path, `%${escapeLike(filters.path)}%`));
   if (filters.status !== undefined) conditions.push(eq(trafficRequests.status, filters.status));
-  if (filters.classification) conditions.push(eq(trafficRequests.classification, filters.classification));
+  if (filters.classification)
+    conditions.push(eq(trafficRequests.classification, filters.classification));
   if (filters.from) conditions.push(gte(trafficRequests.timestamp, new Date(filters.from)));
   if (filters.to) conditions.push(lte(trafficRequests.timestamp, new Date(filters.to)));
   return conditions.length > 0 ? and(...conditions) : undefined;

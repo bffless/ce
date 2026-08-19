@@ -39,7 +39,12 @@ const pipeline = (draftConfig: Record<string, unknown>) => ({
 });
 
 const SKILLS_APP = { mode: 'selected', enabled: ['image-prompts'] };
-const SKILLS_USER = { mode: 'selected', enabled: ['thumbnail-concepts'], alias: 'skills', path: './' };
+const SKILLS_USER = {
+  mode: 'selected',
+  enabled: ['thumbnail-concepts'],
+  alias: 'skills',
+  path: './',
+};
 
 describe('mergeRuleThreeWay', () => {
   it('keeps both sides when they changed different step config keys', () => {

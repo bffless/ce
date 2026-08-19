@@ -83,7 +83,10 @@ export class EmbedStoreHandler implements StepHandler<EmbedStoreHandlerConfig> {
 
     // Resolve optional metadata
     const metadata = config.metadata
-      ? (this.expressionEvaluator.evaluateExpression(config.metadata, context, stepName) as Record<string, unknown>)
+      ? (this.expressionEvaluator.evaluateExpression(config.metadata, context, stepName) as Record<
+          string,
+          unknown
+        >)
       : undefined;
 
     let stored = 0;

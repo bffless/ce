@@ -13,8 +13,7 @@ describe('SyncProxyRuleDto', () => {
   const validateRule = async (rule: Record<string, unknown>) =>
     validate(plainToInstance(SyncProxyRuleDto, rule));
 
-  const propertiesWithErrors = (errors: { property: string }[]) =>
-    errors.map((e) => e.property);
+  const propertiesWithErrors = (errors: { property: string }[]) => errors.map((e) => e.property);
 
   describe('targetUrl SSRF validation', () => {
     it('rejects an HTTP URL to the cloud metadata IP (169.254.169.254)', async () => {
@@ -145,10 +144,18 @@ describe('SyncProxyRuleSetDto', () => {
       ruleSet: { name: 'studio', description: 'Studio API', environment: 'production' },
       rules: [{ pathPattern: '/api/*', targetUrl: 'https://api.example.com' }],
       schemas: [
-        { id: 'f4b6e9a0-0000-4000-8000-000000000001', name: 'comments', fields: [{ name: 'body', type: 'text', required: true }] },
+        {
+          id: 'f4b6e9a0-0000-4000-8000-000000000001',
+          name: 'comments',
+          fields: [{ name: 'body', type: 'text', required: true }],
+        },
       ],
       options: { prune: true, dryRun: true, strictSchemas: true },
-      source: { repo: 'bffless/apps', path: 'apps/studio/.bffless/proxy-rules/studio', gitSha: 'abc123' },
+      source: {
+        repo: 'bffless/apps',
+        path: 'apps/studio/.bffless/proxy-rules/studio',
+        gitSha: 'abc123',
+      },
     });
 
     expect(await validate(dto)).toEqual([]);

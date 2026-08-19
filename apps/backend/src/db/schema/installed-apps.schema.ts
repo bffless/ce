@@ -1,12 +1,4 @@
-import {
-  pgTable,
-  uuid,
-  varchar,
-  timestamp,
-  jsonb,
-  index,
-  unique,
-} from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, timestamp, jsonb, index, unique } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { projects } from './projects.schema';
 import { users } from './users.schema';
@@ -47,10 +39,7 @@ export const installedApps = pgTable(
       .$type<InstalledAppStatus>()
       .notNull()
       .default('installing'),
-    createdResources: jsonb('created_resources')
-      .$type<CreatedResources>()
-      .notNull()
-      .default({}),
+    createdResources: jsonb('created_resources').$type<CreatedResources>().notNull().default({}),
     installedBy: uuid('installed_by')
       .references(() => users.id)
       .notNull(),

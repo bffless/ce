@@ -18,19 +18,10 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Plus, Trash2, HelpCircle, Check, ChevronsUpDown } from 'lucide-react';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import type { ResponseHandlerConfig } from './types';
 import type { PreviousStep } from './AvailableVariables';
@@ -75,7 +66,11 @@ const CONTENT_TYPES = [
   { value: 'text/calendar', label: 'Calendar (text/calendar)' },
 ];
 
-export function ResponseHandlerConfig({ config, onChange, previousSteps = [] }: ResponseHandlerConfigProps) {
+export function ResponseHandlerConfig({
+  config,
+  onChange,
+  previousSteps = [],
+}: ResponseHandlerConfigProps) {
   const [status, setStatus] = useState<number>(config.status || 200);
   const [contentType, setContentType] = useState(config.contentType || 'application/json');
   const [contentTypeOpen, setContentTypeOpen] = useState(false);
@@ -100,9 +95,7 @@ export function ResponseHandlerConfig({ config, onChange, previousSteps = [] }: 
   const [headers, setHeaders] = useState<HeaderEntry[]>(() => {
     const existing = config.headers || {};
     const entries = Object.entries(existing);
-    return entries.length > 0
-      ? entries.map(([key, value]) => ({ key, value }))
-      : [];
+    return entries.length > 0 ? entries.map(([key, value]) => ({ key, value })) : [];
   });
 
   useEffect(() => {
@@ -165,10 +158,7 @@ export function ResponseHandlerConfig({ config, onChange, previousSteps = [] }: 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="status">Status Code</Label>
-          <Select
-            value={String(status)}
-            onValueChange={(v) => setStatus(Number(v))}
-          >
+          <Select value={String(status)} onValueChange={(v) => setStatus(Number(v))}>
             <SelectTrigger id="status">
               <SelectValue />
             </SelectTrigger>
@@ -262,8 +252,12 @@ export function ResponseHandlerConfig({ config, onChange, previousSteps = [] }: 
                 </button>
               </TooltipTrigger>
               <TooltipContent className="max-w-xs">
-                <p><strong>Template:</strong> Use <code>{'{{expression}}'}</code> for dynamic values</p>
-                <p className="mt-1"><strong>JSON:</strong> Map keys to expressions</p>
+                <p>
+                  <strong>Template:</strong> Use <code>{'{{expression}}'}</code> for dynamic values
+                </p>
+                <p className="mt-1">
+                  <strong>JSON:</strong> Map keys to expressions
+                </p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>

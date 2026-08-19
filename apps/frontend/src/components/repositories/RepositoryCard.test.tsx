@@ -69,7 +69,7 @@ describe('RepositoryCard', () => {
     render(
       <RouterWrapper>
         <RepositoryCard repository={mockRepository} />
-      </RouterWrapper>
+      </RouterWrapper>,
     );
 
     const link = screen.getByRole('link', { name: /testuser\/test-repo/i });
@@ -81,7 +81,7 @@ describe('RepositoryCard', () => {
     render(
       <RouterWrapper>
         <RepositoryCard repository={mockRepository} />
-      </RouterWrapper>
+      </RouterWrapper>,
     );
 
     expect(screen.getByText('Test Repository')).toBeInTheDocument();
@@ -91,7 +91,7 @@ describe('RepositoryCard', () => {
     render(
       <RouterWrapper>
         <RepositoryCard repository={mockRepository} />
-      </RouterWrapper>
+      </RouterWrapper>,
     );
 
     expect(screen.getByText('A test repository for unit tests')).toBeInTheDocument();
@@ -101,7 +101,7 @@ describe('RepositoryCard', () => {
     render(
       <RouterWrapper>
         <RepositoryCard repository={mockPublicRepository} />
-      </RouterWrapper>
+      </RouterWrapper>,
     );
 
     // Description should not be in document
@@ -113,7 +113,7 @@ describe('RepositoryCard', () => {
     render(
       <RouterWrapper>
         <RepositoryCard repository={mockRepository} />
-      </RouterWrapper>
+      </RouterWrapper>,
     );
 
     expect(screen.getByText(/10 deployments/i)).toBeInTheDocument();
@@ -128,7 +128,7 @@ describe('RepositoryCard', () => {
     render(
       <RouterWrapper>
         <RepositoryCard repository={singleDeploymentRepo} />
-      </RouterWrapper>
+      </RouterWrapper>,
     );
 
     expect(screen.getByText(/1 deployment$/i)).toBeInTheDocument();
@@ -138,7 +138,7 @@ describe('RepositoryCard', () => {
     render(
       <RouterWrapper>
         <RepositoryCard repository={mockRepository} />
-      </RouterWrapper>
+      </RouterWrapper>,
     );
 
     expect(screen.getByText(/1\.0 MB/i)).toBeInTheDocument();
@@ -148,7 +148,7 @@ describe('RepositoryCard', () => {
     render(
       <RouterWrapper>
         <RepositoryCard repository={mockRepository} />
-      </RouterWrapper>
+      </RouterWrapper>,
     );
 
     expect(screen.getByText(/Updated/i)).toBeInTheDocument();
@@ -158,7 +158,7 @@ describe('RepositoryCard', () => {
     render(
       <RouterWrapper>
         <RepositoryCard repository={mockPublicRepository} />
-      </RouterWrapper>
+      </RouterWrapper>,
     );
 
     expect(screen.queryByText(/Updated/i)).not.toBeInTheDocument();
@@ -168,7 +168,7 @@ describe('RepositoryCard', () => {
     render(
       <RouterWrapper>
         <RepositoryCard repository={mockRepository} />
-      </RouterWrapper>
+      </RouterWrapper>,
     );
 
     expect(screen.getByText('Owner')).toBeInTheDocument();
@@ -178,7 +178,7 @@ describe('RepositoryCard', () => {
     render(
       <RouterWrapper>
         <RepositoryCard repository={mockPrivateRepository} />
-      </RouterWrapper>
+      </RouterWrapper>,
     );
 
     expect(screen.getByText('Admin')).toBeInTheDocument();
@@ -199,7 +199,7 @@ describe('RepositoryCard', () => {
     render(
       <RouterWrapper>
         <RepositoryCard repository={globalAdminRepository} />
-      </RouterWrapper>
+      </RouterWrapper>,
     );
 
     expect(screen.getByText('Owner')).toBeInTheDocument();
@@ -210,7 +210,7 @@ describe('RepositoryCard', () => {
     render(
       <RouterWrapper>
         <RepositoryCard repository={mockPublicRepository} />
-      </RouterWrapper>
+      </RouterWrapper>,
     );
 
     // Permission badge should not be shown for public repos
@@ -224,7 +224,7 @@ describe('RepositoryCard', () => {
     render(
       <RouterWrapper>
         <RepositoryCard repository={mockRepository} />
-      </RouterWrapper>
+      </RouterWrapper>,
     );
 
     expect(screen.getByText('Public')).toBeInTheDocument();
@@ -234,7 +234,7 @@ describe('RepositoryCard', () => {
     render(
       <RouterWrapper>
         <RepositoryCard repository={mockPrivateRepository} />
-      </RouterWrapper>
+      </RouterWrapper>,
     );
 
     expect(screen.getByText('Private')).toBeInTheDocument();
@@ -244,7 +244,7 @@ describe('RepositoryCard', () => {
     render(
       <RouterWrapper>
         <RepositoryCard repository={mockRepository} />
-      </RouterWrapper>
+      </RouterWrapper>,
     );
 
     const buttons = screen.getAllByRole('link', { name: /View Repository/i });
@@ -256,7 +256,7 @@ describe('RepositoryCard', () => {
     render(
       <RouterWrapper>
         <RepositoryCard repository={mockRepository} />
-      </RouterWrapper>
+      </RouterWrapper>,
     );
 
     const article = screen.getByRole('article');
@@ -268,7 +268,7 @@ describe('RepositoryCard', () => {
     render(
       <RouterWrapper>
         <RepositoryCard repository={mockRepository} />
-      </RouterWrapper>
+      </RouterWrapper>,
     );
 
     // Activity badge should be present (Active/Inactive/Idle)
@@ -280,7 +280,7 @@ describe('RepositoryCard', () => {
     render(
       <RouterWrapper>
         <RepositoryCard repository={mockPublicRepository} />
-      </RouterWrapper>
+      </RouterWrapper>,
     );
 
     expect(screen.getByText(/0 deployments/i)).toBeInTheDocument();
@@ -291,7 +291,7 @@ describe('RepositoryCard', () => {
     const { container } = render(
       <RouterWrapper>
         <RepositoryCard repository={mockRepository} />
-      </RouterWrapper>
+      </RouterWrapper>,
     );
 
     const card = container.querySelector('.hover\\:shadow-md');
@@ -302,7 +302,7 @@ describe('RepositoryCard', () => {
     render(
       <RouterWrapper>
         <RepositoryCard repository={mockRepository} />
-      </RouterWrapper>
+      </RouterWrapper>,
     );
 
     // Should have CardHeader, CardContent, and CardFooter

@@ -15,13 +15,15 @@ export function SelfSignedConfirm({ domain, onBack }: { domain: string; onBack: 
         <p className="mt-2 text-sm text-muted-foreground">
           This server will keep serving its built-in self-signed certificate. Your CDN terminates
           browser TLS in front of it, so visitors never see it — there&apos;s nothing to paste and
-          nothing to renew. The link from your CDN to this server is encrypted but not authenticated;
-          if you turn on your CDN&apos;s origin verification, go back and choose Let&apos;s Encrypt or
-          paste a certificate.
+          nothing to renew. The link from your CDN to this server is encrypted but not
+          authenticated; if you turn on your CDN&apos;s origin verification, go back and choose
+          Let&apos;s Encrypt or paste a certificate.
         </p>
       </div>
       <div className="flex justify-between">
-        <Button variant="outline" onClick={onBack}>Back</Button>
+        <Button variant="outline" onClick={onBack}>
+          Back
+        </Button>
         <Button onClick={confirm}>Continue</Button>
       </div>
     </div>

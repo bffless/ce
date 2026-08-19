@@ -20,10 +20,9 @@ export const shareLinks = pgTable(
     projectId: uuid('project_id').references(() => projects.id, {
       onDelete: 'cascade',
     }),
-    domainMappingId: uuid('domain_mapping_id').references(
-      () => domainMappings.id,
-      { onDelete: 'cascade' },
-    ),
+    domainMappingId: uuid('domain_mapping_id').references(() => domainMappings.id, {
+      onDelete: 'cascade',
+    }),
     token: varchar('token', { length: 64 }).notNull().unique(),
     label: varchar('label', { length: 255 }),
     isActive: boolean('is_active').notNull().default(true),

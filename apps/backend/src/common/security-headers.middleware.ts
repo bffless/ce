@@ -26,8 +26,7 @@ export class SecurityHeadersMiddleware implements NestMiddleware {
     // In local dev, CSP frame-ancestors doesn't work with arbitrary ports
     // (e.g., frontend on :5173 iframing backend on :3000). Skip frame
     // restrictions entirely — same behavior as the old Helmet config.
-    this.isLocalDev =
-      frontendUrl.includes('localhost') || frontendUrl.includes('127.0.0.1');
+    this.isLocalDev = frontendUrl.includes('localhost') || frontendUrl.includes('127.0.0.1');
 
     // Build frame-ancestors list from environment
     const ancestors: string[] = ["'self'"];
@@ -65,10 +64,7 @@ export class SecurityHeadersMiddleware implements NestMiddleware {
       // frame-ancestors supports multiple origins and is the modern standard.
       // X-Frame-Options is not set because CSP frame-ancestors supersedes it,
       // and X-Frame-Options doesn't support multiple origins.
-      res.setHeader(
-        'Content-Security-Policy',
-        `frame-ancestors ${this.frameAncestors.join(' ')}`,
-      );
+      res.setHeader('Content-Security-Policy', `frame-ancestors ${this.frameAncestors.join(' ')}`);
     }
 
     next();

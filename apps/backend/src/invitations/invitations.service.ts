@@ -182,9 +182,13 @@ export class InvitationsService {
    * Validate an invitation token (public endpoint)
    * Returns basic info without sensitive data
    */
-  async validateToken(
-    token: string,
-  ): Promise<{ valid: boolean; email?: string; role?: string; redirectUrl?: string; error?: string }> {
+  async validateToken(token: string): Promise<{
+    valid: boolean;
+    email?: string;
+    role?: string;
+    redirectUrl?: string;
+    error?: string;
+  }> {
     const [invitation] = await db
       .select()
       .from(workspaceInvitations)

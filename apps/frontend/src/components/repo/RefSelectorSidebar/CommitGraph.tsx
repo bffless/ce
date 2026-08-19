@@ -74,39 +74,36 @@ export function CommitGraph({
         onLoadMore();
       }
     },
-    [hasMore, isLoadingMore, onLoadMore, commits.length]
+    [hasMore, isLoadingMore, onLoadMore, commits.length],
   );
 
-  const Row = useCallback(
-    ({ index, style, data }: ListChildComponentProps<ItemData>) => {
-      const { commits, currentRef, onSelect, aliasMap } = data;
+  const Row = useCallback(({ index, style, data }: ListChildComponentProps<ItemData>) => {
+    const { commits, currentRef, onSelect, aliasMap } = data;
 
-      if (index >= commits.length) {
-        return (
-          <div style={style} className="flex items-center px-3 gap-3">
-            <Skeleton className="h-3 w-3 rounded-full" />
-            <Skeleton className="h-4 w-16" />
-            <Skeleton className="h-4 flex-1" />
-          </div>
-        );
-      }
-
-      const commit = commits[index];
-      const aliasName = aliasMap.get(commit.sha);
-
+    if (index >= commits.length) {
       return (
-        <CommitGraphRow
-          key={commit.sha}
-          style={style}
-          commit={commit}
-          isSelected={currentRef === commit.sha}
-          onSelect={onSelect}
-          aliasName={aliasName}
-        />
+        <div style={style} className="flex items-center px-3 gap-3">
+          <Skeleton className="h-3 w-3 rounded-full" />
+          <Skeleton className="h-4 w-16" />
+          <Skeleton className="h-4 flex-1" />
+        </div>
       );
-    },
-    []
-  );
+    }
+
+    const commit = commits[index];
+    const aliasName = aliasMap.get(commit.sha);
+
+    return (
+      <CommitGraphRow
+        key={commit.sha}
+        style={style}
+        commit={commit}
+        isSelected={currentRef === commit.sha}
+        onSelect={onSelect}
+        aliasName={aliasName}
+      />
+    );
+  }, []);
 
   if (commits.length === 0) {
     return null;

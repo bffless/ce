@@ -96,7 +96,9 @@ export function isDisallowedProbeIp(ip: string): boolean {
   if (parts.length !== 4 || parts.some((p) => Number.isNaN(p) || p < 0 || p > 255)) return true;
   const [a, b] = parts;
   return (
-    a === 0 || a === 127 || a === 10 ||
+    a === 0 ||
+    a === 127 ||
+    a === 10 ||
     (a === 172 && b >= 16 && b <= 31) ||
     (a === 192 && b === 168) ||
     (a === 169 && b === 254) ||
@@ -334,7 +336,12 @@ export class BootstrapDnsPreflightService {
   // fetch() behavior: any non-2xx (including a 3xx) is treated as a probe
   // failure below. A redirect target could point at a different hostname,
   // which would reopen the same rebinding hole one hop later.
-  private async fetchProbe(host: string, ip: string | undefined, token: string, _content: string): Promise<string> {
+  private async fetchProbe(
+    host: string,
+    ip: string | undefined,
+    token: string,
+    _content: string,
+  ): Promise<string> {
     if (!ip) throw new Error('No resolved address to probe');
     const { statusCode, body } = await this.sendProbeRequest({
       host: ip,
@@ -395,7 +402,9 @@ export class BootstrapDnsPreflightService {
     });
   }
 
-  private sendProbeRequest(options: http.RequestOptions): Promise<{ statusCode: number; body: string }> {
+  private sendProbeRequest(
+    options: http.RequestOptions,
+  ): Promise<{ statusCode: number; body: string }> {
     return this.consumeProbeResponse(http.request(options), options);
   }
 
@@ -414,7 +423,10 @@ export class BootstrapDnsPreflightService {
         const chunks: Buffer[] = [];
         res.on('data', (chunk: Buffer) => chunks.push(chunk));
         res.on('end', () =>
-          resolve({ statusCode: res.statusCode ?? 0, body: Buffer.concat(chunks).toString('utf8') }),
+          resolve({
+            statusCode: res.statusCode ?? 0,
+            body: Buffer.concat(chunks).toString('utf8'),
+          }),
         );
         res.on('error', reject);
       });

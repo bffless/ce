@@ -52,7 +52,7 @@ const renderWithProviders = (
       searchQuery: '',
       activeTab: 'aliases',
     },
-  }
+  },
 ) => {
   const store = configureStore({
     reducer: {
@@ -65,7 +65,7 @@ const renderWithProviders = (
     ...render(
       <Provider store={store}>
         <BrowserRouter>{component}</BrowserRouter>
-      </Provider>
+      </Provider>,
     ),
     store,
   };
@@ -77,37 +77,19 @@ describe('RefSelectorSidebar', () => {
   });
 
   it('should render with title', () => {
-    renderWithProviders(
-      <RefSelectorSidebar
-        owner="test"
-        repo="repo"
-        currentRef="abc123def456"
-      />
-    );
+    renderWithProviders(<RefSelectorSidebar owner="test" repo="repo" currentRef="abc123def456" />);
 
     expect(screen.getByText('References')).toBeInTheDocument();
   });
 
   it('should render search input', () => {
-    renderWithProviders(
-      <RefSelectorSidebar
-        owner="test"
-        repo="repo"
-        currentRef="abc123def456"
-      />
-    );
+    renderWithProviders(<RefSelectorSidebar owner="test" repo="repo" currentRef="abc123def456" />);
 
     expect(screen.getByPlaceholderText(/search/i)).toBeInTheDocument();
   });
 
   it('should render tabs', () => {
-    renderWithProviders(
-      <RefSelectorSidebar
-        owner="test"
-        repo="repo"
-        currentRef="abc123def456"
-      />
-    );
+    renderWithProviders(<RefSelectorSidebar owner="test" repo="repo" currentRef="abc123def456" />);
 
     expect(screen.getByRole('tab', { name: /aliases/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /branches/i })).toBeInTheDocument();
@@ -115,33 +97,20 @@ describe('RefSelectorSidebar', () => {
   });
 
   it('should show aliases tab content by default', () => {
-    renderWithProviders(
-      <RefSelectorSidebar
-        owner="test"
-        repo="repo"
-        currentRef="abc123def456"
-      />
-    );
+    renderWithProviders(<RefSelectorSidebar owner="test" repo="repo" currentRef="abc123def456" />);
 
     expect(screen.getByText('production')).toBeInTheDocument();
     expect(screen.getByText('staging')).toBeInTheDocument();
   });
 
   it('should switch to branches tab when clicked', () => {
-    renderWithProviders(
-      <RefSelectorSidebar
-        owner="test"
-        repo="repo"
-        currentRef="abc123def456"
-      />,
-      {
-        refSelector: {
-          isOpen: false,
-          searchQuery: '',
-          activeTab: 'branches',
-        },
-      }
-    );
+    renderWithProviders(<RefSelectorSidebar owner="test" repo="repo" currentRef="abc123def456" />, {
+      refSelector: {
+        isOpen: false,
+        searchQuery: '',
+        activeTab: 'branches',
+      },
+    });
 
     // When branches tab is active, branch items should be visible
     const branchesTab = screen.getByRole('tab', { name: /branches/i });
@@ -152,51 +121,27 @@ describe('RefSelectorSidebar', () => {
   });
 
   it('should have proper ARIA dialog role', () => {
-    renderWithProviders(
-      <RefSelectorSidebar
-        owner="test"
-        repo="repo"
-        currentRef="abc123def456"
-      />
-    );
+    renderWithProviders(<RefSelectorSidebar owner="test" repo="repo" currentRef="abc123def456" />);
 
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByRole('dialog')).toHaveAttribute('aria-modal', 'true');
   });
 
   it('should have search input with proper aria-label', () => {
-    renderWithProviders(
-      <RefSelectorSidebar
-        owner="test"
-        repo="repo"
-        currentRef="abc123def456"
-      />
-    );
+    renderWithProviders(<RefSelectorSidebar owner="test" repo="repo" currentRef="abc123def456" />);
 
     const searchInput = screen.getByRole('searchbox');
     expect(searchInput).toHaveAttribute('aria-label', 'Search references');
   });
 
   it('should show close button with aria-label', () => {
-    renderWithProviders(
-      <RefSelectorSidebar
-        owner="test"
-        repo="repo"
-        currentRef="abc123def456"
-      />
-    );
+    renderWithProviders(<RefSelectorSidebar owner="test" repo="repo" currentRef="abc123def456" />);
 
     expect(screen.getByRole('button', { name: /close/i })).toBeInTheDocument();
   });
 
   it('should filter refs when searching', async () => {
-    renderWithProviders(
-      <RefSelectorSidebar
-        owner="test"
-        repo="repo"
-        currentRef="abc123def456"
-      />
-    );
+    renderWithProviders(<RefSelectorSidebar owner="test" repo="repo" currentRef="abc123def456" />);
 
     const searchInput = screen.getByPlaceholderText(/search/i);
     fireEvent.change(searchInput, { target: { value: 'production' } });
@@ -208,13 +153,7 @@ describe('RefSelectorSidebar', () => {
   });
 
   it('should show selected indicator for current ref', () => {
-    renderWithProviders(
-      <RefSelectorSidebar
-        owner="test"
-        repo="repo"
-        currentRef="abc123def456"
-      />
-    );
+    renderWithProviders(<RefSelectorSidebar owner="test" repo="repo" currentRef="abc123def456" />);
 
     // The production alias points to the current ref
     const productionOption = screen.getByRole('option', { name: /production/i });
@@ -236,13 +175,7 @@ describe('RefSelectorSidebar loading state', () => {
       refetch: vi.fn(),
     } as unknown as ReturnType<typeof useGetRepositoryRefsQuery>);
 
-    renderWithProviders(
-      <RefSelectorSidebar
-        owner="test"
-        repo="repo"
-        currentRef="abc123def456"
-      />
-    );
+    renderWithProviders(<RefSelectorSidebar owner="test" repo="repo" currentRef="abc123def456" />);
 
     // Should still show the header
     expect(screen.getByText('References')).toBeInTheDocument();
@@ -265,13 +198,7 @@ describe('RefSelectorSidebar error state', () => {
       error: new Error('Network error'),
     } as unknown as ReturnType<typeof useGetRepositoryRefsQuery>);
 
-    renderWithProviders(
-      <RefSelectorSidebar
-        owner="test"
-        repo="repo"
-        currentRef="abc123def456"
-      />
-    );
+    renderWithProviders(<RefSelectorSidebar owner="test" repo="repo" currentRef="abc123def456" />);
 
     expect(screen.getByText('Failed to load references')).toBeInTheDocument();
   });

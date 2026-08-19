@@ -106,12 +106,7 @@ export function MigrationProgress({ onComplete }: MigrationProgressProps) {
           </div>
         </div>
         {migrationProgress.status === 'in_progress' && (
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={handleCancel}
-            disabled={cancelling}
-          >
+          <Button variant="destructive" size="sm" onClick={handleCancel} disabled={cancelling}>
             {cancelling ? 'Cancelling...' : 'Cancel Migration'}
           </Button>
         )}
@@ -179,7 +174,8 @@ export function MigrationProgress({ onComplete }: MigrationProgressProps) {
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>
             {migrationProgress.errors.length} file(s) failed to migrate.
-            {migrationProgress.canResume && ' You can resume the migration after fixing the issues.'}
+            {migrationProgress.canResume &&
+              ' You can resume the migration after fixing the issues.'}
           </AlertDescription>
         </Alert>
       )}

@@ -90,7 +90,11 @@ export class AppPreflightService {
   ) {}
 
   async instanceGates(requires?: AppManifestRequires): Promise<GateResult[]> {
-    return [this.storageGate(requires), this.ceVersionGate(requires), ...this.platformConfigGates()];
+    return [
+      this.storageGate(requires),
+      this.ceVersionGate(requires),
+      ...this.platformConfigGates(),
+    ];
   }
 
   /**
@@ -162,7 +166,8 @@ export class AppPreflightService {
     return {
       id: 'storage',
       status: 'fail',
-      message: 'This app requires presigned upload URLs, but the active storage adapter does not support them.',
+      message:
+        'This app requires presigned upload URLs, but the active storage adapter does not support them.',
       remediation:
         'Enable bundled MinIO storage (set ENABLE_MINIO=true and restart), or switch to a real S3-compatible ' +
         'bucket. Since CE v0.3.15, local filesystem storage also supports presigned uploads when ENCRYPTION_KEY ' +
@@ -188,7 +193,8 @@ export class AppPreflightService {
         message:
           `This instance's CE version could not be determined, so we cannot confirm it satisfies the ` +
           `required minimum (${requires.ceMin}).`,
-        remediation: 'Verify this is a genuine BFFless CE deployment with an intact root package.json.',
+        remediation:
+          'Verify this is a genuine BFFless CE deployment with an intact root package.json.',
       };
     }
 
@@ -220,7 +226,8 @@ export class AppPreflightService {
       gates.push({
         id: 'platform-config',
         status: 'fail',
-        message: 'Platform mode is enabled but CONTROL_PLANE_URL and/or WORKSPACE_ID is not configured.',
+        message:
+          'Platform mode is enabled but CONTROL_PLANE_URL and/or WORKSPACE_ID is not configured.',
         remediation: "Set CONTROL_PLANE_URL and WORKSPACE_ID in this workspace's environment.",
       });
     } else {
@@ -457,7 +464,9 @@ export class AppPreflightService {
         .limit(1);
       const domainOwnedByThisInstall = existingInstall?.domainId === existingDomain?.id;
       if (existingDomain && !domainOwnedByThisInstall) {
-        issues.push(`The domain "${appHost}" is already mapped and does not belong to this app's install.`);
+        issues.push(
+          `The domain "${appHost}" is already mapped and does not belong to this app's install.`,
+        );
       }
     }
 
@@ -510,11 +519,13 @@ export class AppPreflightService {
           'admin',
           null,
         );
-        const schemaResolutions: SyncSchemaResolutionLike[] = response.schemaResolutions.map((r) => ({
-          name: r.name,
-          action: r.action,
-          fieldMismatch: r.fieldMismatch,
-        }));
+        const schemaResolutions: SyncSchemaResolutionLike[] = response.schemaResolutions.map(
+          (r) => ({
+            name: r.name,
+            action: r.action,
+            fieldMismatch: r.fieldMismatch,
+          }),
+        );
         for (const resolution of schemaResolutions) {
           if (resolution.fieldMismatch) mismatchedSchemas.push(resolution.name);
         }
@@ -549,7 +560,8 @@ export class AppPreflightService {
             id: 'data-tables',
             status: 'warn',
             message: `Some reused data table schemas have mismatched field definitions: ${mismatchedSchemas.join(', ')}.`,
-            remediation: 'Review the schema differences — reuse is the documented adoption path; this will not block install.',
+            remediation:
+              'Review the schema differences — reuse is the documented adoption path; this will not block install.',
           }
         : { id: 'data-tables', status: 'pass', message: 'Data table schemas are compatible.' };
 

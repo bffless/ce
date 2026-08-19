@@ -59,7 +59,7 @@ function AliasRow({
   // Fetch visibility info for this alias
   const { data: visibilityInfo } = useGetAliasVisibilityQuery(
     { projectId, aliasName: alias.name },
-    { skip: !projectId }
+    { skip: !projectId },
   );
 
   const [updateVisibility, { isLoading: isUpdatingVisibility }] =
@@ -73,16 +73,14 @@ function AliasRow({
         data: { isPublic: newValue },
       }).unwrap();
 
-      const visibilityLabel =
-        newValue === null ? 'Inherit' : newValue ? 'Public' : 'Private';
+      const visibilityLabel = newValue === null ? 'Inherit' : newValue ? 'Public' : 'Private';
       toast({
         title: 'Visibility updated',
         description: `Alias "${alias.name}" is now set to ${visibilityLabel}`,
       });
     } catch (err: unknown) {
       const errorMessage =
-        (err as { data?: { message?: string } })?.data?.message ||
-        'Failed to update visibility';
+        (err as { data?: { message?: string } })?.data?.message || 'Failed to update visibility';
       toast({
         title: 'Error',
         description: errorMessage,
@@ -171,9 +169,7 @@ function AliasRow({
 
       {/* Points To (commit SHA) */}
       <div className="flex items-center">
-        <code className="text-xs font-mono bg-muted px-2 py-1 rounded">
-          {alias.shortSha}
-        </code>
+        <code className="text-xs font-mono bg-muted px-2 py-1 rounded">{alias.shortSha}</code>
       </div>
 
       {/* Branch */}
@@ -183,9 +179,7 @@ function AliasRow({
 
       {/* Last Updated */}
       <div className="flex items-center">
-        <span className="text-xs text-muted-foreground">
-          {formatDate(alias.updatedAt)}
-        </span>
+        <span className="text-xs text-muted-foreground">{formatDate(alias.updatedAt)}</span>
       </div>
 
       {/* Proxy Rules */}
@@ -294,9 +288,7 @@ export function AliasesTab({ owner, repo }: AliasesTabProps) {
   });
 
   // Create a map of rule set ID to name for quick lookup
-  const ruleSetNameMap = new Map(
-    ruleSetsData?.ruleSets.map((rs) => [rs.id, rs.name]) || []
-  );
+  const ruleSetNameMap = new Map(ruleSetsData?.ruleSets.map((rs) => [rs.id, rs.name]) || []);
 
   // Format date with relative time
   const formatDate = (dateString: string): string => {
@@ -409,108 +401,110 @@ export function AliasesTab({ owner, repo }: AliasesTabProps) {
             </Button>
           )}
         </CardHeader>
-      <CardContent>
-        {/* Aliases Table */}
-        <div className="space-y-2">
-          {/* Table Header - Desktop only */}
-          <div className="hidden md:grid md:grid-cols-[minmax(120px,2fr)_minmax(100px,1.5fr)_minmax(80px,1fr)_minmax(80px,1fr)_minmax(100px,1.5fr)_minmax(80px,1fr)_minmax(150px,2fr)] gap-4 px-4 py-2 text-xs font-medium text-muted-foreground border-b">
-            <div>Alias Name</div>
-            <div>Visibility</div>
-            <div>Points To</div>
-            <div>Branch</div>
-            <div>Last Updated</div>
-            <div>Proxy Rules</div>
-            <div>Actions</div>
+        <CardContent>
+          {/* Aliases Table */}
+          <div className="space-y-2">
+            {/* Table Header - Desktop only */}
+            <div className="hidden md:grid md:grid-cols-[minmax(120px,2fr)_minmax(100px,1.5fr)_minmax(80px,1fr)_minmax(80px,1fr)_minmax(100px,1.5fr)_minmax(80px,1fr)_minmax(150px,2fr)] gap-4 px-4 py-2 text-xs font-medium text-muted-foreground border-b">
+              <div>Alias Name</div>
+              <div>Visibility</div>
+              <div>Points To</div>
+              <div>Branch</div>
+              <div>Last Updated</div>
+              <div>Proxy Rules</div>
+              <div>Actions</div>
+            </div>
+
+            {/* Alias Rows */}
+            {aliasesData.aliases.map((alias) => {
+              // Resolve rule set IDs: prefer proxyRuleSetIds, fall back to legacy proxyRuleSetId
+              const ruleSetIds = alias.proxyRuleSetIds?.length
+                ? alias.proxyRuleSetIds
+                : alias.proxyRuleSetId
+                  ? [alias.proxyRuleSetId]
+                  : [];
+              const ruleSetNames = ruleSetIds
+                .map((id) => ruleSetNameMap.get(id))
+                .filter((name): name is string => !!name);
+
+              return (
+                <AliasRow
+                  key={alias.id}
+                  alias={alias}
+                  projectId={project?.id || ''}
+                  proxyRuleSetNames={ruleSetNames}
+                  canEdit={canEdit}
+                  formatDate={formatDate}
+                  onView={() => navigate(`/repo/${owner}/${repo}/${alias.commitSha}`)}
+                  onEdit={() =>
+                    setUpdateDialogState({
+                      open: true,
+                      aliasName: alias.name,
+                      commitSha: alias.commitSha,
+                      branch: alias.branch,
+                      proxyRuleSetIds: ruleSetIds,
+                      isPublic: alias.isPublic,
+                      unauthorizedBehavior: alias.unauthorizedBehavior,
+                      requiredRole: alias.requiredRole,
+                    })
+                  }
+                  onDelete={() =>
+                    setDeleteDialogState({
+                      open: true,
+                      aliasName: alias.name,
+                    })
+                  }
+                />
+              );
+            })}
           </div>
+        </CardContent>
+      </Card>
 
-          {/* Alias Rows */}
-          {aliasesData.aliases.map((alias) => {
-            // Resolve rule set IDs: prefer proxyRuleSetIds, fall back to legacy proxyRuleSetId
-            const ruleSetIds = alias.proxyRuleSetIds?.length
-              ? alias.proxyRuleSetIds
-              : alias.proxyRuleSetId ? [alias.proxyRuleSetId] : [];
-            const ruleSetNames = ruleSetIds
-              .map((id) => ruleSetNameMap.get(id))
-              .filter((name): name is string => !!name);
+      {canEdit && (
+        <>
+          <CreateAliasDialog
+            owner={owner}
+            repo={repo}
+            projectId={project?.id}
+            open={isCreateDialogOpen}
+            onOpenChange={setIsCreateDialogOpen}
+          />
 
-            return (
-              <AliasRow
-                key={alias.id}
-                alias={alias}
-                projectId={project?.id || ''}
-                proxyRuleSetNames={ruleSetNames}
-                canEdit={canEdit}
-                formatDate={formatDate}
-                onView={() => navigate(`/repo/${owner}/${repo}/${alias.commitSha}`)}
-                onEdit={() =>
-                  setUpdateDialogState({
-                    open: true,
-                    aliasName: alias.name,
-                    commitSha: alias.commitSha,
-                    branch: alias.branch,
-                    proxyRuleSetIds: ruleSetIds,
-                    isPublic: alias.isPublic,
-                    unauthorizedBehavior: alias.unauthorizedBehavior,
-                    requiredRole: alias.requiredRole,
-                  })
-                }
-                onDelete={() =>
-                  setDeleteDialogState({
-                    open: true,
-                    aliasName: alias.name,
-                  })
-                }
-              />
-            );
-          })}
-        </div>
-      </CardContent>
-    </Card>
+          <UpdateAliasDialog
+            owner={owner}
+            repo={repo}
+            projectId={project?.id}
+            aliasName={updateDialogState.aliasName}
+            currentCommitSha={updateDialogState.commitSha}
+            currentBranch={updateDialogState.branch}
+            currentProxyRuleSetIds={updateDialogState.proxyRuleSetIds}
+            currentIsPublic={updateDialogState.isPublic}
+            currentUnauthorizedBehavior={updateDialogState.unauthorizedBehavior}
+            currentRequiredRole={updateDialogState.requiredRole}
+            open={updateDialogState.open}
+            onOpenChange={(open) =>
+              setUpdateDialogState({
+                ...updateDialogState,
+                open,
+              })
+            }
+          />
 
-    {canEdit && (
-      <>
-        <CreateAliasDialog
-          owner={owner}
-          repo={repo}
-          projectId={project?.id}
-          open={isCreateDialogOpen}
-          onOpenChange={setIsCreateDialogOpen}
-        />
-
-        <UpdateAliasDialog
-          owner={owner}
-          repo={repo}
-          projectId={project?.id}
-          aliasName={updateDialogState.aliasName}
-          currentCommitSha={updateDialogState.commitSha}
-          currentBranch={updateDialogState.branch}
-          currentProxyRuleSetIds={updateDialogState.proxyRuleSetIds}
-          currentIsPublic={updateDialogState.isPublic}
-          currentUnauthorizedBehavior={updateDialogState.unauthorizedBehavior}
-          currentRequiredRole={updateDialogState.requiredRole}
-          open={updateDialogState.open}
-          onOpenChange={(open) =>
-            setUpdateDialogState({
-              ...updateDialogState,
-              open,
-            })
-          }
-        />
-
-        <DeleteAliasDialog
-          owner={owner}
-          repo={repo}
-          aliasName={deleteDialogState.aliasName}
-          open={deleteDialogState.open}
-          onOpenChange={(open) =>
-            setDeleteDialogState({
-              ...deleteDialogState,
-              open,
-            })
-          }
-        />
-      </>
-    )}
-  </>
+          <DeleteAliasDialog
+            owner={owner}
+            repo={repo}
+            aliasName={deleteDialogState.aliasName}
+            open={deleteDialogState.open}
+            onOpenChange={(open) =>
+              setDeleteDialogState({
+                ...deleteDialogState,
+                open,
+              })
+            }
+          />
+        </>
+      )}
+    </>
   );
 }

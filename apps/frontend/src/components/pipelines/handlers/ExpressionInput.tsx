@@ -57,9 +57,17 @@ export function ExpressionInput({
       { value: 'request.ip', description: 'Client IP address', category: 'Request' },
       { value: 'request.userAgent', description: 'Browser/client info', category: 'Request' },
       { value: 'request.headers', description: 'All HTTP headers', category: 'Request' },
-      { value: "request.headers['x-forwarded-for']", description: 'Original client IP (proxied)', category: 'Headers' },
+      {
+        value: "request.headers['x-forwarded-for']",
+        description: 'Original client IP (proxied)',
+        category: 'Headers',
+      },
       { value: "request.headers['x-real-ip']", description: 'Real client IP', category: 'Headers' },
-      { value: "request.headers['referer']", description: 'Referring page URL', category: 'Headers' },
+      {
+        value: "request.headers['referer']",
+        description: 'Referring page URL',
+        category: 'Headers',
+      },
       { value: "request.headers['origin']", description: 'Request origin', category: 'Headers' },
     );
 
@@ -91,12 +99,15 @@ export function ExpressionInput({
 
       // Add common sub-paths based on handler type
       if (step.handlerType === 'data_query') {
-        const isSingle = (step.config as Record<string, unknown>)?.single ||
-                         (step.config as Record<string, unknown>)?.recordId;
+        const isSingle =
+          (step.config as Record<string, unknown>)?.single ||
+          (step.config as Record<string, unknown>)?.recordId;
         if (isSingle) {
-          suggestions.push(
-            { value: `${stepPath}.id`, description: 'Record ID', category: 'Steps' },
-          );
+          suggestions.push({
+            value: `${stepPath}.id`,
+            description: 'Record ID',
+            category: 'Steps',
+          });
         } else {
           suggestions.push(
             { value: `${stepPath}[0]`, description: 'First record', category: 'Steps' },
@@ -104,9 +115,7 @@ export function ExpressionInput({
           );
         }
       } else if (step.handlerType === 'data_create' || step.handlerType === 'data_update') {
-        suggestions.push(
-          { value: `${stepPath}.id`, description: 'Record ID', category: 'Steps' },
-        );
+        suggestions.push({ value: `${stepPath}.id`, description: 'Record ID', category: 'Steps' });
       } else if (step.handlerType === 'form_handler') {
         // Add field names if available
         const fields = (step.config as Record<string, unknown>)?.fields;
@@ -123,16 +132,32 @@ export function ExpressionInput({
         suggestions.push(
           { value: `${stepPath}.storage_path`, description: 'Full storage key', category: 'Steps' },
           { value: `${stepPath}.url`, description: 'Internal URL path', category: 'Steps' },
-          { value: `${stepPath}.content_type`, description: 'MIME type (e.g., image/png)', category: 'Steps' },
+          {
+            value: `${stepPath}.content_type`,
+            description: 'MIME type (e.g., image/png)',
+            category: 'Steps',
+          },
           { value: `${stepPath}.filename`, description: 'Sanitized filename', category: 'Steps' },
           { value: `${stepPath}.size`, description: 'File size in bytes', category: 'Steps' },
-          { value: `${stepPath}.original_name`, description: 'Original filename', category: 'Steps' },
+          {
+            value: `${stepPath}.original_name`,
+            description: 'Original filename',
+            category: 'Steps',
+          },
           { value: `${stepPath}.id`, description: 'Record ID', category: 'Steps' },
         );
       } else if (step.handlerType === 'replicate') {
         suggestions.push(
-          { value: `${stepPath}.output`, description: 'Model output (URL, array, object, etc.)', category: 'Steps' },
-          { value: `${stepPath}.output[0]`, description: 'First output (for array results)', category: 'Steps' },
+          {
+            value: `${stepPath}.output`,
+            description: 'Model output (URL, array, object, etc.)',
+            category: 'Steps',
+          },
+          {
+            value: `${stepPath}.output[0]`,
+            description: 'First output (for array results)',
+            category: 'Steps',
+          },
           { value: `${stepPath}.predictionId`, description: 'Prediction ID', category: 'Steps' },
           { value: `${stepPath}.model`, description: 'Model that was run', category: 'Steps' },
           { value: `${stepPath}.status`, description: 'Prediction status', category: 'Steps' },
@@ -156,10 +181,13 @@ export function ExpressionInput({
 
     const lowerValue = safeValue.toLowerCase();
 
-    return allSuggestions.filter((s) =>
-      s.value.toLowerCase().includes(lowerValue) ||
-      s.value.toLowerCase().startsWith(lowerValue)
-    ).slice(0, 10); // Limit to 10 suggestions
+    return allSuggestions
+      .filter(
+        (s) =>
+          s.value.toLowerCase().includes(lowerValue) ||
+          s.value.toLowerCase().startsWith(lowerValue),
+      )
+      .slice(0, 10); // Limit to 10 suggestions
   }, [safeValue, allSuggestions]);
 
   // Reset selected index when input value changes (new search)
@@ -190,9 +218,7 @@ export function ExpressionInput({
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
-        setSelectedIndex((prev) =>
-          prev < filteredSuggestions.length - 1 ? prev + 1 : prev
-        );
+        setSelectedIndex((prev) => (prev < filteredSuggestions.length - 1 ? prev + 1 : prev));
         break;
       case 'ArrowUp':
         e.preventDefault();
@@ -252,9 +278,7 @@ export function ExpressionInput({
                 index === selectedIndex && 'bg-accent',
               )}
             >
-              <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
-                {suggestion.value}
-              </code>
+              <code className="text-xs bg-muted px-1.5 py-0.5 rounded">{suggestion.value}</code>
               {suggestion.description && (
                 <span className="text-xs text-muted-foreground truncate">
                   {suggestion.description}

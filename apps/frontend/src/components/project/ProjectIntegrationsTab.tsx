@@ -29,17 +29,20 @@ const INTEGRATION_META: Record<
 > = {
   stripe: {
     name: 'Stripe',
-    description: 'Accept payments via Stripe Checkout. Create checkout sessions from pipeline steps and handle webhooks.',
+    description:
+      'Accept payments via Stripe Checkout. Create checkout sessions from pipeline steps and handle webhooks.',
     icon: CreditCard,
   },
   github: {
     name: 'GitHub',
-    description: 'Create repositories from templates and interact with the GitHub API from pipeline steps.',
+    description:
+      'Create repositories from templates and interact with the GitHub API from pipeline steps.',
     icon: Github,
   },
   'google-calendar': {
     name: 'Google Calendar',
-    description: 'Mirror bookings to Google Calendar and read free/busy from connected sub-calendars.',
+    description:
+      'Mirror bookings to Google Calendar and read free/busy from connected sub-calendars.',
     icon: Calendar,
   },
 };
@@ -92,9 +95,7 @@ export function ProjectIntegrationsTab({ project }: ProjectIntegrationsTabProps)
       <Card>
         <CardHeader>
           <CardTitle>Integrations</CardTitle>
-          <CardDescription>
-            Connect third-party services to use in your pipelines
-          </CardDescription>
+          <CardDescription>Connect third-party services to use in your pipelines</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {integrations?.map((integration) => {
@@ -106,10 +107,7 @@ export function ProjectIntegrationsTab({ project }: ProjectIntegrationsTabProps)
             const Icon = meta.icon;
 
             return (
-              <div
-                key={integration.id}
-                className="border rounded-lg p-4"
-              >
+              <div key={integration.id} className="border rounded-lg p-4">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
                     <div className="p-2 rounded-lg bg-muted">
@@ -121,20 +119,18 @@ export function ProjectIntegrationsTab({ project }: ProjectIntegrationsTabProps)
                         {integration.enabled &&
                           integration.id !== 'github' &&
                           integration.id !== 'google-calendar' && (
-                          <Badge
-                            variant={
-                              integration.activeEnvironment === 'production'
-                                ? 'default'
-                                : 'secondary'
-                            }
-                          >
-                            {integration.activeEnvironment}
-                          </Badge>
-                        )}
+                            <Badge
+                              variant={
+                                integration.activeEnvironment === 'production'
+                                  ? 'default'
+                                  : 'secondary'
+                              }
+                            >
+                              {integration.activeEnvironment}
+                            </Badge>
+                          )}
                       </div>
-                      <p className="text-sm text-muted-foreground mt-0.5">
-                        {meta.description}
-                      </p>
+                      <p className="text-sm text-muted-foreground mt-0.5">{meta.description}</p>
                       {integration.enabled && (
                         <div className="flex gap-3 mt-1 text-xs text-muted-foreground">
                           {integration.hasSandboxConfig && <span>Sandbox configured</span>}

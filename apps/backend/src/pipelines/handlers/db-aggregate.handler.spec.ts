@@ -44,7 +44,9 @@ function buildHandler() {
       return expr;
     }),
   } as unknown as ExpressionEvaluator;
-  const schemasService = { getById: jest.fn(async () => SCHEMA) } as unknown as PipelineSchemasService;
+  const schemasService = {
+    getById: jest.fn(async () => SCHEMA),
+  } as unknown as PipelineSchemasService;
   return { handler: new DbAggregateHandler(registry as any, expressionEvaluator, schemasService) };
 }
 
@@ -81,9 +83,7 @@ describe('DbAggregateHandler in operator', () => {
     expect(result.output).toEqual(expect.objectContaining({ operation: 'count', result: 7 }));
     const { sql, params } = new PgDialect().sqlToQuery(mockDb.where.mock.calls[0][0]);
     expect(sql.toLowerCase()).toContain('in (');
-    expect(params).toEqual(
-      expect.arrayContaining(['https://a.com/feed', 'https://b.com/feed']),
-    );
+    expect(params).toEqual(expect.arrayContaining(['https://a.com/feed', 'https://b.com/feed']));
   });
 });
 

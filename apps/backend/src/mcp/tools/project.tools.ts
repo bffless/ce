@@ -116,11 +116,7 @@ export class ProjectTools {
     }),
     annotations: { destructiveHint: true },
   })
-  async deleteProject(
-    { projectId }: { projectId: string },
-    _context: Context,
-    _request: Request,
-  ) {
+  async deleteProject({ projectId }: { projectId: string }, _context: Context, _request: Request) {
     await this.projectsService.deleteProject(projectId);
     return JSON.stringify({ success: true, projectId });
   }

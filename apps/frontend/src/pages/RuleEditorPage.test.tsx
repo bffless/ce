@@ -10,11 +10,7 @@ import { api } from '@/services/api';
 // The full rule form has its own concerns; stub it with a submit button that
 // exercises the page's save callback (the path that must warn on managed sets).
 vi.mock('@/components/proxy-rules/ExpandedProxyRuleForm', () => ({
-  ExpandedProxyRuleForm: ({
-    onSubmit,
-  }: {
-    onSubmit: (data: unknown) => Promise<void>;
-  }) => (
+  ExpandedProxyRuleForm: ({ onSubmit }: { onSubmit: (data: unknown) => Promise<void> }) => (
     <button onClick={() => void onSubmit({ pathPattern: '/api/*', order: 5 })}>
       stub-save-rule
     </button>

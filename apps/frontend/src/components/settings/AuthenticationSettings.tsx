@@ -182,9 +182,9 @@ function EmailPasswordSettingsCard() {
         <Alert>
           <Info className="h-4 w-4" />
           <AlertDescription>
-            Want SSO-only sign-in? First add an OIDC provider below and sign in with it
-            as an admin. Once that succeeds, you can disable email/password here — this
-            check makes sure SSO works so you can&apos;t lock yourself out.
+            Want SSO-only sign-in? First add an OIDC provider below and sign in with it as an admin.
+            Once that succeeds, you can disable email/password here — this check makes sure SSO
+            works so you can&apos;t lock yourself out.
           </AlertDescription>
         </Alert>
       )}
@@ -193,8 +193,8 @@ function EmailPasswordSettingsCard() {
         <Alert>
           <Info className="h-4 w-4" />
           <AlertDescription>
-            Email/password sign-in is off — this workspace is OIDC-only and the password
-            form is hidden on the login page. Toggle back on any time to restore it.
+            Email/password sign-in is off — this workspace is OIDC-only and the password form is
+            hidden on the login page. Toggle back on any time to restore it.
           </AlertDescription>
         </Alert>
       )}
@@ -227,8 +227,8 @@ function SingleSignOnSettingsCard() {
         <div className="space-y-0.5">
           <Label className="text-base font-medium">Single Sign-On (OIDC)</Label>
           <p className="text-sm text-muted-foreground">
-            Pluggable identity providers — Google, Okta, Azure AD, or any OIDC-compliant IdP.
-            Each enabled provider renders one button on the login screen.
+            Pluggable identity providers — Google, Okta, Azure AD, or any OIDC-compliant IdP. Each
+            enabled provider renders one button on the login screen.
           </p>
         </div>
         <Button size="sm" onClick={openCreate}>
@@ -242,9 +242,10 @@ function SingleSignOnSettingsCard() {
         <Alert>
           <Info className="h-4 w-4" />
           <AlertDescription className="text-sm">
-            No SSO providers configured. Click "Add provider" to set up Google, Okta, Azure AD,
-            or a generic OIDC IdP. Self-hosters who set <code className="text-xs">GOOGLE_OAUTH_CLIENT_ID</code>{' '}
-            in their environment are auto-backfilled here on backend boot.
+            No SSO providers configured. Click "Add provider" to set up Google, Okta, Azure AD, or a
+            generic OIDC IdP. Self-hosters who set{' '}
+            <code className="text-xs">GOOGLE_OAUTH_CLIENT_ID</code> in their environment are
+            auto-backfilled here on backend boot.
           </AlertDescription>
         </Alert>
       ) : (
@@ -255,23 +256,12 @@ function SingleSignOnSettingsCard() {
         </div>
       )}
 
-      {dialogOpen && (
-        <SsoProviderDialog
-          provider={editing}
-          onClose={() => setDialogOpen(false)}
-        />
-      )}
+      {dialogOpen && <SsoProviderDialog provider={editing} onClose={() => setDialogOpen(false)} />}
     </div>
   );
 }
 
-function SsoProviderRow({
-  provider,
-  onEdit,
-}: {
-  provider: SsoProviderStatus;
-  onEdit: () => void;
-}) {
+function SsoProviderRow({ provider, onEdit }: { provider: SsoProviderStatus; onEdit: () => void }) {
   const { toast } = useToast();
   const [updateProvider, { isLoading: isToggling }] = useUpdateSsoProviderMutation();
   const [deleteProvider, { isLoading: isDeleting }] = useDeleteSsoProviderMutation();
@@ -291,7 +281,8 @@ function SsoProviderRow({
   };
 
   const handleDelete = async () => {
-    if (!confirm(`Delete the SSO provider "${provider.displayName}"? This cannot be undone.`)) return;
+    if (!confirm(`Delete the SSO provider "${provider.displayName}"? This cannot be undone.`))
+      return;
     try {
       await deleteProvider({ id: provider.id }).unwrap();
       toast({ title: 'Provider deleted' });
@@ -335,9 +326,13 @@ function SsoProviderRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <Label className="text-sm font-medium">{provider.displayName}</Label>
-          <Badge variant="outline" className="text-xs">{kindLabel(provider.kind)}</Badge>
+          <Badge variant="outline" className="text-xs">
+            {kindLabel(provider.kind)}
+          </Badge>
           {isEnvSourced && (
-            <Badge variant="secondary" className="text-xs">env-managed</Badge>
+            <Badge variant="secondary" className="text-xs">
+              env-managed
+            </Badge>
           )}
           {provider.enabled ? (
             <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 text-xs">
@@ -353,7 +348,12 @@ function SsoProviderRow({
         </div>
         <p className="text-xs text-muted-foreground mt-1 truncate">
           id: <code>{provider.providerId}</code>
-          {provider.clientIdMasked && <> · clientId: <code>{provider.clientIdMasked}</code></>}
+          {provider.clientIdMasked && (
+            <>
+              {' '}
+              · clientId: <code>{provider.clientIdMasked}</code>
+            </>
+          )}
         </p>
       </div>
       <div className="flex items-center gap-2 shrink-0">
@@ -369,7 +369,11 @@ function SsoProviderRow({
           size="sm"
           onClick={handleDelete}
           disabled={isDeleting || isEnvSourced}
-          title={isEnvSourced ? 'Env-managed providers cannot be deleted via UI — unset env vars and restart' : 'Delete'}
+          title={
+            isEnvSourced
+              ? 'Env-managed providers cannot be deleted via UI — unset env vars and restart'
+              : 'Delete'
+          }
         >
           <Trash2 className="h-3 w-3" />
         </Button>
@@ -454,15 +458,15 @@ function SsoProviderDialog({
   };
 
   const isSaving = isCreating || isUpdating;
-  const canSubmit =
-    !!displayName &&
-    (!isCreate || (!!providerId && !!clientId && !!clientSecret));
+  const canSubmit = !!displayName && (!isCreate || (!!providerId && !!clientId && !!clientSecret));
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{isCreate ? 'Add SSO Provider' : `Edit ${provider!.displayName}`}</DialogTitle>
+          <DialogTitle>
+            {isCreate ? 'Add SSO Provider' : `Edit ${provider!.displayName}`}
+          </DialogTitle>
           <DialogDescription>
             {isCreate
               ? 'Configure an OIDC provider. Pick the kind that matches your IdP — Google, Okta, Azure AD, or a generic OIDC server.'
@@ -476,7 +480,9 @@ function SsoProviderDialog({
               <div>
                 <Label className="text-sm">Kind</Label>
                 <Select value={kind} onValueChange={(v) => setKind(v as SsoProviderKind)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="google">Google</SelectItem>
                     <SelectItem value="okta">Okta</SelectItem>
@@ -493,8 +499,8 @@ function SsoProviderDialog({
                   onChange={(e) => setProviderId(e.target.value)}
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  Lowercase letters, numbers, hyphens. Used in /api/auth/oauth/<i>:providerId</i>/url.
-                  Pick something stable — it can't be renamed.
+                  Lowercase letters, numbers, hyphens. Used in /api/auth/oauth/<i>:providerId</i>
+                  /url. Pick something stable — it can't be renamed.
                 </p>
               </div>
             </>
@@ -513,7 +519,7 @@ function SsoProviderDialog({
           <div>
             <Label className="text-sm">Client ID</Label>
             <Input
-              placeholder={isCreate ? '' : provider?.clientIdMasked ?? ''}
+              placeholder={isCreate ? '' : (provider?.clientIdMasked ?? '')}
               value={clientId}
               onChange={(e) => setClientId(e.target.value)}
             />
@@ -539,8 +545,8 @@ function SsoProviderDialog({
               />
               <p className="text-xs text-muted-foreground mt-1">
                 The IdP's base issuer URL (e.g. <code>http://localhost:5556</code> for local Dex).
-                Pasting the full <code>/.well-known/openid-configuration</code> URL also works —
-                the suffix is stripped automatically.
+                Pasting the full <code>/.well-known/openid-configuration</code> URL also works — the
+                suffix is stripped automatically.
               </p>
             </div>
           )}
@@ -575,7 +581,8 @@ function SsoProviderDialog({
               onChange={(e) => setScope(e.target.value)}
             />
             <p className="text-xs text-muted-foreground mt-1">
-              Defaults to <code>openid email profile</code> for generic OIDC; provider built-ins set their own.
+              Defaults to <code>openid email profile</code> for generic OIDC; provider built-ins set
+              their own.
             </p>
           </div>
 
@@ -586,7 +593,9 @@ function SsoProviderDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
           <Button onClick={handleSave} disabled={!canSubmit || isSaving}>
             {isSaving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
             {isCreate ? 'Create' : 'Save'}
@@ -599,10 +608,14 @@ function SsoProviderDialog({
 
 function kindLabel(kind: SsoProviderKind): string {
   switch (kind) {
-    case 'google': return 'Google';
-    case 'okta': return 'Okta';
-    case 'azure-ad': return 'Azure AD';
-    case 'oidc': return 'Generic OIDC';
+    case 'google':
+      return 'Google';
+    case 'okta':
+      return 'Okta';
+    case 'azure-ad':
+      return 'Azure AD';
+    case 'oidc':
+      return 'Generic OIDC';
   }
 }
 
@@ -664,7 +677,11 @@ function GoogleIntegrationOAuthCard() {
   };
 
   const handleClear = async () => {
-    if (!confirm('Clear the workspace Google OAuth integration credentials? Project-level Google Calendar connections will stop working until new credentials are saved.')) {
+    if (
+      !confirm(
+        'Clear the workspace Google OAuth integration credentials? Project-level Google Calendar connections will stop working until new credentials are saved.',
+      )
+    ) {
       return;
     }
     try {

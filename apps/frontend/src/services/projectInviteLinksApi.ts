@@ -80,10 +80,7 @@ export const projectInviteLinksApi = api.injectEndpoints({
       ],
     }),
 
-    deleteProjectInviteLink: builder.mutation<
-      void,
-      { owner: string; repo: string; id: string }
-    >({
+    deleteProjectInviteLink: builder.mutation<void, { owner: string; repo: string; id: string }>({
       query: ({ owner, repo, id }) => ({
         url: `/api/projects/${owner}/${repo}/invite-links/${id}`,
         method: 'DELETE',

@@ -61,9 +61,7 @@ export const userGroupsApi = api.injectEndpoints({
 
     getGroupMembers: builder.query<UserGroupMember[], string>({
       query: (id) => `/api/user-groups/${id}/members`,
-      providesTags: (_result, _error, id) => [
-        { type: 'UserGroup' as const, id: `${id}-members` },
-      ],
+      providesTags: (_result, _error, id) => [{ type: 'UserGroup' as const, id: `${id}-members` }],
     }),
 
     createGroup: builder.mutation<UserGroup, CreateGroupDto>({
@@ -75,10 +73,7 @@ export const userGroupsApi = api.injectEndpoints({
       invalidatesTags: [{ type: 'UserGroup' as const, id: 'LIST' }],
     }),
 
-    updateGroup: builder.mutation<
-      UserGroup,
-      { id: string; updates: UpdateGroupDto }
-    >({
+    updateGroup: builder.mutation<UserGroup, { id: string; updates: UpdateGroupDto }>({
       query: ({ id, updates }) => ({
         url: `/api/user-groups/${id}`,
         method: 'PATCH',

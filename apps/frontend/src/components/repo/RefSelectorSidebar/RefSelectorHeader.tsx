@@ -55,7 +55,9 @@ export function RefSelectorHeader({
     <div className="border-b">
       {/* Title bar */}
       <div className="px-2 h-11 flex items-center justify-between shrink-0">
-        <h2 className="text-lg font-semibold" id="ref-selector-title">References</h2>
+        <h2 className="text-lg font-semibold" id="ref-selector-title">
+          References
+        </h2>
         <Button
           variant="ghost"
           size="sm"
@@ -71,7 +73,10 @@ export function RefSelectorHeader({
       {/* Search input */}
       <div className="px-4 pb-4">
         <div className="relative">
-          <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          <Search
+            className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground"
+            aria-hidden="true"
+          />
           <Input
             ref={searchInputRef}
             type="search"

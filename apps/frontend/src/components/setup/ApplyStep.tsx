@@ -148,8 +148,9 @@ export function ApplyStep() {
         {showHint && (
           <p className="text-sm text-muted-foreground">
             This is taking longer than expected. Make sure your domain&apos;s DNS points to this
-            server — an <strong>A record</strong> for <code className="bg-muted px-1 rounded">@</code>{' '}
-            and <code className="bg-muted px-1 rounded">*</code> (wildcard) at your server&apos;s IP.
+            server — an <strong>A record</strong> for{' '}
+            <code className="bg-muted px-1 rounded">@</code> and{' '}
+            <code className="bg-muted px-1 rounded">*</code> (wildcard) at your server&apos;s IP.
             DNS may still be propagating — use the link above to continue manually.
           </p>
         )}
@@ -162,8 +163,8 @@ export function ApplyStep() {
       <div>
         <h3 className="text-lg font-medium text-foreground">Finish setup</h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          This applies <strong>{domain}</strong> as the server&apos;s domain, switches nginx to
-          your new certificate, and restarts the backend under its new identity.
+          This applies <strong>{domain}</strong> as the server&apos;s domain, switches nginx to your
+          new certificate, and restarts the backend under its new identity.
         </p>
       </div>
 
@@ -209,13 +210,13 @@ export function ApplyStep() {
           />
           <div className="flex-1">
             <span className="font-medium">
-              I&apos;ve pointed <code className="bg-muted px-1 rounded">{domain || 'my domain'}</code>{' '}
-              at this server
+              I&apos;ve pointed{' '}
+              <code className="bg-muted px-1 rounded">{domain || 'my domain'}</code> at this server
             </span>
             <p className="mt-1 text-sm text-muted-foreground">
               A records for <code className="bg-muted px-1 rounded">@</code> and{' '}
-              <code className="bg-muted px-1 rounded">*</code> already resolve to this server. Applying
-              before DNS is live leaves your browser stuck on a cached lookup for{' '}
+              <code className="bg-muted px-1 rounded">*</code> already resolve to this server.
+              Applying before DNS is live leaves your browser stuck on a cached lookup for{' '}
               <code className="bg-muted px-1 rounded">admin.{domain || 'yourdomain'}</code>.
             </p>
           </div>

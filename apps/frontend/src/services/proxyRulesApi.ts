@@ -1,5 +1,10 @@
 import { api } from './api';
-import type { HandlerType, TestPipelineDto, TestPipelineResult, ValidatorConfig } from './pipelinesApi';
+import type {
+  HandlerType,
+  TestPipelineDto,
+  TestPipelineResult,
+  ValidatorConfig,
+} from './pipelinesApi';
 import type { SchemaField } from './pipelineSchemasApi';
 
 // Header configuration for proxy rules
@@ -418,10 +423,7 @@ export const proxyRulesApi = api.injectEndpoints({
     }),
 
     // Update a rule set
-    updateRuleSet: builder.mutation<
-      ProxyRuleSet,
-      { id: string; data: UpdateProxyRuleSetDto }
-    >({
+    updateRuleSet: builder.mutation<ProxyRuleSet, { id: string; data: UpdateProxyRuleSetDto }>({
       query: ({ id, data }) => ({
         url: `/api/proxy-rule-sets/${id}`,
         method: 'PATCH',
@@ -488,10 +490,7 @@ export const proxyRulesApi = api.injectEndpoints({
     }),
 
     // Add a rule to a rule set
-    createRuleInSet: builder.mutation<
-      ProxyRule,
-      { ruleSetId: string; rule: CreateProxyRuleDto }
-    >({
+    createRuleInSet: builder.mutation<ProxyRule, { ruleSetId: string; rule: CreateProxyRuleDto }>({
       query: ({ ruleSetId, rule }) => ({
         url: `/api/proxy-rule-sets/${ruleSetId}/rules`,
         method: 'POST',
@@ -525,10 +524,7 @@ export const proxyRulesApi = api.injectEndpoints({
       providesTags: (_result, _error, id) => [{ type: 'ProxyRule' as const, id }],
     }),
 
-    updateProxyRule: builder.mutation<
-      ProxyRule,
-      { id: string; updates: UpdateProxyRuleDto }
-    >({
+    updateProxyRule: builder.mutation<ProxyRule, { id: string; updates: UpdateProxyRuleDto }>({
       query: ({ id, updates }) => ({
         url: `/api/proxy-rules/${id}`,
         method: 'PATCH',
@@ -546,7 +542,10 @@ export const proxyRulesApi = api.injectEndpoints({
     }),
 
     // Test a pipeline-type proxy rule with sample data
-    testProxyRule: builder.mutation<TestPipelineResult, { id: string; data: TestPipelineDto; file?: File }>({
+    testProxyRule: builder.mutation<
+      TestPipelineResult,
+      { id: string; data: TestPipelineDto; file?: File }
+    >({
       query: ({ id, data, file }) => {
         if (file) {
           const formData = new FormData();
@@ -569,7 +568,10 @@ export const proxyRulesApi = api.injectEndpoints({
     // ==================== Pipeline Execution Logs ====================
 
     // List execution logs for a rule
-    getRuleLogs: builder.query<PipelineLogsResponse, { ruleId: string; page?: number; pageSize?: number }>({
+    getRuleLogs: builder.query<
+      PipelineLogsResponse,
+      { ruleId: string; page?: number; pageSize?: number }
+    >({
       query: ({ ruleId, page = 1, pageSize = 20 }) =>
         `/api/proxy-rules/${ruleId}/logs?page=${page}&pageSize=${pageSize}`,
       providesTags: (_result, _error, { ruleId }) => [

@@ -2,11 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle, Save, Layers, ChevronDown, X } from 'lucide-react';
@@ -29,7 +25,9 @@ export function ProjectProxyRulesTab({ project }: ProjectProxyRulesTabProps) {
   // Initialize from defaultProxyRuleSetIds (join table), fallback to legacy singular
   const initialIds = project.defaultProxyRuleSetIds?.length
     ? project.defaultProxyRuleSetIds
-    : project.defaultProxyRuleSetId ? [project.defaultProxyRuleSetId] : [];
+    : project.defaultProxyRuleSetId
+      ? [project.defaultProxyRuleSetId]
+      : [];
 
   const [selectedRuleSetIds, setSelectedRuleSetIds] = useState<string[]>(initialIds);
 
@@ -37,7 +35,9 @@ export function ProjectProxyRulesTab({ project }: ProjectProxyRulesTabProps) {
   useEffect(() => {
     const ids = project.defaultProxyRuleSetIds?.length
       ? project.defaultProxyRuleSetIds
-      : project.defaultProxyRuleSetId ? [project.defaultProxyRuleSetId] : [];
+      : project.defaultProxyRuleSetId
+        ? [project.defaultProxyRuleSetId]
+        : [];
     setSelectedRuleSetIds(ids);
   }, [project.defaultProxyRuleSetIds, project.defaultProxyRuleSetId]);
 
@@ -52,13 +52,13 @@ export function ProjectProxyRulesTab({ project }: ProjectProxyRulesTabProps) {
   const [updateProject, { isLoading: isUpdating }] = useUpdateProjectMutation();
 
   // Create a map of rule set ID to rule set
-  const ruleSetMap = new Map(
-    ruleSetsData?.ruleSets.map((rs) => [rs.id, rs]) || []
-  );
+  const ruleSetMap = new Map(ruleSetsData?.ruleSets.map((rs) => [rs.id, rs]) || []);
 
   const currentIds = project.defaultProxyRuleSetIds?.length
     ? project.defaultProxyRuleSetIds
-    : project.defaultProxyRuleSetId ? [project.defaultProxyRuleSetId] : [];
+    : project.defaultProxyRuleSetId
+      ? [project.defaultProxyRuleSetId]
+      : [];
 
   const hasChanges =
     selectedRuleSetIds.length !== currentIds.length ||
@@ -66,7 +66,7 @@ export function ProjectProxyRulesTab({ project }: ProjectProxyRulesTabProps) {
 
   const toggleRuleSet = (id: string) => {
     setSelectedRuleSetIds((prev) =>
-      prev.includes(id) ? prev.filter((rid) => rid !== id) : [...prev, id]
+      prev.includes(id) ? prev.filter((rid) => rid !== id) : [...prev, id],
     );
   };
 
@@ -85,9 +85,10 @@ export function ProjectProxyRulesTab({ project }: ProjectProxyRulesTabProps) {
 
       toast({
         title: 'Default rule sets updated',
-        description: selectedRuleSetIds.length > 0
-          ? `${selectedRuleSetIds.length} default proxy rule set${selectedRuleSetIds.length !== 1 ? 's' : ''} configured.`
-          : 'Default proxy rule sets have been cleared.',
+        description:
+          selectedRuleSetIds.length > 0
+            ? `${selectedRuleSetIds.length} default proxy rule set${selectedRuleSetIds.length !== 1 ? 's' : ''} configured.`
+            : 'Default proxy rule sets have been cleared.',
       });
     } catch (err: unknown) {
       const errorMessage =
@@ -170,7 +171,10 @@ export function ProjectProxyRulesTab({ project }: ProjectProxyRulesTabProps) {
                     <ChevronDown className="h-4 w-4 ml-2 shrink-0 opacity-50" />
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-2" align="start">
+                <PopoverContent
+                  className="w-[var(--radix-popover-trigger-width)] p-2"
+                  align="start"
+                >
                   {ruleSets.map((ruleSet) => (
                     <label
                       key={ruleSet.id}
@@ -213,7 +217,8 @@ export function ProjectProxyRulesTab({ project }: ProjectProxyRulesTabProps) {
               )}
               <p className="text-xs text-muted-foreground">
                 The selected rule sets will be applied to all SHA deployments and any aliases that
-                don't have their own rule sets specified. Rules merge in order — first set has highest priority.
+                don't have their own rule sets specified. Rules merge in order — first set has
+                highest priority.
               </p>
             </div>
 

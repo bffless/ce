@@ -18,7 +18,11 @@ import { NginxRegenerationService } from '../domains/nginx-regeneration.service'
 import { EmailService } from '../email/email.service';
 import { ProxyRuleSetRevisionsService } from './proxy-rule-set-revisions.service';
 import { CreateProxyRuleDto, UpdateProxyRuleDto, ReorderProxyRulesDto } from './dto';
-import type { PipelineConfig, PipelineStepConfig, ProxyRule } from '../db/schema/proxy-rules.schema';
+import type {
+  PipelineConfig,
+  PipelineStepConfig,
+  ProxyRule,
+} from '../db/schema/proxy-rules.schema';
 import type { ProxyRuleSet } from '../db/schema/proxy-rule-sets.schema';
 import type { RevisionTrigger } from '../db/schema/proxy-rule-set-revisions.schema';
 import { methodSignature } from './method-match';
@@ -234,11 +238,18 @@ export class ProxyRulesService {
     }
 
     // Check for duplicate path pattern + method within the rule set
-    const existingRule = await this.findRuleByPattern(dto.ruleSetId, dto.pathPattern, dto.method, dto.methods);
+    const existingRule = await this.findRuleByPattern(
+      dto.ruleSetId,
+      dto.pathPattern,
+      dto.method,
+      dto.methods,
+    );
     if (existingRule) {
       const sig = methodSignature({ method: dto.method ?? null, methods: dto.methods ?? null });
       const methodDesc = sig ? ` with method(s) ${sig}` : '';
-      throw new ConflictException(`A rule with path pattern "${dto.pathPattern}"${methodDesc} already exists`);
+      throw new ConflictException(
+        `A rule with path pattern "${dto.pathPattern}"${methodDesc} already exists`,
+      );
     }
 
     // Auto-assign order if not provided
@@ -297,7 +308,12 @@ export class ProxyRulesService {
     // a failed request.
     try {
       const freshRules = await this.getRulesByRuleSetId(dto.ruleSetId);
-      await this.captureRevisionSafely({ ruleSet, rules: freshRules, trigger: 'rule_edit', userId });
+      await this.captureRevisionSafely({
+        ruleSet,
+        rules: freshRules,
+        trigger: 'rule_edit',
+        userId,
+      });
     } catch (error) {
       this.logger.warn(
         `Failed to reload rules for rule_edit revision capture on rule set ${dto.ruleSetId}: ${(error as Error).message}`,
@@ -377,11 +393,18 @@ export class ProxyRulesService {
     const sigChanged =
       methodSignature({ method: newMethod, methods: newMethods }) !== methodSignature(existing);
     if (newPattern !== existing.pathPattern || sigChanged) {
-      const duplicate = await this.findRuleByPattern(existing.ruleSetId, newPattern, newMethod, newMethods);
+      const duplicate = await this.findRuleByPattern(
+        existing.ruleSetId,
+        newPattern,
+        newMethod,
+        newMethods,
+      );
       if (duplicate && duplicate.id !== id) {
         const effectiveSig = methodSignature({ method: newMethod, methods: newMethods });
         const methodDesc = effectiveSig ? ` with method(s) ${effectiveSig}` : '';
-        throw new ConflictException(`A rule with path pattern "${newPattern}"${methodDesc} already exists`);
+        throw new ConflictException(
+          `A rule with path pattern "${newPattern}"${methodDesc} already exists`,
+        );
       }
     }
 
@@ -401,8 +424,10 @@ export class ProxyRulesService {
     if (dto.forwardCookies !== undefined) updateData.forwardCookies = dto.forwardCookies;
     if (dto.internalRewrite !== undefined) updateData.internalRewrite = dto.internalRewrite;
     if (dto.proxyType !== undefined) updateData.proxyType = dto.proxyType;
-    if (dto.emailHandlerConfig !== undefined) updateData.emailHandlerConfig = dto.emailHandlerConfig;
-    if (dto.pipelineConfig !== undefined) updateData.pipelineConfig = dto.pipelineConfig as PipelineConfig;
+    if (dto.emailHandlerConfig !== undefined)
+      updateData.emailHandlerConfig = dto.emailHandlerConfig;
+    if (dto.pipelineConfig !== undefined)
+      updateData.pipelineConfig = dto.pipelineConfig as PipelineConfig;
     if (dto.description !== undefined) updateData.description = dto.description;
     if (dto.isEnabled !== undefined) updateData.isEnabled = dto.isEnabled;
     if (dto.debugEnabled !== undefined) updateData.debugEnabled = dto.debugEnabled;
@@ -470,7 +495,12 @@ export class ProxyRulesService {
     // a failed request.
     try {
       const freshRules = await this.getRulesByRuleSetId(existing.ruleSetId);
-      await this.captureRevisionSafely({ ruleSet, rules: freshRules, trigger: 'rule_edit', userId });
+      await this.captureRevisionSafely({
+        ruleSet,
+        rules: freshRules,
+        trigger: 'rule_edit',
+        userId,
+      });
     } catch (error) {
       this.logger.warn(
         `Failed to reload rules for rule_edit revision capture on rule set ${existing.ruleSetId}: ${(error as Error).message}`,
@@ -512,9 +542,7 @@ export class ProxyRulesService {
 
     const pipelineConfig = existing.pipelineConfig;
     if (!pipelineConfig) {
-      throw new BadRequestException(
-        `Proxy rule ${id} has no pipelineConfig (not a pipeline rule)`,
-      );
+      throw new BadRequestException(`Proxy rule ${id} has no pipelineConfig (not a pipeline rule)`);
     }
 
     const target = params.target ?? 'steps';
@@ -537,9 +565,7 @@ export class ProxyRulesService {
     if (params.handlerType !== undefined) patched.handlerType = params.handlerType;
     if (params.isEnabled !== undefined) patched.isEnabled = params.isEnabled;
     if (params.config !== undefined) {
-      patched.config = params.mergeConfig
-        ? { ...current.config, ...params.config }
-        : params.config;
+      patched.config = params.mergeConfig ? { ...current.config, ...params.config } : params.config;
     }
 
     const newList = [...list];
@@ -641,7 +667,12 @@ export class ProxyRulesService {
     // a failed request.
     try {
       const freshRules = await this.getRulesByRuleSetId(ruleSetId);
-      await this.captureRevisionSafely({ ruleSet, rules: freshRules, trigger: 'rule_edit', userId });
+      await this.captureRevisionSafely({
+        ruleSet,
+        rules: freshRules,
+        trigger: 'rule_edit',
+        userId,
+      });
     } catch (error) {
       this.logger.warn(
         `Failed to reload rules for rule_edit revision capture on rule set ${ruleSetId}: ${(error as Error).message}`,
@@ -837,8 +868,7 @@ export class ProxyRulesService {
     } else if (parsed.protocol === 'http:') {
       // HTTP allowed for internal K8s services (*.svc or *.svc.cluster.local)
       // and localhost/127.0.0.1 for same-pod sidecar communication
-      const isInternalK8s =
-        hostname.endsWith('.svc') || hostname.endsWith('.svc.cluster.local');
+      const isInternalK8s = hostname.endsWith('.svc') || hostname.endsWith('.svc.cluster.local');
       const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
       if (!isInternalK8s && !isLocalhost) {
         throw new BadRequestException(

@@ -19,13 +19,15 @@ const SCHEMA = {
 function buildHandler() {
   const registry = { register: jest.fn() };
   const dataService = {
-    create: jest.fn(async (_schemaId: string, _projectId: string, data: Record<string, unknown>) => ({
-      id: 'rec-1',
-      data,
-      alias: null,
-      version: 1,
-      createdAt: new Date('2024-01-01T00:00:00.000Z'),
-    })),
+    create: jest.fn(
+      async (_schemaId: string, _projectId: string, data: Record<string, unknown>) => ({
+        id: 'rec-1',
+        data,
+        alias: null,
+        version: 1,
+        createdAt: new Date('2024-01-01T00:00:00.000Z'),
+      }),
+    ),
   } as unknown as jest.Mocked<Pick<PipelineDataService, 'create'>>;
   const schemasService = {
     getById: jest.fn(async () => SCHEMA),

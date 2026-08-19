@@ -26,7 +26,9 @@ export class BlocklistPatternEntryDto {
   @IsIn(BLOCKLIST_MATCH_TYPES)
   matchType: BlocklistMatchType = 'prefix';
 
-  @ApiProperty({ description: 'The literal path fragment to match (strict charset, escaped by the compiler)' })
+  @ApiProperty({
+    description: 'The literal path fragment to match (strict charset, escaped by the compiler)',
+  })
   @IsString()
   @IsNotEmpty()
   @MaxLength(BLOCKLIST_VALUE_MAX_LENGTH)
@@ -93,7 +95,10 @@ export class UpdateBlocklistDto {
   @IsBoolean()
   isDefault?: boolean;
 
-  @ApiPropertyOptional({ type: [BlocklistPatternEntryDto], description: 'Replaces all block patterns when present' })
+  @ApiPropertyOptional({
+    type: [BlocklistPatternEntryDto],
+    description: 'Replaces all block patterns when present',
+  })
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(MAX_ENTRIES_PER_LIST)
@@ -101,7 +106,10 @@ export class UpdateBlocklistDto {
   @Type(() => BlocklistPatternEntryDto)
   entries?: BlocklistPatternEntryDto[];
 
-  @ApiPropertyOptional({ type: [BlocklistPatternEntryDto], description: 'Replaces the allowlist when present' })
+  @ApiPropertyOptional({
+    type: [BlocklistPatternEntryDto],
+    description: 'Replaces the allowlist when present',
+  })
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(MAX_ENTRIES_PER_LIST)
@@ -121,7 +129,10 @@ export class AppendBlocklistEntryDto extends BlocklistPatternEntryDto {}
 
 /** Replace-all attachment of Blocklists to a domain mapping (#393). */
 export class SyncDomainBlocklistsDto {
-  @ApiProperty({ type: [String], description: 'Blocklist ids attached to the domain (replaces the set)' })
+  @ApiProperty({
+    type: [String],
+    description: 'Blocklist ids attached to the domain (replaces the set)',
+  })
   @IsArray()
   @ArrayMaxSize(100)
   @IsUUID('4', { each: true })

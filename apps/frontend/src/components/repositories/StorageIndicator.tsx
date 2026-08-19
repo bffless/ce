@@ -1,9 +1,5 @@
 import { HardDrive, Info } from 'lucide-react';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { formatStorageSize } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 
@@ -44,9 +40,7 @@ export function StorageIndicator({
   return (
     <div className={cn('flex items-center gap-2', className)}>
       <HardDrive className={cn('h-4 w-4', colorClass)} />
-      <span className="text-sm text-muted-foreground">
-        {formatStorageSize(storageBytes)}
-      </span>
+      <span className="text-sm text-muted-foreground">{formatStorageSize(storageBytes)}</span>
       {showTooltip && (
         <Tooltip>
           <TooltipTrigger asChild>
@@ -57,12 +51,8 @@ export function StorageIndicator({
           <TooltipContent>
             <div className="space-y-1">
               <p className="font-semibold">{getStorageLevel()}</p>
-              <p className="text-xs text-muted-foreground">
-                {storageBytes.toLocaleString()} bytes
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {storageMB.toFixed(2)} MB
-              </p>
+              <p className="text-xs text-muted-foreground">{storageBytes.toLocaleString()} bytes</p>
+              <p className="text-xs text-muted-foreground">{storageMB.toFixed(2)} MB</p>
             </div>
           </TooltipContent>
         </Tooltip>

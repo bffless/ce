@@ -48,7 +48,7 @@ function renderModal({ onClose = vi.fn() } = {}) {
       <MemoryRouter>
         <OnboardingModal isOpen onClose={onClose} />
       </MemoryRouter>
-    </Provider>
+    </Provider>,
   );
   return { store, onClose };
 }

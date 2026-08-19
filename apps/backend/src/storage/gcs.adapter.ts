@@ -239,11 +239,7 @@ export class GcsStorageAdapter implements IStorageAdapter {
   /**
    * Get a signed URL for accessing the file (read)
    */
-  async getUrl(
-    key: string,
-    expiresIn?: number,
-    options?: SignedUrlOptions,
-  ): Promise<string> {
+  async getUrl(key: string, expiresIn?: number, options?: SignedUrlOptions): Promise<string> {
     const sanitizedKey = this.sanitizeKey(key);
     const storageKey = this.prefixKey(sanitizedKey);
     const blob = this.bucket.file(storageKey);

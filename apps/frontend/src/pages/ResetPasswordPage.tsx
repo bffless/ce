@@ -146,7 +146,7 @@ export function ResetPasswordPage() {
             <Button variant="ghost" onClick={() => navigate('/')} className="mb-4 gap-2">
               <Home className="h-4 w-4" />
               <img src={headerLogoUrl} alt={siteName} className="h-4 w-4" />
-            <span className="font-semibold">{siteName}</span>
+              <span className="font-semibold">{siteName}</span>
             </Button>
           </div>
 
@@ -292,9 +292,7 @@ export function ResetPasswordPage() {
                               size="sm"
                               className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                               onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                              aria-label={
-                                showConfirmPassword ? 'Hide password' : 'Show password'
-                              }
+                              aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
                             >
                               {showConfirmPassword ? (
                                 <EyeOff className="h-4 w-4 text-muted-foreground" />

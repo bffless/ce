@@ -63,7 +63,9 @@ describe('GitHubApiHandler', () => {
     mockFetch.mockReset();
     const registry = { register: jest.fn() } as unknown as StepHandlerRegistry;
     const evaluator = new ExpressionEvaluator();
-    integrations = { getActiveConfig: jest.fn().mockResolvedValue({ personalAccessToken: 'pat-1' }) };
+    integrations = {
+      getActiveConfig: jest.fn().mockResolvedValue({ personalAccessToken: 'pat-1' }),
+    };
     handler = new GitHubApiHandler(
       registry,
       evaluator,
@@ -73,18 +75,30 @@ describe('GitHubApiHandler', () => {
 
   describe('list_workflow_runs', () => {
     it('requires owner and repo', () => {
-      expect(() => handler.validateConfig({ action: 'list_workflow_runs', repo: 'r' } as never))
-        .toThrow(ConfigurationError);
-      expect(() => handler.validateConfig({ action: 'list_workflow_runs', owner: 'o' } as never))
-        .toThrow(ConfigurationError);
+      expect(() =>
+        handler.validateConfig({ action: 'list_workflow_runs', repo: 'r' } as never),
+      ).toThrow(ConfigurationError);
+      expect(() =>
+        handler.validateConfig({ action: 'list_workflow_runs', owner: 'o' } as never),
+      ).toThrow(ConfigurationError);
     });
 
     it('rejects an out-of-range perPage', () => {
       expect(() =>
-        handler.validateConfig({ action: 'list_workflow_runs', owner: 'o', repo: 'r', perPage: 0 } as never),
+        handler.validateConfig({
+          action: 'list_workflow_runs',
+          owner: 'o',
+          repo: 'r',
+          perPage: 0,
+        } as never),
       ).toThrow(/perPage/);
       expect(() =>
-        handler.validateConfig({ action: 'list_workflow_runs', owner: 'o', repo: 'r', perPage: 101 } as never),
+        handler.validateConfig({
+          action: 'list_workflow_runs',
+          owner: 'o',
+          repo: 'r',
+          perPage: 101,
+        } as never),
       ).toThrow(/perPage/);
     });
 
@@ -153,7 +167,9 @@ describe('GitHubApiHandler', () => {
     });
 
     it('returns GITHUB_API_ERROR on a non-2xx response', async () => {
-      mockFetch.mockResolvedValue(makeFetchResponse({ status: 404, body: { message: 'Not Found' } }));
+      mockFetch.mockResolvedValue(
+        makeFetchResponse({ status: 404, body: { message: 'Not Found' } }),
+      );
 
       const result = await handler.execute(
         makeContext(),
@@ -194,7 +210,10 @@ describe('GitHubApiHandler', () => {
 
     it('fetches a single run by id and maps it', async () => {
       mockFetch.mockResolvedValue(
-        makeFetchResponse({ status: 200, body: { ...RUN_FIXTURE, status: 'completed', conclusion: 'success' } }),
+        makeFetchResponse({
+          status: 200,
+          body: { ...RUN_FIXTURE, status: 'completed', conclusion: 'success' },
+        }),
       );
 
       const result = await handler.execute(
@@ -216,9 +235,7 @@ describe('GitHubApiHandler', () => {
     });
 
     it('encodes a runId containing path-traversal segments instead of letting it escape the runs path', async () => {
-      mockFetch.mockResolvedValue(
-        makeFetchResponse({ status: 200, body: { ...RUN_FIXTURE } }),
-      );
+      mockFetch.mockResolvedValue(makeFetchResponse({ status: 200, body: { ...RUN_FIXTURE } }));
 
       await handler.execute(
         makeContext(),
@@ -235,7 +252,9 @@ describe('GitHubApiHandler', () => {
     });
 
     it('returns GITHUB_API_ERROR when the run is gone', async () => {
-      mockFetch.mockResolvedValue(makeFetchResponse({ status: 404, body: { message: 'Not Found' } }));
+      mockFetch.mockResolvedValue(
+        makeFetchResponse({ status: 404, body: { message: 'Not Found' } }),
+      );
 
       const result = await handler.execute(
         makeContext(),

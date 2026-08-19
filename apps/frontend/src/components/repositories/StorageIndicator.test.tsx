@@ -4,7 +4,9 @@ import { StorageIndicator } from './StorageIndicator';
 
 // Render without tooltips to avoid TooltipProvider issues in tests
 const renderBadge = (storageBytes: number, otherProps = {}) => {
-  return render(<StorageIndicator storageBytes={storageBytes} showTooltip={false} {...otherProps} />);
+  return render(
+    <StorageIndicator storageBytes={storageBytes} showTooltip={false} {...otherProps} />,
+  );
 };
 
 describe('StorageIndicator', () => {

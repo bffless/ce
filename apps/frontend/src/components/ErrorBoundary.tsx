@@ -62,9 +62,7 @@ export class ErrorBoundary extends Component<Props, State> {
             </div>
 
             <div className="space-y-2">
-              <h2 className="text-2xl font-semibold tracking-tight">
-                Something went wrong
-              </h2>
+              <h2 className="text-2xl font-semibold tracking-tight">Something went wrong</h2>
               <p className="text-muted-foreground">
                 An unexpected error occurred. Please try again or return to the home page.
               </p>
@@ -88,11 +86,7 @@ export class ErrorBoundary extends Component<Props, State> {
             )}
 
             <div className="flex justify-center gap-4">
-              <Button
-                variant="outline"
-                onClick={this.handleRetry}
-                className="gap-2"
-              >
+              <Button variant="outline" onClick={this.handleRetry} className="gap-2">
                 <RefreshCw className="h-4 w-4" />
                 Try Again
               </Button>

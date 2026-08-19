@@ -79,7 +79,9 @@ describe('UninstallDialog', () => {
         "Removes the app's rule sets, alias, domain, and deployment from acme/handoff. Your data tables and uploaded files are kept.",
       ),
     ).toBeInTheDocument();
-    expect(screen.getByRole('checkbox', { name: /also delete the app's data tables/i })).not.toBeChecked();
+    expect(
+      screen.getByRole('checkbox', { name: /also delete the app's data tables/i }),
+    ).not.toBeChecked();
     expect(screen.queryByText(/this deletes/i)).not.toBeInTheDocument();
   });
 

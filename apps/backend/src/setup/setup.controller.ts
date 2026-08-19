@@ -207,7 +207,12 @@ export class SetupController {
     @Body() dto: AdoptExistingUserDto,
     @Req() req?: Request,
   ): Promise<AdoptExistingUserResponseDto> {
-    return this.setupService.adoptExistingUser(dto.email, dto.password, dto.token, req ? extractClientIp(req) : undefined);
+    return this.setupService.adoptExistingUser(
+      dto.email,
+      dto.password,
+      dto.token,
+      req ? extractClientIp(req) : undefined,
+    );
   }
 
   @Post('adopt-session-user')
@@ -248,7 +253,12 @@ export class SetupController {
       throw new UnauthorizedException('User not found');
     }
 
-    return this.setupService.adoptSessionUser(userId, user.email, dto.token, req ? extractClientIp(req) : undefined);
+    return this.setupService.adoptSessionUser(
+      userId,
+      user.email,
+      dto.token,
+      req ? extractClientIp(req) : undefined,
+    );
   }
 
   @Post('storage')
@@ -672,7 +682,8 @@ export class SetupController {
       if (!managedConfig) {
         return {
           success: false,
-          error: 'Managed Redis is not configured. MANAGED_REDIS_HOST environment variable is not set.',
+          error:
+            'Managed Redis is not configured. MANAGED_REDIS_HOST environment variable is not set.',
         };
       }
       dto.host = managedConfig.host;
@@ -684,7 +695,9 @@ export class SetupController {
     else if (dto.useLocalPassword) {
       const localConfig = this.setupService.getLocalRedisConfig();
       dto.password = localConfig.password;
-      this.logger.debug(`Using local Redis password from env (hasPassword=${localConfig.hasPassword})`);
+      this.logger.debug(
+        `Using local Redis password from env (hasPassword=${localConfig.hasPassword})`,
+      );
     }
     return this.testRedisConnectionInternal(dto);
   }

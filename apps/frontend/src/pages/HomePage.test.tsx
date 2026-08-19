@@ -144,7 +144,7 @@ describe('HomePage — wildcard SSL banner', () => {
     expect(screen.queryByText('Wildcard Certificate Expiring Soon')).not.toBeInTheDocument();
   });
 
-  it('dismissing the expiring-cert banner hides it, keyed to that cert\'s expiresAt', () => {
+  it("dismissing the expiring-cert banner hides it, keyed to that cert's expiresAt", () => {
     mockGetWildcardStatus.mockReturnValue(
       wildcardStatus({ daysUntilExpiry: 5, expiresAt: '2026-08-01T00:00:00.000Z' }),
     );
@@ -170,7 +170,9 @@ describe('HomePage — wildcard SSL banner', () => {
 
   it('suppresses the "missing wildcard" banner when primary SSL status reports proxyMode "proxy" (behind a CDN/WAF)', () => {
     mockGetWildcardStatus.mockReturnValue({ data: { exists: false } });
-    mockGetPrimarySslStatus.mockReturnValue({ data: { proxyMode: 'proxy', sslMode: 'letsencrypt' } });
+    mockGetPrimarySslStatus.mockReturnValue({
+      data: { proxyMode: 'proxy', sslMode: 'letsencrypt' },
+    });
     renderHomePage();
 
     expect(screen.queryByText('Wildcard SSL Certificate Required')).not.toBeInTheDocument();
@@ -186,7 +188,9 @@ describe('HomePage — wildcard SSL banner', () => {
 
   it('still shows the banner when primary SSL status is proxyMode "none" + sslMode "letsencrypt" (direct origin, needs its own wildcard)', () => {
     mockGetWildcardStatus.mockReturnValue({ data: { exists: false } });
-    mockGetPrimarySslStatus.mockReturnValue({ data: { proxyMode: 'none', sslMode: 'letsencrypt' } });
+    mockGetPrimarySslStatus.mockReturnValue({
+      data: { proxyMode: 'none', sslMode: 'letsencrypt' },
+    });
     renderHomePage();
 
     expect(screen.getByText('Wildcard SSL Certificate Required')).toBeInTheDocument();

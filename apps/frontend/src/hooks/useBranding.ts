@@ -15,13 +15,9 @@ export function useBranding() {
   const hasAuthLogo = data?.hasAuthLogo ?? false;
 
   // Use custom logo URL if set, otherwise fall back to default SVGs
-  const headerLogoUrl = hasHeaderLogo
-    ? '/api/settings/branding/logo/header'
-    : defaultLogoSvg;
+  const headerLogoUrl = hasHeaderLogo ? '/api/settings/branding/logo/header' : defaultLogoSvg;
 
-  const authLogoUrl = hasAuthLogo
-    ? '/api/settings/branding/logo/auth'
-    : defaultAuthLogoSvg;
+  const authLogoUrl = hasAuthLogo ? '/api/settings/branding/logo/auth' : defaultAuthLogoSvg;
 
   return {
     siteName,

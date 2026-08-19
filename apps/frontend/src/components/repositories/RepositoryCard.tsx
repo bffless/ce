@@ -62,9 +62,7 @@ export function RepositoryCard({ repository }: RepositoryCardProps) {
             {/* Badges - separate row on mobile, same row on desktop */}
             <div className="flex gap-2 flex-wrap sm:flex-shrink-0">
               {/* Permission badge - only show if not public */}
-              {permissionLevel && (
-                <PermissionBadge level={permissionLevel} size="md" />
-              )}
+              {permissionLevel && <PermissionBadge level={permissionLevel} size="md" />}
               {/* Visibility badge */}
               <VisibilityBadge isPublic={repository.isPublic} size="md" />
               {/* Activity badge */}

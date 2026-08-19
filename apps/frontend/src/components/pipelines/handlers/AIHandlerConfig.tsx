@@ -20,16 +20,8 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   HelpCircle,
   ChevronDown,
@@ -48,12 +40,7 @@ import {
   Plus,
   Trash2,
 } from 'lucide-react';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useGetProjectAIStatusQuery, ConfiguredProvider } from '@/services/projectsApi';
 import type { AIHandlerConfig as AIHandlerConfigType, ModelTier, ModelInfo } from './types';
@@ -68,11 +55,20 @@ import { cn } from '@/lib/utils';
 // Lazy load Monaco Editor
 const Editor = lazy(() => import('@monaco-editor/react'));
 
-const DEFAULT_SYSTEM_PROMPT = 'You are a helpful assistant. Be concise and friendly in your responses.';
+const DEFAULT_SYSTEM_PROMPT =
+  'You are a helpful assistant. Be concise and friendly in your responses.';
 
 // Tier display config
-const TIER_CONFIG: Record<ModelTier, { label: string; icon: React.ElementType; color: string; description: string }> = {
-  economy: { label: 'Economy', icon: DollarSign, color: 'text-green-600', description: 'Fast & affordable' },
+const TIER_CONFIG: Record<
+  ModelTier,
+  { label: string; icon: React.ElementType; color: string; description: string }
+> = {
+  economy: {
+    label: 'Economy',
+    icon: DollarSign,
+    color: 'text-green-600',
+    description: 'Fast & affordable',
+  },
   balanced: { label: 'Balanced', icon: Zap, color: 'text-yellow-600', description: 'Good balance' },
   premium: { label: 'Premium', icon: Brain, color: 'text-purple-600', description: 'Most capable' },
 };
@@ -90,10 +86,20 @@ function TierBadge({ tier }: { tier: ModelTier }) {
 
 // Built-in fields auto-populated by the handler
 const BUILT_IN_MESSAGE_FIELDS = new Set([
-  'conversation_id', 'role', 'content', 'tokens_used', 'metadata', 'created_at',
+  'conversation_id',
+  'role',
+  'content',
+  'tokens_used',
+  'metadata',
+  'created_at',
 ]);
 const BUILT_IN_CONVERSATION_FIELDS = new Set([
-  'chat_id', 'user_id', 'ip_address', 'model', 'message_count', 'total_tokens',
+  'chat_id',
+  'user_id',
+  'ip_address',
+  'model',
+  'message_count',
+  'total_tokens',
 ]);
 
 interface FieldMapping {
@@ -108,7 +114,12 @@ interface AIHandlerConfigProps {
   previousSteps?: PreviousStep[];
 }
 
-export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [] }: AIHandlerConfigProps) {
+export function AIHandlerConfig({
+  config,
+  onChange,
+  projectId,
+  previousSteps = [],
+}: AIHandlerConfigProps) {
   const { data: aiStatus, isLoading: isLoadingAI } = useGetProjectAIStatusQuery(projectId);
 
   // Use ref to store onChange to avoid useEffect re-triggering on callback changes
@@ -118,13 +129,14 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
   }, [onChange]);
 
   // Find default provider from configured providers
-  const defaultProvider = aiStatus?.providers?.find((p: ConfiguredProvider) => p.isDefault) || aiStatus?.providers?.[0];
+  const defaultProvider =
+    aiStatus?.providers?.find((p: ConfiguredProvider) => p.isDefault) || aiStatus?.providers?.[0];
 
   const [mode, setMode] = useState<'chat' | 'completion'>(config.mode || 'completion');
   const [provider, setProvider] = useState(config.provider || '');
   const [model, setModel] = useState(config.model || '');
   const [responseMode, setResponseMode] = useState<'stream' | 'message'>(
-    config.responseMode || (config.mode === 'chat' ? 'stream' : 'message')
+    config.responseMode || (config.mode === 'chat' ? 'stream' : 'message'),
   );
   const [systemPrompt, setSystemPrompt] = useState(config.systemPrompt || DEFAULT_SYSTEM_PROMPT);
   const [messageField, setMessageField] = useState(config.messageField || 'message');
@@ -147,7 +159,9 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
     patch: Partial<{ type: 'image' | 'file'; source: string; mediaType: string }>,
   ) => setAttachments((prev) => prev.map((a, i) => (i === index ? { ...a, ...patch } : a)));
 
-  const [messagesField, setMessagesField] = useState(config.messagesField || 'request.body.messages');
+  const [messagesField, setMessagesField] = useState(
+    config.messagesField || 'request.body.messages',
+  );
   const [maxHistoryMessages, setMaxHistoryMessages] = useState(config.maxHistoryMessages ?? 50);
   const [maxTokens, setMaxTokens] = useState(config.maxTokens ?? 4096);
   const [temperature, setTemperature] = useState(config.temperature ?? 0.7);
@@ -156,9 +170,15 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
 
   // Message persistence state (simplified - uses smart defaults)
   const [persistMessages, setPersistMessages] = useState(config.persistMessages ?? false);
-  const [persistMessagesSchemaId, setPersistMessagesSchemaId] = useState(config.persistMessagesSchemaId || '');
-  const [persistConversationsSchemaId, setPersistConversationsSchemaId] = useState(config.persistConversationsSchemaId || '');
-  const [conversationIdField, setConversationIdField] = useState(config.conversationIdField || 'request.body.id');
+  const [persistMessagesSchemaId, setPersistMessagesSchemaId] = useState(
+    config.persistMessagesSchemaId || '',
+  );
+  const [persistConversationsSchemaId, setPersistConversationsSchemaId] = useState(
+    config.persistConversationsSchemaId || '',
+  );
+  const [conversationIdField, setConversationIdField] = useState(
+    config.conversationIdField || 'request.body.id',
+  );
   const [showPersistence, setShowPersistence] = useState(config.persistMessages ?? false);
 
   // Extra fields state
@@ -179,15 +199,19 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
 
   // Skills state
   const [skills, setSkills] = useState<SkillsConfigValue>(
-    (config.skills as SkillsConfigValue) || { mode: 'none' }
+    (config.skills as SkillsConfigValue) || { mode: 'none' },
   );
-  const [showSkills, setShowSkills] = useState(config.skills?.mode !== 'none' && config.skills?.mode !== undefined);
+  const [showSkills, setShowSkills] = useState(
+    config.skills?.mode !== 'none' && config.skills?.mode !== undefined,
+  );
 
   // Plugins state
   const [plugins, setPlugins] = useState<PluginsConfigValue>(
-    (config.plugins as PluginsConfigValue) || { mode: 'none' }
+    (config.plugins as PluginsConfigValue) || { mode: 'none' },
   );
-  const [showPlugins, setShowPlugins] = useState(config.plugins?.mode !== 'none' && config.plugins?.mode !== undefined);
+  const [showPlugins, setShowPlugins] = useState(
+    config.plugins?.mode !== 'none' && config.plugins?.mode !== undefined,
+  );
 
   // Initialize provider/model from AI status
   useEffect(() => {
@@ -211,7 +235,9 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
   }, [mode]);
 
   // Get selected provider info
-  const selectedProvider = aiStatus?.providers?.find((p: ConfiguredProvider) => p.provider === provider);
+  const selectedProvider = aiStatus?.providers?.find(
+    (p: ConfiguredProvider) => p.provider === provider,
+  );
   const suggestedModels: ModelInfo[] = selectedProvider?.suggestedModels || [];
 
   // Group models by tier
@@ -244,16 +270,24 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
   );
 
   // Extra field handlers
-  const handleAddMessageField = () => setExtraMessageFields([...extraMessageFields, { schemaField: '', expression: '' }]);
-  const handleRemoveMessageField = (index: number) => setExtraMessageFields(extraMessageFields.filter((_, i) => i !== index));
+  const handleAddMessageField = () =>
+    setExtraMessageFields([...extraMessageFields, { schemaField: '', expression: '' }]);
+  const handleRemoveMessageField = (index: number) =>
+    setExtraMessageFields(extraMessageFields.filter((_, i) => i !== index));
   const handleMessageFieldChange = (index: number, updates: Partial<FieldMapping>) => {
-    setExtraMessageFields(extraMessageFields.map((m, i) => (i === index ? { ...m, ...updates } : m)));
+    setExtraMessageFields(
+      extraMessageFields.map((m, i) => (i === index ? { ...m, ...updates } : m)),
+    );
   };
 
-  const handleAddConversationField = () => setExtraConversationFields([...extraConversationFields, { schemaField: '', expression: '' }]);
-  const handleRemoveConversationField = (index: number) => setExtraConversationFields(extraConversationFields.filter((_, i) => i !== index));
+  const handleAddConversationField = () =>
+    setExtraConversationFields([...extraConversationFields, { schemaField: '', expression: '' }]);
+  const handleRemoveConversationField = (index: number) =>
+    setExtraConversationFields(extraConversationFields.filter((_, i) => i !== index));
   const handleConversationFieldChange = (index: number, updates: Partial<FieldMapping>) => {
-    setExtraConversationFields(extraConversationFields.map((m, i) => (i === index ? { ...m, ...updates } : m)));
+    setExtraConversationFields(
+      extraConversationFields.map((m, i) => (i === index ? { ...m, ...updates } : m)),
+    );
   };
 
   // Update parent when values change
@@ -284,8 +318,8 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
       model: model || undefined,
       responseMode,
       systemPrompt: systemPrompt.trim() || undefined,
-      messageField: mode === 'completion' ? (messageField || 'message') : undefined,
-      messagesField: mode === 'chat' ? (messagesField || 'messages') : undefined,
+      messageField: mode === 'completion' ? messageField || 'message' : undefined,
+      messagesField: mode === 'chat' ? messagesField || 'messages' : undefined,
       attachments:
         mode === 'completion' && cleanedAttachments.length > 0 ? cleanedAttachments : undefined,
       maxHistoryMessages,
@@ -293,21 +327,48 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
       temperature,
       // Message persistence (simplified - backend uses smart defaults)
       persistMessages: shouldPersist ? true : undefined,
-      persistMessagesSchemaId: shouldPersist && persistMessagesSchemaId ? persistMessagesSchemaId : undefined,
-      persistConversationsSchemaId: shouldPersist && persistConversationsSchemaId ? persistConversationsSchemaId : undefined,
-      conversationIdField: shouldPersist && conversationIdField !== 'request.body.id' ? conversationIdField : undefined,
+      persistMessagesSchemaId:
+        shouldPersist && persistMessagesSchemaId ? persistMessagesSchemaId : undefined,
+      persistConversationsSchemaId:
+        shouldPersist && persistConversationsSchemaId ? persistConversationsSchemaId : undefined,
+      conversationIdField:
+        shouldPersist && conversationIdField !== 'request.body.id'
+          ? conversationIdField
+          : undefined,
       // Extra fields for persistence
-      extraMessageFields: shouldPersist && Object.keys(extraMsgObj).length > 0 ? extraMsgObj : undefined,
-      extraConversationFields: shouldPersist && Object.keys(extraConvObj).length > 0 ? extraConvObj : undefined,
+      extraMessageFields:
+        shouldPersist && Object.keys(extraMsgObj).length > 0 ? extraMsgObj : undefined,
+      extraConversationFields:
+        shouldPersist && Object.keys(extraConvObj).length > 0 ? extraConvObj : undefined,
       // Skills
       skills: skills.mode !== 'none' ? skills : undefined,
       // Plugins
       plugins: plugins.mode !== 'none' ? plugins : undefined,
     });
-  }, [mode, provider, model, responseMode, systemPrompt, messageField, messagesField, attachments, maxHistoryMessages, maxTokens, temperature, persistMessages, persistMessagesSchemaId, persistConversationsSchemaId, conversationIdField, extraMessageFields, extraConversationFields, skills, plugins]);
+  }, [
+    mode,
+    provider,
+    model,
+    responseMode,
+    systemPrompt,
+    messageField,
+    messagesField,
+    attachments,
+    maxHistoryMessages,
+    maxTokens,
+    temperature,
+    persistMessages,
+    persistMessagesSchemaId,
+    persistConversationsSchemaId,
+    conversationIdField,
+    extraMessageFields,
+    extraConversationFields,
+    skills,
+    plugins,
+  ]);
 
   // Find selected model info
-  const selectedModelInfo = suggestedModels.find(m => m.id === model);
+  const selectedModelInfo = suggestedModels.find((m) => m.id === model);
 
   if (isLoadingAI) {
     return <Skeleton className="h-[200px] w-full" />;
@@ -318,7 +379,8 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
       <Alert variant="destructive">
         <AlertTriangle className="h-4 w-4" />
         <AlertDescription>
-          No AI providers configured for this project. Please configure an AI provider in Project Settings &gt; AI.
+          No AI providers configured for this project. Please configure an AI provider in Project
+          Settings &gt; AI.
         </AlertDescription>
       </Alert>
     );
@@ -338,8 +400,14 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
                 </button>
               </TooltipTrigger>
               <TooltipContent className="max-w-xs">
-                <p><strong>Chat:</strong> For useChat integration. Client sends message history, handler streams response.</p>
-                <p className="mt-1"><strong>Completion:</strong> One-off AI processing. Configure message template for form processing, content generation, etc.</p>
+                <p>
+                  <strong>Chat:</strong> For useChat integration. Client sends message history,
+                  handler streams response.
+                </p>
+                <p className="mt-1">
+                  <strong>Completion:</strong> One-off AI processing. Configure message template for
+                  form processing, content generation, etc.
+                </p>
               </TooltipContent>
             </Tooltip>
           </div>
@@ -381,7 +449,9 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
               onValueChange={(value) => {
                 setProvider(value);
                 // Reset model when provider changes
-                const newProvider = aiStatus?.providers?.find((p: ConfiguredProvider) => p.provider === value);
+                const newProvider = aiStatus?.providers?.find(
+                  (p: ConfiguredProvider) => p.provider === value,
+                );
                 if (newProvider) {
                   setModel(newProvider.defaultModel || newProvider.suggestedModels?.[0]?.id || '');
                 }
@@ -396,7 +466,11 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
                     <div className="flex items-center gap-2">
                       <Bot className="h-4 w-4" />
                       {p.provider}
-                      {p.isDefault && <Badge variant="secondary" className="text-xs">Default</Badge>}
+                      {p.isDefault && (
+                        <Badge variant="secondary" className="text-xs">
+                          Default
+                        </Badge>
+                      )}
                     </div>
                   </SelectItem>
                 ))}
@@ -464,12 +538,14 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
                               <Check
                                 className={cn(
                                   'mr-2 h-4 w-4',
-                                  model === m.id ? 'opacity-100' : 'opacity-0'
+                                  model === m.id ? 'opacity-100' : 'opacity-0',
                                 )}
                               />
                               <div className="flex flex-col">
                                 <span className="font-mono text-sm">{m.id}</span>
-                                <span className="text-xs text-muted-foreground">{m.description}</span>
+                                <span className="text-xs text-muted-foreground">
+                                  {m.description}
+                                </span>
                               </div>
                             </CommandItem>
                           ))}
@@ -498,7 +574,10 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
               </TooltipContent>
             </Tooltip>
           </div>
-          <div className="border rounded-md overflow-hidden resize-y" style={{ minHeight: '240px', height: '240px' }}>
+          <div
+            className="border rounded-md overflow-hidden resize-y"
+            style={{ minHeight: '240px', height: '240px' }}
+          >
             <Suspense fallback={<Skeleton className="h-[240px] w-full" />}>
               <Editor
                 height="100%"
@@ -542,7 +621,10 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
                     </button>
                   </TooltipTrigger>
                   <TooltipContent className="max-w-xs">
-                    <p>The message to send to the AI. Use template variables like <code>{'{{steps.form.message}}'}</code> to include data from previous steps.</p>
+                    <p>
+                      The message to send to the AI. Use template variables like{' '}
+                      <code>{'{{steps.form.message}}'}</code> to include data from previous steps.
+                    </p>
                   </TooltipContent>
                 </Tooltip>
               </div>
@@ -575,7 +657,9 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
                 </Suspense>
               </div>
               <p className="text-xs text-muted-foreground">
-                Use <code className="bg-muted px-1 rounded">{'{{variable}}'}</code> syntax for template variables (e.g., <code className="bg-muted px-1 rounded">{'{{steps.form.name}}'}</code>)
+                Use <code className="bg-muted px-1 rounded">{'{{variable}}'}</code> syntax for
+                template variables (e.g.,{' '}
+                <code className="bg-muted px-1 rounded">{'{{steps.form.name}}'}</code>)
               </p>
             </div>
 
@@ -591,9 +675,9 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
                   </TooltipTrigger>
                   <TooltipContent className="max-w-xs">
                     <p>
-                      Attach images or files to the message. Source is an expression that
-                      resolves to a URL or an array of URLs (e.g.{' '}
-                      <code>steps.collect.images</code>) — arrays send one attachment per URL.
+                      Attach images or files to the message. Source is an expression that resolves
+                      to a URL or an array of URLs (e.g. <code>steps.collect.images</code>) — arrays
+                      send one attachment per URL.
                     </p>
                   </TooltipContent>
                 </Tooltip>
@@ -657,7 +741,10 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
                   </button>
                 </TooltipTrigger>
                 <TooltipContent className="max-w-xs">
-                  <p>Expression for the messages array. For useChat, use <code>request.body.messages</code>.</p>
+                  <p>
+                    Expression for the messages array. For useChat, use{' '}
+                    <code>request.body.messages</code>.
+                  </p>
                 </TooltipContent>
               </Tooltip>
             </div>
@@ -668,7 +755,9 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
               previousSteps={previousSteps}
             />
             <p className="text-xs text-muted-foreground">
-              Expected format: Array of <code className="bg-muted px-1 rounded">{'{role, content}'}</code> objects from useChat
+              Expected format: Array of{' '}
+              <code className="bg-muted px-1 rounded">{'{role, content}'}</code> objects from
+              useChat
             </p>
           </div>
         )}
@@ -684,8 +773,12 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
                 </button>
               </TooltipTrigger>
               <TooltipContent className="max-w-xs">
-                <p><strong>Stream:</strong> Returns Server-Sent Events for real-time UIs</p>
-                <p className="mt-1"><strong>Message:</strong> Returns complete JSON response</p>
+                <p>
+                  <strong>Stream:</strong> Returns Server-Sent Events for real-time UIs
+                </p>
+                <p className="mt-1">
+                  <strong>Message:</strong> Returns complete JSON response
+                </p>
               </TooltipContent>
             </Tooltip>
           </div>
@@ -713,9 +806,10 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
             <Alert className="mt-2 border-purple-500/30 bg-purple-500/5">
               <MessageSquare className="h-4 w-4 text-purple-600" />
               <AlertDescription className="text-xs">
-                <strong>This step becomes the terminal response.</strong> Chat streaming sends the response directly to the client
-                using the AI SDK protocol, compatible with <code className="bg-muted px-1 rounded">useChat</code>.
-                Ensure this is the last step in your pipeline.
+                <strong>This step becomes the terminal response.</strong> Chat streaming sends the
+                response directly to the client using the AI SDK protocol, compatible with{' '}
+                <code className="bg-muted px-1 rounded">useChat</code>. Ensure this is the last step
+                in your pipeline.
               </AlertDescription>
             </Alert>
           )}
@@ -729,9 +823,15 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
                 <span className="flex items-center gap-2">
                   <Database className="h-4 w-4" />
                   Message Persistence
-                  {persistMessages && <Badge variant="secondary" className="text-xs">Enabled</Badge>}
+                  {persistMessages && (
+                    <Badge variant="secondary" className="text-xs">
+                      Enabled
+                    </Badge>
+                  )}
                 </span>
-                <ChevronDown className={cn('h-4 w-4 transition-transform', showPersistence && 'rotate-180')} />
+                <ChevronDown
+                  className={cn('h-4 w-4 transition-transform', showPersistence && 'rotate-180')}
+                />
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="space-y-4 pt-4">
@@ -763,7 +863,10 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
                           </button>
                         </TooltipTrigger>
                         <TooltipContent className="max-w-xs">
-                          <p>Select a <code>_conversations</code> schema. Conversations are auto-created on first message.</p>
+                          <p>
+                            Select a <code>_conversations</code> schema. Conversations are
+                            auto-created on first message.
+                          </p>
                         </TooltipContent>
                       </Tooltip>
                     </div>
@@ -785,7 +888,9 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
                           </button>
                         </TooltipTrigger>
                         <TooltipContent className="max-w-xs">
-                          <p>Select a <code>_messages</code> schema for storing chat messages.</p>
+                          <p>
+                            Select a <code>_messages</code> schema for storing chat messages.
+                          </p>
                         </TooltipContent>
                       </Tooltip>
                     </div>
@@ -807,7 +912,9 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
                           </button>
                         </TooltipTrigger>
                         <TooltipContent className="max-w-xs">
-                          <p>useChat sends conversation ID as <code>id</code> in the request body.</p>
+                          <p>
+                            useChat sends conversation ID as <code>id</code> in the request body.
+                          </p>
                         </TooltipContent>
                       </Tooltip>
                     </div>
@@ -826,7 +933,8 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
                         <div>
                           <Label>Extra Message Fields</Label>
                           <p className="text-xs text-muted-foreground">
-                            Populate additional fields on every saved message. Built-in fields are always included.
+                            Populate additional fields on every saved message. Built-in fields are
+                            always included.
                           </p>
                         </div>
                         <Button
@@ -848,7 +956,9 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
                                 <SchemaFieldPicker
                                   schemaId={persistMessagesSchemaId}
                                   value={mapping.schemaField}
-                                  onChange={(value) => handleMessageFieldChange(index, { schemaField: value })}
+                                  onChange={(value) =>
+                                    handleMessageFieldChange(index, { schemaField: value })
+                                  }
                                   usedFields={usedMessageFields}
                                   placeholder="Select field"
                                 />
@@ -857,7 +967,9 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
                               <div className="flex-1">
                                 <ExpressionInput
                                   value={mapping.expression}
-                                  onChange={(value) => handleMessageFieldChange(index, { expression: value })}
+                                  onChange={(value) =>
+                                    handleMessageFieldChange(index, { expression: value })
+                                  }
                                   placeholder="'static value' or request.body.field"
                                   previousSteps={previousSteps}
                                 />
@@ -907,7 +1019,9 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
                                 <SchemaFieldPicker
                                   schemaId={persistConversationsSchemaId}
                                   value={mapping.schemaField}
-                                  onChange={(value) => handleConversationFieldChange(index, { schemaField: value })}
+                                  onChange={(value) =>
+                                    handleConversationFieldChange(index, { schemaField: value })
+                                  }
                                   usedFields={usedConversationFields}
                                   placeholder="Select field"
                                 />
@@ -916,7 +1030,9 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
                               <div className="flex-1">
                                 <ExpressionInput
                                   value={mapping.expression}
-                                  onChange={(value) => handleConversationFieldChange(index, { expression: value })}
+                                  onChange={(value) =>
+                                    handleConversationFieldChange(index, { expression: value })
+                                  }
                                   placeholder="'static value' or request.body.field"
                                   previousSteps={previousSteps}
                                 />
@@ -941,31 +1057,53 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
                   <Alert className="border-blue-500/30 bg-blue-500/5">
                     <Database className="h-4 w-4 text-blue-600" />
                     <AlertDescription className="text-xs space-y-2">
-                      <p><strong>Auto-managed:</strong> Conversations are created on first message. Messages are saved automatically and conversation counters are updated.</p>
+                      <p>
+                        <strong>Auto-managed:</strong> Conversations are created on first message.
+                        Messages are saved automatically and conversation counters are updated.
+                      </p>
                       <div className="mt-2 space-y-1.5">
                         <p className="font-medium">Required schema fields:</p>
                         <div className="grid grid-cols-2 gap-2">
                           <div>
                             <p className="font-medium text-blue-700">Conversations:</p>
                             <ul className="list-disc list-inside text-muted-foreground">
-                              <li><code className="bg-muted px-1 rounded">chat_id</code> (string)</li>
-                              <li><code className="bg-muted px-1 rounded">model</code> (string)</li>
-                              <li><code className="bg-muted px-1 rounded">message_count</code> (number)</li>
-                              <li><code className="bg-muted px-1 rounded">total_tokens</code> (number)</li>
+                              <li>
+                                <code className="bg-muted px-1 rounded">chat_id</code> (string)
+                              </li>
+                              <li>
+                                <code className="bg-muted px-1 rounded">model</code> (string)
+                              </li>
+                              <li>
+                                <code className="bg-muted px-1 rounded">message_count</code>{' '}
+                                (number)
+                              </li>
+                              <li>
+                                <code className="bg-muted px-1 rounded">total_tokens</code> (number)
+                              </li>
                             </ul>
                           </div>
                           <div>
                             <p className="font-medium text-blue-700">Messages:</p>
                             <ul className="list-disc list-inside text-muted-foreground">
-                              <li><code className="bg-muted px-1 rounded">conversation_id</code> (string)</li>
-                              <li><code className="bg-muted px-1 rounded">role</code> (string)</li>
-                              <li><code className="bg-muted px-1 rounded">content</code> (text)</li>
-                              <li><code className="bg-muted px-1 rounded">tokens_used</code> (number)</li>
+                              <li>
+                                <code className="bg-muted px-1 rounded">conversation_id</code>{' '}
+                                (string)
+                              </li>
+                              <li>
+                                <code className="bg-muted px-1 rounded">role</code> (string)
+                              </li>
+                              <li>
+                                <code className="bg-muted px-1 rounded">content</code> (text)
+                              </li>
+                              <li>
+                                <code className="bg-muted px-1 rounded">tokens_used</code> (number)
+                              </li>
                             </ul>
                           </div>
                         </div>
                         <p className="text-muted-foreground pt-1">
-                          Tip: Use <strong>Create Chat Schema</strong> in Data Schemas to auto-generate compatible schemas.
+                          Tip: Use <strong>Create Chat Schema</strong> in Data Schemas to
+                          auto-generate compatible schemas.
                         </p>
                       </div>
                     </AlertDescription>
@@ -989,7 +1127,9 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
                   </Badge>
                 )}
               </span>
-              <ChevronDown className={cn('h-4 w-4 transition-transform', showSkills && 'rotate-180')} />
+              <ChevronDown
+                className={cn('h-4 w-4 transition-transform', showSkills && 'rotate-180')}
+              />
             </Button>
           </CollapsibleTrigger>
           <CollapsibleContent className="pt-4">
@@ -1010,7 +1150,9 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
                   </Badge>
                 )}
               </span>
-              <ChevronDown className={cn('h-4 w-4 transition-transform', showPlugins && 'rotate-180')} />
+              <ChevronDown
+                className={cn('h-4 w-4 transition-transform', showPlugins && 'rotate-180')}
+              />
             </Button>
           </CollapsibleTrigger>
           <CollapsibleContent className="pt-4">
@@ -1023,7 +1165,9 @@ export function AIHandlerConfig({ config, onChange, projectId, previousSteps = [
           <CollapsibleTrigger asChild>
             <Button variant="ghost" size="sm" className="w-full justify-between">
               Advanced Options
-              <ChevronDown className={cn('h-4 w-4 transition-transform', showAdvanced && 'rotate-180')} />
+              <ChevronDown
+                className={cn('h-4 w-4 transition-transform', showAdvanced && 'rotate-180')}
+              />
             </Button>
           </CollapsibleTrigger>
           <CollapsibleContent className="space-y-4 pt-4">

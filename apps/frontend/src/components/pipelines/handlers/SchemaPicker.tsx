@@ -24,11 +24,7 @@ export function SchemaPicker({ projectId, value, onChange }: SchemaPickerProps) 
   }
 
   if (error) {
-    return (
-      <div className="text-sm text-destructive">
-        Failed to load schemas
-      </div>
-    );
+    return <div className="text-sm text-destructive">Failed to load schemas</div>;
   }
 
   const schemas = data?.schemas || [];

@@ -1,12 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  IsString,
-  IsUUID,
-  IsOptional,
-  IsDateString,
-  MaxLength,
-  ValidateIf,
-} from 'class-validator';
+import { IsString, IsUUID, IsOptional, IsDateString, MaxLength, ValidateIf } from 'class-validator';
 
 export class CreateShareLinkDto {
   @ApiPropertyOptional({ description: 'Project ID to scope this share link to' })

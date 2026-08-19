@@ -19,14 +19,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import {
-  CheckCircle,
-  XCircle,
-  Loader2,
-  Mail,
-  AlertTriangle,
-  Settings2,
-} from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, Mail, AlertTriangle, Settings2 } from 'lucide-react';
 
 type ConfigMode = 'env' | 'manual' | 'skip';
 
@@ -119,9 +112,7 @@ export function SmtpStep() {
         {/* Environment Config Option */}
         <label
           className={`flex items-start p-4 border rounded-lg cursor-pointer transition-colors ${
-            configMode === 'env'
-              ? 'border-primary bg-primary/5'
-              : 'border-border hover:bg-muted/50'
+            configMode === 'env' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'
           } ${!envSmtpAvailable ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
           <input
@@ -145,10 +136,19 @@ export function SmtpStep() {
             </div>
             {envSmtpAvailable ? (
               <div className="mt-2 text-sm text-muted-foreground space-y-1">
-                <div>Host: <span className="font-mono">{envConfig.host}:{envConfig.port}</span></div>
-                <div>User: <span className="font-mono">{envConfig.user}</span></div>
+                <div>
+                  Host:{' '}
+                  <span className="font-mono">
+                    {envConfig.host}:{envConfig.port}
+                  </span>
+                </div>
+                <div>
+                  User: <span className="font-mono">{envConfig.user}</span>
+                </div>
                 {envConfig.fromAddress && (
-                  <div>From: <span className="font-mono">{envConfig.fromAddress}</span></div>
+                  <div>
+                    From: <span className="font-mono">{envConfig.fromAddress}</span>
+                  </div>
                 )}
               </div>
             ) : (
@@ -180,9 +180,7 @@ export function SmtpStep() {
               <Settings2 className="w-4 h-4 mr-2 text-muted-foreground" />
               <span className="font-medium">Configure Manually</span>
             </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Enter SMTP server details manually
-            </p>
+            <p className="mt-1 text-sm text-muted-foreground">Enter SMTP server details manually</p>
           </div>
         </label>
 
@@ -234,7 +232,9 @@ export function SmtpStep() {
                 id="port"
                 type="number"
                 value={manualConfig.port}
-                onChange={(e) => setManualConfig({ ...manualConfig, port: parseInt(e.target.value) || 587 })}
+                onChange={(e) =>
+                  setManualConfig({ ...manualConfig, port: parseInt(e.target.value) || 587 })
+                }
                 placeholder="587"
                 className="mt-1"
               />
@@ -272,8 +272,8 @@ export function SmtpStep() {
                     className="text-primary hover:underline"
                   >
                     App Password
-                  </a>
-                  {' '}(not your regular Gmail password)
+                  </a>{' '}
+                  (not your regular Gmail password)
                 </p>
               )}
             </div>
@@ -333,7 +333,9 @@ export function SmtpStep() {
           {connectionSuccess ? (
             <>
               <CheckCircle className="w-5 h-5 text-green-500 mr-2" />
-              <span className="text-green-700 dark:text-green-400">SMTP connection successful!</span>
+              <span className="text-green-700 dark:text-green-400">
+                SMTP connection successful!
+              </span>
             </>
           ) : (
             <>
@@ -353,9 +355,7 @@ export function SmtpStep() {
 
         <div className="space-x-2">
           {configMode === 'skip' ? (
-            <Button onClick={handleSkip}>
-              Skip & Continue
-            </Button>
+            <Button onClick={handleSkip}>Skip & Continue</Button>
           ) : (
             <>
               <Button
@@ -365,7 +365,8 @@ export function SmtpStep() {
                   isConfiguring ||
                   isTesting ||
                   (configMode === 'env' && !envSmtpAvailable) ||
-                  (configMode === 'manual' && (!manualConfig.host || !manualConfig.user || !manualConfig.password))
+                  (configMode === 'manual' &&
+                    (!manualConfig.host || !manualConfig.user || !manualConfig.password))
                 }
               >
                 {isConfiguring || isTesting ? (
@@ -378,10 +379,7 @@ export function SmtpStep() {
                 )}
               </Button>
 
-              <Button
-                onClick={handleContinue}
-                disabled={!connectionSuccess && !smtpConfigured}
-              >
+              <Button onClick={handleContinue} disabled={!connectionSuccess && !smtpConfigured}>
                 Continue
               </Button>
             </>

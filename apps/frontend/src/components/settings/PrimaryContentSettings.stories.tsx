@@ -11,8 +11,7 @@ const createStore = () =>
     reducer: {
       [api.reducerPath]: api.reducer,
     },
-    middleware: (getDefaultMiddleware) =>
-      getDefaultMiddleware().concat(api.middleware),
+    middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(api.middleware),
   });
 
 // Mock data
@@ -268,10 +267,7 @@ export const Error: Story = {
     msw: {
       handlers: [
         http.get('/api/settings/primary-content', () => {
-          return HttpResponse.json(
-            { message: 'Failed to load settings' },
-            { status: 500 }
-          );
+          return HttpResponse.json({ message: 'Failed to load settings' }, { status: 500 });
         }),
         http.get('/api/settings/primary-content/projects', () => {
           return HttpResponse.json(mockProjects);

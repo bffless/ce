@@ -15,11 +15,7 @@ interface UploadState {
   error?: string;
 }
 
-export function FileUploadZone({
-  uploadUrl,
-  onUploadComplete,
-  disabled,
-}: FileUploadZoneProps) {
+export function FileUploadZone({ uploadUrl, onUploadComplete, disabled }: FileUploadZoneProps) {
   const { toast } = useToast();
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploads, setUploads] = useState<UploadState[]>([]);
@@ -118,9 +114,7 @@ export function FileUploadZone({
         <p className="text-sm font-medium">
           {isDragOver ? 'Drop files here' : 'Drag and drop files here, or click to browse'}
         </p>
-        <p className="text-xs text-muted-foreground mt-1">
-          Files will be uploaded to storage
-        </p>
+        <p className="text-xs text-muted-foreground mt-1">Files will be uploaded to storage</p>
         <input
           ref={fileInputRef}
           type="file"
@@ -148,9 +142,7 @@ export function FileUploadZone({
               {upload.status === 'complete' && (
                 <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
               )}
-              {upload.status === 'error' && (
-                <X className="h-4 w-4 text-destructive shrink-0" />
-              )}
+              {upload.status === 'error' && <X className="h-4 w-4 text-destructive shrink-0" />}
               <span className="flex-1 truncate">{upload.file.name}</span>
               <span className="text-muted-foreground shrink-0">
                 {formatFileSize(upload.file.size)}

@@ -1,4 +1,13 @@
-import { pgTable, uuid, varchar, bigint, timestamp, jsonb, uniqueIndex, index } from 'drizzle-orm/pg-core';
+import {
+  pgTable,
+  uuid,
+  varchar,
+  bigint,
+  timestamp,
+  jsonb,
+  uniqueIndex,
+  index,
+} from 'drizzle-orm/pg-core';
 
 /**
  * Per-IP rollup over the Request log (issue #390): one row per client IP that

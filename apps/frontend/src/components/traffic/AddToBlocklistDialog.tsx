@@ -49,7 +49,11 @@ interface AddToBlocklistDialogProps {
 /** www-insensitive host → attached/default Blocklist match (#393). */
 function hostMatchesDomain(host: string, domain: string): boolean {
   const normalize = (value: string) =>
-    value.trim().toLowerCase().replace(/:\d+$/, '').replace(/^www\./, '');
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/:\d+$/, '')
+      .replace(/^www\./, '');
   return normalize(host) === normalize(domain);
 }
 
@@ -103,7 +107,11 @@ export function AddToBlocklistDialog({ target, onOpenChange }: AddToBlocklistDia
   const handleAdd = async () => {
     if (!blocklistId || !value.trim()) return;
     try {
-      const updated = await appendEntry({ id: blocklistId, matchType, value: value.trim() }).unwrap();
+      const updated = await appendEntry({
+        id: blocklistId,
+        matchType,
+        value: value.trim(),
+      }).unwrap();
       toast({
         title: `Added to "${updated.name}"`,
         description: 'Matching requests are refused within seconds, app-side and at the edge.',
@@ -142,8 +150,8 @@ export function AddToBlocklistDialog({ target, onOpenChange }: AddToBlocklistDia
           </div>
         ) : (blocklists?.length ?? 0) === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No Blocklists exist yet — create one on the Blocklist tab first, then add patterns to
-            it from here.
+            No Blocklists exist yet — create one on the Blocklist tab first, then add patterns to it
+            from here.
           </p>
         ) : (
           <div className="space-y-3">

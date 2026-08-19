@@ -22,7 +22,8 @@ export class UpdatePipelineSchemaDto {
   name?: string;
 
   @ApiPropertyOptional({
-    description: 'Schema version number. Bump when fields change to track which records were created under which schema definition.',
+    description:
+      'Schema version number. Bump when fields change to track which records were created under which schema definition.',
     example: 2,
   })
   @IsOptional()

@@ -126,7 +126,10 @@ describe('generated vhosts always expose the local presigned upload route', () =
     const config = await buildService().generateConfig(mapping, project);
 
     // Outside the presigned location, which has its own 200M ceiling.
-    const beforePresigned = config.slice(0, config.indexOf('location = /api/storage/presigned/local'));
+    const beforePresigned = config.slice(
+      0,
+      config.indexOf('location = /api/storage/presigned/local'),
+    );
     expect(beforePresigned).toContain('client_max_body_size');
   });
 

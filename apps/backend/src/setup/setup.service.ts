@@ -186,7 +186,10 @@ export class SetupService {
     if (bucket && bucket.count > 0 && now - bucket.windowStart > SetupService.CLAIM_WINDOW_MS) {
       this.claimAttempts.delete(key);
     }
-    if (this.claimGlobal.count > 0 && now - this.claimGlobal.windowStart > SetupService.CLAIM_WINDOW_MS) {
+    if (
+      this.claimGlobal.count > 0 &&
+      now - this.claimGlobal.windowStart > SetupService.CLAIM_WINDOW_MS
+    ) {
       this.claimGlobal = { count: 0, windowStart: 0 };
     }
 
@@ -205,9 +208,7 @@ export class SetupService {
     }
     if (providedToken !== expectedToken) {
       this.recordFailedClaimAttempt(key, now);
-      throw new BadRequestException(
-        'Invalid onboarding token. Please use the correct setup link.',
-      );
+      throw new BadRequestException('Invalid onboarding token. Please use the correct setup link.');
     }
 
     // Success clears this IP's bucket only — the global backstop keeps its

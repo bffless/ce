@@ -32,8 +32,7 @@ export const shareLinksApi = api.injectEndpoints({
   endpoints: (builder) => ({
     getShareLinksByProject: builder.query<ShareLink[], string>({
       query: (projectId) => `/api/share-links/project/${projectId}`,
-      transformResponse: (response: { shareLinks: ShareLink[] }) =>
-        response.shareLinks,
+      transformResponse: (response: { shareLinks: ShareLink[] }) => response.shareLinks,
       providesTags: (result, _error, projectId) =>
         result
           ? [
@@ -43,10 +42,8 @@ export const shareLinksApi = api.injectEndpoints({
           : [{ type: 'ShareLink', id: `PROJECT-${projectId}` }],
     }),
     getShareLinksByDomain: builder.query<ShareLink[], string>({
-      query: (domainMappingId) =>
-        `/api/share-links/domain/${domainMappingId}`,
-      transformResponse: (response: { shareLinks: ShareLink[] }) =>
-        response.shareLinks,
+      query: (domainMappingId) => `/api/share-links/domain/${domainMappingId}`,
+      transformResponse: (response: { shareLinks: ShareLink[] }) => response.shareLinks,
       providesTags: (result, _error, domainMappingId) =>
         result
           ? [
@@ -63,8 +60,7 @@ export const shareLinksApi = api.injectEndpoints({
       }),
       invalidatesTags: (_result, _error, dto) => {
         const tags: { type: 'ShareLink'; id: string }[] = [];
-        if (dto.projectId)
-          tags.push({ type: 'ShareLink', id: `PROJECT-${dto.projectId}` });
+        if (dto.projectId) tags.push({ type: 'ShareLink', id: `PROJECT-${dto.projectId}` });
         if (dto.domainMappingId)
           tags.push({
             type: 'ShareLink',
@@ -83,11 +79,8 @@ export const shareLinksApi = api.injectEndpoints({
         body: updates,
       }),
       invalidatesTags: (_result, _error, { id, projectId, domainMappingId }) => {
-        const tags: { type: 'ShareLink'; id: string }[] = [
-          { type: 'ShareLink', id },
-        ];
-        if (projectId)
-          tags.push({ type: 'ShareLink', id: `PROJECT-${projectId}` });
+        const tags: { type: 'ShareLink'; id: string }[] = [{ type: 'ShareLink', id }];
+        if (projectId) tags.push({ type: 'ShareLink', id: `PROJECT-${projectId}` });
         if (domainMappingId)
           tags.push({
             type: 'ShareLink',
@@ -105,11 +98,8 @@ export const shareLinksApi = api.injectEndpoints({
         method: 'DELETE',
       }),
       invalidatesTags: (_result, _error, { id, projectId, domainMappingId }) => {
-        const tags: { type: 'ShareLink'; id: string }[] = [
-          { type: 'ShareLink', id },
-        ];
-        if (projectId)
-          tags.push({ type: 'ShareLink', id: `PROJECT-${projectId}` });
+        const tags: { type: 'ShareLink'; id: string }[] = [{ type: 'ShareLink', id }];
+        if (projectId) tags.push({ type: 'ShareLink', id: `PROJECT-${projectId}` });
         if (domainMappingId)
           tags.push({
             type: 'ShareLink',
@@ -127,11 +117,8 @@ export const shareLinksApi = api.injectEndpoints({
         method: 'POST',
       }),
       invalidatesTags: (_result, _error, { id, projectId, domainMappingId }) => {
-        const tags: { type: 'ShareLink'; id: string }[] = [
-          { type: 'ShareLink', id },
-        ];
-        if (projectId)
-          tags.push({ type: 'ShareLink', id: `PROJECT-${projectId}` });
+        const tags: { type: 'ShareLink'; id: string }[] = [{ type: 'ShareLink', id }];
+        if (projectId) tags.push({ type: 'ShareLink', id: `PROJECT-${projectId}` });
         if (domainMappingId)
           tags.push({
             type: 'ShareLink',

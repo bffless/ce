@@ -73,9 +73,7 @@ export const storageUsageApi = api.injectEndpoints({
      */
     getUsageByBranch: builder.query<BranchUsage[], string>({
       query: (projectId) => `/api/storage/usage/by-branch/${projectId}`,
-      providesTags: (_result, _error, projectId) => [
-        { type: 'StorageUsage', id: projectId },
-      ],
+      providesTags: (_result, _error, projectId) => [{ type: 'StorageUsage', id: projectId }],
     }),
 
     /**

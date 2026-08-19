@@ -1,5 +1,16 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsBoolean, IsOptional, IsObject, IsNumber, Min, Max, IsIn, IsUUID, IsArray } from 'class-validator';
+import {
+  IsString,
+  IsBoolean,
+  IsOptional,
+  IsObject,
+  IsNumber,
+  Min,
+  Max,
+  IsIn,
+  IsUUID,
+  IsArray,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateProjectDto {
@@ -84,7 +95,7 @@ export class UpdateProjectDto {
 
   @ApiPropertyOptional({
     description:
-      'Whether visitors can self-register on this project\'s site and be auto-granted a guest membership. Only consulted when REQUIRE_PROJECT_MEMBERSHIP is enabled.',
+      "Whether visitors can self-register on this project's site and be auto-granted a guest membership. Only consulted when REQUIRE_PROJECT_MEMBERSHIP is enabled.",
   })
   @IsBoolean()
   @IsOptional()
@@ -95,13 +106,17 @@ export class UpdateProjectDto {
   @IsOptional()
   settings?: Record<string, any>;
 
-  @ApiPropertyOptional({ description: 'Default proxy rule set ID for this project (legacy — prefer defaultProxyRuleSetIds)' })
+  @ApiPropertyOptional({
+    description:
+      'Default proxy rule set ID for this project (legacy — prefer defaultProxyRuleSetIds)',
+  })
   @IsUUID()
   @IsOptional()
   defaultProxyRuleSetId?: string | null;
 
   @ApiPropertyOptional({
-    description: 'Ordered array of default proxy rule set IDs. Rules merge in order. Overrides defaultProxyRuleSetId if both provided.',
+    description:
+      'Ordered array of default proxy rule set IDs. Rules merge in order. Overrides defaultProxyRuleSetId if both provided.',
     type: [String],
   })
   @IsOptional()
@@ -141,10 +156,16 @@ export class ProjectResponseDto {
   @ApiProperty({ nullable: true })
   settings: Record<string, any> | null;
 
-  @ApiProperty({ nullable: true, description: 'Default proxy rule set ID for this project (legacy)' })
+  @ApiProperty({
+    nullable: true,
+    description: 'Default proxy rule set ID for this project (legacy)',
+  })
   defaultProxyRuleSetId: string | null;
 
-  @ApiPropertyOptional({ description: 'Ordered array of default proxy rule set IDs', type: [String] })
+  @ApiPropertyOptional({
+    description: 'Ordered array of default proxy rule set IDs',
+    type: [String],
+  })
   defaultProxyRuleSetIds?: string[];
 
   @ApiProperty()
@@ -256,7 +277,10 @@ export class FeedRepositoryDto {
   @ApiProperty({ description: 'Is public repository' })
   isPublic: boolean;
 
-  @ApiProperty({ description: 'Permission type', enum: ['owner', 'direct', 'group', 'public', 'admin'] })
+  @ApiProperty({
+    description: 'Permission type',
+    enum: ['owner', 'direct', 'group', 'public', 'admin'],
+  })
   permissionType: 'owner' | 'direct' | 'group' | 'public' | 'admin';
 
   @ApiProperty({

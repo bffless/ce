@@ -40,10 +40,7 @@ const providerIcons: Record<string, typeof Cloud> = {
 };
 
 // Get a more descriptive name based on the config
-const getProviderDisplayName = (
-  provider: string,
-  isS3Compatible?: boolean
-): string => {
+const getProviderDisplayName = (provider: string, isS3Compatible?: boolean): string => {
   if (provider === 's3') {
     return isS3Compatible ? 'S3-Compatible Storage' : 'AWS S3';
   }
@@ -111,7 +108,8 @@ export function StorageSettings() {
 
   const currentProvider = setupStatus?.storageProvider || 'unknown';
   const isS3Compatible = storageConfig?.isS3Compatible;
-  const ProviderIcon = currentProvider === 's3' && isS3Compatible ? Globe : (providerIcons[currentProvider] || Database);
+  const ProviderIcon =
+    currentProvider === 's3' && isS3Compatible ? Globe : providerIcons[currentProvider] || Database;
   const providerName = getProviderDisplayName(currentProvider, isS3Compatible);
   // currentProvider is a string off the status response, so it may be
   // 'unknown' before the query settles — narrow through storageDocsFor, which
@@ -150,9 +148,7 @@ export function StorageSettings() {
             <ArrowRightLeft className="h-5 w-5" />
             Storage Migration
           </CardTitle>
-          <CardDescription>
-            Migrate your data to a new storage provider
-          </CardDescription>
+          <CardDescription>Migrate your data to a new storage provider</CardDescription>
         </CardHeader>
         <CardContent>
           <MigrationWizard
@@ -277,9 +273,7 @@ export function StorageSettings() {
           <Database className="h-5 w-5" />
           Storage
         </CardTitle>
-        <CardDescription>
-          Manage your storage provider configuration
-        </CardDescription>
+        <CardDescription>Manage your storage provider configuration</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Configuration Mismatch Warning */}
@@ -307,7 +301,9 @@ export function StorageSettings() {
         <div className="p-4 border rounded-lg">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className={`p-3 rounded-lg ${isUsingManagedStorage ? 'bg-primary/10' : 'bg-primary/10'}`}>
+              <div
+                className={`p-3 rounded-lg ${isUsingManagedStorage ? 'bg-primary/10' : 'bg-primary/10'}`}
+              >
                 <ProviderIcon className="h-6 w-6 text-primary" />
               </div>
               <div>
@@ -323,9 +319,7 @@ export function StorageSettings() {
                 <p className="text-sm text-muted-foreground">{providerName}</p>
                 {providerDocs && (
                   <p className="text-sm text-muted-foreground">
-                    <DocsInlineLink href={providerDocs.href}>
-                      {providerDocs.label}
-                    </DocsInlineLink>
+                    <DocsInlineLink href={providerDocs.href}>{providerDocs.label}</DocsInlineLink>
                   </p>
                 )}
               </div>

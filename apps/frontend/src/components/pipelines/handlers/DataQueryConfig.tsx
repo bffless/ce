@@ -42,7 +42,12 @@ const FILTER_OPS: { value: FilterConfig['op']; label: string }[] = [
   { value: 'in', label: 'In (any of)' },
 ];
 
-export function DataQueryConfig({ config, onChange, projectId, previousSteps = [] }: DataQueryConfigProps) {
+export function DataQueryConfig({
+  config,
+  onChange,
+  projectId,
+  previousSteps = [],
+}: DataQueryConfigProps) {
   const [schemaId, setSchemaId] = useState(config.schemaId || '');
   const [recordId, setRecordId] = useState(config.recordId || '');
   const [single, setSingle] = useState(config.single || false);
@@ -50,7 +55,11 @@ export function DataQueryConfig({ config, onChange, projectId, previousSteps = [
     const existing = config.filters || {};
     const entries = Object.entries(existing);
     return entries.length > 0
-      ? entries.map(([field, conf]) => ({ field, op: conf.op, value: displayFilterValue(conf.value) }))
+      ? entries.map(([field, conf]) => ({
+          field,
+          op: conf.op,
+          value: displayFilterValue(conf.value),
+        }))
       : [];
   });
   const [filterLogic, setFilterLogic] = useState<'and' | 'or'>(config.filterLogic || 'and');
@@ -64,12 +73,18 @@ export function DataQueryConfig({ config, onChange, projectId, previousSteps = [
     const filtersRecord: Record<string, FilterConfig> = {};
     for (const filter of filters) {
       if (filter.field.trim()) {
-        filtersRecord[filter.field.trim()] = { op: filter.op, value: serializeFilterValue(filter.op, filter.value) };
+        filtersRecord[filter.field.trim()] = {
+          op: filter.op,
+          value: serializeFilterValue(filter.op, filter.value),
+        };
       }
     }
 
     const select = selectFields.trim()
-      ? selectFields.split(',').map((s) => s.trim()).filter(Boolean)
+      ? selectFields
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
       : undefined;
 
     const orderBy = orderByField.trim()
@@ -90,7 +105,19 @@ export function DataQueryConfig({ config, onChange, projectId, previousSteps = [
       offset: offset.trim() ? (isNaN(Number(offset)) ? offset.trim() : Number(offset)) : undefined,
       orderBy,
     });
-  }, [schemaId, recordId, single, filters, filterLogic, limit, offset, orderByField, orderByDir, selectFields, onChange]);
+  }, [
+    schemaId,
+    recordId,
+    single,
+    filters,
+    filterLogic,
+    limit,
+    offset,
+    orderByField,
+    orderByDir,
+    selectFields,
+    onChange,
+  ]);
 
   const handleAddFilter = () => {
     setFilters([...filters, { field: '', op: 'eq', value: '' }]);
@@ -120,7 +147,8 @@ export function DataQueryConfig({ config, onChange, projectId, previousSteps = [
           placeholder="Find by record ID (expression)"
         />
         <p className="text-xs text-muted-foreground">
-          Find a specific record by its ID. Returns a single object or null. Ignores filters when set.
+          Find a specific record by its ID. Returns a single object or null. Ignores filters when
+          set.
         </p>
       </div>
 
@@ -131,11 +159,7 @@ export function DataQueryConfig({ config, onChange, projectId, previousSteps = [
             Return an object instead of an array (first match or null)
           </p>
         </div>
-        <Switch
-          id="single"
-          checked={single}
-          onCheckedChange={setSingle}
-        />
+        <Switch id="single" checked={single} onCheckedChange={setSingle} />
       </div>
 
       <div className="space-y-2">
@@ -180,7 +204,9 @@ export function DataQueryConfig({ config, onChange, projectId, previousSteps = [
                   <ExpressionInput
                     value={filter.value}
                     onChange={(value) => handleFilterChange(index, { value })}
-                    placeholder={filter.op === 'in' ? 'Expression, or comma-separated list' : 'Expression'}
+                    placeholder={
+                      filter.op === 'in' ? 'Expression, or comma-separated list' : 'Expression'
+                    }
                     previousSteps={previousSteps}
                   />
                 </div>
@@ -221,9 +247,7 @@ export function DataQueryConfig({ config, onChange, projectId, previousSteps = [
                   </Button>
                 </div>
                 <span className="text-xs text-muted-foreground">
-                  {filterLogic === 'and'
-                    ? 'All conditions must match'
-                    : 'Any condition can match'}
+                  {filterLogic === 'and' ? 'All conditions must match' : 'Any condition can match'}
                 </span>
               </div>
             )}

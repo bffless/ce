@@ -11,14 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import {
-  CheckCircle,
-  XCircle,
-  Loader2,
-  Mail,
-  AlertTriangle,
-  Edit2,
-} from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, Mail, AlertTriangle, Edit2 } from 'lucide-react';
 
 export function SmtpSettings() {
   const { data: smtpStatus, isLoading: isLoadingStatus } = useGetSmtpStatusQuery();
@@ -26,7 +19,11 @@ export function SmtpSettings() {
   const [testSmtp, { isLoading: isTesting }] = useTestSmtpSettingsMutation();
 
   const [isEditing, setIsEditing] = useState(false);
-  const [testResult, setTestResult] = useState<{ success: boolean; message: string; error?: string } | null>(null);
+  const [testResult, setTestResult] = useState<{
+    success: boolean;
+    message: string;
+    error?: string;
+  } | null>(null);
   const [updateError, setUpdateError] = useState<string | null>(null);
 
   const [formData, setFormData] = useState<UpdateSmtpDto>({
@@ -161,8 +158,12 @@ export function SmtpSettings() {
                 <div className="bg-muted/50 rounded-lg p-4 space-y-2 text-sm">
                   <div>
                     <span className="text-muted-foreground">Host:</span>{' '}
-                    <span className="font-mono">{smtpStatus.host}:{smtpStatus.port}</span>
-                    {smtpStatus.secure && <span className="ml-2 text-xs text-muted-foreground">(SSL/TLS)</span>}
+                    <span className="font-mono">
+                      {smtpStatus.host}:{smtpStatus.port}
+                    </span>
+                    {smtpStatus.secure && (
+                      <span className="ml-2 text-xs text-muted-foreground">(SSL/TLS)</span>
+                    )}
                   </div>
                   <div>
                     <span className="text-muted-foreground">User:</span>{' '}
@@ -192,9 +193,7 @@ export function SmtpSettings() {
                 <p className="text-sm text-muted-foreground">
                   Password reset emails will not work until SMTP is configured.
                 </p>
-                <Button onClick={handleStartEditing}>
-                  Configure SMTP
-                </Button>
+                <Button onClick={handleStartEditing}>Configure SMTP</Button>
               </div>
             )}
           </>
@@ -218,7 +217,9 @@ export function SmtpSettings() {
                   id="smtp-port"
                   type="number"
                   value={formData.port}
-                  onChange={(e) => setFormData({ ...formData, port: parseInt(e.target.value) || 587 })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, port: parseInt(e.target.value) || 587 })
+                  }
                   placeholder="587"
                   className="mt-1"
                 />
@@ -256,8 +257,8 @@ export function SmtpSettings() {
                       className="text-primary hover:underline"
                     >
                       App Password
-                    </a>
-                    {' '}(not your regular Gmail password)
+                    </a>{' '}
+                    (not your regular Gmail password)
                   </p>
                 )}
               </div>
@@ -347,10 +348,7 @@ export function SmtpSettings() {
                   'Test Connection'
                 )}
               </Button>
-              <Button
-                onClick={handleSave}
-                disabled={!isFormValid || isUpdating || isTesting}
-              >
+              <Button onClick={handleSave} disabled={!isFormValid || isUpdating || isTesting}>
                 {isUpdating ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />

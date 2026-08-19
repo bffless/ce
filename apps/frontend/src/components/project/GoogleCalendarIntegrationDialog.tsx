@@ -48,8 +48,10 @@ export function GoogleCalendarIntegrationDialog({
   // Workspace-level Calendar OAuth client must be set at /admin/settings/auth
   // before any project owner can connect their calendar. Polled when the
   // dialog opens so the operator sees the live state.
-  const { data: workspaceOAuth, isLoading: isWorkspaceLoading } =
-    useGetGoogleIntegrationQuery({ service: 'calendar' }, { skip: !open });
+  const { data: workspaceOAuth, isLoading: isWorkspaceLoading } = useGetGoogleIntegrationQuery(
+    { service: 'calendar' },
+    { skip: !open },
+  );
 
   const connectedEmail = integration.publicConfig?.connectedEmail as string | undefined;
   const availableCalendars =
@@ -115,9 +117,9 @@ export function GoogleCalendarIntegrationDialog({
         <DialogHeader>
           <DialogTitle>Connect Google Calendar</DialogTitle>
           <DialogDescription>
-            Connect a Google account so pipelines can read free/busy information and create
-            calendar events. Uses the workspace's shared Google OAuth credentials — no Google
-            Cloud Console setup needed per project.
+            Connect a Google account so pipelines can read free/busy information and create calendar
+            events. Uses the workspace's shared Google OAuth credentials — no Google Cloud Console
+            setup needed per project.
           </DialogDescription>
         </DialogHeader>
 
@@ -128,8 +130,8 @@ export function GoogleCalendarIntegrationDialog({
               <Settings className="h-4 w-4" />
               <AlertDescription className="space-y-2">
                 <p>
-                  Workspace Google OAuth credentials aren't configured yet. A workspace admin
-                  needs to set them up before any project can connect Google Calendar.
+                  Workspace Google OAuth credentials aren't configured yet. A workspace admin needs
+                  to set them up before any project can connect Google Calendar.
                 </p>
                 <p>
                   <a
@@ -148,8 +150,8 @@ export function GoogleCalendarIntegrationDialog({
           {!isConnected && workspaceOAuth?.isConfigured && (
             <div className="space-y-3">
               <p className="text-sm text-muted-foreground">
-                Click below to authorize this project against the workspace's Google OAuth
-                client. You'll be redirected to Google's consent screen and back.
+                Click below to authorize this project against the workspace's Google OAuth client.
+                You'll be redirected to Google's consent screen and back.
               </p>
               <Button onClick={handleConnect} variant="default" disabled={isInitiating}>
                 {isInitiating ? (
@@ -207,8 +209,8 @@ export function GoogleCalendarIntegrationDialog({
                   Test Connection
                 </Button>
                 <p className="text-xs text-muted-foreground ml-auto">
-                  To switch Google accounts or remove the integration, close this dialog
-                  and click the trash icon on the Google Calendar card.
+                  To switch Google accounts or remove the integration, close this dialog and click
+                  the trash icon on the Google Calendar card.
                 </p>
               </div>
 

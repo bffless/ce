@@ -95,7 +95,8 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
 
   // Get DNS requirements for custom/redirect domains
   const { data: dnsRequirements } = useGetDomainDnsRequirementsQuery(domain.id, {
-    skip: (domain.domainType !== 'custom' && domain.domainType !== 'redirect') || domain.dnsVerified,
+    skip:
+      (domain.domainType !== 'custom' && domain.domainType !== 'redirect') || domain.dnsVerified,
   });
 
   // Get domains config for platform IP
@@ -124,7 +125,8 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
         if (result.dnsValidationRecords && result.dnsValidationRecords.length > 0) {
           setDnsValidationRecords(result.dnsValidationRecords);
           setSslDeferred(result.sslDeferred ?? true);
-          description += ' CNAME records are required for SSL certificate provisioning - see instructions below.';
+          description +=
+            ' CNAME records are required for SSL certificate provisioning - see instructions below.';
         } else if (isPlatformMode) {
           // In platform mode with managed DNS, SSL is provisioned automatically
           description += ' SSL certificate will be provisioned automatically.';
@@ -199,7 +201,9 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
       if (result.success) {
         toast({
           title: 'SSL Provisioning Started',
-          description: result.message || `SSL certificate is being provisioned for ${domain.domain}. This may take a few minutes.`,
+          description:
+            result.message ||
+            `SSL certificate is being provisioned for ${domain.domain}. This may take a few minutes.`,
         });
         // Clear the deferred state and validation records
         setSslDeferred(false);
@@ -217,7 +221,9 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
         });
       }
     } catch (err: unknown) {
-      const errorData = (err as { data?: { message?: string; error?: string; missingRecords?: string[] } })?.data;
+      const errorData = (
+        err as { data?: { message?: string; error?: string; missingRecords?: string[] } }
+      )?.data;
       let errorMessage = errorData?.message || errorData?.error || 'Failed to provision SSL';
       if (errorData?.missingRecords && errorData.missingRecords.length > 0) {
         errorMessage += ` Missing: ${errorData.missingRecords.join(', ')}`;
@@ -251,9 +257,7 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
           <div className="min-w-0 flex-1">
             {/* Project name as title for non-redirect domains */}
             {projectName && domain.domainType !== 'redirect' && (
-              <p className="text-sm font-medium text-muted-foreground mb-1">
-                {projectName}
-              </p>
+              <p className="text-sm font-medium text-muted-foreground mb-1">{projectName}</p>
             )}
             <div className="flex min-w-0 items-center gap-2">
               <a
@@ -267,7 +271,11 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
               <ExternalLink className="h-4 w-4 shrink-0 text-muted-foreground" />
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              {domain.domainType === 'subdomain' ? 'Subdomain' : domain.domainType === 'redirect' ? 'Redirect Domain' : 'Custom Domain'}
+              {domain.domainType === 'subdomain'
+                ? 'Subdomain'
+                : domain.domainType === 'redirect'
+                  ? 'Redirect Domain'
+                  : 'Custom Domain'}
             </p>
             {/* Show redirect target for redirect domains */}
             {domain.domainType === 'redirect' && domain.redirectTarget && (
@@ -379,8 +387,9 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
             )}
             {/* DNS status - hidden when external proxy handles DNS/routing */}
             {/* Note: In platform mode, subdomains have wildcard DNS, but custom domains still need manual DNS */}
-            {!isExternalProxyMode && (domain.domainType === 'custom' || domain.domainType === 'redirect') && (
-              domain.dnsVerified ? (
+            {!isExternalProxyMode &&
+              (domain.domainType === 'custom' || domain.domainType === 'redirect') &&
+              (domain.dnsVerified ? (
                 <div className="flex items-center gap-1 text-green-600">
                   <CheckCircle2 className="h-3 w-3" />
                   <span>DNS Verified</span>
@@ -390,111 +399,127 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
                   <AlertCircle className="h-3 w-3" />
                   <span>DNS Not Verified</span>
                 </div>
-              )
-            )}
+              ))}
           </div>
 
           {/* SSL Certificate CNAME Records (for externally managed domains after DNS verification) */}
-          {domain.dnsVerified && sslDeferred && dnsValidationRecords && dnsValidationRecords.length > 0 && (
-            <div className="mt-2 p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded text-xs space-y-2">
-              <div className="flex items-center gap-2">
-                <Clock className="h-4 w-4 text-amber-600" />
-                <p className="font-medium text-amber-800 dark:text-amber-200">
-                  SSL Certificate Provisioning - CNAME Records Required
+          {domain.dnsVerified &&
+            sslDeferred &&
+            dnsValidationRecords &&
+            dnsValidationRecords.length > 0 && (
+              <div className="mt-2 p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded text-xs space-y-2">
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-amber-600" />
+                  <p className="font-medium text-amber-800 dark:text-amber-200">
+                    SSL Certificate Provisioning - CNAME Records Required
+                  </p>
+                </div>
+                <p className="text-amber-700 dark:text-amber-300">
+                  Add the following CNAME record{dnsValidationRecords.length > 1 ? 's' : ''} at your
+                  domain registrar to complete SSL certificate provisioning:
                 </p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-amber-200 dark:border-amber-700">
+                        <th className="py-1 pr-4 font-medium text-amber-800 dark:text-amber-200">
+                          Type
+                        </th>
+                        <th className="py-1 pr-4 font-medium text-amber-800 dark:text-amber-200">
+                          Host
+                        </th>
+                        <th className="py-1 font-medium text-amber-800 dark:text-amber-200">
+                          Value
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dnsValidationRecords.map((record, idx) => {
+                        // Strip apex domain suffix for providers like Namecheap that append it automatically
+                        // For www subdomains, we need to keep the "www" part (e.g., _acme-challenge.www)
+                        // Extract apex domain by removing www. prefix if present
+                        const apexDomain = record.domain.startsWith('www.')
+                          ? record.domain.slice(4)
+                          : record.domain;
+                        const hostWithoutDomain = record.name.endsWith(`.${apexDomain}`)
+                          ? record.name.slice(0, -(apexDomain.length + 1))
+                          : record.name;
+                        return (
+                          <tr key={record.name}>
+                            <td className="py-1 pr-4">
+                              <code className="bg-amber-100 dark:bg-amber-900 px-1 rounded text-amber-800 dark:text-amber-200">
+                                CNAME
+                              </code>
+                            </td>
+                            <td className="py-1 pr-4">
+                              <div className="flex items-center gap-1">
+                                <code className="bg-amber-100 dark:bg-amber-900 px-1 rounded text-amber-800 dark:text-amber-200 break-all">
+                                  {hostWithoutDomain}
+                                </code>
+                                <button
+                                  onClick={() => copyToClipboard(hostWithoutDomain, `name-${idx}`)}
+                                  className="p-1 hover:bg-amber-200 dark:hover:bg-amber-800 rounded transition-colors"
+                                  title="Copy host"
+                                >
+                                  {copiedField === `name-${idx}` ? (
+                                    <Check className="h-3 w-3 text-green-600" />
+                                  ) : (
+                                    <Copy className="h-3 w-3 text-amber-600" />
+                                  )}
+                                </button>
+                              </div>
+                            </td>
+                            <td className="py-1">
+                              <div className="flex items-center gap-1">
+                                <code className="bg-amber-100 dark:bg-amber-900 px-1 rounded text-amber-800 dark:text-amber-200 break-all">
+                                  {record.value}
+                                </code>
+                                <button
+                                  onClick={() => copyToClipboard(record.value, `value-${idx}`)}
+                                  className="p-1 hover:bg-amber-200 dark:hover:bg-amber-800 rounded transition-colors"
+                                  title="Copy value"
+                                >
+                                  {copiedField === `value-${idx}` ? (
+                                    <Check className="h-3 w-3 text-green-600" />
+                                  ) : (
+                                    <Copy className="h-3 w-3 text-amber-600" />
+                                  )}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="flex items-center justify-between pt-1">
+                  <p className="text-amber-600 dark:text-amber-400 text-xs">
+                    After adding the CNAME records, click "Provision SSL". Certificate provisioning
+                    typically takes 5-15 minutes.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleProvisionSsl}
+                    disabled={isProvisioningSsl}
+                    className="ml-4 bg-amber-100 hover:bg-amber-200 dark:bg-amber-900 dark:hover:bg-amber-800 border-amber-300 dark:border-amber-700"
+                  >
+                    {isProvisioningSsl ? (
+                      <>
+                        <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                        Provisioning...
+                      </>
+                    ) : (
+                      <>
+                        <Shield className="h-3 w-3 mr-1" />
+                        Provision SSL
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
-              <p className="text-amber-700 dark:text-amber-300">
-                Add the following CNAME record{dnsValidationRecords.length > 1 ? 's' : ''} at your domain registrar to complete SSL certificate provisioning:
-              </p>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-amber-200 dark:border-amber-700">
-                      <th className="py-1 pr-4 font-medium text-amber-800 dark:text-amber-200">Type</th>
-                      <th className="py-1 pr-4 font-medium text-amber-800 dark:text-amber-200">Host</th>
-                      <th className="py-1 font-medium text-amber-800 dark:text-amber-200">Value</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dnsValidationRecords.map((record, idx) => {
-                      // Strip apex domain suffix for providers like Namecheap that append it automatically
-                      // For www subdomains, we need to keep the "www" part (e.g., _acme-challenge.www)
-                      // Extract apex domain by removing www. prefix if present
-                      const apexDomain = record.domain.startsWith('www.')
-                        ? record.domain.slice(4)
-                        : record.domain;
-                      const hostWithoutDomain = record.name.endsWith(`.${apexDomain}`)
-                        ? record.name.slice(0, -(apexDomain.length + 1))
-                        : record.name;
-                      return (
-                        <tr key={record.name}>
-                          <td className="py-1 pr-4">
-                            <code className="bg-amber-100 dark:bg-amber-900 px-1 rounded text-amber-800 dark:text-amber-200">CNAME</code>
-                          </td>
-                          <td className="py-1 pr-4">
-                            <div className="flex items-center gap-1">
-                              <code className="bg-amber-100 dark:bg-amber-900 px-1 rounded text-amber-800 dark:text-amber-200 break-all">{hostWithoutDomain}</code>
-                              <button
-                                onClick={() => copyToClipboard(hostWithoutDomain, `name-${idx}`)}
-                                className="p-1 hover:bg-amber-200 dark:hover:bg-amber-800 rounded transition-colors"
-                                title="Copy host"
-                              >
-                                {copiedField === `name-${idx}` ? (
-                                  <Check className="h-3 w-3 text-green-600" />
-                                ) : (
-                                  <Copy className="h-3 w-3 text-amber-600" />
-                                )}
-                              </button>
-                            </div>
-                          </td>
-                          <td className="py-1">
-                            <div className="flex items-center gap-1">
-                              <code className="bg-amber-100 dark:bg-amber-900 px-1 rounded text-amber-800 dark:text-amber-200 break-all">{record.value}</code>
-                              <button
-                                onClick={() => copyToClipboard(record.value, `value-${idx}`)}
-                                className="p-1 hover:bg-amber-200 dark:hover:bg-amber-800 rounded transition-colors"
-                                title="Copy value"
-                              >
-                                {copiedField === `value-${idx}` ? (
-                                  <Check className="h-3 w-3 text-green-600" />
-                                ) : (
-                                  <Copy className="h-3 w-3 text-amber-600" />
-                                )}
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              <div className="flex items-center justify-between pt-1">
-                <p className="text-amber-600 dark:text-amber-400 text-xs">
-                  After adding the CNAME records, click "Provision SSL". Certificate provisioning typically takes 5-15 minutes.
-                </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleProvisionSsl}
-                  disabled={isProvisioningSsl}
-                  className="ml-4 bg-amber-100 hover:bg-amber-200 dark:bg-amber-900 dark:hover:bg-amber-800 border-amber-300 dark:border-amber-700"
-                >
-                  {isProvisioningSsl ? (
-                    <>
-                      <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
-                      Provisioning...
-                    </>
-                  ) : (
-                    <>
-                      <Shield className="h-3 w-3 mr-1" />
-                      Provision SSL
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
-          )}
+            )}
 
           {/* DNS Configuration help for unverified custom/redirect domains */}
           {/* Hidden when external proxy (Cloudflare) handles DNS/routing */}
@@ -506,7 +531,8 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
               <div className="mt-2 p-3 bg-muted rounded text-xs space-y-2">
                 <p className="font-medium">DNS Configuration Required:</p>
                 <p className="text-muted-foreground">
-                  Add the following DNS record{domain.domain.startsWith('www.') ? 's' : ''} at your domain registrar:
+                  Add the following DNS record{domain.domain.startsWith('www.') ? 's' : ''} at your
+                  domain registrar:
                 </p>
                 {(() => {
                   const parts = domain.domain.split('.');
@@ -542,9 +568,13 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
                                   </td>
                                   <td className="py-1 pr-4">
                                     <span className="inline-flex items-center gap-1">
-                                      <code className="bg-background px-1 rounded">{cnameTarget}</code>
+                                      <code className="bg-background px-1 rounded">
+                                        {cnameTarget}
+                                      </code>
                                       <button
-                                        onClick={() => copyToClipboard(cnameTarget!, `cname-${host}`)}
+                                        onClick={() =>
+                                          copyToClipboard(cnameTarget!, `cname-${host}`)
+                                        }
                                         className="p-0.5 hover:bg-muted rounded"
                                         title="Copy to clipboard"
                                       >
@@ -569,9 +599,13 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
                                     </td>
                                     <td className="py-1 pr-4">
                                       <span className="inline-flex items-center gap-1">
-                                        <code className="bg-background px-1 rounded">{cnameTarget}</code>
+                                        <code className="bg-background px-1 rounded">
+                                          {cnameTarget}
+                                        </code>
                                         <button
-                                          onClick={() => copyToClipboard(cnameTarget!, 'alias-root')}
+                                          onClick={() =>
+                                            copyToClipboard(cnameTarget!, 'alias-root')
+                                          }
                                           className="p-0.5 hover:bg-muted rounded"
                                           title="Copy to clipboard"
                                         >
@@ -595,8 +629,8 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
                         {isApex && (
                           <>
                             <p className="text-muted-foreground">
-                              <strong>Option 1 (Recommended):</strong> If your DNS provider supports ALIAS/ANAME records
-                              (Namecheap, Cloudflare, Route 53, DNSimple):
+                              <strong>Option 1 (Recommended):</strong> If your DNS provider supports
+                              ALIAS/ANAME records (Namecheap, Cloudflare, Route 53, DNSimple):
                             </p>
                             <div className="overflow-x-auto">
                               <table className="w-full text-left border-collapse">
@@ -618,9 +652,13 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
                                     </td>
                                     <td className="py-1 pr-4">
                                       <span className="inline-flex items-center gap-1">
-                                        <code className="bg-background px-1 rounded">{cnameTarget}</code>
+                                        <code className="bg-background px-1 rounded">
+                                          {cnameTarget}
+                                        </code>
                                         <button
-                                          onClick={() => copyToClipboard(cnameTarget!, 'apex-alias')}
+                                          onClick={() =>
+                                            copyToClipboard(cnameTarget!, 'apex-alias')
+                                          }
                                           className="p-0.5 hover:bg-muted rounded"
                                           title="Copy to clipboard"
                                         >
@@ -643,9 +681,13 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
                                     </td>
                                     <td className="py-1 pr-4">
                                       <span className="inline-flex items-center gap-1">
-                                        <code className="bg-background px-1 rounded">{cnameTarget}</code>
+                                        <code className="bg-background px-1 rounded">
+                                          {cnameTarget}
+                                        </code>
                                         <button
-                                          onClick={() => copyToClipboard(cnameTarget!, 'apex-www-cname')}
+                                          onClick={() =>
+                                            copyToClipboard(cnameTarget!, 'apex-www-cname')
+                                          }
                                           className="p-0.5 hover:bg-muted rounded"
                                           title="Copy to clipboard"
                                         >
@@ -666,8 +708,8 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
                             {platformIp && (
                               <>
                                 <p className="text-muted-foreground">
-                                  <strong>Option 2:</strong> If your DNS provider doesn't support ALIAS records
-                                  (GoDaddy, Google Domains):
+                                  <strong>Option 2:</strong> If your DNS provider doesn't support
+                                  ALIAS records (GoDaddy, Google Domains):
                                 </p>
                                 <div className="overflow-x-auto">
                                   <table className="w-full text-left border-collapse">
@@ -689,9 +731,13 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
                                         </td>
                                         <td className="py-1 pr-4">
                                           <span className="inline-flex items-center gap-1">
-                                            <code className="bg-background px-1 rounded">{platformIp}</code>
+                                            <code className="bg-background px-1 rounded">
+                                              {platformIp}
+                                            </code>
                                             <button
-                                              onClick={() => copyToClipboard(platformIp!, 'apex-a-record')}
+                                              onClick={() =>
+                                                copyToClipboard(platformIp!, 'apex-a-record')
+                                              }
                                               className="p-0.5 hover:bg-muted rounded"
                                               title="Copy to clipboard"
                                             >
@@ -714,9 +760,13 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
                                         </td>
                                         <td className="py-1 pr-4">
                                           <span className="inline-flex items-center gap-1">
-                                            <code className="bg-background px-1 rounded">{cnameTarget}</code>
+                                            <code className="bg-background px-1 rounded">
+                                              {cnameTarget}
+                                            </code>
                                             <button
-                                              onClick={() => copyToClipboard(cnameTarget!, 'opt2-www-cname')}
+                                              onClick={() =>
+                                                copyToClipboard(cnameTarget!, 'opt2-www-cname')
+                                              }
                                               className="p-0.5 hover:bg-muted rounded"
                                               title="Copy to clipboard"
                                             >
@@ -734,8 +784,8 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
                                   </table>
                                 </div>
                                 <p className="text-amber-600 dark:text-amber-500">
-                                  <AlertCircle className="h-3 w-3 inline mr-1" />
-                                  A records point to an IP address that may change in the future. We recommend using
+                                  <AlertCircle className="h-3 w-3 inline mr-1" />A records point to
+                                  an IP address that may change in the future. We recommend using
                                   ALIAS/ANAME records when possible to avoid manual updates.
                                 </p>
                               </>
@@ -746,8 +796,9 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
                         {!isApex && isWww && (
                           <p className="text-muted-foreground">
                             Use <code className="bg-background px-1 rounded">ALIAS</code> for the{' '}
-                            <code className="bg-background px-1 rounded">@</code> record if your DNS provider supports
-                            it (Namecheap, Cloudflare, Route 53). Otherwise, use an A record pointing to{' '}
+                            <code className="bg-background px-1 rounded">@</code> record if your DNS
+                            provider supports it (Namecheap, Cloudflare, Route 53). Otherwise, use
+                            an A record pointing to{' '}
                             <code className="bg-background px-1 rounded">{platformIp}</code>.
                           </p>
                         )}
@@ -789,7 +840,9 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
                                   <span className="inline-flex items-center gap-1">
                                     <code className="bg-background px-1 rounded">{row.value}</code>
                                     <button
-                                      onClick={() => copyToClipboard(row.value, `a-record-${row.host}`)}
+                                      onClick={() =>
+                                        copyToClipboard(row.value, `a-record-${row.host}`)
+                                      }
                                       className="p-0.5 hover:bg-muted rounded"
                                       title="Copy to clipboard"
                                     >
@@ -819,16 +872,18 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
                 })()}
                 {domain.domain.startsWith('www.') && !domainsConfig?.cnameTarget && (
                   <p className="text-muted-foreground">
-                    The <code className="bg-background px-1 rounded">@</code> record is recommended so{' '}
-                    <strong>{domain.domain.replace('www.', '')}</strong> also resolves to your site.
+                    The <code className="bg-background px-1 rounded">@</code> record is recommended
+                    so <strong>{domain.domain.replace('www.', '')}</strong> also resolves to your
+                    site.
                   </p>
                 )}
                 {!domain.domain.startsWith('www.') &&
                   domain.domain.split('.').length === 2 &&
                   !domainsConfig?.cnameTarget && (
                     <p className="text-muted-foreground">
-                      The <code className="bg-background px-1 rounded">www</code> record is recommended so{' '}
-                      <strong>www.{domain.domain}</strong> also resolves to your site.
+                      The <code className="bg-background px-1 rounded">www</code> record is
+                      recommended so <strong>www.{domain.domain}</strong> also resolves to your
+                      site.
                     </p>
                   )}
                 {isPlatformMode && (
@@ -849,36 +904,37 @@ export function DomainCard({ domain, projectName, onEdit, onDelete }: DomainCard
         {/* Verify/Re-check DNS button for custom and redirect domains */}
         {/* Hidden when external proxy (Cloudflare) handles DNS/routing */}
         {/* Note: In platform mode, subdomains have wildcard DNS, but custom domains still need manual verification */}
-        {!isExternalProxyMode && (domain.domainType === 'custom' || domain.domainType === 'redirect') && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleVerifyDns}
-            disabled={isVerifyingDns}
-            title={
-              domain.dnsVerified
-                ? 'Re-check DNS status (useful after adding alternate domain)'
-                : 'Check if DNS is correctly configured'
-            }
-          >
-            {isVerifyingDns ? (
-              <>
-                <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
-                Checking...
-              </>
-            ) : domain.dnsVerified ? (
-              <>
-                <RefreshCw className="h-3 w-3 mr-1" />
-                Re-check DNS
-              </>
-            ) : (
-              <>
-                <CheckCircle2 className="h-3 w-3 mr-1" />
-                Verify DNS
-              </>
-            )}
-          </Button>
-        )}
+        {!isExternalProxyMode &&
+          (domain.domainType === 'custom' || domain.domainType === 'redirect') && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleVerifyDns}
+              disabled={isVerifyingDns}
+              title={
+                domain.dnsVerified
+                  ? 'Re-check DNS status (useful after adding alternate domain)'
+                  : 'Check if DNS is correctly configured'
+              }
+            >
+              {isVerifyingDns ? (
+                <>
+                  <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                  Checking...
+                </>
+              ) : domain.dnsVerified ? (
+                <>
+                  <RefreshCw className="h-3 w-3 mr-1" />
+                  Re-check DNS
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                  Verify DNS
+                </>
+              )}
+            </Button>
+          )}
         {!domain.sslEnabled && canEnableSsl() && (
           <Button
             variant="outline"

@@ -175,9 +175,10 @@ export class CustomDomainAuthController {
 
     // Verify the target domain matches the current request host
     // Skip check for localhost tokens (proxied from local dev servers)
-    const isLocalhostToken = payload.targetDomain === 'localhost' || payload.targetDomain === '127.0.0.1';
+    const isLocalhostToken =
+      payload.targetDomain === 'localhost' || payload.targetDomain === '127.0.0.1';
     if (!isLocalhostToken) {
-      const host = req.headers['x-forwarded-host'] as string || req.headers.host;
+      const host = (req.headers['x-forwarded-host'] as string) || req.headers.host;
       const requestDomain = host?.split(':')[0]; // Remove port if present
 
       if (requestDomain !== payload.targetDomain) {
@@ -263,7 +264,7 @@ export class CustomDomainAuthController {
     // Skip for localhost tokens (proxied from local dev servers)
     const isLocalhostDomain = payload.domain === 'localhost' || payload.domain === '127.0.0.1';
     if (!isLocalhostDomain) {
-      const host = req.headers['x-forwarded-host'] as string || req.headers.host;
+      const host = (req.headers['x-forwarded-host'] as string) || req.headers.host;
       const requestDomain = host?.split(':')[0];
 
       if (requestDomain !== payload.domain) {
@@ -360,7 +361,10 @@ export class CustomDomainAuthController {
       },
     },
   })
-  async session(@Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<{
+  async session(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{
     authenticated: boolean;
     user: { id: string; email: string; role: string } | null;
   }> {
@@ -695,7 +699,8 @@ export class CustomDomainAuthController {
     }
 
     const userId = signUpResponse.recipeUserId.getAsString();
-    const role: 'admin' | 'user' | 'member' = email === process.env.ADMIN_EMAIL ? 'admin' : 'member';
+    const role: 'admin' | 'user' | 'member' =
+      email === process.env.ADMIN_EMAIL ? 'admin' : 'member';
     const dbUser = await this.authService.createUser(email, role, userId);
 
     if (project) {

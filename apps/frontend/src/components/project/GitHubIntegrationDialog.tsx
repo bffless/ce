@@ -110,9 +110,8 @@ export function GitHubIntegrationDialog({
         <DialogHeader>
           <DialogTitle>Configure GitHub Integration</DialogTitle>
           <DialogDescription>
-            Enter a GitHub Personal Access Token to use the{' '}
-            <code>github_api</code> pipeline handler for creating repositories
-            from templates and other GitHub API operations.
+            Enter a GitHub Personal Access Token to use the <code>github_api</code> pipeline handler
+            for creating repositories from templates and other GitHub API operations.
           </DialogDescription>
         </DialogHeader>
 

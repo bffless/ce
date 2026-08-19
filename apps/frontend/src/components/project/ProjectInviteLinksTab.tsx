@@ -238,9 +238,7 @@ export function ProjectInviteLinksTab({ owner, repo }: ProjectInviteLinksTabProp
                     value={newMaxUses}
                     onChange={(e) => setNewMaxUses(e.target.value)}
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Leave empty for unlimited uses
-                  </p>
+                  <p className="text-xs text-muted-foreground">Leave empty for unlimited uses</p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="redirectUrl">Redirect URL (optional)</Label>
@@ -310,7 +308,13 @@ export function ProjectInviteLinksTab({ owner, repo }: ProjectInviteLinksTabProp
                           onCheckedChange={() => handleToggleActive(link.id, link.isActive)}
                         />
                         <span className="text-sm text-muted-foreground">
-                          {isExpired ? 'Expired' : isMaxed ? 'Max reached' : link.isActive ? 'Active' : 'Disabled'}
+                          {isExpired
+                            ? 'Expired'
+                            : isMaxed
+                              ? 'Max reached'
+                              : link.isActive
+                                ? 'Active'
+                                : 'Disabled'}
                         </span>
                       </div>
                     </TableCell>
@@ -331,11 +335,7 @@ export function ProjectInviteLinksTab({ owner, repo }: ProjectInviteLinksTabProp
                           open={deletingId === link.id}
                           onOpenChange={(open) => setDeletingId(open ? link.id : null)}
                         >
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setDeletingId(link.id)}
-                          >
+                          <Button variant="ghost" size="sm" onClick={() => setDeletingId(link.id)}>
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                           <AlertDialogContent>

@@ -86,10 +86,7 @@ function renderPage() {
     <Provider store={store}>
       <MemoryRouter initialEntries={['/repo/acme/site/proxy-rules/rs-1']}>
         <Routes>
-          <Route
-            path="/repo/:owner/:repo/proxy-rules/:ruleSetId"
-            element={<RuleSetDetailPage />}
-          />
+          <Route path="/repo/:owner/:repo/proxy-rules/:ruleSetId" element={<RuleSetDetailPage />} />
           <Route path="*" element={<div>elsewhere</div>} />
         </Routes>
       </MemoryRouter>

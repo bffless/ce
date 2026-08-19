@@ -15,13 +15,7 @@ interface FileActionsProps {
   onDownload?: () => void;
 }
 
-export function FileActions({
-  owner,
-  repo,
-  gitRef,
-  filepath,
-  onDownload,
-}: FileActionsProps) {
+export function FileActions({ owner, repo, gitRef, filepath, onDownload }: FileActionsProps) {
   const [copied, setCopied] = useState(false);
 
   // Build URLs
@@ -99,12 +93,7 @@ export function FileActions({
         <div className="flex items-center gap-1">
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleCopyUrl}
-                className="h-8 gap-2"
-              >
+              <Button variant="outline" size="sm" onClick={handleCopyUrl} className="h-8 gap-2">
                 {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                 <span className="hidden sm:inline">{copied ? 'Copied!' : 'Copy URL'}</span>
               </Button>
@@ -114,12 +103,7 @@ export function FileActions({
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleDownload}
-                className="h-8 gap-2"
-              >
+              <Button variant="outline" size="sm" onClick={handleDownload} className="h-8 gap-2">
                 <Download className="h-4 w-4" />
                 <span className="hidden sm:inline">Download</span>
               </Button>
@@ -129,12 +113,7 @@ export function FileActions({
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleViewRaw}
-                className="h-8 gap-2"
-              >
+              <Button variant="outline" size="sm" onClick={handleViewRaw} className="h-8 gap-2">
                 <ExternalLink className="h-4 w-4" />
                 <span className="hidden sm:inline">View Raw</span>
               </Button>
@@ -146,12 +125,7 @@ export function FileActions({
           {isShareSupported && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleShare}
-                  className="h-8 gap-2"
-                >
+                <Button variant="outline" size="sm" onClick={handleShare} className="h-8 gap-2">
                   <Share2 className="h-4 w-4" />
                   <span className="hidden sm:inline">Share</span>
                 </Button>

@@ -3,7 +3,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Plus, Trash2 } from 'lucide-react';
 import { SchemaPicker } from './SchemaPicker';
 import { SchemaFieldPicker, useSchemaFields } from './SchemaFieldPicker';
@@ -13,7 +19,13 @@ import type { PreviousStep } from './AvailableVariables';
 
 // Fields that are always set by the handler — exclude from the field picker
 const BUILT_IN_FIELDS = new Set([
-  'filename', 'storage_path', 'content_type', 'size', 'url', 'sub_dir', 'original_name',
+  'filename',
+  'storage_path',
+  'content_type',
+  'size',
+  'url',
+  'sub_dir',
+  'original_name',
 ]);
 
 interface Props {
@@ -28,7 +40,12 @@ interface FieldMapping {
   expression: string;
 }
 
-export function FileUploadHandlerConfig({ config, onChange, projectId, previousSteps = [] }: Props) {
+export function FileUploadHandlerConfig({
+  config,
+  onChange,
+  projectId,
+  previousSteps = [],
+}: Props) {
   const typedConfig = config as unknown as Partial<Config>;
 
   const [schemaId, setSchemaId] = useState(typedConfig.schemaId || '');
@@ -89,7 +106,19 @@ export function FileUploadHandlerConfig({ config, onChange, projectId, previousS
       filename: filename.trim() || undefined,
       convertTo: convertTo !== 'none' ? (convertTo as 'png' | 'jpeg' | 'webp') : undefined,
     });
-  }, [schemaId, subDir, dateBucket, maxFileSize, allowedMimeTypes, fileField, sourceUrl, filename, convertTo, fieldMappings, onChange]);
+  }, [
+    schemaId,
+    subDir,
+    dateBucket,
+    maxFileSize,
+    allowedMimeTypes,
+    fileField,
+    sourceUrl,
+    filename,
+    convertTo,
+    fieldMappings,
+    onChange,
+  ]);
 
   const handleSchemaChange = (newSchemaId: string) => {
     setSchemaId(newSchemaId);
@@ -105,9 +134,7 @@ export function FileUploadHandlerConfig({ config, onChange, projectId, previousS
   };
 
   const handleMappingChange = (index: number, updates: Partial<FieldMapping>) => {
-    setFieldMappings(
-      fieldMappings.map((m, i) => (i === index ? { ...m, ...updates } : m)),
-    );
+    setFieldMappings(fieldMappings.map((m, i) => (i === index ? { ...m, ...updates } : m)));
   };
 
   return (
@@ -129,8 +156,8 @@ export function FileUploadHandlerConfig({ config, onChange, projectId, previousS
           previousSteps={previousSteps}
         />
         <p className="text-xs text-muted-foreground">
-          Storage sub-directory for uploaded files. Supports expressions for per-project
-          layouts, e.g. <code>projects/{'{{request.body.projectId}}'}</code>.
+          Storage sub-directory for uploaded files. Supports expressions for per-project layouts,
+          e.g. <code>projects/{'{{request.body.projectId}}'}</code>.
         </p>
       </div>
 
@@ -144,8 +171,8 @@ export function FileUploadHandlerConfig({ config, onChange, projectId, previousS
           previousSteps={previousSteps}
         />
         <p className="text-xs text-muted-foreground">
-          Download a file from a URL instead of reading from a multipart form upload.
-          Use an expression to reference a URL from a previous step (e.g., a Replicate AI output).
+          Download a file from a URL instead of reading from a multipart form upload. Use an
+          expression to reference a URL from a previous step (e.g., a Replicate AI output).
           {sourceUrl && ' File Field Name below is ignored when Source URL is set.'}
         </p>
       </div>
@@ -180,8 +207,8 @@ export function FileUploadHandlerConfig({ config, onChange, projectId, previousS
           </SelectContent>
         </Select>
         <p className="text-xs text-muted-foreground">
-          Convert uploaded images to a different format (e.g., HEIC to PNG).
-          Non-image files pass through unchanged.
+          Convert uploaded images to a different format (e.g., HEIC to PNG). Non-image files pass
+          through unchanged.
         </p>
       </div>
 
@@ -202,14 +229,9 @@ export function FileUploadHandlerConfig({ config, onChange, projectId, previousS
       <div className="flex items-center justify-between">
         <div className="space-y-0.5">
           <Label>Date Bucketing</Label>
-          <p className="text-xs text-muted-foreground">
-            Organize files in YYYY-MM-DD folders
-          </p>
+          <p className="text-xs text-muted-foreground">Organize files in YYYY-MM-DD folders</p>
         </div>
-        <Switch
-          checked={dateBucket}
-          onCheckedChange={setDateBucket}
-        />
+        <Switch checked={dateBucket} onCheckedChange={setDateBucket} />
       </div>
 
       <div className="space-y-2">
@@ -263,7 +285,8 @@ export function FileUploadHandlerConfig({ config, onChange, projectId, previousS
           <div>
             <Label>Extra Fields</Label>
             <p className="text-xs text-muted-foreground">
-              Map additional form fields to schema fields. Built-in fields (filename, storage_path, etc.) are always included.
+              Map additional form fields to schema fields. Built-in fields (filename, storage_path,
+              etc.) are always included.
             </p>
           </div>
           <Button
@@ -299,7 +322,11 @@ export function FileUploadHandlerConfig({ config, onChange, projectId, previousS
                     <ExpressionInput
                       value={mapping.expression}
                       onChange={(value) => handleMappingChange(index, { expression: value })}
-                      placeholder={schemaField ? getPlaceholderForType(schemaField.type) : 'request.body.fieldName'}
+                      placeholder={
+                        schemaField
+                          ? getPlaceholderForType(schemaField.type)
+                          : 'request.body.fieldName'
+                      }
                       previousSteps={previousSteps}
                     />
                   </div>

@@ -81,7 +81,11 @@ export function SchemaEditorPage() {
   useEffect(() => {
     if (existingSchema) {
       setName(existingSchema.name);
-      setFields(existingSchema.fields.length > 0 ? existingSchema.fields : [{ name: '', type: 'string', required: false }]);
+      setFields(
+        existingSchema.fields.length > 0
+          ? existingSchema.fields
+          : [{ name: '', type: 'string', required: false }],
+      );
     }
   }, [existingSchema]);
 
@@ -232,9 +236,14 @@ export function SchemaEditorPage() {
             </div>
             {isEditing && existingSchema && (
               <span className="text-sm text-muted-foreground">
-                Version <span className="font-mono font-medium text-foreground">{existingSchema.version}</span>
-                {' '}&rarr;{' '}
-                <span className="font-mono font-medium text-foreground">{existingSchema.version + 1}</span>
+                Version{' '}
+                <span className="font-mono font-medium text-foreground">
+                  {existingSchema.version}
+                </span>{' '}
+                &rarr;{' '}
+                <span className="font-mono font-medium text-foreground">
+                  {existingSchema.version + 1}
+                </span>
                 <span className="text-xs ml-1">(on save)</span>
               </span>
             )}

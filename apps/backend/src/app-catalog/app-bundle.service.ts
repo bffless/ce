@@ -164,7 +164,9 @@ export class AppBundleService {
 
     const validated = validateAppManifest(manifestJson);
     if (!validated.ok) {
-      throw new BadRequestException(`bffless-app.json failed validation: ${validated.errors.join('; ')}`);
+      throw new BadRequestException(
+        `bffless-app.json failed validation: ${validated.errors.join('; ')}`,
+      );
     }
     const manifest = validated.manifest;
 

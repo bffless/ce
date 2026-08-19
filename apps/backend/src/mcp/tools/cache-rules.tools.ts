@@ -45,11 +45,7 @@ export class CacheRulesTools {
       projectId: z.string().describe('Project ID'),
     }),
   })
-  async listRules(
-    { projectId }: { projectId: string },
-    _context: Context,
-    request: Request,
-  ) {
+  async listRules({ projectId }: { projectId: string }, _context: Context, request: Request) {
     const apiKeyProjectId = (request as any)?.user?.apiKeyProjectId;
     const result = await this.cacheRulesService.getRulesByProjectId(projectId, apiKeyProjectId);
     return JSON.stringify(result);
@@ -107,11 +103,7 @@ export class CacheRulesTools {
     }),
     annotations: { destructiveHint: true },
   })
-  async deleteRule(
-    { id }: { id: string },
-    _context: Context,
-    request: Request,
-  ) {
+  async deleteRule({ id }: { id: string }, _context: Context, request: Request) {
     const user = await getUserContext(request, this.authService);
     await this.cacheRulesService.delete(id, user.id, user.role, user.apiKeyProjectId);
     return JSON.stringify({ success: true, id });

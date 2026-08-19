@@ -67,7 +67,10 @@ export class RevisionListResponseDto {
 }
 
 export class RevisionDetailResponseDto extends RevisionListItemDto {
-  @ApiProperty({ type: ExportProxyRuleSetResponseDto, description: 'Full v2 export envelope at capture time' })
+  @ApiProperty({
+    type: ExportProxyRuleSetResponseDto,
+    description: 'Full v2 export envelope at capture time',
+  })
   snapshot: ExportProxyRuleSetResponseDto;
 }
 

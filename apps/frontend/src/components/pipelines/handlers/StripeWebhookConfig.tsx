@@ -21,7 +21,9 @@ interface StripeWebhookConfigProps {
 
 export function StripeWebhookConfig({ config, onChange }: StripeWebhookConfigProps) {
   const [eventTypes, setEventTypes] = useState<string[]>(config.allowedEventTypes || []);
-  const [environment, setEnvironment] = useState<'sandbox' | 'production' | ''>(config.environment || '');
+  const [environment, setEnvironment] = useState<'sandbox' | 'production' | ''>(
+    config.environment || '',
+  );
 
   useEffect(() => {
     onChange({
@@ -48,7 +50,12 @@ export function StripeWebhookConfig({ config, onChange }: StripeWebhookConfigPro
     <div className="space-y-4">
       <div className="space-y-2">
         <Label>Stripe Environment</Label>
-        <Select value={environment || 'default'} onValueChange={(v) => setEnvironment(v === 'default' ? '' : v as 'sandbox' | 'production')}>
+        <Select
+          value={environment || 'default'}
+          onValueChange={(v) =>
+            setEnvironment(v === 'default' ? '' : (v as 'sandbox' | 'production'))
+          }
+        >
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
@@ -66,9 +73,9 @@ export function StripeWebhookConfig({ config, onChange }: StripeWebhookConfigPro
       <Alert>
         <Info className="h-4 w-4" />
         <AlertDescription>
-          Verifies the Stripe webhook signature using the webhook secret from
-          Project Settings &gt; Integrations. The verified event is available to
-          subsequent steps as <code>steps.{'{step_name}'}</code>.
+          Verifies the Stripe webhook signature using the webhook secret from Project Settings &gt;
+          Integrations. The verified event is available to subsequent steps as{' '}
+          <code>steps.{'{step_name}'}</code>.
         </AlertDescription>
       </Alert>
 
@@ -91,11 +98,7 @@ export function StripeWebhookConfig({ config, onChange }: StripeWebhookConfigPro
               onChange={(e) => updateEventType(index, e.target.value)}
               placeholder="checkout.session.completed"
             />
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => removeEventType(index)}
-            >
+            <Button variant="ghost" size="icon" onClick={() => removeEventType(index)}>
               <Trash2 className="h-4 w-4" />
             </Button>
           </div>
@@ -105,9 +108,15 @@ export function StripeWebhookConfig({ config, onChange }: StripeWebhookConfigPro
       <div className="text-xs text-muted-foreground space-y-1">
         <p className="font-medium">Common event types:</p>
         <ul className="list-disc list-inside space-y-0.5">
-          <li><code>checkout.session.completed</code> — payment completed</li>
-          <li><code>invoice.payment_succeeded</code> — subscription payment</li>
-          <li><code>customer.subscription.deleted</code> — subscription cancelled</li>
+          <li>
+            <code>checkout.session.completed</code> — payment completed
+          </li>
+          <li>
+            <code>invoice.payment_succeeded</code> — subscription payment
+          </li>
+          <li>
+            <code>customer.subscription.deleted</code> — subscription cancelled
+          </li>
         </ul>
       </div>
     </div>

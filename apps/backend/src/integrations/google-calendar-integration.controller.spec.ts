@@ -20,20 +20,23 @@ function makeController(): {
     getAuthorizationUrlForProject: jest
       .fn()
       .mockResolvedValue('https://accounts.google.com/o/oauth2/v2/auth?…'),
-    buildAuthorizationUrl: jest.fn().mockReturnValue('https://accounts.google.com/o/oauth2/v2/auth?…'),
+    buildAuthorizationUrl: jest
+      .fn()
+      .mockReturnValue('https://accounts.google.com/o/oauth2/v2/auth?…'),
     exchangeCodeForProject: jest.fn().mockResolvedValue({
       accessToken: 'a',
       refreshToken: 'r',
       tokenExpiry: Date.now() + 3600_000,
       connectedEmail: 'owner@example.com',
     }),
-    listCalendarsForProject: jest.fn().mockResolvedValue([
-      { id: 'primary@x', summary: 'Primary', primary: true, timeZone: 'UTC' },
-    ]),
+    listCalendarsForProject: jest
+      .fn()
+      .mockResolvedValue([{ id: 'primary@x', summary: 'Primary', primary: true, timeZone: 'UTC' }]),
     revokeToken: jest.fn().mockResolvedValue(undefined),
   };
   const configService = {
-    get: (key: string) => (key === 'ENCRYPTION_KEY' ? Buffer.alloc(32, 7).toString('base64') : undefined),
+    get: (key: string) =>
+      key === 'ENCRYPTION_KEY' ? Buffer.alloc(32, 7).toString('base64') : undefined,
   } as unknown as ConfigService;
 
   const controller = new GoogleCalendarIntegrationController(

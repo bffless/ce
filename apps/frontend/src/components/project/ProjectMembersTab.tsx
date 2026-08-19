@@ -7,10 +7,7 @@ import {
   type ProjectRole,
   type GlobalRole,
 } from '@/services/permissionsApi';
-import {
-  useGetProjectQuery,
-  useUpdateProjectMutation,
-} from '@/services/projectsApi';
+import { useGetProjectQuery, useUpdateProjectMutation } from '@/services/projectsApi';
 import { useFeatureFlags } from '@/services/featureFlagsApi';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -255,8 +252,8 @@ export function ProjectMembersTab({ owner, repo }: ProjectMembersTabProps) {
               <div className="text-base font-medium">Allow public signups</div>
               <p className="text-sm text-muted-foreground">
                 When enabled, visitors can create their own accounts on this site and are
-                automatically granted guest access. Off by default — turn on for sites with
-                user features like bookings, comments, or saved listings.
+                automatically granted guest access. Off by default — turn on for sites with user
+                features like bookings, comments, or saved listings.
               </p>
               {areFlagsReady && !masterSwitchOn && (
                 <p className="text-xs text-amber-700 dark:text-amber-400">
@@ -264,8 +261,8 @@ export function ProjectMembersTab({ owner, repo }: ProjectMembersTabProps) {
                   <a href="/admin/settings/auth" className="underline">
                     Require project membership for site authentication
                   </a>{' '}
-                  is enabled at the workspace level. While that's off, all workspace users
-                  can authenticate on every project regardless of this setting.
+                  is enabled at the workspace level. While that's off, all workspace users can
+                  authenticate on every project regardless of this setting.
                 </p>
               )}
             </div>
@@ -279,245 +276,262 @@ export function ProjectMembersTab({ owner, repo }: ProjectMembersTabProps) {
       </Card>
 
       <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle>Project Members</CardTitle>
-            <CardDescription>
-              Manage user access and roles for this project
-            </CardDescription>
-          </div>
-          <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <UserPlus className="h-4 w-4 mr-2" />
-                Add Member
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Add Project Member</DialogTitle>
-                <DialogDescription>
-                  Add a user to this project with a specific role
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="email">User Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="user@example.com"
-                    value={newUserEmail}
-                    onChange={(e) => setNewUserEmail(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="role">Role</Label>
-                  <Select value={newUserRole} onValueChange={(value) => setNewUserRole(value as ProjectRole)}>
-                    <SelectTrigger id="role">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="guest">Guest - Site access only</SelectItem>
-                      <SelectItem value="viewer">Viewer - Read only admin</SelectItem>
-                      <SelectItem value="contributor">Contributor - Can deploy</SelectItem>
-                      <SelectItem value="admin">Admin - Can manage settings</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    Contributor and Admin require the target to have the global{' '}
-                    <code className="font-mono">user</code> or{' '}
-                    <code className="font-mono">admin</code> role. Members can only be granted
-                    Viewer or Guest — promote them in the{' '}
-                    <a href="/users" className="underline">Users tab</a> first if needed.
-                  </p>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
-                  Cancel
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Project Members</CardTitle>
+              <CardDescription>Manage user access and roles for this project</CardDescription>
+            </div>
+            <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
+              <DialogTrigger asChild>
+                <Button>
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  Add Member
                 </Button>
-                <Button onClick={handleAddMember} disabled={isGranting}>
-                  {isGranting ? 'Adding...' : 'Add Member'}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </CardHeader>
-      <CardContent>
-        {users.length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground">
-            No members yet. Add your first member to get started.
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add Project Member</DialogTitle>
+                  <DialogDescription>
+                    Add a user to this project with a specific role
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="email">User Email</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="user@example.com"
+                      value={newUserEmail}
+                      onChange={(e) => setNewUserEmail(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="role">Role</Label>
+                    <Select
+                      value={newUserRole}
+                      onValueChange={(value) => setNewUserRole(value as ProjectRole)}
+                    >
+                      <SelectTrigger id="role">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="guest">Guest - Site access only</SelectItem>
+                        <SelectItem value="viewer">Viewer - Read only admin</SelectItem>
+                        <SelectItem value="contributor">Contributor - Can deploy</SelectItem>
+                        <SelectItem value="admin">Admin - Can manage settings</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Contributor and Admin require the target to have the global{' '}
+                      <code className="font-mono">user</code> or{' '}
+                      <code className="font-mono">admin</code> role. Members can only be granted
+                      Viewer or Guest — promote them in the{' '}
+                      <a href="/users" className="underline">
+                        Users tab
+                      </a>{' '}
+                      first if needed.
+                    </p>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button onClick={handleAddMember} disabled={isGranting}>
+                    {isGranting ? 'Adding...' : 'Add Member'}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </div>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Email</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Granted</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {users.map((permission) => (
-                <TableRow key={permission.id}>
-                  <TableCell className="font-medium">
-                    {permission.user.email}
-                    {permission.user.name && (
-                      <span className="text-sm text-muted-foreground ml-2">
-                        ({permission.user.name})
-                      </span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="secondary" className={roleColors[permission.role]}>
-                      {permission.role}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {new Date(permission.grantedAt).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      {permission.role !== 'owner' && (
-                        <>
-                          <Dialog
-                            open={editingMember === permission.userId}
-                            onOpenChange={(open) =>
-                              setEditingMember(open ? permission.userId : null)
-                            }
-                          >
-                            <DialogTrigger asChild>
+        </CardHeader>
+        <CardContent>
+          {users.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              No members yet. Add your first member to get started.
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Granted</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {users.map((permission) => (
+                  <TableRow key={permission.id}>
+                    <TableCell className="font-medium">
+                      {permission.user.email}
+                      {permission.user.name && (
+                        <span className="text-sm text-muted-foreground ml-2">
+                          ({permission.user.name})
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className={roleColors[permission.role]}>
+                        {permission.role}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {new Date(permission.grantedAt).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        {permission.role !== 'owner' && (
+                          <>
+                            <Dialog
+                              open={editingMember === permission.userId}
+                              onOpenChange={(open) =>
+                                setEditingMember(open ? permission.userId : null)
+                              }
+                            >
+                              <DialogTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    setEditingMember(permission.userId);
+                                    setEditRole(permission.role);
+                                  }}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent>
+                                <DialogHeader>
+                                  <DialogTitle>Change Member Role</DialogTitle>
+                                  <DialogDescription>
+                                    Update the role for {permission.user.email}
+                                  </DialogDescription>
+                                </DialogHeader>
+                                <div className="space-y-4 py-4">
+                                  <div className="space-y-2">
+                                    <Label htmlFor="edit-role">New Role</Label>
+                                    <Select
+                                      value={editRole}
+                                      onValueChange={(value) => setEditRole(value as ProjectRole)}
+                                    >
+                                      <SelectTrigger id="edit-role">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {allowedRolesFor(permission.user.role).includes(
+                                          'guest',
+                                        ) && (
+                                          <SelectItem value="guest">
+                                            Guest - Site access only
+                                          </SelectItem>
+                                        )}
+                                        {allowedRolesFor(permission.user.role).includes(
+                                          'viewer',
+                                        ) && (
+                                          <SelectItem value="viewer">
+                                            Viewer - Read only admin
+                                          </SelectItem>
+                                        )}
+                                        {allowedRolesFor(permission.user.role).includes(
+                                          'contributor',
+                                        ) && (
+                                          <SelectItem value="contributor">
+                                            Contributor - Can deploy
+                                          </SelectItem>
+                                        )}
+                                        {allowedRolesFor(permission.user.role).includes(
+                                          'admin',
+                                        ) && (
+                                          <SelectItem value="admin">
+                                            Admin - Can manage settings
+                                          </SelectItem>
+                                        )}
+                                      </SelectContent>
+                                    </Select>
+                                    {permission.user.role === 'member' && (
+                                      <p className="text-xs text-muted-foreground">
+                                        {permission.user.email} has the global{' '}
+                                        <code className="font-mono">member</code> role, so only
+                                        Viewer or Guest can be granted here. Promote them to{' '}
+                                        <code className="font-mono">user</code> in the{' '}
+                                        <a href="/users" className="underline">
+                                          Users tab
+                                        </a>{' '}
+                                        first to grant Contributor or Admin.
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                                <DialogFooter>
+                                  <Button variant="outline" onClick={() => setEditingMember(null)}>
+                                    Cancel
+                                  </Button>
+                                  <Button
+                                    onClick={() =>
+                                      handleChangeRole(permission.userId, permission.user.email)
+                                    }
+                                    disabled={isGranting || isRevoking}
+                                  >
+                                    {isGranting || isRevoking ? 'Updating...' : 'Update Role'}
+                                  </Button>
+                                </DialogFooter>
+                              </DialogContent>
+                            </Dialog>
+
+                            <AlertDialog
+                              open={removingMember === permission.userId}
+                              onOpenChange={(open) =>
+                                setRemovingMember(open ? permission.userId : null)
+                              }
+                            >
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => {
-                                  setEditingMember(permission.userId);
-                                  setEditRole(permission.role);
-                                }}
+                                onClick={() => setRemovingMember(permission.userId)}
                               >
-                                <Edit className="h-4 w-4" />
+                                <Trash2 className="h-4 w-4 text-destructive" />
                               </Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                              <DialogHeader>
-                                <DialogTitle>Change Member Role</DialogTitle>
-                                <DialogDescription>
-                                  Update the role for {permission.user.email}
-                                </DialogDescription>
-                              </DialogHeader>
-                              <div className="space-y-4 py-4">
-                                <div className="space-y-2">
-                                  <Label htmlFor="edit-role">New Role</Label>
-                                  <Select
-                                    value={editRole}
-                                    onValueChange={(value) => setEditRole(value as ProjectRole)}
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Remove Member</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Are you sure you want to remove {permission.user.email} from
+                                    this project? They will lose all access immediately.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel onClick={() => setRemovingMember(null)}>
+                                    Cancel
+                                  </AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => handleRemoveMember(permission.userId)}
+                                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                    disabled={isRevoking}
                                   >
-                                    <SelectTrigger id="edit-role">
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {allowedRolesFor(permission.user.role).includes('guest') && (
-                                        <SelectItem value="guest">Guest - Site access only</SelectItem>
-                                      )}
-                                      {allowedRolesFor(permission.user.role).includes('viewer') && (
-                                        <SelectItem value="viewer">Viewer - Read only admin</SelectItem>
-                                      )}
-                                      {allowedRolesFor(permission.user.role).includes('contributor') && (
-                                        <SelectItem value="contributor">
-                                          Contributor - Can deploy
-                                        </SelectItem>
-                                      )}
-                                      {allowedRolesFor(permission.user.role).includes('admin') && (
-                                        <SelectItem value="admin">
-                                          Admin - Can manage settings
-                                        </SelectItem>
-                                      )}
-                                    </SelectContent>
-                                  </Select>
-                                  {permission.user.role === 'member' && (
-                                    <p className="text-xs text-muted-foreground">
-                                      {permission.user.email} has the global{' '}
-                                      <code className="font-mono">member</code> role, so only
-                                      Viewer or Guest can be granted here. Promote them to{' '}
-                                      <code className="font-mono">user</code> in the{' '}
-                                      <a href="/users" className="underline">Users tab</a>{' '}
-                                      first to grant Contributor or Admin.
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                              <DialogFooter>
-                                <Button
-                                  variant="outline"
-                                  onClick={() => setEditingMember(null)}
-                                >
-                                  Cancel
-                                </Button>
-                                <Button
-                                  onClick={() => handleChangeRole(permission.userId, permission.user.email)}
-                                  disabled={isGranting || isRevoking}
-                                >
-                                  {isGranting || isRevoking ? 'Updating...' : 'Update Role'}
-                                </Button>
-                              </DialogFooter>
-                            </DialogContent>
-                          </Dialog>
-
-                          <AlertDialog
-                            open={removingMember === permission.userId}
-                            onOpenChange={(open) =>
-                              setRemovingMember(open ? permission.userId : null)
-                            }
-                          >
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setRemovingMember(permission.userId)}
-                            >
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Remove Member</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  Are you sure you want to remove {permission.user.email} from
-                                  this project? They will lose all access immediately.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel onClick={() => setRemovingMember(null)}>
-                                  Cancel
-                                </AlertDialogCancel>
-                                <AlertDialogAction
-                                  onClick={() => handleRemoveMember(permission.userId)}
-                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                  disabled={isRevoking}
-                                >
-                                  {isRevoking ? 'Removing...' : 'Remove'}
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        </>
-                      )}
-                      {permission.role === 'owner' && (
-                        <span className="text-xs text-muted-foreground px-2">
-                          Cannot remove owner
-                        </span>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </CardContent>
-    </Card>
+                                    {isRevoking ? 'Removing...' : 'Remove'}
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </>
+                        )}
+                        {permission.role === 'owner' && (
+                          <span className="text-xs text-muted-foreground px-2">
+                            Cannot remove owner
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

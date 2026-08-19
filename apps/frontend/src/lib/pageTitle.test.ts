@@ -79,7 +79,15 @@ describe('getRouteTitleParts', () => {
 
   it('does not let the file-browser pattern swallow the repository tabs', () => {
     // '/repo/:owner/:repo/:ref' would match these too — static segments win.
-    for (const tab of ['deployments', 'branches', 'aliases', 'proxy-rules', 'schedules', 'data', 'uploads']) {
+    for (const tab of [
+      'deployments',
+      'branches',
+      'aliases',
+      'proxy-rules',
+      'schedules',
+      'data',
+      'uploads',
+    ]) {
       expect(getRouteTitleParts(`/repo/acme/site/${tab}`)[0]).not.toBe('Files');
     }
   });

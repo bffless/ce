@@ -241,267 +241,303 @@ export function DeploymentsList({ owner, repo }: DeploymentsListProps) {
 
   return (
     <>
-    <Card>
-      <CardHeader>
-        <CardTitle>Deployments</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {/* Filter and Sort Controls */}
-        <div className="flex flex-wrap gap-3 mb-6" role="search" aria-label="Deployment filters">
-          {/* Search Input */}
-          <div className="relative flex-1 min-w-[200px] max-w-sm">
-            <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
-            <Input
-              type="text"
-              placeholder="Search by SHA or description..."
-              value={searchQuery}
-              onChange={(e) => handleSearchChange(e.target.value)}
-              className="pl-8 pr-8"
-              aria-label="Search deployments by commit SHA or description"
-            />
-            {searchQuery && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="absolute right-0 top-0 h-full px-2"
-                onClick={handleClearSearch}
-                aria-label="Clear search"
-              >
-                <X className="h-4 w-4" aria-hidden="true" />
-              </Button>
-            )}
-          </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Deployments</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {/* Filter and Sort Controls */}
+          <div className="flex flex-wrap gap-3 mb-6" role="search" aria-label="Deployment filters">
+            {/* Search Input */}
+            <div className="relative flex-1 min-w-[200px] max-w-sm">
+              <Search
+                className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <Input
+                type="text"
+                placeholder="Search by SHA or description..."
+                value={searchQuery}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                className="pl-8 pr-8"
+                aria-label="Search deployments by commit SHA or description"
+              />
+              {searchQuery && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-2"
+                  onClick={handleClearSearch}
+                  aria-label="Clear search"
+                >
+                  <X className="h-4 w-4" aria-hidden="true" />
+                </Button>
+              )}
+            </div>
 
-          {/* Branch Filter */}
-          <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-            <Select value={selectedBranch || 'all'} onValueChange={handleBranchChange}>
-              <SelectTrigger className="w-48" aria-label="Filter by branch">
-                <SelectValue placeholder="All branches" />
+            {/* Branch Filter */}
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+              <Select value={selectedBranch || 'all'} onValueChange={handleBranchChange}>
+                <SelectTrigger className="w-48" aria-label="Filter by branch">
+                  <SelectValue placeholder="All branches" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All branches</SelectItem>
+                  {refsData?.branches.map((branch) => (
+                    <SelectItem key={branch.name} value={branch.name}>
+                      {branch.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Sort By */}
+            <Select value={sortBy} onValueChange={handleSortChange}>
+              <SelectTrigger className="w-32" aria-label="Sort by">
+                <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All branches</SelectItem>
-                {refsData?.branches.map((branch) => (
-                  <SelectItem key={branch.name} value={branch.name}>
-                    {branch.name}
-                  </SelectItem>
-                ))}
+                <SelectItem value="date">By Date</SelectItem>
+                <SelectItem value="branch">By Branch</SelectItem>
               </SelectContent>
             </Select>
-          </div>
 
-          {/* Sort By */}
-          <Select value={sortBy} onValueChange={handleSortChange}>
-            <SelectTrigger className="w-32" aria-label="Sort by">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="date">By Date</SelectItem>
-              <SelectItem value="branch">By Branch</SelectItem>
-            </SelectContent>
-          </Select>
-
-          {/* Sort Order Toggle */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleSortOrderToggle}
-            className="gap-2"
-            aria-label={`Sort order: ${sortBy === 'branch'
-              ? sortOrder === 'asc'
-                ? 'Ascending'
-                : 'Descending'
-              : sortOrder === 'desc'
-                ? 'Newest First'
-                : 'Oldest First'}`}
-          >
-            <ArrowUpDown className="h-4 w-4" aria-hidden="true" />
-            {sortBy === 'branch'
-              ? sortOrder === 'asc'
-                ? 'Ascending'
-                : 'Descending'
-              : sortOrder === 'desc'
-                ? 'Newest First'
-                : 'Oldest First'}
-          </Button>
-
-          {/* Create Deployment */}
-          {canEdit && (
-            <Button onClick={() => setCreateOpen(true)} size="sm" className="gap-2 ml-auto">
-              <Plus className="h-4 w-4" aria-hidden="true" />
-              Create Deployment
-            </Button>
-          )}
-        </div>
-
-        {/* Empty Search Results */}
-        {hasNoSearchResults ? (
-          <div className="p-8 text-center">
-            <Search className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <p className="text-muted-foreground font-medium">No deployments match your search</p>
-            <p className="text-sm text-muted-foreground mt-2">
-              Try a different search term or clear the search
-            </p>
-            <Button variant="outline" size="sm" className="mt-4" onClick={handleClearSearch}>
-              Clear Search
-            </Button>
-          </div>
-        ) : (
-          <>
-            {/* Deployments Table */}
-            <div className="space-y-2" role="table" aria-label="Deployments list">
-              {/* Table Header - Desktop only */}
-              <div className="hidden md:grid md:grid-cols-12 gap-4 px-4 py-2 text-xs font-medium text-muted-foreground border-b" role="row">
-                <div className="col-span-2" role="columnheader">Commit</div>
-                <div className="col-span-2" role="columnheader">Branch</div>
-                <div className="col-span-3" role="columnheader">Description</div>
-                <div className="col-span-2" role="columnheader">Deployed</div>
-                <div className="col-span-2" role="columnheader">Files / Size</div>
-                <div className="col-span-1" role="columnheader">Actions</div>
-              </div>
-
-              {/* Deployment Rows */}
-              {filteredDeployments.map((deployment) => (
-            <div
-              key={deployment.id}
-              className="grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-4 p-4 rounded-lg border hover:bg-accent transition-colors"
-              role="row"
+            {/* Sort Order Toggle */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSortOrderToggle}
+              className="gap-2"
+              aria-label={`Sort order: ${
+                sortBy === 'branch'
+                  ? sortOrder === 'asc'
+                    ? 'Ascending'
+                    : 'Descending'
+                  : sortOrder === 'desc'
+                    ? 'Newest First'
+                    : 'Oldest First'
+              }`}
             >
-              {/* Commit SHA */}
-              <div className="md:col-span-2 flex items-center gap-1" role="cell">
-                <code className="text-sm font-mono bg-muted px-2 py-1 rounded">
-                  {deployment.shortSha}
-                </code>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 w-6 p-0"
-                  title={copiedSha === deployment.commitSha ? 'Copied!' : 'Copy full SHA'}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleCopySha(deployment.commitSha);
-                  }}
-                  aria-label={copiedSha === deployment.commitSha ? 'Copied commit SHA' : `Copy commit SHA ${deployment.shortSha}`}
-                >
-                  {copiedSha === deployment.commitSha ? (
-                    <Check className="h-3 w-3 text-green-500" aria-hidden="true" />
-                  ) : (
-                    <Copy className="h-3 w-3" aria-hidden="true" />
-                  )}
-                </Button>
-              </div>
+              <ArrowUpDown className="h-4 w-4" aria-hidden="true" />
+              {sortBy === 'branch'
+                ? sortOrder === 'asc'
+                  ? 'Ascending'
+                  : 'Descending'
+                : sortOrder === 'desc'
+                  ? 'Newest First'
+                  : 'Oldest First'}
+            </Button>
 
-              {/* Branch */}
-              <div className="md:col-span-2 flex items-center" role="cell">
-                <span className="text-sm font-medium">{deployment.branch}</span>
-              </div>
-
-              {/* Description */}
-              <div className="md:col-span-3 flex items-center" role="cell">
-                <span
-                  className="text-sm text-muted-foreground truncate"
-                  title={deployment.description || 'No description'}
-                >
-                  {deployment.description || 'No description'}
-                </span>
-              </div>
-
-              {/* Deployed Date */}
-              <div className="md:col-span-2 flex items-center" role="cell">
-                <span className="text-sm text-muted-foreground">
-                  {formatDate(deployment.deployedAt)}
-                </span>
-              </div>
-
-              {/* Files / Size */}
-              <div className="md:col-span-2 flex items-center gap-2" role="cell">
-                <span className="text-sm text-muted-foreground">{deployment.fileCount} files</span>
-                <span className="text-sm text-muted-foreground" aria-hidden="true">•</span>
-                <span className="text-sm text-muted-foreground">
-                  {formatStorageSize(deployment.totalSize)}
-                </span>
-              </div>
-
-              {/* Actions */}
-              <div className="md:col-span-1 flex items-center justify-end md:justify-start" role="cell">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() =>
-                    navigate(`/repo/${owner}/${repo}/${deployment.commitSha}`)
-                  }
-                  aria-label={`View deployment ${deployment.shortSha}`}
-                >
-                  View
-                </Button>
-              </div>
-            </div>
-              ))}
-            </div>
-
-            {/* Pagination Controls */}
-            {totalPages > 1 && (
-          <nav className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4" aria-label="Pagination">
-            {/* Page Info */}
-            <div className="text-sm text-muted-foreground" aria-live="polite" aria-atomic="true">
-              Page {currentPage} of {totalPages} • {deploymentsData.total} total deployments
-            </div>
-
-            {/* Pagination Buttons */}
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handlePageChange(1)}
-                disabled={currentPage === 1}
-                aria-label="Go to first page"
-              >
-                <ChevronsLeft className="h-4 w-4" aria-hidden="true" />
+            {/* Create Deployment */}
+            {canEdit && (
+              <Button onClick={() => setCreateOpen(true)} size="sm" className="gap-2 ml-auto">
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                Create Deployment
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handlePageChange(currentPage - 1)}
-                disabled={currentPage === 1}
-                aria-label="Go to previous page"
-              >
-                <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-              </Button>
-              <span className="text-sm px-2" aria-current="page">
-                {currentPage} / {totalPages}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handlePageChange(currentPage + 1)}
-                disabled={currentPage === totalPages}
-                aria-label="Go to next page"
-              >
-                <ChevronRight className="h-4 w-4" aria-hidden="true" />
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handlePageChange(totalPages)}
-                disabled={currentPage === totalPages}
-                aria-label="Go to last page"
-              >
-                <ChevronsRight className="h-4 w-4" aria-hidden="true" />
-              </Button>
-            </div>
-          </nav>
             )}
-          </>
-        )}
-      </CardContent>
-    </Card>
-    <CreateDeploymentDialog
-      open={createOpen}
-      onOpenChange={setCreateOpen}
-      owner={owner}
-      repo={repo}
-      branches={refsData?.branches ?? []}
-    />
+          </div>
+
+          {/* Empty Search Results */}
+          {hasNoSearchResults ? (
+            <div className="p-8 text-center">
+              <Search className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <p className="text-muted-foreground font-medium">No deployments match your search</p>
+              <p className="text-sm text-muted-foreground mt-2">
+                Try a different search term or clear the search
+              </p>
+              <Button variant="outline" size="sm" className="mt-4" onClick={handleClearSearch}>
+                Clear Search
+              </Button>
+            </div>
+          ) : (
+            <>
+              {/* Deployments Table */}
+              <div className="space-y-2" role="table" aria-label="Deployments list">
+                {/* Table Header - Desktop only */}
+                <div
+                  className="hidden md:grid md:grid-cols-12 gap-4 px-4 py-2 text-xs font-medium text-muted-foreground border-b"
+                  role="row"
+                >
+                  <div className="col-span-2" role="columnheader">
+                    Commit
+                  </div>
+                  <div className="col-span-2" role="columnheader">
+                    Branch
+                  </div>
+                  <div className="col-span-3" role="columnheader">
+                    Description
+                  </div>
+                  <div className="col-span-2" role="columnheader">
+                    Deployed
+                  </div>
+                  <div className="col-span-2" role="columnheader">
+                    Files / Size
+                  </div>
+                  <div className="col-span-1" role="columnheader">
+                    Actions
+                  </div>
+                </div>
+
+                {/* Deployment Rows */}
+                {filteredDeployments.map((deployment) => (
+                  <div
+                    key={deployment.id}
+                    className="grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-4 p-4 rounded-lg border hover:bg-accent transition-colors"
+                    role="row"
+                  >
+                    {/* Commit SHA */}
+                    <div className="md:col-span-2 flex items-center gap-1" role="cell">
+                      <code className="text-sm font-mono bg-muted px-2 py-1 rounded">
+                        {deployment.shortSha}
+                      </code>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0"
+                        title={copiedSha === deployment.commitSha ? 'Copied!' : 'Copy full SHA'}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCopySha(deployment.commitSha);
+                        }}
+                        aria-label={
+                          copiedSha === deployment.commitSha
+                            ? 'Copied commit SHA'
+                            : `Copy commit SHA ${deployment.shortSha}`
+                        }
+                      >
+                        {copiedSha === deployment.commitSha ? (
+                          <Check className="h-3 w-3 text-green-500" aria-hidden="true" />
+                        ) : (
+                          <Copy className="h-3 w-3" aria-hidden="true" />
+                        )}
+                      </Button>
+                    </div>
+
+                    {/* Branch */}
+                    <div className="md:col-span-2 flex items-center" role="cell">
+                      <span className="text-sm font-medium">{deployment.branch}</span>
+                    </div>
+
+                    {/* Description */}
+                    <div className="md:col-span-3 flex items-center" role="cell">
+                      <span
+                        className="text-sm text-muted-foreground truncate"
+                        title={deployment.description || 'No description'}
+                      >
+                        {deployment.description || 'No description'}
+                      </span>
+                    </div>
+
+                    {/* Deployed Date */}
+                    <div className="md:col-span-2 flex items-center" role="cell">
+                      <span className="text-sm text-muted-foreground">
+                        {formatDate(deployment.deployedAt)}
+                      </span>
+                    </div>
+
+                    {/* Files / Size */}
+                    <div className="md:col-span-2 flex items-center gap-2" role="cell">
+                      <span className="text-sm text-muted-foreground">
+                        {deployment.fileCount} files
+                      </span>
+                      <span className="text-sm text-muted-foreground" aria-hidden="true">
+                        •
+                      </span>
+                      <span className="text-sm text-muted-foreground">
+                        {formatStorageSize(deployment.totalSize)}
+                      </span>
+                    </div>
+
+                    {/* Actions */}
+                    <div
+                      className="md:col-span-1 flex items-center justify-end md:justify-start"
+                      role="cell"
+                    >
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => navigate(`/repo/${owner}/${repo}/${deployment.commitSha}`)}
+                        aria-label={`View deployment ${deployment.shortSha}`}
+                      >
+                        View
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <nav
+                  className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4"
+                  aria-label="Pagination"
+                >
+                  {/* Page Info */}
+                  <div
+                    className="text-sm text-muted-foreground"
+                    aria-live="polite"
+                    aria-atomic="true"
+                  >
+                    Page {currentPage} of {totalPages} • {deploymentsData.total} total deployments
+                  </div>
+
+                  {/* Pagination Buttons */}
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(1)}
+                      disabled={currentPage === 1}
+                      aria-label="Go to first page"
+                    >
+                      <ChevronsLeft className="h-4 w-4" aria-hidden="true" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(currentPage - 1)}
+                      disabled={currentPage === 1}
+                      aria-label="Go to previous page"
+                    >
+                      <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                    </Button>
+                    <span className="text-sm px-2" aria-current="page">
+                      {currentPage} / {totalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(currentPage + 1)}
+                      disabled={currentPage === totalPages}
+                      aria-label="Go to next page"
+                    >
+                      <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(totalPages)}
+                      disabled={currentPage === totalPages}
+                      aria-label="Go to last page"
+                    >
+                      <ChevronsRight className="h-4 w-4" aria-hidden="true" />
+                    </Button>
+                  </div>
+                </nav>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+      <CreateDeploymentDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        owner={owner}
+        repo={repo}
+        branches={refsData?.branches ?? []}
+      />
     </>
   );
 }

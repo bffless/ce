@@ -25,7 +25,10 @@ export function DocsLink({ href, label }: DocsLinkProps) {
     >
       <BookOpen aria-hidden="true" className="h-4 w-4 flex-shrink-0 text-[#d96459]" />
       <span className="font-medium">{label}</span>
-      <ExternalLink aria-hidden="true" className="ml-auto h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
+      <ExternalLink
+        aria-hidden="true"
+        className="ml-auto h-3.5 w-3.5 flex-shrink-0 text-muted-foreground"
+      />
       <span className="sr-only"> (opens in a new tab)</span>
     </a>
   );

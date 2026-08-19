@@ -68,7 +68,10 @@ export interface AIToolPlugin {
    * Optional: return tools that depend on per-pipeline options (e.g., dynamic tools per source).
    * When implemented, this is called instead of getTools() during tool building.
    */
-  getToolsWithOptions?(config: Record<string, unknown>, pipelineOptions?: Record<string, unknown>): AIToolDefinition[];
+  getToolsWithOptions?(
+    config: Record<string, unknown>,
+    pipelineOptions?: Record<string, unknown>,
+  ): AIToolDefinition[];
 
   /**
    * Optional: return instructions to append to the AI system prompt.

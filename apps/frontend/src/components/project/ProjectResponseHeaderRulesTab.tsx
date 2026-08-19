@@ -151,15 +151,9 @@ export function ProjectResponseHeaderRulesTab({ project }: ProjectResponseHeader
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [ruleToDelete, setRuleToDelete] = useState<ResponseHeaderRule | null>(null);
   const [originsText, setOriginsText] = useState('');
-  const [customHeaderRows, setCustomHeaderRows] = useState<
-    { name: string; value: string }[]
-  >([]);
+  const [customHeaderRows, setCustomHeaderRows] = useState<{ name: string; value: string }[]>([]);
 
-  const {
-    data: rules,
-    isLoading,
-    error,
-  } = useGetResponseHeaderRulesQuery(project.id);
+  const { data: rules, isLoading, error } = useGetResponseHeaderRulesQuery(project.id);
 
   const [createRule, { isLoading: isCreating }] = useCreateResponseHeaderRuleMutation();
   const [updateRule, { isLoading: isUpdating }] = useUpdateResponseHeaderRuleMutation();
@@ -211,11 +205,7 @@ export function ProjectResponseHeaderRulesTab({ project }: ProjectResponseHeader
   const addCustomHeaderRow = () =>
     setCustomHeaderRows((rows) => [...rows, { name: '', value: '' }]);
 
-  const updateCustomHeaderRow = (
-    index: number,
-    field: 'name' | 'value',
-    next: string,
-  ) =>
+  const updateCustomHeaderRow = (index: number, field: 'name' | 'value', next: string) =>
     setCustomHeaderRows((rows) =>
       rows.map((row, i) => (i === index ? { ...row, [field]: next } : row)),
     );
@@ -321,9 +311,7 @@ export function ProjectResponseHeaderRulesTab({ project }: ProjectResponseHeader
     return (
       <Alert variant="destructive">
         <AlertCircle className="h-4 w-4" />
-        <AlertDescription>
-          Failed to load response header rules. Please try again.
-        </AlertDescription>
+        <AlertDescription>Failed to load response header rules. Please try again.</AlertDescription>
       </Alert>
     );
   }
@@ -339,8 +327,8 @@ export function ProjectResponseHeaderRulesTab({ project }: ProjectResponseHeader
                 Response Header Rules
               </CardTitle>
               <CardDescription>
-                Control iframe embedding and custom response headers for specific paths.
-                Rules are evaluated in priority order; first match wins.
+                Control iframe embedding and custom response headers for specific paths. Rules are
+                evaluated in priority order; first match wins.
               </CardDescription>
             </div>
             <Button onClick={handleCreateRule}>
@@ -353,8 +341,9 @@ export function ProjectResponseHeaderRulesTab({ project }: ProjectResponseHeader
           <Alert className="mb-4">
             <Shield className="h-4 w-4" />
             <AlertDescription>
-              By default, all content uses <code className="text-xs bg-muted px-1 rounded">X-Frame-Options: SAMEORIGIN</code> which
-              prevents embedding on other sites. Use these rules to allow specific paths to be
+              By default, all content uses{' '}
+              <code className="text-xs bg-muted px-1 rounded">X-Frame-Options: SAMEORIGIN</code>{' '}
+              which prevents embedding on other sites. Use these rules to allow specific paths to be
               embedded in iframes on external domains.
             </AlertDescription>
           </Alert>
@@ -386,13 +375,12 @@ export function ProjectResponseHeaderRulesTab({ project }: ProjectResponseHeader
                         {rule.name && (
                           <span className="text-xs text-muted-foreground">{rule.name}</span>
                         )}
-                        {rule.customHeaders &&
-                          Object.keys(rule.customHeaders).length > 0 && (
-                            <span className="text-xs text-muted-foreground">
-                              {Object.keys(rule.customHeaders).length} custom header
-                              {Object.keys(rule.customHeaders).length === 1 ? '' : 's'}
-                            </span>
-                          )}
+                        {rule.customHeaders && Object.keys(rule.customHeaders).length > 0 && (
+                          <span className="text-xs text-muted-foreground">
+                            {Object.keys(rule.customHeaders).length} custom header
+                            {Object.keys(rule.customHeaders).length === 1 ? '' : 's'}
+                          </span>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -453,7 +441,8 @@ export function ProjectResponseHeaderRulesTab({ project }: ProjectResponseHeader
               <Shield className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <p className="mb-2">No response header rules configured</p>
               <p className="text-sm">
-                Default security headers apply. Add a rule to allow iframe embedding on specific paths.
+                Default security headers apply. Add a rule to allow iframe embedding on specific
+                paths.
               </p>
             </div>
           )}
@@ -554,8 +543,8 @@ export function ProjectResponseHeaderRulesTab({ project }: ProjectResponseHeader
                   className="font-mono text-sm"
                 />
                 <p className="text-xs text-muted-foreground">
-                  One origin per line. Include the full URL with protocol (e.g., https://example.com).
-                  Leave empty to allow all origins.
+                  One origin per line. Include the full URL with protocol (e.g.,
+                  https://example.com). Leave empty to allow all origins.
                 </p>
               </div>
             )}
@@ -568,17 +557,13 @@ export function ProjectResponseHeaderRulesTab({ project }: ProjectResponseHeader
                   <div key={index} className="flex items-center gap-2">
                     <Input
                       value={row.name}
-                      onChange={(e) =>
-                        updateCustomHeaderRow(index, 'name', e.target.value)
-                      }
+                      onChange={(e) => updateCustomHeaderRow(index, 'name', e.target.value)}
                       placeholder="Header-Name"
                       className="font-mono text-sm"
                     />
                     <Input
                       value={row.value}
-                      onChange={(e) =>
-                        updateCustomHeaderRow(index, 'value', e.target.value)
-                      }
+                      onChange={(e) => updateCustomHeaderRow(index, 'value', e.target.value)}
                       placeholder="value"
                       className="font-mono text-sm"
                     />
@@ -599,9 +584,7 @@ export function ProjectResponseHeaderRulesTab({ project }: ProjectResponseHeader
               </Button>
               <p className="text-xs text-muted-foreground">
                 Arbitrary response headers applied to matching files (e.g.{' '}
-                <code className="text-xs bg-muted px-1 rounded">
-                  Cross-Origin-Opener-Policy
-                </code>
+                <code className="text-xs bg-muted px-1 rounded">Cross-Origin-Opener-Policy</code>
                 ). Leave the value blank to remove a default header.
               </p>
             </div>
@@ -647,11 +630,7 @@ export function ProjectResponseHeaderRulesTab({ project }: ProjectResponseHeader
               onClick={handleSaveRule}
               disabled={!ruleForm.pathPattern || isCreating || isUpdating}
             >
-              {isCreating || isUpdating
-                ? 'Saving...'
-                : editingRule
-                  ? 'Update Rule'
-                  : 'Create Rule'}
+              {isCreating || isUpdating ? 'Saving...' : editingRule ? 'Update Rule' : 'Create Rule'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -664,10 +643,8 @@ export function ProjectResponseHeaderRulesTab({ project }: ProjectResponseHeader
             <AlertDialogTitle>Delete Response Header Rule?</AlertDialogTitle>
             <AlertDialogDescription>
               This will delete the rule for pattern{' '}
-              <code className="font-mono bg-muted px-1 rounded">
-                {ruleToDelete?.pathPattern}
-              </code>
-              . This action cannot be undone.
+              <code className="font-mono bg-muted px-1 rounded">{ruleToDelete?.pathPattern}</code>.
+              This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

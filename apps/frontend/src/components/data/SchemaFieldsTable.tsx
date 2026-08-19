@@ -16,7 +16,10 @@ interface SchemaFieldsTableProps {
 // All field types share one badge weight: the type name is the information,
 // so mixed fill weights would read as false emphasis. "Required" keeps the
 // filled variant since it is the only genuinely load-bearing flag in the table.
-const FIELD_TYPE_LABELS: Record<string, { label: string; variant: 'default' | 'secondary' | 'outline' }> = {
+const FIELD_TYPE_LABELS: Record<
+  string,
+  { label: string; variant: 'default' | 'secondary' | 'outline' }
+> = {
   string: { label: 'String', variant: 'outline' },
   text: { label: 'Text', variant: 'outline' },
   number: { label: 'Number', variant: 'outline' },
@@ -28,9 +31,7 @@ const FIELD_TYPE_LABELS: Record<string, { label: string; variant: 'default' | 's
 
 export function SchemaFieldsTable({ fields }: SchemaFieldsTableProps) {
   if (fields.length === 0) {
-    return (
-      <div className="text-sm text-muted-foreground italic">No fields defined</div>
-    );
+    return <div className="text-sm text-muted-foreground italic">No fields defined</div>;
   }
 
   return (

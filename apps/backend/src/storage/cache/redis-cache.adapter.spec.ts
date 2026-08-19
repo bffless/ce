@@ -324,8 +324,10 @@ describe('RedisCacheAdapter', () => {
     });
 
     it('should delete keys matching prefix', async () => {
-      mockRedis.scan
-        .mockResolvedValueOnce(['0', ['storage:cache:prefix/key1', 'storage:cache:prefix/key2']]);
+      mockRedis.scan.mockResolvedValueOnce([
+        '0',
+        ['storage:cache:prefix/key1', 'storage:cache:prefix/key2'],
+      ]);
       mockRedis.del.mockResolvedValue(2);
 
       const deleted = await cache.deleteByPrefix('prefix/');

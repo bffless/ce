@@ -15,7 +15,17 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { OnboardingModal } from '@/components/setup/onboarding/OnboardingModal';
-import { FolderGit2, Settings, Users, UserCog, ShieldAlert, X, ArrowRight, ExternalLink, Globe } from 'lucide-react';
+import {
+  FolderGit2,
+  Settings,
+  Users,
+  UserCog,
+  ShieldAlert,
+  X,
+  ArrowRight,
+  ExternalLink,
+  Globe,
+} from 'lucide-react';
 import { useBranding } from '@/hooks/useBranding';
 
 /**
@@ -61,10 +71,11 @@ export function HomePage() {
     skip: !flagsReady || sessionData?.user?.role !== 'admin' || !isPrimarySslManagementEnabled,
   });
   const behindEdge =
-    !!primaryStatus && (primaryStatus.proxyMode !== 'none' || primaryStatus.sslMode === 'selfsigned');
+    !!primaryStatus &&
+    (primaryStatus.proxyMode !== 'none' || primaryStatus.sslMode === 'selfsigned');
 
-  const [isBannerDismissed, setIsBannerDismissed] = useState(() =>
-    localStorage.getItem(SSL_BANNER_DISMISSED_KEY) === 'true'
+  const [isBannerDismissed, setIsBannerDismissed] = useState(
+    () => localStorage.getItem(SSL_BANNER_DISMISSED_KEY) === 'true',
   );
 
   // Expiring-wildcard variant of the banner. Its dismissal key is scoped to
@@ -182,11 +193,7 @@ export function HomePage() {
         <div className="max-w-5xl mx-auto px-6 py-12">
           <div className="flex flex-col md:flex-row items-center gap-8">
             <div className="flex-shrink-0">
-              <img
-                src={authLogoUrl}
-                alt={siteName}
-                className="w-28 h-28 md:w-36 md:h-36"
-              />
+              <img src={authLogoUrl} alt={siteName} className="w-28 h-28 md:w-36 md:h-36" />
             </div>
             <div className="text-center md:text-left">
               <h1 className="text-3xl md:text-4xl font-bold text-foreground">
@@ -217,15 +224,15 @@ export function HomePage() {
           <Alert className="bg-white border-[#d96459]/30 dark:bg-card dark:border-[#d96459]/50">
             <ShieldAlert className="h-4 w-4 text-[#d96459]" />
             <AlertTitle className="text-[#3a3a3a] dark:text-foreground">
-              {missingWildcard ? 'Wildcard SSL Certificate Required' : 'Wildcard Certificate Expiring Soon'}
+              {missingWildcard
+                ? 'Wildcard SSL Certificate Required'
+                : 'Wildcard Certificate Expiring Soon'}
             </AlertTitle>
             <AlertDescription className="text-[#4a4a4a] dark:text-muted-foreground">
               <p className="mb-2">
-                {missingWildcard ? (
-                  'To enable HTTPS for your deployments, you need to configure a wildcard SSL certificate. This requires adding DNS TXT records to verify domain ownership.'
-                ) : (
-                  `Wildcard certificate expires in ${certStatus?.daysUntilExpiry} days — renew it from the SSL settings below.`
-                )}
+                {missingWildcard
+                  ? 'To enable HTTPS for your deployments, you need to configure a wildcard SSL certificate. This requires adding DNS TXT records to verify domain ownership.'
+                  : `Wildcard certificate expires in ${certStatus?.daysUntilExpiry} days — renew it from the SSL settings below.`}
               </p>
               <div className="flex items-center gap-3">
                 <Button asChild size="sm" className="bg-[#d96459] hover:bg-[#c55449] text-white">
@@ -250,7 +257,9 @@ export function HomePage() {
         )}
 
         {/* Navigation Cards */}
-        <div className={`grid gap-4 ${user?.role === 'admin' ? 'md:grid-cols-3 lg:grid-cols-5' : showRepositoriesCard ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
+        <div
+          className={`grid gap-4 ${user?.role === 'admin' ? 'md:grid-cols-3 lg:grid-cols-5' : showRepositoriesCard ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}
+        >
           {showRepositoriesCard && (
             <Link to="/repo" className="group block">
               <div className="h-full bg-white dark:bg-card border border-[#3a3a3a]/10 dark:border-border rounded-lg p-6 hover:border-[#d96459]/50 hover:shadow-md transition-all duration-200">
@@ -338,9 +347,7 @@ export function HomePage() {
           <div>
             <div className="flex items-baseline justify-between gap-4 mb-4">
               <div>
-                <h2 className="text-lg font-semibold text-[#3a3a3a] dark:text-foreground">
-                  Apps
-                </h2>
+                <h2 className="text-lg font-semibold text-[#3a3a3a] dark:text-foreground">Apps</h2>
                 <p className="text-sm text-[#4a4a4a] dark:text-muted-foreground mt-1">
                   1-click install apps built on top of BFFless
                 </p>
@@ -363,17 +370,33 @@ export function HomePage() {
               Admin
             </h2>
             <div className="flex flex-wrap gap-3">
-              <Button asChild variant="outline" className="border-[#4a4a4a]/20 hover:border-[#d96459]/50 hover:bg-[#ede8dd] dark:hover:bg-accent">
+              <Button
+                asChild
+                variant="outline"
+                className="border-[#4a4a4a]/20 hover:border-[#d96459]/50 hover:bg-[#ede8dd] dark:hover:bg-accent"
+              >
                 <Link to="/admin/settings">Site Settings</Link>
               </Button>
-              <Button asChild variant="outline" className="border-[#4a4a4a]/20 hover:border-[#d96459]/50 hover:bg-[#ede8dd] dark:hover:bg-accent">
+              <Button
+                asChild
+                variant="outline"
+                className="border-[#4a4a4a]/20 hover:border-[#d96459]/50 hover:bg-[#ede8dd] dark:hover:bg-accent"
+              >
                 <Link to="/domains">Domains</Link>
               </Button>
-              <Button asChild variant="outline" className="border-[#4a4a4a]/20 hover:border-[#d96459]/50 hover:bg-[#ede8dd] dark:hover:bg-accent">
+              <Button
+                asChild
+                variant="outline"
+                className="border-[#4a4a4a]/20 hover:border-[#d96459]/50 hover:bg-[#ede8dd] dark:hover:bg-accent"
+              >
                 <Link to="/traffic">Traffic</Link>
               </Button>
               {isEnabled('ENABLE_APP_CATALOG') && (
-                <Button asChild variant="outline" className="border-[#4a4a4a]/20 hover:border-[#d96459]/50 hover:bg-[#ede8dd] dark:hover:bg-accent">
+                <Button
+                  asChild
+                  variant="outline"
+                  className="border-[#4a4a4a]/20 hover:border-[#d96459]/50 hover:bg-[#ede8dd] dark:hover:bg-accent"
+                >
                   <Link to="/apps">Apps</Link>
                 </Button>
               )}

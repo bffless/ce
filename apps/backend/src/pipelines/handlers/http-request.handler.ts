@@ -129,7 +129,11 @@ export class HttpRequestHandler implements StepHandler<HttpRequestHandlerConfig>
     }
 
     if (config.timeout !== undefined) {
-      if (typeof config.timeout !== 'number' || config.timeout < 1000 || config.timeout > MAX_TIMEOUT) {
+      if (
+        typeof config.timeout !== 'number' ||
+        config.timeout < 1000 ||
+        config.timeout > MAX_TIMEOUT
+      ) {
         throw new ConfigurationError(
           `timeout must be between 1000 and ${MAX_TIMEOUT}ms`,
           'http_request',
@@ -143,9 +147,7 @@ export class HttpRequestHandler implements StepHandler<HttpRequestHandlerConfig>
     const method = config.method || 'GET';
 
     // Evaluate URL (may contain expressions)
-    const url = String(
-      this.expressionEvaluator.evaluateExpression(config.url, context, step.name),
-    );
+    const url = String(this.expressionEvaluator.evaluateExpression(config.url, context, step.name));
 
     // Validate URL is HTTP(S)
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
@@ -195,11 +197,7 @@ export class HttpRequestHandler implements StepHandler<HttpRequestHandlerConfig>
     // Add custom headers (evaluate expressions)
     if (config.headers) {
       for (const [key, valueExpr] of Object.entries(config.headers)) {
-        const resolved = this.expressionEvaluator.evaluateExpression(
-          valueExpr,
-          context,
-          step.name,
-        );
+        const resolved = this.expressionEvaluator.evaluateExpression(valueExpr, context, step.name);
         if (resolved !== undefined && resolved !== null) {
           headers[key.toLowerCase()] = String(resolved);
         }
@@ -221,11 +219,7 @@ export class HttpRequestHandler implements StepHandler<HttpRequestHandlerConfig>
         // Object with expression values
         const resolvedBody: Record<string, unknown> = {};
         for (const [key, expr] of Object.entries(config.body)) {
-          resolvedBody[key] = this.expressionEvaluator.evaluateExpression(
-            expr,
-            context,
-            step.name,
-          );
+          resolvedBody[key] = this.expressionEvaluator.evaluateExpression(expr, context, step.name);
         }
         bodyStr = JSON.stringify(resolvedBody);
       }

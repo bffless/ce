@@ -29,11 +29,9 @@ const cfg = (r: Rule, i: number) =>
 
 describe('applyConflictField', () => {
   it('writes into the step named by id, not by position', () => {
-    const out = applyConflictField(
-      rule(),
-      'pipelineConfig.steps.draft.config.skills.enabled',
-      ['image-prompts'],
-    );
+    const out = applyConflictField(rule(), 'pipelineConfig.steps.draft.config.skills.enabled', [
+      'image-prompts',
+    ]);
 
     expect(cfg(out, 1).skills.enabled).toEqual(['image-prompts']);
     // Untouched siblings survive.
@@ -47,9 +45,7 @@ describe('applyConflictField', () => {
   });
 
   it('replaces a whole step when the path stops there', () => {
-    const out = applyConflictField(rule(), 'pipelineConfig.steps', [
-      { id: 'only', config: {} },
-    ]);
+    const out = applyConflictField(rule(), 'pipelineConfig.steps', [{ id: 'only', config: {} }]);
     expect(out.pipelineConfig.steps).toEqual([{ id: 'only', config: {} }]);
   });
 

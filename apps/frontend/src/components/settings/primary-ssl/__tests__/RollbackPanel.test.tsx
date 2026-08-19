@@ -28,9 +28,7 @@ describe('RollbackPanel', () => {
     fireEvent.click(keep);
     await waitFor(() => expect(confirm).toHaveBeenCalled());
     await waitFor(() =>
-      expect(mockToast).toHaveBeenCalledWith(
-        expect.objectContaining({ title: 'Changes kept' }),
-      ),
+      expect(mockToast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Changes kept' })),
     );
   });
 
@@ -39,9 +37,7 @@ describe('RollbackPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /restore previous/i }));
     await waitFor(() => expect(rollback).toHaveBeenCalled());
     await waitFor(() =>
-      expect(mockToast).toHaveBeenCalledWith(
-        expect.objectContaining({ title: 'Restored' }),
-      ),
+      expect(mockToast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Restored' })),
     );
   });
 

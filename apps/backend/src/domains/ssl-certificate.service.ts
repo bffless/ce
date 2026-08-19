@@ -728,7 +728,12 @@ export class SslCertificateService {
     target: 'live' | 'staging' = 'live',
   ): Promise<{ success: boolean; expiresAt?: Date; sans?: string[] }> {
     const certPem = this.selfSignWithForge(domain, [...sans, `*.${domain}`]);
-    await this.savePrimaryCertificate(domain, certPem, Buffer.from(this.mockPrimaryKeyPem!), target);
+    await this.savePrimaryCertificate(
+      domain,
+      certPem,
+      Buffer.from(this.mockPrimaryKeyPem!),
+      target,
+    );
     const expiresAt = new Date(Date.now() + 90 * 86_400_000);
     this.mockCertificates.set(domain, expiresAt);
     this.logger.log(`[MOCK] Primary domain certificate issued for [${sans.join(', ')}]`);
@@ -1074,7 +1079,9 @@ export class SslCertificateService {
           error: 'No pending certificate request found. Please start a new request.',
         };
       }
-      this.logger.log(`[MOCK] DNS propagation check for ${baseDomain} - simulating all records found`);
+      this.logger.log(
+        `[MOCK] DNS propagation check for ${baseDomain} - simulating all records found`,
+      );
       return {
         recordName: pending.recordName,
         expectedValues: pending.recordValues,

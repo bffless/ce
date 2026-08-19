@@ -2,7 +2,11 @@ import { Module, forwardRef } from '@nestjs/common';
 import { DeploymentsService } from './deployments.service';
 import { PendingUploadsService } from './pending-uploads.service';
 import { PendingUploadsScheduler } from './pending-uploads.scheduler';
-import { DeploymentsController, AliasesController, FilesController } from './deployments.controller';
+import {
+  DeploymentsController,
+  AliasesController,
+  FilesController,
+} from './deployments.controller';
 import { PublicController } from './public.controller';
 import { ProjectsModule } from '../projects/projects.module';
 import { PermissionsModule } from '../permissions/permissions.module';

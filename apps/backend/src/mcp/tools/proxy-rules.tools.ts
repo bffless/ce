@@ -47,10 +47,8 @@ export const pipelineStepSchema = z.object({
     .describe(
       'IMPORTANT: Use exact handler type strings. Some have _handler suffix, some do not. The enum values are the only valid options.',
     ),
-  config: z
-    .record(z.string(), z.unknown())
-    .describe(
-      `Handler-specific configuration. All input/expression values MUST be strings (even numbers like "1024").
+  config: z.record(z.string(), z.unknown()).describe(
+    `Handler-specific configuration. All input/expression values MUST be strings (even numbers like "1024").
 
 - form_handler: { fields: { fieldName: { type: "string"|"number"|"email"|"boolean", required?: bool } } }
 - response_handler: { body: "Handlebars template string producing valid JSON. Use \\"key\\": \\"{{expr}}\\" for strings, \\"key\\": {{expr}} for numbers, \\"key\\": {{{expr}}} for raw JSON objects. Keys must always be quoted.", status?: number, headers?: {}, contentType?: string }
@@ -98,7 +96,7 @@ export const pipelineStepSchema = z.object({
 
 All configs support: condition?: "expression" (skip step if falsy), timeout?: number (ms).
 Expressions reference prior steps by step NAME (not id): "steps.stepName.field" or request data: "request.body.field". Use bracket notation for names with spaces: "steps['Step Name'].field". Use simple names without spaces to keep expressions clean.`,
-    ),
+  ),
   isEnabled: z.boolean().optional().describe('Whether step is enabled (default true)'),
 });
 
@@ -137,11 +135,7 @@ export class ProxyRulesTools {
       projectId: z.string().describe('Project ID'),
     }),
   })
-  async listRuleSets(
-    { projectId }: { projectId: string },
-    _context: Context,
-    request: Request,
-  ) {
+  async listRuleSets({ projectId }: { projectId: string }, _context: Context, request: Request) {
     const apiKeyProjectId = (request as any)?.user?.apiKeyProjectId;
     const result = await this.proxyRuleSetsService.listByProject(projectId, apiKeyProjectId);
     return JSON.stringify(result);
@@ -162,7 +156,8 @@ export class ProxyRulesTools {
 
   @Tool({
     name: 'create_proxy_rule_set',
-    description: 'Create a new proxy rule set for a project. IMPORTANT: After creating rules in this set, you must assign it to a deployment alias via update_alias(proxyRuleSetId) for the rules to take effect. Rules will not be active until the rule set is linked to an alias.',
+    description:
+      'Create a new proxy rule set for a project. IMPORTANT: After creating rules in this set, you must assign it to a deployment alias via update_alias(proxyRuleSetId) for the rules to take effect. Rules will not be active until the rule set is linked to an alias.',
     parameters: z.object({
       projectId: z.string().describe('Project ID'),
       name: z.string().describe('Rule set name'),
@@ -199,11 +194,7 @@ export class ProxyRulesTools {
     }),
     annotations: { destructiveHint: true },
   })
-  async deleteRuleSet(
-    { id }: { id: string },
-    _context: Context,
-    request: Request,
-  ) {
+  async deleteRuleSet({ id }: { id: string }, _context: Context, request: Request) {
     const user = await getUserContext(request, this.authService);
     await this.proxyRuleSetsService.delete(id, user.id, user.role, user.apiKeyProjectId);
     return JSON.stringify({ success: true, id });
@@ -255,7 +246,9 @@ export class ProxyRulesTools {
       methods: z
         .array(z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']))
         .optional()
-        .describe('HTTP methods to match (alternative to `method`; takes precedence; omit both for any)'),
+        .describe(
+          'HTTP methods to match (alternative to `method`; takes precedence; omit both for any)',
+        ),
       proxyType: z
         .enum(['external_proxy', 'internal_rewrite', 'email_form_handler', 'pipeline'])
         .optional()
@@ -263,8 +256,14 @@ export class ProxyRulesTools {
       description: z.string().optional().describe('Rule description'),
       isEnabled: z.boolean().optional().describe('Whether rule is active (default true)'),
       order: z.number().optional().describe('Evaluation order (auto-assigned if omitted)'),
-      stripPrefix: z.boolean().optional().describe('Remove matched prefix before forwarding (default true)'),
-      timeout: z.number().optional().describe('Request timeout in ms (default 30000, range 1000-120000)'),
+      stripPrefix: z
+        .boolean()
+        .optional()
+        .describe('Remove matched prefix before forwarding (default true)'),
+      timeout: z
+        .number()
+        .optional()
+        .describe('Request timeout in ms (default 30000, range 1000-120000)'),
       preserveHost: z.boolean().optional().describe('Preserve original Host header'),
       forwardCookies: z.boolean().optional().describe('Forward cookies to target'),
       headerConfig: z
@@ -295,7 +294,10 @@ export class ProxyRulesTools {
           name: z.string().describe('Pipeline name'),
           description: z.string().optional().describe('Pipeline description'),
           steps: z.array(pipelineStepSchema).describe('Pipeline execution steps'),
-          postSteps: z.array(pipelineStepSchema).optional().describe('Steps to run after main steps'),
+          postSteps: z
+            .array(pipelineStepSchema)
+            .optional()
+            .describe('Steps to run after main steps'),
           validators: z
             .array(
               z.object({
@@ -310,11 +312,7 @@ export class ProxyRulesTools {
         .describe('Config for pipeline type - defines multi-step request processing'),
     }),
   })
-  async createRule(
-    args: Record<string, unknown>,
-    _context: Context,
-    request: Request,
-  ) {
+  async createRule(args: Record<string, unknown>, _context: Context, request: Request) {
     const user = await getUserContext(request, this.authService);
     const result = await this.proxyRulesService.create(
       args as any,
@@ -327,7 +325,8 @@ export class ProxyRulesTools {
 
   @Tool({
     name: 'update_proxy_rule',
-    description: 'Update an existing proxy rule. All fields are optional — only provided fields are updated.',
+    description:
+      'Update an existing proxy rule. All fields are optional — only provided fields are updated.',
     parameters: z.object({
       id: z.string().describe('Proxy rule ID to update'),
       pathPattern: z.string().optional().describe('New path pattern'),
@@ -339,7 +338,9 @@ export class ProxyRulesTools {
       methods: z
         .array(z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']))
         .optional()
-        .describe('HTTP methods to match (alternative to `method`; takes precedence; omit both for any)'),
+        .describe(
+          'HTTP methods to match (alternative to `method`; takes precedence; omit both for any)',
+        ),
       proxyType: z
         .enum(['external_proxy', 'internal_rewrite', 'email_form_handler', 'pipeline'])
         .optional(),
@@ -381,11 +382,7 @@ export class ProxyRulesTools {
         .optional(),
     }),
   })
-  async updateRule(
-    args: Record<string, unknown>,
-    _context: Context,
-    request: Request,
-  ) {
+  async updateRule(args: Record<string, unknown>, _context: Context, request: Request) {
     const user = await getUserContext(request, this.authService);
     const { id, ...dto } = args;
     const result = await this.proxyRulesService.update(
@@ -401,7 +398,7 @@ export class ProxyRulesTools {
   @Tool({
     name: 'update_pipeline_step',
     description:
-      'Patch a SINGLE step inside a pipeline rule without resending the whole pipeline. Use this instead of update_proxy_rule when you only need to change one step (e.g. tweak a function_handler\'s code or one config value) and the full pipelineConfig would be large. The step is located by its name. Only provided fields change; nginx is regenerated automatically. Use get_proxy_rule first to see step names and current config.',
+      "Patch a SINGLE step inside a pipeline rule without resending the whole pipeline. Use this instead of update_proxy_rule when you only need to change one step (e.g. tweak a function_handler's code or one config value) and the full pipelineConfig would be large. The step is located by its name. Only provided fields change; nginx is regenerated automatically. Use get_proxy_rule first to see step names and current config.",
     parameters: z.object({
       ruleId: z.string().describe('Proxy rule ID (must be a pipeline-type rule)'),
       stepName: z
@@ -415,7 +412,7 @@ export class ProxyRulesTools {
         .record(z.string(), z.unknown())
         .optional()
         .describe(
-          'New handler config for this step. By default REPLACES the step\'s config entirely. Set mergeConfig:true to shallow-merge these keys into the existing config instead. Same config shape as in create_proxy_rule.',
+          "New handler config for this step. By default REPLACES the step's config entirely. Set mergeConfig:true to shallow-merge these keys into the existing config instead. Same config shape as in create_proxy_rule.",
         ),
       mergeConfig: z
         .boolean()
@@ -429,7 +426,9 @@ export class ProxyRulesTools {
       name: z
         .string()
         .optional()
-        .describe('Rename the step. WARNING: other steps referencing "steps.<oldName>" will break.'),
+        .describe(
+          'Rename the step. WARNING: other steps referencing "steps.<oldName>" will break.',
+        ),
       isEnabled: z.boolean().optional().describe('Enable or disable just this step'),
     }),
   })
@@ -467,11 +466,7 @@ export class ProxyRulesTools {
     }),
     annotations: { destructiveHint: true },
   })
-  async deleteRule(
-    { id }: { id: string },
-    _context: Context,
-    request: Request,
-  ) {
+  async deleteRule({ id }: { id: string }, _context: Context, request: Request) {
     const user = await getUserContext(request, this.authService);
     await this.proxyRulesService.delete(id, user.id, user.role, user.apiKeyProjectId);
     return JSON.stringify({ success: true, id });

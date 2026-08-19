@@ -11,12 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { ExpressionInput } from './ExpressionInput';
 import type { HttpRequestHandlerConfig } from './types';
 import type { PreviousStep } from './AvailableVariables';
@@ -27,7 +22,11 @@ interface HttpRequestConfigProps {
   previousSteps?: PreviousStep[];
 }
 
-export function HttpRequestConfig({ config, onChange, previousSteps = [] }: HttpRequestConfigProps) {
+export function HttpRequestConfig({
+  config,
+  onChange,
+  previousSteps = [],
+}: HttpRequestConfigProps) {
   const [url, setUrl] = useState(config.url || '');
   const [method, setMethod] = useState<HttpRequestHandlerConfig['method']>(config.method || 'GET');
   const [forwardAuth, setForwardAuth] = useState(config.forwardAuth ?? false);
@@ -47,9 +46,8 @@ export function HttpRequestConfig({ config, onChange, previousSteps = [] }: Http
   const [failOnError, setFailOnError] = useState(config.failOnError !== false);
 
   useEffect(() => {
-    const headerObj = headers.length > 0
-      ? Object.fromEntries(headers.filter(([k]) => k.trim()))
-      : undefined;
+    const headerObj =
+      headers.length > 0 ? Object.fromEntries(headers.filter(([k]) => k.trim())) : undefined;
 
     const fwdHeaders = forwardHeaders.length > 0 ? forwardHeaders : undefined;
 
@@ -74,7 +72,18 @@ export function HttpRequestConfig({ config, onChange, previousSteps = [] }: Http
       // to existing rule shapes when the user hasn't touched the toggle.
       failOnError: failOnError ? undefined : false,
     });
-  }, [url, method, forwardAuth, body, bodyMode, bodyFields, headers, forwardHeaders, failOnError, onChange]);
+  }, [
+    url,
+    method,
+    forwardAuth,
+    body,
+    bodyMode,
+    bodyFields,
+    headers,
+    forwardHeaders,
+    failOnError,
+    onChange,
+  ]);
 
   const isBodyMethod = method !== 'GET';
 
@@ -92,7 +101,9 @@ export function HttpRequestConfig({ config, onChange, previousSteps = [] }: Http
                 </button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Target URL. Can use expressions like <code>steps.config.baseUrl</code></p>
+                <p>
+                  Target URL. Can use expressions like <code>steps.config.baseUrl</code>
+                </p>
               </TooltipContent>
             </Tooltip>
           </div>
@@ -107,13 +118,18 @@ export function HttpRequestConfig({ config, onChange, previousSteps = [] }: Http
         {/* Method */}
         <div className="space-y-2">
           <Label>Method</Label>
-          <Select value={method} onValueChange={(v) => setMethod(v as HttpRequestHandlerConfig['method'])}>
+          <Select
+            value={method}
+            onValueChange={(v) => setMethod(v as HttpRequestHandlerConfig['method'])}
+          >
             <SelectTrigger className="w-32">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               {['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((m) => (
-                <SelectItem key={m} value={m}>{m}</SelectItem>
+                <SelectItem key={m} value={m}>
+                  {m}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -137,9 +153,10 @@ export function HttpRequestConfig({ config, onChange, previousSteps = [] }: Http
             <p className="text-xs text-muted-foreground">
               When ON (default), 4xx/5xx halts the pipeline with{' '}
               <code className="text-[10px]">HTTP_REQUEST_ERROR</code>. When OFF, any HTTP response
-              is returned as <code className="text-[10px]">{'{ ok, status, statusText, body }'}</code>{' '}
-              so the next step can branch on <code className="text-[10px]">steps.&lt;name&gt;.ok</code>.
-              Useful for probes, health checks, and polling.
+              is returned as{' '}
+              <code className="text-[10px]">{'{ ok, status, statusText, body }'}</code> so the next
+              step can branch on <code className="text-[10px]">steps.&lt;name&gt;.ok</code>. Useful
+              for probes, health checks, and polling.
             </p>
           </div>
           <Switch checked={failOnError} onCheckedChange={setFailOnError} />
@@ -158,12 +175,17 @@ export function HttpRequestConfig({ config, onChange, previousSteps = [] }: Http
                     </button>
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>Expression mode: reference a step output (e.g., <code>steps.validate</code>).</p>
+                    <p>
+                      Expression mode: reference a step output (e.g., <code>steps.validate</code>).
+                    </p>
                     <p>Fields mode: define key-value pairs with expression values.</p>
                   </TooltipContent>
                 </Tooltip>
               </div>
-              <Select value={bodyMode} onValueChange={(v) => setBodyMode(v as 'expression' | 'fields')}>
+              <Select
+                value={bodyMode}
+                onValueChange={(v) => setBodyMode(v as 'expression' | 'fields')}
+              >
                 <SelectTrigger className="w-32">
                   <SelectValue />
                 </SelectTrigger>
@@ -292,7 +314,10 @@ export function HttpRequestConfig({ config, onChange, previousSteps = [] }: Http
                 </button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Headers to forward from the original request (e.g., <code>accept</code>, <code>content-type</code>)</p>
+                <p>
+                  Headers to forward from the original request (e.g., <code>accept</code>,{' '}
+                  <code>content-type</code>)
+                </p>
               </TooltipContent>
             </Tooltip>
           </div>

@@ -150,7 +150,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       errorMessage.includes('connection refused') ||
       errorMessage.includes('connection terminated') ||
       errorMessage.includes('econnrefused') ||
-      errorMessage.includes('database') && errorMessage.includes('unavailable') ||
+      (errorMessage.includes('database') && errorMessage.includes('unavailable')) ||
       errorName.includes('connection') ||
       // PostgreSQL specific errors
       errorMessage.includes('pgconnectionerror') ||
@@ -194,10 +194,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       );
     } else {
       // Client errors (400, 404, etc.) - debug level
-      this.logger.debug(
-        `[${method}] ${url} - ${status}`,
-        JSON.stringify(logContext),
-      );
+      this.logger.debug(`[${method}] ${url} - ${status}`, JSON.stringify(logContext));
     }
   }
 }

@@ -11,7 +11,13 @@ import { eq, and, SQL, asc } from 'drizzle-orm';
 import { promises as dns } from 'dns';
 import { join } from 'path';
 import { db } from '../db/client';
-import { domainMappings, deploymentAliases, projects, aliasProxyRuleSets, projectDefaultProxyRuleSets } from '../db/schema';
+import {
+  domainMappings,
+  deploymentAliases,
+  projects,
+  aliasProxyRuleSets,
+  projectDefaultProxyRuleSets,
+} from '../db/schema';
 import { CreateDomainDto } from './dto/create-domain.dto';
 import { UpdateDomainDto } from './dto/update-domain.dto';
 import { NginxConfigService, NginxProxyRule } from './nginx-config.service';
@@ -142,12 +148,8 @@ export class DomainsService {
     const bits = parseInt(bitsStr, 10);
     const mask = ~(2 ** (32 - bits) - 1);
 
-    const ipNum = ip
-      .split('.')
-      .reduce((acc, octet) => (acc << 8) + parseInt(octet, 10), 0);
-    const rangeNum = range
-      .split('.')
-      .reduce((acc, octet) => (acc << 8) + parseInt(octet, 10), 0);
+    const ipNum = ip.split('.').reduce((acc, octet) => (acc << 8) + parseInt(octet, 10), 0);
+    const rangeNum = range.split('.').reduce((acc, octet) => (acc << 8) + parseInt(octet, 10), 0);
 
     return (ipNum & mask) === (rangeNum & mask);
   }
@@ -156,9 +158,7 @@ export class DomainsService {
    * Check if an IP address belongs to Cloudflare's network.
    */
   private isCloudflareIp(ip: string): boolean {
-    return DomainsService.CLOUDFLARE_IPV4_CIDRS.some((cidr) =>
-      DomainsService.ipInCidr(ip, cidr),
-    );
+    return DomainsService.CLOUDFLARE_IPV4_CIDRS.some((cidr) => DomainsService.ipInCidr(ip, cidr));
   }
 
   /**
@@ -529,10 +529,7 @@ export class DomainsService {
     apiKeyProjectId?: string | null,
   ) {
     if (createDomainDto.projectId) {
-      this.permissionsService.enforceApiKeyProjectScope(
-        apiKeyProjectId,
-        createDomainDto.projectId,
-      );
+      this.permissionsService.enforceApiKeyProjectScope(apiKeyProjectId, createDomainDto.projectId);
     } else if (apiKeyProjectId !== undefined && apiKeyProjectId !== null) {
       // Project-scoped key trying to create a domain with no project (e.g. redirect):
       // forbid — a scoped key shouldn't create cross-project resources.
@@ -834,15 +831,11 @@ export class DomainsService {
       conditions.push(eq(domainMappings.isActive, filters.isActive));
     }
 
-    const results = await query
-      .where(and(...conditions))
-      .orderBy(asc(domainMappings.domain));
+    const results = await query.where(and(...conditions)).orderBy(asc(domainMappings.domain));
 
     // In platform mode, SSL is managed externally for subdomains — report as enabled
     if (this.isPlatformMode()) {
-      return results.map((d) =>
-        d.domainType === 'subdomain' ? { ...d, sslEnabled: true } : d,
-      );
+      return results.map((d) => (d.domainType === 'subdomain' ? { ...d, sslEnabled: true } : d));
     }
 
     return results;
@@ -894,9 +887,10 @@ export class DomainsService {
     }
 
     // Get project details for nginx config (not needed for redirect domains)
-    const project = existing.domainType !== 'redirect' && existing.projectId
-      ? await this.projectsService.getProjectById(existing.projectId)
-      : null;
+    const project =
+      existing.domainType !== 'redirect' && existing.projectId
+        ? await this.projectsService.getProjectById(existing.projectId)
+        : null;
 
     // Force redirect domains to remain public (they don't serve content, just redirect)
     // Custom domains and subdomains can have any visibility setting
@@ -1102,12 +1096,7 @@ export class DomainsService {
     return updated;
   }
 
-  async remove(
-    id: string,
-    userId: string,
-    authToken?: string,
-    apiKeyProjectId?: string | null,
-  ) {
+  async remove(id: string, userId: string, authToken?: string, apiKeyProjectId?: string | null) {
     const existing = await this.findOne(id, userId);
 
     if (existing.projectId) {
@@ -1497,7 +1486,10 @@ export class DomainsService {
    * Called after user has added the required CNAME records.
    * Only applicable in PLATFORM_MODE for domains with deferred SSL.
    */
-  async provisionPlatformSsl(id: string, userId: string): Promise<{
+  async provisionPlatformSsl(
+    id: string,
+    userId: string,
+  ): Promise<{
     success: boolean;
     message?: string;
     error?: string;

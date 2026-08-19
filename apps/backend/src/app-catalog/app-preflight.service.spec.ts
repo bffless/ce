@@ -22,10 +22,8 @@ jest.mock('../db/client', () => {
   for (const method of methods) {
     chainable[method] = jest.fn(() => chainable);
   }
-  chainable.then = (
-    resolve: (value: unknown) => unknown,
-    reject: (reason: unknown) => unknown,
-  ) => Promise.resolve(queued.length > 0 ? queued.shift() : []).then(resolve, reject);
+  chainable.then = (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) =>
+    Promise.resolve(queued.length > 0 ? queued.shift() : []).then(resolve, reject);
   chainable.__queue = (result: unknown) => queued.push(result);
   chainable.__reset = () => {
     queued.length = 0;
@@ -52,7 +50,10 @@ import type { LoadedBundle } from './app-bundle.service';
 import type { AppManifest } from './app-manifest.types';
 import type { ProjectsService } from '../projects/projects.service';
 import type { ProxyRuleSetsService } from '../proxy-rules/proxy-rule-sets.service';
-import type { BootstrapDnsPreflightService, PreflightCheck } from '../setup/bootstrap-dns-preflight.service';
+import type {
+  BootstrapDnsPreflightService,
+  PreflightCheck,
+} from '../setup/bootstrap-dns-preflight.service';
 import type { IStorageAdapter } from '../storage/storage.interface';
 
 // Local fixture (not imported from app-manifest.util.spec.ts): that file's
@@ -348,7 +349,9 @@ describe('AppPreflightService', () => {
       const bundle = makeBundle();
       const { service, proxyRuleSetsService } = buildService({
         configValues: { PRIMARY_DOMAIN: 'example.com' },
-        dnsPreflight: { probeHost: jest.fn().mockResolvedValue({ host: 'h', resolvedIps: [], probeOk: true }) },
+        dnsPreflight: {
+          probeHost: jest.fn().mockResolvedValue({ host: 'h', resolvedIps: [], probeOk: true }),
+        },
         certStepService: {
           plan: jest.fn().mockResolvedValue({ model: 'direct-no-wildcard', action: 'report' }),
         },
@@ -373,19 +376,24 @@ describe('AppPreflightService', () => {
       ['edge-terminated', { model: 'edge-terminated', action: 'none-needed' }],
       ['platform', { model: 'platform', action: 'delegated' }],
       ['unknown', { model: 'unknown', action: 'report' }],
-    ])('emits no TLS warning on a %s instance — HTTPS already works there', async (_label, plan) => {
-      const bundle = makeBundle();
-      const { service, proxyRuleSetsService } = buildService({
-        configValues: { PRIMARY_DOMAIN: 'example.com' },
-        dnsPreflight: { probeHost: jest.fn().mockResolvedValue({ host: 'h', resolvedIps: [], probeOk: true }) },
-        certStepService: { plan: jest.fn().mockResolvedValue(plan) },
-      });
+    ])(
+      'emits no TLS warning on a %s instance — HTTPS already works there',
+      async (_label, plan) => {
+        const bundle = makeBundle();
+        const { service, proxyRuleSetsService } = buildService({
+          configValues: { PRIMARY_DOMAIN: 'example.com' },
+          dnsPreflight: {
+            probeHost: jest.fn().mockResolvedValue({ host: 'h', resolvedIps: [], probeOk: true }),
+          },
+          certStepService: { plan: jest.fn().mockResolvedValue(plan) },
+        });
 
-      stubProjectGateDeps(proxyRuleSetsService);
-      const { gates } = await service.projectGates(bundle, { projectId: 'proj-1' }, 'user-1');
+        stubProjectGateDeps(proxyRuleSetsService);
+        const { gates } = await service.projectGates(bundle, { projectId: 'proj-1' }, 'user-1');
 
-      expect(gates.find((g) => g.id === 'app-host-tls')).toBeUndefined();
-    });
+        expect(gates.find((g) => g.id === 'app-host-tls')).toBeUndefined();
+      },
+    );
 
     it('emits no TLS gate when the app declares no domain at all', async () => {
       const bundle = makeBundle({
@@ -408,7 +416,9 @@ describe('AppPreflightService', () => {
       const bundle = makeBundle();
       const { service, proxyRuleSetsService } = buildService({
         configValues: { PRIMARY_DOMAIN: 'example.com' },
-        dnsPreflight: { probeHost: jest.fn().mockResolvedValue({ host: 'h', resolvedIps: [], probeOk: true }) },
+        dnsPreflight: {
+          probeHost: jest.fn().mockResolvedValue({ host: 'h', resolvedIps: [], probeOk: true }),
+        },
         certStepService: { plan: jest.fn().mockRejectedValue(new Error('boom')) },
       });
 
@@ -818,7 +828,7 @@ describe('AppPreflightService', () => {
       expect(collision?.remediation).toBeTruthy();
     });
 
-    it('does not fail when the colliding rule set belongs to this app\'s existing install (update path)', async () => {
+    it("does not fail when the colliding rule set belongs to this app's existing install (update path)", async () => {
       const bundle = makeBundle();
       const { service, dnsPreflight, proxyRuleSetsService } = buildService({
         configValues: { PRIMARY_DOMAIN: 'example.com' },
@@ -826,7 +836,14 @@ describe('AppPreflightService', () => {
       queueNoDnsCall(dnsPreflight);
       stubSyncRuleSetPassthrough(proxyRuleSetsService);
       mockDb.__queue([
-        { id: 'install-1', appId: 'handoff', projectId: 'proj-1', alias: 'handoff', domainId: null, ruleSetIds: ['rs-1'] },
+        {
+          id: 'install-1',
+          appId: 'handoff',
+          projectId: 'proj-1',
+          alias: 'handoff',
+          domainId: null,
+          ruleSetIds: ['rs-1'],
+        },
       ]); // installedApps: existing install owns rs-1
       mockDb.__queue([{ id: 'rs-1', projectId: 'proj-1', name: 'handoff' }]); // ruleSet 1, owned
       mockDb.__queue([]); // ruleSet 2
@@ -860,7 +877,7 @@ describe('AppPreflightService', () => {
       expect(collision?.status).toBe('fail');
     });
 
-    it('fails when the domain is already mapped and not owned by this app\'s install', async () => {
+    it("fails when the domain is already mapped and not owned by this app's install", async () => {
       const bundle = makeBundle();
       const { service, dnsPreflight, proxyRuleSetsService } = buildService({
         configValues: { PRIMARY_DOMAIN: 'example.com' },
@@ -880,7 +897,7 @@ describe('AppPreflightService', () => {
       expect(collision?.status).toBe('fail');
     });
 
-    it('does not fail on a domain owned by this app\'s existing install', async () => {
+    it("does not fail on a domain owned by this app's existing install", async () => {
       const bundle = makeBundle();
       const { service, dnsPreflight, proxyRuleSetsService } = buildService({
         configValues: { PRIMARY_DOMAIN: 'example.com' },
@@ -888,7 +905,14 @@ describe('AppPreflightService', () => {
       queueNoDnsCall(dnsPreflight);
       stubSyncRuleSetPassthrough(proxyRuleSetsService);
       mockDb.__queue([
-        { id: 'install-1', appId: 'handoff', projectId: 'proj-1', alias: 'handoff', domainId: 'dom-1', ruleSetIds: [] },
+        {
+          id: 'install-1',
+          appId: 'handoff',
+          projectId: 'proj-1',
+          alias: 'handoff',
+          domainId: 'dom-1',
+          ruleSetIds: [],
+        },
       ]); // installedApps: owns dom-1
       mockDb.__queue([]); // ruleSet 1
       mockDb.__queue([]); // ruleSet 2

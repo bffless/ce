@@ -30,14 +30,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import {
-  AlertCircle,
-  Plus,
-  Trash2,
-  Copy,
-  RefreshCw,
-  Check,
-} from 'lucide-react';
+import { AlertCircle, Plus, Trash2, Copy, RefreshCw, Check } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import {
   useGetShareLinksByDomainQuery,
@@ -79,17 +72,11 @@ export function DomainShareLinksSection({
   const [label, setLabel] = useState('');
   const [expiration, setExpiration] = useState<string>('never');
 
-  const {
-    data: shareLinks,
-    isLoading,
-    error,
-  } = useGetShareLinksByDomainQuery(domainId);
+  const { data: shareLinks, isLoading, error } = useGetShareLinksByDomainQuery(domainId);
 
-  const [createShareLink, { isLoading: isCreating }] =
-    useCreateShareLinkMutation();
+  const [createShareLink, { isLoading: isCreating }] = useCreateShareLinkMutation();
   const [updateShareLink] = useUpdateShareLinkMutation();
-  const [deleteShareLink, { isLoading: isDeleting }] =
-    useDeleteShareLinkMutation();
+  const [deleteShareLink, { isLoading: isDeleting }] = useDeleteShareLinkMutation();
   const [regenerateToken] = useRegenerateShareLinkTokenMutation();
 
   const buildShareUrl = (token: string) => {
@@ -135,8 +122,7 @@ export function DomainShareLinksSection({
       toast({
         title: 'Error',
         description:
-          (err as { data?: { message?: string } })?.data?.message ||
-          'Failed to create share link',
+          (err as { data?: { message?: string } })?.data?.message || 'Failed to create share link',
         variant: 'destructive',
       });
     }
@@ -156,8 +142,7 @@ export function DomainShareLinksSection({
       toast({
         title: 'Error',
         description:
-          (err as { data?: { message?: string } })?.data?.message ||
-          'Failed to update share link',
+          (err as { data?: { message?: string } })?.data?.message || 'Failed to update share link',
         variant: 'destructive',
       });
     }
@@ -177,8 +162,7 @@ export function DomainShareLinksSection({
       toast({
         title: 'Error',
         description:
-          (err as { data?: { message?: string } })?.data?.message ||
-          'Failed to regenerate token',
+          (err as { data?: { message?: string } })?.data?.message || 'Failed to regenerate token',
         variant: 'destructive',
       });
     }
@@ -198,8 +182,7 @@ export function DomainShareLinksSection({
       toast({
         title: 'Error',
         description:
-          (err as { data?: { message?: string } })?.data?.message ||
-          'Failed to delete share link',
+          (err as { data?: { message?: string } })?.data?.message || 'Failed to delete share link',
         variant: 'destructive',
       });
     }
@@ -236,14 +219,8 @@ export function DomainShareLinksSection({
     <>
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            Share links scoped to this domain only.
-          </p>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowCreateDialog(true)}
-          >
+          <p className="text-sm text-muted-foreground">Share links scoped to this domain only.</p>
+          <Button variant="outline" size="sm" onClick={() => setShowCreateDialog(true)}>
             <Plus className="h-3 w-3 mr-1" />
             Add
           </Button>
@@ -257,22 +234,16 @@ export function DomainShareLinksSection({
                 className="flex items-center justify-between p-2 rounded border text-sm"
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="truncate font-medium">
-                    {link.label || 'Untitled'}
-                  </span>
+                  <span className="truncate font-medium">{link.label || 'Untitled'}</span>
                   {getStatusBadge(link)}
-                  <span className="text-muted-foreground text-xs">
-                    {link.useCount} uses
-                  </span>
+                  <span className="text-muted-foreground text-xs">{link.useCount} uses</span>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <Button
                     variant="ghost"
                     size="sm"
                     className="h-7 w-7 p-0"
-                    onClick={() =>
-                      copyToClipboard(buildShareUrl(link.token), link.id)
-                    }
+                    onClick={() => copyToClipboard(buildShareUrl(link.token), link.id)}
                     title="Copy share URL"
                   >
                     {copiedId === link.id ? (
@@ -327,8 +298,8 @@ export function DomainShareLinksSection({
           <DialogHeader>
             <DialogTitle>Create Share Link</DialogTitle>
             <DialogDescription>
-              Create a link for <strong>{domain}</strong>. Anyone with the link
-              can view content served on this domain.
+              Create a link for <strong>{domain}</strong>. Anyone with the link can view content
+              served on this domain.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -357,10 +328,7 @@ export function DomainShareLinksSection({
             </div>
           </div>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowCreateDialog(false)}
-            >
+            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
               Cancel
             </Button>
             <Button onClick={handleCreate} disabled={isCreating}>

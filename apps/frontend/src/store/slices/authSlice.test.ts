@@ -20,7 +20,7 @@ describe('authSlice', () => {
     it('should mark session as expired and not authenticated', () => {
       const state = authReducer(
         { ...initialState, isAuthenticated: true, isRefreshing: true },
-        sessionExpired()
+        sessionExpired(),
       );
       expect(state.isAuthenticated).toBe(false);
       expect(state.sessionExpired).toBe(true);
@@ -37,10 +37,7 @@ describe('authSlice', () => {
 
   describe('sessionRefreshed', () => {
     it('should mark session as refreshed and authenticated', () => {
-      const state = authReducer(
-        { ...initialState, sessionExpired: true },
-        sessionRefreshed()
-      );
+      const state = authReducer({ ...initialState, sessionExpired: true }, sessionRefreshed());
       expect(state.isRefreshing).toBe(false);
       expect(state.isAuthenticated).toBe(true);
       expect(state.sessionExpired).toBe(false);
@@ -66,26 +63,20 @@ describe('authSlice', () => {
     it('should set authenticated to false', () => {
       const state = authReducer(
         { ...initialState, isAuthenticated: true },
-        setAuthenticated(false)
+        setAuthenticated(false),
       );
       expect(state.isAuthenticated).toBe(false);
     });
 
     it('should clear sessionExpired when setting authenticated to true', () => {
-      const state = authReducer(
-        { ...initialState, sessionExpired: true },
-        setAuthenticated(true)
-      );
+      const state = authReducer({ ...initialState, sessionExpired: true }, setAuthenticated(true));
       expect(state.sessionExpired).toBe(false);
     });
   });
 
   describe('resetSessionExpired', () => {
     it('should reset sessionExpired flag', () => {
-      const state = authReducer(
-        { ...initialState, sessionExpired: true },
-        resetSessionExpired()
-      );
+      const state = authReducer({ ...initialState, sessionExpired: true }, resetSessionExpired());
       expect(state.sessionExpired).toBe(false);
     });
   });

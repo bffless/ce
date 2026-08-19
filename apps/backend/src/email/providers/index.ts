@@ -17,7 +17,10 @@ export { ResendProvider } from './resend.provider';
  * Get managed email configuration from environment variables
  * Returns null if managed email is not configured
  */
-function getManagedEmailConfig(): { provider: EmailProviderType; config: Record<string, unknown> } | null {
+function getManagedEmailConfig(): {
+  provider: EmailProviderType;
+  config: Record<string, unknown>;
+} | null {
   const provider = process.env.MANAGED_EMAIL_PROVIDER as EmailProviderType;
   const apiKey = process.env.MANAGED_EMAIL_API_KEY;
   const fromAddress = process.env.MANAGED_EMAIL_FROM_ADDRESS || process.env.MANAGED_EMAIL_FROM;

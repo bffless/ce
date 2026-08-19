@@ -411,11 +411,14 @@ export function InstallDialog({
                   }}
                   placeholder={defaultSubdomainLabel}
                 />
-                {isInstallAgain && defaultSubdomainLabel && trimmedSubdomain && trimmedSubdomain !== defaultSubdomainLabel && (
-                  <p className="text-xs text-muted-foreground">
-                    {describeDefaultHostOwner(entry, defaultSubdomainLabel)}
-                  </p>
-                )}
+                {isInstallAgain &&
+                  defaultSubdomainLabel &&
+                  trimmedSubdomain &&
+                  trimmedSubdomain !== defaultSubdomainLabel && (
+                    <p className="text-xs text-muted-foreground">
+                      {describeDefaultHostOwner(entry, defaultSubdomainLabel)}
+                    </p>
+                  )}
                 {preflightData?.appUrl && (
                   <p className="text-xs text-muted-foreground">
                     Will be available at <code className="text-xs">{preflightData.appUrl}</code>
@@ -539,8 +542,9 @@ export function InstallDialog({
                 */}
                 {isUpdate && (
                   <p className="text-sm text-muted-foreground">
-                    Nothing was removed. The previous version is still in the alias&apos;s deployment
-                    history — roll back there, or run the update again once the cause is fixed.
+                    Nothing was removed. The previous version is still in the alias&apos;s
+                    deployment history — roll back there, or run the update again once the cause is
+                    fixed.
                   </p>
                 )}
                 <DialogFooter>
@@ -571,9 +575,7 @@ export function InstallDialog({
 
             {/* Mounted only when there's something to resolve — it subscribes to
                 the proxy-rules API, and an update with no conflicts shouldn't. */}
-            {(job?.conflicts?.length ?? 0) > 0 && (
-              <ConflictResolver conflicts={job!.conflicts!} />
-            )}
+            {(job?.conflicts?.length ?? 0) > 0 && <ConflictResolver conflicts={job!.conflicts!} />}
 
             <SetupNotes steps={manualSteps} defaultExpanded />
 
@@ -588,7 +590,10 @@ export function InstallDialog({
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button onClick={handleInstall} disabled={!canInstall || isInstalling || isPreflighting}>
+            <Button
+              onClick={handleInstall}
+              disabled={!canInstall || isInstalling || isPreflighting}
+            >
               {isInstalling ? 'Installing…' : 'Install'}
             </Button>
           </DialogFooter>

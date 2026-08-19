@@ -121,9 +121,13 @@ export function createEmailDeliveryConfig(): EmailDeliveryTypeInput<any> | undef
         // Always log the reset/verification link for troubleshooting
         // (useful when email delivery fails or isn't reachable)
         if (input.type === 'PASSWORD_RESET') {
-          console.log(`[Email Delivery] Password reset link for ${userEmail}: ${input.passwordResetLink}`);
+          console.log(
+            `[Email Delivery] Password reset link for ${userEmail}: ${input.passwordResetLink}`,
+          );
         } else if (input.type === 'EMAIL_VERIFICATION') {
-          console.log(`[Email Delivery] Verification link for ${userEmail}: ${input.emailVerifyLink}`);
+          console.log(
+            `[Email Delivery] Verification link for ${userEmail}: ${input.emailVerifyLink}`,
+          );
         }
 
         // Check if EmailService is configured and available
@@ -161,7 +165,9 @@ export function createEmailDeliveryConfig(): EmailDeliveryTypeInput<any> | undef
             }
           } catch (error) {
             console.error('[Email Delivery] Error sending email via provider:', error);
-            console.warn('[Email Delivery] Email delivery failed, but the link was logged above. Check container logs for the link.');
+            console.warn(
+              '[Email Delivery] Email delivery failed, but the link was logged above. Check container logs for the link.',
+            );
             // Don't throw - the link is already logged above for admin recovery
           }
         }

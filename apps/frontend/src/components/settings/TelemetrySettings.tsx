@@ -1,16 +1,7 @@
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import {
-  useGetTelemetryStatusQuery,
-  useUpdateTelemetryMutation,
-} from '@/services/settingsApi';
+import { useGetTelemetryStatusQuery, useUpdateTelemetryMutation } from '@/services/settingsApi';
 
 /**
  * Admin toggle for opt-out install telemetry. Reflects (and can override) the

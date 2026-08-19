@@ -39,7 +39,9 @@ export const WithFooter: Story = {
         <form>
           <div className="grid w-full items-center gap-4">
             <div className="flex flex-col space-y-1.5">
-              <label htmlFor="name" className="text-sm font-medium">Name</label>
+              <label htmlFor="name" className="text-sm font-medium">
+                Name
+              </label>
               <input
                 id="name"
                 placeholder="Name of your project"

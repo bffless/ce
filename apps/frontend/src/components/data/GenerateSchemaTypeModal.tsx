@@ -56,8 +56,8 @@ export function GenerateSchemaTypeModal({
                     <ArrowRight className="h-4 w-4 text-muted-foreground" />
                   </div>
                   <p className="text-sm text-muted-foreground mt-1">
-                    For persistent key-value state with GET/POST endpoints.
-                    Perfect for user preferences, settings, and session data.
+                    For persistent key-value state with GET/POST endpoints. Perfect for user
+                    preferences, settings, and session data.
                   </p>
                   <div className="flex flex-wrap gap-2 mt-2">
                     <span className="text-xs bg-muted px-2 py-0.5 rounded">User-scoped</span>
@@ -85,8 +85,8 @@ export function GenerateSchemaTypeModal({
                     <ArrowRight className="h-4 w-4 text-muted-foreground" />
                   </div>
                   <p className="text-sm text-muted-foreground mt-1">
-                    For AI-powered chat conversations with message history.
-                    Includes conversation management and AI response generation.
+                    For AI-powered chat conversations with message history. Includes conversation
+                    management and AI response generation.
                   </p>
                   <div className="flex flex-wrap gap-2 mt-2">
                     <span className="text-xs bg-muted px-2 py-0.5 rounded">Conversations</span>

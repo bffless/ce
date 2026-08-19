@@ -76,9 +76,7 @@ const STORAGE_DOCS: Record<StorageProvider, { href: string; label: string } | nu
   managed: null,
 };
 
-export function storageDocsFor(
-  provider: StorageProvider,
-): { href: string; label: string } | null {
+export function storageDocsFor(provider: StorageProvider): { href: string; label: string } | null {
   return STORAGE_DOCS[provider] ?? null;
 }
 

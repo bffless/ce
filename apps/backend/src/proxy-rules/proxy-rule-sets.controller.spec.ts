@@ -241,9 +241,7 @@ describe('ProxyRuleSetsController', () => {
       expect(Reflect.getMetadata(PATH_METADATA, controller.getRevision)).toBe(
         ':id/revisions/:revisionId',
       );
-      expect(Reflect.getMetadata(METHOD_METADATA, controller.getRevision)).toBe(
-        RequestMethod.GET,
-      );
+      expect(Reflect.getMetadata(METHOD_METADATA, controller.getRevision)).toBe(RequestMethod.GET);
     });
 
     it('is declared before GET :id so the static segment is never shadowed', () => {

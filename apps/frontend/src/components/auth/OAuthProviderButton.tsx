@@ -26,7 +26,11 @@ interface OAuthProviderButtonProps {
  * callback page knows which `:providerId` to POST back to. Older bundles only
  * needed sessionStorage keys for redirect+PKCE; provider was implicit (Google).
  */
-export function OAuthProviderButton({ provider, redirectTo, labelMode = 'sign-in' }: OAuthProviderButtonProps) {
+export function OAuthProviderButton({
+  provider,
+  redirectTo,
+  labelMode = 'sign-in',
+}: OAuthProviderButtonProps) {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
@@ -65,7 +69,9 @@ export function OAuthProviderButton({ provider, redirectTo, labelMode = 'sign-in
       toast({
         title: `${provider.displayName} sign-in failed`,
         description:
-          error instanceof Error ? error.message : `Could not initiate ${provider.displayName} sign-in`,
+          error instanceof Error
+            ? error.message
+            : `Could not initiate ${provider.displayName} sign-in`,
         variant: 'destructive',
       });
     }

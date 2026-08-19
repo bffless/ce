@@ -13,7 +13,14 @@ import { unzip } from 'fflate';
 import * as mimeTypes from 'mime-types';
 import * as crypto from 'crypto';
 import { db } from '../db/client';
-import { assets, Asset, deploymentAliases, projects, proxyRuleSets, aliasProxyRuleSets } from '../db/schema';
+import {
+  assets,
+  Asset,
+  deploymentAliases,
+  projects,
+  proxyRuleSets,
+  aliasProxyRuleSets,
+} from '../db/schema';
 import { IStorageAdapter, STORAGE_ADAPTER } from '../storage/storage.interface';
 import { AssetType } from '../types/asset-type.enum';
 import { ProjectsService } from '../projects/projects.service';
@@ -159,9 +166,7 @@ export class DeploymentsService {
       for (const name of namesToResolve) {
         const id = byName.get(name);
         if (!id) {
-          throw new BadRequestException(
-            `Proxy rule set "${name}" not found for this project`,
-          );
+          throw new BadRequestException(`Proxy rule set "${name}" not found for this project`);
         }
         resolvedNameIds.push(id);
       }
@@ -1636,7 +1641,10 @@ export class DeploymentsService {
 
     return {
       data: aliases.map((a) =>
-        this.toAliasResponse(a, ruleSetIdsByAlias.get(a.id) ?? (a.proxyRuleSetId ? [a.proxyRuleSetId] : [])),
+        this.toAliasResponse(
+          a,
+          ruleSetIdsByAlias.get(a.id) ?? (a.proxyRuleSetId ? [a.proxyRuleSetId] : []),
+        ),
       ),
     };
   }
@@ -1823,8 +1831,7 @@ export class DeploymentsService {
     ruleSetIds?: string[],
   ): AliasResponseDto {
     // Resolve rule set IDs: prefer the join table (passed in), fall back to legacy column.
-    const ids =
-      ruleSetIds ?? (alias.proxyRuleSetId ? [alias.proxyRuleSetId] : []);
+    const ids = ruleSetIds ?? (alias.proxyRuleSetId ? [alias.proxyRuleSetId] : []);
     return {
       id: alias.id,
       repository: alias.repository,
@@ -2082,14 +2089,7 @@ export class DeploymentsService {
     userId: string,
     userRole: string,
     unauthorizedBehavior?: 'not_found' | 'redirect_login' | null,
-    requiredRole?:
-      | 'authenticated'
-      | 'guest'
-      | 'viewer'
-      | 'contributor'
-      | 'admin'
-      | 'owner'
-      | null,
+    requiredRole?: 'authenticated' | 'guest' | 'viewer' | 'contributor' | 'admin' | 'owner' | null,
   ): Promise<typeof deploymentAliases.$inferSelect> {
     // Check project access
     await this.checkProjectAccess(projectId, userId, userRole, 'admin');

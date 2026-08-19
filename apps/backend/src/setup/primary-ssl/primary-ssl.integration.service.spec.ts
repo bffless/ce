@@ -83,7 +83,15 @@ describe('PrimarySslService cert staging (real BootstrapSetupService + snapshot 
     process.env.SSL_CERT_PATH = sslDir;
     // Applied instance with a primary domain — the baseline "known-good" state.
     writeInstanceConfig(
-      { version: 2, state: 'applied', primaryDomain: domain, proxyMode: 'none', sslMode: 'paste', port80: 'redirect', realIp: null },
+      {
+        version: 2,
+        state: 'applied',
+        primaryDomain: domain,
+        proxyMode: 'none',
+        sslMode: 'paste',
+        port80: 'redirect',
+        realIp: null,
+      },
       bootDir,
     );
 
@@ -93,7 +101,14 @@ describe('PrimarySslService cert staging (real BootstrapSetupService + snapshot 
     const info = { getWildcardCertInfo: jest.fn().mockResolvedValue(null) };
     const snap = new PrimarySslSnapshotService();
     const featureFlags = { reconcileWildcardSslVisibility: jest.fn().mockResolvedValue(undefined) };
-    svc = new PrimarySslService(bootstrap, ssl as any, preflight as any, info as any, snap, featureFlags as any);
+    svc = new PrimarySslService(
+      bootstrap,
+      ssl as any,
+      preflight as any,
+      info as any,
+      snap,
+      featureFlags as any,
+    );
   });
 
   afterEach(() => {
@@ -105,7 +120,11 @@ describe('PrimarySslService cert staging (real BootstrapSetupService + snapshot 
     // seed a live cert as the "currently served" one
     fs.writeFileSync(path.join(sslDir, 'fullchain.pem'), oldCertPem);
     fs.writeFileSync(path.join(sslDir, 'privkey.pem'), oldKeyPem);
-    svc.stagePaste({ certificatePem: newCertPem, privateKeyPem: newKeyPem, servingMode: 'proxy' } as any);
+    svc.stagePaste({
+      certificatePem: newCertPem,
+      privateKeyPem: newKeyPem,
+      servingMode: 'proxy',
+    } as any);
     // live file unchanged; staged file holds the new cert
     expect(fs.readFileSync(path.join(sslDir, 'fullchain.pem'), 'utf8')).toBe(oldCertPem);
     expect(fs.readFileSync(path.join(sslDir, 'staging', 'fullchain.pem'), 'utf8')).toBe(newCertPem);
@@ -119,7 +138,11 @@ describe('PrimarySslService cert staging (real BootstrapSetupService + snapshot 
     // round-trip below has an OLD value to roll back to.
     fs.writeFileSync(path.join(sslDir, `wildcard.${domain}.crt`), oldCertPem);
     fs.writeFileSync(path.join(sslDir, `wildcard.${domain}.key`), oldKeyPem);
-    svc.stagePaste({ certificatePem: newCertPem, privateKeyPem: newKeyPem, servingMode: 'none' } as any);
+    svc.stagePaste({
+      certificatePem: newCertPem,
+      privateKeyPem: newKeyPem,
+      servingMode: 'none',
+    } as any);
     await svc.apply({ proxyMode: 'none', sslMode: 'paste', port80: 'redirect' } as any);
     expect(fs.readFileSync(path.join(sslDir, 'fullchain.pem'), 'utf8')).toBe(newCertPem);
     expect(fs.readFileSync(path.join(sslDir, `wildcard.${domain}.crt`), 'utf8')).toBe(newCertPem);
@@ -151,7 +174,11 @@ describe('PrimarySslService cert staging (real BootstrapSetupService + snapshot 
     fs.writeFileSync(path.join(sslDir, 'privkey.pem'), oldKeyPem);
 
     // Cycle 1: live C0 -> stage C1 -> apply (commits immediately, no confirm window).
-    svc.stagePaste({ certificatePem: newCertPem, privateKeyPem: newKeyPem, servingMode: 'cloudflare' } as any);
+    svc.stagePaste({
+      certificatePem: newCertPem,
+      privateKeyPem: newKeyPem,
+      servingMode: 'cloudflare',
+    } as any);
     await svc.apply({ proxyMode: 'cloudflare', sslMode: 'paste', port80: 'closed' } as any);
     expect(fs.readFileSync(path.join(sslDir, 'fullchain.pem'), 'utf8')).toBe(newCertPem);
 
@@ -159,7 +186,11 @@ describe('PrimarySslService cert staging (real BootstrapSetupService + snapshot 
     // apply's snapshotForChangeCycle() re-baselines over the cycle-1
     // snapshot (already marked applied) instead of leaving the original C0
     // baseline in place.
-    svc.stagePaste({ certificatePem: thirdCertPem, privateKeyPem: thirdKeyPem, servingMode: 'cloudflare' } as any);
+    svc.stagePaste({
+      certificatePem: thirdCertPem,
+      privateKeyPem: thirdKeyPem,
+      servingMode: 'cloudflare',
+    } as any);
     await svc.apply({ proxyMode: 'cloudflare', sslMode: 'paste', port80: 'closed' } as any);
     expect(fs.readFileSync(path.join(sslDir, 'fullchain.pem'), 'utf8')).toBe(thirdCertPem);
 
@@ -170,7 +201,11 @@ describe('PrimarySslService cert staging (real BootstrapSetupService + snapshot 
   });
 
   it('discardStaged aborts a stage cleanly', () => {
-    svc.stagePaste({ certificatePem: newCertPem, privateKeyPem: newKeyPem, servingMode: 'proxy' } as any);
+    svc.stagePaste({
+      certificatePem: newCertPem,
+      privateKeyPem: newKeyPem,
+      servingMode: 'proxy',
+    } as any);
     svc.discardStaged();
     expect(fs.existsSync(path.join(sslDir, 'staging'))).toBe(false);
   });

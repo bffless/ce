@@ -52,7 +52,9 @@ describe('GoogleCalendarOAuthService', () => {
     jest.restoreAllMocks();
   });
 
-  const mockFetch = (impl: (url: string, init?: any) => Promise<{ ok: boolean; status?: number; body: any }>) => {
+  const mockFetch = (
+    impl: (url: string, init?: any) => Promise<{ ok: boolean; status?: number; body: any }>,
+  ) => {
     globalThis.fetch = jest.fn(async (url: any, init: any) => {
       const r = await impl(String(url), init);
       return {
@@ -90,7 +92,11 @@ describe('GoogleCalendarOAuthService', () => {
     });
 
     it('throws when Google returns non-2xx', async () => {
-      mockFetch(async () => ({ ok: false, status: 400, body: { error_description: 'invalid_grant' } }));
+      mockFetch(async () => ({
+        ok: false,
+        status: 400,
+        body: { error_description: 'invalid_grant' },
+      }));
 
       await expect(service.refreshAccessTokenForCredentials('cid', 'sec', 'rt')).rejects.toThrow(
         'invalid_grant',
@@ -113,7 +119,12 @@ describe('GoogleCalendarOAuthService', () => {
       const cals = await service.listCalendarsForToken('access-tok');
 
       expect(cals).toHaveLength(2);
-      expect(cals[0]).toEqual({ id: 'a@x', summary: 'A', primary: true, timeZone: 'America/New_York' });
+      expect(cals[0]).toEqual({
+        id: 'a@x',
+        summary: 'A',
+        primary: true,
+        timeZone: 'America/New_York',
+      });
       expect(cals[1]).toEqual({ id: 'b@x', summary: 'b@x', primary: false, timeZone: 'UTC' });
     });
   });
@@ -160,7 +171,11 @@ describe('GoogleCalendarOAuthService', () => {
         ...baseConfig,
         tokenExpiry: 0,
       });
-      mockFetch(async () => ({ ok: false, status: 400, body: { error_description: 'invalid_grant' } }));
+      mockFetch(async () => ({
+        ok: false,
+        status: 400,
+        body: { error_description: 'invalid_grant' },
+      }));
 
       const tok = await service.getValidAccessToken('proj', 'production');
       expect(tok).toBeNull();
@@ -223,7 +238,12 @@ describe('GoogleCalendarOAuthService', () => {
         return { ok: false, body: {} };
       });
 
-      const result = await service.exchangeCodeForCredentials('cid', 'sec', 'auth-code', 'https://cb.test');
+      const result = await service.exchangeCodeForCredentials(
+        'cid',
+        'sec',
+        'auth-code',
+        'https://cb.test',
+      );
       expect(result.accessToken).toBe('a');
       expect(result.refreshToken).toBe('r');
       expect(result.connectedEmail).toBe('owner@example.com');

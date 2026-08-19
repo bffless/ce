@@ -268,8 +268,7 @@ export const repoApi = api.injectEndpoints({
       FileTreeResponse,
       { owner: string; repo: string; commitSha: string }
     >({
-      query: ({ owner, repo, commitSha }) =>
-        `/api/repo/${owner}/${repo}/${commitSha}/files`,
+      query: ({ owner, repo, commitSha }) => `/api/repo/${owner}/${repo}/${commitSha}/files`,
       providesTags: (_result, _error, { owner, repo, commitSha }) => [
         { type: 'Asset', id: `${owner}/${repo}/${commitSha}` },
       ],
@@ -320,19 +319,13 @@ export const repoApi = api.injectEndpoints({
         { type: 'Asset', id: `${owner}/${repo}/deployments` },
       ],
     }),
-    getRepositoryStats: builder.query<
-      RepositoryStats,
-      { owner: string; repo: string }
-    >({
+    getRepositoryStats: builder.query<RepositoryStats, { owner: string; repo: string }>({
       query: ({ owner, repo }) => `/api/repo/${owner}/${repo}/stats`,
       providesTags: (_result, _error, { owner, repo }) => [
         { type: 'Asset', id: `${owner}/${repo}/stats` },
       ],
     }),
-    listAliases: builder.query<
-      AliasesResponse,
-      { owner: string; repo: string }
-    >({
+    listAliases: builder.query<AliasesResponse, { owner: string; repo: string }>({
       query: ({ owner, repo }) => `/api/repo/${owner}/${repo}/aliases`,
       providesTags: (_result, _error, { owner, repo }) => [
         { type: 'Asset', id: `${owner}/${repo}/aliases` },
@@ -367,10 +360,7 @@ export const repoApi = api.injectEndpoints({
         { type: 'Asset', id: `${owner}/${repo}/refs` },
       ],
     }),
-    deleteAlias: builder.mutation<
-      void,
-      { owner: string; repo: string; aliasName: string }
-    >({
+    deleteAlias: builder.mutation<void, { owner: string; repo: string; aliasName: string }>({
       query: ({ owner, repo, aliasName }) => ({
         url: `/api/repo/${owner}/${repo}/aliases/${aliasName}`,
         method: 'DELETE',
@@ -385,8 +375,7 @@ export const repoApi = api.injectEndpoints({
       CommitDetailsResponse,
       { owner: string; repo: string; commitSha: string }
     >({
-      query: ({ owner, repo, commitSha }) =>
-        `/api/repo/${owner}/${repo}/${commitSha}/details`,
+      query: ({ owner, repo, commitSha }) => `/api/repo/${owner}/${repo}/${commitSha}/details`,
       providesTags: (_result, _error, { owner, repo, commitSha }) => [
         { type: 'Asset', id: `${owner}/${repo}/${commitSha}/details` },
       ],
@@ -409,8 +398,7 @@ export const repoApi = api.injectEndpoints({
       AliasVisibilityInfo,
       { projectId: string; aliasName: string }
     >({
-      query: ({ projectId, aliasName }) =>
-        `/api/aliases/${projectId}/${aliasName}/visibility`,
+      query: ({ projectId, aliasName }) => `/api/aliases/${projectId}/${aliasName}/visibility`,
       providesTags: (_result, _error, { projectId, aliasName }) => [
         { type: 'Asset', id: `alias-visibility-${projectId}-${aliasName}` },
       ],
@@ -514,18 +502,17 @@ export const pathPreferencesApi = api.injectEndpoints({
       },
     }),
 
-    deletePathPreference: builder.mutation<
-      void,
-      { owner: string; repo: string; filepath: string }
-    >({
-      query: ({ owner, repo, filepath }) => ({
-        url: `/api/repos/${owner}/${repo}/path-preferences?filepath=${encodeURIComponent(filepath)}`,
-        method: 'DELETE',
-      }),
-      invalidatesTags: (_result, _error, { owner, repo, filepath }) => [
-        { type: 'PathPreference', id: `${owner}/${repo}:${filepath}` },
-      ],
-    }),
+    deletePathPreference: builder.mutation<void, { owner: string; repo: string; filepath: string }>(
+      {
+        query: ({ owner, repo, filepath }) => ({
+          url: `/api/repos/${owner}/${repo}/path-preferences?filepath=${encodeURIComponent(filepath)}`,
+          method: 'DELETE',
+        }),
+        invalidatesTags: (_result, _error, { owner, repo, filepath }) => [
+          { type: 'PathPreference', id: `${owner}/${repo}:${filepath}` },
+        ],
+      },
+    ),
   }),
 });
 

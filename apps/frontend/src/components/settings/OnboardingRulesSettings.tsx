@@ -87,33 +87,42 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
-const ruleSchema = z.object({
-  name: z.string().min(1, 'Name is required').max(100),
-  description: z.string().max(500).optional(),
-  trigger: z.enum(['user_signup', 'invite_accepted']),
-  actionType: z.enum(['grant_repo_access', 'run_pipeline']),
-  repository: z.string().optional(),
-  role: z.enum(['viewer', 'contributor', 'admin']).optional(),
-  proxyRuleId: z.string().optional(),
-  priority: z.coerce.number().min(0).default(100),
-}).refine((data) => {
-  if (data.actionType === 'grant_repo_access') {
-    return !!data.repository;
-  }
-  if (data.actionType === 'run_pipeline') {
-    return !!data.proxyRuleId;
-  }
-  return true;
-}, {
-  message: 'Required field missing for selected action type',
-  path: ['repository'],
-});
+const ruleSchema = z
+  .object({
+    name: z.string().min(1, 'Name is required').max(100),
+    description: z.string().max(500).optional(),
+    trigger: z.enum(['user_signup', 'invite_accepted']),
+    actionType: z.enum(['grant_repo_access', 'run_pipeline']),
+    repository: z.string().optional(),
+    role: z.enum(['viewer', 'contributor', 'admin']).optional(),
+    proxyRuleId: z.string().optional(),
+    priority: z.coerce.number().min(0).default(100),
+  })
+  .refine(
+    (data) => {
+      if (data.actionType === 'grant_repo_access') {
+        return !!data.repository;
+      }
+      if (data.actionType === 'run_pipeline') {
+        return !!data.proxyRuleId;
+      }
+      return true;
+    },
+    {
+      message: 'Required field missing for selected action type',
+      path: ['repository'],
+    },
+  );
 
 type RuleFormValues = z.infer<typeof ruleSchema>;
 
 export function OnboardingRulesSettings() {
   const { toast } = useToast();
-  const { data: rulesData, isLoading: rulesLoading, error: rulesError } = useGetOnboardingRulesQuery();
+  const {
+    data: rulesData,
+    isLoading: rulesLoading,
+    error: rulesError,
+  } = useGetOnboardingRulesQuery();
   const { data: projects } = useListUserProjectsQuery();
   const { data: pipelineRulesData } = useGetPipelineRulesQuery();
   const { data: executionsData } = useGetRecentExecutionsQuery(20);
@@ -159,17 +168,22 @@ export function OnboardingRulesSettings() {
 
   const openEditForm = (rule: OnboardingRule) => {
     const firstAction = rule.actions[0];
-    const actionType = (firstAction?.type || 'grant_repo_access') as 'grant_repo_access' | 'run_pipeline';
+    const actionType = (firstAction?.type || 'grant_repo_access') as
+      | 'grant_repo_access'
+      | 'run_pipeline';
 
-    const repository = firstAction?.type === 'grant_repo_access'
-      ? (firstAction.params as { repository: string }).repository
-      : '';
-    const role = firstAction?.type === 'grant_repo_access'
-      ? (firstAction.params as { role: string }).role as 'viewer' | 'contributor' | 'admin'
-      : 'viewer';
-    const proxyRuleId = firstAction?.type === 'run_pipeline'
-      ? (firstAction.params as { proxyRuleId: string }).proxyRuleId
-      : '';
+    const repository =
+      firstAction?.type === 'grant_repo_access'
+        ? (firstAction.params as { repository: string }).repository
+        : '';
+    const role =
+      firstAction?.type === 'grant_repo_access'
+        ? ((firstAction.params as { role: string }).role as 'viewer' | 'contributor' | 'admin')
+        : 'viewer';
+    const proxyRuleId =
+      firstAction?.type === 'run_pipeline'
+        ? (firstAction.params as { proxyRuleId: string }).proxyRuleId
+        : '';
 
     form.reset({
       name: rule.name,
@@ -186,9 +200,15 @@ export function OnboardingRulesSettings() {
   };
 
   const onSubmit = async (data: RuleFormValues) => {
-    const actions: OnboardingAction[] = data.actionType === 'run_pipeline'
-      ? [{ type: 'run_pipeline', params: { proxyRuleId: data.proxyRuleId! } }]
-      : [{ type: 'grant_repo_access', params: { repository: data.repository!, role: data.role! } }];
+    const actions: OnboardingAction[] =
+      data.actionType === 'run_pipeline'
+        ? [{ type: 'run_pipeline', params: { proxyRuleId: data.proxyRuleId! } }]
+        : [
+            {
+              type: 'grant_repo_access',
+              params: { repository: data.repository!, role: data.role! },
+            },
+          ];
 
     try {
       if (editingRule) {
@@ -365,9 +385,7 @@ export function OnboardingRulesSettings() {
             <UserPlus className="h-5 w-5" />
             <div>
               <CardTitle>User Onboarding Rules</CardTitle>
-              <CardDescription>
-                Configure automatic actions when users sign up
-              </CardDescription>
+              <CardDescription>Configure automatic actions when users sign up</CardDescription>
             </div>
           </div>
           <Button onClick={openCreateForm}>
@@ -387,9 +405,7 @@ export function OnboardingRulesSettings() {
         {rulesError && (
           <Alert variant="destructive">
             <XCircle className="h-4 w-4" />
-            <AlertDescription>
-              Failed to load onboarding rules. Please try again.
-            </AlertDescription>
+            <AlertDescription>Failed to load onboarding rules. Please try again.</AlertDescription>
           </Alert>
         )}
 
@@ -512,9 +528,7 @@ export function OnboardingRulesSettings() {
                     <TableBody>
                       {executions.map((execution) => (
                         <TableRow key={execution.id}>
-                          <TableCell className="font-medium">
-                            {execution.ruleName}
-                          </TableCell>
+                          <TableCell className="font-medium">{execution.ruleName}</TableCell>
                           <TableCell>{getTriggerBadge(execution.trigger)}</TableCell>
                           <TableCell>
                             <div>
@@ -601,9 +615,7 @@ export function OnboardingRulesSettings() {
                           <SelectItem value="invite_accepted">Invite Accepted</SelectItem>
                         </SelectContent>
                       </Select>
-                      <FormDescription>
-                        When should this rule be executed?
-                      </FormDescription>
+                      <FormDescription>When should this rule be executed?</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -626,9 +638,7 @@ export function OnboardingRulesSettings() {
                           <SelectItem value="run_pipeline">Run Pipeline</SelectItem>
                         </SelectContent>
                       </Select>
-                      <FormDescription>
-                        What should happen when this rule triggers?
-                      </FormDescription>
+                      <FormDescription>What should happen when this rule triggers?</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -659,9 +669,7 @@ export function OnboardingRulesSettings() {
                               ))}
                             </SelectContent>
                           </Select>
-                          <FormDescription>
-                            Grant access to this repository
-                          </FormDescription>
+                          <FormDescription>Grant access to this repository</FormDescription>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -686,9 +694,7 @@ export function OnboardingRulesSettings() {
                               <SelectItem value="admin">Admin (full access)</SelectItem>
                             </SelectContent>
                           </Select>
-                          <FormDescription>
-                            Permission level to grant
-                          </FormDescription>
+                          <FormDescription>Permission level to grant</FormDescription>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -711,11 +717,14 @@ export function OnboardingRulesSettings() {
                           </FormControl>
                           <SelectContent>
                             {Object.entries(
-                              pipelineRules.reduce<Record<string, typeof pipelineRules>>((groups, rule) => {
-                                const key = `${rule.projectOwner}/${rule.projectName}`;
-                                (groups[key] ??= []).push(rule);
-                                return groups;
-                              }, {}),
+                              pipelineRules.reduce<Record<string, typeof pipelineRules>>(
+                                (groups, rule) => {
+                                  const key = `${rule.projectOwner}/${rule.projectName}`;
+                                  (groups[key] ??= []).push(rule);
+                                  return groups;
+                                },
+                                {},
+                              ),
                             ).map(([repo, rules]) => (
                               <SelectGroup key={repo}>
                                 <SelectLabel>{repo}</SelectLabel>
@@ -729,7 +738,8 @@ export function OnboardingRulesSettings() {
                           </SelectContent>
                         </Select>
                         <FormDescription>
-                          Pipeline to execute when this rule triggers. The pipeline receives the new user's email, ID, and trigger type in the request body.
+                          Pipeline to execute when this rule triggers. The pipeline receives the new
+                          user's email, ID, and trigger type in the request body.
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -746,9 +756,7 @@ export function OnboardingRulesSettings() {
                       <FormControl>
                         <Input type="number" min={0} {...field} />
                       </FormControl>
-                      <FormDescription>
-                        Lower numbers execute first (default: 100)
-                      </FormDescription>
+                      <FormDescription>Lower numbers execute first (default: 100)</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -789,8 +797,8 @@ export function OnboardingRulesSettings() {
             <AlertDialogHeader>
               <AlertDialogTitle>Delete Onboarding Rule</AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure you want to delete "{ruleToDelete?.name}"? This action
-                cannot be undone. New users will no longer receive automatic access.
+                Are you sure you want to delete "{ruleToDelete?.name}"? This action cannot be
+                undone. New users will no longer receive automatic access.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

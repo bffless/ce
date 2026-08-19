@@ -24,7 +24,11 @@ interface StripeCheckoutConfigProps {
 
 type PricingMode = 'single' | 'multi';
 
-export function StripeCheckoutConfig({ config, onChange, previousSteps = [] }: StripeCheckoutConfigProps) {
+export function StripeCheckoutConfig({
+  config,
+  onChange,
+  previousSteps = [],
+}: StripeCheckoutConfigProps) {
   const initialPricingMode: PricingMode =
     Array.isArray(config.lineItems) && config.lineItems.length > 0 ? 'multi' : 'single';
 
@@ -41,8 +45,12 @@ export function StripeCheckoutConfig({ config, onChange, previousSteps = [] }: S
   const [customerEmail, setCustomerEmail] = useState(config.customerEmail || '');
   const [clientReferenceId, setClientReferenceId] = useState(config.clientReferenceId || '');
   const [quantity, setQuantity] = useState(config.quantity || '1');
-  const [environment, setEnvironment] = useState<'sandbox' | 'production' | ''>(config.environment || '');
-  const [allowPromotionCodes, setAllowPromotionCodes] = useState<boolean>(config.allowPromotionCodes ?? false);
+  const [environment, setEnvironment] = useState<'sandbox' | 'production' | ''>(
+    config.environment || '',
+  );
+  const [allowPromotionCodes, setAllowPromotionCodes] = useState<boolean>(
+    config.allowPromotionCodes ?? false,
+  );
   const [trialPeriodDays, setTrialPeriodDays] = useState<string>(
     config.subscriptionData?.trialPeriodDays || '',
   );
@@ -56,7 +64,7 @@ export function StripeCheckoutConfig({ config, onChange, previousSteps = [] }: S
     ),
   );
   const [metadata, setMetadata] = useState<Array<{ key: string; value: string }>>(
-    Object.entries(config.metadata || {}).map(([key, value]) => ({ key, value }))
+    Object.entries(config.metadata || {}).map(([key, value]) => ({ key, value })),
   );
 
   useEffect(() => {
@@ -75,9 +83,7 @@ export function StripeCheckoutConfig({ config, onChange, previousSteps = [] }: S
     const cleanedDiscounts: StripeCheckoutDiscount[] = discounts
       .filter((d) => d.value.trim())
       .map((d) =>
-        d.kind === 'coupon'
-          ? { coupon: d.value.trim() }
-          : { promotionCode: d.value.trim() },
+        d.kind === 'coupon' ? { coupon: d.value.trim() } : { promotionCode: d.value.trim() },
       );
 
     const usingMulti = pricingMode === 'multi';
@@ -128,7 +134,12 @@ export function StripeCheckoutConfig({ config, onChange, previousSteps = [] }: S
     <div className="space-y-4">
       <div className="space-y-2">
         <Label>Stripe Environment</Label>
-        <Select value={environment || 'default'} onValueChange={(v) => setEnvironment(v === 'default' ? '' : v as 'sandbox' | 'production')}>
+        <Select
+          value={environment || 'default'}
+          onValueChange={(v) =>
+            setEnvironment(v === 'default' ? '' : (v as 'sandbox' | 'production'))
+          }
+        >
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
@@ -184,8 +195,8 @@ export function StripeCheckoutConfig({ config, onChange, previousSteps = [] }: S
         <div className="space-y-2">
           <Label>Line Items *</Label>
           <p className="text-xs text-muted-foreground">
-            One row per Stripe Price. Mix one-time and recurring prices to bundle (e.g. $99 site + $35/mo hosting).
-            If any item is recurring, set Mode to "Subscription".
+            One row per Stripe Price. Mix one-time and recurring prices to bundle (e.g. $99 site +
+            $35/mo hosting). If any item is recurring, set Mode to "Subscription".
           </p>
           <div className="space-y-2">
             {lineItems.map((item, i) => (
@@ -244,7 +255,8 @@ export function StripeCheckoutConfig({ config, onChange, previousSteps = [] }: S
         </Select>
         {pricingMode === 'multi' && mode === 'payment' && (
           <p className="text-xs text-amber-600">
-            Heads up: multi-line checkouts that include any recurring price require Mode = Subscription.
+            Heads up: multi-line checkouts that include any recurring price require Mode =
+            Subscription.
           </p>
         )}
       </div>
@@ -259,7 +271,8 @@ export function StripeCheckoutConfig({ config, onChange, previousSteps = [] }: S
             previousSteps={previousSteps}
           />
           <p className="text-xs text-muted-foreground">
-            Customer is not charged for the recurring item(s) during the trial. Use "30" for one free month. Leave blank for no trial.
+            Customer is not charged for the recurring item(s) during the trial. Use "30" for one
+            free month. Leave blank for no trial.
           </p>
         </div>
       )}
@@ -272,9 +285,7 @@ export function StripeCheckoutConfig({ config, onChange, previousSteps = [] }: S
           placeholder="https://yoursite.com/success?session_id={CHECKOUT_SESSION_ID}"
           previousSteps={previousSteps}
         />
-        <p className="text-xs text-muted-foreground">
-          Redirect URL after successful payment
-        </p>
+        <p className="text-xs text-muted-foreground">Redirect URL after successful payment</p>
       </div>
 
       <div className="space-y-2">
@@ -285,9 +296,7 @@ export function StripeCheckoutConfig({ config, onChange, previousSteps = [] }: S
           placeholder="https://yoursite.com/cancel"
           previousSteps={previousSteps}
         />
-        <p className="text-xs text-muted-foreground">
-          Redirect URL when payment is cancelled
-        </p>
+        <p className="text-xs text-muted-foreground">Redirect URL when payment is cancelled</p>
       </div>
 
       <div className="space-y-2">
@@ -298,9 +307,7 @@ export function StripeCheckoutConfig({ config, onChange, previousSteps = [] }: S
           placeholder="user.email"
           previousSteps={previousSteps}
         />
-        <p className="text-xs text-muted-foreground">
-          Pre-fill the customer's email on checkout
-        </p>
+        <p className="text-xs text-muted-foreground">Pre-fill the customer's email on checkout</p>
       </div>
 
       <div className="space-y-2">
@@ -335,8 +342,8 @@ export function StripeCheckoutConfig({ config, onChange, previousSteps = [] }: S
         <p className="text-xs text-muted-foreground">
           Apply a coupon or promotion code automatically — the customer doesn't enter anything.
           Common pattern: a 100%-off, duration-once coupon scoped to your hosting product to give
-          the first month free while still charging the one-time website price up front.
-          Mutually exclusive with "Allow promotion codes".
+          the first month free while still charging the one-time website price up front. Mutually
+          exclusive with "Allow promotion codes".
         </p>
         <div className="space-y-2">
           {discounts.map((d, i) => (
@@ -389,9 +396,7 @@ export function StripeCheckoutConfig({ config, onChange, previousSteps = [] }: S
           {discounts.length === 0 && (
             <button
               type="button"
-              onClick={() =>
-                setDiscounts([{ kind: 'coupon', value: '' }])
-              }
+              onClick={() => setDiscounts([{ kind: 'coupon', value: '' }])}
               disabled={allowPromotionCodes}
               className="text-xs text-primary hover:underline disabled:text-muted-foreground disabled:no-underline disabled:cursor-not-allowed"
             >
@@ -409,7 +414,8 @@ export function StripeCheckoutConfig({ config, onChange, previousSteps = [] }: S
       <div className="space-y-2">
         <Label>Metadata (optional)</Label>
         <p className="text-xs text-muted-foreground">
-          Key-value pairs attached to the checkout session. Available in webhook events via <code>session.metadata</code>.
+          Key-value pairs attached to the checkout session. Available in webhook events via{' '}
+          <code>session.metadata</code>.
         </p>
         <div className="space-y-2">
           {metadata.map((entry, i) => (

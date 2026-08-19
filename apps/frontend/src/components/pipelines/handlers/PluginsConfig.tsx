@@ -53,7 +53,9 @@ function GoogleCalendarOptions({
         ) : calendars.length > 0 ? (
           <Select
             value={(options.calendarId as string) || 'primary'}
-            onValueChange={(v) => onChange({ ...options, calendarId: v === 'primary' ? undefined : v })}
+            onValueChange={(v) =>
+              onChange({ ...options, calendarId: v === 'primary' ? undefined : v })
+            }
           >
             <SelectTrigger className="h-8 text-xs">
               <SelectValue placeholder="Primary calendar" />
@@ -83,9 +85,7 @@ function GoogleCalendarOptions({
           max={90}
           className="h-8 text-xs w-24"
           value={(options.lookAheadDays as number) || 7}
-          onChange={(e) =>
-            onChange({ ...options, lookAheadDays: parseInt(e.target.value) || 7 })
-          }
+          onChange={(e) => onChange({ ...options, lookAheadDays: parseInt(e.target.value) || 7 })}
         />
         <p className="text-xs text-muted-foreground">
           Default days to look ahead for availability (1-90)
@@ -207,7 +207,9 @@ function SchemaFieldSelect({
       <SelectContent>
         {allowNone && <SelectItem value="__none__">None</SelectItem>}
         {fields.map((f) => (
-          <SelectItem key={f.name} value={f.name}>{f.name}</SelectItem>
+          <SelectItem key={f.name} value={f.name}>
+            {f.name}
+          </SelectItem>
         ))}
       </SelectContent>
     </Select>
@@ -237,9 +239,15 @@ function SourceEditor({
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium">
           Source {index + 1}
-          {source.toolName && <span className="text-muted-foreground ml-1">({source.toolName})</span>}
+          {source.toolName && (
+            <span className="text-muted-foreground ml-1">({source.toolName})</span>
+          )}
         </span>
-        <button type="button" onClick={onRemove} className="text-xs text-destructive hover:underline">
+        <button
+          type="button"
+          onClick={onRemove}
+          className="text-xs text-destructive hover:underline"
+        >
           Remove
         </button>
       </div>
@@ -248,7 +256,10 @@ function SourceEditor({
       <div className="grid grid-cols-2 gap-2">
         <div className="space-y-1">
           <Label className="text-xs">Type *</Label>
-          <Select value={source.type} onValueChange={(v) => update({ type: v as SourceConfig['type'] })}>
+          <Select
+            value={source.type}
+            onValueChange={(v) => update({ type: v as SourceConfig['type'] })}
+          >
             <SelectTrigger className="h-8 text-xs">
               <SelectValue />
             </SelectTrigger>
@@ -275,14 +286,18 @@ function SourceEditor({
         <Label className="text-xs">AI Instructions</Label>
         <textarea
           className="w-full rounded-md border border-input bg-background px-3 py-2 text-xs min-h-[80px] resize-y"
-          placeholder={isVector
-            ? 'e.g., When a user mentions a name or identifies themselves, search for matching contacts. Use the returned notes to personalize the conversation — don\'t tell the user you looked them up.'
-            : 'e.g., At the start of every conversation, call this tool to load the current user\'s notes. Use this context to personalize your responses without mentioning that you looked anything up.'}
+          placeholder={
+            isVector
+              ? "e.g., When a user mentions a name or identifies themselves, search for matching contacts. Use the returned notes to personalize the conversation — don't tell the user you looked them up."
+              : "e.g., At the start of every conversation, call this tool to load the current user's notes. Use this context to personalize your responses without mentioning that you looked anything up."
+          }
           value={source.instructions || ''}
           onChange={(e) => update({ instructions: e.target.value || undefined })}
         />
         <p className="text-xs text-muted-foreground">
-          These instructions are injected into the AI&apos;s system prompt. Tell the AI <strong>when</strong> to call this tool, <strong>what to pass</strong>, and <strong>how to use</strong> the results.
+          These instructions are injected into the AI&apos;s system prompt. Tell the AI{' '}
+          <strong>when</strong> to call this tool, <strong>what to pass</strong>, and{' '}
+          <strong>how to use</strong> the results.
         </p>
       </div>
       <div className="space-y-1">
@@ -290,14 +305,17 @@ function SourceEditor({
         <Input
           type="text"
           className="h-8 text-xs"
-          placeholder={isVector
-            ? 'e.g., Search contacts by name or topic to find personalized context'
-            : 'e.g., Get the latest notes and preferences for a user'}
+          placeholder={
+            isVector
+              ? 'e.g., Search contacts by name or topic to find personalized context'
+              : 'e.g., Get the latest notes and preferences for a user'
+          }
           value={source.toolDescription || ''}
           onChange={(e) => update({ toolDescription: e.target.value || undefined })}
         />
         <p className="text-xs text-muted-foreground">
-          Short description the AI sees alongside the tool name. Helps the AI decide when this tool is relevant.
+          Short description the AI sees alongside the tool name. Helps the AI decide when this tool
+          is relevant.
         </p>
       </div>
 
@@ -314,7 +332,9 @@ function SourceEditor({
               </SelectTrigger>
               <SelectContent>
                 {schemas.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -540,7 +560,9 @@ function EmailContactOptions({
           className="h-8 text-xs"
           placeholder="New Contact"
           value={(options.emailSubjectPrefix as string) || ''}
-          onChange={(e) => onChange({ ...options, emailSubjectPrefix: e.target.value || undefined })}
+          onChange={(e) =>
+            onChange({ ...options, emailSubjectPrefix: e.target.value || undefined })
+          }
         />
         <p className="text-xs text-muted-foreground">
           Prefix for email subject lines (default: &quot;New Contact&quot;)
@@ -618,7 +640,7 @@ function RagSearchOptions({
   const { data: schemasData, isLoading } = useGetProjectSchemasQuery(projectId);
   const schemas = schemasData?.schemas || [];
 
-  const sources = ((options.sources as SourceConfig[]) || []);
+  const sources = (options.sources as SourceConfig[]) || [];
 
   const updateSources = (newSources: SourceConfig[]) => {
     onChange({ ...options, sources: newSources });
@@ -739,9 +761,7 @@ export function PluginsConfig({ config, onChange, projectId }: PluginsConfigProp
         <Label>Plugins Mode</Label>
         <Select
           value={config.mode}
-          onValueChange={(v) =>
-            onChange({ ...config, mode: v as PluginsConfigValue['mode'] })
-          }
+          onValueChange={(v) => onChange({ ...config, mode: v as PluginsConfigValue['mode'] })}
         >
           <SelectTrigger>
             <SelectValue />
@@ -797,9 +817,7 @@ export function PluginsConfig({ config, onChange, projectId }: PluginsConfigProp
                       >
                         {plugin.name}
                       </label>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {plugin.description}
-                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">{plugin.description}</p>
                     </div>
                   </div>
                   {/* Per-plugin options when selected */}
@@ -812,21 +830,24 @@ export function PluginsConfig({ config, onChange, projectId }: PluginsConfigProp
       )}
 
       {/* Show per-plugin options for "all" mode too */}
-      {config.mode === 'all' && !isLoading && enabledPlugins
-        .filter((p) => pluginsWithOptions.includes(p.id))
-        .map((plugin) => (
-          <div key={plugin.id} className="space-y-2">
-            <Label>{plugin.name} Options</Label>
-            {renderPluginOptions(plugin.id)}
-          </div>
-        ))}
+      {config.mode === 'all' &&
+        !isLoading &&
+        enabledPlugins
+          .filter((p) => pluginsWithOptions.includes(p.id))
+          .map((plugin) => (
+            <div key={plugin.id} className="space-y-2">
+              <Label>{plugin.name} Options</Label>
+              {renderPluginOptions(plugin.id)}
+            </div>
+          ))}
 
       {config.mode !== 'none' && (
         <Alert className="border-blue-500/30 bg-blue-500/5">
           <Info className="h-4 w-4 text-blue-600" />
           <AlertDescription className="text-xs">
-            When plugins are enabled, the AI can use plugin tools to perform actions like calculations,
-            web searches, and more. Only plugins enabled at the project level are available.
+            When plugins are enabled, the AI can use plugin tools to perform actions like
+            calculations, web searches, and more. Only plugins enabled at the project level are
+            available.
           </AlertDescription>
         </Alert>
       )}

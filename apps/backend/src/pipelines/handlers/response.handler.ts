@@ -109,10 +109,7 @@ export class ResponseHandler implements StepHandler<ResponseHandlerConfig> {
     };
   }
 
-  private formatBody(
-    body: unknown,
-    contentType: string,
-  ): { body: unknown; warning?: string } {
+  private formatBody(body: unknown, contentType: string): { body: unknown; warning?: string } {
     // For JSON content type, ensure body is properly formatted
     if (contentType.includes('application/json')) {
       if (typeof body === 'string') {
@@ -142,8 +139,7 @@ export class ResponseHandler implements StepHandler<ResponseHandlerConfig> {
           // Wrap {{expressions}} that produce strings in quotes: "{{steps.step.field}}"
           // Use triple braces {{{expr}}} for objects/arrays (already valid JSON).
           const parseError = err instanceof Error ? err.message : String(err);
-          const truncatedBody =
-            body.length > 200 ? body.substring(0, 200) + '...' : body;
+          const truncatedBody = body.length > 200 ? body.substring(0, 200) + '...' : body;
           const warning =
             `Response body template produced invalid JSON and was wrapped in { "message": ... }. ` +
             `Parse error: ${parseError}. ` +
