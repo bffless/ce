@@ -6,10 +6,8 @@ jest.mock('../db/client', () => {
   for (const method of methods) {
     chainable[method] = jest.fn(() => chainable);
   }
-  chainable.then = (
-    resolve: (value: unknown) => unknown,
-    reject: (reason: unknown) => unknown,
-  ) => Promise.resolve(queued.length > 0 ? queued.shift() : []).then(resolve, reject);
+  chainable.then = (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) =>
+    Promise.resolve(queued.length > 0 ? queued.shift() : []).then(resolve, reject);
   chainable.__queue = (result: unknown) => queued.push(result);
   chainable.__reset = () => {
     queued.length = 0;
@@ -132,11 +130,15 @@ describe('AppCatalogService', () => {
     };
     config = { get: jest.fn().mockReturnValue(undefined) };
     registry = {
-      getRegistry: jest.fn().mockResolvedValue({ ok: true, registry: { schemaVersion: 1, apps: [] } }),
+      getRegistry: jest
+        .fn()
+        .mockResolvedValue({ ok: true, registry: { schemaVersion: 1, apps: [] } }),
     };
     bundle = { fetchBundle: jest.fn() };
     preflight = {
-      instanceGates: jest.fn().mockResolvedValue([{ id: 'storage', status: 'pass', message: 'ok' }]),
+      instanceGates: jest
+        .fn()
+        .mockResolvedValue([{ id: 'storage', status: 'pass', message: 'ok' }]),
       projectGates: jest.fn().mockResolvedValue({
         gates: [{ id: 'dns', status: 'pass', message: 'ok' }],
         syncPlans: [],
@@ -181,7 +183,9 @@ describe('AppCatalogService', () => {
 
   describe('ejectPayload', () => {
     it('derives BFFLESS_URL from https://admin.PRIMARY_DOMAIN when PUBLIC_ORIGIN is unset', async () => {
-      config.get.mockImplementation((key: string) => (key === 'PRIMARY_DOMAIN' ? 'example.com' : undefined));
+      config.get.mockImplementation((key: string) =>
+        key === 'PRIMARY_DOMAIN' ? 'example.com' : undefined,
+      );
       mockDb.__queue([ROW]);
 
       const payload = await service.ejectPayload('ia-1');
@@ -244,6 +248,7 @@ describe('AppCatalogService', () => {
           registryVersion: '1.0.0',
           gates: [{ id: 'storage', status: 'pass', message: 'ok' }],
           installable: true,
+          installs: [],
         },
       ]);
     });
@@ -287,7 +292,9 @@ describe('AppCatalogService', () => {
         ok: true,
         registry: { schemaVersion: 1, apps: [HANDOFF_ENTRY] },
       });
-      preflight.instanceGates.mockResolvedValue([{ id: 'storage', status: 'fail', message: 'nope' }]);
+      preflight.instanceGates.mockResolvedValue([
+        { id: 'storage', status: 'fail', message: 'nope' },
+      ]);
       mockDb.__queue([]);
 
       const result = await service.listCatalog();
@@ -306,17 +313,53 @@ describe('AppCatalogService', () => {
       const result = await service.listCatalog();
 
       expect(result.data).toHaveLength(1);
-      expect(result.data[0].installed).toEqual({
-        installedAppId: 'ia-1',
-        version: '1.0.0',
-        projectId: 'proj-1',
-        projectName: 'acme/site',
-        alias: 'handoff',
-        appUrl: undefined,
-        status: 'installed',
-        updateAvailable: true, // 1.1.0 > 1.0.0
-        manualSteps: [{ id: 'always-step', title: 'Always', body: 'always applies' }],
+      expect(result.data[0].installs).toEqual([
+        {
+          installedAppId: 'ia-1',
+          version: '1.0.0',
+          projectId: 'proj-1',
+          projectName: 'acme/site',
+          alias: 'handoff',
+          appUrl: undefined,
+          status: 'installed',
+          updateAvailable: true, // 1.1.0 > 1.0.0
+          installedAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+          manualSteps: [{ id: 'always-step', title: 'Always', body: 'always applies' }],
+        },
+      ]);
+    });
+
+    it('lists every install of the same app, oldest first, each with its own version and updateAvailable', async () => {
+      registry.getRegistry.mockResolvedValue({
+        ok: true,
+        registry: { schemaVersion: 1, apps: [{ ...HANDOFF_ENTRY, version: '1.1.0' }] },
       });
+      const rowB = {
+        ...ROW,
+        id: 'ia-2',
+        projectId: 'proj-2',
+        version: '1.1.0',
+        installedAt: new Date('2026-02-01T00:00:00Z'),
+        updatedAt: new Date('2026-03-01T00:00:00Z'),
+      };
+      // Most recently touched row first in the DB result — ordering must not
+      // depend on it.
+      mockDb.__queue([rowB, ROW]);
+      projects.getProjectById.mockImplementation(async (id: string) =>
+        id === 'proj-2'
+          ? { id: 'proj-2', owner: 'acme', name: 'blog' }
+          : { id: 'proj-1', owner: 'acme', name: 'site' },
+      );
+
+      const result = await service.listCatalog();
+
+      expect(result.data).toHaveLength(1);
+      const installs = result.data[0].installs;
+      expect(installs.map((i) => i.installedAppId)).toEqual(['ia-1', 'ia-2']);
+      expect(installs.map((i) => i.projectName)).toEqual(['acme/site', 'acme/blog']);
+      expect(installs.map((i) => i.version)).toEqual(['1.0.0', '1.1.0']);
+      expect(installs.map((i) => i.updateAvailable)).toEqual([true, false]);
     });
 
     it('does not treat a CachingStorageAdapter-wrapped local adapter as bucket storage (regression: live droplet Redis cache)', async () => {
@@ -334,7 +377,7 @@ describe('AppCatalogService', () => {
 
       const result = await service.listCatalog();
 
-      expect(result.data[0].installed!.manualSteps).toEqual([
+      expect(result.data[0].installs[0].manualSteps).toEqual([
         { id: 'always-step', title: 'Always', body: 'always applies' },
       ]);
     });
@@ -348,7 +391,7 @@ describe('AppCatalogService', () => {
 
       const result = await service.listCatalog();
 
-      expect(result.data[0].installed!.updateAvailable).toBe(false);
+      expect(result.data[0].installs[0].updateAvailable).toBe(false);
     });
 
     it('degrades to registryError while still listing installed apps', async () => {
@@ -362,7 +405,7 @@ describe('AppCatalogService', () => {
       expect(result.data[0].id).toBe('handoff');
       expect(result.data[0].registryVersion).toBeUndefined();
       expect(result.data[0].installable).toBe(false);
-      expect(result.data[0].installed!.installedAppId).toBe('ia-1');
+      expect(result.data[0].installs[0].installedAppId).toBe('ia-1');
       // instanceGates computed from the stored manifest's requires, not a registry entry.
       expect(preflight.instanceGates).toHaveBeenCalledWith(undefined);
     });
@@ -380,7 +423,26 @@ describe('AppCatalogService', () => {
       expect(result.data).toHaveLength(1);
       expect(result.data[0].registryVersion).toBeUndefined();
       expect(result.data[0].installable).toBe(false);
-      expect(result.data[0].installed!.installedAppId).toBe('ia-1');
+      expect(result.data[0].installs[0].installedAppId).toBe('ia-1');
+    });
+
+    it('renders a delisted app with two installs as one entry carrying both installs', async () => {
+      registry.getRegistry.mockResolvedValue({
+        ok: true,
+        registry: { schemaVersion: 1, apps: [] },
+      });
+      mockDb.__queue([LEGACY_ROW, { ...LEGACY_ROW, id: 'ia-legacy-2', projectId: 'proj-2' }]);
+
+      const result = await service.listCatalog();
+
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].id).toBe('legacy-app');
+      expect(result.data[0].installable).toBe(false);
+      expect(result.data[0].installs.map((i) => i.installedAppId)).toEqual([
+        'ia-legacy',
+        'ia-legacy-2',
+      ]);
+      expect(result.data[0].installs.every((i) => i.updateAvailable === false)).toBe(true);
     });
 
     it('lists multiple unrelated installed-only apps alongside registry apps', async () => {
@@ -415,7 +477,7 @@ describe('AppCatalogService', () => {
 
         const result = await service.listCatalog();
 
-        expect(result.data[0].installed!.appUrl).toBe('https://files.example.com');
+        expect(result.data[0].installs[0].appUrl).toBe('https://files.example.com');
       });
 
       it('links http:// when the serving model has no certificate for the host yet (ce#584)', async () => {
@@ -430,10 +492,10 @@ describe('AppCatalogService', () => {
         const result = await service.listCatalog();
 
         expect(certStep.schemeFor).toHaveBeenCalledWith('files.example.com', false);
-        expect(result.data[0].installed!.appUrl).toBe('http://files.example.com');
+        expect(result.data[0].installs[0].appUrl).toBe('http://files.example.com');
       });
 
-      it('passes the row\'s sslEnabled through, so an edge-terminated install still links https', async () => {
+      it("passes the row's sslEnabled through, so an edge-terminated install still links https", async () => {
         registry.getRegistry.mockResolvedValue({
           ok: true,
           registry: { schemaVersion: 1, apps: [HANDOFF_ENTRY] },
@@ -444,7 +506,7 @@ describe('AppCatalogService', () => {
         const result = await service.listCatalog();
 
         expect(certStep.schemeFor).toHaveBeenCalledWith('files.example.com', true);
-        expect(result.data[0].installed!.appUrl).toBe('https://files.example.com');
+        expect(result.data[0].installs[0].appUrl).toBe('https://files.example.com');
       });
 
       it('yields undefined appUrl when domainId points at a since-deleted mapping', async () => {
@@ -457,7 +519,7 @@ describe('AppCatalogService', () => {
 
         const result = await service.listCatalog();
 
-        expect(result.data[0].installed!.appUrl).toBeUndefined();
+        expect(result.data[0].installs[0].appUrl).toBeUndefined();
       });
 
       it('yields undefined appUrl with no domainId lookup at all when the row has none', async () => {
@@ -469,7 +531,7 @@ describe('AppCatalogService', () => {
 
         const result = await service.listCatalog();
 
-        expect(result.data[0].installed!.appUrl).toBeUndefined();
+        expect(result.data[0].installs[0].appUrl).toBeUndefined();
         // No domainId anywhere -> the batch query is skipped entirely (only
         // the installedApps row select happened).
         expect(mockDb.select).toHaveBeenCalledTimes(1);
@@ -480,7 +542,13 @@ describe('AppCatalogService', () => {
           ok: true,
           registry: { schemaVersion: 1, apps: [HANDOFF_ENTRY] },
         });
-        const rowA = { ...ROW, id: 'ia-1', appId: 'handoff', manifest: MANIFEST_WITH_DOMAIN, domainId: 'dom-1' };
+        const rowA = {
+          ...ROW,
+          id: 'ia-1',
+          appId: 'handoff',
+          manifest: MANIFEST_WITH_DOMAIN,
+          domainId: 'dom-1',
+        };
         const rowB = { ...LEGACY_ROW, id: 'ia-legacy', appId: 'legacy-app', domainId: 'dom-2' };
         mockDb.__queue([rowA, rowB]);
         mockDb.__queue([
@@ -497,8 +565,8 @@ describe('AppCatalogService', () => {
 
         const handoff = result.data.find((e) => e.id === 'handoff')!;
         const legacy = result.data.find((e) => e.id === 'legacy-app')!;
-        expect(handoff.installed!.appUrl).toBe('https://files.example.com');
-        expect(legacy.installed!.appUrl).toBe('https://legacy.example.com');
+        expect(handoff.installs[0].appUrl).toBe('https://files.example.com');
+        expect(legacy.installs[0].appUrl).toBe('https://legacy.example.com');
       });
     });
   });
@@ -533,7 +601,7 @@ describe('AppCatalogService', () => {
       mockDb.__queue([{ id: 'dom-1', domain: 'reader.example.com' }]);
 
       const result = await service.listCatalog();
-      const steps = result.data[0].installed!.manualSteps;
+      const steps = result.data[0].installs[0].manualSteps;
 
       expect(steps[0].deepLink).toBe('/repo/acme/site/settings?tab=members');
       expect(steps[1].body).toBe('Allow PUT from reader.example.com.');
@@ -551,7 +619,7 @@ describe('AppCatalogService', () => {
 
       const result = await service.listCatalog();
 
-      expect(result.data[0].installed!.manualSteps.map((s) => s.id)).toContain(
+      expect(result.data[0].installs[0].manualSteps.map((s) => s.id)).toContain(
         'provision-wildcard-cert',
       );
     });
@@ -564,7 +632,7 @@ describe('AppCatalogService', () => {
 
       const result = await service.listCatalog();
 
-      expect(result.data[0].installed!.manualSteps.map((s) => s.id)).not.toContain(
+      expect(result.data[0].installs[0].manualSteps.map((s) => s.id)).not.toContain(
         'provision-wildcard-cert',
       );
     });
@@ -577,8 +645,8 @@ describe('AppCatalogService', () => {
 
       const result = await service.listCatalog();
 
-      expect(result.data[0].installed).toBeDefined();
-      expect(result.data[0].installed!.manualSteps.map((s) => s.id)).not.toContain(
+      expect(result.data[0].installs).toHaveLength(1);
+      expect(result.data[0].installs[0].manualSteps.map((s) => s.id)).not.toContain(
         'provision-wildcard-cert',
       );
       expect(warnSpy).toHaveBeenCalled();
@@ -591,16 +659,32 @@ describe('AppCatalogService', () => {
         ok: true,
         registry: { schemaVersion: 1, apps: [HANDOFF_ENTRY] },
       });
-      bundle.fetchBundle.mockResolvedValue({ manifest: MANIFEST, files: {}, sha256: 'a'.repeat(64) });
+      bundle.fetchBundle.mockResolvedValue({
+        manifest: MANIFEST,
+        files: {},
+        sha256: 'a'.repeat(64),
+      });
       preflight.projectGates.mockResolvedValue({
         gates: [{ id: 'dns', status: 'pass', message: 'ok' }],
-        syncPlans: [{ ruleSet: 'handoff', created: 1, updated: 0, unchanged: 0, pruneCandidates: 0, schemaResolutions: [] }],
+        syncPlans: [
+          {
+            ruleSet: 'handoff',
+            created: 1,
+            updated: 0,
+            unchanged: 0,
+            pruneCandidates: 0,
+            schemaResolutions: [],
+          },
+        ],
         appHost: 'handoff.example.com',
       });
 
       const result = await service.preflight('handoff', { projectId: 'proj-1' } as never, 'user-1');
 
-      expect(bundle.fetchBundle).toHaveBeenCalledWith(HANDOFF_ENTRY.bundleUrl, HANDOFF_ENTRY.sha256);
+      expect(bundle.fetchBundle).toHaveBeenCalledWith(
+        HANDOFF_ENTRY.bundleUrl,
+        HANDOFF_ENTRY.sha256,
+      );
       expect(preflight.projectGates).toHaveBeenCalledWith(
         { manifest: MANIFEST, files: {}, sha256: 'a'.repeat(64) },
         { projectId: 'proj-1' },
@@ -648,8 +732,145 @@ describe('AppCatalogService', () => {
       expect(result.appUrl).toBe('https://my-app.example.com');
     });
 
+    describe('suggestedSubdomain (install-again into another project)', () => {
+      const MANIFEST_WITH_DEFAULT_HOST: AppManifest = {
+        ...MANIFEST,
+        install: { ...MANIFEST.install, domain: { subdomain: 'handoff' } },
+      };
+      const mappedDefault = { id: 'dom-1' };
+
+      beforeEach(() => {
+        config.get.mockImplementation((key: string) =>
+          key === 'PRIMARY_DOMAIN' ? 'example.com' : undefined,
+        );
+        registry.getRegistry.mockResolvedValue({
+          ok: true,
+          registry: { schemaVersion: 1, apps: [HANDOFF_ENTRY] },
+        });
+        bundle.fetchBundle.mockResolvedValue({
+          manifest: MANIFEST_WITH_DEFAULT_HOST,
+          files: {},
+          sha256: 'a'.repeat(64),
+        });
+      });
+
+      it('suggests <default>-<project> when the manifest default host is already mapped', async () => {
+        mockDb.__queue([mappedDefault]); // default host lookup: taken
+        mockDb.__queue([]); // candidate host lookup: free
+        mockDb.__queue([]); // candidate alias lookup: free
+
+        const result = await service.preflight(
+          'handoff',
+          { projectId: 'proj-1' } as never,
+          'user-1',
+        );
+
+        expect(result.suggestedSubdomain).toBe('handoff-site');
+      });
+
+      it('walks to -2 when the first candidate host is mapped', async () => {
+        mockDb.__queue([mappedDefault]); // default taken
+        mockDb.__queue([{ id: 'dom-2' }]); // candidate 1 host taken
+        mockDb.__queue([]); // candidate 2 host free
+        mockDb.__queue([]); // candidate 2 alias free
+
+        const result = await service.preflight(
+          'handoff',
+          { projectId: 'proj-1' } as never,
+          'user-1',
+        );
+
+        expect(result.suggestedSubdomain).toBe('handoff-site-2');
+      });
+
+      it('treats an alias of the candidate name anywhere as taken (wildcard route collision)', async () => {
+        mockDb.__queue([mappedDefault]); // default taken
+        mockDb.__queue([]); // candidate 1 host free
+        mockDb.__queue([{ id: 'al-1' }]); // candidate 1 alias taken
+        mockDb.__queue([]); // candidate 2 host free
+        mockDb.__queue([]); // candidate 2 alias free
+
+        const result = await service.preflight(
+          'handoff',
+          { projectId: 'proj-1' } as never,
+          'user-1',
+        );
+
+        expect(result.suggestedSubdomain).toBe('handoff-site-2');
+      });
+
+      it('uses the new project name for a newProject target', async () => {
+        mockDb.__queue([mappedDefault]);
+        mockDb.__queue([]);
+        mockDb.__queue([]);
+
+        const result = await service.preflight(
+          'handoff',
+          { newProject: { owner: 'acme', name: 'Docs Site' } } as never,
+          'user-1',
+        );
+
+        expect(result.suggestedSubdomain).toBe('handoff-docs-site');
+      });
+
+      it('suggests nothing when the default host is free', async () => {
+        mockDb.__queue([]); // default host lookup: free
+
+        const result = await service.preflight(
+          'handoff',
+          { projectId: 'proj-1' } as never,
+          'user-1',
+        );
+
+        expect(result.suggestedSubdomain).toBeUndefined();
+        expect(mockDb.select).toHaveBeenCalledTimes(1);
+      });
+
+      it('suggests nothing when the operator already chose a subdomain', async () => {
+        const result = await service.preflight(
+          'handoff',
+          { projectId: 'proj-1', subdomain: 'mine' } as never,
+          'user-1',
+        );
+
+        expect(result.suggestedSubdomain).toBeUndefined();
+        expect(mockDb.select).not.toHaveBeenCalled();
+      });
+
+      it('suggests nothing when the manifest has no default subdomain or PRIMARY_DOMAIN is unset', async () => {
+        bundle.fetchBundle.mockResolvedValue({
+          manifest: MANIFEST,
+          files: {},
+          sha256: 'a'.repeat(64),
+        });
+        const noDomain = await service.preflight(
+          'handoff',
+          { projectId: 'proj-1' } as never,
+          'user-1',
+        );
+        expect(noDomain.suggestedSubdomain).toBeUndefined();
+
+        bundle.fetchBundle.mockResolvedValue({
+          manifest: MANIFEST_WITH_DEFAULT_HOST,
+          files: {},
+          sha256: 'a'.repeat(64),
+        });
+        config.get.mockReturnValue(undefined);
+        const noPrimary = await service.preflight(
+          'handoff',
+          { projectId: 'proj-1' } as never,
+          'user-1',
+        );
+        expect(noPrimary.suggestedSubdomain).toBeUndefined();
+        expect(mockDb.select).not.toHaveBeenCalled();
+      });
+    });
+
     it('throws NotFoundException for an app id not in the registry', async () => {
-      registry.getRegistry.mockResolvedValue({ ok: true, registry: { schemaVersion: 1, apps: [] } });
+      registry.getRegistry.mockResolvedValue({
+        ok: true,
+        registry: { schemaVersion: 1, apps: [] },
+      });
 
       await expect(
         service.preflight('unknown-app', { projectId: 'proj-1' } as never, 'user-1'),
@@ -670,7 +891,9 @@ describe('AppCatalogService', () => {
         registry: { schemaVersion: 1, apps: [HANDOFF_ENTRY] },
       });
 
-      await expect(service.preflight('handoff', {} as never, 'user-1')).rejects.toThrow(BadRequestException);
+      await expect(service.preflight('handoff', {} as never, 'user-1')).rejects.toThrow(
+        BadRequestException,
+      );
       expect(bundle.fetchBundle).not.toHaveBeenCalled();
     });
 
@@ -733,11 +956,14 @@ describe('AppCatalogService', () => {
     });
 
     it('throws NotFoundException for an unknown app id', async () => {
-      registry.getRegistry.mockResolvedValue({ ok: true, registry: { schemaVersion: 1, apps: [] } });
+      registry.getRegistry.mockResolvedValue({
+        ok: true,
+        registry: { schemaVersion: 1, apps: [] },
+      });
 
-      await expect(service.install('unknown', { projectId: 'proj-1' } as never, 'user-1')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.install('unknown', { projectId: 'proj-1' } as never, 'user-1'),
+      ).rejects.toThrow(NotFoundException);
       expect(installer.startInstall).not.toHaveBeenCalled();
     });
   });
@@ -764,14 +990,21 @@ describe('AppCatalogService', () => {
     it('throws NotFoundException when the installed app row does not exist', async () => {
       mockDb.__queue([]);
 
-      await expect(service.updateInstalled('missing', false, 'user-1')).rejects.toThrow(NotFoundException);
+      await expect(service.updateInstalled('missing', false, 'user-1')).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('throws NotFoundException when the app is no longer in the registry', async () => {
-      registry.getRegistry.mockResolvedValue({ ok: true, registry: { schemaVersion: 1, apps: [] } });
+      registry.getRegistry.mockResolvedValue({
+        ok: true,
+        registry: { schemaVersion: 1, apps: [] },
+      });
       mockDb.__queue([ROW]);
 
-      await expect(service.updateInstalled('ia-1', false, 'user-1')).rejects.toThrow(NotFoundException);
+      await expect(service.updateInstalled('ia-1', false, 'user-1')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 

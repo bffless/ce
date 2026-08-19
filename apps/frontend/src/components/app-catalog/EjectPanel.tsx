@@ -16,12 +16,18 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
-import { useGetEjectPayloadQuery, type CatalogEntry } from '@/services/appCatalogApi';
+import {
+  useGetEjectPayloadQuery,
+  type CatalogEntry,
+  type InstalledSummary,
+} from '@/services/appCatalogApi';
 import { useCreateApiKeyMutation } from '@/services/apiKeysApi';
 import { Check, Copy, ExternalLink, Key } from 'lucide-react';
 
 interface EjectPanelProps {
   entry: CatalogEntry;
+  /** The install being ejected — an app can be installed in several projects, so the caller picks. */
+  install: InstalledSummary;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -33,14 +39,13 @@ interface EjectPanelProps {
  * buttons and lets the user mint the deploy API key for the secrets list
  * inline, without leaving the panel.
  */
-export function EjectPanel({ entry, open, onOpenChange }: EjectPanelProps) {
+export function EjectPanel({ entry, install, open, onOpenChange }: EjectPanelProps) {
   const { toast } = useToast();
-  const { installed } = entry;
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [mintedKeys, setMintedKeys] = useState<Record<string, string>>({});
 
-  const { data: payload, isFetching } = useGetEjectPayloadQuery(installed?.installedAppId ?? '', {
-    skip: !open || !installed,
+  const { data: payload, isFetching } = useGetEjectPayloadQuery(install.installedAppId, {
+    skip: !open,
   });
   const [createApiKey, { isLoading: isMinting }] = useCreateApiKeyMutation();
 
@@ -62,7 +67,7 @@ export function EjectPanel({ entry, open, onOpenChange }: EjectPanelProps) {
     try {
       const response = await createApiKey({
         name: `${entry.name} eject — ${secretName}`,
-        repository: installed?.projectName,
+        repository: install.projectName,
       }).unwrap();
       setMintedKeys((prev) => ({ ...prev, [secretName]: response.key }));
       toast({
@@ -184,9 +189,7 @@ export function EjectPanel({ entry, open, onOpenChange }: EjectPanelProps) {
                   ))}
                 </ul>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {installed?.projectName
-                    ? `Scoped to ${installed.projectName}.`
-                    : 'Minted as a global key — no project scope available for this install.'}
+                  {`Scoped to ${install.projectName}.`}
                 </p>
               </div>
             )}

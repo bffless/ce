@@ -64,17 +64,21 @@ function makeEntry(manualSteps: AppManualStep[]): CatalogEntry {
     gates: [],
     installable: true,
     registryVersion: '2.0.0',
-    installed: {
-      installedAppId: 'installed-1',
-      version: '1.0.0',
-      projectId: 'proj-1',
-      projectName: 'acme/handoff-site',
-      alias: 'production',
-      appUrl: 'https://handoff.example.com',
-      status: 'installed',
-      updateAvailable: true,
-      manualSteps,
-    },
+    installs: [
+      {
+        installedAppId: 'installed-1',
+        installedAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        version: '1.0.0',
+        projectId: 'proj-1',
+        projectName: 'acme/handoff-site',
+        alias: 'production',
+        appUrl: 'https://handoff.example.com',
+        status: 'installed',
+        updateAvailable: true,
+        manualSteps,
+      },
+    ],
   };
 }
 
@@ -123,6 +127,7 @@ describe('AppsPage — details dialog', () => {
             category: 'files',
             screenshots: ['https://apps.example.com/assets/handoff/screenshots/01.png'],
             gates: [],
+            installs: [],
             installable: true,
             registryVersion: '1.0.0',
           },

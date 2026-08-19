@@ -36,18 +36,23 @@ const entry: CatalogEntry = {
   name: 'Handoff',
   gates: [],
   installable: true,
-  installed: {
-    installedAppId: 'installed-1',
-    version: '1.2.0',
-    projectId: 'proj-1',
-    projectName: 'acme/handoff',
-    alias: 'production',
-    appUrl: 'https://handoff.example.com',
-    status: 'installed',
-    updateAvailable: false,
-    manualSteps: [],
-  },
+  installs: [
+    {
+      installedAppId: 'installed-1',
+      installedAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      version: '1.2.0',
+      projectId: 'proj-1',
+      projectName: 'acme/handoff',
+      alias: 'production',
+      appUrl: 'https://handoff.example.com',
+      status: 'installed',
+      updateAvailable: false,
+      manualSteps: [],
+    },
+  ],
 };
+const install = entry.installs[0];
 
 function makePayload(overrides: Partial<EjectPayload> = {}): EjectPayload {
   return {
@@ -76,7 +81,7 @@ beforeEach(() => {
 
 describe('EjectPanel', () => {
   it('renders the fork link and Actions variables with copy buttons', () => {
-    render(<EjectPanel entry={entry} open onOpenChange={vi.fn()} />);
+    render(<EjectPanel entry={entry} install={install} open onOpenChange={vi.fn()} />);
 
     expect(screen.getByRole('link', { name: /fork on github/i })).toHaveAttribute(
       'href',
@@ -89,7 +94,7 @@ describe('EjectPanel', () => {
   });
 
   it('renders the secrets list with an inline Mint API key button', () => {
-    render(<EjectPanel entry={entry} open onOpenChange={vi.fn()} />);
+    render(<EjectPanel entry={entry} install={install} open onOpenChange={vi.fn()} />);
 
     expect(screen.getByText('BFFLESS_API_KEY')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /mint api key/i })).toBeInTheDocument();
@@ -103,7 +108,7 @@ describe('EjectPanel', () => {
     };
     createApiKeyTrigger.mockReturnValue({ unwrap: () => Promise.resolve(response) });
 
-    render(<EjectPanel entry={entry} open onOpenChange={vi.fn()} />);
+    render(<EjectPanel entry={entry} install={install} open onOpenChange={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: /mint api key/i }));
 
     expect(createApiKeyTrigger).toHaveBeenCalledWith(
@@ -113,13 +118,13 @@ describe('EjectPanel', () => {
   });
 
   it('renders the workflow name to run', () => {
-    render(<EjectPanel entry={entry} open onOpenChange={vi.fn()} />);
+    render(<EjectPanel entry={entry} install={install} open onOpenChange={vi.fn()} />);
 
     expect(screen.getByText('deploy-handoff.yml')).toBeInTheDocument();
   });
 
   it('renders the continuity note verbatim', () => {
-    render(<EjectPanel entry={entry} open onOpenChange={vi.fn()} />);
+    render(<EjectPanel entry={entry} install={install} open onOpenChange={vi.fn()} />);
 
     expect(
       screen.getByText(

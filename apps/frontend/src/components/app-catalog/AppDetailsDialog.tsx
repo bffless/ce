@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { RemoteImage } from './RemoteImage';
 import { GateBlockedCta } from './GateBlockedCta';
+import { InstallsList } from './InstallsList';
 import type { CatalogEntry } from '@/services/appCatalogApi';
 import { ExternalLink } from 'lucide-react';
 
@@ -21,6 +22,10 @@ interface AppDetailsDialogProps {
   onOpenChange: (open: boolean) => void;
   /** Hands off to the install wizard — the page swaps this dialog for it. */
   onInstall: (entry: CatalogEntry) => void;
+  /** A per-install Update was accepted — the page shows the job's progress dialog. */
+  onUpdateStarted: (entry: CatalogEntry, jobId: string) => void;
+  /** Start the "update all installs" batch as soon as the dialog opens (card CTA). */
+  autoUpdateAll?: boolean;
 }
 
 /**
@@ -35,8 +40,15 @@ interface AppDetailsDialogProps {
  * HTML stays inert, and react-markdown's default URL transform already drops
  * `javascript:` hrefs. Don't add `rehype-raw` here.
  */
-export function AppDetailsDialog({ entry, open, onOpenChange, onInstall }: AppDetailsDialogProps) {
-  const { installed } = entry;
+export function AppDetailsDialog({
+  entry,
+  open,
+  onOpenChange,
+  onInstall,
+  onUpdateStarted,
+  autoUpdateAll,
+}: AppDetailsDialogProps) {
+  const { installs } = entry;
   const failedGate = entry.gates.find((gate) => gate.status === 'fail');
   const screenshots = entry.screenshots ?? [];
 
@@ -66,7 +78,12 @@ export function AppDetailsDialog({ entry, open, onOpenChange, onInstall }: AppDe
                     {entry.category}
                   </Badge>
                 )}
-                {installed && <Badge variant="secondary">{`Installed · v${installed.version}`}</Badge>}
+                {installs.length === 1 && (
+                  <Badge variant="secondary">{`Installed · v${installs[0].version}`}</Badge>
+                )}
+                {installs.length > 1 && (
+                  <Badge variant="secondary">{`Installed in ${installs.length} projects`}</Badge>
+                )}
               </div>
             </div>
           </div>
@@ -76,6 +93,15 @@ export function AppDetailsDialog({ entry, open, onOpenChange, onInstall }: AppDe
         </DialogHeader>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
+          {installs.length > 0 && (
+            <InstallsList
+              entry={entry}
+              onUpdateStarted={onUpdateStarted}
+              onViewJob={onUpdateStarted}
+              autoUpdateAll={autoUpdateAll}
+            />
+          )}
+
           {screenshots.length > 0 && (
             <div className="grid gap-3 sm:grid-cols-2">
               {screenshots.map((src) => (
@@ -133,17 +159,21 @@ export function AppDetailsDialog({ entry, open, onOpenChange, onInstall }: AppDe
             Close
           </Button>
 
-          {!installed && failedGate && <GateBlockedCta gate={failedGate} />}
+          {failedGate && <GateBlockedCta gate={failedGate} />}
 
-          {!installed && !failedGate && (
-            <Button disabled={!entry.installable} onClick={() => onInstall(entry)}>
-              Install
+          {!failedGate && (
+            <Button
+              variant={installs.length > 0 ? 'outline' : 'default'}
+              disabled={!entry.installable}
+              onClick={() => onInstall(entry)}
+            >
+              {installs.length > 0 ? 'Install in another project' : 'Install'}
             </Button>
           )}
 
-          {installed?.appUrl && (
+          {installs.length === 1 && installs[0].appUrl && (
             <Button asChild>
-              <a href={installed.appUrl} target="_blank" rel="noopener noreferrer">
+              <a href={installs[0].appUrl} target="_blank" rel="noopener noreferrer">
                 Open
                 <ExternalLink className="h-4 w-4 ml-1" />
               </a>

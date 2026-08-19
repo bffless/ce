@@ -34,7 +34,11 @@ export function AppCatalogGrid({
   // catalog, and a stale snapshot here would never pick that up (the Done
   // screen's setup notes would appear stuck on the pre-update list).
   const [installTargetSnapshot, setInstallTargetSnapshot] = useState<CatalogEntry | null>(null);
-  const [detailsTargetSnapshot, setDetailsTargetSnapshot] = useState<CatalogEntry | null>(null);
+  const [detailsTargetSnapshot, setDetailsTargetSnapshot] = useState<{
+    entry: CatalogEntry;
+    /** True when opened from the card's "Update all" CTA — arms the batch runner. */
+    autoUpdateAll: boolean;
+  } | null>(null);
   const [updateTargetSnapshot, setUpdateTargetSnapshot] = useState<{
     entry: CatalogEntry;
     jobId: string;
@@ -44,7 +48,7 @@ export function AppCatalogGrid({
     ? (entries.find((e) => e.id === installTargetSnapshot.id) ?? installTargetSnapshot)
     : null;
   const detailsTarget = detailsTargetSnapshot
-    ? (entries.find((e) => e.id === detailsTargetSnapshot.id) ?? detailsTargetSnapshot)
+    ? (entries.find((e) => e.id === detailsTargetSnapshot.entry.id) ?? detailsTargetSnapshot.entry)
     : null;
   const updateTarget = updateTargetSnapshot
     ? {
@@ -63,7 +67,8 @@ export function AppCatalogGrid({
             key={entry.id}
             entry={entry}
             onInstall={setInstallTargetSnapshot}
-            onDetails={setDetailsTargetSnapshot}
+            onDetails={(entry) => setDetailsTargetSnapshot({ entry, autoUpdateAll: false })}
+            onUpdateAll={(entry) => setDetailsTargetSnapshot({ entry, autoUpdateAll: true })}
             onUpdateStarted={(updatedEntry, jobId) =>
               setUpdateTargetSnapshot({ entry: updatedEntry, jobId })
             }
@@ -82,6 +87,13 @@ export function AppCatalogGrid({
             setDetailsTargetSnapshot(null);
             setInstallTargetSnapshot(entry);
           }}
+          // The update-progress dialog stacks over the details dialog on
+          // purpose: the per-install list is the context the operator came
+          // from and is still useful (other rows) once the job finishes.
+          onUpdateStarted={(updatedEntry, jobId) =>
+            setUpdateTargetSnapshot({ entry: updatedEntry, jobId })
+          }
+          autoUpdateAll={detailsTargetSnapshot?.autoUpdateAll}
         />
       )}
 

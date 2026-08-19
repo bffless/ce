@@ -27,7 +27,44 @@ const baseEntry: CatalogEntry = {
   summary: 'Share files with clients',
   gates: [],
   installable: true,
+  installs: [],
 };
+
+const installA: CatalogEntry['installs'][number] = {
+  installedAppId: 'installed-1',
+  installedAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+  version: '1.2.0',
+  projectId: 'proj-1',
+  projectName: 'acme/handoff',
+  alias: 'production',
+  appUrl: 'https://handoff.example.com',
+  status: 'installed',
+  updateAvailable: true,
+  manualSteps: [],
+};
+const installB: CatalogEntry['installs'][number] = {
+  ...installA,
+  installedAppId: 'installed-2',
+  projectId: 'proj-2',
+  projectName: 'acme/blog',
+  appUrl: 'https://handoff-blog.example.com',
+  version: '2.0.0',
+  updateAvailable: false,
+};
+
+function renderCard(entry: CatalogEntry, overrides: Partial<Parameters<typeof AppCard>[0]> = {}) {
+  const props = {
+    entry,
+    onInstall: vi.fn(),
+    onDetails: vi.fn(),
+    onUpdateStarted: vi.fn(),
+    onUpdateAll: vi.fn(),
+    ...overrides,
+  };
+  render(<AppCard {...props} />);
+  return props;
+}
 
 beforeEach(() => {
   updateTrigger.mockReset().mockReturnValue({ unwrap: () => Promise.resolve({ jobId: 'job-1' }) });
@@ -35,7 +72,7 @@ beforeEach(() => {
 
 describe('AppCard', () => {
   it('renders an enabled Install button when installable', () => {
-    render(<AppCard entry={baseEntry} onInstall={vi.fn()} onDetails={vi.fn()} onUpdateStarted={vi.fn()} />);
+    render(<AppCard entry={baseEntry} onInstall={vi.fn()} onDetails={vi.fn()} onUpdateStarted={vi.fn()} onUpdateAll={vi.fn()} />);
 
     const button = screen.getByRole('button', { name: /install/i });
     expect(button).toBeEnabled();
@@ -56,7 +93,7 @@ describe('AppCard', () => {
       ],
     };
 
-    render(<AppCard entry={entry} onInstall={vi.fn()} onDetails={vi.fn()} onUpdateStarted={vi.fn()} />);
+    render(<AppCard entry={entry} onInstall={vi.fn()} onDetails={vi.fn()} onUpdateStarted={vi.fn()} onUpdateAll={vi.fn()} />);
 
     expect(screen.getByText('Requires bucket storage')).toBeInTheDocument();
     const button = screen.getByRole('button', { name: /requires bucket storage/i });
@@ -67,8 +104,10 @@ describe('AppCard', () => {
   it('shows the Installed badge and an Open link when installed', () => {
     const entry: CatalogEntry = {
       ...baseEntry,
-      installed: {
+      installs: [{
         installedAppId: 'installed-1',
+        installedAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
         version: '1.2.0',
         projectId: 'proj-1',
         projectName: 'acme/handoff',
@@ -77,10 +116,10 @@ describe('AppCard', () => {
         status: 'installed',
         updateAvailable: false,
         manualSteps: [],
-      },
+      }],
     };
 
-    render(<AppCard entry={entry} onInstall={vi.fn()} onDetails={vi.fn()} onUpdateStarted={vi.fn()} />);
+    render(<AppCard entry={entry} onInstall={vi.fn()} onDetails={vi.fn()} onUpdateStarted={vi.fn()} onUpdateAll={vi.fn()} />);
 
     expect(screen.getByText('Installed · v1.2.0')).toBeInTheDocument();
     const openLink = screen.getByRole('link', { name: /open/i });
@@ -91,8 +130,10 @@ describe('AppCard', () => {
     const entry: CatalogEntry = {
       ...baseEntry,
       registryVersion: '2.0.0',
-      installed: {
+      installs: [{
         installedAppId: 'installed-1',
+        installedAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
         version: '1.2.0',
         projectId: 'proj-1',
         projectName: 'acme/handoff',
@@ -101,10 +142,10 @@ describe('AppCard', () => {
         status: 'installed',
         updateAvailable: true,
         manualSteps: [],
-      },
+      }],
     };
 
-    render(<AppCard entry={entry} onInstall={vi.fn()} onDetails={vi.fn()} onUpdateStarted={vi.fn()} />);
+    render(<AppCard entry={entry} onInstall={vi.fn()} onDetails={vi.fn()} onUpdateStarted={vi.fn()} onUpdateAll={vi.fn()} />);
 
     expect(screen.getByRole('button', { name: /update to v2\.0\.0/i })).toBeInTheDocument();
   });
@@ -124,8 +165,10 @@ describe('AppCard', () => {
           remediation: 'Upgrade this BFFless CE instance to v0.4.0 or later.',
         },
       ],
-      installed: {
+      installs: [{
         installedAppId: 'installed-1',
+        installedAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
         version: '1.2.0',
         projectId: 'proj-1',
         projectName: 'acme/handoff',
@@ -134,10 +177,10 @@ describe('AppCard', () => {
         status: 'installed',
         updateAvailable: true,
         manualSteps: [],
-      },
+      }],
     };
 
-    render(<AppCard entry={entry} onInstall={vi.fn()} onDetails={vi.fn()} onUpdateStarted={vi.fn()} />);
+    render(<AppCard entry={entry} onInstall={vi.fn()} onDetails={vi.fn()} onUpdateStarted={vi.fn()} onUpdateAll={vi.fn()} />);
 
     expect(screen.queryByRole('button', { name: /update to v2\.0\.0/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /requires ce v0\.4\.0 or later/i })).toBeDisabled();
@@ -150,8 +193,10 @@ describe('AppCard', () => {
     const entry: CatalogEntry = {
       ...baseEntry,
       registryVersion: '2.0.0',
-      installed: {
+      installs: [{
         installedAppId: 'installed-1',
+        installedAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
         version: '1.2.0',
         projectId: 'proj-1',
         projectName: 'acme/handoff',
@@ -160,10 +205,10 @@ describe('AppCard', () => {
         status: 'installed',
         updateAvailable: true,
         manualSteps: [],
-      },
+      }],
     };
 
-    render(<AppCard entry={entry} onInstall={vi.fn()} onDetails={vi.fn()} onUpdateStarted={onUpdateStarted} />);
+    render(<AppCard entry={entry} onInstall={vi.fn()} onDetails={vi.fn()} onUpdateStarted={onUpdateStarted} onUpdateAll={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: /update to v2\.0\.0/i }));
 
@@ -186,7 +231,7 @@ describe('AppCard', () => {
     };
 
     const { container } = render(
-      <AppCard entry={entry} onInstall={vi.fn()} onDetails={vi.fn()} onUpdateStarted={vi.fn()} />,
+      <AppCard entry={entry} onInstall={vi.fn()} onDetails={vi.fn()} onUpdateStarted={vi.fn()} onUpdateAll={vi.fn()} />,
     );
 
     expect(screen.getByText('files')).toBeInTheDocument();
@@ -197,7 +242,7 @@ describe('AppCard', () => {
     // A de-listed installed app renders from its stored manifest, which never
     // carries description/screenshots — a Details button would open nothing.
     render(
-      <AppCard entry={baseEntry} onInstall={vi.fn()} onDetails={vi.fn()} onUpdateStarted={vi.fn()} />,
+      <AppCard entry={baseEntry} onInstall={vi.fn()} onDetails={vi.fn()} onUpdateStarted={vi.fn()} onUpdateAll={vi.fn()} />,
     );
 
     expect(screen.queryByRole('button', { name: /^details$/i })).not.toBeInTheDocument();
@@ -212,7 +257,7 @@ describe('AppCard', () => {
     };
 
     render(
-      <AppCard entry={entry} onInstall={vi.fn()} onDetails={onDetails} onUpdateStarted={vi.fn()} />,
+      <AppCard entry={entry} onInstall={vi.fn()} onDetails={onDetails} onUpdateStarted={vi.fn()} onUpdateAll={vi.fn()} />,
     );
 
     fireEvent.click(screen.getByRole('button', { name: /^details$/i }));
@@ -227,8 +272,10 @@ describe('AppCard', () => {
     const entry: CatalogEntry = {
       ...baseEntry,
       registryVersion: '2.0.0',
-      installed: {
+      installs: [{
         installedAppId: 'installed-1',
+        installedAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
         version: '1.2.0',
         projectId: 'proj-1',
         projectName: 'acme/handoff',
@@ -237,10 +284,10 @@ describe('AppCard', () => {
         status: 'installed',
         updateAvailable: true,
         manualSteps: [],
-      },
+      }],
     };
 
-    render(<AppCard entry={entry} onInstall={vi.fn()} onDetails={vi.fn()} onUpdateStarted={onUpdateStarted} />);
+    render(<AppCard entry={entry} onInstall={vi.fn()} onDetails={vi.fn()} onUpdateStarted={onUpdateStarted} onUpdateAll={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: /update to v2\.0\.0/i }));
     fireEvent.click(screen.getByRole('switch', { name: /reset to the app's shipped rules \(prune\)/i }));
@@ -252,8 +299,10 @@ describe('AppCard', () => {
   describe('setup notes', () => {
     const installedWithNotes: CatalogEntry = {
       ...baseEntry,
-      installed: {
+      installs: [{
         installedAppId: 'installed-1',
+        installedAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
         version: '1.0.0',
         projectId: 'proj-1',
         projectName: 'acme/site',
@@ -269,7 +318,7 @@ describe('AppCard', () => {
             deepLink: '/repo/acme/site/settings?tab=members',
           },
         ],
-      },
+      }],
     };
 
     it('shows the note title on an installed card', () => {
@@ -279,6 +328,7 @@ describe('AppCard', () => {
           onInstall={vi.fn()}
           onDetails={vi.fn()}
           onUpdateStarted={vi.fn()}
+          onUpdateAll={vi.fn()}
         />,
       );
 
@@ -293,6 +343,7 @@ describe('AppCard', () => {
           onInstall={vi.fn()}
           onDetails={vi.fn()}
           onUpdateStarted={vi.fn()}
+          onUpdateAll={vi.fn()}
         />,
       );
 
@@ -304,10 +355,10 @@ describe('AppCard', () => {
     it('renders no setup notes block when the app has none', () => {
       const entry: CatalogEntry = {
         ...installedWithNotes,
-        installed: { ...installedWithNotes.installed!, manualSteps: [] },
+        installs: [{ ...installedWithNotes.installs[0], manualSteps: [] }],
       };
       render(
-        <AppCard entry={entry} onInstall={vi.fn()} onDetails={vi.fn()} onUpdateStarted={vi.fn()} />,
+        <AppCard entry={entry} onInstall={vi.fn()} onDetails={vi.fn()} onUpdateStarted={vi.fn()} onUpdateAll={vi.fn()} />,
       );
 
       expect(screen.queryByText(/Setup notes/)).not.toBeInTheDocument();
@@ -315,10 +366,68 @@ describe('AppCard', () => {
 
     it('renders no setup notes block when the app is not installed', () => {
       render(
-        <AppCard entry={baseEntry} onInstall={vi.fn()} onDetails={vi.fn()} onUpdateStarted={vi.fn()} />,
+        <AppCard entry={baseEntry} onInstall={vi.fn()} onDetails={vi.fn()} onUpdateStarted={vi.fn()} onUpdateAll={vi.fn()} />,
       );
 
       expect(screen.queryByText(/Setup notes/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('one install', () => {
+    it('offers "Install in another project" in the overflow menu, wired to onInstall', async () => {
+      const entry: CatalogEntry = { ...baseEntry, installs: [{ ...installA, updateAvailable: false }] };
+      const props = renderCard(entry);
+
+      // No primary Install CTA next to "Installed" — installing again is in the overflow.
+      expect(screen.queryByRole('button', { name: /^install$/i })).not.toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: /more actions/i }));
+      await userEvent.click(await screen.findByRole('menuitem', { name: /install in another project/i }));
+
+      expect(props.onInstall).toHaveBeenCalledWith(entry);
+    });
+  });
+
+  describe('several installs', () => {
+    const twoInstalls: CatalogEntry = {
+      ...baseEntry,
+      registryVersion: '2.0.0',
+      installs: [installA, installB],
+    };
+
+    it('summarises the installs and the pending updates instead of acting on one', () => {
+      renderCard(twoInstalls);
+
+      expect(screen.getByText('Installed in 2 projects · 1 update available')).toBeInTheDocument();
+      // Per-install actions live in the details dialog, not on the card.
+      expect(screen.queryByRole('link', { name: /open/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /update to v2\.0\.0/i })).not.toBeInTheDocument();
+    });
+
+    it('"Update all (k)" hands off to onUpdateAll and "Manage installs" to onDetails', () => {
+      const props = renderCard(twoInstalls);
+
+      fireEvent.click(screen.getByRole('button', { name: /update all \(1\)/i }));
+      expect(props.onUpdateAll).toHaveBeenCalledWith(twoInstalls);
+
+      fireEvent.click(screen.getByRole('button', { name: /manage installs/i }));
+      expect(props.onDetails).toHaveBeenCalledWith(twoInstalls);
+    });
+
+    it('hides "Update all" when no install has an update, keeps Manage installs', () => {
+      renderCard({ ...twoInstalls, installs: [{ ...installA, updateAvailable: false }, installB] });
+
+      expect(screen.queryByRole('button', { name: /update all/i })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /manage installs/i })).toBeInTheDocument();
+      expect(screen.getByText('Installed in 2 projects')).toBeInTheDocument();
+    });
+
+    it('still offers "Install in another project" in the overflow', async () => {
+      const props = renderCard(twoInstalls);
+
+      await userEvent.click(screen.getByRole('button', { name: /more actions/i }));
+      await userEvent.click(await screen.findByRole('menuitem', { name: /install in another project/i }));
+
+      expect(props.onInstall).toHaveBeenCalledWith(twoInstalls);
     });
   });
 });

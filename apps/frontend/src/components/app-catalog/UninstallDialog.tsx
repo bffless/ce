@@ -16,10 +16,13 @@ import {
   useGetUninstallPreviewQuery,
   useUninstallAppMutation,
   type CatalogEntry,
+  type InstalledSummary,
 } from '@/services/appCatalogApi';
 
 interface UninstallDialogProps {
   entry: CatalogEntry;
+  /** The install being removed — an app can be installed in several projects, so the caller picks. */
+  install: InstalledSummary;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -31,14 +34,13 @@ interface UninstallDialogProps {
  * preview (`useGetUninstallPreviewQuery`) so the "delete data tables"
  * checkbox can show the actual record counts before the user commits.
  */
-export function UninstallDialog({ entry, open, onOpenChange }: UninstallDialogProps) {
+export function UninstallDialog({ entry, install, open, onOpenChange }: UninstallDialogProps) {
   const { toast } = useToast();
-  const { installed } = entry;
   const [deleteData, setDeleteData] = useState(false);
   const [failures, setFailures] = useState<string[] | null>(null);
 
-  const { data: preview } = useGetUninstallPreviewQuery(installed?.installedAppId ?? '', {
-    skip: !open || !installed,
+  const { data: preview } = useGetUninstallPreviewQuery(install.installedAppId, {
+    skip: !open,
   });
   const [uninstallApp, { isLoading }] = useUninstallAppMutation();
 
@@ -56,9 +58,8 @@ export function UninstallDialog({ entry, open, onOpenChange }: UninstallDialogPr
   };
 
   const handleConfirm = async () => {
-    if (!installed) return;
     try {
-      const summary = await uninstallApp({ id: installed.installedAppId, deleteData }).unwrap();
+      const summary = await uninstallApp({ id: install.installedAppId, deleteData }).unwrap();
       // The backend deliberately keeps the installed_apps row when some
       // cleanup steps fail, so the user can retry — don't tell them it
       // succeeded, and don't close the dialog out from under a retry.
@@ -86,8 +87,7 @@ export function UninstallDialog({ entry, open, onOpenChange }: UninstallDialogPr
         <DialogHeader>
           <DialogTitle>{`Uninstall ${entry.name}?`}</DialogTitle>
           <DialogDescription>
-            Removes the app&apos;s rule sets, alias, domain, and deployment. Your data tables
-            and uploaded files are kept.
+            {`Removes the app's rule sets, alias, domain, and deployment from ${install.projectName}. Your data tables and uploaded files are kept.`}
           </DialogDescription>
         </DialogHeader>
 
@@ -135,7 +135,7 @@ export function UninstallDialog({ entry, open, onOpenChange }: UninstallDialogPr
           <Button variant="outline" onClick={() => handleOpenChange(false)}>
             Cancel
           </Button>
-          <Button variant="destructive" onClick={handleConfirm} disabled={isLoading || !installed}>
+          <Button variant="destructive" onClick={handleConfirm} disabled={isLoading}>
             {isLoading ? 'Uninstalling…' : failures ? 'Retry uninstall' : 'Uninstall'}
           </Button>
         </DialogFooter>

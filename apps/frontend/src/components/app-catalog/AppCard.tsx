@@ -2,23 +2,20 @@ import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useToast } from '@/hooks/use-toast';
-import { useUpdateAppMutation, type CatalogEntry } from '@/services/appCatalogApi';
+import type { CatalogEntry } from '@/services/appCatalogApi';
 import { UninstallDialog } from './UninstallDialog';
 import { EjectPanel } from './EjectPanel';
 import { GateBlockedCta } from './GateBlockedCta';
+import { InstallUpdateButton } from './InstallUpdateButton';
 import { RemoteImage } from './RemoteImage';
 import { SetupNotes } from './SetupNotes';
-import { hasAppDetails } from './catalogEntry';
+import { hasAppDetails, updatableInstalls } from './catalogEntry';
 import { ExternalLink, MoreVertical } from 'lucide-react';
 
 interface AppCardProps {
@@ -33,6 +30,11 @@ interface AppCardProps {
    * reuses the same Working/Done job-progress screens as install.
    */
   onUpdateStarted: (entry: CatalogEntry, jobId: string) => void;
+  /**
+   * Opens the details dialog with the sequential "update every install"
+   * runner armed. Only offered when two or more installs have an update.
+   */
+  onUpdateAll: (entry: CatalogEntry) => void;
 }
 
 /**
@@ -44,51 +46,52 @@ interface AppCardProps {
  *   dialog via `onInstall`).
  * - not installed, a gate fails → disabled CTA showing the gate's message,
  *   plus a "Why?" popover with the gate's remediation/deepLink.
- * - installed → "Installed · v{version}" badge, an "Open" link to `appUrl`,
- *   and an overflow menu (Update, Uninstall, Eject).
- * - installed + update available → an additional primary "Update to
- *   v{registryVersion}" button that opens a confirm popover (prune toggle,
- *   default off) before firing the update — unless an instance gate fails, in
- *   which case the update is blocked by the same disabled gate CTA as install
- *   (the update job re-runs those gates and would refuse anyway).
+ * - installed in ONE project → "Installed · v{version}" badge, an "Open"
+ *   link to `appUrl`, and an overflow menu (Install in another project,
+ *   Uninstall, Eject).
+ * - one install + update available → an additional primary "Update to
+ *   v{registryVersion}" button (`InstallUpdateButton`: confirm popover with
+ *   the prune toggle, default off) — unless an instance gate fails, in which
+ *   case the update is blocked by the same disabled gate CTA as install (the
+ *   update job re-runs those gates and would refuse anyway).
+ * - installed in SEVERAL projects → "Installed in N projects" badge, an
+ *   "Update all (k)" CTA when k installs have an update, and "Manage
+ *   installs", which opens the details dialog's per-install list where
+ *   Open/Update/Uninstall/Eject live for each row. The card itself never
+ *   guesses which install an action should hit.
  *
  * Uninstall and Eject are delegated to dedicated dialogs (`UninstallDialog`,
- * `EjectPanel`) that each load their own preview/payload data; Update fires
- * `useUpdateAppMutation` here and hands the job off to the shared
- * `InstallDialog` (mounted by the page) for progress.
+ * `EjectPanel`) that each load their own preview/payload data for the install
+ * they're handed; an update hands its job off to the shared `InstallDialog`
+ * (mounted by the page) for progress.
  *
- * An installed card also carries its app's setup notes (titles collapsed,
- * bodies expanding in place) — CE can't perform them, so they live where the
- * app lives rather than behind a one-shot dialog.
+ * A single-install card also carries that install's setup notes (titles
+ * collapsed, bodies expanding in place) — CE can't perform them, so they live
+ * where the app lives rather than behind a one-shot dialog. With several
+ * installs the notes are per install, in the details dialog.
  *
  * Store metadata from the registry (ce#590) rides on top: a `thumbnailUrl`
  * banner and a `category` badge here, with the long-form description and
  * screenshots one click away in `AppDetailsDialog`.
  */
-export function AppCard({ entry, onInstall, onDetails, onUpdateStarted }: AppCardProps) {
-  const { toast } = useToast();
-  const { installed } = entry;
+export function AppCard({ entry, onInstall, onDetails, onUpdateStarted, onUpdateAll }: AppCardProps) {
+  const { installs } = entry;
+  // The card has room to act on ONE install. With several, it summarises and
+  // hands off to the details dialog's per-install list.
+  const soleInstall = installs.length === 1 ? installs[0] : undefined;
+  const updatable = updatableInstalls(entry);
   const failedGate = entry.gates.find((gate) => gate.status === 'fail');
   const showDetails = hasAppDetails(entry);
 
-  const [updateApp, { isLoading: isUpdating }] = useUpdateAppMutation();
-  const [updatePopoverOpen, setUpdatePopoverOpen] = useState(false);
-  const [prune, setPrune] = useState(false);
   const [ejectOpen, setEjectOpen] = useState(false);
   const [uninstallOpen, setUninstallOpen] = useState(false);
 
-  const handleConfirmUpdate = async () => {
-    if (!installed) return;
-    try {
-      const result = await updateApp({ id: installed.installedAppId, prune }).unwrap();
-      setUpdatePopoverOpen(false);
-      setPrune(false);
-      onUpdateStarted(entry, result.jobId);
-    } catch (err) {
-      const message = (err as { data?: { message?: string } })?.data?.message ?? 'Update failed';
-      toast({ title: 'Error', description: message, variant: 'destructive' });
-    }
-  };
+  const installedBadge =
+    installs.length === 0
+      ? null
+      : soleInstall
+        ? `Installed · v${soleInstall.version}`
+        : `Installed in ${installs.length} projects${updatable.length > 0 ? ` · ${updatable.length} update${updatable.length === 1 ? '' : 's'} available` : ''}`;
 
   const banner = (
     <div className="aspect-video w-full overflow-hidden bg-muted">
@@ -152,7 +155,7 @@ export function AppCard({ entry, onInstall, onDetails, onUpdateStarted }: AppCar
               {entry.category}
             </Badge>
           )}
-          {installed && <Badge variant="secondary">{`Installed · v${installed.version}`}</Badge>}
+          {installedBadge && <Badge variant="secondary">{installedBadge}</Badge>}
         </div>
 
         {/*
@@ -162,7 +165,7 @@ export function AppCard({ entry, onInstall, onDetails, onUpdateStarted }: AppCar
           notes are worth finding — before this they were reachable only by
           triggering an Update.
         */}
-        {installed && <SetupNotes steps={installed.manualSteps} />}
+        {soleInstall && <SetupNotes steps={soleInstall.manualSteps} />}
       </CardContent>
 
       <CardFooter className="flex flex-wrap items-center gap-2">
@@ -177,52 +180,21 @@ export function AppCard({ entry, onInstall, onDetails, onUpdateStarted }: AppCar
           </Button>
         )}
 
-        {!installed && !failedGate && (
+        {installs.length === 0 && !failedGate && (
           <Button disabled={!entry.installable} onClick={() => onInstall(entry)}>
             Install
           </Button>
         )}
 
-        {!installed && failedGate && <GateBlockedCta gate={failedGate} />}
+        {installs.length === 0 && failedGate && <GateBlockedCta gate={failedGate} />}
 
-        {installed && (
+        {soleInstall && (
           <>
-            {/*
-              A failing instance gate blocks the update the same way it blocks
-              an install — the job would refuse at its preflight step — so the
-              Update CTA becomes the same disabled, explained button rather
-              than an action that only fails after the user commits to it.
-            */}
-            {installed.updateAvailable && entry.registryVersion && failedGate && (
-              <GateBlockedCta gate={failedGate} />
-            )}
+            <InstallUpdateButton entry={entry} install={soleInstall} onUpdateStarted={onUpdateStarted} />
 
-            {installed.updateAvailable && entry.registryVersion && !failedGate && (
-              <Popover open={updatePopoverOpen} onOpenChange={setUpdatePopoverOpen}>
-                <PopoverTrigger asChild>
-                  <Button disabled={isUpdating}>{`Update to v${entry.registryVersion}`}</Button>
-                </PopoverTrigger>
-                <PopoverContent className="space-y-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <Label htmlFor={`prune-${entry.id}`} className="font-normal">
-                      Reset to the app&apos;s shipped rules (prune)
-                    </Label>
-                    <Switch
-                      id={`prune-${entry.id}`}
-                      checked={prune}
-                      onCheckedChange={setPrune}
-                    />
-                  </div>
-                  <Button className="w-full" onClick={handleConfirmUpdate} disabled={isUpdating}>
-                    {isUpdating ? 'Starting…' : 'Confirm update'}
-                  </Button>
-                </PopoverContent>
-              </Popover>
-            )}
-
-            {installed.appUrl && (
-              <Button asChild variant={installed.updateAvailable ? 'outline' : 'default'}>
-                <a href={installed.appUrl} target="_blank" rel="noopener noreferrer">
+            {soleInstall.appUrl && (
+              <Button asChild variant={soleInstall.updateAvailable ? 'outline' : 'default'}>
+                <a href={soleInstall.appUrl} target="_blank" rel="noopener noreferrer">
                   Open
                   <ExternalLink className="h-4 w-4 ml-1" />
                 </a>
@@ -236,13 +208,50 @@ export function AppCard({ entry, onInstall, onDetails, onUpdateStarted }: AppCar
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                {/*
+                  Installing again is deliberately behind the overflow: the
+                  common action on an installed card is Open/Update, and a
+                  second primary "Install" next to "Installed" reads as a bug.
+                */}
+                <DropdownMenuItem disabled={!entry.installable || Boolean(failedGate)} onSelect={() => onInstall(entry)}>
+                  Install in another project
+                </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => setUninstallOpen(true)}>Uninstall</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => setEjectOpen(true)}>Eject</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <UninstallDialog entry={entry} open={uninstallOpen} onOpenChange={setUninstallOpen} />
-            <EjectPanel entry={entry} open={ejectOpen} onOpenChange={setEjectOpen} />
+            <UninstallDialog entry={entry} install={soleInstall} open={uninstallOpen} onOpenChange={setUninstallOpen} />
+            <EjectPanel entry={entry} install={soleInstall} open={ejectOpen} onOpenChange={setEjectOpen} />
+          </>
+        )}
+
+        {installs.length > 1 && (
+          <>
+            {/*
+              Several installs: the card can't pick one to Open/Update, so it
+              offers the batch action and a way into the per-install list.
+            */}
+            {updatable.length > 0 && !failedGate && (
+              <Button onClick={() => onUpdateAll(entry)}>{`Update all (${updatable.length})`}</Button>
+            )}
+            {updatable.length > 0 && failedGate && <GateBlockedCta gate={failedGate} />}
+            <Button variant={updatable.length > 0 ? 'outline' : 'default'} onClick={() => onDetails(entry)}>
+              Manage installs
+            </Button>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" aria-label="More actions">
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem disabled={!entry.installable || Boolean(failedGate)} onSelect={() => onInstall(entry)}>
+                  Install in another project
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </>
         )}
       </CardFooter>
