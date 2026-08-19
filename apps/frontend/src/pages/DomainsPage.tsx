@@ -44,13 +44,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { DomainCard } from '@/components/domains/DomainCard';
 import { DomainForm } from '@/components/domains/DomainForm';
 import { SslCertificatePanel } from '@/components/domains/SslCertificatePanel';
@@ -62,7 +56,7 @@ export function DomainsPage() {
   const dispatch = useAppDispatch();
   const { toast } = useToast();
   const { searchQuery, filterType, filterStatus, filterProjectId } = useAppSelector(
-    (state) => state.domains
+    (state) => state.domains,
   );
 
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -84,23 +78,21 @@ export function DomainsPage() {
   const isPlatformMode = !sslToggleEnabled;
   // Hide DNS instructions when external proxy (Cloudflare) or platform (Traefik) handles DNS/SSL
   // Only show when self-hosted with Let's Encrypt (PROXY_MODE=none, not in platform mode)
-  const showDnsInstructions = isEnabled('ENABLE_DNS_SETUP_INSTRUCTIONS') && !isExternalProxyMode && !isPlatformMode;
+  const showDnsInstructions =
+    isEnabled('ENABLE_DNS_SETUP_INSTRUCTIONS') && !isExternalProxyMode && !isPlatformMode;
 
   const [createDomain, { isLoading: isCreating }] = useCreateDomainMutation();
   const [deleteDomain, { isLoading: isDeleting }] = useDeleteDomainMutation();
 
   // Filter domains
   const filteredDomains = domains?.filter((domain) => {
-    const matchesSearch = domain.domain
-      .toLowerCase()
-      .includes(searchQuery.toLowerCase());
+    const matchesSearch = domain.domain.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesType = filterType === 'all' || domain.domainType === filterType;
     const matchesStatus =
       filterStatus === 'all' ||
       (filterStatus === 'active' && domain.isActive) ||
       (filterStatus === 'inactive' && !domain.isActive);
-    const matchesProject =
-      filterProjectId === 'all' || domain.projectId === filterProjectId;
+    const matchesProject = filterProjectId === 'all' || domain.projectId === filterProjectId;
 
     return matchesSearch && matchesType && matchesStatus && matchesProject;
   });
@@ -116,8 +108,7 @@ export function DomainsPage() {
       setSelectedProjectId('');
     } catch (err: unknown) {
       const errorMessage =
-        (err as { data?: { message?: string } })?.data?.message ||
-        'Failed to create domain';
+        (err as { data?: { message?: string } })?.data?.message || 'Failed to create domain';
       toast({
         title: 'Error',
         description: errorMessage,
@@ -138,8 +129,7 @@ export function DomainsPage() {
       setDomainToDelete(null);
     } catch (err: unknown) {
       const errorMessage =
-        (err as { data?: { message?: string } })?.data?.message ||
-        'Failed to delete domain';
+        (err as { data?: { message?: string } })?.data?.message || 'Failed to delete domain';
       toast({
         title: 'Error',
         description: errorMessage,
@@ -164,7 +154,8 @@ export function DomainsPage() {
     setIsFormOpen(true);
   };
 
-  const hasFilters = searchQuery || filterType !== 'all' || filterStatus !== 'all' || filterProjectId !== 'all';
+  const hasFilters =
+    searchQuery || filterType !== 'all' || filterStatus !== 'all' || filterProjectId !== 'all';
 
   const copyToClipboard = async (text: string, field: string) => {
     await navigator.clipboard.writeText(text);
@@ -309,11 +300,7 @@ export function DomainsPage() {
           {hasFilters ? (
             <>
               <p>No domains match your filters</p>
-              <Button
-                variant="link"
-                className="mt-2"
-                onClick={() => dispatch(resetFilters())}
-              >
+              <Button variant="link" className="mt-2" onClick={() => dispatch(resetFilters())}>
                 Clear filters
               </Button>
             </>
@@ -336,13 +323,12 @@ export function DomainsPage() {
               <Info className="h-5 w-5 text-blue-500" />
               <CardTitle className="text-lg">DNS Setup Instructions</CardTitle>
             </div>
-            <CardDescription>
-              Configure your DNS to enable subdomain mappings
-            </CardDescription>
+            <CardDescription>Configure your DNS to enable subdomain mappings</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              To use subdomain mappings (e.g., <code className="bg-muted px-1 py-0.5 rounded">coverage.{config.baseDomain}</code>),
+              To use subdomain mappings (e.g.,{' '}
+              <code className="bg-muted px-1 py-0.5 rounded">coverage.{config.baseDomain}</code>),
               you need to add a wildcard DNS record pointing to your server.
             </p>
 
@@ -372,7 +358,9 @@ export function DomainsPage() {
 
                 <span className="text-muted-foreground">Value:</span>
                 <div className="flex items-center gap-2">
-                  <code className="bg-background px-2 py-1 rounded border font-mono">[Your Server IP]</code>
+                  <code className="bg-background px-2 py-1 rounded border font-mono">
+                    [Your Server IP]
+                  </code>
                 </div>
 
                 <span className="text-muted-foreground">TTL:</span>
@@ -382,11 +370,13 @@ export function DomainsPage() {
 
             <div className="text-sm space-y-2">
               <p className="text-muted-foreground">
-                <strong>Note:</strong> The wildcard record (<code className="bg-muted px-1 py-0.5 rounded">*</code>) will route
-                all subdomains to your server. This is required for dynamic subdomain mappings to work.
+                <strong>Note:</strong> The wildcard record (
+                <code className="bg-muted px-1 py-0.5 rounded">*</code>) will route all subdomains
+                to your server. This is required for dynamic subdomain mappings to work.
               </p>
               <p className="text-muted-foreground">
-                DNS changes can take up to 24 hours to propagate, though they usually complete within 15-30 minutes.
+                DNS changes can take up to 24 hours to propagate, though they usually complete
+                within 15-30 minutes.
               </p>
             </div>
           </CardContent>
@@ -458,17 +448,13 @@ export function DomainsPage() {
             <AlertDialogTitle>Delete Domain Mapping</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to delete the domain mapping for{' '}
-              <strong>{domainToDelete?.domain}</strong>? This action cannot be undone
-              and the domain will no longer resolve to your deployment.
+              <strong>{domainToDelete?.domain}</strong>? This action cannot be undone and the domain
+              will no longer resolve to your deployment.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-            <Button
-              variant="destructive"
-              onClick={handleDelete}
-              disabled={isDeleting}
-            >
+            <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
               {isDeleting ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />

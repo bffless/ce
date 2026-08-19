@@ -35,7 +35,8 @@ describe('ApplyPanel', () => {
 
   it('shows the countdown-started notice for a serving result', async () => {
     apply.mockReturnValue({
-      unwrap: () => Promise.resolve({ applied: true, kind: 'serving', deadlineMs: Date.now() + 60000 }),
+      unwrap: () =>
+        Promise.resolve({ applied: true, kind: 'serving', deadlineMs: Date.now() + 60000 }),
     });
     render(<ApplyPanel config={config} disabled={false} />);
 
@@ -50,7 +51,8 @@ describe('ApplyPanel', () => {
 
   it('shows the countdown-started notice with cert copy for a cert-only result carrying a deadline', async () => {
     apply.mockReturnValue({
-      unwrap: () => Promise.resolve({ applied: true, kind: 'cert-only', deadlineMs: Date.now() + 60000 }),
+      unwrap: () =>
+        Promise.resolve({ applied: true, kind: 'cert-only', deadlineMs: Date.now() + 60000 }),
     });
     render(<ApplyPanel config={config} disabled={false} />);
 
@@ -74,7 +76,10 @@ describe('ApplyPanel', () => {
 
     await waitFor(() =>
       expect(mockToast).toHaveBeenCalledWith(
-        expect.objectContaining({ title: 'Applied', description: 'Certificate updated successfully.' }),
+        expect.objectContaining({
+          title: 'Applied',
+          description: 'Certificate updated successfully.',
+        }),
       ),
     );
   });

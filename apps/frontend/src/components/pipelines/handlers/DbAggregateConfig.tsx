@@ -54,7 +54,12 @@ const FILTER_OPS: { value: FilterConfig['op']; label: string }[] = [
   { value: 'in', label: 'In (any of)' },
 ];
 
-export function DbAggregateConfig({ config, onChange, projectId, previousSteps = [] }: DbAggregateConfigProps) {
+export function DbAggregateConfig({
+  config,
+  onChange,
+  projectId,
+  previousSteps = [],
+}: DbAggregateConfigProps) {
   const [schemaId, setSchemaId] = useState(config.schemaId || '');
   const [operation, setOperation] = useState<DbAggregateHandlerConfig['operation']>(
     config.operation || 'count',
@@ -64,7 +69,11 @@ export function DbAggregateConfig({ config, onChange, projectId, previousSteps =
     const existing = config.filters || {};
     const entries = Object.entries(existing);
     return entries.length > 0
-      ? entries.map(([f, conf]) => ({ field: f, op: conf.op, value: displayFilterValue(conf.value) }))
+      ? entries.map(([f, conf]) => ({
+          field: f,
+          op: conf.op,
+          value: displayFilterValue(conf.value),
+        }))
       : [];
   });
   const [filterLogic, setFilterLogic] = useState<'and' | 'or'>(config.filterLogic || 'and');
@@ -77,7 +86,10 @@ export function DbAggregateConfig({ config, onChange, projectId, previousSteps =
     const filtersRecord: Record<string, FilterConfig> = {};
     for (const filter of filters) {
       if (filter.field.trim()) {
-        filtersRecord[filter.field.trim()] = { op: filter.op, value: serializeFilterValue(filter.op, filter.value) };
+        filtersRecord[filter.field.trim()] = {
+          op: filter.op,
+          value: serializeFilterValue(filter.op, filter.value),
+        };
       }
     }
 
@@ -165,7 +177,8 @@ export function DbAggregateConfig({ config, onChange, projectId, previousSteps =
           placeholder="No grouping"
         />
         <p className="text-xs text-muted-foreground">
-          Group results by a field. Returns an array of {'{'} key, value {'}'} pairs instead of a single result.
+          Group results by a field. Returns an array of {'{'} key, value {'}'} pairs instead of a
+          single result.
         </p>
       </div>
 
@@ -211,7 +224,9 @@ export function DbAggregateConfig({ config, onChange, projectId, previousSteps =
                   <ExpressionInput
                     value={filter.value}
                     onChange={(value) => handleFilterChange(index, { value })}
-                    placeholder={filter.op === 'in' ? 'Expression, or comma-separated list' : 'Expression'}
+                    placeholder={
+                      filter.op === 'in' ? 'Expression, or comma-separated list' : 'Expression'
+                    }
                     previousSteps={previousSteps}
                   />
                 </div>
@@ -251,9 +266,7 @@ export function DbAggregateConfig({ config, onChange, projectId, previousSteps =
                   </Button>
                 </div>
                 <span className="text-xs text-muted-foreground">
-                  {filterLogic === 'and'
-                    ? 'All conditions must match'
-                    : 'Any condition can match'}
+                  {filterLogic === 'and' ? 'All conditions must match' : 'Any condition can match'}
                 </span>
               </div>
             )}

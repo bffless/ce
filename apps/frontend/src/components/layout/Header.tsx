@@ -85,9 +85,7 @@ export function Header() {
                   <DropdownMenuContent align="end" className="w-56">
                     <div className="px-2 py-1.5 text-sm">
                       <div className="font-medium">{user.email}</div>
-                      <div className="text-xs text-muted-foreground capitalize">
-                        {user.role}
-                      </div>
+                      <div className="text-xs text-muted-foreground capitalize">{user.role}</div>
                     </div>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={handleSettings}>

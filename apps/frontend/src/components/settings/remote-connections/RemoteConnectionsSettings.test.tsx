@@ -185,7 +185,9 @@ describe('RemoteConnectionsSettings', () => {
     dialog = openEdit('ffmpeg');
     fireEvent.change(within(dialog).getByLabelText(/Max in-flight/), { target: { value: '16' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(update).toHaveBeenCalledWith({ id: 'c1', body: { maxInflight: 16 } }));
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith({ id: 'c1', body: { maxInflight: 16 } }),
+    );
   });
 
   it('auth none shows the destructive no-authentication alert', () => {
@@ -204,7 +206,9 @@ describe('RemoteConnectionsSettings', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
 
     const legacyRow = row('legacy');
-    expect(within(legacyRow).queryByRole('button', { name: 'Edit legacy' })).not.toBeInTheDocument();
+    expect(
+      within(legacyRow).queryByRole('button', { name: 'Edit legacy' }),
+    ).not.toBeInTheDocument();
     expect(
       within(legacyRow).queryByRole('button', { name: 'Delete legacy' }),
     ).not.toBeInTheDocument();

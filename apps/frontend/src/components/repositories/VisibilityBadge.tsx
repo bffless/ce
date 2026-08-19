@@ -1,10 +1,6 @@
 import { Globe, Lock } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
 interface VisibilityBadgeProps {
@@ -50,9 +46,7 @@ export function VisibilityBadge({
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="inline-flex">
-          {badgeContent}
-        </span>
+        <span className="inline-flex">{badgeContent}</span>
       </TooltipTrigger>
       <TooltipContent>
         <p className="max-w-xs">{description}</p>

@@ -71,7 +71,7 @@ export function PathTypeahead({
   // Fetch file tree when alias is provided
   const { data: fileTree, isLoading } = useGetFileTreeQuery(
     { owner, repo, commitSha: alias },
-    { skip: !owner || !repo || !alias }
+    { skip: !owner || !repo || !alias },
   );
 
   // Extract directories from file tree

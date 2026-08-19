@@ -87,10 +87,7 @@ export function ScheduleFormDialog({
   const timezones = useMemo(timezoneOptions, []);
 
   const canSubmit =
-    name.trim().length > 0 &&
-    cronValid &&
-    (isEdit || targetProxyRuleId.length > 0) &&
-    !isSaving;
+    name.trim().length > 0 && cronValid && (isEdit || targetProxyRuleId.length > 0) && !isSaving;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

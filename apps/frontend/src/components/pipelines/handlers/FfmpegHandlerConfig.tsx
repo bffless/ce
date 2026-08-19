@@ -1,6 +1,12 @@
 import { useEffect } from 'react';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { ExpressionInput } from './ExpressionInput';
 import type { FfmpegHandlerConfig as Config, FfmpegOperation } from './types';
@@ -85,7 +91,11 @@ export function FfmpegHandlerConfig({ config, onChange, previousSteps = [] }: Pr
   const spansText =
     typeof typed.spans === 'string' ? typed.spans : typed.spans ? JSON.stringify(typed.spans) : '';
   const inputsText =
-    typeof typed.inputs === 'string' ? typed.inputs : typed.inputs ? JSON.stringify(typed.inputs) : '';
+    typeof typed.inputs === 'string'
+      ? typed.inputs
+      : typed.inputs
+        ? JSON.stringify(typed.inputs)
+        : '';
 
   const hint = OPERATIONS.find((o) => o.value === operation)?.hint;
 
@@ -110,7 +120,9 @@ export function FfmpegHandlerConfig({ config, onChange, previousSteps = [] }: Pr
 
       {operation !== 'concat' && (
         <div className="space-y-2">
-          <Label>Input {operation === 'probe' ? '(optional — omit for a capability check)' : ''}</Label>
+          <Label>
+            Input {operation === 'probe' ? '(optional — omit for a capability check)' : ''}
+          </Label>
           <ExpressionInput
             value={typed.input ?? ''}
             onChange={(v) => update({ input: v || undefined })}

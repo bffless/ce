@@ -14,11 +14,7 @@ function formatRemaining(remainingMs: number): string {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
-export function RollbackPanel({
-  pendingRevert,
-}: {
-  pendingRevert: { deadlineMs: number } | null;
-}) {
+export function RollbackPanel({ pendingRevert }: { pendingRevert: { deadlineMs: number } | null }) {
   const { toast } = useToast();
   const [confirmPrimarySsl, { isLoading: isConfirming }] = useConfirmPrimarySslMutation();
   const [rollbackPrimarySsl, { isLoading: isRollingBack }] = useRollbackPrimarySslMutation();
@@ -39,9 +35,16 @@ export function RollbackPanel({
   const handleConfirm = async () => {
     try {
       await confirmPrimarySsl().unwrap();
-      toast({ title: 'Changes kept', description: 'The SSL configuration will not be auto-reverted.' });
+      toast({
+        title: 'Changes kept',
+        description: 'The SSL configuration will not be auto-reverted.',
+      });
     } catch (error: unknown) {
-      toast({ title: 'Error', description: errorMessage(error, 'Failed to confirm changes'), variant: 'destructive' });
+      toast({
+        title: 'Error',
+        description: errorMessage(error, 'Failed to confirm changes'),
+        variant: 'destructive',
+      });
     }
   };
 
@@ -50,7 +53,11 @@ export function RollbackPanel({
       await rollbackPrimarySsl().unwrap();
       toast({ title: 'Restored', description: 'Previous SSL configuration restored.' });
     } catch (error: unknown) {
-      toast({ title: 'Error', description: errorMessage(error, 'Failed to restore previous configuration'), variant: 'destructive' });
+      toast({
+        title: 'Error',
+        description: errorMessage(error, 'Failed to restore previous configuration'),
+        variant: 'destructive',
+      });
     }
   };
 
@@ -58,12 +65,10 @@ export function RollbackPanel({
     <div className="space-y-4">
       {pendingRevert && (
         <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-4 space-y-2">
-          <p className="text-sm font-medium">
-            Auto-revert in {formatRemaining(remainingMs)}
-          </p>
+          <p className="text-sm font-medium">Auto-revert in {formatRemaining(remainingMs)}</p>
           <p className="text-sm text-muted-foreground">
-            If you don&apos;t confirm before the countdown ends, the previous SSL configuration
-            will be restored automatically.
+            If you don&apos;t confirm before the countdown ends, the previous SSL configuration will
+            be restored automatically.
           </p>
           <Button onClick={handleConfirm} disabled={isConfirming}>
             {isConfirming ? 'Keeping…' : 'Keep these changes'}

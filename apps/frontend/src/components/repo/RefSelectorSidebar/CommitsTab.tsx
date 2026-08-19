@@ -12,23 +12,9 @@ interface CommitsTabProps {
   onSelect: (sha: string) => void;
 }
 
-export function CommitsTab({
-  owner,
-  repo,
-  currentRef,
-  searchQuery,
-  onSelect,
-}: CommitsTabProps) {
-  const {
-    commits,
-    aliases,
-    isLoading,
-    isLoadingMore,
-    hasMore,
-    total,
-    loadMore,
-    error,
-  } = useInfiniteCommits({ owner, repo });
+export function CommitsTab({ owner, repo, currentRef, searchQuery, onSelect }: CommitsTabProps) {
+  const { commits, aliases, isLoading, isLoadingMore, hasMore, total, loadMore, error } =
+    useInfiniteCommits({ owner, repo });
 
   // Filter commits locally based on search query
   const filteredCommits = useMemo(() => {
@@ -39,7 +25,7 @@ export function CommitsTab({
         c.sha.toLowerCase().includes(query) ||
         c.shortSha.toLowerCase().includes(query) ||
         c.branch.toLowerCase().includes(query) ||
-        c.description?.toLowerCase().includes(query)
+        c.description?.toLowerCase().includes(query),
     );
   }, [commits, searchQuery]);
 
@@ -64,9 +50,7 @@ export function CommitsTab({
       <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
         <GitCommit className="h-12 w-12 text-destructive mb-4" />
         <h3 className="font-medium mb-1">Failed to Load</h3>
-        <p className="text-sm text-muted-foreground">
-          Could not load commit history.
-        </p>
+        <p className="text-sm text-muted-foreground">Could not load commit history.</p>
       </div>
     );
   }
@@ -77,9 +61,7 @@ export function CommitsTab({
       <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
         <GitCommit className="h-12 w-12 text-muted-foreground mb-4" />
         <h3 className="font-medium mb-1">No Commits</h3>
-        <p className="text-sm text-muted-foreground">
-          No deployments have been made yet.
-        </p>
+        <p className="text-sm text-muted-foreground">No deployments have been made yet.</p>
       </div>
     );
   }
@@ -90,9 +72,7 @@ export function CommitsTab({
       <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
         <GitCommit className="h-12 w-12 text-muted-foreground mb-4" />
         <h3 className="font-medium mb-1">No Results</h3>
-        <p className="text-sm text-muted-foreground">
-          No commits match "{searchQuery}"
-        </p>
+        <p className="text-sm text-muted-foreground">No commits match "{searchQuery}"</p>
       </div>
     );
   }

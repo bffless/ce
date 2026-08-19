@@ -62,28 +62,35 @@ export function DomainDnsPhase({ domain, setDomain, serverIp, onBack, onNext }: 
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-medium text-foreground">Point your domain at {servingMode === 'none' ? 'this server' : 'your proxy'}</h3>
+        <h3 className="text-lg font-medium text-foreground">
+          Point your domain at {servingMode === 'none' ? 'this server' : 'your proxy'}
+        </h3>
         {servingMode === 'cloudflare' && (
           <p className="mt-2 text-sm text-muted-foreground">
-            In Cloudflare DNS, create two <strong>A records</strong> — <code className="bg-muted px-1 rounded">@</code> and{' '}
-            <code className="bg-muted px-1 rounded">*</code> — pointing at <code className="bg-muted px-1 rounded">{ipText}</code>,
-            both set to <strong>Proxied</strong> (orange cloud).
+            In Cloudflare DNS, create two <strong>A records</strong> —{' '}
+            <code className="bg-muted px-1 rounded">@</code> and{' '}
+            <code className="bg-muted px-1 rounded">*</code> — pointing at{' '}
+            <code className="bg-muted px-1 rounded">{ipText}</code>, both set to{' '}
+            <strong>Proxied</strong> (orange cloud).
           </p>
         )}
         {servingMode === 'proxy' && (
           <p className="mt-2 text-sm text-muted-foreground">
             Point your apex domain and wildcard at your CDN/WAF following its docs, and set{' '}
-            <code className="bg-muted px-1 rounded">{ipText}</code> as its <strong>origin</strong>. Preview subdomains
-            need the wildcard routed too.
+            <code className="bg-muted px-1 rounded">{ipText}</code> as its <strong>origin</strong>.
+            Preview subdomains need the wildcard routed too.
           </p>
         )}
         {servingMode === 'none' && (
           <p className="mt-2 text-sm text-muted-foreground">
-            At your DNS provider, create two <strong>A records</strong> — <code className="bg-muted px-1 rounded">@</code>{' '}
-            and <code className="bg-muted px-1 rounded">*</code> (wildcard: makes <code className="bg-muted px-1 rounded">admin.</code>,{' '}
+            At your DNS provider, create two <strong>A records</strong> —{' '}
+            <code className="bg-muted px-1 rounded">@</code> and{' '}
+            <code className="bg-muted px-1 rounded">*</code> (wildcard: makes{' '}
+            <code className="bg-muted px-1 rounded">admin.</code>,{' '}
             <code className="bg-muted px-1 rounded">www.</code> and previews resolve) — pointing at{' '}
-            <code className="bg-muted px-1 rounded">{ipText}</code>. If your DNS host can proxy traffic (e.g.
-            Cloudflare), turn that <strong>off</strong> for these records (gray cloud).
+            <code className="bg-muted px-1 rounded">{ipText}</code>. If your DNS host can proxy
+            traffic (e.g. Cloudflare), turn that <strong>off</strong> for these records (gray
+            cloud).
           </p>
         )}
         {/*
@@ -113,7 +120,11 @@ export function DomainDnsPhase({ domain, setDomain, serverIp, onBack, onNext }: 
         <Input
           id="bootstrap-domain"
           value={domain}
-          onChange={(e) => { setDomain(e.target.value); setResult(null); dispatch(setDnsPreflightPassed(false)); }}
+          onChange={(e) => {
+            setDomain(e.target.value);
+            setResult(null);
+            dispatch(setDnsPreflightPassed(false));
+          }}
           onBlur={handleBlur}
           placeholder="example.com"
           className="mt-1"
@@ -126,7 +137,10 @@ export function DomainDnsPhase({ domain, setDomain, serverIp, onBack, onNext }: 
       {isLetsEncrypt && (
         <div className="rounded-md border border-border bg-muted/40 p-4 space-y-3">
           <p className="text-sm font-medium text-foreground">
-            DNS check <span className="font-normal text-muted-foreground">— required before a certificate can be issued</span>
+            DNS check{' '}
+            <span className="font-normal text-muted-foreground">
+              — required before a certificate can be issued
+            </span>
           </p>
           {result?.checks.map((c) => (
             <div key={c.host} className="flex items-start text-sm">
@@ -137,9 +151,14 @@ export function DomainDnsPhase({ domain, setDomain, serverIp, onBack, onNext }: 
               )}
               <span>
                 <code className="bg-muted px-1 rounded">{c.host}</code>{' '}
-                {c.probeOk
-                  ? <>→ {c.resolvedIps.join(', ') || 'reachable'}</>
-                  : <span className="text-muted-foreground">{c.error ?? 'not reachable yet'}{c.resolvedIps.length > 0 && <> (resolves to {c.resolvedIps.join(', ')})</>}</span>}
+                {c.probeOk ? (
+                  <>→ {c.resolvedIps.join(', ') || 'reachable'}</>
+                ) : (
+                  <span className="text-muted-foreground">
+                    {c.error ?? 'not reachable yet'}
+                    {c.resolvedIps.length > 0 && <> (resolves to {c.resolvedIps.join(', ')})</>}
+                  </span>
+                )}
               </span>
             </div>
           ))}
@@ -149,14 +168,30 @@ export function DomainDnsPhase({ domain, setDomain, serverIp, onBack, onNext }: 
               DNS changes can take a few minutes to propagate — check again shortly.
             </p>
           )}
-          <Button variant="outline" size="sm" onClick={runCheck} disabled={checking || !normalized || !!domainError(normalized)}>
-            {checking ? (<><Loader2 className="w-4 h-4 mr-2 animate-spin" />Checking…</>) : result ? 'Check again' : 'Check DNS'}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={runCheck}
+            disabled={checking || !normalized || !!domainError(normalized)}
+          >
+            {checking ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Checking…
+              </>
+            ) : result ? (
+              'Check again'
+            ) : (
+              'Check DNS'
+            )}
           </Button>
         </div>
       )}
 
       <div className="flex justify-between">
-        <Button variant="outline" onClick={onBack}>Back</Button>
+        <Button variant="outline" onClick={onBack}>
+          Back
+        </Button>
         <Button
           onClick={() => {
             // Belt-and-suspenders: normalize even if the user never blurred

@@ -1,11 +1,5 @@
 import { AlertCircle, AlertTriangle, HardDrive, Info, TrendingUp } from 'lucide-react';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -44,9 +38,7 @@ export function StorageUsageCard() {
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
             <AlertTitle>Error</AlertTitle>
-            <AlertDescription>
-              Failed to load storage usage information.
-            </AlertDescription>
+            <AlertDescription>Failed to load storage usage information.</AlertDescription>
           </Alert>
         </CardContent>
       </Card>
@@ -87,9 +79,7 @@ export function StorageUsageCard() {
         {!isUnlimited && (
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">
-                {usage.usagePercent?.toFixed(1)}% used
-              </span>
+              <span className="text-muted-foreground">{usage.usagePercent?.toFixed(1)}% used</span>
               <span className="text-muted-foreground">
                 {formatBytes(usage.quotaBytes! - usage.totalBytes)} remaining
               </span>
@@ -108,8 +98,7 @@ export function StorageUsageCard() {
             <div className="space-y-1">
               <p className="text-sm font-medium">Unlimited Storage</p>
               <p className="text-sm text-muted-foreground">
-                {usage.assetCount.toLocaleString()} assets using{' '}
-                {formatBytes(usage.totalBytes)}
+                {usage.assetCount.toLocaleString()} assets using {formatBytes(usage.totalBytes)}
               </p>
             </div>
           </div>
@@ -123,16 +112,12 @@ export function StorageUsageCard() {
             <AlertDescription>
               You&apos;ve used {usage.usagePercent?.toFixed(1)}% of your storage quota.
               {usage.overageBehavior === 'block' && (
-                <span>
-                  {' '}
-                  Uploads will be blocked when you reach 100%.
-                </span>
+                <span> Uploads will be blocked when you reach 100%.</span>
               )}
               {usage.overageBehavior === 'charge' && usage.overagePricePerGb && (
                 <span>
                   {' '}
-                  Overage will be billed at{' '}
-                  {formatCurrency(usage.overagePricePerGb)}/GB.
+                  Overage will be billed at {formatCurrency(usage.overagePricePerGb)}/GB.
                 </span>
               )}
             </AlertDescription>
@@ -144,16 +129,13 @@ export function StorageUsageCard() {
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
             <AlertTitle>
-              {usage.overageBehavior === 'block'
-                ? 'Storage Quota Exceeded'
-                : 'Storage Overage'}
+              {usage.overageBehavior === 'block' ? 'Storage Quota Exceeded' : 'Storage Overage'}
             </AlertTitle>
             <AlertDescription>
               {usage.overageBehavior === 'block' ? (
                 <span>
-                  You&apos;ve exceeded your storage quota by{' '}
-                  {formatBytes(usage.overageBytes)}. New uploads are blocked
-                  until you free up space.
+                  You&apos;ve exceeded your storage quota by {formatBytes(usage.overageBytes)}. New
+                  uploads are blocked until you free up space.
                 </span>
               ) : (
                 <span>
@@ -178,9 +160,7 @@ export function StorageUsageCard() {
           </div>
           <div className="space-y-1">
             <p className="text-sm text-muted-foreground">Assets</p>
-            <p className="text-2xl font-semibold">
-              {usage.assetCount.toLocaleString()}
-            </p>
+            <p className="text-2xl font-semibold">{usage.assetCount.toLocaleString()}</p>
           </div>
         </div>
 
@@ -193,17 +173,12 @@ export function StorageUsageCard() {
             </h4>
             <div className="space-y-2">
               {projectUsage.slice(0, 5).map((project) => (
-                <div
-                  key={project.projectId}
-                  className="flex items-center justify-between text-sm"
-                >
+                <div key={project.projectId} className="flex items-center justify-between text-sm">
                   <span className="truncate max-w-[200px]">
                     {project.owner}/{project.projectName}
                   </span>
                   <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground">
-                      {formatBytes(project.totalBytes)}
-                    </span>
+                    <span className="text-muted-foreground">{formatBytes(project.totalBytes)}</span>
                     <span className="text-xs text-muted-foreground w-12 text-right">
                       {project.percentOfTotal.toFixed(1)}%
                     </span>
@@ -223,9 +198,7 @@ export function StorageUsageCard() {
         {!isUnlimited && usage.overagePricePerGb && (
           <div className="text-sm text-muted-foreground border-t pt-4">
             {usage.overageBehavior === 'charge' ? (
-              <span>
-                Overage billed at {formatCurrency(usage.overagePricePerGb)}/GB
-              </span>
+              <span>Overage billed at {formatCurrency(usage.overagePricePerGb)}/GB</span>
             ) : (
               <span>Uploads will be blocked when quota is exceeded</span>
             )}

@@ -64,8 +64,8 @@ export function DelayHandlerConfig({ config, onChange, previousSteps = [] }: Pro
           </select>
         </div>
         <p className="text-xs text-muted-foreground">
-          Pause the pipeline for this duration. Accepts a literal number or an expression
-          (e.g. <code>request.body.waitMs</code>). Capped at 60 seconds.
+          Pause the pipeline for this duration. Accepts a literal number or an expression (e.g.{' '}
+          <code>request.body.waitMs</code>). Capped at 60 seconds.
         </p>
       </div>
 

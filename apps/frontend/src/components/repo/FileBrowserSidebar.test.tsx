@@ -53,7 +53,9 @@ const mockFiles: FileMetadata[] = [
 ];
 
 // Helper function to create a test store
-function createTestStore(initialState: Partial<{ fileBrowser: { searchQuery: string; expandedPaths: string[] } }> = {}) {
+function createTestStore(
+  initialState: Partial<{ fileBrowser: { searchQuery: string; expandedPaths: string[] } }> = {},
+) {
   return configureStore({
     reducer: {
       ui: uiReducer,

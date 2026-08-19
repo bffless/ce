@@ -173,12 +173,7 @@ export function FileIcon({
 }: FileIconProps) {
   if (isDirectory) {
     const Icon = isOpen ? FolderOpen : Folder;
-    return (
-      <Icon
-        size={size}
-        className={`text-blue-500 dark:text-blue-400 ${className}`}
-      />
-    );
+    return <Icon size={size} className={`text-blue-500 dark:text-blue-400 ${className}`} />;
   }
 
   const { icon: Icon, color } = getFileIconConfig(fileName);

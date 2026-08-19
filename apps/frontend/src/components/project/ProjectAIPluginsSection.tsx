@@ -77,7 +77,8 @@ function PluginCard({
   const categoryColor = CATEGORY_COLORS[plugin.category] || 'bg-gray-50 text-gray-700';
   const isOAuthPlugin = plugin.requiresOAuth;
   const isOAuthConnected = isOAuthPlugin && plugin.oauthConnectedEmail;
-  const needsOAuthConnect = isOAuthPlugin && plugin.enabled && !plugin.oauthConnectedEmail && plugin.hasConfig;
+  const needsOAuthConnect =
+    isOAuthPlugin && plugin.enabled && !plugin.oauthConnectedEmail && plugin.hasConfig;
 
   return (
     <div className="border rounded-lg p-4">
@@ -149,10 +150,7 @@ function PluginCard({
           {isToggling ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
-            <Switch
-              checked={plugin.enabled}
-              onCheckedChange={onToggle}
-            />
+            <Switch checked={plugin.enabled} onCheckedChange={onToggle} />
           )}
         </div>
       </div>
@@ -193,9 +191,7 @@ function PluginConfigDialog({
       <DialogContent className="sm:max-w-[450px]">
         <DialogHeader>
           <DialogTitle>Configure {plugin.name}</DialogTitle>
-          <DialogDescription>
-            Enter the required credentials for this plugin.
-          </DialogDescription>
+          <DialogDescription>Enter the required credentials for this plugin.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
@@ -450,7 +446,8 @@ export function ProjectAIPluginsSection({ project }: ProjectAIPluginsSectionProp
             AI Plugins
           </CardTitle>
           <CardDescription>
-            Enable plugins to give your AI chat tools that can perform actions like calculations, web searches, and more.
+            Enable plugins to give your AI chat tools that can perform actions like calculations,
+            web searches, and more.
             {enabledCount > 0 && (
               <span className="ml-1 font-medium">
                 {enabledCount} plugin{enabledCount > 1 ? 's' : ''} enabled.
@@ -473,9 +470,7 @@ export function ProjectAIPluginsSection({ project }: ProjectAIPluginsSectionProp
               />
             ))
           ) : (
-            <p className="text-sm text-muted-foreground py-4 text-center">
-              No plugins available.
-            </p>
+            <p className="text-sm text-muted-foreground py-4 text-center">No plugins available.</p>
           )}
         </CardContent>
       </Card>

@@ -14,7 +14,16 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Trash2, Edit2, AlertCircle, ArrowRight, RotateCcw, Mail, Workflow, Bug } from 'lucide-react';
+import {
+  Trash2,
+  Edit2,
+  AlertCircle,
+  ArrowRight,
+  RotateCcw,
+  Mail,
+  Workflow,
+  Bug,
+} from 'lucide-react';
 import type { ProxyRule, UpdateProxyRuleDto } from '@/services/proxyRulesApi';
 import { useGetRuleLogCountQuery } from '@/services/proxyRulesApi';
 
@@ -39,15 +48,17 @@ interface RulesListProps {
 /**
  * Small inline component to show log count badge for a pipeline rule.
  */
-function LogCountBadge({ ruleId, onClick }: { ruleId: string; onClick: (e: React.MouseEvent) => void }) {
+function LogCountBadge({
+  ruleId,
+  onClick,
+}: {
+  ruleId: string;
+  onClick: (e: React.MouseEvent) => void;
+}) {
   const { data } = useGetRuleLogCountQuery(ruleId);
   if (!data || data.count === 0) return null;
   return (
-    <Badge
-      variant="secondary"
-      className="cursor-pointer text-xs"
-      onClick={onClick}
-    >
+    <Badge variant="secondary" className="cursor-pointer text-xs" onClick={onClick}>
       {data.count} run{data.count === 1 ? '' : 's'}
     </Badge>
   );
@@ -122,7 +133,8 @@ export function RulesList({
       <Alert variant="destructive">
         <AlertCircle className="h-4 w-4" />
         <AlertDescription>
-          Failed to load proxy rules. {(error as { data?: { message?: string } })?.data?.message || 'Unknown error'}
+          Failed to load proxy rules.{' '}
+          {(error as { data?: { message?: string } })?.data?.message || 'Unknown error'}
         </AlertDescription>
       </Alert>
     );
@@ -201,9 +213,7 @@ export function RulesList({
                 )}
               </div>
               {rule.description && (
-                <p className="text-xs text-muted-foreground mt-1 truncate">
-                  {rule.description}
-                </p>
+                <p className="text-xs text-muted-foreground mt-1 truncate">{rule.description}</p>
               )}
               <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                 {rule.proxyType === 'email_form_handler' ? (
@@ -233,10 +243,7 @@ export function RulesList({
                 would otherwise be crushed at phone widths */}
             <div className="ml-auto flex items-center gap-1">
               {rule.proxyType === 'pipeline' && rule.debugEnabled && (
-                <LogCountBadge
-                  ruleId={rule.id}
-                  onClick={(e) => handleViewLogs(rule, e)}
-                />
+                <LogCountBadge ruleId={rule.id} onClick={(e) => handleViewLogs(rule, e)} />
               )}
               {canEdit && (
                 <>

@@ -2,12 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Plus, Trash2, HelpCircle, AlertTriangle } from 'lucide-react';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { SchemaPicker } from './SchemaPicker';
 import { SchemaFieldPicker, useSchemaFields } from './SchemaFieldPicker';
 import { ExpressionInput } from './ExpressionInput';
@@ -26,7 +21,12 @@ interface FieldMapping {
   expression: string;
 }
 
-export function DataCreateConfig({ config, onChange, projectId, previousSteps = [] }: DataCreateConfigProps) {
+export function DataCreateConfig({
+  config,
+  onChange,
+  projectId,
+  previousSteps = [],
+}: DataCreateConfigProps) {
   const [schemaId, setSchemaId] = useState(config.schemaId || '');
   const [fieldMappings, setFieldMappings] = useState<FieldMapping[]>(() => {
     const existing = config.fields || {};
@@ -48,9 +48,7 @@ export function DataCreateConfig({ config, onChange, projectId, previousSteps = 
   // Check for required fields that aren't mapped
   const unmappedRequiredFields = useMemo(() => {
     const mappedFields = new Set(usedFields);
-    return schemaFields
-      .filter((f) => f.required && !mappedFields.has(f.name))
-      .map((f) => f.name);
+    return schemaFields.filter((f) => f.required && !mappedFields.has(f.name)).map((f) => f.name);
   }, [schemaFields, usedFields]);
 
   useEffect(() => {
@@ -84,9 +82,7 @@ export function DataCreateConfig({ config, onChange, projectId, previousSteps = 
   };
 
   const handleMappingChange = (index: number, updates: Partial<FieldMapping>) => {
-    setFieldMappings(
-      fieldMappings.map((m, i) => (i === index ? { ...m, ...updates } : m)),
-    );
+    setFieldMappings(fieldMappings.map((m, i) => (i === index ? { ...m, ...updates } : m)));
   };
 
   return (
@@ -110,12 +106,24 @@ export function DataCreateConfig({ config, onChange, projectId, previousSteps = 
                 <TooltipContent className="max-w-xs">
                   <p>Map schema fields to expressions. Available paths:</p>
                   <ul className="list-disc list-inside mt-1 text-xs">
-                    <li><code>request.body.fieldName</code> - Request body</li>
-                    <li><code>request.query.param</code> - Query params</li>
-                    <li><code>user.id</code>, <code>user.email</code> - Current user</li>
-                    <li><code>steps.stepName.field</code> - Previous step output</li>
-                    <li><code>now()</code> - Current timestamp</li>
-                    <li><code>uuid()</code> - Generate UUID</li>
+                    <li>
+                      <code>request.body.fieldName</code> - Request body
+                    </li>
+                    <li>
+                      <code>request.query.param</code> - Query params
+                    </li>
+                    <li>
+                      <code>user.id</code>, <code>user.email</code> - Current user
+                    </li>
+                    <li>
+                      <code>steps.stepName.field</code> - Previous step output
+                    </li>
+                    <li>
+                      <code>now()</code> - Current timestamp
+                    </li>
+                    <li>
+                      <code>uuid()</code> - Generate UUID
+                    </li>
                   </ul>
                 </TooltipContent>
               </Tooltip>
@@ -132,9 +140,7 @@ export function DataCreateConfig({ config, onChange, projectId, previousSteps = 
               <AlertTriangle className="h-4 w-4 text-yellow-600 mt-0.5 shrink-0" />
               <div>
                 <span className="text-yellow-700 font-medium">Required fields not mapped: </span>
-                <span className="text-yellow-600">
-                  {unmappedRequiredFields.join(', ')}
-                </span>
+                <span className="text-yellow-600">{unmappedRequiredFields.join(', ')}</span>
               </div>
             </div>
           )}
@@ -160,7 +166,11 @@ export function DataCreateConfig({ config, onChange, projectId, previousSteps = 
                     <ExpressionInput
                       value={mapping.expression}
                       onChange={(value) => handleMappingChange(index, { expression: value })}
-                      placeholder={schemaField ? getPlaceholderForType(schemaField.type) : 'request.body.fieldName'}
+                      placeholder={
+                        schemaField
+                          ? getPlaceholderForType(schemaField.type)
+                          : 'request.body.fieldName'
+                      }
                       previousSteps={previousSteps}
                       className="flex-1"
                     />

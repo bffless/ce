@@ -190,7 +190,14 @@ export interface EnvSmtpConfigResponse {
 // Email Provider Types (New - Multi-Provider Support)
 // =============================================================================
 
-export type EmailProvider = 'smtp' | 'sendgrid' | 'ses' | 'mailgun' | 'resend' | 'postmark' | 'managed';
+export type EmailProvider =
+  | 'smtp'
+  | 'sendgrid'
+  | 'ses'
+  | 'mailgun'
+  | 'resend'
+  | 'postmark'
+  | 'managed';
 
 export interface EmailProviderInfo {
   id: EmailProvider;
@@ -797,7 +804,10 @@ export const setupApi = api.injectEndpoints({
     }),
 
     // Update allow public signups setting (admin only)
-    updateAllowPublicSignups: builder.mutation<UpdateAllowPublicSignupsResponse, UpdateAllowPublicSignupsRequest>({
+    updateAllowPublicSignups: builder.mutation<
+      UpdateAllowPublicSignupsResponse,
+      UpdateAllowPublicSignupsRequest
+    >({
       query: (body) => ({
         url: '/api/setup/registration/allow-public-signups',
         method: 'POST',

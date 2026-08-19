@@ -1,10 +1,6 @@
 import { differenceInDays } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { formatRelativeTime } from '@/lib/utils';
 
 interface ActivityBadgeProps {
@@ -27,20 +23,12 @@ export function ActivityBadge({
     return null;
   }
 
-  const daysSinceDeployment = differenceInDays(
-    new Date(),
-    new Date(lastDeployedAt)
-  );
+  const daysSinceDeployment = differenceInDays(new Date(), new Date(lastDeployedAt));
   const isActive = daysSinceDeployment < 7;
 
   const badgeContent = (
-    <Badge
-      variant={isActive ? 'default' : 'secondary'}
-      className={className}
-    >
-      <span className={isActive ? 'text-green-500' : 'text-gray-500'}>
-        {isActive ? '●' : '○'}
-      </span>
+    <Badge variant={isActive ? 'default' : 'secondary'} className={className}>
+      <span className={isActive ? 'text-green-500' : 'text-gray-500'}>{isActive ? '●' : '○'}</span>
       <span className="ml-1">{isActive ? 'Active' : 'Inactive'}</span>
     </Badge>
   );
@@ -52,15 +40,11 @@ export function ActivityBadge({
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="inline-flex">
-          {badgeContent}
-        </span>
+        <span className="inline-flex">{badgeContent}</span>
       </TooltipTrigger>
       <TooltipContent>
         <div className="space-y-1">
-          <p className="font-semibold">
-            {isActive ? 'Recently active' : 'Not recently active'}
-          </p>
+          <p className="font-semibold">{isActive ? 'Recently active' : 'Not recently active'}</p>
           <p className="text-xs text-muted-foreground">
             Last deployed {formatRelativeTime(lastDeployedAt)}
           </p>

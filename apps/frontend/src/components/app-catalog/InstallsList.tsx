@@ -38,7 +38,12 @@ interface InstallsListProps {
  * runs them one after another (`useSequentialUpdates`) and reports progress
  * inline on each row.
  */
-export function InstallsList({ entry, onUpdateStarted, onViewJob, autoUpdateAll }: InstallsListProps) {
+export function InstallsList({
+  entry,
+  onUpdateStarted,
+  onViewJob,
+  autoUpdateAll,
+}: InstallsListProps) {
   const { installs } = entry;
   const updatable = updatableInstalls(entry);
   const failedGate = entry.gates.find((gate) => gate.status === 'fail');
@@ -55,7 +60,8 @@ export function InstallsList({ entry, onUpdateStarted, onViewJob, autoUpdateAll 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoUpdateAll]);
 
-  const showBatchControls = updatable.length > 1 || batch.running || Object.keys(batch.states).length > 0;
+  const showBatchControls =
+    updatable.length > 1 || batch.running || Object.keys(batch.states).length > 0;
 
   return (
     <section className="space-y-3" aria-label="Installs">
@@ -72,7 +78,10 @@ export function InstallsList({ entry, onUpdateStarted, onViewJob, autoUpdateAll 
                 onCheckedChange={setPrune}
                 disabled={batch.running}
               />
-              <Label htmlFor={`prune-all-${entry.id}`} className="text-xs font-normal text-muted-foreground">
+              <Label
+                htmlFor={`prune-all-${entry.id}`}
+                className="text-xs font-normal text-muted-foreground"
+              >
                 Reset to shipped rules (prune)
               </Label>
             </div>
@@ -121,7 +130,14 @@ interface InstallRowProps {
   onViewJob: (entry: CatalogEntry, jobId: string) => void;
 }
 
-function InstallRow({ entry, install, batchState, batchRunning, onUpdateStarted, onViewJob }: InstallRowProps) {
+function InstallRow({
+  entry,
+  install,
+  batchState,
+  batchRunning,
+  onUpdateStarted,
+  onViewJob,
+}: InstallRowProps) {
   const [uninstallOpen, setUninstallOpen] = useState(false);
   const [ejectOpen, setEjectOpen] = useState(false);
   const host = installHost(install);
@@ -172,7 +188,11 @@ function InstallRow({ entry, install, batchState, batchRunning, onUpdateStarted,
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label={`More actions for ${install.projectName}`}>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={`More actions for ${install.projectName}`}
+            >
               <MoreVertical className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -184,7 +204,12 @@ function InstallRow({ entry, install, batchState, batchRunning, onUpdateStarted,
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <UninstallDialog entry={entry} install={install} open={uninstallOpen} onOpenChange={setUninstallOpen} />
+        <UninstallDialog
+          entry={entry}
+          install={install}
+          open={uninstallOpen}
+          onOpenChange={setUninstallOpen}
+        />
         <EjectPanel entry={entry} install={install} open={ejectOpen} onOpenChange={setEjectOpen} />
       </div>
     </li>

@@ -107,10 +107,7 @@ export const cacheRulesApi = api.injectEndpoints({
     }),
 
     // Reorder cache rules
-    reorderCacheRules: builder.mutation<
-      CacheRule[],
-      { projectId: string; ruleIds: string[] }
-    >({
+    reorderCacheRules: builder.mutation<CacheRule[], { projectId: string; ruleIds: string[] }>({
       query: ({ projectId, ruleIds }) => ({
         url: `/api/cache-rules/project/${projectId}/reorder`,
         method: 'PUT',

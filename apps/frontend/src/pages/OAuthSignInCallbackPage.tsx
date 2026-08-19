@@ -105,10 +105,7 @@ export function OAuthSignInCallbackPage() {
               <CardDescription>{error}</CardDescription>
             </CardHeader>
             <CardContent>
-              <Button
-                className="w-full"
-                onClick={() => navigate('/login', { replace: true })}
-              >
+              <Button className="w-full" onClick={() => navigate('/login', { replace: true })}>
                 Back to Login
               </Button>
             </CardContent>

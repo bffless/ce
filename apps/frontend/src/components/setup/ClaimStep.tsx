@@ -39,8 +39,7 @@ export function ClaimStep() {
         <h3 className="text-lg font-medium text-foreground">Claim this instance</h3>
         <p className="mt-1 text-sm text-muted-foreground">
           Enter the claim token for this server. On DigitalOcean, open your droplet&apos;s{' '}
-          <strong>Console</strong> from the control panel — the token is shown in the login
-          banner.
+          <strong>Console</strong> from the control panel — the token is shown in the login banner.
         </p>
       </div>
 

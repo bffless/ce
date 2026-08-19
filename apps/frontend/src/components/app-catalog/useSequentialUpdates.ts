@@ -65,7 +65,9 @@ export function useSequentialUpdates(): SequentialUpdates {
   const pollJob = useCallback(
     async (jobId: string): Promise<InstallJob> => {
       for (;;) {
-        const sub = dispatch(appCatalogApi.endpoints.getInstallJob.initiate(jobId, { forceRefetch: true }));
+        const sub = dispatch(
+          appCatalogApi.endpoints.getInstallJob.initiate(jobId, { forceRefetch: true }),
+        );
         try {
           const job = await sub.unwrap();
           if (TERMINAL_JOB_STATUSES.has(job.status)) return job;
@@ -83,14 +85,19 @@ export function useSequentialUpdates(): SequentialUpdates {
       if (runningRef.current || installs.length === 0) return;
       runningRef.current = true;
       setRunning(true);
-      setStates(Object.fromEntries(installs.map((i) => [i.installedAppId, { status: 'queued' as const }])));
+      setStates(
+        Object.fromEntries(installs.map((i) => [i.installedAppId, { status: 'queued' as const }])),
+      );
 
       void (async () => {
         let stopped = false;
         for (const install of installs) {
           const id = install.installedAppId;
           if (stopped) {
-            setState(id, { status: 'failed', error: 'Skipped — an earlier update could not be started.' });
+            setState(id, {
+              status: 'failed',
+              error: 'Skipped — an earlier update could not be started.',
+            });
             continue;
           }
           setState(id, { status: 'running' });
@@ -98,7 +105,8 @@ export function useSequentialUpdates(): SequentialUpdates {
           try {
             ({ jobId } = await updateApp({ id, prune }).unwrap());
           } catch (err) {
-            const message = (err as { data?: { message?: string } })?.data?.message ?? 'Update failed to start';
+            const message =
+              (err as { data?: { message?: string } })?.data?.message ?? 'Update failed to start';
             setState(id, { status: 'failed', error: message });
             stopped = true;
             continue;
@@ -112,7 +120,9 @@ export function useSequentialUpdates(): SequentialUpdates {
               setState(id, { status: 'failed', jobId, error: job.error ?? `Update ${job.status}` });
             }
           } catch (err) {
-            const message = (err as { data?: { message?: string } })?.data?.message ?? 'Lost track of the update job';
+            const message =
+              (err as { data?: { message?: string } })?.data?.message ??
+              'Lost track of the update job';
             setState(id, { status: 'failed', jobId, error: message });
           }
         }

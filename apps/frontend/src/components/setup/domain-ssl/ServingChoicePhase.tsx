@@ -14,19 +14,18 @@ export function ServingChoicePhase({ onNext }: { onNext: () => void }) {
       <div>
         <h3 className="text-lg font-medium text-foreground">How does traffic reach this server?</h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          This choice drives the DNS setup, the certificate step, and how nginx is configured.
-          You can go back and change it any time before the final Apply.
+          This choice drives the DNS setup, the certificate step, and how nginx is configured. You
+          can go back and change it any time before the final Apply.
         </p>
       </div>
 
-      <ServingChoiceCards
-        value={servingMode}
-        onChange={(mode) => dispatch(setServingMode(mode))}
-      />
+      <ServingChoiceCards value={servingMode} onChange={(mode) => dispatch(setServingMode(mode))} />
 
       {servingMode === 'none' && (
         <div className="ml-6 space-y-3">
-          <p className="text-sm font-medium text-foreground">Where will the certificate come from?</p>
+          <p className="text-sm font-medium text-foreground">
+            Where will the certificate come from?
+          </p>
           <label className="flex items-start p-3 border border-border rounded-lg cursor-pointer hover:bg-muted/50">
             <input
               type="radio"
@@ -67,15 +66,29 @@ export function ServingChoicePhase({ onNext }: { onNext: () => void }) {
       {servingMode === 'proxy' && (
         <div className="ml-6 space-y-3">
           <p className="text-sm font-medium text-foreground">Certificate for the origin</p>
-          {([
-            ['selfsigned', 'Keep the built-in certificate (recommended)',
-              "Zero maintenance. Works with CDNs that don't validate the origin certificate (the common default). The link from your CDN to this server is encrypted but unauthenticated — if you turn on your CDN's origin verification, pick one of the options below instead."],
-            ['letsencrypt', 'Auto-issue with Let\'s Encrypt',
-              'A real auto-renewing certificate on this server. Needs your CDN to pass ACME challenges through to the origin (or the origin reachable on port 80).'],
-            ['paste', 'Paste my own certificate',
-              "Paste your CDN's origin certificate or any browser-trusted cert. You'll re-paste when it expires."],
-          ] as const).map(([mode, title, body]) => (
-            <label key={mode} className="flex items-start p-3 border border-border rounded-lg cursor-pointer hover:bg-muted/50">
+          {(
+            [
+              [
+                'selfsigned',
+                'Keep the built-in certificate (recommended)',
+                "Zero maintenance. Works with CDNs that don't validate the origin certificate (the common default). The link from your CDN to this server is encrypted but unauthenticated — if you turn on your CDN's origin verification, pick one of the options below instead.",
+              ],
+              [
+                'letsencrypt',
+                "Auto-issue with Let's Encrypt",
+                'A real auto-renewing certificate on this server. Needs your CDN to pass ACME challenges through to the origin (or the origin reachable on port 80).',
+              ],
+              [
+                'paste',
+                'Paste my own certificate',
+                "Paste your CDN's origin certificate or any browser-trusted cert. You'll re-paste when it expires.",
+              ],
+            ] as const
+          ).map(([mode, title, body]) => (
+            <label
+              key={mode}
+              className="flex items-start p-3 border border-border rounded-lg cursor-pointer hover:bg-muted/50"
+            >
               <input
                 type="radio"
                 name="bootstrapSslMode"
@@ -97,7 +110,9 @@ export function ServingChoicePhase({ onNext }: { onNext: () => void }) {
         <Button variant="outline" onClick={() => dispatch(prevWizardStep())}>
           Back
         </Button>
-        <Button onClick={onNext} disabled={!complete}>Next</Button>
+        <Button onClick={onNext} disabled={!complete}>
+          Next
+        </Button>
       </div>
     </div>
   );

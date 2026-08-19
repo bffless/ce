@@ -20,7 +20,9 @@ export function RealIpFields({
 }) {
   return (
     <details className="rounded-md border border-border p-3">
-      <summary className="text-sm font-medium cursor-pointer">Restore visitor IPs (optional)</summary>
+      <summary className="text-sm font-medium cursor-pointer">
+        Restore visitor IPs (optional)
+      </summary>
       <div className="mt-3 space-y-3">
         <p className="text-sm text-muted-foreground">
           Skip this and everything works — logs and rate limiting will just see your CDN&apos;s IPs

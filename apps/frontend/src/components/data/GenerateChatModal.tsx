@@ -67,13 +67,16 @@ export function GenerateChatModal({
   const { data: aiStatus } = useGetProjectAIStatusQuery(projectId, { skip: !open });
 
   // Get available models for selected provider from configured providers
-  const selectedProvider = aiStatus?.providers?.find((p: ConfiguredProvider) => p.provider === provider);
+  const selectedProvider = aiStatus?.providers?.find(
+    (p: ConfiguredProvider) => p.provider === provider,
+  );
   const availableModels: ModelInfo[] = selectedProvider?.suggestedModels || [];
 
   // Initialize provider/model from AI settings (default provider)
   useEffect(() => {
     if (aiStatus?.hasAIConfigured && aiStatus.providers?.length > 0) {
-      const defaultProvider = aiStatus.providers.find((p: ConfiguredProvider) => p.isDefault) || aiStatus.providers[0];
+      const defaultProvider =
+        aiStatus.providers.find((p: ConfiguredProvider) => p.isDefault) || aiStatus.providers[0];
       if (defaultProvider && !provider) {
         setProvider(defaultProvider.provider);
         if (defaultProvider.defaultModel) {
@@ -139,8 +142,7 @@ export function GenerateChatModal({
       onSuccess?.();
     } catch (err: unknown) {
       const errorMessage =
-        (err as { data?: { message?: string } })?.data?.message ||
-        'Failed to generate chat schema';
+        (err as { data?: { message?: string } })?.data?.message || 'Failed to generate chat schema';
       toast({
         title: 'Error',
         description: errorMessage,
@@ -155,7 +157,8 @@ export function GenerateChatModal({
     setRuleSetId('');
     // Reset to default provider
     if (aiStatus?.hasAIConfigured && aiStatus.providers?.length > 0) {
-      const defaultProvider = aiStatus.providers.find((p: ConfiguredProvider) => p.isDefault) || aiStatus.providers[0];
+      const defaultProvider =
+        aiStatus.providers.find((p: ConfiguredProvider) => p.isDefault) || aiStatus.providers[0];
       setProvider(defaultProvider.provider);
       setModel(defaultProvider.defaultModel || defaultProvider.suggestedModels?.[0]?.id || '');
     } else {
@@ -181,8 +184,8 @@ export function GenerateChatModal({
             Generate Chat Schema
           </DialogTitle>
           <DialogDescription>
-            Create conversation and message schemas with AI-powered chat pipelines.
-            This will generate endpoints for managing chat conversations with AI responses.
+            Create conversation and message schemas with AI-powered chat pipelines. This will
+            generate endpoints for managing chat conversations with AI responses.
           </DialogDescription>
         </DialogHeader>
 
@@ -233,8 +236,8 @@ export function GenerateChatModal({
                       User-scoped
                     </Label>
                     <p className="text-xs text-muted-foreground">
-                      Conversations are isolated per authenticated user.
-                      Requires authentication to access.
+                      Conversations are isolated per authenticated user. Requires authentication to
+                      access.
                     </p>
                   </div>
                 </div>
@@ -245,8 +248,8 @@ export function GenerateChatModal({
                       Guest-scoped
                     </Label>
                     <p className="text-xs text-muted-foreground">
-                      Conversations use guest ID (anonymous).
-                      Can be upgraded to user when authenticated.
+                      Conversations use guest ID (anonymous). Can be upgraded to user when
+                      authenticated.
                     </p>
                   </div>
                 </div>
@@ -261,9 +264,13 @@ export function GenerateChatModal({
                   onValueChange={(value) => {
                     setProvider(value);
                     // Reset model when provider changes
-                    const newProvider = aiStatus?.providers?.find((p: ConfiguredProvider) => p.provider === value);
+                    const newProvider = aiStatus?.providers?.find(
+                      (p: ConfiguredProvider) => p.provider === value,
+                    );
                     if (newProvider) {
-                      setModel(newProvider.defaultModel || newProvider.suggestedModels?.[0]?.id || '');
+                      setModel(
+                        newProvider.defaultModel || newProvider.suggestedModels?.[0]?.id || '',
+                      );
                     }
                   }}
                   disabled={isLoading || !aiStatus?.hasAIConfigured}
@@ -305,7 +312,10 @@ export function GenerateChatModal({
 
             <div className="space-y-2">
               <Label htmlFor="system-prompt">System Prompt</Label>
-              <div className="border rounded-md overflow-hidden resize-y" style={{ minHeight: '300px', height: '300px' }}>
+              <div
+                className="border rounded-md overflow-hidden resize-y"
+                style={{ minHeight: '300px', height: '300px' }}
+              >
                 <Suspense fallback={<Skeleton className="h-[300px] w-full" />}>
                   <Editor
                     height="100%"
@@ -340,11 +350,7 @@ export function GenerateChatModal({
 
             <div className="space-y-2">
               <Label htmlFor="rule-set">Proxy Rule Set</Label>
-              <Select
-                value={ruleSetId}
-                onValueChange={setRuleSetId}
-                disabled={isLoading}
-              >
+              <Select value={ruleSetId} onValueChange={setRuleSetId} disabled={isLoading}>
                 <SelectTrigger id="rule-set">
                   <SelectValue placeholder="Create new rule set" />
                 </SelectTrigger>

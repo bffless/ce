@@ -53,25 +53,17 @@ interface BrowserTabsProps {
  * Manages tab content switching based on URL search params.
  * The tab toggle UI is in the FileActions (bottom toolbar).
  */
-export function BrowserTabs({
-  filepath,
-  codeContent,
-  previewContent,
-}: BrowserTabsProps) {
+export function BrowserTabs({ filepath, codeContent, previewContent }: BrowserTabsProps) {
   const [searchParams] = useSearchParams();
 
   // Get current tab from URL or use default
   const urlTab = searchParams.get('tab');
-  const currentTab = (urlTab === 'code' || urlTab === 'preview')
-    ? urlTab
-    : getDefaultTab(filepath);
+  const currentTab = urlTab === 'code' || urlTab === 'preview' ? urlTab : getDefaultTab(filepath);
 
   return (
     <div className="h-full flex flex-col">
       {/* Code tab content */}
-      {currentTab === 'code' && (
-        <div className="flex-1 min-h-0 flex flex-col">{codeContent}</div>
-      )}
+      {currentTab === 'code' && <div className="flex-1 min-h-0 flex flex-col">{codeContent}</div>}
 
       {/* Preview tab content */}
       {currentTab === 'preview' && (

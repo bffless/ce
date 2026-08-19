@@ -30,7 +30,12 @@ interface FilterEntry {
   value: string;
 }
 
-export function DataDeleteConfig({ config, onChange, projectId, previousSteps = [] }: DataDeleteConfigProps) {
+export function DataDeleteConfig({
+  config,
+  onChange,
+  projectId,
+  previousSteps = [],
+}: DataDeleteConfigProps) {
   const [schemaId, setSchemaId] = useState(config.schemaId || '');
   const [recordId, setRecordId] = useState(config.recordId || '');
   const [filters, setFilters] = useState<FilterEntry[]>(() => {
@@ -124,9 +129,7 @@ export function DataDeleteConfig({ config, onChange, projectId, previousSteps = 
               </div>
               <Select
                 value={filter.op}
-                onValueChange={(value) =>
-                  handleFilterChange(index, { op: value as 'eq' | 'ne' })
-                }
+                onValueChange={(value) => handleFilterChange(index, { op: value as 'eq' | 'ne' })}
               >
                 <SelectTrigger className="w-32">
                   <SelectValue />
@@ -182,9 +185,7 @@ export function DataDeleteConfig({ config, onChange, projectId, previousSteps = 
                 </Button>
               </div>
               <span className="text-xs text-muted-foreground">
-                {filterLogic === 'and'
-                  ? 'All conditions must match'
-                  : 'Any condition can match'}
+                {filterLogic === 'and' ? 'All conditions must match' : 'Any condition can match'}
               </span>
             </div>
           )}

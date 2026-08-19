@@ -35,8 +35,8 @@ export function SignedUrlHandlerConfig({ config, onChange, previousSteps = [] }:
           previousSteps={previousSteps}
         />
         <p className="text-xs text-muted-foreground">
-          Expression resolving to the storage key of the file.
-          Typically references a previous file upload step's <code>storage_path</code> output.
+          Expression resolving to the storage key of the file. Typically references a previous file
+          upload step's <code>storage_path</code> output.
         </p>
       </div>
 

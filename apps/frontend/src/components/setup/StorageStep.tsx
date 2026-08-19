@@ -312,10 +312,7 @@ export function StorageStep() {
       {/* Storage Provider Selection */}
       <div>
         <Label>Storage Provider</Label>
-        <Select
-          value={storageProvider || ''}
-          onValueChange={handleProviderChange}
-        >
+        <Select value={storageProvider || ''} onValueChange={handleProviderChange}>
           <SelectTrigger className="mt-1">
             <SelectValue placeholder="Select storage provider" />
           </SelectTrigger>
@@ -415,7 +412,8 @@ export function StorageStep() {
                   <p className="text-sm text-destructive/80 mt-2">To enable MinIO:</p>
                   <ol className="text-sm text-destructive/80 mt-1 space-y-1 list-decimal list-inside">
                     <li>
-                      Remove <code className="bg-destructive/20 px-1 rounded">ENABLE_MINIO=false</code>{' '}
+                      Remove{' '}
+                      <code className="bg-destructive/20 px-1 rounded">ENABLE_MINIO=false</code>{' '}
                       from your <code className="bg-destructive/20 px-1 rounded">.env</code> file
                     </li>
                     <li>
@@ -973,7 +971,9 @@ export function StorageStep() {
                 (!s3Config.bucket || !s3Config.accessKeyId || !s3Config.secretAccessKey)) ||
               (storageProvider === 'gcs' && (!gcsConfig.projectId || !gcsConfig.bucket)) ||
               (storageProvider === 'azure' &&
-                (!azureConfig.accountName || !azureConfig.containerName || !azureConfig.accountKey)) ||
+                (!azureConfig.accountName ||
+                  !azureConfig.containerName ||
+                  !azureConfig.accountKey)) ||
               (storageProvider !== 'managed' &&
                 storageProvider !== 'minio' &&
                 storageProvider !== 'local' &&

@@ -110,9 +110,7 @@ export function OAuthCallbackPage() {
         {status === 'loading' && (
           <>
             <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">
-              Completing Google account connection...
-            </p>
+            <p className="text-sm text-muted-foreground">Completing Google account connection...</p>
           </>
         )}
 
@@ -121,9 +119,7 @@ export function OAuthCallbackPage() {
             <CheckCircle2 className="h-8 w-8 mx-auto text-green-600" />
             <div>
               <p className="font-medium">Google Account Connected</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                Connected as {connectedEmail}
-              </p>
+              <p className="text-sm text-muted-foreground mt-1">Connected as {connectedEmail}</p>
               <p className="text-xs text-muted-foreground mt-2">
                 Redirecting to project settings...
               </p>

@@ -167,9 +167,7 @@ export const pipelineSchemasApi = api.injectEndpoints({
 
     getSchema: builder.query<PipelineSchemaWithCount, string>({
       query: (id) => `/api/pipeline-schemas/${id}`,
-      providesTags: (_result, _error, id) => [
-        { type: 'PipelineSchema' as const, id },
-      ],
+      providesTags: (_result, _error, id) => [{ type: 'PipelineSchema' as const, id }],
     }),
 
     createSchema: builder.mutation<PipelineSchema, CreateSchemaDto>({
@@ -252,7 +250,19 @@ export const pipelineSchemasApi = api.injectEndpoints({
       PaginatedDataResponse,
       { schemaId: string; page?: number; pageSize?: number } & DataFilterParams
     >({
-      query: ({ schemaId, page = 1, pageSize = 20, search, createdAfter, createdBefore, updatedAfter, updatedBefore, filters, sortBy, sortOrder }) => {
+      query: ({
+        schemaId,
+        page = 1,
+        pageSize = 20,
+        search,
+        createdAfter,
+        createdBefore,
+        updatedAfter,
+        updatedBefore,
+        filters,
+        sortBy,
+        sortOrder,
+      }) => {
         const params = new URLSearchParams();
         params.set('page', String(page));
         params.set('pageSize', String(pageSize));

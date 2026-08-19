@@ -44,12 +44,7 @@ export const repositoryListSlice = createSlice({
   },
 });
 
-export const {
-  setSidebarSearch,
-  setFeedSearch,
-  setCurrentPage,
-  setSortBy,
-  setSortOrder,
-} = repositoryListSlice.actions;
+export const { setSidebarSearch, setFeedSearch, setCurrentPage, setSortBy, setSortOrder } =
+  repositoryListSlice.actions;
 
 export default repositoryListSlice.reducer;

@@ -199,7 +199,9 @@ export function RuleEditorPage() {
             <BreadcrumbSeparator />
             <BreadcrumbItem>
               <BreadcrumbLink asChild>
-                <Link to={routes.ruleSet(owner!, repo!, ruleSetId!)}>{ruleSet?.name || 'Rule Set'}</Link>
+                <Link to={routes.ruleSet(owner!, repo!, ruleSetId!)}>
+                  {ruleSet?.name || 'Rule Set'}
+                </Link>
               </BreadcrumbLink>
             </BreadcrumbItem>
             <BreadcrumbSeparator />

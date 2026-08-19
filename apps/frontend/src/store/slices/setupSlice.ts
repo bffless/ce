@@ -246,10 +246,7 @@ const setupSlice = createSlice({
     },
 
     // Admin credentials
-    setAdminCredentials: (
-      state,
-      action: PayloadAction<{ email: string; password: string }>
-    ) => {
+    setAdminCredentials: (state, action: PayloadAction<{ email: string; password: string }>) => {
       state.wizard.adminEmail = action.payload.email;
       state.wizard.adminPassword = action.payload.password;
     },
@@ -268,10 +265,7 @@ const setupSlice = createSlice({
       state.wizard.connectionSuccess = false;
     },
 
-    setConnectionResult: (
-      state,
-      action: PayloadAction<{ tested: boolean; success: boolean }>
-    ) => {
+    setConnectionResult: (state, action: PayloadAction<{ tested: boolean; success: boolean }>) => {
       state.wizard.connectionTested = action.payload.tested;
       state.wizard.connectionSuccess = action.payload.success;
     },
@@ -345,9 +339,11 @@ const setupSlice = createSlice({
     setServingMode: (state, action: PayloadAction<ServingMode>) => {
       state.wizard.servingMode = action.payload;
       state.wizard.bootstrapSslMode =
-        action.payload === 'proxy' ? 'selfsigned'
-        : action.payload === 'cloudflare' ? 'paste'
-        : null; // 'none' — user picks LE or paste
+        action.payload === 'proxy'
+          ? 'selfsigned'
+          : action.payload === 'cloudflare'
+            ? 'paste'
+            : null; // 'none' — user picks LE or paste
       state.wizard.bootstrapPort80 = null;
       state.wizard.bootstrapRealIp = null;
       state.wizard.dnsPreflightPassed = false;
@@ -364,7 +360,7 @@ const setupSlice = createSlice({
 
     setBootstrapRealIp: (
       state,
-      action: PayloadAction<{ header: string; ranges: string[] } | null>
+      action: PayloadAction<{ header: string; ranges: string[] } | null>,
     ) => {
       state.wizard.bootstrapRealIp = action.payload;
     },
@@ -393,7 +389,7 @@ const setupSlice = createSlice({
         isSetupComplete: boolean;
         hasAdminUser: boolean;
         storageProvider: string | null;
-      }>
+      }>,
     ) => {
       state.isSetupComplete = action.payload.isSetupComplete;
       state.hasAdminUser = action.payload.hasAdminUser;

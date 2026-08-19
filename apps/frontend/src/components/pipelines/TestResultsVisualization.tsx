@@ -1,11 +1,7 @@
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   CheckCircle2,
   XCircle,
@@ -16,7 +12,11 @@ import {
   ChevronRight,
   AlertTriangle,
 } from 'lucide-react';
-import type { TestPipelineResult, ValidatorDebugInfo, StepDebugInfo } from '@/services/pipelinesApi';
+import type {
+  TestPipelineResult,
+  ValidatorDebugInfo,
+  StepDebugInfo,
+} from '@/services/pipelinesApi';
 import { StepDebugCard } from './StepDebugCard';
 
 interface TestResultsVisualizationProps {
@@ -39,7 +39,9 @@ export function TestResultsVisualization({ result }: TestResultsVisualizationPro
   return (
     <div className="space-y-4">
       {/* Summary Bar */}
-      <Card className={result.success ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}>
+      <Card
+        className={result.success ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}
+      >
         <CardContent className="py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -49,7 +51,9 @@ export function TestResultsVisualization({ result }: TestResultsVisualizationPro
                 <XCircle className="h-6 w-6 text-red-600" />
               )}
               <div>
-                <div className={`font-medium ${result.success ? 'text-green-800' : 'text-red-800'}`}>
+                <div
+                  className={`font-medium ${result.success ? 'text-green-800' : 'text-red-800'}`}
+                >
                   {result.success ? 'Pipeline Executed Successfully' : 'Pipeline Execution Failed'}
                 </div>
                 {result.error && (
@@ -74,8 +78,8 @@ export function TestResultsVisualization({ result }: TestResultsVisualizationPro
                     result.response.status >= 200 && result.response.status < 300
                       ? 'bg-green-100 text-green-800 border-green-200'
                       : result.response.status >= 400
-                      ? 'bg-red-100 text-red-800 border-red-200'
-                      : 'bg-yellow-100 text-yellow-800 border-yellow-200'
+                        ? 'bg-red-100 text-red-800 border-red-200'
+                        : 'bg-yellow-100 text-yellow-800 border-yellow-200'
                   }
                 >
                   HTTP {result.response.status}
@@ -234,7 +238,8 @@ export function TestResultsVisualization({ result }: TestResultsVisualizationPro
               </div>
               {result.error.step && (
                 <div className="text-xs text-red-600">
-                  Failed at step: <code className="bg-red-100 px-1 rounded">{result.error.step}</code>
+                  Failed at step:{' '}
+                  <code className="bg-red-100 px-1 rounded">{result.error.step}</code>
                 </div>
               )}
               {result.error.details !== undefined && (
@@ -292,9 +297,7 @@ function ValidatorItem({ validator }: { validator: ValidatorDebugInfo }) {
           <XCircle className="h-4 w-4 text-red-600" />
         )}
         <span className="text-sm font-medium">{validator.type}</span>
-        {validator.error && (
-          <span className="text-xs text-red-600">{validator.error.message}</span>
-        )}
+        {validator.error && <span className="text-xs text-red-600">{validator.error.message}</span>}
       </div>
       <span className="text-xs text-muted-foreground">{validator.durationMs}ms</span>
     </div>

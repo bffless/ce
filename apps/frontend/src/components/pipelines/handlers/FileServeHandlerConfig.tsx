@@ -81,8 +81,8 @@ export function FileServeHandlerConfig({ config, onChange, previousSteps = [] }:
             placeholder="e.g., images, documents"
           />
           <p className="text-xs text-muted-foreground">
-            Storage sub-directory to serve files from. The file path is derived from the request
-            URL under <code>/api/uploads/&lt;subDir&gt;/</code>.
+            Storage sub-directory to serve files from. The file path is derived from the request URL
+            under <code>/api/uploads/&lt;subDir&gt;/</code>.
           </p>
         </div>
       ) : (

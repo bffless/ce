@@ -127,7 +127,9 @@ describe('FfmpegExecutorSettings', () => {
     render(<FfmpegExecutorSettings />);
     fireEvent.click(connectionPicker());
     expect(
-      screen.getByRole('option', { name: /env-worker \(env — select with FFMPEG_REMOTE_CONNECTION\)/ }),
+      screen.getByRole('option', {
+        name: /env-worker \(env — select with FFMPEG_REMOTE_CONNECTION\)/,
+      }),
     ).toHaveAttribute('data-disabled');
   });
 
@@ -165,10 +167,9 @@ describe('FfmpegExecutorSettings', () => {
     status.remoteEnabled = true;
     status.remoteConnection = savedFfmpeg;
     render(<FfmpegExecutorSettings />);
-    expect(screen.getByRole('link', { name: /Manage connections in Infrastructure/ })).toHaveAttribute(
-      'href',
-      '/admin/settings/infrastructure',
-    );
+    expect(
+      screen.getByRole('link', { name: /Manage connections in Infrastructure/ }),
+    ).toHaveAttribute('href', '/admin/settings/infrastructure');
   });
 
   it('local-filesystem storage makes Remote unavailable', () => {

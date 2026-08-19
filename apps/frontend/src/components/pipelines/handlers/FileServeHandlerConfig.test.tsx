@@ -60,7 +60,9 @@ describe('FileServeHandlerConfig', () => {
 
     // Sub-directory → Key: the key input must come back even though key is empty.
     await userEvent.click(screen.getByRole('button', { name: /^key$/i }));
-    expect(screen.getByPlaceholderText('e.g., content/{{steps.resolve.serveKey}}')).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText('e.g., content/{{steps.resolve.serveKey}}'),
+    ).toBeInTheDocument();
     expect(screen.queryByPlaceholderText('e.g., images, documents')).not.toBeInTheDocument();
   });
 });

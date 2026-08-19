@@ -14,7 +14,12 @@ interface Props {
   previousSteps?: PreviousStep[];
 }
 
-export function RegisterUploadHandlerConfig({ config, onChange, projectId, previousSteps = [] }: Props) {
+export function RegisterUploadHandlerConfig({
+  config,
+  onChange,
+  projectId,
+  previousSteps = [],
+}: Props) {
   const typedConfig = config as unknown as Partial<Config>;
 
   const [schemaId, setSchemaId] = useState(typedConfig.schemaId || '');
@@ -25,9 +30,7 @@ export function RegisterUploadHandlerConfig({ config, onChange, projectId, previ
   const [allowedMimeTypes, setAllowedMimeTypes] = useState(
     (typedConfig.allowedMimeTypes || []).join(', '),
   );
-  const [deleteOnViolation, setDeleteOnViolation] = useState(
-    typedConfig.deleteOnViolation ?? true,
-  );
+  const [deleteOnViolation, setDeleteOnViolation] = useState(typedConfig.deleteOnViolation ?? true);
 
   useEffect(() => {
     onChange({
@@ -41,7 +44,16 @@ export function RegisterUploadHandlerConfig({ config, onChange, projectId, previ
         : undefined,
       deleteOnViolation,
     });
-  }, [schemaId, subDir, storageKey, originalName, maxFileSize, allowedMimeTypes, deleteOnViolation, onChange]);
+  }, [
+    schemaId,
+    subDir,
+    storageKey,
+    originalName,
+    maxFileSize,
+    allowedMimeTypes,
+    deleteOnViolation,
+    onChange,
+  ]);
 
   return (
     <div className="space-y-4">

@@ -28,7 +28,11 @@ export function ApplyPanel({
         toast({ title: 'Applied', description: 'Certificate updated successfully.' });
       }
     } catch (error: unknown) {
-      toast({ title: 'Error', description: errorMessage(error, 'Failed to apply SSL configuration'), variant: 'destructive' });
+      toast({
+        title: 'Error',
+        description: errorMessage(error, 'Failed to apply SSL configuration'),
+        variant: 'destructive',
+      });
     }
   };
 

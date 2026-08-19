@@ -4,11 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Select,
   SelectContent,
@@ -58,9 +54,7 @@ const operatorsByType: Record<string, { value: FieldFilter['op']; label: string 
     { value: 'gte', label: 'greater or equal' },
     { value: 'lte', label: 'less or equal' },
   ],
-  boolean: [
-    { value: 'eq', label: 'equals' },
-  ],
+  boolean: [{ value: 'eq', label: 'equals' }],
   datetime: [
     { value: 'gt', label: 'after' },
     { value: 'lt', label: 'before' },
@@ -223,7 +217,9 @@ export function DataFilters({
               <div className="grid grid-cols-3 gap-2">
                 <Select
                   value={newFilter.field || ''}
-                  onValueChange={(value) => setNewFilter({ field: value, op: undefined, value: '' })}
+                  onValueChange={(value) =>
+                    setNewFilter({ field: value, op: undefined, value: '' })
+                  }
                 >
                   <SelectTrigger className="h-8 text-xs">
                     <SelectValue placeholder="Field" />
@@ -238,7 +234,9 @@ export function DataFilters({
                 </Select>
                 <Select
                   value={newFilter.op || ''}
-                  onValueChange={(value) => setNewFilter({ ...newFilter, op: value as FieldFilter['op'] })}
+                  onValueChange={(value) =>
+                    setNewFilter({ ...newFilter, op: value as FieldFilter['op'] })
+                  }
                   disabled={!newFilter.field}
                 >
                   <SelectTrigger className="h-8 text-xs">

@@ -143,13 +143,13 @@ export function RepositoryPage() {
 
     // Check if it's an alias
     const alias = refsData.aliases.find(
-      (a) => a.commitSha === effectiveRef || a.name === effectiveRef
+      (a) => a.commitSha === effectiveRef || a.name === effectiveRef,
     );
     if (alias) return alias.name;
 
     // Check if it's a branch
     const branch = refsData.branches.find(
-      (b) => b.latestCommit === effectiveRef || b.name === effectiveRef
+      (b) => b.latestCommit === effectiveRef || b.name === effectiveRef,
     );
     if (branch) return branch.name;
 
@@ -198,9 +198,7 @@ export function RepositoryPage() {
     const normalizedPath = filepath.endsWith('/') ? filepath : filepath + '/';
     const indexPath = `${normalizedPath}index.html`.replace(/^\//, ''); // Remove leading slash if present
 
-    return fileTreeData.files.find(
-      (file) => file.path.toLowerCase() === indexPath.toLowerCase()
-    );
+    return fileTreeData.files.find((file) => file.path.toLowerCase() === indexPath.toLowerCase());
   }, [filepath, fileTreeData, isDirectory]);
 
   // Loading state
@@ -428,10 +426,12 @@ export function RepositoryPage() {
                   <GitBranch className="h-3.5 w-3.5 shrink-0" />
                   <span className="truncate">{currentRefLabel}</span>
                 </div>
-                <ChevronRight className={cn(
-                  "h-3.5 w-3.5 shrink-0 transition-transform",
-                  refSelectorOpen && "rotate-180"
-                )} />
+                <ChevronRight
+                  className={cn(
+                    'h-3.5 w-3.5 shrink-0 transition-transform',
+                    refSelectorOpen && 'rotate-180',
+                  )}
+                />
               </Button>
             )}
           </div>
@@ -445,10 +445,7 @@ export function RepositoryPage() {
           <div className="h-full">
             {/* File browser sheet (left) */}
             <Sheet open={sidebarOpen} onOpenChange={(open) => dispatch(setSidebarOpen(open))}>
-              <SheetContent
-                side="left"
-                className="w-[280px] p-0"
-              >
+              <SheetContent side="left" className="w-[280px] p-0">
                 <SheetTitle className="sr-only">File Browser</SheetTitle>
                 <FileBrowserSidebar
                   files={fileTreeData?.files || []}
@@ -462,7 +459,10 @@ export function RepositoryPage() {
             </Sheet>
 
             {/* Ref selector sheet (right) */}
-            <Sheet open={refSelectorOpen} onOpenChange={(open) => dispatch(setRefSelectorOpen(open))}>
+            <Sheet
+              open={refSelectorOpen}
+              onOpenChange={(open) => dispatch(setRefSelectorOpen(open))}
+            >
               <SheetContent side="right" className="w-[360px] p-0">
                 <SheetTitle className="sr-only">References</SheetTitle>
                 <RefSelectorSidebar
@@ -480,10 +480,7 @@ export function RepositoryPage() {
         ) : (
           /* Desktop/Tablet layout (≥768px): Resizable panels */
           <div className="h-full">
-            <ResizablePanelGroup
-              direction="horizontal"
-              className="h-full"
-            >
+            <ResizablePanelGroup direction="horizontal" className="h-full">
               {/* File browser sidebar (left) - always rendered, collapsed when hidden */}
               <ResizablePanel
                 ref={leftPanelRef}
@@ -509,10 +506,7 @@ export function RepositoryPage() {
               <ResizableHandle withHandle className={cn(!sidebarOpen && 'hidden')} />
 
               {/* Content area (center) */}
-              <ResizablePanel
-                defaultSize={55}
-                minSize={40}
-              >
+              <ResizablePanel defaultSize={55} minSize={40}>
                 <div className="h-full overflow-auto">{renderMainContent(!sidebarOpen)}</div>
               </ResizablePanel>
 

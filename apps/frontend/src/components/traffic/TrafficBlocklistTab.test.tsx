@@ -14,8 +14,7 @@ const mockDelete = vi.fn();
 vi.mock('@/services/trafficApi', () => ({
   useGetBlocklistSettingsQuery: () => mockGetSettings(),
   useUpdateBlocklistSettingsMutation: () => [mockUpdateSettings, { isLoading: false }],
-  useGetBaselineBlocklistQuery: (_arg: unknown, opts: { skip?: boolean }) =>
-    mockGetBaseline(opts),
+  useGetBaselineBlocklistQuery: (_arg: unknown, opts: { skip?: boolean }) => mockGetBaseline(opts),
   useListBlocklistsQuery: () => mockListBlocklists(),
   useCreateBlocklistMutation: () => [mockCreate, { isLoading: false }],
   useUpdateBlocklistMutation: () => [mockUpdate, { isLoading: false }],

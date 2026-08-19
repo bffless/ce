@@ -1,11 +1,7 @@
 import { useState } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ChevronDown, ChevronRight, CheckCircle2, XCircle, SkipForward, Clock } from 'lucide-react';
 import type { StepDebugInfo } from '@/services/pipelinesApi';
 
@@ -61,9 +57,7 @@ export function StepDebugCard({ step, index }: StepDebugCardProps) {
               <Badge variant="secondary" className="font-mono text-xs">
                 {index + 1}
               </Badge>
-              <span className="text-sm font-medium">
-                {step.stepName || step.handlerType}
-              </span>
+              <span className="text-sm font-medium">{step.stepName || step.handlerType}</span>
               <Badge variant="outline" className="text-xs">
                 {step.handlerType}
               </Badge>

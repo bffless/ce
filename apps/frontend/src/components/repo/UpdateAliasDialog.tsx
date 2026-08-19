@@ -16,11 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -70,21 +66,24 @@ export function UpdateAliasDialog({
 }: UpdateAliasDialogProps) {
   const [selectedCommitSha, setSelectedCommitSha] = useState(currentCommitSha);
   const [selectedRuleSetIds, setSelectedRuleSetIds] = useState<string[]>(
-    currentProxyRuleSetIds ?? []
+    currentProxyRuleSetIds ?? [],
   );
   // Visibility and access control state ('inherit' means null)
   const [visibility, setVisibility] = useState<'inherit' | 'public' | 'private'>('inherit');
-  const [unauthorizedBehavior, setUnauthorizedBehavior] = useState<'inherit' | UnauthorizedBehavior>('inherit');
+  const [unauthorizedBehavior, setUnauthorizedBehavior] = useState<
+    'inherit' | UnauthorizedBehavior
+  >('inherit');
   const [requiredRole, setRequiredRole] = useState<'inherit' | RequiredRole>('inherit');
 
   const { toast } = useToast();
   const [updateAlias, { isLoading }] = useUpdateAliasMutation();
-  const [updateVisibility, { isLoading: isUpdatingVisibility }] = useUpdateAliasVisibilityMutation();
+  const [updateVisibility, { isLoading: isUpdatingVisibility }] =
+    useUpdateAliasVisibilityMutation();
 
   // Fetch visibility info
   const { data: visibilityInfo } = useGetAliasVisibilityQuery(
     { projectId: projectId || '', aliasName },
-    { skip: !projectId || !open }
+    { skip: !projectId || !open },
   );
 
   // Fetch deployments for commit selection
@@ -97,7 +96,7 @@ export function UpdateAliasDialog({
     },
     {
       skip: !open, // Only fetch when dialog is open
-    }
+    },
   );
 
   // Fetch rule sets for proxy rules selection
@@ -106,17 +105,19 @@ export function UpdateAliasDialog({
   });
 
   // Deduplicate commits - keep only unique commit SHAs
-  const uniqueDeployments = deploymentsData?.deployments.reduce((acc, deployment) => {
-    if (!acc.find(d => d.commitSha === deployment.commitSha)) {
-      acc.push(deployment);
-    }
-    return acc;
-  }, [] as typeof deploymentsData.deployments) || [];
+  const uniqueDeployments =
+    deploymentsData?.deployments.reduce(
+      (acc, deployment) => {
+        if (!acc.find((d) => d.commitSha === deployment.commitSha)) {
+          acc.push(deployment);
+        }
+        return acc;
+      },
+      [] as typeof deploymentsData.deployments,
+    ) || [];
 
   // Create a map of rule set ID to name for display
-  const ruleSetNameMap = new Map(
-    ruleSetsData?.ruleSets.map((rs) => [rs.id, rs]) || []
-  );
+  const ruleSetNameMap = new Map(ruleSetsData?.ruleSets.map((rs) => [rs.id, rs]) || []);
 
   // Reset selected values when dialog opens or current values change
   useEffect(() => {
@@ -135,12 +136,19 @@ export function UpdateAliasDialog({
       setUnauthorizedBehavior(currentUnauthorizedBehavior ?? 'inherit');
       setRequiredRole(currentRequiredRole ?? 'inherit');
     }
-  }, [open, currentCommitSha, currentProxyRuleSetIds, currentIsPublic, currentUnauthorizedBehavior, currentRequiredRole]);
+  }, [
+    open,
+    currentCommitSha,
+    currentProxyRuleSetIds,
+    currentIsPublic,
+    currentUnauthorizedBehavior,
+    currentRequiredRole,
+  ]);
 
   // Toggle a rule set in the selection
   const toggleRuleSet = (id: string) => {
     setSelectedRuleSetIds((prev) =>
-      prev.includes(id) ? prev.filter((rid) => rid !== id) : [...prev, id]
+      prev.includes(id) ? prev.filter((rid) => rid !== id) : [...prev, id],
     );
   };
 
@@ -173,7 +181,8 @@ export function UpdateAliasDialog({
     const visibilityChanged = newIsPublic !== getOriginalIsPublic();
 
     // Check access control changes
-    const newUnauthorizedBehavior = unauthorizedBehavior === 'inherit' ? null : unauthorizedBehavior;
+    const newUnauthorizedBehavior =
+      unauthorizedBehavior === 'inherit' ? null : unauthorizedBehavior;
     const originalUnauthorizedBehavior = currentUnauthorizedBehavior ?? null;
     const unauthorizedBehaviorChanged = newUnauthorizedBehavior !== originalUnauthorizedBehavior;
 
@@ -182,7 +191,13 @@ export function UpdateAliasDialog({
     const requiredRoleChanged = newRequiredRole !== originalRequiredRole;
 
     // No changes
-    if (!commitChanged && !ruleSetChanged && !visibilityChanged && !unauthorizedBehaviorChanged && !requiredRoleChanged) {
+    if (
+      !commitChanged &&
+      !ruleSetChanged &&
+      !visibilityChanged &&
+      !unauthorizedBehaviorChanged &&
+      !requiredRoleChanged
+    ) {
       toast({
         title: 'No changes',
         description: 'No changes were made to the alias',
@@ -232,8 +247,7 @@ export function UpdateAliasDialog({
       onOpenChange(false);
     } catch (error: any) {
       // Handle error
-      const errorMessage =
-        error?.data?.message || error?.message || 'Failed to update alias';
+      const errorMessage = error?.data?.message || error?.message || 'Failed to update alias';
       toast({
         title: 'Error',
         description: errorMessage,
@@ -333,7 +347,10 @@ export function UpdateAliasDialog({
                       <ChevronDown className="h-4 w-4 ml-2 shrink-0 opacity-50" />
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-2" align="start">
+                  <PopoverContent
+                    className="w-[var(--radix-popover-trigger-width)] p-2"
+                    align="start"
+                  >
                     {ruleSetsData.ruleSets.map((ruleSet) => (
                       <label
                         key={ruleSet.id}
@@ -345,7 +362,9 @@ export function UpdateAliasDialog({
                         />
                         <span className="text-sm">{ruleSet.name}</span>
                         {ruleSet.environment && (
-                          <span className="text-xs text-muted-foreground">({ruleSet.environment})</span>
+                          <span className="text-xs text-muted-foreground">
+                            ({ruleSet.environment})
+                          </span>
                         )}
                       </label>
                     ))}
@@ -381,7 +400,10 @@ export function UpdateAliasDialog({
             {/* Visibility Selection */}
             <div className="grid gap-2">
               <Label htmlFor="visibility-select">Visibility</Label>
-              <Select value={visibility} onValueChange={(v) => setVisibility(v as 'inherit' | 'public' | 'private')}>
+              <Select
+                value={visibility}
+                onValueChange={(v) => setVisibility(v as 'inherit' | 'public' | 'private')}
+              >
                 <SelectTrigger id="visibility-select">
                   <SelectValue />
                 </SelectTrigger>
@@ -425,7 +447,9 @@ export function UpdateAliasDialog({
                   <Label htmlFor="unauthorized-behavior">Unauthorized Behavior</Label>
                   <Select
                     value={unauthorizedBehavior}
-                    onValueChange={(v) => setUnauthorizedBehavior(v as 'inherit' | UnauthorizedBehavior)}
+                    onValueChange={(v) =>
+                      setUnauthorizedBehavior(v as 'inherit' | UnauthorizedBehavior)
+                    }
                   >
                     <SelectTrigger id="unauthorized-behavior">
                       <SelectValue />
@@ -442,7 +466,8 @@ export function UpdateAliasDialog({
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    {unauthorizedBehavior === 'inherit' && visibilityInfo?.effectiveUnauthorizedBehavior
+                    {unauthorizedBehavior === 'inherit' &&
+                    visibilityInfo?.effectiveUnauthorizedBehavior
                       ? `Inherits "${visibilityInfo.effectiveUnauthorizedBehavior}" from project`
                       : 'How to handle unauthenticated users'}
                   </p>

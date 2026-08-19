@@ -39,11 +39,7 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   CheckCircle,
   XCircle,
@@ -152,8 +148,8 @@ function ProjectAIServicesSection({ project }: { project: Project }) {
               Replicate
             </CardTitle>
             <CardDescription>
-              Your Replicate API token. Powers ML model steps: transcription, image generation,
-              and embeddings.
+              Your Replicate API token. Powers ML model steps: transcription, image generation, and
+              embeddings.
             </CardDescription>
           </div>
           <Button onClick={() => setShowAddDialog(true)}>
@@ -172,7 +168,11 @@ function ProjectAIServicesSection({ project }: { project: Project }) {
         {configuredServices.length > 0 ? (
           <div className="space-y-3">
             {configuredServices.map((svc) => {
-              const meta = SERVICE_CONFIG[svc.service] || { name: svc.service, color: 'text-gray-600', bgColor: 'bg-gray-50' };
+              const meta = SERVICE_CONFIG[svc.service] || {
+                name: svc.service,
+                color: 'text-gray-600',
+                bgColor: 'bg-gray-50',
+              };
               return (
                 <div key={svc.service} className="border rounded-lg p-4">
                   <div className="flex items-start justify-between">
@@ -223,18 +223,23 @@ function ProjectAIServicesSection({ project }: { project: Project }) {
         )}
       </CardContent>
 
-      <Dialog open={showAddDialog} onOpenChange={(open) => {
-        setShowAddDialog(open);
-        if (!open) {
-          setAddToken('');
-          setAddError(null);
-          setTestingToken('');
-          setTestResult(null);
-        }
-      }}>
+      <Dialog
+        open={showAddDialog}
+        onOpenChange={(open) => {
+          setShowAddDialog(open);
+          if (!open) {
+            setAddToken('');
+            setAddError(null);
+            setTestingToken('');
+            setTestResult(null);
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-[450px]">
           <DialogHeader>
-            <DialogTitle>{hasReplicate ? 'Replace Replicate token' : 'Connect Replicate'}</DialogTitle>
+            <DialogTitle>
+              {hasReplicate ? 'Replace Replicate token' : 'Connect Replicate'}
+            </DialogTitle>
             <DialogDescription>
               {hasReplicate
                 ? 'Replace the stored Replicate API token.'
@@ -276,10 +281,12 @@ function ProjectAIServicesSection({ project }: { project: Project }) {
                   Test Connection
                 </Button>
                 {testResult && (
-                  <div className={cn(
-                    'mt-2 p-2 rounded text-sm flex items-center gap-2',
-                    testResult.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
-                  )}>
+                  <div
+                    className={cn(
+                      'mt-2 p-2 rounded text-sm flex items-center gap-2',
+                      testResult.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700',
+                    )}
+                  >
                     {testResult.success ? (
                       <CheckCircle className="h-4 w-4" />
                     ) : (
@@ -303,17 +310,16 @@ function ProjectAIServicesSection({ project }: { project: Project }) {
             <Button variant="outline" onClick={() => setShowAddDialog(false)}>
               Cancel
             </Button>
-            <Button
-              onClick={handleAdd}
-              disabled={!addToken.trim() || isAdding}
-            >
+            <Button onClick={handleAdd} disabled={!addToken.trim() || isAdding}>
               {isAdding ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   {hasReplicate ? 'Saving...' : 'Connecting...'}
                 </>
+              ) : hasReplicate ? (
+                'Save token'
               ) : (
-                hasReplicate ? 'Save token' : 'Connect Replicate'
+                'Connect Replicate'
               )}
             </Button>
           </DialogFooter>
@@ -331,8 +337,16 @@ const PROVIDER_CONFIG: Record<string, { color: string; bgColor: string; displayN
 };
 
 // Tier display config
-const TIER_CONFIG: Record<ModelTier, { label: string; icon: React.ElementType; color: string; description: string }> = {
-  economy: { label: 'Economy', icon: DollarSign, color: 'text-green-600', description: 'Fast & affordable' },
+const TIER_CONFIG: Record<
+  ModelTier,
+  { label: string; icon: React.ElementType; color: string; description: string }
+> = {
+  economy: {
+    label: 'Economy',
+    icon: DollarSign,
+    color: 'text-green-600',
+    description: 'Fast & affordable',
+  },
   balanced: { label: 'Balanced', icon: Zap, color: 'text-yellow-600', description: 'Good balance' },
   premium: { label: 'Premium', icon: Brain, color: 'text-purple-600', description: 'Most capable' },
 };
@@ -435,7 +449,7 @@ function ModelSelector({
                       <Check
                         className={cn(
                           'mr-2 h-4 w-4',
-                          value === model.id ? 'opacity-100' : 'opacity-0'
+                          value === model.id ? 'opacity-100' : 'opacity-0',
                         )}
                       />
                       <div className="flex flex-col">
@@ -472,7 +486,11 @@ function ProviderCard({
   isTesting: boolean;
   testResult?: { success: boolean; message: string; latencyMs?: number } | null;
 }) {
-  const config = PROVIDER_CONFIG[provider.provider] || { color: 'text-gray-600', bgColor: 'bg-gray-50', displayName: provider.provider };
+  const config = PROVIDER_CONFIG[provider.provider] || {
+    color: 'text-gray-600',
+    bgColor: 'bg-gray-50',
+    displayName: provider.provider,
+  };
 
   return (
     <div className={cn('border rounded-lg p-4', provider.isDefault && 'ring-2 ring-primary')}>
@@ -507,19 +525,10 @@ function ProviderCard({
             disabled={isTesting}
             title="Test connection"
           >
-            {isTesting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Zap className="h-4 w-4" />
-            )}
+            {isTesting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
           </Button>
           {!provider.isDefault && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onSetDefault}
-              title="Set as default"
-            >
+            <Button variant="ghost" size="sm" onClick={onSetDefault} title="Set as default">
               <Star className="h-4 w-4" />
             </Button>
           )}
@@ -540,10 +549,12 @@ function ProviderCard({
         </div>
       </div>
       {testResult && (
-        <div className={cn(
-          'mt-3 p-2 rounded text-sm flex items-center gap-2',
-          testResult.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
-        )}>
+        <div
+          className={cn(
+            'mt-3 p-2 rounded text-sm flex items-center gap-2',
+            testResult.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700',
+          )}
+        >
           {testResult.success ? (
             <CheckCircle className="h-4 w-4" />
           ) : (
@@ -572,7 +583,12 @@ function AddProviderDialog({
   onOpenChange: (open: boolean) => void;
   projectId: string;
   availableProviders: { provider: AIProviderType; displayName: string; models: ModelInfo[] }[];
-  onAdd: (provider: AIProviderType, apiKey: string, defaultModel: string, isDefault: boolean) => void;
+  onAdd: (
+    provider: AIProviderType,
+    apiKey: string,
+    defaultModel: string,
+    isDefault: boolean,
+  ) => void;
   isAdding: boolean;
   error: string | null;
   isFirstProvider: boolean;
@@ -643,9 +659,7 @@ function AddProviderDialog({
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>Add LLM Provider</DialogTitle>
-          <DialogDescription>
-            Choose a provider and paste its API key.
-          </DialogDescription>
+          <DialogDescription>Choose a provider and paste its API key.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
@@ -654,7 +668,11 @@ function AddProviderDialog({
             <Label className="mb-2 block">Provider</Label>
             <div className="grid grid-cols-1 gap-2">
               {availableProviders.map((provider) => {
-                const config = PROVIDER_CONFIG[provider.provider] || { color: 'text-gray-600', bgColor: 'bg-gray-50', displayName: provider.displayName };
+                const config = PROVIDER_CONFIG[provider.provider] || {
+                  color: 'text-gray-600',
+                  bgColor: 'bg-gray-50',
+                  displayName: provider.displayName,
+                };
                 return (
                   <button
                     key={provider.provider}
@@ -667,7 +685,7 @@ function AddProviderDialog({
                       'p-3 border rounded-lg text-left transition-colors flex items-start gap-3',
                       selectedProvider === provider.provider
                         ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
-                        : 'border-border hover:bg-muted/50'
+                        : 'border-border hover:bg-muted/50',
                     )}
                   >
                     <div className={cn('p-2 rounded-lg', config.bgColor)}>
@@ -706,13 +724,43 @@ function AddProviderDialog({
                 />
                 <p className="mt-1 text-xs text-muted-foreground">
                   {selectedProvider === 'openai' && (
-                    <>Get your API key from the <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">OpenAI dashboard</a></>
+                    <>
+                      Get your API key from the{' '}
+                      <a
+                        href="https://platform.openai.com/api-keys"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline"
+                      >
+                        OpenAI dashboard
+                      </a>
+                    </>
                   )}
                   {selectedProvider === 'anthropic' && (
-                    <>Get your API key from the <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Anthropic console</a></>
+                    <>
+                      Get your API key from the{' '}
+                      <a
+                        href="https://console.anthropic.com/settings/keys"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline"
+                      >
+                        Anthropic console
+                      </a>
+                    </>
                   )}
                   {selectedProvider === 'google' && (
-                    <>Get your API key from <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Google AI Studio</a></>
+                    <>
+                      Get your API key from{' '}
+                      <a
+                        href="https://aistudio.google.com/app/apikey"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline"
+                      >
+                        Google AI Studio
+                      </a>
+                    </>
                   )}
                 </p>
               </div>
@@ -773,10 +821,7 @@ function AddProviderDialog({
           <Button variant="outline" onClick={handleClose}>
             Cancel
           </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={!selectedProvider || !apiKey.trim() || isAdding}
-          >
+          <Button onClick={handleSubmit} disabled={!selectedProvider || !apiKey.trim() || isAdding}>
             {isAdding ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -808,7 +853,9 @@ export function ProjectAISettingsTab({ project }: ProjectAISettingsTabProps) {
   const [addError, setAddError] = useState<string | null>(null);
   const [removingProvider, setRemovingProvider] = useState<string | null>(null);
   const [testingProvider, setTestingProvider] = useState<string | null>(null);
-  const [testResults, setTestResults] = useState<Record<string, { success: boolean; message: string; latencyMs?: number }>>({});
+  const [testResults, setTestResults] = useState<
+    Record<string, { success: boolean; message: string; latencyMs?: number }>
+  >({});
 
   // Filter out already configured providers
   const availableToAdd = useMemo(() => {
@@ -821,7 +868,7 @@ export function ProjectAISettingsTab({ project }: ProjectAISettingsTabProps) {
     provider: AIProviderType,
     apiKey: string,
     defaultModel: string,
-    isDefault: boolean
+    isDefault: boolean,
   ) => {
     try {
       setAddError(null);
@@ -871,7 +918,10 @@ export function ProjectAISettingsTab({ project }: ProjectAISettingsTabProps) {
   const handleTestProvider = async (provider: string) => {
     try {
       setTestingProvider(provider);
-      setTestResults((prev) => ({ ...prev, [provider]: undefined as unknown as { success: boolean; message: string } }));
+      setTestResults((prev) => ({
+        ...prev,
+        [provider]: undefined as unknown as { success: boolean; message: string },
+      }));
       const result = await testAI({
         projectId: project.id,
         provider: provider as AIProviderType,
@@ -880,7 +930,8 @@ export function ProjectAISettingsTab({ project }: ProjectAISettingsTabProps) {
         ...prev,
         [provider]: {
           success: result.success,
-          message: result.message || (result.success ? 'Connection successful' : 'Connection failed'),
+          message:
+            result.message || (result.success ? 'Connection successful' : 'Connection failed'),
         },
       }));
     } catch (error: unknown) {
@@ -929,8 +980,8 @@ export function ProjectAISettingsTab({ project }: ProjectAISettingsTabProps) {
                 LLM Providers
               </CardTitle>
               <CardDescription>
-                API keys for OpenAI, Anthropic, and Google. Used by any AI step in your pipelines
-                — chat and one-off text generation.
+                API keys for OpenAI, Anthropic, and Google. Used by any AI step in your pipelines —
+                chat and one-off text generation.
               </CardDescription>
             </div>
             {availableToAdd.length > 0 && (
@@ -947,7 +998,8 @@ export function ProjectAISettingsTab({ project }: ProjectAISettingsTabProps) {
               <div className="flex items-center text-sm mb-4">
                 <CheckCircle className="h-4 w-4 text-green-500 mr-2" />
                 <span className="text-muted-foreground">
-                  {configuredProviders.length} provider{configuredProviders.length > 1 ? 's' : ''} configured
+                  {configuredProviders.length} provider{configuredProviders.length > 1 ? 's' : ''}{' '}
+                  configured
                 </span>
               </div>
               {configuredProviders.map((provider) => (
@@ -970,8 +1022,8 @@ export function ProjectAISettingsTab({ project }: ProjectAISettingsTabProps) {
                 <span className="text-muted-foreground">No LLM providers connected</span>
               </div>
               <p className="text-sm text-muted-foreground">
-                Add a provider — Anthropic, OpenAI, or Google — to enable AI steps in this
-                project's pipelines.
+                Add a provider — Anthropic, OpenAI, or Google — to enable AI steps in this project's
+                pipelines.
               </p>
               <Button onClick={() => setShowAddDialog(true)}>
                 <Plus className="h-4 w-4 mr-2" />

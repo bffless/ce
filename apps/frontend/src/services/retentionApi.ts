@@ -109,9 +109,7 @@ export const retentionApi = api.injectEndpoints({
     // Get storage overview for a project
     getStorageOverview: builder.query<StorageOverview, string>({
       query: (projectId) => `/api/retention/projects/${projectId}/overview`,
-      providesTags: (_result, _error, projectId) => [
-        { type: 'StorageOverview', id: projectId },
-      ],
+      providesTags: (_result, _error, projectId) => [{ type: 'StorageOverview', id: projectId }],
     }),
 
     // List retention rules for a project

@@ -22,15 +22,7 @@ import { api } from '@/services/api';
 import { useAppDispatch } from '@/store/hooks';
 import { uploadDeployment, type FileProgress } from '@/services/uploadDeployment';
 import type { BranchRef } from '@/services/repoApi';
-import {
-  CheckCircle2,
-  FileIcon,
-  FolderOpen,
-  Loader2,
-  Plus,
-  Upload,
-  X,
-} from 'lucide-react';
+import { CheckCircle2, FileIcon, FolderOpen, Loader2, Plus, Upload, X } from 'lucide-react';
 
 interface CreateDeploymentDialogProps {
   open: boolean;
@@ -118,10 +110,7 @@ export function CreateDeploymentDialog({
   const [error, setError] = useState<string | null>(null);
 
   const totalSize = useMemo(() => files.reduce((s, f) => s + f.file.size, 0), [files]);
-  const detectedBasePath = useMemo(
-    () => detectCommonBasePath(files.map((f) => f.path)),
-    [files],
-  );
+  const detectedBasePath = useMemo(() => detectCommonBasePath(files.map((f) => f.path)), [files]);
   const effectiveBasePath = basePathOverride ?? detectedBasePath;
 
   const handleFiles = useCallback((fileList: FileList | File[]) => {
@@ -361,9 +350,7 @@ export function CreateDeploymentDialog({
               {isUploading && (
                 <div className="space-y-1">
                   <Progress
-                    value={
-                      aggregate.total > 0 ? (aggregate.loaded / aggregate.total) * 100 : 0
-                    }
+                    value={aggregate.total > 0 ? (aggregate.loaded / aggregate.total) * 100 : 0}
                   />
                   <div className="flex justify-between text-xs text-muted-foreground">
                     <span>
@@ -377,12 +364,15 @@ export function CreateDeploymentDialog({
               )}
 
               <div className="max-h-48 overflow-y-auto border rounded-md divide-y">
-                {(isUploading ? progress : files.map((f) => ({
-                  path: f.path,
-                  loaded: 0,
-                  total: f.file.size,
-                  status: 'pending' as const,
-                }))).map((p) => (
+                {(isUploading
+                  ? progress
+                  : files.map((f) => ({
+                      path: f.path,
+                      loaded: 0,
+                      total: f.file.size,
+                      status: 'pending' as const,
+                    }))
+                ).map((p) => (
                   <div key={p.path} className="flex items-center gap-2 px-3 py-1.5 text-sm">
                     {isUploading ? (
                       p.status === 'done' ? (

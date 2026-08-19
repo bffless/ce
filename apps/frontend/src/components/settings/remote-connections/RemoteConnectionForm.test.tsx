@@ -92,7 +92,9 @@ describe('toUpsertDto', () => {
   it('maps the credential to null on remove, the string on replace, absent otherwise', () => {
     const existing = connection();
     const base = toConnectionDraft(existing);
-    expect(toUpsertDto(existing, { ...base, removeCredential: true })).toEqual({ credential: null });
+    expect(toUpsertDto(existing, { ...base, removeCredential: true })).toEqual({
+      credential: null,
+    });
     expect(toUpsertDto(existing, { ...base, credential: ' key ' })).toEqual({ credential: 'key' });
     expect(toUpsertDto(existing, base)).toEqual({});
   });

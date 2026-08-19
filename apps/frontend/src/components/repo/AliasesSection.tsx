@@ -35,9 +35,7 @@ export function AliasesSection({ aliases }: AliasesSectionProps) {
         {/* Manual Aliases */}
         {manualAliases.length > 0 && (
           <div className="space-y-2">
-            {previewAliases.length > 0 && (
-              <h4 className="text-sm font-medium">Manual Aliases</h4>
-            )}
+            {previewAliases.length > 0 && <h4 className="text-sm font-medium">Manual Aliases</h4>}
             {manualAliases.map((alias) => (
               <AliasRow key={alias.name} alias={alias} />
             ))}

@@ -6,15 +6,7 @@ import type { StepId } from '@/store/slices/setupSlice';
 describe('SetupProgress', () => {
   it('renders labels for the bootstrap step list, including Domain & SSL and Apply', () => {
     // Bootstrap list with the claim step present (claimRequired + no url token).
-    const steps: StepId[] = [
-      'claim',
-      'admin',
-      'domain-ssl',
-      'storage',
-      'cache',
-      'email',
-      'apply',
-    ];
+    const steps: StepId[] = ['claim', 'admin', 'domain-ssl', 'storage', 'cache', 'email', 'apply'];
     render(<SetupProgress steps={steps} currentStep={1} />);
 
     // These three are exactly what the old hardcoded header could never show.

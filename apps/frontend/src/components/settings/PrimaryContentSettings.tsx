@@ -16,13 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
@@ -42,17 +36,15 @@ export function PrimaryContentSettings() {
     error: configError,
   } = useGetPrimaryContentQuery();
 
-  const { data: projectsData, isLoading: isLoadingProjects } =
-    useGetPrimaryContentProjectsQuery();
+  const { data: projectsData, isLoading: isLoadingProjects } = useGetPrimaryContentProjectsQuery();
 
   // Fetch the domain mapping if we have a domainMappingId
   const { data: domainMapping, refetch: refetchDomain } = useGetDomainQuery(
     config?.domainMappingId || '',
-    { skip: !config?.domainMappingId }
+    { skip: !config?.domainMappingId },
   );
 
-  const [updatePrimaryContent, { isLoading: isUpdating }] =
-    useUpdatePrimaryContentMutation();
+  const [updatePrimaryContent, { isLoading: isUpdating }] = useUpdatePrimaryContentMutation();
 
   // Local form state
   const [enabled, setEnabled] = useState(false);
@@ -106,11 +98,8 @@ export function PrimaryContentSettings() {
   // Build preview URL
   const baseDomain = window.location.hostname.replace(/^admin\./, '');
   const previewDomain =
-    wwwEnabled && wwwBehavior !== 'redirect-to-root'
-      ? `www.${baseDomain}`
-      : baseDomain;
-  const previewUrl =
-    enabled && projectId && alias ? `https://${previewDomain}/` : null;
+    wwwEnabled && wwwBehavior !== 'redirect-to-root' ? `www.${baseDomain}` : baseDomain;
+  const previewUrl = enabled && projectId && alias ? `https://${previewDomain}/` : null;
 
   const previewPath =
     enabled && projectId && alias && selectedProject
@@ -211,9 +200,7 @@ export function PrimaryContentSettings() {
       <Card>
         <CardContent className="py-8">
           <Alert variant="destructive">
-            <AlertDescription>
-              Failed to load primary content settings
-            </AlertDescription>
+            <AlertDescription>Failed to load primary content settings</AlertDescription>
           </Alert>
         </CardContent>
       </Card>
@@ -235,12 +222,10 @@ export function PrimaryContentSettings() {
         {/* Enable toggle */}
         <div className="flex items-center justify-between">
           <div className="space-y-0.5">
-            <Label htmlFor="primary-content-enabled">
-              Enable primary domain content
-            </Label>
+            <Label htmlFor="primary-content-enabled">Enable primary domain content</Label>
             <p className="text-sm text-muted-foreground">
-              When enabled, your primary domain will serve the selected
-              deployment instead of redirecting to admin
+              When enabled, your primary domain will serve the selected deployment instead of
+              redirecting to admin
             </p>
           </div>
           <Switch
@@ -279,9 +264,7 @@ export function PrimaryContentSettings() {
                     ))}
                   </SelectContent>
                 </Select>
-                {errors.projectId && (
-                  <p className="text-sm text-destructive">{errors.projectId}</p>
-                )}
+                {errors.projectId && <p className="text-sm text-destructive">{errors.projectId}</p>}
               </div>
 
               {/* Alias selection */}
@@ -311,9 +294,7 @@ export function PrimaryContentSettings() {
                     No aliases found. Deploy content with an alias first.
                   </p>
                 )}
-                {errors.alias && (
-                  <p className="text-sm text-destructive">{errors.alias}</p>
-                )}
+                {errors.alias && <p className="text-sm text-destructive">{errors.alias}</p>}
               </div>
 
               {/* Path input */}
@@ -337,9 +318,7 @@ export function PrimaryContentSettings() {
                 <p className="text-sm text-muted-foreground">
                   Subdirectory within the deployment to serve
                 </p>
-                {errors.path && (
-                  <p className="text-sm text-destructive">{errors.path}</p>
-                )}
+                {errors.path && <p className="text-sm text-destructive">{errors.path}</p>}
               </div>
 
               {/* WWW subdomain toggle */}
@@ -374,7 +353,11 @@ export function PrimaryContentSettings() {
                       className="space-y-2"
                     >
                       <div className="flex items-start space-x-3">
-                        <RadioGroupItem value="redirect-to-www" id="redirect-to-www" className="mt-0.5" />
+                        <RadioGroupItem
+                          value="redirect-to-www"
+                          id="redirect-to-www"
+                          className="mt-0.5"
+                        />
                         <div className="space-y-0.5">
                           <Label htmlFor="redirect-to-www" className="font-normal cursor-pointer">
                             Redirect to www
@@ -385,7 +368,11 @@ export function PrimaryContentSettings() {
                         </div>
                       </div>
                       <div className="flex items-start space-x-3">
-                        <RadioGroupItem value="redirect-to-root" id="redirect-to-root" className="mt-0.5" />
+                        <RadioGroupItem
+                          value="redirect-to-root"
+                          id="redirect-to-root"
+                          className="mt-0.5"
+                        />
                         <div className="space-y-0.5">
                           <Label htmlFor="redirect-to-root" className="font-normal cursor-pointer">
                             Redirect to root
@@ -416,8 +403,8 @@ export function PrimaryContentSettings() {
                 <div className="space-y-0.5">
                   <Label htmlFor="spa-mode">Single Page Application (SPA)</Label>
                   <p className="text-sm text-muted-foreground">
-                    Enable for React, Vue, or Angular apps with client-side routing.
-                    Non-existent paths will serve index.html instead of showing 404.
+                    Enable for React, Vue, or Angular apps with client-side routing. Non-existent
+                    paths will serve index.html instead of showing 404.
                   </p>
                 </div>
                 <Switch
@@ -487,8 +474,8 @@ export function PrimaryContentSettings() {
           <Alert className="[&>svg]:top-1/2 [&>svg]:-translate-y-1/2">
             <Info className="h-4 w-4" />
             <AlertDescription>
-              When disabled, visitors to your primary domain will be redirected
-              to the admin panel at admin.{baseDomain}
+              When disabled, visitors to your primary domain will be redirected to the admin panel
+              at admin.{baseDomain}
             </AlertDescription>
           </Alert>
         )}

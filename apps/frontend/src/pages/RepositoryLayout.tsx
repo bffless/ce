@@ -55,10 +55,7 @@ export function RepositoryLayout() {
     data: statsData,
     isLoading: isLoadingStats,
     error: statsError,
-  } = useGetRepositoryStatsQuery(
-    { owner: owner!, repo: repo! },
-    { skip: !owner || !repo },
-  );
+  } = useGetRepositoryStatsQuery({ owner: owner!, repo: repo! }, { skip: !owner || !repo });
 
   // Loading state
   if (isLoadingStats) {
@@ -148,27 +145,27 @@ export function RepositoryLayout() {
         <Tabs value={currentTab} className="w-full">
           <TabScroller>
             <TabsList>
-            <TabsTrigger value="deployments" asChild>
-              <Link to={routes.deployments(owner!, repo!)}>Deployments</Link>
-            </TabsTrigger>
-            <TabsTrigger value="branches" asChild>
-              <Link to={routes.branches(owner!, repo!)}>Branches</Link>
-            </TabsTrigger>
-            <TabsTrigger value="aliases" asChild>
-              <Link to={routes.aliases(owner!, repo!)}>Aliases</Link>
-            </TabsTrigger>
-            <TabsTrigger value="proxy-rules" asChild>
-              <Link to={routes.proxyRules(owner!, repo!)}>Proxy Rules</Link>
-            </TabsTrigger>
-            <TabsTrigger value="schedules" asChild>
-              <Link to={routes.schedules(owner!, repo!)}>Schedules</Link>
-            </TabsTrigger>
-            <TabsTrigger value="data" asChild>
-              <Link to={`/repo/${owner}/${repo}/data`}>Data</Link>
-            </TabsTrigger>
-            <TabsTrigger value="uploads" asChild>
-              <Link to={`/repo/${owner}/${repo}/uploads`}>Uploads</Link>
-            </TabsTrigger>
+              <TabsTrigger value="deployments" asChild>
+                <Link to={routes.deployments(owner!, repo!)}>Deployments</Link>
+              </TabsTrigger>
+              <TabsTrigger value="branches" asChild>
+                <Link to={routes.branches(owner!, repo!)}>Branches</Link>
+              </TabsTrigger>
+              <TabsTrigger value="aliases" asChild>
+                <Link to={routes.aliases(owner!, repo!)}>Aliases</Link>
+              </TabsTrigger>
+              <TabsTrigger value="proxy-rules" asChild>
+                <Link to={routes.proxyRules(owner!, repo!)}>Proxy Rules</Link>
+              </TabsTrigger>
+              <TabsTrigger value="schedules" asChild>
+                <Link to={routes.schedules(owner!, repo!)}>Schedules</Link>
+              </TabsTrigger>
+              <TabsTrigger value="data" asChild>
+                <Link to={`/repo/${owner}/${repo}/data`}>Data</Link>
+              </TabsTrigger>
+              <TabsTrigger value="uploads" asChild>
+                <Link to={`/repo/${owner}/${repo}/uploads`}>Uploads</Link>
+              </TabsTrigger>
             </TabsList>
           </TabScroller>
         </Tabs>

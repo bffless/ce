@@ -33,7 +33,7 @@ export const CommitGraphRow = memo(function CommitGraphRow({
       className={cn(
         'flex items-center gap-3 cursor-pointer transition-colors group w-full text-left px-3',
         'focus:bg-accent focus:outline-none',
-        isSelected ? 'bg-accent' : 'hover:bg-accent/50'
+        isSelected ? 'bg-accent' : 'hover:bg-accent/50',
       )}
       onClick={() => onSelect(commit.sha)}
       role="option"
@@ -46,9 +46,7 @@ export const CommitGraphRow = memo(function CommitGraphRow({
       </div>
 
       {/* SHA */}
-      <code className="shrink-0 font-mono text-sm font-semibold w-14">
-        {commit.shortSha}
-      </code>
+      <code className="shrink-0 font-mono text-sm font-semibold w-14">{commit.shortSha}</code>
 
       {/* Branch badge */}
       <div

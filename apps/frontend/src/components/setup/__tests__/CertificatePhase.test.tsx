@@ -54,7 +54,7 @@ function renderWithStore(
     servingMode: ServingMode | null;
     bootstrapSslMode: BootstrapSslMode | null;
     dnsPreflightPassed: boolean;
-  }> = {}
+  }> = {},
 ) {
   const store = createTestStore();
   if (wizardOverrides.servingMode !== undefined && wizardOverrides.servingMode !== null) {
@@ -83,7 +83,10 @@ beforeEach(() => {
   issueMock.mockReset();
   issueMock.mockReturnValue({
     unwrap: () =>
-      Promise.resolve({ issued: true, sans: ['example.com', 'www.example.com', 'admin.example.com'] }),
+      Promise.resolve({
+        issued: true,
+        sans: ['example.com', 'www.example.com', 'admin.example.com'],
+      }),
   });
   useIssueCertificateMutationMock.mockReset();
   useIssueCertificateMutationMock.mockReturnValue([issueMock, { isLoading: false }]);
@@ -112,7 +115,9 @@ afterEach(() => {
 
 describe('CertificatePhase', () => {
   it('cloudflare path shows the Origin Certificate copy referencing the Cloudflare dashboard', () => {
-    renderWithStore(<CertificatePhase domain="example.com" onBack={noop} />, { servingMode: 'cloudflare' });
+    renderWithStore(<CertificatePhase domain="example.com" onBack={noop} />, {
+      servingMode: 'cloudflare',
+    });
     expect(screen.getByText(/cloudflare dashboard/i)).toBeInTheDocument();
     expect(screen.queryByText(/restore visitor ips/i)).not.toBeInTheDocument();
   });
@@ -187,7 +192,7 @@ describe('CertificatePhase', () => {
       expect(store.getState().setup.wizard.bootstrapRealIp).toEqual({
         header: 'True-Client-IP',
         ranges: ['151.101.0.0/16'],
-      })
+      }),
     );
   });
 
@@ -222,7 +227,7 @@ describe('CertificatePhase', () => {
         certificatePem: 'CERT-PEM',
         privateKeyPem: 'KEY-PEM',
         servingMode: 'proxy',
-      })
+      }),
     );
     expect(store.getState().setup.wizard.bootstrapRealIp).toEqual({
       header: 'X-Forwarded-For',
@@ -308,7 +313,7 @@ describe('CertificatePhase', () => {
     await user.click(screen.getByText(/restore visitor ips/i));
     await user.type(
       screen.getByLabelText(/trusted ranges/i),
-      '151.101.0.0/16{enter}2a04:4e40::/32'
+      '151.101.0.0/16{enter}2a04:4e40::/32',
     );
     await user.type(screen.getByLabelText(/header carrying the visitor ip/i), 'CF-Connecting-IP');
     await user.click(screen.getByRole('button', { name: /upload certificate/i }));
@@ -335,7 +340,7 @@ describe('CertificatePhase', () => {
     await user.click(screen.getByRole('button', { name: /upload certificate/i }));
 
     expect(
-      await screen.findByText(/preview subdomains will show a certificate warning/i)
+      await screen.findByText(/preview subdomains will show a certificate warning/i),
     ).toBeInTheDocument();
     expect(screen.getByText(/Admin → Settings → SSL/i)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /continue anyway/i }));
@@ -411,7 +416,7 @@ describe('CertificatePhase', () => {
     });
     expect(screen.queryByText(/close port 80/i)).not.toBeInTheDocument();
     expect(
-      screen.getByText(/port 80 stays open so let's encrypt can validate/i)
+      screen.getByText(/port 80 stays open so let's encrypt can validate/i),
     ).toBeInTheDocument();
     // The rest of ProxyOptions (visitor-IP restore) still renders.
     expect(screen.getByText(/restore visitor ips/i)).toBeInTheDocument();

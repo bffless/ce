@@ -2,13 +2,7 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardContent,
-  CardDescription,
-} from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
   useGetSslSettingsQuery,
@@ -25,12 +19,11 @@ export function SslSettings() {
   const { toast } = useToast();
   const { isEnabled } = useFeatureFlags();
   const { data: settings, isLoading: loadingSettings } = useGetSslSettingsQuery();
-  const { data: history = [], isLoading: loadingHistory } =
-    useGetAllSslRenewalHistoryQuery({ limit: 20 });
-  const [updateSettings, { isLoading: isUpdating }] =
-    useUpdateSslSettingsMutation();
-  const [triggerCheck, { isLoading: isTriggering }] =
-    useTriggerRenewalCheckMutation();
+  const { data: history = [], isLoading: loadingHistory } = useGetAllSslRenewalHistoryQuery({
+    limit: 20,
+  });
+  const [updateSettings, { isLoading: isUpdating }] = useUpdateSslSettingsMutation();
+  const [triggerCheck, { isLoading: isTriggering }] = useTriggerRenewalCheckMutation();
 
   const [thresholdDays, setThresholdDays] = useState(30);
   const [notificationEmail, setNotificationEmail] = useState('');
@@ -112,25 +105,19 @@ export function SslSettings() {
             <Shield className="h-5 w-5" />
             SSL Certificate Auto-Renewal
           </CardTitle>
-          <CardDescription>
-            Configure automatic SSL certificate renewal settings
-          </CardDescription>
+          <CardDescription>Configure automatic SSL certificate renewal settings</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-sm font-medium">
-                Renewal Threshold (days)
-              </label>
+              <label className="text-sm font-medium">Renewal Threshold (days)</label>
               <p className="text-sm text-muted-foreground mb-2">
                 Renew certificates when they expire within this many days
               </p>
               <Input
                 type="number"
                 value={thresholdDays}
-                onChange={(e) =>
-                  setThresholdDays(parseInt(e.target.value) || 30)
-                }
+                onChange={(e) => setThresholdDays(parseInt(e.target.value) || 30)}
                 min={1}
                 max={90}
               />
@@ -152,32 +139,20 @@ export function SslSettings() {
 
           <div className="flex items-center justify-between">
             <div>
-              <label className="text-sm font-medium">
-                Wildcard Auto-Renewal
-              </label>
+              <label className="text-sm font-medium">Wildcard Auto-Renewal</label>
               <p className="text-sm text-muted-foreground">
-                Automatically renew the wildcard certificate (requires DNS API
-                integration)
+                Automatically renew the wildcard certificate (requires DNS API integration)
               </p>
             </div>
-            <Switch
-              checked={wildcardAutoRenew}
-              onCheckedChange={setWildcardAutoRenew}
-            />
+            <Switch checked={wildcardAutoRenew} onCheckedChange={setWildcardAutoRenew} />
           </div>
 
           <div className="flex gap-2 pt-4 border-t">
             <Button onClick={handleSave} disabled={isUpdating}>
               {isUpdating ? 'Saving...' : 'Save Settings'}
             </Button>
-            <Button
-              variant="outline"
-              onClick={handleTriggerCheck}
-              disabled={isTriggering}
-            >
-              <RefreshCw
-                className={`h-4 w-4 mr-2 ${isTriggering ? 'animate-spin' : ''}`}
-              />
+            <Button variant="outline" onClick={handleTriggerCheck} disabled={isTriggering}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${isTriggering ? 'animate-spin' : ''}`} />
               Run Renewal Check Now
             </Button>
           </div>
@@ -206,26 +181,19 @@ export function SslSettings() {
                     {record.status === 'success' && (
                       <CheckCircle className="h-5 w-5 text-green-500" />
                     )}
-                    {record.status === 'failed' && (
-                      <XCircle className="h-5 w-5 text-red-500" />
-                    )}
+                    {record.status === 'failed' && <XCircle className="h-5 w-5 text-red-500" />}
                     {record.status === 'skipped' && (
                       <MinusCircle className="h-5 w-5 text-muted-foreground" />
                     )}
                     <div>
                       <div className="font-medium">{record.domain}</div>
                       <div className="text-sm text-muted-foreground">
-                        {record.certificateType === 'wildcard'
-                          ? 'Wildcard'
-                          : 'Individual'}
+                        {record.certificateType === 'wildcard' ? 'Wildcard' : 'Individual'}
                         {' · '}
                         {record.triggeredBy === 'auto' ? 'Automatic' : 'Manual'}
-                        {record.status === 'failed' &&
-                          record.errorMessage && (
-                            <span className="ml-2 text-red-500">
-                              - {record.errorMessage}
-                            </span>
-                          )}
+                        {record.status === 'failed' && record.errorMessage && (
+                          <span className="ml-2 text-red-500">- {record.errorMessage}</span>
+                        )}
                       </div>
                     </div>
                   </div>

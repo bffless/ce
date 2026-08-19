@@ -17,10 +17,14 @@ const invalidateTags = vi.fn((tags: string[]) => ({ type: 'invalidate', tags }))
 
 vi.mock('@/services/appCatalogApi', () => ({
   useUpdateAppMutation: () => [updateTrigger],
-  appCatalogApi: { endpoints: { getInstallJob: { initiate: (...args: unknown[]) => initiate(...args) } } },
+  appCatalogApi: {
+    endpoints: { getInstallJob: { initiate: (...args: unknown[]) => initiate(...args) } },
+  },
 }));
 vi.mock('@/store/hooks', () => ({ useAppDispatch: () => dispatch }));
-vi.mock('@/services/api', () => ({ api: { util: { invalidateTags: (tags: string[]) => invalidateTags(tags) } } }));
+vi.mock('@/services/api', () => ({
+  api: { util: { invalidateTags: (tags: string[]) => invalidateTags(tags) } },
+}));
 
 const install = (id: string): InstalledSummary => ({
   installedAppId: id,
@@ -35,8 +39,21 @@ const install = (id: string): InstalledSummary => ({
   manualSteps: [],
 });
 
-const job = (id: string, status: InstallJob['status'], extra: Partial<InstallJob> = {}): InstallJob =>
-  ({ id, kind: 'update', appId: 'app', projectId: null, status, steps: [], createdAt: '', ...extra }) as InstallJob;
+const job = (
+  id: string,
+  status: InstallJob['status'],
+  extra: Partial<InstallJob> = {},
+): InstallJob =>
+  ({
+    id,
+    kind: 'update',
+    appId: 'app',
+    projectId: null,
+    status,
+    steps: [],
+    createdAt: '',
+    ...extra,
+  }) as InstallJob;
 
 /** Queue of job snapshots per jobId; each poll shifts one (last one sticks). */
 let jobFeeds: Record<string, InstallJob[]>;
@@ -94,7 +111,9 @@ describe('useSequentialUpdates', () => {
       { id: 'b', prune: false },
     ]);
     const firstBStart = updateTrigger.mock.invocationCallOrder[1];
-    const lastAPoll = initiate.mock.invocationCallOrder.filter((_, i) => initiate.mock.calls[i][0] === 'job-a').at(-1)!;
+    const lastAPoll = initiate.mock.invocationCallOrder
+      .filter((_, i) => initiate.mock.calls[i][0] === 'job-a')
+      .at(-1)!;
     expect(firstBStart).toBeGreaterThan(lastAPoll);
 
     expect(result.current.running).toBe(false);
@@ -143,7 +162,10 @@ describe('useSequentialUpdates', () => {
     await flush();
 
     expect(updateTrigger).toHaveBeenCalledTimes(1);
-    expect(result.current.states.a).toEqual({ status: 'failed', error: 'Another install job is already running' });
+    expect(result.current.states.a).toEqual({
+      status: 'failed',
+      error: 'Another install job is already running',
+    });
     expect(result.current.states.b.status).toBe('failed');
     expect(result.current.states.b.error).toMatch(/skipped/i);
     expect(result.current.running).toBe(false);

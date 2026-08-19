@@ -81,8 +81,7 @@ export function RedirectsTab({ domainId, targetDomain }: RedirectsTabProps) {
       });
     } catch (err: unknown) {
       const errorMessage =
-        (err as { data?: { message?: string } })?.data?.message ||
-        'Failed to create redirect';
+        (err as { data?: { message?: string } })?.data?.message || 'Failed to create redirect';
       toast({
         title: 'Error',
         description: errorMessage,
@@ -104,8 +103,7 @@ export function RedirectsTab({ domainId, targetDomain }: RedirectsTabProps) {
       });
     } catch (err: unknown) {
       const errorMessage =
-        (err as { data?: { message?: string } })?.data?.message ||
-        'Failed to delete redirect';
+        (err as { data?: { message?: string } })?.data?.message || 'Failed to delete redirect';
       toast({
         title: 'Error',
         description: errorMessage,
@@ -129,8 +127,7 @@ export function RedirectsTab({ domainId, targetDomain }: RedirectsTabProps) {
       });
     } catch (err: unknown) {
       const errorMessage =
-        (err as { data?: { message?: string } })?.data?.message ||
-        'Failed to update redirect';
+        (err as { data?: { message?: string } })?.data?.message || 'Failed to update redirect';
       toast({
         title: 'Error',
         description: errorMessage,
@@ -153,8 +150,8 @@ export function RedirectsTab({ domainId, targetDomain }: RedirectsTabProps) {
         <h3 className="text-sm font-medium mb-2">Path Redirects</h3>
         <p className="text-sm text-muted-foreground mb-4">
           Configure path-level redirects for{' '}
-          <strong className="font-mono text-xs">{targetDomain}</strong>.
-          Visitors to the source path will be redirected to the target path.
+          <strong className="font-mono text-xs">{targetDomain}</strong>. Visitors to the source path
+          will be redirected to the target path.
         </p>
       </div>
 
@@ -186,7 +183,9 @@ export function RedirectsTab({ domainId, targetDomain }: RedirectsTabProps) {
                 </div>
                 {/* Status indicator */}
                 <div className="flex items-center gap-1.5 mt-1">
-                  <span className={`text-xs ${redirect.isActive ? 'text-green-600' : 'text-muted-foreground'}`}>
+                  <span
+                    className={`text-xs ${redirect.isActive ? 'text-green-600' : 'text-muted-foreground'}`}
+                  >
                     {redirect.isActive ? 'Active' : 'Disabled'}
                   </span>
                 </div>
@@ -194,9 +193,7 @@ export function RedirectsTab({ domainId, targetDomain }: RedirectsTabProps) {
               <div className="flex items-center gap-2 flex-shrink-0">
                 <Switch
                   checked={redirect.isActive}
-                  onCheckedChange={() =>
-                    handleToggleActive(redirect.id, redirect.isActive)
-                  }
+                  onCheckedChange={() => handleToggleActive(redirect.id, redirect.isActive)}
                   aria-label={redirect.isActive ? 'Disable redirect' : 'Enable redirect'}
                 />
                 <Button
@@ -271,10 +268,11 @@ export function RedirectsTab({ domainId, targetDomain }: RedirectsTabProps) {
           </div>
         </div>
         <p className="text-xs text-muted-foreground mt-3">
-          <strong>301</strong> = Permanent redirect (recommended for SEO),{' '}
-          <strong>302</strong> = Temporary redirect.
-          Use <code className="bg-muted px-1 rounded">*</code> for wildcards (e.g., <code className="bg-muted px-1 rounded">/old-blog/*</code>).
-          Targets can be a path on this domain or an absolute URL (e.g., <code className="bg-muted px-1 rounded">https://discord.gg/…</code>).
+          <strong>301</strong> = Permanent redirect (recommended for SEO), <strong>302</strong> =
+          Temporary redirect. Use <code className="bg-muted px-1 rounded">*</code> for wildcards
+          (e.g., <code className="bg-muted px-1 rounded">/old-blog/*</code>). Targets can be a path
+          on this domain or an absolute URL (e.g.,{' '}
+          <code className="bg-muted px-1 rounded">https://discord.gg/…</code>).
         </p>
       </div>
     </div>

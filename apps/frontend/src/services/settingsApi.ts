@@ -69,7 +69,14 @@ export interface TestSmtpResponse {
 // Email Settings Types (New - Multi-Provider Support)
 // =============================================================================
 
-export type SettingsEmailProvider = 'managed' | 'smtp' | 'sendgrid' | 'ses' | 'mailgun' | 'resend' | 'postmark';
+export type SettingsEmailProvider =
+  | 'managed'
+  | 'smtp'
+  | 'sendgrid'
+  | 'ses'
+  | 'mailgun'
+  | 'resend'
+  | 'postmark';
 
 export interface EmailStatus {
   isConfigured: boolean;
@@ -389,10 +396,7 @@ export const settingsApi = api.injectEndpoints({
     }),
 
     // Update primary content configuration
-    updatePrimaryContent: builder.mutation<
-      UpdatePrimaryContentResponse,
-      UpdatePrimaryContentDto
-    >({
+    updatePrimaryContent: builder.mutation<UpdatePrimaryContentResponse, UpdatePrimaryContentDto>({
       query: (body) => ({
         url: '/api/settings/primary-content',
         method: 'PATCH',
@@ -402,10 +406,7 @@ export const settingsApi = api.injectEndpoints({
     }),
 
     // Get available projects for primary content
-    getPrimaryContentProjects: builder.query<
-      { projects: ProjectForPrimaryContent[] },
-      void
-    >({
+    getPrimaryContentProjects: builder.query<{ projects: ProjectForPrimaryContent[] }, void>({
       query: () => '/api/settings/primary-content/projects',
       providesTags: ['Project'],
     }),
@@ -598,10 +599,7 @@ export const settingsApi = api.injectEndpoints({
       invalidatesTags: ['OAuthSettings', 'Integration'],
     }),
 
-    deleteGoogleIntegration: builder.mutation<
-      GoogleIntegrationStatus,
-      { service: GoogleService }
-    >({
+    deleteGoogleIntegration: builder.mutation<GoogleIntegrationStatus, { service: GoogleService }>({
       query: ({ service }) => ({
         url: `/api/settings/google-integrations/${service}`,
         method: 'DELETE',
@@ -622,7 +620,10 @@ export const settingsApi = api.injectEndpoints({
       invalidatesTags: ['FfmpegExecutor'],
     }),
 
-    testFfmpegExecutorConnection: builder.mutation<FfmpegExecutorTestResult, FfmpegExecutorTestDraft>({
+    testFfmpegExecutorConnection: builder.mutation<
+      FfmpegExecutorTestResult,
+      FfmpegExecutorTestDraft
+    >({
       query: (body) => ({ url: '/api/settings/ffmpeg-executor/test', method: 'POST', body }),
     }),
 
@@ -697,7 +698,10 @@ export const settingsApi = api.injectEndpoints({
       invalidatesTags: ['SsoProvider', 'OAuthSettings'],
     }),
 
-    updateSsoProvider: builder.mutation<SsoProviderStatus, { id: string; body: UpdateSsoProviderDto }>({
+    updateSsoProvider: builder.mutation<
+      SsoProviderStatus,
+      { id: string; body: UpdateSsoProviderDto }
+    >({
       query: ({ id, body }) => ({
         url: `/api/settings/sso/providers/${encodeURIComponent(id)}`,
         method: 'PATCH',

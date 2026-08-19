@@ -43,7 +43,7 @@ describe('Pagination', () => {
     render(
       <ReduxWrapper store={store}>
         <Pagination currentPage={1} totalPages={5} total={100} />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     expect(screen.getByLabelText(/Previous page/i)).toBeInTheDocument();
@@ -54,7 +54,7 @@ describe('Pagination', () => {
     render(
       <ReduxWrapper store={store}>
         <Pagination currentPage={2} totalPages={5} total={100} />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     expect(screen.getByText(/Page 2 of 5/i)).toBeInTheDocument();
@@ -65,14 +65,14 @@ describe('Pagination', () => {
     render(
       <ReduxWrapper store={store}>
         <Pagination currentPage={1} totalPages={1} total={1} />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     // With 1 page, pagination is hidden, so we need to test with 2 pages
     render(
       <ReduxWrapper store={store}>
         <Pagination currentPage={1} totalPages={2} total={1} />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     expect(screen.getByText(/1 total repository$/i)).toBeInTheDocument();
@@ -82,7 +82,7 @@ describe('Pagination', () => {
     const { container } = render(
       <ReduxWrapper store={store}>
         <Pagination currentPage={1} totalPages={1} total={10} />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     // Navigation should not be present
@@ -93,7 +93,7 @@ describe('Pagination', () => {
     render(
       <ReduxWrapper store={store}>
         <Pagination currentPage={1} totalPages={5} total={100} />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     const prevButton = screen.getByLabelText(/Previous page/i);
@@ -104,7 +104,7 @@ describe('Pagination', () => {
     render(
       <ReduxWrapper store={store}>
         <Pagination currentPage={5} totalPages={5} total={100} />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     const nextButton = screen.getByLabelText(/Next page/i);
@@ -115,7 +115,7 @@ describe('Pagination', () => {
     render(
       <ReduxWrapper store={store}>
         <Pagination currentPage={3} totalPages={5} total={100} />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     const prevButton = screen.getByLabelText(/Previous page/i);
@@ -126,7 +126,7 @@ describe('Pagination', () => {
     render(
       <ReduxWrapper store={store}>
         <Pagination currentPage={3} totalPages={5} total={100} />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     const nextButton = screen.getByLabelText(/Next page/i);
@@ -137,7 +137,7 @@ describe('Pagination', () => {
     render(
       <ReduxWrapper store={store}>
         <Pagination currentPage={1} totalPages={5} total={100} />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     expect(screen.getByLabelText('Page 1')).toBeInTheDocument();
@@ -151,7 +151,7 @@ describe('Pagination', () => {
     render(
       <ReduxWrapper store={store}>
         <Pagination currentPage={1} totalPages={10} total={200} />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     const ellipsis = screen.getAllByText('...');
@@ -162,7 +162,7 @@ describe('Pagination', () => {
     render(
       <ReduxWrapper store={store}>
         <Pagination currentPage={3} totalPages={5} total={100} />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     const currentPageButton = screen.getByLabelText('Page 3');
@@ -173,7 +173,7 @@ describe('Pagination', () => {
     render(
       <ReduxWrapper store={store}>
         <Pagination currentPage={2} totalPages={5} total={100} />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     const nextButton = screen.getByLabelText(/Next page/i);
@@ -203,7 +203,7 @@ describe('Pagination', () => {
     render(
       <ReduxWrapper store={store}>
         <Pagination currentPage={3} totalPages={5} total={100} />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     const prevButton = screen.getByLabelText(/Previous page/i);
@@ -217,7 +217,7 @@ describe('Pagination', () => {
     render(
       <ReduxWrapper store={store}>
         <Pagination currentPage={1} totalPages={5} total={100} />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     const page4Button = screen.getByLabelText('Page 4');
@@ -231,7 +231,7 @@ describe('Pagination', () => {
     const { rerender } = render(
       <ReduxWrapper store={store}>
         <Pagination currentPage={1} totalPages={5} total={100} />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     // Clear previous scroll calls
@@ -241,7 +241,7 @@ describe('Pagination', () => {
     rerender(
       <ReduxWrapper store={store}>
         <Pagination currentPage={2} totalPages={5} total={100} />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     // Should have called scrollTo
@@ -252,7 +252,7 @@ describe('Pagination', () => {
     render(
       <ReduxWrapper store={store}>
         <Pagination currentPage={1} totalPages={5} total={100} />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     const nav = screen.getByRole('navigation');
@@ -263,7 +263,7 @@ describe('Pagination', () => {
     render(
       <ReduxWrapper store={store}>
         <Pagination currentPage={1} totalPages={5} total={100} />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     const liveRegion = screen.getByText(/Page 1 of 5/i);
@@ -275,7 +275,7 @@ describe('Pagination', () => {
     render(
       <ReduxWrapper store={store}>
         <Pagination currentPage={1} totalPages={5} total={100} />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     const page1 = screen.getByLabelText('Page 1');
@@ -291,7 +291,7 @@ describe('Pagination', () => {
     const { container } = render(
       <ReduxWrapper store={store}>
         <Pagination currentPage={1} totalPages={5} total={100} />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     const pageNumbersContainer = container.querySelector('.hidden.sm\\:flex');
@@ -302,7 +302,7 @@ describe('Pagination', () => {
     render(
       <ReduxWrapper store={store}>
         <Pagination currentPage={5} totalPages={20} total={400} />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     // Should always show page 1 and page 20
@@ -318,7 +318,7 @@ describe('Pagination', () => {
     render(
       <ReduxWrapper store={store}>
         <Pagination currentPage={10} totalPages={20} total={400} />
-      </ReduxWrapper>
+      </ReduxWrapper>,
     );
 
     // Should show pages around 10 (e.g., 9, 10, 11)

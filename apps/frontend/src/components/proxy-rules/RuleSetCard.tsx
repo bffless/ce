@@ -49,9 +49,7 @@ export function RuleSetCard({
             )}
             <ManagedFromGitBadge source={source} />
           </div>
-          {description && (
-            <p className="text-sm text-muted-foreground mt-1">{description}</p>
-          )}
+          {description && <p className="text-sm text-muted-foreground mt-1">{description}</p>}
         </div>
       </div>
 

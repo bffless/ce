@@ -44,6 +44,8 @@ export function parsePatternLines(text: string): BlocklistPatternEntry[] {
 
 export function formatPatternEntries(entries: BlocklistPatternEntry[]): string {
   return entries
-    .map((entry) => (entry.matchType === 'prefix' ? entry.value : `${entry.matchType}:${entry.value}`))
+    .map((entry) =>
+      entry.matchType === 'prefix' ? entry.value : `${entry.matchType}:${entry.value}`,
+    )
     .join('\n');
 }

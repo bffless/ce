@@ -39,15 +39,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import {
-  AlertCircle,
-  Plus,
-  Trash2,
-  Copy,
-  RefreshCw,
-  Link,
-  Check,
-} from 'lucide-react';
+import { AlertCircle, Plus, Trash2, Copy, RefreshCw, Link, Check } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import type { Project } from '@/services/projectsApi';
 import { useListDomainsQuery } from '@/services/domainsApi';
@@ -91,11 +83,7 @@ export function ProjectShareLinksTab({ project }: ProjectShareLinksTabProps) {
   const [label, setLabel] = useState('');
   const [expiration, setExpiration] = useState<string>('never');
 
-  const {
-    data: shareLinks,
-    isLoading,
-    error,
-  } = useGetShareLinksByProjectQuery(project.id);
+  const { data: shareLinks, isLoading, error } = useGetShareLinksByProjectQuery(project.id);
 
   // Fetch domain mappings to build proper share URLs
   const { data: domains } = useListDomainsQuery({
@@ -123,11 +111,9 @@ export function ProjectShareLinksTab({ project }: ProjectShareLinksTabProps) {
     return `${window.location.origin}/public/${project.owner}/${project.name}/?token=${token}`;
   };
 
-  const [createShareLink, { isLoading: isCreating }] =
-    useCreateShareLinkMutation();
+  const [createShareLink, { isLoading: isCreating }] = useCreateShareLinkMutation();
   const [updateShareLink] = useUpdateShareLinkMutation();
-  const [deleteShareLink, { isLoading: isDeleting }] =
-    useDeleteShareLinkMutation();
+  const [deleteShareLink, { isLoading: isDeleting }] = useDeleteShareLinkMutation();
   const [regenerateToken] = useRegenerateShareLinkTokenMutation();
 
   const handleCreate = async () => {
@@ -164,8 +150,7 @@ export function ProjectShareLinksTab({ project }: ProjectShareLinksTabProps) {
       toast({
         title: 'Error',
         description:
-          (err as { data?: { message?: string } })?.data?.message ||
-          'Failed to create share link',
+          (err as { data?: { message?: string } })?.data?.message || 'Failed to create share link',
         variant: 'destructive',
       });
     }
@@ -185,8 +170,7 @@ export function ProjectShareLinksTab({ project }: ProjectShareLinksTabProps) {
       toast({
         title: 'Error',
         description:
-          (err as { data?: { message?: string } })?.data?.message ||
-          'Failed to update share link',
+          (err as { data?: { message?: string } })?.data?.message || 'Failed to update share link',
         variant: 'destructive',
       });
     }
@@ -206,8 +190,7 @@ export function ProjectShareLinksTab({ project }: ProjectShareLinksTabProps) {
       toast({
         title: 'Error',
         description:
-          (err as { data?: { message?: string } })?.data?.message ||
-          'Failed to regenerate token',
+          (err as { data?: { message?: string } })?.data?.message || 'Failed to regenerate token',
         variant: 'destructive',
       });
     }
@@ -227,8 +210,7 @@ export function ProjectShareLinksTab({ project }: ProjectShareLinksTabProps) {
       toast({
         title: 'Error',
         description:
-          (err as { data?: { message?: string } })?.data?.message ||
-          'Failed to delete share link',
+          (err as { data?: { message?: string } })?.data?.message || 'Failed to delete share link',
         variant: 'destructive',
       });
     }
@@ -281,9 +263,8 @@ export function ProjectShareLinksTab({ project }: ProjectShareLinksTabProps) {
                 Share Links
               </CardTitle>
               <CardDescription>
-                Create links that allow anyone to view private content without
-                an account. Project-level links grant access to all content in
-                this project.
+                Create links that allow anyone to view private content without an account.
+                Project-level links grant access to all content in this project.
               </CardDescription>
             </div>
             <Button onClick={() => setShowCreateDialog(true)}>
@@ -305,12 +286,7 @@ export function ProjectShareLinksTab({ project }: ProjectShareLinksTabProps) {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() =>
-                      copyToClipboard(
-                        buildShareUrl(createdLink.token),
-                        'created',
-                      )
-                    }
+                    onClick={() => copyToClipboard(buildShareUrl(createdLink.token), 'created')}
                   >
                     {copiedId === 'created' ? (
                       <Check className="h-3 w-3" />
@@ -318,11 +294,7 @@ export function ProjectShareLinksTab({ project }: ProjectShareLinksTabProps) {
                       <Copy className="h-3 w-3" />
                     )}
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setCreatedLink(null)}
-                  >
+                  <Button variant="ghost" size="sm" onClick={() => setCreatedLink(null)}>
                     Dismiss
                   </Button>
                 </div>
@@ -345,24 +317,15 @@ export function ProjectShareLinksTab({ project }: ProjectShareLinksTabProps) {
               <TableBody>
                 {shareLinks.map((link) => (
                   <TableRow key={link.id}>
-                    <TableCell className="font-medium">
-                      {link.label || '-'}
-                    </TableCell>
+                    <TableCell className="font-medium">{link.label || '-'}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
-                        <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
-                          {link.token}
-                        </code>
+                        <code className="text-xs bg-muted px-1.5 py-0.5 rounded">{link.token}</code>
                         <Button
                           variant="ghost"
                           size="sm"
                           className="h-6 w-6 p-0"
-                          onClick={() =>
-                            copyToClipboard(
-                              buildShareUrl(link.token),
-                              link.id,
-                            )
-                          }
+                          onClick={() => copyToClipboard(buildShareUrl(link.token), link.id)}
                         >
                           {copiedId === link.id ? (
                             <Check className="h-3 w-3" />
@@ -377,11 +340,7 @@ export function ProjectShareLinksTab({ project }: ProjectShareLinksTabProps) {
                     <TableCell>{formatDate(link.createdAt)}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleToggleActive(link)}
-                        >
+                        <Button variant="ghost" size="sm" onClick={() => handleToggleActive(link)}>
                           {link.isActive ? 'Disable' : 'Enable'}
                         </Button>
                         <Button
@@ -413,8 +372,8 @@ export function ProjectShareLinksTab({ project }: ProjectShareLinksTabProps) {
             </Table>
           ) : (
             <div className="text-center py-8 text-muted-foreground">
-              No share links yet. Create one to share private content without
-              requiring authentication.
+              No share links yet. Create one to share private content without requiring
+              authentication.
             </div>
           )}
         </CardContent>
@@ -426,9 +385,8 @@ export function ProjectShareLinksTab({ project }: ProjectShareLinksTabProps) {
           <DialogHeader>
             <DialogTitle>Create Share Link</DialogTitle>
             <DialogDescription>
-              Create a link that grants access to all private content in this
-              project. Anyone with the link can view deployments without
-              logging in.
+              Create a link that grants access to all private content in this project. Anyone with
+              the link can view deployments without logging in.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -457,10 +415,7 @@ export function ProjectShareLinksTab({ project }: ProjectShareLinksTabProps) {
             </div>
           </div>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowCreateDialog(false)}
-            >
+            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
               Cancel
             </Button>
             <Button onClick={handleCreate} disabled={isCreating}>
@@ -478,9 +433,7 @@ export function ProjectShareLinksTab({ project }: ProjectShareLinksTabProps) {
             <AlertDialogDescription>
               This will permanently revoke access for anyone using this link.
               {deletingLink?.label && (
-                <span className="block mt-1 font-medium">
-                  "{deletingLink.label}"
-                </span>
+                <span className="block mt-1 font-medium">"{deletingLink.label}"</span>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>

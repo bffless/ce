@@ -69,10 +69,7 @@ export const integrationsApi = api.injectEndpoints({
       ],
     }),
 
-    deleteIntegration: builder.mutation<
-      void,
-      { projectId: string; integrationId: string }
-    >({
+    deleteIntegration: builder.mutation<void, { projectId: string; integrationId: string }>({
       query: ({ projectId, integrationId }) => ({
         url: `/api/projects/${projectId}/integrations/${integrationId}`,
         method: 'DELETE',
@@ -128,8 +125,7 @@ export const integrationsApi = api.injectEndpoints({
     }),
 
     listGoogleCalendarCalendars: builder.query<{ calendars: CalendarSummary[] }, string>({
-      query: (projectId) =>
-        `/api/projects/${projectId}/integrations/google-calendar/calendars`,
+      query: (projectId) => `/api/projects/${projectId}/integrations/google-calendar/calendars`,
       providesTags: (_result, _error, projectId) => [
         { type: 'Integration' as const, id: projectId },
       ],

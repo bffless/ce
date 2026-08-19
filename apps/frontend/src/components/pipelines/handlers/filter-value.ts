@@ -9,7 +9,10 @@
  */
 export function serializeFilterValue(op: string, text: string): string | string[] {
   if (op === 'in' && text.includes(',')) {
-    return text.split(',').map((s) => s.trim()).filter(Boolean);
+    return text
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
   }
   return text;
 }

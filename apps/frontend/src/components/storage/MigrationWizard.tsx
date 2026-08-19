@@ -28,7 +28,17 @@ import { useGetConstraintsQuery, useGetAvailableOptionsQuery } from '@/services/
 import { storageDocsFor } from '@/lib/docsLinks';
 import { DocsInlineLink } from '@/components/common/DocsLink';
 import { MigrationProgress } from './MigrationProgress';
-import { ArrowRight, AlertTriangle, Loader2, CheckCircle, Server, Cloud, Database, Globe, Shield } from 'lucide-react';
+import {
+  ArrowRight,
+  AlertTriangle,
+  Loader2,
+  CheckCircle,
+  Server,
+  Cloud,
+  Database,
+  Globe,
+  Shield,
+} from 'lucide-react';
 
 type WizardStep = 'select' | 'configure' | 'confirm' | 'progress' | 'complete';
 
@@ -39,12 +49,48 @@ interface MigrationWizardProps {
 }
 
 const storageProviders = [
-  { value: 'managed' as StorageProvider, label: 'Managed Storage', icon: Shield, description: 'Platform-provided S3-compatible storage', isPlatform: true },
-  { value: 's3' as StorageProvider, label: 'S3 / S3-Compatible', icon: Globe, description: 'AWS S3, DigitalOcean Spaces, Backblaze B2, etc.', isPlatform: false },
-  { value: 'gcs' as StorageProvider, label: 'Google Cloud Storage', icon: Cloud, description: 'GCP cloud storage', isPlatform: false },
-  { value: 'azure' as StorageProvider, label: 'Azure Blob Storage', icon: Cloud, description: 'Microsoft Azure storage', isPlatform: false },
-  { value: 'minio' as StorageProvider, label: 'MinIO', icon: Server, description: 'S3-compatible object storage', isPlatform: false },
-  { value: 'local' as StorageProvider, label: 'Local Filesystem', icon: Database, description: 'Local disk storage', isPlatform: false },
+  {
+    value: 'managed' as StorageProvider,
+    label: 'Managed Storage',
+    icon: Shield,
+    description: 'Platform-provided S3-compatible storage',
+    isPlatform: true,
+  },
+  {
+    value: 's3' as StorageProvider,
+    label: 'S3 / S3-Compatible',
+    icon: Globe,
+    description: 'AWS S3, DigitalOcean Spaces, Backblaze B2, etc.',
+    isPlatform: false,
+  },
+  {
+    value: 'gcs' as StorageProvider,
+    label: 'Google Cloud Storage',
+    icon: Cloud,
+    description: 'GCP cloud storage',
+    isPlatform: false,
+  },
+  {
+    value: 'azure' as StorageProvider,
+    label: 'Azure Blob Storage',
+    icon: Cloud,
+    description: 'Microsoft Azure storage',
+    isPlatform: false,
+  },
+  {
+    value: 'minio' as StorageProvider,
+    label: 'MinIO',
+    icon: Server,
+    description: 'S3-compatible object storage',
+    isPlatform: false,
+  },
+  {
+    value: 'local' as StorageProvider,
+    label: 'Local Filesystem',
+    icon: Database,
+    description: 'Local disk storage',
+    isPlatform: false,
+  },
 ];
 
 export function MigrationWizard({ currentProvider, onComplete, onCancel }: MigrationWizardProps) {
@@ -98,7 +144,8 @@ export function MigrationWizard({ currentProvider, onComplete, onCancel }: Migra
   });
 
   // API hooks
-  const [calculateScope, { data: scope, isLoading: isCalculating }] = useLazyCalculateMigrationScopeQuery();
+  const [calculateScope, { data: scope, isLoading: isCalculating }] =
+    useLazyCalculateMigrationScopeQuery();
   const [startMigration, { isLoading: isStarting }] = useStartMigrationMutation();
   const [completeMigration, { isLoading: isCompleting }] = useCompleteMigrationMutation();
   const [forceSwitchProvider, { isLoading: isForceSwitching }] = useForceSwitchProviderMutation();
@@ -207,7 +254,12 @@ export function MigrationWizard({ currentProvider, onComplete, onCancel }: Migra
         }
         break;
       case 'minio':
-        if (!minioConfig.endpoint || !minioConfig.bucket || !minioConfig.accessKey || !minioConfig.secretKey) {
+        if (
+          !minioConfig.endpoint ||
+          !minioConfig.bucket ||
+          !minioConfig.accessKey ||
+          !minioConfig.secretKey
+        ) {
           setError('Please fill in all required MinIO fields');
           return false;
         }
@@ -331,7 +383,9 @@ export function MigrationWizard({ currentProvider, onComplete, onCancel }: Migra
               <div className="flex items-center mb-3">
                 <Globe className="w-5 h-5 text-muted-foreground mr-3" />
                 <div>
-                  <h4 className="font-medium">{isS3Compatible ? 'S3-Compatible Storage' : 'AWS S3 Storage'}</h4>
+                  <h4 className="font-medium">
+                    {isS3Compatible ? 'S3-Compatible Storage' : 'AWS S3 Storage'}
+                  </h4>
                   <p className="text-sm text-muted-foreground">
                     {isS3Compatible
                       ? 'Connect to DigitalOcean Spaces, Backblaze B2, Cloudflare R2, etc.'
@@ -366,11 +420,14 @@ export function MigrationWizard({ currentProvider, onComplete, onCancel }: Migra
                   <Input
                     id="s3Endpoint"
                     value={s3Config.endpoint || ''}
-                    onChange={(e) => setS3Config({ ...s3Config, endpoint: e.target.value || undefined })}
+                    onChange={(e) =>
+                      setS3Config({ ...s3Config, endpoint: e.target.value || undefined })
+                    }
                     placeholder="https://sfo3.digitaloceanspaces.com"
                   />
                   <p className="text-xs text-muted-foreground">
-                    Region endpoint only - do NOT include the bucket name (e.g., https://sfo3.digitaloceanspaces.com)
+                    Region endpoint only - do NOT include the bucket name (e.g.,
+                    https://sfo3.digitaloceanspaces.com)
                   </p>
                 </div>
               </div>
@@ -396,10 +453,18 @@ export function MigrationWizard({ currentProvider, onComplete, onCancel }: Migra
                     <SelectItem value="eu-west-2">Europe (London) - eu-west-2</SelectItem>
                     <SelectItem value="eu-west-3">Europe (Paris) - eu-west-3</SelectItem>
                     <SelectItem value="eu-central-1">Europe (Frankfurt) - eu-central-1</SelectItem>
-                    <SelectItem value="ap-northeast-1">Asia Pacific (Tokyo) - ap-northeast-1</SelectItem>
-                    <SelectItem value="ap-northeast-2">Asia Pacific (Seoul) - ap-northeast-2</SelectItem>
-                    <SelectItem value="ap-southeast-1">Asia Pacific (Singapore) - ap-southeast-1</SelectItem>
-                    <SelectItem value="ap-southeast-2">Asia Pacific (Sydney) - ap-southeast-2</SelectItem>
+                    <SelectItem value="ap-northeast-1">
+                      Asia Pacific (Tokyo) - ap-northeast-1
+                    </SelectItem>
+                    <SelectItem value="ap-northeast-2">
+                      Asia Pacific (Seoul) - ap-northeast-2
+                    </SelectItem>
+                    <SelectItem value="ap-southeast-1">
+                      Asia Pacific (Singapore) - ap-southeast-1
+                    </SelectItem>
+                    <SelectItem value="ap-southeast-2">
+                      Asia Pacific (Sydney) - ap-southeast-2
+                    </SelectItem>
                     <SelectItem value="sa-east-1">South America (São Paulo) - sa-east-1</SelectItem>
                     <SelectItem value="ca-central-1">Canada (Central) - ca-central-1</SelectItem>
                   </SelectContent>
@@ -414,14 +479,15 @@ export function MigrationWizard({ currentProvider, onComplete, onCancel }: Migra
                 id="s3Bucket"
                 value={s3Config.bucket}
                 onChange={(e) => setS3Config({ ...s3Config, bucket: e.target.value })}
-                placeholder={isS3Compatible ? "my-space-name" : "my-deployment-assets"}
+                placeholder={isS3Compatible ? 'my-space-name' : 'my-deployment-assets'}
               />
             </div>
 
             {/* Credentials */}
             <div className="space-y-4 pt-2">
               <div className="text-sm text-muted-foreground">
-                <strong>{isS3Compatible ? 'Access Credentials' : 'AWS Credentials'}</strong> - Access keys are required.
+                <strong>{isS3Compatible ? 'Access Credentials' : 'AWS Credentials'}</strong> -
+                Access keys are required.
               </div>
 
               <div className="space-y-2">
@@ -430,7 +496,7 @@ export function MigrationWizard({ currentProvider, onComplete, onCancel }: Migra
                   id="s3AccessKey"
                   value={s3Config.accessKeyId}
                   onChange={(e) => setS3Config({ ...s3Config, accessKeyId: e.target.value })}
-                  placeholder={isS3Compatible ? "DO00EXAMPLE..." : "AKIAIOSFODNN7EXAMPLE"}
+                  placeholder={isS3Compatible ? 'DO00EXAMPLE...' : 'AKIAIOSFODNN7EXAMPLE'}
                   className="font-mono"
                   autoComplete="off"
                 />
@@ -476,7 +542,10 @@ export function MigrationWizard({ currentProvider, onComplete, onCancel }: Migra
             </div>
             <div className="space-y-2">
               <Label>Authentication Method</Label>
-              <Tabs value={gcsAuthMethod} onValueChange={(v) => setGcsAuthMethod(v as 'credentials' | 'adc')}>
+              <Tabs
+                value={gcsAuthMethod}
+                onValueChange={(v) => setGcsAuthMethod(v as 'credentials' | 'adc')}
+              >
                 <TabsList className="grid w-full grid-cols-2">
                   <TabsTrigger value="credentials">Service Account JSON</TabsTrigger>
                   <TabsTrigger value="adc">Application Default</TabsTrigger>
@@ -496,7 +565,8 @@ export function MigrationWizard({ currentProvider, onComplete, onCancel }: Migra
                 <TabsContent value="adc" className="mt-4">
                   <Alert>
                     <AlertDescription>
-                      Application Default Credentials will be used. Make sure ADC is configured on the server.
+                      Application Default Credentials will be used. Make sure ADC is configured on
+                      the server.
                     </AlertDescription>
                   </Alert>
                 </TabsContent>
@@ -523,7 +593,9 @@ export function MigrationWizard({ currentProvider, onComplete, onCancel }: Migra
                 <Input
                   id="azureContainer"
                   value={azureConfig.containerName}
-                  onChange={(e) => setAzureConfig({ ...azureConfig, containerName: e.target.value })}
+                  onChange={(e) =>
+                    setAzureConfig({ ...azureConfig, containerName: e.target.value })
+                  }
                   placeholder="my-container"
                 />
               </div>
@@ -542,7 +614,9 @@ export function MigrationWizard({ currentProvider, onComplete, onCancel }: Migra
               <Label htmlFor="azureTier">Access Tier</Label>
               <Select
                 value={azureConfig.accessTier}
-                onValueChange={(v) => setAzureConfig({ ...azureConfig, accessTier: v as 'Hot' | 'Cool' | 'Archive' })}
+                onValueChange={(v) =>
+                  setAzureConfig({ ...azureConfig, accessTier: v as 'Hot' | 'Cool' | 'Archive' })
+                }
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -576,7 +650,9 @@ export function MigrationWizard({ currentProvider, onComplete, onCancel }: Migra
                   id="minioPort"
                   type="number"
                   value={minioConfig.port}
-                  onChange={(e) => setMinioConfig({ ...minioConfig, port: parseInt(e.target.value) || 9000 })}
+                  onChange={(e) =>
+                    setMinioConfig({ ...minioConfig, port: parseInt(e.target.value) || 9000 })
+                  }
                   placeholder="9000"
                 />
               </div>
@@ -689,8 +765,8 @@ export function MigrationWizard({ currentProvider, onComplete, onCancel }: Migra
           <Alert className="bg-green-500/10 border-green-500/20">
             <CheckCircle className="h-4 w-4 text-green-500" />
             <AlertDescription className="text-green-700 dark:text-green-400">
-              Your files have been successfully migrated. Click &quot;Switch Provider&quot; to start using the new
-              storage provider.
+              Your files have been successfully migrated. Click &quot;Switch Provider&quot; to start
+              using the new storage provider.
             </AlertDescription>
           </Alert>
 
@@ -745,16 +821,14 @@ export function MigrationWizard({ currentProvider, onComplete, onCancel }: Migra
             <CheckCircle className="h-5 w-5 text-green-500" />
             Migration Complete
           </CardTitle>
-          <CardDescription>
-            All files have been migrated to {targetProvider}
-          </CardDescription>
+          <CardDescription>All files have been migrated to {targetProvider}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <Alert className="bg-green-500/10 border-green-500/20">
             <CheckCircle className="h-4 w-4 text-green-500" />
             <AlertDescription className="text-green-700 dark:text-green-400">
-              Your files have been successfully migrated. Click &quot;Switch Provider&quot; to start using the new
-              storage provider.
+              Your files have been successfully migrated. Click &quot;Switch Provider&quot; to start
+              using the new storage provider.
             </AlertDescription>
           </Alert>
 
@@ -809,7 +883,9 @@ export function MigrationWizard({ currentProvider, onComplete, onCancel }: Migra
                     onClick={() => handleProviderSelect(provider.value)}
                   >
                     <div className="flex items-center gap-2">
-                      <Icon className={`h-5 w-5 ${provider.isPlatform ? 'text-primary' : 'text-muted-foreground'}`} />
+                      <Icon
+                        className={`h-5 w-5 ${provider.isPlatform ? 'text-primary' : 'text-muted-foreground'}`}
+                      />
                       <span className="font-medium">{provider.label}</span>
                       {provider.isPlatform && (
                         <Badge variant="secondary" className="ml-auto text-xs">
@@ -838,7 +914,9 @@ export function MigrationWizard({ currentProvider, onComplete, onCancel }: Migra
       {step === 'configure' && targetProvider && (
         <Card>
           <CardHeader>
-            <CardTitle>Configure {storageProviders.find((p) => p.value === targetProvider)?.label}</CardTitle>
+            <CardTitle>
+              Configure {storageProviders.find((p) => p.value === targetProvider)?.label}
+            </CardTitle>
             <CardDescription>
               Enter your storage credentials.
               {targetProviderDocs && (
@@ -884,7 +962,9 @@ export function MigrationWizard({ currentProvider, onComplete, onCancel }: Migra
       {step === 'confirm' && scope && (
         <Card>
           <CardHeader>
-            <CardTitle>{scope.sourceError ? 'Source Storage Unreachable' : 'Confirm Migration'}</CardTitle>
+            <CardTitle>
+              {scope.sourceError ? 'Source Storage Unreachable' : 'Confirm Migration'}
+            </CardTitle>
             <CardDescription>
               {scope.sourceError
                 ? `BFFless could not list files from ${currentProvider}. You can still switch providers, but no data will be copied.`
@@ -896,15 +976,12 @@ export function MigrationWizard({ currentProvider, onComplete, onCancel }: Migra
               <Alert variant="destructive">
                 <AlertTriangle className="h-4 w-4" />
                 <AlertDescription>
-                  <p className="font-medium mb-1">
-                    Cannot read from {currentProvider}:
-                  </p>
+                  <p className="font-medium mb-1">Cannot read from {currentProvider}:</p>
                   <p className="font-mono text-xs break-all">{scope.sourceError}</p>
                   <p className="mt-3">
-                    This usually means the bucket was deleted, credentials were revoked,
-                    or the storage backend is unreachable. Use{' '}
-                    <strong>Switch Without Migrating</strong> below to repoint BFFless to
-                    {' '}{targetProvider} without copying data.
+                    This usually means the bucket was deleted, credentials were revoked, or the
+                    storage backend is unreachable. Use <strong>Switch Without Migrating</strong>{' '}
+                    below to repoint BFFless to {targetProvider} without copying data.
                   </p>
                 </AlertDescription>
               </Alert>
@@ -913,8 +990,8 @@ export function MigrationWizard({ currentProvider, onComplete, onCancel }: Migra
                 <Alert>
                   <AlertTriangle className="h-4 w-4" />
                   <AlertDescription>
-                    Migration will copy all files from {currentProvider} to {targetProvider}. This process
-                    may take a while for large datasets.
+                    Migration will copy all files from {currentProvider} to {targetProvider}. This
+                    process may take a while for large datasets.
                   </AlertDescription>
                 </Alert>
 

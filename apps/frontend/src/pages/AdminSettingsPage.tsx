@@ -2,14 +2,28 @@ import { useNavigate, Link, Outlet, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TabScroller } from '@/components/common/TabScroller';
-import { ArrowLeft, Settings, Paintbrush, Shield, Mail, Server, Lock, ToggleRight } from 'lucide-react';
+import {
+  ArrowLeft,
+  Settings,
+  Paintbrush,
+  Shield,
+  Mail,
+  Server,
+  Lock,
+  ToggleRight,
+} from 'lucide-react';
 import { useFeatureFlags } from '@/services/featureFlagsApi';
 
 const TABS = [
   { value: 'general', path: '/admin/settings', label: 'General', icon: Paintbrush },
   { value: 'auth', path: '/admin/settings/auth', label: 'Authentication', icon: Shield },
   { value: 'email', path: '/admin/settings/email', label: 'Email', icon: Mail },
-  { value: 'infrastructure', path: '/admin/settings/infrastructure', label: 'Infrastructure', icon: Server },
+  {
+    value: 'infrastructure',
+    path: '/admin/settings/infrastructure',
+    label: 'Infrastructure',
+    icon: Server,
+  },
   { value: 'features', path: '/admin/settings/features', label: 'Features', icon: ToggleRight },
   { value: 'ssl', path: '/admin/settings/ssl', label: 'SSL', icon: Lock },
 ] as const;
@@ -55,9 +69,7 @@ export function AdminSettingsPage() {
             <Settings className="h-6 w-6" />
             <div>
               <h1 className="text-2xl font-bold">Site Settings</h1>
-              <p className="text-sm text-muted-foreground">
-                Manage your platform configuration
-              </p>
+              <p className="text-sm text-muted-foreground">Manage your platform configuration</p>
             </div>
           </div>
         </div>

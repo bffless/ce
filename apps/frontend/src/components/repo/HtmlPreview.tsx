@@ -394,12 +394,7 @@ export function HtmlPreview({ owner, repo, gitRef, filepath, leftActions }: Html
 
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 w-7 p-0 bg-accent"
-                  disabled
-                >
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0 bg-accent" disabled>
                   <Eye className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>

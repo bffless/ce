@@ -17,13 +17,7 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -143,7 +137,9 @@ export function RemoteConnectionsSettings() {
 
   const onDelete = async (c: RemoteConnectionStatus) => {
     if (!c.id) return;
-    if (!window.confirm(`Delete the connection '${c.name}'? Anything still calling it will fail.`)) {
+    if (
+      !window.confirm(`Delete the connection '${c.name}'? Anything still calling it will fail.`)
+    ) {
       return;
     }
     try {

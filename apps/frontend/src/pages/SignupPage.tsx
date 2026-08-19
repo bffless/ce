@@ -4,7 +4,13 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Eye, EyeOff, Mail, CheckCircle, Info } from 'lucide-react';
-import { useSignUpMutation, useCheckEmailMutation, useGetSessionQuery, useGetRegistrationStatusQuery, useGetOAuthProvidersQuery } from '@/services/authApi';
+import {
+  useSignUpMutation,
+  useCheckEmailMutation,
+  useGetSessionQuery,
+  useGetRegistrationStatusQuery,
+  useGetOAuthProvidersQuery,
+} from '@/services/authApi';
 import { useBranding } from '@/hooks/useBranding';
 import { useValidateInvitationTokenQuery } from '@/services/invitationsApi';
 import { useValidateProjectInviteTokenQuery } from '@/services/projectInviteLinksApi';
@@ -27,17 +33,21 @@ import {
 } from '@/components/ui/form';
 
 const createSignupSchema = (authMode: 'create' | 'signin', requireTos: boolean) =>
-  z.object({
-    email: z.string().min(1, 'Email is required').email('Please enter a valid email address'),
-    password: z.string().min(8, 'Password must be at least 8 characters'),
-    confirmPassword: z.string(),
-    acceptTerms: z.boolean().refine((val) => authMode === 'signin' || !requireTos || val === true, {
-      message: 'You must accept the terms of service',
-    }),
-  }).refine((data) => authMode === 'signin' || data.password === data.confirmPassword, {
-    message: 'Passwords do not match',
-    path: ['confirmPassword'],
-  });
+  z
+    .object({
+      email: z.string().min(1, 'Email is required').email('Please enter a valid email address'),
+      password: z.string().min(8, 'Password must be at least 8 characters'),
+      confirmPassword: z.string(),
+      acceptTerms: z
+        .boolean()
+        .refine((val) => authMode === 'signin' || !requireTos || val === true, {
+          message: 'You must accept the terms of service',
+        }),
+    })
+    .refine((data) => authMode === 'signin' || data.password === data.confirmPassword, {
+      message: 'Passwords do not match',
+      path: ['confirmPassword'],
+    });
 
 type SignupFormValues = z.infer<ReturnType<typeof createSignupSchema>>;
 
@@ -74,7 +84,8 @@ export function SignupPage() {
   const [signUp, { isLoading }] = useSignUpMutation();
   const [checkEmail] = useCheckEmailMutation();
   const { data: sessionData, isLoading: isLoadingSession } = useGetSessionQuery();
-  const { data: registrationStatus, isLoading: isLoadingRegistration } = useGetRegistrationStatusQuery();
+  const { data: registrationStatus, isLoading: isLoadingRegistration } =
+    useGetRegistrationStatusQuery();
   const { data: oauthProviders } = useGetOAuthProvidersQuery();
   const { siteName, authLogoUrl } = useBranding();
   const oauthList = oauthProviders?.providers ?? [];
@@ -165,24 +176,27 @@ export function SignupPage() {
   // Validate the invitation token if present
   const { data: invitationData, isLoading: isLoadingInvitation } = useValidateInvitationTokenQuery(
     inviteToken || '',
-    { skip: !inviteToken }
+    { skip: !inviteToken },
   );
 
   // Extract project invite token from query params
   const projectInviteToken = searchParams.get('projectInvite') || null;
 
   // Validate project invite token if present
-  const { data: projectInviteData } = useValidateProjectInviteTokenQuery(
-    projectInviteToken || '',
-    { skip: !projectInviteToken }
-  );
+  const { data: projectInviteData } = useValidateProjectInviteTokenQuery(projectInviteToken || '', {
+    skip: !projectInviteToken,
+  });
 
   // Check if signups are allowed - either public signups OR valid invitation
   const hasValidInvitation = inviteToken && invitationData?.valid;
-  const signupsAllowed = registrationStatus?.registrationEnabled &&
+  const signupsAllowed =
+    registrationStatus?.registrationEnabled &&
     (registrationStatus?.allowPublicSignups || hasValidInvitation);
 
-  const signupSchema = useMemo(() => createSignupSchema(authMode, requireTos), [authMode, requireTos]);
+  const signupSchema = useMemo(
+    () => createSignupSchema(authMode, requireTos),
+    [authMode, requireTos],
+  );
 
   const form = useForm<SignupFormValues>({
     resolver: zodResolver(signupSchema),
@@ -288,7 +302,9 @@ export function SignupPage() {
           title: 'Account created!',
           description: 'Please check your email to verify your account.',
         });
-        navigate(`/verify-email${redirectTo !== '/' ? `?redirect=${encodeURIComponent(redirectTo)}` : ''}`);
+        navigate(
+          `/verify-email${redirectTo !== '/' ? `?redirect=${encodeURIComponent(redirectTo)}` : ''}`,
+        );
         return;
       }
 
@@ -318,9 +334,10 @@ export function SignupPage() {
         await finishAuthRedirect();
       }
     } catch (error: any) {
-      let errorMessage = authMode === 'signin'
-        ? 'Failed to sign in. Please check your password and try again.'
-        : 'Failed to create account. Please try again.';
+      let errorMessage =
+        authMode === 'signin'
+          ? 'Failed to sign in. Please check your password and try again.'
+          : 'Failed to create account. Please try again.';
 
       if (error?.data?.message) {
         errorMessage = error.data.message;
@@ -382,15 +399,20 @@ export function SignupPage() {
                 <Button
                   variant="outline"
                   className="w-full"
-                  onClick={() => navigate(`/login${(() => {
-                    const params = new URLSearchParams();
-                    if (searchParams.get('redirect')) params.set('redirect', searchParams.get('redirect')!);
-                    if (customDomainRelay) params.set('customDomainRelay', 'true');
-                    if (targetDomain) params.set('targetDomain', targetDomain);
-                    if (targetOrigin) params.set('targetOrigin', targetOrigin);
-                    const qs = params.toString();
-                    return qs ? `?${qs}` : '';
-                  })()}`)}
+                  onClick={() =>
+                    navigate(
+                      `/login${(() => {
+                        const params = new URLSearchParams();
+                        if (searchParams.get('redirect'))
+                          params.set('redirect', searchParams.get('redirect')!);
+                        if (customDomainRelay) params.set('customDomainRelay', 'true');
+                        if (targetDomain) params.set('targetDomain', targetDomain);
+                        if (targetOrigin) params.set('targetOrigin', targetOrigin);
+                        const qs = params.toString();
+                        return qs ? `?${qs}` : '';
+                      })()}`,
+                    )
+                  }
                 >
                   Sign In
                 </Button>
@@ -430,18 +452,26 @@ export function SignupPage() {
             {hasValidInvitation && (
               <Alert className="mb-4 border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
                 <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
-                <AlertTitle className="text-green-800 dark:text-green-200">Invitation Accepted</AlertTitle>
+                <AlertTitle className="text-green-800 dark:text-green-200">
+                  Invitation Accepted
+                </AlertTitle>
                 <AlertDescription className="text-green-700 dark:text-green-300">
-                  You've been invited as <span className="font-medium">{invitationData?.role}</span>. Complete registration to join.
+                  You've been invited as <span className="font-medium">{invitationData?.role}</span>
+                  . Complete registration to join.
                 </AlertDescription>
               </Alert>
             )}
             {projectInviteData?.valid && (
               <Alert className="mb-4 border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
                 <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
-                <AlertTitle className="text-green-800 dark:text-green-200">Project Invitation</AlertTitle>
+                <AlertTitle className="text-green-800 dark:text-green-200">
+                  Project Invitation
+                </AlertTitle>
                 <AlertDescription className="text-green-700 dark:text-green-300">
-                  You've been invited as <span className="font-medium">{projectInviteData.role}</span> to <span className="font-medium">{projectInviteData.projectName}</span>. {authMode === 'create' ? 'Create an account' : 'Sign in'} to join.
+                  You've been invited as{' '}
+                  <span className="font-medium">{projectInviteData.role}</span> to{' '}
+                  <span className="font-medium">{projectInviteData.projectName}</span>.{' '}
+                  {authMode === 'create' ? 'Create an account' : 'Sign in'} to join.
                 </AlertDescription>
               </Alert>
             )}
@@ -457,164 +487,173 @@ export function SignupPage() {
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                 {emailPasswordEnabled && (
-                <>
-                <FormField
-                  control={form.control}
-                  name="email"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Email</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="email"
-                          placeholder="Enter your email"
-                          autoComplete="email"
-                          readOnly={!!hasValidInvitation}
-                          className={hasValidInvitation ? 'bg-muted' : ''}
-                          {...field}
-                        />
-                      </FormControl>
-                      {hasValidInvitation && (
-                        <FormDescription>
-                          This email is linked to your invitation and cannot be changed.
-                        </FormDescription>
-                      )}
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="password"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Password</FormLabel>
-                      <FormControl>
-                        <div className="relative">
-                          <Input
-                            type={showPassword ? 'text' : 'password'}
-                            placeholder={authMode === 'signin' ? 'Enter your password' : 'Create a password'}
-                            autoComplete={authMode === 'signin' ? 'current-password' : 'new-password'}
-                            {...field}
-                          />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                            onClick={() => setShowPassword(!showPassword)}
-                            aria-label={showPassword ? 'Hide password' : 'Show password'}
-                          >
-                            {showPassword ? (
-                              <EyeOff className="h-4 w-4 text-muted-foreground" />
-                            ) : (
-                              <Eye className="h-4 w-4 text-muted-foreground" />
-                            )}
-                          </Button>
-                        </div>
-                      </FormControl>
-                      {authMode === 'create' && passwordStrength && (
-                        <div className="mt-2">
-                          <div className="flex items-center gap-2 mb-1">
-                            <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                              <div
-                                className={`h-full transition-all duration-300 ${passwordStrength.color}`}
-                                style={{ width: `${(passwordStrength.score / 5) * 100}%` }}
-                              />
-                            </div>
-                            <span className="text-xs font-medium min-w-12">
-                              {passwordStrength.label}
-                            </span>
-                          </div>
-                          <FormDescription className="text-xs">
-                            Use 8+ characters with a mix of letters, numbers & symbols
-                          </FormDescription>
-                        </div>
-                      )}
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {authMode === 'create' && (
-                  <FormField
-                    control={form.control}
-                    name="confirmPassword"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Confirm Password</FormLabel>
-                        <FormControl>
-                          <div className="relative">
+                  <>
+                    <FormField
+                      control={form.control}
+                      name="email"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Email</FormLabel>
+                          <FormControl>
                             <Input
-                              type={showConfirmPassword ? 'text' : 'password'}
-                              placeholder="Confirm your password"
-                              autoComplete="new-password"
+                              type="email"
+                              placeholder="Enter your email"
+                              autoComplete="email"
+                              readOnly={!!hasValidInvitation}
+                              className={hasValidInvitation ? 'bg-muted' : ''}
                               {...field}
                             />
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                              onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                              aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
-                            >
-                              {showConfirmPassword ? (
-                                <EyeOff className="h-4 w-4 text-muted-foreground" />
-                              ) : (
-                                <Eye className="h-4 w-4 text-muted-foreground" />
-                              )}
-                            </Button>
-                          </div>
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                )}
-
-                {authMode === 'create' && requireTos && (
-                  <FormField
-                    control={form.control}
-                    name="acceptTerms"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-row items-start space-x-3 space-y-0">
-                        <FormControl>
-                          <Checkbox
-                            checked={field.value}
-                            onCheckedChange={field.onChange}
-                          />
-                        </FormControl>
-                        <div className="space-y-1 leading-none">
-                          <FormLabel className="text-sm font-normal cursor-pointer">
-                            I agree to the{' '}
-                            {tosUrl ? (
-                              <a
-                                href={tosUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-primary hover:underline"
-                              >
-                                Terms of Service
-                              </a>
-                            ) : (
-                              <span className="text-primary">Terms of Service</span>
-                            )}
-                          </FormLabel>
+                          </FormControl>
+                          {hasValidInvitation && (
+                            <FormDescription>
+                              This email is linked to your invitation and cannot be changed.
+                            </FormDescription>
+                          )}
                           <FormMessage />
-                        </div>
-                      </FormItem>
-                    )}
-                  />
-                )}
+                        </FormItem>
+                      )}
+                    />
 
-                <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading
-                    ? (authMode === 'signin' ? 'Signing in...' : 'Creating account...')
-                    : (authMode === 'signin' ? 'Sign In' : 'Create Account')}
-                </Button>
-                </>
+                    <FormField
+                      control={form.control}
+                      name="password"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Password</FormLabel>
+                          <FormControl>
+                            <div className="relative">
+                              <Input
+                                type={showPassword ? 'text' : 'password'}
+                                placeholder={
+                                  authMode === 'signin'
+                                    ? 'Enter your password'
+                                    : 'Create a password'
+                                }
+                                autoComplete={
+                                  authMode === 'signin' ? 'current-password' : 'new-password'
+                                }
+                                {...field}
+                              />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                                onClick={() => setShowPassword(!showPassword)}
+                                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                              >
+                                {showPassword ? (
+                                  <EyeOff className="h-4 w-4 text-muted-foreground" />
+                                ) : (
+                                  <Eye className="h-4 w-4 text-muted-foreground" />
+                                )}
+                              </Button>
+                            </div>
+                          </FormControl>
+                          {authMode === 'create' && passwordStrength && (
+                            <div className="mt-2">
+                              <div className="flex items-center gap-2 mb-1">
+                                <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                                  <div
+                                    className={`h-full transition-all duration-300 ${passwordStrength.color}`}
+                                    style={{ width: `${(passwordStrength.score / 5) * 100}%` }}
+                                  />
+                                </div>
+                                <span className="text-xs font-medium min-w-12">
+                                  {passwordStrength.label}
+                                </span>
+                              </div>
+                              <FormDescription className="text-xs">
+                                Use 8+ characters with a mix of letters, numbers & symbols
+                              </FormDescription>
+                            </div>
+                          )}
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    {authMode === 'create' && (
+                      <FormField
+                        control={form.control}
+                        name="confirmPassword"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Confirm Password</FormLabel>
+                            <FormControl>
+                              <div className="relative">
+                                <Input
+                                  type={showConfirmPassword ? 'text' : 'password'}
+                                  placeholder="Confirm your password"
+                                  autoComplete="new-password"
+                                  {...field}
+                                />
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                  aria-label={
+                                    showConfirmPassword ? 'Hide password' : 'Show password'
+                                  }
+                                >
+                                  {showConfirmPassword ? (
+                                    <EyeOff className="h-4 w-4 text-muted-foreground" />
+                                  ) : (
+                                    <Eye className="h-4 w-4 text-muted-foreground" />
+                                  )}
+                                </Button>
+                              </div>
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
+
+                    {authMode === 'create' && requireTos && (
+                      <FormField
+                        control={form.control}
+                        name="acceptTerms"
+                        render={({ field }) => (
+                          <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                            <FormControl>
+                              <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+                            </FormControl>
+                            <div className="space-y-1 leading-none">
+                              <FormLabel className="text-sm font-normal cursor-pointer">
+                                I agree to the{' '}
+                                {tosUrl ? (
+                                  <a
+                                    href={tosUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-primary hover:underline"
+                                  >
+                                    Terms of Service
+                                  </a>
+                                ) : (
+                                  <span className="text-primary">Terms of Service</span>
+                                )}
+                              </FormLabel>
+                              <FormMessage />
+                            </div>
+                          </FormItem>
+                        )}
+                      />
+                    )}
+
+                    <Button type="submit" className="w-full" disabled={isLoading}>
+                      {isLoading
+                        ? authMode === 'signin'
+                          ? 'Signing in...'
+                          : 'Creating account...'
+                        : authMode === 'signin'
+                          ? 'Sign In'
+                          : 'Create Account'}
+                    </Button>
+                  </>
                 )}
 
                 {showOAuthSection && (
@@ -669,7 +708,8 @@ export function SignupPage() {
                       <Link
                         to={`/login${(() => {
                           const params = new URLSearchParams();
-                          if (searchParams.get('redirect')) params.set('redirect', searchParams.get('redirect')!);
+                          if (searchParams.get('redirect'))
+                            params.set('redirect', searchParams.get('redirect')!);
                           if (projectInviteToken) params.set('projectInvite', projectInviteToken);
                           if (customDomainRelay) params.set('customDomainRelay', 'true');
                           if (targetDomain) params.set('targetDomain', targetDomain);

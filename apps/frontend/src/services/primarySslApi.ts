@@ -6,8 +6,20 @@ export interface PrimarySslStatus {
   sslMode: 'paste' | 'letsencrypt' | 'selfsigned' | null;
   port80: 'closed' | 'redirect' | null;
   realIp: { header: string; ranges: string[] } | { preset: 'cloudflare' } | null;
-  cert: { commonName: string; issuer: string; expiresAt: string; daysUntilExpiry: number; isValid: boolean } | null;
-  stagedCert: { commonName: string; issuer: string; expiresAt: string; daysUntilExpiry: number; isValid: boolean } | null;
+  cert: {
+    commonName: string;
+    issuer: string;
+    expiresAt: string;
+    daysUntilExpiry: number;
+    isValid: boolean;
+  } | null;
+  stagedCert: {
+    commonName: string;
+    issuer: string;
+    expiresAt: string;
+    daysUntilExpiry: number;
+    isValid: boolean;
+  } | null;
   wildcardCovered: boolean;
   pendingRevert: { deadlineMs: number } | null;
 }
@@ -20,7 +32,8 @@ export interface PrimarySslApplyBody {
 }
 
 export interface PrimarySslPasteBody {
-  certificatePem: string; privateKeyPem: string;
+  certificatePem: string;
+  privateKeyPem: string;
   servingMode: 'cloudflare' | 'proxy' | 'none';
 }
 
@@ -38,15 +51,24 @@ export const primarySslApi = api.injectEndpoints({
     primarySslPreflight: builder.mutation<PreflightResult, void>({
       query: () => ({ url: '/api/admin/ssl/preflight', method: 'POST' }),
     }),
-    stagePrimaryCertificate: builder.mutation<{ sans: string[]; wildcardCovered: boolean }, PrimarySslPasteBody>({
+    stagePrimaryCertificate: builder.mutation<
+      { sans: string[]; wildcardCovered: boolean },
+      PrimarySslPasteBody
+    >({
       query: (body) => ({ url: '/api/admin/ssl/certificate', method: 'POST', body }),
       invalidatesTags: ['PrimarySsl'],
     }),
-    issuePrimaryLetsEncrypt: builder.mutation<{ issued: boolean; sans: string[]; reused: boolean }, void>({
+    issuePrimaryLetsEncrypt: builder.mutation<
+      { issued: boolean; sans: string[]; reused: boolean },
+      void
+    >({
       query: () => ({ url: '/api/admin/ssl/letsencrypt', method: 'POST' }),
       invalidatesTags: ['PrimarySsl'],
     }),
-    applyPrimarySsl: builder.mutation<{ applied: true; kind: 'cert-only' | 'serving'; deadlineMs?: number }, PrimarySslApplyBody>({
+    applyPrimarySsl: builder.mutation<
+      { applied: true; kind: 'cert-only' | 'serving'; deadlineMs?: number },
+      PrimarySslApplyBody
+    >({
       query: (body) => ({ url: '/api/admin/ssl/apply', method: 'POST', body }),
       invalidatesTags: ['PrimarySsl'],
     }),
@@ -66,7 +88,12 @@ export const primarySslApi = api.injectEndpoints({
 });
 
 export const {
-  useGetPrimarySslStatusQuery, usePrimarySslPreflightMutation, useStagePrimaryCertificateMutation,
-  useIssuePrimaryLetsEncryptMutation, useApplyPrimarySslMutation, useConfirmPrimarySslMutation,
-  useRollbackPrimarySslMutation, useDiscardStagedCertificateMutation,
+  useGetPrimarySslStatusQuery,
+  usePrimarySslPreflightMutation,
+  useStagePrimaryCertificateMutation,
+  useIssuePrimaryLetsEncryptMutation,
+  useApplyPrimarySslMutation,
+  useConfirmPrimarySslMutation,
+  useRollbackPrimarySslMutation,
+  useDiscardStagedCertificateMutation,
 } = primarySslApi;

@@ -179,8 +179,8 @@ export function GenerateUploadModal({
         <DialogHeader>
           <DialogTitle>Generate Upload Schema</DialogTitle>
           <DialogDescription>
-            Create a schema and pipelines for file uploads. This will generate POST (upload)
-            and GET (serve) endpoints with configurable access control.
+            Create a schema and pipelines for file uploads. This will generate POST (upload) and GET
+            (serve) endpoints with configurable access control.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
@@ -313,11 +313,7 @@ export function GenerateUploadModal({
 
             <div className="space-y-2">
               <Label htmlFor="upload-rule-set">Proxy Rule Set</Label>
-              <Select
-                value={ruleSetId}
-                onValueChange={setRuleSetId}
-                disabled={isLoading}
-              >
+              <Select value={ruleSetId} onValueChange={setRuleSetId} disabled={isLoading}>
                 <SelectTrigger id="upload-rule-set">
                   <SelectValue placeholder="Create new rule set" />
                 </SelectTrigger>

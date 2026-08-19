@@ -137,11 +137,7 @@ export function FfmpegExecutorSettings() {
       if (next.remoteEnabled && next.remoteConnection === '' && d.remoteConnection !== '') {
         next.remoteEnabled = false;
       }
-      return withSelectableDefault(
-        next,
-        status.localAvailable,
-        status.envManaged.defaultExecutor,
-      );
+      return withSelectableDefault(next, status.localAvailable, status.envManaged.defaultExecutor);
     });
   };
   const localSelectable = draft.localEnabled && status.localAvailable;
@@ -263,7 +259,11 @@ export function FfmpegExecutorSettings() {
                   disabled={status.envManaged.remoteConnection}
                   onValueChange={(v) => set({ remoteConnection: v })}
                 >
-                  <SelectTrigger id="ffmpeg-remote-connection" aria-label="Connection" className="w-72">
+                  <SelectTrigger
+                    id="ffmpeg-remote-connection"
+                    aria-label="Connection"
+                    className="w-72"
+                  >
                     <SelectValue placeholder="Select a connection" />
                   </SelectTrigger>
                   <SelectContent>
@@ -347,7 +347,8 @@ export function FfmpegExecutorSettings() {
                     <div className="text-muted-foreground">
                       {testResult.credential === 'adc' &&
                         'Using Application Default Credentials (no key stored) — this works when CE runs on GCP; elsewhere paste a service-account key.'}
-                      {testResult.credential === 'sa_key' && 'Using the stored service-account key.'}
+                      {testResult.credential === 'sa_key' &&
+                        'Using the stored service-account key.'}
                       {testResult.credential === 'none' && 'No auth.'}
                     </div>
                   </div>

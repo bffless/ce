@@ -53,11 +53,7 @@ export function AvailableVariables({
         onClick={() => setIsExpanded(!isExpanded)}
         className="flex items-center gap-2 w-full px-3 py-2 hover:bg-muted/50 transition-colors"
       >
-        {isExpanded ? (
-          <ChevronDown className="h-3 w-3" />
-        ) : (
-          <ChevronRight className="h-3 w-3" />
-        )}
+        {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
         <Info className="h-3 w-3 text-muted-foreground" />
         <span className="font-medium">Available Variables</span>
         {previousSteps.length > 0 && (
@@ -82,7 +78,9 @@ export function AvailableVariables({
 
           {/* User */}
           <div>
-            <div className="font-medium text-muted-foreground mb-1">Current User (if authenticated)</div>
+            <div className="font-medium text-muted-foreground mb-1">
+              Current User (if authenticated)
+            </div>
             <div className="space-y-0.5">
               <code className="block bg-muted px-2 py-1 rounded text-[11px]">
                 {formatVar('user.id')}
@@ -101,13 +99,16 @@ export function AvailableVariables({
             <div className="font-medium text-muted-foreground mb-1">Deployment Context</div>
             <div className="space-y-0.5">
               <code className="block bg-muted px-2 py-1 rounded text-[11px]">
-                {formatVar('deployment.alias')} <span className="text-muted-foreground">- Current alias name</span>
+                {formatVar('deployment.alias')}{' '}
+                <span className="text-muted-foreground">- Current alias name</span>
               </code>
               <code className="block bg-muted px-2 py-1 rounded text-[11px]">
-                {formatVar('deployment.owner')} <span className="text-muted-foreground">- Project owner</span>
+                {formatVar('deployment.owner')}{' '}
+                <span className="text-muted-foreground">- Project owner</span>
               </code>
               <code className="block bg-muted px-2 py-1 rounded text-[11px]">
-                {formatVar('deployment.repo')} <span className="text-muted-foreground">- Project name</span>
+                {formatVar('deployment.repo')}{' '}
+                <span className="text-muted-foreground">- Project name</span>
               </code>
             </div>
           </div>
@@ -117,28 +118,36 @@ export function AvailableVariables({
             <div className="font-medium text-muted-foreground mb-1">Request Info</div>
             <div className="space-y-0.5">
               <code className="block bg-muted px-2 py-1 rounded text-[11px]">
-                {formatVar('request.body')} <span className="text-muted-foreground">- POST/PUT body</span>
+                {formatVar('request.body')}{' '}
+                <span className="text-muted-foreground">- POST/PUT body</span>
               </code>
               <code className="block bg-muted px-2 py-1 rounded text-[11px]">
-                {formatVar('request.query')} <span className="text-muted-foreground">- Query params</span>
+                {formatVar('request.query')}{' '}
+                <span className="text-muted-foreground">- Query params</span>
               </code>
               <code className="block bg-muted px-2 py-1 rounded text-[11px]">
-                {formatVar('request.method')} <span className="text-muted-foreground">- GET, POST, etc.</span>
+                {formatVar('request.method')}{' '}
+                <span className="text-muted-foreground">- GET, POST, etc.</span>
               </code>
               <code className="block bg-muted px-2 py-1 rounded text-[11px]">
-                {formatVar('request.path')} <span className="text-muted-foreground">- URL path</span>
+                {formatVar('request.path')}{' '}
+                <span className="text-muted-foreground">- URL path</span>
               </code>
               <code className="block bg-muted px-2 py-1 rounded text-[11px]">
-                {formatVar('request.ip')} <span className="text-muted-foreground">- Client IP address</span>
+                {formatVar('request.ip')}{' '}
+                <span className="text-muted-foreground">- Client IP address</span>
               </code>
               <code className="block bg-muted px-2 py-1 rounded text-[11px]">
-                {formatVar('request.userAgent')} <span className="text-muted-foreground">- Browser/client info</span>
+                {formatVar('request.userAgent')}{' '}
+                <span className="text-muted-foreground">- Browser/client info</span>
               </code>
               <code className="block bg-muted px-2 py-1 rounded text-[11px]">
-                {formatVar('request.headers')} <span className="text-muted-foreground">- All HTTP headers</span>
+                {formatVar('request.headers')}{' '}
+                <span className="text-muted-foreground">- All HTTP headers</span>
               </code>
               <code className="block bg-muted px-2 py-1 rounded text-[11px] text-muted-foreground">
-                {formatVar("request.headers['x-forwarded-for']")} <span>- Use brackets for hyphenated headers</span>
+                {formatVar("request.headers['x-forwarded-for']")}{' '}
+                <span>- Use brackets for hyphenated headers</span>
               </code>
             </div>
           </div>
@@ -146,9 +155,7 @@ export function AvailableVariables({
           {/* Previous Steps */}
           {previousSteps.length > 0 && (
             <div>
-              <div className="font-medium text-muted-foreground mb-1">
-                Previous Step Outputs
-              </div>
+              <div className="font-medium text-muted-foreground mb-1">Previous Step Outputs</div>
               <div className="space-y-2">
                 {previousSteps.map((step, idx) => (
                   <div key={idx} className="bg-muted/50 rounded p-2">
@@ -161,11 +168,16 @@ export function AvailableVariables({
                     <div className="text-muted-foreground mt-0.5">
                       {getStepOutputDescription(step.handlerType, step.config)}
                     </div>
-                    {getStepOutputExamples(step.handlerType, step.name, syntax, step.config).map((example, i) => (
-                      <code key={i} className="block bg-muted px-2 py-1 rounded text-[11px] mt-0.5">
-                        {example}
-                      </code>
-                    ))}
+                    {getStepOutputExamples(step.handlerType, step.name, syntax, step.config).map(
+                      (example, i) => (
+                        <code
+                          key={i}
+                          className="block bg-muted px-2 py-1 rounded text-[11px] mt-0.5"
+                        >
+                          {example}
+                        </code>
+                      ),
+                    )}
                   </div>
                 ))}
               </div>
@@ -210,9 +222,9 @@ function getStepOutputExamples(
   handlerType: string,
   stepName: string,
   syntax: 'template' | 'code',
-  config?: Record<string, unknown>
+  config?: Record<string, unknown>,
 ): string[] {
-  const fmt = (path: string) => syntax === 'template' ? `{{${path}}}` : path;
+  const fmt = (path: string) => (syntax === 'template' ? `{{${path}}}` : path);
   const needsBrackets = /\s/.test(stepName);
   const stepPath = needsBrackets ? `steps['${stepName}']` : `steps.${stepName}`;
 
@@ -237,41 +249,18 @@ function getStepOutputExamples(
 
   // Check if data_query has single record mode enabled
   if (handlerType === 'data_query' && (config?.single || config?.recordId)) {
-    return [
-      fmt(`${stepPath}.id`),
-      fmt(`${stepPath}.fieldName`),
-    ];
+    return [fmt(`${stepPath}.id`), fmt(`${stepPath}.fieldName`)];
   }
 
   // Default examples for handlers without config-based fields
   const defaultExamples: Record<string, string[]> = {
-    data_create: [
-      fmt(`${stepPath}.id`),
-      fmt(`${stepPath}.createdAt`),
-    ],
-    data_query: [
-      fmt(`${stepPath}[0]`),
-      fmt(`${stepPath}.length`),
-    ],
-    data_update: [
-      fmt(`${stepPath}.id`),
-      fmt(`${stepPath}.updatedAt`),
-    ],
-    data_delete: [
-      fmt(`${stepPath}.deleted`),
-      fmt(`${stepPath}.count`),
-    ],
-    email_handler: [
-      fmt(`${stepPath}.sent`),
-      fmt(`${stepPath}.messageId`),
-    ],
-    function_handler: [
-      fmt(`${stepPath}.result`),
-    ],
-    db_aggregate: [
-      fmt(`${stepPath}.result`),
-      fmt(`${stepPath}.operation`),
-    ],
+    data_create: [fmt(`${stepPath}.id`), fmt(`${stepPath}.createdAt`)],
+    data_query: [fmt(`${stepPath}[0]`), fmt(`${stepPath}.length`)],
+    data_update: [fmt(`${stepPath}.id`), fmt(`${stepPath}.updatedAt`)],
+    data_delete: [fmt(`${stepPath}.deleted`), fmt(`${stepPath}.count`)],
+    email_handler: [fmt(`${stepPath}.sent`), fmt(`${stepPath}.messageId`)],
+    function_handler: [fmt(`${stepPath}.result`)],
+    db_aggregate: [fmt(`${stepPath}.result`), fmt(`${stepPath}.operation`)],
     ai_handler: [
       fmt(`${stepPath}.content`),
       fmt(`${stepPath}.tokensUsed`),
@@ -310,23 +299,28 @@ function getStepOutputExamples(
       `${fmt(`${stepPath}.data.object.amount_total`)} — payment amount in cents`,
       `${fmt(`${stepPath}.data.object.customer_email`)} — customer email`,
     ],
-    github_api: config?.action === 'create_issue' ? [
-      `${fmt(`${stepPath}.number`)} — issue number`,
-      `${fmt(`${stepPath}.html_url`)} — issue URL`,
-      `${fmt(`${stepPath}.title`)} — issue title`,
-      `${fmt(`${stepPath}.id`)} — issue ID`,
-    ] : config?.action === 'set_repo_variable' ? [
-      `${fmt(`${stepPath}.owner`)} — repository owner`,
-      `${fmt(`${stepPath}.repo`)} — repository name`,
-      `${fmt(`${stepPath}.variableName`)} — variable name`,
-      `${fmt(`${stepPath}.variableValue`)} — variable value`,
-    ] : [
-      `${fmt(`${stepPath}.name`)} — repository name`,
-      `${fmt(`${stepPath}.full_name`)} — full name (org/repo)`,
-      `${fmt(`${stepPath}.html_url`)} — GitHub URL`,
-      `${fmt(`${stepPath}.clone_url`)} — clone URL`,
-      `${fmt(`${stepPath}.default_branch`)} — default branch name`,
-    ],
+    github_api:
+      config?.action === 'create_issue'
+        ? [
+            `${fmt(`${stepPath}.number`)} — issue number`,
+            `${fmt(`${stepPath}.html_url`)} — issue URL`,
+            `${fmt(`${stepPath}.title`)} — issue title`,
+            `${fmt(`${stepPath}.id`)} — issue ID`,
+          ]
+        : config?.action === 'set_repo_variable'
+          ? [
+              `${fmt(`${stepPath}.owner`)} — repository owner`,
+              `${fmt(`${stepPath}.repo`)} — repository name`,
+              `${fmt(`${stepPath}.variableName`)} — variable name`,
+              `${fmt(`${stepPath}.variableValue`)} — variable value`,
+            ]
+          : [
+              `${fmt(`${stepPath}.name`)} — repository name`,
+              `${fmt(`${stepPath}.full_name`)} — full name (org/repo)`,
+              `${fmt(`${stepPath}.html_url`)} — GitHub URL`,
+              `${fmt(`${stepPath}.clone_url`)} — clone URL`,
+              `${fmt(`${stepPath}.default_branch`)} — default branch name`,
+            ],
   };
 
   return defaultExamples[handlerType] || [];

@@ -82,15 +82,11 @@ export function ProxyRuleForm({ initialData, onSubmit, onCancel }: ProxyRuleForm
   const [destinationEmail, setDestinationEmail] = useState(
     initialData?.emailHandlerConfig?.destinationEmail || '',
   );
-  const [emailSubject, setEmailSubject] = useState(
-    initialData?.emailHandlerConfig?.subject || '',
-  );
+  const [emailSubject, setEmailSubject] = useState(initialData?.emailHandlerConfig?.subject || '');
   const [successRedirect, setSuccessRedirect] = useState(
     initialData?.emailHandlerConfig?.successRedirect || '',
   );
-  const [corsOrigin, setCorsOrigin] = useState(
-    initialData?.emailHandlerConfig?.corsOrigin || '',
-  );
+  const [corsOrigin, setCorsOrigin] = useState(initialData?.emailHandlerConfig?.corsOrigin || '');
   const [honeypotField, setHoneypotField] = useState(
     initialData?.emailHandlerConfig?.honeypotField || '',
   );
@@ -295,8 +291,8 @@ export function ProxyRuleForm({ initialData, onSubmit, onCancel }: ProxyRuleForm
               Email not configured
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              Email form handler requires email to be configured in Settings &gt; Email.
-              Form submissions will fail until email is set up.
+              Email form handler requires email to be configured in Settings &gt; Email. Form
+              submissions will fail until email is set up.
             </p>
           </div>
         </div>
@@ -360,9 +356,7 @@ export function ProxyRuleForm({ initialData, onSubmit, onCancel }: ProxyRuleForm
               onChange={(e) => setEmailSubject(e.target.value)}
               placeholder="Form Submission"
             />
-            <p className="text-xs text-muted-foreground">
-              Default: "Form Submission"
-            </p>
+            <p className="text-xs text-muted-foreground">Default: "Form Submission"</p>
           </div>
 
           <div className="space-y-2">
@@ -425,11 +419,7 @@ export function ProxyRuleForm({ initialData, onSubmit, onCancel }: ProxyRuleForm
 
           <div className="border-t pt-4 mt-4">
             <div className="flex items-center gap-2">
-              <Switch
-                id="requireAuth"
-                checked={requireAuth}
-                onCheckedChange={setRequireAuth}
-              />
+              <Switch id="requireAuth" checked={requireAuth} onCheckedChange={setRequireAuth} />
               <Label htmlFor="requireAuth" className="cursor-pointer font-medium">
                 Require Authentication
               </Label>
@@ -572,9 +562,11 @@ export function ProxyRuleForm({ initialData, onSubmit, onCancel }: ProxyRuleForm
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder={
-            isEmailHandler ? 'Contact form handler' :
-            isInternalRewrite ? 'Environment config rewrite' :
-            'Main backend API'
+            isEmailHandler
+              ? 'Contact form handler'
+              : isInternalRewrite
+                ? 'Environment config rewrite'
+                : 'Main backend API'
           }
         />
       </div>

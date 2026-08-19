@@ -57,8 +57,7 @@ export function DeleteProjectDialog({
       onOpenChange(false);
       navigate('/repo');
     } catch (error: any) {
-      const errorMessage =
-        error?.data?.message || error?.message || 'Failed to delete repository';
+      const errorMessage = error?.data?.message || error?.message || 'Failed to delete repository';
       toast({
         title: 'Error',
         description: errorMessage,
@@ -82,8 +81,8 @@ export function DeleteProjectDialog({
           <AlertDialogDescription asChild>
             <div>
               <p>
-                This will permanently delete the repository <strong>{expectedText}</strong> and
-                all of its data, including:
+                This will permanently delete the repository <strong>{expectedText}</strong> and all
+                of its data, including:
               </p>
               <ul className="list-disc pl-5 mt-2 space-y-1">
                 <li>All deployments and aliases</li>

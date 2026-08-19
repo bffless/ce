@@ -144,7 +144,11 @@ export function UsersPage() {
   const [resendingId, setResendingId] = useState<string | null>(null);
 
   // Fetch users
-  const { data: usersData, isLoading: isLoadingUsers, error: usersError } = useListUsersQuery({
+  const {
+    data: usersData,
+    isLoading: isLoadingUsers,
+    error: usersError,
+  } = useListUsersQuery({
     page,
     limit: 20,
     search: search || undefined,
@@ -153,7 +157,11 @@ export function UsersPage() {
   });
 
   // Fetch invitations
-  const { data: invitationsData, isLoading: isLoadingInvitations, error: invitationsError } = useListInvitationsQuery();
+  const {
+    data: invitationsData,
+    isLoading: isLoadingInvitations,
+    error: invitationsError,
+  } = useListInvitationsQuery();
 
   // User mutations
   const [updateRole, { isLoading: isUpdatingRole }] = useUpdateUserRoleMutation();
@@ -519,10 +527,7 @@ export function UsersPage() {
 
       {/* Content */}
       <div className="p-8 max-w-6xl mx-auto">
-        <Tabs
-          value={activeTab}
-          onValueChange={(value) => setSearchParams({ tab: value })}
-        >
+        <Tabs value={activeTab} onValueChange={(value) => setSearchParams({ tab: value })}>
           <TabsList className="mb-6">
             <TabsTrigger value="users" className="flex items-center gap-2">
               <Users className="h-4 w-4" />
@@ -634,49 +639,49 @@ export function UsersPage() {
 
                     {/* Desktop: table */}
                     <div className="hidden sm:block">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Email</TableHead>
-                          <TableHead>User ID</TableHead>
-                          <TableHead>Role</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Created</TableHead>
-                          <TableHead className="text-right">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {users.map((user) => {
-                          const isCurrentUser = user.id === currentUserId;
-                          return (
-                            <TableRow
-                              key={user.id}
-                              className={user.disabled ? 'opacity-60' : undefined}
-                            >
-                              <TableCell className="font-medium">
-                                <div className="flex items-center gap-2">
-                                  {user.email}
-                                  {isCurrentUser && (
-                                    <Badge variant="outline" className="text-xs">
-                                      You
-                                    </Badge>
-                                  )}
-                                </div>
-                              </TableCell>
-                              <TableCell>{renderCopyUserId(user)}</TableCell>
-                              <TableCell>{renderRoleBadge(user)}</TableCell>
-                              <TableCell>{renderStatusBadge(user)}</TableCell>
-                              <TableCell className="text-sm text-muted-foreground">
-                                {new Date(user.createdAt).toLocaleDateString()}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {renderUserActions(user, isCurrentUser)}
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Email</TableHead>
+                            <TableHead>User ID</TableHead>
+                            <TableHead>Role</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Created</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {users.map((user) => {
+                            const isCurrentUser = user.id === currentUserId;
+                            return (
+                              <TableRow
+                                key={user.id}
+                                className={user.disabled ? 'opacity-60' : undefined}
+                              >
+                                <TableCell className="font-medium">
+                                  <div className="flex items-center gap-2">
+                                    {user.email}
+                                    {isCurrentUser && (
+                                      <Badge variant="outline" className="text-xs">
+                                        You
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell>{renderCopyUserId(user)}</TableCell>
+                                <TableCell>{renderRoleBadge(user)}</TableCell>
+                                <TableCell>{renderStatusBadge(user)}</TableCell>
+                                <TableCell className="text-sm text-muted-foreground">
+                                  {new Date(user.createdAt).toLocaleDateString()}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {renderUserActions(user, isCurrentUser)}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
                     </div>
 
                     {/* Pagination */}
@@ -724,9 +729,7 @@ export function UsersPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <CardTitle>User Invitations</CardTitle>
-                    <CardDescription>
-                      Invite new users to join this workspace
-                    </CardDescription>
+                    <CardDescription>Invite new users to join this workspace</CardDescription>
                   </div>
                   <Button onClick={() => setShowInviteForm(!showInviteForm)}>
                     <UserPlus className="h-4 w-4 mr-2" />
@@ -756,11 +759,7 @@ export function UsersPage() {
                                 <FormItem className="md:col-span-2">
                                   <FormLabel>Email Address</FormLabel>
                                   <FormControl>
-                                    <Input
-                                      type="email"
-                                      placeholder="user@example.com"
-                                      {...field}
-                                    />
+                                    <Input type="email" placeholder="user@example.com" {...field} />
                                   </FormControl>
                                   <FormMessage />
                                 </FormItem>
@@ -773,10 +772,7 @@ export function UsersPage() {
                               render={({ field }) => (
                                 <FormItem>
                                   <FormLabel>Role</FormLabel>
-                                  <Select
-                                    onValueChange={field.onChange}
-                                    defaultValue={field.value}
-                                  >
+                                  <Select onValueChange={field.onChange} defaultValue={field.value}>
                                     <FormControl>
                                       <SelectTrigger>
                                         <SelectValue placeholder="Select role" />
@@ -808,7 +804,8 @@ export function UsersPage() {
                                   />
                                 </FormControl>
                                 <p className="text-xs text-muted-foreground">
-                                  Where to redirect the user after they accept the invitation. Can be an external URL.
+                                  Where to redirect the user after they accept the invitation. Can
+                                  be an external URL.
                                 </p>
                                 <FormMessage />
                               </FormItem>
@@ -882,7 +879,9 @@ export function UsersPage() {
                           <TableRow key={invitation.id}>
                             <TableCell className="font-medium">{invitation.email}</TableCell>
                             <TableCell>
-                              <Badge variant={invitation.role === 'admin' ? 'default' : 'secondary'}>
+                              <Badge
+                                variant={invitation.role === 'admin' ? 'default' : 'secondary'}
+                              >
                                 {invitation.role}
                               </Badge>
                             </TableCell>
@@ -896,7 +895,9 @@ export function UsersPage() {
                                   title={invitation.redirectUrl}
                                 >
                                   <ExternalLink className="h-3 w-3 flex-shrink-0" />
-                                  <span className="truncate">{new URL(invitation.redirectUrl).hostname}</span>
+                                  <span className="truncate">
+                                    {new URL(invitation.redirectUrl).hostname}
+                                  </span>
                                 </a>
                               ) : (
                                 <span className="text-xs text-muted-foreground">-</span>
@@ -970,23 +971,18 @@ export function UsersPage() {
       </div>
 
       {/* Delete User Confirmation Dialog */}
-      <AlertDialog
-        open={!!deletingUser}
-        onOpenChange={(open) => !open && setDeletingUser(null)}
-      >
+      <AlertDialog open={!!deletingUser} onOpenChange={(open) => !open && setDeletingUser(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete User</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to delete{' '}
-              <span className="font-semibold">{deletingUser?.email}</span>? This action
-              cannot be undone.
+              <span className="font-semibold">{deletingUser?.email}</span>? This action cannot be
+              undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setDeletingUser(null)}>
-              Cancel
-            </AlertDialogCancel>
+            <AlertDialogCancel onClick={() => setDeletingUser(null)}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteUser}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"

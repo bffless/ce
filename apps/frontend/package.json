@@ -19,6 +19,7 @@
     "test:e2e:debug": "playwright test --debug",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "format": "prettier --write \"src/**/*.{ts,tsx}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx}\"",
     "clean": "rm -rf dist",
     "storybook": "storybook dev -p 6006",
     "storybook:build": "storybook build"

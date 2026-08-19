@@ -98,10 +98,7 @@ function LocationSearchProbe() {
   return <div data-testid="location-search">{params.toString()}</div>;
 }
 
-function wizardTreeWithProbe(
-  store: ReturnType<typeof createTestStore>,
-  initialEntries: string[]
-) {
+function wizardTreeWithProbe(store: ReturnType<typeof createTestStore>, initialEntries: string[]) {
   return (
     <Provider store={store}>
       <MemoryRouter initialEntries={initialEntries}>
@@ -169,9 +166,7 @@ describe('SetupWizard bootstrap-mode step gating', () => {
     // cert/apply endpoints still need the token. Rehydrating it from
     // sessionStorage is what keeps those requests authenticated.
     sessionStorage.setItem('bffless.setup.claimToken', 'persisted-token');
-    setMockStatus(
-      baseStatus({ bootstrapMode: true, claimRequired: false, hasAdminUser: true })
-    );
+    setMockStatus(baseStatus({ bootstrapMode: true, claimRequired: false, hasAdminUser: true }));
     const store = renderWizard(); // no ?token= in the URL
     // The claim step is not shown (admin already exists) ...
     expect(screen.queryByText(/claim this instance/i)).not.toBeInTheDocument();
@@ -191,9 +186,7 @@ describe('SetupWizard bootstrap-mode step gating', () => {
 
   describe('auto-advance past a completed admin step', () => {
     it('bootstrap mode: lands on domain-ssl (not storage) after admin', () => {
-      setMockStatus(
-        baseStatus({ bootstrapMode: true, claimRequired: false, hasAdminUser: true })
-      );
+      setMockStatus(baseStatus({ bootstrapMode: true, claimRequired: false, hasAdminUser: true }));
 
       renderWizard();
 
@@ -211,7 +204,7 @@ describe('SetupWizard bootstrap-mode step gating', () => {
 
     it('normal mode: lands on cache once admin + storage are both done', () => {
       setMockStatus(
-        baseStatus({ bootstrapMode: false, hasAdminUser: true, storageProvider: 'minio' })
+        baseStatus({ bootstrapMode: false, hasAdminUser: true, storageProvider: 'minio' }),
       );
 
       renderWizard();
@@ -231,9 +224,7 @@ describe('SetupWizard bootstrap-mode step gating', () => {
     it('scrubs the token from the URL while preserving other params, and stashes it', () => {
       setMockStatus(baseStatus({ bootstrapMode: true, claimRequired: true }));
 
-      const store = renderWizardWithProbe([
-        '/setup?token=platform-relay-token&foo=bar',
-      ]);
+      const store = renderWizardWithProbe(['/setup?token=platform-relay-token&foo=bar']);
 
       expect(store.getState().setup.wizard.claimToken).toBe('platform-relay-token');
       const probe = screen.getByTestId('location-search');
@@ -302,9 +293,7 @@ describe('SetupWizard bootstrap-mode step gating', () => {
       // First "visit": the `?token=` relay link lands, gets seeded + scrubbed.
       setMockStatus(baseStatus({ bootstrapMode: true, claimRequired: true }));
       renderWizard(['/setup?token=platform-relay-token']);
-      expect(sessionStorage.getItem('bffless.setup.claimToken')).toBe(
-        'platform-relay-token'
-      );
+      expect(sessionStorage.getItem('bffless.setup.claimToken')).toBe('platform-relay-token');
       expect(sessionStorage.getItem('bffless.setup.claimTokenFromUrl')).toBe('true');
 
       cleanup(); // simulate a full page reload: fresh component tree + store
@@ -322,11 +311,9 @@ describe('SetupWizard bootstrap-mode step gating', () => {
 
     it('does not scrub the url token when sessionStorage.setItem throws (incognito) — token stays recoverable in the URL', () => {
       setMockStatus(baseStatus({ bootstrapMode: true, claimRequired: true }));
-      const setItemSpy = vi
-        .spyOn(window.sessionStorage, 'setItem')
-        .mockImplementation(() => {
-          throw new Error('SecurityError: sessionStorage disabled (incognito)');
-        });
+      const setItemSpy = vi.spyOn(window.sessionStorage, 'setItem').mockImplementation(() => {
+        throw new Error('SecurityError: sessionStorage disabled (incognito)');
+      });
 
       const store = renderWizardWithProbe(['/setup?token=platform-relay-token']);
 
@@ -380,7 +367,7 @@ describe('SetupWizard bootstrap-mode step gating', () => {
       // every subsequent index shifts left by one.
       act(() => {
         setMockStatus(
-          baseStatus({ bootstrapMode: true, claimRequired: false, hasAdminUser: true })
+          baseStatus({ bootstrapMode: true, claimRequired: false, hasAdminUser: true }),
         );
       });
       rerender();
@@ -404,7 +391,7 @@ describe('computeWizardSteps (regression guard: normal mode is unchanged)', () =
   it('normal mode ignores claimRequired and a ?token= entirely', () => {
     const steps = computeWizardSteps(
       baseStatus({ bootstrapMode: false, claimRequired: true }),
-      'some-token'
+      'some-token',
     );
 
     expect(steps).toEqual(['admin', 'storage', 'cache', 'email', 'complete']);
@@ -413,24 +400,16 @@ describe('computeWizardSteps (regression guard: normal mode is unchanged)', () =
   it('bootstrap mode + claimRequired: full 7-step list, claim first', () => {
     const steps = computeWizardSteps(
       baseStatus({ bootstrapMode: true, claimRequired: true }),
-      null
+      null,
     );
 
-    expect(steps).toEqual([
-      'claim',
-      'admin',
-      'domain-ssl',
-      'storage',
-      'cache',
-      'email',
-      'apply',
-    ]);
+    expect(steps).toEqual(['claim', 'admin', 'domain-ssl', 'storage', 'cache', 'email', 'apply']);
   });
 
   it('bootstrap mode + claimRequired + ?token= present: claim step dropped', () => {
     const steps = computeWizardSteps(
       baseStatus({ bootstrapMode: true, claimRequired: true }),
-      'platform-relay-token'
+      'platform-relay-token',
     );
 
     expect(steps).toEqual(['admin', 'domain-ssl', 'storage', 'cache', 'email', 'apply']);
@@ -445,7 +424,7 @@ describe('computeWizardSteps (regression guard: normal mode is unchanged)', () =
     const steps = computeWizardSteps(
       baseStatus({ bootstrapMode: true, claimRequired: true }),
       null,
-      true
+      true,
     );
 
     expect(steps).toEqual(['admin', 'domain-ssl', 'storage', 'cache', 'email', 'apply']);
@@ -460,24 +439,16 @@ describe('computeWizardSteps (regression guard: normal mode is unchanged)', () =
     const steps = computeWizardSteps(
       baseStatus({ bootstrapMode: true, claimRequired: true }),
       null,
-      false
+      false,
     );
 
-    expect(steps).toEqual([
-      'claim',
-      'admin',
-      'domain-ssl',
-      'storage',
-      'cache',
-      'email',
-      'apply',
-    ]);
+    expect(steps).toEqual(['claim', 'admin', 'domain-ssl', 'storage', 'cache', 'email', 'apply']);
   });
 
   it('bootstrap mode without a required claim: 6-step list, no claim step', () => {
     const steps = computeWizardSteps(
       baseStatus({ bootstrapMode: true, claimRequired: false }),
-      null
+      null,
     );
 
     expect(steps).toEqual(['admin', 'domain-ssl', 'storage', 'cache', 'email', 'apply']);

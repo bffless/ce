@@ -26,12 +26,7 @@ import {
   RefreshCw,
   AlertTriangle,
 } from 'lucide-react';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
 
 export function CacheSettings() {
@@ -54,9 +49,7 @@ export function CacheSettings() {
 
   // Warning: Currently using Docker Redis but it's disabled in .env
   const redisDisabledButInUse =
-    cacheConfig?.type === 'redis' &&
-    cacheConfig?.redisSource === 'local' &&
-    isDockerRedisDisabled;
+    cacheConfig?.type === 'redis' && cacheConfig?.redisSource === 'local' && isDockerRedisDisabled;
 
   const [isEditing, setIsEditing] = useState(false);
   const [testResult, setTestResult] = useState<{
@@ -149,7 +142,13 @@ export function CacheSettings() {
       setTestResult(null);
 
       let testConfig:
-        | { host: string; port: number; password?: string; useLocalPassword?: boolean; useManagedConfig?: boolean }
+        | {
+            host: string;
+            port: number;
+            password?: string;
+            useLocalPassword?: boolean;
+            useManagedConfig?: boolean;
+          }
         | undefined;
       if (config.redisSource === 'managed') {
         // For managed Redis, let the backend use the MANAGED_REDIS_* env vars
@@ -221,9 +220,7 @@ export function CacheSettings() {
           <Database className="h-5 w-5" />
           Cache Settings
         </CardTitle>
-        <CardDescription>
-          Configure caching to reduce storage latency and costs.
-        </CardDescription>
+        <CardDescription>Configure caching to reduce storage latency and costs.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Warning: Configuration Mismatch */}
@@ -237,8 +234,9 @@ export function CacheSettings() {
               <ul className="list-disc list-inside mt-2 text-sm">
                 <li>Switch to memory caching or external Redis below</li>
                 <li>
-                  Or remove <code className="bg-destructive/20 px-1 rounded">ENABLE_REDIS=false</code>{' '}
-                  from .env and restart
+                  Or remove{' '}
+                  <code className="bg-destructive/20 px-1 rounded">ENABLE_REDIS=false</code> from
+                  .env and restart
                 </li>
               </ul>
             </AlertDescription>
@@ -317,7 +315,9 @@ export function CacheSettings() {
                   <div className="grid grid-cols-3 gap-4">
                     <div>
                       <span className="text-muted-foreground block">Hit Rate</span>
-                      <span className="font-medium text-lg">{formatHitRate(cacheStats.hitRate)}</span>
+                      <span className="font-medium text-lg">
+                        {formatHitRate(cacheStats.hitRate)}
+                      </span>
                     </div>
                     <div>
                       <span className="text-muted-foreground block">Items</span>
@@ -345,11 +345,7 @@ export function CacheSettings() {
                       <RefreshCw className="h-4 w-4 mr-2" />
                       Refresh Stats
                     </Button>
-                    <Button
-                      variant="outline"
-                      onClick={handleClearCache}
-                      disabled={isClearing}
-                    >
+                    <Button variant="outline" onClick={handleClearCache} disabled={isClearing}>
                       {isClearing ? (
                         <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                       ) : (
@@ -402,8 +398,9 @@ export function CacheSettings() {
                   <Alert>
                     <AlertTriangle className="h-4 w-4" />
                     <AlertDescription>
-                      Switching cache backends requires a container restart to take effect.
-                      Run <code className="bg-muted px-1 rounded">docker compose restart backend</code> after saving.
+                      Switching cache backends requires a container restart to take effect. Run{' '}
+                      <code className="bg-muted px-1 rounded">docker compose restart backend</code>{' '}
+                      after saving.
                     </AlertDescription>
                   </Alert>
                 )}

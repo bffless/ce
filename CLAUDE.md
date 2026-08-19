@@ -68,13 +68,13 @@ pnpm --filter frontend exec tsc --noEmit
 pnpm --filter backend exec tsc --noEmit
 ```
 
-### Formatting (backend)
+### Formatting
 
-Backend `src/**/*.ts` is Prettier-formatted and **CI fails the PR** if it isn't (`pnpm --filter backend format:check` in `pr-tests.yml`). A husky pre-commit hook (`lint-staged`) auto-formats staged backend files, so normally nothing to do — but if hooks didn't run (fresh clone without `pnpm install`, `--no-verify`, files edited by a script), run this before pushing:
+Backend `src/**/*.ts` and frontend `src/**/*.{ts,tsx}` are Prettier-formatted and **CI fails the PR** if they aren't (`format:check` steps in `pr-tests.yml`). A husky pre-commit hook (`lint-staged`) auto-formats staged files in those paths, so normally nothing to do — but if hooks didn't run (fresh clone without `pnpm install`, `--no-verify`, files edited by a script), run this before pushing:
 
 ```bash
-pnpm --filter backend format        # prettier --write "src/**/*.ts"
-pnpm --filter backend format:check  # what CI runs
+pnpm --filter backend format && pnpm --filter frontend format   # prettier --write
+pnpm --filter backend format:check && pnpm --filter frontend format:check   # what CI runs
 ```
 
 Note: `pnpm --filter backend lint` is `eslint --fix` and rewrites formatting too — run it on a branch, never as a drive-by on `main` (it touched 300+ files the one time it was).

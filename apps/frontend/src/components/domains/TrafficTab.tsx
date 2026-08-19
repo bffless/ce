@@ -10,7 +10,17 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Plus, Trash2, AlertCircle, BarChart3, Scale, Info, Search, Cookie, FileCode } from 'lucide-react';
+import {
+  Plus,
+  Trash2,
+  AlertCircle,
+  BarChart3,
+  Scale,
+  Info,
+  Search,
+  Cookie,
+  FileCode,
+} from 'lucide-react';
 import {
   useGetTrafficConfigQuery,
   useSetTrafficWeightsMutation,
@@ -50,7 +60,13 @@ export function TrafficTab({ domainId }: TrafficTabProps) {
   // Initialize from config
   useEffect(() => {
     if (config) {
-      setWeights(config.weights.map((w) => ({ alias: w.alias, weight: w.weight, path: w.path || undefined })));
+      setWeights(
+        config.weights.map((w) => ({
+          alias: w.alias,
+          weight: w.weight,
+          path: w.path || undefined,
+        })),
+      );
       setStickySessionsEnabled(config.stickySessionsEnabled);
       setStickySessionDuration(config.stickySessionDuration);
       setHasChanges(false);
@@ -125,8 +141,7 @@ export function TrafficTab({ domainId }: TrafficTabProps) {
       setHasChanges(false);
     } catch (error: unknown) {
       const errorMessage =
-        (error as { data?: { message?: string } })?.data?.message ||
-        'Failed to save configuration';
+        (error as { data?: { message?: string } })?.data?.message || 'Failed to save configuration';
       toast({
         title: 'Error',
         description: errorMessage,
@@ -214,10 +229,7 @@ export function TrafficTab({ domainId }: TrafficTabProps) {
           </div>
         ) : (
           weights.map((entry, index) => (
-            <div
-              key={index}
-              className="flex flex-col gap-1.5 p-2 border rounded-md bg-background"
-            >
+            <div key={index} className="flex flex-col gap-1.5 p-2 border rounded-md bg-background">
               <div className="flex items-center gap-2">
                 <Select value={entry.alias} onValueChange={(v) => handleAliasChange(index, v)}>
                   <SelectTrigger className="w-[140px]">
@@ -403,7 +415,11 @@ export function TrafficTab({ domainId }: TrafficTabProps) {
 
       {/* Traffic Rules Section */}
       {weights.length > 0 && (
-        <TrafficRulesSection domainId={domainId} availableAliases={availableAliases} weightAliases={weights.map((w) => w.alias)} />
+        <TrafficRulesSection
+          domainId={domainId}
+          availableAliases={availableAliases}
+          weightAliases={weights.map((w) => w.alias)}
+        />
       )}
     </div>
   );
@@ -419,7 +435,11 @@ interface TrafficRulesSectionProps {
   weightAliases: string[];
 }
 
-function TrafficRulesSection({ domainId, availableAliases, weightAliases }: TrafficRulesSectionProps) {
+function TrafficRulesSection({
+  domainId,
+  availableAliases,
+  weightAliases,
+}: TrafficRulesSectionProps) {
   const { toast } = useToast();
   const { data: rules = [] } = useGetTrafficRulesQuery(domainId);
   const [createRule, { isLoading: isCreating }] = useCreateTrafficRuleMutation();
@@ -527,7 +547,11 @@ function TrafficRulesSection({ domainId, availableAliases, weightAliases }: Traf
                 )}
                 <span className="text-sm truncate">
                   <span className="text-muted-foreground">
-                    {rule.conditionType === 'query_param' ? 'Query param' : rule.conditionType === 'cookie' ? 'Cookie' : 'Header'}
+                    {rule.conditionType === 'query_param'
+                      ? 'Query param'
+                      : rule.conditionType === 'cookie'
+                        ? 'Cookie'
+                        : 'Header'}
                   </span>{' '}
                   <code className="text-xs bg-muted px-1 py-0.5 rounded">{rule.conditionKey}</code>
                   {' = '}
@@ -578,7 +602,10 @@ function TrafficRulesSection({ domainId, availableAliases, weightAliases }: Traf
               <Select
                 value={newRule.conditionType}
                 onValueChange={(v) =>
-                  setNewRule({ ...newRule, conditionType: v as 'query_param' | 'cookie' | 'header' })
+                  setNewRule({
+                    ...newRule,
+                    conditionType: v as 'query_param' | 'cookie' | 'header',
+                  })
                 }
               >
                 <SelectTrigger>
@@ -638,7 +665,8 @@ function TrafficRulesSection({ domainId, availableAliases, weightAliases }: Traf
           </div>
           {newRule.alias && !weightAliases.includes(newRule.alias) && (
             <p className="text-xs text-amber-600">
-              &ldquo;{newRule.alias}&rdquo; is not in the traffic distribution above. Only visitors matching this rule will see it &mdash; it won&apos;t appear in the random rotation.
+              &ldquo;{newRule.alias}&rdquo; is not in the traffic distribution above. Only visitors
+              matching this rule will see it &mdash; it won&apos;t appear in the random rotation.
             </p>
           )}
           <div className="flex gap-2">

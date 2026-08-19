@@ -19,7 +19,7 @@ export interface TreeNodeProps {
 function hasIndexHtml(node: TreeNodeType): boolean {
   if (node.type !== 'directory') return false;
   return node.children.some(
-    (child) => child.type === 'file' && child.name.toLowerCase() === 'index.html'
+    (child) => child.type === 'file' && child.name.toLowerCase() === 'index.html',
   );
 }
 
@@ -74,7 +74,7 @@ export function TreeNode({
           'flex items-center gap-1 px-2 py-1.5 text-sm cursor-pointer rounded-md mb-0.5',
           'hover:bg-accent hover:text-accent-foreground transition-colors',
           'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1',
-          isActive && 'bg-accent text-accent-foreground font-medium'
+          isActive && 'bg-accent text-accent-foreground font-medium',
         )}
         style={{
           paddingLeft: `${level * 12 + 8}px`,

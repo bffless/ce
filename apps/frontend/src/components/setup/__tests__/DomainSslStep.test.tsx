@@ -5,7 +5,12 @@ import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import { DomainSslStep } from '../DomainSslStep';
 import { api } from '@/services/api';
-import setupReducer, { ServingMode, BootstrapSslMode, setServingMode, setBootstrapSslMode } from '@/store/slices/setupSlice';
+import setupReducer, {
+  ServingMode,
+  BootstrapSslMode,
+  setServingMode,
+  setBootstrapSslMode,
+} from '@/store/slices/setupSlice';
 
 // DomainDnsPhase's LE preflight path drives useDnsPreflightMutation — mocked
 // the same way ApplyStep.test.tsx / the old DomainSslStep.test.tsx mock their
@@ -39,7 +44,10 @@ function createTestStore() {
 // this repo's real (non-MSW, dispatch-based) test harness.
 function renderWithStore(
   ui: React.ReactElement,
-  wizardOverrides: Partial<{ servingMode: ServingMode | null; bootstrapSslMode: BootstrapSslMode | null }> = {}
+  wizardOverrides: Partial<{
+    servingMode: ServingMode | null;
+    bootstrapSslMode: BootstrapSslMode | null;
+  }> = {},
 ) {
   const store = createTestStore();
   if (wizardOverrides.servingMode !== undefined && wizardOverrides.servingMode !== null) {
@@ -151,7 +159,12 @@ describe('DomainSslStep', () => {
         Promise.resolve({
           ok: false,
           checks: [
-            { host: 'example.com', resolvedIps: [], probeOk: false, error: 'Hostname does not resolve yet' },
+            {
+              host: 'example.com',
+              resolvedIps: [],
+              probeOk: false,
+              error: 'Hostname does not resolve yet',
+            },
           ],
         }),
     });

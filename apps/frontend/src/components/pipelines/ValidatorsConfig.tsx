@@ -28,7 +28,10 @@ interface ValidatorsConfigProps {
 }
 
 // Available validator types with descriptions
-const VALIDATOR_INFO: Record<ValidatorType, { label: string; description: string; icon: typeof Shield }> = {
+const VALIDATOR_INFO: Record<
+  ValidatorType,
+  { label: string; description: string; icon: typeof Shield }
+> = {
   auth_required: {
     label: 'Authentication Required',
     description: 'Require user authentication before pipeline execution',
@@ -69,14 +72,14 @@ export function ValidatorsConfig({ validators, onChange }: ValidatorsConfigProps
       }
       onChange([...validators, createValidator(type)]);
     },
-    [validators, onChange]
+    [validators, onChange],
   );
 
   const removeValidator = useCallback(
     (index: number) => {
       onChange(validators.filter((_, i) => i !== index));
     },
-    [validators, onChange]
+    [validators, onChange],
   );
 
   const updateAuthRequiredConfig = useCallback(
@@ -85,40 +88,34 @@ export function ValidatorsConfig({ validators, onChange }: ValidatorsConfigProps
         validators.map((v, i) =>
           i === index && v.type === 'auth_required'
             ? { type: 'auth_required' as const, config }
-            : v
-        )
+            : v,
+        ),
       );
     },
-    [validators, onChange]
+    [validators, onChange],
   );
 
   const updateRateLimitConfig = useCallback(
     (index: number, config: RateLimitConfig) => {
       onChange(
         validators.map((v, i) =>
-          i === index && v.type === 'rate_limit'
-            ? { type: 'rate_limit' as const, config }
-            : v
-        )
+          i === index && v.type === 'rate_limit' ? { type: 'rate_limit' as const, config } : v,
+        ),
       );
     },
-    [validators, onChange]
+    [validators, onChange],
   );
 
   const updateCondition = useCallback(
     (index: number, condition: ValidatorCondition | undefined) => {
-      onChange(
-        validators.map((v, i) =>
-          i === index ? { ...v, condition } : v
-        )
-      );
+      onChange(validators.map((v, i) => (i === index ? { ...v, condition } : v)));
     },
-    [validators, onChange]
+    [validators, onChange],
   );
 
   // Get available validator types (not already added)
   const availableTypes = (Object.keys(VALIDATOR_INFO) as ValidatorType[]).filter(
-    (type) => !validators.some((v) => v.type === type)
+    (type) => !validators.some((v) => v.type === type),
   );
 
   return (
@@ -129,10 +126,7 @@ export function ValidatorsConfig({ validators, onChange }: ValidatorsConfigProps
           <Label className="text-base">Validators</Label>
         </div>
         {availableTypes.length > 0 && (
-          <Select
-            value=""
-            onValueChange={(type) => addValidator(type as ValidatorType)}
-          >
+          <Select value="" onValueChange={(type) => addValidator(type as ValidatorType)}>
             <SelectTrigger className="w-[180px]">
               <div className="flex items-center gap-2">
                 <Plus className="h-4 w-4" />
@@ -256,8 +250,8 @@ function AuthRequiredConfigForm({ config, onChange }: AuthRequiredConfigFormProp
           placeholder="admin, editor, viewer"
         />
         <p className="text-xs text-muted-foreground">
-          Leave empty to allow any authenticated user. Specify roles to restrict access to users with
-          matching roles (any match grants access).
+          Leave empty to allow any authenticated user. Specify roles to restrict access to users
+          with matching roles (any match grants access).
         </p>
       </div>
     </div>
@@ -295,9 +289,7 @@ function ValidatorConditionForm({ condition, onChange }: ValidatorConditionFormP
         variant="ghost"
         size="sm"
         className="text-xs text-muted-foreground"
-        onClick={() =>
-          onChange({ field: 'user.id', operator: 'exists' })
-        }
+        onClick={() => onChange({ field: 'user.id', operator: 'exists' })}
       >
         <Filter className="h-3 w-3 mr-1" />
         Add Condition
@@ -310,9 +302,7 @@ function ValidatorConditionForm({ condition, onChange }: ValidatorConditionFormP
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <Filter className="h-3.5 w-3.5 text-muted-foreground" />
-          <Label className="text-xs text-muted-foreground">
-            Only run when
-          </Label>
+          <Label className="text-xs text-muted-foreground">Only run when</Label>
         </div>
         <Button
           type="button"
@@ -363,9 +353,7 @@ function ValidatorConditionForm({ condition, onChange }: ValidatorConditionFormP
           />
         )}
       </div>
-      <p className="text-xs text-muted-foreground">
-        {describeCondition(condition)}
-      </p>
+      <p className="text-xs text-muted-foreground">{describeCondition(condition)}</p>
     </div>
   );
 }
@@ -449,12 +437,13 @@ function RateLimitConfigForm({ config, onChange }: RateLimitConfigFormProps) {
         </div>
       </div>
       <p className="text-xs text-muted-foreground">
-        Limits requests to {config.limit || 100} per {config.windowSeconds || 60} seconds, tracked by{' '}
+        Limits requests to {config.limit || 100} per {config.windowSeconds || 60} seconds, tracked
+        by{' '}
         {config.keyBy === 'user'
           ? 'user ID (requires authentication)'
           : config.keyBy === 'ip+user'
-          ? 'IP address and user ID combination'
-          : 'IP address'}
+            ? 'IP address and user ID combination'
+            : 'IP address'}
         .
       </p>
     </div>

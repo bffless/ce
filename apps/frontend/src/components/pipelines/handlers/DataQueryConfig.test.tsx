@@ -15,7 +15,10 @@ describe('DataQueryConfig in operator', () => {
     render(
       <DataQueryConfig
         projectId="p1"
-        config={{ schemaId: 's1', filters: { feedId: { op: 'in', value: ['https://a.com/feed', 'https://b.com/feed'] } } }}
+        config={{
+          schemaId: 's1',
+          filters: { feedId: { op: 'in', value: ['https://a.com/feed', 'https://b.com/feed'] } },
+        }}
         onChange={onChange}
       />,
     );

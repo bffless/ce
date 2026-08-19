@@ -90,8 +90,8 @@ export function GitHubActionsStep({ apiKey, onComplete }: GitHubActionsStepProps
         </p>
         <ul className="text-sm text-blue-700 dark:text-blue-500 mt-2 space-y-1">
           <li>
-            <code className="bg-blue-500/20 px-1 rounded">ASSET_HOST_URL</code> - Your
-            platform URL (e.g., https://assets.example.com)
+            <code className="bg-blue-500/20 px-1 rounded">ASSET_HOST_URL</code> - Your platform URL
+            (e.g., https://assets.example.com)
           </li>
           <li>
             <code className="bg-blue-500/20 px-1 rounded">ASSET_HOST_API_KEY</code> -{' '}

@@ -2,25 +2,41 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
 import { ServingModelEditor } from '../ServingModelEditor';
 
-const stage = vi.fn().mockReturnValue({ unwrap: () => Promise.resolve({ sans: [], wildcardCovered: true }) });
-const issueLetsEncrypt = vi.fn().mockReturnValue({ unwrap: () => Promise.resolve({ issued: true, reused: false }) });
+const stage = vi
+  .fn()
+  .mockReturnValue({ unwrap: () => Promise.resolve({ sans: [], wildcardCovered: true }) });
+const issueLetsEncrypt = vi
+  .fn()
+  .mockReturnValue({ unwrap: () => Promise.resolve({ issued: true, reused: false }) });
 const toastSpy = vi.fn();
 vi.mock('@/services/primarySslApi', () => ({
   useStagePrimaryCertificateMutation: () => [stage, { isLoading: false }],
   useIssuePrimaryLetsEncryptMutation: () => [issueLetsEncrypt, { isLoading: false }],
-  usePrimarySslPreflightMutation: () => [vi.fn().mockReturnValue({ unwrap: () => Promise.resolve({ ok: true, checks: [] }) }), { isLoading: false }],
+  usePrimarySslPreflightMutation: () => [
+    vi.fn().mockReturnValue({ unwrap: () => Promise.resolve({ ok: true, checks: [] }) }),
+    { isLoading: false },
+  ],
 }));
 vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: toastSpy }),
 }));
 
-const base = { servingMode: 'none', sslMode: 'paste', port80: 'redirect', realIp: null, certificatePem: '', privateKeyPem: '' } as any;
+const base = {
+  servingMode: 'none',
+  sslMode: 'paste',
+  port80: 'redirect',
+  realIp: null,
+  certificatePem: '',
+  privateKeyPem: '',
+} as any;
 
 describe('ServingModelEditor', () => {
   beforeEach(() => {
     toastSpy.mockClear();
     issueLetsEncrypt.mockClear();
-    issueLetsEncrypt.mockReturnValue({ unwrap: () => Promise.resolve({ issued: true, reused: false }) });
+    issueLetsEncrypt.mockReturnValue({
+      unwrap: () => Promise.resolve({ issued: true, reused: false }),
+    });
   });
 
   it('changing serving mode calls onChange', () => {
@@ -58,7 +74,12 @@ describe('ServingModelEditor', () => {
   });
 
   it('m12: shows the port-80 control on the cloudflare path (and no realIp fields)', () => {
-    render(<ServingModelEditor value={{ ...base, servingMode: 'cloudflare', sslMode: 'paste' }} onChange={vi.fn()} />);
+    render(
+      <ServingModelEditor
+        value={{ ...base, servingMode: 'cloudflare', sslMode: 'paste' }}
+        onChange={vi.fn()}
+      />,
+    );
     expect(screen.getByText('Port 80 (HTTP)')).toBeInTheDocument();
     expect(screen.queryByText(/Restore visitor IPs/i)).not.toBeInTheDocument();
   });
@@ -94,7 +115,9 @@ describe('ServingModelEditor', () => {
 
   describe('reused-vs-issued toast (Change 3)', () => {
     it('shows "Certificate already valid" when the mutation reports reused: true', async () => {
-      issueLetsEncrypt.mockReturnValue({ unwrap: () => Promise.resolve({ issued: true, sans: [], reused: true }) });
+      issueLetsEncrypt.mockReturnValue({
+        unwrap: () => Promise.resolve({ issued: true, sans: [], reused: true }),
+      });
       render(
         <ServingModelEditor
           value={{ ...base, servingMode: 'none', sslMode: 'letsencrypt' }}
@@ -110,7 +133,9 @@ describe('ServingModelEditor', () => {
     });
 
     it('shows "New certificate issued" when the mutation reports reused: false', async () => {
-      issueLetsEncrypt.mockReturnValue({ unwrap: () => Promise.resolve({ issued: true, sans: [], reused: false }) });
+      issueLetsEncrypt.mockReturnValue({
+        unwrap: () => Promise.resolve({ issued: true, sans: [], reused: false }),
+      });
       render(
         <ServingModelEditor
           value={{ ...base, servingMode: 'none', sslMode: 'letsencrypt' }}
@@ -126,7 +151,7 @@ describe('ServingModelEditor', () => {
     });
   });
 
-  describe('Let\'s Encrypt reassurance state (Change 4)', () => {
+  describe("Let's Encrypt reassurance state (Change 4)", () => {
     it('when not currently Let\'s Encrypt, renders the original "Run DNS preflight" + primary "Issue Let\'s Encrypt" flow', () => {
       render(
         <ServingModelEditor
@@ -173,19 +198,34 @@ describe('ServingModelEditor', () => {
 
   describe('m11 cert-source selector', () => {
     it('proxy path offers selfsigned/letsencrypt/paste', () => {
-      render(<ServingModelEditor value={{ ...base, servingMode: 'proxy', sslMode: 'selfsigned' }} onChange={vi.fn()} />);
+      render(
+        <ServingModelEditor
+          value={{ ...base, servingMode: 'proxy', sslMode: 'selfsigned' }}
+          onChange={vi.fn()}
+        />,
+      );
       expect(screen.getByLabelText(/Keep the built-in certificate/i)).toBeInTheDocument();
       expect(screen.getByLabelText(/Auto-issue with Let's Encrypt/i)).toBeInTheDocument();
       expect(screen.getByLabelText(/Paste my own certificate/i)).toBeInTheDocument();
     });
 
     it('cloudflare path offers no selector (paste only)', () => {
-      render(<ServingModelEditor value={{ ...base, servingMode: 'cloudflare', sslMode: 'paste' }} onChange={vi.fn()} />);
+      render(
+        <ServingModelEditor
+          value={{ ...base, servingMode: 'cloudflare', sslMode: 'paste' }}
+          onChange={vi.fn()}
+        />,
+      );
       expect(screen.queryByLabelText(/Keep the built-in certificate/i)).not.toBeInTheDocument();
     });
 
     it('direct path offers letsencrypt/paste, not selfsigned', () => {
-      render(<ServingModelEditor value={{ ...base, servingMode: 'none', sslMode: 'letsencrypt' }} onChange={vi.fn()} />);
+      render(
+        <ServingModelEditor
+          value={{ ...base, servingMode: 'none', sslMode: 'letsencrypt' }}
+          onChange={vi.fn()}
+        />,
+      );
       expect(screen.getByLabelText(/Auto-issue with Let's Encrypt/i)).toBeInTheDocument();
       expect(screen.getByLabelText(/Paste my own certificate/i)).toBeInTheDocument();
       expect(screen.queryByLabelText(/Keep the built-in certificate/i)).not.toBeInTheDocument();
@@ -193,7 +233,12 @@ describe('ServingModelEditor', () => {
 
     it('selecting paste on the proxy path swaps in the paste fields', () => {
       const onChange = vi.fn();
-      render(<ServingModelEditor value={{ ...base, servingMode: 'proxy', sslMode: 'selfsigned' }} onChange={onChange} />);
+      render(
+        <ServingModelEditor
+          value={{ ...base, servingMode: 'proxy', sslMode: 'selfsigned' }}
+          onChange={onChange}
+        />,
+      );
       fireEvent.click(screen.getByLabelText(/Paste my own certificate/i));
       expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ sslMode: 'paste' }));
     });

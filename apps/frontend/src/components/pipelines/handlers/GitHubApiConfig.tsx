@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { ExpressionInput } from './ExpressionInput';
 import type { PreviousStep } from './AvailableVariables';
@@ -15,8 +21,13 @@ interface GitHubApiConfigProps {
 export function GitHubApiConfig({ config, onChange, previousSteps }: GitHubApiConfigProps) {
   const action = (config.action as string) || 'create_repo_from_template';
 
-  const [clientPayloadPairs, setClientPayloadPairs] = useState<Array<{ key: string; value: string }>>(
-    () => Object.entries((config.clientPayload as Record<string, string>) || {}).map(([key, value]) => ({ key, value: String(value) })),
+  const [clientPayloadPairs, setClientPayloadPairs] = useState<
+    Array<{ key: string; value: string }>
+  >(() =>
+    Object.entries((config.clientPayload as Record<string, string>) || {}).map(([key, value]) => ({
+      key,
+      value: String(value),
+    })),
   );
 
   useEffect(() => {
@@ -33,10 +44,7 @@ export function GitHubApiConfig({ config, onChange, previousSteps }: GitHubApiCo
     <div className="space-y-4">
       <div className="space-y-2">
         <Label>Action</Label>
-        <Select
-          value={action}
-          onValueChange={(value) => onChange({ ...config, action: value })}
-        >
+        <Select value={action} onValueChange={(value) => onChange({ ...config, action: value })}>
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
@@ -66,9 +74,7 @@ export function GitHubApiConfig({ config, onChange, previousSteps }: GitHubApiCo
               placeholder="bffless-sites"
               previousSteps={previousSteps}
             />
-            <p className="text-xs text-muted-foreground">
-              Repository owner (org or user)
-            </p>
+            <p className="text-xs text-muted-foreground">Repository owner (org or user)</p>
           </div>
 
           <div className="space-y-2">
@@ -79,9 +85,7 @@ export function GitHubApiConfig({ config, onChange, previousSteps }: GitHubApiCo
               placeholder="steps.create_repo.name"
               previousSteps={previousSteps}
             />
-            <p className="text-xs text-muted-foreground">
-              Repository name
-            </p>
+            <p className="text-xs text-muted-foreground">Repository name</p>
           </div>
 
           <div className="space-y-2">
@@ -116,9 +120,7 @@ export function GitHubApiConfig({ config, onChange, previousSteps }: GitHubApiCo
               placeholder="bffless-sites"
               previousSteps={previousSteps}
             />
-            <p className="text-xs text-muted-foreground">
-              Repository owner (org or user)
-            </p>
+            <p className="text-xs text-muted-foreground">Repository owner (org or user)</p>
           </div>
 
           <div className="space-y-2">
@@ -129,9 +131,7 @@ export function GitHubApiConfig({ config, onChange, previousSteps }: GitHubApiCo
               placeholder="steps.validate.repoName"
               previousSteps={previousSteps}
             />
-            <p className="text-xs text-muted-foreground">
-              Repository name
-            </p>
+            <p className="text-xs text-muted-foreground">Repository name</p>
           </div>
 
           <div className="space-y-2">
@@ -157,14 +157,24 @@ export function GitHubApiConfig({ config, onChange, previousSteps }: GitHubApiCo
           <div className="space-y-2">
             <Label>Labels</Label>
             <ExpressionInput
-              value={Array.isArray(config.labels) ? (config.labels as string[]).join(', ') : (config.labels as string) || ''}
-              onChange={(value) => onChange({ ...config, labels: value.split(',').map((l: string) => l.trim()).filter(Boolean) })}
+              value={
+                Array.isArray(config.labels)
+                  ? (config.labels as string[]).join(', ')
+                  : (config.labels as string) || ''
+              }
+              onChange={(value) =>
+                onChange({
+                  ...config,
+                  labels: value
+                    .split(',')
+                    .map((l: string) => l.trim())
+                    .filter(Boolean),
+                })
+              }
               placeholder="customization, enhancement"
               previousSteps={previousSteps}
             />
-            <p className="text-xs text-muted-foreground">
-              Comma-separated list of labels to apply
-            </p>
+            <p className="text-xs text-muted-foreground">Comma-separated list of labels to apply</p>
           </div>
         </>
       )}
@@ -179,9 +189,7 @@ export function GitHubApiConfig({ config, onChange, previousSteps }: GitHubApiCo
               placeholder="bffless-sites"
               previousSteps={previousSteps}
             />
-            <p className="text-xs text-muted-foreground">
-              Repository owner (org or user)
-            </p>
+            <p className="text-xs text-muted-foreground">Repository owner (org or user)</p>
           </div>
 
           <div className="space-y-2">
@@ -192,9 +200,7 @@ export function GitHubApiConfig({ config, onChange, previousSteps }: GitHubApiCo
               placeholder="steps.validate.repoName"
               previousSteps={previousSteps}
             />
-            <p className="text-xs text-muted-foreground">
-              Repository name
-            </p>
+            <p className="text-xs text-muted-foreground">Repository name</p>
           </div>
 
           <div className="space-y-2">
@@ -215,14 +221,14 @@ export function GitHubApiConfig({ config, onChange, previousSteps }: GitHubApiCo
               placeholder="steps.build_comment.body"
               previousSteps={previousSteps}
             />
-            <p className="text-xs text-muted-foreground">
-              Comment body (supports markdown)
-            </p>
+            <p className="text-xs text-muted-foreground">Comment body (supports markdown)</p>
           </div>
         </>
       )}
 
-      {(action === 'close_issue' || action === 'close_pull_request' || action === 'merge_pull_request') && (
+      {(action === 'close_issue' ||
+        action === 'close_pull_request' ||
+        action === 'merge_pull_request') && (
         <>
           <div className="space-y-2">
             <Label>Owner *</Label>
@@ -354,7 +360,12 @@ export function GitHubApiConfig({ config, onChange, previousSteps }: GitHubApiCo
               min={1}
               max={100}
               value={(config.perPage as number) ?? ''}
-              onChange={(e) => onChange({ ...config, perPage: e.target.value ? Number(e.target.value) : undefined })}
+              onChange={(e) =>
+                onChange({
+                  ...config,
+                  perPage: e.target.value ? Number(e.target.value) : undefined,
+                })
+              }
               placeholder="30"
             />
             <p className="text-xs text-muted-foreground">1-100. Newest runs first.</p>
@@ -400,9 +411,7 @@ export function GitHubApiConfig({ config, onChange, previousSteps }: GitHubApiCo
               placeholder="my-template"
               previousSteps={previousSteps}
             />
-            <p className="text-xs text-muted-foreground">
-              Name of the template repository
-            </p>
+            <p className="text-xs text-muted-foreground">Name of the template repository</p>
           </div>
 
           <div className="space-y-2">
@@ -426,9 +435,7 @@ export function GitHubApiConfig({ config, onChange, previousSteps }: GitHubApiCo
               placeholder="steps.validate.repoName"
               previousSteps={previousSteps}
             />
-            <p className="text-xs text-muted-foreground">
-              Name for the new repository
-            </p>
+            <p className="text-xs text-muted-foreground">Name for the new repository</p>
           </div>
 
           <div className="space-y-2">
@@ -482,14 +489,17 @@ export function GitHubApiConfig({ config, onChange, previousSteps }: GitHubApiCo
               previousSteps={previousSteps}
             />
             <p className="text-xs text-muted-foreground">
-              Workflows trigger via <code>on: repository_dispatch: types: [&lt;eventType&gt;]</code>. Quote string literals.
+              Workflows trigger via <code>on: repository_dispatch: types: [&lt;eventType&gt;]</code>
+              . Quote string literals.
             </p>
           </div>
 
           <div className="space-y-2">
             <Label>Client Payload (optional)</Label>
             <p className="text-xs text-muted-foreground">
-              Key-value pairs delivered to the workflow as <code>{'${{ github.event.client_payload.<key> }}'}</code>. Values are evaluated as expressions.
+              Key-value pairs delivered to the workflow as{' '}
+              <code>{'${{ github.event.client_payload.<key> }}'}</code>. Values are evaluated as
+              expressions.
             </p>
             <div className="space-y-2">
               {clientPayloadPairs.map((entry, i) => (
@@ -524,7 +534,9 @@ export function GitHubApiConfig({ config, onChange, previousSteps }: GitHubApiCo
                   </div>
                   <button
                     type="button"
-                    onClick={() => setClientPayloadPairs(clientPayloadPairs.filter((_, j) => j !== i))}
+                    onClick={() =>
+                      setClientPayloadPairs(clientPayloadPairs.filter((_, j) => j !== i))
+                    }
                     className="text-xs text-muted-foreground hover:text-destructive"
                   >
                     Remove
@@ -533,7 +545,9 @@ export function GitHubApiConfig({ config, onChange, previousSteps }: GitHubApiCo
               ))}
               <button
                 type="button"
-                onClick={() => setClientPayloadPairs([...clientPayloadPairs, { key: '', value: '' }])}
+                onClick={() =>
+                  setClientPayloadPairs([...clientPayloadPairs, { key: '', value: '' }])
+                }
                 className="text-xs text-primary hover:underline"
               >
                 + Add payload entry

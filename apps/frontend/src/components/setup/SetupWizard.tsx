@@ -57,7 +57,7 @@ const STEP_COMPONENTS: Record<StepId, () => JSX.Element | null> = {
 export function computeWizardSteps(
   status: SetupStatusResponse | undefined,
   urlToken: string | null,
-  claimTokenFromUrl?: boolean
+  claimTokenFromUrl?: boolean,
 ): StepId[] {
   if (!status?.bootstrapMode) {
     return ['admin', 'storage', 'cache', 'email', 'complete'];
@@ -178,7 +178,7 @@ export function SetupWizard() {
             next.delete('token');
             return next;
           },
-          { replace: true }
+          { replace: true },
         );
       }
       return;
@@ -210,7 +210,7 @@ export function SetupWizard() {
   // submission, so a manual claim doesn't collapse the step list either.
   const steps = useMemo(
     () => computeWizardSteps(setupStatus, urlToken, claimTokenFromUrl),
-    [setupStatus, urlToken, claimTokenFromUrl]
+    [setupStatus, urlToken, claimTokenFromUrl],
   );
 
   // Keep the store's stepOrder in sync with the currently active list. This

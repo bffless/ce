@@ -4,7 +4,11 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { useUpdateAppMutation, type CatalogEntry, type InstalledSummary } from '@/services/appCatalogApi';
+import {
+  useUpdateAppMutation,
+  type CatalogEntry,
+  type InstalledSummary,
+} from '@/services/appCatalogApi';
 import { GateBlockedCta } from './GateBlockedCta';
 
 interface InstallUpdateButtonProps {

@@ -186,7 +186,7 @@ describe('ApplyStep', () => {
         port80: 'closed',
         realIp: { header: 'True-Client-IP', ranges: ['1.2.3.0/24'] },
         token: 'claim-xyz',
-      })
+      }),
     );
   });
 
@@ -207,11 +207,11 @@ describe('ApplyStep', () => {
         port80: undefined,
         realIp: undefined,
         token: 'claim-xyz',
-      })
+      }),
     );
   });
 
-  it('shows the wildcard status for Let\'s Encrypt: issued', () => {
+  it("shows the wildcard status for Let's Encrypt: issued", () => {
     renderWithStore(<ApplyStep />, {
       bootstrapDomain: 'example.com',
       servingMode: 'none',
@@ -223,7 +223,7 @@ describe('ApplyStep', () => {
     expect(screen.getByText(/issued/i)).toBeInTheDocument();
   });
 
-  it('shows the wildcard status for Let\'s Encrypt: skipped', () => {
+  it("shows the wildcard status for Let's Encrypt: skipped", () => {
     renderWithStore(<ApplyStep />, {
       bootstrapDomain: 'example.com',
       servingMode: 'none',
@@ -338,7 +338,7 @@ describe('ApplyStep', () => {
     const { unmount } = render(
       <Provider store={store}>
         <ApplyStep />
-      </Provider>
+      </Provider>,
     );
 
     fireEvent.click(screen.getByRole('checkbox'));

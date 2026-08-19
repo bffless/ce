@@ -187,12 +187,10 @@ export function ProjectApiKeysTab({ project }: ProjectApiKeysTabProps) {
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>
-                  {newKeyResponse ? 'API Key Created' : 'Create API Key'}
-                </DialogTitle>
+                <DialogTitle>{newKeyResponse ? 'API Key Created' : 'Create API Key'}</DialogTitle>
                 <DialogDescription>
                   {newKeyResponse
-                    ? 'Copy your API key now. You won\'t be able to see it again!'
+                    ? "Copy your API key now. You won't be able to see it again!"
                     : `Create a new API key for ${project.owner}/${project.name}`}
                 </DialogDescription>
               </DialogHeader>
@@ -208,11 +206,7 @@ export function ProjectApiKeysTab({ project }: ProjectApiKeysTabProps) {
                   <div className="space-y-2">
                     <Label>API Key</Label>
                     <div className="flex items-center gap-2">
-                      <Input
-                        value={newKeyResponse.key}
-                        readOnly
-                        className="font-mono text-sm"
-                      />
+                      <Input value={newKeyResponse.key} readOnly className="font-mono text-sm" />
                       <Button
                         variant="outline"
                         size="sm"
@@ -303,9 +297,7 @@ export function ProjectApiKeysTab({ project }: ProjectApiKeysTabProps) {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
-                    {key.lastUsedAt
-                      ? new Date(key.lastUsedAt).toLocaleDateString()
-                      : 'Never'}
+                    {key.lastUsedAt ? new Date(key.lastUsedAt).toLocaleDateString() : 'Never'}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {new Date(key.createdAt).toLocaleDateString()}
@@ -316,11 +308,7 @@ export function ProjectApiKeysTab({ project }: ProjectApiKeysTabProps) {
                       onOpenChange={(open) => setDeletingKey(open ? key.id : null)}
                     >
                       <AlertDialogTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setDeletingKey(key.id)}
-                        >
+                        <Button variant="ghost" size="sm" onClick={() => setDeletingKey(key.id)}>
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </AlertDialogTrigger>
@@ -328,9 +316,8 @@ export function ProjectApiKeysTab({ project }: ProjectApiKeysTabProps) {
                         <AlertDialogHeader>
                           <AlertDialogTitle>Delete API Key</AlertDialogTitle>
                           <AlertDialogDescription>
-                            Are you sure you want to delete the API key "{key.name}"? This
-                            action cannot be undone and any services using this key will
-                            stop working.
+                            Are you sure you want to delete the API key "{key.name}"? This action
+                            cannot be undone and any services using this key will stop working.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>

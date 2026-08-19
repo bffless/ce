@@ -183,10 +183,7 @@ export const trafficApi = api.injectEndpoints({
       invalidatesTags: [{ type: 'Blocklist' as const, id: 'LIST' }],
     }),
 
-    appendBlocklistEntry: builder.mutation<
-      BlocklistEntry,
-      { id: string } & BlocklistPatternEntry
-    >({
+    appendBlocklistEntry: builder.mutation<BlocklistEntry, { id: string } & BlocklistPatternEntry>({
       query: ({ id, ...body }) => ({
         url: `/api/traffic/blocklists/${id}/entries`,
         method: 'POST',
@@ -195,15 +192,14 @@ export const trafficApi = api.injectEndpoints({
       invalidatesTags: [{ type: 'Blocklist' as const, id: 'LIST' }],
     }),
 
-    getDomainBlocklists: builder.query<
-      { domainMappingId: string; blocklistIds: string[] },
-      string
-    >({
-      query: (domainMappingId) => `/api/traffic/domains/${domainMappingId}/blocklists`,
-      providesTags: (_result, _error, domainMappingId) => [
-        { type: 'Blocklist' as const, id: `DOMAIN-${domainMappingId}` },
-      ],
-    }),
+    getDomainBlocklists: builder.query<{ domainMappingId: string; blocklistIds: string[] }, string>(
+      {
+        query: (domainMappingId) => `/api/traffic/domains/${domainMappingId}/blocklists`,
+        providesTags: (_result, _error, domainMappingId) => [
+          { type: 'Blocklist' as const, id: `DOMAIN-${domainMappingId}` },
+        ],
+      },
+    ),
 
     syncDomainBlocklists: builder.mutation<
       { domainMappingId: string; blocklistIds: string[] },

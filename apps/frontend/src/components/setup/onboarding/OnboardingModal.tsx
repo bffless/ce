@@ -4,12 +4,7 @@ import { RootState } from '@/store';
 import { completeOnboarding, setOnboardingStep } from '@/store/slices/setupSlice';
 import { useGetSessionQuery } from '@/services/authApi';
 import { useFeatureFlags } from '@/services/featureFlagsApi';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useBranding } from '@/hooks/useBranding';
 import { WelcomeStep } from './WelcomeStep';
 import { CreateRepoStep } from './CreateRepoStep';
@@ -37,7 +32,7 @@ export function OnboardingModal({ isOpen, onClose }: OnboardingModalProps) {
   // than briefly flashing the apps path before flags resolve.
   const showAppsPath = sessionData?.user?.role === 'admin' && isEnabled('ENABLE_APP_CATALOG');
   const { onboardingStep, createdProjectId, createdApiKey } = useSelector(
-    (state: RootState) => state.setup.onboarding
+    (state: RootState) => state.setup.onboarding,
   );
 
   const handleSkip = () => {
@@ -74,20 +69,9 @@ export function OnboardingModal({ isOpen, onClose }: OnboardingModalProps) {
       case 2:
         return <CreateRepoStep onNext={handleNext} onSkip={handleSkip} />;
       case 3:
-        return (
-          <ApiKeyStep
-            projectId={createdProjectId}
-            onNext={handleNext}
-            onSkip={handleSkip}
-          />
-        );
+        return <ApiKeyStep projectId={createdProjectId} onNext={handleNext} onSkip={handleSkip} />;
       case 4:
-        return (
-          <GitHubActionsStep
-            apiKey={createdApiKey}
-            onComplete={handleSkip}
-          />
-        );
+        return <GitHubActionsStep apiKey={createdApiKey} onComplete={handleSkip} />;
       default:
         return null;
     }

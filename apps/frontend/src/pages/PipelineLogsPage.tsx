@@ -63,7 +63,8 @@ export default function PipelineLogsPage() {
     } catch (err) {
       toast({
         title: 'Error',
-        description: (err as { data?: { message?: string } })?.data?.message || 'Failed to clear logs',
+        description:
+          (err as { data?: { message?: string } })?.data?.message || 'Failed to clear logs',
         variant: 'destructive',
       });
     }
@@ -114,18 +115,14 @@ export default function PipelineLogsPage() {
             <h2 className="text-lg font-semibold">Execution Logs</h2>
             {rule && (
               <p className="text-sm text-muted-foreground">
-                <code className="font-mono bg-muted px-1.5 py-0.5 rounded">{rule.pathPattern}</code>
-                {' '}{rule.pipelineConfig?.name && `- ${rule.pipelineConfig.name}`}
+                <code className="font-mono bg-muted px-1.5 py-0.5 rounded">{rule.pathPattern}</code>{' '}
+                {rule.pipelineConfig?.name && `- ${rule.pipelineConfig.name}`}
               </p>
             )}
           </div>
         </div>
         {logsData && logsData.total > 0 && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowClearDialog(true)}
-          >
+          <Button variant="outline" size="sm" onClick={() => setShowClearDialog(true)}>
             <Trash2 className="h-4 w-4 mr-1" />
             Clear Logs
           </Button>
@@ -135,7 +132,9 @@ export default function PipelineLogsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-sm font-medium text-muted-foreground">
-            {logsData ? `${logsData.total} execution${logsData.total === 1 ? '' : 's'}` : 'Loading...'}
+            {logsData
+              ? `${logsData.total} execution${logsData.total === 1 ? '' : 's'}`
+              : 'Loading...'}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -180,7 +179,9 @@ export default function PipelineLogsPage() {
                     <div className="flex items-center gap-3 text-xs text-muted-foreground flex-shrink-0">
                       <span>{log.statusCode}</span>
                       <span>{log.durationMs}ms</span>
-                      <span>{log.stepsCount} step{log.stepsCount === 1 ? '' : 's'}</span>
+                      <span>
+                        {log.stepsCount} step{log.stepsCount === 1 ? '' : 's'}
+                      </span>
                       <span>{new Date(log.createdAt).toLocaleString()}</span>
                     </div>
                   </div>
@@ -229,8 +230,8 @@ export default function PipelineLogsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Clear Execution Logs</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete all execution logs for this rule?
-              This action cannot be undone.
+              Are you sure you want to delete all execution logs for this rule? This action cannot
+              be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

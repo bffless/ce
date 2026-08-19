@@ -2,11 +2,7 @@ import { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '@/store';
 import { useUploadCertificatesMutation } from '@/services/setupApi';
-import {
-  ServingMode,
-  setBootstrapDomain,
-  nextWizardStep,
-} from '@/store/slices/setupSlice';
+import { ServingMode, setBootstrapDomain, nextWizardStep } from '@/store/slices/setupSlice';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 import { PasteCertificateFields } from '@/components/ssl-leaves/PasteCertificateFields';
@@ -55,8 +51,8 @@ const COPY: Record<
       <>
         Paste <strong>your CDN&apos;s origin certificate</strong> — issued from its dashboard for{' '}
         <code className="bg-muted px-1 rounded">yourdomain</code>, and ideally{' '}
-        <code className="bg-muted px-1 rounded">*.yourdomain</code> so preview subdomains work.
-        Your CDN must be configured to connect to this origin over HTTPS.
+        <code className="bg-muted px-1 rounded">*.yourdomain</code> so preview subdomains work. Your
+        CDN must be configured to connect to this origin over HTTPS.
       </>
     ),
   },
@@ -111,7 +107,9 @@ export function PasteCertificateForm({ domain, onBack }: Props) {
       finish();
     } catch (err: unknown) {
       const apiError = err as { data?: { message?: string } };
-      setError(apiError?.data?.message ?? 'Upload failed — check the certificate and key are valid PEM.');
+      setError(
+        apiError?.data?.message ?? 'Upload failed — check the certificate and key are valid PEM.',
+      );
     }
   };
 

@@ -87,9 +87,7 @@ export function EditStorageCredentials({
 
   // Azure -----------------------------------------------------------------
   const [azureAccountName, setAzureAccountName] = useState(currentConfig?.accountName || '');
-  const [azureContainerName, setAzureContainerName] = useState(
-    currentConfig?.containerName || ''
-  );
+  const [azureContainerName, setAzureContainerName] = useState(currentConfig?.containerName || '');
   const [azureAccountKey, setAzureAccountKey] = useState('');
 
   // Local -----------------------------------------------------------------
@@ -408,9 +406,7 @@ export function EditStorageCredentials({
           {providerDocs && (
             <>
               {' '}
-              <DocsInlineLink href={providerDocs.href}>
-                Where to find these values
-              </DocsInlineLink>
+              <DocsInlineLink href={providerDocs.href}>Where to find these values</DocsInlineLink>
             </>
           )}
         </CardDescription>

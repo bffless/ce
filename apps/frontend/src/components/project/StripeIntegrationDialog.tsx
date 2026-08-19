@@ -156,10 +156,12 @@ export function StripeIntegrationDialog({
     const publishableKey = environment === 'sandbox' ? sandboxPublishableKey : prodPublishableKey;
     const secretKey = environment === 'sandbox' ? sandboxSecretKey : prodSecretKey;
     const webhookSecret = environment === 'sandbox' ? sandboxWebhookSecret : prodWebhookSecret;
-    const setPublishable = environment === 'sandbox' ? setSandboxPublishableKey : setProdPublishableKey;
+    const setPublishable =
+      environment === 'sandbox' ? setSandboxPublishableKey : setProdPublishableKey;
     const setSecret = environment === 'sandbox' ? setSandboxSecretKey : setProdSecretKey;
     const setWebhook = environment === 'sandbox' ? setSandboxWebhookSecret : setProdWebhookSecret;
-    const hasConfig = environment === 'sandbox' ? integration.hasSandboxConfig : integration.hasProductionConfig;
+    const hasConfig =
+      environment === 'sandbox' ? integration.hasSandboxConfig : integration.hasProductionConfig;
 
     return (
       <div className="space-y-4">
@@ -167,8 +169,8 @@ export function StripeIntegrationDialog({
           <Alert>
             <CheckCircle className="h-4 w-4" />
             <AlertDescription>
-              {environment === 'sandbox' ? 'Sandbox' : 'Production'} keys are configured.
-              Enter new values to update them.
+              {environment === 'sandbox' ? 'Sandbox' : 'Production'} keys are configured. Enter new
+              values to update them.
             </AlertDescription>
           </Alert>
         )}
@@ -177,7 +179,11 @@ export function StripeIntegrationDialog({
           <Label>Publishable Key</Label>
           <Input
             type="password"
-            placeholder={hasConfig ? '••••••••••••••••' : `pk_${environment === 'sandbox' ? 'test' : 'live'}_...`}
+            placeholder={
+              hasConfig
+                ? '••••••••••••••••'
+                : `pk_${environment === 'sandbox' ? 'test' : 'live'}_...`
+            }
             value={publishableKey}
             onChange={(e) => setPublishable(e.target.value)}
           />
@@ -187,7 +193,11 @@ export function StripeIntegrationDialog({
           <Label>Secret Key *</Label>
           <Input
             type="password"
-            placeholder={hasConfig ? '••••••••••••••••' : `sk_${environment === 'sandbox' ? 'test' : 'live'}_...`}
+            placeholder={
+              hasConfig
+                ? '••••••••••••••••'
+                : `sk_${environment === 'sandbox' ? 'test' : 'live'}_...`
+            }
             value={secretKey}
             onChange={(e) => setSecret(e.target.value)}
           />
@@ -209,7 +219,11 @@ export function StripeIntegrationDialog({
         <div className="flex gap-2">
           <Button
             onClick={() => handleSaveEnvironment(environment)}
-            disabled={isSaving || (!hasConfig && !secretKey) || (hasConfig && !publishableKey && !secretKey && !webhookSecret)}
+            disabled={
+              isSaving ||
+              (!hasConfig && !secretKey) ||
+              (hasConfig && !publishableKey && !secretKey && !webhookSecret)
+            }
           >
             {isSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
             Save {environment === 'sandbox' ? 'Sandbox' : 'Production'} Keys
@@ -223,10 +237,7 @@ export function StripeIntegrationDialog({
               </Button>
 
               {integration.activeEnvironment !== environment && (
-                <Button
-                  variant="outline"
-                  onClick={() => handleSwitchEnvironment(environment)}
-                >
+                <Button variant="outline" onClick={() => handleSwitchEnvironment(environment)}>
                   Set as Active
                 </Button>
               )}
@@ -258,9 +269,9 @@ export function StripeIntegrationDialog({
         <DialogHeader>
           <DialogTitle>Configure Stripe Integration</DialogTitle>
           <DialogDescription>
-            Enter your Stripe API keys for sandbox and production environments.
-            Use the <code>stripe_checkout</code> and <code>stripe_webhook</code> pipeline
-            handlers in your proxy rules to create checkout sessions and handle webhooks.
+            Enter your Stripe API keys for sandbox and production environments. Use the{' '}
+            <code>stripe_checkout</code> and <code>stripe_webhook</code> pipeline handlers in your
+            proxy rules to create checkout sessions and handle webhooks.
           </DialogDescription>
         </DialogHeader>
 
@@ -268,7 +279,9 @@ export function StripeIntegrationDialog({
           {/* Active environment indicator */}
           <div className="flex items-center gap-2 text-sm">
             <span className="text-muted-foreground">Active environment:</span>
-            <Badge variant={integration.activeEnvironment === 'production' ? 'default' : 'secondary'}>
+            <Badge
+              variant={integration.activeEnvironment === 'production' ? 'default' : 'secondary'}
+            >
               {integration.activeEnvironment === 'production' ? 'Production' : 'Sandbox'}
             </Badge>
           </div>
@@ -276,8 +289,12 @@ export function StripeIntegrationDialog({
           {/* Environment tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="w-full">
-              <TabsTrigger value="sandbox" className="flex-1">Sandbox</TabsTrigger>
-              <TabsTrigger value="production" className="flex-1">Production</TabsTrigger>
+              <TabsTrigger value="sandbox" className="flex-1">
+                Sandbox
+              </TabsTrigger>
+              <TabsTrigger value="production" className="flex-1">
+                Production
+              </TabsTrigger>
             </TabsList>
             <TabsContent value="sandbox" className="mt-4">
               {renderKeyForm('sandbox')}

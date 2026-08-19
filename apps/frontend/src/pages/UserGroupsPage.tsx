@@ -134,7 +134,6 @@ export function UserGroupsPage() {
         <div className="border-b">
           <div className="px-4 py-3 flex items-center justify-between">
             <Skeleton className="h-8 w-48" />
-            
           </div>
         </div>
         <div className="p-8 space-y-6">
@@ -151,7 +150,6 @@ export function UserGroupsPage() {
         <div className="border-b">
           <div className="px-4 py-3 flex items-center justify-between">
             <h1 className="text-xl font-semibold">User Groups</h1>
-            
           </div>
         </div>
         <div className="p-8">
@@ -179,7 +177,6 @@ export function UserGroupsPage() {
             <div className="border-l h-6" />
             <h1 className="text-xl font-semibold">User Groups</h1>
           </div>
-          
         </div>
       </div>
 
@@ -204,9 +201,7 @@ export function UserGroupsPage() {
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>Create User Group</DialogTitle>
-                    <DialogDescription>
-                      Create a new group to organize users
-                    </DialogDescription>
+                    <DialogDescription>Create a new group to organize users</DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4 py-4">
                     <div className="space-y-2">
@@ -285,9 +280,7 @@ export function UserGroupsPage() {
 
                           <AlertDialog
                             open={deletingGroup === group.id}
-                            onOpenChange={(open) =>
-                              setDeletingGroup(open ? group.id : null)
-                            }
+                            onOpenChange={(open) => setDeletingGroup(open ? group.id : null)}
                           >
                             <AlertDialogTrigger asChild>
                               <Button
@@ -302,8 +295,8 @@ export function UserGroupsPage() {
                               <AlertDialogHeader>
                                 <AlertDialogTitle>Delete Group</AlertDialogTitle>
                                 <AlertDialogDescription>
-                                  Are you sure you want to delete {group.name}? This will
-                                  remove the group from all projects and cannot be undone.
+                                  Are you sure you want to delete {group.name}? This will remove the
+                                  group from all projects and cannot be undone.
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>

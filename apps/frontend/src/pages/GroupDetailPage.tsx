@@ -43,15 +43,7 @@ import {
 } from '@/components/ui/command';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  AlertCircle,
-  UserPlus,
-  Trash2,
-  ArrowLeft,
-  Edit,
-  Save,
-  ChevronsUpDown,
-} from 'lucide-react';
+import { AlertCircle, UserPlus, Trash2, ArrowLeft, Edit, Save, ChevronsUpDown } from 'lucide-react';
 
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -244,7 +236,6 @@ export function GroupDetailPage() {
         <div className="border-b">
           <div className="px-4 py-3 flex items-center justify-between">
             <Skeleton className="h-8 w-64" />
-            
           </div>
         </div>
         <div className="p-8 space-y-6">
@@ -261,7 +252,6 @@ export function GroupDetailPage() {
         <div className="border-b">
           <div className="px-4 py-3 flex items-center justify-between">
             <h1 className="text-xl font-semibold">Group Details</h1>
-            
           </div>
         </div>
         <div className="p-8">
@@ -293,7 +283,6 @@ export function GroupDetailPage() {
             <div className="border-l h-6" />
             <h1 className="text-xl font-semibold">{group.name}</h1>
           </div>
-          
         </div>
       </div>
 
@@ -359,9 +348,7 @@ export function GroupDetailPage() {
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle>Group Members</CardTitle>
-                <CardDescription>
-                  Users in this group ({members?.length || 0})
-                </CardDescription>
+                <CardDescription>Users in this group ({members?.length || 0})</CardDescription>
               </div>
               <Dialog open={addMemberDialogOpen} onOpenChange={handleAddMemberDialogOpenChange}>
                 <DialogTrigger asChild>
@@ -373,9 +360,7 @@ export function GroupDetailPage() {
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>Add Member to Group</DialogTitle>
-                    <DialogDescription>
-                      Add a user to {group.name}
-                    </DialogDescription>
+                    <DialogDescription>Add a user to {group.name}</DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4 py-4">
                     <div className="space-y-2">
@@ -484,9 +469,7 @@ export function GroupDetailPage() {
                       <TableCell className="text-right">
                         <AlertDialog
                           open={removingMember === member.userId}
-                          onOpenChange={(open) =>
-                            setRemovingMember(open ? member.userId : null)
-                          }
+                          onOpenChange={(open) => setRemovingMember(open ? member.userId : null)}
                         >
                           <AlertDialogTrigger asChild>
                             <Button
@@ -501,8 +484,7 @@ export function GroupDetailPage() {
                             <AlertDialogHeader>
                               <AlertDialogTitle>Remove Member</AlertDialogTitle>
                               <AlertDialogDescription>
-                                Are you sure you want to remove {member.user.email} from
-                                this group?
+                                Are you sure you want to remove {member.user.email} from this group?
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>

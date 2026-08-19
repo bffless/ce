@@ -62,8 +62,8 @@ export function DomainBlocklistsSection({ domainId, domain }: DomainBlocklistsSe
           Blocklists
         </CardTitle>
         <p className="text-xs text-muted-foreground">
-          Attach named Blocklists to this domain. Its effective rules are the Baseline +
-          all-domain lists + everything attached here, enforced at the edge and in the app.
+          Attach named Blocklists to this domain. Its effective rules are the Baseline + all-domain
+          lists + everything attached here, enforced at the edge and in the app.
         </p>
       </CardHeader>
       <CardContent className="space-y-2">
@@ -107,7 +107,9 @@ export function DomainBlocklistsSection({ domainId, domain }: DomainBlocklistsSe
                     />
                     <span className="text-sm">{list.name}</span>
                     {list.isDefault && (
-                      <span className="text-xs text-muted-foreground">(already on all domains)</span>
+                      <span className="text-xs text-muted-foreground">
+                        (already on all domains)
+                      </span>
                     )}
                   </Label>
                 ))}

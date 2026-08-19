@@ -78,7 +78,10 @@ function installRows(): HTMLElement[] {
   return Array.from(list.querySelectorAll<HTMLElement>(':scope > li'));
 }
 
-function renderDialog(entry: CatalogEntry, overrides: Partial<Parameters<typeof AppDetailsDialog>[0]> = {}) {
+function renderDialog(
+  entry: CatalogEntry,
+  overrides: Partial<Parameters<typeof AppDetailsDialog>[0]> = {},
+) {
   const props = {
     entry,
     open: true,
@@ -98,7 +101,14 @@ describe('hasAppDetails', () => {
     expect(hasAppDetails({ ...baseEntry, screenshots: [] })).toBe(true);
     expect(hasAppDetails({ ...baseEntry, description: undefined, screenshots: [] })).toBe(false);
     // An installed app always has a details view: that's where its installs are managed.
-    expect(hasAppDetails({ ...baseEntry, description: undefined, screenshots: [], installs: [installA] })).toBe(true);
+    expect(
+      hasAppDetails({
+        ...baseEntry,
+        description: undefined,
+        screenshots: [],
+        installs: [installA],
+      }),
+    ).toBe(true);
   });
 });
 
@@ -149,7 +159,13 @@ describe('AppDetailsDialog', () => {
   it('hands off to the install wizard when Install is clicked', () => {
     const onInstall = vi.fn();
     render(
-      <AppDetailsDialog entry={baseEntry} open onOpenChange={vi.fn()} onInstall={onInstall} onUpdateStarted={vi.fn()} />,
+      <AppDetailsDialog
+        entry={baseEntry}
+        open
+        onOpenChange={vi.fn()}
+        onInstall={onInstall}
+        onUpdateStarted={vi.fn()}
+      />,
     );
 
     fireEvent.click(screen.getByRole('button', { name: /^install$/i }));
@@ -170,7 +186,15 @@ describe('AppDetailsDialog', () => {
       ],
     };
 
-    render(<AppDetailsDialog entry={entry} open onOpenChange={vi.fn()} onInstall={vi.fn()} onUpdateStarted={vi.fn()} />);
+    render(
+      <AppDetailsDialog
+        entry={entry}
+        open
+        onOpenChange={vi.fn()}
+        onInstall={vi.fn()}
+        onUpdateStarted={vi.fn()}
+      />,
+    );
 
     expect(screen.queryByRole('button', { name: /^install$/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /requires bucket storage/i })).toBeDisabled();
@@ -192,7 +216,11 @@ describe('AppDetailsDialog', () => {
   });
 
   describe('installs section', () => {
-    const twoInstalls: CatalogEntry = { ...baseEntry, registryVersion: '1.0.0', installs: [installA, installB] };
+    const twoInstalls: CatalogEntry = {
+      ...baseEntry,
+      registryVersion: '1.0.0',
+      installs: [installA, installB],
+    };
 
     it('lists every install with project, host, version and per-install actions', () => {
       renderDialog(twoInstalls);
@@ -209,7 +237,9 @@ describe('AppDetailsDialog', () => {
 
       expect(within(rows[1]).getByText('acme/blog')).toBeInTheDocument();
       expect(within(rows[1]).getByText('v0.9.0')).toBeInTheDocument();
-      expect(within(rows[1]).getByRole('button', { name: /update to v1\.0\.0/i })).toBeInTheDocument();
+      expect(
+        within(rows[1]).getByRole('button', { name: /update to v1\.0\.0/i }),
+      ).toBeInTheDocument();
       expect(within(rows[1]).getByRole('link', { name: /open/i })).toHaveAttribute(
         'href',
         'https://handoff-blog.example.com',
@@ -229,7 +259,9 @@ describe('AppDetailsDialog', () => {
       fireEvent.click(await screen.findByRole('button', { name: /confirm update/i }));
 
       expect(updateTrigger).toHaveBeenCalledWith({ id: 'installed-2', prune: false });
-      await vi.waitFor(() => expect(props.onUpdateStarted).toHaveBeenCalledWith(twoInstalls, 'job-1'));
+      await vi.waitFor(() =>
+        expect(props.onUpdateStarted).toHaveBeenCalledWith(twoInstalls, 'job-1'),
+      );
     });
 
     it('offers "Update all" only when two or more installs have an update, and starts the batch with them', () => {
@@ -265,7 +297,13 @@ describe('AppDetailsDialog', () => {
         installs: [{ ...installA, updateAvailable: true }, installB],
       };
       const { rerender } = render(
-        <AppDetailsDialog entry={bothUpdatable} open onOpenChange={vi.fn()} onInstall={vi.fn()} onUpdateStarted={vi.fn()} />,
+        <AppDetailsDialog
+          entry={bothUpdatable}
+          open
+          onOpenChange={vi.fn()}
+          onInstall={vi.fn()}
+          onUpdateStarted={vi.fn()}
+        />,
       );
       let rows = installRows();
       expect(within(rows[0]).getByText('Updating')).toBeInTheDocument();
@@ -280,7 +318,13 @@ describe('AppDetailsDialog', () => {
       };
       const onUpdateStarted = vi.fn();
       rerender(
-        <AppDetailsDialog entry={bothUpdatable} open onOpenChange={vi.fn()} onInstall={vi.fn()} onUpdateStarted={onUpdateStarted} />,
+        <AppDetailsDialog
+          entry={bothUpdatable}
+          open
+          onOpenChange={vi.fn()}
+          onInstall={vi.fn()}
+          onUpdateStarted={onUpdateStarted}
+        />,
       );
       rows = installRows();
       expect(within(rows[0]).getByText('Updated')).toBeInTheDocument();
@@ -293,7 +337,9 @@ describe('AppDetailsDialog', () => {
       renderDialog(twoInstalls);
       const rows = installRows();
 
-      await userEvent.click(within(rows[1]).getByRole('button', { name: /more actions for acme\/blog/i }));
+      await userEvent.click(
+        within(rows[1]).getByRole('button', { name: /more actions for acme\/blog/i }),
+      );
       await userEvent.click(await screen.findByRole('menuitem', { name: /uninstall/i }));
 
       expect(await screen.findByText(/from acme\/blog\./)).toBeInTheDocument();

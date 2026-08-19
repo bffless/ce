@@ -3,10 +3,7 @@
 // toggle row. Deliberately a registry, not an enumeration of all flags — flags
 // appear here only when an operator-facing toggle is intentional.
 import type { ComponentType } from 'react';
-import {
-  useGetFeatureFlagQuery,
-  useSetFeatureFlagMutation,
-} from '@/services/featureFlagsApi';
+import { useGetFeatureFlagQuery, useSetFeatureFlagMutation } from '@/services/featureFlagsApi';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';

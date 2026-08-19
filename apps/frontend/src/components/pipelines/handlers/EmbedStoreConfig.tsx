@@ -2,12 +2,7 @@ import { useState, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { HelpCircle } from 'lucide-react';
 import { SchemaPicker } from './SchemaPicker';
 import { ExpressionInput } from './ExpressionInput';
@@ -35,9 +30,7 @@ export function EmbedStoreConfig({ config, onChange, projectId, previousSteps = 
       schemaId,
       recordId,
       fieldName,
-      ...(chunkedMode
-        ? { chunks: chunks || undefined }
-        : { embedding: embedding || undefined }),
+      ...(chunkedMode ? { chunks: chunks || undefined } : { embedding: embedding || undefined }),
       ...(metadata ? { metadata } : {}),
     };
     onChange(updated);
@@ -50,11 +43,7 @@ export function EmbedStoreConfig({ config, onChange, projectId, previousSteps = 
         <p className="text-xs text-muted-foreground mb-1">
           The schema that the target pipeline_data record belongs to
         </p>
-        <SchemaPicker
-          projectId={projectId}
-          value={schemaId}
-          onChange={setSchemaId}
-        />
+        <SchemaPicker projectId={projectId} value={schemaId} onChange={setSchemaId} />
       </div>
 
       <div>
@@ -66,7 +55,10 @@ export function EmbedStoreConfig({ config, onChange, projectId, previousSteps = 
                 <HelpCircle className="h-3.5 w-3.5 text-muted-foreground" />
               </TooltipTrigger>
               <TooltipContent side="right" className="max-w-xs">
-                <p>Expression resolving to the pipeline_data record ID. Usually from a previous data_create step, e.g. <code>steps.create_record.id</code></p>
+                <p>
+                  Expression resolving to the pipeline_data record ID. Usually from a previous
+                  data_create step, e.g. <code>steps.create_record.id</code>
+                </p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -88,7 +80,10 @@ export function EmbedStoreConfig({ config, onChange, projectId, previousSteps = 
                 <HelpCircle className="h-3.5 w-3.5 text-muted-foreground" />
               </TooltipTrigger>
               <TooltipContent side="right" className="max-w-xs">
-                <p>Logical name for this embedding (e.g. "clip_embedding", "text_embedding"). Used to group embeddings for search — must match the fieldName in vector_search.</p>
+                <p>
+                  Logical name for this embedding (e.g. "clip_embedding", "text_embedding"). Used to
+                  group embeddings for search — must match the fieldName in vector_search.
+                </p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -101,10 +96,7 @@ export function EmbedStoreConfig({ config, onChange, projectId, previousSteps = 
       </div>
 
       <div className="flex items-center gap-2">
-        <Switch
-          checked={chunkedMode}
-          onCheckedChange={setChunkedMode}
-        />
+        <Switch checked={chunkedMode} onCheckedChange={setChunkedMode} />
         <Label className="text-sm">Chunked mode (1:N embeddings per record)</Label>
       </div>
 
@@ -118,7 +110,10 @@ export function EmbedStoreConfig({ config, onChange, projectId, previousSteps = 
                   <HelpCircle className="h-3.5 w-3.5 text-muted-foreground" />
                 </TooltipTrigger>
                 <TooltipContent side="right" className="max-w-xs">
-                  <p>Expression resolving to an array of objects: <code>{'[{ embedding: number[], text?: string, metadata?: object }]'}</code></p>
+                  <p>
+                    Expression resolving to an array of objects:{' '}
+                    <code>{'[{ embedding: number[], text?: string, metadata?: object }]'}</code>
+                  </p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -140,7 +135,10 @@ export function EmbedStoreConfig({ config, onChange, projectId, previousSteps = 
                   <HelpCircle className="h-3.5 w-3.5 text-muted-foreground" />
                 </TooltipTrigger>
                 <TooltipContent side="right" className="max-w-xs">
-                  <p>Expression resolving to a number[] (the embedding vector). E.g. from a Replicate CLIP step: <code>steps.replicate_clip.output</code></p>
+                  <p>
+                    Expression resolving to a number[] (the embedding vector). E.g. from a Replicate
+                    CLIP step: <code>steps.replicate_clip.output</code>
+                  </p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>

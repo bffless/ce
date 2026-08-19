@@ -432,10 +432,7 @@ export const domainsApi = api.injectEndpoints({
       query: () => '/api/domains/ssl/wildcard/check-dns',
     }),
 
-    deleteWildcardCertificate: builder.mutation<
-      { success: boolean; message?: string },
-      void
-    >({
+    deleteWildcardCertificate: builder.mutation<{ success: boolean; message?: string }, void>({
       query: () => ({
         url: '/api/domains/ssl/wildcard',
         method: 'DELETE',
@@ -443,10 +440,7 @@ export const domainsApi = api.injectEndpoints({
       invalidatesTags: [{ type: 'Domain' as const, id: 'LIST' }],
     }),
 
-    cancelPendingWildcardChallenge: builder.mutation<
-      { success: boolean; message?: string },
-      void
-    >({
+    cancelPendingWildcardChallenge: builder.mutation<{ success: boolean; message?: string }, void>({
       query: () => ({
         url: '/api/domains/ssl/wildcard/pending',
         method: 'DELETE',
@@ -501,9 +495,7 @@ export const domainsApi = api.injectEndpoints({
     // Phase B: SSL Certificate Details
     getSslDetails: builder.query<DomainSslInfo, string>({
       query: (domainId) => `/api/domains/${domainId}/ssl/details`,
-      providesTags: (_result, _error, domainId) => [
-        { type: 'DomainSsl' as const, id: domainId },
-      ],
+      providesTags: (_result, _error, domainId) => [{ type: 'DomainSsl' as const, id: domainId }],
     }),
 
     renewCertificate: builder.mutation<
@@ -544,8 +536,7 @@ export const domainsApi = api.injectEndpoints({
       SslRenewalHistoryRecord[],
       { domainId: string; limit?: number }
     >({
-      query: ({ domainId, limit = 10 }) =>
-        `/api/domains/${domainId}/ssl/history?limit=${limit}`,
+      query: ({ domainId, limit = 10 }) => `/api/domains/${domainId}/ssl/history?limit=${limit}`,
       providesTags: (_result, _error, { domainId }) => [
         { type: 'SslHistory' as const, id: domainId },
       ],
@@ -732,9 +723,7 @@ export const domainsApi = api.injectEndpoints({
     // Traffic Rules
     getTrafficRules: builder.query<TrafficRule[], string>({
       query: (domainId) => `/api/domains/${domainId}/traffic/rules`,
-      providesTags: (_result, _error, domainId) => [
-        { type: 'TrafficRule' as const, id: domainId },
-      ],
+      providesTags: (_result, _error, domainId) => [{ type: 'TrafficRule' as const, id: domainId }],
     }),
 
     createTrafficRule: builder.mutation<
@@ -765,18 +754,17 @@ export const domainsApi = api.injectEndpoints({
       ],
     }),
 
-    deleteTrafficRule: builder.mutation<
-      { success: boolean },
-      { ruleId: string; domainId: string }
-    >({
-      query: ({ ruleId }) => ({
-        url: `/api/domains/traffic/rules/${ruleId}`,
-        method: 'DELETE',
-      }),
-      invalidatesTags: (_result, _error, { domainId }) => [
-        { type: 'TrafficRule' as const, id: domainId },
-      ],
-    }),
+    deleteTrafficRule: builder.mutation<{ success: boolean }, { ruleId: string; domainId: string }>(
+      {
+        query: ({ ruleId }) => ({
+          url: `/api/domains/traffic/rules/${ruleId}`,
+          method: 'DELETE',
+        }),
+        invalidatesTags: (_result, _error, { domainId }) => [
+          { type: 'TrafficRule' as const, id: domainId },
+        ],
+      },
+    ),
   }),
 });
 

@@ -2,14 +2,7 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import {
-  Shield,
-  ShieldAlert,
-  ShieldCheck,
-  RefreshCw,
-  Clock,
-  Info,
-} from 'lucide-react';
+import { Shield, ShieldAlert, ShieldCheck, RefreshCw, Clock, Info } from 'lucide-react';
 import {
   useGetSslDetailsQuery,
   useRenewCertificateMutation,
@@ -51,18 +44,14 @@ function SubdomainSslTab({
   const { data: wildcardInfo, isLoading } = useGetWildcardCertDetailsQuery();
 
   if (isLoading) {
-    return (
-      <div className="p-4 text-muted-foreground">Loading SSL details...</div>
-    );
+    return <div className="p-4 text-muted-foreground">Loading SSL details...</div>;
   }
 
   if (!wildcardInfo?.certificate) {
     return (
       <Alert>
         <ShieldAlert className="h-4 w-4" />
-        <AlertDescription>
-          Wildcard certificate not found. Contact administrator.
-        </AlertDescription>
+        <AlertDescription>Wildcard certificate not found. Contact administrator.</AlertDescription>
       </Alert>
     );
   }
@@ -75,9 +64,8 @@ function SubdomainSslTab({
       <Alert className="bg-blue-50 border-blue-200">
         <Info className="h-4 w-4 text-blue-500" />
         <AlertDescription className="text-blue-700">
-          This subdomain uses the platform's{' '}
-          <strong>wildcard certificate</strong>. Certificate management is
-          handled at the platform level.
+          This subdomain uses the platform's <strong>wildcard certificate</strong>. Certificate
+          management is handled at the platform level.
         </AlertDescription>
       </Alert>
 
@@ -118,9 +106,7 @@ function SubdomainSslTab({
             <span className="text-muted-foreground">Certificate</span>
             <div className="flex items-center gap-2 mt-1">
               <Badge variant="secondary">Wildcard</Badge>
-              <span className="font-mono text-xs">
-                *.{wildcardInfo.baseDomain}
-              </span>
+              <span className="font-mono text-xs">*.{wildcardInfo.baseDomain}</span>
             </div>
           </div>
 
@@ -152,8 +138,8 @@ function SubdomainSslTab({
       <div className="border-t pt-4">
         <p className="text-sm text-muted-foreground">
           <Shield className="h-4 w-4 inline mr-1" />
-          Certificate renewal is managed at the platform level. The wildcard
-          certificate automatically covers this subdomain.
+          Certificate renewal is managed at the platform level. The wildcard certificate
+          automatically covers this subdomain.
         </p>
       </div>
     </div>
@@ -164,28 +150,15 @@ function SubdomainSslTab({
  * FULL SSL tab for custom domains
  * Shows individual certificate with renewal actions
  */
-function CustomDomainSslTab({
-  domainId,
-  domain,
-}: {
-  domainId: string;
-  domain: string;
-}) {
+function CustomDomainSslTab({ domainId, domain }: { domainId: string; domain: string }) {
   const { toast } = useToast();
-  const {
-    data: sslInfo,
-    isLoading,
-    refetch,
-  } = useGetSslDetailsQuery(domainId);
-  const [renewCertificate, { isLoading: isRenewing }] =
-    useRenewCertificateMutation();
+  const { data: sslInfo, isLoading, refetch } = useGetSslDetailsQuery(domainId);
+  const [renewCertificate, { isLoading: isRenewing }] = useRenewCertificateMutation();
   const [updateAutoRenew] = useUpdateAutoRenewMutation();
 
   const handleRenew = async () => {
     if (
-      !confirm(
-        'Are you sure you want to renew the SSL certificate? This may take a few moments.'
-      )
+      !confirm('Are you sure you want to renew the SSL certificate? This may take a few moments.')
     ) {
       return;
     }
@@ -233,18 +206,14 @@ function CustomDomainSslTab({
   };
 
   if (isLoading) {
-    return (
-      <div className="p-4 text-muted-foreground">Loading SSL details...</div>
-    );
+    return <div className="p-4 text-muted-foreground">Loading SSL details...</div>;
   }
 
   if (!sslInfo) {
     return (
       <Alert>
         <ShieldAlert className="h-4 w-4" />
-        <AlertDescription>
-          Unable to load SSL certificate information.
-        </AlertDescription>
+        <AlertDescription>Unable to load SSL certificate information.</AlertDescription>
       </Alert>
     );
   }
@@ -255,8 +224,7 @@ function CustomDomainSslTab({
         <Alert>
           <ShieldAlert className="h-4 w-4" />
           <AlertDescription>
-            SSL is not enabled for this domain. Enable SSL to secure your domain
-            with HTTPS.
+            SSL is not enabled for this domain. Enable SSL to secure your domain with HTTPS.
           </AlertDescription>
         </Alert>
         <Button onClick={handleRenew} disabled={isRenewing}>
@@ -327,18 +295,14 @@ function CustomDomainSslTab({
 
           <div>
             <span className="text-muted-foreground">Issued</span>
-            <div className="mt-1">
-              {format(new Date(sslInfo.issuedAt), 'PPP')}
-            </div>
+            <div className="mt-1">{format(new Date(sslInfo.issuedAt), 'PPP')}</div>
           </div>
 
           <div>
             <span className="text-muted-foreground">Expires</span>
             <div className="mt-1 flex items-center gap-2">
               <span>{format(new Date(sslInfo.expiresAt), 'PPP')}</span>
-              <Badge
-                variant={sslInfo.isExpiringSoon ? 'destructive' : 'outline'}
-              >
+              <Badge variant={sslInfo.isExpiringSoon ? 'destructive' : 'outline'}>
                 {sslInfo.daysUntilExpiry} days
               </Badge>
             </div>
@@ -346,10 +310,7 @@ function CustomDomainSslTab({
 
           <div>
             <span className="text-muted-foreground">Serial Number</span>
-            <div
-              className="font-mono text-xs mt-1 truncate"
-              title={sslInfo.serialNumber}
-            >
+            <div className="font-mono text-xs mt-1 truncate" title={sslInfo.serialNumber}>
               {sslInfo.serialNumber.slice(0, 20)}...
             </div>
           </div>
@@ -365,10 +326,7 @@ function CustomDomainSslTab({
               Automatically renew certificate before expiration
             </p>
           </div>
-          <Switch
-            checked={sslInfo.autoRenewEnabled}
-            onCheckedChange={handleToggleAutoRenew}
-          />
+          <Switch checked={sslInfo.autoRenewEnabled} onCheckedChange={handleToggleAutoRenew} />
         </div>
 
         {sslInfo.lastRenewalAt && (
@@ -379,13 +337,7 @@ function CustomDomainSslTab({
               addSuffix: true,
             })}
             {sslInfo.lastRenewalStatus && (
-              <Badge
-                variant={
-                  sslInfo.lastRenewalStatus === 'success'
-                    ? 'outline'
-                    : 'destructive'
-                }
-              >
+              <Badge variant={sslInfo.lastRenewalStatus === 'success' ? 'outline' : 'destructive'}>
                 {sslInfo.lastRenewalStatus}
               </Badge>
             )}
@@ -396,9 +348,7 @@ function CustomDomainSslTab({
       {/* Manual Renewal - ONLY for custom domains */}
       <div className="border-t pt-4">
         <Button onClick={handleRenew} disabled={isRenewing} variant="outline">
-          <RefreshCw
-            className={`h-4 w-4 mr-2 ${isRenewing ? 'animate-spin' : ''}`}
-          />
+          <RefreshCw className={`h-4 w-4 mr-2 ${isRenewing ? 'animate-spin' : ''}`} />
           {isRenewing ? 'Renewing...' : 'Renew Now'}
         </Button>
         <p className="text-xs text-muted-foreground mt-2">

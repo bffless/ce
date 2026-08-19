@@ -56,7 +56,10 @@ describe('RevisionHistoryPanel', () => {
         Promise.resolve({
           ruleSetId: 'rs-1',
           created: [{ pathPattern: '/api/x', method: null }],
-          updated: [{ pathPattern: '/api/z', method: 'GET' }, { pathPattern: '/api/w', method: null }],
+          updated: [
+            { pathPattern: '/api/z', method: 'GET' },
+            { pathPattern: '/api/w', method: null },
+          ],
           deleted: [{ pathPattern: '/api/y', method: 'GET' }],
           unchanged: [],
           pruneCandidates: [],
@@ -98,9 +101,7 @@ describe('RevisionHistoryPanel', () => {
     openPanel();
 
     fireEvent.click(screen.getByRole('button', { name: 'Restore' }));
-    expect(
-      screen.getByText(/Rules added since will be deleted/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Rules added since will be deleted/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Confirm restore' }));
 

@@ -1,12 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { HelpCircle } from 'lucide-react';
 import { SchemaPicker } from './SchemaPicker';
 import { ExpressionInput } from './ExpressionInput';
@@ -26,9 +21,7 @@ export function VectorSearchConfig({ config, onChange, projectId, previousSteps 
   const [queryVector, setQueryVector] = useState(config.queryVector || '');
   const [limit, setLimit] = useState(config.limit ?? 10);
   const [threshold, setThreshold] = useState(config.threshold ?? '');
-  const [selectFields, setSelectFields] = useState(
-    config.select ? config.select.join(', ') : '',
-  );
+  const [selectFields, setSelectFields] = useState(config.select ? config.select.join(', ') : '');
 
   useEffect(() => {
     const updated: VectorSearchHandlerConfig = {
@@ -36,11 +29,14 @@ export function VectorSearchConfig({ config, onChange, projectId, previousSteps 
       fieldName,
       queryVector,
       limit,
-      ...(threshold !== '' && threshold !== undefined
-        ? { threshold: Number(threshold) }
-        : {}),
+      ...(threshold !== '' && threshold !== undefined ? { threshold: Number(threshold) } : {}),
       ...(selectFields.trim()
-        ? { select: selectFields.split(',').map((s) => s.trim()).filter(Boolean) }
+        ? {
+            select: selectFields
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean),
+          }
         : {}),
     };
     onChange(updated);
@@ -50,14 +46,8 @@ export function VectorSearchConfig({ config, onChange, projectId, previousSteps 
     <div className="space-y-4">
       <div>
         <Label className="text-sm font-medium">Schema</Label>
-        <p className="text-xs text-muted-foreground mb-1">
-          The schema to search embeddings within
-        </p>
-        <SchemaPicker
-          projectId={projectId}
-          value={schemaId}
-          onChange={setSchemaId}
-        />
+        <p className="text-xs text-muted-foreground mb-1">The schema to search embeddings within</p>
+        <SchemaPicker projectId={projectId} value={schemaId} onChange={setSchemaId} />
       </div>
 
       <div>
@@ -90,7 +80,10 @@ export function VectorSearchConfig({ config, onChange, projectId, previousSteps 
                 <HelpCircle className="h-3.5 w-3.5 text-muted-foreground" />
               </TooltipTrigger>
               <TooltipContent side="right" className="max-w-xs">
-                <p>Expression resolving to number[] — the embedding to search by. E.g. from a Replicate CLIP step: <code>steps.replicate_clip.output</code></p>
+                <p>
+                  Expression resolving to number[] — the embedding to search by. E.g. from a
+                  Replicate CLIP step: <code>steps.replicate_clip.output</code>
+                </p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -123,7 +116,10 @@ export function VectorSearchConfig({ config, onChange, projectId, previousSteps 
                   <HelpCircle className="h-3.5 w-3.5 text-muted-foreground" />
                 </TooltipTrigger>
                 <TooltipContent side="right" className="max-w-xs">
-                  <p>Minimum cosine similarity (0-1). Results below this are excluded. Leave empty to return all results up to the limit.</p>
+                  <p>
+                    Minimum cosine similarity (0-1). Results below this are excluded. Leave empty to
+                    return all results up to the limit.
+                  </p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>

@@ -50,7 +50,11 @@ describe('DataUpdateConfig in operator', () => {
     render(
       <DataUpdateConfig
         projectId="p1"
-        config={{ schemaId: 's1', filters: { title: { op: 'eq', value: 'hi' } }, fields: { read: 'true' } }}
+        config={{
+          schemaId: 's1',
+          filters: { title: { op: 'eq', value: 'hi' } },
+          fields: { read: 'true' },
+        }}
         onChange={vi.fn()}
       />,
     );

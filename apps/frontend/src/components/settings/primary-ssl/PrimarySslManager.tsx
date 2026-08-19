@@ -103,7 +103,8 @@ export function PrimarySslManager() {
   };
 
   const realIpHeader = data?.realIp && 'header' in data.realIp ? data.realIp.header : null;
-  const realIpRanges = data?.realIp && 'header' in data.realIp ? data.realIp.ranges.join('\n') : null;
+  const realIpRanges =
+    data?.realIp && 'header' in data.realIp ? data.realIp.ranges.join('\n') : null;
 
   useEffect(() => {
     if (!data) return;

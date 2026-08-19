@@ -20,7 +20,11 @@ const loadPersistedState = (): Partial<RefSelectorState> => {
 
     // Validate the saved tab value
     let activeTab: RefSelectorTab | undefined;
-    if (savedActiveTab === 'aliases' || savedActiveTab === 'branches' || savedActiveTab === 'commits') {
+    if (
+      savedActiveTab === 'aliases' ||
+      savedActiveTab === 'branches' ||
+      savedActiveTab === 'commits'
+    ) {
       activeTab = savedActiveTab;
     }
 

@@ -117,10 +117,15 @@ async function uploadWithPresignedUrls(args: PresignedUploadArgs): Promise<void>
         continue;
       }
       try {
-        await putFileWithRetry(file, presignedUrl, (loaded) => {
-          progress[i] = { ...progress[i], loaded, status: 'uploading' };
-          emit();
-        }, args.signal);
+        await putFileWithRetry(
+          file,
+          presignedUrl,
+          (loaded) => {
+            progress[i] = { ...progress[i], loaded, status: 'uploading' };
+            emit();
+          },
+          args.signal,
+        );
         progress[i] = { ...progress[i], loaded: file.size, status: 'done' };
         emit();
       } catch (err) {
@@ -136,10 +141,11 @@ async function uploadWithPresignedUrls(args: PresignedUploadArgs): Promise<void>
   await Promise.all(workers);
 
   if (failures.length > 0) {
-    const sample = failures.slice(0, 3).map((f) => `${f.path}: ${f.error}`).join('; ');
-    throw new Error(
-      `${failures.length} of ${args.files.length} file uploads failed (${sample})`,
-    );
+    const sample = failures
+      .slice(0, 3)
+      .map((f) => `${f.path}: ${f.error}`)
+      .join('; ');
+    throw new Error(`${failures.length} of ${args.files.length} file uploads failed (${sample})`);
   }
 }
 

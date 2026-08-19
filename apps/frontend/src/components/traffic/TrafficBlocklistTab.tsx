@@ -106,7 +106,11 @@ function MasterToggleCard() {
           className="flex items-center gap-1 text-sm text-[#4a4a4a] dark:text-muted-foreground hover:text-foreground"
           onClick={() => setShowBaseline((open) => !open)}
         >
-          {showBaseline ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+          {showBaseline ? (
+            <ChevronDown className="h-4 w-4" />
+          ) : (
+            <ChevronRight className="h-4 w-4" />
+          )}
           Baseline: {settings?.baselineEntryCount ?? '…'} scanner signatures shipped with CE
           (updated on upgrade, not editable)
         </button>
@@ -225,8 +229,8 @@ function BlocklistLibraryCard() {
           <div>
             <CardTitle className="text-base">Blocklists</CardTitle>
             <p className="text-xs text-[#4a4a4a] dark:text-muted-foreground mt-1">
-              Named pattern lists on top of the Baseline. A list applies to all domains, or only
-              to the domains it is attached to — attach lists from a domain&apos;s settings.
+              Named pattern lists on top of the Baseline. A list applies to all domains, or only to
+              the domains it is attached to — attach lists from a domain&apos;s settings.
             </p>
           </div>
           <Button
@@ -277,13 +281,15 @@ function BlocklistLibraryCard() {
                 id="blocklist-patterns"
                 className="font-mono text-xs min-h-32"
                 value={editor.patternsText}
-                placeholder={'/hidden-probe\nexact:/status\nsuffix:.tar.bz2\nextension:php\ncontains:phpunit'}
+                placeholder={
+                  '/hidden-probe\nexact:/status\nsuffix:.tar.bz2\nextension:php\ncontains:phpunit'
+                }
                 onChange={(e) => setEditor({ ...editor, patternsText: e.target.value })}
               />
               <p className="text-xs text-[#4a4a4a] dark:text-muted-foreground mt-1">
-                A bare line matches as a path prefix. Prefix with{' '}
-                <code>exact:</code>, <code>suffix:</code>, <code>extension:</code> or{' '}
-                <code>contains:</code> for other match types. Lines starting with # are ignored.
+                A bare line matches as a path prefix. Prefix with <code>exact:</code>,{' '}
+                <code>suffix:</code>, <code>extension:</code> or <code>contains:</code> for other
+                match types. Lines starting with # are ignored.
               </p>
             </div>
             <div>
@@ -426,7 +432,10 @@ function BlocklistLibraryCard() {
         )}
       </CardContent>
 
-      <AlertDialog open={pendingDelete !== null} onOpenChange={(open) => !open && setPendingDelete(null)}>
+      <AlertDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete “{pendingDelete?.name}”?</AlertDialogTitle>

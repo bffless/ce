@@ -84,8 +84,8 @@ export function FileDeleteHandlerConfig({ config, onChange, previousSteps = [] }
             previousSteps={previousSteps}
           />
           <p className="text-xs text-muted-foreground">
-            Deletes every object whose key starts with this, relative to the uploads root. A
-            blank or <code>..</code>-containing value is rejected.
+            Deletes every object whose key starts with this, relative to the uploads root. A blank
+            or <code>..</code>-containing value is rejected.
           </p>
         </div>
       ) : (

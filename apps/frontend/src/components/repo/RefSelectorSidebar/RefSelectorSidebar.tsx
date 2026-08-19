@@ -53,7 +53,11 @@ export function RefSelectorSidebar({
   }, []);
 
   // Fetch repository refs
-  const { data: refsData, isLoading, error } = useGetRepositoryRefsQuery({
+  const {
+    data: refsData,
+    isLoading,
+    error,
+  } = useGetRepositoryRefsQuery({
     owner,
     repo,
   });
@@ -65,19 +69,18 @@ export function RefSelectorSidebar({
 
     const query = searchQuery.toLowerCase();
     return {
-      aliases: refsData.aliases.filter((a) =>
-        a.name.toLowerCase().includes(query) ||
-        a.commitSha.toLowerCase().includes(query)
+      aliases: refsData.aliases.filter(
+        (a) => a.name.toLowerCase().includes(query) || a.commitSha.toLowerCase().includes(query),
       ),
-      branches: refsData.branches.filter((b) =>
-        b.name.toLowerCase().includes(query) ||
-        b.latestCommit.toLowerCase().includes(query)
+      branches: refsData.branches.filter(
+        (b) => b.name.toLowerCase().includes(query) || b.latestCommit.toLowerCase().includes(query),
       ),
-      recentCommits: refsData.recentCommits.filter((c) =>
-        c.sha.toLowerCase().includes(query) ||
-        c.shortSha.toLowerCase().includes(query) ||
-        c.branch.toLowerCase().includes(query) ||
-        c.description?.toLowerCase().includes(query)
+      recentCommits: refsData.recentCommits.filter(
+        (c) =>
+          c.sha.toLowerCase().includes(query) ||
+          c.shortSha.toLowerCase().includes(query) ||
+          c.branch.toLowerCase().includes(query) ||
+          c.description?.toLowerCase().includes(query),
       ),
     };
   }, [refsData, searchQuery]);
@@ -97,8 +100,14 @@ export function RefSelectorSidebar({
 
   // Handlers
   const handleClose = useCallback(() => dispatch(setRefSelectorOpen(false)), [dispatch]);
-  const handleSearchChange = useCallback((value: string) => dispatch(setRefSearchQuery(value)), [dispatch]);
-  const handleTabChange = useCallback((tab: RefSelectorTab) => dispatch(setActiveTab(tab)), [dispatch]);
+  const handleSearchChange = useCallback(
+    (value: string) => dispatch(setRefSearchQuery(value)),
+    [dispatch],
+  );
+  const handleTabChange = useCallback(
+    (tab: RefSelectorTab) => dispatch(setActiveTab(tab)),
+    [dispatch],
+  );
 
   // Loading state
   if (isLoading) {

@@ -62,10 +62,9 @@ export function LoginPage() {
 
   // Project invite token
   const projectInviteToken = searchParams.get('projectInvite') || null;
-  const { data: projectInviteData } = useValidateProjectInviteTokenQuery(
-    projectInviteToken || '',
-    { skip: !projectInviteToken }
-  );
+  const { data: projectInviteData } = useValidateProjectInviteTokenQuery(projectInviteToken || '', {
+    skip: !projectInviteToken,
+  });
 
   // Validate redirect URL to prevent open redirect attacks
   const redirectTo = validateRedirectUrl(searchParams.get('redirect'));
@@ -163,7 +162,16 @@ export function LoginPage() {
       }
       isExternalRedirect ? (window.location.href = redirectTo) : navigate(redirectTo);
     }
-  }, [isLoadingSession, sessionData, navigate, redirectTo, isExternalRedirect, customDomainRelay, targetDomain, searchParams]);
+  }, [
+    isLoadingSession,
+    sessionData,
+    navigate,
+    redirectTo,
+    isExternalRedirect,
+    customDomainRelay,
+    targetDomain,
+    searchParams,
+  ]);
 
   // Redirect to setup if not complete
   if (!isLoadingSetup && setupStatus && !setupStatus.isSetupComplete) {
@@ -242,7 +250,11 @@ export function LoginPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-muted-foreground">
-          {isRefreshing ? 'Restoring session...' : isRelaying ? 'Redirecting to custom domain...' : 'Loading...'}
+          {isRefreshing
+            ? 'Restoring session...'
+            : isRelaying
+              ? 'Redirecting to custom domain...'
+              : 'Loading...'}
         </div>
       </div>
     );
@@ -270,98 +282,102 @@ export function LoginPage() {
             {projectInviteData?.valid && (
               <Alert className="mb-4 border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
                 <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
-                <AlertTitle className="text-green-800 dark:text-green-200">Project Invitation</AlertTitle>
+                <AlertTitle className="text-green-800 dark:text-green-200">
+                  Project Invitation
+                </AlertTitle>
                 <AlertDescription className="text-green-700 dark:text-green-300">
-                  Sign in to join <span className="font-medium">{projectInviteData.projectName}</span> as <span className="font-medium">{projectInviteData.role}</span>.
+                  Sign in to join{' '}
+                  <span className="font-medium">{projectInviteData.projectName}</span> as{' '}
+                  <span className="font-medium">{projectInviteData.role}</span>.
                 </AlertDescription>
               </Alert>
             )}
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                 {showPasswordForm && (
-                <>
-                <FormField
-                  control={form.control}
-                  name="email"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Email</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="email"
-                          placeholder="Enter your email"
-                          autoComplete="email"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                  <>
+                    <FormField
+                      control={form.control}
+                      name="email"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Email</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="email"
+                              placeholder="Enter your email"
+                              autoComplete="email"
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
 
-                <FormField
-                  control={form.control}
-                  name="password"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Password</FormLabel>
-                      <FormControl>
-                        <div className="relative">
-                          <Input
-                            type={showPassword ? 'text' : 'password'}
-                            placeholder="Enter your password"
-                            autoComplete="current-password"
-                            {...field}
-                          />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                            onClick={() => setShowPassword(!showPassword)}
-                            aria-label={showPassword ? 'Hide password' : 'Show password'}
-                          >
-                            {showPassword ? (
-                              <EyeOff className="h-4 w-4 text-muted-foreground" />
-                            ) : (
-                              <Eye className="h-4 w-4 text-muted-foreground" />
-                            )}
-                          </Button>
-                        </div>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                    <FormField
+                      control={form.control}
+                      name="password"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Password</FormLabel>
+                          <FormControl>
+                            <div className="relative">
+                              <Input
+                                type={showPassword ? 'text' : 'password'}
+                                placeholder="Enter your password"
+                                autoComplete="current-password"
+                                {...field}
+                              />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                                onClick={() => setShowPassword(!showPassword)}
+                                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                              >
+                                {showPassword ? (
+                                  <EyeOff className="h-4 w-4 text-muted-foreground" />
+                                ) : (
+                                  <Eye className="h-4 w-4 text-muted-foreground" />
+                                )}
+                              </Button>
+                            </div>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
 
-                <div className="flex items-center justify-between">
-                  <FormField
-                    control={form.control}
-                    name="rememberMe"
-                    render={({ field }) => (
-                      <FormItem className="flex items-center space-x-2 space-y-0">
-                        <FormControl>
-                          <Checkbox checked={field.value} onCheckedChange={field.onChange} />
-                        </FormControl>
-                        <FormLabel className="text-sm font-normal cursor-pointer">
-                          Remember me
-                        </FormLabel>
-                      </FormItem>
-                    )}
-                  />
+                    <div className="flex items-center justify-between">
+                      <FormField
+                        control={form.control}
+                        name="rememberMe"
+                        render={({ field }) => (
+                          <FormItem className="flex items-center space-x-2 space-y-0">
+                            <FormControl>
+                              <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+                            </FormControl>
+                            <FormLabel className="text-sm font-normal cursor-pointer">
+                              Remember me
+                            </FormLabel>
+                          </FormItem>
+                        )}
+                      />
 
-                  <Link
-                    to="/forgot-password"
-                    className="px-0 text-sm text-primary hover:underline font-medium"
-                  >
-                    Forgot password?
-                  </Link>
-                </div>
+                      <Link
+                        to="/forgot-password"
+                        className="px-0 text-sm text-primary hover:underline font-medium"
+                      >
+                        Forgot password?
+                      </Link>
+                    </div>
 
-                <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading ? 'Signing in...' : 'Sign In'}
-                </Button>
-                </>
+                    <Button type="submit" className="w-full" disabled={isLoading}>
+                      {isLoading ? 'Signing in...' : 'Sign In'}
+                    </Button>
+                  </>
                 )}
 
                 {showOAuthSection && (
@@ -377,7 +393,12 @@ export function LoginPage() {
                       </div>
                     )}
                     {oauthList.map((p) => (
-                      <OAuthProviderButton key={p.id} provider={p} redirectTo={redirectTo} labelMode="sign-in" />
+                      <OAuthProviderButton
+                        key={p.id}
+                        provider={p}
+                        redirectTo={redirectTo}
+                        labelMode="sign-in"
+                      />
                     ))}
                   </>
                 )}
@@ -393,13 +414,18 @@ export function LoginPage() {
                   <Link
                     to={`/signup${(() => {
                       const params = new URLSearchParams();
-                      if (searchParams.get('redirect')) params.set('redirect', searchParams.get('redirect')!);
-                      if (searchParams.get('projectInvite')) params.set('projectInvite', searchParams.get('projectInvite')!);
+                      if (searchParams.get('redirect'))
+                        params.set('redirect', searchParams.get('redirect')!);
+                      if (searchParams.get('projectInvite'))
+                        params.set('projectInvite', searchParams.get('projectInvite')!);
                       // Preserve custom-domain relay params so new users get relayed
                       // back to the target domain after signing up (not stranded on admin).
-                      if (searchParams.get('customDomainRelay')) params.set('customDomainRelay', searchParams.get('customDomainRelay')!);
-                      if (searchParams.get('targetDomain')) params.set('targetDomain', searchParams.get('targetDomain')!);
-                      if (searchParams.get('targetOrigin')) params.set('targetOrigin', searchParams.get('targetOrigin')!);
+                      if (searchParams.get('customDomainRelay'))
+                        params.set('customDomainRelay', searchParams.get('customDomainRelay')!);
+                      if (searchParams.get('targetDomain'))
+                        params.set('targetDomain', searchParams.get('targetDomain')!);
+                      if (searchParams.get('targetOrigin'))
+                        params.set('targetOrigin', searchParams.get('targetOrigin')!);
                       const qs = params.toString();
                       return qs ? `?${qs}` : '';
                     })()}`}

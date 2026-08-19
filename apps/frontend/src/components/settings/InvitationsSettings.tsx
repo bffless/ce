@@ -228,9 +228,7 @@ export function InvitationsSettings() {
             <UserPlus className="h-5 w-5" />
             <div>
               <CardTitle>User Invitations</CardTitle>
-              <CardDescription>
-                Invite new users to join this workspace
-              </CardDescription>
+              <CardDescription>Invite new users to join this workspace</CardDescription>
             </div>
           </div>
           <Button onClick={() => setShowInviteForm(!showInviteForm)}>
@@ -261,11 +259,7 @@ export function InvitationsSettings() {
                         <FormItem className="md:col-span-2">
                           <FormLabel>Email Address</FormLabel>
                           <FormControl>
-                            <Input
-                              type="email"
-                              placeholder="user@example.com"
-                              {...field}
-                            />
+                            <Input type="email" placeholder="user@example.com" {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -278,10 +272,7 @@ export function InvitationsSettings() {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Role</FormLabel>
-                          <Select
-                            onValueChange={field.onChange}
-                            defaultValue={field.value}
-                          >
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue placeholder="Select role" />
@@ -305,14 +296,11 @@ export function InvitationsSettings() {
                       <FormItem>
                         <FormLabel>Redirect URL (Optional)</FormLabel>
                         <FormControl>
-                          <Input
-                            type="url"
-                            placeholder="https://example.com/welcome"
-                            {...field}
-                          />
+                          <Input type="url" placeholder="https://example.com/welcome" {...field} />
                         </FormControl>
                         <p className="text-xs text-muted-foreground">
-                          Where to redirect the user after they accept the invitation. Can be an external URL.
+                          Where to redirect the user after they accept the invitation. Can be an
+                          external URL.
                         </p>
                         <FormMessage />
                       </FormItem>
@@ -354,9 +342,7 @@ export function InvitationsSettings() {
         {error && (
           <Alert variant="destructive">
             <XCircle className="h-4 w-4" />
-            <AlertDescription>
-              Failed to load invitations. Please try again.
-            </AlertDescription>
+            <AlertDescription>Failed to load invitations. Please try again.</AlertDescription>
           </Alert>
         )}
 
@@ -400,7 +386,9 @@ export function InvitationsSettings() {
                           title={invitation.redirectUrl}
                         >
                           <ExternalLink className="h-3 w-3 flex-shrink-0" />
-                          <span className="truncate">{new URL(invitation.redirectUrl).hostname}</span>
+                          <span className="truncate">
+                            {new URL(invitation.redirectUrl).hostname}
+                          </span>
                         </a>
                       ) : (
                         <span className="text-xs text-muted-foreground">-</span>

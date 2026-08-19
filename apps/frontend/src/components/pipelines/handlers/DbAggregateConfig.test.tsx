@@ -13,7 +13,11 @@ describe('DbAggregateConfig in operator', () => {
     render(
       <DbAggregateConfig
         projectId="p1"
-        config={{ schemaId: 's1', operation: 'count', filters: { feedId: { op: 'in', value: ['a', 'b'] } } }}
+        config={{
+          schemaId: 's1',
+          operation: 'count',
+          filters: { feedId: { op: 'in', value: ['a', 'b'] } },
+        }}
         onChange={onChange}
       />,
     );
@@ -29,7 +33,11 @@ describe('DbAggregateConfig in operator', () => {
     render(
       <DbAggregateConfig
         projectId="p1"
-        config={{ schemaId: 's1', operation: 'count', filters: { feedId: { op: 'in', value: 'steps.prep.urls' } } }}
+        config={{
+          schemaId: 's1',
+          operation: 'count',
+          filters: { feedId: { op: 'in', value: 'steps.prep.urls' } },
+        }}
         onChange={onChange}
       />,
     );
@@ -42,7 +50,11 @@ describe('DbAggregateConfig in operator', () => {
     render(
       <DbAggregateConfig
         projectId="p1"
-        config={{ schemaId: 's1', operation: 'count', filters: { title: { op: 'eq', value: 'hi' } } }}
+        config={{
+          schemaId: 's1',
+          operation: 'count',
+          filters: { title: { op: 'eq', value: 'hi' } },
+        }}
         onChange={vi.fn()}
       />,
     );

@@ -7,7 +7,11 @@ import {
   useSendTestEmailMutation,
   SettingsEmailProvider,
 } from '@/services/settingsApi';
-import { useGetEmailProvidersQuery, useGetAvailableOptionsQuery, EmailProviderInfo } from '@/services/setupApi';
+import {
+  useGetEmailProvidersQuery,
+  useGetAvailableOptionsQuery,
+  EmailProviderInfo,
+} from '@/services/setupApi';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -109,22 +113,23 @@ export function EmailSettings() {
   });
 
   // Filter to only implemented providers based on feature flags
-  const implementedProviders = (providersData?.providers.filter((p: EmailProviderInfo) => {
-    if (!p.implemented) return false;
-    // Filter based on feature flags
-    switch (p.id) {
-      case 'smtp':
-        return enableSmtp;
-      case 'sendgrid':
-        return enableSendGrid;
-      case 'resend':
-        return enableResend;
-      case 'managed':
-        return false; // Handled separately in UI
-      default:
-        return true;
-    }
-  }) || []);
+  const implementedProviders =
+    providersData?.providers.filter((p: EmailProviderInfo) => {
+      if (!p.implemented) return false;
+      // Filter based on feature flags
+      switch (p.id) {
+        case 'smtp':
+          return enableSmtp;
+        case 'sendgrid':
+          return enableSendGrid;
+        case 'resend':
+          return enableResend;
+        case 'managed':
+          return false; // Handled separately in UI
+        default:
+          return true;
+      }
+    }) || [];
 
   // Initialize selected provider when editing starts
   useEffect(() => {
@@ -329,7 +334,8 @@ export function EmailSettings() {
                 <div className="flex items-center text-sm">
                   <CheckCircle className="h-4 w-4 text-green-500 mr-2" />
                   <span className="text-muted-foreground">
-                    Email configured via {emailStatus.providerName || getProviderDisplayName(emailStatus.provider || '')}
+                    Email configured via{' '}
+                    {emailStatus.providerName || getProviderDisplayName(emailStatus.provider || '')}
                   </span>
                   {isUsingManagedEmail && (
                     <Badge variant="secondary" className="ml-2 text-xs">
@@ -342,7 +348,8 @@ export function EmailSettings() {
                   <div>
                     <span className="text-muted-foreground">Provider:</span>{' '}
                     <span className="font-medium">
-                      {emailStatus.providerName || getProviderDisplayName(emailStatus.provider || '')}
+                      {emailStatus.providerName ||
+                        getProviderDisplayName(emailStatus.provider || '')}
                     </span>
                   </div>
 
@@ -412,10 +419,7 @@ export function EmailSettings() {
                     <Edit2 className="h-4 w-4 mr-2" />
                     Edit Configuration
                   </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => setShowSendTest(!showSendTest)}
-                  >
+                  <Button variant="outline" onClick={() => setShowSendTest(!showSendTest)}>
                     <Send className="h-4 w-4 mr-2" />
                     Send Test Email
                   </Button>
@@ -452,10 +456,9 @@ export function EmailSettings() {
                     <AlertDialogHeader>
                       <AlertDialogTitle>Remove email configuration?</AlertDialogTitle>
                       <AlertDialogDescription>
-                        Password reset and verification links will be logged to the
-                        server console instead of being emailed. Useful for local
-                        development; not recommended for production users who need to
-                        reset their own passwords.
+                        Password reset and verification links will be logged to the server console
+                        instead of being emailed. Useful for local development; not recommended for
+                        production users who need to reset their own passwords.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -708,8 +711,8 @@ export function EmailSettings() {
                               className="text-primary hover:underline"
                             >
                               App Password
-                            </a>
-                            {' '}(not your regular Gmail password)
+                            </a>{' '}
+                            (not your regular Gmail password)
                           </p>
                         )}
                       </div>
@@ -785,7 +788,8 @@ export function EmailSettings() {
                       <p className="mt-1 text-xs text-muted-foreground">
                         {selectedProvider === 'sendgrid' &&
                           'Create an API key with "Mail Send" permissions in your SendGrid dashboard'}
-                        {selectedProvider === 'resend' && 'Get your API key from the Resend dashboard'}
+                        {selectedProvider === 'resend' &&
+                          'Get your API key from the Resend dashboard'}
                       </p>
                     </div>
 

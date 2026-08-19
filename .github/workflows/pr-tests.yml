@@ -38,8 +38,10 @@ jobs:
           pnpm --filter backend exec tsc --noEmit &
           wait
 
-      - name: Backend format check (prettier)
-        run: pnpm --filter backend format:check
+      - name: Format check (prettier)
+        run: |
+          pnpm --filter backend format:check
+          pnpm --filter frontend format:check
 
       - name: Build frontend for preview
         if: github.base_ref == 'main'

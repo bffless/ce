@@ -27,10 +27,7 @@ interface DirectoryViewerProps {
 /**
  * Extracts the direct children (files and folders) of a directory
  */
-function extractDirectoryContents(
-  files: FileItem[],
-  dirPath: string,
-): DirectoryEntry[] {
+function extractDirectoryContents(files: FileItem[], dirPath: string): DirectoryEntry[] {
   const normalizedDirPath = dirPath ? dirPath.replace(/\/$/, '') + '/' : '';
   const entries = new Map<string, DirectoryEntry>();
 
@@ -118,10 +115,7 @@ export function DirectoryViewer({
   gitRef,
   leftActions,
 }: DirectoryViewerProps) {
-  const entries = useMemo(
-    () => extractDirectoryContents(files, currentPath),
-    [files, currentPath],
-  );
+  const entries = useMemo(() => extractDirectoryContents(files, currentPath), [files, currentPath]);
 
   const totalFiles = useMemo(() => {
     const prefix = currentPath ? currentPath.replace(/\/$/, '') + '/' : '';
@@ -163,54 +157,50 @@ export function DirectoryViewer({
       />
       <div className="flex-1 overflow-auto p-6">
         <div className="rounded-lg border bg-card">
+          {/* Directory listing */}
+          <div className="divide-y">
+            {entries.map((entry) => {
+              const linkPath = `/repo/${owner}/${repo}/${gitRef}/${entry.path}`;
+              const Icon = entry.type === 'directory' ? Folder : getFileIcon(entry.mimeType);
 
-        {/* Directory listing */}
-        <div className="divide-y">
-          {entries.map((entry) => {
-            const linkPath = `/repo/${owner}/${repo}/${gitRef}/${entry.path}`;
-            const Icon = entry.type === 'directory' ? Folder : getFileIcon(entry.mimeType);
+              return (
+                <Link
+                  key={entry.path}
+                  to={linkPath}
+                  className="flex items-center gap-3 px-4 py-3 hover:bg-muted/50 transition-colors group"
+                >
+                  {/* Icon */}
+                  <div className="shrink-0">
+                    <Icon
+                      className={`h-4 w-4 ${
+                        entry.type === 'directory' ? 'text-blue-500' : 'text-muted-foreground'
+                      }`}
+                    />
+                  </div>
 
-            return (
-              <Link
-                key={entry.path}
-                to={linkPath}
-                className="flex items-center gap-3 px-4 py-3 hover:bg-muted/50 transition-colors group"
-              >
-                {/* Icon */}
-                <div className="shrink-0">
-                  <Icon
-                    className={`h-4 w-4 ${
-                      entry.type === 'directory'
-                        ? 'text-blue-500'
-                        : 'text-muted-foreground'
-                    }`}
-                  />
-                </div>
-
-                {/* Name */}
-                <div className="flex-1 min-w-0">
-                  <span className="text-sm font-medium group-hover:text-primary transition-colors">
-                    {entry.name}
-                  </span>
-                </div>
-
-                {/* Size or file count */}
-                <div className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                  {entry.type === 'directory' ? (
-                    <span>
-                      {entry.fileCount} {entry.fileCount === 1 ? 'file' : 'files'}
+                  {/* Name */}
+                  <div className="flex-1 min-w-0">
+                    <span className="text-sm font-medium group-hover:text-primary transition-colors">
+                      {entry.name}
                     </span>
-                  ) : (
-                    <span>{formatFileSize(entry.size || 0)}</span>
-                  )}
-                </div>
-              </Link>
-            );
-          })}
-        </div>
+                  </div>
+
+                  {/* Size or file count */}
+                  <div className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                    {entry.type === 'directory' ? (
+                      <span>
+                        {entry.fileCount} {entry.fileCount === 1 ? 'file' : 'files'}
+                      </span>
+                    ) : (
+                      <span>{formatFileSize(entry.size || 0)}</span>
+                    )}
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>
   );
 }
-

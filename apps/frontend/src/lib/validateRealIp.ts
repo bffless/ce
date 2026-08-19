@@ -17,8 +17,7 @@
 // 9110's tchar grammar, excluding shell-dangerous characters ($, `, &, |).
 export const SHELL_SAFE_HEADER_RE = /^[A-Za-z0-9!#*+.^_~-]+$/;
 
-const IPV4_RE =
-  /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
+const IPV4_RE = /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
 
 function isValidIPv4(addr: string): boolean {
   return IPV4_RE.test(addr);

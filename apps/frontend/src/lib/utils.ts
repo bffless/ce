@@ -1,8 +1,8 @@
-import { clsx, type ClassValue } from "clsx"
-import { twMerge } from "tailwind-merge"
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
 
 export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
+  return twMerge(clsx(inputs));
 }
 
 /**
@@ -95,7 +95,7 @@ export function buildPublicUrl(
   owner: string,
   repo: string,
   gitRef: string,
-  filepath?: string
+  filepath?: string,
 ): string {
   const refPath = getPublicUrlPath(gitRef);
   const base = `${baseUrl}/public/${owner}/${repo}/${refPath}`;
@@ -126,10 +126,7 @@ export function getPrimaryDomain(): string {
  * In development, uses path-based URL to backend.
  * In production, uses wildcard subdomain URL.
  */
-export function buildPreviewAliasUrl(
-  aliasName: string,
-  relativePath?: string
-): string {
+export function buildPreviewAliasUrl(aliasName: string, relativePath?: string): string {
   if (import.meta.env.DEV) {
     const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
     const path = relativePath ? `/${relativePath}` : '/';
