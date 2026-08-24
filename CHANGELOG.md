@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.33](https://github.com/bffless/ce/compare/v0.4.32...v0.4.33) (2026-08-24)
+
+
+### Added
+
+* **app-catalog:** install an app into multiple projects, per-install updates and "Update all" ([#693](https://github.com/bffless/ce/issues/693)) ([ba192c3](https://github.com/bffless/ce/commit/ba192c31cc87603f2ce7504a4093947ce35aa2ef))
+
+
+### Fixed
+
+* **deployments:** keep nested .bffless/ directories in zip deployments ([#699](https://github.com/bffless/ce/issues/699)) ([c905d7c](https://github.com/bffless/ce/commit/c905d7c1f71303b44f69294c0b93ea8536bf2665))
+
 ## [0.4.32](https://github.com/bffless/ce/compare/v0.4.31...v0.4.32) (2026-08-18)
 
 ### Added
