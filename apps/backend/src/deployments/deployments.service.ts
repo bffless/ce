@@ -45,6 +45,7 @@ import {
   DeleteCommitResponseDto,
 } from './deployments.dto';
 import { generatePreviewAliasName } from './preview-alias.util';
+import { isHiddenZipEntry } from './zip-entry.util';
 
 @Injectable()
 export class DeploymentsService {
@@ -312,14 +313,9 @@ export class DeploymentsService {
         // Get file path (remove leading slash if present)
         const filePath = entryPath.replace(/^\/+/, '');
 
-        // Skip hidden files and system files, but allow .bffless/ (skills directory)
-        const isHiddenFile =
-          (filePath.startsWith('.') && !filePath.startsWith('.bffless/')) ||
-          filePath.includes('/__MACOSX/') ||
-          filePath.includes('/.') || // Hidden files in subdirectories (e.g., assets/.DS_Store)
-          filePath === '.DS_Store';
-
-        if (isHiddenFile) {
+        // Skip hidden files and system files; `.bffless/` directories are kept at any
+        // depth (skills, workflows — the actions zip them under the build path).
+        if (isHiddenZipEntry(filePath)) {
           fileCount--; // Don't count these
           continue;
         }
