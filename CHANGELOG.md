@@ -7,15 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.33](https://github.com/bffless/ce/compare/v0.4.32...v0.4.33) (2026-08-24)
 
-
 ### Added
-
-* **app-catalog:** install an app into multiple projects, per-install updates and "Update all" ([#693](https://github.com/bffless/ce/issues/693)) ([ba192c3](https://github.com/bffless/ce/commit/ba192c31cc87603f2ce7504a4093947ce35aa2ef))
-
+- app-catalog: install an app into multiple projects, per-install updates and "Update all" ([#693](https://github.com/bffless/ce/pull/693), thanks @toshimoto821)
 
 ### Fixed
+- deployments: keep nested .bffless/ directories in zip deployments ([#699](https://github.com/bffless/ce/pull/699), thanks @toshimoto821)
 
-* **deployments:** keep nested .bffless/ directories in zip deployments ([#699](https://github.com/bffless/ce/issues/699)) ([c905d7c](https://github.com/bffless/ce/commit/c905d7c1f71303b44f69294c0b93ea8536bf2665))
+### Maintenance
+- compose: record the SuperTokens pin-bump migration rule ([#696](https://github.com/bffless/ce/pull/696), thanks @toshimoto821)
+- Prettier format sweep (backend + frontend) + lint-staged hook and CI check ([#692](https://github.com/bffless/ce/pull/692), thanks @toshimoto821)
 
 ## [0.4.32](https://github.com/bffless/ce/compare/v0.4.31...v0.4.32) (2026-08-18)
 
