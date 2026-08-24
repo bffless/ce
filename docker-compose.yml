@@ -175,11 +175,13 @@ services:
       - assethost-network
 
   supertokens:
-    # Pinned: an unpinned (latest) tag let core 12.1.0 slip in, whose in-place
-    # upgrade migration misses two session_info columns (prev_refresh_token_hash_2,
-    # refresh_token_rotated_at) and breaks session refresh/regenerate with 500s
-    # (signin reports "Failed to sign in" even though the session is created).
-    # Bump deliberately after verifying the upgrade migration on an existing DB.
+    # PINNED. SuperTokens does not auto-migrate columns: the core only CREATEs
+    # missing tables on boot, and each postgresql-plugin release ships manual SQL
+    # in its CHANGELOG "### Migration" section. Bumping this tag means shipping
+    # that SQL to existing installs (11.x -> 12.x added app_id_to_user_id
+    # .time_joined, see ce#695; >=12.1.0 adds two session_info columns, see
+    # ce#658). Verify a bump by booting the new tag against a DB created by the
+    # old tag and signing up - fresh-DB tests miss this class entirely.
     image: registry.supertokens.io/supertokens/supertokens-postgresql:12.0.10
     container_name: assethost-supertokens
     profiles:
