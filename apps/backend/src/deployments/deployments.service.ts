@@ -757,50 +757,53 @@ export class DeploymentsService {
 
     // Build where conditions
     const conditions: SQL<unknown>[] = [];
+    const isAdmin = userRole === 'admin';
+
+    const emptyPage = (): ListDeploymentsResponseDto => ({
+      data: [],
+      meta: {
+        page,
+        limit,
+        total: 0,
+        totalPages: 0,
+        hasNextPage: false,
+        hasPreviousPage: false,
+      },
+    });
 
     // Filters
     if (query.repository) {
       // Phase 3H: Convert repository string to projectId
       const [owner, name] = query.repository.split('/');
-      if (owner && name) {
-        try {
-          const project = await this.projectsService.getProjectByOwnerName(owner, name);
-
-          // Phase 3H.6: Check project access for non-admin users
-          if (userRole !== 'admin') {
-            const role = await this.permissionsService.getUserProjectRole(userId, project.id);
-            if (!role) {
-              // User has no access to this project
-              return {
-                data: [],
-                meta: {
-                  page,
-                  limit,
-                  total: 0,
-                  totalPages: 0,
-                  hasNextPage: false,
-                  hasPreviousPage: false,
-                },
-              };
-            }
-          }
-
-          conditions.push(eq(assets.projectId, project.id));
-        } catch (error) {
-          // Project not found - return empty results
-          return {
-            data: [],
-            meta: {
-              page,
-              limit,
-              total: 0,
-              totalPages: 0,
-              hasNextPage: false,
-              hasPreviousPage: false,
-            },
-          };
-        }
+      if (!owner || !name) {
+        // #701: an unparsable filter must not fall through to the unscoped list
+        return emptyPage();
       }
+      try {
+        const project = await this.projectsService.getProjectByOwnerName(owner, name);
+
+        // Phase 3H.6: Check project access for non-admin users
+        if (!isAdmin) {
+          const role = await this.permissionsService.getUserProjectRole(userId, project.id);
+          if (!role) {
+            // User has no access to this project
+            return emptyPage();
+          }
+        }
+
+        conditions.push(eq(assets.projectId, project.id));
+      } catch (error) {
+        // Project not found - return empty results
+        return emptyPage();
+      }
+    } else if (!isAdmin) {
+      // #701: same leak as listAliases - the unscoped list is restricted to the
+      // projects the caller has a role on.
+      const projectIds = await this.permissionsService.listUserProjects(userId);
+      if (projectIds.length === 0) {
+        return emptyPage();
+      }
+      conditions.push(inArray(assets.projectId, projectIds));
     }
     if (query.branch) {
       conditions.push(eq(assets.branch, query.branch));
@@ -1574,29 +1577,41 @@ export class DeploymentsService {
     userRole: string,
   ): Promise<ListAliasesResponseDto> {
     const conditions: SQL<unknown>[] = [];
+    const isAdmin = userRole === 'admin';
 
     if (query.repository) {
       // Phase 3H: Convert repository string to projectId
       const [owner, name] = query.repository.split('/');
-      if (owner && name) {
-        try {
-          const project = await this.projectsService.getProjectByOwnerName(owner, name);
-
-          // Phase 3H.6: Check project access for non-admin users
-          if (userRole !== 'admin') {
-            const role = await this.permissionsService.getUserProjectRole(userId, project.id);
-            if (!role) {
-              // User has no access to this project
-              return { data: [] };
-            }
-          }
-
-          conditions.push(eq(deploymentAliases.projectId, project.id));
-        } catch (error) {
-          // Project not found - return empty results
-          return { data: [] };
-        }
+      if (!owner || !name) {
+        // #701: an unparsable filter must not fall through to the unscoped list
+        return { data: [] };
       }
+      try {
+        const project = await this.projectsService.getProjectByOwnerName(owner, name);
+
+        // Phase 3H.6: Check project access for non-admin users
+        if (!isAdmin) {
+          const role = await this.permissionsService.getUserProjectRole(userId, project.id);
+          if (!role) {
+            // User has no access to this project
+            return { data: [] };
+          }
+        }
+
+        conditions.push(eq(deploymentAliases.projectId, project.id));
+      } catch (error) {
+        // Project not found - return empty results
+        return { data: [] };
+      }
+    } else if (!isAdmin) {
+      // #701: the unscoped list is restricted to the projects the caller has a
+      // role on. Without this it returned every alias on the instance, which
+      // contradicted the ?repository= path above (that one answers []).
+      const projectIds = await this.permissionsService.listUserProjects(userId);
+      if (projectIds.length === 0) {
+        return { data: [] };
+      }
+      conditions.push(inArray(deploymentAliases.projectId, projectIds));
     }
 
     // By default, exclude auto-preview aliases from the list
