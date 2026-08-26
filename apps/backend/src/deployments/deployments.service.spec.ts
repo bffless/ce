@@ -147,6 +147,7 @@ describe('DeploymentsService', () => {
 
     mockPermissionsService = {
       getUserProjectRole: jest.fn().mockResolvedValue('contributor'),
+      listUserProjects: jest.fn().mockResolvedValue([mockProjectId]),
       addUserToProject: jest.fn().mockResolvedValue(undefined),
       removeUserFromProject: jest.fn().mockResolvedValue(undefined),
       updateUserProjectRole: jest.fn().mockResolvedValue(undefined),
@@ -795,15 +796,54 @@ describe('DeploymentsService', () => {
       expect(result.data[0].alias).toBe('main');
     });
 
-    it('should filter by allowed repositories for non-admin', async () => {
+    it('lists every alias for an admin when no repository filter is given', async () => {
       setupMockChain([[mockAlias, { ...mockAlias, repository: 'other/repo' }]]);
+
+      const result = await service.listAliases({}, mockUserId, 'admin');
+
+      expect(mockPermissionsService.listUserProjects).not.toHaveBeenCalled();
+      expect(result.data).toHaveLength(2);
+    });
+
+    // Regression: bffless/ce#701. Without a ?repository= filter the query was
+    // unscoped, so any authenticated user got every alias on the instance -
+    // while ?repository= on a project they had no role on answered [].
+    it('scopes the unfiltered list to the projects a non-admin has a role on', async () => {
+      setupMockChain([[mockAlias]]);
+      mockPermissionsService.listUserProjects.mockResolvedValueOnce([mockProjectId]);
 
       const result = await service.listAliases({}, mockUserId, 'user');
 
-      // Phase 3H.7: allowedRepositories removed - now returns all aliases user has access to
-      // This test no longer filters by repository since authorization is project-based
-      expect(result.data).toHaveLength(2);
-      expect(result.data[0].repository).toBe(mockRepository);
+      expect(mockPermissionsService.listUserProjects).toHaveBeenCalledWith(mockUserId);
+      expect(result.data).toHaveLength(1);
+    });
+
+    it('returns [] for a non-admin with no project roles and no repository filter', async () => {
+      setupMockChain([[mockAlias]]);
+      mockPermissionsService.listUserProjects.mockResolvedValueOnce([]);
+
+      const result = await service.listAliases({}, mockUserId, 'user');
+
+      expect(result.data).toEqual([]);
+      expect(mockDb.select).not.toHaveBeenCalled();
+    });
+
+    it('returns [] for a repository filter with no owner/name separator', async () => {
+      setupMockChain([[mockAlias]]);
+
+      const result = await service.listAliases({ repository: 'xyz' }, mockUserId, 'user');
+
+      expect(result.data).toEqual([]);
+      expect(mockDb.select).not.toHaveBeenCalled();
+    });
+
+    it('returns [] when a non-admin filters by a project they have no role on', async () => {
+      setupMockChain([[mockAlias]]);
+      mockPermissionsService.getUserProjectRole.mockResolvedValueOnce(null);
+
+      const result = await service.listAliases({ repository: mockRepository }, mockUserId, 'user');
+
+      expect(result.data).toEqual([]);
     });
 
     // Regression: bffless/ce alias access-control readback bug.
@@ -886,6 +926,37 @@ describe('DeploymentsService', () => {
       const result = await service.listDeployments({ isPublic: true }, mockUserId, 'admin');
 
       expect(result.data).toBeDefined();
+    });
+
+    // Regression: bffless/ce#701 (same leak as listAliases).
+    it('scopes the unfiltered list to the projects a non-admin has a role on', async () => {
+      setupMockChain([[{ asset: mockAsset, project: mockProject }], []]);
+      mockPermissionsService.listUserProjects.mockResolvedValueOnce([mockProjectId]);
+
+      const result = await service.listDeployments({}, mockUserId, 'user');
+
+      expect(mockPermissionsService.listUserProjects).toHaveBeenCalledWith(mockUserId);
+      expect(result.data).toBeDefined();
+    });
+
+    it('returns an empty page for a non-admin with no project roles', async () => {
+      setupMockChain([[{ asset: mockAsset, project: mockProject }], []]);
+      mockPermissionsService.listUserProjects.mockResolvedValueOnce([]);
+
+      const result = await service.listDeployments({ page: 1, limit: 10 }, mockUserId, 'user');
+
+      expect(result.data).toEqual([]);
+      expect(result.meta.total).toBe(0);
+      expect(mockDb.select).not.toHaveBeenCalled();
+    });
+
+    it('returns an empty page for a repository filter with no owner/name separator', async () => {
+      setupMockChain([[{ asset: mockAsset, project: mockProject }], []]);
+
+      const result = await service.listDeployments({ repository: 'xyz' }, mockUserId, 'user');
+
+      expect(result.data).toEqual([]);
+      expect(mockDb.select).not.toHaveBeenCalled();
     });
   });
 
