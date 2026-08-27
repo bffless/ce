@@ -23,10 +23,10 @@ export interface BuildOutcome {
 }
 
 /** Build a single rule-set directory. Never throws — build failures are reported via `ok: false`. */
-export async function buildOne(setDir: string, opts?: { output?: string }): Promise<BuildOutcome> {
+export async function buildOne(setDir: string, opts?: { output?: string; pathPrefix?: string }): Promise<BuildOutcome> {
   let result;
   try {
-    result = await buildRuleSet(setDir);
+    result = await buildRuleSet(setDir, { pathPrefix: opts?.pathPrefix });
   } catch (err) {
     return { ok: false, summary: err instanceof Error ? err.message : String(err) };
   }

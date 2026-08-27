@@ -20,6 +20,7 @@ import type { SyncRequestBody, SyncResponse, SyncRuleRef } from '../api/sync-typ
 
 export interface PushOptions {
   nameSuffix?: string;
+  pathPrefix?: string;
   prune?: boolean;
   dryRun?: boolean;
   strictSchemas?: boolean;
@@ -106,7 +107,7 @@ export async function runPushOne(
 ): Promise<PushOutcome> {
   let built;
   try {
-    built = await buildRuleSet(setDir);
+    built = await buildRuleSet(setDir, { pathPrefix: opts.pathPrefix });
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }

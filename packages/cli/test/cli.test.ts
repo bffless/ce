@@ -82,6 +82,34 @@ describe('bffless rules build', () => {
     expect(result.status).not.toBe(0);
     expect(result.stderr).not.toContain('at buildRuleSet'); // no stack trace leaking through
   });
+
+  it('--path-prefix rewrites derived patterns in the written export', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'bffless-cli-test-plain-'));
+    cpSync(path.resolve('test/fixtures/synthetic/plain'), dir, { recursive: true });
+    const out = path.join(dir, 'out.json');
+    const result = run(['rules', 'build', dir, '-o', out, '--path-prefix', '/api/hello']);
+    expect(result.status, result.stderr).toBe(0);
+    const exp = JSON.parse(readFileSync(out, 'utf8'));
+    expect(exp.rules.map((r: { pathPattern: string }) => r.pathPattern).sort()).toEqual([
+      '/api/hello/echo',
+      '/api/hello/job',
+      '/w/hello/*',
+    ]);
+  });
+
+  it('--path-prefix rejects a relative prefix with a usage error', () => {
+    const result = run([
+      'rules',
+      'build',
+      path.resolve('test/fixtures/synthetic/plain'),
+      '-o',
+      '/dev/null',
+      '--path-prefix',
+      'api/hello',
+    ]);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/--path-prefix must start with/);
+  });
 });
 
 describe('bffless rules validate', () => {

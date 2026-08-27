@@ -61,6 +61,7 @@ function alignLocalSchemaIdsToLive(local: RuleSetExport, live: RuleSetExport): R
 }
 
 export interface DiffOptions {
+  pathPrefix?: string;
   apiUrl?: string;
   apiKey?: string;
   project?: string;
@@ -84,7 +85,7 @@ export async function runDiffOne(
 ): Promise<DiffOutcome> {
   let local: RuleSetExport;
   try {
-    local = (await buildRuleSet(setDir)).export;
+    local = (await buildRuleSet(setDir, { pathPrefix: opts.pathPrefix })).export;
   } catch (err) {
     return { status: 'error', message: err instanceof Error ? err.message : String(err) };
   }

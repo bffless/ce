@@ -42,3 +42,4 @@ export { ApiClient, createClient, ApiError } from './api/client.js';
 export type { ClientDeps, FetchLike } from './api/client.js';
 export { CLI_REMEDIATION, resolveRemediation } from './api/remediation.js';
 export type { Remediation } from './api/remediation.js';
+export { applyPathPrefix, assertPathPrefix } from './format/routes.js';

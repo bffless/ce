@@ -444,6 +444,15 @@ when the stored value equals the derived one. Two rules landing on the same nume
 (an explicit value colliding with another rule's derived one, or two explicit values
 matching) is a `rules build` warning, not an error.
 
+### Path prefix (`--path-prefix`)
+
+`rules build|push|diff --path-prefix /api/hello` prepends the prefix to every **derived** `pathPattern`
+(`rules/echo/post/` → `POST /api/hello/echo`). A manifest with an explicit `pathPattern:` is left verbatim —
+that is how a generated `/w/hello/*` forwarder lives in the same set. Pipeline default names and the
+derived `order:` are unaffected (a uniform prefix keeps specificity order). Written for BFFless Workflow
+implementations, which author prefix-free rules and are published under one alias-named prefix per
+deploy (`bffless/publish-workflow`); `rules diff` needs the same flag or it reports permanent drift.
+
 ## `runHandler` — Vitest usage
 
 `bffless/harness` exports `runHandler(code, data?, opts?)` and
