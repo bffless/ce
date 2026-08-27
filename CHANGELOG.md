@@ -7,15 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.34](https://github.com/bffless/ce/compare/v0.4.33...v0.4.34) (2026-08-27)
 
-
 ### Added
-
-* **cli:** --path-prefix for rules build, push and diff ([#704](https://github.com/bffless/ce/issues/704)) ([bbc63cd](https://github.com/bffless/ce/commit/bbc63cdc43dc347efd49a3dba4e468e0454cae4c))
-
+- cli: --path-prefix for rules build, push and diff ([#704](https://github.com/bffless/ce/pull/704), thanks @toshimoto821)
 
 ### Fixed
-
-* **deployments:** scope unfiltered alias and deployment lists to the caller's projects ([#702](https://github.com/bffless/ce/issues/702)) ([3d58122](https://github.com/bffless/ce/commit/3d581226802c7f5f523861b19d8ff99b060ac1dd)), closes [#701](https://github.com/bffless/ce/issues/701)
+- deployments: scope unfiltered alias and deployment lists to the caller's projects ([#702](https://github.com/bffless/ce/pull/702), thanks @toshimoto821)
 
 ## [0.4.33](https://github.com/bffless/ce/compare/v0.4.32...v0.4.33) (2026-08-24)
 
