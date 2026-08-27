@@ -18,6 +18,8 @@ describe('bffless/lib entry', () => {
     expect(typeof lib.applyNameSuffix).toBe('function');
     expect(typeof lib.resolveRemediation).toBe('function');
     expect(lib.CLI_REMEDIATION.apiKey).toContain('--api-key');
+    expect(typeof lib.applyPathPrefix).toBe('function');
+    expect(typeof lib.assertPathPrefix).toBe('function');
   });
 
   it('importing it never runs commander (no side effects), even with bogus argv', async () => {

@@ -72,7 +72,11 @@ rules
   .description('Compile an authoring rule-set directory to a canonical export JSON')
   .argument('[dirs...]', 'rule-set directories (defaults to .bffless/config.json ruleSets)')
   .option('-o, --output <file>', 'output file path (only valid with a single resolved rule set)')
-  .action(async (dirs: string[], opts: { output?: string }) => {
+  .option(
+    '--path-prefix <prefix>',
+    'prepend a literal prefix to every derived pathPattern (explicit pathPattern: manifests are left verbatim), e.g. /api/hello (spec: workflow implementations)',
+  )
+  .action(async (dirs: string[], opts: { output?: string; pathPrefix?: string }) => {
     const resolved = resolveDirsOrReport(dirs);
     if (!resolved) {
       process.exitCode = 1;
@@ -88,7 +92,7 @@ rules
     let ok = true;
     for (const dir of resolved) {
       if (multi) console.log(`\n${dir}:`);
-      const result = await buildOne(dir, { output: opts.output });
+      const result = await buildOne(dir, { output: opts.output, pathPrefix: opts.pathPrefix });
       if (!result.ok) {
         ok = false;
         console.error(result.summary);
@@ -197,6 +201,10 @@ rules
   .option('--prune', 'delete live rules that are absent from the local rule set')
   .option('--strict-schemas', 'fail when a name-reused schema has mismatched field definitions')
   .option('--name-suffix <suffix>', 'rename the set to <name>-<suffix> before syncing (e.g. pr-42 previews)')
+  .option(
+    '--path-prefix <prefix>',
+    'prepend a literal prefix to every derived pathPattern (explicit pathPattern: manifests are left verbatim), e.g. /api/hello (spec: workflow implementations)',
+  )
   .option('--api-url <url>', 'API base URL (overrides BFFLESS_API_URL and config apiUrl)')
   .option('--api-key <key>', 'API key (overrides BFFLESS_API_KEY; sent as X-API-Key)')
   .option('--project <idOrName>', 'project UUID, owner/name, or name (overrides config project)')
@@ -208,6 +216,7 @@ rules
         prune?: boolean;
         strictSchemas?: boolean;
         nameSuffix?: string;
+        pathPrefix?: string;
         apiUrl?: string;
         apiKey?: string;
         project?: string;
@@ -242,10 +251,14 @@ rules
       '(compile/auth/network failure).',
   )
   .argument('[dirs...]', 'rule-set directories (defaults to .bffless/config.json ruleSets)')
+  .option(
+    '--path-prefix <prefix>',
+    'prepend a literal prefix to every derived pathPattern (explicit pathPattern: manifests are left verbatim), e.g. /api/hello (spec: workflow implementations)',
+  )
   .option('--api-url <url>', 'API base URL (overrides BFFLESS_API_URL and config apiUrl)')
   .option('--api-key <key>', 'API key (overrides BFFLESS_API_KEY; sent as X-API-Key)')
   .option('--project <idOrName>', 'project UUID, owner/name, or name (overrides config project)')
-  .action(async (dirs: string[], opts: { apiUrl?: string; apiKey?: string; project?: string }) => {
+  .action(async (dirs: string[], opts: { pathPrefix?: string; apiUrl?: string; apiKey?: string; project?: string }) => {
     const resolved = resolveDirsOrReport(dirs);
     if (!resolved) {
       process.exitCode = 2;

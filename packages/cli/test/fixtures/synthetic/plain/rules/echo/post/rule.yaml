@@ -1,0 +1,5 @@
+pipeline:
+  steps:
+    - name: echo
+      handler: function_handler
+      code: ./echo.fn.js

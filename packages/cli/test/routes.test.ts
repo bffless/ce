@@ -5,6 +5,8 @@ import {
   sortRulesBySpecificity,
   deriveOrders,
   defaultPipelineName,
+  applyPathPrefix,
+  assertPathPrefix,
 } from '../src/format/routes.js';
 
 /** Real pathPatterns pulled from packages/cli/test/fixtures/real/*.json (Task 4 brief). */
@@ -332,5 +334,25 @@ describe('deriveOrders', () => {
     const orders = deriveOrders(rules);
     expect(orders.size).toBe(3);
     for (const r of rules) expect(orders.has(r)).toBe(true);
+  });
+});
+
+describe('applyPathPrefix', () => {
+  it('prepends a literal prefix to a derived pattern', () => {
+    expect(applyPathPrefix('/echo', '/api/hello')).toBe('/api/hello/echo');
+    expect(applyPathPrefix('/items/*', '/api/studio-pr-12')).toBe('/api/studio-pr-12/items/*');
+  });
+  it('is the identity without a prefix', () => {
+    expect(applyPathPrefix('/echo', undefined)).toBe('/echo');
+  });
+  it('does not double the slash for a root rule pattern (rules/get.rule.yaml derives "/")', () => {
+    // Naively prepending would yield "/api/hello/", which CE's exact-string matcher never
+    // matches for `GET /api/hello` — the root case must collapse to the bare prefix.
+    expect(applyPathPrefix('/', '/api/hello')).toBe('/api/hello');
+  });
+  it('rejects a prefix that is not a clean absolute literal path', () => {
+    for (const bad of ['api/hello', '/api/hello/', '/api/*', '/a/../b', '', '/', '/./api']) {
+      expect(() => assertPathPrefix(bad)).toThrow(/--path-prefix/);
+    }
   });
 });

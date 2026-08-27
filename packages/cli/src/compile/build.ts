@@ -13,7 +13,15 @@ import {
   parseYamlFile,
 } from '../format/manifest.js';
 import type { RuleManifest } from '../format/manifest.js';
-import { relPathToPattern, deriveOrders, METHOD_STEMS, UUID_RE, defaultPipelineName } from '../format/routes.js';
+import {
+  relPathToPattern,
+  deriveOrders,
+  METHOD_STEMS,
+  UUID_RE,
+  defaultPipelineName,
+  applyPathPrefix,
+  assertPathPrefix,
+} from '../format/routes.js';
 import { applyRuleDefaults } from '../format/defaults.js';
 import { canonicalizeExport } from '../format/canonical.js';
 import { walkSchemaRefs } from '../format/schema-refs.js';
@@ -228,7 +236,16 @@ interface Compiled {
   manifestPath: string;
 }
 
-export async function buildRuleSet(setDir: string, opts?: { exportedAt?: string }): Promise<BuildResult> {
+export async function buildRuleSet(
+  setDir: string,
+  opts?: { exportedAt?: string; pathPrefix?: string },
+): Promise<BuildResult> {
+  // Validate eagerly: applyPathPrefix only runs for rules with a *derived* pathPattern, so a
+  // rule set whose every rule has an explicit `pathPattern:` would otherwise accept a garbage
+  // --path-prefix silently (it's never applied). The inner applyPathPrefix call stays too —
+  // this is belt-and-suspenders, not a replacement.
+  if (opts?.pathPrefix !== undefined) assertPathPrefix(opts.pathPrefix);
+
   const rulesetPath = path.join(setDir, 'ruleset.yaml');
   if (!existsSync(rulesetPath)) throw new Error(`not a rule set (no ruleset.yaml): ${setDir}`);
   const ruleset = parseYamlFile(rulesetPath, RulesetManifestSchema);
@@ -290,7 +307,16 @@ export async function buildRuleSet(setDir: string, opts?: { exportedAt?: string 
       method = stemMethod;
     }
 
-    const pathPattern = manifest.pathPattern ?? relPathToPattern(d.dirSegments);
+    // Order/specificity is derived from this same, final (post-prefix) pathPattern — CE's
+    // request matcher selects the first match by ascending `order` over the *exported*
+    // patterns, so ranking must reflect what CE actually sees. A uniform --path-prefix adds
+    // the same literal segments to every derived pattern's literalCount and shifts every
+    // wildcard index by the same amount, so it provably cannot change the *relative* order
+    // among derived rules — nothing authored is perturbed. What it CAN legitimately change is
+    // a derived rule's rank against an explicit, never-prefixed `pathPattern:` escape hatch
+    // (e.g. a catch-all `/api/hello/*` should rank after the specific prefixed routes it
+    // shares a prefix with) — see docs/reference.md's "Path prefix" section.
+    const pathPattern = manifest.pathPattern ?? applyPathPrefix(relPathToPattern(d.dirSegments), opts?.pathPrefix);
     const pipelineDefaultName = defaultPipelineName(d.dirSegments, d.methodStem);
 
     // headerConfig.add must carry empty-string placeholders only — never real secret values.
@@ -381,14 +407,16 @@ export async function buildRuleSet(setDir: string, opts?: { exportedAt?: string 
     });
   }
 
-  // Duplicate (pathPattern, method) — mirrors the DB unique key.
+  // Duplicate (pathPattern, method) — mirrors the DB unique key. Keyed on the final exported
+  // pathPattern (partial.pathPattern) so a --path-prefix collision (an explicit `pathPattern:`
+  // rule landing on the same string as a prefixed derived one) is still caught.
   const seen = new Map<string, string>();
   for (const c of compiled) {
-    const key = `${c.descriptor.pathPattern} ${c.descriptor.method ?? ''}`;
+    const key = `${c.partial.pathPattern} ${c.descriptor.method ?? ''}`;
     const prior = seen.get(key);
     if (prior) {
       throw new Error(
-        `duplicate rule (${c.descriptor.pathPattern} ${c.descriptor.method ?? 'ANY'}) defined in both ${prior} and ${c.manifestPath}`,
+        `duplicate rule (${c.partial.pathPattern} ${c.descriptor.method ?? 'ANY'}) defined in both ${prior} and ${c.manifestPath}`,
       );
     }
     seen.set(key, c.manifestPath);

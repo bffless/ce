@@ -1,0 +1,4 @@
+pathPattern: /w/hello/*
+targetUrl: https://hello.example.test
+forwardCookies: true
+order: 5

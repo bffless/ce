@@ -228,6 +228,19 @@ describe('rules push', () => {
     expect(result.ok, result.error).toBe(true);
     expect(d.sentBody().rules[0].pipelineConfig?.validators).toEqual([{ type: 'auth_required', config: {} }]);
   });
+
+  it('sends prefixed pathPatterns in the sync body when pathPrefix is set', async () => {
+    const d = pushDeps(syncResponse());
+    const result = await runPushOne(
+      path.resolve('test/fixtures/synthetic/plain'),
+      { pathPrefix: '/api/hello' },
+      '/nowhere',
+      d,
+    );
+    expect(result.ok, result.error).toBe(true);
+    const body = d.sentBody();
+    expect(body.rules.map((r) => r.pathPattern).sort()).toEqual(['/api/hello/echo', '/api/hello/job', '/w/hello/*']);
+  });
 });
 
 describe('applyNameSuffix', () => {
