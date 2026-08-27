@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3](https://github.com/bffless/ce/compare/bffless-v0.3.2...bffless-v0.3.3) (2026-08-27)
+
+
+### Added
+
+* **cli:** --path-prefix for rules build, push and diff ([#704](https://github.com/bffless/ce/issues/704)) ([bbc63cd](https://github.com/bffless/ce/commit/bbc63cdc43dc347efd49a3dba4e468e0454cae4c))
+
 ## [0.3.2](https://github.com/bffless/ce/compare/bffless-v0.3.1...bffless-v0.3.2) (2026-08-05)
 
 
