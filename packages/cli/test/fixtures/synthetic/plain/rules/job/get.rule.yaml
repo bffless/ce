@@ -1,0 +1,8 @@
+pipeline:
+  steps:
+    - name: respond
+      handler: response_handler
+      config:
+        body: '{}'
+        status: 200
+        contentType: application/json

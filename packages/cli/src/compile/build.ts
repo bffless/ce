@@ -13,7 +13,14 @@ import {
   parseYamlFile,
 } from '../format/manifest.js';
 import type { RuleManifest } from '../format/manifest.js';
-import { relPathToPattern, deriveOrders, METHOD_STEMS, UUID_RE, defaultPipelineName } from '../format/routes.js';
+import {
+  relPathToPattern,
+  deriveOrders,
+  METHOD_STEMS,
+  UUID_RE,
+  defaultPipelineName,
+  applyPathPrefix,
+} from '../format/routes.js';
 import { applyRuleDefaults } from '../format/defaults.js';
 import { canonicalizeExport } from '../format/canonical.js';
 import { walkSchemaRefs } from '../format/schema-refs.js';
@@ -228,7 +235,10 @@ interface Compiled {
   manifestPath: string;
 }
 
-export async function buildRuleSet(setDir: string, opts?: { exportedAt?: string }): Promise<BuildResult> {
+export async function buildRuleSet(
+  setDir: string,
+  opts?: { exportedAt?: string; pathPrefix?: string },
+): Promise<BuildResult> {
   const rulesetPath = path.join(setDir, 'ruleset.yaml');
   if (!existsSync(rulesetPath)) throw new Error(`not a rule set (no ruleset.yaml): ${setDir}`);
   const ruleset = parseYamlFile(rulesetPath, RulesetManifestSchema);
@@ -290,7 +300,12 @@ export async function buildRuleSet(setDir: string, opts?: { exportedAt?: string 
       method = stemMethod;
     }
 
-    const pathPattern = manifest.pathPattern ?? relPathToPattern(d.dirSegments);
+    // Derive specificity/order from the pre-prefix pattern (`orderPattern`) so a --path-prefix
+    // mount decision never perturbs authored route priority — it just decorates the exported
+    // pathPattern. An explicit `manifest.pathPattern` is never prefixed, so it's the same value
+    // either way.
+    const orderPattern = manifest.pathPattern ?? relPathToPattern(d.dirSegments);
+    const pathPattern = manifest.pathPattern ?? applyPathPrefix(orderPattern, opts?.pathPrefix);
     const pipelineDefaultName = defaultPipelineName(d.dirSegments, d.methodStem);
 
     // headerConfig.add must carry empty-string placeholders only — never real secret values.
@@ -375,20 +390,22 @@ export async function buildRuleSet(setDir: string, opts?: { exportedAt?: string 
 
     compiled.push({
       partial,
-      descriptor: { pathPattern, method },
+      descriptor: { pathPattern: orderPattern, method },
       explicitOrder: manifest.order,
       manifestPath: d.manifestPath,
     });
   }
 
-  // Duplicate (pathPattern, method) — mirrors the DB unique key.
+  // Duplicate (pathPattern, method) — mirrors the DB unique key. Uses the final
+  // exported pathPattern (partial.pathPattern), not the order-derivation descriptor, so a
+  // --path-prefix that happens to collide two rules is still caught.
   const seen = new Map<string, string>();
   for (const c of compiled) {
-    const key = `${c.descriptor.pathPattern} ${c.descriptor.method ?? ''}`;
+    const key = `${c.partial.pathPattern} ${c.descriptor.method ?? ''}`;
     const prior = seen.get(key);
     if (prior) {
       throw new Error(
-        `duplicate rule (${c.descriptor.pathPattern} ${c.descriptor.method ?? 'ANY'}) defined in both ${prior} and ${c.manifestPath}`,
+        `duplicate rule (${c.partial.pathPattern} ${c.descriptor.method ?? 'ANY'}) defined in both ${prior} and ${c.manifestPath}`,
       );
     }
     seen.set(key, c.manifestPath);

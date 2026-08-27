@@ -155,3 +155,25 @@ export function deriveOrders<T extends { pathPattern: string; method?: string }>
   sorted.forEach((rule, position) => map.set(rule, position));
   return map;
 }
+
+const PATH_PREFIX_RE = /^\/[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/;
+
+/** `--path-prefix`: a literal, absolute, `..`/`*`-free path with no trailing slash. */
+export function assertPathPrefix(prefix: string): void {
+  if (!PATH_PREFIX_RE.test(prefix) || prefix.split('/').includes('..')) {
+    throw new Error(
+      `--path-prefix must start with "/", contain only literal segments and end without "/" (got ${JSON.stringify(prefix)})`,
+    );
+  }
+}
+
+/**
+ * Prepend `prefix` to a *derived* pattern (`/echo` → `/api/hello/echo`). Explicit `pathPattern:`
+ * manifests are never passed through here — the escape hatch means "exactly this pattern", which
+ * is how a publish-time forwarder (`/w/<alias>/*`) rides inside a prefixed set (spec 06).
+ */
+export function applyPathPrefix(pattern: string, prefix?: string): string {
+  if (!prefix) return pattern;
+  assertPathPrefix(prefix);
+  return `${prefix}${pattern}`;
+}

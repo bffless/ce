@@ -8,6 +8,7 @@ import type { RuleSetExport } from '../src/format/types.js';
 
 const basicDir = path.resolve('test/fixtures/synthetic/basic');
 const tsHandlersDir = path.resolve('test/fixtures/synthetic/ts-handlers');
+const plainDir = path.resolve('test/fixtures/synthetic/plain');
 const EXPORTED_AT = '2026-07-11T00:00:00.000Z';
 
 /** Some restricted environments (e.g. certain CI/container setups) can't create symlinks.
@@ -335,5 +336,23 @@ describe('buildRuleSet', () => {
     const res = await buildRuleSet(dir, { exportedAt: EXPORTED_AT });
     const step = res.export.rules[0].pipelineConfig?.steps[0];
     expect(step?.config.payload).toBe('export const x = 1; // not bundled, just inlined verbatim\n');
+  });
+});
+
+describe('buildRuleSet with pathPrefix', () => {
+  it('prefixes every derived pathPattern and leaves explicit ones verbatim', async () => {
+    const { export: out } = await buildRuleSet(plainDir, { exportedAt: EXPORTED_AT, pathPrefix: '/api/hello' });
+    const patterns = out.rules.map((r) => `${r.method ?? 'ANY'} ${r.pathPattern}`).sort();
+    expect(patterns).toEqual(['GET /api/hello/job', 'GET /w/hello/*', 'POST /api/hello/echo']);
+  });
+  it('keeps pipeline default names prefix-free', async () => {
+    const { export: out } = await buildRuleSet(plainDir, { exportedAt: EXPORTED_AT, pathPrefix: '/api/hello' });
+    const echo = out.rules.find((r) => r.pathPattern === '/api/hello/echo')!;
+    expect(echo.pipelineConfig?.name).toBe('echo POST');
+  });
+  it('derives the same order with and without a prefix', async () => {
+    const a = await buildRuleSet(plainDir, { exportedAt: EXPORTED_AT });
+    const b = await buildRuleSet(plainDir, { exportedAt: EXPORTED_AT, pathPrefix: '/api/hello' });
+    expect(a.export.rules.map((r) => r.order)).toEqual(b.export.rules.map((r) => r.order));
   });
 });
