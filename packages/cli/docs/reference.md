@@ -448,10 +448,23 @@ matching) is a `rules build` warning, not an error.
 
 `rules build|push|diff --path-prefix /api/hello` prepends the prefix to every **derived** `pathPattern`
 (`rules/echo/post/` → `POST /api/hello/echo`). A manifest with an explicit `pathPattern:` is left verbatim —
-that is how a generated `/w/hello/*` forwarder lives in the same set. Pipeline default names and the
-derived `order:` are unaffected (a uniform prefix keeps specificity order). Written for BFFless Workflow
-implementations, which author prefix-free rules and are published under one alias-named prefix per
-deploy (`bffless/publish-workflow`); `rules diff` needs the same flag or it reports permanent drift.
+that is how a generated `/w/hello/*` forwarder lives in the same set. A root rule (`rules/get.rule.yaml`,
+which derives `/`) becomes the bare prefix itself (`/api/hello`, not `/api/hello/`) so it still matches
+CE's exact-string matcher. Pipeline default names stay prefix-free.
+
+`order:` is derived from the *exported* (post-prefix) `pathPattern`, since CE's request matcher selects
+the first match by ascending `order` over what it actually sees on the wire. In practice: relative order
+among derived rules is unchanged by a uniform prefix (it adds the same segments to every one of them),
+but an explicit `pathPattern:` rule ranks against the *prefixed* patterns — so an explicit catch-all
+(e.g. `pathPattern: /api/hello/*`) published under `--path-prefix /api/hello` correctly orders *after*
+the specific derived routes it shares that prefix with, as intended, rather than swallowing them.
+
+The prefix applies to every rule set resolved in one invocation. Changing the prefix of an
+already-published set orphans the old, now-unreferenced `(pathPattern, method)` rules — sync identity is
+`(pathPattern, method)` — so pass `--prune` when republishing under a new prefix. `rules pull` and
+`rules dev` have no `--path-prefix`; only `build`, `push`, and `diff` take it, and `diff` needs the same
+flag passed or it reports permanent drift. Written for BFFless Workflow implementations, which author
+prefix-free rules and are published under one alias-named prefix per deploy (`bffless/publish-workflow`).
 
 ## `runHandler` — Vitest usage
 

@@ -350,9 +350,60 @@ describe('buildRuleSet with pathPrefix', () => {
     const echo = out.rules.find((r) => r.pathPattern === '/api/hello/echo')!;
     expect(echo.pipelineConfig?.name).toBe('echo POST');
   });
-  it('derives the same order with and without a prefix', async () => {
+  it('derives the same relative order among derived rules with and without a prefix', async () => {
+    // Order is derived from the final (post-prefix) pathPattern — CE's matcher selects by
+    // ascending `order` over what it actually sees on the wire. A uniform prefix adds the same
+    // literal segments to every derived rule's literalCount, so their RELATIVE order can't
+    // change even though the absolute numbers can shift (see "an explicit catch-all..." below
+    // for why the numbers legitimately do shift). Assert relative order via pipelineConfig.name
+    // (prefix-free) rather than comparing raw order numbers.
     const a = await buildRuleSet(plainDir, { exportedAt: EXPORTED_AT });
     const b = await buildRuleSet(plainDir, { exportedAt: EXPORTED_AT, pathPrefix: '/api/hello' });
-    expect(a.export.rules.map((r) => r.order)).toEqual(b.export.rules.map((r) => r.order));
+    const derivedNamesByOrder = (out: RuleSetExport) =>
+      out.rules
+        .filter((r) => r.pipelineConfig !== undefined) // excludes the /w/hello/* forwarder (no pipeline)
+        .slice()
+        .sort((x, y) => (x.order ?? 0) - (y.order ?? 0))
+        .map((r) => r.pipelineConfig!.name);
+    expect(derivedNamesByOrder(a.export)).toEqual(derivedNamesByOrder(b.export));
+  });
+
+  it('an explicit catch-all pathPattern ranks after the specific prefixed derived route it shares a prefix with', async () => {
+    const dir = scratchSet({
+      'ruleset.yaml': 'name: overlap\n',
+      'rules/echo/post/rule.yaml':
+        'pipeline:\n  steps:\n    - name: respond\n      handler: response_handler\n      config:\n        body: \'{}\'\n        status: 200\n',
+      'rules/_custom/catchall/any.rule.yaml':
+        'pathPattern: /api/hello/*\ntargetUrl: https://catchall.example.test\n',
+    });
+    const { export: out } = await buildRuleSet(dir, { exportedAt: EXPORTED_AT, pathPrefix: '/api/hello' });
+    const echo = out.rules.find((r) => r.pathPattern === '/api/hello/echo')!;
+    const catchall = out.rules.find((r) => r.pathPattern === '/api/hello/*')!;
+    expect(echo.order).toBeLessThan(catchall.order!);
+  });
+
+  it('an explicit pathPattern colliding with a prefixed derived pattern is a duplicate-rule error', async () => {
+    const dir = scratchSet({
+      'ruleset.yaml': 'name: collide\n',
+      'rules/echo/post/rule.yaml':
+        'pipeline:\n  steps:\n    - name: respond\n      handler: response_handler\n      config:\n        body: \'{}\'\n        status: 200\n',
+      'rules/_custom/explicit/post.rule.yaml':
+        'pathPattern: /api/hello/echo\ntargetUrl: https://explicit.example.test\n',
+    });
+    await expect(buildRuleSet(dir, { exportedAt: EXPORTED_AT, pathPrefix: '/api/hello' })).rejects.toThrow(
+      /duplicate rule/,
+    );
+  });
+
+  it('validates --path-prefix eagerly even when every rule has an explicit pathPattern', async () => {
+    // applyPathPrefix only runs for a *derived* pathPattern, so a set whose rules are all
+    // explicit would otherwise silently accept a garbage prefix (it's never applied).
+    const dir = scratchSet({
+      'ruleset.yaml': 'name: explicit-only\n',
+      'rules/_custom/only/get.rule.yaml': 'pathPattern: /w/hello/*\ntargetUrl: https://hello.example.test\n',
+    });
+    await expect(buildRuleSet(dir, { exportedAt: EXPORTED_AT, pathPrefix: 'not-absolute' })).rejects.toThrow(
+      /--path-prefix/,
+    );
   });
 });

@@ -158,9 +158,10 @@ export function deriveOrders<T extends { pathPattern: string; method?: string }>
 
 const PATH_PREFIX_RE = /^\/[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/;
 
-/** `--path-prefix`: a literal, absolute, `..`/`*`-free path with no trailing slash. */
+/** `--path-prefix`: a literal, absolute, `.`/`..`/`*`-free path with no trailing slash. */
 export function assertPathPrefix(prefix: string): void {
-  if (!PATH_PREFIX_RE.test(prefix) || prefix.split('/').includes('..')) {
+  const hasDotSegment = prefix.split('/').some((seg) => seg === '.' || seg === '..');
+  if (!PATH_PREFIX_RE.test(prefix) || hasDotSegment) {
     throw new Error(
       `--path-prefix must start with "/", contain only literal segments and end without "/" (got ${JSON.stringify(prefix)})`,
     );
@@ -171,9 +172,13 @@ export function assertPathPrefix(prefix: string): void {
  * Prepend `prefix` to a *derived* pattern (`/echo` → `/api/hello/echo`). Explicit `pathPattern:`
  * manifests are never passed through here — the escape hatch means "exactly this pattern", which
  * is how a publish-time forwarder (`/w/<alias>/*`) rides inside a prefixed set (spec 06).
+ *
+ * A root rule derives to `/` (e.g. `rules/get.rule.yaml`); prepending naively would yield a
+ * trailing-slash pattern (`/api/hello/`) that CE's exact-string matcher never matches for
+ * `GET /api/hello`, so the root case returns the bare prefix instead.
  */
 export function applyPathPrefix(pattern: string, prefix?: string): string {
   if (!prefix) return pattern;
   assertPathPrefix(prefix);
-  return `${prefix}${pattern}`;
+  return pattern === '/' ? prefix : `${prefix}${pattern}`;
 }

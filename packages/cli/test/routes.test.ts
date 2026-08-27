@@ -345,8 +345,13 @@ describe('applyPathPrefix', () => {
   it('is the identity without a prefix', () => {
     expect(applyPathPrefix('/echo', undefined)).toBe('/echo');
   });
+  it('does not double the slash for a root rule pattern (rules/get.rule.yaml derives "/")', () => {
+    // Naively prepending would yield "/api/hello/", which CE's exact-string matcher never
+    // matches for `GET /api/hello` — the root case must collapse to the bare prefix.
+    expect(applyPathPrefix('/', '/api/hello')).toBe('/api/hello');
+  });
   it('rejects a prefix that is not a clean absolute literal path', () => {
-    for (const bad of ['api/hello', '/api/hello/', '/api/*', '/a/../b', '', '/']) {
+    for (const bad of ['api/hello', '/api/hello/', '/api/*', '/a/../b', '', '/', '/./api']) {
       expect(() => assertPathPrefix(bad)).toThrow(/--path-prefix/);
     }
   });
