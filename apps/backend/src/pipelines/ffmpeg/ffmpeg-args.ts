@@ -228,6 +228,11 @@ const OVERLAY_MARGIN = 16;
 /** Font height as a fraction of frame height, matching the original `fontsize=h/12`. */
 const DEFAULT_OVERLAY_SIZE = 1 / 12;
 
+/** Smallest font we let a caller ask for — ~4px at 720p, and small enough that ffmpeg still rounds it to a drawable size. */
+const MIN_OVERLAY_SIZE = 0.005;
+/** Largest — a font taller than its own frame is a config mistake, not a request. */
+const MAX_OVERLAY_SIZE = 1;
+
 /**
  * The `x`/`y` expression pair CE emits for each position. `tw`/`th` are
  * drawtext's rendered text width/height, `w`/`h` the frame's.
@@ -276,26 +281,57 @@ function overlayColor(color: string | undefined): string {
  * `h*0.08333333333333333` were measured to yield the identical integer on
  * ffmpeg 7.0.2 (see the task 17a' report).
  *
+ * DO NOT SHORTEN THE EMITTED LITERAL. `String(size)` gives JavaScript's
+ * shortest round-tripping decimal, and every digit of it is load-bearing:
+ * rounding the default to 11 significant figures
+ * (`h*8.3333333333e-2`) was MEASURED through the same evaluator to give 59
+ * where `h/12` gives 60 at height 720 — a one-pixel-smaller font in every
+ * frame we render. A `.toFixed(6)`-style tidy-up here reads like cosmetics
+ * and is a silent visual regression.
+ *
  * Out of range THROWS rather than clamping, so a bad `draw` block surfaces
  * as one config error instead of silently rendering at a size nobody asked
- * for. The range also keeps the interpolation safe: a finite positive
- * `number` stringifies to digits, `.`, and possibly `e`/`-` — never a filter
+ * for. The floor is part of that promise, not fussiness: `size: 1e-7` is a
+ * perfectly finite fraction that ffmpeg then rejects at RUN time with a font
+ * size of 0, turning the config error we wanted into the runtime failure we
+ * were avoiding. `MIN_OVERLAY_SIZE` is ~4px at 720p, below which nothing is
+ * legible anyway.
+ *
+ * The range also keeps the interpolation safe: a finite positive `number`
+ * stringifies to digits, `.`, and possibly `e`/`-` — never a filter
  * metacharacter — which is why this value needs no escaping.
  */
 function overlayFontSize(size: number | undefined): string {
   if (size === undefined) return String(DEFAULT_OVERLAY_SIZE);
-  if (typeof size !== 'number' || !Number.isFinite(size) || size <= 0 || size > 1) {
+  if (
+    typeof size !== 'number' ||
+    !Number.isFinite(size) ||
+    size < MIN_OVERLAY_SIZE ||
+    size > MAX_OVERLAY_SIZE
+  ) {
     throw new Error(
-      `overlay size must be a fraction of the frame height in (0, 1], got: ${String(size)}`,
+      `overlay size must be a fraction of the frame height between ${MIN_OVERLAY_SIZE} and ${MAX_OVERLAY_SIZE}, got: ${String(size)}`,
     );
   }
   return String(size);
 }
 
-/** Resolve a position to its expression pair; an unknown one throws rather than emitting an empty `x=`/`y=`. */
+/**
+ * Resolve a position to its expression pair; anything not in the table throws
+ * rather than emitting an empty `x=`/`y=`.
+ *
+ * The `typeof` test is what actually closes the enum. `hasOwnProperty`
+ * string-coerces its key, so without it `['top-left']` resolves to the
+ * `'top-left'` row. That was never dangerous — a coerced key still has to
+ * name one of CE's OWN rows, so the emitted expression is always ours — but
+ * an enum that quietly accepts a one-element array is not closed. Only
+ * `undefined` defaults; an explicitly-written-but-empty `position:` (which
+ * YAML hands us as `null`) is an authoring slip and is reported as one,
+ * exactly like every other wrong-typed field in the block.
+ */
 function overlayPlacement(position: OverlayPosition | undefined): { x: string; y: string } {
-  const key = position ?? 'bottom-right';
-  if (!Object.prototype.hasOwnProperty.call(OVERLAY_PLACEMENT, key)) {
+  const key = position === undefined ? 'bottom-right' : position;
+  if (typeof key !== 'string' || !Object.prototype.hasOwnProperty.call(OVERLAY_PLACEMENT, key)) {
     throw new Error(
       `unknown overlay position: ${JSON.stringify(key)} (expected one of ${Object.keys(OVERLAY_PLACEMENT).join(', ')})`,
     );
@@ -340,9 +376,29 @@ export function buildFrameArgs(o: {
   quality: number;
   overlay?: FrameOverlay;
 }): string[] {
+  // `height` is interpolated WITHOUT escaping, unlike everything in `overlay`.
+  // That asymmetry is deliberate, not an oversight: `height` is a dimension
+  // the calling handler has already coerced to a number
+  // (`ffmpeg.handler.ts`'s `knobs()`, which coerces it via
+  // `knob(config.height, 'height', 'integer')` — the right place for a value
+  // that is arithmetic rather than text), whereas `overlay` is prose
+  // and colours a pipeline author types verbatim. If `height` ever becomes
+  // caller-supplied without that upstream coercion, it needs a fence here
+  // too — `buildFrameArgs({ height: '720,hflip' })` would otherwise chain a
+  // second filter.
   const filters = [`scale=-2:${o.height}`];
   const overlay = o.overlay;
   if (overlay !== undefined) {
+    // `draw:` with an empty body is `null`, not `undefined`, in YAML — so
+    // this guard is a real authoring slip, not a defensive nicety. It has to
+    // be an Error like every other bad-config case: a raw TypeError out of
+    // the escape below would slip past the caller's typed-config-error
+    // mapping and surface as a generic handler failure.
+    if (typeof overlay !== 'object' || overlay === null || Array.isArray(overlay)) {
+      throw new Error(
+        `overlay must be an object, got: ${overlay === null ? 'null' : typeof overlay}`,
+      );
+    }
     if (typeof overlay.text !== 'string') {
       throw new Error(`overlay text must be a string, got: ${typeof overlay.text}`);
     }
@@ -353,6 +409,16 @@ export function buildFrameArgs(o: {
       `fontsize=h*${overlayFontSize(overlay.size)}`,
       `fontcolor=${overlayColor(overlay.color)}`,
     ];
+    // Deliberately NOT `background !== false`. YAML and JSON pipeline config
+    // is exactly where the string "false" comes from, and a truthiness test
+    // would draw the box anyway — the same silent-wrong-image bug
+    // `ffmpeg.handler.ts` already had to fix for `label`. A wrong frame with
+    // no error is worse than a config error.
+    if (overlay.background !== undefined && typeof overlay.background !== 'boolean') {
+      throw new Error(
+        `overlay background must be true or false, got: ${JSON.stringify(overlay.background)}`,
+      );
+    }
     if (overlay.background !== false) {
       options.push('box=1', 'boxcolor=black@0.6', 'boxborderw=8');
     }

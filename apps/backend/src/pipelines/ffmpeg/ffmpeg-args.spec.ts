@@ -9,6 +9,9 @@ import {
 } from './ffmpeg-args';
 import type { FrameOverlay, OverlayPosition } from './ffmpeg-args';
 
+/** Mirrors MIN_OVERLAY_SIZE in ffmpeg-args.ts — see the floor test below. */
+const MIN_SIZE = 0.005;
+
 const argAfter = (args: string[], flag: string) => args[args.indexOf(flag) + 1];
 
 describe('buildExtractAudioArgs', () => {
@@ -291,6 +294,24 @@ describe('buildFrameArgs — overlay position (enum, never a caller expression)'
     // the x=/y= fields, so a coordinate expression is not a position either.
     expect(() => vf({ text: 'T', position: 'w-tw-16' as OverlayPosition })).toThrow(/position/i);
   });
+
+  /**
+   * A bare `hasOwnProperty` lookup string-coerces its key, so `['top-left']`
+   * used to resolve to the `'top-left'` row. Never dangerous — the coerced
+   * key still has to name one of CE's own rows, so the emitted x=/y= was
+   * always ours — but the enum is only genuinely closed if the value is a
+   * string in the first place.
+   */
+  it.each([
+    ['an array', ['top-left']],
+    ['null', null],
+    ['a number', 0],
+    ['an object', {}],
+  ])('rejects a position that is %s', (_label, position) => {
+    expect(() => vf({ text: 'T', position: position as unknown as OverlayPosition })).toThrow(
+      /position/i,
+    );
+  });
 });
 
 describe('buildFrameArgs — overlay background', () => {
@@ -314,6 +335,23 @@ describe('buildFrameArgs — overlay background', () => {
     expect(vf({ text: 'T' })).toContain(':box=1:boxcolor=black@0.6:boxborderw=8:');
     expect(vf({ text: 'T', background: true })).toBe(vf({ text: 'T' }));
   });
+
+  /**
+   * The string "false" is what YAML/JSON pipeline config actually delivers,
+   * and a plain `!== false` test would treat it as ON — the exact bug
+   * `ffmpeg.handler.ts` already had to fix for `label` ("`label: 'false'`
+   * must turn labels OFF rather than being silently truthy"). A wrong image
+   * with no error is worse than a config error, and `text`/`color`/`size`
+   * all throw on a wrong type, so this does too.
+   */
+  it.each(['false', 'true', 0, 1, null, '', 'yes'])(
+    'rejects the non-boolean background %p instead of silently drawing the box',
+    (background) => {
+      expect(() => vf({ text: 'T', background: background as unknown as boolean })).toThrow(
+        /background/i,
+      );
+    },
+  );
 });
 
 describe('buildFrameArgs — overlay color (pattern-validated, Ruling R98)', () => {
@@ -386,7 +424,32 @@ describe('buildFrameArgs — overlay size (fraction of frame height)', () => {
   it('multiplies the frame height by the fraction', () => {
     expect(vf(0.25)).toContain('fontsize=h*0.25:');
     expect(vf(1)).toContain('fontsize=h*1:');
-    expect(vf(0.001)).toContain('fontsize=h*0.001:');
+  });
+
+  /**
+   * Pins the FULL shortest-round-tripping decimal for an explicit size, the
+   * same property the default-overlay test pins for 1/12. Every digit is
+   * load-bearing: rounding 1/12 to 11 significant figures was measured
+   * through ffmpeg's own evaluator to give a 59px font where h/12 gives 60px
+   * at height 720. Without a size that actually needs the digits, a
+   * `.toPrecision()` "tidy-up" passes the rest of this suite untouched.
+   */
+  it('emits the full shortest-round-tripping decimal, never a shortened one', () => {
+    expect(vf(1 / 3)).toContain('fontsize=h*0.3333333333333333:');
+    expect(vf(1 / 12)).toContain('fontsize=h*0.08333333333333333:');
+    expect(vf(0.123456789012345)).toContain('fontsize=h*0.123456789012345:');
+  });
+
+  /**
+   * The floor exists so that "out of range" stays a CONFIG error the author
+   * can fix. Without it, `size: 1e-7` is accepted here and then fails inside
+   * ffmpeg at run time with a font size of 0 — which is the failure mode the
+   * throw was chosen to avoid in the first place.
+   */
+  it('accepts the floor and rejects just under it', () => {
+    expect(vf(MIN_SIZE)).toContain(`fontsize=h*${MIN_SIZE}:`);
+    expect(() => vf(0.0049)).toThrow(/size/i);
+    expect(() => vf(1e-7)).toThrow(/size/i);
   });
 
   /**
@@ -396,9 +459,12 @@ describe('buildFrameArgs — overlay size (fraction of frame height)', () => {
    * 0/negative/NaN must never reach `fontsize=`: `fontsize=h*0` is a runtime
    * ffmpeg failure and `fontsize=h*NaN` an unrunnable argv.
    */
-  it.each([0, -1, -0.5, NaN, Infinity, -Infinity, 1.0001, 2, 100])('rejects %s', (size) => {
-    expect(() => vf(size)).toThrow(/size/i);
-  });
+  it.each([0, -1, -0.5, NaN, Infinity, -Infinity, 1.0001, 2, 100, 1e-7, 0.001, 0.0049])(
+    'rejects %s',
+    (size) => {
+      expect(() => vf(size)).toThrow(/size/i);
+    },
+  );
 
   it('rejects a non-number size', () => {
     expect(() => vf('0.5' as unknown as number)).toThrow(/size/i);
@@ -444,6 +510,12 @@ describe('buildFrameArgs — the text fence (Ruling R98)', () => {
     // parser reads text back as exactly "A'B"; the classic shell-style 'a'\''b'
     // requote trick FAILS under this two-pass parser (reads back as "ab").
     expect(vf("A'B")).toBe(`scale=-2:720,drawtext=text=A\\\\\\'B${TAIL}`);
+  });
+
+  it('round-trips two apostrophes in one text', () => {
+    // parser reads text back as exactly "A'B'C" — one quote and a pair behave
+    // the same, so the fence has no even/odd quote-pairing hole.
+    expect(vf("A'B'C")).toBe(`scale=-2:720,drawtext=text=A\\\\\\'B\\\\\\'C${TAIL}`);
   });
 
   it('round-trips quote + colon + backslash together', () => {
@@ -497,6 +569,30 @@ describe('buildFrameArgs — the text fence (Ruling R98)', () => {
 
   it('accepts the empty string (parser reads it back as an empty value)', () => {
     expect(vf('')).toBe(`scale=-2:720,drawtext=text=${TAIL}`);
+  });
+
+  /**
+   * `draw:` with an empty body is `null` in YAML, not `undefined`, so this is
+   * the shape a real authoring slip produces. It must be an Error like every
+   * other bad-config case — a raw TypeError from inside the escape would slip
+   * past the typed-config-error mapping and surface as a generic failure.
+   */
+  it.each([
+    ['null', null],
+    ['a string', 'bottom-right'],
+    ['a number', 12],
+    ['an array', ['text']],
+  ])('rejects an overlay that is %s rather than an object', (_label, overlay) => {
+    expect(() =>
+      buildFrameArgs({
+        input: 'i',
+        output: 'o.jpg',
+        time: 1,
+        height: 720,
+        quality: 3,
+        overlay: overlay as unknown as FrameOverlay,
+      }),
+    ).toThrow(/overlay/i);
   });
 
   it('rejects a non-string text rather than throwing a TypeError deep in the escape', () => {
