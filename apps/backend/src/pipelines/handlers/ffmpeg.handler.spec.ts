@@ -12,7 +12,7 @@ import { ExpressionEvaluator } from '../execution/expression-evaluator';
 import { EMPTY_TIMINGS, type FfmpegJob } from '../ffmpeg/executor/ffmpeg-executor.interface';
 import type { PipelineContext } from '../execution/pipeline-context.interface';
 import type { PipelineStep } from '../types';
-import { FfmpegHandler } from './ffmpeg.handler';
+import { FfmpegHandler, MAX_STILLS_PER_JOB } from './ffmpeg.handler';
 
 function createHandler(
   overrides: {
@@ -718,7 +718,8 @@ describe('frames', () => {
   };
 
   it('runs one command per time and returns one frame per time under the prefix', async () => {
-    const { handler, runner } = setup();
+    const created = setup();
+    const { handler, runner } = created;
     const result = await handler.execute(context(), framesStep());
     expect(result.success).toBe(true);
     const out = result.output as unknown as FramesOutput;
@@ -733,6 +734,14 @@ describe('frames', () => {
     expect(out.frames.map((f) => f.time)).toEqual([1, 2.5, 3]);
     expect(out.frames.every((f) => f.content_type === 'image/jpeg')).toBe(true);
     expect(out.frames.every((f) => typeof f.size === 'number')).toBe(true);
+    // Nothing but the stills is ever DECLARED as a job output, so nothing else
+    // is uploaded — a regression that declared the cells/scratch files while
+    // leaving argv bare would keep every argv assertion green and still ship
+    // junk objects into the bucket.
+    expect(created.storageAdapter.upload).toHaveBeenCalledTimes(3);
+    expect(created.storageAdapter.upload.mock.calls.map((c) => c[1])).toEqual(
+      out.frames.map((f) => f.storage_path),
+    );
     // Clean stills: `frames` never burns a label in.
     expect(argvs(runner).some((a) => a.includes('drawtext'))).toBe(false);
     expect(argvs(runner)[0]).toContain('scale=-2:720');
@@ -793,6 +802,50 @@ describe('frames', () => {
     expect(result.error?.code).toBe('INVALID_OUTPUT_PATH');
     expect(runner.run).not.toHaveBeenCalled();
   });
+
+  /**
+   * `times` is expression-resolvable (`request.body.times` is an advertised
+   * form), and each entry is a sequential ffmpeg spawn whose still piles up in
+   * scratch before anything is uploaded — so its length is a resource decision
+   * made by untrusted input unless something caps it.
+   */
+  it('refuses more stills than MAX_STILLS_PER_JOB before spawning anything', async () => {
+    const { handler, runner } = setup();
+    const times = Array.from({ length: MAX_STILLS_PER_JOB + 1 }, (_, i) => i);
+    const result = await handler.execute(context(), framesStep({ times }));
+    expect(result.error?.code).toBe('INVALID_TIMES');
+    expect(result.error?.message).toContain(String(MAX_STILLS_PER_JOB));
+    expect(result.error?.message).toContain(String(MAX_STILLS_PER_JOB + 1));
+    expect(runner.run).not.toHaveBeenCalled();
+    // The cap itself is generous — the planner's own maximum is 120.
+    expect(MAX_STILLS_PER_JOB).toBeGreaterThan(120);
+  });
+
+  /**
+   * The op's most likely real-world failure: `times` is exactly the field a
+   * person or an LLM hand-writes, and ffmpeg writes NO file at all for a seek
+   * past the end of the source. Without help that surfaces as a bare ENOENT
+   * naming a scratch path nobody has heard of.
+   */
+  it('names the frame ffmpeg never wrote when a time is past the end of the source', async () => {
+    const { handler, runner, storageAdapter } = createHandler();
+    storageAdapter.download.mockResolvedValue(Buffer.from('mp4'));
+    runner.run.mockImplementation(async ({ args, cwd }: { args: string[]; cwd: string }) => {
+      const name = args[args.length - 1].split('/').pop();
+      // Everything but frame-02 lands: that seek was past EOF.
+      if (name !== 'frame-02.jpg') await fsp.writeFile(`${cwd}/${name}`, 'jpeg-bytes');
+      return { stdout: '', stderrTail: '' };
+    });
+    const result = await handler.execute(context(), framesStep({ times: [1, 99999, 3] }));
+    expect(result.success).toBe(false);
+    expect(result.error?.code).toBe('FFMPEG_FAILED');
+    expect(result.error?.message).toContain('frames');
+    expect(result.error?.message).toContain('frame-02.jpg');
+    expect(result.error?.message).toMatch(/past the end of the source/);
+    // Documented consequence: the stills captured BEFORE it are already in the
+    // bucket. A run's outputPrefix is disposable, not a directory to append to.
+    expect(storageAdapter.upload).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('contact_sheet', () => {
@@ -822,7 +875,7 @@ describe('contact_sheet', () => {
   };
 
   it('plans 120 cells into 10 labelled sheets and uploads only the sheets', async () => {
-    const { handler, runner, scratch } = setup();
+    const { handler, runner, scratch, storageAdapter } = setup();
     const result = await handler.execute(context(), sheetStep());
     expect(result.success).toBe(true);
     const out = result.output as unknown as SheetsOutput;
@@ -844,6 +897,12 @@ describe('contact_sheet', () => {
     });
     expect(out.sheets[0].times).toHaveLength(12);
     expect(out.sheets[9].storage_path).toBe('o/r/uploads/studio/sheets/sheet-10.jpg');
+    // Only the SHEETS are declared as job outputs, so the 120 cells sitting in
+    // the same scratch dir are never uploaded.
+    expect(storageAdapter.upload).toHaveBeenCalledTimes(10);
+    expect(
+      storageAdapter.upload.mock.calls.every((c) => /\/sheet-\d+\.jpg$/.test(c[1] as string)),
+    ).toBe(true);
     // Every cell burns the clock in; the tiles never do.
     const cells = argvs(runner).slice(0, 120);
     expect(cells.every((a) => a.includes('drawtext'))).toBe(true);
@@ -890,6 +949,39 @@ describe('contact_sheet', () => {
     expect(result.success).toBe(true);
     expect((result.output as unknown as SheetsOutput).labelled).toBe(false);
     expect(argvs(runner).some((a) => a.includes('drawtext'))).toBe(false);
+  });
+
+  it('treats the STRING forms of label as booleans (config arrives as YAML/JSON)', async () => {
+    const { handler, runner } = setup();
+    const result = await handler.execute(
+      context(),
+      sheetStep({ label: 'false', duration: 60, maxSheets: 1 }),
+    );
+    expect(result.success).toBe(true);
+    expect((result.output as unknown as SheetsOutput).labelled).toBe(false);
+    expect(argvs(runner).some((a) => a.includes('drawtext'))).toBe(false);
+  });
+
+  it('refuses a maxSheets × cellsPerSheet budget over MAX_STILLS_PER_JOB', async () => {
+    const { handler, runner } = createHandler();
+    // Config-time: the budget is static, so it never needs to run to be wrong.
+    expect(() =>
+      handler.validateConfig({
+        operation: 'contact_sheet',
+        input: 'a',
+        outputPrefix: 'p',
+        maxSheets: 20,
+        cellsPerSheet: 12,
+      } as never),
+    ).toThrow(/MAX_STILLS_PER_JOB/);
+    // And again at run time, for a step that never went through validateConfig.
+    const result = await handler.execute(
+      context(),
+      sheetStep({ maxSheets: 20, cellsPerSheet: 12 }),
+    );
+    expect(result.error?.code).toBe('INVALID_TIMES');
+    expect(result.error?.message).toContain('240');
+    expect(runner.run).not.toHaveBeenCalled();
   });
 
   it('fails with a typed error when the duration is unusable', async () => {
@@ -990,6 +1082,40 @@ describe('contact_sheet label degrade (R77)', () => {
     const result = await handler.execute(context(), sheetStep());
     expect((result.output as unknown as SheetsOutput).labelled).toBe(true);
     expect(labelled(run)).toBe(true);
+    // The job declares the SHEETS and nothing else: cells are scratch-only, so
+    // no executor can upload them however the argv is written.
+    const job = run.mock.calls[0][0] as FfmpegJob;
+    // 60s at default density plans 12 cells over two sheets (9 + 3).
+    expect(job.outputs.map((o) => o.name)).toEqual(['sheet-01.jpg', 'sheet-02.jpg']);
+    expect(job.outputs.some((o) => o.name.startsWith('cell-'))).toBe(false);
+    expect(job.commands.filter((c) => c.id.startsWith('cell-'))).toHaveLength(12);
+  });
+
+  it('label:false does not retry even when the job dies on drawtext', async () => {
+    const run = jest.fn().mockRejectedValue(drawtextFailure());
+    const { handler } = withExecutor('remote', run);
+    const result = await handler.execute(context(), sheetStep({ label: false }));
+    expect(result.error?.code).toBe('FFMPEG_FAILED');
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(labelled(run)).toBe(false);
+  });
+
+  /**
+   * The sniff reads ffmpeg's OWN stderr, never CE's error message: an input
+   * path containing "drawtext" must not cost a full un-labelled re-run of a
+   * 130-command job for an unrelated failure.
+   */
+  it('does not retry when only the CE-side message mentions drawtext', async () => {
+    const run = jest.fn().mockRejectedValue(
+      Object.assign(new Error('input not found in storage: o/r/uploads/drawtext-demo.mp4'), {
+        code: 'FFMPEG_FAILED',
+        stderrTail: 'moov atom not found',
+      }),
+    );
+    const { handler } = withExecutor('remote', run);
+    const result = await handler.execute(context(), sheetStep());
+    expect(result.error?.code).toBe('FFMPEG_FAILED');
+    expect(run).toHaveBeenCalledTimes(1);
   });
 
   it('retries ONCE without labels when the job fails on drawtext, and warns', async () => {
@@ -1103,6 +1229,17 @@ describe('untrusted numeric config knobs', () => {
     expect(() =>
       handler.validateConfig({ ...base, height: '360', columns: '4', interval: 2.5 } as never),
     ).not.toThrow();
+  });
+
+  it('coerces the boolean knob the same way, and rejects a non-boolean', () => {
+    const { handler } = createHandler();
+    const base = { operation: 'contact_sheet', input: 'a', outputPrefix: 'p' };
+    for (const label of [true, false, 'true', 'false', '0', 'no', 'ON']) {
+      expect(() => handler.validateConfig({ ...base, label } as never)).not.toThrow();
+    }
+    expect(() => handler.validateConfig({ ...base, label: 'maybe' } as never)).toThrow(
+      /label must be a boolean/,
+    );
   });
 
   it('a bad knob that slipped past validateConfig still cannot reach argv', async () => {

@@ -700,6 +700,10 @@ export interface FfmpegSpan {
  *   `{ frames: [{ time, storage_path, content_type, size }], count }`. The
  *   stills are deliberately CLEAN (no burned-in label): a later step
  *   re-captures a frame from the source rather than cropping it out of a sheet.
+ *   A `time` past the end of the source produces no file and FAILS the step
+ *   (the error names which frame was not written); stills captured before it
+ *   stay under `outputPrefix`, which is why a run's prefix should be treated
+ *   as disposable rather than as a directory you append to.
  * - `contact_sheet` — sample the whole clip and tile the samples into
  *   `<outputPrefix>/sheet-NN.jpg` grids an LLM can read as visual context;
  *   returns `{ sheets: [{ storage_path, content_type, size, times, index,
@@ -710,7 +714,9 @@ export interface FfmpegSpan {
  *   forces it, `columns` per grid. Each cell burns in an `m:ss` clock via
  *   ffmpeg's `drawtext`, which needs an ffmpeg built with libfreetype (CE's
  *   own image has it); an ffmpeg without it degrades to un-labelled cells and
- *   `labelled: false` instead of failing the step.
+ *   `labelled: false` instead of failing the step. At most 200 stills per step
+ *   (`times.length`, or `maxSheets × cellsPerSheet`) — a runaway `times`
+ *   expression would otherwise spawn one ffmpeg per entry.
  *
  * Both `frames` and `contact_sheet` are path-in/path-out under `outputPrefix`,
  * which is what lets a downstream step (a blog writer, say) pick a moment off a
@@ -776,8 +782,8 @@ export interface FfmpegHandlerConfig extends BaseHandlerConfig {
   cellsPerSheet?: number;
   /** contact_sheet: cap on sheets. Default 10. */
   maxSheets?: number;
-  /** contact_sheet: burn the m:ss clock into each cell. Default true; degrades to false when the ffmpeg has no drawtext. */
-  label?: boolean;
+  /** contact_sheet: burn the m:ss clock into each cell. Default true; degrades to false when the ffmpeg has no drawtext. Accepts the string forms ('false'/'0'/'no'/'off') too, since config arrives as YAML/JSON. */
+  label?: boolean | string;
   /**
    * Which executor runs the job: 'local' (this backend) | 'remote' (Worker) | a
    * `{{expression}}` resolving to one. Default: the instance's default executor.

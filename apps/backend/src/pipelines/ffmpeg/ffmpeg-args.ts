@@ -237,11 +237,22 @@ export function buildFrameArgs(o: {
  * cell's ACTUAL grid width, not the planner's `columns` config knob — pass
  * `sheet.cols` from `planContactSheet`'s output, not the caller's `columns`
  * option, since they differ on a short final sheet (e.g. 2 cells under a
- * `columns: 3` config planned as `cols: 2`, not 3). Rows grow to fit; a
- * short last sheet (fewer than a full grid of cells) is padded by the
- * `tile` filter itself, not by this builder. `columns`/`count` are clamped
- * to at least 1 so a bad caller value can never produce an unrunnable
- * `tile=0x…` or `tile=…xInfinity` argv.
+ * `columns: 3` config planned as `cols: 2`, not 3). Rows grow to fit.
+ * `columns`/`count` are clamped to at least 1 so a bad caller value can never
+ * produce an unrunnable `tile=0x…` or `tile=…xInfinity` argv.
+ *
+ * `trim=end_frame=${count}` is LOAD-BEARING, not tidiness. `tile=CxR` emits
+ * its first frame only once it has collected C×R inputs, and the `image2`
+ * demuxer keeps reading `cell-%0Nd.jpg` upward past `count` — straight into
+ * the NEXT sheet's cells, which sit in the same scratch dir with contiguous
+ * numbering. So without the trim, every sheet whose `count` is not a multiple
+ * of `cols` is built from the wrong frames while its reported `times` say
+ * otherwise. Measured on ffmpeg 7.0.2 with 22 numbered grey cells, sheet 1 of
+ * a 12-per-sheet plan (`start 1, count 10, tile=3x4`): slots 11 and 12 came
+ * back as cells 11 and 12 instead of padding; with the trim they are the
+ * `0x111111` pad. The trim is also what makes the "short sheets are padded by
+ * `tile` itself" claim TRUE — that padding only happens at EOF, which a
+ * non-final sheet never reached.
  */
 export function buildTileArgs(o: {
   pattern: string;
@@ -261,7 +272,7 @@ export function buildTileArgs(o: {
     '-frames:v',
     '1',
     '-vf',
-    `tile=${columns}x${rows}:padding=2:margin=2:color=0x111111`,
+    `trim=end_frame=${count},tile=${columns}x${rows}:padding=2:margin=2:color=0x111111`,
     '-q:v',
     '3',
     o.output,

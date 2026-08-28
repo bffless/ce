@@ -95,7 +95,13 @@ export class FfmpegCapabilityService implements OnModuleInit {
         if (fields.length < 3 || !fields[2].includes('->')) continue;
         names.add(fields[1]);
       }
-      this.filters = names;
+      // An EMPTY set would answer `false` for every filter, which is exactly the
+      // silent un-labelled contact sheet the tri-state exists to prevent: a
+      // table we failed to parse is "unknown", not "this ffmpeg has no filters".
+      this.filters = names.size ? names : null;
+      if (!names.size) {
+        this.logger.warn({ event: 'ffmpeg_filters_probe_unparsed' });
+      }
     } catch (error) {
       this.filters = null;
       this.logger.warn({

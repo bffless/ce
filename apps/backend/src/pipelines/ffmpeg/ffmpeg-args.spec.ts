@@ -387,14 +387,14 @@ describe('buildTileArgs', () => {
       '-frames:v',
       '1',
       '-vf',
-      'tile=3x3:padding=2:margin=2:color=0x111111',
+      'trim=end_frame=9,tile=3x3:padding=2:margin=2:color=0x111111',
       '-q:v',
       '3',
       'sheet-01.jpg',
     ]);
   });
 
-  it('rows grow to fit a short last sheet', () => {
+  it('rows grow to fit a short sheet, and the trim stops tile reading into the NEXT sheet', () => {
     expect(
       buildTileArgs({
         pattern: 'cell-%03d.jpg',
@@ -411,7 +411,7 @@ describe('buildTileArgs', () => {
       '-frames:v',
       '1',
       '-vf',
-      'tile=3x2:padding=2:margin=2:color=0x111111',
+      'trim=end_frame=4,tile=3x2:padding=2:margin=2:color=0x111111',
       '-q:v',
       '3',
       'sheet-02.jpg',
@@ -426,7 +426,9 @@ describe('buildTileArgs', () => {
       columns: 0,
       output: 'sheet.jpg',
     });
-    expect(argAfter(args, '-vf')).toBe('tile=1x4:padding=2:margin=2:color=0x111111');
+    expect(argAfter(args, '-vf')).toBe(
+      'trim=end_frame=4,tile=1x4:padding=2:margin=2:color=0x111111',
+    );
   });
 
   it('clamps count:0 to 1 rather than emitting a zero row count', () => {
@@ -437,7 +439,35 @@ describe('buildTileArgs', () => {
       columns: 3,
       output: 'sheet.jpg',
     });
-    expect(argAfter(args, '-vf')).toBe('tile=3x1:padding=2:margin=2:color=0x111111');
+    expect(argAfter(args, '-vf')).toBe(
+      'trim=end_frame=1,tile=3x1:padding=2:margin=2:color=0x111111',
+    );
+  });
+
+  /**
+   * The regression this pins is silent: `tile` only emits once it has C×R
+   * frames and `image2` keeps reading past `count` into the next sheet's
+   * cells, so a non-final short sheet renders the WRONG frames while its
+   * reported `times` say otherwise. Verified against real ffmpeg 7.0.2 (see
+   * buildTileArgs' TSDoc): without this clause slots 11-12 of a
+   * `start 1, count 10, tile=3x4` sheet were cells 11 and 12.
+   */
+  it('trims to exactly `count` frames, on every sheet shape', () => {
+    const vf = (count: number, columns: number) =>
+      argAfter(
+        buildTileArgs({ pattern: 'cell-%03d.jpg', start: 1, count, columns, output: 's.jpg' }),
+        '-vf',
+      );
+    // Non-final short sheet: 10 cells on a 3-wide grid needs 12 slots — the two
+    // spare ones must be padding, not the next sheet's first two cells.
+    expect(vf(10, 3)).toBe('trim=end_frame=10,tile=3x4:padding=2:margin=2:color=0x111111');
+    // A full sheet trims to its own size — the clause is unconditional so no
+    // caller has to know which sheets are "safe".
+    expect(vf(12, 3)).toBe('trim=end_frame=12,tile=3x4:padding=2:margin=2:color=0x111111');
+    // An exact-grid sheet (2 cells, cols 2) has no spare slot at all.
+    expect(vf(2, 2)).toBe('trim=end_frame=2,tile=2x1:padding=2:margin=2:color=0x111111');
+    // The clamped count is what gets trimmed, never the raw one.
+    expect(vf(0, 3)).toBe('trim=end_frame=1,tile=3x1:padding=2:margin=2:color=0x111111');
   });
 });
 

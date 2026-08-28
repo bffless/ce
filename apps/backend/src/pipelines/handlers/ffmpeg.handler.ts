@@ -32,6 +32,8 @@ import {
   buildTileArgs,
   planContactSheet,
   clockLabel,
+  MAX_SHEETS,
+  MAX_CELLS_PER_SHEET,
 } from '../ffmpeg/ffmpeg-args';
 import { readFfmpegEnv } from '../ffmpeg/ffmpeg-env';
 
@@ -43,6 +45,20 @@ const OPERATIONS = [
   'frames',
   'contact_sheet',
 ] as const;
+
+/**
+ * Hard ceiling on stills one step may ask for — `times.length` for `frames`,
+ * `maxSheets × cellsPerSheet` for `contact_sheet`. Both are reachable from
+ * untrusted config (`times` is expression-resolvable, so `request.body.times`
+ * is an advertised form), and each still is a sequential ffmpeg spawn whose
+ * output piles up in scratch BEFORE anything is uploaded — the local disk
+ * pre-flight only reserves `2 × input + margin` and does not model outputs,
+ * and the remote path puts one presigned PUT URL per output in a single
+ * envelope that the Worker caps at 1 MB. The planner's own natural maximum is
+ * 120 stills, so this is deliberately generous: it exists to stop a runaway,
+ * not to shape normal use.
+ */
+export const MAX_STILLS_PER_JOB = 200;
 
 /** Defaults for the still-image knobs (frames/contact_sheet). */
 const DEFAULT_FRAME_HEIGHT = 720;
@@ -59,9 +75,12 @@ const PROBE_TIMEOUT_SECONDS = 60;
  * propagates untouched.
  */
 function isDrawtextFailure(error: unknown): boolean {
-  const e = error as { code?: string; stderrTail?: string; message?: string };
+  const e = error as { code?: string; stderrTail?: string };
   if (e?.code !== 'FFMPEG_FAILED') return false;
-  return /drawtext|no such filter/i.test(`${e.stderrTail ?? ''}\n${e.message ?? ''}`);
+  // ffmpeg's OWN stderr only. Not `error.message`: that carries CE-side text
+  // including paths, so an input named `.../drawtext-demo.mp4` failing for any
+  // reason would trigger a pointless un-labelled re-run of a 130-command job.
+  return /drawtext|no such filter/i.test(e.stderrTail ?? '');
 }
 
 /**
@@ -128,7 +147,19 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
     // Scoped to the two ops that read them, so a pre-existing slice/concat step
     // carrying a stray field is not newly rejected.
     if (config.operation === 'frames' || config.operation === 'contact_sheet') {
-      this.knobs(config);
+      const knobs = this.knobs(config);
+      if (config.operation === 'contact_sheet') {
+        // Static, unlike `frames`' expression-resolved `times`, so it is a
+        // configuration error rather than a runtime one.
+        const budget =
+          (knobs.maxSheets ?? MAX_SHEETS) * (knobs.cellsPerSheet ?? MAX_CELLS_PER_SHEET);
+        if (budget > MAX_STILLS_PER_JOB) {
+          throw new ConfigurationError(
+            `ffmpeg_handler contact_sheet maxSheets × cellsPerSheet is ${budget}, over the ${MAX_STILLS_PER_JOB}-still ceiling for one step (MAX_STILLS_PER_JOB)`,
+            'ffmpeg_handler',
+          );
+        }
+      }
     }
   }
 
@@ -152,7 +183,26 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
     return n;
   }
 
-  /** Every numeric knob of frames/contact_sheet. Called from validateConfig AND from the ops (defence in depth: a directly-executed step skips validation). */
+  /**
+   * The boolean twin of `knob`. Config reaches us as YAML/JSON, and this very
+   * diff teaches authors that strings are accepted for the numeric knobs — so
+   * `label: 'false'` must turn labels OFF rather than being silently truthy.
+   */
+  private boolKnob(value: unknown, field: string, fallback: boolean): boolean {
+    if (value === undefined || value === null || value === '') return fallback;
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') {
+      const v = value.trim().toLowerCase();
+      if (['true', '1', 'yes', 'on'].includes(v)) return true;
+      if (['false', '0', 'no', 'off'].includes(v)) return false;
+    }
+    throw new ConfigurationError(
+      `ffmpeg_handler ${field} must be a boolean (got ${JSON.stringify(value)})`,
+      'ffmpeg_handler',
+    );
+  }
+
+  /** Every knob of frames/contact_sheet. Called from validateConfig AND from the ops (defence in depth: a directly-executed step skips validation). */
   private knobs(config: FfmpegHandlerConfig) {
     return {
       height: this.knob(config.height, 'height', 'integer') ?? DEFAULT_FRAME_HEIGHT,
@@ -163,7 +213,18 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
       columns: this.knob(config.columns, 'columns', 'integer'),
       cellsPerSheet: this.knob(config.cellsPerSheet, 'cellsPerSheet', 'integer'),
       maxSheets: this.knob(config.maxSheets, 'maxSheets', 'integer'),
+      label: this.boolKnob(config.label, 'label', true),
     };
+  }
+
+  /** The step's own cap breach, typed so the message names both the ceiling and what was asked for. */
+  private tooManyStills(what: string, asked: number): never {
+    throw Object.assign(
+      new Error(
+        `ffmpeg_handler ${what} is ${asked}, over the ${MAX_STILLS_PER_JOB}-still ceiling for one step (MAX_STILLS_PER_JOB)`,
+      ),
+      { code: 'INVALID_TIMES' },
+    );
   }
 
   async execute(context: PipelineContext, step: PipelineStep): Promise<StepResult> {
@@ -533,6 +594,29 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
   }
 
   /**
+   * ffmpeg writes NO output file when a seek lands past the end of the source,
+   * so the local executor stats a file that was never created and throws a bare
+   * `ENOENT … stat '/tmp/<scratch>/frame-03.jpg'` — a message that names a
+   * scratch path the pipeline author has never heard of. Re-throw it naming the
+   * operation, the output that is missing and the likely cause. The remote
+   * executor reports its own missing-output failure from the Worker, which this
+   * cannot reach (ADR-0004 keeps the Worker a dumb argv runner); when the shape
+   * does not match, the original error passes through untouched.
+   */
+  private namedOutputFailure(error: unknown, op: string, names: string[]): unknown {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/ENOENT|no such file/i.test(message)) return error;
+    const missing = names.find((name) => message.includes(name));
+    if (!missing) return error;
+    return Object.assign(
+      new Error(
+        `ffmpeg_handler ${op} produced no ${missing}: ffmpeg wrote no frame there, which usually means the requested time is past the end of the source (${message})`,
+      ),
+      { code: 'FFMPEG_FAILED' },
+    );
+  }
+
+  /**
    * One still per requested time, written under `outputPrefix`. The stills are
    * deliberately CLEAN — no burned-in label — because the point of writing them
    * to storage is that a later step re-captures a moment from the source
@@ -547,6 +631,8 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
   ): Promise<StepResult> {
     const knobs = this.knobs(config);
     const times = this.resolveTimes(config.times, context, stepName);
+    // `times` is expression-resolved, so its length is untrusted input.
+    if (times.length > MAX_STILLS_PER_JOB) this.tooManyStills('frames times', times.length);
     const inputKey = await this.resolveKey(config.input!, context, stepName, 'input');
     const prefix = await this.resolvePrefix(config.outputPrefix!, context, stepName);
     const inName = `in${path.posix.extname(inputKey) || '.mp4'}`;
@@ -566,21 +652,27 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
         quality: knobs.quality,
       }),
     }));
-    const res = await this.runJob(
-      executor,
-      {
-        id: stepName,
-        commands,
-        inputs: [{ name: inName, key: inputKey }],
-        outputs: names.map((name) => ({
-          name,
-          key: `${prefix}/${name}`,
-          contentType: 'image/jpeg',
-        })),
-        files: [],
-      },
-      signal,
-    );
+    let res: FfmpegJobResult;
+    try {
+      res = await this.runJob(
+        executor,
+        {
+          id: stepName,
+          commands,
+          // Only the stills. Nothing else is declared, so nothing else uploads.
+          outputs: names.map((name) => ({
+            name,
+            key: `${prefix}/${name}`,
+            contentType: 'image/jpeg',
+          })),
+          inputs: [{ name: inName, key: inputKey }],
+          files: [],
+        },
+        signal,
+      );
+    } catch (error) {
+      throw this.namedOutputFailure(error, 'frames', names);
+    }
     const bytes = new Map(res.outputs.map((o) => [o.name, o.bytes]));
     return {
       success: true,
@@ -666,6 +758,12 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
       duration = this.assertDuration(Number(parsed.format?.duration));
     }
 
+    // Defence in depth: validateConfig refuses this budget at config time, but a
+    // directly-executed step never went through it.
+    const budget = (knobs.maxSheets ?? MAX_SHEETS) * (knobs.cellsPerSheet ?? MAX_CELLS_PER_SHEET);
+    if (budget > MAX_STILLS_PER_JOB) {
+      this.tooManyStills('contact_sheet maxSheets × cellsPerSheet', budget);
+    }
     const plan = planContactSheet(duration, {
       minInterval: knobs.interval,
       columns: knobs.columns,
@@ -742,7 +840,7 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
     // capability doubles predating it).
     const localLacksDrawtext =
       executor.name === 'local' && this.capability.hasFilter?.('drawtext') === false;
-    let labelled = config.label !== false && !localLacksDrawtext;
+    let labelled = knobs.label && !localLacksDrawtext;
     let res: FfmpegJobResult;
     try {
       res = await this.runJob(executor, job(labelled), signal);

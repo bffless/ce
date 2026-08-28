@@ -142,6 +142,19 @@ describe('FfmpegCapabilityService.hasFilter', () => {
     expect(svc.hasFilter('drawtext')).toBeUndefined();
   });
 
+  /**
+   * An UNPARSED table must stay unknown. An empty Set would answer `false` for
+   * every filter, which is exactly the silently un-labelled contact sheet the
+   * tri-state exists to prevent (R77).
+   */
+  it('is undefined when the -filters output parses to nothing', async () => {
+    armWithFilters({ stdout: 'Filters:\n  T.. = Timeline support\n' });
+    const svc = new FfmpegCapabilityService(fakeFlags(true));
+    await svc.probe();
+    expect(svc.hasFilter('drawtext')).toBeUndefined();
+    expect(svc.hasFilter('anything')).toBeUndefined();
+  });
+
   it('is undefined when the probe never ran or the binaries are missing', async () => {
     const svc = new FfmpegCapabilityService(fakeFlags(true));
     expect(svc.hasFilter('drawtext')).toBeUndefined();
