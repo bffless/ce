@@ -145,6 +145,14 @@ export function buildProbeArgs(input: string): string[] {
  * avfilter parser (see task 17a fix report, C1) — not a guess from reading
  * the docs.
  *
+ * It is also the ONLY thing standing between pipeline config and an ffmpeg
+ * filter graph: `buildFrameArgs`'s overlay text is arbitrary caller-supplied
+ * text (Ruling R98), not a formatted clock, so this is a security boundary
+ * and not a defensive nicety. Re-proven at that widened threat model in the
+ * task 17a' report — eleven hostile texts round-trip byte-identically with a
+ * trailing marker option intact. Do not "simplify" it, and do not add a
+ * second escaping layer on top: both break the measured round trip.
+ *
  * ffmpeg parses a `-vf`/`-filter_complex` string in TWO independent,
  * escape/quote-aware passes: an outer pass that splits the whole graph on
  * unescaped `,` `;` `[` `]` to find each filter instance, and an inner pass
@@ -186,18 +194,143 @@ function escapeAvfilterValue(raw: string): string {
 }
 
 /**
- * One still: fast-seek (`-ss` before `-i`, keyframe-accurate enough for a
- * contact sheet, not frame-exact) to `time`, scale to `height` (width kept
- * even via `-2`), optionally burn in a corner label. `label` is only ever
- * passed when the caller intends to try `drawtext`, which needs libfreetype
- * AND fontconfig plus an installed font in the runtime image (there is no
- * `font=`/`fontfile=` here, so it resolves via fontconfig) — omit it and the
- * filter chain skips drawtext entirely rather than failing. The label is
- * escaped via `escapeAvfilterValue` (a proven filter-injection fence, not
- * cosmetics — `label` can be a burned-in timestamp built from
- * caller-controlled data) and the filter carries `expansion=none` so
- * drawtext's own post-parse `%{...}` expansion — a separate mechanism the
- * value-level escaping above cannot reach — is disabled too.
+ * Where an overlay sits in the frame. A CLOSED enum on purpose (Ruling R98):
+ * `drawtext`'s `x=`/`y=` take arbitrary expressions, so a caller who could
+ * supply one could read filter variables or smuggle option syntax into the
+ * graph. The caller picks a corner; CE writes the expression.
+ */
+export type OverlayPosition =
+  | 'top-left'
+  | 'top-center'
+  | 'top-right'
+  | 'center'
+  | 'bottom-left'
+  | 'bottom-center'
+  | 'bottom-right';
+
+/** One burned-in text overlay — the whole of what CE lets a caller draw (Ruling R99: one per frame, no images, no stacking). */
+export interface FrameOverlay {
+  /** Text to burn in, verbatim. Escaped into the graph and never interpreted — see `escapeAvfilterValue`. */
+  text: string;
+  /** Default `'bottom-right'`. */
+  position?: OverlayPosition;
+  /** Font height as a FRACTION of the frame height, in (0, 1]. Default 1/12. */
+  size?: number;
+  /** Text colour: an ffmpeg colour NAME or `0xRRGGBB`/`#RRGGBB`. No `@alpha`. Default `'white'`. */
+  color?: string;
+  /** Draw the dark box behind the text. Default true. */
+  background?: boolean;
+}
+
+/** Inset from the frame edge in pixels — the margin the original hard-coded corner label used. */
+const OVERLAY_MARGIN = 16;
+
+/** Font height as a fraction of frame height, matching the original `fontsize=h/12`. */
+const DEFAULT_OVERLAY_SIZE = 1 / 12;
+
+/**
+ * The `x`/`y` expression pair CE emits for each position. `tw`/`th` are
+ * drawtext's rendered text width/height, `w`/`h` the frame's.
+ */
+const OVERLAY_PLACEMENT: Record<OverlayPosition, { x: string; y: string }> = {
+  'top-left': { x: `${OVERLAY_MARGIN}`, y: `${OVERLAY_MARGIN}` },
+  'top-center': { x: '(w-tw)/2', y: `${OVERLAY_MARGIN}` },
+  'top-right': { x: `w-tw-${OVERLAY_MARGIN}`, y: `${OVERLAY_MARGIN}` },
+  center: { x: '(w-tw)/2', y: '(h-th)/2' },
+  'bottom-left': { x: `${OVERLAY_MARGIN}`, y: `h-th-${OVERLAY_MARGIN}` },
+  'bottom-center': { x: '(w-tw)/2', y: `h-th-${OVERLAY_MARGIN}` },
+  'bottom-right': { x: `w-tw-${OVERLAY_MARGIN}`, y: `h-th-${OVERLAY_MARGIN}` },
+};
+
+/** An ffmpeg colour name (`white`, `Red`, …) — letters only, so it cannot carry filter syntax. */
+const COLOR_NAME = /^[A-Za-z]+$/;
+/** `0xRRGGBB` / `#RRGGBB`. Both are accepted by `av_parse_color`, verified on ffmpeg 7.0.2. */
+const COLOR_HEX = /^(?:0x|#)[0-9A-Fa-f]{6}$/;
+
+/**
+ * Unlike `text`, a colour is interpolated into the option list WITHOUT
+ * escaping — `av_parse_color` would not understand an escaped value — so this
+ * pattern is the fence, and it is deliberately narrower than ffmpeg's own
+ * colour syntax. `@alpha` is refused even though ffmpeg understands it:
+ * `white@0.5` and `white@0.5:x=0` differ only in what follows the `@`, and a
+ * validator that admits the first has already conceded the character that
+ * makes the second expressible. Callers that want translucency get it from
+ * `background`, not from a colour string.
+ */
+function overlayColor(color: string | undefined): string {
+  if (color === undefined) return 'white';
+  if (typeof color !== 'string' || (!COLOR_NAME.test(color) && !COLOR_HEX.test(color))) {
+    throw new Error(
+      `overlay color must be an ffmpeg colour name or 0xRRGGBB/#RRGGBB with no @alpha suffix, got: ${JSON.stringify(color)}`,
+    );
+  }
+  return color;
+}
+
+/**
+ * `size` is a fraction of frame height, so the argv is a MULTIPLY
+ * (`fontsize=h*<size>`) where the original hard-coded filter divided
+ * (`fontsize=h/12`). The two are the same to ffmpeg: its expression
+ * evaluator does IEEE-754 double arithmetic on the value `strtod` recovers
+ * from our shortest-round-trip decimal, and `h/12` and
+ * `h*0.08333333333333333` were measured to yield the identical integer on
+ * ffmpeg 7.0.2 (see the task 17a' report).
+ *
+ * Out of range THROWS rather than clamping, so a bad `draw` block surfaces
+ * as one config error instead of silently rendering at a size nobody asked
+ * for. The range also keeps the interpolation safe: a finite positive
+ * `number` stringifies to digits, `.`, and possibly `e`/`-` — never a filter
+ * metacharacter — which is why this value needs no escaping.
+ */
+function overlayFontSize(size: number | undefined): string {
+  if (size === undefined) return String(DEFAULT_OVERLAY_SIZE);
+  if (typeof size !== 'number' || !Number.isFinite(size) || size <= 0 || size > 1) {
+    throw new Error(
+      `overlay size must be a fraction of the frame height in (0, 1], got: ${String(size)}`,
+    );
+  }
+  return String(size);
+}
+
+/** Resolve a position to its expression pair; an unknown one throws rather than emitting an empty `x=`/`y=`. */
+function overlayPlacement(position: OverlayPosition | undefined): { x: string; y: string } {
+  const key = position ?? 'bottom-right';
+  if (!Object.prototype.hasOwnProperty.call(OVERLAY_PLACEMENT, key)) {
+    throw new Error(
+      `unknown overlay position: ${JSON.stringify(key)} (expected one of ${Object.keys(OVERLAY_PLACEMENT).join(', ')})`,
+    );
+  }
+  return OVERLAY_PLACEMENT[key];
+}
+
+/**
+ * One still: fast-seek (`-ss` before `-i`, keyframe-accurate rather than
+ * frame-exact) to `time`, scale to `height` (width kept even via `-2`), and
+ * optionally draw ONE line of text on it. That is deliberately a DRAWING
+ * primitive, not a labelled-thumbnail feature: what the text says, how many
+ * frames there are and how far apart they sit are the calling app's policy,
+ * not CE's (Ruling R99). A contact-sheet cell and a title card on a
+ * screenshot are the same call with different `overlay` values.
+ *
+ * `overlay` needs `drawtext`, which needs libfreetype AND fontconfig plus an
+ * installed font in the runtime image (there is no `font=`/`fontfile=` here,
+ * so it resolves via fontconfig) — omit it and the filter chain skips
+ * drawtext entirely rather than failing.
+ *
+ * Every caller-supplied part of the overlay is fenced, because `overlay.text`
+ * now carries arbitrary strings from pipeline config rather than a formatted
+ * clock (Ruling R98), and everything in a filter graph shares one flat option
+ * syntax:
+ *
+ * - `text` goes through `escapeAvfilterValue` (a measured filter-injection
+ *   fence, not cosmetics) and the filter carries `expansion=none`, which
+ *   closes drawtext's OWN `%{...}` pass — a separate mechanism the
+ *   value-level escaping cannot reach.
+ * - `color` is pattern-validated (`overlayColor`); it cannot be escaped
+ *   because `av_parse_color` has to read it back literally.
+ * - `size` is range-checked (`overlayFontSize`), so only digits reach `h*`.
+ * - `position` is an enum CE turns into the `x=`/`y=` expressions itself
+ *   (`overlayPlacement`); a caller never writes a coordinate.
  */
 export function buildFrameArgs(o: {
   input: string;
@@ -205,14 +338,26 @@ export function buildFrameArgs(o: {
   time: number;
   height: number;
   quality: number;
-  label?: string;
+  overlay?: FrameOverlay;
 }): string[] {
   const filters = [`scale=-2:${o.height}`];
-  if (o.label !== undefined) {
-    const text = escapeAvfilterValue(o.label);
-    filters.push(
-      `drawtext=text=${text}:expansion=none:fontsize=h/12:fontcolor=white:box=1:boxcolor=black@0.6:boxborderw=8:x=w-tw-16:y=h-th-16`,
-    );
+  const overlay = o.overlay;
+  if (overlay !== undefined) {
+    if (typeof overlay.text !== 'string') {
+      throw new Error(`overlay text must be a string, got: ${typeof overlay.text}`);
+    }
+    const placement = overlayPlacement(overlay.position);
+    const options = [
+      `text=${escapeAvfilterValue(overlay.text)}`,
+      'expansion=none',
+      `fontsize=h*${overlayFontSize(overlay.size)}`,
+      `fontcolor=${overlayColor(overlay.color)}`,
+    ];
+    if (overlay.background !== false) {
+      options.push('box=1', 'boxcolor=black@0.6', 'boxborderw=8');
+    }
+    options.push(`x=${placement.x}`, `y=${placement.y}`);
+    filters.push(`drawtext=${options.join(':')}`);
   }
   return [
     '-ss',
@@ -233,11 +378,11 @@ export function buildFrameArgs(o: {
  * Tile `count` numbered cells (`pattern` is a literal glob like
  * `cell-%03d.jpg`, not an `{out:}` placeholder — both executors spawn with
  * cwd = the scratch dir, so scratch cells are addressed by bare
- * scratch-relative filenames, ruling R75) into one sheet. `columns` is the
- * cell's ACTUAL grid width, not the planner's `columns` config knob — pass
- * `sheet.cols` from `planContactSheet`'s output, not the caller's `columns`
- * option, since they differ on a short final sheet (e.g. 2 cells under a
- * `columns: 3` config planned as `cols: 2`, not 3). Rows grow to fit.
+ * scratch-relative filenames, ruling R75) into one sheet. `columns` is THIS
+ * sheet's actual grid width, not the caller's `columns` config knob — the two
+ * differ on a short final sheet (2 cells under a `columns: 3` config are laid
+ * out 2 wide, not 3), and it is the caller's job to pass the narrower one.
+ * Rows grow to fit.
  * `columns`/`count` are clamped to at least 1 so a bad caller value can never
  * produce an unrunnable `tile=0x…` or `tile=…xInfinity` argv.
  *
@@ -277,180 +422,4 @@ export function buildTileArgs(o: {
     '3',
     o.output,
   ];
-}
-
-/** Finest spacing we sample at — closer just yields near-duplicate frames. Drives density on SHORT clips so they aren't needlessly sparse. */
-export const MIN_INTERVAL_SECONDS = 5;
-/** Coarsest spacing we tolerate as a FIXED coverage floor (not one of the overridable knobs — see `ContactSheetPlanOptions.minInterval`) — beyond it too much is skipped, until the frame budget caps out and forces it wider. */
-export const MAX_INTERVAL_SECONDS = 30;
-/** Hard cap on images sent to the caller in one call. */
-export const MAX_SHEETS = 10;
-/** Default columns per sheet. Few columns ⇒ wide cells ⇒ legible after any downstream resize. */
-export const TILE_COLUMNS = 3;
-/** Cells per sheet we aim for once the budget forces multiple sheets — fixed, NOT one of the overridable knobs (a caller's lower `cellsPerSheet` cap still wins over it). */
-export const PREFERRED_CELLS_PER_SHEET = 9;
-/** Default most cells we'll pack before per-frame detail suffers. */
-export const MAX_CELLS_PER_SHEET = 12;
-
-export interface ContactSheetPlanOptions {
-  /**
-   * Sampling density floor in seconds (config `interval`). Default
-   * `MIN_INTERVAL_SECONDS`. This only raises or lowers the DENSE end of the
-   * range — `MAX_INTERVAL_SECONDS` (30s) stays a fixed, non-overridable
-   * coverage floor underneath it. Asking for looser sampling than that
-   * (e.g. `minInterval: 60` on a clip where 30s coverage alone already
-   * needs more frames than that would produce) does not widen the spacing
-   * past 30s: `planContactSheet(600, { minInterval: 60 })` still samples
-   * every 30s (20 frames), not every 60s (10 frames), because coverage
-   * wins whenever it demands more frames than the requested density does.
-   */
-  minInterval?: number;
-  /** Columns per tiled sheet (config `columns`). Default `TILE_COLUMNS`. Clamped to at least 1. */
-  columns?: number;
-  /** Cap on cells per sheet (config `cellsPerSheet`). Default `MAX_CELLS_PER_SHEET`. Clamped to at least 1. */
-  cellsPerSheet?: number;
-  /** Cap on number of sheets (config `maxSheets`). Default `MAX_SHEETS`. Clamped to at least 1. */
-  maxSheets?: number;
-}
-
-export interface ContactSheetPlan {
-  /** Actual seconds between sampled frames (`duration / times.length`) — widens past `MAX_INTERVAL_SECONDS` once the frame budget caps out. */
-  interval: number;
-  /** All capture timestamps in seconds, evenly spread and bucket-centred. */
-  times: number[];
-  /** Cells per composed sheet — `times` is chunked by this into ≤ `maxSheets` tiles. */
-  perSheet: number;
-  /** One entry per tiled sheet: its slice of `times`, the 1-based index of its first cell in `times`, and its grid shape. */
-  sheets: Array<{
-    index: number;
-    start: number;
-    count: number;
-    times: number[];
-    cols: number;
-    rows: number;
-  }>;
-}
-
-/**
- * duration<=0 or non-finite ⇒ 0; else the frame count at `minInterval`
- * density, uncapped by the sheet/cell budget. `minInterval` itself falls
- * back to `MIN_INTERVAL_SECONDS` when it isn't a usable positive number
- * (Studio's `step` guard) — `planContactSheet(d, { minInterval: NaN })` or
- * a negative override must fall back to the default density, not cascade
- * NaN/garbage into the plan.
- */
-function frameCount(duration: number, minInterval: number): number {
-  if (!Number.isFinite(duration) || duration <= 0) return 0;
-  const step = minInterval > 0 ? minInterval : MIN_INTERVAL_SECONDS;
-  return Math.max(1, Math.ceil(duration / step));
-}
-
-/**
- * `count` capture timestamps spread evenly across the clip, each centred in its
- * bucket and kept just shy of `duration` so the seek always lands on real
- * footage.
- *
- * The `Math.max(0, …)` is load-bearing on very short sources: the `- 0.05`
- * shy-of-the-end margin goes NEGATIVE once `duration < 0.05`, which a
- * single-frame source reaches (~0.033 s at 30 fps). `planContactSheet(0.04)`
- * would otherwise plan `[-0.01]` and emit `-ss -0.01`, a negative seek.
- */
-function sampleTimes(duration: number, count: number): number[] {
-  if (count <= 0) return [];
-  return Array.from({ length: count }, (_, i) =>
-    Math.max(0, Math.min(duration - 0.05, (i + 0.5) * (duration / count))),
-  );
-}
-
-/** `value` if it's a usable positive number, else `fallback` — guards every overridable knob (`columns`/`cellsPerSheet`/`maxSheets`) against 0, negative, `NaN`/`Infinity`, so a bad pipeline config can never make the planner divide by zero or emit a non-finite grid dimension. */
-function positiveOr(value: number | undefined, fallback: number): number {
-  return value !== undefined && Number.isFinite(value) && value > 0 ? value : fallback;
-}
-
-/**
- * The clip-wide plan: how many frames to sample, their timestamps, and how
- * to tile them into sheets — a port of Studio's `planContactSheet`
- * (repos/apps: `apps/studio/src/lib/contactSheet.ts`). CE and Studio are
- * separate deploy units (this runs server-side in the backend bundle;
- * Studio's runs client-side against wasm ffmpeg), so the algorithm is
- * deliberately duplicated here rather than shared — that duplication, plus
- * this doc comment, is how the two copies stay findable when one changes.
- *
- * Same constraints Studio's version balances: sample as densely as
- * `minInterval` allows on short clips (closer just yields near-duplicate
- * frames), never sparser than `MAX_INTERVAL_SECONDS` on long ones (until
- * the frame budget forces it wider), prefer `PREFERRED_CELLS_PER_SHEET`
- * cells per sheet for per-frame legibility (up to the `cellsPerSheet` cap),
- * and never exceed `maxSheets` images. Unlike Studio, CE's `contact_sheet`
- * operation lets a pipeline override `minInterval`/`columns`/`cellsPerSheet`/
- * `maxSheets` per call (Studio hardcodes its module constants) — but
- * `PREFERRED_CELLS_PER_SHEET` is NOT one of those knobs: it stays fixed at
- * 9, and `perSheet`'s `min(cellsPerSheet, …)` still enforces a caller's
- * lower cap over it. (Ruling R74: this is a straight port of Studio's real
- * algorithm, not the plan's prose formula, which contradicts its own test
- * expectations.)
- *
- * `duration <= 0` or non-finite yields the empty plan
- * (`{ interval: 0, times: [], perSheet: 0, sheets: [] }`); every overridable
- * knob falls back to its default rather than propagating `NaN`/`Infinity`
- * or dividing by zero when a caller passes a bad value (Ruling: a pure
- * function that cannot itself emit an unrunnable plan is the better seam —
- * 17b shouldn't have to pre-validate pipeline config).
- */
-export function planContactSheet(
-  duration: number,
-  opts: ContactSheetPlanOptions = {},
-): ContactSheetPlan {
-  const minInterval = opts.minInterval ?? MIN_INTERVAL_SECONDS;
-  const columns = positiveOr(opts.columns, TILE_COLUMNS);
-  const cellsPerSheetCap = positiveOr(opts.cellsPerSheet, MAX_CELLS_PER_SHEET);
-  const maxSheets = positiveOr(opts.maxSheets, MAX_SHEETS);
-
-  const dense = frameCount(duration, minInterval);
-  if (dense === 0) return { interval: 0, times: [], perSheet: 0, sheets: [] };
-
-  // Aim for `minInterval` density, never sparser than MAX_INTERVAL_SECONDS, never
-  // over the maxSheets*cellsPerSheet budget (dense >= coverage whenever
-  // minInterval < MAX_INTERVAL_SECONDS, so the coverage floor is belt-and-braces).
-  const coverage = Math.ceil(duration / MAX_INTERVAL_SECONDS);
-  const maxFrames = maxSheets * cellsPerSheetCap;
-  const total = Math.min(maxFrames, Math.max(coverage, dense));
-  if (total <= 0) return { interval: 0, times: [], perSheet: 0, sheets: [] };
-  const times = sampleTimes(duration, total);
-  const perSheet = Math.min(
-    cellsPerSheetCap,
-    total,
-    Math.max(PREFERRED_CELLS_PER_SHEET, Math.ceil(total / maxSheets)),
-  );
-
-  const sheets: ContactSheetPlan['sheets'] = [];
-  for (let i = 0; i < times.length; i += perSheet) {
-    const slice = times.slice(i, i + perSheet);
-    const cols = Math.min(slice.length, columns);
-    sheets.push({
-      index: sheets.length,
-      start: i + 1,
-      count: slice.length,
-      times: slice,
-      cols,
-      rows: Math.ceil(slice.length / cols),
-    });
-  }
-
-  return { interval: duration / total, times, perSheet, sheets };
-}
-
-/**
- * Clock label burned onto each frame by `buildFrameArgs`'s `label`: plain
- * wall-clock `m:ss`, promoting to `h:mm:ss` once the clip passes an hour (no
- * tenths, so it stays readable at thumbnail size). Negative or non-finite
- * input clamps to `0:00` rather than throwing or emitting `NaN`.
- */
-export function clockLabel(seconds: number): string {
-  const clamped = !Number.isFinite(seconds) || seconds < 0 ? 0 : seconds;
-  const total = Math.floor(clamped);
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const ss = (total % 60).toString().padStart(2, '0');
-  return h ? `${h}:${m.toString().padStart(2, '0')}:${ss}` : `${m}:${ss}`;
 }
