@@ -9,14 +9,7 @@ const execFileAsync = promisify(execFile);
 export const SERVER_VIDEO_OPS_FLAG = 'FFMPEG_HANDLER_ENABLED';
 
 /** The curated operation set — the `ops` of the capability payload. */
-export const FFMPEG_OPS = [
-  'probe',
-  'extract_audio',
-  'slice',
-  'concat',
-  'frames',
-  'contact_sheet',
-] as const;
+export const FFMPEG_OPS = ['probe', 'extract_audio', 'slice', 'concat', 'frames'] as const;
 
 /**
  * Boot-time capability probe: ffmpeg + ffprobe both present → server video ops

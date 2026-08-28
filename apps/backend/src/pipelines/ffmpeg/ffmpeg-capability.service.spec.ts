@@ -43,7 +43,6 @@ describe('FfmpegCapabilityService', () => {
       'slice',
       'concat',
       'frames',
-      'contact_sheet',
     ]);
   });
 
@@ -85,7 +84,6 @@ describe('FfmpegCapabilityService', () => {
       'slice',
       'concat',
       'frames',
-      'contact_sheet',
     ]);
   });
 
@@ -100,8 +98,8 @@ describe('FfmpegCapabilityService', () => {
 
 /**
  * `-filters` is parsed by FIELD, not substring: a filter's DESCRIPTION can
- * mention another filter's name, and `hasFilter` gates whether contact_sheet
- * even attempts a burned-in clock (R77).
+ * mention another filter's name, and `hasFilter` gates whether a `frames`
+ * step even attempts its burned-in `draw` overlay (R77).
  */
 const FILTERS_STDOUT = `Filters:
   T.. = Timeline support

@@ -34,7 +34,7 @@ function make(
     isAvailable: () => o.localAvailable ?? true,
     isEnabled: async () => (o.flag ?? true) && (o.localAvailable ?? true),
     getVersion: () => 'ffmpeg version 6.1.1',
-    getOps: async () => ['probe', 'extract_audio', 'slice', 'concat', 'frames', 'contact_sheet'],
+    getOps: async () => ['probe', 'extract_audio', 'slice', 'concat', 'frames'],
     isFlagOn: async () => o.flag ?? true,
     hasFilter: () => o.drawtext,
   };
@@ -94,7 +94,7 @@ it('probe(): server = flag && any ready; additive executors/defaultExecutor/remo
     ).selector.probe(),
   ).resolves.toEqual({
     server: true,
-    ops: ['probe', 'extract_audio', 'slice', 'concat', 'frames', 'contact_sheet'],
+    ops: ['probe', 'extract_audio', 'slice', 'concat', 'frames'],
     version: null,
     executors: ['remote'],
     defaultExecutor: 'remote',

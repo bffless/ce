@@ -24,8 +24,8 @@ export interface FfmpegCapabilityProbe {
   /**
    * Optional filters THIS box's ffmpeg was built with — local-only, like
    * `version`, and absent whenever the local filter probe never ran (no local
-   * executor, or the probe failed). `drawtext: false` is why a contact_sheet
-   * on the local executor comes back un-labelled.
+   * executor, or the probe failed). `drawtext: false` is why a `frames` step
+   * on the local executor comes back with `drawn: false`.
    */
   filters?: { drawtext: boolean };
 }

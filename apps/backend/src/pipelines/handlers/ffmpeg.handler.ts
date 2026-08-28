@@ -1,6 +1,11 @@
 import { Injectable, Inject, Logger, Optional } from '@nestjs/common';
 import * as path from 'path';
-import { StepHandler, FfmpegHandlerConfig } from '../execution/step-handler.interface';
+import {
+  StepHandler,
+  FfmpegHandlerConfig,
+  FfmpegDrawConfig,
+  FfmpegTileConfig,
+} from '../execution/step-handler.interface';
 import { StepHandlerRegistry } from '../execution/step-handler.registry';
 import { ExpressionEvaluator } from '../execution/expression-evaluator';
 import { PipelineContext, StepResult } from '../execution/pipeline-context.interface';
@@ -30,56 +35,72 @@ import {
   buildConcatListContent,
   buildFrameArgs,
   buildTileArgs,
-  planContactSheet,
-  clockLabel,
-  MAX_SHEETS,
-  MAX_CELLS_PER_SHEET,
 } from '../ffmpeg/ffmpeg-args';
+import type { FrameOverlay } from '../ffmpeg/ffmpeg-args';
 import { readFfmpegEnv } from '../ffmpeg/ffmpeg-env';
 
-const OPERATIONS = [
-  'probe',
-  'extract_audio',
-  'slice',
-  'concat',
-  'frames',
-  'contact_sheet',
-] as const;
+const OPERATIONS = ['probe', 'extract_audio', 'slice', 'concat', 'frames'] as const;
 
 /**
- * Hard ceiling on stills one step may ask for — `times.length` for `frames`,
- * `maxSheets × cellsPerSheet` for `contact_sheet`. Both are reachable from
- * untrusted config (`times` is expression-resolvable, so `request.body.times`
- * is an advertised form), and each still is a sequential ffmpeg spawn whose
- * output piles up in scratch BEFORE anything is uploaded — the local disk
- * pre-flight only reserves `2 × input + margin` and does not model outputs,
- * and the remote path puts one presigned PUT URL per output in a single
- * envelope that the Worker caps at 1 MB. The planner's own natural maximum is
- * 120 stills, so this is deliberately generous: it exists to stop a runaway,
- * not to shape normal use.
+ * Hard ceiling on stills one step may ask for, measured on `times.length`.
+ * `times` is expression-resolvable (`request.body.times` is an advertised
+ * form), so its length is a resource decision made by untrusted input, and
+ * each still is a sequential ffmpeg spawn whose output piles up in scratch
+ * BEFORE anything is uploaded — the local disk pre-flight only reserves
+ * `2 × input + margin` and does not model outputs, and the remote path puts one
+ * presigned PUT URL per output in a single envelope that the Worker caps at
+ * 1 MB. It is the ONE still cap the op needs: sheets are
+ * `times.length / tile.perSheet`, so bounding the stills bounds them too.
  */
 export const MAX_STILLS_PER_JOB = 200;
 
-/** Defaults for the still-image knobs (frames/contact_sheet). */
+/** Defaults for the still-image knobs. */
 const DEFAULT_FRAME_HEIGHT = 720;
 const DEFAULT_FRAME_QUALITY = 3;
-/** Contact-sheet cells are always q:v 3 — they are tiled down, and `quality` is the `frames` knob. */
-const CELL_QUALITY = 3;
+/** Grid width of a sheet when `tile` does not say — a short final sheet still lays out narrower. */
+const DEFAULT_TILE_COLUMNS = 3;
 /** Ruling R80: every still is a cheap, bounded command, so none of them may hold the queue. */
 const FRAME_TIMEOUT_SECONDS = 120;
 const PROBE_TIMEOUT_SECONDS = 60;
 
 /**
+ * The non-overlay half of a throwaway `buildFrameArgs` call, used only to
+ * validate a `draw` block at the config boundary. Nothing is spawned; the
+ * builder's own field checks are the point.
+ */
+const PREFLIGHT_FRAME = {
+  input: 'in.mp4',
+  output: 'out.jpg',
+  time: 0,
+  height: DEFAULT_FRAME_HEIGHT,
+  quality: DEFAULT_FRAME_QUALITY,
+};
+
+/**
+ * A `draw.text` string is resolved as an expression ONLY when it is one. The
+ * evaluator itself is looser — it resolves anything whose first word is a
+ * known root — which is fine for `times` (a number is never prose) and wrong
+ * for text: "user guide" and "request received" are titles, and resolving them
+ * would either throw on a missing property or draw something nobody wrote. So
+ * the gate here is the shape of a whole path, not just its first word.
+ */
+const DRAW_TEXT_EXPRESSION =
+  /^(?:user|steps|metadata|request|deployment|secrets)(?:\.[A-Za-z0-9_$]+|\[\d+\])+$/;
+
+/** `{{...}}` in a drawn text is an authoring slip, not a value — see `resolveDrawTexts`. */
+const TEMPLATE_SYNTAX = /\{\{.*\}\}/s;
+
+/**
  * A job that failed because this ffmpeg has no `drawtext` — the ONLY failure a
- * contact sheet retries (un-labelled). Anything else is a real failure and
- * propagates untouched.
+ * `frames` step retries (without the overlay). Anything else is a real failure
+ * and propagates untouched.
  */
 function isDrawtextFailure(error: unknown): boolean {
   const e = error as { code?: string; stderrTail?: string };
   if (e?.code !== 'FFMPEG_FAILED') return false;
   // ffmpeg's OWN stderr only. Not `error.message`: that carries CE-side text
   // including paths, so an input named `.../drawtext-demo.mp4` failing for any
-  // reason would trigger a pointless un-labelled re-run of a 130-command job.
+  // reason would trigger a pointless undrawn re-run of a 200-command job.
   return /drawtext|no such filter/i.test(e.stderrTail ?? '');
 }
 
@@ -136,35 +157,28 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
         );
       }
     };
-    need('input', ['extract_audio', 'slice', 'frames', 'contact_sheet']);
+    need('input', ['extract_audio', 'slice', 'frames']);
     need('spans', ['slice']);
     need('times', ['frames']);
     need('inputs', ['concat']);
     need('output', ['extract_audio', 'slice', 'concat']);
-    need('outputPrefix', ['frames', 'contact_sheet']);
-    // Numeric knobs are validated here, at the boundary where untrusted config
+    need('outputPrefix', ['frames']);
+    // The knobs are validated here, at the boundary where untrusted config
     // enters — not in the pure builders, which cannot report a config error.
-    // Scoped to the two ops that read them, so a pre-existing slice/concat step
-    // carrying a stray field is not newly rejected.
-    if (config.operation === 'frames' || config.operation === 'contact_sheet') {
+    // Scoped to the one op that reads them, so a pre-existing slice/concat step
+    // carrying a stray field is not newly rejected. This is not a save-time
+    // gate: validateConfig's only callers are pipeline-execution.service.ts:452
+    // and :570, each immediately before handler.execute, so a bad knob fails on
+    // the step's first request rather than when it is authored.
+    if (config.operation === 'frames') {
       const knobs = this.knobs(config);
-      if (config.operation === 'contact_sheet') {
-        // Static, unlike `frames`' expression-resolved `times`, so it can be
-        // checked from the config alone — which is why it is a
-        // ConfigurationError rather than the INVALID_TIMES the `frames` cap
-        // raises. Both still fire at RUN time: validateConfig's only callers
-        // are pipeline-execution.service.ts:452 and :570, each immediately
-        // before handler.execute. CE has no save-time handler validation, so
-        // an over-budget step saves cleanly and fails on its first request.
-        const budget =
-          (knobs.maxSheets ?? MAX_SHEETS) * (knobs.cellsPerSheet ?? MAX_CELLS_PER_SHEET);
-        if (budget > MAX_STILLS_PER_JOB) {
-          throw new ConfigurationError(
-            `ffmpeg_handler contact_sheet maxSheets × cellsPerSheet is ${budget}, over the ${MAX_STILLS_PER_JOB}-still ceiling for one step (MAX_STILLS_PER_JOB)`,
-            'ffmpeg_handler',
-          );
-        }
-      }
+      // The rest of the `draw` block is 17a's to judge, and it judges it while
+      // BUILDING an argv — so the cheapest way to surface `color`/`size`/
+      // `position` as a config error at the boundary is to build one throwaway
+      // command here with a placeholder text (the real text may be an
+      // expression that only run time can resolve).
+      if (knobs.draw)
+        this.frameArgv({ ...PREFLIGHT_FRAME, overlay: this.overlay(knobs.draw, 'x') });
     }
   }
 
@@ -189,9 +203,10 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
   }
 
   /**
-   * The boolean twin of `knob`. Config reaches us as YAML/JSON, and this very
-   * diff teaches authors that strings are accepted for the numeric knobs — so
-   * `label: 'false'` must turn labels OFF rather than being silently truthy.
+   * The boolean twin of `knob`. Config reaches us as YAML/JSON, and the
+   * numeric knobs accept strings — so `draw.background: 'false'` must turn the
+   * box OFF rather than being silently truthy. A wrong picture with no error
+   * is worse than a config error.
    */
   private boolKnob(value: unknown, field: string, fallback: boolean): boolean {
     if (value === undefined || value === null || value === '') return fallback;
@@ -207,19 +222,193 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
     );
   }
 
-  /** Every knob of frames/contact_sheet. Called from validateConfig AND from the ops (defence in depth: a directly-executed step skips validation). */
+  /**
+   * A `draw:`/`tile:` block, or undefined. YAML hands an empty body back as
+   * `null` and a mistyped one as a scalar, so this is a real authoring slip
+   * rather than a defensive nicety — and it has to fail here, because
+   * everything downstream reads properties off it.
+   */
+  private block<T>(value: unknown, field: 'draw' | 'tile'): T | undefined {
+    if (value === undefined) return undefined;
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+      throw new ConfigurationError(
+        `ffmpeg_handler ${field} must be an object (got ${value === null ? 'null' : JSON.stringify(value)})`,
+        'ffmpeg_handler',
+      );
+    }
+    return value as T;
+  }
+
+  /**
+   * Every knob of `frames`. Called from validateConfig AND from the op itself
+   * (defence in depth: a directly-executed step skips validation).
+   *
+   * Ruling R103 as it now stands: values a CALLER authored throw at this edge,
+   * values CE derives are clamped in depth. `tile.perSheet`/`tile.columns` used
+   * to be the planner's output, which is why `buildTileArgs` clamps them; now
+   * that they come from a `tile:` block they are authored config, and
+   * `columns: 0` silently clamping to 1 would lay out a 1×N strip instead of
+   * reporting the mistake. The clamp stays where it is as the unreachable
+   * guard its TSDoc claims to be.
+   */
   private knobs(config: FfmpegHandlerConfig) {
+    const draw = this.block<FfmpegDrawConfig>(config.draw, 'draw');
+    const tile = this.block<FfmpegTileConfig>(config.tile, 'tile');
     return {
       height: this.knob(config.height, 'height', 'integer') ?? DEFAULT_FRAME_HEIGHT,
       quality: this.knob(config.quality, 'quality', 'integer') ?? DEFAULT_FRAME_QUALITY,
-      // The remaining four are the planner's knobs: leaving them undefined lets
-      // planContactSheet apply its own documented defaults, in one place.
-      interval: this.knob(config.interval, 'interval', 'number'),
-      columns: this.knob(config.columns, 'columns', 'integer'),
-      cellsPerSheet: this.knob(config.cellsPerSheet, 'cellsPerSheet', 'integer'),
-      maxSheets: this.knob(config.maxSheets, 'maxSheets', 'integer'),
-      label: this.boolKnob(config.label, 'label', true),
+      draw: draw && {
+        text: draw.text,
+        // `position` and `color` are 17a's to judge (it owns the enum and the
+        // colour pattern) — re-checking them here would be a second, drifting
+        // copy of the same rule.
+        position: draw.position,
+        color: draw.color,
+        size: this.knob(draw.size, 'draw.size', 'number'),
+        background: this.boolKnob(draw.background, 'draw.background', true),
+      },
+      tile: tile && {
+        perSheet:
+          this.knob(tile.perSheet, 'tile.perSheet', 'integer') ??
+          this.missing(
+            'tile.perSheet is required whenever tile is present: the number of stills on each sheet',
+          ),
+        columns: this.knob(tile.columns, 'tile.columns', 'integer') ?? DEFAULT_TILE_COLUMNS,
+      },
     };
+  }
+
+  private missing(what: string): never {
+    throw new ConfigurationError(`ffmpeg_handler ${what}`, 'ffmpeg_handler');
+  }
+
+  /** The overlay `buildFrameArgs` takes, from a validated `draw` block plus this still's own text. */
+  private overlay(draw: NonNullable<ReturnType<FfmpegHandler['knobs']>['draw']>, text: string) {
+    return {
+      text,
+      position: draw.position,
+      size: draw.size,
+      color: draw.color,
+      background: draw.background,
+    } as FrameOverlay;
+  }
+
+  /**
+   * `buildFrameArgs`, with its plain `Error`s mapped onto the typed config
+   * error the pipeline contract promises. 17a deliberately throws for an
+   * authored value it cannot use (Ruling R103: clamping `size: 3` would render
+   * text nobody asked for, and a colour has no nearest valid neighbour), but a
+   * raw Error would surface as a generic handler failure — so name the field
+   * the author has to fix.
+   */
+  private frameArgv(o: Parameters<typeof buildFrameArgs>[0]): string[] {
+    try {
+      return buildFrameArgs(o);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const named = /overlay (text|position|size|color|background)\b/.exec(message);
+      throw new ConfigurationError(
+        `ffmpeg_handler ${named ? `draw.${named[1]}` : 'draw'} is invalid: ${message}`,
+        'ffmpeg_handler',
+      );
+    }
+  }
+
+  /**
+   * One drawn text per still, or undefined when the step asked for no `draw`.
+   *
+   * `text` mirrors `times`: a JSON array string, a BARE expression resolving
+   * to a string or an array, or the value itself. It differs in one way that
+   * matters — a plain string is legitimate CONTENT here, so it is only treated
+   * as an expression when it has the shape of a whole path
+   * (`DRAW_TEXT_EXPRESSION`); prose beginning with an expression root is drawn
+   * as written.
+   *
+   * `{{...}}` is refused outright. For `times` a braced value fails on its own
+   * ("expected a non-empty array"), but a braced TEXT would happily draw the
+   * literal braces into the picture — a silent wrong image, which is the one
+   * failure mode this op keeps fencing.
+   */
+  private resolveDrawTexts(
+    draw: ReturnType<FfmpegHandler['knobs']>['draw'],
+    count: number,
+    context: PipelineContext,
+    stepName: string,
+  ): string[] | undefined {
+    if (!draw) return undefined;
+    const fail = (msg: string): never => {
+      throw new ConfigurationError(`ffmpeg_handler draw.text ${msg}`, 'ffmpeg_handler');
+    };
+    const resolve = (v: unknown): unknown =>
+      typeof v === 'string' && DRAW_TEXT_EXPRESSION.test(v.trim())
+        ? this.expressionEvaluator.evaluateExpression(v.trim(), context, stepName)
+        : v;
+    const one = (v: unknown, where: string): string => {
+      if (typeof v !== 'string' && typeof v !== 'number') {
+        fail(`${where} must be a string (got ${v === null ? 'null' : typeof v})`);
+      }
+      const text = String(v);
+      if (TEMPLATE_SYNTAX.test(text)) {
+        fail(
+          `${where} is a {{template}}, which draw.text does not support: write a BARE expression (steps.x.title) or the literal text`,
+        );
+      }
+      return text;
+    };
+
+    let value: unknown = draw.text;
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      let parsedAsJson = false;
+      if (trimmed.startsWith('[')) {
+        try {
+          value = JSON.parse(trimmed);
+          parsedAsJson = true;
+        } catch {
+          // Not valid JSON — fall through to the expression/literal path below.
+        }
+      }
+      if (!parsedAsJson) value = resolve(value);
+    }
+    if (Array.isArray(value)) {
+      if (value.length !== count) {
+        fail(
+          `is an array of ${value.length} entries but ${count} times were requested — one text per still, or a single string for all of them`,
+        );
+      }
+      return value.map((v, i) => one(resolve(v), `entry ${i}`));
+    }
+    if (value === undefined || value === null) fail('is required when draw is present');
+    return new Array<string>(count).fill(one(value, 'must be a string or an array of strings'));
+  }
+
+  /**
+   * Chunk the requested times into sheets. `cols` is each sheet's ACTUAL grid
+   * width — a short final sheet is narrower than the `columns` knob, and
+   * `buildTileArgs` documents that it must be handed that narrower value.
+   * `start` is the sheet's first cell as a 1-based number, which is exactly
+   * ffmpeg's `-start_number`.
+   */
+  private planSheets(times: number[], tile: { perSheet: number; columns: number }) {
+    const sheets: Array<{
+      index: number;
+      start: number;
+      times: number[];
+      cols: number;
+      rows: number;
+    }> = [];
+    for (let from = 0; from < times.length; from += tile.perSheet) {
+      const chunk = times.slice(from, from + tile.perSheet);
+      const cols = Math.min(chunk.length, tile.columns);
+      sheets.push({
+        index: sheets.length,
+        start: from + 1,
+        times: chunk,
+        cols,
+        rows: Math.ceil(chunk.length / cols),
+      });
+    }
+    return sheets;
   }
 
   /** The step's own cap breach, typed so the message names both the ceiling and what was asked for. */
@@ -280,8 +469,6 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
           return this.runConcat(config, context, stepName, executor, signal);
         case 'frames':
           return this.runFrames(config, context, stepName, executor, signal);
-        case 'contact_sheet':
-          return this.runContactSheet(config, context, stepName, executor, signal);
       }
     };
     try {
@@ -427,7 +614,7 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
             id: 'probe',
             kind: 'ffprobe',
             argv: buildProbeArgs(`{in:${inName}}`),
-            timeoutSeconds: 60, // probe is cheap; never let it hold the queue long
+            timeoutSeconds: PROBE_TIMEOUT_SECONDS, // probe is cheap; never let it hold the queue long
           },
         ],
         inputs: [{ name: inName, key: inputKey }],
@@ -587,17 +774,6 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
     return (await this.resolveKey(expr, context, stepName, 'output')).replace(/\/+$/, '');
   }
 
-  /** contact_sheet's duration, typed: a bad one fails as INVALID_TIMES naming `duration`, not as an unexplained ffmpeg crash. */
-  private assertDuration(n: number): number {
-    if (!Number.isFinite(n) || n <= 0) {
-      throw Object.assign(
-        new Error(`ffmpeg_handler contact_sheet needs a positive duration (got ${n})`),
-        { code: 'INVALID_TIMES' },
-      );
-    }
-    return n;
-  }
-
   /**
    * ffmpeg writes NO output file when a seek lands past the end of the source,
    * so the local executor stats a file that was never created and throws a bare
@@ -615,17 +791,29 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
     if (!missing) return error;
     return Object.assign(
       new Error(
-        `ffmpeg_handler ${op} produced no ${missing}: ffmpeg wrote no frame there, which usually means the requested time is past the end of the source (${message})`,
+        `ffmpeg_handler ${op} produced no ${missing}: ffmpeg wrote no image there, which usually means a requested time is past the end of the source (${message})`,
       ),
       { code: 'FFMPEG_FAILED' },
     );
   }
 
   /**
-   * One still per requested time, written under `outputPrefix`. The stills are
-   * deliberately CLEAN — no burned-in label — because the point of writing them
-   * to storage is that a later step re-captures a moment from the source
-   * instead of cropping it out of a contact sheet.
+   * One still per requested time — plus, optionally, one line of text drawn on
+   * each (`draw`) and a tiling of them into contact sheets (`tile`). That is
+   * one operation, not three: a sheet is `times` + `tile`, a title card is a
+   * single time + `draw`, and a clean thumbnail strip is neither. CE supplies
+   * the DRAWING and the TILING; what the text says and where the times fall is
+   * the calling app's policy (Ruling R99).
+   *
+   * Without `tile` every still is uploaded under `outputPrefix`. With it the
+   * stills stay SCRATCH-ONLY — addressed by a BARE scratch-relative filename,
+   * never a `{out:NAME}` placeholder, because both executors reject an
+   * undeclared one (local: the `known` set; the Worker: `names.has` →
+   * BAD_REQUEST) and the `cell-%0Wd.jpg` glob the tile pass reads could never
+   * BE a declared name (Ruling R75; both executors spawn with cwd = the
+   * scratch dir, which is what runConcat's list file already relies on). Only
+   * the sheets are declared as job outputs, so no executor can upload a cell
+   * however the argv is written.
    */
   private async runFrames(
     config: FfmpegHandlerConfig,
@@ -638,249 +826,139 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
     const times = this.resolveTimes(config.times, context, stepName);
     // `times` is expression-resolved, so its length is untrusted input.
     if (times.length > MAX_STILLS_PER_JOB) this.tooManyStills('frames times', times.length);
+    const texts = this.resolveDrawTexts(knobs.draw, times.length, context, stepName);
     const inputKey = await this.resolveKey(config.input!, context, stepName, 'input');
     const prefix = await this.resolvePrefix(config.outputPrefix!, context, stepName);
     const inName = `in${path.posix.extname(inputKey) || '.mp4'}`;
-    // Ruling R82: ONE pad width for the whole batch, widened past 99 frames, so
-    // the names stay sortable instead of jumping from frame-99 to frame-100.
-    const pad = Math.max(2, String(times.length).length);
-    const names = times.map((_, i) => `frame-${String(i + 1).padStart(pad, '0')}.jpg`);
-    const commands: FfmpegJobCommand[] = times.map((time, i) => ({
-      id: names[i].replace(/\.jpg$/, ''),
-      kind: 'ffmpeg',
-      timeoutSeconds: FRAME_TIMEOUT_SECONDS,
-      argv: buildFrameArgs({
-        input: `{in:${inName}}`,
-        output: `{out:${names[i]}}`,
-        time,
-        height: knobs.height,
-        quality: knobs.quality,
-      }),
-    }));
-    let res: FfmpegJobResult;
-    try {
-      res = await this.runJob(
-        executor,
-        {
-          id: stepName,
-          commands,
-          // Only the stills. Nothing else is declared, so nothing else uploads.
-          outputs: names.map((name) => ({
-            name,
-            key: `${prefix}/${name}`,
-            contentType: 'image/jpeg',
-          })),
-          inputs: [{ name: inName, key: inputKey }],
-          files: [],
-        },
-        signal,
-      );
-    } catch (error) {
-      throw this.namedOutputFailure(error, 'frames', names);
-    }
-    const bytes = new Map(res.outputs.map((o) => [o.name, o.bytes]));
-    return {
-      success: true,
-      output: {
-        frames: times.map((time, i) => ({
-          // The REQUESTED time, unchanged — it is what a re-capture seeks to.
-          time,
-          storage_path: `${prefix}/${names[i]}`,
-          content_type: 'image/jpeg',
-          size: bytes.get(names[i]) ?? 0,
-        })),
-        count: times.length,
-        ...this.telemetry(res),
-      },
-    };
-  }
+    const tile = knobs.tile;
+    const sheets = tile ? this.planSheets(times, tile) : [];
 
-  /**
-   * Sample the whole clip and tile the samples into timestamped sheets an LLM
-   * reads as visual context. Two jobs at most: an ffprobe for the duration
-   * (only when config omits it) and one job that captures every cell and then
-   * tiles them, in that order, over a single scratch dir.
-   */
-  private async runContactSheet(
-    config: FfmpegHandlerConfig,
-    context: PipelineContext,
-    stepName: string,
-    executor: FfmpegExecutor,
-    signal: AbortSignal,
-  ): Promise<StepResult> {
-    const knobs = this.knobs(config);
-    const inputKey = await this.resolveKey(config.input!, context, stepName, 'input');
-    const prefix = await this.resolvePrefix(config.outputPrefix!, context, stepName);
-    const inName = `in${path.posix.extname(inputKey) || '.mp4'}`;
-    const inputs = [{ name: inName, key: inputKey }];
-    // Ruling R79: `timings`/`executor` describe the job that produced the
-    // SHEETS, but the byte counters sum EVERY job the op ran, so the probe's
-    // own transfer is not invisible in the telemetry.
-    let bytesIn = 0;
-    let bytesOut = 0;
-    const account = (r: FfmpegJobResult): FfmpegJobResult => {
-      bytesIn += r.bytesIn;
-      bytesOut += r.bytesOut;
-      return r;
-    };
-
-    let duration: number;
-    if (config.duration !== undefined && config.duration !== null && config.duration !== '') {
-      const value =
-        typeof config.duration === 'string'
-          ? this.expressionEvaluator.evaluateExpression(config.duration, context, stepName)
-          : config.duration;
-      duration = this.assertDuration(Number(value));
-    } else {
-      // Its OWN job: an executor result's `stdout` is only the LAST command's,
-      // and the duration has to be known before the cells can even be planned.
-      const probed = account(
-        await this.runJob(
-          executor,
-          {
-            id: `${stepName}-probe`,
-            commands: [
-              {
-                id: 'probe',
-                kind: 'ffprobe',
-                argv: buildProbeArgs(`{in:${inName}}`),
-                timeoutSeconds: PROBE_TIMEOUT_SECONDS,
-              },
-            ],
-            inputs,
-            outputs: [],
-            files: [],
-          },
-          signal,
-        ),
-      );
-      let parsed: { format?: { duration?: string } } = {};
-      try {
-        parsed = JSON.parse(probed.stdout) as { format?: { duration?: string } };
-      } catch {
-        // Unparseable ffprobe output falls through to the typed duration error.
-      }
-      duration = this.assertDuration(Number(parsed.format?.duration));
-    }
-
-    // Defence in depth: validateConfig refuses this budget too, but it runs
-    // only via pipeline-execution.service, so a directly-executed step never
-    // went through it. (Neither check is a save-time gate — see validateConfig.)
-    const budget = (knobs.maxSheets ?? MAX_SHEETS) * (knobs.cellsPerSheet ?? MAX_CELLS_PER_SHEET);
-    if (budget > MAX_STILLS_PER_JOB) {
-      this.tooManyStills('contact_sheet maxSheets × cellsPerSheet', budget);
-    }
-    const plan = planContactSheet(duration, {
-      minInterval: knobs.interval,
-      columns: knobs.columns,
-      cellsPerSheet: knobs.cellsPerSheet,
-      maxSheets: knobs.maxSheets,
-    });
-    if (plan.times.length === 0) {
-      throw Object.assign(
-        new Error(`ffmpeg_handler contact_sheet planned no frames for a ${duration}s source`),
-        { code: 'INVALID_TIMES' },
-      );
-    }
-    // Ruling R82 again: the cell pad width comes from the TOTAL cell count and
-    // the SAME width feeds both the filenames and the `%0Wd` tile pattern — a
-    // hard-coded `%03d` silently breaks past 999 cells.
-    const cellWidth = Math.max(3, String(plan.times.length).length);
-    const cellName = (i: number) => `cell-${String(i + 1).padStart(cellWidth, '0')}.jpg`;
-    const sheetWidth = Math.max(2, String(plan.sheets.length).length);
+    // Ruling R82: ONE pad width for the whole batch, widened past the two/three
+    // digits so the names stay sortable instead of jumping from 99 to 100 — and
+    // for cells the SAME width feeds both the filenames and the `%0Wd` tile
+    // pattern, which a hard-coded `%03d` would silently break past 999.
+    const stillWidth = Math.max(tile ? 3 : 2, String(times.length).length);
+    const stillName = (i: number) =>
+      `${tile ? 'cell' : 'frame'}-${String(i + 1).padStart(stillWidth, '0')}.jpg`;
+    const sheetWidth = Math.max(2, String(sheets.length).length);
     const sheetName = (i: number) => `sheet-${String(i + 1).padStart(sheetWidth, '0')}.jpg`;
+    // The stills OR the sheets — never both. Nothing else is declared, so
+    // nothing else uploads.
+    const outputs: FfmpegJobOutput[] = tile
+      ? sheets.map((sheet) => ({
+          name: sheetName(sheet.index),
+          key: `${prefix}/${sheetName(sheet.index)}`,
+          contentType: 'image/jpeg',
+        }))
+      : times.map((_, i) => ({
+          name: stillName(i),
+          key: `${prefix}/${stillName(i)}`,
+          contentType: 'image/jpeg',
+        }));
 
-    const job = (withLabels: boolean): FfmpegJob => ({
+    const job = (withDraw: boolean): FfmpegJob => ({
       id: stepName,
       commands: [
-        ...plan.times.map((time, i) => ({
-          id: cellName(i).replace(/\.jpg$/, ''),
+        ...times.map((time, i) => ({
+          id: stillName(i).replace(/\.jpg$/, ''),
           kind: 'ffmpeg' as const,
           timeoutSeconds: FRAME_TIMEOUT_SECONDS,
-          // Ruling R75 — cells are SCRATCH-ONLY and are addressed by a BARE
-          // scratch-relative filename, never a `{out:NAME}` placeholder: both
-          // executors reject an undeclared one (local: the `known` set; the
-          // Worker: `names.has` → BAD_REQUEST), and the `cell-%0Wd.jpg` glob the
-          // tile pass reads could never BE a declared name. Both spawn with
-          // cwd = the scratch dir, which is exactly what runConcat's list file
-          // already relies on ("Scratch-relative names" there).
-          argv: buildFrameArgs({
+          argv: this.frameArgv({
             input: `{in:${inName}}`,
-            output: cellName(i),
+            output: tile ? stillName(i) : `{out:${stillName(i)}}`,
             time,
             height: knobs.height,
-            quality: CELL_QUALITY,
-            label: withLabels ? clockLabel(time) : undefined,
+            quality: knobs.quality,
+            overlay: withDraw && texts ? this.overlay(knobs.draw!, texts[i]) : undefined,
           }),
         })),
-        ...plan.sheets.map((sheet) => ({
+        ...sheets.map((sheet) => ({
           id: sheetName(sheet.index).replace(/\.jpg$/, ''),
           kind: 'ffmpeg' as const,
           timeoutSeconds: FRAME_TIMEOUT_SECONDS,
           argv: buildTileArgs({
-            pattern: `cell-%0${cellWidth}d.jpg`,
+            pattern: `cell-%0${stillWidth}d.jpg`,
             start: sheet.start,
-            count: sheet.count,
-            // The sheet's ACTUAL grid width, not the `columns` config: a short
-            // final sheet plans narrower (2 cells under columns:3 → cols:2).
+            count: sheet.times.length,
+            // This sheet's ACTUAL grid width, not the `columns` knob: a short
+            // final sheet is narrower (2 cells under columns:3 lay out 2 wide).
             columns: sheet.cols,
             output: `{out:${sheetName(sheet.index)}}`,
           }),
         })),
       ],
-      inputs,
-      // The sheets ONLY. Cells are never listed, so no executor uploads them.
-      outputs: plan.sheets.map((sheet) => ({
-        name: sheetName(sheet.index),
-        key: `${prefix}/${sheetName(sheet.index)}`,
-        contentType: 'image/jpeg',
-      })),
+      inputs: [{ name: inName, key: inputKey }],
+      outputs,
       files: [],
     });
 
-    // Ruling R77: the LOCAL `-filters` probe may only SUPPRESS labels, and only
+    // Ruling R77: the LOCAL `-filters` probe may only SUPPRESS a draw, and only
     // for the local executor — a remote-only instance has no local ffmpeg to
-    // probe, so gating on it there would mean a contact sheet is NEVER
-    // labelled, which defeats the point of one. `hasFilter` is tri-state:
-    // only an explicit `false` suppresses (the optional call also tolerates
-    // capability doubles predating it).
+    // probe, so gating on it there would mean nothing is ever drawn.
+    // `hasFilter` is tri-state: only an explicit `false` suppresses (the
+    // optional call also tolerates capability doubles predating it).
     const localLacksDrawtext =
       executor.name === 'local' && this.capability.hasFilter?.('drawtext') === false;
-    let labelled = knobs.label && !localLacksDrawtext;
+    let drawn = texts !== undefined && !localLacksDrawtext;
     let res: FfmpegJobResult;
     try {
-      res = await this.runJob(executor, job(labelled), signal);
+      res = await this.runJob(executor, job(drawn), signal);
     } catch (error) {
       // The universal net under that probe: an ffmpeg that turns out to lack
-      // drawtext (a remote Worker's, say) costs ONE un-labelled retry, not the
-      // step. Every other failure propagates untouched.
-      if (!labelled || !isDrawtextFailure(error)) throw error;
-      this.logger.warn({ event: 'ffmpeg_contact_sheet_drawtext_missing', step: stepName });
-      labelled = false;
-      res = await this.runJob(executor, job(false), signal);
+      // drawtext (a remote Worker's, say) costs ONE undrawn retry, not the
+      // step. Every other failure propagates untouched — through
+      // `namedOutputFailure`, which turns the bare ENOENT of an image ffmpeg
+      // never wrote into a message naming it.
+      if (!drawn || !isDrawtextFailure(error)) {
+        throw this.namedOutputFailure(
+          error,
+          'frames',
+          outputs.map((o) => o.name),
+        );
+      }
+      this.logger.warn({ event: 'ffmpeg_frames_drawtext_missing', step: stepName });
+      drawn = false;
+      try {
+        res = await this.runJob(executor, job(false), signal);
+      } catch (retryError) {
+        throw this.namedOutputFailure(
+          retryError,
+          'frames',
+          outputs.map((o) => o.name),
+        );
+      }
     }
-    account(res);
     const bytes = new Map(res.outputs.map((o) => [o.name, o.bytes]));
     return {
       success: true,
-      output: {
-        sheets: plan.sheets.map((sheet) => ({
-          storage_path: `${prefix}/${sheetName(sheet.index)}`,
-          content_type: 'image/jpeg',
-          size: bytes.get(sheetName(sheet.index)) ?? 0,
-          times: sheet.times,
-          index: sheet.index,
-          total: plan.sheets.length,
-          cols: sheet.cols,
-          rows: sheet.rows,
-        })),
-        interval: plan.interval,
-        count: plan.times.length,
-        labelled,
-        ...this.telemetry(res),
-        bytesIn,
-        bytesOut,
-      },
+      output: tile
+        ? {
+            sheets: sheets.map((sheet) => ({
+              storage_path: `${prefix}/${sheetName(sheet.index)}`,
+              content_type: 'image/jpeg',
+              size: bytes.get(sheetName(sheet.index)) ?? 0,
+              times: sheet.times,
+              index: sheet.index,
+              total: sheets.length,
+              cols: sheet.cols,
+              rows: sheet.rows,
+            })),
+            count: times.length,
+            drawn,
+            ...this.telemetry(res),
+          }
+        : {
+            frames: times.map((time, i) => ({
+              // The REQUESTED time, unchanged — it is what a re-capture seeks to.
+              time,
+              storage_path: `${prefix}/${stillName(i)}`,
+              content_type: 'image/jpeg',
+              size: bytes.get(stillName(i)) ?? 0,
+            })),
+            count: times.length,
+            drawn,
+            ...this.telemetry(res),
+          },
     };
   }
 

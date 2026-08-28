@@ -1,4 +1,5 @@
 import type { AIAttachmentConfig } from '../handlers/ai-attachments.util';
+import type { OverlayPosition } from '../ffmpeg/ffmpeg-args';
 import type { DataFilters } from '../handlers/filter-where.util';
 import { PipelineContext, StepResult } from './pipeline-context.interface';
 import { HandlerType, PipelineStep } from '../types';
@@ -661,18 +662,51 @@ export interface ImageConvertHandlerConfig extends BaseHandlerConfig {
 
 // step-handler.interface.ts — this TSDoc is the authoritative handler reference
 // (CE has no per-handler doc pages; agents and humans read this).
-export type FfmpegOperation =
-  | 'probe'
-  | 'extract_audio'
-  | 'slice'
-  | 'concat'
-  | 'frames'
-  | 'contact_sheet';
+export type FfmpegOperation = 'probe' | 'extract_audio' | 'slice' | 'concat' | 'frames';
 
 /** One kept span of source footage, in source seconds. Values may be literals or expressions. */
 export interface FfmpegSpan {
   start: number | string;
   end: number | string;
+}
+
+/**
+ * One line of text burned into every still a `frames` step captures. CE owns
+ * the ability to DRAW, not the ability to draw any particular thing: a
+ * timestamped contact-sheet cell and a title card on a screenshot are the same
+ * block with different values (Ruling R99).
+ */
+export interface FfmpegDrawConfig {
+  /**
+   * The text, drawn VERBATIM (it is escaped into the filter graph and never
+   * interpreted). One string draws the same line on every still; an array
+   * draws its own line on each and must be EXACTLY as long as `times`. A BARE
+   * expression (`steps.chapters.titles`) may resolve to either form — but only
+   * a string that IS an expression path is resolved, so prose that happens to
+   * start with an expression root ("user guide") is still drawn as written.
+   * `{{...}}` is NOT a template here and is rejected rather than drawn.
+   */
+  text: string | string[];
+  /** Which corner. Default `'bottom-right'`. A closed enum: callers never write an x/y expression. */
+  position?: OverlayPosition;
+  /** Font height as a FRACTION of the frame height, 0.005..1. Default 1/12. Out of range is a config error, never clamped. */
+  size?: number;
+  /** An ffmpeg colour NAME or `0xRRGGBB`/`#RRGGBB` — no `@alpha`. Default `'white'`. */
+  color?: string;
+  /** Draw the dark box behind the text. Default true. String forms ('false'/'0'/'no'/'off') are coerced, since config arrives as YAML/JSON. */
+  background?: boolean | string;
+}
+
+/**
+ * Tile the captured stills into contact sheets instead of uploading them
+ * individually. Present → the stills stay in scratch and only the sheets are
+ * written to storage.
+ */
+export interface FfmpegTileConfig {
+  /** Stills per sheet. REQUIRED whenever `tile` is present. LITERAL positive integer (the string form is coerced). */
+  perSheet: number;
+  /** Grid columns. Default 3. LITERAL positive integer; a short final sheet lays out at its own narrower width. */
+  columns?: number;
 }
 
 /**
@@ -695,88 +729,87 @@ export interface FfmpegSpan {
  *   adds ~10 ms edge fades (use for scene assembly).
  * - `concat` — stitch `inputs` (uniformly-encoded clips) into `output`;
  *   stream-copy first, automatic re-encode fallback on stream mismatch.
- * - `frames` — one still per entry in `times`, written to
- *   `<outputPrefix>/frame-NN.jpg` (1-based, zero-padded to at least two digits
- *   and widening past 99, so the names stay sortable); returns
- *   `{ frames: [{ time, storage_path, content_type, size }], count }`, where
- *   each `storage_path` is the FULL resolved key —
+ * - `frames` — one still per entry in `times`, with two optional modifiers:
+ *   `draw` burns one line of text into every still, and `tile` lays the stills
+ *   out into contact sheets instead of uploading them one by one. There is no
+ *   separate contact-sheet operation: a sheet is `times` + `tile`, and a title
+ *   card on a screenshot is `times: [12.5]` + `draw` and no `tile`. WHAT the
+ *   text says and WHERE the times fall are the calling app's policy; CE only
+ *   captures and draws.
+ *
+ *   Without `tile`: each still is written to `<outputPrefix>/frame-NN.jpg`
+ *   (1-based, zero-padded to at least two digits and widening past 99, so the
+ *   names stay sortable) and the output is
+ *   `{ frames: [{ time, storage_path, content_type, size }], count, drawn }`.
+ *   `time` is the REQUESTED second, unchanged, so a later step can re-capture
+ *   it.
+ *
+ *   With `tile`: the stills are SCRATCH-ONLY — nothing but the sheets is
+ *   declared as a job output, so no executor can upload them — and the output
+ *   is `{ sheets: [{ storage_path, content_type, size, times, index, total,
+ *   cols, rows }], count, drawn }` over `<outputPrefix>/sheet-NN.jpg`. `times`
+ *   are chunked by `tile.perSheet`; each sheet's `cols` is
+ *   `min(chunk, tile.columns)` (a short final sheet is narrower) and `rows`
+ *   grows to fit. Note `sheets[].index` is 0-based while the FILENAME is
+ *   1-based. `count` is the number of STILLS in both modes.
+ *
+ *   Every `storage_path` is the FULL resolved key —
  *   `{owner}/{repo}/uploads/<prefix>/frame-01.jpg`, not the `outputPrefix` as
- *   written, the same convention `slice`/`extract_audio` already use. The
- *   stills are deliberately CLEAN (no burned-in label): a later step
- *   re-captures a frame from the source rather than cropping it out of a sheet.
+ *   written — the same convention `slice`/`extract_audio` already use.
+ *
+ *   `drawn` is the OUTCOME, not the request: it is `false` when no `draw` was
+ *   asked for AND when the ffmpeg running the job turned out to have no
+ *   `drawtext` filter (which needs libfreetype + fontconfig and an installed
+ *   font; CE's own image has them). A local executor whose `-filters` probe
+ *   already reported the filter missing suppresses the draw up front at no
+ *   cost; anything else costs ONE retry of the job without the overlay, and
+ *   only then. A step never fails merely because an ffmpeg cannot draw.
+ *
  *   A `time` past the end of the source produces no file and FAILS the step
- *   (the error names which frame was not written). This is the ONE case that
- *   leaves a partial batch behind: ffmpeg exits 0 having written nothing, so
- *   the failure only surfaces in the upload loop, after the earlier stills
- *   have already landed under `outputPrefix`. Which is why a run's prefix
- *   should be treated as disposable rather than as a directory you append to.
- * - `contact_sheet` — sample the whole clip and tile the samples into
- *   `<outputPrefix>/sheet-NN.jpg` grids an LLM can read as visual context;
- *   returns `{ sheets: [{ storage_path, content_type, size, times, index,
- *   total, cols, rows }], interval, count, labelled }`. `duration` is probed
- *   with ffprobe when the config omits it. The sampling is a port of Studio's
- *   `contactSheet.ts` planner: as dense as `interval` allows on short clips,
- *   never sparser than 30s until the `maxSheets` × `cellsPerSheet` budget
- *   forces it, `columns` per grid. `storage_path` is the full resolved key —
- *   `{owner}/{repo}/uploads/<prefix>/sheet-01.jpg`, not the `outputPrefix` as
- *   written — and the sheet numbering pads the same way as `frames`: 1-based,
- *   zero-padded to at least two digits, widening once there are more than 99
- *   sheets. Note `sheets[].index` is 0-based while the FILENAME is 1-based. Each cell
- *   burns in an `m:ss` clock via ffmpeg's `drawtext`, which needs an ffmpeg
- *   built with libfreetype (CE's own image has it); an ffmpeg without it
- *   degrades to un-labelled cells and `labelled: false` instead of failing the
- *   step. `labelled` is the OUTCOME, not the diagnosis: it is also `false`
- *   when the step simply set `label: false` (or its string forms
- *   `'false'`/`'0'`/`'no'`/`'off'`), so it does not on its own tell you the
- *   ffmpeg lacked the filter. At most 200 stills per step
- *   (`times.length`, or `maxSheets × cellsPerSheet`) — a runaway `times`
- *   expression would otherwise spawn one ffmpeg per entry.
+ *   (the error names the image that was not written). Without `tile` this is
+ *   the ONE case that leaves a partial batch behind: ffmpeg exits 0 having
+ *   written nothing, so the failure only surfaces in the upload loop, after
+ *   the earlier stills have already landed under `outputPrefix`. Which is why
+ *   a run's prefix should be treated as disposable rather than as a directory
+ *   you append to. Nothing else is partial: both executors upload only after
+ *   EVERY command has succeeded.
  *
- * Both `frames` and `contact_sheet` are path-in/path-out under `outputPrefix`,
- * which is what lets a downstream step (a blog writer, say) pick a moment off a
- * sheet and then RE-CAPTURE that exact second as a clean still.
+ *   At most 200 stills per step (`MAX_STILLS_PER_JOB`, measured on
+ *   `times.length`) — a runaway `times` expression would otherwise spawn one
+ *   ffmpeg per entry, and each still piles up in scratch before anything is
+ *   uploaded. That cap bounds the sheets too, since sheets are
+ *   `times.length / perSheet`.
  *
- * Four things about the still ops that surprise authors:
+ * Two things about `frames` that surprise authors:
  * - **Three different syntaxes, and mixing them up fails at run time.**
  *   `input` and `outputPrefix` are TEMPLATES (`evaluateTemplate`):
  *   `{{steps.x.y}}` is substituted and anything else is used verbatim as a
- *   path. `times` and `duration` are BARE EXPRESSIONS
- *   (`evaluateExpression`): write `steps.probe.duration`, because a value
+ *   path. `times` and `draw.text` are BARE EXPRESSIONS
+ *   (`evaluateExpression`): write `steps.probe.times`, because a value
  *   starting `{{` does not match the evaluator's root pattern and comes back
- *   as the LITERAL string — so `duration: '{{steps.probe.duration}}'` reaches
- *   `Number('{{…}}')` and fails as `INVALID_TIMES`, and `times: '{{…}}'`
- *   fails as "expected a non-empty array". `height`, `quality`, `interval`,
- *   `columns`, `cellsPerSheet` and `maxSheets` are NEITHER — they are literal
- *   numbers (the string forms `'720'` are coerced), so
- *   `height: '{{steps.probe.h}}'` is a `ConfigurationError` from validateConfig
- *   — which runs immediately before execute, NOT on save, so it fails on the
- *   step's first request rather than when it is authored —
- *   and even a bare `steps.probe.h` is not resolved. Compute a number in a
- *   prior step and you still cannot pass it here — pick it at authoring time.
+ *   as the LITERAL string — so `times: '{{...}}'` fails as "expected a
+ *   non-empty array", and `draw.text: '{{...}}'` is rejected outright rather
+ *   than drawing the braces into the picture. `height`, `quality`,
+ *   `draw.size`, `tile.perSheet` and `tile.columns` are NEITHER — they are
+ *   literal numbers (the string forms `'720'` are coerced), so
+ *   `height: '{{steps.probe.h}}'` is a `ConfigurationError` from
+ *   validateConfig — which runs immediately before execute, NOT on save, so it
+ *   fails on the step's first request rather than when it is authored — and
+ *   even a bare `steps.probe.h` is not resolved. Compute a number in a prior
+ *   step and you still cannot pass it here — pick it at authoring time.
  * - **`quality` and `height` have no upper bound.** They are only checked for
  *   being positive integers, so `quality: 500` reaches `-q:v 500` and
- *   `height: 20000` scales every cell to 20 000 px. jpeg `-q:v` is meaningful
+ *   `height: 20000` scales every still to 20 000 px. jpeg `-q:v` is meaningful
  *   over 2..31 (2 = best, 31 = worst; default 3) and a useful `height` is
- *   360..1080 (default 720). `quality` applies to `frames` only — contact-sheet
- *   cells and the tiled sheet are always `-q:v 3`.
- * - **Omitting `duration` downloads the source TWICE** — once for the ffprobe
- *   job that measures it and once for the job that captures the cells, on both
- *   executors. Pass a `duration` you already know (an earlier `probe` step's,
- *   say) for large sources.
- * - **A contact sheet is up to 131 ffmpeg/ffprobe commands at the DEFAULT caps**
- *   (1 ffprobe + up to 120 cells + up to 10 tiles) — raising the caps raises
- *   that: `cellsPerSheet: 20, maxSheets: 10` is a legal 200-still budget and
- *   plans 211 commands. The local runner acquires its single concurrency slot
- *   PER COMMAND, not per job, so a long sheet gets that many chances to hit
- *   `FFMPEG_BUSY`, and a failure part-way through discards every cell computed
- *   so far: cells are scratch-only, and BOTH executors upload only after every
- *   command has succeeded, so a non-zero ffmpeg exit uploads nothing at all.
- *   That is the concrete reason `contact_sheet` belongs in `postSteps` behind a
- *   job row, the same way `slice` does, rather than merely "it is heavy". A
- *   missing `drawtext` costs a second full un-labelled pass ONLY on the retry
- *   path — a local executor whose `-filters` probe already reported the filter
- *   missing suppresses labels up front and costs nothing extra; the retry is
- *   for a remote Worker, or a local whose probe never ran.
+ *   360..1080 (default 720). The tiled SHEET is always `-q:v 3`; `quality`
+ *   applies to the stills.
+ *
+ * A 200-still tiled step is over 200 ffmpeg commands, and the local runner
+ * acquires its single concurrency slot PER COMMAND, not per job — so a long
+ * step gets that many chances to hit `FFMPEG_BUSY`, and a failure part-way
+ * through discards every still computed so far. That is the concrete reason a
+ * big `frames` step belongs in `postSteps` behind a job row, the same way
+ * `slice` does, rather than merely "it is heavy".
  *
  * Path forms: inputs accept `{owner}/{repo}/uploads/...`, an uploads-relative
  * path, or an `/api/uploads/...` URL; outputs are uploads-relative. All resolve
@@ -805,38 +838,30 @@ export interface FfmpegSpan {
  */
 export interface FfmpegHandlerConfig extends BaseHandlerConfig {
   operation: FfmpegOperation;
-  /** Source object (probe / extract_audio / slice / frames / contact_sheet — required for all but probe). TEMPLATE: `{{...}}` substituted, anything else verbatim. */
+  /** Source object (probe / extract_audio / slice / frames — required for all but probe). TEMPLATE: `{{...}}` substituted, anything else verbatim. */
   input?: string;
   /** Source clips for concat, in order: a JSON array (entries are TEMPLATES) or a BARE expression resolving to one — not `{{...}}`. */
   inputs?: string[] | string;
   /** Kept spans for slice: an array (bounds may be BARE expressions) or a BARE expression resolving to one — not `{{...}}`. */
   spans?: FfmpegSpan[] | string;
-  /** Destination path, uploads-relative. TEMPLATE. Required for extract_audio / slice / concat; frames and contact_sheet write to `outputPrefix` instead, and probe writes nothing. */
+  /** Destination path, uploads-relative. TEMPLATE. Required for extract_audio / slice / concat; frames writes under `outputPrefix` instead, and probe writes nothing. */
   output?: string;
   /** slice only: also emit the clip's 16 kHz mono WAV to this uploads-relative path. TEMPLATE. Setting it adds an `audio` sub-object to the step output. */
   audioOutput?: string;
   /** slice only: ~10 ms audio edge fades per span (assemble parity). Default false. */
   audioFades?: boolean;
-  /** frames/contact_sheet: destination DIRECTORY, uploads-relative. TEMPLATE. A trailing slash is stripped. */
+  /** frames: destination DIRECTORY, uploads-relative. TEMPLATE. A trailing slash is stripped. */
   outputPrefix?: string;
   /** frames: capture times in source seconds — an array (entries may be BARE expressions) or a BARE expression resolving to one. NOT `{{...}}`: a braced value comes back as a literal string and fails. */
   times?: Array<number | string> | string;
-  /** frames/contact_sheet: output height in px, width follows the aspect ratio. Default 720. LITERAL number (no expression of either form); positive integer, no upper bound. */
+  /** frames: output height in px, width follows the aspect ratio. Default 720. LITERAL number (no expression of either form); positive integer, no upper bound. */
   height?: number;
-  /** frames only: jpeg quality, ffmpeg -q:v (2 = best, 31 = worst). Default 3. LITERAL number; positive integer, no upper bound. contact_sheet cells and sheets are always -q:v 3. */
+  /** frames: jpeg quality of each still, ffmpeg -q:v (2 = best, 31 = worst). Default 3. LITERAL number; positive integer, no upper bound. A tiled sheet is always -q:v 3. */
   quality?: number;
-  /** contact_sheet: source duration in seconds; probed with ffprobe when omitted (a second download of the source). A number or a BARE expression — NOT `{{...}}`. */
-  duration?: number | string;
-  /** contact_sheet: finest sampling interval in seconds (the density floor; 30s coverage still wins on long clips). Default 5. LITERAL positive number — fractions allowed here, unlike the integer knobs. */
-  interval?: number;
-  /** contact_sheet: grid columns per sheet. Default 3. LITERAL positive integer. A short final sheet plans narrower. */
-  columns?: number;
-  /** contact_sheet: cap on cells per sheet. Default 12 (the planner prefers 9 and only packs to the cap when the sheet budget forces it). LITERAL positive integer; maxSheets x cellsPerSheet may not exceed MAX_STILLS_PER_JOB. */
-  cellsPerSheet?: number;
-  /** contact_sheet: cap on sheets. Default 10. LITERAL positive integer; see cellsPerSheet for the combined ceiling. */
-  maxSheets?: number;
-  /** contact_sheet: burn the m:ss clock into each cell. Default true; degrades to false when the ffmpeg has no drawtext, so the output's `labelled` reports the OUTCOME rather than the request. Accepts the string forms ('false'/'0'/'no'/'off') too, since config arrives as YAML/JSON; anything else is a ConfigurationError. */
-  label?: boolean | string;
+  /** frames: burn one line of text into every still. Omit for clean stills. */
+  draw?: FfmpegDrawConfig;
+  /** frames: tile the stills into contact sheets instead of uploading them individually. Omit to upload each still. */
+  tile?: FfmpegTileConfig;
   /**
    * Which executor runs the job: 'local' (this backend) | 'remote' (Worker) | a
    * `{{expression}}` resolving to one — a TEMPLATE, like the path fields.

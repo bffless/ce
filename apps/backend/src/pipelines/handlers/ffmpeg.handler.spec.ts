@@ -37,7 +37,7 @@ function createHandler(
     isEnabled: async () => true,
     isAvailable: () => true,
     getVersion: () => 'ffmpeg version 6.1.1',
-    getOps: async () => ['probe', 'extract_audio', 'slice', 'concat', 'frames', 'contact_sheet'],
+    getOps: async () => ['probe', 'extract_audio', 'slice', 'concat', 'frames'],
     ...overrides.capability,
   };
   const runner = overrides.runner ?? {
@@ -129,7 +129,7 @@ describe('probe without input — the capability payload', () => {
     expect(result.success).toBe(true);
     expect(result.output).toEqual({
       server: true,
-      ops: ['probe', 'extract_audio', 'slice', 'concat', 'frames', 'contact_sheet'],
+      ops: ['probe', 'extract_audio', 'slice', 'concat', 'frames'],
       version: 'ffmpeg version 6.1.1',
       executors: ['local'],
       defaultExecutor: 'local',
@@ -665,11 +665,13 @@ describe('executor selection (remote)', () => {
 });
 
 /**
- * frames / contact_sheet (Task 17b). Both are path-in/path-out under an
- * explicit `outputPrefix`; the argv itself is Task 17a's (ffmpeg-args.spec.ts
- * owns the escaping/planning proofs), so these tests pin the HANDLER: how many
- * commands and outputs a job carries, the keys they land on, the untrusted-
- * config guards, and the label degrade fence (R77).
+ * `frames` (Task 17b'). ONE op: capture stills, optionally DRAW one line of
+ * text on each, optionally TILE them into sheets instead of uploading them
+ * individually. A contact sheet is a configuration of it, not an operation.
+ * The argv itself is Task 17a's (ffmpeg-args.spec.ts owns the escaping and
+ * geometry proofs), so these tests pin the HANDLER: how many commands and
+ * outputs a job carries, the keys they land on, the untrusted-config guards,
+ * and the drawtext degrade fence (R77).
  */
 type FrameOut = {
   time: number;
@@ -677,7 +679,7 @@ type FrameOut = {
   content_type: string;
   size: number;
 };
-type FramesOutput = { frames: FrameOut[]; count: number };
+type FramesOutput = { frames: FrameOut[]; count: number; drawn: boolean };
 type SheetOut = {
   storage_path: string;
   content_type: string;
@@ -690,9 +692,8 @@ type SheetOut = {
 };
 type SheetsOutput = {
   sheets: SheetOut[];
-  interval: number;
   count: number;
-  labelled: boolean;
+  drawn: boolean;
   bytesIn: number;
   bytesOut: number;
 };
@@ -717,6 +718,17 @@ describe('frames', () => {
     return created;
   };
 
+  it('contact_sheet is no longer an operation', () => {
+    const { handler } = createHandler();
+    expect(() =>
+      handler.validateConfig({
+        operation: 'contact_sheet',
+        input: 'a',
+        outputPrefix: 'p',
+      } as never),
+    ).toThrow(/operation/);
+  });
+
   it('runs one command per time and returns one frame per time under the prefix', async () => {
     const created = setup();
     const { handler, runner } = created;
@@ -725,6 +737,7 @@ describe('frames', () => {
     const out = result.output as unknown as FramesOutput;
     expect(runner.run).toHaveBeenCalledTimes(3);
     expect(out.count).toBe(3);
+    expect(out.drawn).toBe(false);
     expect(out.frames.map((f) => f.storage_path)).toEqual([
       'o/r/uploads/studio/shots/frame-01.jpg',
       'o/r/uploads/studio/shots/frame-02.jpg',
@@ -742,7 +755,7 @@ describe('frames', () => {
     expect(created.storageAdapter.upload.mock.calls.map((c) => c[1])).toEqual(
       out.frames.map((f) => f.storage_path),
     );
-    // Clean stills: `frames` never burns a label in.
+    // No `draw` block → no drawtext anywhere in the job.
     expect(argvs(runner).some((a) => a.includes('drawtext'))).toBe(false);
     expect(argvs(runner)[0]).toContain('scale=-2:720');
     // R80: every ffmpeg command carries its own ceiling.
@@ -807,7 +820,9 @@ describe('frames', () => {
    * `times` is expression-resolvable (`request.body.times` is an advertised
    * form), and each entry is a sequential ffmpeg spawn whose still piles up in
    * scratch before anything is uploaded — so its length is a resource decision
-   * made by untrusted input unless something caps it.
+   * made by untrusted input unless something caps it. It is now the ONE cap:
+   * with the planner gone, sheets are `times.length / perSheet`, so capping
+   * the stills caps the sheets too.
    */
   it('refuses more stills than MAX_STILLS_PER_JOB before spawning anything', async () => {
     const { handler, runner } = setup();
@@ -817,8 +832,6 @@ describe('frames', () => {
     expect(result.error?.message).toContain(String(MAX_STILLS_PER_JOB));
     expect(result.error?.message).toContain(String(MAX_STILLS_PER_JOB + 1));
     expect(runner.run).not.toHaveBeenCalled();
-    // The cap itself is generous — the planner's own maximum is 120.
-    expect(MAX_STILLS_PER_JOB).toBeGreaterThan(120);
   });
 
   /**
@@ -848,167 +861,343 @@ describe('frames', () => {
   });
 });
 
-describe('contact_sheet', () => {
-  const sheetStep = (over: Record<string, unknown> = {}) =>
+/**
+ * `draw` — the whole point of 17b': CE owns the ability to DRAW, not the
+ * ability to draw a contact sheet. A title on a single screenshot is
+ * `times: [12.5]` + a `draw` + no `tile`.
+ */
+describe('frames draw', () => {
+  const drawStep = (draw: unknown, over: Record<string, unknown> = {}) =>
     step({
-      operation: 'contact_sheet',
+      operation: 'frames',
       input: 'studio/src.mp4',
-      outputPrefix: 'studio/sheets',
-      duration: 600,
+      outputPrefix: 'studio/shots',
+      times: [1, 2, 3],
+      draw,
       ...over,
     });
 
-  /** Local executor + a runner that answers ffprobe with json and writes every other output. */
-  const setup = (overrides?: Parameters<typeof createHandler>[0]) => {
-    const created = createHandler(overrides);
-    created.runner.run.mockImplementation(
-      async ({ binary, args, cwd }: { binary: string; args: string[]; cwd: string }) => {
-        if (binary === 'ffprobe') {
-          return { stdout: JSON.stringify({ format: { duration: '600' } }), stderrTail: '' };
-        }
-        await fsp.writeFile(`${cwd}/${args[args.length - 1].split('/').pop()}`, 'jpeg-bytes');
-        return { stdout: '', stderrTail: '' };
-      },
-    );
+  const setup = () => {
+    const created = extractSetup();
     created.storageAdapter.download.mockResolvedValue(Buffer.from('mp4'));
     return created;
   };
 
-  it('plans 120 cells into 10 labelled sheets and uploads only the sheets', async () => {
-    const { handler, runner, scratch, storageAdapter } = setup();
-    const result = await handler.execute(context(), sheetStep());
-    expect(result.success).toBe(true);
-    const out = result.output as unknown as SheetsOutput;
-    expect(out.count).toBe(120);
-    expect(out.interval).toBe(5);
-    expect(out.labelled).toBe(true);
-    expect(out.sheets).toHaveLength(10);
-    expect(runner.run).toHaveBeenCalledTimes(130); // 120 cells + 10 tiles
-    // duration came from config, so no ffprobe ran and it was ONE job.
-    expect(runner.run.mock.calls.every((c) => c[0].binary === 'ffmpeg')).toBe(true);
-    expect(scratch.createJobDir).toHaveBeenCalledTimes(1);
-    expect(out.sheets[0]).toMatchObject({
-      storage_path: 'o/r/uploads/studio/sheets/sheet-01.jpg',
-      content_type: 'image/jpeg',
-      index: 0,
-      total: 10,
-      cols: 3,
-      rows: 4,
-    });
-    expect(out.sheets[0].times).toHaveLength(12);
-    expect(out.sheets[9].storage_path).toBe('o/r/uploads/studio/sheets/sheet-10.jpg');
-    // Only the SHEETS are declared as job outputs, so the 120 cells sitting in
-    // the same scratch dir are never uploaded.
-    expect(storageAdapter.upload).toHaveBeenCalledTimes(10);
-    expect(
-      storageAdapter.upload.mock.calls.every((c) => /\/sheet-\d+\.jpg$/.test(c[1] as string)),
-    ).toBe(true);
-    // Every cell burns the clock in; the tiles never do.
-    const cells = argvs(runner).slice(0, 120);
-    expect(cells.every((a) => a.includes('drawtext'))).toBe(true);
-    expect(
-      argvs(runner)
-        .slice(120)
-        .some((a) => a.includes('drawtext')),
-    ).toBe(false);
-    expect(argvs(runner)[120]).toContain('tile=3x4');
-  });
-
-  it('probes the duration as its OWN job when config omits it', async () => {
-    const { handler, runner, scratch } = setup();
-    const result = await handler.execute(context(), sheetStep({ duration: undefined }));
-    expect(result.success).toBe(true);
-    expect(runner.run.mock.calls[0][0].binary).toBe('ffprobe');
-    expect(runner.run.mock.calls[0][0].timeoutSeconds).toBe(60);
-    // Two jobs: the probe, then the cells+tiles planned from its answer.
-    expect(scratch.createJobDir).toHaveBeenCalledTimes(2);
-    expect(runner.run).toHaveBeenCalledTimes(131);
-    expect((result.output as unknown as SheetsOutput).count).toBe(120);
-  });
-
-  it('addresses scratch cells by BARE filenames whose width matches the tile pattern (R75/R82)', async () => {
+  it('a single string draws the SAME text on every frame', async () => {
     const { handler, runner } = setup();
-    await handler.execute(context(), sheetStep());
-    const cellOutputs = runner.run.mock.calls
-      .slice(0, 120)
-      .map((c) => (c[0].args as string[])[(c[0].args as string[]).length - 1]);
-    // Cells are scratch-only: never a {out:} placeholder (both executors reject
-    // an undeclared one) and never rewritten to an absolute path by the executor.
-    expect(cellOutputs.every((t) => !t.startsWith('{out:'))).toBe(true);
-    expect(cellOutputs[0]).toBe('cell-001.jpg');
-    expect(cellOutputs[119]).toBe('cell-120.jpg');
-    expect(argvs(runner)[120]).toContain('cell-%03d.jpg');
+    const result = await handler.execute(context(), drawStep({ text: 'Chapter One' }));
+    expect(result.success).toBe(true);
+    expect((result.output as unknown as FramesOutput).drawn).toBe(true);
+    expect(argvs(runner)).toHaveLength(3);
+    expect(argvs(runner).every((a) => a.includes('drawtext'))).toBe(true);
+    expect(argvs(runner).every((a) => a.includes('text=Chapter One'))).toBe(true);
+    // Defaults from 17a': bottom-right, h/12, white, boxed.
+    expect(argvs(runner)[0]).toContain('fontcolor=white');
+    expect(argvs(runner)[0]).toContain('box=1');
   });
 
-  it('label:false skips drawtext entirely and never retries', async () => {
+  /**
+   * The pairing is the assertion, not the presence: an implementation that
+   * drew texts[0] on all three frames would pass a "contains drawtext" check
+   * and silently mislabel every still.
+   */
+  it('an array draws ITS OWN text on each frame, in order', async () => {
     const { handler, runner } = setup();
     const result = await handler.execute(
       context(),
-      sheetStep({ label: false, duration: 60, maxSheets: 1 }),
+      drawStep({ text: ['first', 'second', 'third'] }),
     );
     expect(result.success).toBe(true);
-    expect((result.output as unknown as SheetsOutput).labelled).toBe(false);
-    expect(argvs(runner).some((a) => a.includes('drawtext'))).toBe(false);
+    const drawn = argvs(runner).map((a) => /drawtext=text=([^:]*)/.exec(a)?.[1]);
+    expect(drawn).toEqual(['first', 'second', 'third']);
   });
 
-  it('treats the STRING forms of label as booleans (config arrives as YAML/JSON)', async () => {
+  it('an array of the wrong length is a config error naming BOTH lengths', async () => {
+    const { handler, runner } = setup();
+    const result = await handler.execute(context(), drawStep({ text: ['only one'] }));
+    expect(result.success).toBe(false);
+    expect(result.error?.code).toBe('CONFIGURATION_ERROR');
+    expect(result.error?.message).toContain('1');
+    expect(result.error?.message).toContain('3');
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  it('resolves a BARE expression to either a string or an array', async () => {
+    const { handler, runner } = setup();
+    const ctx = context();
+    ctx.stepOutputs['job'] = { title: 'From a step', labels: ['a', 'b', 'c'] };
+    expect((await handler.execute(ctx, drawStep({ text: 'steps.job.title' }))).success).toBe(true);
+    expect(argvs(runner).every((a) => a.includes('text=From a step'))).toBe(true);
+    runner.run.mockClear();
+    expect((await handler.execute(ctx, drawStep({ text: 'steps.job.labels' }))).success).toBe(true);
+    expect(argvs(runner).map((a) => /drawtext=text=([^:]*)/.exec(a)?.[1])).toEqual(['a', 'b', 'c']);
+  });
+
+  /**
+   * The counterpart of the expression path: prose that merely STARTS with an
+   * expression root ("user guide", "request received") is text, not a lookup.
+   * Resolving it would either throw on a missing property or draw the wrong
+   * thing — the silent-wrong-image failure this whole file keeps fencing.
+   */
+  it('draws prose that starts with an expression root verbatim', async () => {
+    const { handler, runner } = setup();
+    const result = await handler.execute(context(), drawStep({ text: 'user guide' }));
+    expect(result.success).toBe(true);
+    expect(argvs(runner).every((a) => a.includes('text=user guide'))).toBe(true);
+  });
+
+  it('rejects a {{template}} clearly instead of drawing it verbatim', async () => {
+    const { handler, runner } = setup();
+    const result = await handler.execute(context(), drawStep({ text: '{{steps.job.title}}' }));
+    expect(result.success).toBe(false);
+    expect(result.error?.code).toBe('CONFIGURATION_ERROR');
+    expect(result.error?.message).toMatch(/\{\{/);
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  it('passes position/size/color/background through to the overlay argv', async () => {
     const { handler, runner } = setup();
     const result = await handler.execute(
       context(),
-      sheetStep({ label: 'false', duration: 60, maxSheets: 1 }),
+      drawStep(
+        { text: 'x', position: 'top-left', size: 0.25, color: '#ff0000', background: false },
+        { times: [1] },
+      ),
     );
     expect(result.success).toBe(true);
-    expect((result.output as unknown as SheetsOutput).labelled).toBe(false);
-    expect(argvs(runner).some((a) => a.includes('drawtext'))).toBe(false);
+    const argv = argvs(runner)[0];
+    expect(argv).toContain('fontsize=h*0.25');
+    expect(argv).toContain('fontcolor=#ff0000');
+    expect(argv).toContain('x=16');
+    expect(argv).not.toContain('box=1');
   });
 
-  it('refuses a maxSheets × cellsPerSheet budget over MAX_STILLS_PER_JOB', async () => {
-    const { handler, runner } = createHandler();
-    // Config-time: the budget is static, so it never needs to run to be wrong.
+  /**
+   * Config arrives as YAML/JSON, where `background: 'false'` is a string that
+   * a truthiness test would treat as ON — the exact silent-wrong-image bug the
+   * old `label` knob had to fix.
+   */
+  it('coerces the STRING forms of background, and rejects a non-boolean', async () => {
+    const { handler, runner } = setup();
+    const off = await handler.execute(
+      context(),
+      drawStep({ text: 'x', background: 'false' }, { times: [1] }),
+    );
+    expect(off.success).toBe(true);
+    expect(argvs(runner)[0]).not.toContain('box=1');
+    const bad = await handler.execute(
+      context(),
+      drawStep({ text: 'x', background: 'maybe' }, { times: [1] }),
+    );
+    expect(bad.error?.code).toBe('CONFIGURATION_ERROR');
+    expect(bad.error?.message).toMatch(/draw\.background/);
+  });
+
+  /**
+   * Ruling R103: `ffmpeg-args.ts` throws a plain Error for an authored value
+   * out of range. The handler must map that to the typed config error the
+   * pipeline contract promises, naming the field — a caller gets one fixable
+   * config error rather than a generic handler failure.
+   */
+  it('maps a bad colour / size / position to a ConfigurationError naming the field', () => {
+    const { handler } = createHandler();
+    const base = {
+      operation: 'frames',
+      input: 'a.mp4',
+      outputPrefix: 'p',
+      times: [1],
+    };
     expect(() =>
-      handler.validateConfig({
-        operation: 'contact_sheet',
-        input: 'a',
-        outputPrefix: 'p',
-        maxSheets: 20,
-        cellsPerSheet: 12,
-      } as never),
-    ).toThrow(/MAX_STILLS_PER_JOB/);
-    // And again at run time, for a step that never went through validateConfig.
+      handler.validateConfig({ ...base, draw: { text: 'x', color: 'white@0.5' } } as never),
+    ).toThrow(/draw\.color/);
+    expect(() =>
+      handler.validateConfig({ ...base, draw: { text: 'x', size: 3 } } as never),
+    ).toThrow(/draw\.size/);
+    expect(() =>
+      handler.validateConfig({ ...base, draw: { text: 'x', position: 'middle' } } as never),
+    ).toThrow(/draw\.position/);
+    expect(() => handler.validateConfig({ ...base, draw: null } as never)).toThrow(/draw/);
+    expect(() =>
+      handler.validateConfig({ ...base, draw: { text: 'x', size: 'big' } } as never),
+    ).toThrow(/draw\.size/);
+  });
+
+  it('a bad draw that slipped past validateConfig still cannot reach argv', async () => {
+    const { handler, runner } = setup();
     const result = await handler.execute(
       context(),
-      sheetStep({ maxSheets: 20, cellsPerSheet: 12 }),
+      drawStep({ text: 'x', color: 'white@0.5:x=0' }),
     );
-    expect(result.error?.code).toBe('INVALID_TIMES');
-    expect(result.error?.message).toContain('240');
-    expect(runner.run).not.toHaveBeenCalled();
-  });
-
-  it('fails with a typed error when the duration is unusable', async () => {
-    const { handler, runner } = setup();
-    for (const duration of [0, -5, 'not a number']) {
-      const result = await handler.execute(context(), sheetStep({ duration }));
-      expect(result.error?.code).toBe('INVALID_TIMES');
-      expect(result.error?.message).toMatch(/duration/);
-    }
-    expect(runner.run).not.toHaveBeenCalled();
-  });
-
-  it('rejects traversal in outputPrefix with INVALID_OUTPUT_PATH', async () => {
-    const { handler, runner } = setup();
-    const result = await handler.execute(context(), sheetStep({ outputPrefix: '../out' }));
-    expect(result.error?.code).toBe('INVALID_OUTPUT_PATH');
+    expect(result.success).toBe(false);
+    expect(result.error?.code).toBe('CONFIGURATION_ERROR');
     expect(runner.run).not.toHaveBeenCalled();
   });
 });
 
 /**
- * R77 — the label degrade. The local `-filters` probe may only SUPPRESS labels,
- * and only for the LOCAL executor: a remote-only instance has no local ffmpeg
- * at all, so gating on that probe alone would mean it never labels, which
- * defeats the point of a contact sheet. The universal net is the retry.
+ * `tile` — a contact sheet, expressed as configuration. The stills stay
+ * SCRATCH-ONLY (R75: bare scratch-relative filenames, since both executors
+ * reject an undeclared `{out:}` placeholder and both spawn with cwd = scratch)
+ * and only the sheets are uploaded.
  */
-describe('contact_sheet label degrade (R77)', () => {
+describe('frames tile', () => {
+  const tileStep = (over: Record<string, unknown> = {}) =>
+    step({
+      operation: 'frames',
+      input: 'studio/src.mp4',
+      outputPrefix: 'studio/sheets',
+      times: Array.from({ length: 12 }, (_, i) => i * 5),
+      tile: { perSheet: 6, columns: 3 },
+      ...over,
+    });
+
+  const setup = () => {
+    const created = extractSetup();
+    created.storageAdapter.download.mockResolvedValue(Buffer.from('mp4'));
+    return created;
+  };
+
+  it('captures every still into scratch and uploads ONLY the sheets', async () => {
+    const created = setup();
+    const { handler, runner } = created;
+    const result = await handler.execute(context(), tileStep());
+    expect(result.success).toBe(true);
+    const out = result.output as unknown as SheetsOutput;
+    expect(out.count).toBe(12);
+    expect(out.drawn).toBe(false);
+    expect(out.sheets).toHaveLength(2);
+    expect(runner.run).toHaveBeenCalledTimes(14); // 12 cells + 2 tiles
+    expect(out.sheets[0]).toMatchObject({
+      storage_path: 'o/r/uploads/studio/sheets/sheet-01.jpg',
+      content_type: 'image/jpeg',
+      index: 0,
+      total: 2,
+      cols: 3,
+      rows: 2,
+    });
+    expect(out.sheets[0].times).toEqual([0, 5, 10, 15, 20, 25]);
+    expect(out.sheets[1].storage_path).toBe('o/r/uploads/studio/sheets/sheet-02.jpg');
+    // The teeth: only the SHEETS are declared job outputs, so the 12 cells
+    // sitting in the same scratch dir are never shipped to a customer bucket.
+    expect(created.storageAdapter.upload).toHaveBeenCalledTimes(2);
+    expect(
+      created.storageAdapter.upload.mock.calls.every((c) =>
+        /\/sheet-\d+\.jpg$/.test(c[1] as string),
+      ),
+    ).toBe(true);
+    // Cells are addressed by a BARE scratch-relative name (R75), and the
+    // `%0Wd` glob width matches the names (R82).
+    const cellOutputs = runner.run.mock.calls
+      .slice(0, 12)
+      .map((c) => (c[0].args as string[])[(c[0].args as string[]).length - 1]);
+    expect(cellOutputs.every((t) => !t.startsWith('{out:'))).toBe(true);
+    expect(cellOutputs[0]).toBe('cell-001.jpg');
+    expect(cellOutputs[11]).toBe('cell-012.jpg');
+    expect(argvs(runner)[12]).toContain('cell-%03d.jpg');
+    expect(argvs(runner)[12]).toContain('tile=3x2');
+    // R80 on the tile commands too.
+    expect(runner.run.mock.calls[12][0].timeoutSeconds).toBe(120);
+  });
+
+  /**
+   * A short final sheet lays out at its OWN width — 2 cells under
+   * `columns: 3` are 2 wide, not 3 — and `buildTileArgs` must be handed that
+   * narrower value, not the config knob. `-start_number` is the sheet's first
+   * cell, 1-based.
+   */
+  it('a short final sheet gets its own cols/rows and start_number', async () => {
+    const { handler, runner } = setup();
+    const result = await handler.execute(
+      context(),
+      tileStep({ times: [0, 1, 2, 3, 4, 5, 6, 7], tile: { perSheet: 6, columns: 3 } }),
+    );
+    const out = result.output as unknown as SheetsOutput;
+    expect(out.sheets.map((s) => [s.cols, s.rows])).toEqual([
+      [3, 2],
+      [2, 1],
+    ]);
+    expect(out.sheets[1].times).toEqual([6, 7]);
+    const tiles = runner.run.mock.calls.slice(8).map((c) => c[0].args as string[]);
+    expect(tiles[0]).toEqual(expect.arrayContaining(['-start_number', '1']));
+    expect(tiles[1]).toEqual(expect.arrayContaining(['-start_number', '7']));
+    expect(tiles[0].join(' ')).toContain('tile=3x2');
+    expect(tiles[1].join(' ')).toContain('tile=2x1');
+  });
+
+  it('defaults columns to 3 and requires perSheet', () => {
+    const { handler } = createHandler();
+    const base = { operation: 'frames', input: 'a.mp4', outputPrefix: 'p', times: [1] };
+    expect(() => handler.validateConfig({ ...base, tile: { columns: 3 } } as never)).toThrow(
+      /tile\.perSheet/,
+    );
+    expect(() => handler.validateConfig({ ...base, tile: { perSheet: 4 } } as never)).not.toThrow();
+  });
+
+  /**
+   * Ruling R103, as it EXPIRES: `buildTileArgs` clamps `columns`/`count`
+   * because the planner derived them. Coming from a caller's `tile:` block
+   * they are authored config, so `columns: 0` silently clamping to 1 would
+   * produce a 1xN strip instead of an error. Authored values throw at the
+   * edge; the clamp stays the unreachable guard its TSDoc claims to be.
+   */
+  it('throws rather than clamping a bad perSheet/columns', () => {
+    const { handler } = createHandler();
+    const base = { operation: 'frames', input: 'a.mp4', outputPrefix: 'p', times: [1] };
+    for (const tile of [
+      { perSheet: 6, columns: 0 },
+      { perSheet: 6, columns: 2.5 },
+      { perSheet: 6, columns: 'three' },
+      { perSheet: 0 },
+      { perSheet: -1 },
+      { perSheet: 2.5 },
+      { perSheet: true },
+    ]) {
+      expect(() => handler.validateConfig({ ...base, tile } as never)).toThrow(/ffmpeg_handler/);
+    }
+    // Numeric strings are legitimate — config arrives as YAML/JSON.
+    expect(() =>
+      handler.validateConfig({ ...base, tile: { perSheet: '6', columns: '4' } } as never),
+    ).not.toThrow();
+    expect(() => handler.validateConfig({ ...base, tile: 6 } as never)).toThrow(/tile/);
+  });
+
+  it('names the SHEET ffmpeg never wrote instead of a bare scratch path', async () => {
+    const { handler, runner, storageAdapter } = createHandler();
+    storageAdapter.download.mockResolvedValue(Buffer.from('mp4'));
+    runner.run.mockImplementation(async ({ args, cwd }: { args: string[]; cwd: string }) => {
+      const name = args[args.length - 1].split('/').pop();
+      if (name !== 'sheet-02.jpg') await fsp.writeFile(`${cwd}/${name}`, 'jpeg-bytes');
+      return { stdout: '', stderrTail: '' };
+    });
+    const result = await handler.execute(context(), tileStep());
+    expect(result.success).toBe(false);
+    expect(result.error?.code).toBe('FFMPEG_FAILED');
+    expect(result.error?.message).toContain('sheet-02.jpg');
+  });
+
+  it('draws on the cells, never on the sheets', async () => {
+    const { handler, runner } = setup();
+    const result = await handler.execute(
+      context(),
+      tileStep({ draw: { text: 'ts' }, times: [0, 1, 2], tile: { perSheet: 3 } }),
+    );
+    expect((result.output as unknown as SheetsOutput).drawn).toBe(true);
+    expect(
+      argvs(runner)
+        .slice(0, 3)
+        .every((a) => a.includes('drawtext')),
+    ).toBe(true);
+    expect(argvs(runner)[3]).not.toContain('drawtext');
+  });
+});
+
+/**
+ * R77 — the drawtext degrade. The local `-filters` probe may only SUPPRESS a
+ * draw, and only for the LOCAL executor: a remote-only instance has no local
+ * ffmpeg at all, so gating on that probe alone would mean it never draws. The
+ * universal net is the one-shot retry without the overlay.
+ */
+describe('frames draw degrade (R77)', () => {
   /** A selector double whose executor identity and failures this test controls. */
   const withExecutor = (
     name: 'local' | 'remote',
@@ -1023,13 +1212,9 @@ describe('contact_sheet label degrade (R77)', () => {
       ...(hasFilter ? { capability: { hasFilter } } : {}),
     });
 
-  const ok = jest.fn();
   const jobResult = (job: FfmpegJob) => ({
     executor: 'local' as const,
-    // The probe job answers with ffprobe json; the sheet job has no stdout.
-    stdout: job.commands.some((c) => c.kind === 'ffprobe')
-      ? JSON.stringify({ format: { duration: '60' } })
-      : '',
+    stdout: '',
     stderrTail: '',
     commands: job.commands.map((c) => ({ id: c.id, ran: true, exitCode: 0 })),
     outputs: job.outputs.map((o) => ({ name: o.name, key: o.key, bytes: 11 })),
@@ -1043,67 +1228,58 @@ describe('contact_sheet label degrade (R77)', () => {
       code: 'FFMPEG_FAILED',
       stderrTail: "[AVFilterGraph] No such filter: 'drawtext'",
     });
-  const sheetStep = (over: Record<string, unknown> = {}) =>
+  const drawStep = (over: Record<string, unknown> = {}) =>
     step({
-      operation: 'contact_sheet',
+      operation: 'frames',
       input: 'a.mp4',
-      outputPrefix: 'sheets',
-      duration: 60,
+      outputPrefix: 'shots',
+      times: [1, 2, 3],
+      draw: { text: 'hello' },
       ...over,
     });
-  const labelled = (run: jest.Mock, call = 0): boolean =>
+  const drew = (run: jest.Mock, call = 0): boolean =>
     (run.mock.calls[call][0] as FfmpegJob).commands.some((c) =>
       c.argv.join(' ').includes('drawtext'),
     );
 
-  afterEach(() => ok.mockReset());
-
-  it('a LOCAL executor whose ffmpeg has no drawtext never attempts a label', async () => {
+  it('a LOCAL executor whose ffmpeg has no drawtext never attempts a draw', async () => {
     const run = runOk();
     const { handler } = withExecutor('local', run, () => false);
-    const result = await handler.execute(context(), sheetStep());
+    const result = await handler.execute(context(), drawStep());
     expect(result.success).toBe(true);
-    expect((result.output as unknown as SheetsOutput).labelled).toBe(false);
+    expect((result.output as unknown as FramesOutput).drawn).toBe(false);
     expect(run).toHaveBeenCalledTimes(1);
-    expect(labelled(run)).toBe(false);
+    expect(drew(run)).toBe(false);
   });
 
-  it('an unknown local filter set (undefined) still attempts the label', async () => {
+  it('an unknown local filter set (undefined) still attempts the draw', async () => {
     const run = runOk();
     const { handler } = withExecutor('local', run, () => undefined);
-    const result = await handler.execute(context(), sheetStep());
-    expect((result.output as unknown as SheetsOutput).labelled).toBe(true);
-    expect(labelled(run)).toBe(true);
+    const result = await handler.execute(context(), drawStep());
+    expect((result.output as unknown as FramesOutput).drawn).toBe(true);
+    expect(drew(run)).toBe(true);
   });
 
-  it('a REMOTE executor labels even when THIS box has no drawtext', async () => {
+  it('a REMOTE executor draws even when THIS box has no drawtext', async () => {
     const run = runOk();
     const { handler } = withExecutor('remote', run, () => false);
-    const result = await handler.execute(context(), sheetStep());
-    expect((result.output as unknown as SheetsOutput).labelled).toBe(true);
-    expect(labelled(run)).toBe(true);
-    // The job declares the SHEETS and nothing else: cells are scratch-only, so
-    // no executor can upload them however the argv is written.
-    const job = run.mock.calls[0][0] as FfmpegJob;
-    // 60s at default density plans 12 cells over two sheets (9 + 3).
-    expect(job.outputs.map((o) => o.name)).toEqual(['sheet-01.jpg', 'sheet-02.jpg']);
-    expect(job.outputs.some((o) => o.name.startsWith('cell-'))).toBe(false);
-    expect(job.commands.filter((c) => c.id.startsWith('cell-'))).toHaveLength(12);
+    const result = await handler.execute(context(), drawStep());
+    expect((result.output as unknown as FramesOutput).drawn).toBe(true);
+    expect(drew(run)).toBe(true);
   });
 
-  it('label:false does not retry even when the job dies on drawtext', async () => {
+  it('no draw block at all reports drawn:false and never retries', async () => {
     const run = jest.fn().mockRejectedValue(drawtextFailure());
     const { handler } = withExecutor('remote', run);
-    const result = await handler.execute(context(), sheetStep({ label: false }));
+    const result = await handler.execute(context(), drawStep({ draw: undefined }));
     expect(result.error?.code).toBe('FFMPEG_FAILED');
     expect(run).toHaveBeenCalledTimes(1);
-    expect(labelled(run)).toBe(false);
+    expect(drew(run)).toBe(false);
   });
 
   /**
    * The sniff reads ffmpeg's OWN stderr, never CE's error message: an input
-   * path containing "drawtext" must not cost a full un-labelled re-run of a
-   * 130-command job for an unrelated failure.
+   * path containing "drawtext" must not cost a full un-drawn re-run.
    */
   it('does not retry when only the CE-side message mentions drawtext', async () => {
     const run = jest.fn().mockRejectedValue(
@@ -1113,12 +1289,12 @@ describe('contact_sheet label degrade (R77)', () => {
       }),
     );
     const { handler } = withExecutor('remote', run);
-    const result = await handler.execute(context(), sheetStep());
+    const result = await handler.execute(context(), drawStep());
     expect(result.error?.code).toBe('FFMPEG_FAILED');
     expect(run).toHaveBeenCalledTimes(1);
   });
 
-  it('retries ONCE without labels when the job fails on drawtext, and warns', async () => {
+  it('retries ONCE without the overlay when the job fails on drawtext, and warns', async () => {
     const run = jest
       .fn()
       .mockRejectedValueOnce(drawtextFailure())
@@ -1126,16 +1302,16 @@ describe('contact_sheet label degrade (R77)', () => {
     const { handler } = withExecutor('remote', run);
     const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     try {
-      const result = await handler.execute(context(), sheetStep());
+      const result = await handler.execute(context(), drawStep());
       expect(result.success).toBe(true);
-      const out = result.output as unknown as SheetsOutput;
-      expect(out.labelled).toBe(false);
-      expect(out.sheets.length).toBeGreaterThan(0);
+      const out = result.output as unknown as FramesOutput;
+      expect(out.drawn).toBe(false);
+      expect(out.frames).toHaveLength(3);
       expect(run).toHaveBeenCalledTimes(2);
-      expect(labelled(run, 0)).toBe(true);
-      expect(labelled(run, 1)).toBe(false);
+      expect(drew(run, 0)).toBe(true);
+      expect(drew(run, 1)).toBe(false);
       expect(warn).toHaveBeenCalledWith(
-        expect.objectContaining({ event: 'ffmpeg_contact_sheet_drawtext_missing' }),
+        expect.objectContaining({ event: 'ffmpeg_frames_drawtext_missing' }),
       );
     } finally {
       warn.mockRestore();
@@ -1145,7 +1321,7 @@ describe('contact_sheet label degrade (R77)', () => {
   it('a second drawtext failure propagates as FFMPEG_FAILED', async () => {
     const run = jest.fn().mockRejectedValue(drawtextFailure());
     const { handler } = withExecutor('remote', run);
-    const result = await handler.execute(context(), sheetStep());
+    const result = await handler.execute(context(), drawStep());
     expect(result.error?.code).toBe('FFMPEG_FAILED');
     expect(run).toHaveBeenCalledTimes(2);
   });
@@ -1158,25 +1334,14 @@ describe('contact_sheet label degrade (R77)', () => {
       }),
     );
     const { handler } = withExecutor('remote', run);
-    const result = await handler.execute(context(), sheetStep());
+    const result = await handler.execute(context(), drawStep());
     expect(result.error?.code).toBe('FFMPEG_FAILED');
     expect(run).toHaveBeenCalledTimes(1);
-  });
-
-  it('sums bytesIn/bytesOut across the probe job and the sheet job (R79)', async () => {
-    const run = runOk();
-    const { handler } = withExecutor('remote', run);
-    const result = await handler.execute(context(), sheetStep({ duration: undefined }));
-    expect(result.success).toBe(true);
-    const out = result.output as unknown as SheetsOutput;
-    // Two jobs ran (probe + sheets), each reporting bytesIn 5.
-    expect(run).toHaveBeenCalledTimes(2);
-    expect(out.bytesIn).toBe(10);
   });
 });
 
 describe('untrusted numeric config knobs', () => {
-  it('validateConfig requires the new per-op fields', () => {
+  it('validateConfig requires the per-op fields', () => {
     const { handler } = createHandler();
     expect(() =>
       handler.validateConfig({ operation: 'frames', times: [1], outputPrefix: 'p' } as never),
@@ -1188,15 +1353,10 @@ describe('untrusted numeric config knobs', () => {
       handler.validateConfig({ operation: 'frames', input: 'a', times: [1] } as never),
     ).toThrow(/outputPrefix/);
     expect(() =>
-      handler.validateConfig({ operation: 'contact_sheet', outputPrefix: 'p' } as never),
-    ).toThrow(/input/);
-    expect(() =>
-      handler.validateConfig({ operation: 'contact_sheet', input: 'a' } as never),
-    ).toThrow(/outputPrefix/);
-    expect(() =>
       handler.validateConfig({
-        operation: 'contact_sheet',
+        operation: 'frames',
         input: 'a',
+        times: [1],
         outputPrefix: 'p',
       } as never),
     ).not.toThrow();
@@ -1204,42 +1364,26 @@ describe('untrusted numeric config knobs', () => {
 
   /**
    * Pipeline config is authored as YAML/JSON by a user, so `2.5`, `"3"` and
-   * `true` are all reachable — and a non-integer `columns` reaches ffmpeg as
-   * `tile=2.5x2`, which it rejects at runtime. Guard at the boundary.
+   * `true` are all reachable — and a non-integer `height` reaches ffmpeg as
+   * `scale=-2:2.5`, which it rejects at runtime. Guard at the boundary.
    */
   it('rejects non-integer / non-positive / non-numeric knobs at config time', () => {
     const { handler } = createHandler();
-    const base = { operation: 'contact_sheet', input: 'a', outputPrefix: 'p' };
+    const base = { operation: 'frames', input: 'a', outputPrefix: 'p', times: [1] };
     for (const bad of [
-      { columns: 2.5 },
-      { columns: 0 },
-      { columns: true },
       { height: 0 },
       { height: -720 },
       { height: 'tall' },
+      { height: 2.5 },
       { quality: 1.5 },
-      { cellsPerSheet: -1 },
-      { maxSheets: 0 },
-      { interval: 0 },
-      { interval: 'soon' },
+      { quality: true },
     ]) {
       expect(() => handler.validateConfig({ ...base, ...bad } as never)).toThrow(/ffmpeg_handler/);
     }
-    // Numeric strings and fractional intervals are legitimate.
+    // Numeric strings are legitimate.
     expect(() =>
-      handler.validateConfig({ ...base, height: '360', columns: '4', interval: 2.5 } as never),
+      handler.validateConfig({ ...base, height: '360', quality: '5' } as never),
     ).not.toThrow();
-  });
-
-  it('coerces the boolean knob the same way, and rejects a non-boolean', () => {
-    const { handler } = createHandler();
-    const base = { operation: 'contact_sheet', input: 'a', outputPrefix: 'p' };
-    for (const label of [true, false, 'true', 'false', '0', 'no', 'ON']) {
-      expect(() => handler.validateConfig({ ...base, label } as never)).not.toThrow();
-    }
-    expect(() => handler.validateConfig({ ...base, label: 'maybe' } as never)).toThrow(
-      /label must be a boolean/,
-    );
   });
 
   it('a bad knob that slipped past validateConfig still cannot reach argv', async () => {
@@ -1247,14 +1391,15 @@ describe('untrusted numeric config knobs', () => {
     const result = await handler.execute(
       context(),
       step({
-        operation: 'contact_sheet',
+        operation: 'frames',
         input: 'a.mp4',
         outputPrefix: 'p',
-        duration: 60,
-        columns: 2.5,
+        times: [1],
+        height: 2.5,
       }),
     );
     expect(result.success).toBe(false);
+    expect(result.error?.code).toBe('CONFIGURATION_ERROR');
     expect(runner.run).not.toHaveBeenCalled();
   });
 });
