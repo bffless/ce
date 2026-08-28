@@ -138,16 +138,66 @@ export function buildProbeArgs(input: string): string[] {
 }
 
 /**
+ * Escape a raw string for use as an UNQUOTED avfilter option value (e.g. the
+ * `text=` value of `drawtext`), so that whatever ffmpeg's option parser
+ * ultimately reads back is byte-identical to the input. This is a genuine
+ * filter-injection fence — verified empirically against ffmpeg 7.0.2's real
+ * avfilter parser (see task 17a fix report, C1) — not a guess from reading
+ * the docs.
+ *
+ * ffmpeg parses a `-vf`/`-filter_complex` string in TWO independent,
+ * escape/quote-aware passes: an outer pass that splits the whole graph on
+ * unescaped `,` `;` `[` `]` to find each filter instance, and an inner pass
+ * (`av_set_options_string`) that splits that instance's option list on
+ * unescaped `:`. Both passes apply the SAME rule — `\X` collapses to a
+ * literal `X` (any `X`, including another backslash or a quote), and a bare
+ * `'` toggles a quoted region where backslash stops being special — and
+ * BOTH passes run over our value, one after the other. A single level of
+ * backslash-escaping only survives one of those passes (proven empirically:
+ * `m1='1\:23'` round-trips only because the outer pass's quoting shields
+ * the inner pass's `\:`; drop either the quotes or the escape and it
+ * truncates at the colon). Wrapping the value in `'...'` doesn't help
+ * either — a label that itself contains `'` collides with the SAME quote
+ * character the wrapper uses, and the outer pass closes on it early
+ * (proven empirically: the classic shell `'a'\''b'` requote trick reads
+ * back as `ab`, not `a'b`, under this two-pass parser).
+ *
+ * What DOES survive both passes, proven against real `Setting 'm1' to
+ * value '<value>'` parser traces for every character below: escape `\`,
+ * `'`, `:`, `,`, `;`, `[`, `]` once each (backslash first, so later
+ * insertions aren't re-escaped), and apply that WHOLE escaping pass AGAIN
+ * over its own output — no surrounding quotes needed or wanted. `%` is
+ * deliberately left alone: it isn't special to this parser at all; its
+ * `%{pts}` / `%{metadata:…}` / `%{eif:…}` expansion happens inside drawtext
+ * itself, as a THIRD pass over the already-parsed text, and is closed by
+ * `expansion=none` on the filter instead (see `buildFrameArgs`).
+ */
+function escapeAvfilterValue(raw: string): string {
+  const once = (s: string): string =>
+    s
+      .replace(/\\/g, '\\\\')
+      .replace(/'/g, "\\'")
+      .replace(/:/g, '\\:')
+      .replace(/,/g, '\\,')
+      .replace(/;/g, '\\;')
+      .replace(/\[/g, '\\[')
+      .replace(/\]/g, '\\]');
+  return once(once(raw));
+}
+
+/**
  * One still: fast-seek (`-ss` before `-i`, keyframe-accurate enough for a
  * contact sheet, not frame-exact) to `time`, scale to `height` (width kept
  * even via `-2`), optionally burn in a corner label. `label` is only ever
  * passed when the caller intends to try `drawtext`, which needs libfreetype
- * in the ffmpeg build — omit it and the filter chain skips drawtext
- * entirely rather than failing. The label is escaped against ffmpeg filter
- * syntax (backslash, then `:`, then `'`, in that order) before being
- * wrapped in the filter's own quotes — this is a filter-injection fence,
- * not cosmetics, since `label` can be a burned-in timestamp built from
- * caller-controlled data.
+ * AND fontconfig plus an installed font in the runtime image (there is no
+ * `font=`/`fontfile=` here, so it resolves via fontconfig) — omit it and the
+ * filter chain skips drawtext entirely rather than failing. The label is
+ * escaped via `escapeAvfilterValue` (a proven filter-injection fence, not
+ * cosmetics — `label` can be a burned-in timestamp built from
+ * caller-controlled data) and the filter carries `expansion=none` so
+ * drawtext's own post-parse `%{...}` expansion — a separate mechanism the
+ * value-level escaping above cannot reach — is disabled too.
  */
 export function buildFrameArgs(o: {
   input: string;
@@ -159,9 +209,9 @@ export function buildFrameArgs(o: {
 }): string[] {
   const filters = [`scale=-2:${o.height}`];
   if (o.label !== undefined) {
-    const text = o.label.replace(/\\/g, '\\\\').replace(/:/g, '\\:').replace(/'/g, "\\'");
+    const text = escapeAvfilterValue(o.label);
     filters.push(
-      `drawtext=text='${text}':fontsize=h/12:fontcolor=white:box=1:boxcolor=black@0.6:boxborderw=8:x=w-tw-16:y=h-th-16`,
+      `drawtext=text=${text}:expansion=none:fontsize=h/12:fontcolor=white:box=1:boxcolor=black@0.6:boxborderw=8:x=w-tw-16:y=h-th-16`,
     );
   }
   return [
@@ -183,9 +233,15 @@ export function buildFrameArgs(o: {
  * Tile `count` numbered cells (`pattern` is a literal glob like
  * `cell-%03d.jpg`, not an `{out:}` placeholder — both executors spawn with
  * cwd = the scratch dir, so scratch cells are addressed by bare
- * scratch-relative filenames, ruling R75) into one sheet, `columns` wide.
- * Rows grow to fit; a short last sheet (fewer than a full grid of cells) is
- * padded by the `tile` filter itself, not by this builder.
+ * scratch-relative filenames, ruling R75) into one sheet. `columns` is the
+ * cell's ACTUAL grid width, not the planner's `columns` config knob — pass
+ * `sheet.cols` from `planContactSheet`'s output, not the caller's `columns`
+ * option, since they differ on a short final sheet (e.g. 2 cells under a
+ * `columns: 3` config planned as `cols: 2`, not 3). Rows grow to fit; a
+ * short last sheet (fewer than a full grid of cells) is padded by the
+ * `tile` filter itself, not by this builder. `columns`/`count` are clamped
+ * to at least 1 so a bad caller value can never produce an unrunnable
+ * `tile=0x…` or `tile=…xInfinity` argv.
  */
 export function buildTileArgs(o: {
   pattern: string;
@@ -194,7 +250,9 @@ export function buildTileArgs(o: {
   columns: number;
   output: string;
 }): string[] {
-  const rows = Math.ceil(o.count / o.columns);
+  const columns = Number.isFinite(o.columns) && o.columns > 0 ? o.columns : 1;
+  const count = Number.isFinite(o.count) && o.count > 0 ? o.count : 1;
+  const rows = Math.ceil(count / columns);
   return [
     '-start_number',
     String(o.start),
@@ -203,50 +261,44 @@ export function buildTileArgs(o: {
     '-frames:v',
     '1',
     '-vf',
-    `tile=${o.columns}x${rows}:padding=2:margin=2:color=0x111111`,
+    `tile=${columns}x${rows}:padding=2:margin=2:color=0x111111`,
     '-q:v',
     '3',
     o.output,
   ];
 }
 
-/**
- * Contact-sheet planning — a port of Studio's `planContactSheet`
- * (repos/apps: `apps/studio/src/lib/contactSheet.ts`). CE and Studio are
- * separate deploy units (this runs server-side in the backend bundle;
- * Studio's runs client-side against wasm ffmpeg), so the algorithm is
- * deliberately duplicated here rather than shared — that duplication, plus
- * this doc comment, is how the two copies stay findable when one changes.
- *
- * Same constraints Studio's version balances: sample as densely as
- * `minInterval` allows on short clips (closer just yields near-duplicate
- * frames), never sparser than `MAX_INTERVAL_SECONDS` on long ones (until
- * the frame budget forces it wider), prefer `PREFERRED_CELLS_PER_SHEET`
- * cells per sheet for per-frame legibility (up to the `cellsPerSheet` cap),
- * and never exceed `maxSheets` images. Unlike Studio, CE's `contact_sheet`
- * operation lets a pipeline override `minInterval`/`columns`/`cellsPerSheet`/
- * `maxSheets` per call (Studio hardcodes its module constants) — but
- * `PREFERRED_CELLS_PER_SHEET` is NOT one of those knobs: it stays fixed at
- * 9, and `perSheet`'s `min(cellsPerSheet, …)` still enforces a caller's
- * lower cap over it. (Ruling R74: this is a straight port of Studio's real
- * algorithm, not the plan's prose formula, which contradicts its own test
- * expectations.)
- */
+/** Finest spacing we sample at — closer just yields near-duplicate frames. Drives density on SHORT clips so they aren't needlessly sparse. */
 export const MIN_INTERVAL_SECONDS = 5;
+/** Coarsest spacing we tolerate as a FIXED coverage floor (not one of the overridable knobs — see `ContactSheetPlanOptions.minInterval`) — beyond it too much is skipped, until the frame budget caps out and forces it wider. */
 export const MAX_INTERVAL_SECONDS = 30;
+/** Hard cap on images sent to the caller in one call. */
 export const MAX_SHEETS = 10;
+/** Default columns per sheet. Few columns ⇒ wide cells ⇒ legible after any downstream resize. */
 export const TILE_COLUMNS = 3;
+/** Cells per sheet we aim for once the budget forces multiple sheets — fixed, NOT one of the overridable knobs (a caller's lower `cellsPerSheet` cap still wins over it). */
 export const PREFERRED_CELLS_PER_SHEET = 9;
+/** Default most cells we'll pack before per-frame detail suffers. */
 export const MAX_CELLS_PER_SHEET = 12;
 
 export interface ContactSheetPlanOptions {
-  /** Sampling density floor in seconds (config `interval`). Default `MIN_INTERVAL_SECONDS`. */
+  /**
+   * Sampling density floor in seconds (config `interval`). Default
+   * `MIN_INTERVAL_SECONDS`. This only raises or lowers the DENSE end of the
+   * range — `MAX_INTERVAL_SECONDS` (30s) stays a fixed, non-overridable
+   * coverage floor underneath it. Asking for looser sampling than that
+   * (e.g. `minInterval: 60` on a clip where 30s coverage alone already
+   * needs more frames than that would produce) does not widen the spacing
+   * past 30s: `planContactSheet(600, { minInterval: 60 })` still samples
+   * every 30s (20 frames), not every 60s (10 frames), because coverage
+   * wins whenever it demands more frames than the requested density does.
+   */
   minInterval?: number;
-  /** Columns per tiled sheet (config `columns`). Default `TILE_COLUMNS`. */
+  /** Columns per tiled sheet (config `columns`). Default `TILE_COLUMNS`. Clamped to at least 1. */
   columns?: number;
-  /** Cap on cells per sheet (config `cellsPerSheet`). Default `MAX_CELLS_PER_SHEET`. */
+  /** Cap on cells per sheet (config `cellsPerSheet`). Default `MAX_CELLS_PER_SHEET`. Clamped to at least 1. */
   cellsPerSheet?: number;
-  /** Cap on number of sheets (config `maxSheets`). Default `MAX_SHEETS`. */
+  /** Cap on number of sheets (config `maxSheets`). Default `MAX_SHEETS`. Clamped to at least 1. */
   maxSheets?: number;
 }
 
@@ -268,10 +320,18 @@ export interface ContactSheetPlan {
   }>;
 }
 
-/** duration<=0 or non-finite ⇒ 0; else the frame count at `minInterval` density, uncapped by the sheet/cell budget. */
+/**
+ * duration<=0 or non-finite ⇒ 0; else the frame count at `minInterval`
+ * density, uncapped by the sheet/cell budget. `minInterval` itself falls
+ * back to `MIN_INTERVAL_SECONDS` when it isn't a usable positive number
+ * (Studio's `step` guard) — `planContactSheet(d, { minInterval: NaN })` or
+ * a negative override must fall back to the default density, not cascade
+ * NaN/garbage into the plan.
+ */
 function frameCount(duration: number, minInterval: number): number {
   if (!Number.isFinite(duration) || duration <= 0) return 0;
-  return Math.max(1, Math.ceil(duration / minInterval));
+  const step = minInterval > 0 ? minInterval : MIN_INTERVAL_SECONDS;
+  return Math.max(1, Math.ceil(duration / step));
 }
 
 /** `count` capture timestamps spread evenly across the clip, each centred in its bucket and kept just shy of `duration` so the seek always lands on real footage. */
@@ -282,19 +342,49 @@ function sampleTimes(duration: number, count: number): number[] {
   );
 }
 
+/** `value` if it's a usable positive number, else `fallback` — guards every overridable knob (`columns`/`cellsPerSheet`/`maxSheets`) against 0, negative, `NaN`/`Infinity`, so a bad pipeline config can never make the planner divide by zero or emit a non-finite grid dimension. */
+function positiveOr(value: number | undefined, fallback: number): number {
+  return value !== undefined && Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
 /**
  * The clip-wide plan: how many frames to sample, their timestamps, and how
- * to tile them into sheets. `duration <= 0` or non-finite yields the empty
- * plan (`{ interval: 0, times: [], perSheet: 0, sheets: [] }`).
+ * to tile them into sheets — a port of Studio's `planContactSheet`
+ * (repos/apps: `apps/studio/src/lib/contactSheet.ts`). CE and Studio are
+ * separate deploy units (this runs server-side in the backend bundle;
+ * Studio's runs client-side against wasm ffmpeg), so the algorithm is
+ * deliberately duplicated here rather than shared — that duplication, plus
+ * this doc comment, is how the two copies stay findable when one changes.
+ *
+ * Same constraints Studio's version balances: sample as densely as
+ * `minInterval` allows on short clips (closer just yields near-duplicate
+ * frames), never sparser than `MAX_INTERVAL_SECONDS` on long ones (until
+ * the frame budget forces it wider), prefer `PREFERRED_CELLS_PER_SHEET`
+ * cells per sheet for per-frame legibility (up to the `cellsPerSheet` cap),
+ * and never exceed `maxSheets` images. Unlike Studio, CE's `contact_sheet`
+ * operation lets a pipeline override `minInterval`/`columns`/`cellsPerSheet`/
+ * `maxSheets` per call (Studio hardcodes its module constants) — but
+ * `PREFERRED_CELLS_PER_SHEET` is NOT one of those knobs: it stays fixed at
+ * 9, and `perSheet`'s `min(cellsPerSheet, …)` still enforces a caller's
+ * lower cap over it. (Ruling R74: this is a straight port of Studio's real
+ * algorithm, not the plan's prose formula, which contradicts its own test
+ * expectations.)
+ *
+ * `duration <= 0` or non-finite yields the empty plan
+ * (`{ interval: 0, times: [], perSheet: 0, sheets: [] }`); every overridable
+ * knob falls back to its default rather than propagating `NaN`/`Infinity`
+ * or dividing by zero when a caller passes a bad value (Ruling: a pure
+ * function that cannot itself emit an unrunnable plan is the better seam —
+ * 17b shouldn't have to pre-validate pipeline config).
  */
 export function planContactSheet(
   duration: number,
   opts: ContactSheetPlanOptions = {},
 ): ContactSheetPlan {
   const minInterval = opts.minInterval ?? MIN_INTERVAL_SECONDS;
-  const columns = opts.columns ?? TILE_COLUMNS;
-  const cellsPerSheetCap = opts.cellsPerSheet ?? MAX_CELLS_PER_SHEET;
-  const maxSheets = opts.maxSheets ?? MAX_SHEETS;
+  const columns = positiveOr(opts.columns, TILE_COLUMNS);
+  const cellsPerSheetCap = positiveOr(opts.cellsPerSheet, MAX_CELLS_PER_SHEET);
+  const maxSheets = positiveOr(opts.maxSheets, MAX_SHEETS);
 
   const dense = frameCount(duration, minInterval);
   if (dense === 0) return { interval: 0, times: [], perSheet: 0, sheets: [] };
@@ -305,6 +395,7 @@ export function planContactSheet(
   const coverage = Math.ceil(duration / MAX_INTERVAL_SECONDS);
   const maxFrames = maxSheets * cellsPerSheetCap;
   const total = Math.min(maxFrames, Math.max(coverage, dense));
+  if (total <= 0) return { interval: 0, times: [], perSheet: 0, sheets: [] };
   const times = sampleTimes(duration, total);
   const perSheet = Math.min(
     cellsPerSheetCap,
