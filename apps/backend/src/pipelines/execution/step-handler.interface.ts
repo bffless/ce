@@ -661,7 +661,13 @@ export interface ImageConvertHandlerConfig extends BaseHandlerConfig {
 
 // step-handler.interface.ts — this TSDoc is the authoritative handler reference
 // (CE has no per-handler doc pages; agents and humans read this).
-export type FfmpegOperation = 'probe' | 'extract_audio' | 'slice' | 'concat';
+export type FfmpegOperation =
+  | 'probe'
+  | 'extract_audio'
+  | 'slice'
+  | 'concat'
+  | 'frames'
+  | 'contact_sheet';
 
 /** One kept span of source footage, in source seconds. Values may be literals or expressions. */
 export interface FfmpegSpan {
@@ -689,6 +695,29 @@ export interface FfmpegSpan {
  *   adds ~10 ms edge fades (use for scene assembly).
  * - `concat` — stitch `inputs` (uniformly-encoded clips) into `output`;
  *   stream-copy first, automatic re-encode fallback on stream mismatch.
+ * - `frames` — one still per entry in `times`, written to
+ *   `<outputPrefix>/frame-NN.jpg` (1-based, zero-padded); returns
+ *   `{ frames: [{ time, storage_path, content_type, size }], count }`. The
+ *   stills are deliberately CLEAN (no burned-in label): a later step
+ *   re-captures a frame from the source rather than cropping it out of a sheet.
+ * - `contact_sheet` — sample the whole clip and tile the samples into
+ *   `<outputPrefix>/sheet-NN.jpg` grids an LLM can read as visual context;
+ *   returns `{ sheets: [{ storage_path, content_type, size, times, index,
+ *   total, cols, rows }], interval, count, labelled }`. `duration` is probed
+ *   with ffprobe when the config omits it. The sampling is a port of Studio's
+ *   `contactSheet.ts` planner: as dense as `interval` allows on short clips,
+ *   never sparser than 30s until the `maxSheets` × `cellsPerSheet` budget
+ *   forces it, `columns` per grid. Each cell burns in an `m:ss` clock via
+ *   ffmpeg's `drawtext`, which needs an ffmpeg built with libfreetype (CE's
+ *   own image has it); an ffmpeg without it degrades to un-labelled cells and
+ *   `labelled: false` instead of failing the step.
+ *
+ * Both `frames` and `contact_sheet` are path-in/path-out under `outputPrefix`,
+ * which is what lets a downstream step (a blog writer, say) pick a moment off a
+ * sheet and then RE-CAPTURE that exact second as a clean still. `contact_sheet`
+ * costs one ffprobe job plus one ffmpeg command per sampled frame plus one per
+ * sheet (up to 120 + 10), so it belongs in `postSteps` behind a job row, the
+ * same way `slice` does.
  *
  * Path forms: inputs accept `{owner}/{repo}/uploads/...`, an uploads-relative
  * path, or an `/api/uploads/...` URL; outputs are uploads-relative. All resolve
@@ -729,6 +758,26 @@ export interface FfmpegHandlerConfig extends BaseHandlerConfig {
   audioOutput?: string;
   /** slice only: ~10 ms audio edge fades per span (assemble parity). Default false. */
   audioFades?: boolean;
+  /** frames/contact_sheet: destination DIRECTORY, uploads-relative. Template-resolved. */
+  outputPrefix?: string;
+  /** frames: capture times in source seconds — an array (values may be expressions) or an expression resolving to one. */
+  times?: Array<number | string> | string;
+  /** frames/contact_sheet: output height in px, width follows the aspect ratio. Default 720. */
+  height?: number;
+  /** frames: jpeg quality, ffmpeg -q:v (2 = best, 31 = worst). Default 3. */
+  quality?: number;
+  /** contact_sheet: source duration in seconds; probed with ffprobe when omitted. Number or expression. */
+  duration?: number | string;
+  /** contact_sheet: finest sampling interval in seconds (the density floor). Default 5. */
+  interval?: number;
+  /** contact_sheet: grid columns per sheet. Default 3. */
+  columns?: number;
+  /** contact_sheet: cap on cells per sheet. Default 12 (the planner prefers 9 and only packs to the cap when the sheet budget forces it). */
+  cellsPerSheet?: number;
+  /** contact_sheet: cap on sheets. Default 10. */
+  maxSheets?: number;
+  /** contact_sheet: burn the m:ss clock into each cell. Default true; degrades to false when the ffmpeg has no drawtext. */
+  label?: boolean;
   /**
    * Which executor runs the job: 'local' (this backend) | 'remote' (Worker) | a
    * `{{expression}}` resolving to one. Default: the instance's default executor.

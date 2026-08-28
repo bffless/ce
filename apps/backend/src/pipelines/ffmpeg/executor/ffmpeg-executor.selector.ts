@@ -21,6 +21,13 @@ export interface FfmpegCapabilityProbe {
   defaultExecutor: FfmpegExecutorName;
   /** `maxInflight` = the resolved connection's cap, so a client can size its own queue. */
   remote?: { version?: string; ready: boolean; maxInflight: number; reason?: string };
+  /**
+   * Optional filters THIS box's ffmpeg was built with — local-only, like
+   * `version`, and absent whenever the local filter probe never ran (no local
+   * executor, or the probe failed). `drawtext: false` is why a contact_sheet
+   * on the local executor comes back un-labelled.
+   */
+  filters?: { drawtext: boolean };
 }
 
 /**
@@ -112,6 +119,11 @@ export class FfmpegExecutorSelector {
       anyReady = anyReady || readiness.ok;
     }
     const server = (await ffmpegFlagOn(this.capability)) && anyReady;
+    // Local-only and additive: undefined (probe never ran / capability doubles
+    // predating hasFilter) omits the field rather than claiming `false`.
+    const drawtext = enabled.includes('local')
+      ? this.capability.hasFilter?.('drawtext')
+      : undefined;
     return {
       server,
       ops: server ? [...FFMPEG_OPS] : [],
@@ -120,6 +132,7 @@ export class FfmpegExecutorSelector {
       executors: enabled,
       defaultExecutor: this.defaultExecutor(),
       ...(remote ? { remote } : {}),
+      ...(drawtext === undefined ? {} : { filters: { drawtext } }),
     };
   }
 }
