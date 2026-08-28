@@ -136,3 +136,210 @@ export function buildConcatArgs(
 export function buildProbeArgs(input: string): string[] {
   return ['-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', input];
 }
+
+/**
+ * One still: fast-seek (`-ss` before `-i`, keyframe-accurate enough for a
+ * contact sheet, not frame-exact) to `time`, scale to `height` (width kept
+ * even via `-2`), optionally burn in a corner label. `label` is only ever
+ * passed when the caller intends to try `drawtext`, which needs libfreetype
+ * in the ffmpeg build — omit it and the filter chain skips drawtext
+ * entirely rather than failing. The label is escaped against ffmpeg filter
+ * syntax (backslash, then `:`, then `'`, in that order) before being
+ * wrapped in the filter's own quotes — this is a filter-injection fence,
+ * not cosmetics, since `label` can be a burned-in timestamp built from
+ * caller-controlled data.
+ */
+export function buildFrameArgs(o: {
+  input: string;
+  output: string;
+  time: number;
+  height: number;
+  quality: number;
+  label?: string;
+}): string[] {
+  const filters = [`scale=-2:${o.height}`];
+  if (o.label !== undefined) {
+    const text = o.label.replace(/\\/g, '\\\\').replace(/:/g, '\\:').replace(/'/g, "\\'");
+    filters.push(
+      `drawtext=text='${text}':fontsize=h/12:fontcolor=white:box=1:boxcolor=black@0.6:boxborderw=8:x=w-tw-16:y=h-th-16`,
+    );
+  }
+  return [
+    '-ss',
+    secs(o.time),
+    '-i',
+    o.input,
+    '-frames:v',
+    '1',
+    '-vf',
+    filters.join(','),
+    '-q:v',
+    String(o.quality),
+    o.output,
+  ];
+}
+
+/**
+ * Tile `count` numbered cells (`pattern` is a literal glob like
+ * `cell-%03d.jpg`, not an `{out:}` placeholder — both executors spawn with
+ * cwd = the scratch dir, so scratch cells are addressed by bare
+ * scratch-relative filenames, ruling R75) into one sheet, `columns` wide.
+ * Rows grow to fit; a short last sheet (fewer than a full grid of cells) is
+ * padded by the `tile` filter itself, not by this builder.
+ */
+export function buildTileArgs(o: {
+  pattern: string;
+  start: number;
+  count: number;
+  columns: number;
+  output: string;
+}): string[] {
+  const rows = Math.ceil(o.count / o.columns);
+  return [
+    '-start_number',
+    String(o.start),
+    '-i',
+    o.pattern,
+    '-frames:v',
+    '1',
+    '-vf',
+    `tile=${o.columns}x${rows}:padding=2:margin=2:color=0x111111`,
+    '-q:v',
+    '3',
+    o.output,
+  ];
+}
+
+/**
+ * Contact-sheet planning — a port of Studio's `planContactSheet`
+ * (repos/apps: `apps/studio/src/lib/contactSheet.ts`). CE and Studio are
+ * separate deploy units (this runs server-side in the backend bundle;
+ * Studio's runs client-side against wasm ffmpeg), so the algorithm is
+ * deliberately duplicated here rather than shared — that duplication, plus
+ * this doc comment, is how the two copies stay findable when one changes.
+ *
+ * Same constraints Studio's version balances: sample as densely as
+ * `minInterval` allows on short clips (closer just yields near-duplicate
+ * frames), never sparser than `MAX_INTERVAL_SECONDS` on long ones (until
+ * the frame budget forces it wider), prefer `PREFERRED_CELLS_PER_SHEET`
+ * cells per sheet for per-frame legibility (up to the `cellsPerSheet` cap),
+ * and never exceed `maxSheets` images. Unlike Studio, CE's `contact_sheet`
+ * operation lets a pipeline override `minInterval`/`columns`/`cellsPerSheet`/
+ * `maxSheets` per call (Studio hardcodes its module constants) — but
+ * `PREFERRED_CELLS_PER_SHEET` is NOT one of those knobs: it stays fixed at
+ * 9, and `perSheet`'s `min(cellsPerSheet, …)` still enforces a caller's
+ * lower cap over it. (Ruling R74: this is a straight port of Studio's real
+ * algorithm, not the plan's prose formula, which contradicts its own test
+ * expectations.)
+ */
+export const MIN_INTERVAL_SECONDS = 5;
+export const MAX_INTERVAL_SECONDS = 30;
+export const MAX_SHEETS = 10;
+export const TILE_COLUMNS = 3;
+export const PREFERRED_CELLS_PER_SHEET = 9;
+export const MAX_CELLS_PER_SHEET = 12;
+
+export interface ContactSheetPlanOptions {
+  /** Sampling density floor in seconds (config `interval`). Default `MIN_INTERVAL_SECONDS`. */
+  minInterval?: number;
+  /** Columns per tiled sheet (config `columns`). Default `TILE_COLUMNS`. */
+  columns?: number;
+  /** Cap on cells per sheet (config `cellsPerSheet`). Default `MAX_CELLS_PER_SHEET`. */
+  cellsPerSheet?: number;
+  /** Cap on number of sheets (config `maxSheets`). Default `MAX_SHEETS`. */
+  maxSheets?: number;
+}
+
+export interface ContactSheetPlan {
+  /** Actual seconds between sampled frames (`duration / times.length`) — widens past `MAX_INTERVAL_SECONDS` once the frame budget caps out. */
+  interval: number;
+  /** All capture timestamps in seconds, evenly spread and bucket-centred. */
+  times: number[];
+  /** Cells per composed sheet — `times` is chunked by this into ≤ `maxSheets` tiles. */
+  perSheet: number;
+  /** One entry per tiled sheet: its slice of `times`, the 1-based index of its first cell in `times`, and its grid shape. */
+  sheets: Array<{
+    index: number;
+    start: number;
+    count: number;
+    times: number[];
+    cols: number;
+    rows: number;
+  }>;
+}
+
+/** duration<=0 or non-finite ⇒ 0; else the frame count at `minInterval` density, uncapped by the sheet/cell budget. */
+function frameCount(duration: number, minInterval: number): number {
+  if (!Number.isFinite(duration) || duration <= 0) return 0;
+  return Math.max(1, Math.ceil(duration / minInterval));
+}
+
+/** `count` capture timestamps spread evenly across the clip, each centred in its bucket and kept just shy of `duration` so the seek always lands on real footage. */
+function sampleTimes(duration: number, count: number): number[] {
+  if (count <= 0) return [];
+  return Array.from({ length: count }, (_, i) =>
+    Math.min(duration - 0.05, (i + 0.5) * (duration / count)),
+  );
+}
+
+/**
+ * The clip-wide plan: how many frames to sample, their timestamps, and how
+ * to tile them into sheets. `duration <= 0` or non-finite yields the empty
+ * plan (`{ interval: 0, times: [], perSheet: 0, sheets: [] }`).
+ */
+export function planContactSheet(
+  duration: number,
+  opts: ContactSheetPlanOptions = {},
+): ContactSheetPlan {
+  const minInterval = opts.minInterval ?? MIN_INTERVAL_SECONDS;
+  const columns = opts.columns ?? TILE_COLUMNS;
+  const cellsPerSheetCap = opts.cellsPerSheet ?? MAX_CELLS_PER_SHEET;
+  const maxSheets = opts.maxSheets ?? MAX_SHEETS;
+
+  const dense = frameCount(duration, minInterval);
+  if (dense === 0) return { interval: 0, times: [], perSheet: 0, sheets: [] };
+
+  // Aim for `minInterval` density, never sparser than MAX_INTERVAL_SECONDS, never
+  // over the maxSheets*cellsPerSheet budget (dense >= coverage whenever
+  // minInterval < MAX_INTERVAL_SECONDS, so the coverage floor is belt-and-braces).
+  const coverage = Math.ceil(duration / MAX_INTERVAL_SECONDS);
+  const maxFrames = maxSheets * cellsPerSheetCap;
+  const total = Math.min(maxFrames, Math.max(coverage, dense));
+  const times = sampleTimes(duration, total);
+  const perSheet = Math.min(
+    cellsPerSheetCap,
+    total,
+    Math.max(PREFERRED_CELLS_PER_SHEET, Math.ceil(total / maxSheets)),
+  );
+
+  const sheets: ContactSheetPlan['sheets'] = [];
+  for (let i = 0; i < times.length; i += perSheet) {
+    const slice = times.slice(i, i + perSheet);
+    const cols = Math.min(slice.length, columns);
+    sheets.push({
+      index: sheets.length,
+      start: i + 1,
+      count: slice.length,
+      times: slice,
+      cols,
+      rows: Math.ceil(slice.length / cols),
+    });
+  }
+
+  return { interval: duration / total, times, perSheet, sheets };
+}
+
+/**
+ * Clock label burned onto each frame by `buildFrameArgs`'s `label`: plain
+ * wall-clock `m:ss`, promoting to `h:mm:ss` once the clip passes an hour (no
+ * tenths, so it stays readable at thumbnail size). Negative or non-finite
+ * input clamps to `0:00` rather than throwing or emitting `NaN`.
+ */
+export function clockLabel(seconds: number): string {
+  const clamped = !Number.isFinite(seconds) || seconds < 0 ? 0 : seconds;
+  const total = Math.floor(clamped);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const ss = (total % 60).toString().padStart(2, '0');
+  return h ? `${h}:${m.toString().padStart(2, '0')}:${ss}` : `${m}:${ss}`;
+}
