@@ -149,8 +149,13 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
     if (config.operation === 'frames' || config.operation === 'contact_sheet') {
       const knobs = this.knobs(config);
       if (config.operation === 'contact_sheet') {
-        // Static, unlike `frames`' expression-resolved `times`, so it is a
-        // configuration error rather than a runtime one.
+        // Static, unlike `frames`' expression-resolved `times`, so it can be
+        // checked from the config alone — which is why it is a
+        // ConfigurationError rather than the INVALID_TIMES the `frames` cap
+        // raises. Both still fire at RUN time: validateConfig's only callers
+        // are pipeline-execution.service.ts:452 and :570, each immediately
+        // before handler.execute. CE has no save-time handler validation, so
+        // an over-budget step saves cleanly and fails on its first request.
         const budget =
           (knobs.maxSheets ?? MAX_SHEETS) * (knobs.cellsPerSheet ?? MAX_CELLS_PER_SHEET);
         if (budget > MAX_STILLS_PER_JOB) {
@@ -758,8 +763,9 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
       duration = this.assertDuration(Number(parsed.format?.duration));
     }
 
-    // Defence in depth: validateConfig refuses this budget at config time, but a
-    // directly-executed step never went through it.
+    // Defence in depth: validateConfig refuses this budget too, but it runs
+    // only via pipeline-execution.service, so a directly-executed step never
+    // went through it. (Neither check is a save-time gate — see validateConfig.)
     const budget = (knobs.maxSheets ?? MAX_SHEETS) * (knobs.cellsPerSheet ?? MAX_CELLS_PER_SHEET);
     if (budget > MAX_STILLS_PER_JOB) {
       this.tooManyStills('contact_sheet maxSheets × cellsPerSheet', budget);

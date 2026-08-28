@@ -510,6 +510,19 @@ describe('planContactSheet (port of Studio contactSheet.ts, Ruling R74)', () => 
     expect(planContactSheet(NaN)).toEqual({ interval: 0, times: [], perSheet: 0, sheets: [] });
   });
 
+  it('never plans a negative seek on a source shorter than the end margin', () => {
+    // A single frame at 30 fps is ~0.033 s, under the 0.05 s shy-of-the-end
+    // margin — without the clamp this planned [-0.01] and built `-ss -0.01`.
+    for (const duration of [0.04, 0.033, 0.001]) {
+      const plan = planContactSheet(duration);
+      expect(plan.times).toHaveLength(1);
+      expect(plan.times[0]).toBeGreaterThanOrEqual(0);
+    }
+    expect(planContactSheet(0.04).times).toEqual([0]);
+    // The margin still applies once the clip is longer than it.
+    expect(planContactSheet(10).times.every((t) => t >= 0 && t <= 10 - 0.05)).toBe(true);
+  });
+
   it('minInterval override samples scene-dense (Studio planSceneContactSheet density)', () => {
     const plan = planContactSheet(120, { minInterval: 1 });
     expect(plan.times).toHaveLength(120);

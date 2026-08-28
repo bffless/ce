@@ -345,11 +345,20 @@ function frameCount(duration: number, minInterval: number): number {
   return Math.max(1, Math.ceil(duration / step));
 }
 
-/** `count` capture timestamps spread evenly across the clip, each centred in its bucket and kept just shy of `duration` so the seek always lands on real footage. */
+/**
+ * `count` capture timestamps spread evenly across the clip, each centred in its
+ * bucket and kept just shy of `duration` so the seek always lands on real
+ * footage.
+ *
+ * The `Math.max(0, …)` is load-bearing on very short sources: the `- 0.05`
+ * shy-of-the-end margin goes NEGATIVE once `duration < 0.05`, which a
+ * single-frame source reaches (~0.033 s at 30 fps). `planContactSheet(0.04)`
+ * would otherwise plan `[-0.01]` and emit `-ss -0.01`, a negative seek.
+ */
 function sampleTimes(duration: number, count: number): number[] {
   if (count <= 0) return [];
   return Array.from({ length: count }, (_, i) =>
-    Math.min(duration - 0.05, (i + 0.5) * (duration / count)),
+    Math.max(0, Math.min(duration - 0.05, (i + 0.5) * (duration / count))),
   );
 }
 

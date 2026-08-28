@@ -461,22 +461,55 @@ export interface DelayHandlerConfig extends BaseHandlerConfig {
   seconds?: number | string;
 }
 
-export type FfmpegOperation = 'probe' | 'extract_audio' | 'slice' | 'concat';
+export type FfmpegOperation =
+  | 'probe'
+  | 'extract_audio'
+  | 'slice'
+  | 'concat'
+  | 'frames'
+  | 'contact_sheet';
 
 export interface FfmpegHandlerConfig extends BaseHandlerConfig {
   operation: FfmpegOperation;
-  /** Source object (probe/extract_audio/slice). Expression or path. */
+  /** Source object (probe/extract_audio/slice/frames/contact_sheet). A TEMPLATE ({{...}} substituted, anything else verbatim). */
   input?: string;
   /** Concat sources, in order (expression resolving to an array also accepted). */
   inputs?: string[] | string;
   /** Kept spans for slice, or an expression resolving to them. */
   spans?: Array<{ start: number | string; end: number | string }> | string;
-  /** Destination, uploads-relative. Required except for probe. */
+  /** Destination, uploads-relative. Required for extract_audio/slice/concat (frames/contact_sheet use outputPrefix). */
   output?: string;
   /** slice only: also emit the clip's 16 kHz WAV here. */
   audioOutput?: string;
   /** slice only: ~10 ms audio edge fades per span. */
   audioFades?: boolean;
+  /** frames/contact_sheet: destination DIRECTORY, uploads-relative. A TEMPLATE ({{...}} substituted, anything else verbatim). */
+  outputPrefix?: string;
+  /** frames: capture times in source seconds — an array (entries may be BARE expressions) or a bare expression resolving to one. Not {{...}}. */
+  times?: Array<number | string> | string;
+  /**
+   * frames/contact_sheet: output height in px, width follows the aspect ratio.
+   * Default 720. A literal number only — NOT template-resolvable.
+   */
+  height?: number;
+  /**
+   * frames: jpeg quality, ffmpeg -q:v (2 = best, 31 = worst). Default 3. A
+   * literal number only — NOT template-resolvable. (contact_sheet cells are
+   * always q:v 3.)
+   */
+  quality?: number;
+  /** contact_sheet: source duration in seconds; probed with ffprobe when omitted. A number or a BARE expression ('steps.probe.duration'), never {{...}}. */
+  duration?: number | string;
+  /** contact_sheet: finest sampling interval in seconds (the density floor). Default 5. Literal number only. */
+  interval?: number;
+  /** contact_sheet: grid columns per sheet. Default 3. Literal number only. */
+  columns?: number;
+  /** contact_sheet: cap on cells per sheet. Default 12 (the planner prefers 9). Literal number only. */
+  cellsPerSheet?: number;
+  /** contact_sheet: cap on sheets. Default 10. Literal number only. */
+  maxSheets?: number;
+  /** contact_sheet: burn the m:ss clock into each cell. Default true; the string forms 'false'/'0'/'no'/'off' also mean off. Degrades to false when the ffmpeg has no drawtext. */
+  label?: boolean | string;
   /**
    * Which executor runs the job: 'local' (this backend) | 'remote' (Worker) | a
    * `{{expression}}` resolving to one. Default: the instance's default executor.
