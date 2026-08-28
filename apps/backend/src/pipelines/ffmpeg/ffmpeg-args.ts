@@ -436,6 +436,25 @@ export function buildFrameArgs(o: {
     filters.join(','),
     '-q:v',
     String(o.quality),
+    // A seek past the end of the source encodes NOTHING, and ffmpeg 7 still
+    // exits 0 having written no file (measured on 7.0.2). When the still is an
+    // uploaded output that surfaces later as a stat ENOENT, which the caller can
+    // rename; when it is a scratch CELL nobody stats, the gap is invisible and
+    // the `image2` demuxer feeding the tile pass simply stops early — so the
+    // sheet comes back padded with `0x111111` squares while its reported `times`
+    // claim real frames. Measured: 6 cells with `cell-003` missing tiled to
+    // slot values [30, 61, 17, 17, 17, 17], exit 0, sheet written.
+    //
+    // `-abort_on empty_output` turns that into exit 234 at the CELL, so the gap
+    // can never reach the tile pass. It belongs here and nowhere else: the same
+    // flag on the tile command does NOT fire on a gapped sequence (measured,
+    // exit 0). ffmpeg 8 (Alpine — CE's backend image and the Worker) already
+    // exits 234 without it, so this normalises the older runtimes rather than
+    // changing behaviour where it is already right, and a VALID seek still
+    // exits 0 on both — with a bare scale chain, with drawbox, and with a real
+    // drawtext overlay.
+    '-abort_on',
+    'empty_output',
     o.output,
   ];
 }

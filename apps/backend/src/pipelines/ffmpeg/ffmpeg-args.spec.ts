@@ -178,6 +178,32 @@ describe('buildFrameArgs — no overlay', () => {
     expect(args[args.length - 1]).toBe('frame-01.jpg');
   });
 
+  /**
+   * Ruling R107. A seek past the end of the source encodes nothing, and
+   * ffmpeg 7.0.2 exits 0 having written no file — invisible when the still is
+   * a scratch cell nobody stats, which lets a gapped `cell-%03d.jpg` sequence
+   * tile into a sheet of padding squares that still reports real `times`.
+   * Measured on 7.0.2: past-EOF exits 0 without the flag and 234 with it,
+   * while a valid seek exits 0 either way (bare scale, drawbox, and a real
+   * drawtext overlay). Alpine's ffmpeg 8.1.2 — CE's backend image and the
+   * Worker — already exits 234, so this normalises the older runtimes.
+   * The flag does NOT work on the tile command (measured: still exit 0 on a
+   * gapped sequence), so the cell is the only placement that closes it.
+   */
+  it('aborts on an empty output, so a past-EOF seek can never pass silently', () => {
+    const args = buildFrameArgs({
+      input: 'in.mp4',
+      output: 'cell-001.jpg',
+      time: 99999,
+      height: 720,
+      quality: 3,
+    });
+    expect(argAfter(args, '-abort_on')).toBe('empty_output');
+    // An OUTPUT option: it has to precede the output file to apply to it.
+    expect(args.indexOf('-abort_on')).toBeLessThan(args.length - 1);
+    expect(args[args.length - 1]).toBe('cell-001.jpg');
+  });
+
   it('the filter chain is EXACTLY the scale — no drawtext at all', () => {
     const args = buildFrameArgs({
       input: 'in.mp4',

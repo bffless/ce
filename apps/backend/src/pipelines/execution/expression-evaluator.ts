@@ -4,6 +4,23 @@ import { ExpressionError } from '../errors';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
+ * The roots an expression path may start with. Anything else is returned as a
+ * literal string, which is what lets email addresses and prose pass through
+ * `evaluateExpression` untouched. Exported because a caller that decides
+ * whether a string IS an expression before handing it over (ffmpeg_handler's
+ * `draw.text`) must ask the same question this evaluator does — a second,
+ * hand-copied list would silently drift.
+ */
+export const EXPRESSION_ROOTS = [
+  'user',
+  'steps',
+  'metadata',
+  'request',
+  'deployment',
+  'secrets',
+] as const;
+
+/**
  * Service for evaluating expressions and templates in pipeline configurations
  *
  * Expressions reference data using dot notation:
@@ -64,11 +81,10 @@ export class ExpressionEvaluator {
 
     // Check if this looks like a valid expression path (must start with a known root)
     // This allows literal values like email addresses to pass through unchanged
-    const validRoots = ['user', 'steps', 'metadata', 'request', 'deployment', 'secrets'];
     // Extract first part before '.' or '[' for root check
     const firstPartMatch = trimmed.match(/^([a-zA-Z_][a-zA-Z0-9_]*)/);
     const firstPart = firstPartMatch ? firstPartMatch[1] : '';
-    if (!validRoots.includes(firstPart)) {
+    if (!(EXPRESSION_ROOTS as readonly string[]).includes(firstPart)) {
       // Not a valid expression path - return as literal string
       // This handles email addresses, URLs, and other literal values
       return trimmed;

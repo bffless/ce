@@ -680,10 +680,17 @@ export interface FfmpegDrawConfig {
   /**
    * The text, drawn VERBATIM (it is escaped into the filter graph and never
    * interpreted). One string draws the same line on every still; an array
-   * draws its own line on each and must be EXACTLY as long as `times`. A BARE
-   * expression (`steps.chapters.titles`) may resolve to either form — but only
-   * a string that IS an expression path is resolved, so prose that happens to
-   * start with an expression root ("user guide") is still drawn as written.
+   * draws its own line on each and must be EXACTLY as long as `times`.
+   *
+   * Ruling R106 — the two forms differ in how they are READ. A STRING is
+   * resolved as an expression only when it has the shape of a whole path
+   * (`steps.chapters.titles`, `steps['ch one'].title`), which may resolve to
+   * either form; prose that merely begins with an expression root ("user
+   * guide") is drawn as written. An authored ARRAY is ALWAYS literals — the
+   * escape hatch for text the shape test cannot tell from a path, so
+   * `text: ["metadata.json"]` draws that filename where
+   * `text: 'metadata.json'` would look it up.
+   *
    * `{{...}}` is NOT a template here and is rejected rather than drawn.
    */
   text: string | string[];
@@ -765,14 +772,24 @@ export interface FfmpegTileConfig {
  *   cost; anything else costs ONE retry of the job without the overlay, and
  *   only then. A step never fails merely because an ffmpeg cannot draw.
  *
- *   A `time` past the end of the source produces no file and FAILS the step
- *   (the error names the image that was not written). Without `tile` this is
- *   the ONE case that leaves a partial batch behind: ffmpeg exits 0 having
- *   written nothing, so the failure only surfaces in the upload loop, after
- *   the earlier stills have already landed under `outputPrefix`. Which is why
- *   a run's prefix should be treated as disposable rather than as a directory
- *   you append to. Nothing else is partial: both executors upload only after
- *   EVERY command has succeeded.
+ *   A `time` past the end of the source encodes nothing and FAILS the step:
+ *   the still command carries `-abort_on empty_output`, so it exits non-zero
+ *   where some ffmpeg builds would exit 0 having written no file. That flag is
+ *   load-bearing in TILE mode — a cell is not a declared output and nothing
+ *   stats it, so a silent gap used to reach the tile pass, where `image2`
+ *   stops at the hole and `tile` pads the rest: a sheet of `0x111111` squares
+ *   whose reported `times` claimed real frames. The error names the image when
+ *   the executor's failure identifies it; the local runner reports only
+ *   ffmpeg's last stderr line, so there it names the cause rather than the
+ *   file.
+ *
+ *   Uploads are all-or-nothing per COMMAND but not per BATCH: both executors
+ *   upload only after every command has succeeded, so a non-zero ffmpeg exit
+ *   ships nothing at all — but if a declared output is missing when its turn
+ *   comes in the upload loop (an ffmpeg that exited 0 having written no file,
+ *   which `-abort_on empty_output` makes unlikely rather than impossible), the
+ *   images before it have already landed. Treat a run's `outputPrefix` as
+ *   disposable rather than as a directory you append to.
  *
  *   At most 200 stills per step (`MAX_STILLS_PER_JOB`, measured on
  *   `times.length`) — a runaway `times` expression would otherwise spawn one
@@ -780,7 +797,7 @@ export interface FfmpegTileConfig {
  *   uploaded. That cap bounds the sheets too, since sheets are
  *   `times.length / perSheet`.
  *
- * Two things about `frames` that surprise authors:
+ * Three things about `frames` that surprise authors:
  * - **Three different syntaxes, and mixing them up fails at run time.**
  *   `input` and `outputPrefix` are TEMPLATES (`evaluateTemplate`):
  *   `{{steps.x.y}}` is substituted and anything else is used verbatim as a
@@ -797,6 +814,17 @@ export interface FfmpegTileConfig {
  *   fails on the step's first request rather than when it is authored — and
  *   even a bare `steps.probe.h` is not resolved. Compute a number in a prior
  *   step and you still cannot pass it here — pick it at authoring time.
+ *   `draw.text` differs from `times` in one way: a plain string is legitimate
+ *   CONTENT, so it is only resolved when it has the shape of a whole
+ *   expression path, and an authored ARRAY is always literals (Ruling R106) —
+ *   `text: ["metadata.json"]` draws that filename, which `text: 'metadata.json'`
+ *   would try to look up.
+ * - **`draw.text` resolves expressions, including `secrets.*`.** It is the
+ *   same evaluator every other field uses, so `draw.text: 'secrets.API_KEY'`
+ *   burns a decrypted secret into a JPEG that is then uploaded to storage.
+ *   That is author-initiated and consistent with the rest of the expression
+ *   system rather than a hole — but a drawn value ends up in an IMAGE, where
+ *   nothing downstream will redact it.
  * - **`quality` and `height` have no upper bound.** They are only checked for
  *   being positive integers, so `quality: 500` reaches `-q:v 500` and
  *   `height: 20000` scales every still to 20 000 px. jpeg `-q:v` is meaningful
@@ -804,7 +832,8 @@ export interface FfmpegTileConfig {
  *   360..1080 (default 720). The tiled SHEET is always `-q:v 3`; `quality`
  *   applies to the stills.
  *
- * A 200-still tiled step is over 200 ffmpeg commands, and the local runner
+ * A 200-still tiled step is up to 400 ffmpeg commands — `tile: {perSheet: 1}`
+ * over 200 times is 200 stills plus 200 tiles — and the local runner
  * acquires its single concurrency slot PER COMMAND, not per job — so a long
  * step gets that many chances to hit `FFMPEG_BUSY`, and a failure part-way
  * through discards every still computed so far. That is the concrete reason a

@@ -12,7 +12,8 @@ import { ExpressionEvaluator } from '../execution/expression-evaluator';
 import { EMPTY_TIMINGS, type FfmpegJob } from '../ffmpeg/executor/ffmpeg-executor.interface';
 import type { PipelineContext } from '../execution/pipeline-context.interface';
 import type { PipelineStep } from '../types';
-import { FfmpegHandler, MAX_STILLS_PER_JOB } from './ffmpeg.handler';
+import { DRAW_TEXT_EXPRESSION, FfmpegHandler, MAX_STILLS_PER_JOB } from './ffmpeg.handler';
+import { EXPRESSION_ROOTS } from '../execution/expression-evaluator';
 
 function createHandler(
   overrides: {
@@ -760,6 +761,10 @@ describe('frames', () => {
     expect(argvs(runner)[0]).toContain('scale=-2:720');
     // R80: every ffmpeg command carries its own ceiling.
     expect(runner.run.mock.calls[0][0].timeoutSeconds).toBe(120);
+    // R107: and every still refuses to exit 0 having encoded nothing.
+    expect(runner.run.mock.calls[0][0].args).toEqual(
+      expect.arrayContaining(['-abort_on', 'empty_output']),
+    );
   });
 
   it('honours height/quality and tolerates a trailing slash on outputPrefix', async () => {
@@ -1022,6 +1027,95 @@ describe('frames draw', () => {
     ).toThrow(/draw\.size/);
   });
 
+  /**
+   * Ruling R106. The shape test cannot tell `metadata.json` from a path — and
+   * filenames are a very common thing to draw on a frame — so an AUTHORED
+   * array is always literals. This is the escape hatch, and it is the only
+   * thing that makes such a text drawable at all.
+   */
+  it('an authored array is always LITERAL, never resolved (R106)', async () => {
+    const { handler, runner } = setup();
+    const ctx = context();
+    ctx.stepOutputs['job'] = { title: 'resolved!' };
+    const result = await handler.execute(
+      ctx,
+      drawStep({ text: ['metadata.json', 'steps.job.title', 'user.manual.pdf'] }),
+    );
+    expect(result.success).toBe(true);
+    expect(argvs(runner).map((a) => /drawtext=text=([^:]*)/.exec(a)?.[1])).toEqual([
+      'metadata.json',
+      // NOT 'resolved!': entries of an authored array are drawn as written.
+      'steps.job.title',
+      'user.manual.pdf',
+    ]);
+  });
+
+  /**
+   * The other half of R106: a path-shaped STRING that resolves to nothing used
+   * to fail as "draw.text is required when draw is present" for a `draw.text`
+   * that was plainly set. Name the string, say it was read as an expression,
+   * and point at the array form.
+   */
+  it('says WHY a path-shaped literal resolved to nothing, and how to draw it', async () => {
+    const { handler, runner } = setup();
+    const result = await handler.execute(context(), drawStep({ text: 'metadata.json' }));
+    expect(result.success).toBe(false);
+    expect(result.error?.code).toBe('CONFIGURATION_ERROR');
+    expect(result.error?.message).toContain('metadata.json');
+    expect(result.error?.message).toMatch(/shape of an expression/);
+    expect(result.error?.message).toMatch(/\["metadata\.json"\]/);
+    expect(result.error?.message).not.toMatch(/is required/);
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The shape test must not be NARROWER than the evaluator without saying so:
+   * `parsePath` documents quoted bracket keys, so a step name with a space
+   * resolves rather than being drawn verbatim.
+   */
+  it('resolves the bracket forms parsePath documents', async () => {
+    const { handler, runner } = setup();
+    const ctx = context();
+    ctx.stepOutputs['chapter one'] = { title: 'From a quoted key' };
+    (ctx.metadata.headers as Record<string, unknown>)['x-title'] = 'From a header';
+    const quoted = await handler.execute(ctx, drawStep({ text: "steps['chapter one'].title" }));
+    expect(quoted.success).toBe(true);
+    expect(argvs(runner).every((a) => a.includes('text=From a quoted key'))).toBe(true);
+    runner.run.mockClear();
+    const header = await handler.execute(ctx, drawStep({ text: "request.headers['x-title']" }));
+    expect(header.success).toBe(true);
+    expect(argvs(runner).every((a) => a.includes('text=From a header'))).toBe(true);
+  });
+
+  /**
+   * The regex is BUILT from the evaluator's exported roots rather than
+   * hand-copied, so a new root there cannot silently start drawing as literal
+   * text here. This asserts the wiring, not a duplicated list.
+   */
+  it('accepts a path under every root the evaluator itself accepts', () => {
+    expect(EXPRESSION_ROOTS.length).toBeGreaterThan(0);
+    for (const root of EXPRESSION_ROOTS) {
+      expect(DRAW_TEXT_EXPRESSION.test(`${root}.some.field`)).toBe(true);
+    }
+    // …and prose starting with one of them is still text.
+    expect(DRAW_TEXT_EXPRESSION.test('user guide')).toBe(false);
+  });
+
+  it('rejects a draw block whose text is missing or wrong-typed at CONFIG time', () => {
+    const { handler } = createHandler();
+    const base = { operation: 'frames', input: 'a.mp4', outputPrefix: 'p', times: [1] };
+    expect(() => handler.validateConfig({ ...base, draw: {} } as never)).toThrow(/draw\.text/);
+    expect(() => handler.validateConfig({ ...base, draw: { text: true } } as never)).toThrow(
+      /draw\.text/,
+    );
+    expect(() => handler.validateConfig({ ...base, draw: { text: ['ok', {}] } } as never)).toThrow(
+      /draw\.text/,
+    );
+    expect(() =>
+      handler.validateConfig({ ...base, draw: { text: '{{steps.a.b}}' } } as never),
+    ).toThrow(/draw\.text/);
+  });
+
   it('a bad draw that slipped past validateConfig still cannot reach argv', async () => {
     const { handler, runner } = setup();
     const result = await handler.execute(
@@ -1097,6 +1191,14 @@ describe('frames tile', () => {
     expect(argvs(runner)[12]).toContain('tile=3x2');
     // R80 on the tile commands too.
     expect(runner.run.mock.calls[12][0].timeoutSeconds).toBe(120);
+    // R107 lives on the CELL commands, which is the only placement that
+    // closes the gap — measured: the same flag on the tile command does not
+    // fire on a gapped sequence.
+    expect(
+      runner.run.mock.calls
+        .slice(0, 12)
+        .every((c) => (c[0].args as string[]).includes('-abort_on')),
+    ).toBe(true);
   });
 
   /**
@@ -1173,6 +1275,67 @@ describe('frames tile', () => {
     expect(result.success).toBe(false);
     expect(result.error?.code).toBe('FFMPEG_FAILED');
     expect(result.error?.message).toContain('sheet-02.jpg');
+  });
+
+  /**
+   * Ruling R107 — the failure `tile` mode could not see. A cell is not a
+   * declared output, so nothing stats it: on an ffmpeg that exits 0 for a
+   * past-EOF seek the gap reached the tile pass, `image2` stopped at the hole
+   * and `tile` padded the rest, and the step SUCCEEDED with a sheet of
+   * `0x111111` squares whose `times` claimed real frames. `-abort_on
+   * empty_output` on the still command makes that cell fail instead, so the
+   * gap can never reach tiling.
+   */
+  it('a still that encodes nothing fails the step instead of tiling a padded sheet', async () => {
+    const { handler, runner, storageAdapter } = createHandler();
+    storageAdapter.download.mockResolvedValue(Buffer.from('mp4'));
+    runner.run.mockImplementation(async ({ args, cwd }: { args: string[]; cwd: string }) => {
+      const name = args[args.length - 1].split('/').pop() as string;
+      if (name === 'cell-003.jpg') {
+        // Exactly what the local runner raises on exit 234: ffmpeg's last
+        // stderr line, which names no file.
+        throw Object.assign(
+          new Error(
+            'ffmpeg exited with code 234: [out#0/image2] Output file is empty, nothing was encoded(check -ss / -t / -frames parameters if used)',
+          ),
+          {
+            code: 'FFMPEG_FAILED',
+            exitCode: 234,
+            stderrTail: '[out#0/image2] Output file is empty, nothing was encoded',
+          },
+        );
+      }
+      await fsp.writeFile(`${cwd}/${name}`, 'jpeg-bytes');
+      return { stdout: '', stderrTail: '' };
+    });
+    const result = await handler.execute(context(), tileStep());
+    expect(result.success).toBe(false);
+    expect(result.error?.code).toBe('FFMPEG_FAILED');
+    expect(result.error?.message).toMatch(/past the end of the source/);
+    // It stopped AT the cell: no tile command ran and no sheet was uploaded.
+    expect(argvs(runner).some((a) => a.includes('tile='))).toBe(false);
+    expect(storageAdapter.upload).not.toHaveBeenCalled();
+  });
+
+  it('names the failing cell when the executor identifies it', async () => {
+    const { handler, runner, storageAdapter } = createHandler();
+    storageAdapter.download.mockResolvedValue(Buffer.from('mp4'));
+    runner.run.mockImplementation(async ({ args, cwd }: { args: string[]; cwd: string }) => {
+      const name = args[args.length - 1].split('/').pop() as string;
+      if (name === 'cell-003.jpg') {
+        // The remote Worker names the command that failed; the local runner
+        // does not. Cells are in the known-name list either way (R107).
+        throw Object.assign(new Error('command cell-003 failed: empty_output'), {
+          code: 'FFMPEG_FAILED',
+          stderrTail: 'Output file is empty',
+        });
+      }
+      await fsp.writeFile(`${cwd}/${name}`, 'jpeg-bytes');
+      return { stdout: '', stderrTail: '' };
+    });
+    const result = await handler.execute(context(), tileStep());
+    expect(result.error?.message).toContain('cell-003');
+    expect(result.error?.message).toMatch(/past the end of the source/);
   });
 
   it('draws on the cells, never on the sheets', async () => {
@@ -1316,6 +1479,25 @@ describe('frames draw degrade (R77)', () => {
     } finally {
       warn.mockRestore();
     }
+  });
+
+  /**
+   * The sniff is `drawtext` alone, not "no such filter": an ffmpeg missing
+   * `tile` would otherwise buy a full undrawn re-run of a job that can be 400
+   * commands long and then fail in exactly the same way, since dropping the
+   * overlay cannot conjure a different filter.
+   */
+  it('does not retry a missing filter that is NOT drawtext', async () => {
+    const run = jest.fn().mockRejectedValue(
+      Object.assign(new Error('ffmpeg exited with code 1: No such filter: tile'), {
+        code: 'FFMPEG_FAILED',
+        stderrTail: "[AVFilterGraph] No such filter: 'tile'",
+      }),
+    );
+    const { handler } = withExecutor('remote', run);
+    const result = await handler.execute(context(), drawStep());
+    expect(result.error?.code).toBe('FFMPEG_FAILED');
+    expect(run).toHaveBeenCalledTimes(1);
   });
 
   it('a second drawtext failure propagates as FFMPEG_FAILED', async () => {

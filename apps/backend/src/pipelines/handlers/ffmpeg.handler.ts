@@ -7,7 +7,7 @@ import {
   FfmpegTileConfig,
 } from '../execution/step-handler.interface';
 import { StepHandlerRegistry } from '../execution/step-handler.registry';
-import { ExpressionEvaluator } from '../execution/expression-evaluator';
+import { EXPRESSION_ROOTS, ExpressionEvaluator } from '../execution/expression-evaluator';
 import { PipelineContext, StepResult } from '../execution/pipeline-context.interface';
 import { PipelineStep } from '../types';
 import { ConfigurationError } from '../errors';
@@ -77,15 +77,28 @@ const PREFLIGHT_FRAME = {
 };
 
 /**
- * A `draw.text` string is resolved as an expression ONLY when it is one. The
- * evaluator itself is looser — it resolves anything whose first word is a
+ * A `draw.text` STRING is resolved as an expression only when it is one. The
+ * evaluator itself is looser — it resolves anything whose FIRST WORD is a
  * known root — which is fine for `times` (a number is never prose) and wrong
  * for text: "user guide" and "request received" are titles, and resolving them
  * would either throw on a missing property or draw something nobody wrote. So
- * the gate here is the shape of a whole path, not just its first word.
+ * the gate here is the shape of a WHOLE path, not just its first word, and it
+ * is built from the evaluator's own exported roots so the two cannot drift
+ * (add a root there and expressions using it must not silently become
+ * literals here).
+ *
+ * The bracket alternatives are exactly the two forms `parsePath` documents —
+ * `steps['my step'].title` and `request.headers['x-forwarded-for']` alongside
+ * numeric indices. It is still deliberately narrower than the evaluator (an
+ * UNQUOTED non-numeric key is left as literal text), because the failure of
+ * being too wide is a filename drawn as `undefined` while the failure of being
+ * too narrow is a filename drawn correctly. Ruling R106 gives the exact way
+ * out of both: an ARRAY is always literal, so `text: ["metadata.json"]` draws
+ * that string whatever its shape.
  */
-const DRAW_TEXT_EXPRESSION =
-  /^(?:user|steps|metadata|request|deployment|secrets)(?:\.[A-Za-z0-9_$]+|\[\d+\])+$/;
+export const DRAW_TEXT_EXPRESSION = new RegExp(
+  `^(?:${EXPRESSION_ROOTS.join('|')})(?:\\.[A-Za-z0-9_$]+|\\['[^']*'\\]|\\["[^"]*"\\]|\\[\\d+\\])+$`,
+);
 
 /** `{{...}}` in a drawn text is an authoring slip, not a value — see `resolveDrawTexts`. */
 const TEMPLATE_SYNTAX = /\{\{.*\}\}/s;
@@ -100,8 +113,11 @@ function isDrawtextFailure(error: unknown): boolean {
   if (e?.code !== 'FFMPEG_FAILED') return false;
   // ffmpeg's OWN stderr only. Not `error.message`: that carries CE-side text
   // including paths, so an input named `.../drawtext-demo.mp4` failing for any
-  // reason would trigger a pointless undrawn re-run of a 200-command job.
-  return /drawtext|no such filter/i.test(e.stderrTail ?? '');
+  // reason would trigger a pointless undrawn re-run of a job that can be 400
+  // commands long. `drawtext` alone, not "no such filter": an ffmpeg missing
+  // `tile` or `scale` would otherwise buy the same full re-run and then fail
+  // identically, since dropping the overlay cannot conjure a different filter.
+  return /drawtext/i.test(e.stderrTail ?? '');
 }
 
 /**
@@ -175,10 +191,15 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
       // The rest of the `draw` block is 17a's to judge, and it judges it while
       // BUILDING an argv — so the cheapest way to surface `color`/`size`/
       // `position` as a config error at the boundary is to build one throwaway
-      // command here with a placeholder text (the real text may be an
-      // expression that only run time can resolve).
-      if (knobs.draw)
-        this.frameArgv({ ...PREFLIGHT_FRAME, overlay: this.overlay(knobs.draw, 'x') });
+      // command here. The text is the REAL one wherever it is a literal, so a
+      // `draw` with a missing or wrong-typed `text` fails here too rather than
+      // passing validation on a placeholder.
+      if (knobs.draw) {
+        this.frameArgv({
+          ...PREFLIGHT_FRAME,
+          overlay: this.overlay(knobs.draw, this.previewDrawText(knobs.draw)),
+        });
+      }
     }
   }
 
@@ -314,15 +335,59 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
     }
   }
 
+  /** One drawable text, or a typed config error. Shared by the config-time preflight and the run-time resolve. */
+  private assertDrawText(v: unknown, where: string): string {
+    const fail = (msg: string): never => {
+      throw new ConfigurationError(`ffmpeg_handler draw.text ${msg}`, 'ffmpeg_handler');
+    };
+    if (typeof v !== 'string' && typeof v !== 'number') {
+      fail(`${where} must be a string (got ${v === null ? 'null' : typeof v})`);
+    }
+    const text = String(v);
+    if (TEMPLATE_SYNTAX.test(text)) {
+      fail(
+        `${where} is a {{template}}, which draw.text does not support: write a BARE expression (steps.x.title), or put the literal text in an array (["..."]) to draw it as written`,
+      );
+    }
+    return text;
+  }
+
+  /**
+   * The text to build the config-time preflight argv with. A literal is passed
+   * through as-is, so a `draw` block with a missing or wrong-typed `text`
+   * fails at the boundary like every other field of the block instead of
+   * passing validation on a placeholder and failing on the step's first
+   * request. An expression cannot be resolved yet — that one case, and only
+   * that one, uses a placeholder.
+   */
+  private previewDrawText(draw: NonNullable<ReturnType<FfmpegHandler['knobs']>['draw']>): string {
+    const text = draw.text;
+    if (Array.isArray(text)) {
+      // Ruling R106: array entries are literals, so every one of them is
+      // checkable now. Only the LENGTH needs `times`, which run time resolves.
+      const texts = text.map((v, i) => this.assertDrawText(v, `entry ${i}`));
+      return texts[0] ?? 'preflight';
+    }
+    if (typeof text === 'string' && DRAW_TEXT_EXPRESSION.test(text.trim())) return 'preflight';
+    return this.assertDrawText(text, 'must be a string or an array of strings');
+  }
+
   /**
    * One drawn text per still, or undefined when the step asked for no `draw`.
    *
-   * `text` mirrors `times`: a JSON array string, a BARE expression resolving
-   * to a string or an array, or the value itself. It differs in one way that
-   * matters — a plain string is legitimate CONTENT here, so it is only treated
-   * as an expression when it has the shape of a whole path
-   * (`DRAW_TEXT_EXPRESSION`); prose beginning with an expression root is drawn
-   * as written.
+   * Ruling R106 — the two forms mean different things, which is what makes
+   * either of them usable:
+   * - a STRING is an expression when it has the shape of a whole path
+   *   (`DRAW_TEXT_EXPRESSION`) and the literal text otherwise, so prose that
+   *   merely begins with an expression root ("user guide") is drawn as
+   *   written;
+   * - an ARRAY is ALWAYS literals, one per still. That is the escape hatch for
+   *   the strings the shape test cannot tell from a path — filenames like
+   *   `metadata.json` or `user.manual.pdf` are exactly the sort of thing a
+   *   caller draws on a frame, and `text: ["metadata.json"]` draws it.
+   *
+   * A bare expression may still RESOLVE to an array (that is the per-still
+   * form); it is the AUTHORED array whose entries are literal.
    *
    * `{{...}}` is refused outright. For `times` a braced value fails on its own
    * ("expected a non-empty array"), but a braced TEXT would happily draw the
@@ -339,24 +404,9 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
     const fail = (msg: string): never => {
       throw new ConfigurationError(`ffmpeg_handler draw.text ${msg}`, 'ffmpeg_handler');
     };
-    const resolve = (v: unknown): unknown =>
-      typeof v === 'string' && DRAW_TEXT_EXPRESSION.test(v.trim())
-        ? this.expressionEvaluator.evaluateExpression(v.trim(), context, stepName)
-        : v;
-    const one = (v: unknown, where: string): string => {
-      if (typeof v !== 'string' && typeof v !== 'number') {
-        fail(`${where} must be a string (got ${v === null ? 'null' : typeof v})`);
-      }
-      const text = String(v);
-      if (TEMPLATE_SYNTAX.test(text)) {
-        fail(
-          `${where} is a {{template}}, which draw.text does not support: write a BARE expression (steps.x.title) or the literal text`,
-        );
-      }
-      return text;
-    };
 
     let value: unknown = draw.text;
+    let readAsExpression: string | undefined;
     if (typeof value === 'string') {
       const trimmed = value.trim();
       let parsedAsJson = false;
@@ -368,7 +418,10 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
           // Not valid JSON — fall through to the expression/literal path below.
         }
       }
-      if (!parsedAsJson) value = resolve(value);
+      if (!parsedAsJson && DRAW_TEXT_EXPRESSION.test(trimmed)) {
+        readAsExpression = trimmed;
+        value = this.expressionEvaluator.evaluateExpression(trimmed, context, stepName);
+      }
     }
     if (Array.isArray(value)) {
       if (value.length !== count) {
@@ -376,10 +429,22 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
           `is an array of ${value.length} entries but ${count} times were requested — one text per still, or a single string for all of them`,
         );
       }
-      return value.map((v, i) => one(resolve(v), `entry ${i}`));
+      return value.map((v, i) => this.assertDrawText(v, `entry ${i}`));
     }
-    if (value === undefined || value === null) fail('is required when draw is present');
-    return new Array<string>(count).fill(one(value, 'must be a string or an array of strings'));
+    if (value === undefined || value === null) {
+      // NOT "is required": it WAS set. It merely had the shape of a path and
+      // resolved to nothing — the one confusing outcome of the shape test — so
+      // name the string that was read that way and give the way to draw it.
+      if (readAsExpression !== undefined) {
+        fail(
+          `"${readAsExpression}" has the shape of an expression, so it was resolved rather than drawn — and it resolved to ${value === null ? 'null' : 'nothing'}. To draw it as literal text, put it in an array: text: ["${readAsExpression}"]`,
+        );
+      }
+      fail('is required when draw is present');
+    }
+    return new Array<string>(count).fill(
+      this.assertDrawText(value, 'must be a string or an array of strings'),
+    );
   }
 
   /**
@@ -775,23 +840,40 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
   }
 
   /**
-   * ffmpeg writes NO output file when a seek lands past the end of the source,
-   * so the local executor stats a file that was never created and throws a bare
-   * `ENOENT … stat '/tmp/<scratch>/frame-03.jpg'` — a message that names a
-   * scratch path the pipeline author has never heard of. Re-throw it naming the
-   * operation, the output that is missing and the likely cause. The remote
-   * executor reports its own missing-output failure from the Worker, which this
-   * cannot reach (ADR-0004 keeps the Worker a dumb argv runner); when the shape
-   * does not match, the original error passes through untouched.
+   * Turn "an image ffmpeg did not write" into a message that names it and says
+   * why, instead of the raw failure whose text is about a scratch path the
+   * pipeline author has never heard of. Two shapes reach here:
+   *
+   * - the output is MISSING after a command exited 0 — the local executor stats
+   *   a file that was never created (`ENOENT … stat '/tmp/<scratch>/frame-03.jpg'`)
+   *   and the Worker reports "did not return output";
+   * - the command ABORTED on an empty output (`-abort_on empty_output`,
+   *   Ruling R107), which is what a past-EOF seek now does. The local runner's
+   *   message is ffmpeg's last stderr line and names no file at all, so the
+   *   image can only be named when the executor's message identifies it (a
+   *   Worker that names the failing command does; the local one does not) —
+   *   hence the un-named variant of the message, which still says what went
+   *   wrong and why.
+   *
+   * `names` is every image the job could have written, CELLS INCLUDED: a cell
+   * is not a declared output and nothing stats it, so before R107 a past-EOF
+   * cell was invisible and its sheet came back padded. Anything that matches
+   * neither shape passes through untouched.
    */
   private namedOutputFailure(error: unknown, op: string, names: string[]): unknown {
     const message = error instanceof Error ? error.message : String(error);
-    if (!/ENOENT|no such file/i.test(message)) return error;
-    const missing = names.find((name) => message.includes(name));
-    if (!missing) return error;
+    const stderrTail = (error as { stderrTail?: string }).stderrTail ?? '';
+    const missing = /ENOENT|no such file|did not return output/i.test(message);
+    const emptyOutput = /empty_output|output file is empty|nothing was written/i.test(
+      `${message}\n${stderrTail}`,
+    );
+    if (!missing && !emptyOutput) return error;
+    const named = names.find((name) => message.includes(name));
+    // An unrelated ENOENT (a scratch dir, an input) is not ours to reword.
+    if (missing && !named) return error;
     return Object.assign(
       new Error(
-        `ffmpeg_handler ${op} produced no ${missing}: ffmpeg wrote no image there, which usually means a requested time is past the end of the source (${message})`,
+        `ffmpeg_handler ${op} produced ${named ? `no ${named}` : 'no image for one of the requested times'}: ffmpeg wrote no image there, which usually means a requested time is past the end of the source (${message})`,
       ),
       { code: 'FFMPEG_FAILED' },
     );
@@ -856,6 +938,13 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
           contentType: 'image/jpeg',
         }));
 
+    // Every image the job could write: in tile mode the CELLS are not declared
+    // outputs and nothing stats them, so they have to be listed here for a
+    // failing one to be nameable at all (R107).
+    const writable = tile
+      ? [...times.map((_, i) => stillName(i)), ...outputs.map((o) => o.name)]
+      : outputs.map((o) => o.name);
+
     const job = (withDraw: boolean): FfmpegJob => ({
       id: stepName,
       commands: [
@@ -910,22 +999,14 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
       // `namedOutputFailure`, which turns the bare ENOENT of an image ffmpeg
       // never wrote into a message naming it.
       if (!drawn || !isDrawtextFailure(error)) {
-        throw this.namedOutputFailure(
-          error,
-          'frames',
-          outputs.map((o) => o.name),
-        );
+        throw this.namedOutputFailure(error, 'frames', writable);
       }
       this.logger.warn({ event: 'ffmpeg_frames_drawtext_missing', step: stepName });
       drawn = false;
       try {
         res = await this.runJob(executor, job(false), signal);
       } catch (retryError) {
-        throw this.namedOutputFailure(
-          retryError,
-          'frames',
-          outputs.map((o) => o.name),
-        );
+        throw this.namedOutputFailure(retryError, 'frames', writable);
       }
     }
     const bytes = new Map(res.outputs.map((o) => [o.name, o.bytes]));
