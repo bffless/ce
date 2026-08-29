@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.37](https://github.com/bffless/ce/compare/v0.4.36...v0.4.37) (2026-08-29)
+
+
+### Fixed
+
+* **docker:** pin pnpm to 9 in the image builds ([#710](https://github.com/bffless/ce/issues/710)) ([69440f2](https://github.com/bffless/ce/commit/69440f25a08079cc7dce759c12ecc64cf65ea052))
+
 ## [0.4.36](https://github.com/bffless/ce/compare/v0.4.35...v0.4.36) (2026-08-28)
 
 ### Fixed
