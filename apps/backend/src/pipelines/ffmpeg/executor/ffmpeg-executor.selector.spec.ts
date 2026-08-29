@@ -14,6 +14,8 @@ function make(
     remoteReady?: { ok: boolean; reason?: string; version?: string };
     /** Overrides on the RESOLVED config — what FfmpegExecutorSettingsService.resolved() would hand back. */
     cfg?: Partial<FfmpegEnvConfig>;
+    /** What the local `-filters` probe found; undefined = it never ran (remote-only box). */
+    drawtext?: boolean;
   } = {},
 ) {
   const local = {
@@ -32,8 +34,9 @@ function make(
     isAvailable: () => o.localAvailable ?? true,
     isEnabled: async () => (o.flag ?? true) && (o.localAvailable ?? true),
     getVersion: () => 'ffmpeg version 6.1.1',
-    getOps: async () => ['probe', 'extract_audio', 'slice', 'concat'],
+    getOps: async () => ['probe', 'extract_audio', 'slice', 'concat', 'frames'],
     isFlagOn: async () => o.flag ?? true,
+    hasFilter: () => o.drawtext,
   };
   const env = { ...readFfmpegEnv(envOver), ...(o.cfg ?? {}) };
   return {
@@ -91,7 +94,7 @@ it('probe(): server = flag && any ready; additive executors/defaultExecutor/remo
     ).selector.probe(),
   ).resolves.toEqual({
     server: true,
-    ops: ['probe', 'extract_audio', 'slice', 'concat'],
+    ops: ['probe', 'extract_audio', 'slice', 'concat', 'frames'],
     version: null,
     executors: ['remote'],
     defaultExecutor: 'remote',
@@ -135,4 +138,25 @@ it("pick('remote') when remote is switched off says so without pointing only at 
   const { selector } = make({}, { cfg: { remoteEnabled: false } });
   await expect(selector.pick('remote')).rejects.toThrow(/not enabled on this instance/);
   await expect(selector.pick('remote')).rejects.toThrow(/Admin Settings/);
+});
+
+/**
+ * `filters` is local-only, exactly like `version`: it reports what THIS box's
+ * ffmpeg can do, and a remote-only instance has no local binaries to ask. It is
+ * additive — absent whenever the probe never ran (R77: absent means "try it").
+ */
+it('probe(): reports filters.drawtext only for a local box that actually probed its filters', async () => {
+  await expect(make({}, { drawtext: true }).selector.probe()).resolves.toMatchObject({
+    filters: { drawtext: true },
+  });
+  await expect(make({}, { drawtext: false }).selector.probe()).resolves.toMatchObject({
+    filters: { drawtext: false },
+  });
+  expect(await make({}, { drawtext: undefined }).selector.probe()).not.toHaveProperty('filters');
+  expect(
+    await make(
+      { FFMPEG_REMOTE_URL: 'https://w' },
+      { localAvailable: false, drawtext: true },
+    ).selector.probe(),
+  ).not.toHaveProperty('filters');
 });

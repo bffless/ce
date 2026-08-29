@@ -514,7 +514,7 @@ export function getHandlerDescription(type: HandlerType): string {
     data_upsert_many: 'Insert an array of records into a schema, skipping duplicates',
     delay: 'Pause the pipeline for a configurable duration',
     ffmpeg_handler:
-      'Run server-side video operations (slice, concat, audio extract, probe) on files in storage',
+      'Run server-side video operations (probe, audio extract, slice, concat, stills) on files in storage',
   };
   return descriptions[type] || '';
 }

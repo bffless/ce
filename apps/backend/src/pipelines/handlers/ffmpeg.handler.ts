@@ -1,8 +1,13 @@
 import { Injectable, Inject, Logger, Optional } from '@nestjs/common';
 import * as path from 'path';
-import { StepHandler, FfmpegHandlerConfig } from '../execution/step-handler.interface';
+import {
+  StepHandler,
+  FfmpegHandlerConfig,
+  FfmpegDrawConfig,
+  FfmpegTileConfig,
+} from '../execution/step-handler.interface';
 import { StepHandlerRegistry } from '../execution/step-handler.registry';
-import { ExpressionEvaluator } from '../execution/expression-evaluator';
+import { EXPRESSION_ROOTS, ExpressionEvaluator } from '../execution/expression-evaluator';
 import { PipelineContext, StepResult } from '../execution/pipeline-context.interface';
 import { PipelineStep } from '../types';
 import { ConfigurationError } from '../errors';
@@ -28,10 +33,92 @@ import {
   buildSliceArgs,
   buildConcatArgs,
   buildConcatListContent,
+  buildFrameArgs,
+  buildTileArgs,
 } from '../ffmpeg/ffmpeg-args';
+import type { FrameOverlay } from '../ffmpeg/ffmpeg-args';
 import { readFfmpegEnv } from '../ffmpeg/ffmpeg-env';
 
-const OPERATIONS = ['probe', 'extract_audio', 'slice', 'concat'] as const;
+const OPERATIONS = ['probe', 'extract_audio', 'slice', 'concat', 'frames'] as const;
+
+/**
+ * Hard ceiling on stills one step may ask for, measured on `times.length`.
+ * `times` is expression-resolvable (`request.body.times` is an advertised
+ * form), so its length is a resource decision made by untrusted input, and
+ * each still is a sequential ffmpeg spawn whose output piles up in scratch
+ * BEFORE anything is uploaded — the local disk pre-flight only reserves
+ * `2 × input + margin` and does not model outputs, and the remote path puts one
+ * presigned PUT URL per output in a single envelope that the Worker caps at
+ * 1 MB. It is the ONE still cap the op needs: sheets are
+ * `times.length / tile.perSheet`, so bounding the stills bounds them too.
+ */
+export const MAX_STILLS_PER_JOB = 200;
+
+/** Defaults for the still-image knobs. */
+const DEFAULT_FRAME_HEIGHT = 720;
+const DEFAULT_FRAME_QUALITY = 3;
+/** Grid width of a sheet when `tile` does not say — a short final sheet still lays out narrower. */
+const DEFAULT_TILE_COLUMNS = 3;
+/** Ruling R80: every still is a cheap, bounded command, so none of them may hold the queue. */
+const FRAME_TIMEOUT_SECONDS = 120;
+const PROBE_TIMEOUT_SECONDS = 60;
+
+/**
+ * The non-overlay half of a throwaway `buildFrameArgs` call, used only to
+ * validate a `draw` block at the config boundary. Nothing is spawned; the
+ * builder's own field checks are the point.
+ */
+const PREFLIGHT_FRAME = {
+  input: 'in.mp4',
+  output: 'out.jpg',
+  time: 0,
+  height: DEFAULT_FRAME_HEIGHT,
+  quality: DEFAULT_FRAME_QUALITY,
+};
+
+/**
+ * A `draw.text` STRING is resolved as an expression only when it is one. The
+ * evaluator itself is looser — it resolves anything whose FIRST WORD is a
+ * known root — which is fine for `times` (a number is never prose) and wrong
+ * for text: "user guide" and "request received" are titles, and resolving them
+ * would either throw on a missing property or draw something nobody wrote. So
+ * the gate here is the shape of a WHOLE path, not just its first word, and it
+ * is built from the evaluator's own exported roots so the two cannot drift
+ * (add a root there and expressions using it must not silently become
+ * literals here).
+ *
+ * The bracket alternatives are exactly the two forms `parsePath` documents —
+ * `steps['my step'].title` and `request.headers['x-forwarded-for']` alongside
+ * numeric indices. It is still deliberately narrower than the evaluator (an
+ * UNQUOTED non-numeric key is left as literal text), because the failure of
+ * being too wide is a filename drawn as `undefined` while the failure of being
+ * too narrow is a filename drawn correctly. Ruling R106 gives the exact way
+ * out of both: an ARRAY is always literal, so `text: ["metadata.json"]` draws
+ * that string whatever its shape.
+ */
+export const DRAW_TEXT_EXPRESSION = new RegExp(
+  `^(?:${EXPRESSION_ROOTS.join('|')})(?:\\.[A-Za-z0-9_$]+|\\['[^']*'\\]|\\["[^"]*"\\]|\\[\\d+\\])+$`,
+);
+
+/** `{{...}}` in a drawn text is an authoring slip, not a value — see `resolveDrawTexts`. */
+const TEMPLATE_SYNTAX = /\{\{.*\}\}/s;
+
+/**
+ * A job that failed because this ffmpeg has no `drawtext` — the ONLY failure a
+ * `frames` step retries (without the overlay). Anything else is a real failure
+ * and propagates untouched.
+ */
+function isDrawtextFailure(error: unknown): boolean {
+  const e = error as { code?: string; stderrTail?: string };
+  if (e?.code !== 'FFMPEG_FAILED') return false;
+  // ffmpeg's OWN stderr only. Not `error.message`: that carries CE-side text
+  // including paths, so an input named `.../drawtext-demo.mp4` failing for any
+  // reason would trigger a pointless undrawn re-run of a job that can be 400
+  // commands long. `drawtext` alone, not "no such filter": an ffmpeg missing
+  // `tile` or `scale` would otherwise buy the same full re-run and then fail
+  // identically, since dropping the overlay cannot conjure a different filter.
+  return /drawtext/i.test(e.stderrTail ?? '');
+}
 
 /**
  * ffmpeg_handler — see the FfmpegHandlerConfig TSDoc in step-handler.interface.ts
@@ -86,10 +173,317 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
         );
       }
     };
-    need('input', ['extract_audio', 'slice']);
+    need('input', ['extract_audio', 'slice', 'frames']);
     need('spans', ['slice']);
+    need('times', ['frames']);
     need('inputs', ['concat']);
     need('output', ['extract_audio', 'slice', 'concat']);
+    need('outputPrefix', ['frames']);
+    // The knobs are validated here, at the boundary where untrusted config
+    // enters — not in the pure builders, which cannot report a config error.
+    // Scoped to the one op that reads them, so a pre-existing slice/concat step
+    // carrying a stray field is not newly rejected. This is not a save-time
+    // gate: validateConfig's only callers are pipeline-execution.service.ts:452
+    // and :570, each immediately before handler.execute, so a bad knob fails on
+    // the step's first request rather than when it is authored.
+    if (config.operation === 'frames') {
+      const knobs = this.knobs(config);
+      // The rest of the `draw` block is 17a's to judge, and it judges it while
+      // BUILDING an argv — so the cheapest way to surface `color`/`size`/
+      // `position` as a config error at the boundary is to build one throwaway
+      // command here. The text is the REAL one wherever it is a literal, so a
+      // `draw` with a missing or wrong-typed `text` fails here too rather than
+      // passing validation on a placeholder.
+      if (knobs.draw) {
+        this.frameArgv({
+          ...PREFLIGHT_FRAME,
+          overlay: this.overlay(knobs.draw, this.previewDrawText(knobs.draw)),
+        });
+      }
+    }
+  }
+
+  /**
+   * Coerce one untrusted numeric knob. Pipeline config is authored as YAML/JSON
+   * by a user, so `2.5`, `"3"`, `true` and `"tall"` are all reachable here, and
+   * a bad value would otherwise reach argv verbatim (`tile=2.5x2`,
+   * `scale=-2:0`) where only ffmpeg itself rejects it — at run time, long after
+   * the step looked valid. `undefined` means "not set": the caller defaults it.
+   */
+  private knob(value: unknown, field: string, kind: 'integer' | 'number'): number | undefined {
+    if (value === undefined || value === null || value === '') return undefined;
+    const n =
+      typeof value === 'number' ? value : typeof value === 'string' ? Number(value.trim()) : NaN;
+    if (!Number.isFinite(n) || n <= 0 || (kind === 'integer' && !Number.isInteger(n))) {
+      throw new ConfigurationError(
+        `ffmpeg_handler ${field} must be a positive ${kind} (got ${JSON.stringify(value)})`,
+        'ffmpeg_handler',
+      );
+    }
+    return n;
+  }
+
+  /**
+   * The boolean twin of `knob`. Config reaches us as YAML/JSON, and the
+   * numeric knobs accept strings — so `draw.background: 'false'` must turn the
+   * box OFF rather than being silently truthy. A wrong picture with no error
+   * is worse than a config error.
+   */
+  private boolKnob(value: unknown, field: string, fallback: boolean): boolean {
+    if (value === undefined || value === null || value === '') return fallback;
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') {
+      const v = value.trim().toLowerCase();
+      if (['true', '1', 'yes', 'on'].includes(v)) return true;
+      if (['false', '0', 'no', 'off'].includes(v)) return false;
+    }
+    throw new ConfigurationError(
+      `ffmpeg_handler ${field} must be a boolean (got ${JSON.stringify(value)})`,
+      'ffmpeg_handler',
+    );
+  }
+
+  /**
+   * A `draw:`/`tile:` block, or undefined. YAML hands an empty body back as
+   * `null` and a mistyped one as a scalar, so this is a real authoring slip
+   * rather than a defensive nicety — and it has to fail here, because
+   * everything downstream reads properties off it.
+   */
+  private block<T>(value: unknown, field: 'draw' | 'tile'): T | undefined {
+    if (value === undefined) return undefined;
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+      throw new ConfigurationError(
+        `ffmpeg_handler ${field} must be an object (got ${value === null ? 'null' : JSON.stringify(value)})`,
+        'ffmpeg_handler',
+      );
+    }
+    return value as T;
+  }
+
+  /**
+   * Every knob of `frames`. Called from validateConfig AND from the op itself
+   * (defence in depth: a directly-executed step skips validation).
+   *
+   * Ruling R103 as it now stands: values a CALLER authored throw at this edge,
+   * values CE derives are clamped in depth. `tile.perSheet`/`tile.columns` used
+   * to be the planner's output, which is why `buildTileArgs` clamps them; now
+   * that they come from a `tile:` block they are authored config, and
+   * `columns: 0` silently clamping to 1 would lay out a 1×N strip instead of
+   * reporting the mistake. The clamp stays where it is as the unreachable
+   * guard its TSDoc claims to be.
+   */
+  private knobs(config: FfmpegHandlerConfig) {
+    const draw = this.block<FfmpegDrawConfig>(config.draw, 'draw');
+    const tile = this.block<FfmpegTileConfig>(config.tile, 'tile');
+    return {
+      height: this.knob(config.height, 'height', 'integer') ?? DEFAULT_FRAME_HEIGHT,
+      quality: this.knob(config.quality, 'quality', 'integer') ?? DEFAULT_FRAME_QUALITY,
+      draw: draw && {
+        text: draw.text,
+        // `position` and `color` are 17a's to judge (it owns the enum and the
+        // colour pattern) — re-checking them here would be a second, drifting
+        // copy of the same rule.
+        position: draw.position,
+        color: draw.color,
+        size: this.knob(draw.size, 'draw.size', 'number'),
+        background: this.boolKnob(draw.background, 'draw.background', true),
+      },
+      tile: tile && {
+        perSheet:
+          this.knob(tile.perSheet, 'tile.perSheet', 'integer') ??
+          this.missing(
+            'tile.perSheet is required whenever tile is present: the number of stills on each sheet',
+          ),
+        columns: this.knob(tile.columns, 'tile.columns', 'integer') ?? DEFAULT_TILE_COLUMNS,
+      },
+    };
+  }
+
+  private missing(what: string): never {
+    throw new ConfigurationError(`ffmpeg_handler ${what}`, 'ffmpeg_handler');
+  }
+
+  /** The overlay `buildFrameArgs` takes, from a validated `draw` block plus this still's own text. */
+  private overlay(draw: NonNullable<ReturnType<FfmpegHandler['knobs']>['draw']>, text: string) {
+    return {
+      text,
+      position: draw.position,
+      size: draw.size,
+      color: draw.color,
+      background: draw.background,
+    } as FrameOverlay;
+  }
+
+  /**
+   * `buildFrameArgs`, with its plain `Error`s mapped onto the typed config
+   * error the pipeline contract promises. 17a deliberately throws for an
+   * authored value it cannot use (Ruling R103: clamping `size: 3` would render
+   * text nobody asked for, and a colour has no nearest valid neighbour), but a
+   * raw Error would surface as a generic handler failure — so name the field
+   * the author has to fix.
+   */
+  private frameArgv(o: Parameters<typeof buildFrameArgs>[0]): string[] {
+    try {
+      return buildFrameArgs(o);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const named = /overlay (text|position|size|color|background)\b/.exec(message);
+      throw new ConfigurationError(
+        `ffmpeg_handler ${named ? `draw.${named[1]}` : 'draw'} is invalid: ${message}`,
+        'ffmpeg_handler',
+      );
+    }
+  }
+
+  /** One drawable text, or a typed config error. Shared by the config-time preflight and the run-time resolve. */
+  private assertDrawText(v: unknown, where: string): string {
+    const fail = (msg: string): never => {
+      throw new ConfigurationError(`ffmpeg_handler draw.text ${msg}`, 'ffmpeg_handler');
+    };
+    if (typeof v !== 'string' && typeof v !== 'number') {
+      fail(`${where} must be a string (got ${v === null ? 'null' : typeof v})`);
+    }
+    const text = String(v);
+    if (TEMPLATE_SYNTAX.test(text)) {
+      fail(
+        `${where} is a {{template}}, which draw.text does not support: write a BARE expression (steps.x.title), or put the literal text in an array (["..."]) to draw it as written`,
+      );
+    }
+    return text;
+  }
+
+  /**
+   * The text to build the config-time preflight argv with. A literal is passed
+   * through as-is, so a `draw` block with a missing or wrong-typed `text`
+   * fails at the boundary like every other field of the block instead of
+   * passing validation on a placeholder and failing on the step's first
+   * request. An expression cannot be resolved yet — that one case, and only
+   * that one, uses a placeholder.
+   */
+  private previewDrawText(draw: NonNullable<ReturnType<FfmpegHandler['knobs']>['draw']>): string {
+    const text = draw.text;
+    if (Array.isArray(text)) {
+      // Ruling R106: array entries are literals, so every one of them is
+      // checkable now. Only the LENGTH needs `times`, which run time resolves.
+      const texts = text.map((v, i) => this.assertDrawText(v, `entry ${i}`));
+      return texts[0] ?? 'preflight';
+    }
+    if (typeof text === 'string' && DRAW_TEXT_EXPRESSION.test(text.trim())) return 'preflight';
+    return this.assertDrawText(text, 'must be a string or an array of strings');
+  }
+
+  /**
+   * One drawn text per still, or undefined when the step asked for no `draw`.
+   *
+   * Ruling R106 — the two forms mean different things, which is what makes
+   * either of them usable:
+   * - a STRING is an expression when it has the shape of a whole path
+   *   (`DRAW_TEXT_EXPRESSION`) and the literal text otherwise, so prose that
+   *   merely begins with an expression root ("user guide") is drawn as
+   *   written;
+   * - an ARRAY is ALWAYS literals, one per still. That is the escape hatch for
+   *   the strings the shape test cannot tell from a path — filenames like
+   *   `metadata.json` or `user.manual.pdf` are exactly the sort of thing a
+   *   caller draws on a frame, and `text: ["metadata.json"]` draws it.
+   *
+   * A bare expression may still RESOLVE to an array (that is the per-still
+   * form); it is the AUTHORED array whose entries are literal.
+   *
+   * `{{...}}` is refused outright. For `times` a braced value fails on its own
+   * ("expected a non-empty array"), but a braced TEXT would happily draw the
+   * literal braces into the picture — a silent wrong image, which is the one
+   * failure mode this op keeps fencing.
+   */
+  private resolveDrawTexts(
+    draw: ReturnType<FfmpegHandler['knobs']>['draw'],
+    count: number,
+    context: PipelineContext,
+    stepName: string,
+  ): string[] | undefined {
+    if (!draw) return undefined;
+    const fail = (msg: string): never => {
+      throw new ConfigurationError(`ffmpeg_handler draw.text ${msg}`, 'ffmpeg_handler');
+    };
+
+    let value: unknown = draw.text;
+    let readAsExpression: string | undefined;
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      let parsedAsJson = false;
+      if (trimmed.startsWith('[')) {
+        try {
+          value = JSON.parse(trimmed);
+          parsedAsJson = true;
+        } catch {
+          // Not valid JSON — fall through to the expression/literal path below.
+        }
+      }
+      if (!parsedAsJson && DRAW_TEXT_EXPRESSION.test(trimmed)) {
+        readAsExpression = trimmed;
+        value = this.expressionEvaluator.evaluateExpression(trimmed, context, stepName);
+      }
+    }
+    if (Array.isArray(value)) {
+      if (value.length !== count) {
+        fail(
+          `is an array of ${value.length} entries but ${count} times were requested — one text per still, or a single string for all of them`,
+        );
+      }
+      return value.map((v, i) => this.assertDrawText(v, `entry ${i}`));
+    }
+    if (value === undefined || value === null) {
+      // NOT "is required": it WAS set. It merely had the shape of a path and
+      // resolved to nothing — the one confusing outcome of the shape test — so
+      // name the string that was read that way and give the way to draw it.
+      if (readAsExpression !== undefined) {
+        fail(
+          `"${readAsExpression}" has the shape of an expression, so it was resolved rather than drawn — and it resolved to ${value === null ? 'null' : 'nothing'}. To draw it as literal text, put it in an array: text: ["${readAsExpression}"]`,
+        );
+      }
+      fail('is required when draw is present');
+    }
+    return new Array<string>(count).fill(
+      this.assertDrawText(value, 'must be a string or an array of strings'),
+    );
+  }
+
+  /**
+   * Chunk the requested times into sheets. `cols` is each sheet's ACTUAL grid
+   * width — a short final sheet is narrower than the `columns` knob, and
+   * `buildTileArgs` documents that it must be handed that narrower value.
+   * `start` is the sheet's first cell as a 1-based number, which is exactly
+   * ffmpeg's `-start_number`.
+   */
+  private planSheets(times: number[], tile: { perSheet: number; columns: number }) {
+    const sheets: Array<{
+      index: number;
+      start: number;
+      times: number[];
+      cols: number;
+      rows: number;
+    }> = [];
+    for (let from = 0; from < times.length; from += tile.perSheet) {
+      const chunk = times.slice(from, from + tile.perSheet);
+      const cols = Math.min(chunk.length, tile.columns);
+      sheets.push({
+        index: sheets.length,
+        start: from + 1,
+        times: chunk,
+        cols,
+        rows: Math.ceil(chunk.length / cols),
+      });
+    }
+    return sheets;
+  }
+
+  /** The step's own cap breach, typed so the message names both the ceiling and what was asked for. */
+  private tooManyStills(what: string, asked: number): never {
+    throw Object.assign(
+      new Error(
+        `ffmpeg_handler ${what} is ${asked}, over the ${MAX_STILLS_PER_JOB}-still ceiling for one step (MAX_STILLS_PER_JOB)`,
+      ),
+      { code: 'INVALID_TIMES' },
+    );
   }
 
   async execute(context: PipelineContext, step: PipelineStep): Promise<StepResult> {
@@ -138,6 +532,8 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
           return this.runSlice(config, context, stepName, executor, signal);
         case 'concat':
           return this.runConcat(config, context, stepName, executor, signal);
+        case 'frames':
+          return this.runFrames(config, context, stepName, executor, signal);
       }
     };
     try {
@@ -207,6 +603,10 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
       'INVALID_INPUT_PATH',
       'INVALID_OUTPUT_PATH',
       'INVALID_SPANS',
+      'INVALID_TIMES',
+      // A knob that slipped past validateConfig (a directly-executed step)
+      // fails as the configuration error it is, not as a mystery ffmpeg crash.
+      'CONFIGURATION_ERROR',
       'FILE_NOT_FOUND',
     ];
     const message = error instanceof Error ? error.message : String(error);
@@ -279,7 +679,7 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
             id: 'probe',
             kind: 'ffprobe',
             argv: buildProbeArgs(`{in:${inName}}`),
-            timeoutSeconds: 60, // probe is cheap; never let it hold the queue long
+            timeoutSeconds: PROBE_TIMEOUT_SECONDS, // probe is cheap; never let it hold the queue long
           },
         ],
         inputs: [{ name: inName, key: inputKey }],
@@ -385,6 +785,270 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
         fail(`span ${i} must satisfy 0 <= start < end (got ${start}..${end})`);
       return { start, end };
     });
+  }
+
+  /**
+   * Resolve config.times (array of literal/expression values, or an expression
+   * yielding an array) into capture seconds — the `frames` twin of resolveSpans.
+   */
+  private resolveTimes(
+    raw: FfmpegHandlerConfig['times'],
+    context: PipelineContext,
+    stepName: string,
+  ): number[] {
+    const fail = (msg: string): never => {
+      throw Object.assign(new Error(`ffmpeg_handler times invalid: ${msg}`), {
+        code: 'INVALID_TIMES',
+      });
+    };
+    let list: unknown = raw;
+    if (typeof raw === 'string') {
+      const trimmed = raw.trim();
+      let parsedAsJson = false;
+      if (trimmed.startsWith('[')) {
+        try {
+          list = JSON.parse(trimmed);
+          parsedAsJson = true;
+        } catch {
+          // Not valid JSON — fall through to expression evaluation below.
+        }
+      }
+      if (!parsedAsJson) {
+        list = this.expressionEvaluator.evaluateExpression(raw, context, stepName);
+      }
+    }
+    if (!Array.isArray(list) || list.length === 0) fail('expected a non-empty array');
+    return (list as unknown[]).map((v, i) => {
+      const value =
+        typeof v === 'string'
+          ? this.expressionEvaluator.evaluateExpression(v, context, stepName)
+          : v;
+      const n = Number(value);
+      if (!Number.isFinite(n)) fail(`time ${i} is not a number`);
+      if (n < 0) fail(`time ${i} must be >= 0 (got ${n})`);
+      return n;
+    });
+  }
+
+  /** `outputPrefix` as a storage key with no trailing slash, so `${prefix}/${name}` never doubles it. */
+  private async resolvePrefix(
+    expr: string,
+    context: PipelineContext,
+    stepName: string,
+  ): Promise<string> {
+    return (await this.resolveKey(expr, context, stepName, 'output')).replace(/\/+$/, '');
+  }
+
+  /**
+   * Turn "an image ffmpeg did not write" into a message that names it and says
+   * why, instead of the raw failure whose text is about a scratch path the
+   * pipeline author has never heard of. Two shapes reach here:
+   *
+   * - the output is MISSING after a command exited 0 — the local executor stats
+   *   a file that was never created (`ENOENT … stat '/tmp/<scratch>/frame-03.jpg'`)
+   *   and the Worker reports "did not return output";
+   * - the command ABORTED on an empty output (`-abort_on empty_output`,
+   *   Ruling R107), which is what a past-EOF seek now does. The local runner's
+   *   message is ffmpeg's last stderr line and names no file at all, so the
+   *   image can only be named when the executor's message identifies it (a
+   *   Worker that names the failing command does; the local one does not) —
+   *   hence the un-named variant of the message, which still says what went
+   *   wrong and why.
+   *
+   * `names` is every image the job could have written, CELLS INCLUDED: a cell
+   * is not a declared output and nothing stats it, so before R107 a past-EOF
+   * cell was invisible and its sheet came back padded. Anything that matches
+   * neither shape passes through untouched — including the Worker's
+   * `command produced no ${output.name}` (workers/ffmpeg/job.mjs:428), which
+   * matches neither pattern and is left alone deliberately: it already names
+   * the file, so rewording it would only add noise.
+   *
+   * No executor in this repo names the failing COMMAND on an abort today (the
+   * Worker throws a bare `ffmpeg exited ${exit.code}`, job.mjs:409), so in
+   * practice the abort branch produces the un-named message. The name lookup
+   * is kept because it is correct the moment one does.
+   */
+  private namedOutputFailure(error: unknown, op: string, names: string[]): unknown {
+    const message = error instanceof Error ? error.message : String(error);
+    const stderrTail = (error as { stderrTail?: string }).stderrTail ?? '';
+    const missing = /ENOENT|no such file|did not return output/i.test(message);
+    const emptyOutput = /empty_output|output file is empty|nothing was written/i.test(
+      `${message}\n${stderrTail}`,
+    );
+    if (!missing && !emptyOutput) return error;
+    const named = names.find((name) => message.includes(name));
+    // An unrelated ENOENT (a scratch dir, an input) is not ours to reword.
+    if (missing && !named) return error;
+    return Object.assign(
+      new Error(
+        `ffmpeg_handler ${op} produced ${named ? `no ${named}` : 'no image for one of the requested times'}: ffmpeg wrote no image there, which usually means a requested time is past the end of the source (${message})`,
+      ),
+      { code: 'FFMPEG_FAILED' },
+    );
+  }
+
+  /**
+   * One still per requested time — plus, optionally, one line of text drawn on
+   * each (`draw`) and a tiling of them into contact sheets (`tile`). That is
+   * one operation, not three: a sheet is `times` + `tile`, a title card is a
+   * single time + `draw`, and a clean thumbnail strip is neither. CE supplies
+   * the DRAWING and the TILING; what the text says and where the times fall is
+   * the calling app's policy (Ruling R99).
+   *
+   * Without `tile` every still is uploaded under `outputPrefix`. With it the
+   * stills stay SCRATCH-ONLY — addressed by a BARE scratch-relative filename,
+   * never a `{out:NAME}` placeholder, because both executors reject an
+   * undeclared one (local: the `known` set; the Worker: `names.has` →
+   * BAD_REQUEST) and the `cell-%0Wd.jpg` glob the tile pass reads could never
+   * BE a declared name (Ruling R75; both executors spawn with cwd = the
+   * scratch dir, which is what runConcat's list file already relies on). Only
+   * the sheets are declared as job outputs, so no executor can upload a cell
+   * however the argv is written.
+   */
+  private async runFrames(
+    config: FfmpegHandlerConfig,
+    context: PipelineContext,
+    stepName: string,
+    executor: FfmpegExecutor,
+    signal: AbortSignal,
+  ): Promise<StepResult> {
+    const knobs = this.knobs(config);
+    const times = this.resolveTimes(config.times, context, stepName);
+    // `times` is expression-resolved, so its length is untrusted input.
+    if (times.length > MAX_STILLS_PER_JOB) this.tooManyStills('frames times', times.length);
+    const texts = this.resolveDrawTexts(knobs.draw, times.length, context, stepName);
+    const inputKey = await this.resolveKey(config.input!, context, stepName, 'input');
+    const prefix = await this.resolvePrefix(config.outputPrefix!, context, stepName);
+    const inName = `in${path.posix.extname(inputKey) || '.mp4'}`;
+    const tile = knobs.tile;
+    const sheets = tile ? this.planSheets(times, tile) : [];
+
+    // Ruling R82: ONE pad width for the whole batch, widened past the two/three
+    // digits so the names stay sortable instead of jumping from 99 to 100 — and
+    // for cells the SAME width feeds both the filenames and the `%0Wd` tile
+    // pattern, which a hard-coded `%03d` would silently break past 999.
+    const stillWidth = Math.max(tile ? 3 : 2, String(times.length).length);
+    const stillName = (i: number) =>
+      `${tile ? 'cell' : 'frame'}-${String(i + 1).padStart(stillWidth, '0')}.jpg`;
+    const sheetWidth = Math.max(2, String(sheets.length).length);
+    const sheetName = (i: number) => `sheet-${String(i + 1).padStart(sheetWidth, '0')}.jpg`;
+    // The stills OR the sheets — never both. Nothing else is declared, so
+    // nothing else uploads.
+    const outputs: FfmpegJobOutput[] = tile
+      ? sheets.map((sheet) => ({
+          name: sheetName(sheet.index),
+          key: `${prefix}/${sheetName(sheet.index)}`,
+          contentType: 'image/jpeg',
+        }))
+      : times.map((_, i) => ({
+          name: stillName(i),
+          key: `${prefix}/${stillName(i)}`,
+          contentType: 'image/jpeg',
+        }));
+
+    // Every image the job could write: in tile mode the CELLS are not declared
+    // outputs and nothing stats them, so they have to be listed here for a
+    // failing one to be nameable at all (R107).
+    const writable = tile
+      ? [...times.map((_, i) => stillName(i)), ...outputs.map((o) => o.name)]
+      : outputs.map((o) => o.name);
+
+    const job = (withDraw: boolean): FfmpegJob => ({
+      id: stepName,
+      commands: [
+        ...times.map((time, i) => ({
+          id: stillName(i).replace(/\.jpg$/, ''),
+          kind: 'ffmpeg' as const,
+          timeoutSeconds: FRAME_TIMEOUT_SECONDS,
+          argv: this.frameArgv({
+            input: `{in:${inName}}`,
+            output: tile ? stillName(i) : `{out:${stillName(i)}}`,
+            time,
+            height: knobs.height,
+            quality: knobs.quality,
+            overlay: withDraw && texts ? this.overlay(knobs.draw!, texts[i]) : undefined,
+          }),
+        })),
+        ...sheets.map((sheet) => ({
+          id: sheetName(sheet.index).replace(/\.jpg$/, ''),
+          kind: 'ffmpeg' as const,
+          timeoutSeconds: FRAME_TIMEOUT_SECONDS,
+          argv: buildTileArgs({
+            pattern: `cell-%0${stillWidth}d.jpg`,
+            start: sheet.start,
+            count: sheet.times.length,
+            // This sheet's ACTUAL grid width, not the `columns` knob: a short
+            // final sheet is narrower (2 cells under columns:3 lay out 2 wide).
+            columns: sheet.cols,
+            output: `{out:${sheetName(sheet.index)}}`,
+          }),
+        })),
+      ],
+      inputs: [{ name: inName, key: inputKey }],
+      outputs,
+      files: [],
+    });
+
+    // Ruling R77: the LOCAL `-filters` probe may only SUPPRESS a draw, and only
+    // for the local executor — a remote-only instance has no local ffmpeg to
+    // probe, so gating on it there would mean nothing is ever drawn.
+    // `hasFilter` is tri-state: only an explicit `false` suppresses (the
+    // optional call also tolerates capability doubles predating it).
+    const localLacksDrawtext =
+      executor.name === 'local' && this.capability.hasFilter?.('drawtext') === false;
+    let drawn = texts !== undefined && !localLacksDrawtext;
+    let res: FfmpegJobResult;
+    try {
+      res = await this.runJob(executor, job(drawn), signal);
+    } catch (error) {
+      // The universal net under that probe: an ffmpeg that turns out to lack
+      // drawtext (a remote Worker's, say) costs ONE undrawn retry, not the
+      // step. Every other failure propagates untouched — through
+      // `namedOutputFailure`, which turns the bare ENOENT of an image ffmpeg
+      // never wrote into a message naming it.
+      if (!drawn || !isDrawtextFailure(error)) {
+        throw this.namedOutputFailure(error, 'frames', writable);
+      }
+      this.logger.warn({ event: 'ffmpeg_frames_drawtext_missing', step: stepName });
+      drawn = false;
+      try {
+        res = await this.runJob(executor, job(false), signal);
+      } catch (retryError) {
+        throw this.namedOutputFailure(retryError, 'frames', writable);
+      }
+    }
+    const bytes = new Map(res.outputs.map((o) => [o.name, o.bytes]));
+    return {
+      success: true,
+      output: tile
+        ? {
+            sheets: sheets.map((sheet) => ({
+              storage_path: `${prefix}/${sheetName(sheet.index)}`,
+              content_type: 'image/jpeg',
+              size: bytes.get(sheetName(sheet.index)) ?? 0,
+              times: sheet.times,
+              index: sheet.index,
+              total: sheets.length,
+              cols: sheet.cols,
+              rows: sheet.rows,
+            })),
+            count: times.length,
+            drawn,
+            ...this.telemetry(res),
+          }
+        : {
+            frames: times.map((time, i) => ({
+              // The REQUESTED time, unchanged — it is what a re-capture seeks to.
+              time,
+              storage_path: `${prefix}/${stillName(i)}`,
+              content_type: 'image/jpeg',
+              size: bytes.get(stillName(i)) ?? 0,
+            })),
+            count: times.length,
+            drawn,
+            ...this.telemetry(res),
+          },
+    };
   }
 
   private async runSlice(
