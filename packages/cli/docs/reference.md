@@ -170,7 +170,7 @@ validation error (the schema is `.strict()`).
 | `pipeline` | authoring sugar (see below) | Mutually exclusive with `pipelineConfig` (schema-level `.refine()` rejects both). |
 | `pipelineConfig` | canonical `{ name, description?, steps: PipelineStep[], postSteps?, validators? }` | Same shape as the compiled export's `pipelineConfig` — use this when you already have canonical JSON to paste in; `steps[].handlerType`/`.config` (not `handler`). |
 | `isEnabled` | `boolean` | Default `true`. |
-| `debugEnabled` | `boolean` | Default `false`. |
+| `debugEnabled` | `boolean` | Default `false`. When `true` the server persists an execution log per request (admin panel → rule → Logs) and every response from the rule carries an `X-Pipeline-Log-Id` header naming that log (`GET /api/pipeline-logs/<id>`). Rules-as-code is the source of truth: a debug toggle flipped in the admin panel is reset by the next `rules push` unless it is also set here. |
 | `description` | `string` | Free text. |
 
 **The `pipeline:` sugar.** `pipeline: { name?, description?, steps: Step[], postSteps?,

@@ -21,10 +21,14 @@ import { EmailFormHandlerService } from './email-form-handler.service';
 import { ProxyRule, ProxyType, PipelineConfig } from '../db/schema/proxy-rules.schema';
 import { ConfigService } from '@nestjs/config';
 import { PipelineExecutionService } from '../pipelines/execution';
-import { PipelineExecutionLogService } from '../pipelines/pipeline-execution-log.service';
+import {
+  PipelineExecutionLogService,
+  PIPELINE_LOG_ID_HEADER,
+} from '../pipelines/pipeline-execution-log.service';
 import { PipelineUser } from '../pipelines/execution/pipeline-context.interface';
 import { Pipeline, PipelineStep } from '../pipelines/types';
 import multer from 'multer';
+import { randomUUID } from 'crypto';
 import { CustomDomainAuthService } from '../auth/custom-domain-auth.service';
 import { VisibilityService, AccessControlInfo } from '../domains/visibility.service';
 import { PermissionsService } from '../permissions/permissions.service';
@@ -1195,12 +1199,21 @@ export class ProxyMiddleware implements NestMiddleware {
         return;
       }
 
+      // When this rule persists execution logs, choose the row id up front so the
+      // response can carry it (X-Pipeline-Log-Id) while the insert below stays
+      // fire-and-forget. A caller that gets a failed response can then fetch
+      // GET /api/pipeline-logs/:id directly instead of matching by timestamp.
+      const logId = rule.debugEnabled ? randomUUID() : undefined;
+
       if (result.success && result.response) {
         // Set response headers if provided
         if (result.response.headers) {
           for (const [key, value] of Object.entries(result.response.headers)) {
             res.setHeader(key, value);
           }
+        }
+        if (logId) {
+          res.setHeader(PIPELINE_LOG_ID_HEADER, logId);
         }
         // Use res.send (not res.json): for string bodies (text/plain, text/html,
         // application/x-sh, etc.) res.json would JSON.stringify the string and
@@ -1221,6 +1234,9 @@ export class ProxyMiddleware implements NestMiddleware {
         } else if (errorCode === 'RATE_LIMIT_EXCEEDED') {
           statusCode = 429;
         }
+        if (logId) {
+          res.setHeader(PIPELINE_LOG_ID_HEADER, logId);
+        }
         res.status(statusCode).json({
           success: false,
           error: result.error,
@@ -1229,7 +1245,7 @@ export class ProxyMiddleware implements NestMiddleware {
 
       // Fire-and-forget: persist execution log if debug is enabled
       // Wait for post-steps to complete so their debug info is included
-      if (rule.debugEnabled) {
+      if (rule.debugEnabled && logId) {
         const persistLog = async () => {
           if (result.postStepsPromise) {
             try {
@@ -1252,6 +1268,7 @@ export class ProxyMiddleware implements NestMiddleware {
             },
             req.method,
             req.path,
+            logId,
           );
         };
         persistLog().catch((err) =>

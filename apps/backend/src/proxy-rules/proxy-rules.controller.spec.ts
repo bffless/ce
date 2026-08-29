@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
-import { ProxyRulesController } from './proxy-rules.controller';
+import { NotFoundException, ForbiddenException } from '@nestjs/common';
+import { ProxyRulesController, PipelineLogsController } from './proxy-rules.controller';
+import { PermissionsService } from '../permissions/permissions.service';
 import { ProxyRulesService } from './proxy-rules.service';
 import { PipelineExecutionService } from '../pipelines/execution';
 import { PipelineExecutionLogService } from '../pipelines/pipeline-execution-log.service';
@@ -344,5 +345,81 @@ describe('ProxyRulesController', () => {
         undefined,
       );
     });
+  });
+});
+
+describe('PipelineLogsController', () => {
+  let controller: PipelineLogsController;
+  let mockLogService: { getById: jest.Mock };
+  let mockPermissionsService: { requireProjectAccess: jest.Mock };
+
+  const log = {
+    id: 'log-1',
+    projectId: 'project-a',
+    proxyRuleId: 'rule-1',
+    success: false,
+    statusCode: 400,
+    method: 'POST',
+    path: '/api/items',
+    durationMs: 12,
+    stepsCount: 1,
+    errorCode: 'VALIDATION_ERROR',
+    errorMessage: 'bad input',
+    errorStep: 'validate',
+    requestMeta: { ip: '203.0.113.9', userAgent: 'curl/8' },
+    debug: { validators: [], steps: [], totalDurationMs: 12, startTime: '', endTime: '' },
+    createdAt: new Date(),
+  };
+
+  beforeEach(() => {
+    mockLogService = { getById: jest.fn().mockResolvedValue(log) };
+    mockPermissionsService = { requireProjectAccess: jest.fn().mockResolvedValue(undefined) };
+    controller = new PipelineLogsController(
+      mockLogService as unknown as PipelineExecutionLogService,
+      mockPermissionsService as unknown as PermissionsService,
+    );
+  });
+
+  it('returns the log to a caller authorized on its project', async () => {
+    const user: CurrentUserData = { id: 'user-1', role: 'user', apiKeyProjectId: undefined };
+    await expect(controller.getLogDetail('log-1', user)).resolves.toBe(log);
+    // Scoped to the log's own project (not a caller-supplied one), read-level role.
+    expect(mockPermissionsService.requireProjectAccess).toHaveBeenCalledWith(
+      'project-a',
+      'user-1',
+      'user',
+      'viewer',
+      undefined,
+    );
+  });
+
+  it('forwards the API key project scope so a key minted for another project is refused', async () => {
+    const user: CurrentUserData = { id: 'user-1', role: 'user', apiKeyProjectId: 'project-b' };
+    mockPermissionsService.requireProjectAccess.mockRejectedValue(
+      new ForbiddenException('API key is not authorized for this project'),
+    );
+    await expect(controller.getLogDetail('log-1', user)).rejects.toThrow(ForbiddenException);
+    expect(mockPermissionsService.requireProjectAccess).toHaveBeenCalledWith(
+      'project-a',
+      'user-1',
+      'user',
+      'viewer',
+      'project-b',
+    );
+  });
+
+  it('does not return the log when the caller has no role on its project', async () => {
+    const user: CurrentUserData = { id: 'outsider', role: 'user' };
+    mockPermissionsService.requireProjectAccess.mockRejectedValue(
+      new ForbiddenException('You do not have access to this project'),
+    );
+    await expect(controller.getLogDetail('log-1', user)).rejects.toThrow(ForbiddenException);
+  });
+
+  it('404s on an unknown id without consulting permissions', async () => {
+    mockLogService.getById.mockResolvedValue(null);
+    const user: CurrentUserData = { id: 'user-1', role: 'admin' };
+    await expect(controller.getLogDetail('missing', user)).rejects.toThrow(NotFoundException);
+    expect(mockPermissionsService.requireProjectAccess).not.toHaveBeenCalled();
   });
 });
