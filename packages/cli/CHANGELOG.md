@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.4](https://github.com/bffless/ce/compare/bffless-v0.3.3...bffless-v0.3.4) (2026-08-29)
+
+
+### Added
+
+* **pipelines:** return the execution-log id as X-Pipeline-Log-Id on debug-enabled proxy-rule responses ([#717](https://github.com/bffless/ce/issues/717)) ([04f6c9f](https://github.com/bffless/ce/commit/04f6c9f41ce426222ccd03fbd535f75932d45256))
+
 ## [0.3.3](https://github.com/bffless/ce/compare/bffless-v0.3.2...bffless-v0.3.3) (2026-08-27)
 
 
