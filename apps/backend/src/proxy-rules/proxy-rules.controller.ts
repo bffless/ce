@@ -60,18 +60,56 @@ export class ProxyRulesController {
     @Inject(forwardRef(() => ProjectsService))
     private readonly projectsService: ProjectsService,
     private readonly userGroupsService: UserGroupsService,
+    private readonly permissionsService: PermissionsService,
   ) {}
+
+  /**
+   * Load a rule by id and require that the caller has `level` access to the
+   * project that owns it.
+   *
+   * `ApiKeyGuard` only proves the caller has *some* session or API key on the
+   * instance; rule ids are not secrets (they surface in X-Pipeline-Log-Id,
+   * logs, exports), so by-id routes must scope to the rule's own project the
+   * same way ProxyRulesService.update/delete do. Unknown ids 404 before any
+   * permission check so the response shape matches the sibling routes.
+   */
+  private async resolveRuleForUser(
+    id: string,
+    user: CurrentUserData,
+    level: 'viewer' | 'contributor',
+  ): Promise<{
+    rule: NonNullable<Awaited<ReturnType<ProxyRulesService['getRuleById']>>>;
+    ruleSet: NonNullable<Awaited<ReturnType<ProxyRulesService['getRuleSetById']>>>;
+  }> {
+    const rule = await this.proxyRulesService.getRuleById(id);
+    if (!rule) {
+      throw new NotFoundException(`Proxy rule ${id} not found`);
+    }
+    const ruleSet = await this.proxyRulesService.getRuleSetById(rule.ruleSetId);
+    if (!ruleSet) {
+      throw new NotFoundException(`Rule set ${rule.ruleSetId} not found`);
+    }
+    await this.permissionsService.requireProjectAccess(
+      ruleSet.projectId,
+      user.id,
+      user.role,
+      level,
+      user.apiKeyProjectId,
+    );
+    return { rule, ruleSet };
+  }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get a specific proxy rule' })
   @ApiParam({ name: 'id', type: 'string' })
   @ApiResponse({ status: 200, description: 'Proxy rule details', type: ProxyRuleResponseDto })
+  @ApiResponse({ status: 403, description: "Not authorized for the rule's project" })
   @ApiResponse({ status: 404, description: 'Rule not found' })
-  async getRule(@Param('id', ParseUUIDPipe) id: string): Promise<ProxyRuleResponseDto> {
-    const rule = await this.proxyRulesService.getRuleById(id);
-    if (!rule) {
-      throw new NotFoundException(`Proxy rule ${id} not found`);
-    }
+  async getRule(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: CurrentUserData,
+  ): Promise<ProxyRuleResponseDto> {
+    const { rule } = await this.resolveRuleForUser(id, user, 'viewer');
     return rule as ProxyRuleResponseDto;
   }
 
@@ -115,15 +153,15 @@ export class ProxyRulesController {
   @ApiOperation({ summary: 'List pipeline execution logs for a rule' })
   @ApiParam({ name: 'id', type: 'string' })
   @ApiResponse({ status: 200, description: 'Paginated execution logs' })
+  @ApiResponse({ status: 403, description: "Not authorized for the rule's project" })
+  @ApiResponse({ status: 404, description: 'Rule not found' })
   async getRuleLogs(
     @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: CurrentUserData,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
-    const rule = await this.proxyRulesService.getRuleById(id);
-    if (!rule) {
-      throw new NotFoundException(`Proxy rule ${id} not found`);
-    }
+    await this.resolveRuleForUser(id, user, 'viewer');
     return this.executionLogService.getByRuleId(
       id,
       page ? parseInt(page, 10) : 1,
@@ -135,7 +173,13 @@ export class ProxyRulesController {
   @ApiOperation({ summary: 'Get log count for a rule' })
   @ApiParam({ name: 'id', type: 'string' })
   @ApiResponse({ status: 200, description: 'Log count' })
-  async getRuleLogCount(@Param('id', ParseUUIDPipe) id: string) {
+  @ApiResponse({ status: 403, description: "Not authorized for the rule's project" })
+  @ApiResponse({ status: 404, description: 'Rule not found' })
+  async getRuleLogCount(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: CurrentUserData,
+  ) {
+    await this.resolveRuleForUser(id, user, 'viewer');
     return { count: await this.executionLogService.getCountByRuleId(id) };
   }
 
@@ -143,14 +187,14 @@ export class ProxyRulesController {
   @ApiOperation({ summary: 'Clear all execution logs for a rule' })
   @ApiParam({ name: 'id', type: 'string' })
   @ApiResponse({ status: 200, description: 'Logs cleared' })
+  @ApiResponse({ status: 403, description: "Not authorized for the rule's project" })
+  @ApiResponse({ status: 404, description: 'Rule not found' })
   async clearRuleLogs(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: CurrentUserData,
   ) {
-    const rule = await this.proxyRulesService.getRuleById(id);
-    if (!rule) {
-      throw new NotFoundException(`Proxy rule ${id} not found`);
-    }
+    // Destructive: same level as PATCH/DELETE on the rule itself.
+    await this.resolveRuleForUser(id, user, 'contributor');
     await this.executionLogService.deleteByRuleId(id);
     return { success: true };
   }
@@ -165,6 +209,7 @@ export class ProxyRulesController {
     type: PipelineTestResultDto,
   })
   @ApiResponse({ status: 400, description: 'Rule is not a pipeline type' })
+  @ApiResponse({ status: 403, description: "Not authorized for the rule's project" })
   @ApiResponse({ status: 404, description: 'Rule not found' })
   async testPipelineRule(
     @Param('id', ParseUUIDPipe) id: string,
@@ -184,19 +229,12 @@ export class ProxyRulesController {
     } else {
       dto = body;
     }
-    const rule = await this.proxyRulesService.getRuleById(id);
-    if (!rule) {
-      throw new NotFoundException(`Proxy rule ${id} not found`);
-    }
+    // Running a rule executes it with the owning project's context, so it is
+    // a contributor-level action like editing the rule (PATCH :id).
+    const { rule, ruleSet } = await this.resolveRuleForUser(id, user, 'contributor');
 
     if (rule.proxyType !== 'pipeline' || !rule.pipelineConfig) {
       throw new BadRequestException('This endpoint only works for pipeline-type proxy rules');
-    }
-
-    // Get the rule set to find the project ID
-    const ruleSet = await this.proxyRulesService.getRuleSetById(rule.ruleSetId);
-    if (!ruleSet) {
-      throw new NotFoundException('Rule set not found');
     }
 
     // Build a pipeline-like object from the proxy rule's pipeline config
