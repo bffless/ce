@@ -963,6 +963,27 @@ export interface FileServeHandlerConfig extends BaseHandlerConfig {
    * @default 'private'
    */
   cacheability?: string;
+
+  /**
+   * Serve the object as an attachment (`Content-Disposition: attachment;
+   * filename="..."`) so browsers save it instead of rendering it inline.
+   *
+   * Either a literal boolean, a BARE expression (`request.query.download`),
+   * or a `{{template}}` — whichever the value resolves to is read as a flag:
+   * missing/null, `false`, `0`, `""`, `"0"`, `"false"`, `"no"` and `"off"`
+   * (case-insensitive) mean inline; anything else (including the string
+   * `"1"` a `?download=1` query sends) means attachment. The canonical use is
+   * `download: request.query.download` so one rule serves both `<img src>`
+   * and a "Download" link.
+   *
+   * The filename is the upload record's `original_name` when the served key
+   * was written by file_upload_handler / register_upload, otherwise the
+   * key's basename; it is sanitised and emitted in the RFC 6266 dual form
+   * (`filename=` ASCII fallback + `filename*=UTF-8''…`) for non-ASCII names.
+   * Range/206 handling and caching are unchanged. Omitted → inline, exactly
+   * as before this option existed.
+   */
+  download?: boolean | string;
 }
 
 /**

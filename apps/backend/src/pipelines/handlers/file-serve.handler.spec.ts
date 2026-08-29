@@ -1,4 +1,26 @@
-import { FileServeHandler } from './file-serve.handler';
+// The handler resolves an attachment filename from the asset row for the
+// served key. Chainable mock: queue a result per query with db.__queue(rows).
+jest.mock('../../db/client', () => {
+  const queued: unknown[] = [];
+  const methods = ['select', 'from', 'where', 'orderBy', 'limit'];
+  const chainable: Record<string, unknown> = {};
+  for (const method of methods) {
+    chainable[method] = jest.fn(() => chainable);
+  }
+  chainable.then = (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) =>
+    Promise.resolve(queued.length > 0 ? queued.shift() : []).then(resolve, reject);
+  chainable.__queue = (result: unknown) => queued.push(result);
+  chainable.__reset = () => {
+    queued.length = 0;
+    for (const method of methods) {
+      (chainable[method] as jest.Mock).mockClear();
+    }
+  };
+  return { db: chainable };
+});
+
+import { db } from '../../db/client';
+import { FileServeHandler, isDownloadFlagTruthy } from './file-serve.handler';
 import { StepHandlerRegistry } from '../execution/step-handler.registry';
 import { IStorageAdapter } from '../../storage/storage.interface';
 import { CacheConfigService } from '../../cache-rules/cache-config.service';
@@ -473,5 +495,325 @@ describe('FileServeHandler — content type', () => {
     const res = await serve('content/notes.md', { stream: false, metaMime: 'text/markdown' });
 
     expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/markdown; charset=utf-8');
+  });
+});
+
+// `download` is opt-in per request: when it resolves truthy the object is
+// served as an attachment (Content-Disposition), named after the upload
+// record's original name (falling back to the key's basename). Everything
+// else — range handling, caching, content type — is untouched.
+describe('FileServeHandler — download (Content-Disposition: attachment)', () => {
+  const mockDb = db as unknown as {
+    __queue: (rows: unknown) => void;
+    __reset: () => void;
+    select: jest.Mock;
+  };
+
+  const makeRes = () => {
+    const res: any = {
+      headersSent: false,
+      writableEnded: false,
+      setHeader: jest.fn(),
+      end: jest.fn(),
+      on: jest.fn(),
+      json: jest.fn(),
+    };
+    res.status = jest.fn(() => res);
+    res.flushHeaders = jest.fn(() => {
+      res.headersSent = true;
+    });
+    return res;
+  };
+
+  const makeStream = () => ({ pipe: jest.fn(), on: jest.fn(), destroy: jest.fn() });
+
+  const buildHandler = (storage: Partial<IStorageAdapter>) => {
+    const registry = { register: jest.fn() } as unknown as StepHandlerRegistry;
+    const cacheConfigService = {
+      getCacheConfig: jest.fn().mockResolvedValue({ source: 'default' }),
+      buildCacheControlHeader: jest.fn(),
+    } as unknown as CacheConfigService;
+    return new FileServeHandler(
+      registry,
+      storage as IStorageAdapter,
+      cacheConfigService,
+      new ExpressionEvaluator(),
+    );
+  };
+
+  const streamingStorage = (size = 10000) => {
+    const stream = makeStream();
+    return {
+      stream,
+      storage: {
+        downloadStream: jest.fn().mockResolvedValue({ stream, size, etag: 'abc' }),
+        getMetadata: jest.fn().mockResolvedValue({ key: STORAGE_KEY, size, etag: 'abc' }),
+      },
+    };
+  };
+
+  const STORAGE_KEY = 'o/r/uploads/export/uuid-report.pdf';
+
+  const buildContext = (
+    res: any,
+    overrides: {
+      query?: Record<string, unknown>;
+      headers?: Record<string, unknown>;
+      steps?: Record<string, unknown>;
+      path?: string;
+    } = {},
+  ): PipelineContext =>
+    ({
+      projectId: 'p1',
+      deployment: { owner: 'o', repo: 'r', commitSha: 'sha' },
+      metadata: {
+        path: overrides.path ?? '/api/uploads/export/uuid-report.pdf',
+        headers: overrides.headers ?? {},
+        query: overrides.query ?? {},
+      },
+      stepOutputs: overrides.steps ?? {},
+      request: { res },
+    }) as unknown as PipelineContext;
+
+  const stepWith = (config: Record<string, unknown>) =>
+    ({
+      id: 'serve',
+      name: 'serve',
+      handlerType: 'file_serve_handler',
+      config: { subDir: 'export', ...config },
+    }) as unknown as PipelineStep;
+
+  const dispositionOf = (res: any): string | undefined =>
+    res.setHeader.mock.calls.find((c: unknown[]) => c[0] === 'Content-Disposition')?.[1];
+
+  beforeEach(() => mockDb.__reset());
+
+  it('sends no Content-Disposition and never queries the asset row when download is absent', async () => {
+    const { storage } = streamingStorage();
+    const res = makeRes();
+
+    await buildHandler(storage).execute(
+      buildContext(res, { query: { download: '1' } }),
+      stepWith({}),
+    );
+
+    expect(dispositionOf(res)).toBeUndefined();
+    expect(mockDb.select).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('serves as an attachment named after the upload record original_name when download resolves truthy', async () => {
+    const { storage, stream } = streamingStorage();
+    const res = makeRes();
+    mockDb.__queue([{ originalPath: 'Q3 report.pdf' }]);
+
+    await buildHandler(storage).execute(
+      buildContext(res, { query: { download: '1' } }),
+      stepWith({ download: 'request.query.download' }),
+    );
+
+    expect(dispositionOf(res)).toBe('attachment; filename="Q3 report.pdf"');
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(stream.pipe).toHaveBeenCalledWith(res);
+    // Existing headers are unchanged.
+    expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'private, max-age=3600');
+    expect(res.setHeader).toHaveBeenCalledWith('Accept-Ranges', 'bytes');
+  });
+
+  it('stays inline for the falsy query spellings a ?download= link can send', async () => {
+    for (const value of ['0', 'false', '', 'no', 'off', undefined]) {
+      const { storage } = streamingStorage();
+      const res = makeRes();
+
+      await buildHandler(storage).execute(
+        buildContext(res, { query: value === undefined ? {} : { download: value } }),
+        stepWith({ download: 'request.query.download' }),
+      );
+
+      expect(dispositionOf(res)).toBeUndefined();
+    }
+    expect(mockDb.select).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the key basename when no upload record matches the served key', async () => {
+    const { storage } = streamingStorage();
+    const res = makeRes();
+    mockDb.__queue([]);
+
+    await buildHandler(storage).execute(
+      buildContext(res, { query: { download: '1' } }),
+      stepWith({ download: 'request.query.download' }),
+    );
+
+    expect(dispositionOf(res)).toBe('attachment; filename="uuid-report.pdf"');
+  });
+
+  it('falls back to the key basename when the asset lookup itself fails', async () => {
+    const { storage } = streamingStorage();
+    const res = makeRes();
+    mockDb.select.mockImplementationOnce(() => {
+      throw new Error('db down');
+    });
+
+    await buildHandler(storage).execute(
+      buildContext(res, { query: { download: '1' } }),
+      stepWith({ download: 'request.query.download' }),
+    );
+
+    expect(dispositionOf(res)).toBe('attachment; filename="uuid-report.pdf"');
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('sanitises the filename: quotes, CR/LF and path separators cannot reach the header', async () => {
+    const { storage } = streamingStorage();
+    const res = makeRes();
+    mockDb.__queue([{ originalPath: '../evil/"x".pdf\r\nSet-Cookie: a=b' }]);
+
+    await buildHandler(storage).execute(
+      buildContext(res, { query: { download: '1' } }),
+      stepWith({ download: 'request.query.download' }),
+    );
+
+    const value = dispositionOf(res)!;
+    expect(value).toBe('attachment; filename="x.pdfSet-Cookie: a=b"');
+    expect(value).not.toMatch(/[\r\n\\/]/);
+    // Exactly the one wrapping pair of quotes survives.
+    expect(value.split('"')).toHaveLength(3);
+  });
+
+  it('emits the RFC 6266 dual form for a non-ASCII original name', async () => {
+    const { storage } = streamingStorage();
+    const res = makeRes();
+    mockDb.__queue([{ originalPath: 'Zwischenbericht März.pdf' }]);
+
+    await buildHandler(storage).execute(
+      buildContext(res, { query: { download: '1' } }),
+      stepWith({ download: 'request.query.download' }),
+    );
+
+    expect(dispositionOf(res)).toBe(
+      'attachment; filename="Zwischenbericht M_rz.pdf"; filename*=UTF-8\'\'Zwischenbericht%20M%C3%A4rz.pdf',
+    );
+  });
+
+  it('keeps Range handling intact: a ranged download is still a 206 with the attachment header', async () => {
+    const { storage, stream } = streamingStorage(10000);
+    const res = makeRes();
+    mockDb.__queue([{ originalPath: 'movie.mp4' }]);
+
+    await buildHandler(storage).execute(
+      buildContext(res, { query: { download: '1' }, headers: { range: 'bytes=0-1023' } }),
+      stepWith({ download: 'request.query.download' }),
+    );
+
+    expect(storage.downloadStream).toHaveBeenCalledWith(STORAGE_KEY, { start: 0, end: 1023 });
+    expect(res.status).toHaveBeenCalledWith(206);
+    expect(res.setHeader).toHaveBeenCalledWith('Content-Range', 'bytes 0-1023/10000');
+    expect(res.setHeader).toHaveBeenCalledWith('Content-Length', 1024);
+    expect(dispositionOf(res)).toBe('attachment; filename="movie.mp4"');
+    expect(stream.pipe).toHaveBeenCalledWith(res);
+  });
+
+  it('accepts a literal boolean and a {{template}} resolved from a prior step', async () => {
+    {
+      const { storage } = streamingStorage();
+      const res = makeRes();
+      mockDb.__queue([{ originalPath: 'a.bin' }]);
+      await buildHandler(storage).execute(buildContext(res), stepWith({ download: true }));
+      expect(dispositionOf(res)).toBe('attachment; filename="a.bin"');
+    }
+    {
+      const { storage } = streamingStorage();
+      const res = makeRes();
+      mockDb.__queue([{ originalPath: 'b.bin' }]);
+      await buildHandler(storage).execute(
+        buildContext(res, { steps: { gate: { download: true } } }),
+        stepWith({ download: '{{steps.gate.download}}' }),
+      );
+      expect(dispositionOf(res)).toBe('attachment; filename="b.bin"');
+    }
+    {
+      const { storage } = streamingStorage();
+      const res = makeRes();
+      await buildHandler(storage).execute(
+        buildContext(res, { steps: { gate: { download: false } } }),
+        stepWith({ download: '{{steps.gate.download}}' }),
+      );
+      expect(dispositionOf(res)).toBeUndefined();
+    }
+  });
+
+  it('works in explicit `key` mode: the lookup uses the resolved key, not the request path', async () => {
+    const stream = makeStream();
+    const storage = {
+      downloadStream: jest.fn().mockResolvedValue({ stream, size: 5, etag: 'e' }),
+      getMetadata: jest.fn(),
+    };
+    const res = makeRes();
+    mockDb.__queue([{ originalPath: 'Site asset.css' }]);
+    const keyStep = {
+      id: 'serve',
+      name: 'serve',
+      handlerType: 'file_serve_handler',
+      config: { key: '{{steps.resolve.serveKey}}', download: 'request.query.download' },
+    } as unknown as PipelineStep;
+
+    await buildHandler(storage).execute(
+      buildContext(res, {
+        path: '/api/sites/site-123/styles.css',
+        query: { download: '1' },
+        steps: { resolve: { serveKey: 'content/abc-styles.css' } },
+      }),
+      keyStep,
+    );
+
+    expect(storage.downloadStream).toHaveBeenCalledWith('o/r/uploads/content/abc-styles.css');
+    expect(dispositionOf(res)).toBe('attachment; filename="Site asset.css"');
+    expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/css; charset=utf-8');
+  });
+
+  it('sets the header on the buffered (non-streaming) path too', async () => {
+    const res = makeRes();
+    const storage = {
+      download: jest.fn().mockResolvedValue(Buffer.from('x')),
+      getMetadata: jest.fn().mockResolvedValue({ size: 1, etag: 'e' }),
+    };
+    mockDb.__queue([{ originalPath: 'buffered.txt' }]);
+
+    await buildHandler(storage).execute(
+      buildContext(res, { query: { download: '1' } }),
+      stepWith({ download: 'request.query.download' }),
+    );
+
+    expect(dispositionOf(res)).toBe('attachment; filename="buffered.txt"');
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+});
+
+describe('isDownloadFlagTruthy', () => {
+  it.each([
+    [undefined, false],
+    [null, false],
+    [false, false],
+    [true, true],
+    [0, false],
+    [1, true],
+    ['', false],
+    ['0', false],
+    ['1', true],
+    ['false', false],
+    ['FALSE', false],
+    ['true', true],
+    ['no', false],
+    ['off', false],
+    ['yes', true],
+    ['null', false],
+    ['undefined', false],
+    [['1'], true],
+    [['0'], false],
+    [[], false],
+    [{}, true],
+  ])('%p → %p', (input, expected) => {
+    expect(isDownloadFlagTruthy(input)).toBe(expected);
   });
 });

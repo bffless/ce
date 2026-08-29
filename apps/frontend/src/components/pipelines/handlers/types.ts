@@ -277,6 +277,8 @@ export interface FileServeHandlerConfig extends BaseHandlerConfig {
   /** Serve this explicit object, relative to the uploads root (supports expressions). Mutually exclusive with subDir. */
   key?: string;
   cacheMaxAge?: number;
+  /** Serve as an attachment when this resolves truthy (e.g. `request.query.download`). Omit for inline. */
+  download?: boolean | string;
 }
 
 export interface FileDeleteHandlerConfig extends BaseHandlerConfig {

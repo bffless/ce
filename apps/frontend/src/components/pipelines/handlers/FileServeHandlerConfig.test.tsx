@@ -48,6 +48,24 @@ describe('FileServeHandlerConfig', () => {
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ subDir: undefined }));
   });
 
+  it('edits the download expression and clears it back to undefined when emptied', async () => {
+    const onChange = vi.fn();
+    render(
+      <FileServeHandlerConfig
+        config={{ subDir: 'export', download: 'request.query.download' }}
+        onChange={onChange}
+      />,
+    );
+
+    const download = screen.getByDisplayValue('request.query.download');
+    expect(download).toBeInTheDocument();
+
+    await userEvent.clear(download);
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ subDir: 'export', download: undefined }),
+    );
+  });
+
   it('can switch key → sub-directory → key and back to the key field', async () => {
     render(<Harness initial={{ key: 'content/x.css' }} />);
 

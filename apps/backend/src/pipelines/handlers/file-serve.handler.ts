@@ -8,10 +8,35 @@ import { ConfigurationError } from '../errors';
 import { IStorageAdapter, STORAGE_ADAPTER } from '../../storage/storage.interface';
 import { CacheConfigService } from '../../cache-rules/cache-config.service';
 import { resolveContentType } from '../../common/utils/content-type.util';
+import {
+  sanitizeDownloadFilename,
+  formatAttachmentDisposition,
+} from '../../common/utils/download-filename.util';
 import { db } from '../../db/client';
-import { projects } from '../../db/schema';
-import { eq } from 'drizzle-orm';
+import { projects, assets } from '../../db/schema';
+import { AssetType } from '../../types/asset-type.enum';
+import { and, desc, eq } from 'drizzle-orm';
 import crypto from 'crypto';
+
+/**
+ * Read a resolved `download` value as a flag. Query-string values arrive as
+ * strings, so the usual `?download=0` / `?download=false` spellings must mean
+ * "no" even though `Boolean('0')` is true — the same shape field coercion
+ * gives boolean schema fields, widened with the common no/off spellings.
+ * Everything else non-empty (notably the string "1") is truthy.
+ */
+export function isDownloadFlagTruthy(value: unknown): boolean {
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0 && !Number.isNaN(value);
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    return !['', '0', 'false', 'no', 'off', 'null', 'undefined'].includes(normalized);
+  }
+  // `?download=1&download=1` parses to an array — read its first entry.
+  if (Array.isArray(value)) return value.length > 0 && isDownloadFlagTruthy(value[0]);
+  return true;
+}
 
 /**
  * File Serve Handler
@@ -129,6 +154,13 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
 
     const storageKey = `${owner}/${repo}/uploads/${relativePath}`;
 
+    // Attachment disposition is opt-in per request via `download`; when unset
+    // (or falsy) no Content-Disposition is sent and the response is byte-for-
+    // byte what it was before the option existed.
+    const disposition = this.resolveDownload(config, context, stepName)
+      ? await this.buildAttachmentDisposition(context.projectId, storageKey, relativePath)
+      : undefined;
+
     // The content type is resolved per response, not here: storage reports the
     // type it recorded for the object, which beats guessing from the extension.
     // `relativePath` is what that resolution falls back to.
@@ -179,13 +211,20 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
           storageKey,
           relativePath,
           cacheControlHeader,
+          disposition,
           context,
           res,
         );
       }
 
       // Fallback: buffer-based serving for adapters without stream support
-      return await this.serveWithBuffer(storageKey, relativePath, cacheControlHeader, res);
+      return await this.serveWithBuffer(
+        storageKey,
+        relativePath,
+        cacheControlHeader,
+        disposition,
+        res,
+      );
     } catch (error) {
       this.logger.debug(`File not found: ${storageKey}`);
       if (!res.headersSent) {
@@ -202,6 +241,69 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
   }
 
   /**
+   * Evaluate the `download` config as a flag. A boolean is used as-is; a
+   * string is a `{{template}}` when it contains braces (like `key` and
+   * `cacheability`), otherwise a bare expression (`request.query.download`),
+   * so the same path-style syntax the rest of the engine uses for flags works
+   * here too.
+   */
+  private resolveDownload(
+    config: FileServeHandlerConfig,
+    context: PipelineContext,
+    stepName: string,
+  ): boolean {
+    const raw = config.download;
+    if (raw === undefined || raw === null) return false;
+    if (typeof raw !== 'string') return isDownloadFlagTruthy(raw);
+    if (raw.trim() === '') return false;
+    const resolved = raw.includes('{{')
+      ? this.expressionEvaluator.evaluateTemplate(raw, context, stepName)
+      : this.expressionEvaluator.evaluateExpression(raw, context, stepName);
+    return isDownloadFlagTruthy(resolved);
+  }
+
+  /**
+   * Build the `Content-Disposition` value for an attachment download.
+   *
+   * The filename is the upload record's original name when this key was
+   * written by file_upload_handler / register_upload (both record it on the
+   * asset row keyed by storage key), else the key's basename. The lookup is
+   * best-effort: the asset row is itself best-effort at upload time, and a
+   * DB hiccup must not turn a download into a 500 — it just falls back to
+   * the basename. Both go through the shared sanitiser, so quotes, CR/LF and
+   * path separators can never reach the header, and non-ASCII names get the
+   * RFC 6266 dual form. `storage_key` is not unique at the schema level, so
+   * the newest row wins deterministically should a key ever be re-recorded.
+   */
+  private async buildAttachmentDisposition(
+    projectId: string,
+    storageKey: string,
+    relativePath: string,
+  ): Promise<string> {
+    let originalName: string | undefined;
+    try {
+      const [asset] = await db
+        .select({ originalPath: assets.originalPath })
+        .from(assets)
+        .where(
+          and(
+            eq(assets.projectId, projectId),
+            eq(assets.storageKey, storageKey),
+            eq(assets.assetType, AssetType.UPLOADS),
+          ),
+        )
+        .orderBy(desc(assets.createdAt))
+        .limit(1);
+      originalName = sanitizeDownloadFilename(asset?.originalPath);
+    } catch (err) {
+      this.logger.warn(`Could not resolve original name for ${storageKey}: ${err}`);
+    }
+
+    const filename = originalName ?? sanitizeDownloadFilename(relativePath.split('/').pop());
+    return filename ? formatAttachmentDisposition(filename) : 'attachment';
+  }
+
+  /**
    * Stream file directly from storage to response.
    * Supports HTTP Range requests for video/audio seeking.
    *
@@ -214,6 +316,7 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
     storageKey: string,
     relativePath: string,
     cacheControlHeader: string,
+    disposition: string | undefined,
     context: PipelineContext,
     res: any,
   ): Promise<StepResult> {
@@ -259,6 +362,9 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
 
     res.setHeader('Accept-Ranges', 'bytes');
     res.setHeader('Cache-Control', cacheControlHeader);
+    if (disposition) {
+      res.setHeader('Content-Disposition', disposition);
+    }
 
     if (rangeHeader) {
       // Need the total object size to validate the range and build Content-Range.
@@ -316,6 +422,7 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
     storageKey: string,
     relativePath: string,
     cacheControlHeader: string,
+    disposition: string | undefined,
     res: any,
   ): Promise<StepResult> {
     let data: Buffer;
@@ -341,6 +448,9 @@ export class FileServeHandler implements StepHandler<FileServeHandlerConfig> {
     res.setHeader('Content-Length', data.length);
     res.setHeader('Cache-Control', cacheControlHeader);
     res.setHeader('Accept-Ranges', 'bytes');
+    if (disposition) {
+      res.setHeader('Content-Disposition', disposition);
+    }
     if (etag) {
       // Mix cache-control into ETag so CDN refetches when cache rules change
       const combined = crypto
