@@ -50,6 +50,22 @@ export interface SchemaField {
 export type SchemaKind = 'upload' | 'chat' | 'state';
 
 /**
+ * Provenance of a schema that the rules-as-code sync created or adopted
+ * fields onto (bffless/ce#721). Mirrors `ProxyRuleSetSource` on rule sets:
+ * it records WHICH rule set (by name — the identity a sync works in) owns the
+ * schema, so a later sync of a *different* set that happens to bundle the
+ * same schema name can never write fields onto it. `null` means "not
+ * stamped": every schema that predates the column, and any schema created
+ * from the dashboard or the schema API.
+ */
+export interface PipelineSchemaSource {
+  /** Name of the rule set whose sync created (or first adopted fields onto) this schema. */
+  ruleSetName: string;
+  /** ISO timestamp of the sync that last wrote this stamp. */
+  syncedAt: string;
+}
+
+/**
  * Pipeline schemas table - defines data structures for pipeline data storage
  */
 export const pipelineSchemas = pgTable(
@@ -78,6 +94,12 @@ export const pipelineSchemas = pgTable(
      * upgrade and consumers fall back to their field-shape heuristics.
      */
     kind: varchar('kind', { length: 32 }).$type<SchemaKind>(),
+    /**
+     * Which rule-set sync owns this schema, when one does. Nullable on
+     * purpose: existing rows keep null, and the sync's field adoption
+     * (bffless/ce#721) falls back to reference-based ownership for them.
+     */
+    source: jsonb('source').$type<PipelineSchemaSource>(),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },

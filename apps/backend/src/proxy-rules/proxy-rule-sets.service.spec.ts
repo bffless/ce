@@ -105,6 +105,7 @@ describe('ProxyRuleSetsService', () => {
     getByProjectId: jest.fn(),
     create: jest.fn(),
     adoptKind: jest.fn(),
+    adoptFields: jest.fn(),
   };
 
   // Plain-object mock, per the brief: the DB-mock result slots must not change
@@ -677,6 +678,7 @@ describe('ProxyRuleSetsService', () => {
           targetSchemaId: 'existing-comments-id',
           fieldMismatch: false,
           kindAdopted: false,
+          fieldsAdopted: [],
         },
       ]);
       expect(result.warnings).toEqual([]);
@@ -699,6 +701,7 @@ describe('ProxyRuleSetsService', () => {
         targetSchemaId: 'existing-comments-id',
         fieldMismatch: true,
         kindAdopted: false,
+        fieldsAdopted: [],
       });
       expect(result.warnings).toEqual([
         'Schema "comments": field "body": type string (incoming) vs text (existing)',
@@ -749,6 +752,8 @@ describe('ProxyRuleSetsService', () => {
         'user-1',
         'admin',
         'project-1',
+        // No ruleSetName in these direct calls → no ownership stamp.
+        undefined,
       );
       expect(result.idMap.get('src-1')).toBe('created-brand-new');
       expect(result.resolutions).toEqual([
@@ -758,6 +763,7 @@ describe('ProxyRuleSetsService', () => {
           targetSchemaId: 'created-brand-new',
           fieldMismatch: false,
           kindAdopted: false,
+          fieldsAdopted: [],
         },
       ]);
       expect(result.warnings).toEqual([]);
@@ -777,6 +783,7 @@ describe('ProxyRuleSetsService', () => {
           targetSchemaId: null,
           fieldMismatch: false,
           kindAdopted: false,
+          fieldsAdopted: [],
         },
       ]);
       expect(result.idMap.has('src-1')).toBe(false);
@@ -806,6 +813,7 @@ describe('ProxyRuleSetsService', () => {
           targetSchemaId: 'existing-comments-id',
           fieldMismatch: false,
           kindAdopted: false,
+          fieldsAdopted: [],
         },
         {
           name: 'votes',
@@ -813,6 +821,7 @@ describe('ProxyRuleSetsService', () => {
           targetSchemaId: 'existing-votes-id',
           fieldMismatch: true,
           kindAdopted: false,
+          fieldsAdopted: [],
         },
         {
           name: 'brand-new',
@@ -820,6 +829,7 @@ describe('ProxyRuleSetsService', () => {
           targetSchemaId: 'created-brand-new',
           fieldMismatch: false,
           kindAdopted: false,
+          fieldsAdopted: [],
         },
       ]);
       expect(result.warnings).toEqual([
@@ -886,6 +896,7 @@ describe('ProxyRuleSetsService', () => {
           targetSchemaId: 'existing-comments-id',
           fieldMismatch: false,
           kindAdopted: false,
+          fieldsAdopted: [],
         },
       ]);
       expect(result.idMap.get('src-1')).toBe('existing-comments-id');
@@ -1566,6 +1577,7 @@ describe('ProxyRuleSetsService', () => {
           targetSchemaId: 'target-comments-id',
           fieldMismatch: false,
           kindAdopted: false,
+          fieldsAdopted: [],
         },
       ]);
       expect(result.created).toEqual([{ pathPattern: '/api/comments', method: 'GET' }]);
@@ -1605,6 +1617,7 @@ describe('ProxyRuleSetsService', () => {
           name: 'uploads',
           action: 'reuse',
           kindAdopted: true,
+          fieldsAdopted: [],
         });
         expect(result.warnings).toEqual([]);
       });
@@ -1666,8 +1679,414 @@ describe('ProxyRuleSetsService', () => {
           'user-1',
           'admin',
           'project-1',
+          // Stamped with the syncing set so a later sync can prove ownership (#721).
+          expect.objectContaining({ ruleSetName: 'api-backend' }),
         );
         expect(result.schemaResolutions[0]).toMatchObject({ action: 'create', kindAdopted: false });
+      });
+    });
+
+    /**
+     * bffless/ce#721 — a field added to a `*.schema.yaml` after the schema's
+     * first deploy used to be warn-only: the rule half of the change synced,
+     * the schema half was silently dropped, and the deploy was green. With
+     * `options.adoptFields` a PURELY ADDITIVE diff (new optional fields) on a
+     * schema THIS set owns is appended to the live schema. Everything else —
+     * removed/retyped/newly-required fields, schemas owned by another set or
+     * by the dashboard, adoptFields unset — keeps today's warn/strict path.
+     */
+    describe('schema field adoption', () => {
+      const liveFields = [
+        { name: 'id', type: 'string', required: true },
+        { name: 'status', type: 'string', required: false },
+      ];
+      const liveSchema = (overrides: Record<string, unknown> = {}) => ({
+        id: 'live-runs',
+        projectId: 'project-1',
+        name: 'workflow_runs',
+        kind: null,
+        version: 3,
+        fields: liveFields,
+        source: null,
+        ...overrides,
+      });
+      const ownedSchema = (overrides: Record<string, unknown> = {}) =>
+        liveSchema({
+          source: { ruleSetName: 'api-backend', syncedAt: '2026-08-01T00:00:00Z' },
+          ...overrides,
+        });
+
+      /** Payload schema = live fields + `unattended` (optional) unless overridden. */
+      const payloadSchema = (fields?: unknown[]) => ({
+        id: 'src-runs',
+        name: 'workflow_runs',
+        fields: fields ?? [...liveFields, { name: 'unattended', type: 'boolean', required: false }],
+      });
+      /** A rule that references the payload schema, so the set "uses" it. */
+      const referencingRule = (schemaId = 'src-runs') => ({
+        pathPattern: '/api/workflow/runs',
+        method: 'POST',
+        pipelineConfig: {
+          name: 'create-run',
+          steps: [{ handlerType: 'data_create', config: { schemaId } }],
+        },
+      });
+      const adoptDto = (overrides: Record<string, unknown> = {}) =>
+        syncDto({
+          rules: [referencingRule()],
+          schemas: [payloadSchema()],
+          options: { adoptFields: true },
+          ...overrides,
+        });
+
+      beforeEach(() => {
+        mockPipelineSchemasService.adoptFields.mockImplementation(
+          async (id: string, expectedVersion: number, fields: unknown[], source: unknown) => ({
+            ...liveSchema(),
+            id,
+            version: expectedVersion + 1,
+            fields,
+            source,
+          }),
+        );
+      });
+
+      it('adopts a new optional field onto a schema this set owns and reports it', async () => {
+        mockDb.__setResults([[mockProject], []]);
+        mockPipelineSchemasService.getByProjectId.mockResolvedValue([ownedSchema()]);
+
+        const result = await sync(adoptDto());
+
+        expect(mockPipelineSchemasService.adoptFields).toHaveBeenCalledTimes(1);
+        expect(mockPipelineSchemasService.adoptFields).toHaveBeenCalledWith(
+          'live-runs',
+          3,
+          [...liveFields, { name: 'unattended', type: 'boolean', required: false }],
+          expect.objectContaining({ ruleSetName: 'api-backend' }),
+        );
+        expect(result.schemaResolutions).toEqual([
+          {
+            name: 'workflow_runs',
+            action: 'reuse',
+            targetSchemaId: 'live-runs',
+            fieldMismatch: false,
+            kindAdopted: false,
+            fieldsAdopted: ['unattended'],
+          },
+        ]);
+        expect(result.warnings).toEqual([]);
+      });
+
+      it('keeps existing behaviour exactly when adoptFields is unset: warning, no write', async () => {
+        mockDb.__setResults([[mockProject], []]);
+        mockPipelineSchemasService.getByProjectId.mockResolvedValue([ownedSchema()]);
+
+        const result = await sync(adoptDto({ options: {} }));
+
+        expect(mockPipelineSchemasService.adoptFields).not.toHaveBeenCalled();
+        expect(result.schemaResolutions[0]).toMatchObject({
+          fieldMismatch: true,
+          fieldsAdopted: [],
+        });
+        expect(result.warnings).toEqual([
+          'Schema "workflow_runs": field "unattended" is only in the incoming definition',
+        ]);
+      });
+
+      it('dryRun: writes nothing and reports the would-be adoption', async () => {
+        mockDb.__setResults([[mockProject], []]);
+        mockPipelineSchemasService.getByProjectId.mockResolvedValue([ownedSchema()]);
+
+        const result = await sync(adoptDto({ options: { adoptFields: true, dryRun: true } }));
+
+        expect(mockPipelineSchemasService.adoptFields).not.toHaveBeenCalled();
+        expect(mockDb.transaction).not.toHaveBeenCalled();
+        expect(result.dryRun).toBe(true);
+        expect(result.schemaResolutions[0]).toMatchObject({
+          fieldMismatch: false,
+          fieldsAdopted: ['unattended'],
+        });
+        expect(result.warnings).toEqual([]);
+      });
+
+      it('satisfies strictSchemas: an adopted diff is no longer a mismatch', async () => {
+        mockDb.__setResults([[mockProject], []]);
+        mockPipelineSchemasService.getByProjectId.mockResolvedValue([ownedSchema()]);
+
+        const result = await sync(
+          adoptDto({ options: { adoptFields: true, strictSchemas: true } }),
+        );
+
+        expect(result.schemaResolutions[0].fieldsAdopted).toEqual(['unattended']);
+        expect(mockPipelineSchemasService.adoptFields).toHaveBeenCalledTimes(1);
+      });
+
+      it.each([
+        [
+          'a removed field',
+          [
+            { name: 'id', type: 'string', required: true },
+            { name: 'unattended', type: 'boolean' },
+          ],
+        ],
+        [
+          'a retyped field',
+          [...liveFields.map((f) => (f.name === 'status' ? { ...f, type: 'number' } : f))],
+        ],
+        [
+          'an optional field made required',
+          [...liveFields.map((f) => (f.name === 'status' ? { ...f, required: true } : f))],
+        ],
+        [
+          'a NEW required field',
+          [...liveFields, { name: 'unattended', type: 'boolean', required: true }],
+        ],
+      ])('never writes a non-additive diff (%s), even with adoptFields', async (_label, fields) => {
+        mockDb.__setResults([[mockProject], []]);
+        mockPipelineSchemasService.getByProjectId.mockResolvedValue([ownedSchema()]);
+
+        const result = await sync(adoptDto({ schemas: [payloadSchema(fields)] }));
+
+        expect(mockPipelineSchemasService.adoptFields).not.toHaveBeenCalled();
+        expect(result.schemaResolutions[0]).toMatchObject({
+          fieldMismatch: true,
+          fieldsAdopted: [],
+        });
+        expect(result.warnings.length).toBeGreaterThan(0);
+        expect(result.warnings.every((w) => w.startsWith('Schema "workflow_runs":'))).toBe(true);
+      });
+
+      it('non-additive diff under strictSchemas still fails, adoptFields or not', async () => {
+        mockDb.__setResults([[mockProject], []]);
+        mockPipelineSchemasService.getByProjectId.mockResolvedValue([ownedSchema()]);
+
+        await expect(
+          sync(
+            adoptDto({
+              schemas: [
+                payloadSchema([
+                  ...liveFields,
+                  { name: 'unattended', type: 'boolean', required: true },
+                ]),
+              ],
+              options: { adoptFields: true, strictSchemas: true },
+            }),
+          ),
+        ).rejects.toThrow('Schema field mismatch (strictSchemas)');
+        expect(mockPipelineSchemasService.adoptFields).not.toHaveBeenCalled();
+      });
+
+      it('refuses a schema owned by a different rule set and names the owner', async () => {
+        mockDb.__setResults([[mockProject], []]);
+        mockPipelineSchemasService.getByProjectId.mockResolvedValue([
+          ownedSchema({ source: { ruleSetName: 'other-app', syncedAt: '2026-08-01T00:00:00Z' } }),
+        ]);
+
+        const result = await sync(adoptDto());
+
+        expect(mockPipelineSchemasService.adoptFields).not.toHaveBeenCalled();
+        expect(result.schemaResolutions[0]).toMatchObject({
+          fieldMismatch: true,
+          fieldsAdopted: [],
+        });
+        expect(result.warnings).toEqual([
+          expect.stringContaining('not adopted — the schema is owned by rule set "other-app"'),
+          'Schema "workflow_runs": field "unattended" is only in the incoming definition',
+        ]);
+      });
+
+      it('a name-suffix preview set never adopts onto the production-owned schema', async () => {
+        mockDb.__setResults([[mockProject], []]);
+        mockPipelineSchemasService.getByProjectId.mockResolvedValue([ownedSchema()]);
+
+        const result = await sync(adoptDto({ ruleSet: { name: 'api-backend-pr-42' } }));
+
+        expect(mockPipelineSchemasService.adoptFields).not.toHaveBeenCalled();
+        expect(result.warnings[0]).toContain('owned by rule set "api-backend"');
+      });
+
+      it('refuses a bundled schema that no rule in the payload references', async () => {
+        mockDb.__setResults([[mockProject], []]);
+        mockPipelineSchemasService.getByProjectId.mockResolvedValue([ownedSchema()]);
+
+        const result = await sync(adoptDto({ rules: [baseRule()] }));
+
+        expect(mockPipelineSchemasService.adoptFields).not.toHaveBeenCalled();
+        expect(result.warnings[0]).toContain(
+          'not adopted — no rule in rule set "api-backend" references the schema',
+        );
+      });
+
+      describe('unstamped (legacy / dashboard-created) schema: ownership by references', () => {
+        const rulesReferencing = (schemaId: string) => [
+          {
+            id: 'r',
+            pathPattern: '/x',
+            method: null,
+            pipelineConfig: { steps: [{ handlerType: 'data_create', config: { schemaId } }] },
+          },
+        ];
+
+        it('adopts (and stamps) when this set is the only rule set referencing it', async () => {
+          mockDb.__setResults([[mockProject], []]);
+          mockPipelineSchemasService.getByProjectId.mockResolvedValue([liveSchema()]);
+          jest
+            .spyOn(service, 'listByProject')
+            .mockResolvedValue([
+              createMockRuleSet({ id: 'rule-set-1', name: 'api-backend' }),
+              createMockRuleSet({ id: 'rule-set-2', name: 'other-app' }),
+            ] as never);
+          mockProxyRulesService.getRulesByRuleSetId.mockImplementation(async (id: string) =>
+            id === 'rule-set-1' ? rulesReferencing('live-runs') : rulesReferencing('some-other'),
+          );
+
+          const result = await sync(adoptDto());
+
+          expect(mockPipelineSchemasService.adoptFields).toHaveBeenCalledWith(
+            'live-runs',
+            3,
+            expect.any(Array),
+            expect.objectContaining({ ruleSetName: 'api-backend' }),
+          );
+          expect(result.schemaResolutions[0].fieldsAdopted).toEqual(['unattended']);
+        });
+
+        it('refuses when another rule set also references it, naming that set', async () => {
+          mockDb.__setResults([[mockProject], []]);
+          mockPipelineSchemasService.getByProjectId.mockResolvedValue([liveSchema()]);
+          jest
+            .spyOn(service, 'listByProject')
+            .mockResolvedValue([
+              createMockRuleSet({ id: 'rule-set-1', name: 'api-backend' }),
+              createMockRuleSet({ id: 'rule-set-2', name: 'api-backend-pr-7' }),
+            ] as never);
+          mockProxyRulesService.getRulesByRuleSetId.mockResolvedValue(
+            rulesReferencing('live-runs'),
+          );
+
+          const result = await sync(adoptDto());
+
+          expect(mockPipelineSchemasService.adoptFields).not.toHaveBeenCalled();
+          expect(result.warnings[0]).toContain('also referenced by rule set(s) "api-backend-pr-7"');
+          expect(result.warnings[0]).toContain('ownership is ambiguous');
+        });
+
+        it('refuses when only other rule sets reference it', async () => {
+          mockDb.__setResults([[mockProject], []]);
+          mockPipelineSchemasService.getByProjectId.mockResolvedValue([liveSchema()]);
+          jest
+            .spyOn(service, 'listByProject')
+            .mockResolvedValue([
+              createMockRuleSet({ id: 'rule-set-2', name: 'other-app' }),
+            ] as never);
+          mockProxyRulesService.getRulesByRuleSetId.mockResolvedValue(
+            rulesReferencing('live-runs'),
+          );
+
+          const result = await sync(adoptDto());
+
+          expect(mockPipelineSchemasService.adoptFields).not.toHaveBeenCalled();
+          expect(result.warnings[0]).toContain(
+            'referenced by rule set(s) "other-app", not by "api-backend"',
+          );
+        });
+
+        it('refuses a dashboard-created schema no rule set references (first sync of a new set)', async () => {
+          mockDb.__setResults([[mockProject], []]);
+          mockPipelineSchemasService.getByProjectId.mockResolvedValue([liveSchema()]);
+          jest.spyOn(service, 'listByProject').mockResolvedValue([] as never);
+
+          const result = await sync(adoptDto());
+
+          expect(mockPipelineSchemasService.adoptFields).not.toHaveBeenCalled();
+          expect(result.warnings[0]).toContain('no live rule set references it');
+        });
+      });
+
+      describe('concurrent change (optimistic version check)', () => {
+        it('reloads, re-plans and retries once when the version moved', async () => {
+          mockDb.__setResults([[mockProject], []]);
+          mockPipelineSchemasService.getByProjectId.mockResolvedValue([ownedSchema()]);
+          // Someone added `note` in between: the fresh row is at version 4.
+          const fresh = ownedSchema({
+            version: 4,
+            fields: [...liveFields, { name: 'note', type: 'text', required: false }],
+          });
+          mockPipelineSchemasService.adoptFields
+            .mockResolvedValueOnce(null)
+            .mockResolvedValueOnce({ ...fresh, version: 5 });
+          mockPipelineSchemasService.getById.mockResolvedValue(fresh);
+
+          const result = await sync(
+            adoptDto({
+              schemas: [
+                payloadSchema([
+                  ...liveFields,
+                  { name: 'note', type: 'text', required: false },
+                  { name: 'unattended', type: 'boolean', required: false },
+                ]),
+              ],
+            }),
+          );
+
+          expect(mockPipelineSchemasService.adoptFields).toHaveBeenCalledTimes(2);
+          expect(mockPipelineSchemasService.adoptFields).toHaveBeenLastCalledWith(
+            'live-runs',
+            4,
+            [...fresh.fields, { name: 'unattended', type: 'boolean', required: false }],
+            expect.objectContaining({ ruleSetName: 'api-backend' }),
+          );
+          expect(result.schemaResolutions[0]).toMatchObject({
+            fieldMismatch: false,
+            fieldsAdopted: ['unattended'],
+          });
+          expect(result.warnings).toEqual([]);
+        });
+
+        it('gives up with a warning when the fresh diff is no longer additive', async () => {
+          mockDb.__setResults([[mockProject], []]);
+          mockPipelineSchemasService.getByProjectId.mockResolvedValue([ownedSchema()]);
+          mockPipelineSchemasService.adoptFields.mockResolvedValue(null);
+          // `status` was retyped in between: the payload now disagrees with live.
+          mockPipelineSchemasService.getById.mockResolvedValue(
+            ownedSchema({
+              version: 4,
+              fields: liveFields.map((f) => (f.name === 'status' ? { ...f, type: 'number' } : f)),
+            }),
+          );
+
+          const result = await sync(adoptDto());
+
+          expect(mockPipelineSchemasService.adoptFields).toHaveBeenCalledTimes(1);
+          expect(result.schemaResolutions[0]).toMatchObject({
+            fieldMismatch: true,
+            fieldsAdopted: [],
+          });
+          expect(result.warnings).toEqual([
+            expect.stringContaining('"unattended" not adopted — the schema changed concurrently'),
+          ]);
+        });
+
+        it('reports nothing adopted when the concurrent writer already added the same fields', async () => {
+          mockDb.__setResults([[mockProject], []]);
+          mockPipelineSchemasService.getByProjectId.mockResolvedValue([ownedSchema()]);
+          mockPipelineSchemasService.adoptFields.mockResolvedValue(null);
+          mockPipelineSchemasService.getById.mockResolvedValue(
+            ownedSchema({
+              version: 4,
+              fields: [...liveFields, { name: 'unattended', type: 'boolean', required: false }],
+            }),
+          );
+
+          const result = await sync(adoptDto());
+
+          expect(mockPipelineSchemasService.adoptFields).toHaveBeenCalledTimes(1);
+          expect(result.schemaResolutions[0]).toMatchObject({
+            fieldMismatch: false,
+            fieldsAdopted: [],
+          });
+          expect(result.warnings).toEqual([]);
+        });
       });
     });
 

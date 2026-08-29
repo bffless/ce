@@ -150,6 +150,18 @@ export class SyncOptionsDto {
 
   @ApiPropertyOptional({
     description:
+      'Adopt purely additive schema changes (new optional fields only) onto a name-reused schema ' +
+      'that this rule set owns, instead of warning about them. Removed, retyped or newly-required ' +
+      'fields, and schemas owned by another rule set or the dashboard, keep the warn/strictSchemas ' +
+      'behaviour. Default: off (warn only).',
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  adoptFields?: boolean;
+
+  @ApiPropertyOptional({
+    description:
       'Resolve rules edited locally since this set was last synced by comparing against the most recent sync revision. ' +
       "'overwrite' (default) keeps two-way behaviour — the payload always wins, which is what rules-as-code CI wants. " +
       "'preserve' keeps the local edit and reports it, for app upgrades over a customized install.",
@@ -322,6 +334,14 @@ export class SyncSchemaResolutionDto {
       'kind is never rewritten.',
   })
   kindAdopted: boolean;
+
+  @ApiProperty({
+    type: [String],
+    description:
+      'Names of payload fields appended to the reused schema under options.adoptFields ' +
+      '(under dryRun: the fields that would be). Empty when nothing was adopted or the schema was created.',
+  })
+  fieldsAdopted: string[];
 }
 
 /**

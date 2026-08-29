@@ -36,6 +36,84 @@ export interface SchemaResolution {
    * schema that already declares a kind keeps it.
    */
   kindAdopted: boolean;
+  /**
+   * Names of payload fields the sync added to the live schema because the
+   * caller opted in (`options.adoptFields`), the diff was purely additive,
+   * and this rule set owns the schema — see planFieldAdoption. Under dryRun
+   * the fields that WOULD be added. Empty for a create (the new schema
+   * carries every payload field from birth) and whenever nothing was adopted.
+   */
+  fieldsAdopted: string[];
+}
+
+/**
+ * Outcome of {@link planFieldAdoption}.
+ *
+ * - `additive: true` — every difference between the payload and the live
+ *   field list is a NEW optional field (`added` names them, `merged` is the
+ *   live list with them appended). This is the only shape the rules-as-code
+ *   sync will ever write onto an existing schema (bffless/ce#721).
+ * - `additive: false` — either the lists already match (`added` is empty) or
+ *   the diff removes, retypes, or newly requires a field. Both are left to
+ *   compareSchemaFields' warning / strict path; nothing is written.
+ */
+export interface FieldAdoptionPlan {
+  additive: boolean;
+  added: string[];
+  merged: SchemaField[];
+}
+
+/**
+ * Decide whether the payload's field list is a purely additive superset of the
+ * live one, and if so produce the merged list.
+ *
+ * "Purely additive" means: every live field is still present with the same
+ * `type` and the same (`?? false`-normalized) `required`; every payload-only
+ * field is optional. A payload-only field that is `required: true` is NOT
+ * additive — existing rows would fail validation the moment it landed.
+ * Field order is live-first: the live entries are kept as-is (including any
+ * `default` the dashboard set), the new ones are appended in payload order
+ * with `required` normalized to `false`, mirroring `PipelineSchemasService`.
+ *
+ * `default` is not compared (compareSchemaFields ignores it too): it does not
+ * participate in schema identity.
+ */
+export function planFieldAdoption(
+  incoming: ComparableSchemaField[],
+  existing: ComparableSchemaField[],
+): FieldAdoptionPlan {
+  const notAdditive: FieldAdoptionPlan = { additive: false, added: [], merged: [] };
+  const existingByName = new Map(existing.map((f) => [f.name, f]));
+  const incomingNames = new Set(incoming.map((f) => f.name));
+
+  for (const field of existing) {
+    if (!incomingNames.has(field.name)) return notAdditive;
+  }
+
+  const added: SchemaField[] = [];
+  for (const field of incoming) {
+    const live = existingByName.get(field.name);
+    if (live) {
+      if (field.type !== live.type) return notAdditive;
+      if ((field.required ?? false) !== (live.required ?? false)) return notAdditive;
+      continue;
+    }
+    if (field.required ?? false) return notAdditive;
+    added.push({
+      name: field.name,
+      type: field.type,
+      required: false,
+      ...(field.default !== undefined ? { default: field.default } : {}),
+    });
+  }
+
+  if (added.length === 0) return notAdditive;
+
+  return {
+    additive: true,
+    added: added.map((f) => f.name),
+    merged: [...(existing as SchemaField[]), ...added],
+  };
 }
 
 /**

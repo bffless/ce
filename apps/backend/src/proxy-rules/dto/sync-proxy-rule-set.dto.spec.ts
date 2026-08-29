@@ -150,7 +150,7 @@ describe('SyncProxyRuleSetDto', () => {
           fields: [{ name: 'body', type: 'text', required: true }],
         },
       ],
-      options: { prune: true, dryRun: true, strictSchemas: true },
+      options: { prune: true, dryRun: true, strictSchemas: true, adoptFields: true },
       source: {
         repo: 'bffless/apps',
         path: 'apps/studio/.bffless/proxy-rules/studio',
@@ -159,6 +159,17 @@ describe('SyncProxyRuleSetDto', () => {
     });
 
     expect(await validate(dto)).toEqual([]);
+  });
+
+  it('rejects a non-boolean options.adoptFields', async () => {
+    const dto = plainToInstance(SyncProxyRuleSetDto, {
+      ruleSet: { name: 'studio' },
+      rules: [],
+      options: { adoptFields: 'yes' },
+    });
+
+    const errors = await validate(dto);
+    expect(errors.map((e) => e.property)).toContain('options');
   });
 
   it('rejects a nested rule with a forbidden targetUrl', async () => {

@@ -90,6 +90,41 @@ describe('rules push', () => {
     expect(result.report).toContain('- ANY /api/old');
   });
 
+  it('--adopt-fields is forwarded only when set (older servers reject unknown options)', async () => {
+    const d = pushDeps(syncResponse());
+    const result = await runPushOne(basicSrcDir, { adoptFields: true }, '/nowhere', d);
+    expect(result.ok, result.error).toBe(true);
+    expect(d.sentBody().options).toEqual({
+      prune: false,
+      dryRun: false,
+      strictSchemas: false,
+      adoptFields: true,
+    });
+  });
+
+  it('reports adopted schema fields (and would-be adoptions under dry run)', () => {
+    const resolution = {
+      name: 'workflow_runs',
+      action: 'reuse' as const,
+      targetSchemaId: SET_UUID,
+      fieldMismatch: false,
+      fieldsAdopted: ['unattended', 'note'],
+    };
+    expect(formatSyncReport('basic', syncResponse({ schemaResolutions: [resolution] }))).toContain(
+      'fields adopted by workflow_runs: unattended, note',
+    );
+    expect(
+      formatSyncReport('basic', syncResponse({ dryRun: true, schemaResolutions: [resolution] })),
+    ).toContain('fields that would be adopted by workflow_runs: unattended, note');
+    // Older servers omit the key entirely; nothing is printed.
+    expect(
+      formatSyncReport(
+        'basic',
+        syncResponse({ schemaResolutions: [{ ...resolution, fieldsAdopted: undefined }] }),
+      ),
+    ).not.toContain('adopted');
+  });
+
   it('--name-suffix renames the set in the payload and the report', async () => {
     const d = pushDeps(syncResponse({ setCreated: true }));
     const result = await runPushOne(basicSrcDir, { nameSuffix: 'pr-42' }, '/nowhere', d);
