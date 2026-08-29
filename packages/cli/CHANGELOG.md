@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.5](https://github.com/bffless/ce/compare/bffless-v0.3.4...bffless-v0.3.5) (2026-08-29)
+
+
+### Added
+
+* **proxy-rules:** adopt additive schema fields on sync (opt-in, owner-scoped) ([#722](https://github.com/bffless/ce/issues/722)) ([269c5ea](https://github.com/bffless/ce/commit/269c5eabc37cf86e4bf0dce9327a73b80f24ca11))
+
 ## [0.3.4](https://github.com/bffless/ce/compare/bffless-v0.3.3...bffless-v0.3.4) (2026-08-29)
 
 
