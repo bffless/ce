@@ -5,6 +5,13 @@ import { pipelineExecutionLogs } from '../db/schema';
 import type { PipelineDebugResult } from './execution/pipeline-context.interface';
 import type { PipelineLogRequestMeta } from '../db/schema/pipeline-execution-logs.schema';
 
+/**
+ * Response header carrying the `pipeline_execution_logs.id` of the row a
+ * pipeline proxy-rule response was logged under. Only present when the rule has
+ * `debugEnabled`; the value resolves at `GET /api/pipeline-logs/:logId`.
+ */
+export const PIPELINE_LOG_ID_HEADER = 'X-Pipeline-Log-Id';
+
 @Injectable()
 export class PipelineExecutionLogService {
   private readonly logger = new Logger(PipelineExecutionLogService.name);
@@ -12,6 +19,11 @@ export class PipelineExecutionLogService {
 
   /**
    * Persist a pipeline execution log and cleanup old entries beyond retention limit.
+   *
+   * `logId` lets the caller choose the row id up front — the proxy middleware
+   * generates it before the HTTP response goes out so it can be echoed back as
+   * `X-Pipeline-Log-Id` while the insert itself stays fire-and-forget. When
+   * omitted the DB default (random uuid) applies. Resolves to the row id.
    */
   async log(
     proxyRuleId: string,
@@ -20,7 +32,8 @@ export class PipelineExecutionLogService {
     requestMeta: PipelineLogRequestMeta,
     method: string,
     path: string,
-  ): Promise<void> {
+    logId?: string,
+  ): Promise<string> {
     // Determine status code
     let statusCode = 500;
     if (result.success && result.response) {
@@ -36,30 +49,36 @@ export class PipelineExecutionLogService {
 
     const stepsCount = result.debug?.steps?.length ?? 0;
 
-    await db.insert(pipelineExecutionLogs).values({
-      projectId,
-      proxyRuleId,
-      success: result.success,
-      statusCode,
-      method,
-      path,
-      durationMs: result.debug?.totalDurationMs ?? 0,
-      stepsCount,
-      errorCode: result.error?.code ?? null,
-      errorMessage: result.error?.message ?? null,
-      errorStep: result.error?.step ?? null,
-      requestMeta,
-      debug: result.debug ?? {
-        validators: [],
-        steps: [],
-        totalDurationMs: 0,
-        startTime: '',
-        endTime: '',
-      },
-    });
+    const [inserted] = await db
+      .insert(pipelineExecutionLogs)
+      .values({
+        ...(logId ? { id: logId } : {}),
+        projectId,
+        proxyRuleId,
+        success: result.success,
+        statusCode,
+        method,
+        path,
+        durationMs: result.debug?.totalDurationMs ?? 0,
+        stepsCount,
+        errorCode: result.error?.code ?? null,
+        errorMessage: result.error?.message ?? null,
+        errorStep: result.error?.step ?? null,
+        requestMeta,
+        debug: result.debug ?? {
+          validators: [],
+          steps: [],
+          totalDurationMs: 0,
+          startTime: '',
+          endTime: '',
+        },
+      })
+      .returning({ id: pipelineExecutionLogs.id });
 
     // Cleanup old entries beyond retention limit
     await this.cleanup(proxyRuleId, this.DEFAULT_RETENTION);
+
+    return inserted.id;
   }
 
   /**

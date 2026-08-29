@@ -538,4 +538,141 @@ describe('ProxyMiddleware', () => {
       expect(result).toBe('blocked');
     });
   });
+
+  describe('handlePipelineExecution — X-Pipeline-Log-Id (#716)', () => {
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+    const pipelineRule = (overrides: Record<string, unknown> = {}) =>
+      createMockRule({
+        proxyType: 'pipeline',
+        targetUrl: 'pipeline',
+        pipelineConfig: {
+          name: 'test',
+          steps: [{ name: 'respond', handlerType: 'response_handler', config: {} }],
+        },
+        debugEnabled: true,
+        ...overrides,
+      });
+
+    const createPipelineResponse = (): Response & { headersSent: boolean } =>
+      ({
+        headersSent: false,
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+        send: jest.fn(),
+        setHeader: jest.fn(),
+        end: jest.fn(),
+      }) as unknown as Response & { headersSent: boolean };
+
+    /** Let the fire-and-forget persistLog() chain run to completion. */
+    const flushAsync = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+    const logIdHeaderValue = (res: Response): string | undefined => {
+      const call = (res.setHeader as jest.Mock).mock.calls.find(
+        ([name]) => name === 'X-Pipeline-Log-Id',
+      );
+      return call?.[1];
+    };
+
+    beforeEach(() => {
+      // Avoid SuperTokens / DB lookups: treat every request as anonymous.
+      jest.spyOn(middleware as any, 'getOptionalUser').mockResolvedValue(undefined);
+    });
+
+    it('returns the execution-log id as X-Pipeline-Log-Id on a successful response and persists the log under that id', async () => {
+      mockPipelineExecutionService.executePipelineWithDebug.mockResolvedValue({
+        success: true,
+        response: { status: 200, headers: { 'X-Custom': 'yes' }, body: { ok: true } },
+      } as any);
+      const req = createMockRequest('/public/owner/repo/sha123/api/items');
+      const res = createPipelineResponse();
+
+      await (middleware as any).handlePipelineExecution(req, res, pipelineRule(), 'project-1');
+      await flushAsync();
+
+      const logId = logIdHeaderValue(res);
+      expect(logId).toMatch(UUID_RE);
+      // Pipeline-authored headers are still applied.
+      expect(res.setHeader).toHaveBeenCalledWith('X-Custom', 'yes');
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.send).toHaveBeenCalledWith({ ok: true });
+
+      expect(mockExecutionLogService.log).toHaveBeenCalledTimes(1);
+      const logArgs = mockExecutionLogService.log.mock.calls[0];
+      expect(logArgs[0]).toBe('rule-1');
+      expect(logArgs[1]).toBe('project-1');
+      expect(logArgs[6]).toBe(logId);
+    });
+
+    it('returns the same header on a failed pipeline response so the caller can find the failing run', async () => {
+      mockPipelineExecutionService.executePipelineWithDebug.mockResolvedValue({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'bad input', step: 'validate' },
+      } as any);
+      const req = createMockRequest('/public/owner/repo/sha123/api/items');
+      const res = createPipelineResponse();
+
+      await (middleware as any).handlePipelineExecution(req, res, pipelineRule(), 'project-1');
+      await flushAsync();
+
+      const logId = logIdHeaderValue(res);
+      expect(logId).toMatch(UUID_RE);
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'bad input', step: 'validate' },
+      });
+      expect(mockExecutionLogService.log).toHaveBeenCalledTimes(1);
+      expect(mockExecutionLogService.log.mock.calls[0][6]).toBe(logId);
+    });
+
+    it('issues a fresh id per request', async () => {
+      const ids = new Set<string>();
+      for (let i = 0; i < 3; i++) {
+        const res = createPipelineResponse();
+        await (middleware as any).handlePipelineExecution(
+          createMockRequest('/public/owner/repo/sha123/api/items'),
+          res,
+          pipelineRule(),
+          'project-1',
+        );
+        ids.add(logIdHeaderValue(res) as string);
+      }
+      await flushAsync();
+      expect(ids.size).toBe(3);
+    });
+
+    it('does not emit the header (and writes no log) when debugEnabled is false', async () => {
+      const req = createMockRequest('/public/owner/repo/sha123/api/items');
+      const res = createPipelineResponse();
+
+      await (middleware as any).handlePipelineExecution(
+        req,
+        res,
+        pipelineRule({ debugEnabled: false }),
+        'project-1',
+      );
+      await flushAsync();
+
+      expect(logIdHeaderValue(res)).toBeUndefined();
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(mockExecutionLogService.log).not.toHaveBeenCalled();
+    });
+
+    it('does not emit the header when a handler already streamed the response (nothing is logged for it)', async () => {
+      const req = createMockRequest('/public/owner/repo/sha123/api/stream');
+      const res = createPipelineResponse();
+      mockPipelineExecutionService.executePipelineWithDebug.mockImplementation(async () => {
+        res.headersSent = true;
+        return { success: true } as any;
+      });
+
+      await (middleware as any).handlePipelineExecution(req, res, pipelineRule(), 'project-1');
+      await flushAsync();
+
+      expect(logIdHeaderValue(res)).toBeUndefined();
+      expect(res.send).not.toHaveBeenCalled();
+      expect(mockExecutionLogService.log).not.toHaveBeenCalled();
+    });
+  });
 });
