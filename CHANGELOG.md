@@ -7,10 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.40](https://github.com/bffless/ce/compare/v0.4.39...v0.4.40) (2026-08-29)
 
-
 ### Fixed
-
-* **proxy-rules:** scope by-id rule routes to the rule's project ([#719](https://github.com/bffless/ce/issues/719)) ([df86485](https://github.com/bffless/ce/commit/df86485a62c0cad24a0a3dad8e3e49e36f2ab74e)), closes [#718](https://github.com/bffless/ce/issues/718)
+- proxy-rules: scope by-id rule routes to the rule's project ([#719](https://github.com/bffless/ce/pull/719), thanks @toshimoto821)
 
 ## [0.4.39](https://github.com/bffless/ce/compare/v0.4.38...v0.4.39) (2026-08-29)
 
