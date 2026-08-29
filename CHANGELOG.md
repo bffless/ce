@@ -7,10 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.41](https://github.com/bffless/ce/compare/v0.4.40...v0.4.41) (2026-08-29)
 
-
 ### Added
-
-* **proxy-rules:** adopt additive schema fields on sync (opt-in, owner-scoped) ([#722](https://github.com/bffless/ce/issues/722)) ([269c5ea](https://github.com/bffless/ce/commit/269c5eabc37cf86e4bf0dce9327a73b80f24ca11))
+- proxy-rules: adopt additive schema fields on sync (opt-in, owner-scoped) ([#722](https://github.com/bffless/ce/pull/722), thanks @toshimoto821)
 
 ## [0.4.40](https://github.com/bffless/ce/compare/v0.4.39...v0.4.40) (2026-08-29)
 
