@@ -17,6 +17,15 @@ describe('ProxyRulesController', () => {
   let mockDeploymentsService: jest.Mocked<DeploymentsService>;
   let mockProjectsService: jest.Mocked<ProjectsService>;
   let mockUserGroupsService: jest.Mocked<UserGroupsService>;
+  let mockExecutionLogService: {
+    log: jest.Mock;
+    getByRuleId: jest.Mock;
+    getCountByRuleId: jest.Mock;
+    deleteByRuleId: jest.Mock;
+  };
+  let mockPermissionsService: { requireProjectAccess: jest.Mock };
+
+  const mockRuleSet = { id: 'rule-set-1', projectId: 'project-1' };
 
   const mockUser: CurrentUserData = {
     id: 'user-1',
@@ -55,6 +64,7 @@ describe('ProxyRulesController', () => {
       getRulesByRuleSetId: jest.fn(),
       getEffectiveRulesForRuleSet: jest.fn(),
       getRuleById: jest.fn(),
+      getRuleSetById: jest.fn().mockResolvedValue(mockRuleSet),
       create: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
@@ -77,9 +87,14 @@ describe('ProxyRulesController', () => {
       getGroupIdsForUser: jest.fn(),
     } as unknown as jest.Mocked<UserGroupsService>;
 
-    const mockExecutionLogService = {
+    mockExecutionLogService = {
       log: jest.fn().mockResolvedValue(undefined),
+      getByRuleId: jest.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }),
+      getCountByRuleId: jest.fn().mockResolvedValue(0),
+      deleteByRuleId: jest.fn().mockResolvedValue(undefined),
     };
+
+    mockPermissionsService = { requireProjectAccess: jest.fn().mockResolvedValue(undefined) };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ProxyRulesController],
@@ -90,6 +105,7 @@ describe('ProxyRulesController', () => {
         { provide: DeploymentsService, useValue: mockDeploymentsService },
         { provide: ProjectsService, useValue: mockProjectsService },
         { provide: UserGroupsService, useValue: mockUserGroupsService },
+        { provide: PermissionsService, useValue: mockPermissionsService },
       ],
     }).compile();
 
@@ -101,17 +117,161 @@ describe('ProxyRulesController', () => {
       const mockRule = createMockRule();
       mockProxyRulesService.getRuleById.mockResolvedValue(mockRule);
 
-      const result = await controller.getRule('rule-1');
+      const result = await controller.getRule('rule-1', mockUser);
 
       expect(result.id).toBe('rule-1');
       expect(result.ruleSetId).toBe('rule-set-1');
       expect(mockProxyRulesService.getRuleById).toHaveBeenCalledWith('rule-1');
+      // Scoped to the rule set's own project, read-level role.
+      expect(mockPermissionsService.requireProjectAccess).toHaveBeenCalledWith(
+        'project-1',
+        'user-1',
+        'admin',
+        'viewer',
+        undefined,
+      );
     });
 
     it('should throw NotFoundException when rule not found', async () => {
       mockProxyRulesService.getRuleById.mockResolvedValue(null);
 
-      await expect(controller.getRule('non-existent')).rejects.toThrow(NotFoundException);
+      await expect(controller.getRule('non-existent', mockUser)).rejects.toThrow(NotFoundException);
+      expect(mockPermissionsService.requireProjectAccess).not.toHaveBeenCalled();
+    });
+  });
+
+  // Rule ids are not secrets (X-Pipeline-Log-Id, logs, exports), and ApiKeyGuard
+  // only proves the caller has *a* credential on the instance. Every by-id route
+  // must therefore scope to the rule's own project, mirroring update/delete.
+  describe('project scoping of by-id routes', () => {
+    const outsider: CurrentUserData = { id: 'outsider', email: 'o@example.com', role: 'user' };
+    const forbidden = new ForbiddenException('You do not have access to this project');
+
+    const pipelineRule = () =>
+      createMockRule({
+        proxyType: 'pipeline' as const,
+        pipelineConfig: {
+          name: 'Test Pipeline',
+          steps: [{ id: 'step-1', handlerType: 'response_handler', config: {}, isEnabled: true }],
+        },
+      });
+
+    beforeEach(() => {
+      mockProxyRulesService.getRuleById.mockResolvedValue(createMockRule());
+      mockPermissionsService.requireProjectAccess.mockRejectedValue(forbidden);
+    });
+
+    it('GET :id refuses a caller with no role on the project', async () => {
+      await expect(controller.getRule('rule-1', outsider)).rejects.toThrow(ForbiddenException);
+      expect(mockPermissionsService.requireProjectAccess).toHaveBeenCalledWith(
+        'project-1',
+        'outsider',
+        'user',
+        'viewer',
+        undefined,
+      );
+    });
+
+    it('GET :id/logs refuses a caller with no role on the project', async () => {
+      await expect(controller.getRuleLogs('rule-1', outsider)).rejects.toThrow(ForbiddenException);
+      expect(mockPermissionsService.requireProjectAccess).toHaveBeenCalledWith(
+        'project-1',
+        'outsider',
+        'user',
+        'viewer',
+        undefined,
+      );
+      expect(mockExecutionLogService.getByRuleId).not.toHaveBeenCalled();
+    });
+
+    it('GET :id/logs/count refuses a caller with no role on the project', async () => {
+      await expect(controller.getRuleLogCount('rule-1', outsider)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(mockPermissionsService.requireProjectAccess).toHaveBeenCalledWith(
+        'project-1',
+        'outsider',
+        'user',
+        'viewer',
+        undefined,
+      );
+      expect(mockExecutionLogService.getCountByRuleId).not.toHaveBeenCalled();
+    });
+
+    it('DELETE :id/logs refuses a caller with no role and requires contributor', async () => {
+      await expect(controller.clearRuleLogs('rule-1', outsider)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(mockPermissionsService.requireProjectAccess).toHaveBeenCalledWith(
+        'project-1',
+        'outsider',
+        'user',
+        'contributor',
+        undefined,
+      );
+      expect(mockExecutionLogService.deleteByRuleId).not.toHaveBeenCalled();
+    });
+
+    it('POST :id/test refuses a caller with no role and requires contributor', async () => {
+      mockProxyRulesService.getRuleById.mockResolvedValue(pipelineRule());
+
+      await expect(
+        controller.testPipelineRule('rule-1', {}, outsider, { file: undefined } as any),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockPermissionsService.requireProjectAccess).toHaveBeenCalledWith(
+        'project-1',
+        'outsider',
+        'user',
+        'contributor',
+        undefined,
+      );
+      expect(mockPipelineExecutionService.executePipelineWithDebug).not.toHaveBeenCalled();
+    });
+
+    it('forwards the API key project scope so a key minted for another project is refused', async () => {
+      const scopedKey: CurrentUserData = {
+        id: 'user-1',
+        role: 'user',
+        apiKeyProjectId: 'project-b',
+      };
+      mockPermissionsService.requireProjectAccess.mockRejectedValue(
+        new ForbiddenException('API key is not authorized for this project'),
+      );
+
+      await expect(controller.getRuleLogs('rule-1', scopedKey)).rejects.toThrow(ForbiddenException);
+      expect(mockPermissionsService.requireProjectAccess).toHaveBeenCalledWith(
+        'project-1',
+        'user-1',
+        'user',
+        'viewer',
+        'project-b',
+      );
+    });
+
+    it('GET :id/logs/count 404s on an unknown id without consulting permissions', async () => {
+      mockProxyRulesService.getRuleById.mockResolvedValue(null);
+
+      await expect(controller.getRuleLogCount('missing', mockUser)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(mockPermissionsService.requireProjectAccess).not.toHaveBeenCalled();
+      expect(mockExecutionLogService.getCountByRuleId).not.toHaveBeenCalled();
+    });
+
+    it('serves logs, count and clear to an authorized caller', async () => {
+      mockPermissionsService.requireProjectAccess.mockResolvedValue(undefined);
+
+      await controller.getRuleLogs('rule-1', mockUser, '2', '50');
+      expect(mockExecutionLogService.getByRuleId).toHaveBeenCalledWith('rule-1', 2, 50);
+
+      await expect(controller.getRuleLogCount('rule-1', mockUser)).resolves.toEqual({
+        count: 0,
+      });
+
+      await expect(controller.clearRuleLogs('rule-1', mockUser)).resolves.toEqual({
+        success: true,
+      });
+      expect(mockExecutionLogService.deleteByRuleId).toHaveBeenCalledWith('rule-1');
     });
   });
 
@@ -171,10 +331,7 @@ describe('ProxyRulesController', () => {
         ...overrides,
       });
 
-    const mockRuleSet = { id: 'rule-set-1', projectId: 'project-1' };
-
     beforeEach(() => {
-      mockProxyRulesService.getRuleSetById = jest.fn().mockResolvedValue(mockRuleSet);
       mockPipelineExecutionService.executePipelineWithDebug.mockResolvedValue({
         success: true,
         response: { status: 200, body: {} },
