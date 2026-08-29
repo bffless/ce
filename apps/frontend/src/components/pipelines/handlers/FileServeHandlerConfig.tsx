@@ -117,6 +117,23 @@ export function FileServeHandlerConfig({ config, onChange, previousSteps = [] }:
           Cache-Control max-age header value. Default: 3600 (1 hour).
         </p>
       </div>
+
+      <div className="space-y-2">
+        <Label>Download (attachment)</Label>
+        <ExpressionInput
+          value={typeof typedConfig.download === 'string' ? typedConfig.download : ''}
+          onChange={(v) => update({ download: v || undefined })}
+          placeholder="e.g., request.query.download"
+          previousSteps={previousSteps}
+        />
+        <p className="text-xs text-muted-foreground">
+          When this resolves truthy the file is sent as an attachment (
+          <code>Content-Disposition</code>) named after the upload&apos;s original filename, so the
+          browser saves it instead of showing it. <code>request.query.download</code> lets one rule
+          serve both inline views and <code>?download=1</code> links. Leave empty to always serve
+          inline.
+        </p>
+      </div>
     </div>
   );
 }
