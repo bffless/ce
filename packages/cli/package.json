@@ -1,6 +1,6 @@
 {
   "name": "bffless",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "BFFless CLI — proxy rules as code (build, validate, test, decompile)",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE.md",

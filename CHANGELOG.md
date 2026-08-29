@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.39](https://github.com/bffless/ce/compare/v0.4.38...v0.4.39) (2026-08-29)
+
+
+### Added
+
+* **pipelines:** file_serve_handler download config sets Content-Disposition attachment ([#697](https://github.com/bffless/ce/issues/697)) ([#714](https://github.com/bffless/ce/issues/714)) ([3165a27](https://github.com/bffless/ce/commit/3165a27043257baa5d85f614ec3708ba7f941417))
+* **pipelines:** return the execution-log id as X-Pipeline-Log-Id on debug-enabled proxy-rule responses ([#717](https://github.com/bffless/ce/issues/717)) ([04f6c9f](https://github.com/bffless/ce/commit/04f6c9f41ce426222ccd03fbd535f75932d45256))
+
 ## [0.4.38](https://github.com/bffless/ce/compare/v0.4.37...v0.4.38) (2026-08-28)
 
 ### Fixed
