@@ -7,6 +7,8 @@ import {
   PipelineSchema,
   NewPipelineSchema,
   SchemaKind,
+  SchemaField,
+  PipelineSchemaSource,
 } from '../db/schema';
 import { PermissionsService } from '../permissions/permissions.service';
 import { CreatePipelineSchemaDto, UpdatePipelineSchemaDto } from './dto';
@@ -94,6 +96,10 @@ export class PipelineSchemasService {
     userId: string,
     userRole: string,
     apiKeyProjectId?: string | null,
+    // Internal-only (never read from the request DTO): the rules-as-code sync
+    // stamps which rule set created the schema so a later sync of a
+    // DIFFERENT set can't adopt fields onto it (bffless/ce#721).
+    source?: PipelineSchemaSource,
   ): Promise<PipelineSchema> {
     await this.permissionsService.requireProjectAccess(
       dto.projectId,
@@ -121,6 +127,7 @@ export class PipelineSchemasService {
         // Declared intent, never inferred — absent means "not declared", which
         // is what every pre-existing schema carries (bffless/ce#633).
         kind: dto.kind ?? null,
+        source: source ?? null,
       } as NewPipelineSchema)
       .returning();
 
@@ -144,6 +151,47 @@ export class PipelineSchemasService {
       .update(pipelineSchemas)
       .set({ kind, updatedAt: new Date() })
       .where(and(eq(pipelineSchemas.id, id), isNull(pipelineSchemas.kind)));
+  }
+
+  /**
+   * Append fields onto a schema — the rules-as-code sync's opt-in field
+   * adoption (bffless/ce#721). The caller has already established that
+   * `fields` is the live list plus new OPTIONAL fields only (planFieldAdoption)
+   * and that the syncing rule set owns the schema; this method is the guarded
+   * write.
+   *
+   * Optimistic: the UPDATE is conditioned on `version` still being
+   * `expectedVersion`, so two concurrent syncs can't clobber each other's
+   * read-modify-write of the field list. Returns the updated row, or `null`
+   * when the version moved underneath us (the caller reloads and re-plans).
+   * Bumps `version` like {@link update} does for a field change, and stamps
+   * `source` so ownership is recorded from the first adoption onwards.
+   */
+  async adoptFields(
+    id: string,
+    expectedVersion: number,
+    fields: SchemaField[],
+    source: PipelineSchemaSource,
+  ): Promise<PipelineSchema | null> {
+    const [updated] = await db
+      .update(pipelineSchemas)
+      .set({
+        fields: fields.map((f) => ({ ...f, required: f.required ?? false })),
+        version: expectedVersion + 1,
+        source,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(pipelineSchemas.id, id), eq(pipelineSchemas.version, expectedVersion)))
+      .returning();
+
+    if (updated) {
+      this.logger.log(
+        `Adopted fields onto schema ${id} for rule set "${source.ruleSetName}" ` +
+          `(now ${fields.length} fields, version ${expectedVersion} → ${updated.version})`,
+      );
+    }
+
+    return updated ?? null;
   }
 
   /**

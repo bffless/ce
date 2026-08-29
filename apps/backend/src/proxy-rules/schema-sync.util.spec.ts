@@ -1,4 +1,8 @@
-import { compareSchemaFields, type ComparableSchemaField } from './schema-sync.util';
+import {
+  compareSchemaFields,
+  planFieldAdoption,
+  type ComparableSchemaField,
+} from './schema-sync.util';
 import type { SchemaField } from '../db/schema/pipeline-schemas.schema';
 
 describe('schema-sync.util', () => {
@@ -98,6 +102,86 @@ describe('schema-sync.util', () => {
 
     it('matches two empty field lists', () => {
       expect(compareSchemaFields([], [])).toEqual({ match: true, mismatches: [] });
+    });
+  });
+  /** bffless/ce#721 — the only shape the sync will ever write onto a live schema. */
+  describe('planFieldAdoption', () => {
+    const live: SchemaField[] = [
+      { name: 'id', type: 'string', required: true },
+      { name: 'status', type: 'string', required: false, default: 'queued' },
+    ];
+
+    it('is additive for new optional fields: live fields kept as-is, new ones appended', () => {
+      const plan = planFieldAdoption(
+        [
+          { name: 'unattended', type: 'boolean', required: false },
+          { name: 'status', type: 'string' }, // absent required == false, order irrelevant
+          { name: 'id', type: 'string', required: true },
+          { name: 'note', type: 'text', default: '' },
+        ],
+        live,
+      );
+      expect(plan.additive).toBe(true);
+      expect(plan.added).toEqual(['unattended', 'note']);
+      expect(plan.merged).toEqual([
+        ...live,
+        { name: 'unattended', type: 'boolean', required: false },
+        { name: 'note', type: 'text', required: false, default: '' },
+      ]);
+    });
+
+    it('is not additive when the lists already match (nothing to adopt)', () => {
+      expect(planFieldAdoption(live, live)).toEqual({ additive: false, added: [], merged: [] });
+    });
+
+    it.each([
+      [
+        'a live field is missing from the payload',
+        [{ name: 'id', type: 'string', required: true }],
+      ],
+      [
+        'a field is retyped',
+        [...live.map((f) => (f.name === 'status' ? { ...f, type: 'text' as const } : f))],
+      ],
+      [
+        'an optional field becomes required',
+        [...live.map((f) => (f.name === 'status' ? { ...f, required: true } : f))],
+      ],
+      [
+        'a required field becomes optional',
+        [...live.map((f) => (f.name === 'id' ? { ...f, required: false } : f))],
+      ],
+      [
+        'a NEW field is required',
+        [...live, { name: 'unattended', type: 'boolean' as const, required: true }],
+      ],
+      [
+        'a mix of an additive and a destructive change',
+        [
+          { name: 'id', type: 'string' as const, required: true },
+          { name: 'unattended', type: 'boolean' as const },
+        ],
+      ],
+    ])('is not additive when %s', (_label, incoming) => {
+      expect(planFieldAdoption(incoming as ComparableSchemaField[], live)).toEqual({
+        additive: false,
+        added: [],
+        merged: [],
+      });
+    });
+
+    it('ignores `default` differences on existing fields (not part of schema identity)', () => {
+      const plan = planFieldAdoption(
+        [
+          { name: 'id', type: 'string', required: true },
+          { name: 'status', type: 'string', required: false, default: 'other' },
+          { name: 'unattended', type: 'boolean' },
+        ],
+        live,
+      );
+      expect(plan.additive).toBe(true);
+      // The live entry (with ITS default) is what survives.
+      expect(plan.merged[1]).toEqual(live[1]);
     });
   });
 });

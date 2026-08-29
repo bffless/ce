@@ -5,6 +5,9 @@
  *
  * - `--name-suffix pr-42` renames the compiled set to `<name>-pr-42` before syncing —
  *   the preview-deploy pattern (a PR gets its own live set without touching production's).
+ * - `--adopt-fields` asks the server to append new optional fields from `*.schema.yaml` onto
+ *   the live schema this set owns (otherwise a changed schema is warn-only). It is sent only
+ *   when set, so an older server (which rejects unknown options) still accepts the push.
  * - `source` metadata (repo/gitSha/path) is attached best-effort from the GitHub Actions
  *   env or local git (see api/git-source.ts) so the server can stamp provenance.
  * - Exit semantics (enforced by the caller via `ok`): any HTTP or compile error is a
@@ -24,6 +27,7 @@ export interface PushOptions {
   prune?: boolean;
   dryRun?: boolean;
   strictSchemas?: boolean;
+  adoptFields?: boolean;
   apiUrl?: string;
   apiKey?: string;
   project?: string;
@@ -93,6 +97,13 @@ export function formatSyncReport(setName: string, res: SyncResponse): string {
   if (adopted.length > 0) {
     lines.push(`  declared kind adopted by: ${adopted.map((r) => r.name).join(', ')}`);
   }
+  const withFields = res.schemaResolutions.filter((r) => r.fieldsAdopted && r.fieldsAdopted.length > 0);
+  if (withFields.length > 0) {
+    const verb = res.dryRun ? 'fields that would be adopted' : 'fields adopted';
+    for (const r of withFields) {
+      lines.push(`  ${verb} by ${r.name}: ${r.fieldsAdopted!.join(', ')}`);
+    }
+  }
 
   for (const w of res.warnings) lines.push(`  warning: ${w}`);
 
@@ -126,6 +137,8 @@ export async function runPushOne(
       prune: opts.prune ?? false,
       dryRun: opts.dryRun ?? false,
       strictSchemas: opts.strictSchemas ?? false,
+      // Only when set: servers predating the option reject unknown keys (400).
+      ...(opts.adoptFields ? { adoptFields: true } : {}),
     },
     ...(source ? { source } : {}),
   };

@@ -17,13 +17,15 @@ export interface SyncSchemaResolution {
   fieldMismatch: boolean;
   /** The declared `kind` was written onto a live schema that had none. */
   kindAdopted?: boolean;
+  /** Payload fields appended to the live schema under `options.adoptFields` (would-be, under dryRun). */
+  fieldsAdopted?: string[];
 }
 
 export interface SyncRequestBody {
   ruleSet: { name: string; description?: string; environment?: string };
   rules: ExportedRule[];
   schemas?: ExportedSchema[];
-  options?: { prune?: boolean; dryRun?: boolean; strictSchemas?: boolean };
+  options?: { prune?: boolean; dryRun?: boolean; strictSchemas?: boolean; adoptFields?: boolean };
   source?: { repo?: string; path?: string; gitSha?: string };
 }
 

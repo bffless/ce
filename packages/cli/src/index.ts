@@ -200,6 +200,10 @@ rules
   .option('--dry-run', 'compute and print the change plan without writing anything')
   .option('--prune', 'delete live rules that are absent from the local rule set')
   .option('--strict-schemas', 'fail when a name-reused schema has mismatched field definitions')
+  .option(
+    '--adopt-fields',
+    'append new optional fields from *.schema.yaml onto a live schema this set owns (default: warn only; never removes, retypes or requires a field)',
+  )
   .option('--name-suffix <suffix>', 'rename the set to <name>-<suffix> before syncing (e.g. pr-42 previews)')
   .option(
     '--path-prefix <prefix>',
@@ -215,6 +219,7 @@ rules
         dryRun?: boolean;
         prune?: boolean;
         strictSchemas?: boolean;
+        adoptFields?: boolean;
         nameSuffix?: string;
         pathPrefix?: string;
         apiUrl?: string;

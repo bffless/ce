@@ -56,9 +56,12 @@ import { ProxyRulesService } from './proxy-rules.service';
 import { collectSchemaIds, remapSchemaIds } from './schema-refs.util';
 import {
   compareSchemaFields,
+  planFieldAdoption,
   type ComparableSchemaField,
+  type FieldAdoptionPlan,
   type SchemaResolution,
 } from './schema-sync.util';
+import type { PipelineSchema, PipelineSchemaSource } from '../db/schema/pipeline-schemas.schema';
 import {
   buildExportEnvelope,
   canonicalRuleCompare,
@@ -813,6 +816,17 @@ export class ProxyRuleSetsService {
    * failures write-free even though schema creation runs outside the rule
    * transaction.
    *
+   * `adoptFields` (opt-in, bffless/ce#721): when a reused schema's diff is
+   * purely additive — new OPTIONAL fields only, nothing removed, retyped or
+   * newly required (planFieldAdoption) — AND the rule set being synced owns
+   * the schema ({@link fieldAdoptionBlocker}), the new fields are appended to
+   * the live schema (version bump, `source` stamp) instead of being warned
+   * about, and the resolution reports them in `fieldsAdopted`. Any other
+   * diff, or a schema this set doesn't own, keeps the warn/strict behaviour
+   * exactly. Under `dryRun` nothing is written and `fieldsAdopted` lists what
+   * would be. Schemas created by a live sync are stamped with
+   * `source.ruleSetName` so ownership is provable on the next sync.
+   *
    * Duplicate names WITHIN the incoming schemas → 400 (ambiguous payload).
    * Empty/undefined schemas → empty result with no DB access.
    */
@@ -821,7 +835,16 @@ export class ProxyRuleSetsService {
     schemas:
       | { id: string; name: string; kind?: SchemaKind; fields: ComparableSchemaField[] }[]
       | undefined,
-    options: { strictSchemas: boolean; dryRun: boolean },
+    options: {
+      strictSchemas: boolean;
+      dryRun: boolean;
+      /** Opt-in additive field adoption (default off — today's warn-only behaviour). */
+      adoptFields?: boolean;
+      /** Name of the set being synced — the ownership identity for adoption and the create stamp. */
+      ruleSetName?: string;
+      /** Source-side schema ids referenced by the payload's rules (collectSchemaIds). */
+      referencedSchemaIds?: Set<string>;
+    },
     userId: string,
     userRole: string,
     apiKeyProjectId?: string | null,
@@ -861,12 +884,54 @@ export class ProxyRuleSetsService {
     // strict throw can list ALL mismatches and precede ANY creation.
     const pendingCreates: { schema: (typeof schemas)[number]; resolution: SchemaResolution }[] = [];
     const pendingKindAdoptions: { schemaId: string; kind: SchemaKind }[] = [];
+    const pendingFieldAdoptions: {
+      schema: (typeof schemas)[number];
+      existing: PipelineSchema;
+      plan: FieldAdoptionPlan;
+      resolution: SchemaResolution;
+    }[] = [];
     const strictFailures: string[] = [];
+    // Loaded at most once per resolve, and only when an unstamped schema is a
+    // field-adoption candidate (see fieldAdoptionBlocker).
+    let projectSchemaRefs: Promise<{ name: string; schemaIds: Set<string> }[]> | undefined;
+    const loadProjectSchemaRefs = () => {
+      projectSchemaRefs ??= this.loadRuleSetSchemaRefs(projectId, apiKeyProjectId);
+      return projectSchemaRefs;
+    };
     for (const schema of schemas) {
       const existing = existingByName.get(schema.name);
       if (existing) {
         const { match, mismatches } = compareSchemaFields(schema.fields, existing.fields);
         idMap.set(schema.id, existing.id);
+
+        // Field adoption (opt-in): a purely additive diff on a schema this set
+        // owns is applied rather than warned about. Anything else falls
+        // through to the mismatch warnings below, untouched.
+        let fieldsAdopted: string[] = [];
+        let effectiveMismatches = mismatches;
+        let adoptionPlan: FieldAdoptionPlan | undefined;
+        if (!match && options.adoptFields) {
+          const plan = planFieldAdoption(schema.fields, existing.fields);
+          if (plan.additive) {
+            const blocker = await this.fieldAdoptionBlocker(
+              existing,
+              schema.id,
+              options,
+              loadProjectSchemaRefs,
+            );
+            if (blocker) {
+              warnings.push(
+                `Schema "${schema.name}": additive field(s) ${plan.added
+                  .map((f) => `"${f}"`)
+                  .join(', ')} not adopted — ${blocker}`,
+              );
+            } else {
+              fieldsAdopted = plan.added;
+              effectiveMismatches = [];
+              adoptionPlan = plan;
+            }
+          }
+        }
 
         // Kind is adopted, never overwritten: filling a null is unambiguous and
         // is the only route by which a schema that predates the column can ever
@@ -883,14 +948,19 @@ export class ProxyRuleSetsService {
         }
         if (kindAdopted) pendingKindAdoptions.push({ schemaId: existing.id, kind: schema.kind! });
 
-        resolutions.push({
+        const resolution: SchemaResolution = {
           name: schema.name,
           action: 'reuse',
           targetSchemaId: existing.id,
-          fieldMismatch: !match,
+          fieldMismatch: effectiveMismatches.length > 0,
           kindAdopted,
-        });
-        for (const mismatch of mismatches) {
+          fieldsAdopted,
+        };
+        resolutions.push(resolution);
+        if (adoptionPlan) {
+          pendingFieldAdoptions.push({ schema, existing, plan: adoptionPlan, resolution });
+        }
+        for (const mismatch of effectiveMismatches) {
           warnings.push(`Schema "${schema.name}": ${mismatch}`);
           strictFailures.push(`Schema "${schema.name}": ${mismatch}`);
         }
@@ -900,9 +970,10 @@ export class ProxyRuleSetsService {
           action: 'create',
           targetSchemaId: null,
           fieldMismatch: false,
-          // A schema created by this sync carries the payload's kind from birth;
-          // nothing was adopted onto an existing row.
+          // A schema created by this sync carries the payload's kind and every
+          // payload field from birth; nothing was adopted onto an existing row.
           kindAdopted: false,
+          fieldsAdopted: [],
         };
         resolutions.push(resolution);
         pendingCreates.push({ schema, resolution });
@@ -920,8 +991,16 @@ export class ProxyRuleSetsService {
     // Pass 2 — perform creations (live sync only; dryRun reports the plan with
     // targetSchemaId null and touches nothing).
     if (!options.dryRun) {
+      const stamp: PipelineSchemaSource | undefined = options.ruleSetName
+        ? { ruleSetName: options.ruleSetName, syncedAt: new Date().toISOString() }
+        : undefined;
       for (const { schemaId, kind } of pendingKindAdoptions) {
         await this.pipelineSchemasService.adoptKind(schemaId, kind);
+      }
+      for (const pending of pendingFieldAdoptions) {
+        // `stamp` is always set here: adoption is only planned when
+        // fieldAdoptionBlocker saw a ruleSetName.
+        await this.performFieldAdoption(pending, stamp!, warnings);
       }
       for (const { schema, resolution } of pendingCreates) {
         const created = await this.pipelineSchemasService.create(
@@ -929,6 +1008,7 @@ export class ProxyRuleSetsService {
           userId,
           userRole,
           apiKeyProjectId,
+          stamp,
         );
         idMap.set(schema.id, created.id);
         resolution.targetSchemaId = created.id;
@@ -936,6 +1016,148 @@ export class ProxyRuleSetsService {
     }
 
     return { idMap, resolutions, warnings };
+  }
+
+  /**
+   * Why a purely additive field diff must NOT be adopted onto `existing`, or
+   * `null` when the syncing rule set owns the schema (bffless/ce#721).
+   *
+   * All of a project's apps share one schema namespace, so "same name" is not
+   * "same schema": app B's sync must never grow app A's `jobs`. Ownership is:
+   * - the payload actually references the schema from a rule in THIS set
+   *   (a bundled-but-unused schema is not evidence of ownership); and
+   * - `existing.source.ruleSetName` — stamped when a sync created the schema
+   *   or first adopted onto it — equals the set being synced. A `name-suffix`
+   *   preview (`<name>-pr-42`) therefore never adopts onto production's
+   *   schema even if a caller passes `adoptFields`.
+   * - For an UNSTAMPED schema (predates the column, or dashboard/API-created)
+   *   ownership falls back to references: adopt only when this set is the one
+   *   and only rule set in the project whose rules reference it. Anything
+   *   ambiguous stays warn-only, and the message says who else references it.
+   */
+  private async fieldAdoptionBlocker(
+    existing: PipelineSchema,
+    sourceSchemaId: string,
+    options: { ruleSetName?: string; referencedSchemaIds?: Set<string> },
+    loadProjectSchemaRefs: () => Promise<{ name: string; schemaIds: Set<string> }[]>,
+  ): Promise<string | null> {
+    const setName = options.ruleSetName;
+    if (!setName) return 'the sync has no rule set name to attribute ownership to';
+    if (!options.referencedSchemaIds?.has(sourceSchemaId)) {
+      return `no rule in rule set "${setName}" references the schema`;
+    }
+
+    if (existing.source?.ruleSetName) {
+      if (existing.source.ruleSetName === setName) return null;
+      return (
+        `the schema is owned by rule set "${existing.source.ruleSetName}" (created by its sync); ` +
+        'add the field from that set, or in the dashboard'
+      );
+    }
+
+    const referencing = (await loadProjectSchemaRefs())
+      .filter((set) => set.schemaIds.has(existing.id))
+      .map((set) => set.name);
+    const quoted = (names: string[]) => names.map((n) => `"${n}"`).join(', ');
+    if (referencing.length === 1 && referencing[0] === setName) return null;
+    if (referencing.length === 0) {
+      return (
+        'the schema predates sync ownership tracking and no live rule set references it, ' +
+        `so it cannot be attributed to "${setName}"; add the field in the dashboard`
+      );
+    }
+    const others = referencing.filter((n) => n !== setName);
+    if (others.length === referencing.length) {
+      return (
+        `the schema predates sync ownership tracking and is referenced by rule set(s) ${quoted(others)}, ` +
+        `not by "${setName}"; add the field from the owning set, or in the dashboard`
+      );
+    }
+    return (
+      `the schema predates sync ownership tracking and is also referenced by rule set(s) ${quoted(others)}, ` +
+      'so ownership is ambiguous; add the field in the dashboard'
+    );
+  }
+
+  /**
+   * Every rule set in the project with the set of schema ids its rules
+   * reference — the reference-based ownership fallback for schemas that carry
+   * no `source` stamp (see fieldAdoptionBlocker).
+   */
+  private async loadRuleSetSchemaRefs(
+    projectId: string,
+    apiKeyProjectId?: string | null,
+  ): Promise<{ name: string; schemaIds: Set<string> }[]> {
+    const sets = await this.listByProject(projectId, apiKeyProjectId);
+    const result: { name: string; schemaIds: Set<string> }[] = [];
+    for (const set of sets) {
+      const rules = await this.proxyRulesService.getRulesByRuleSetId(set.id);
+      result.push({
+        name: set.name,
+        schemaIds: collectSchemaIds(rules.map((rule) => rule.pipelineConfig)),
+      });
+    }
+    return result;
+  }
+
+  /**
+   * Live half of field adoption: the optimistic write, with ONE retry.
+   *
+   * `adoptFields` is conditioned on the schema's `version` being the one we
+   * planned against. If it moved (a concurrent sync, or a dashboard edit
+   * between our read and our write) we reload, re-plan against the fresh
+   * field list and try once more; if the diff is no longer purely additive —
+   * or the retry loses too — the adoption is dropped with a warning and the
+   * resolution flips back to `fieldMismatch: true`, exactly what a sync
+   * without `adoptFields` would have reported. If the concurrent writer
+   * already added the same fields there is nothing left to adopt, and the
+   * resolution reports an empty `fieldsAdopted` with no mismatch.
+   */
+  private async performFieldAdoption(
+    pending: {
+      schema: { name: string; fields: ComparableSchemaField[] };
+      existing: PipelineSchema;
+      plan: FieldAdoptionPlan;
+      resolution: SchemaResolution;
+    },
+    stamp: PipelineSchemaSource,
+    warnings: string[],
+  ): Promise<void> {
+    const { schema, existing, plan, resolution } = pending;
+    const updated = await this.pipelineSchemasService.adoptFields(
+      existing.id,
+      existing.version,
+      plan.merged,
+      stamp,
+    );
+    if (updated) return;
+
+    const fresh = await this.pipelineSchemasService.getById(existing.id);
+    if (fresh) {
+      const replan = planFieldAdoption(schema.fields, fresh.fields);
+      if (replan.additive) {
+        const retried = await this.pipelineSchemasService.adoptFields(
+          fresh.id,
+          fresh.version,
+          replan.merged,
+          stamp,
+        );
+        if (retried) {
+          resolution.fieldsAdopted = replan.added;
+          return;
+        }
+      } else if (compareSchemaFields(schema.fields, fresh.fields).match) {
+        resolution.fieldsAdopted = [];
+        return;
+      }
+    }
+
+    resolution.fieldsAdopted = [];
+    resolution.fieldMismatch = true;
+    warnings.push(
+      `Schema "${schema.name}": field(s) ${plan.added.map((f) => `"${f}"`).join(', ')} not adopted — ` +
+        'the schema changed concurrently; re-run the sync',
+    );
   }
 
   /**
@@ -1010,6 +1232,7 @@ export class ProxyRuleSetsService {
     const conflictPolicy = dto.options?.conflictPolicy ?? 'overwrite';
     const dryRun = dto.options?.dryRun ?? false;
     const strictSchemas = dto.options?.strictSchemas ?? false;
+    const adoptFields = dto.options?.adoptFields ?? false;
 
     // Same bridging as importRuleSet: the DTO config classes are structural
     // mirrors of the schema's config types.
@@ -1034,7 +1257,14 @@ export class ProxyRuleSetsService {
         kind: schema.kind,
         fields: schema.fields,
       })),
-      { strictSchemas, dryRun },
+      {
+        strictSchemas,
+        dryRun,
+        adoptFields,
+        ruleSetName: name,
+        // Source-side ids: rules are remapped only after resolution.
+        referencedSchemaIds: collectSchemaIds(dtoRules.map((rule) => rule.pipelineConfig)),
+      },
       userId,
       userRole,
       apiKeyProjectId,
