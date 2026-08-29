@@ -40,8 +40,13 @@ FROM node:20-alpine
 # util-linux-misc provides prlimit, which caps ffmpeg's address space so a
 # runaway encode kills ffmpeg, never the backend. Absence of either is fine —
 # the capability probe degrades to off and apps fall back to client-side wasm.
+# font-noto is what makes `drawtext` usable (the frames op's `draw` block): the
+# filter takes no explicit fontfile= and resolves a family through fontconfig,
+# and Alpine ships no fonts. Without it every labelled still fails with "Cannot
+# find a valid font for the family Sans"; CE retries un-drawn, so sheets still
+# come back — silently unlabelled. Measured 2026-08-29 on this package list.
 RUN npm install -g pnpm && \
-    apk add --no-cache netcat-openbsd nginx python3 make g++ ffmpeg util-linux-misc && \
+    apk add --no-cache netcat-openbsd nginx python3 make g++ ffmpeg font-noto util-linux-misc && \
     ln -sf python3 /usr/bin/python
 
 WORKDIR /app
