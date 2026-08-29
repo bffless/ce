@@ -2,7 +2,12 @@
 FROM node:20-alpine AS builder
 
 # Install pnpm
-RUN npm install -g pnpm
+# pnpm is PINNED to 9 to match every CI workflow (pnpm/action-setup version: 9) and the
+# pnpm-9 lockfile. Unpinned, `npm install -g pnpm` installs pnpm 10+, which hard-fails the
+# install with ERR_PNPM_IGNORED_BUILDS for @nestjs/core/bcrypt/sharp/browser-tabs-lock
+# rather than running their build scripts. That bomb sat behind a cached layer and went off
+# the first time an unrelated edit to this RUN line invalidated the cache (v0.4.36, #708).
+RUN npm install -g pnpm@9
 
 WORKDIR /app
 
@@ -45,7 +50,7 @@ FROM node:20-alpine
 # and Alpine ships no fonts. Without it every labelled still fails with "Cannot
 # find a valid font for the family Sans"; CE retries un-drawn, so sheets still
 # come back — silently unlabelled. Measured 2026-08-29 on this package list.
-RUN npm install -g pnpm && \
+RUN npm install -g pnpm@9 && \
     apk add --no-cache netcat-openbsd nginx python3 make g++ ffmpeg font-noto util-linux-misc && \
     ln -sf python3 /usr/bin/python
 

@@ -5,7 +5,12 @@ FROM node:20-alpine AS builder
 ARG VITE_API_URL=
 
 # Install pnpm
-RUN npm install -g pnpm
+# pnpm is PINNED to 9 to match every CI workflow (pnpm/action-setup version: 9) and the
+# pnpm-9 lockfile. Unpinned, `npm install -g pnpm` installs pnpm 10+, which hard-fails the
+# install with ERR_PNPM_IGNORED_BUILDS for @nestjs/core/bcrypt/sharp/browser-tabs-lock
+# rather than running their build scripts. That bomb sat behind a cached layer and went off
+# the first time an unrelated edit to this RUN line invalidated the cache (v0.4.36, #708).
+RUN npm install -g pnpm@9
 
 WORKDIR /app
 
