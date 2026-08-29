@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.35](https://github.com/bffless/ce/compare/v0.4.34...v0.4.35) (2026-08-29)
+
+
+### Added
+
+* **pipelines:** ffmpeg_handler frames op with draw and tile ([#706](https://github.com/bffless/ce/issues/706)) ([aefd132](https://github.com/bffless/ce/commit/aefd13206ee766d925af7a2d0dd25ddc411b3c24))
+
 ## [0.4.34](https://github.com/bffless/ce/compare/v0.4.33...v0.4.34) (2026-08-27)
 
 ### Added
