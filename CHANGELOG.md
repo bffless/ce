@@ -5,12 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.4.38](https://github.com/bffless/ce/compare/v0.4.37...v0.4.38) (2026-08-29)
-
+## [0.4.38](https://github.com/bffless/ce/compare/v0.4.37...v0.4.38) (2026-08-28)
 
 ### Fixed
-
-* **api-keys:** let the user global role manage its own API keys ([#705](https://github.com/bffless/ce/issues/705)) ([#712](https://github.com/bffless/ce/issues/712)) ([b9fd834](https://github.com/bffless/ce/commit/b9fd8345bdba6d5b3f70730e8311291d96ced85c))
+- api-keys: let the user global role manage its own API keys (#705) ([#712](https://github.com/bffless/ce/pull/712), thanks @toshimoto821)
 
 ## [0.4.37](https://github.com/bffless/ce/compare/v0.4.36...v0.4.37) (2026-08-28)
 
