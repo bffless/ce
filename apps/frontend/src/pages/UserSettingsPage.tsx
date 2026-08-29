@@ -27,8 +27,8 @@ export function UserSettingsPage() {
   // Fetch login methods to determine if change password should be shown
   const { data: loginMethods } = useGetLoginMethodsQuery();
 
-  // Only admins can access API keys
-  const canAccessApiKeys = user?.role === 'admin';
+  // Admins and users can manage their own API keys; members cannot (#705)
+  const canAccessApiKeys = user?.role === 'admin' || user?.role === 'user';
 
   // Get tab from query params, default to 'profile'
   // Redirect away from api-keys if user is a member

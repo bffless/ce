@@ -33,7 +33,10 @@ import {
 @ApiBearerAuth()
 @Controller('api/api-keys')
 @UseGuards(ApiKeyGuard, RolesGuard)
-@Roles('admin')
+// admin + user may manage their own keys; members cannot (#705). Global keys are
+// further restricted to admin inside ApiKeysService.create; project-scoped keys
+// require contributor+ on the target project.
+@Roles('admin', 'user')
 export class ApiKeysController {
   constructor(private readonly apiKeysService: ApiKeysService) {}
 
@@ -50,7 +53,11 @@ export class ApiKeysController {
   })
   @ApiResponse({ status: 400, description: 'Invalid input data' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 403, description: 'Forbidden - global keys require admin role' })
+  @ApiResponse({
+    status: 403,
+    description:
+      'Forbidden - requires the admin or user global role (members cannot manage API keys); global keys require admin; project-scoped keys require contributor+ on the project',
+  })
   async create(
     @CurrentUser() user: CurrentUserData,
     @Body() createApiKeyDto: CreateApiKeyDto,
