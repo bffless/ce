@@ -63,13 +63,21 @@ export function ProjectSettingsPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  // Check authentication status
+  const { data: sessionData, isLoading: isLoadingSession } = useGetSessionQuery();
+  const isAuthenticated = Boolean(sessionData?.user);
+  const currentUser = sessionData?.user;
+  // API keys need the admin or user *global* role; a member who is a project
+  // owner would only get 403s from /api/api-keys, so hide the tab (#705).
+  const canAccessApiKeys = currentUser?.role === 'admin' || currentUser?.role === 'user';
+
   // Get tab from query params, default to 'general'
   const tabParam = searchParams.get('tab');
   const currentTab: TabValue =
     tabParam === 'members' ||
     tabParam === 'invite-links' ||
     tabParam === 'groups' ||
-    tabParam === 'api-keys' ||
+    (tabParam === 'api-keys' && canAccessApiKeys) ||
     tabParam === 'proxy-rules' ||
     tabParam === 'storage' ||
     tabParam === 'cache-rules' ||
@@ -85,11 +93,6 @@ export function ProjectSettingsPage() {
     const newTab = value as TabValue;
     navigate(`/repo/${owner}/${repo}/settings?tab=${newTab}`, { replace: true });
   };
-
-  // Check authentication status
-  const { data: sessionData, isLoading: isLoadingSession } = useGetSessionQuery();
-  const isAuthenticated = Boolean(sessionData?.user);
-  const currentUser = sessionData?.user;
 
   // Fetch project details
   const {
@@ -304,7 +307,7 @@ export function ProjectSettingsPage() {
               <TabsTrigger value="members">Members</TabsTrigger>
               <TabsTrigger value="invite-links">Invite Links</TabsTrigger>
               <TabsTrigger value="groups">Groups</TabsTrigger>
-              <TabsTrigger value="api-keys">API Keys</TabsTrigger>
+              {canAccessApiKeys && <TabsTrigger value="api-keys">API Keys</TabsTrigger>}
               <TabsTrigger value="proxy-rules">Proxy Rules</TabsTrigger>
               <TabsTrigger value="storage">Storage</TabsTrigger>
               <TabsTrigger value="cache-rules">Cache Rules</TabsTrigger>
@@ -517,9 +520,11 @@ export function ProjectSettingsPage() {
           </TabsContent>
 
           {/* API Keys Tab */}
-          <TabsContent value="api-keys" className="mt-6">
-            {project && <ProjectApiKeysTab project={project} />}
-          </TabsContent>
+          {canAccessApiKeys && (
+            <TabsContent value="api-keys" className="mt-6">
+              {project && <ProjectApiKeysTab project={project} />}
+            </TabsContent>
+          )}
 
           {/* Proxy Rules Tab */}
           <TabsContent value="proxy-rules" className="mt-6">

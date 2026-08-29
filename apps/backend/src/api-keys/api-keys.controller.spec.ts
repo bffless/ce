@@ -5,9 +5,25 @@ import { ApiKeysService } from './api-keys.service';
 import { CreateApiKeyDto, UpdateApiKeyDto, ListApiKeysQueryDto } from './api-keys.dto';
 import { CurrentUserData } from '../auth/decorators/current-user.decorator';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
-import { RolesGuard } from '../auth/roles.guard';
+import { RolesGuard, ROLES_KEY } from '../auth/roles.guard';
 
 describe('ApiKeysController', () => {
+  // #705: the class-level gate used to be @Roles('admin'), which made every
+  // /api/api-keys route 403 for the `user` global role and pre-empted the
+  // project-scoped contributor check in ApiKeysService.create. Members stay
+  // blocked, matching project creation (#441).
+  describe('role gating (#705)', () => {
+    it('allows the admin and user global roles at the class level (members stay blocked)', () => {
+      expect(Reflect.getMetadata(ROLES_KEY, ApiKeysController)).toEqual(['admin', 'user']);
+    });
+
+    it('is guarded: class declares ApiKeyGuard + RolesGuard', () => {
+      const guards = Reflect.getMetadata('__guards__', ApiKeysController) ?? [];
+      const guardNames = guards.map((g: any) => g.name);
+      expect(guardNames).toEqual(expect.arrayContaining(['ApiKeyGuard', 'RolesGuard']));
+    });
+  });
+
   let controller: ApiKeysController;
   let service: ApiKeysService;
 
