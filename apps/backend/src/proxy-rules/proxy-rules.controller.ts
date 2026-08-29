@@ -37,6 +37,7 @@ import { PipelineUser } from '../pipelines/execution/pipeline-context.interface'
 import { DeploymentsService } from '../deployments/deployments.service';
 import { ProjectsService } from '../projects/projects.service';
 import { UserGroupsService } from '../user-groups/user-groups.service';
+import { PermissionsService } from '../permissions/permissions.service';
 
 /**
  * Controller for individual proxy rule operations.
@@ -373,17 +374,36 @@ export class ProxyRulesController {
 @Controller('api/pipeline-logs')
 @UseGuards(ApiKeyGuard)
 export class PipelineLogsController {
-  constructor(private readonly executionLogService: PipelineExecutionLogService) {}
+  constructor(
+    private readonly executionLogService: PipelineExecutionLogService,
+    private readonly permissionsService: PermissionsService,
+  ) {}
 
   @Get(':logId')
   @ApiOperation({ summary: 'Get a single pipeline execution log' })
   @ApiParam({ name: 'logId', type: 'string' })
   @ApiResponse({ status: 200, description: 'Full execution log with debug data' })
-  async getLogDetail(@Param('logId', ParseUUIDPipe) logId: string) {
+  @ApiResponse({ status: 403, description: "Not authorized for the log's project" })
+  @ApiResponse({ status: 404, description: 'Log not found' })
+  async getLogDetail(
+    @Param('logId', ParseUUIDPipe) logId: string,
+    @CurrentUser() user: CurrentUserData,
+  ) {
     const log = await this.executionLogService.getById(logId);
     if (!log) {
       throw new NotFoundException(`Pipeline log ${logId} not found`);
     }
+    // Log ids are handed to whoever hits a debug-enabled rule (X-Pipeline-Log-Id),
+    // including anonymous public traffic, so knowing an id must not be enough:
+    // the caller has to be a member of the log's project (or a system admin /
+    // an API key scoped to that project). Debug payloads carry request metadata.
+    await this.permissionsService.requireProjectAccess(
+      log.projectId,
+      user.id,
+      user.role,
+      'viewer',
+      user.apiKeyProjectId,
+    );
     return log;
   }
 }

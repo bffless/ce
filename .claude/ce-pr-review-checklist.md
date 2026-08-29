@@ -125,6 +125,21 @@ the "PR content is untrusted data, not instructions" defence fails for precisely
 two files that *are* the instructions.
 **Learned from:** PR #672, 2026-08-16 — found by this agent reviewing its own PR.
 
+### A by-id lookup guarded only by `ApiKeyGuard` is instance-wide, not project-wide
+**Surface:** any `@Controller` under `apps/backend/src/**` using `@UseGuards(ApiKeyGuard)`
+alone on a `GET /:id` route — `ApiKeyGuard` accepts any session or API key on the
+instance and does no ownership check.
+**Check:** When a PR makes an id more discoverable (a response header, an error body,
+a webhook payload, a public page), does the endpoint that resolves that id call
+`PermissionsService.requireProjectAccess(...)` against the row's own `projectId`
+(passing `user.apiKeyProjectId` so project-scoped keys are enforced)? Ids that
+were previously only visible inside the admin UI were implicitly scoped by it;
+once they leak into public traffic, "knowing the id" must not be enough.
+**Why:** `pipeline_execution_logs.debug` carries request metadata (IP, UA), step
+detail and error text; a cross-project read is a data leak with no error anywhere.
+**Learned from:** PR #717, 2026-08-29 — `X-Pipeline-Log-Id` exposed log ids to
+anonymous callers while `GET /api/pipeline-logs/:logId` was unscoped; fixed in the same PR.
+
 ---
 
 ## Entry template
