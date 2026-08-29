@@ -453,6 +453,12 @@ export function buildFrameArgs(o: {
     // changing behaviour where it is already right, and a VALID seek still
     // exits 0 on both — with a bare scale chain, with drawbox, and with a real
     // drawtext overlay.
+    //
+    // "Past the end" means past the LAST FRAME'S PTS, not past the reported
+    // duration: on a 5.000s clip at 10 fps, `-ss 4.9` captures and `-ss 4.99`
+    // exits 234 (measured). So a caller sampling to the end of a clip has to
+    // stay a frame interval clear of it — see the `times` notes in
+    // step-handler.interface.ts.
     '-abort_on',
     'empty_output',
     o.output,

@@ -840,12 +840,20 @@ describe('frames', () => {
   });
 
   /**
-   * The op's most likely real-world failure: `times` is exactly the field a
-   * person or an LLM hand-writes, and ffmpeg writes NO file at all for a seek
-   * past the end of the source. Without help that surfaces as a bare ENOENT
-   * naming a scratch path nobody has heard of.
+   * DELIBERATELY THE LEGACY PATH, not current behaviour — read the name.
+   *
+   * This mocks ffmpeg exiting 0 having written no file, which is what a
+   * past-EOF seek used to do on ffmpeg 7 and what the missing-output rename in
+   * `namedOutputFailure` exists for. Since Ruling R107 added
+   * `-abort_on empty_output` no shipped ffmpeg reaches here that way: 7.0.2
+   * now exits 234 (measured) and 8.x always did. It is kept because the rename
+   * path is still live — an older self-hosted binary, an executor that drops
+   * the flag, or any other command that exits 0 without producing its declared
+   * output — and because it is the ONLY case that leaves a partial batch in
+   * the bucket, which the TSDoc promises. The CURRENT shape is the test below
+   * it.
    */
-  it('names the frame ffmpeg never wrote when a time is past the end of the source', async () => {
+  it('LEGACY exit-0-no-file: names the frame ffmpeg never wrote', async () => {
     const { handler, runner, storageAdapter } = createHandler();
     storageAdapter.download.mockResolvedValue(Buffer.from('mp4'));
     runner.run.mockImplementation(async ({ args, cwd }: { args: string[]; cwd: string }) => {
@@ -863,6 +871,47 @@ describe('frames', () => {
     // Documented consequence: the stills captured BEFORE it are already in the
     // bucket. A run's outputPrefix is disposable, not a directory to append to.
     expect(storageAdapter.upload).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * What a past-EOF time ACTUALLY does now (R107): the still command aborts on
+   * its empty output, so the step fails at that command with nothing uploaded.
+   * The trade is diagnosability — ffmpeg's exit-234 stderr carries no
+   * filename, so the message explains the cause but cannot say WHICH time,
+   * where the legacy path above could name `frame-02.jpg`. Pinned here so the
+   * regression is visible rather than folk knowledge.
+   */
+  it('a past-EOF time now ABORTS the still, uploading nothing', async () => {
+    const { handler, runner, storageAdapter } = createHandler();
+    storageAdapter.download.mockResolvedValue(Buffer.from('mp4'));
+    runner.run.mockImplementation(async ({ args, cwd }: { args: string[]; cwd: string }) => {
+      const name = args[args.length - 1].split('/').pop() as string;
+      if (name === 'frame-02.jpg') {
+        // Verbatim shape of the local runner's exit-234 failure, which names
+        // ffmpeg's last stderr line and no file.
+        throw Object.assign(
+          new Error(
+            'ffmpeg exited with code 234: [out#0/image2] Output file is empty, nothing was encoded(check -ss / -t / -frames parameters if used)',
+          ),
+          {
+            code: 'FFMPEG_FAILED',
+            exitCode: 234,
+            stderrTail: '[out#0/image2] Output file is empty, nothing was encoded',
+          },
+        );
+      }
+      await fsp.writeFile(`${cwd}/${name}`, 'jpeg-bytes');
+      return { stdout: '', stderrTail: '' };
+    });
+    const result = await handler.execute(context(), framesStep({ times: [1, 99999, 3] }));
+    expect(result.success).toBe(false);
+    expect(result.error?.code).toBe('FFMPEG_FAILED');
+    expect(result.error?.message).toMatch(/past the end of the source/);
+    // The cost of the fix, asserted so it cannot be misremembered: no filename.
+    expect(result.error?.message).not.toContain('frame-02.jpg');
+    // The benefit: the job died at the command, so NOTHING reached the bucket
+    // — not even the still that had already been captured.
+    expect(storageAdapter.upload).not.toHaveBeenCalled();
   });
 });
 
@@ -1317,7 +1366,16 @@ describe('frames tile', () => {
     expect(storageAdapter.upload).not.toHaveBeenCalled();
   });
 
-  it('names the failing cell when the executor identifies it', async () => {
+  /**
+   * HYPOTHETICAL EXECUTOR MESSAGE — no executor in this repo emits it today.
+   * The Worker throws a bare `ffmpeg exited ${exit.code}`
+   * (workers/ffmpeg/job.mjs:409) and the local runner reports ffmpeg's last
+   * stderr line; neither names the command for an ABORT. The rename path is
+   * kept (and pinned here) because it is correct the moment an executor does
+   * name it, and because the cell names have to be in the known-name list
+   * either way — that is what makes a cell nameable at all.
+   */
+  it('names the failing cell IF an executor ever identifies it in the message', async () => {
     const { handler, runner, storageAdapter } = createHandler();
     storageAdapter.download.mockResolvedValue(Buffer.from('mp4'));
     runner.run.mockImplementation(async ({ args, cwd }: { args: string[]; cwd: string }) => {

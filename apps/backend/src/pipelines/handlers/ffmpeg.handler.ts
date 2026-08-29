@@ -858,7 +858,15 @@ export class FfmpegHandler implements StepHandler<FfmpegHandlerConfig> {
    * `names` is every image the job could have written, CELLS INCLUDED: a cell
    * is not a declared output and nothing stats it, so before R107 a past-EOF
    * cell was invisible and its sheet came back padded. Anything that matches
-   * neither shape passes through untouched.
+   * neither shape passes through untouched — including the Worker's
+   * `command produced no ${output.name}` (workers/ffmpeg/job.mjs:428), which
+   * matches neither pattern and is left alone deliberately: it already names
+   * the file, so rewording it would only add noise.
+   *
+   * No executor in this repo names the failing COMMAND on an abort today (the
+   * Worker throws a bare `ffmpeg exited ${exit.code}`, job.mjs:409), so in
+   * practice the abort branch produces the un-named message. The name lookup
+   * is kept because it is correct the moment one does.
    */
   private namedOutputFailure(error: unknown, op: string, names: string[]): unknown {
     const message = error instanceof Error ? error.message : String(error);

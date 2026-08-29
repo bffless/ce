@@ -778,10 +778,26 @@ export interface FfmpegTileConfig {
  *   load-bearing in TILE mode — a cell is not a declared output and nothing
  *   stats it, so a silent gap used to reach the tile pass, where `image2`
  *   stops at the hole and `tile` pads the rest: a sheet of `0x111111` squares
- *   whose reported `times` claimed real frames. The error names the image when
- *   the executor's failure identifies it; the local runner reports only
- *   ffmpeg's last stderr line, so there it names the cause rather than the
- *   file.
+ *   whose reported `times` claimed real frames.
+ *
+ *   Two consequences worth knowing before you write `times`:
+ *
+ *   - **A time can be too late while still being inside `duration`.** The
+ *     reported duration is not the last frame's timestamp: on a 5.000 s clip
+ *     at 10 fps the last frame's PTS is 4.9, and `-ss 4.9` captures while
+ *     `-ss 4.99` exits 234 and fails the step (measured). A sampler that
+ *     spreads times across a clip and clamps the last one to the end will meet
+ *     this on low-fps sources. Keep the final sample at least one frame
+ *     interval clear of the end (`duration - 1/fps`, or simply a few tenths of
+ *     a second) rather than at `duration`.
+ *   - **The failure no longer names WHICH still.** ffmpeg's exit-234 stderr
+ *     carries no filename, so a failing still reports the cause ("ffmpeg wrote
+ *     no image there, which usually means a requested time is past the end of
+ *     the source") without saying which time caused it — where the older
+ *     exit-0 path could name `frame-02.jpg`. That is a real diagnosability
+ *     regression, accepted because the alternative was a tiled sheet of
+ *     padding squares that reported success. An executor whose failure message
+ *     names the command still gets the named form.
  *
  *   Uploads are all-or-nothing per COMMAND but not per BATCH: both executors
  *   upload only after every command has succeeded, so a non-zero ffmpeg exit
