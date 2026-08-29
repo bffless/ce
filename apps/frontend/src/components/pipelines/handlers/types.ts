@@ -461,55 +461,97 @@ export interface DelayHandlerConfig extends BaseHandlerConfig {
   seconds?: number | string;
 }
 
-export type FfmpegOperation =
-  | 'probe'
-  | 'extract_audio'
-  | 'slice'
-  | 'concat'
-  | 'frames'
-  | 'contact_sheet';
+/**
+ * MIRROR of `FfmpegOperation` in
+ * apps/backend/src/pipelines/execution/step-handler.interface.ts.
+ *
+ * There is no import path between the two files (the frontend tsconfig is
+ * `include: ["src"]` with a sole `@/*` alias), so `tsc` cannot see a
+ * divergence. The gate that can is
+ * apps/backend/src/pipelines/handlers/ffmpeg-operations-mirror.spec.ts, which
+ * parses BOTH files and fails when the lists disagree — the convention has
+ * already drifted twice, in both directions.
+ */
+export type FfmpegOperation = 'probe' | 'extract_audio' | 'slice' | 'concat' | 'frames';
 
+/** Where a drawn overlay sits in the frame. A closed enum — callers never write an x/y expression. */
+export type OverlayPosition =
+  | 'top-left'
+  | 'top-center'
+  | 'top-right'
+  | 'center'
+  | 'bottom-left'
+  | 'bottom-center'
+  | 'bottom-right';
+
+/** frames: one line of text burned into every still. Mirrors FfmpegDrawConfig in the backend interface. */
+export interface FfmpegDrawConfig {
+  /**
+   * The text, drawn verbatim. One string draws the same line on every still;
+   * an array draws its own line on each and must be exactly as long as `times`.
+   * A STRING is resolved as an expression only when it has the shape of a whole
+   * path (`steps.chapters.titles`); an authored ARRAY is always literals, which
+   * is the escape hatch for text that looks like a path (`["metadata.json"]`).
+   * `{{...}}` is rejected, not drawn.
+   */
+  text: string | string[];
+  /** Which corner. Default 'bottom-right'. */
+  position?: OverlayPosition;
+  /** Font height as a FRACTION of frame height, 0.005-1. Default 1/12. Out of range is a config error, never clamped. */
+  size?: number;
+  /** An ffmpeg colour NAME or 0xRRGGBB/#RRGGBB — no @alpha. Default 'white'. */
+  color?: string;
+  /** Draw the dark box behind the text. Default true; the strings 'false'/'0'/'no'/'off' also mean off. */
+  background?: boolean | string;
+}
+
+/** frames: tile the stills into contact sheets instead of uploading them one by one. Mirrors FfmpegTileConfig. */
+export interface FfmpegTileConfig {
+  /** Stills per sheet. REQUIRED whenever tile is present. Literal positive integer. */
+  perSheet: number;
+  /** Grid columns. Default 3. Literal positive integer; a short final sheet lays out at its own narrower width. */
+  columns?: number;
+}
+
+/**
+ * MIRROR of `FfmpegHandlerConfig` in
+ * apps/backend/src/pipelines/execution/step-handler.interface.ts — see the
+ * note on `FfmpegOperation` above. That file is the authoritative reference
+ * for what each field means; these comments are the short form.
+ */
 export interface FfmpegHandlerConfig extends BaseHandlerConfig {
   operation: FfmpegOperation;
-  /** Source object (probe/extract_audio/slice/frames/contact_sheet). A TEMPLATE ({{...}} substituted, anything else verbatim). */
+  /** Source object (probe/extract_audio/slice/frames). A TEMPLATE ({{...}} substituted, anything else verbatim). */
   input?: string;
   /** Concat sources, in order (expression resolving to an array also accepted). */
   inputs?: string[] | string;
   /** Kept spans for slice, or an expression resolving to them. */
   spans?: Array<{ start: number | string; end: number | string }> | string;
-  /** Destination, uploads-relative. Required for extract_audio/slice/concat (frames/contact_sheet use outputPrefix). */
+  /** Destination, uploads-relative. Required for extract_audio/slice/concat (frames uses outputPrefix). */
   output?: string;
   /** slice only: also emit the clip's 16 kHz WAV here. */
   audioOutput?: string;
   /** slice only: ~10 ms audio edge fades per span. */
   audioFades?: boolean;
-  /** frames/contact_sheet: destination DIRECTORY, uploads-relative. A TEMPLATE ({{...}} substituted, anything else verbatim). */
+  /** frames: destination DIRECTORY, uploads-relative. A TEMPLATE ({{...}} substituted, anything else verbatim). */
   outputPrefix?: string;
   /** frames: capture times in source seconds — an array (entries may be BARE expressions) or a bare expression resolving to one. Not {{...}}. */
   times?: Array<number | string> | string;
   /**
-   * frames/contact_sheet: output height in px, width follows the aspect ratio.
-   * Default 720. A literal number only — NOT template-resolvable.
+   * frames: output height in px, width follows the aspect ratio. Default 720.
+   * A literal number only — NOT template-resolvable.
    */
   height?: number;
   /**
-   * frames: jpeg quality, ffmpeg -q:v (2 = best, 31 = worst). Default 3. A
-   * literal number only — NOT template-resolvable. (contact_sheet cells are
-   * always q:v 3.)
+   * frames: jpeg quality of each still, ffmpeg -q:v (2 = best, 31 = worst).
+   * Default 3. A literal number only — NOT template-resolvable. A tiled sheet
+   * is always -q:v 3.
    */
   quality?: number;
-  /** contact_sheet: source duration in seconds; probed with ffprobe when omitted. A number or a BARE expression ('steps.probe.duration'), never {{...}}. */
-  duration?: number | string;
-  /** contact_sheet: finest sampling interval in seconds (the density floor). Default 5. Literal number only. */
-  interval?: number;
-  /** contact_sheet: grid columns per sheet. Default 3. Literal number only. */
-  columns?: number;
-  /** contact_sheet: cap on cells per sheet. Default 12 (the planner prefers 9). Literal number only. */
-  cellsPerSheet?: number;
-  /** contact_sheet: cap on sheets. Default 10. Literal number only. */
-  maxSheets?: number;
-  /** contact_sheet: burn the m:ss clock into each cell. Default true; the string forms 'false'/'0'/'no'/'off' also mean off. Degrades to false when the ffmpeg has no drawtext. */
-  label?: boolean | string;
+  /** frames: burn one line of text into every still. Omit for clean stills. */
+  draw?: FfmpegDrawConfig;
+  /** frames: tile the stills into contact sheets instead of uploading them individually. Omit to upload each still. */
+  tile?: FfmpegTileConfig;
   /**
    * Which executor runs the job: 'local' (this backend) | 'remote' (Worker) | a
    * `{{expression}}` resolving to one. Default: the instance's default executor.
